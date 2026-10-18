@@ -46,10 +46,10 @@
  * fills the pane and scrolls itself. Let it, and run the scroll area under
  * the translucent toolbar.
  */
-.notebook-page #dla-Jupyter-Notebook,
-.notebook-page .dla-Box-Notebook {
-  height: 100% !important;
-  max-height: none !important;
+.notebook-page .notebook-holder,
+.notebook-page .notebook-holder > .jp-Notebook {
+  position: absolute;
+  inset: 0;
 }
 
 .notebook-page .jp-Notebook,

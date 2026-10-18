@@ -1,4 +1,3 @@
-import { PageConfig } from '@jupyterlab/coreutils';
 import { ServerConnection, ServiceManager } from '@jupyterlab/services';
 
 /**
@@ -28,20 +27,9 @@ export type Backend = {
   services: ServiceManager.IManager;
 };
 
-/**
- * jupyter-react reads the server from PageConfig and falls back to
- * Datalayer's hosted server when it is empty. Point it at ours.
- */
-function setPageConfig(base: string, token: string) {
-  PageConfig.setOption('baseUrl', base);
-  PageConfig.setOption('wsUrl', base.replace(/^http/, 'ws'));
-  PageConfig.setOption('token', token);
-}
-
 export async function connect(config: BackendConfig): Promise<Backend> {
   if (config.kind === 'ganymede') {
     const base = (config.url || window.location.origin).replace(/\/+$/, '') + '/';
-    setPageConfig(base, config.token);
     const serverSettings = ServerConnection.makeSettings({
       baseUrl: base,
       wsUrl: base.replace(/^http/, 'ws'),
@@ -71,14 +59,10 @@ export async function connect(config: BackendConfig): Promise<Backend> {
       services,
     };
   }
-  // The in-browser server answers at this page's origin.
-  setPageConfig(window.location.origin + '/', '');
-  // Loaded on demand: the in-browser server and its kernels are large.
-  const { createLiteServiceManager } = await import('@datalayer/jupyter-react');
-  const services = await createLiteServiceManager(
-    import('@datalayer/jupyter-react/lite/javascript-kernel-extension'),
-  );
-  await services.ready;
+  // Loaded on demand: the in-browser server and its kernels are only
+  // needed when this backend is picked.
+  const { createLiteServices } = await import('./lite');
+  const services = await createLiteServices();
   return {
     config,
     label: 'This browser',
