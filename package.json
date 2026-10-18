@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.1",
   "type": "module",
-  "description": "A standalone notebook UI for Ganymede, built on datalayer/jupyter-ui.",
+  "description": "A standalone notebook UI for Ganymede, built on JupyterLab's notebook packages.",
   "scripts": {
     "dev": "vite",
     "build": "tsc -p . && vite build",
@@ -12,9 +12,31 @@
     "test": "npm test -w packages/client"
   },
   "dependencies": {
-    "@datalayer/jupyter-react": "^2.0.20",
-    "@jupyterlab/coreutils": "^6.0.0",
-    "@jupyterlab/services": "^7.0.0",
+    "@jupyter-widgets/base": "6.0.12",
+    "@jupyter-widgets/controls": "5.0.13",
+    "@jupyter-widgets/jupyterlab-manager": "5.0.16",
+    "@jupyter/ydoc": "4.1.1",
+    "@jupyterlab/apputils": "4.7.4",
+    "@jupyterlab/codemirror": "4.6.4",
+    "@jupyterlab/javascript-extension": "4.6.4",
+    "@jupyterlab/json-extension": "4.6.4",
+    "@jupyterlab/markedparser-extension": "4.6.4",
+    "@jupyterlab/mathjax-extension": "4.6.4",
+    "@jupyterlab/nbformat": "4.6.4",
+    "@jupyterlab/notebook": "4.6.4",
+    "@jupyterlab/rendermime": "4.6.4",
+    "@jupyterlab/rendermime-interfaces": "3.14.4",
+    "@jupyterlab/services": "7.6.4",
+    "@jupyterlab/theme-dark-extension": "4.6.4",
+    "@jupyterlab/theme-light-extension": "4.6.4",
+    "@jupyterlite/javascript-kernel": "0.4.0-alpha.3",
+    "@jupyterlite/services": "0.8.6",
+    "@lumino/commands": "2.3.4",
+    "@lumino/disposable": "2.1.6",
+    "@lumino/signaling": "2.1.6",
+    "@lumino/widgets": "2.10.0",
+    "localforage": "1.10.0",
+    "mock-socket": "9.3.1",
     "react": "19.2.8",
     "react-dom": "19.2.8"
   },
@@ -24,11 +46,18 @@
     "@vitejs/plugin-react": "^4.6.0",
     "typescript": "5.9.3",
     "vite": "7.3.6",
-    "vite-plugin-pwa": "^1.0.0",
-    "vite-plugin-treat-umd-as-commonjs": "^0.1.4"
+    "vite-plugin-pwa": "^1.0.0"
   },
   "workspaces": [
     "packages/*"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "overrides": {
+    "@jupyterlite/javascript-kernel": {
+      "@jupyterlite/services": "$@jupyterlite/services"
+    },
+    "@jupyterlab/console": "4.6.4",
+    "@jupyterlab/logconsole": "4.6.4",
+    "@jupyterlab/mainmenu": "4.6.4"
+  }
 }

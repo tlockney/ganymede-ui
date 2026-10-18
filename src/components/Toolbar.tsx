@@ -1,4 +1,3 @@
-import { useNotebookStore } from '@datalayer/jupyter-react';
 import type { KernelSpec } from '@jupyterlab/services';
 import type { NotebookController } from './NotebookPane';
 import {
@@ -33,7 +32,6 @@ const STATUS_LABEL: Record<string, string> = {
 
 /** The unified titlebar and toolbar, as in a macOS document window. */
 export function Toolbar({ controller: c, sidebarOpen, onToggleSidebar, specs }: Props) {
-  const store = useNotebookStore();
   const disabled = !c;
   const kernelDisplay =
     (c?.kernelName && specs?.kernelspecs[c.kernelName]?.display_name) || c?.kernelName;
@@ -69,7 +67,7 @@ export function Toolbar({ controller: c, sidebarOpen, onToggleSidebar, specs }: 
             className="tb-button"
             title="Run Cell (⇧↩)"
             disabled={disabled}
-            onClick={() => c && store.run(c.id)}
+            onClick={() => void c?.run()}
           >
             <PlayIcon />
           </button>
@@ -77,7 +75,7 @@ export function Toolbar({ controller: c, sidebarOpen, onToggleSidebar, specs }: 
             className="tb-button"
             title="Run All"
             disabled={disabled}
-            onClick={() => c && store.runAll(c.id)}
+            onClick={() => void c?.runAll()}
           >
             <ForwardIcon />
           </button>
@@ -104,7 +102,7 @@ export function Toolbar({ controller: c, sidebarOpen, onToggleSidebar, specs }: 
             className="tb-button"
             title="Insert Code Cell"
             disabled={disabled}
-            onClick={() => c && store.insertBelow(c.id, 'code')}
+            onClick={() => c?.insert('code')}
           >
             <CodeIcon />
           </button>
@@ -112,7 +110,7 @@ export function Toolbar({ controller: c, sidebarOpen, onToggleSidebar, specs }: 
             className="tb-button"
             title="Insert Text Cell"
             disabled={disabled}
-            onClick={() => c && store.insertBelow(c.id, 'markdown')}
+            onClick={() => c?.insert('markdown')}
           >
             <TextIcon />
           </button>

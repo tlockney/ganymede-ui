@@ -2,17 +2,16 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { defineConfig, type ProxyOptions } from 'vite';
 import react from '@vitejs/plugin-react';
-import { treatAsCommonjs } from 'vite-plugin-treat-umd-as-commonjs';
 import { VitePWA } from 'vite-plugin-pwa';
 
 // Where `npm run dev` proxies /api to. Start Ganymede with
 // `ganymede serve --port 8888 --token <token>`.
 const GANYMEDE = process.env.GANYMEDE_URL ?? 'http://127.0.0.1:8888';
 
-// @jupyter-widgets packages read their version with a CommonJS
-// `require('../package.json')` inside ES modules. jupyter-ui's example papers
-// over it by loading require.js from a CDN; inline the version instead. Runs
-// in the build and in the dev server's dependency pre-bundling.
+// `@jupyter-widgets/controls` reads its version with a CommonJS
+// `require('../package.json')` inside an ES module, which webpack allows and
+// Vite doesn't. Inline the version. Runs in the build and in the dev
+// server's dependency pre-bundling. Needed for ipywidgets (src/lib/widgets.ts).
 const VERSION_REQUIRE = /require\(['"]\.\.\/package\.json['"]\)\.version/;
 function inlinePackageVersion(code: string, id: string): string | null {
   if (!id.includes('@jupyter-widgets') || !VERSION_REQUIRE.test(code)) return null;
@@ -37,34 +36,18 @@ const proxy: Record<string, ProxyOptions> = {
 export default defineConfig({
   plugins: [
     react(),
-    treatAsCommonjs(),
-    // The next two plugins come from datalayer/jupyter-ui's Vite example:
-    // JupyterLab packages import CSS and text with webpack loader suffixes.
+    // JupyterLab's icons import SVG files as strings (webpack's raw
+    // loader); in Vite a bare `.svg` import is a URL. Ask for `?raw` instead
+    // for JupyterLab's own packages.
     {
-      name: 'raw-css-as-string',
+      name: 'jupyterlab-svg-as-string',
       enforce: 'pre',
       async resolveId(source, importer) {
-        if (source.endsWith('.raw.css') && !source.includes('?raw')) {
-          const resolved = await this.resolve(source + '?raw', importer, {
-            skipSelf: true,
-          });
-          return resolved ? resolved.id : null;
+        if (!source.endsWith('.svg') || !importer?.includes('/node_modules/@jupyterlab/')) {
+          return null;
         }
-        return null;
-      },
-    },
-    {
-      name: 'fix-text-query',
-      enforce: 'pre',
-      async resolveId(source, importer) {
-        if (source.includes('?text')) {
-          const fixed = source.replace('?text', '?raw');
-          const resolved = await this.resolve(fixed, importer, {
-            skipSelf: true,
-          });
-          return resolved ? resolved.id : fixed;
-        }
-        return null;
+        const resolved = await this.resolve(source + '?raw', importer, { skipSelf: true });
+        return resolved ? resolved.id : null;
       },
     },
     {
@@ -95,28 +78,59 @@ export default defineConfig({
         ],
       },
       workbox: {
-        // JupyterLab and the in-browser kernels make large chunks.
+        // JupyterLab and MathJax make large chunks.
         maximumFileSizeToCacheInBytes: 30 * 1024 * 1024,
-        globPatterns: ['**/*.{js,css,html,svg,png,woff2,wasm}'],
+        // SVGs only from icons/: the others are legacy font fallbacks.
+        globPatterns: ['**/*.{js,css,html,png,woff2,wasm}', 'icons/*.svg'],
         // The server API is never cached.
         navigateFallbackDenylist: [/^\/api\//],
       },
     }),
   ],
-  assetsInclude: ['**/*.whl', '**/*.raw.css'],
   resolve: {
+    // JupyterLab stylesheets import packages webpack-style, `url('~pkg/...')`
+    // (MathJax's fonts, for one).
     alias: [{ find: /^~(.*)$/, replacement: '$1' }],
   },
   define: {
+    // Some CommonJS dependencies still read Node's `global` (seen under
+    // `npm run dev`, where they are pre-bundled as is).
     global: 'globalThis',
-    __webpack_public_path__: '""',
-    // MathJax's CommonJS build reads __dirname before it looks at the page.
+    // MathJax's CommonJS build (@jupyterlab/mathjax-extension) reads
+    // __dirname before it looks at the page.
     __dirname: '""',
   },
   worker: { format: 'es' },
   optimizeDeps: {
+    // The JavaScript kernel starts its Worker with
+    // `new URL('./worker-runtime.js', import.meta.url)`; pre-bundling moves
+    // the module away from that file, so serve it as is in `npm run dev`.
+    exclude: ['@jupyterlite/javascript-kernel'],
+    // Its dependencies still need pre-bundling (CommonJS among them).
+    include: [
+      '@jupyterlite/javascript-kernel > @jupyterlab/coreutils',
+      '@jupyterlite/javascript-kernel > @lumino/coreutils',
+      '@jupyterlite/javascript-kernel > @jupyterlite/services',
+      '@jupyterlite/javascript-kernel > comlink',
+      '@jupyterlite/javascript-kernel > meriyah',
+      '@jupyterlite/javascript-kernel > astring',
+      // MathJax's CommonJS modules, which mathjax-extension loads with
+      // dynamic imports: pre-bundled on their own they keep their named
+      // exports (inside the extension's bundle `{ mathjax }` came back empty).
+      ...[
+        'mathjax',
+        'output/chtml',
+        'input/tex',
+        'output/chtml/fonts/tex',
+        'input/tex/AllPackages',
+        'input/tex/require/RequireConfiguration',
+        'ui/safe/SafeHandler',
+        'handlers/html/HTMLHandler',
+        'adaptors/browserAdaptor',
+        'a11y/assistive-mml',
+      ].map(m => `@jupyterlab/mathjax-extension > mathjax-full/js/${m}`),
+    ],
     esbuildOptions: {
-      loader: { '.whl': 'text' },
       plugins: [
         {
           name: 'inline-package-version',
