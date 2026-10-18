@@ -38,6 +38,12 @@ deployed copy at a server on another origin, start Ganymede with
 `npm run check` type-checks the app and checks the dev log, `npm test` runs the client package's
 tests, and `npm run build` builds the app; CI runs all three.
 
+Releases are cut with `scripts/release.sh <patch|minor|major|X.Y.Z>`, a
+dry run by default; `--execute` opens the release pull request. Merging it
+tags `vX.Y.Z` and publishes the built app (`ganymede-ui-X.Y.Z.tar.gz` and
+`.zip`, a static site) to GitHub Releases. See
+[docs/releasing.md](docs/releasing.md) and [CHANGELOG.md](CHANGELOG.md).
+
 `node scripts/screenshots.mjs <url> <token> <dir> [light|dark]` drives the
 built app with Playwright against a server that has `Galilean moons.ipynb`.
 `node scripts/render-icons.mjs` regenerates the PNG icons from
