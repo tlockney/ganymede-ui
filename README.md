@@ -35,7 +35,7 @@ build: `npm run build && npm run preview` (same proxy, port 4173). To point a
 deployed copy at a server on another origin, start Ganymede with
 `--allow-origin <app origin>` and enter its URL in the sheet.
 
-`npm run check` type-checks the app, `npm test` runs the client package's
+`npm run check` type-checks the app and checks the dev log, `npm test` runs the client package's
 tests, and `npm run build` builds the app; CI runs all three.
 
 `node scripts/screenshots.mjs <url> <token> <dir> [light|dark]` drives the
@@ -71,7 +71,7 @@ built app with Playwright against a server that has `Galilean moons.ipynb`.
 
 - jupyter-ui works as a library outside JupyterLab, but its Vite setup leans
   on a require.js script from a CDN and a hosted Datalayer server URL as the
-  default. Both are replaced here; see [notes.md](notes.md).
+  default. Both are replaced here; see the [dev log](docs/notes/archive.md).
 - Ganymede needed no changes. `@jupyterlab/services` works against it as is,
   through a proxy that rewrites `Origin`, or cross-origin with
   `--allow-origin`.
@@ -80,7 +80,7 @@ built app with Playwright against a server that has `Galilean moons.ipynb`.
 - jupyter-react is heavy: 3.5 MB main chunk, 8.3 MB precached, because it
   pulls in Pyodide, Plotly and Primer whether used or not.
 
-Known gaps are listed at the end of [notes.md](notes.md).
+Known gaps are listed at the end of the [dev log archive](docs/notes/archive.md). Work is tracked in [issues](https://github.com/tlockney/ganymede-ui/issues); see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Next
 

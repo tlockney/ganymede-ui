@@ -8,7 +8,7 @@
     "dev": "vite",
     "build": "tsc -p . && vite build",
     "preview": "vite preview",
-    "check": "tsc -p .",
+    "check": "tsc -p . && node scripts/check-notes.mjs",
     "test": "npm test -w packages/client"
   },
   "dependencies": {
