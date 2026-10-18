@@ -9,7 +9,8 @@
     "build": "tsc -p . && vite build",
     "preview": "vite preview",
     "check": "tsc -p . && node scripts/check-notes.mjs",
-    "test": "npm test -w packages/client"
+    "test": "vitest run && npm test -w packages/client",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@jupyter-widgets/base": "6.0.12",
@@ -41,12 +42,19 @@
     "react-dom": "19.2.8"
   },
   "devDependencies": {
+    "@testing-library/dom": "10.4.2",
+    "@testing-library/jest-dom": "7.0.1",
+    "@testing-library/react": "16.3.3",
+    "@testing-library/user-event": "14.6.7",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.5",
     "@vitejs/plugin-react": "^4.6.0",
+    "@vitest/coverage-v8": "4.1.11",
+    "jsdom": "29.1.1",
     "typescript": "5.9.3",
     "vite": "7.3.6",
-    "vite-plugin-pwa": "^1.0.0"
+    "vite-plugin-pwa": "^1.0.0",
+    "vitest": "4.1.11"
   },
   "workspaces": [
     "packages/*"
