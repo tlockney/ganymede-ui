@@ -19,6 +19,7 @@ import { JavaScriptKernel } from '@jupyterlite/javascript-kernel';
 import { Signal, Stream } from '@lumino/signaling';
 import localforage from 'localforage';
 import { WebSocket } from 'mock-socket';
+import { ServiceWorkerBridge } from './lite-sw';
 
 /**
  * JupyterLite's in-page server, assembled by hand.
@@ -45,7 +46,31 @@ export async function createLiteServices(): Promise<ServiceManager.IManager> {
     WebSocket: WebSocket as unknown as typeof globalThis.WebSocket,
   });
 
+  // The drive only asks the server for seed files
+  // (`api/contents/<path>/all.json`, which through the dev proxy reached
+  // Ganymede and got 403) when PageConfig's `contentsAllJsonFile` option
+  // names one. jupyter-react set it; nothing here sets PageConfig, nor
+  // should index.html ever carry a `jupyter-config-data` script with it.
+  const drive = new BrowserStorageDrive({
+    // jupyter-react's storage name, so notebooks made before still show.
+    storageName: 'JupyterLite Storage',
+    localforage,
+  });
+  await drive.initialize();
+  const contents = new ContentsManager({ defaultDrive: drive, serverSettings });
+
   const kernelSpecs = new KernelSpecs();
+  const kernelClient = new LiteKernelClient({ kernelSpecs, serverSettings });
+
+  // Relays kernels' synchronous file and stdin requests through the service
+  // worker (see lite-sw.ts). Set up in the background: kernels that never
+  // use it shouldn't wait for it.
+  const bridge = new ServiceWorkerBridge({
+    contents,
+    handleStdin: msg => kernelClient.handleStdin(msg),
+  });
+  bridge.ready.catch(err => console.info('Kernel file access is off:', err));
+
   kernelSpecs.register({
     spec: {
       // The name jupyter-react's kernel used, so notebooks made with it
@@ -56,10 +81,9 @@ export async function createLiteServices(): Promise<ServiceManager.IManager> {
       argv: [],
       resources: {},
     },
-    create: async options => new JavaScriptKernel({ ...options, runtime: 'worker' }),
+    create: async options => new DriveJavaScriptKernel({ ...options, runtime: 'worker' }, bridge),
   });
 
-  const kernelClient = new LiteKernelClient({ kernelSpecs, serverSettings });
   const kernelSpecClient = new LiteKernelSpecClient({ kernelSpecs, serverSettings });
   const kernels = new KernelManager({
     kernelAPIClient: kernelClient,
@@ -76,15 +100,7 @@ export async function createLiteServices(): Promise<ServiceManager.IManager> {
     serverSettings,
   });
 
-  const drive = new BrowserStorageDrive({
-    // jupyter-react's storage name, so notebooks made before still show.
-    storageName: 'JupyterLite Storage',
-    localforage,
-  });
-  await drive.initialize();
-  const contents = new ContentsManager({ defaultDrive: drive, serverSettings });
-
-  const services = new ServiceManager({
+  const services = new LiteServiceManager(bridge, {
     serverSettings,
     contents,
     kernels,
@@ -95,6 +111,43 @@ export async function createLiteServices(): Promise<ServiceManager.IManager> {
   });
   await services.ready;
   return services;
+}
+
+/** Stops the relay along with the rest when the backend is switched. */
+class LiteServiceManager extends ServiceManager {
+  constructor(
+    private _bridge: ServiceWorkerBridge,
+    options: Partial<ServiceManager.IOptions>,
+  ) {
+    super(options);
+  }
+  dispose(): void {
+    this._bridge.dispose();
+    super.dispose();
+  }
+}
+
+/**
+ * The JavaScript kernel, told where the drive is: in its Worker,
+ * `globalThis.jupyterlite` holds `driveUrl` and `browsingContextId`, what
+ * JupyterLite hands its Pyodide kernel for DriveFS. The JavaScript kernel
+ * has no file system of its own, so code uses it directly, e.g. a
+ * synchronous `POST` of `{ browsingContextId, data: { method: 'get',
+ * path } }` to `driveUrl`; see the dev log of #8.
+ */
+class DriveJavaScriptKernel extends JavaScriptKernel {
+  constructor(
+    options: JavaScriptKernel.IOptions,
+    private _bridge: ServiceWorkerBridge,
+  ) {
+    super(options);
+  }
+  protected async onRuntimeReady(context: JavaScriptKernel.IRuntimeReadyContext) {
+    const { driveUrl, browsingContextId } = this._bridge;
+    await context.execute(
+      `globalThis.jupyterlite = ${JSON.stringify({ driveUrl, browsingContextId })}; void 0`,
+    );
+  }
 }
 
 /** No server to ask who the user is. */

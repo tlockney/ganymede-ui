@@ -84,6 +84,12 @@ export default defineConfig({
         globPatterns: ['**/*.{js,css,html,png,woff2,wasm}', 'icons/*.svg'],
         // The server API is never cached.
         navigateFallbackDenylist: [/^\/api\//],
+        // JupyterLite's service-worker relay (kernel file access and
+        // stdin, public/lite-service-worker.js) runs inside this worker:
+        // one origin gets one worker at `/`, and a narrower scope wouldn't
+        // control the kernel Workers. `npm run dev` has no Workbox worker
+        // and registers the relay alone (src/lib/lite-sw.ts).
+        importScripts: ['lite-service-worker.js'],
       },
     }),
   ],
