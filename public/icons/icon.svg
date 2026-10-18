@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2b3a67"/>
+      <stop offset="1" stop-color="#0d1226"/>
+    </linearGradient>
+    <radialGradient id="moon" cx="0.36" cy="0.32" r="0.8">
+      <stop offset="0" stop-color="#f4e9d8"/>
+      <stop offset="0.55" stop-color="#c9b79c"/>
+      <stop offset="1" stop-color="#6e5f4d"/>
+    </radialGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0.6" stop-color="#8fb3ff" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#8fb3ff" stop-opacity="0"/>
+    </radialGradient>
+    <clipPath id="disc"><circle cx="512" cy="512" r="250"/></clipPath>
+  </defs>
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="url(#bg)"/>
+  <circle cx="300" cy="260" r="5" fill="#fff" opacity="0.7"/>
+  <circle cx="760" cy="230" r="4" fill="#fff" opacity="0.5"/>
+  <circle cx="790" cy="760" r="6" fill="#fff" opacity="0.6"/>
+  <circle cx="240" cy="700" r="3.5" fill="#fff" opacity="0.5"/>
+  <circle cx="512" cy="512" r="320" fill="url(#glow)"/>
+  <g transform="rotate(-20 512 512)">
+    <ellipse cx="512" cy="512" rx="390" ry="92" fill="none" stroke="#f9a03f" stroke-width="18" opacity="0.45"/>
+  </g>
+  <circle cx="512" cy="512" r="250" fill="url(#moon)"/>
+  <g clip-path="url(#disc)" fill="#5a4c3c" opacity="0.3">
+    <circle cx="600" cy="610" r="48"/>
+    <circle cx="420" cy="600" r="24"/>
+    <circle cx="650" cy="400" r="20"/>
+    <circle cx="470" cy="360" r="14"/>
+  </g>
+  <g transform="rotate(-20 512 512)">
+    <path d="M122 512a390 92 0 0 0 780 0" fill="none" stroke="#f9a03f" stroke-width="22" stroke-linecap="round"/>
+  </g>
+</svg>

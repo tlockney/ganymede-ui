@@ -1,0 +1,29 @@
+{
+  "name": "ganymede-ui",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "description": "A standalone notebook UI for Ganymede, built on datalayer/jupyter-ui.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -p . && vite build",
+    "preview": "vite preview",
+    "check": "tsc -p ."
+  },
+  "dependencies": {
+    "@datalayer/jupyter-react": "^2.0.20",
+    "@jupyterlab/coreutils": "^6.0.0",
+    "@jupyterlab/services": "^7.0.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.5",
+    "@vitejs/plugin-react": "^4.6.0",
+    "typescript": "5.9.3",
+    "vite": "7.3.6",
+    "vite-plugin-pwa": "^1.0.0",
+    "vite-plugin-treat-umd-as-commonjs": "^0.1.4"
+  }
+}
