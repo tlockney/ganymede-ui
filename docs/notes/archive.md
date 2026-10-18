@@ -1,4 +1,4 @@
-# Notes
+# Development log archive
 
 ## 2026-10-18
 
