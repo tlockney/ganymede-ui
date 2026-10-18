@@ -29,8 +29,9 @@ npm run dev                                 # http://localhost:5173/?token=test
 The dev server proxies `/api` to `GANYMEDE_URL` (default
 `http://127.0.0.1:8888`), so the page and the server share an origin. A token
 in the page URL connects at once; otherwise a sheet asks where kernels run.
-To test the in-browser kernel and the service worker, use the production
-build: `npm run build && npm run preview` (same proxy, port 4173). To point a
+The in-browser kernel works in both; to test offline use and Workbox's
+service worker, use the production build:
+`npm run build && npm run preview` (same proxy, port 4173). To point a
 deployed copy at a server on another origin, start Ganymede with
 `--allow-origin <app origin>` and enter its URL in the sheet.
 
@@ -78,6 +79,10 @@ built app with Playwright against a server that has `Galilean moons.ipynb`.
   Worker kernel.
 - **PWA** (`vite.config.ts`). Workbox precache, manifest with
   `window-controls-overlay`, Apple touch icon. `/api/` is never cached.
+  The Workbox worker also carries JupyterLite's service-worker relay
+  (`public/lite-service-worker.js`, `src/lib/lite-sw.ts`), which lets
+  in-browser kernels read and write notebook files and ask for stdin
+  synchronously; `npm run dev` registers the relay alone.
 
 ## Findings
 
@@ -100,7 +105,9 @@ Known gaps are listed at the end of the [dev log archive](docs/notes/archive.md)
 
 1. Wire in the Worker cdp-kernel from the browser-kernel thread as a
    JupyterLite kernel plugin, next to the JavaScript one.
-2. Serve JupyterLite's service worker without clashing with Workbox.
+2. Give the Worker cdp-kernel file access and `input()` through the
+   service-worker relay, now served inside the Workbox worker (see the
+   [dev log](docs/notes/2026-10-18-lite-service-worker.md)).
 3. Completion and inspection popups, find, cell toolbar, trust prompt.
 4. File operations (rename, delete, upload), a command palette, menus.
 5. Serve the built app from Ganymede itself (`--static-dir`-style), so an
