@@ -64,7 +64,10 @@ built app with Playwright against a server that has `Galilean moons.ipynb`.
   `Notebook` widget with a `SessionContext`, which starts or rejoins the
   file's kernel. The pane tracks status, and loads and saves nbformat
   through the contents API. `src/lib/jupyterlab.ts` builds what
-  JupyterLab's plugins would: editor, renderers, executor, shortcuts.
+  JupyterLab's plugins would: editor, renderers, executor, shortcuts,
+  and Tab completion and Shift+Tab tooltips from the kernel, find
+  (⌘F), and the cell toolbar. Trust Notebook in the toolbar renders
+  untrusted outputs and signs the file on Ganymede.
   ipywidgets run through JupyterLab's widget manager (`src/lib/widgets.ts`).
 - **Shell** (`src/components/`, `src/styles/app.css`). Unified toolbar,
   translucent source-list sidebar, sheets, segmented controls, system fonts
@@ -89,9 +92,10 @@ built app with Playwright against a server that has `Galilean moons.ipynb`.
   `--allow-origin`.
 - Restyling via JupyterLab's CSS variables gets most of the native look;
   fighting Lumino's layout does not (the notebook must scroll itself).
-- Bundle: 2.1 MB main chunk (590 KB gzip), 5.3 MB precached, down from
-  3.5 MB and 8.3 MB on jupyter-react, which pulled in Pyodide, Plotly and
-  Primer whether used or not. The rest is mostly JupyterLab's notebook,
+- Bundle: 2.2 MB main chunk (620 KB gzip), 5.5 MB precached. Moving
+  off jupyter-react brought it down from 3.5 MB and 8.3 MB (it pulled in
+  Pyodide, Plotly and Primer whether used or not); completion, tooltips,
+  find and the cell toolbar then added 125 KB. The rest is mostly JupyterLab's notebook,
   apputils and ui-components.
 
 Known gaps are listed at the end of the [dev log archive](docs/notes/archive.md). Work is tracked in [issues](https://github.com/tlockney/ganymede-ui/issues); see [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -101,7 +105,10 @@ Known gaps are listed at the end of the [dev log archive](docs/notes/archive.md)
 1. Wire in the Worker cdp-kernel from the browser-kernel thread as a
    JupyterLite kernel plugin, next to the JavaScript one.
 2. Serve JupyterLite's service worker without clashing with Workbox.
-3. Completion and inspection popups, find, cell toolbar, trust prompt.
+3. Restore saved widget state when no kernel has the widgets; a trust
+   indicator. (Completion, inspection tooltips, find, the cell toolbar and
+   a trust action are in; see the
+   [dev log](docs/notes/2026-10-18-editor-features.md).)
 4. File operations (rename, delete, upload), a command palette, menus.
 5. Serve the built app from Ganymede itself (`--static-dir`-style), so an
    installed PWA and the server share an origin.
