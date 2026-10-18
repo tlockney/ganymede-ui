@@ -1,5 +1,6 @@
-# Weekly version bumps, grouped so each ecosystem opens one pull request a
-# week at most. Security updates come as soon as an advisory is published,
+# Weekly version bumps. Minor and patch bumps are grouped into one pull
+# request per ecosystem; each npm major gets its own, so one breaking
+# upgrade doesn't hold back the rest. Security updates come as soon as an advisory is published,
 # whatever this schedule says. Actions are pinned by commit SHA with the
 # version in a comment; Dependabot updates both.
 version: 2
@@ -18,3 +19,12 @@ updates:
     groups:
       npm:
         patterns: ['*']
+        update-types: [minor, patch]
+    ignore:
+      # Pinned on purpose: 0.4.0-alpha.4 and alpha.5 are broken on npm
+      # (docs/notes/2026-10-18-drop-jupyter-react.md). Bump by hand.
+      - dependency-name: '@jupyterlite/javascript-kernel'
+      # ipywidgets uses Font Awesome 5's class names, as JupyterLab does
+      # (src/styles/fontawesome.css).
+      - dependency-name: '@fortawesome/fontawesome-free'
+        update-types: [version-update:semver-major]
