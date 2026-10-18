@@ -28,7 +28,8 @@ const sockets = vi.hoisted(() => {
 });
 
 import type { ServiceManager } from '@jupyterlab/services';
-import { type Backend, connect, loadConfig, saveConfig } from './backends';
+import { fakeBackend, fakeServices } from '../test/fakes';
+import { type Backend, connect, loadConfig, saveConfig, trustNotebook } from './backends';
 
 const KERNELSPECS = {
   default: 'python3',
@@ -179,6 +180,40 @@ describe('connect: browser', () => {
     const listing = await services.contents.get('', { content: true });
     expect(listing.content.map((m: { path: string }) => m.path)).toContain(model.path);
     await services.contents.delete(model.path);
+  });
+});
+
+describe('trustNotebook', () => {
+  const lastRequest = (fetch: ReturnType<typeof vi.fn>) =>
+    fetch.mock.calls[fetch.mock.calls.length - 1]![0] as Request;
+
+  it('asks Ganymede to sign the notebook', async () => {
+    const { fetch } = fakeServer();
+    const backend = keep(await connect({ kind: 'ganymede', url: '', token: 'secret' }));
+    fetch.mockClear();
+    await trustNotebook(backend, 'moons/Galilean moons.ipynb');
+    expect(fetch).toHaveBeenCalledTimes(1);
+    const req = lastRequest(fetch);
+    expect(req.method).toBe('POST');
+    expect(req.url.split('?')[0]).toBe(
+      `${window.location.origin}/api/contents/moons/Galilean%20moons.ipynb/trust`,
+    );
+    expect(req.headers.get('Authorization')).toBe('token secret');
+  });
+
+  it('reports a refusal', async () => {
+    const { fetch } = fakeServer();
+    const backend = keep(await connect({ kind: 'ganymede', url: '', token: 'secret' }));
+    fetch.mockResolvedValueOnce(new Response('', { status: 404 }));
+    await expect(trustNotebook(backend, 'gone.ipynb')).rejects.toThrow('404');
+  });
+
+  it('does nothing for the browser backend', async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    const { services } = fakeServices();
+    await trustNotebook(fakeBackend(services, { kind: 'browser' }), 'Untitled.ipynb');
+    expect(fetch).not.toHaveBeenCalled();
   });
 });
 

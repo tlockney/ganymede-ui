@@ -1,3 +1,4 @@
+import { URLExt } from '@jupyterlab/coreutils';
 import { ServerConnection, ServiceManager } from '@jupyterlab/services';
 
 /**
@@ -69,6 +70,20 @@ export async function connect(config: BackendConfig): Promise<Backend> {
     detail: 'JavaScript in a Web Worker',
     services,
   };
+}
+
+/**
+ * Trust a notebook on the backend, so its HTML and JavaScript outputs render
+ * when it is opened again. Ganymede signs the saved file
+ * (`POST /api/contents/{path}/trust`, as jupyter_server); the browser
+ * backend keeps no signatures, so trust lasts as long as the open notebook.
+ */
+export async function trustNotebook(backend: Backend, path: string): Promise<void> {
+  if (backend.config.kind !== 'ganymede') return;
+  const settings = backend.services.serverSettings;
+  const url = URLExt.join(settings.baseUrl, 'api/contents', URLExt.encodeParts(path), 'trust');
+  const res = await ServerConnection.makeRequest(url, { method: 'POST' }, settings);
+  if (!res.ok) throw new Error(`The server answered ${res.status} to the trust request.`);
 }
 
 const KEY = 'ganymede-ui:backend';

@@ -6,9 +6,17 @@
  * has no plugin system, so they're built here once and shared by every open
  * notebook. Only what a notebook needs: no file browser, launcher, menus,
  * settings registry or document manager.
+ *
+ * `attachEditing` adds what the completer, tooltip, document search and cell
+ * toolbar extensions would: Tab completion and Shift+Tab inspection from the
+ * kernel, find in notebook, and the active cell's toolbar.
  */
+import { fillColor } from '@jupyter/web-components';
 import type { IYText } from '@jupyter/ydoc';
 import type { ISessionContext } from '@jupyterlab/apputils';
+import { CellToolbarTracker } from '@jupyterlab/cell-toolbar';
+import type { Cell } from '@jupyterlab/cells';
+import type { CodeEditor } from '@jupyterlab/codeeditor';
 import {
   CodeMirrorEditorFactory,
   CodeMirrorMimeTypeService,
@@ -18,9 +26,17 @@ import {
   ybinding,
 } from '@jupyterlab/codemirror';
 import {
+  CompletionProviderManager,
+  ContextCompleterProvider,
+  KernelCompleterProvider,
+} from '@jupyterlab/completer';
+import { Text } from '@jupyterlab/coreutils';
+import { SearchDocumentModel, SearchDocumentView } from '@jupyterlab/documentsearch';
+import {
   Notebook,
   NotebookActions,
   NotebookPanel,
+  NotebookSearchProvider,
   StaticNotebook,
   runCell,
   setCellExecutor,
@@ -36,7 +52,23 @@ import { createMarkdownParser } from '@jupyterlab/markedparser-extension';
 import { MathJaxTypesetter } from '@jupyterlab/mathjax-extension';
 import javascriptExtension from '@jupyterlab/javascript-extension';
 import jsonExtension from '@jupyterlab/json-extension';
+import { Tooltip } from '@jupyterlab/tooltip';
+import { ObservableList } from '@jupyterlab/observables';
+import {
+  type LabIcon,
+  ToolbarButton,
+  addAboveIcon,
+  addBelowIcon,
+  deleteIcon,
+  duplicateIcon,
+  moveDownIcon,
+  moveUpIcon,
+} from '@jupyterlab/ui-components';
 import { CommandRegistry } from '@lumino/commands';
+import type { JSONObject } from '@lumino/coreutils';
+import type { Message } from '@lumino/messaging';
+import { DisposableDelegate, DisposableSet, type IDisposable } from '@lumino/disposable';
+import { Widget } from '@lumino/widgets';
 
 // JupyterLab's own stylesheets for the notebook and everything it pulls in
 // (cells, output area, CodeMirror, Lumino). Theme variables are injected
@@ -47,6 +79,10 @@ import '@jupyterlab/notebook/style/index.js';
 import '@jupyterlab/mathjax-extension/style/base.css';
 import '@jupyterlab/javascript-extension/style/index.js';
 import '@jupyterlab/json-extension/style/index.js';
+import '@jupyterlab/completer/style/index.js';
+import '@jupyterlab/tooltip/style/index.js';
+import '@jupyterlab/documentsearch/style/index.js';
+import '@jupyterlab/cell-toolbar/style/index.js';
 
 const languages = new EditorLanguageRegistry();
 for (const language of EditorLanguageRegistry.getDefaultLanguages()) {
@@ -203,4 +239,238 @@ export function createCommands(notebook: Notebook, session: ISessionContext): Co
   bind(['Ctrl Shift ArrowDown'], 'move-down', [command]);
   bind(['Accel A'], 'select-all', [command]);
   return commands;
+}
+
+/**
+ * Completion providers, shared by every notebook, as completer-extension
+ * sets them up: the kernel's `complete_request`, and words from the
+ * notebook's own text.
+ */
+const completion = new CompletionProviderManager();
+completion.registerProvider(new KernelCompleterProvider());
+completion.registerProvider(new ContextCompleterProvider());
+// completer-extension's default `providerTimeout`.
+completion.setTimeout(1000);
+
+type CellAction = (notebook: Notebook) => void;
+
+/** The buttons on the active cell: JupyterLab's default cell toolbar. */
+const CELL_TOOLBAR: [name: string, icon: LabIcon, tooltip: string, action: CellAction][] = [
+  ['duplicate-cell', duplicateIcon, 'Duplicate cell', n => NotebookActions.duplicate(n, 'belowSelected')],
+  ['move-cell-up', moveUpIcon, 'Move cell up', n => NotebookActions.moveUp(n)],
+  ['move-cell-down', moveDownIcon, 'Move cell down', n => NotebookActions.moveDown(n)],
+  ['insert-cell-above', addAboveIcon, 'Insert cell above', n => NotebookActions.insertAbove(n)],
+  ['insert-cell-below', addBelowIcon, 'Insert cell below', n => NotebookActions.insertBelow(n)],
+  ['delete-cell', deleteIcon, 'Delete cell', n => NotebookActions.deleteCells(n)],
+];
+
+/**
+ * documentsearch's find bar, rendered only while it is in the page. The
+ * stock view re-renders on every search-state change, closed or not, into
+ * a fresh React root on its detached node; one such render, pending when
+ * the notebook closes, then runs against the disposed (null) model.
+ */
+class FindBar extends SearchDocumentView {
+  protected onUpdateRequest(msg: Message): void {
+    if (this.isAttached && this.model) super.onUpdateRequest(msg);
+  }
+}
+
+/**
+ * The parts of a `NotebookPanel` that the search provider and the cell
+ * toolbar read: the notebook (`content`), its model, id and `revealed`. The
+ * app shows a bare `Notebook`; a real panel needs a document context.
+ */
+function panelOf(notebook: Notebook): NotebookPanel {
+  return {
+    id: notebook.id,
+    content: notebook,
+    revealed: Promise.resolve(),
+    get model() {
+      return notebook.model;
+    },
+    get isDisposed() {
+      return notebook.isDisposed;
+    },
+  } as unknown as NotebookPanel;
+}
+
+/**
+ * What JupyterLab's completer, tooltip, document search and cell toolbar
+ * extensions add to a notebook, wired by hand onto its command registry:
+ *
+ * - Tab in edit mode completes from the kernel (`complete_request`); Enter
+ *   picks the highlighted item.
+ * - Shift+Tab shows the kernel's inspection of the name at the cursor
+ *   (`inspect_request`) in a tooltip; Escape dismisses it.
+ * - Accel+F opens the find bar over the notebook, Accel+G and Shift+Accel+G
+ *   step through the matches (as do Enter and Shift+Enter in the bar),
+ *   Escape closes it.
+ * - The active cell gets JupyterLab's cell toolbar (duplicate, move, insert,
+ *   delete).
+ */
+export function attachEditing(
+  notebook: Notebook,
+  session: ISessionContext,
+  rendermime: IRenderMimeRegistry,
+  commands: CommandRegistry,
+): IDisposable {
+  const disposables = new DisposableSet();
+  const id = notebook.id;
+
+  // Completion. The manager keeps one completer per notebook (by widget id)
+  // and disposes it with the notebook; point it at the active cell's editor
+  // and the current session, as completer-extension's notebook plugin does.
+  const updateCompleter = async () => {
+    const cell = notebook.activeCell;
+    if (cell) await cell.ready;
+    if (notebook.isDisposed || cell !== notebook.activeCell) return;
+    await completion.updateCompleter({
+      widget: notebook,
+      editor: cell?.editor ?? null,
+      session: session.session,
+      sanitizer: rendermime.sanitizer,
+    });
+  };
+  const onCompleterContext = () => void updateCompleter();
+  notebook.activeCellChanged.connect(onCompleterContext);
+  session.sessionChanged.connect(onCompleterContext);
+  onCompleterContext();
+  disposables.add(
+    new DisposableDelegate(() => {
+      notebook.activeCellChanged.disconnect(onCompleterContext);
+      session.sessionChanged.disconnect(onCompleterContext);
+    }),
+  );
+  commands.addCommand('completer:invoke', { execute: () => completion.invoke(id) });
+  commands.addCommand('completer:select', { execute: () => completion.select(id) });
+
+  // Inspection tooltip, as tooltip-extension does it.
+  let tooltip: Tooltip | undefined;
+  const dismissTooltip = () => {
+    tooltip?.dispose();
+    tooltip = undefined;
+  };
+  commands.addCommand('tooltip:launch', {
+    execute: async () => {
+      dismissTooltip();
+      const editor: CodeEditor.IEditor | null | undefined = notebook.activeCell?.editor;
+      const kernel = session.session?.kernel;
+      if (!editor || !kernel) return;
+      const code = editor.model.sharedModel.getSource();
+      const offset = Text.jsIndexToCharIndex(editor.getOffsetAt(editor.getCursorPosition()), code);
+      const reply = await kernel.requestInspect({ code, cursor_pos: offset, detail_level: 0 });
+      const content = reply.content;
+      if (content.status !== 'ok' || !content.found) return;
+      // Give up if the user moved to another cell while the kernel answered.
+      if (notebook.isDisposed || notebook.activeCell?.editor !== editor) return;
+      dismissTooltip();
+      tooltip = new Tooltip({
+        anchor: notebook,
+        bundle: content.data as JSONObject,
+        editor,
+        rendermime,
+      });
+      Widget.attach(tooltip, document.body);
+    },
+  });
+  commands.addCommand('tooltip:dismiss', { execute: dismissTooltip });
+  disposables.add(new DisposableDelegate(dismissTooltip));
+
+  // Find: documentsearch's bar over the notebook's own search provider,
+  // built on first use.
+  let search: { view: SearchDocumentView; model: SearchDocumentModel } | undefined;
+  const openSearch = async () => {
+    if (!search) {
+      const provider = new NotebookSearchProvider(panelOf(notebook));
+      const model = new SearchDocumentModel(provider, 500);
+      const view = new FindBar(model, undefined, {
+        next: commands.keyBindings.find(b => b.command === 'find-next'),
+        previous: commands.keyBindings.find(b => b.command === 'find-previous'),
+      });
+      view.id = `${id}-search`;
+      view.closed.connect(() => {
+        if (!notebook.isDisposed) notebook.activate();
+      });
+      search = { view, model };
+      disposables.add(
+        new DisposableDelegate(() => {
+          view.dispose();
+          model.dispose();
+          provider.dispose();
+        }),
+      );
+    }
+    const { view, model } = search;
+    view.setSearchText(model.suggestedInitialQuery);
+    // Next to the notebook rather than in it: the notebook scrolls itself.
+    const host = notebook.node.parentElement;
+    if (!view.isAttached && host) Widget.attach(view, host);
+    await view.renderPromise;
+    view.focusSearchInput();
+  };
+  const searching = () => !!search?.view.isAttached;
+  commands.addCommand('find', { execute: openSearch });
+  // Accel+G with the bar closed opens it, as in a browser.
+  commands.addCommand('find-next', {
+    execute: () => (searching() ? search?.model.highlightNext() : openSearch()),
+  });
+  commands.addCommand('find-previous', {
+    execute: () => (searching() ? search?.model.highlightPrevious() : openSearch()),
+  });
+  commands.addCommand('find-close', {
+    isEnabled: searching,
+    execute: () => search?.view.close(),
+  });
+
+  // The active cell's toolbar. Without the settings registry, the items are
+  // built here instead of from the "Cell" toolbar setting.
+  const cellToolbar = new CellToolbarTracker(panelOf(notebook), undefined, (cell: Cell) => {
+    // The toolbar is a `jp-toolbar`, which derives its fill color from its
+    // parent's when it connects. If the parent (the cell's input area) has
+    // no design-token node yet, FAST creates one mid-derivation and recurses
+    // until the stack overflows (with JupyterLab's theme applied, any parent
+    // below <body>). Resolve the parent's first; the tracker attaches the
+    // toolbar after `cell.ready`, so this runs before.
+    void cell.ready.then(() => {
+      if (cell.inputArea) fillColor.getValueFor(cell.inputArea.node);
+    });
+    const items = new ObservableList<{ name: string; widget: Widget }>();
+    items.pushAll(
+      CELL_TOOLBAR.map(([name, icon, tooltip, action]) => ({
+        name,
+        widget: new ToolbarButton({
+          icon,
+          tooltip,
+          // cell-toolbar's stylesheet only shows buttons marked for the
+          // cell's type.
+          className: 'jp-cell-all',
+          onClick: () => action(notebook),
+        }),
+      })),
+    );
+    return items;
+  });
+  disposables.add(cellToolbar);
+
+  const edit = `#${id}.jp-mod-editMode`;
+  const searchBar = `#${id}-search`;
+  const bind = (keys: string[], command: string, selector: string) =>
+    disposables.add(commands.addKeyBinding({ keys, command, selector }));
+  bind(['Tab'], 'completer:invoke', `${edit} .jp-mod-completer-enabled`);
+  bind(['Enter'], 'completer:select', `#${id} .jp-mod-completer-active`);
+  bind(
+    ['Shift Tab'],
+    'tooltip:launch',
+    `${edit} .jp-InputArea-editor:not(.jp-mod-has-primary-selection)` +
+      ':not(.jp-mod-in-leading-whitespace):not(.jp-mod-completer-active)',
+  );
+  bind(['Escape'], 'tooltip:dismiss', `body.jp-mod-tooltip #${id}`);
+  for (const selector of [`#${id}`, searchBar]) {
+    bind(['Accel F'], 'find', selector);
+    bind(['Accel G'], 'find-next', selector);
+    bind(['Accel Shift G'], 'find-previous', selector);
+  }
+  bind(['Escape'], 'find-close', searchBar);
+  return disposables;
 }

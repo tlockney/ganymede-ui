@@ -12,7 +12,9 @@ function controller(over: Partial<NotebookController> = {}): NotebookController 
     status: 'idle',
     kernelName: 'python3',
     dirty: false,
+    trusted: true,
     save: vi.fn(async () => {}),
+    trust: vi.fn(async () => {}),
     run: vi.fn(async () => {}),
     runAll: vi.fn(async () => {}),
     insert: vi.fn(),
@@ -147,6 +149,32 @@ describe('Toolbar', () => {
     expect(button('Interrupt')).toBeDisabled();
     expect(button('Save (⌘S)')).toBeDisabled();
     expect(button('Run All')).toBeEnabled();
+  });
+
+  it('offers Trust Notebook only while outputs are untrusted', () => {
+    const { rerender } = render(
+      <Toolbar controller={controller()} sidebarOpen onToggleSidebar={vi.fn()} />,
+    );
+    expect(screen.queryByTitle('Trust Notebook')).not.toBeInTheDocument();
+    rerender(
+      <Toolbar controller={controller({ trusted: false })} sidebarOpen onToggleSidebar={vi.fn()} />,
+    );
+    expect(button('Trust Notebook')).toBeEnabled();
+    render(<Toolbar sidebarOpen onToggleSidebar={vi.fn()} />);
+    expect(screen.getAllByTitle('Trust Notebook')).toHaveLength(1);
+  });
+
+  it('trusts the notebook after confirmation', async () => {
+    const c = controller({ trusted: false });
+    const confirm = vi.fn(() => false);
+    vi.stubGlobal('confirm', confirm);
+    render(<Toolbar controller={c} sidebarOpen onToggleSidebar={vi.fn()} />);
+    await userEvent.click(button('Trust Notebook'));
+    expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/^Trust this notebook\?/));
+    expect(c.trust).not.toHaveBeenCalled();
+    confirm.mockReturnValue(true);
+    await userEvent.click(button('Trust Notebook'));
+    expect(c.trust).toHaveBeenCalledOnce();
   });
 
   it('changes the kernel from the popup', async () => {

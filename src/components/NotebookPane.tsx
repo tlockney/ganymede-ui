@@ -1,12 +1,19 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { SessionContext } from '@jupyterlab/apputils';
+import type { ICodeCellModel } from '@jupyterlab/cells';
 import type * as nbformat from '@jupyterlab/nbformat';
 import { type Notebook, NotebookActions, NotebookModel } from '@jupyterlab/notebook';
 import type { Kernel } from '@jupyterlab/services';
 import type { IDisposable } from '@lumino/disposable';
 import { Widget } from '@lumino/widgets';
-import type { Backend } from '../lib/backends';
-import { createCommands, createNotebook, createRendermime } from '../lib/jupyterlab';
+import { type Backend, trustNotebook } from '../lib/backends';
+import {
+  attachEditing,
+  createCommands,
+  createNotebook,
+  createRendermime,
+} from '../lib/jupyterlab';
+import type { NotebookWidgets } from '../lib/widgets';
 
 export type KernelState = Kernel.Status | 'connecting';
 
@@ -17,7 +24,11 @@ export type NotebookController = {
   status: KernelState;
   kernelName?: string;
   dirty: boolean;
+  /** False while code cells show outputs from a file nobody trusted. */
+  trusted: boolean;
   save(): Promise<void>;
+  /** Trust the notebook: render its outputs in full, and sign it on the server. */
+  trust(): Promise<void>;
   run(): Promise<void>;
   runAll(): Promise<void>;
   insert(type: 'code' | 'markdown'): void;
@@ -40,7 +51,10 @@ function holderOf(notebook: Notebook): HTMLDivElement {
   let holder = holders.get(notebook);
   if (!holder) {
     holder = document.createElement('div');
-    holder.className = 'notebook-holder';
+    // `jp-MainAreaWidget` as in JupyterLab, where the notebook sits in one:
+    // the completer sizes its popup to the main-area widget's child, and
+    // without one it fits the popup inside the cell's editor.
+    holder.className = 'notebook-holder jp-MainAreaWidget';
     holders.set(notebook, holder);
   }
   return holder;
@@ -63,8 +77,24 @@ type Open = {
   notebook: Notebook;
   model: NotebookModel;
   session: SessionContext;
+  widgets: NotebookWidgets;
   disposables: IDisposable[];
 };
+
+/**
+ * Whether any code cell has outputs that render as untrusted (sanitized
+ * HTML, no JavaScript): loaded from a file that wasn't signed, and not run
+ * since. Cells without outputs have nothing to hide.
+ */
+export function hasUntrustedOutputs(model: NotebookModel): boolean {
+  for (let i = 0; i < model.cells.length; i++) {
+    const cell = model.cells.get(i);
+    if (cell.type === 'code' && !cell.trusted && (cell as ICodeCellModel).outputs.length > 0) {
+      return true;
+    }
+  }
+  return false;
+}
 
 /**
  * One notebook file: loads it through the contents API, joins or starts its
@@ -81,6 +111,7 @@ export function NotebookPane({ backend, path, onController }: Props) {
   const [status, setStatus] = useState<KernelState>('connecting');
   const [kernelName, setKernelName] = useState<string>();
   const [dirty, setDirty] = useState(false);
+  const [trusted, setTrusted] = useState(true);
 
   // Load the file, build the notebook, and join its session.
   useEffect(() => {
@@ -137,6 +168,8 @@ export function NotebookPane({ backend, path, onController }: Props) {
       session.kernelChanged.connect(() => void syncLanguage());
 
       const commands = createCommands(notebook, session);
+      const editing = attachEditing(notebook, session, rendermime, commands);
+      const notebookWidgets = widgets.attachWidgets(session, rendermime);
       const onKey = (e: KeyboardEvent) => commands.processKeydownEvent(e);
       // Capture phase, as a Lumino application does, so a notebook shortcut
       // (Shift+Enter) wins over the editor's own binding for the key.
@@ -146,8 +179,10 @@ export function NotebookPane({ backend, path, onController }: Props) {
         notebook,
         model,
         session,
+        widgets: notebookWidgets,
         disposables: [
-          widgets.attachWidgets(session, rendermime),
+          editing,
+          notebookWidgets,
           { dispose: () => document.removeEventListener('keydown', onKey, true), isDisposed: false },
         ],
       };
@@ -206,36 +241,52 @@ export function NotebookPane({ backend, path, onController }: Props) {
       setStatus(kernel?.connectionStatus === 'connected' ? kernel.status : 'connecting');
       setKernelName(kernel?.name);
       setDirty(model.dirty);
+      setTrusted(!hasUntrustedOutputs(model));
     };
     update();
     session.statusChanged.connect(update);
     session.connectionStatusChanged.connect(update);
     session.kernelChanged.connect(update);
     model.stateChanged.connect(update);
+    model.contentChanged.connect(update);
     return () => {
       session.statusChanged.disconnect(update);
       session.connectionStatusChanged.disconnect(update);
       session.kernelChanged.disconnect(update);
       model.stateChanged.disconnect(update);
+      model.contentChanged.disconnect(update);
     };
   }, [open]);
 
   useEffect(() => {
     if (!open) return;
-    const { notebook, model, session } = open;
+    const { notebook, model, session, widgets } = open;
     onController({
       path,
       name: basename(path),
       status,
       kernelName,
       dirty,
+      trusted,
       save: async () => {
+        widgets.saveState(model);
         await services.contents.save(path, {
           type: 'notebook',
           format: 'json',
           content: model.toJSON(),
         });
         model.dirty = false;
+      },
+      trust: async () => {
+        // As NotebookActions.trust, without its dialog: trusting a cell
+        // re-renders its outputs. The cells' `trusted` metadata is not an
+        // edit of the user's.
+        const wasDirty = model.dirty;
+        for (let i = 0; i < model.cells.length; i++) model.cells.get(i).trusted = true;
+        model.dirty = wasDirty;
+        setTrusted(true);
+        // Unsaved changes are signed on the next save: every cell is trusted.
+        await trustNotebook(backend, path);
       },
       run: async () => void (await NotebookActions.runAndAdvance(notebook, session)),
       runAll: async () => void (await NotebookActions.runAll(notebook, session)),
@@ -258,7 +309,7 @@ export function NotebookPane({ backend, path, onController }: Props) {
         }
       },
     });
-  }, [open, path, status, kernelName, dirty, services, onController]);
+  }, [open, path, status, kernelName, dirty, trusted, backend, services, onController]);
 
   useEffect(() => () => onController(undefined), [onController]);
 

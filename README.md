@@ -69,7 +69,10 @@ the source of the images in `screenshots/`. CI runs all of the above.
   `Notebook` widget with a `SessionContext`, which starts or rejoins the
   file's kernel. The pane tracks status, and loads and saves nbformat
   through the contents API. `src/lib/jupyterlab.ts` builds what
-  JupyterLab's plugins would: editor, renderers, executor, shortcuts.
+  JupyterLab's plugins would: editor, renderers, executor, shortcuts,
+  and Tab completion and Shift+Tab tooltips from the kernel, find
+  (⌘F), and the cell toolbar. Trust Notebook in the toolbar renders
+  untrusted outputs and signs the file on Ganymede.
   ipywidgets run through JupyterLab's widget manager (`src/lib/widgets.ts`).
 - **Shell** (`src/components/`, `src/styles/app.css`). Unified toolbar,
   translucent source-list sidebar, sheets, segmented controls, system fonts
@@ -98,9 +101,10 @@ the source of the images in `screenshots/`. CI runs all of the above.
   `--allow-origin`.
 - Restyling via JupyterLab's CSS variables gets most of the native look;
   fighting Lumino's layout does not (the notebook must scroll itself).
-- Bundle: 2.1 MB main chunk (590 KB gzip), 5.3 MB precached, down from
-  3.5 MB and 8.3 MB on jupyter-react, which pulled in Pyodide, Plotly and
-  Primer whether used or not. The rest is mostly JupyterLab's notebook,
+- Bundle: 2.2 MB main chunk (620 KB gzip), 5.5 MB precached. Moving
+  off jupyter-react brought it down from 3.5 MB and 8.3 MB (it pulled in
+  Pyodide, Plotly and Primer whether used or not); completion, tooltips,
+  find and the cell toolbar then added 125 KB. The rest is mostly JupyterLab's notebook,
   apputils and ui-components.
 
 Known gaps are listed at the end of the [dev log archive](docs/notes/archive.md). Work is tracked in [issues](https://github.com/tlockney/ganymede-ui/issues); see [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -112,7 +116,10 @@ Known gaps are listed at the end of the [dev log archive](docs/notes/archive.md)
 2. Give the Worker cdp-kernel file access and `input()` through the
    service-worker relay, now served inside the Workbox worker (see the
    [dev log](docs/notes/2026-10-18-lite-service-worker.md)).
-3. Completion and inspection popups, find, cell toolbar, trust prompt.
+3. Restore saved widget state when no kernel has the widgets; a trust
+   indicator. (Completion, inspection tooltips, find, the cell toolbar and
+   a trust action are in; see the
+   [dev log](docs/notes/2026-10-18-editor-features.md).)
 4. File operations (rename, delete, upload), a command palette, menus.
 5. Serve the built app from Ganymede itself (`--static-dir`-style), so an
    installed PWA and the server share an origin.
