@@ -4,3 +4,4 @@ dev-dist/
 *.tsbuildinfo
 test-results/
 playwright-report/
+coverage/

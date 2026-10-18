@@ -1,21 +1,26 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Notebook } from '@datalayer/jupyter-react';
-import type { INotebookContent } from '@jupyterlab/nbformat';
-import type { INotebookModel } from '@jupyterlab/notebook';
-import type { Kernel, Session } from '@jupyterlab/services';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { SessionContext } from '@jupyterlab/apputils';
+import type * as nbformat from '@jupyterlab/nbformat';
+import { type Notebook, NotebookActions, NotebookModel } from '@jupyterlab/notebook';
+import type { Kernel } from '@jupyterlab/services';
+import type { IDisposable } from '@lumino/disposable';
+import { Widget } from '@lumino/widgets';
 import type { Backend } from '../lib/backends';
+import { createCommands, createNotebook, createRendermime } from '../lib/jupyterlab';
 
 export type KernelState = Kernel.Status | 'connecting';
 
 /** What the toolbar needs from the open notebook. */
 export type NotebookController = {
-  id: string;
   path: string;
   name: string;
   status: KernelState;
   kernelName?: string;
   dirty: boolean;
   save(): Promise<void>;
+  run(): Promise<void>;
+  runAll(): Promise<void>;
+  insert(type: 'code' | 'markdown'): void;
   interrupt(): Promise<void>;
   restart(): Promise<void>;
   changeKernel(name: string): Promise<void>;
@@ -29,96 +34,223 @@ type Props = {
 
 const basename = (p: string) => p.split('/').pop() ?? p;
 
+/** The node each notebook widget is attached to; see the attach effect. */
+const holders = new WeakMap<Notebook, HTMLDivElement>();
+function holderOf(notebook: Notebook): HTMLDivElement {
+  let holder = holders.get(notebook);
+  if (!holder) {
+    holder = document.createElement('div');
+    holder.className = 'notebook-holder';
+    holders.set(notebook, holder);
+  }
+  return holder;
+}
+
+/** A hidden place in the document for notebooks on their way out. */
+function parking(): HTMLElement {
+  let node = document.getElementById('notebook-parking');
+  if (!node) {
+    node = document.createElement('div');
+    node.id = 'notebook-parking';
+    node.hidden = true;
+    document.body.append(node);
+  }
+  return node;
+}
+
+/** Everything one open notebook holds, built once per file. */
+type Open = {
+  notebook: Notebook;
+  model: NotebookModel;
+  session: SessionContext;
+  disposables: IDisposable[];
+};
+
 /**
- * One notebook file: loads it, starts (or rejoins) its session, and renders
- * jupyter-react's `Notebook` in nbformat mode. Saving goes through the
- * contents API here rather than through the component, so the same code
- * saves to a Ganymede server or to the browser's own storage.
+ * One notebook file: loads it through the contents API, joins or starts its
+ * session, and shows JupyterLab's `Notebook` widget for it. The file is
+ * loaded and saved here (nbformat in, nbformat out) rather than by a
+ * JupyterLab document context, so the same code saves to a Ganymede server
+ * or to the browser's own storage.
  */
 export function NotebookPane({ backend, path, onController }: Props) {
   const { services } = backend;
-  const id = useMemo(() => `nb-${backend.config.kind}-${path}`, [backend, path]);
-  const [content, setContent] = useState<INotebookContent>();
-  const [kernelId, setKernelId] = useState<string>();
+  const host = useRef<HTMLDivElement>(null);
+  const [open, setOpen] = useState<Open>();
   const [error, setError] = useState<string>();
-  const [session, setSession] = useState<Session.ISessionConnection>();
   const [status, setStatus] = useState<KernelState>('connecting');
+  const [kernelName, setKernelName] = useState<string>();
   const [dirty, setDirty] = useState(false);
-  const model = useRef<INotebookModel | null>(null);
 
-  // Load the file, then start a session for it with the kernel it names.
+  // Load the file, build the notebook, and join its session.
   useEffect(() => {
     let cancelled = false;
+    let current: Open | undefined;
     (async () => {
-      const file = await services.contents.get(path, { type: 'notebook', content: true });
-      const nb = file.content as INotebookContent;
+      const [file, widgets] = await Promise.all([
+        services.contents.get(path, { type: 'notebook', content: true }),
+        // ipywidgets live in their own chunk; load them alongside the file so
+        // the comm target is there before the kernel can open a widget.
+        import('../lib/widgets'),
+        services.kernelspecs.ready,
+      ]);
       if (cancelled) return;
-      setContent(nb);
-      // Rejoin the notebook's session if it has one, else start its kernel.
-      // The Notebook component then connects a session to that kernel.
-      const existing = await services.sessions.findByPath(path);
-      let kid = existing?.kernel?.id;
-      if (!kid) {
-        await services.kernelspecs.ready;
-        const specs = services.kernelspecs.specs;
-        const wanted = nb.metadata?.kernelspec?.name;
-        const name = wanted && specs?.kernelspecs[wanted] ? wanted : specs?.default;
-        const k = await services.kernels.startNew(name ? { name } : {});
-        kid = k.id;
-        k.dispose();
-      }
-      if (!cancelled) setKernelId(kid);
+      const content = file.content as nbformat.INotebookContent;
+
+      const rendermime = createRendermime(path, services.contents);
+      // As JupyterLab's model factory does by default: undo per cell.
+      const model = new NotebookModel({ disableDocumentWideUndoRedo: true });
+      model.fromJSON(content);
+      model.dirty = false;
+      const notebook = createNotebook(rendermime);
+      notebook.model = model;
+
+      // One session per notebook, found by path. `initialize` rejoins the
+      // session already running for this file (on the server or in this
+      // page), or starts one with the kernel the file names.
+      const specs = services.kernelspecs.specs;
+      const wanted = content.metadata?.kernelspec?.name;
+      const name = wanted && specs?.kernelspecs[wanted] ? wanted : specs?.default;
+      const session = new SessionContext({
+        sessionManager: services.sessions,
+        specsManager: services.kernelspecs,
+        path,
+        name: basename(path),
+        type: 'notebook',
+        kernelPreference: { name, autoStartDefault: true },
+      });
+
+      // Without JupyterLab's NotebookPanel, keep its habit of copying the
+      // kernel's language_info into the notebook: the editors take their
+      // language (and highlighting) from it.
+      const syncLanguage = async () => {
+        const kernel = session.session?.kernel;
+        const info = kernel && (await kernel.info);
+        if (!info || model.isDisposed) return;
+        const before = model.getMetadata('language_info');
+        if (JSON.stringify(before) === JSON.stringify(info.language_info)) return;
+        const wasDirty = model.dirty;
+        model.setMetadata('language_info', info.language_info);
+        // Not an edit of the user's: don't mark the file "Edited" for it.
+        model.dirty = wasDirty;
+      };
+      session.kernelChanged.connect(() => void syncLanguage());
+
+      const commands = createCommands(notebook, session);
+      const onKey = (e: KeyboardEvent) => commands.processKeydownEvent(e);
+      // Capture phase, as a Lumino application does, so a notebook shortcut
+      // (Shift+Enter) wins over the editor's own binding for the key.
+      document.addEventListener('keydown', onKey, true);
+
+      current = {
+        notebook,
+        model,
+        session,
+        disposables: [
+          widgets.attachWidgets(session, rendermime),
+          { dispose: () => document.removeEventListener('keydown', onKey, true), isDisposed: false },
+        ],
+      };
+      setOpen(current);
+      await session.initialize();
+      await syncLanguage();
     })().catch(e => !cancelled && setError(e instanceof Error ? e.message : String(e)));
     return () => {
       cancelled = true;
+      const done = current;
+      if (!done) return;
+      done.disposables.forEach(d => d.dispose());
+      // After React's commit: JupyterLab's React-based widgets unmount their
+      // own roots on dispose, which React refuses mid-render.
+      setTimeout(() => {
+        done.notebook.dispose();
+        holderOf(done.notebook).remove();
+        done.model.dispose();
+        // Leave the kernel running; the sidebar lists it under Running.
+        done.session.dispose();
+      });
     };
   }, [services, path]);
 
-  // Track the kernel status of the session the component connected.
+  // Put the Lumino widget in the page. The widget lives in a holder node
+  // that moves in and out of the pane: when the pane goes, the holder is
+  // parked off-screen (still in the document) instead of detaching there and
+  // then, because detaching unmounts JupyterLab's React-based parts (the
+  // collapsers), which React refuses in the middle of its own commit, and
+  // Lumino refuses to detach a widget whose node has left the document.
+  // Disposing the notebook later detaches it.
+  useLayoutEffect(() => {
+    const node = host.current;
+    if (!open || !node) return;
+    const holder = holderOf(open.notebook);
+    node.append(holder);
+    if (!open.notebook.isAttached) {
+      Widget.attach(open.notebook, holder);
+      // Start with the first cell active, ready for the keyboard.
+      open.notebook.activeCellIndex = 0;
+    }
+    const observer = new ResizeObserver(() => open.notebook.update());
+    observer.observe(node);
+    return () => {
+      observer.disconnect();
+      parking().append(holder);
+    };
+  }, [open]);
+
+  // Kernel status and dirty state for the toolbar.
   useEffect(() => {
-    if (!session) return;
-    const update = () => setStatus(session.kernel?.connectionStatus === 'connected'
-      ? session.kernel.status
-      : 'connecting');
+    if (!open) return;
+    const { session, model } = open;
+    const update = () => {
+      const kernel = session.session?.kernel;
+      setStatus(kernel?.connectionStatus === 'connected' ? kernel.status : 'connecting');
+      setKernelName(kernel?.name);
+      setDirty(model.dirty);
+    };
     update();
     session.statusChanged.connect(update);
     session.connectionStatusChanged.connect(update);
     session.kernelChanged.connect(update);
+    model.stateChanged.connect(update);
     return () => {
       session.statusChanged.disconnect(update);
       session.connectionStatusChanged.disconnect(update);
       session.kernelChanged.disconnect(update);
+      model.stateChanged.disconnect(update);
     };
-  }, [session]);
+  }, [open]);
 
   useEffect(() => {
-    const save = async () => {
-      const m = model.current;
-      if (!m) return;
-      await services.contents.save(path, {
-        type: 'notebook',
-        format: 'json',
-        content: m.toJSON(),
-      });
-      m.dirty = false;
-      setDirty(false);
-    };
+    if (!open) return;
+    const { notebook, model, session } = open;
     onController({
-      id,
       path,
       name: basename(path),
       status,
-      kernelName: session?.kernel?.name,
+      kernelName,
       dirty,
-      save,
-      interrupt: async () => void (await session?.kernel?.interrupt()),
-      restart: async () => void (await session?.kernel?.restart()),
+      save: async () => {
+        await services.contents.save(path, {
+          type: 'notebook',
+          format: 'json',
+          content: model.toJSON(),
+        });
+        model.dirty = false;
+      },
+      run: async () => void (await NotebookActions.runAndAdvance(notebook, session)),
+      runAll: async () => void (await NotebookActions.runAll(notebook, session)),
+      insert: type => {
+        NotebookActions.insertBelow(notebook);
+        if (type !== 'code') NotebookActions.changeCellType(notebook, type);
+        notebook.mode = 'edit';
+      },
+      interrupt: async () => void (await session.session?.kernel?.interrupt()),
+      restart: async () => void (await session.session?.kernel?.restart()),
       changeKernel: async name => {
-        await session?.changeKernel({ name });
-        const m = model.current;
+        await session.changeKernel({ name });
         const spec = services.kernelspecs.specs?.kernelspecs[name];
-        if (m && spec) {
-          m.setMetadata('kernelspec', {
+        if (spec) {
+          model.setMetadata('kernelspec', {
             name,
             display_name: spec.display_name,
             language: spec.language,
@@ -126,23 +258,9 @@ export function NotebookPane({ backend, path, onController }: Props) {
         }
       },
     });
-  }, [id, path, status, session, dirty, services, onController]);
+  }, [open, path, status, kernelName, dirty, services, onController]);
 
   useEffect(() => () => onController(undefined), [onController]);
-
-  const onModel = useMemo(
-    () => (m: INotebookModel | null) => {
-      model.current = m;
-      if (m) {
-        // Loading marks the model dirty; clear that once it settles.
-        setTimeout(() => (m.dirty = false), 0);
-        m.stateChanged.connect((_, change) => {
-          if (change.name === 'dirty') setDirty(change.newValue as boolean);
-        });
-      }
-    },
-    [],
-  );
 
   if (error) {
     return (
@@ -152,28 +270,8 @@ export function NotebookPane({ backend, path, onController }: Props) {
       </div>
     );
   }
-  if (!content || !kernelId) {
+  if (!open) {
     return <div className="pane-message subtle">Opening {basename(path)}…</div>;
   }
-  return (
-    <div className="notebook-page">
-      <Notebook
-        id={id}
-        nbformat={content}
-        kernelId={kernelId}
-        serviceManager={services}
-        height="100%"
-        maxHeight="100%"
-        cellSidebarMargin={0}
-        onNotebookModelChanged={onModel}
-        onSessionConnection={s => {
-          // The component names its session after its id; give it the file.
-          if (s && s.path !== path) {
-            void s.setPath(path).then(() => s.setName(basename(path)));
-          }
-          setSession(s);
-        }}
-      />
-    </div>
-  );
+  return <div className="notebook-page" ref={host} />;
 }

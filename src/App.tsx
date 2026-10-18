@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from 'react';
-import { JupyterReactTheme } from '@datalayer/jupyter-react';
 import {
   type Backend,
   type BackendConfig,
@@ -8,6 +7,7 @@ import {
   saveConfig,
 } from './lib/backends';
 import { useColorScheme } from './lib/useColorScheme';
+import { useJupyterLabTheme } from './lib/theme';
 import { Sidebar } from './components/Sidebar';
 import { Toolbar } from './components/Toolbar';
 import { NotebookPane, type NotebookController } from './components/NotebookPane';
@@ -29,6 +29,7 @@ function initialConfig(): BackendConfig | undefined {
 
 export function App() {
   const scheme = useColorScheme();
+  useJupyterLabTheme(scheme);
   const [config, setConfig] = useState<BackendConfig | undefined>(initialConfig);
   const [backend, setBackend] = useState<Backend>();
   const [error, setError] = useState<string>();
@@ -106,7 +107,7 @@ export function App() {
   }, [controller]);
 
   return (
-    <JupyterReactTheme colormode={scheme} backgroundColor="transparent">
+    <>
       <div className={`window ${sidebarOpen ? '' : 'sidebar-collapsed'}`} data-scheme={scheme}>
         <Sidebar
           backend={backend}
@@ -152,6 +153,6 @@ export function App() {
           onConnect={c => setConfig({ ...c })}
         />
       )}
-    </JupyterReactTheme>
+    </>
   );
 }
