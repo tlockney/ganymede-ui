@@ -6,6 +6,7 @@ import {
   PlayIcon,
   RestartIcon,
   SaveIcon,
+  ShieldIcon,
   SidebarIcon,
   StopIcon,
   TextIcon,
@@ -17,6 +18,11 @@ type Props = {
   onToggleSidebar(): void;
   specs?: KernelSpec.ISpecModels;
 };
+
+const TRUST_PROMPT =
+  'Trust this notebook?\n\n' +
+  'Its HTML and JavaScript outputs will render in full and can run code in ' +
+  'this page. Only trust notebooks from people you trust.';
 
 const STATUS_LABEL: Record<string, string> = {
   idle: 'Idle',
@@ -115,6 +121,18 @@ export function Toolbar({ controller: c, sidebarOpen, onToggleSidebar, specs }: 
             <TextIcon />
           </button>
         </div>
+
+        {c && !c.trusted && (
+          <button
+            className="tb-button"
+            title="Trust Notebook"
+            onClick={() => {
+              if (window.confirm(TRUST_PROMPT)) void c.trust();
+            }}
+          >
+            <ShieldIcon />
+          </button>
+        )}
 
         {specs && c && (
           <label className="popup-button" title="Kernel">

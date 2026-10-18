@@ -154,8 +154,9 @@
   padding-top: 4px;
 }
 
-/* JupyterLab's own toolbars and placeholders have no place here. */
-.notebook-page .jp-Toolbar,
+/* JupyterLab's own toolbars and placeholders have no place here; the cell
+ * toolbar does. */
+.notebook-page .jp-Toolbar:not(.jp-cell-toolbar),
 .notebook-page .jp-Notebook-footer {
   display: none !important;
 }
@@ -176,4 +177,23 @@
 .jp-WindowedPanel-outer::-webkit-scrollbar-track,
 .sidebar-scroll::-webkit-scrollbar-track {
   background: transparent;
+}
+
+/* Find bar (documentsearch): under the translucent toolbar, as a floating
+ * panel at the pane's top right. */
+.notebook-page .notebook-holder > .jp-DocumentSearch-overlay {
+  top: calc(var(--toolbar-h) + 8px);
+  right: 16px;
+  max-width: calc(100% - 32px);
+  min-width: min(405px, calc(100% - 32px));
+  padding: 4px;
+  border: 0.5px solid var(--cell-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+/* Cell toolbar: above the card's top edge, clear of the code. */
+.notebook-page .jp-cell-toolbar {
+  top: -4px;
+  right: 6px;
 }

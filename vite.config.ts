@@ -82,6 +82,17 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 30 * 1024 * 1024,
         // SVGs only from icons/: the others are legacy font fallbacks.
         globPatterns: ['**/*.{js,css,html,png,woff2,wasm}', 'icons/*.svg'],
+        // Font Awesome (ipywidgets' icons, src/styles/fontawesome.css): only
+        // notebooks with icon widgets need it, so cache each font on first
+        // use instead of precaching 170 kB for everyone.
+        globIgnores: ['**/fa-*.woff2'],
+        runtimeCaching: [
+          {
+            urlPattern: /\/assets\/fa-[\w-]+\.woff2$/,
+            handler: 'CacheFirst',
+            options: { cacheName: 'font-awesome' },
+          },
+        ],
         // The server API is never cached.
         navigateFallbackDenylist: [/^\/api\//],
       },

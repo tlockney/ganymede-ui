@@ -1,0 +1,54 @@
+/*
+ * Font Awesome for ipywidgets' icons (`Button(icon='check')` renders
+ * `<i class="fa fa-check">`). The same version and stylesheets JupyterLab
+ * loads (Font Awesome Free 5 with the v4 shims, for ipywidgets' v4 names),
+ * imported from src/lib/widgets.ts so it arrives with the widgets chunk.
+ *
+ * Not `all.min.css`: its @font-face rules list five formats per font, and
+ * the build would emit every file. Only WOFF2 here; the browser fetches a
+ * font the first time an icon from it is shown, and vite.config.ts keeps
+ * them out of the precache.
+ */
+@import '@fortawesome/fontawesome-free/css/fontawesome.min.css';
+@import '@fortawesome/fontawesome-free/css/v4-shims.min.css';
+
+@font-face {
+  font-family: 'Font Awesome 5 Free';
+  font-style: normal;
+  font-weight: 900;
+  font-display: block;
+  src: url('~@fortawesome/fontawesome-free/webfonts/fa-solid-900.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Font Awesome 5 Free';
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url('~@fortawesome/fontawesome-free/webfonts/fa-regular-400.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'Font Awesome 5 Brands';
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+  src: url('~@fortawesome/fontawesome-free/webfonts/fa-brands-400.woff2') format('woff2');
+}
+
+/* From solid.css, regular.css and brands.css, without their @font-face. */
+.fa,
+.fas {
+  font-family: 'Font Awesome 5 Free';
+  font-weight: 900;
+}
+
+.far {
+  font-family: 'Font Awesome 5 Free';
+  font-weight: 400;
+}
+
+.fab {
+  font-family: 'Font Awesome 5 Brands';
+  font-weight: 400;
+}

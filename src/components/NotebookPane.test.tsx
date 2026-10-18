@@ -2,42 +2,19 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as nbformat from '@jupyterlab/nbformat';
 import type { NotebookModel } from '@jupyterlab/notebook';
+import '../test/notebook-env';
 import { fakeBackend, fakeServices } from '../test/fakes';
 import type { NotebookController } from './NotebookPane';
 
 // No kernel and no real notebook widget: the pane's loading, dirty state and
 // saving are tested here with JupyterLab's real NotebookModel. Rendering,
 // running cells and the keyboard are left to the end-to-end suite.
-const fakes = vi.hoisted(() => {
-  // @lumino/dragdrop subclasses DragEvent when it loads; jsdom has none.
-  globalThis.DragEvent ??= class extends MouseEvent {} as unknown as typeof DragEvent;
-  // @jupyterlab/notebook subclasses IntersectionObserver and ResizeObserver
-  // when it loads.
-  globalThis.ResizeObserver ??= class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-  } as unknown as typeof ResizeObserver;
-  globalThis.IntersectionObserver ??= class {
-    observe() {}
-    unobserve() {}
-    disconnect() {}
-    takeRecords() {
-      return [];
-    }
-  } as unknown as typeof IntersectionObserver;
-  // JupyterLab's web components read the color scheme when they load.
-  window.matchMedia ??= (media: string) =>
-    ({
-      media,
-      matches: false,
-      addEventListener() {},
-      removeEventListener() {},
-      addListener() {},
-      removeListener() {},
-    }) as unknown as MediaQueryList;
-  return { sessions: [] as unknown[], notebooks: [] as unknown[] };
-});
+const fakes = vi.hoisted(() => ({
+  sessions: [] as unknown[],
+  notebooks: [] as unknown[],
+  widgets: [] as { dispose: () => void; saveState: (m: unknown) => void }[],
+  editing: [] as { dispose: () => void }[],
+}));
 
 vi.mock('../lib/jupyterlab', async () => {
   const { Widget } = await import('@lumino/widgets');
@@ -53,12 +30,23 @@ vi.mock('../lib/jupyterlab', async () => {
       return w;
     }),
     createCommands: vi.fn(() => ({ processKeydownEvent: vi.fn() })),
+    attachEditing: vi.fn(() => {
+      const editing = { dispose: vi.fn(), isDisposed: false };
+      fakes.editing.push(editing);
+      return editing;
+    }),
   };
 });
 
 vi.mock('../lib/widgets', () => ({
-  attachWidgets: vi.fn(() => ({ dispose: vi.fn(), isDisposed: false })),
+  attachWidgets: vi.fn(() => {
+    const widgets = { dispose: vi.fn(), isDisposed: false, saveState: vi.fn() };
+    fakes.widgets.push(widgets);
+    return widgets;
+  }),
 }));
+
+vi.mock('../lib/backends', () => ({ trustNotebook: vi.fn(async () => {}) }));
 
 vi.mock('@jupyterlab/apputils', async importOriginal => {
   const { Signal } = await import('@lumino/signaling');
@@ -77,7 +65,10 @@ vi.mock('@jupyterlab/apputils', async importOriginal => {
   return { ...(await importOriginal<object>()), SessionContext };
 });
 
-const { NotebookPane } = await import('./NotebookPane');
+const { NotebookPane, hasUntrustedOutputs } = await import('./NotebookPane');
+const { attachEditing } = await import('../lib/jupyterlab');
+const { trustNotebook } = await import('../lib/backends');
+const { NotebookModel: RealNotebookModel } = await import('@jupyterlab/notebook');
 
 const NOTEBOOK: nbformat.INotebookContent = {
   nbformat: 4,
@@ -116,7 +107,30 @@ function setup(
 beforeEach(() => {
   fakes.sessions.length = 0;
   fakes.notebooks.length = 0;
+  fakes.widgets.length = 0;
+  fakes.editing.length = 0;
 });
+
+/** A notebook with HTML output, as read from a file nobody signed. */
+function untrusted(trusted?: boolean): nbformat.INotebookContent {
+  const nb = structuredClone(NOTEBOOK);
+  nb.cells.push({
+    cell_type: 'code',
+    id: 'h1',
+    source: 'HTML("<b>hi</b>")',
+    metadata: trusted === undefined ? {} : { trusted },
+    execution_count: 2,
+    outputs: [
+      {
+        output_type: 'display_data',
+        metadata: {},
+        data: { 'text/html': '<b>hi</b>', 'text/plain': '<HTML>' },
+      },
+    ],
+  });
+  nb.cells.push({ cell_type: 'markdown', id: 'm1', source: '# Io', metadata: {} });
+  return nb;
+}
 
 afterEach(() => {
   vi.useRealTimers();
@@ -204,6 +218,53 @@ describe('NotebookPane', () => {
     expect(screen.getByText('Permission denied')).toBeInTheDocument();
   });
 
+  it('adds completion, tooltips, find and the cell toolbar to the notebook', async () => {
+    const { latest } = setup();
+    await waitFor(() => expect(latest()).toBeDefined());
+    expect(fakes.editing).toHaveLength(1);
+    const [notebook, session] = vi.mocked(attachEditing).mock.lastCall!;
+    expect(notebook).toBe(fakes.notebooks[0]);
+    expect(session).toBe(fakes.sessions[0]);
+  });
+
+  it('saves the widget state into the notebook before saving it', async () => {
+    const { fake, latest } = setup();
+    await waitFor(() => expect(latest()).toBeDefined());
+    const widgets = fakes.widgets[0]!;
+    vi.mocked(widgets.saveState).mockImplementation(m =>
+      (m as NotebookModel).setMetadata('widgets', { saved: true }),
+    );
+    await act(() => latest()!.save());
+    expect(widgets.saveState).toHaveBeenCalledWith(modelOf());
+    const content = fake.contents.save.mock.calls[0]![1].content as nbformat.INotebookContent;
+    expect(content.metadata.widgets).toEqual({ saved: true });
+  });
+
+  it('is trusted when no code cell shows untrusted output', async () => {
+    const { latest } = setup();
+    await waitFor(() => expect(latest()).toBeDefined());
+    expect(latest()!.trusted).toBe(true);
+  });
+
+  it('trusts a notebook with untrusted output, locally and on the backend', async () => {
+    const { fake, latest } = setup(
+      vi.fn(async () => ({ path: 'moons/Io.ipynb', content: untrusted() })),
+    );
+    await waitFor(() => expect(latest()).toBeDefined());
+    expect(latest()!.trusted).toBe(false);
+
+    await act(() => latest()!.trust());
+    const model = modelOf();
+    for (let i = 0; i < model.cells.length; i++) expect(model.cells.get(i).trusted).toBe(true);
+    expect(trustNotebook).toHaveBeenCalledWith(
+      expect.objectContaining({ services: fake.services }),
+      'moons/Io.ipynb',
+    );
+    await waitFor(() => expect(latest()!.trusted).toBe(true));
+    // Trusting is not an edit.
+    expect(latest()!.dirty).toBe(false);
+  });
+
   it('clears the controller and disposes the notebook on unmount, leaving the kernel', async () => {
     const { latest, onController, unmount } = setup();
     await waitFor(() => expect(latest()).toBeDefined());
@@ -215,5 +276,25 @@ describe('NotebookPane', () => {
     expect(notebook.isDisposed).toBe(true);
     const session = fakes.sessions[0] as { dispose: () => void };
     expect(session.dispose).toHaveBeenCalled();
+    expect(fakes.editing[0]!.dispose).toHaveBeenCalled();
+    expect(fakes.widgets[0]!.dispose).toHaveBeenCalled();
+  });
+});
+
+describe('hasUntrustedOutputs', () => {
+  const load = (content: nbformat.INotebookContent) => {
+    const model = new RealNotebookModel();
+    model.fromJSON(content);
+    return model;
+  };
+
+  it('is true for code cells with output and no trust', () => {
+    expect(hasUntrustedOutputs(load(untrusted()))).toBe(true);
+    expect(hasUntrustedOutputs(load(untrusted(false)))).toBe(true);
+  });
+
+  it('is false for trusted cells, cells without output, and other cells', () => {
+    expect(hasUntrustedOutputs(load(untrusted(true)))).toBe(false);
+    expect(hasUntrustedOutputs(load(NOTEBOOK))).toBe(false);
   });
 });

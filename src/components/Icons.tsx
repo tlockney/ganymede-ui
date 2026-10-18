@@ -117,3 +117,9 @@ export const PowerIcon = (p: P) => (
     <path d="M6.2 5.6a6 6 0 1 0 7.6 0" />
   </svg>
 );
+export const ShieldIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M10 2.75 4 5v4.5c0 3.6 2.5 6.4 6 7.75 3.5-1.35 6-4.15 6-7.75V5z" />
+    <path d="m7.5 10 1.75 1.75L12.75 8.25" />
+  </svg>
+);
