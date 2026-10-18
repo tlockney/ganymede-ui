@@ -1,13 +1,16 @@
 // Starts `ganymede serve` in a fresh folder seeded with e2e/fixtures, waits
 // until it answers, and returns the teardown that stops it and removes the
-// folder. The app (`vite preview`) is the config's webServer.
+// folder. The app (`vite preview`) is the config's webServer; the server
+// also serves the build in dist/ itself, for served.spec.ts.
 import { type ChildProcess, spawn } from 'node:child_process';
 import { cpSync, mkdirSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GANYMEDE_BIN, GANYMEDE_PORT, GANYMEDE_URL, KERNEL, ROOT_DIR, TOKEN } from './env';
 
-const FIXTURES = join(dirname(fileURLToPath(import.meta.url)), 'fixtures');
+const HERE = dirname(fileURLToPath(import.meta.url));
+const FIXTURES = join(HERE, 'fixtures');
+const DIST = join(HERE, '..', 'dist');
 
 async function waitForServer(child: ChildProcess, timeoutMs = 30_000): Promise<void> {
   const deadline = Date.now() + timeoutMs;
@@ -43,6 +46,8 @@ export default async function globalSetup() {
       ROOT_DIR,
       '--default-kernel',
       KERNEL,
+      '--static-dir',
+      DIST,
     ],
     { stdio: ['ignore', 'inherit', 'inherit'] },
   );
