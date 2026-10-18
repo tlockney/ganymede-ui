@@ -34,8 +34,11 @@ build: `npm run build && npm run preview` (same proxy, port 4173). To point a
 deployed copy at a server on another origin, start Ganymede with
 `--allow-origin <app origin>` and enter its URL in the sheet.
 
-`npm run check` type-checks the app and checks the dev log, `npm test` runs the client package's
-tests, and `npm run build` builds the app; CI runs all three.
+`npm run check` type-checks the app (tests included) and checks the dev
+log, `npm test` runs the app's unit tests (Vitest, jsdom, next to the code
+as `*.test.ts(x)`) and the client package's tests, `npm run test:coverage`
+prints a coverage summary, and `npm run build` builds the app; CI runs
+check, test and build.
 
 Releases are cut with `scripts/release.sh <patch|minor|major|X.Y.Z>`, a
 dry run by default; `--execute` opens the release pull request. Merging it
