@@ -39,8 +39,8 @@ Ganymede can also serve the built app itself, on its own origin:
 `npm run build`, then `ganymede serve --static-dir dist` and open the URL
 it prints. The server trades the token for a login cookie, and the app
 connects on that cookie. Changing anything (saving, starting kernels) needs
-the `_xsrf` cookie that Ganymede sets with the page, from
-[tlockney/ganymede#140](https://github.com/tlockney/ganymede/pull/140) on.
+the `_xsrf` cookie that Ganymede sets with the page, from Ganymede 0.3.0
+on. `ganymede ui install` and `ganymede ui` fetch and serve a release.
 
 `npm run check` type-checks the app, its tests and the end-to-end tests,
 checks the dev log, and runs ESLint and Prettier's check
