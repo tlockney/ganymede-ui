@@ -15,6 +15,7 @@ import type { INotebookModel } from '@jupyterlab/notebook';
 import type { IRenderMimeRegistry } from '@jupyterlab/rendermime';
 import type { Kernel } from '@jupyterlab/services';
 import * as base from '@jupyter-widgets/base';
+import type { ExportMap } from '@jupyter-widgets/base/lib/registry';
 import { JUPYTER_CONTROLS_VERSION } from '@jupyter-widgets/controls/lib/version';
 import {
   KernelWidgetManager,
@@ -50,18 +51,20 @@ function createManager(kernel: Kernel.IKernelConnection, rendermime: IRenderMime
       StyleModel: base.StyleModel,
       StyleView: base.StyleView,
       ErrorWidgetView: base.ErrorWidgetView,
-    } as any,
+    },
   });
-  // The controls are the bulk of ipywidgets; fetch them on first use.
+  // The controls are the bulk of ipywidgets; fetch them on first use. The
+  // module also exports non-widget values (`version`, `default`), which the
+  // manager ignores.
   manager.register({
     name: '@jupyter-widgets/controls',
     version: JUPYTER_CONTROLS_VERSION,
-    exports: () => import('@jupyter-widgets/controls') as any,
+    exports: () => import('@jupyter-widgets/controls') as unknown as Promise<ExportMap>,
   });
   manager.register({
     name: '@jupyter-widgets/output',
     version: OUTPUT_WIDGET_VERSION,
-    exports: { OutputModel, OutputView } as any,
+    exports: { OutputModel, OutputView },
   });
   return manager;
 }

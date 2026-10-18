@@ -88,10 +88,10 @@ and `@jupyter-widgets/jupyterlab-manager` 5 for ipywidgets.
 
 From `npm run build`:
 
-| | before | after |
-|---|---|---|
+|            | before                       | after                        |
+| ---------- | ---------------------------- | ---------------------------- |
 | main chunk | 3,512.66 kB (934.11 kB gzip) | 2,075.19 kB (591.09 kB gzip) |
-| precache | 203 entries, 8,327.07 KiB | 158 entries, 5,317.08 KiB |
+| precache   | 203 entries, 8,327.07 KiB    | 158 entries, 5,317.08 KiB    |
 
 The in-browser server (`lite`, 306 kB), ipywidgets (`widgets`, 223 kB)
 and MathJax are separate chunks.

@@ -1,11 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import {
-  type Backend,
-  type BackendConfig,
-  connect,
-  loadConfig,
-  saveConfig,
-} from './lib/backends';
+import { type Backend, type BackendConfig, connect, loadConfig, saveConfig } from './lib/backends';
 import { useColorScheme } from './lib/useColorScheme';
 import { useJupyterLabTheme } from './lib/theme';
 import { Sidebar } from './components/Sidebar';

@@ -5,7 +5,7 @@
  * only devDependency), so the handful of `node:test` / `node:assert` shapes
  * the test files touch are declared here. Runtime behaviour is Node's own.
  */
-declare module "node:test" {
+declare module 'node:test' {
   export interface TestContext {
     readonly name: string;
     diagnostic(message: string): void;
@@ -22,7 +22,7 @@ declare module "node:test" {
   export function afterEach(fn: () => void | Promise<void>): void;
 }
 
-declare module "node:assert/strict" {
+declare module 'node:assert/strict' {
   type ErrorExpectation = RegExp | ((error: unknown) => boolean) | object;
   interface StrictAssert {
     (value: unknown, message?: string): asserts value;

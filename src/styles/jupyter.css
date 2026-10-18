@@ -91,11 +91,15 @@
 }
 
 .notebook-page .jp-Cell.jp-mod-active .jp-InputArea-editor {
-  box-shadow: 0 0 0 1px var(--cell-border), 0 1px 3px rgba(0, 0, 0, 0.06);
+  box-shadow:
+    0 0 0 1px var(--cell-border),
+    0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
 .notebook-page .jp-Notebook.jp-mod-editMode .jp-Cell.jp-mod-active .jp-InputArea-editor {
-  box-shadow: 0 0 0 2px var(--accent-soft), 0 0 0 1px var(--accent);
+  box-shadow:
+    0 0 0 2px var(--accent-soft),
+    0 0 0 1px var(--accent);
 }
 
 .notebook-page .cm-editor {

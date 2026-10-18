@@ -28,7 +28,16 @@ export interface AnsiSpan {
   classes: string[];
 }
 
-const COLOR_NAMES = ["black", "red", "green", "yellow", "blue", "magenta", "cyan", "white"] as const;
+const COLOR_NAMES = [
+  'black',
+  'red',
+  'green',
+  'yellow',
+  'blue',
+  'magenta',
+  'cyan',
+  'white',
+] as const;
 
 interface Style {
   bold: boolean;
@@ -42,20 +51,29 @@ interface Style {
 }
 
 function freshStyle(): Style {
-  return { bold: false, faint: false, italic: false, underline: false, inverse: false, strike: false, fg: null, bg: null };
+  return {
+    bold: false,
+    faint: false,
+    italic: false,
+    underline: false,
+    inverse: false,
+    strike: false,
+    fg: null,
+    bg: null,
+  };
 }
 
 function classKey(style: Style): string {
   const classes: string[] = [];
-  if (style.bold) classes.push("ansi-bold");
-  if (style.faint) classes.push("ansi-faint");
-  if (style.italic) classes.push("ansi-italic");
-  if (style.underline) classes.push("ansi-underline");
-  if (style.inverse) classes.push("ansi-inverse");
-  if (style.strike) classes.push("ansi-strike");
+  if (style.bold) classes.push('ansi-bold');
+  if (style.faint) classes.push('ansi-faint');
+  if (style.italic) classes.push('ansi-italic');
+  if (style.underline) classes.push('ansi-underline');
+  if (style.inverse) classes.push('ansi-inverse');
+  if (style.strike) classes.push('ansi-strike');
   if (style.fg) classes.push(`ansi-fg-${style.fg}`);
   if (style.bg) classes.push(`ansi-bg-${style.bg}`);
-  return classes.join(" ");
+  return classes.join(' ');
 }
 
 /** Apply one SGR parameter list (the numbers between `ESC[` and `m`). */
@@ -103,25 +121,26 @@ interface Cell {
 }
 
 // ESC [ <params> <final byte>. Only 'm' (SGR) is interpreted.
+// eslint-disable-next-line no-control-regex -- matching ESC is the point
 const CSI = /\x1b\[([0-9;]*)([\x40-\x7e])/g;
 
 export function parseAnsi(text: string): AnsiSpan[] {
   const style = freshStyle();
-  let key = "";
+  let key = '';
   const lines: Cell[][] = [];
   let line: Cell[] = [];
   let cursor = 0;
 
   const write = (chunk: string) => {
     for (const ch of chunk) {
-      if (ch === "\n") {
-        line.push({ ch: "\n", key });
+      if (ch === '\n') {
+        line.push({ ch: '\n', key });
         lines.push(line);
         line = [];
         cursor = 0;
-      } else if (ch === "\r") {
+      } else if (ch === '\r') {
         cursor = 0;
-      } else if (ch === "\b") {
+      } else if (ch === '\b') {
         if (cursor > 0) {
           cursor -= 1;
           line.splice(cursor, 1);
@@ -139,8 +158,9 @@ export function parseAnsi(text: string): AnsiSpan[] {
   for (const match of text.matchAll(CSI)) {
     write(text.slice(last, match.index));
     last = match.index + match[0].length;
-    if (match[2] === "m") {
-      const params = match[1] === "" ? [] : match[1]!.split(";").map((s) => (s === "" ? 0 : Number(s)));
+    if (match[2] === 'm') {
+      const params =
+        match[1] === '' ? [] : match[1]!.split(';').map(s => (s === '' ? 0 : Number(s)));
       applySgr(style, params);
       key = classKey(style);
     }
@@ -152,10 +172,10 @@ export function parseAnsi(text: string): AnsiSpan[] {
   for (const cells of lines) {
     for (const cell of cells) {
       const current = spans[spans.length - 1];
-      if (current && current.classes.join(" ") === cell.key) {
+      if (current && current.classes.join(' ') === cell.key) {
         current.text += cell.ch;
       } else {
-        spans.push({ text: cell.ch, classes: cell.key ? cell.key.split(" ") : [] });
+        spans.push({ text: cell.ch, classes: cell.key ? cell.key.split(' ') : [] });
       }
     }
   }
@@ -165,6 +185,6 @@ export function parseAnsi(text: string): AnsiSpan[] {
 /** The visible text of a parsed result, with escapes and overwrites applied. */
 export function ansiToText(text: string): string {
   return parseAnsi(text)
-    .map((span) => span.text)
-    .join("");
+    .map(span => span.text)
+    .join('');
 }

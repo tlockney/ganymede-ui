@@ -8,7 +8,10 @@
     "dev": "vite",
     "build": "tsc -p . && vite build",
     "preview": "vite preview",
-    "check": "tsc -p . && tsc -p e2e && node scripts/check-notes.mjs",
+    "check": "tsc -p . && tsc -p e2e && node scripts/check-notes.mjs && npm run lint && npm run format:check",
+    "lint": "eslint . --max-warnings 0",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
     "test": "vitest run && npm test -w packages/client",
     "test:coverage": "vitest run --coverage",
     "e2e": "playwright test"
@@ -56,6 +59,7 @@
     "react-dom": "19.2.8"
   },
   "devDependencies": {
+    "@eslint/js": "10.0.1",
     "@playwright/test": "1.56.1",
     "@testing-library/dom": "10.4.2",
     "@testing-library/jest-dom": "7.0.1",
@@ -66,8 +70,15 @@
     "@types/react-dom": "19.2.5",
     "@vitejs/plugin-react": "^4.6.0",
     "@vitest/coverage-v8": "4.1.11",
+    "eslint": "10.13.0",
+    "eslint-config-prettier": "10.1.8",
+    "eslint-plugin-react-hooks": "7.1.1",
+    "eslint-plugin-react-refresh": "0.5.7",
+    "globals": "17.13.0",
     "jsdom": "29.1.1",
+    "prettier": "3.9.10",
     "typescript": "5.9.3",
+    "typescript-eslint": "8.71.2",
     "vite": "7.3.6",
     "vite-plugin-pwa": "^1.0.0",
     "vitest": "4.1.11"

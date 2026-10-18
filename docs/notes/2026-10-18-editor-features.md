@@ -86,11 +86,11 @@ from JupyterLab, Lumino, ydoc, CodeMirror or FAST is duplicated.
 
 From `npm run build`:
 
-| | before | after |
-|---|---|---|
-| main chunk | 2,075.19 kB (591.09 kB gzip) | 2,200.14 kB (622.72 kB gzip) |
-| widgets CSS | 44.72 kB | 126.09 kB (Font Awesome's classes) |
-| precache | 158 entries, 5,317.08 KiB | 158 entries, 5,527.17 KiB |
+|             | before                       | after                              |
+| ----------- | ---------------------------- | ---------------------------------- |
+| main chunk  | 2,075.19 kB (591.09 kB gzip) | 2,200.14 kB (622.72 kB gzip)       |
+| widgets CSS | 44.72 kB                     | 126.09 kB (Font Awesome's classes) |
+| precache    | 158 entries, 5,317.08 KiB    | 158 entries, 5,527.17 KiB          |
 
 Each feature's share of the main chunk, from builds with it stubbed out:
 completer and tooltip 60.6 kB (16.2 kB gzip), find 52.4 kB (11.9 kB gzip;

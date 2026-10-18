@@ -1,0 +1,12 @@
+.claude
+dist
+dev-dist
+packages/*/dist
+coverage
+playwright-report
+test-results
+screenshots
+package-lock.json
+CHANGELOG.md
+docs/notes/archive.md
+*.ipynb

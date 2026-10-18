@@ -7,8 +7,9 @@ Each change is a pull request that links the issue it resolves
 
 ```sh
 npm install
-npm run check   # type-check the app, check the dev log
-npm test        # client package tests
+npm run check   # type-check, check the dev log, lint, check formatting
+npm run format  # format with Prettier
+npm test        # unit tests: the app's and the client package's
 npm run build   # production build
 ```
 

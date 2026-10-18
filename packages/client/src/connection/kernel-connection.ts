@@ -26,7 +26,7 @@ import {
   type Message,
   type MessageType,
   type StatusContent,
-} from "../protocol/messages.js";
+} from '../protocol/messages.js';
 import {
   WS_SUBPROTOCOL_V1,
   decodeLegacy,
@@ -34,8 +34,8 @@ import {
   encodeLegacy,
   encodeV1,
   type ChannelMessage,
-} from "../protocol/websocket-v1.js";
-import type { ServerConnection, WebSocketLike } from "./server-connection.js";
+} from '../protocol/websocket-v1.js';
+import type { ServerConnection, WebSocketLike } from './server-connection.js';
 
 export type MessageListener = (channel: Channel, message: Message) => void;
 
@@ -44,10 +44,10 @@ export interface KernelConnectionOptions {
   session?: string;
   username?: string;
   /** Wire format to send. The receive side accepts either. */
-  protocol?: "v1" | "legacy";
+  protocol?: 'v1' | 'legacy';
 }
 
-export interface ExecuteOptions extends Partial<Omit<ExecuteRequestContent, "code">> {
+export interface ExecuteOptions extends Partial<Omit<ExecuteRequestContent, 'code'>> {
   metadata?: JsonObject;
 }
 
@@ -75,47 +75,49 @@ export class KernelConnection {
   private readonly ready: Promise<void>;
   private readonly listeners = new Set<MessageListener>();
   private readonly closeListeners = new Set<(reason: Error) => void>();
-  private sendFormat: "v1" | "legacy";
+  private sendFormat: 'v1' | 'legacy';
   private lastInputRequest: Message<InputRequestContent> | undefined;
-  private _status: ExecutionState | "unknown" | "closed" = "unknown";
+  private _status: ExecutionState | 'unknown' | 'closed' = 'unknown';
 
   constructor(settings: ServerConnection, kernelId: string, options: KernelConnectionOptions = {}) {
     this.kernelId = kernelId;
     this.session = options.session ?? crypto.randomUUID();
-    this.username = options.username ?? "username";
-    this.sendFormat = options.protocol ?? "v1";
+    this.username = options.username ?? 'username';
+    this.sendFormat = options.protocol ?? 'v1';
 
     const url = new URL(`api/kernels/${encodeURIComponent(kernelId)}/channels`, settings.wsUrl);
-    url.searchParams.set("session_id", this.session);
+    url.searchParams.set('session_id', this.session);
     if (settings.token) {
       // Browsers cannot set headers on a websocket handshake, so jupyter_server
       // also accepts the token as a query parameter.
-      url.searchParams.set("token", settings.token);
+      url.searchParams.set('token', settings.token);
     }
     this.url = url.toString();
 
-    const protocols = this.sendFormat === "v1" ? [WS_SUBPROTOCOL_V1] : [];
+    const protocols = this.sendFormat === 'v1' ? [WS_SUBPROTOCOL_V1] : [];
     this.ws = new settings.WebSocket(this.url, protocols);
-    this.ws.binaryType = "arraybuffer";
+    this.ws.binaryType = 'arraybuffer';
 
     this.ready = new Promise<void>((resolve, reject) => {
       this.ws.onopen = () => resolve();
-      this.ws.onerror = (event) => reject(new Error(`websocket error: ${describe(event)}`));
+      this.ws.onerror = event => reject(new Error(`websocket error: ${describe(event)}`));
     });
     // Nobody may ever await `ready` if the socket fails before use.
     this.ready.catch(() => undefined);
 
-    this.ws.onmessage = (event) => this.handleFrame(event.data);
-    this.ws.onclose = (event) => {
-      this._status = "closed";
-      const reason = new Error(`websocket closed (${event.code ?? "?"}) ${event.reason ?? ""}`.trim());
+    this.ws.onmessage = event => this.handleFrame(event.data);
+    this.ws.onclose = event => {
+      this._status = 'closed';
+      const reason = new Error(
+        `websocket closed (${event.code ?? '?'}) ${event.reason ?? ''}`.trim(),
+      );
       for (const listener of this.closeListeners) listener(reason);
       this.closeListeners.clear();
     };
   }
 
   /** Last `execution_state` seen on iopub, or "unknown" / "closed". */
-  get status(): ExecutionState | "unknown" | "closed" {
+  get status(): ExecutionState | 'unknown' | 'closed' {
     return this._status;
   }
 
@@ -135,7 +137,7 @@ export class KernelConnection {
 
   async send(channel: Channel, message: Message<unknown>): Promise<void> {
     await this.ready;
-    if (this.sendFormat === "v1") {
+    if (this.sendFormat === 'v1') {
       this.ws.send(encodeV1(channel, message));
     } else {
       this.ws.send(encodeLegacy(channel, message));
@@ -144,7 +146,10 @@ export class KernelConnection {
 
   /** Build a message stamped with this connection's session and username. */
   createMessage<C>(msgType: MessageType, content: C, parent?: Message<unknown>): Message<C> {
-    const options: Parameters<typeof createMessage>[2] = { session: this.session, username: this.username };
+    const options: Parameters<typeof createMessage>[2] = {
+      session: this.session,
+      username: this.username,
+    };
     if (parent) options.parent = parent;
     return createMessage(msgType, content, options);
   }
@@ -158,11 +163,11 @@ export class KernelConnection {
       const offMessage = this.onMessage((ch, message) => {
         if (ch !== channel) return;
         if (message.parent_header.msg_id !== request.header.msg_id) return;
-        if (!String(message.header.msg_type).endsWith("_reply")) return;
+        if (!String(message.header.msg_type).endsWith('_reply')) return;
         cleanup();
         resolve(message as Message<R>);
       });
-      const offClose = this.onClose((reason) => {
+      const offClose = this.onClose(reason => {
         cleanup();
         reject(reason);
       });
@@ -178,7 +183,10 @@ export class KernelConnection {
   }
 
   kernelInfo(): Promise<Message<KernelInfoReplyContent>> {
-    return this.requestReply<KernelInfoReplyContent>("shell", this.createMessage("kernel_info_request", {}));
+    return this.requestReply<KernelInfoReplyContent>(
+      'shell',
+      this.createMessage('kernel_info_request', {}),
+    );
   }
 
   execute(code: string, options: ExecuteOptions = {}): ExecuteFuture {
@@ -192,7 +200,7 @@ export class KernelConnection {
       stop_on_error: true,
       ...contentOverrides,
     };
-    const request = createMessage("execute_request", content, {
+    const request = createMessage('execute_request', content, {
       session: this.session,
       username: this.username,
       metadata: metadata ?? {},
@@ -211,21 +219,21 @@ export class KernelConnection {
       };
       const offMessage = this.onMessage((channel, message) => {
         if (message.parent_header.msg_id !== msgId) return;
-        if (channel === "iopub") {
+        if (channel === 'iopub') {
           for (const listener of iopubListeners) listener(message);
-          if (message.header.msg_type === "status") {
+          if (message.header.msg_type === 'status') {
             const state = (message.content as StatusContent).execution_state;
-            if (state === "idle") {
+            if (state === 'idle') {
               idle = true;
               settle();
             }
           }
-        } else if (channel === "shell" && message.header.msg_type === "execute_reply") {
+        } else if (channel === 'shell' && message.header.msg_type === 'execute_reply') {
           reply = message as Message<ExecuteReplyContent>;
           settle();
         }
       });
-      const offClose = this.onClose((reason) => {
+      const offClose = this.onClose(reason => {
         cleanup();
         reject(reason);
       });
@@ -233,7 +241,7 @@ export class KernelConnection {
         offMessage();
         offClose();
       };
-      this.send("shell", request).catch((error: unknown) => {
+      this.send('shell', request).catch((error: unknown) => {
         cleanup();
         reject(error);
       });
@@ -259,13 +267,13 @@ export class KernelConnection {
   inputReply(value: string, request?: Message<InputRequestContent>): Promise<void> {
     const parent = request ?? this.lastInputRequest;
     if (!parent) {
-      return Promise.reject(new Error("inputReply: no pending input_request"));
+      return Promise.reject(new Error('inputReply: no pending input_request'));
     }
     if (parent === this.lastInputRequest) {
       this.lastInputRequest = undefined;
     }
     const content: InputReplyContent = { value };
-    return this.send("stdin", this.createMessage("input_reply", content, parent));
+    return this.send('stdin', this.createMessage('input_reply', content, parent));
   }
 
   /** The pending `input_request`, if the kernel is waiting on stdin. */
@@ -276,15 +284,15 @@ export class KernelConnection {
   dispose(): void {
     this.listeners.clear();
     if (this.ws.readyState < 2) {
-      this.ws.close(1000, "disposed");
+      this.ws.close(1000, 'disposed');
     }
   }
 
   private handleFrame(data: unknown): void {
     let decoded: ChannelMessage;
-    if (typeof data === "string") {
+    if (typeof data === 'string') {
       // The server did not negotiate the v1 subprotocol; mirror its format.
-      this.sendFormat = "legacy";
+      this.sendFormat = 'legacy';
       decoded = decodeLegacy(data);
     } else if (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) {
       decoded = decodeV1(data);
@@ -293,9 +301,9 @@ export class KernelConnection {
       return;
     }
     const { channel, message } = decoded;
-    if (channel === "iopub" && message.header.msg_type === "status") {
+    if (channel === 'iopub' && message.header.msg_type === 'status') {
       this._status = (message.content as StatusContent).execution_state;
-    } else if (channel === "stdin" && message.header.msg_type === "input_request") {
+    } else if (channel === 'stdin' && message.header.msg_type === 'input_request') {
       this.lastInputRequest = message as Message<InputRequestContent>;
     }
     for (const listener of [...this.listeners]) {
@@ -305,8 +313,8 @@ export class KernelConnection {
 }
 
 function describe(event: unknown): string {
-  if (event && typeof event === "object" && "message" in event) {
+  if (event && typeof event === 'object' && 'message' in event) {
     return String((event as { message: unknown }).message);
   }
-  return "unknown";
+  return 'unknown';
 }

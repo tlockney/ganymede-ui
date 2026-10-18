@@ -17,25 +17,25 @@
  *   rendered view does not have that problem.
  */
 
-import type { StreamName } from "../protocol/messages.js";
+import type { StreamName } from '../protocol/messages.js';
 
 export type { StreamName };
 
 /** Incremental `\r` / `\b` / `\n` cursor state for one text stream. */
 class LineState {
-  done = "";
+  done = '';
   line: string[] = [];
   cursor = 0;
 
   feed(chunk: string): void {
     for (const ch of chunk) {
-      if (ch === "\n") {
-        this.done += this.line.join("") + "\n";
+      if (ch === '\n') {
+        this.done += this.line.join('') + '\n';
         this.line = [];
         this.cursor = 0;
-      } else if (ch === "\r") {
+      } else if (ch === '\r') {
         this.cursor = 0;
-      } else if (ch === "\b") {
+      } else if (ch === '\b') {
         if (this.cursor > 0) {
           this.cursor -= 1;
           this.line.splice(this.cursor, 1);
@@ -49,7 +49,7 @@ class LineState {
   }
 
   get text(): string {
-    return this.done + this.line.join("");
+    return this.done + this.line.join('');
   }
 }
 
@@ -75,7 +75,7 @@ export class StreamBuffer {
   append(name: StreamName, chunk: string): StreamEntry {
     let last = this.items[this.items.length - 1];
     if (!last || last.name !== name) {
-      last = { name, raw: "", state: new LineState() };
+      last = { name, raw: '', state: new LineState() };
       this.items.push(last);
     }
     last.raw += chunk;
@@ -84,7 +84,7 @@ export class StreamBuffer {
   }
 
   get entries(): StreamEntry[] {
-    return this.items.map((item) => ({ name: item.name, raw: item.raw, text: item.state.text }));
+    return this.items.map(item => ({ name: item.name, raw: item.raw, text: item.state.text }));
   }
 
   get length(): number {
@@ -94,9 +94,9 @@ export class StreamBuffer {
   /** Joined `text` of every entry, or of one stream. */
   text(name?: StreamName): string {
     return this.items
-      .filter((item) => name === undefined || item.name === name)
-      .map((item) => item.state.text)
-      .join("");
+      .filter(item => name === undefined || item.name === name)
+      .map(item => item.state.text)
+      .join('');
   }
 
   clear(): void {

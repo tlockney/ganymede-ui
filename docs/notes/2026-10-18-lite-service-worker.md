@@ -24,7 +24,7 @@ either.
 ### Design: the relay inside the Workbox worker
 
 An origin has one service worker per scope, and a client (page or Worker)
-is controlled by the worker whose scope its *own* URL falls in, not the
+is controlled by the worker whose scope its _own_ URL falls in, not the
 URLs it requests. So a narrower scope for JupyterLite's worker (`/lite/`,
 with JupyterLite's base URL moved there) doesn't help: the page at `/` and
 the kernel Worker at `/assets/worker-runtime-*.js` would stay with

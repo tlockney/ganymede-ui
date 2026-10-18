@@ -14,7 +14,7 @@
  * `WebSocket` (whose handlers take `MessageEvent` etc.) and a test fake
  * (whose handlers take plain objects) are both assignable.
  */
-export type Handler<E> = { bivarianceHack(event: E): void }["bivarianceHack"];
+export type Handler<E> = { bivarianceHack(event: E): void }['bivarianceHack'];
 
 /** The subset of the WHATWG WebSocket surface this package uses. */
 export interface WebSocketLike {
@@ -45,28 +45,28 @@ export interface ServerConnection {
 export type ServerConnectionOverrides = Partial<ServerConnection>;
 
 function withTrailingSlash(url: string): string {
-  return url.endsWith("/") ? url : `${url}/`;
+  return url.endsWith('/') ? url : `${url}/`;
 }
 
 function defaultBaseUrl(): string {
   const loc = (globalThis as { location?: { origin?: string } }).location;
-  if (loc?.origin && loc.origin !== "null") {
+  if (loc?.origin && loc.origin !== 'null') {
     return `${loc.origin}/`;
   }
-  return "http://localhost:8888/";
+  return 'http://localhost:8888/';
 }
 
 export function makeSettings(overrides: ServerConnectionOverrides = {}): ServerConnection {
   const baseUrl = withTrailingSlash(overrides.baseUrl ?? defaultBaseUrl());
-  const wsUrl = withTrailingSlash(overrides.wsUrl ?? baseUrl.replace(/^http(s?):/, "ws$1:"));
+  const wsUrl = withTrailingSlash(overrides.wsUrl ?? baseUrl.replace(/^http(s?):/, 'ws$1:'));
   const globals = globalThis as { fetch?: typeof fetch; WebSocket?: WebSocketConstructor };
   const fetchImpl = overrides.fetch ?? globals.fetch?.bind(globalThis);
   if (!fetchImpl) {
-    throw new Error("makeSettings: no fetch available; pass one in overrides");
+    throw new Error('makeSettings: no fetch available; pass one in overrides');
   }
   const WebSocketImpl = overrides.WebSocket ?? globals.WebSocket;
   if (!WebSocketImpl) {
-    throw new Error("makeSettings: no WebSocket available; pass one in overrides");
+    throw new Error('makeSettings: no WebSocket available; pass one in overrides');
   }
   const settings: ServerConnection = { baseUrl, wsUrl, fetch: fetchImpl, WebSocket: WebSocketImpl };
   if (overrides.token !== undefined) {
@@ -76,12 +76,16 @@ export function makeSettings(overrides: ServerConnectionOverrides = {}): ServerC
 }
 
 /** Join a path onto `baseUrl`, keeping "/" separators but encoding each segment. */
-export function apiUrl(settings: ServerConnection, path: string, query?: Record<string, string | undefined>): string {
+export function apiUrl(
+  settings: ServerConnection,
+  path: string,
+  query?: Record<string, string | undefined>,
+): string {
   const encoded = path
-    .replace(/^\/+/, "")
-    .split("/")
-    .map((seg) => encodeURIComponent(seg))
-    .join("/");
+    .replace(/^\/+/, '')
+    .split('/')
+    .map(seg => encodeURIComponent(seg))
+    .join('/');
   const url = new URL(encoded, settings.baseUrl);
   if (query) {
     for (const [key, value] of Object.entries(query)) {
@@ -98,7 +102,7 @@ export class ServerError extends Error {
     readonly body: string,
   ) {
     super(`${status} from ${url}: ${body.slice(0, 200)}`);
-    this.name = "ServerError";
+    this.name = 'ServerError';
   }
 }
 
@@ -155,8 +159,8 @@ export interface CreateSessionRequest {
 export interface ContentsModel {
   name: string;
   path: string;
-  type: "notebook" | "file" | "directory" | (string & {});
-  format: "json" | "text" | "base64" | null;
+  type: 'notebook' | 'file' | 'directory' | (string & {});
+  format: 'json' | 'text' | 'base64' | null;
   content: unknown;
   mimetype?: string | null;
   writable?: boolean;
@@ -187,14 +191,18 @@ export class RestClient {
     const url = apiUrl(this.settings, path, init.query);
     const headers: Record<string, string> = {};
     if (this.settings.token) {
-      headers["Authorization"] = `token ${this.settings.token}`;
+      headers['Authorization'] = `token ${this.settings.token}`;
     }
     let body: string | undefined;
     if (init.body !== undefined) {
-      headers["Content-Type"] = "application/json";
+      headers['Content-Type'] = 'application/json';
       body = JSON.stringify(init.body);
     }
-    const response = await this.settings.fetch(url, { method: init.method ?? "GET", headers, body });
+    const response = await this.settings.fetch(url, {
+      method: init.method ?? 'GET',
+      headers,
+      body,
+    });
     if (!response.ok) {
       throw new ServerError(response.status, url, await response.text());
     }
@@ -206,11 +214,11 @@ export class RestClient {
   }
 
   listKernelspecs(): Promise<KernelspecsResponse> {
-    return this.request("api/kernelspecs");
+    return this.request('api/kernelspecs');
   }
 
   listKernels(): Promise<KernelModel[]> {
-    return this.request("api/kernels");
+    return this.request('api/kernels');
   }
 
   getKernel(id: string): Promise<KernelModel> {
@@ -219,25 +227,25 @@ export class RestClient {
 
   startKernel(name?: string, path?: string): Promise<KernelModel> {
     const body: Record<string, string> = {};
-    if (name !== undefined) body["name"] = name;
-    if (path !== undefined) body["path"] = path;
-    return this.request("api/kernels", { method: "POST", body });
+    if (name !== undefined) body['name'] = name;
+    if (path !== undefined) body['path'] = path;
+    return this.request('api/kernels', { method: 'POST', body });
   }
 
   shutdownKernel(id: string): Promise<void> {
-    return this.request(`api/kernels/${id}`, { method: "DELETE" });
+    return this.request(`api/kernels/${id}`, { method: 'DELETE' });
   }
 
   interruptKernel(id: string): Promise<void> {
-    return this.request(`api/kernels/${id}/interrupt`, { method: "POST" });
+    return this.request(`api/kernels/${id}/interrupt`, { method: 'POST' });
   }
 
   restartKernel(id: string): Promise<KernelModel> {
-    return this.request(`api/kernels/${id}/restart`, { method: "POST" });
+    return this.request(`api/kernels/${id}/restart`, { method: 'POST' });
   }
 
   listSessions(): Promise<SessionModel[]> {
-    return this.request("api/sessions");
+    return this.request('api/sessions');
   }
 
   getSession(id: string): Promise<SessionModel> {
@@ -245,22 +253,22 @@ export class RestClient {
   }
 
   createSession(model: CreateSessionRequest): Promise<SessionModel> {
-    return this.request("api/sessions", { method: "POST", body: model });
+    return this.request('api/sessions', { method: 'POST', body: model });
   }
 
   deleteSession(id: string): Promise<void> {
-    return this.request(`api/sessions/${id}`, { method: "DELETE" });
+    return this.request(`api/sessions/${id}`, { method: 'DELETE' });
   }
 
   getContents(path: string, options: GetContentsOptions = {}): Promise<ContentsModel> {
     const query: Record<string, string | undefined> = {};
-    if (options.content === false) query["content"] = "0";
-    if (options.type) query["type"] = options.type;
-    if (options.format) query["format"] = options.format;
+    if (options.content === false) query['content'] = '0';
+    if (options.type) query['type'] = options.type;
+    if (options.format) query['format'] = options.format;
     return this.request(`api/contents/${path}`, { query });
   }
 
   saveContents(path: string, model: Partial<ContentsModel>): Promise<ContentsModel> {
-    return this.request(`api/contents/${path}`, { method: "PUT", body: model });
+    return this.request(`api/contents/${path}`, { method: 'PUT', body: model });
   }
 }

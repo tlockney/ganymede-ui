@@ -12,55 +12,55 @@
 export type JsonObject = Record<string, unknown>;
 
 /** The four client-facing channels. Heartbeat is not exposed over the websocket. */
-export type Channel = "shell" | "control" | "iopub" | "stdin";
+export type Channel = 'shell' | 'control' | 'iopub' | 'stdin';
 
-export const CHANNELS: readonly Channel[] = ["shell", "control", "iopub", "stdin"];
+export const CHANNELS: readonly Channel[] = ['shell', 'control', 'iopub', 'stdin'];
 
 export function isChannel(value: unknown): value is Channel {
-  return typeof value === "string" && (CHANNELS as readonly string[]).includes(value);
+  return typeof value === 'string' && (CHANNELS as readonly string[]).includes(value);
 }
 
 /** Message types this sketch knows about; the header still accepts any string. */
 export type KnownMessageType =
-  | "execute_request"
-  | "execute_reply"
-  | "inspect_request"
-  | "inspect_reply"
-  | "complete_request"
-  | "complete_reply"
-  | "history_request"
-  | "history_reply"
-  | "is_complete_request"
-  | "is_complete_reply"
-  | "kernel_info_request"
-  | "kernel_info_reply"
-  | "shutdown_request"
-  | "shutdown_reply"
-  | "interrupt_request"
-  | "interrupt_reply"
-  | "debug_request"
-  | "debug_reply"
-  | "status"
-  | "stream"
-  | "display_data"
-  | "update_display_data"
-  | "execute_input"
-  | "execute_result"
-  | "error"
-  | "clear_output"
-  | "debug_event"
-  | "input_request"
-  | "input_reply"
-  | "comm_open"
-  | "comm_msg"
-  | "comm_close"
-  | "comm_info_request"
-  | "comm_info_reply";
+  | 'execute_request'
+  | 'execute_reply'
+  | 'inspect_request'
+  | 'inspect_reply'
+  | 'complete_request'
+  | 'complete_reply'
+  | 'history_request'
+  | 'history_reply'
+  | 'is_complete_request'
+  | 'is_complete_reply'
+  | 'kernel_info_request'
+  | 'kernel_info_reply'
+  | 'shutdown_request'
+  | 'shutdown_reply'
+  | 'interrupt_request'
+  | 'interrupt_reply'
+  | 'debug_request'
+  | 'debug_reply'
+  | 'status'
+  | 'stream'
+  | 'display_data'
+  | 'update_display_data'
+  | 'execute_input'
+  | 'execute_result'
+  | 'error'
+  | 'clear_output'
+  | 'debug_event'
+  | 'input_request'
+  | 'input_reply'
+  | 'comm_open'
+  | 'comm_msg'
+  | 'comm_close'
+  | 'comm_info_request'
+  | 'comm_info_reply';
 
 /** Known types get completion; unknown strings are still allowed. */
 export type MessageType = KnownMessageType | (string & {});
 
-export const PROTOCOL_VERSION = "5.5";
+export const PROTOCOL_VERSION = '5.5';
 
 export interface Header {
   msg_id: string;
@@ -100,7 +100,7 @@ export interface ExecuteRequestContent {
   [key: string]: unknown;
 }
 
-export type ReplyStatus = "ok" | "error" | "abort" | "aborted";
+export type ReplyStatus = 'ok' | 'error' | 'abort' | 'aborted';
 
 export interface ErrorFields {
   ename: string;
@@ -153,14 +153,14 @@ export interface KernelInfoReplyContent {
 // IOPub
 // ---------------------------------------------------------------------------
 
-export type ExecutionState = "busy" | "idle" | "starting";
+export type ExecutionState = 'busy' | 'idle' | 'starting';
 
 export interface StatusContent {
   execution_state: ExecutionState;
   [key: string]: unknown;
 }
 
-export type StreamName = "stdout" | "stderr";
+export type StreamName = 'stdout' | 'stderr';
 
 export interface StreamContent {
   name: StreamName;
@@ -268,7 +268,7 @@ export function createMessage<C>(
   const header: Header = {
     msg_id: crypto.randomUUID(),
     session: options.session,
-    username: options.username ?? "username",
+    username: options.username ?? 'username',
     date: new Date().toISOString(),
     msg_type: msgType,
     version: PROTOCOL_VERSION,
@@ -286,6 +286,9 @@ export function createMessage<C>(
 }
 
 /** Narrow a message by its `msg_type`. */
-export function isMessageType<C>(message: Message<unknown>, msgType: MessageType): message is Message<C> {
+export function isMessageType<C>(
+  message: Message<unknown>,
+  msgType: MessageType,
+): message is Message<C> {
   return message.header.msg_type === msgType;
 }

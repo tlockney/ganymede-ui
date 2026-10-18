@@ -35,10 +35,14 @@ export default async function globalSetup() {
     GANYMEDE_BIN,
     [
       'serve',
-      '--port', String(GANYMEDE_PORT),
-      '--token', TOKEN,
-      '--root-dir', ROOT_DIR,
-      '--default-kernel', KERNEL,
+      '--port',
+      String(GANYMEDE_PORT),
+      '--token',
+      TOKEN,
+      '--root-dir',
+      ROOT_DIR,
+      '--default-kernel',
+      KERNEL,
     ],
     { stdio: ['ignore', 'inherit', 'inherit'] },
   );

@@ -6,23 +6,23 @@
  * render and delegates to that renderer. Lower rank wins.
  */
 
-import type { JsonObject, MimeBundle } from "../protocol/messages.js";
+import type { JsonObject, MimeBundle } from '../protocol/messages.js';
 
 export type { MimeBundle };
 
-export const WIDGET_VIEW_MIME = "application/vnd.jupyter.widget-view+json";
+export const WIDGET_VIEW_MIME = 'application/vnd.jupyter.widget-view+json';
 
 /** Default preference order, most preferred first. */
 export const DEFAULT_MIME_ORDER: readonly string[] = [
   WIDGET_VIEW_MIME,
-  "text/html",
-  "image/svg+xml",
-  "image/png",
-  "image/jpeg",
-  "text/markdown",
-  "text/latex",
-  "application/json",
-  "text/plain",
+  'text/html',
+  'image/svg+xml',
+  'image/png',
+  'image/jpeg',
+  'text/markdown',
+  'text/latex',
+  'application/json',
+  'text/plain',
 ];
 
 const UNRANKED = 1000;
@@ -65,7 +65,7 @@ export class RendererRegistry {
     }
     return () => {
       for (const mime of renderer.mimeTypes) {
-        const list = (this.byMime.get(mime) ?? []).filter((r) => r !== renderer);
+        const list = (this.byMime.get(mime) ?? []).filter(r => r !== renderer);
         if (list.length) this.byMime.set(mime, list);
         else this.byMime.delete(mime);
       }
