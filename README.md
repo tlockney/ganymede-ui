@@ -35,13 +35,18 @@ build: `npm run build && npm run preview` (same proxy, port 4173). To point a
 deployed copy at a server on another origin, start Ganymede with
 `--allow-origin <app origin>` and enter its URL in the sheet.
 
-`npm run check` type-checks the app and checks the dev log, `npm test` runs the client package's
-tests, and `npm run build` builds the app; CI runs all three.
+`npm run check` type-checks the app and the end-to-end tests and checks
+the dev log, `npm test` runs the client package's tests, and
+`npm run build` builds the app.
 
-`node scripts/screenshots.mjs <url> <token> <dir> [light|dark]` drives the
-built app with Playwright against a server that has `Galilean moons.ipynb`.
+`npm run build && npm run e2e` runs the Playwright suite in `e2e/`
+against a real `ganymede serve` it starts on a copy of
+`e2e/fixtures/Galilean moons.ipynb`. It needs `ganymede` on `PATH` (or
+`GANYMEDE_BIN`) and cdp-kernel's `cdp-node` kernelspec, and no Python.
+It also writes light and dark screenshots to `test-results/screenshots/`,
+the source of the images in `screenshots/`. CI runs all of the above.
 `node scripts/render-icons.mjs` regenerates the PNG icons from
-`public/icons/icon.svg`. Both need the `playwright` package.
+`public/icons/icon.svg`.
 
 ## How it fits together
 
