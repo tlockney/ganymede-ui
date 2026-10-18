@@ -39,6 +39,12 @@ deployed copy at a server on another origin, start Ganymede with
 the dev log, `npm test` runs the client package's tests, and
 `npm run build` builds the app.
 
+Releases are cut with `scripts/release.sh <patch|minor|major|X.Y.Z>`, a
+dry run by default; `--execute` opens the release pull request. Merging it
+tags `vX.Y.Z` and publishes the built app (`ganymede-ui-X.Y.Z.tar.gz` and
+`.zip`, a static site) to GitHub Releases. See
+[docs/releasing.md](docs/releasing.md) and [CHANGELOG.md](CHANGELOG.md).
+
 `npm run build && npm run e2e` runs the Playwright suite in `e2e/`
 against a real `ganymede serve` it starts on a copy of
 `e2e/fixtures/Galilean moons.ipynb`. It needs `ganymede` on `PATH` (or
