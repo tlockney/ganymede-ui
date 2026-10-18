@@ -29,7 +29,14 @@ const sockets = vi.hoisted(() => {
 
 import type { ServiceManager } from '@jupyterlab/services';
 import { fakeBackend, fakeServices } from '../test/fakes';
-import { type Backend, connect, loadConfig, saveConfig, trustNotebook } from './backends';
+import {
+  type Backend,
+  connect,
+  loadConfig,
+  saveConfig,
+  signedInHere,
+  trustNotebook,
+} from './backends';
 
 const KERNELSPECS = {
   default: 'python3',
@@ -214,6 +221,30 @@ describe('trustNotebook', () => {
     const { services } = fakeServices();
     await trustNotebook(fakeBackend(services, { kind: 'browser' }), 'Untitled.ipynb');
     expect(fetch).not.toHaveBeenCalled();
+  });
+});
+
+describe('signedInHere', () => {
+  it("asks this page's server for its status on the login cookie", async () => {
+    const fetch = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetch);
+    expect(await signedInHere()).toBe(true);
+    const [url, init] = fetch.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(url.href).toBe(`${window.location.origin}/api/status`);
+    expect(init.credentials).toBe('same-origin');
+  });
+
+  it('is false when the server refuses, or there is none', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => new Response('', { status: 403 })),
+    );
+    expect(await signedInHere()).toBe(false);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => Promise.reject(new TypeError('Failed to fetch'))),
+    );
+    expect(await signedInHere()).toBe(false);
   });
 });
 

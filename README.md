@@ -35,6 +35,13 @@ service worker, use the production build:
 deployed copy at a server on another origin, start Ganymede with
 `--allow-origin <app origin>` and enter its URL in the sheet.
 
+Ganymede can also serve the built app itself, on its own origin:
+`npm run build`, then `ganymede serve --static-dir dist` and open the URL
+it prints. The server trades the token for a login cookie, and the app
+connects on that cookie. Changing anything (saving, starting kernels) needs
+the `_xsrf` cookie that Ganymede sets with the page, from
+[tlockney/ganymede#140](https://github.com/tlockney/ganymede/pull/140) on.
+
 `npm run check` type-checks the app, its tests and the end-to-end tests,
 checks the dev log, and runs ESLint and Prettier's check
 (`npm run lint`, `npm run format:check`; `npm run format` rewrites),
@@ -123,5 +130,6 @@ Known gaps are listed at the end of the [dev log archive](docs/notes/archive.md)
    a trust action are in; see the
    [dev log](docs/notes/2026-10-18-editor-features.md).)
 4. File operations (rename, delete, upload), a command palette, menus.
-5. Serve the built app from Ganymede itself (`--static-dir`-style), so an
-   installed PWA and the server share an origin.
+5. `ganymede ui install` in Ganymede, downloading a release of this app
+   the way `ganymede lab install` fetches JupyterLab. (Serving a build with
+   `--static-dir` works; see Run.)

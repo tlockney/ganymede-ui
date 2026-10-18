@@ -1,5 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
-import { type Backend, type BackendConfig, connect, loadConfig, saveConfig } from './lib/backends';
+import {
+  type Backend,
+  type BackendConfig,
+  connect,
+  loadConfig,
+  SAME_ORIGIN,
+  saveConfig,
+  signedInHere,
+} from './lib/backends';
 import { useColorScheme } from './lib/useColorScheme';
 import { useJupyterLabTheme } from './lib/theme';
 import { Sidebar } from './components/Sidebar';
@@ -29,9 +37,28 @@ export function App() {
   const [error, setError] = useState<string>();
   const [connecting, setConnecting] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(() => !config);
+  // With nothing to connect to yet, first check whether this page's server
+  // has us signed in; the sheet waits for the answer.
+  const [probing, setProbing] = useState(() => !config);
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 720);
   const [openPath, setOpenPath] = useState<string>();
   const [controller, setController] = useState<NotebookController>();
+
+  useEffect(() => {
+    if (!probing) return;
+    let cancelled = false;
+    void signedInHere().then(ok => {
+      if (cancelled) return;
+      if (ok) {
+        setConfig(SAME_ORIGIN);
+        setSheetOpen(false);
+      }
+      setProbing(false);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [probing]);
 
   useEffect(() => {
     if (!config) return;
@@ -137,7 +164,7 @@ export function App() {
           </div>
         </main>
       </div>
-      {sheetOpen && (
+      {sheetOpen && !probing && (
         <ConnectSheet
           initial={config}
           error={error}

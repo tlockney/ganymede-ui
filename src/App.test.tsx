@@ -8,11 +8,13 @@ import { entry, fakeBackend, fakeServices } from './test/fakes';
 // notebooks. The backends and the notebook pane are tested on their own.
 const mocks = vi.hoisted(() => ({
   connect: vi.fn<(c: BackendConfig) => Promise<Backend>>(),
+  signedInHere: vi.fn<() => Promise<boolean>>(),
 }));
 
 vi.mock('./lib/backends', async importOriginal => ({
   ...(await importOriginal<object>()),
   connect: mocks.connect,
+  signedInHere: mocks.signedInHere,
 }));
 
 vi.mock('./components/NotebookPane', () => ({
@@ -22,6 +24,7 @@ vi.mock('./components/NotebookPane', () => ({
 const { App } = await import('./App');
 
 beforeEach(() => {
+  mocks.signedInHere.mockReset().mockResolvedValue(false);
   localStorage.clear();
   history.replaceState(null, '', '/');
   vi.stubGlobal(
@@ -31,9 +34,9 @@ beforeEach(() => {
 });
 
 describe('App', () => {
-  it('asks where kernels run on first start', () => {
+  it('asks where kernels run on first start', async () => {
     render(<App />);
-    expect(screen.getByText('Where should kernels run?')).toBeInTheDocument();
+    expect(await screen.findByText('Where should kernels run?')).toBeInTheDocument();
     // Nothing to go back to yet.
     expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument();
     expect(mocks.connect).not.toHaveBeenCalled();
@@ -57,6 +60,17 @@ describe('App', () => {
     });
   });
 
+  it("connects on the login cookie when this page's server has us signed in", async () => {
+    mocks.signedInHere.mockResolvedValue(true);
+    const fake = fakeServices({ '': [{ name: 'Io.ipynb', type: 'notebook' }] });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    render(<App />);
+
+    expect(await screen.findByText('Io')).toBeInTheDocument();
+    expect(mocks.connect).toHaveBeenCalledWith({ kind: 'ganymede', url: '', token: '' });
+    expect(screen.queryByText('Where should kernels run?')).not.toBeInTheDocument();
+  });
+
   it('reconnects to the saved backend', async () => {
     localStorage.setItem('ganymede-ui:backend', JSON.stringify({ kind: 'browser' }));
     mocks.connect.mockResolvedValue(fakeBackend(fakeServices().services, { kind: 'browser' }));
@@ -68,7 +82,7 @@ describe('App', () => {
   it('shows a failed connection in the sheet', async () => {
     mocks.connect.mockRejectedValue(new Error('The server refused the token.'));
     render(<App />);
-    await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
+    await userEvent.click(await screen.findByRole('button', { name: 'Connect' }));
     expect(await screen.findByText('The server refused the token.')).toBeInTheDocument();
     expect(localStorage.getItem('ganymede-ui:backend')).toBeNull();
   });

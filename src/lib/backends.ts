@@ -82,6 +82,26 @@ export async function trustNotebook(backend: Backend, path: string): Promise<voi
   if (!res.ok) throw new Error(`The server answered ${res.status} to the trust request.`);
 }
 
+/**
+ * Whether this page's own server already has us signed in. Opened from the
+ * URL `ganymede serve` prints, the server trades the token for a login
+ * cookie and redirects, so the page arrives with no token to read; the
+ * cookie (and the `_xsrf` cookie the server sets with the page) is enough.
+ */
+export async function signedInHere(): Promise<boolean> {
+  try {
+    const res = await fetch(new URL('api/status', window.location.origin + '/'), {
+      credentials: 'same-origin',
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+/** This page's server, on its login cookie. */
+export const SAME_ORIGIN: BackendConfig = { kind: 'ganymede', url: '', token: '' };
+
 const KEY = 'ganymede-ui:backend';
 
 export function loadConfig(): BackendConfig | undefined {
