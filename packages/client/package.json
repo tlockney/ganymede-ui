@@ -1,9 +1,9 @@
 {
-  "name": "@ganymede/frontend",
+  "name": "@ganymede-ui/client",
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "TypeScript frontend sketch for Ganymede: protocol plumbing, ServerConnection shim, renderer and widget seams.",
+  "description": "Jupyter protocol plumbing for Ganymede UIs: websocket framing, connection layer, renderer and widget seams.",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "scripts": {

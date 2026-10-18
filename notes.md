@@ -86,3 +86,13 @@ notebook, run JavaScript in the Worker. Light and dark.
   Plotly, Primer and all of JupyterLab come with jupyter-react.
 - Not built: completion/inspection UI beyond JupyterLab's own, rename/delete
   files, find, command palette, menus, keyboard shortcut help, trust prompts.
+
+## 2026-10-18, later
+
+Moved out of tlockney/research into this repo. `main` starts from
+`git subtree split --prefix=ganymede-ui` of research, so the app's history
+came along. Ganymede's `frontend/` package came in the same way
+(`git subtree add --prefix=packages/client`), renamed `@ganymede-ui/client`,
+since this UI is its only consumer. The root `package.json` is the app and
+an npm workspace root for `packages/*`. Added CI (check, client tests,
+build on Node 24) and the MIT license, matching Ganymede.

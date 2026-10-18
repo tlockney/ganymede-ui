@@ -1,5 +1,5 @@
 /**
- * Ganymede frontend: public surface.
+ * Ganymede UI client: public surface.
  *
  * Layout mirrors the Rust crates (docs/architecture.md, Deployment profiles):
  *   protocol/    message types and websocket codecs (no I/O)

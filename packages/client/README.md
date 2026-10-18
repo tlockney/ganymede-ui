@@ -1,20 +1,23 @@
-# frontend
+# client
 
-TypeScript side of Ganymede: the module seams and the protocol
-plumbing described in [`docs/ui.md`](../docs/ui.md) and the seams in
-[`docs/architecture.md`](../docs/architecture.md), for a UI of Ganymede's
-own (step 2 of the [roadmap](../docs/roadmap.md)). It is not used by the
-server today: `ganymede lab` serves JupyterLab, whose own widget manager
-renders widgets. Here there is still no editor, no widget implementation,
-and no UI framework. The layout mirrors the Rust crates.
+Protocol plumbing for a Jupyter UI talking to Ganymede, with no UI
+framework: the module seams described in Ganymede's
+[`docs/ui.md`](https://github.com/tlockney/ganymede/blob/main/docs/ui.md)
+and [`docs/architecture.md`](https://github.com/tlockney/ganymede/blob/main/docs/architecture.md).
+It began as Ganymede's `frontend/` package and moved here with its history.
+The app at the repository root does not use it yet: it talks to servers
+through `@jupyterlab/services` and renders with JupyterLab via
+jupyter-react. This package is the starting point if the app drops
+jupyter-react, and the place for the in-page transport to a Web Worker
+kernel. There is no editor, no widget implementation, and no UI framework
+here.
 
 ## Run
 
 ```
-cd frontend
-npm install
-npm test        # tsc, then node --test over dist/**/*.test.js
-npm run check   # tsc --noEmit
+npm install                         # at the repository root (npm workspaces)
+npm test -w packages/client         # tsc, then node --test over dist/**/*.test.js
+npm run check -w packages/client    # tsc --noEmit
 ```
 
 Node 22 or later; CI runs it on Node 24. The only dependency is `typescript` (dev). Node's built-in test
