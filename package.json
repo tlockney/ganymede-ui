@@ -8,9 +8,10 @@
     "dev": "vite",
     "build": "tsc -p . && vite build",
     "preview": "vite preview",
-    "check": "tsc -p . && node scripts/check-notes.mjs",
+    "check": "tsc -p . && tsc -p e2e && node scripts/check-notes.mjs",
     "test": "vitest run && npm test -w packages/client",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@jupyter-widgets/base": "6.0.12",
@@ -42,10 +43,12 @@
     "react-dom": "19.2.8"
   },
   "devDependencies": {
+    "@playwright/test": "1.56.1",
     "@testing-library/dom": "10.4.2",
     "@testing-library/jest-dom": "7.0.1",
     "@testing-library/react": "16.3.3",
     "@testing-library/user-event": "14.6.7",
+    "@types/node": "24.19.2",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.5",
     "@vitejs/plugin-react": "^4.6.0",
