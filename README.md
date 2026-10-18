@@ -7,8 +7,11 @@ installable as a PWA. Kernels run either on a Ganymede server or in the
 browser.
 
 **Status:** working prototype. Runs notebooks against `ganymede serve` and
-against an in-browser JavaScript kernel in a Web Worker. Candidate for its own
-repo (`ganymede-ui`).
+against an in-browser JavaScript kernel in a Web Worker. Started in
+[tlockney/research](https://github.com/tlockney/research) and moved here with
+its history.
+
+[![CI](https://github.com/tlockney/ganymede-ui/actions/workflows/ci.yml/badge.svg)](https://github.com/tlockney/ganymede-ui/actions/workflows/ci.yml)
 
 ![Notebook on Ganymede, light](screenshots/notebook-light.png)
 
@@ -32,6 +35,9 @@ build: `npm run build && npm run preview` (same proxy, port 4173). To point a
 deployed copy at a server on another origin, start Ganymede with
 `--allow-origin <app origin>` and enter its URL in the sheet.
 
+`npm run check` type-checks the app, `npm test` runs the client package's
+tests, and `npm run build` builds the app; CI runs all three.
+
 `node scripts/screenshots.mjs <url> <token> <dir> [light|dark]` drives the
 built app with Playwright against a server that has `Galilean moons.ipynb`.
 `node scripts/render-icons.mjs` regenerates the PNG icons from
@@ -52,6 +58,12 @@ built app with Playwright against a server that has `Galilean moons.ipynb`.
   translucent source-list sidebar, sheets, segmented controls, system fonts
   and accent, light and dark from the system setting.
   `src/styles/jupyter.css` restyles JupyterLab through its CSS variables.
+- **Client package** ([`packages/client`](packages/client/)). Jupyter
+  protocol plumbing with no UI framework: the v1 websocket framing, a
+  connection layer, ANSI and stream handling, and renderer and widget seams.
+  It was Ganymede's `frontend/` package and moved here with its history. The
+  app doesn't use it yet; it's the base for dropping jupyter-react and for
+  the in-page transport to a Worker kernel.
 - **PWA** (`vite.config.ts`). Workbox precache, manifest with
   `window-controls-overlay`, Apple touch icon. `/api/` is never cached.
 
@@ -76,6 +88,7 @@ Known gaps are listed at the end of [notes.md](notes.md).
    JupyterLite kernel plugin, next to the JavaScript one.
 2. Decide on jupyter-react versus `@jupyterlab/notebook` directly; the latter
    would drop Primer, Pyodide and Plotly and most of the bundle.
+   `packages/client` covers the protocol side of that.
 3. Fix the in-browser kernel under `npm run dev` (exclude the Worker from
    pre-bundling) and serve JupyterLite's service worker without clashing
    with Workbox.
