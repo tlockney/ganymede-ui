@@ -8,8 +8,9 @@
     "dev": "vite",
     "build": "tsc -p . && vite build",
     "preview": "vite preview",
-    "check": "tsc -p . && node scripts/check-notes.mjs",
-    "test": "npm test -w packages/client"
+    "check": "tsc -p . && tsc -p e2e && node scripts/check-notes.mjs",
+    "test": "npm test -w packages/client",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@datalayer/jupyter-react": "^2.0.20",
@@ -19,6 +20,7 @@
     "react-dom": "19.2.8"
   },
   "devDependencies": {
+    "@playwright/test": "1.56.1",
     "@types/react": "19.2.18",
     "@types/react-dom": "19.2.5",
     "@vitejs/plugin-react": "^4.6.0",
