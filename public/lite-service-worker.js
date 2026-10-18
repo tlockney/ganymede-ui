@@ -27,7 +27,6 @@
  * A plain script, not a module, so `importScripts` can load it.
  */
 
-/* eslint-disable no-restricted-globals */
 (() => {
   const channel = new BroadcastChannel('/sw-api.v1');
 

@@ -12,7 +12,14 @@ type Props = {
 };
 
 /** A macOS-style sheet: pick where kernels run. */
-export function ConnectSheet({ initial, error, connecting, canCancel, onCancel, onConnect }: Props) {
+export function ConnectSheet({
+  initial,
+  error,
+  connecting,
+  canCancel,
+  onCancel,
+  onConnect,
+}: Props) {
   const [kind, setKind] = useState<BackendConfig['kind']>(initial?.kind ?? 'ganymede');
   const [url, setUrl] = useState(initial?.kind === 'ganymede' ? initial.url : '');
   const [token, setToken] = useState(initial?.kind === 'ganymede' ? initial.token : '');

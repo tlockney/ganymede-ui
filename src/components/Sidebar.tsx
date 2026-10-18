@@ -123,7 +123,12 @@ export function Sidebar({ backend, connecting, openPath, onOpen, onNew, onConnec
                 <li key={s.id} className="running-item">
                   <button className="source-item" onClick={() => onOpen(s.path)}>
                     <span className="status-dot s-idle" />
-                    <span className="item-name">{s.path.split('/').pop()?.replace(/\.ipynb$/, '')}</span>
+                    <span className="item-name">
+                      {s.path
+                        .split('/')
+                        .pop()
+                        ?.replace(/\.ipynb$/, '')}
+                    </span>
                     <span className="item-meta">{s.kernel?.name}</span>
                   </button>
                   <button

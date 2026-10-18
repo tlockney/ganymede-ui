@@ -136,10 +136,7 @@ export function Toolbar({ controller: c, sidebarOpen, onToggleSidebar, specs }: 
 
         {specs && c && (
           <label className="popup-button" title="Kernel">
-            <select
-              value={c.kernelName ?? ''}
-              onChange={e => void c.changeKernel(e.target.value)}
-            >
+            <select value={c.kernelName ?? ''} onChange={e => void c.changeKernel(e.target.value)}>
               {Object.values(specs.kernelspecs).map(s =>
                 s ? (
                   <option key={s.name} value={s.name}>

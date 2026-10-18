@@ -65,7 +65,8 @@ vi.mock('@jupyterlab/apputils', async importOriginal => {
   return { ...(await importOriginal<object>()), SessionContext };
 });
 
-const { NotebookPane, hasUntrustedOutputs } = await import('./NotebookPane');
+const { NotebookPane } = await import('./NotebookPane');
+const { hasUntrustedOutputs } = await import('../lib/trust');
 const { attachEditing } = await import('../lib/jupyterlab');
 const { trustNotebook } = await import('../lib/backends');
 const { NotebookModel: RealNotebookModel } = await import('@jupyterlab/notebook');

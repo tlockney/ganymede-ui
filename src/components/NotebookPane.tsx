@@ -1,18 +1,13 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { SessionContext } from '@jupyterlab/apputils';
-import type { ICodeCellModel } from '@jupyterlab/cells';
 import type * as nbformat from '@jupyterlab/nbformat';
 import { type Notebook, NotebookActions, NotebookModel } from '@jupyterlab/notebook';
 import type { Kernel } from '@jupyterlab/services';
 import type { IDisposable } from '@lumino/disposable';
 import { Widget } from '@lumino/widgets';
 import { type Backend, trustNotebook } from '../lib/backends';
-import {
-  attachEditing,
-  createCommands,
-  createNotebook,
-  createRendermime,
-} from '../lib/jupyterlab';
+import { attachEditing, createCommands, createNotebook, createRendermime } from '../lib/jupyterlab';
+import { hasUntrustedOutputs } from '../lib/trust';
 import type { NotebookWidgets } from '../lib/widgets';
 
 export type KernelState = Kernel.Status | 'connecting';
@@ -80,21 +75,6 @@ type Open = {
   widgets: NotebookWidgets;
   disposables: IDisposable[];
 };
-
-/**
- * Whether any code cell has outputs that render as untrusted (sanitized
- * HTML, no JavaScript): loaded from a file that wasn't signed, and not run
- * since. Cells without outputs have nothing to hide.
- */
-export function hasUntrustedOutputs(model: NotebookModel): boolean {
-  for (let i = 0; i < model.cells.length; i++) {
-    const cell = model.cells.get(i);
-    if (cell.type === 'code' && !cell.trusted && (cell as ICodeCellModel).outputs.length > 0) {
-      return true;
-    }
-  }
-  return false;
-}
 
 /**
  * One notebook file: loads it through the contents API, joins or starts its
@@ -183,7 +163,10 @@ export function NotebookPane({ backend, path, onController }: Props) {
         disposables: [
           editing,
           notebookWidgets,
-          { dispose: () => document.removeEventListener('keydown', onKey, true), isDisposed: false },
+          {
+            dispose: () => document.removeEventListener('keydown', onKey, true),
+            isDisposed: false,
+          },
         ],
       };
       setOpen(current);

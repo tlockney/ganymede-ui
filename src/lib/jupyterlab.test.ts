@@ -18,9 +18,8 @@ globalThis.requestIdleCallback ??= ((cb: () => void) =>
 Range.prototype.getClientRects ??= () => [] as unknown as DOMRectList;
 Range.prototype.getBoundingClientRect ??= () => new DOMRect();
 
-const { attachEditing, createCommands, createNotebook, createRendermime } = await import(
-  './jupyterlab'
-);
+const { attachEditing, createCommands, createNotebook, createRendermime } =
+  await import('./jupyterlab');
 const { NotebookModel } = await import('@jupyterlab/notebook');
 const { Widget } = await import('@lumino/widgets');
 
@@ -29,7 +28,14 @@ const CONTENT: nbformat.INotebookContent = {
   nbformat_minor: 5,
   metadata: {},
   cells: [
-    { cell_type: 'code', id: 'a', source: 'moons = 4\nprint', metadata: {}, outputs: [], execution_count: null },
+    {
+      cell_type: 'code',
+      id: 'a',
+      source: 'moons = 4\nprint',
+      metadata: {},
+      outputs: [],
+      execution_count: null,
+    },
     { cell_type: 'markdown', id: 'b', source: 'Ganymede and Io', metadata: {} },
   ],
 };

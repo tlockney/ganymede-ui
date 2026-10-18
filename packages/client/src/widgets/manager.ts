@@ -28,10 +28,10 @@ import type {
   CommMsgContent,
   CommOpenContent,
   Message,
-} from "../protocol/messages.js";
+} from '../protocol/messages.js';
 
-export const WIDGET_COMM_TARGET = "jupyter.widget";
-export const WIDGET_CONTROL_COMM_TARGET = "jupyter.widget.control";
+export const WIDGET_COMM_TARGET = 'jupyter.widget';
+export const WIDGET_CONTROL_COMM_TARGET = 'jupyter.widget.control';
 
 export interface WidgetViewData {
   model_id: string;
@@ -58,7 +58,11 @@ export interface WidgetManager {
  * comm messages back. Kept narrow so the manager can be tested with a fake.
  */
 export interface CommSender {
-  sendCommMsg(commId: string, data: Record<string, unknown>, buffers?: ArrayBuffer[]): Promise<void>;
+  sendCommMsg(
+    commId: string,
+    data: Record<string, unknown>,
+    buffers?: ArrayBuffer[],
+  ): Promise<void>;
   sendCommClose(commId: string, data?: Record<string, unknown>): Promise<void>;
   sendCommOpen(commId: string, targetName: string, data: Record<string, unknown>): Promise<void>;
 }

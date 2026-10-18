@@ -39,11 +39,7 @@ export async function connect(config: BackendConfig): Promise<Backend> {
       init: { credentials: config.url ? 'include' : 'same-origin' },
     });
     // Fail fast with a readable error instead of a hung kernel list.
-    const res = await ServerConnection.makeRequest(
-      base + 'api/status',
-      {},
-      serverSettings,
-    );
+    const res = await ServerConnection.makeRequest(base + 'api/status', {}, serverSettings);
     if (!res.ok) {
       throw new Error(
         res.status === 403 || res.status === 401

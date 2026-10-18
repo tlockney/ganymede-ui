@@ -256,7 +256,12 @@ type CellAction = (notebook: Notebook) => void;
 
 /** The buttons on the active cell: JupyterLab's default cell toolbar. */
 const CELL_TOOLBAR: [name: string, icon: LabIcon, tooltip: string, action: CellAction][] = [
-  ['duplicate-cell', duplicateIcon, 'Duplicate cell', n => NotebookActions.duplicate(n, 'belowSelected')],
+  [
+    'duplicate-cell',
+    duplicateIcon,
+    'Duplicate cell',
+    n => NotebookActions.duplicate(n, 'belowSelected'),
+  ],
   ['move-cell-up', moveUpIcon, 'Move cell up', n => NotebookActions.moveUp(n)],
   ['move-cell-down', moveDownIcon, 'Move cell down', n => NotebookActions.moveDown(n)],
   ['insert-cell-above', addAboveIcon, 'Insert cell above', n => NotebookActions.insertAbove(n)],

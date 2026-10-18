@@ -23,14 +23,9 @@
  *    does not implement it and throws instead.
  */
 
-import {
-  isChannel,
-  type Channel,
-  type JsonObject,
-  type Message,
-} from "./messages.js";
+import { isChannel, type Channel, type JsonObject, type Message } from './messages.js';
 
-export const WS_SUBPROTOCOL_V1 = "v1.kernel.websocket.jupyter.org";
+export const WS_SUBPROTOCOL_V1 = 'v1.kernel.websocket.jupyter.org';
 
 export interface ChannelMessage<C = JsonObject> {
   channel: Channel;
@@ -38,7 +33,7 @@ export interface ChannelMessage<C = JsonObject> {
 }
 
 const encoder = new TextEncoder();
-const decoder = new TextDecoder("utf-8", { fatal: true });
+const decoder = new TextDecoder('utf-8', { fatal: true });
 
 function toBytes(data: ArrayBuffer | ArrayBufferView): Uint8Array {
   if (ArrayBuffer.isView(data)) {
@@ -59,7 +54,7 @@ export function encodeV1(channel: Channel, message: Message<unknown>): ArrayBuff
     encoder.encode(JSON.stringify(message.parent_header ?? {})),
     encoder.encode(JSON.stringify(message.metadata ?? {})),
     encoder.encode(JSON.stringify(message.content)),
-    ...(message.buffers ?? []).map((b) => toBytes(b)),
+    ...(message.buffers ?? []).map(b => toBytes(b)),
   ];
   const channelBytes = encoder.encode(channel);
 
@@ -85,7 +80,7 @@ export function decodeV1<C = JsonObject>(frame: ArrayBuffer | ArrayBufferView): 
   const bytes = toBytes(frame);
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   if (bytes.byteLength < 8) {
-    throw new Error("ws v1: frame shorter than the offset count");
+    throw new Error('ws v1: frame shorter than the offset count');
   }
   const offsetCount = Number(view.getBigUint64(0, true));
   // channel + four JSON parts means at least 6 offsets.
@@ -97,15 +92,15 @@ export function decodeV1<C = JsonObject>(frame: ArrayBuffer | ArrayBufferView): 
     offsets.push(Number(view.getBigUint64(8 * (1 + i), true)));
   }
   if (offsets[0] !== 8 * (1 + offsetCount)) {
-    throw new Error("ws v1: first offset does not match the prefix length");
+    throw new Error('ws v1: first offset does not match the prefix length');
   }
   for (let i = 1; i < offsets.length; i++) {
     if (offsets[i]! < offsets[i - 1]!) {
-      throw new Error("ws v1: offsets are not monotonic");
+      throw new Error('ws v1: offsets are not monotonic');
     }
   }
   if (offsets[offsets.length - 1] !== bytes.byteLength) {
-    throw new Error("ws v1: last offset does not equal the frame length");
+    throw new Error('ws v1: last offset does not equal the frame length');
   }
 
   const channel = decoder.decode(bytes.subarray(offsets[0], offsets[1]));
@@ -118,7 +113,7 @@ export function decodeV1<C = JsonObject>(frame: ArrayBuffer | ArrayBufferView): 
   }
   const json = (i: number): JsonObject => JSON.parse(decoder.decode(parts[i])) as JsonObject;
   const message: Message<C> = {
-    header: json(0) as Message["header"],
+    header: json(0) as Message['header'],
     parent_header: json(1),
     metadata: json(2),
     content: json(3) as C,
@@ -133,7 +128,7 @@ export function decodeV1<C = JsonObject>(frame: ArrayBuffer | ArrayBufferView): 
 
 export function encodeLegacy(channel: Channel, message: Message<unknown>): string {
   if (message.buffers && message.buffers.length > 0) {
-    throw new Error("legacy ws codec: binary buffers are not supported; use the v1 subprotocol");
+    throw new Error('legacy ws codec: binary buffers are not supported; use the v1 subprotocol');
   }
   return JSON.stringify({
     channel,
@@ -151,15 +146,15 @@ export function decodeLegacy<C = JsonObject>(text: string): ChannelMessage<C> {
     throw new Error(`legacy ws codec: unknown channel ${JSON.stringify(channel)}`);
   }
   if (Array.isArray(buffers) && buffers.length > 0) {
-    throw new Error("legacy ws codec: binary buffers are not supported");
+    throw new Error('legacy ws codec: binary buffers are not supported');
   }
-  if (typeof header !== "object" || header === null) {
-    throw new Error("legacy ws codec: missing header");
+  if (typeof header !== 'object' || header === null) {
+    throw new Error('legacy ws codec: missing header');
   }
   return {
     channel,
     message: {
-      header: header as Message["header"],
+      header: header as Message['header'],
       parent_header: (parent_header as JsonObject | undefined) ?? {},
       metadata: (metadata as JsonObject | undefined) ?? {},
       content: content as C,
