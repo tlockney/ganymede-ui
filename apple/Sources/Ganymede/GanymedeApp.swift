@@ -8,24 +8,30 @@ struct GanymedeApp: App {
     @StateObject private var model = AppModel.shared
 
     var body: some Scene {
-        WindowGroup {
-            ContentView()
-                .environmentObject(model)
-        }
         #if os(macOS)
-        .commands {
-            CommandGroup(after: .newItem) {
-                Button("Open Folder…") { model.chooseFolder() }
-                    .keyboardShortcut("o", modifiers: [.command, .shift])
+        window
+            .commands {
+                CommandGroup(after: .newItem) {
+                    Button("Open Folder…") { model.chooseFolder() }
+                        .keyboardShortcut("o", modifiers: [.command, .shift])
+                }
             }
-        }
         Settings {
             KernelServerView()
                 .environmentObject(model)
                 .frame(width: 460)
                 .padding()
         }
+        #else
+        window
         #endif
+    }
+
+    private var window: some Scene {
+        WindowGroup {
+            ContentView()
+                .environmentObject(model)
+        }
     }
 }
 
