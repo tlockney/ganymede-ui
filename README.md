@@ -6,7 +6,8 @@ installable as a PWA. Kernels run either on a Ganymede server or in the
 browser.
 
 **Status:** working prototype. Runs notebooks against `ganymede serve` and
-against an in-browser JavaScript kernel in a Web Worker. Started in
+against in-browser kernels in a Web Worker: cdp-kernel's TypeScript kernel and
+JupyterLite's JavaScript kernel. Started in
 [tlockney/research](https://github.com/tlockney/research) and moved here with
 its history.
 
@@ -73,10 +74,10 @@ the source of the images in `screenshots/`. CI runs all of the above.
 - **Backends** (`src/lib/backends.ts`). The UI only uses a
   `ServiceManager.IManager`. `ganymede` builds one over REST and websocket;
   `browser` builds JupyterLite's in-page server (`src/lib/lite.ts`,
-  `@jupyterlite/services`) with the JavaScript Web Worker kernel
-  (`@jupyterlite/javascript-kernel`), storing notebooks in IndexedDB. This is the
-  answer to the browser-kernel thread's UI question: a Worker cdp-kernel
-  becomes one more JupyterLite kernel plugin, and the app needs no change.
+  `@jupyterlite/services`) with two Web Worker kernels, storing notebooks in
+  IndexedDB: cdp-kernel's TypeScript kernel (`src/lib/cdp-kernel.ts`, from
+  `@tlockney/cdp-kernel/browser`), the default, and JupyterLite's JavaScript
+  kernel (`@jupyterlite/javascript-kernel`).
 - **Notebook** (`src/components/NotebookPane.tsx`). JupyterLab's
   `Notebook` widget with a `SessionContext`, which starts or rejoins the
   file's kernel. The pane tracks status, and loads and saves nbformat
