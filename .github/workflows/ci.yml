@@ -85,7 +85,7 @@ jobs:
     env:
       # The tlockney/ganymede commit whose ganymede-ffi the app links,
       # until a release ships the XCFramework.
-      GANYMEDE_REF: claude/ganymede-ui-ffi
+      GANYMEDE_REF: fef79a181a93e93c0245afc9ff4cef1f15146e5e # main after tlockney/ganymede#162
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
