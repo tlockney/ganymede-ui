@@ -20,6 +20,8 @@ built from the same sources (see
   its saved state.
 - Opened from the Finder, the app takes `PATH` from your login shell, so
   kernelspecs that run `node`, `deno` or `python3` start.
+- Downloads from the page (links with a `download` attribute, files an
+  output offers) ask where to save, starting in Downloads.
 - Quitting shuts every kernel down.
 - Not sandboxed: the App Sandbox does not allow launching kernels. It is
   meant to be signed with a Developer ID and notarized.
@@ -32,6 +34,7 @@ On iPadOS and iOS (`Ganymede-iOS` target, iOS 16 or later):
 - iOS does not let an app launch kernel processes, so for now notebooks
   open and save but do not run. An on-device kernel or remote kernels
   come next.
+- Downloads open the share sheet, where Save to Files keeps them.
 - iOS may close the server's socket while the app is in the background;
   back in the foreground the app restarts the server if it stopped
   answering, on the same port.
