@@ -19,7 +19,28 @@ its history.
 | -------------------------------------- | ---------------------------------------------------------- |
 | ![Dark](screenshots/notebook-dark.png) | ![Web Worker kernel](screenshots/browser-kernel-light.png) |
 
+## Where notebooks and kernels live
+
+![Three backends: a Ganymede server with notebooks on disk and kernels as processes; Ganymede with kernels in the page; and this browser, with notebooks in IndexedDB and kernels in Web Workers.](docs/images/backends.svg)
+
+| Mode                      | Notebooks                         | Kernels                                                                                               |
+| ------------------------- | --------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| Ganymede server           | Files in the folder it serves     | Any kernelspec installed on the server: TypeScript via cdp-kernel, Python via ipykernel, R, and so on |
+| Ganymede, kernels in page | Files in the folder it serves     | The two in-browser kernels below                                                                      |
+| This browser (no server)  | The browser's storage (IndexedDB) | cdp-kernel's TypeScript (the default) and JupyterLite's JavaScript, in a Web Worker                   |
+
+There is no Python in the browser: no Pyodide, unlike JupyterLite. Python
+runs only on a server, through an installed ipykernel. Compared with
+JupyterLab, the app is the notebook alone (a file list, the running
+kernels, no terminals, consoles or extensions); compared with JupyterLite,
+it also runs against a real server.
+
 ## Run
+
+You need Node.js 22.12 or later (CI uses 24). The server modes need
+[Ganymede](https://ganymede-server.com/docs/install) 0.3.0 or later and a
+kernel on it, such as cdp-kernel's TypeScript kernel, which Ganymede's
+install script sets up.
 
 ```sh
 ganymede serve --port 8888 --token test     # in a folder of notebooks
@@ -30,44 +51,74 @@ npm run dev                                 # http://localhost:5173/?token=test
 The dev server proxies `/api` to `GANYMEDE_URL` (default
 `http://127.0.0.1:8888`), so the page and the server share an origin. A token
 in the page URL connects at once; otherwise a sheet asks where kernels run.
-The in-browser kernel works in both; to test offline use and Workbox's
-service worker, use the production build:
-`npm run build && npm run preview` (same proxy, port 4173). To point a
-deployed copy at a server on another origin, start Ganymede with
-`--allow-origin <app origin>` and enter its URL in the sheet.
+"This browser" needs no server at all. `npm run build && npm run preview`
+(same proxy, port 4173) runs the production build, with offline use and
+Workbox's service worker.
 
-Ganymede can also serve the built app itself, on its own origin:
-`npm run build`, then `ganymede serve --static-dir dist` and open the URL
-it prints. The server trades the token for a login cookie, and the app
-connects on that cookie. Changing anything (saving, starting kernels) needs
-the `_xsrf` cookie that Ganymede sets with the page, from Ganymede 0.3.0
-on. `ganymede ui install` and `ganymede ui` fetch and serve a release.
+To use the app for real, have Ganymede serve the built app
+(`ganymede serve --static-dir dist`, or a release), or host it anywhere
+and connect it to a server with `--allow-origin`.
+[docs/deploying.md](docs/deploying.md) has both setups step by step.
 
 [`apple/`](apple/README.md) builds a Mac and an iPad/iPhone app that run
 Ganymede in their own process and show this app in a web view.
 
-`npm run check` type-checks the app, its tests and the end-to-end tests,
-checks the dev log, and runs ESLint and Prettier's check
-(`npm run lint`, `npm run format:check`; `npm run format` rewrites),
-`npm test` runs the app's unit tests (Vitest,
-jsdom, next to the code as `*.test.ts(x)`) and the client package's
-tests, `npm run test:coverage` prints a coverage summary, and
-`npm run build` builds the app.
+## Using it
 
-Releases are cut with `scripts/release.sh <patch|minor|major|X.Y.Z>`, a
-dry run by default; `--execute` opens the release pull request. Merging it
-tags `vX.Y.Z` and publishes the built app (`ganymede-ui-X.Y.Z.tar.gz` and
-`.zip`, a static site) to GitHub Releases. See
-[docs/releasing.md](docs/releasing.md) and [CHANGELOG.md](CHANGELOG.md).
+Open a notebook from the sidebar, which also lists running kernels. The
+toolbar runs, interrupts and restarts the kernel, switches kernels, trusts
+the notebook, downloads it, and saves (⌘S). Keyboard shortcuts follow
+JupyterLab's; press `H` in command mode (or the keyboard button) for the
+full list. Every shortcut can be rebound there, and changes stay in this
+browser. [docs/shortcuts.md](docs/shortcuts.md) lists the defaults.
 
-`npm run build && npm run e2e` runs the Playwright suite in `e2e/`
-against a real `ganymede serve` it starts on a copy of
-`e2e/fixtures/Galilean moons.ipynb`. It needs `ganymede` on `PATH` (or
-`GANYMEDE_BIN`) and cdp-kernel's `cdp-node` kernelspec, and no Python.
-It also writes light and dark screenshots to `test-results/screenshots/`,
-the source of the images in `screenshots/`. CI runs all of the above.
-`node scripts/render-icons.mjs` regenerates the PNG icons from
-`public/icons/icon.svg`.
+## Where your data lives
+
+- **This browser:** notebooks are stored in the browser's IndexedDB for this
+  origin, and kernels run in the page. Nothing is sent anywhere. Clearing
+  the site's data deletes the notebooks.
+- **Ganymede:** notebooks are files in the folder the server serves, and
+  kernels run where the server runs them.
+- **The connection:** the chosen backend, including the server URL and
+  token, is saved in the browser's local storage
+  (`ganymede-ui:backend`) and used on the next visit. Any script on the
+  page's origin can read it, including the HTML and JavaScript output of a
+  notebook you trust ([#55](https://github.com/tlockney/ganymede-ui/issues/55)
+  tracks keeping it out). A `?token=` in the page URL is removed from the
+  address bar once read. Served by Ganymede, the app connects on the login
+  cookie and saves no token.
+- **Trust:** Ganymede signs a notebook you trust, as Jupyter does, so its
+  outputs render when reopened. The browser backend keeps no signatures, so
+  trust lasts while the notebook is open.
+
+Ganymede's [security page](https://ganymede-server.com/docs/security)
+covers tokens, cookies and cross-origin access on the server side.
+
+## Known gaps
+
+It is a prototype. What it doesn't do yet, or does roughly:
+
+- **Saving is manual.** There is no autosave and no warning when a tab
+  with unsaved changes closes
+  ([#56](https://github.com/tlockney/ganymede-ui/issues/56)). A save
+  overwrites the file even if it changed on disk
+  ([#57](https://github.com/tlockney/ganymede-ui/issues/57)), and a failed
+  save, restart or kernel change shows no error
+  ([#58](https://github.com/tlockney/ganymede-ui/issues/58)).
+- **Trusted output runs in the app's page**, not a sandboxed frame
+  ([#35](https://github.com/tlockney/ganymede-ui/issues/35)), and the token
+  sits in local storage ([#55](https://github.com/tlockney/ganymede-ui/issues/55)).
+- **Switching backends** leaves the old backend's kernels running with no
+  way to reach them from the app
+  ([#62](https://github.com/tlockney/ganymede-ui/issues/62)).
+- **No file operations** beyond new notebook: no rename, delete or upload.
+  No command palette or menus (the Mac app has a menu bar).
+- **Widgets** need a running kernel; saved widget state isn't restored
+  without one.
+- **The Mac app** is a CI build, ad-hoc signed and not notarized; the iPad
+  app is built from source with Xcode.
+
+[Issues](https://github.com/tlockney/ganymede-ui/issues) has the full list.
 
 ## How it fits together
 
@@ -111,36 +162,15 @@ picture, and the Ganymede site shows it at
   in-browser kernels read and write notebook files and ask for stdin
   synchronously; `npm run dev` registers the relay alone.
 
-## Findings
+## Background
 
-- The prototype started on datalayer/jupyter-ui (`@datalayer/jupyter-react`)
-  and moved to JupyterLab's packages directly; see the
-  [dev log](docs/notes/2026-10-18-drop-jupyter-react.md).
-- Ganymede needed no changes. `@jupyterlab/services` works against it as is,
-  through a proxy that rewrites `Origin`, or cross-origin with
-  `--allow-origin`.
-- Restyling via JupyterLab's CSS variables gets most of the native look;
-  fighting Lumino's layout does not (the notebook must scroll itself).
-- Bundle: 2.2 MB main chunk (620 KB gzip), 5.5 MB precached. Moving
-  off jupyter-react brought it down from 3.5 MB and 8.3 MB (it pulled in
-  Pyodide, Plotly and Primer whether used or not); completion, tooltips,
-  find and the cell toolbar then added 125 KB. The rest is mostly JupyterLab's notebook,
-  apputils and ui-components.
+The app started on datalayer/jupyter-ui and moved to JupyterLab's packages
+used directly, which cut the precached size from 8.3 MB to 5.5 MB; Ganymede
+needed no changes to serve it. The [dev log](docs/notes.md) records each
+step, what was checked, and what broke.
 
-Known gaps are listed at the end of the [dev log archive](docs/notes/archive.md). Work is tracked in [issues](https://github.com/tlockney/ganymede-ui/issues); see [CONTRIBUTING.md](CONTRIBUTING.md).
+## Contributing
 
-## Next
-
-1. Wire in the Worker cdp-kernel from the browser-kernel thread as a
-   JupyterLite kernel plugin, next to the JavaScript one.
-2. Give the Worker cdp-kernel file access and `input()` through the
-   service-worker relay, now served inside the Workbox worker (see the
-   [dev log](docs/notes/2026-10-18-lite-service-worker.md)).
-3. Restore saved widget state when no kernel has the widgets; a trust
-   indicator. (Completion, inspection tooltips, find, the cell toolbar and
-   a trust action are in; see the
-   [dev log](docs/notes/2026-10-18-editor-features.md).)
-4. File operations (rename, delete, upload), a command palette, menus.
-5. Kernels in the iPadOS app: the on-device cdp-kernel, passed to the
-   server through tlockney/ganymede#165's `Startup` fields, or remote
-   kernels.
+[CONTRIBUTING.md](CONTRIBUTING.md) has the commands (checks, tests,
+end-to-end tests, releases) and how changes are made. Work is tracked in
+[issues](https://github.com/tlockney/ganymede-ui/issues).
