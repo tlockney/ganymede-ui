@@ -19,6 +19,7 @@ import { JavaScriptKernel } from '@jupyterlite/javascript-kernel';
 import { Signal, Stream } from '@lumino/signaling';
 import localforage from 'localforage';
 import { WebSocket } from 'mock-socket';
+import { CDP_KERNEL_SPEC, CdpBrowserKernel } from './cdp-kernel';
 import { ServiceWorkerBridge } from './lite-sw';
 
 /**
@@ -60,7 +61,7 @@ export async function createLiteServices(): Promise<ServiceManager.IManager> {
   const contents = new ContentsManager({ defaultDrive: drive, serverSettings });
 
   const kernelSpecs = new KernelSpecs();
-  const kernelClient = new LiteKernelClient({ kernelSpecs, serverSettings });
+  const kernelClient = new CdpAwareKernelClient({ kernelSpecs, serverSettings });
 
   // Relays kernels' synchronous file and stdin requests through the service
   // worker (see lite-sw.ts). Set up in the background: kernels that never
@@ -82,6 +83,10 @@ export async function createLiteServices(): Promise<ServiceManager.IManager> {
       resources: {},
     },
     create: async options => new DriveJavaScriptKernel({ ...options, runtime: 'worker' }, bridge),
+  });
+  kernelSpecs.register({
+    spec: CDP_KERNEL_SPEC,
+    create: async options => new CdpBrowserKernel(options),
   });
 
   const kernelSpecClient = new LiteKernelSpecClient({ kernelSpecs, serverSettings });
@@ -111,6 +116,23 @@ export async function createLiteServices(): Promise<ServiceManager.IManager> {
   });
   await services.ready;
   return services;
+}
+
+/**
+ * JupyterLite interrupts a kernel by cancelling its own message queue,
+ * which cdp-kernel's kernel doesn't use: it gets an `interrupt_request`.
+ */
+class CdpAwareKernelClient extends LiteKernelClient {
+  async interrupt(kernelId: string): Promise<void> {
+    // `_kernels` is LiteKernelClient's private map of running kernels.
+    const kernels = (this as unknown as { _kernels: Map<string, unknown> })._kernels;
+    const kernel = kernels.get(kernelId);
+    if (kernel instanceof CdpBrowserKernel) {
+      kernel.interrupt();
+      return;
+    }
+    return super.interrupt(kernelId);
+  }
 }
 
 /** Stops the relay along with the rest when the backend is switched. */

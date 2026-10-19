@@ -1,5 +1,6 @@
-// The in-browser backend: JupyterLite's in-page server with the JavaScript
-// kernel in a Web Worker. Needs no server, only the production build.
+// The in-browser backend: JupyterLite's in-page server with cdp-kernel's
+// browser kernel (the default) and the JavaScript kernel, cells in Web
+// Workers. Needs no server, only the production build.
 import { expect, test } from '@playwright/test';
 import { outputs, screenshot, waitForIdle } from './helpers';
 
@@ -20,9 +21,10 @@ for (const colorScheme of ['light', 'dark'] as const) {
     await waitForIdle(page);
 
     await page.locator('.jp-Cell .cm-content').first().click();
+    // TypeScript: the default kernel is cdp-kernel's.
     await page.keyboard.type(
-      'const moons = ["Io", "Europa", "Ganymede", "Callisto"];\n' +
-        'moons.map(m => m.toUpperCase()).join(" · ")',
+      'const moons: string[] = ["Io", "Europa", "Ganymede", "Callisto"];\n' +
+        'moons.map((m: string) => m.toUpperCase()).join(" · ")',
     );
     await page.keyboard.press('Shift+Enter');
     await expect(outputs(page).filter({ hasText: 'GANYMEDE' })).toBeVisible({ timeout: 60_000 });
