@@ -4,6 +4,8 @@
 import { expect, test } from '@playwright/test';
 import { outputs, screenshot, waitForIdle } from './helpers';
 
+test.use({ deviceScaleFactor: 2 });
+
 for (const colorScheme of ['light', 'dark'] as const) {
   test(`runs JavaScript in a Web Worker (${colorScheme})`, async ({ page }, testInfo) => {
     await page.emulateMedia({ colorScheme });
@@ -28,7 +30,19 @@ for (const colorScheme of ['light', 'dark'] as const) {
     );
     await page.keyboard.press('Shift+Enter');
     await expect(outputs(page).filter({ hasText: 'GANYMEDE' })).toBeVisible({ timeout: 60_000 });
+    // Where it ran: no DOM, a Worker's global scope.
+    await page.locator('.jp-Cell .cm-content').nth(1).click();
+    await page.keyboard.type('[typeof document, self.constructor.name]');
+    await page.keyboard.press('Shift+Enter');
+    await expect(outputs(page).filter({ hasText: 'DedicatedWorkerGlobalScope' })).toBeVisible({
+      timeout: 60_000,
+    });
 
+    // Saved, out of edit mode, and cropped to the content for the README.
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: /^Save/ }).click();
+    await expect(page.getByText('— Edited')).toHaveCount(0);
+    await page.setViewportSize({ width: 1280, height: 520 });
     await screenshot(page, testInfo, `browser-kernel-${colorScheme}`);
   });
 }

@@ -75,7 +75,7 @@ export async function connect(config: BackendConfig): Promise<Backend> {
   return {
     config,
     label: 'This browser',
-    detail: 'JavaScript in a Web Worker',
+    detail: 'Kernels in this page, no server',
     services,
   };
 }

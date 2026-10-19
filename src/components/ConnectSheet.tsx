@@ -66,7 +66,9 @@ export function ConnectSheet({
           >
             <BrowserIcon width={28} height={28} />
             <span className="choice-title">This browser</span>
-            <span className="choice-detail">JavaScript in a Web Worker; works offline.</span>
+            <span className="choice-detail">
+              TypeScript or JavaScript, no server; works offline.
+            </span>
           </button>
         </div>
 

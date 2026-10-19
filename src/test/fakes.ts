@@ -86,7 +86,7 @@ export function fakeBackend(
   return {
     config,
     label: config.kind === 'browser' ? 'This browser' : 'Ganymede',
-    detail: config.kind === 'browser' ? 'JavaScript in a Web Worker' : 'local server',
+    detail: config.kind === 'browser' ? 'Kernels in this page, no server' : 'local server',
     services,
   };
 }

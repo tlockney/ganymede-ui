@@ -13,11 +13,18 @@ its history.
 
 [![CI](https://github.com/tlockney/ganymede-ui/actions/workflows/ci.yml/badge.svg)](https://github.com/tlockney/ganymede-ui/actions/workflows/ci.yml)
 
-![Notebook on Ganymede, light](screenshots/notebook-light.png)
+| Light                                                                                                                                                                                                                                          | Dark                                                                        |
+| ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- |
+| ![A TypeScript notebook on ganymede serve, light: console output, an array result, Markdown with math, HTML output, and a TypeError with its stack trace. The sidebar lists notebooks and the running kernel.](screenshots/notebook-light.png) | ![The same notebook in the dark appearance.](screenshots/notebook-dark.png) |
 
-| Dark                                   | In-browser kernel                                          |
-| -------------------------------------- | ---------------------------------------------------------- |
-| ![Dark](screenshots/notebook-dark.png) | ![Web Worker kernel](screenshots/browser-kernel-light.png) |
+_A notebook on `ganymede serve` running cdp-kernel's TypeScript kernel: stream, result, Markdown and math, HTML, and an error, saved._
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="screenshots/browser-kernel-dark.png">
+  <img alt="The app connected to &quot;This browser&quot; with no server: a new notebook whose TypeScript cells ran in the page, the second showing typeof document is undefined and the global scope is DedicatedWorkerGlobalScope." src="screenshots/browser-kernel-light.png">
+</picture>
+
+_No server required: notebooks in the browser's storage, and the TypeScript kernel running in a Web Worker in the page._
 
 ## Where notebooks and kernels live
 
