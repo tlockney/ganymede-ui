@@ -42,6 +42,9 @@ connects on that cookie. Changing anything (saving, starting kernels) needs
 the `_xsrf` cookie that Ganymede sets with the page, from Ganymede 0.3.0
 on. `ganymede ui install` and `ganymede ui` fetch and serve a release.
 
+On a Mac, [`apple/`](apple/README.md) builds an app that runs Ganymede in
+its own process and shows this app in a web view.
+
 `npm run check` type-checks the app, its tests and the end-to-end tests,
 checks the dev log, and runs ESLint and Prettier's check
 (`npm run lint`, `npm run format:check`; `npm run format` rewrites),
@@ -130,6 +133,5 @@ Known gaps are listed at the end of the [dev log archive](docs/notes/archive.md)
    a trust action are in; see the
    [dev log](docs/notes/2026-10-18-editor-features.md).)
 4. File operations (rename, delete, upload), a command palette, menus.
-5. `ganymede ui install` in Ganymede, downloading a release of this app
-   the way `ganymede lab install` fetches JupyterLab. (Serving a build with
-   `--static-dir` works; see Run.)
+5. The iPadOS app, from the macOS app's code, once Ganymede can run
+   kernels without ZeroMQ (tlockney/ganymede#160).

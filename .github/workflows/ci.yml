@@ -75,3 +75,45 @@ jobs:
             test-results
             playwright-report
           if-no-files-found: ignore
+
+  # The macOS app in apple/: builds ganymede-ffi as an XCFramework from
+  # tlockney/ganymede, bundles this repo's build, and runs the XCTest
+  # suite (the server started, serving the page, stopped).
+  macos-app:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    env:
+      # The tlockney/ganymede commit whose ganymede-ffi the app links,
+      # until a release ships the XCFramework.
+      GANYMEDE_REF: claude/ganymede-ui-ffi
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: tlockney/ganymede
+          ref: ${{ env.GANYMEDE_REF }}
+          path: .ganymede
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+          targets: aarch64-apple-darwin, x86_64-apple-darwin, aarch64-apple-ios, aarch64-apple-ios-sim
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          workspaces: .ganymede
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: brew install xcodegen
+      - run: apple/scripts/bootstrap.sh
+        env:
+          GANYMEDE_DIR: ${{ github.workspace }}/.ganymede
+      - name: Build and test
+        run: >
+          xcodebuild test -project apple/Ganymede.xcodeproj -scheme Ganymede
+          -destination platform=macOS -derivedDataPath apple/build/DerivedData
+          CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=

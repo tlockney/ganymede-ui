@@ -15,6 +15,8 @@ export default tseslint.config(
       'playwright-report',
       'test-results',
       'dev-dist',
+      'apple/build',
+      '.ganymede',
     ],
   },
   js.configs.recommended,
