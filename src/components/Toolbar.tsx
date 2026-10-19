@@ -2,6 +2,7 @@ import type { KernelSpec } from '@jupyterlab/services';
 import type { NotebookController } from './NotebookPane';
 import {
   CodeIcon,
+  DownloadIcon,
   ForwardIcon,
   PlayIcon,
   RestartIcon,
@@ -147,6 +148,15 @@ export function Toolbar({ controller: c, sidebarOpen, onToggleSidebar, specs }: 
             </select>
           </label>
         )}
+
+        <button
+          className="tb-button"
+          title="Download Notebook"
+          disabled={disabled}
+          onClick={() => c?.download()}
+        >
+          <DownloadIcon />
+        </button>
 
         <button
           className="tb-button"

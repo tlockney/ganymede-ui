@@ -7,6 +7,7 @@ import type { IDisposable } from '@lumino/disposable';
 import { Widget } from '@lumino/widgets';
 import { type Backend, trustNotebook } from '../lib/backends';
 import { attachEditing, createCommands, createNotebook, createRendermime } from '../lib/jupyterlab';
+import { downloadFile } from '../lib/download';
 import { hasUntrustedOutputs } from '../lib/trust';
 import type { NotebookWidgets } from '../lib/widgets';
 
@@ -22,6 +23,8 @@ export type NotebookController = {
   /** False while code cells show outputs from a file nobody trusted. */
   trusted: boolean;
   save(): Promise<void>;
+  /** Download the notebook as it is now, unsaved edits included, as .ipynb. */
+  download(): void;
   /** Trust the notebook: render its outputs in full, and sign it on the server. */
   trust(): Promise<void>;
   run(): Promise<void>;
@@ -259,6 +262,15 @@ export function NotebookPane({ backend, path, onController }: Props) {
           content: model.toJSON(),
         });
         model.dirty = false;
+      },
+      download: () => {
+        // Widget state goes in, as on save; that is not an edit.
+        const wasDirty = model.dirty;
+        widgets.saveState(model);
+        model.dirty = wasDirty;
+        // As nbformat writes it: one-space indent, trailing newline.
+        const text = JSON.stringify(model.toJSON(), null, 1) + '\n';
+        downloadFile(basename(path), text, 'application/x-ipynb+json');
       },
       trust: async () => {
         // As NotebookActions.trust, without its dialog: trusting a cell
