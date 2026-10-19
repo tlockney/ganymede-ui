@@ -110,7 +110,7 @@ describe('connect: ganymede', () => {
     expect(backend.services.kernelspecs.specs?.default).toBe('python3');
   });
 
-  it('uses the given server, trims trailing slashes and sends credentials', async () => {
+  it('uses the given server and trims trailing slashes; a token means no cookies', async () => {
     const { seen } = fakeServer();
     const backend = keep(
       await connect({ kind: 'ganymede', url: 'https://kernels.example:9999//', token: 't0k' }),
@@ -119,9 +119,18 @@ describe('connect: ganymede', () => {
     const settings = backend.services.serverSettings;
     expect(settings.baseUrl).toBe('https://kernels.example:9999/');
     expect(settings.wsUrl).toBe('wss://kernels.example:9999/');
-    expect(settings.init.credentials).toBe('include');
+    expect(settings.init.credentials).toBe('same-origin');
     expect(backend.detail).toBe('kernels.example:9999');
     expect(seen.every(r => r.url.startsWith('https://kernels.example:9999/api/'))).toBe(true);
+    expect(seen[0]!.credentials).toBe('same-origin');
+  });
+
+  it('sends cookies to another server when there is no token', async () => {
+    const { seen } = fakeServer();
+    const backend = keep(
+      await connect({ kind: 'ganymede', url: 'https://kernels.example:9999', token: '' }),
+    );
+    expect(backend.services.serverSettings.init.credentials).toBe('include');
     expect(seen[0]!.credentials).toBe('include');
   });
 

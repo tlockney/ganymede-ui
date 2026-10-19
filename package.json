@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
   "description": "A standalone notebook UI for Ganymede, built on JupyterLab's notebook packages.",
   "scripts": {
     "dev": "vite",
