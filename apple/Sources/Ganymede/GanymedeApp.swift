@@ -7,8 +7,10 @@ struct GanymedeApp: App {
     #endif
     @StateObject private var model = AppModel.shared
 
+    // Separate bodies, since a `#if` inside a scene builder that starts
+    // with a postfix member chain does not parse.
+    #if os(macOS)
     var body: some Scene {
-        #if os(macOS)
         window
             .commands {
                 CommandGroup(after: .newItem) {
@@ -22,10 +24,12 @@ struct GanymedeApp: App {
                 .frame(width: 460)
                 .padding()
         }
-        #else
-        window
-        #endif
     }
+    #else
+    var body: some Scene {
+        window
+    }
+    #endif
 
     private var window: some Scene {
         WindowGroup {
