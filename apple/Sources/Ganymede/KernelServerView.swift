@@ -57,8 +57,9 @@ struct KernelServerView: View {
 
     private var footer: String {
         #if os(iOS)
-        return "Notebooks stay on this device; their kernels run on a Jupyter or Ganymede server, "
-            + "such as `ganymede serve --ip 0.0.0.0` on your Mac. Running kernels are shut down when you save."
+        return "Leave empty to run TypeScript kernels on this device. Otherwise notebooks stay here and "
+            + "their kernels run on a Jupyter or Ganymede server, such as `ganymede serve --ip 0.0.0.0` "
+            + "on your Mac. Running kernels are shut down when you save."
         #else
         return "Leave empty to use the kernels installed on this Mac. Otherwise notebooks stay here and "
             + "their kernels run on that server. Running kernels are shut down when you save."

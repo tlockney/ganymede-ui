@@ -53,6 +53,23 @@ final class ServerHostTests: XCTestCase {
         XCTAssertThrowsError(try get(host.url))
     }
 
+    /// The app tells the page where kernels run with `kernels=` next to
+    /// the token; the server's login redirect drops only the token.
+    func testLoginRedirectKeepsTheKernelsParameter() throws {
+        let host = try ServerHost(config: config())
+        defer { host.stop() }
+        var parts = URLComponents(url: host.url, resolvingAgainstBaseURL: false)!
+        parts.queryItems = (parts.queryItems ?? []) + [URLQueryItem(name: "kernels", value: "page")]
+        var landed: URL?
+        let done = expectation(description: "redirect")
+        URLSession.shared.dataTask(with: parts.url!) { _, response, _ in
+            landed = response?.url
+            done.fulfill()
+        }.resume()
+        wait(for: [done], timeout: 10)
+        XCTAssertEqual(landed?.query, "kernels=page")
+    }
+
     /// A server whose kernels run on another one (`gateway_url`), here a
     /// second in-process server.
     func testKernelServerConfigIsAccepted() throws {

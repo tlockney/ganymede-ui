@@ -60,6 +60,22 @@ describe('App', () => {
     });
   });
 
+  it('runs kernels in the page when the URL asks for it', async () => {
+    history.replaceState(null, '', '/?kernels=page');
+    const fake = fakeServices({ '': [{ name: 'Io.ipynb', type: 'notebook' }] });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    render(<App />);
+
+    expect(mocks.connect).toHaveBeenCalledWith({
+      kind: 'ganymede',
+      url: '',
+      token: '',
+      kernels: 'page',
+    });
+    expect(window.location.search).toBe('');
+    expect(await screen.findByText('Io')).toBeInTheDocument();
+  });
+
   it("connects on the login cookie when this page's server has us signed in", async () => {
     mocks.signedInHere.mockResolvedValue(true);
     const fake = fakeServices({ '': [{ name: 'Io.ipynb', type: 'notebook' }] });

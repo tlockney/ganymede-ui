@@ -91,13 +91,29 @@ final class AppModel: ObservableObject {
                 host = try ServerHost(config: config.merging(["port": 0]) { $1 })
             }
             server = host
-            url = host.url
+            url = pageURL(host.url)
             if let port = host.url.port {
                 defaults.set(port, forKey: Keys.port)
             }
         } catch {
             self.error = error.localizedDescription
         }
+    }
+
+    /// The page to open, saying where kernels run: the page remembers its
+    /// last connection, so it is told every time. iOS can't launch kernel
+    /// processes, so without a kernel server the page runs its own
+    /// (cdp-kernel's TypeScript kernel in a Worker) and keeps notebooks on
+    /// the server.
+    private func pageURL(_ url: URL) -> URL {
+        #if os(iOS)
+        let kernels = kernelServerURL.isEmpty ? "page" : "server"
+        #else
+        let kernels = "server"
+        #endif
+        guard var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
+        parts.queryItems = (parts.queryItems ?? []) + [URLQueryItem(name: "kernels", value: kernels)]
+        return parts.url ?? url
     }
 
     func stop() {

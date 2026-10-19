@@ -47,6 +47,23 @@ describe('ConnectSheet', () => {
     });
   });
 
+  it('can keep notebooks on the server and run kernels in the page', async () => {
+    const { onConnect } = renderSheet();
+    await userEvent.click(screen.getByRole('checkbox', { name: /Run kernels in this page/ }));
+    await userEvent.click(connectButton());
+    expect(onConnect).toHaveBeenCalledWith({
+      kind: 'ganymede',
+      url: '',
+      token: '',
+      kernels: 'page',
+    });
+  });
+
+  it('remembers kernels in the page', () => {
+    renderSheet({ initial: { kind: 'ganymede', url: '', token: '', kernels: 'page' } });
+    expect(screen.getByRole('checkbox', { name: /Run kernels in this page/ })).toBeChecked();
+  });
+
   it('keeps the token hidden and the server field a URL', async () => {
     renderSheet();
     expect(token()).toHaveAttribute('type', 'password');

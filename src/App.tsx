@@ -18,17 +18,26 @@ import { EmptyState } from './components/EmptyState';
 import { ShortcutsSheet } from './components/ShortcutsSheet';
 import { SHOW_SHORTCUTS_EVENT, matches } from './lib/shortcuts';
 
-/** A token in the page URL, as `ganymede serve` prints it, wins once. */
+/**
+ * A token in the page URL, as `ganymede serve` prints it, wins once, and so
+ * does `kernels=page` or `kernels=server`, which the Apple apps add on
+ * every launch (`page` on an iPad without a kernel server).
+ */
 function initialConfig(): BackendConfig | undefined {
   const params = new URLSearchParams(window.location.search);
   const token = params.get('token');
-  if (token !== null) {
-    params.delete('token');
-    const rest = params.toString();
-    history.replaceState(null, '', window.location.pathname + (rest ? `?${rest}` : ''));
-    return { kind: 'ganymede', url: '', token };
-  }
-  return loadConfig();
+  const kernels = params.get('kernels');
+  if (token === null && kernels === null) return loadConfig();
+  params.delete('token');
+  params.delete('kernels');
+  const rest = params.toString();
+  history.replaceState(null, '', window.location.pathname + (rest ? `?${rest}` : ''));
+  return {
+    kind: 'ganymede',
+    url: '',
+    token: token ?? '',
+    ...(kernels === 'page' ? { kernels: 'page' as const } : {}),
+  };
 }
 
 export function App() {

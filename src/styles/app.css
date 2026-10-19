@@ -650,6 +650,20 @@ button {
   color: var(--text-2);
 }
 
+.form-rows label.check-row {
+  grid-template-columns: 56px auto 1fr;
+}
+
+.form-rows label.check-row > input {
+  grid-column: 2;
+  height: auto;
+}
+
+.form-rows label.check-row > span {
+  text-align: left;
+  color: var(--text);
+}
+
 .form-rows input {
   height: 26px;
   padding: 0 8px;

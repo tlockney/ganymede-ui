@@ -1,5 +1,5 @@
 import { URLExt } from '@jupyterlab/coreutils';
-import { ServerConnection, ServiceManager } from '@jupyterlab/services';
+import { ContentsManager, ServerConnection, ServiceManager } from '@jupyterlab/services';
 
 /**
  * Where notebooks, kernels and sessions come from.
@@ -16,6 +16,12 @@ export type BackendConfig =
       /** Server origin; empty means this page's origin (the dev proxy). */
       url: string;
       token: string;
+      /**
+       * `page` keeps notebooks on the server but runs kernels in this page,
+       * as the browser backend does: for a server with no kernels of its
+       * own, such as the one inside the iPad app.
+       */
+      kernels?: 'page';
     }
   | {
       kind: 'browser';
@@ -47,14 +53,17 @@ export async function connect(config: BackendConfig): Promise<Backend> {
           : `The server answered ${res.status}.`,
       );
     }
+    const host = config.url ? new URL(base).host : 'local server';
+    if (config.kernels === 'page') {
+      const { createLiteServices } = await import('./lite');
+      const services = await createLiteServices({
+        contents: new ContentsManager({ serverSettings }),
+      });
+      return { config, label: 'Ganymede', detail: `${host}, kernels in this page`, services };
+    }
     const services = new ServiceManager({ serverSettings });
     await services.ready;
-    return {
-      config,
-      label: 'Ganymede',
-      detail: config.url ? new URL(base).host : 'local server',
-      services,
-    };
+    return { config, label: 'Ganymede', detail: host, services };
   }
   // Loaded on demand: the in-browser server and its kernels are only
   // needed when this backend is picked.
@@ -76,7 +85,9 @@ export async function connect(config: BackendConfig): Promise<Backend> {
  */
 export async function trustNotebook(backend: Backend, path: string): Promise<void> {
   if (backend.config.kind !== 'ganymede') return;
-  const settings = backend.services.serverSettings;
+  // The contents' settings: with kernels in the page, the manager's own
+  // settings point at the page's fake server.
+  const settings = backend.services.contents.serverSettings;
   const url = URLExt.join(settings.baseUrl, 'api/contents', URLExt.encodeParts(path), 'trust');
   const res = await ServerConnection.makeRequest(url, { method: 'POST' }, settings);
   if (!res.ok) throw new Error(`The server answered ${res.status} to the trust request.`);

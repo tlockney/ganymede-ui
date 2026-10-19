@@ -77,7 +77,10 @@ the source of the images in `screenshots/`. CI runs all of the above.
   `@jupyterlite/services`) with two Web Worker kernels, storing notebooks in
   IndexedDB: cdp-kernel's TypeScript kernel (`src/lib/cdp-kernel.ts`, from
   `@tlockney/cdp-kernel/browser`), the default, and JupyterLite's JavaScript
-  kernel (`@jupyterlite/javascript-kernel`).
+  kernel (`@jupyterlite/javascript-kernel`). A `ganymede` connection with
+  `kernels: 'page'` (the sheet's "Run kernels in this page", or
+  `?kernels=page` in the URL, which the iPad app uses) keeps notebooks on
+  the server and runs these kernels in the page.
 - **Notebook** (`src/components/NotebookPane.tsx`). JupyterLab's
   `Notebook` widget with a `SessionContext`, which starts or rejoins the
   file's kernel. The pane tracks status, and loads and saves nbformat

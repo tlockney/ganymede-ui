@@ -192,6 +192,37 @@ describe('connect: browser', () => {
   });
 });
 
+describe('connect: ganymede, kernels in the page', () => {
+  it('keeps notebooks on the server and runs the browser kernels', async () => {
+    const { fetch, seen } = fakeServer();
+    const backend = keep(
+      await connect({
+        kind: 'ganymede',
+        url: 'https://ipad.example:8888',
+        token: 't0k',
+        kernels: 'page',
+      }),
+    );
+    expect(backend.label).toBe('Ganymede');
+    expect(backend.detail).toBe('ipad.example:8888, kernels in this page');
+
+    const specs = backend.services.kernelspecs.specs;
+    expect(specs?.default).toBe('cdp-browser');
+    // Only the status check went to the server; kernels never do.
+    expect(seen.map(s => new URL(s.url).pathname)).toEqual(['/api/status']);
+
+    const contents = backend.services.contents.serverSettings;
+    expect(contents.baseUrl).toBe('https://ipad.example:8888/');
+    expect(contents.token).toBe('t0k');
+
+    fetch.mockClear();
+    await trustNotebook(backend, 'Io.ipynb');
+    const req = fetch.mock.calls[0]![0] as Request;
+    expect(req.url.split('?')[0]).toBe('https://ipad.example:8888/api/contents/Io.ipynb/trust');
+    expect(req.headers.get('Authorization')).toBe('token t0k');
+  });
+});
+
 describe('trustNotebook', () => {
   const lastRequest = (fetch: ReturnType<typeof vi.fn>) =>
     fetch.mock.calls[fetch.mock.calls.length - 1]![0] as Request;
