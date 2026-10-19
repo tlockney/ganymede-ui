@@ -117,6 +117,19 @@ jobs:
           xcodebuild test -project apple/Ganymede.xcodeproj -scheme Ganymede
           -destination platform=macOS -derivedDataPath apple/build/DerivedData
           CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=
+      - name: Build the app for download
+        run: |
+          xcodebuild build -project apple/Ganymede.xcodeproj -scheme Ganymede \
+            -configuration Release -destination 'generic/platform=macOS' \
+            -derivedDataPath apple/build/DerivedData \
+            CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=
+          ditto -c -k --keepParent \
+            apple/build/DerivedData/Build/Products/Release/Ganymede.app apple/build/Ganymede-macOS.zip
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Ganymede-macOS
+          path: apple/build/Ganymede-macOS.zip
+          if-no-files-found: error
       - name: Build and test for iPadOS (simulator)
         run: |
           # Simulator names change with each Xcode; take the first iPad.

@@ -68,3 +68,17 @@ xcodebuild test -project apple/Ganymede.xcodeproj -scheme Ganymede-iOS \
   -destination 'platform=iOS Simulator,name=iPad Air 11-inch (M3)' \
   CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=
 ```
+
+## Download
+
+Each CI run of the `macos-app` job uploads `Ganymede-macOS` (a zipped,
+universal Release build) under the run's Artifacts. It is ad-hoc signed,
+not notarized, so after unzipping it on another Mac clear the quarantine
+flag before the first launch:
+
+```sh
+xattr -dr com.apple.quarantine Ganymede.app
+```
+
+For a notarized copy, archive it in Xcode with your Developer ID
+(Product > Archive, then Distribute App > Developer ID).
