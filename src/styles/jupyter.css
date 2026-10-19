@@ -30,6 +30,10 @@
   --jp-ui-font-color1: var(--text);
   --jp-content-link-color: var(--accent);
 
+  /* JupyterLab colors numbers and keywords the same green; numbers take
+   * Xcode's colors instead. */
+  --jp-mirror-editor-number-color: #1c00cf;
+
   --cell-bg: #f5f5f7;
   --cell-border: rgba(0, 0, 0, 0.06);
 }
@@ -38,6 +42,10 @@
   .notebook-page {
     --cell-bg: #2a2a2d;
     --cell-border: rgba(255, 255, 255, 0.06);
+    /* --text-3 is too faint for prompts on the dark background. */
+    --jp-cell-inprompt-font-color: var(--text-2);
+    --jp-cell-outprompt-font-color: var(--text-2);
+    --jp-mirror-editor-number-color: #d9c97c;
   }
 }
 
@@ -70,6 +78,7 @@
 }
 
 .notebook-page .jp-Cell {
+  position: relative;
   padding: 6px 0 !important;
   background: transparent;
 }
@@ -106,14 +115,27 @@
   background: transparent !important;
 }
 
-/* The active-cell marker: a thin accent bar, like a selection in Finder. */
+/*
+ * The active-cell marker: one thin accent bar down the whole cell, like a
+ * selection in Finder. JupyterLab draws it on the input and output
+ * collapsers separately, which reads as two selections, so the cell draws
+ * it instead.
+ */
 .notebook-page .jp-Collapser {
   border-radius: 3px;
 }
 
-.notebook-page .jp-Cell.jp-mod-active .jp-Collapser {
+.notebook-page .jp-Cell.jp-mod-active::before {
+  content: '';
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: 0;
+  width: var(--jp-cell-collapser-width);
+  border-radius: 3px;
   background: var(--accent);
   opacity: 0.85;
+  pointer-events: none;
 }
 
 .notebook-page .jp-Cell .jp-Collapser:hover {

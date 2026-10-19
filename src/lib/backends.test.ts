@@ -162,7 +162,7 @@ describe('connect: browser', () => {
     );
     const backend = keep(await connect({ kind: 'browser' }));
     expect(backend.label).toBe('This browser');
-    expect(backend.detail).toBe('JavaScript in a Web Worker');
+    expect(backend.detail).toBe('Kernels in this page, no server');
     services = backend.services;
   });
 
