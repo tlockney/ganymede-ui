@@ -1,0 +1,245 @@
+# Architecture
+
+How ganymede-ui is put together: a web app built from JupyterLab's
+notebook packages, a few ways to get kernels and notebooks, and a Mac and
+iPad app that wrap it. This page describes `main`; the latest release may
+not have all of it (see the [changelog](../CHANGELOG.md)).
+
+ganymede-ui is a client of Ganymede's API, as the
+[User interfaces](https://ganymede-server.com/docs/ui) page asks of any UI.
+Nothing here is in Ganymede's Rust core, and the app runs against any
+Jupyter server that speaks the same REST and websocket API.
+
+## The parts
+
+```text
+ ┌──────────────────────────── the page ─────────────────────────────┐
+ │  Shell (React)          Sidebar · Toolbar · sheets                 │
+ │  NotebookPane           JupyterLab Notebook + SessionContext       │
+ │                                    │                               │
+ │                       ServiceManager.IManager   ← the one seam     │
+ │            ┌───────────────────────┼───────────────────────┐       │
+ │      ganymede                ganymede, kernels: page     browser   │
+ │   REST + websocket      server contents + lite kernels  lite only  │
+ └────────────┼───────────────────────┼───────────────────────┼──────┘
+              ▼                       ▼                       ▼
+     Ganymede (or any          Ganymede contents;     IndexedDB; kernels
+     Jupyter server):          kernels in Web         in Web Workers
+     notebooks and kernels     Workers in the page
+```
+
+| Part                            | Where                                                                                                                                                                       |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Backends                        | [`src/lib/backends.ts`](../src/lib/backends.ts)                                                                                                                             |
+| In-page server and kernels      | [`src/lib/lite.ts`](../src/lib/lite.ts), [`src/lib/cdp-kernel.ts`](../src/lib/cdp-kernel.ts)                                                                                |
+| Service-worker relay            | [`src/lib/lite-sw.ts`](../src/lib/lite-sw.ts), [`public/lite-service-worker.js`](../public/lite-service-worker.js)                                                          |
+| Notebook                        | [`src/components/NotebookPane.tsx`](../src/components/NotebookPane.tsx), [`src/lib/jupyterlab.ts`](../src/lib/jupyterlab.ts), [`src/lib/widgets.ts`](../src/lib/widgets.ts) |
+| Shell                           | [`src/App.tsx`](../src/App.tsx), [`src/components/`](../src/components/), [`src/styles/`](../src/styles/)                                                                   |
+| Build and PWA                   | [`vite.config.ts`](../vite.config.ts)                                                                                                                                       |
+| Protocol package (not used yet) | [`packages/client/`](../packages/client/)                                                                                                                                   |
+| Mac and iPad app                | [`apple/`](../apple/README.md)                                                                                                                                              |
+
+## Backends
+
+The UI talks to one object, a `ServiceManager.IManager` from
+`@jupyterlab/services`: contents, kernels, sessions and kernelspecs.
+Anything that can build one is a backend. `connect(config)` in
+`backends.ts` builds it from a `BackendConfig`:
+
+- **`ganymede`**: the stock `ServiceManager` over REST and websocket, at
+  `url` with `token`. An empty `url` means this page's origin, which is how
+  the app runs when Ganymede serves it (`ganymede serve --static-dir`,
+  `ganymede ui`) and under `npm run dev`, whose proxy forwards `/api`.
+  `connect` asks `api/status` first, so a wrong token fails with a message
+  instead of a hung kernel list.
+- **`ganymede` with `kernels: 'page'`**: notebooks on the server, kernels
+  in this page. It builds the in-page server below with a `ContentsManager`
+  pointed at the server. This is for a server that has no kernels of its
+  own, such as the one inside the iPad app.
+- **`browser`**: everything in the page. Notebooks are stored in IndexedDB,
+  kernels run in Web Workers. Nothing is sent anywhere.
+
+Where the app connects is decided in this order (`App.tsx`):
+
+1. `?token=` or `?kernels=page|server` in the URL, as `ganymede serve`
+   prints it and the Apple apps pass on every launch. They are removed from
+   the address bar once read.
+2. The connection saved in `localStorage` (`ganymede-ui:backend`).
+3. A login cookie for this page's server: when `api/status` answers, the
+   app connects to its own origin with no token.
+4. Otherwise the connect sheet asks.
+
+Switching backends disposes the old `ServiceManager`, which shuts down
+whatever it holds.
+
+## In-page server and kernels
+
+JupyterLite assembles its in-page server from Lumino plugins. ganymede-ui
+has no plugin system, so `createLiteServices` in `lite.ts` wires the same
+`@jupyterlite/services` classes by hand:
+
+- `LiteKernelClient`, `LiteSessionClient` and `LiteKernelSpecClient`
+  answer the kernel, session and kernelspec APIs in the page. Kernel
+  websockets are faked with `mock-socket`.
+- Contents come from `BrowserStorageDrive` (IndexedDB through
+  `localforage`), or from the server's `ContentsManager` in `kernels:
+'page'` mode.
+- Events and the user identity stay in the page (`LocalEvents`,
+  `LocalUser`), since nothing answers `/api/events` or `/api/me` here.
+
+Two kernels are registered:
+
+- **TypeScript (cdp-kernel)**, `cdp-browser`, the default.
+  `CdpBrowserKernel` wraps `startBrowserKernel` from
+  `@tlockney/cdp-kernel/browser`: the kernel's message handling runs on the
+  page and cells run in a module Worker. It answers every request itself,
+  so messages pass through as Jupyter JSON. The wrapper copies the parent's
+  session id into replies, which `LiteKernelClient` routes on, and
+  `CdpAwareKernelClient` sends interrupts as an `interrupt_request`, since
+  JupyterLite's own interrupt only cancels its message queue.
+- **JavaScript (Web Worker)**, `javascript`, from
+  `@jupyterlite/javascript-kernel`.
+
+## Service-worker relay
+
+A kernel in a Worker that needs a synchronous answer from the page (reading
+or writing a notebook file, `input()`) makes a synchronous `XMLHttpRequest`
+to `api/drive` or `api/stdin/kernel`. The page can't answer that directly,
+so a service worker catches the request and relays it on the
+`/sw-api.v1` `BroadcastChannel`. `ServiceWorkerBridge` in `lite-sw.ts`
+answers on the page side: drive requests from the contents manager, stdin
+from the kernel client. Requests are tagged with the page's
+`browsingContextId`, since tabs share the channel.
+
+An origin has one service worker per scope, and the kernel Workers must be
+controlled by it too, so the relay can't have a scope of its own. In the
+production build Workbox's worker loads it with `importScripts`
+(`vite.config.ts`); `npm run dev` has no Workbox worker and registers
+`public/lite-service-worker.js` alone. The relay is the relay part of
+JupyterLite's service worker, adapted.
+
+## Notebook
+
+`NotebookPane` shows one file. It holds JupyterLab's `Notebook` widget,
+its `NotebookModel`, and a `SessionContext`, which starts the file's kernel
+or rejoins the one already running for it. It loads and saves nbformat
+through the backend's contents API and gives the toolbar a
+`NotebookController` (run, interrupt, restart, change kernel, save,
+download, trust).
+
+Inside JupyterLab, the editor, renderers and commands come from plugins.
+`jupyterlab.ts` builds them once and shares them across notebooks: the
+CodeMirror registries, a rendermime registry with JupyterLab's default
+MIME extensions (Markdown, MathJax, JSON, JavaScript), the notebook
+commands with JupyterLab's default shortcuts, and `attachEditing`, which
+adds kernel completion (Tab), inspection tooltips (Shift+Tab), find and
+the cell toolbar. Every binding is listed once in `shortcuts.ts`, which
+also drives the shortcuts sheet and stores custom keys in `localStorage`.
+
+ipywidgets load with the first notebook, as their own chunk
+(`widgets.ts`). JupyterLab's widget plugin needs the application and a
+document context, so the app uses `KernelWidgetManager`, the manager
+JupyterLab uses for consoles, one per kernel. Widget state is written to
+the notebook's metadata before each save.
+
+Trust follows Jupyter's model: the server marks cells trusted when it serves
+a signed notebook, and Trust Notebook in the toolbar calls
+`POST /api/contents/{path}/trust`. The browser backend keeps no signatures,
+so trust there lasts while the notebook is open.
+
+## Shell
+
+React components in `src/components/` draw a macOS-style window: a
+translucent source-list sidebar (the backend's files), a unified toolbar,
+and sheets for connecting and for shortcuts. `src/styles/app.css` styles
+the shell. JupyterLab's light and dark `--jp-*` variables follow the
+system setting (`theme.ts`), and `src/styles/jupyter.css` overrides some of
+them so the notebook matches the shell. Restyling through those variables
+works; changing Lumino's layout does not, so the notebook scrolls itself.
+
+## Build and PWA
+
+Vite builds the app (`npm run build`, output in `dist/`). `vite.config.ts`
+adapts a few webpack habits of JupyterLab's packages: SVG imports as
+strings, `~pkg/` paths in stylesheets, a `require` of `package.json` in
+`@jupyter-widgets/controls`, and MathJax's CommonJS modules.
+
+`vite-plugin-pwa` adds the manifest and a Workbox service worker that
+precaches the app, so it works offline and installs as an app. `/api/` is
+never cached. The release is this `dist/` as a static site
+(`ganymede-ui-X.Y.Z.tar.gz` and `.zip`), which `ganymede ui install`
+downloads; see [releasing](releasing.md).
+
+## Protocol package
+
+[`packages/client`](../packages/client/) is Jupyter protocol code with no
+UI framework: the v1 websocket framing, a connection layer, ANSI and
+stream handling, and renderer and widget seams. It was Ganymede's
+`frontend/` package. The app does not use it; it talks to servers through
+`@jupyterlab/services`.
+
+## Mac and iPad app
+
+[`apple/`](../apple/README.md) is a SwiftUI app for macOS and iPadOS (and
+iOS) built from one set of sources with XcodeGen. It runs Ganymede in its
+own process and shows this web app in a `WKWebView`:
+
+```text
+ ┌──────────────── Ganymede.app ────────────────┐
+ │ SwiftUI: AppModel, folder picker, settings   │
+ │   │ ganymede_server_start(json) → URL        │
+ │   ▼                                          │
+ │ GanymedeFFI (Rust staticlib):                │
+ │   Ganymede server on 127.0.0.1               │
+ │   root_dir = notebook folder                 │
+ │   static_dir = this repo's dist/             │
+ │   gateway_url = kernel server, if set        │
+ │   ▲                                          │
+ │   │ HTTP + websocket, login cookie           │
+ │ WKWebView: ganymede-ui                       │
+ └──────────────────────────────────────────────┘
+```
+
+- `GanymedeFFI.xcframework` is
+  [`crates/ganymede-ffi`](https://github.com/tlockney/ganymede/tree/main/crates/ganymede-ffi)
+  built for macOS and iOS. Its C API takes the server config as JSON (the
+  keys of `ganymede.toml`), starts the server, and returns its URL with a
+  token. `ServerHost.swift` wraps it.
+- `AppModel.swift` starts the server for the chosen notebook folder with
+  the bundled `dist/` as the static site, reusing the last port so the page
+  keeps its origin and its `localStorage`. The web view loads the URL, and
+  the server trades the token for a login cookie.
+- `WebView.swift` handles what a browser would: links to other hosts open
+  in the default browser, downloads ask where to save (the share sheet on
+  iOS), and Help > Keyboard Shortcuts on the Mac sends
+  `ganymede:show-shortcuts` to the page.
+- `apple/scripts/bootstrap.sh` builds the XCFramework from a ganymede
+  checkout and this repo's `dist/` into `apple/build/`, then generates the
+  Xcode project. CI builds and tests both targets on macOS runners against
+  the ganymede commit pinned in `GANYMEDE_REF` (`.github/workflows/ci.yml`).
+
+Where kernels run:
+
+| Setting                                     | Mac                                                     | iPad and iPhone                              |
+| ------------------------------------------- | ------------------------------------------------------- | -------------------------------------------- |
+| No kernel server                            | Kernelspecs installed on the Mac                        | cdp-kernel in the web view (`?kernels=page`) |
+| Kernel server set (⌘, or the server button) | That server, through Ganymede's gateway (`gateway_url`) | Same                                         |
+
+iOS does not let an app launch processes, so without a kernel server the
+iPad's in-process Ganymede serves notebooks only and the page runs its own
+kernel, the `kernels: 'page'` backend above. With a kernel server set,
+Ganymede forwards kernel requests to it and the page connects as usual.
+Notebooks stay on the device either way. On the Mac, an app opened from
+the Finder takes `PATH` from the login shell (`LoginShell.swift`) so
+kernelspecs that run `node`, `deno` or `python3` start.
+
+A native on-device kernel, cdp-kernel running in the app's process instead
+of the web view, is planned and not started.
+
+## Tests
+
+Unit tests (Vitest, jsdom) sit next to the code as `*.test.ts(x)`. The
+Playwright suite in `e2e/` runs the built app against a real
+`ganymede serve` with cdp-kernel's `cdp-node` kernelspec, and no Python.
+Swift tests are in `apple/Tests/`. See the [README](../README.md#run) for
+the commands.

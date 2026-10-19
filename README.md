@@ -71,6 +71,10 @@ the source of the images in `screenshots/`. CI runs all of the above.
 
 ## How it fits together
 
+In short below; [docs/architecture.md](docs/architecture.md) has the full
+picture, and the Ganymede site shows it at
+[ganymede-server.com/docs/ganymede-ui/architecture](https://ganymede-server.com/docs/ganymede-ui/architecture).
+
 - **Backends** (`src/lib/backends.ts`). The UI only uses a
   `ServiceManager.IManager`. `ganymede` builds one over REST and websocket;
   `browser` builds JupyterLite's in-page server (`src/lib/lite.ts`,

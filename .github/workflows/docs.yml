@@ -1,0 +1,35 @@
+name: docs
+
+# The Ganymede site (tlockney/ganymede, pages.yml) renders this repo's
+# docs/*.md under ganymede-server.com/docs/ganymede-ui/, fetched from main
+# when it builds. Ask it to rebuild when they change.
+on:
+  push:
+    branches: [main]
+    paths: [docs/*.md, .github/workflows/docs.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      # GANYMEDE_DOCS_TOKEN: a fine-grained token for tlockney/ganymede
+      # with Contents read and write, which repository_dispatch needs.
+      - name: Rebuild the Ganymede site
+        env:
+          TOKEN: ${{ secrets.GANYMEDE_DOCS_TOKEN }}
+        run: |
+          if [ -z "$TOKEN" ]; then
+            echo "::warning::GANYMEDE_DOCS_TOKEN is not set; the site picks up these docs on its next build."
+            exit 0
+          fi
+          curl -fsSL -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            https://api.github.com/repos/tlockney/ganymede/dispatches \
+            -d '{"event_type":"ganymede-ui-docs"}'
