@@ -1,4 +1,5 @@
 import { CommandRegistry } from '@lumino/commands';
+import { DisposableDelegate, DisposableSet, type IDisposable } from '@lumino/disposable';
 
 /**
  * Every keyboard shortcut the app binds, in one table: the notebook's
@@ -99,9 +100,151 @@ export const SHOW_SHORTCUTS_EVENT = 'ganymede:show-shortcuts';
 
 const byId = new Map(SHORTCUTS.map(s => [s.id, s]));
 
-/** The key bindings of the shortcut `id`; none for an unknown id. */
-export function keysFor(id: string): readonly (readonly string[])[] {
-  return byId.get(id)?.keys ?? [];
+export type Keys = readonly (readonly string[])[];
+
+/**
+ * The user's own bindings, by command id, replacing that command's
+ * defaults. Kept in local storage, so per origin; the Apple apps keep
+ * their origin across launches.
+ */
+type Overrides = Readonly<Record<string, Keys>>;
+
+const KEY = 'ganymede-ui:shortcuts';
+
+function load(): Overrides {
+  try {
+    const raw: unknown = JSON.parse(localStorage.getItem(KEY) ?? '{}');
+    if (!raw || typeof raw !== 'object') return {};
+    const valid = Object.entries(raw as Record<string, unknown>).filter(
+      ([id, keys]) =>
+        byId.has(id) &&
+        Array.isArray(keys) &&
+        keys.every(k => Array.isArray(k) && k.length > 0 && k.every(s => typeof s === 'string')),
+    );
+    return Object.fromEntries(valid) as Overrides;
+  } catch {
+    return {};
+  }
+}
+
+let overrides: Overrides = load();
+const listeners = new Set<() => void>();
+
+function update(next: Overrides) {
+  overrides = next;
+  try {
+    if (Object.keys(next).length) localStorage.setItem(KEY, JSON.stringify(next));
+    else localStorage.removeItem(KEY);
+  } catch {
+    // Private mode: the change lasts for this page only.
+  }
+  listeners.forEach(l => l());
+}
+
+/** The key bindings of the shortcut `id`, the user's if set; none for an unknown id. */
+export function keysFor(id: string): Keys {
+  return overrides[id] ?? byId.get(id)?.keys ?? [];
+}
+
+export function isCustomized(id: string): boolean {
+  return id in overrides;
+}
+
+/** The current overrides; a new object after every change. */
+export function customizations(): Overrides {
+  return overrides;
+}
+
+const sameKeys = (a: Keys, b: Keys) =>
+  a.length === b.length &&
+  a.every((k, i) => k.length === b[i]!.length && k.every((s, j) => same(s, b[i]![j]!)));
+const same = (a: string, b: string) =>
+  CommandRegistry.normalizeKeystroke(a) === CommandRegistry.normalizeKeystroke(b);
+
+/** Bind `id` to `keys`; back to the defaults when they are the defaults. */
+export function setKeys(id: string, keys: Keys): void {
+  const shortcut = byId.get(id);
+  if (!shortcut) return;
+  const { [id]: _, ...rest } = overrides;
+  update(sameKeys(keys, shortcut.keys) ? rest : { ...rest, [id]: keys });
+}
+
+/** Back to the defaults: for `id`, or for every shortcut. */
+export function resetKeys(id?: string): void {
+  if (id === undefined) {
+    update({});
+  } else if (isCustomized(id)) {
+    const { [id]: _, ...rest } = overrides;
+    update(rest);
+  }
+}
+
+/** Call `listener` after every change; returns the unsubscribe. */
+export function subscribe(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+// As Lumino decides it.
+const IS_MAC = /Mac/i.test(navigator.platform);
+
+/** Groups whose shortcuts can fire on the same keydown. */
+const overlap = (a: ShortcutGroup, b: ShortcutGroup) =>
+  !((a === 'Command mode' && b === 'Edit mode') || (a === 'Edit mode' && b === 'Command mode'));
+
+/**
+ * Why `keys` can't be added to the shortcut `id`, or undefined if it can:
+ * a plain character where text is typed, or a binding another shortcut
+ * that can fire at the same time already has.
+ */
+export function problemWith(id: string, keys: readonly string[]): string | undefined {
+  const shortcut = byId.get(id);
+  if (!shortcut || !keys.length) return 'Not a shortcut.';
+  const typed = shortcut.group !== 'Command mode';
+  if (typed) {
+    for (const k of keys) {
+      const parts = CommandRegistry.parseKeystroke(k);
+      // Shift alone still types: ⇧A is "A".
+      if (!parts.ctrl && !parts.alt && !parts.cmd && parts.key.length === 1) {
+        return `${formatKeys([k])} types a character in a cell; add ${IS_MAC ? '⌘, ⌃ or ⌥' : 'Ctrl or Alt'}.`;
+      }
+    }
+  }
+  if (keysFor(id).some(k => sameKeys([k], [keys]))) return undefined;
+  const taken = SHORTCUTS.find(
+    other =>
+      overlap(shortcut.group, other.group) && keysFor(other.id).some(k => sameKeys([k], [keys])),
+  );
+  return taken && `${formatKeys(keys)} is already ${taken.label}.`;
+}
+
+/**
+ * Add `commands`' bindings for the shortcuts `scopes` names, each in the
+ * selectors given, and keep them in step with the user's changes. Dispose
+ * to remove them.
+ */
+export function bindShortcuts(
+  commands: CommandRegistry,
+  scopes: readonly (readonly [id: string, selectors: readonly string[]])[],
+): IDisposable {
+  let bound = new DisposableSet();
+  const bind = () => {
+    bound.dispose();
+    bound = new DisposableSet();
+    for (const [id, selectors] of scopes) {
+      for (const keys of keysFor(id)) {
+        for (const selector of selectors) {
+          bound.add(commands.addKeyBinding({ keys: [...keys], command: id, selector }));
+        }
+      }
+    }
+  };
+  bind();
+  const unsubscribe = subscribe(bind);
+  return new DisposableDelegate(() => {
+    unsubscribe();
+    bound.dispose();
+  });
 }
 
 /** A binding as this platform writes it: "⇧↩" on a Mac, "Shift+Enter" elsewhere. */

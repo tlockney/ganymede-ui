@@ -69,7 +69,7 @@ import type { JSONObject } from '@lumino/coreutils';
 import type { Message } from '@lumino/messaging';
 import { DisposableDelegate, DisposableSet, type IDisposable } from '@lumino/disposable';
 import { Widget } from '@lumino/widgets';
-import { keysFor, SHOW_SHORTCUTS_EVENT } from './shortcuts';
+import { bindShortcuts, SHOW_SHORTCUTS_EVENT } from './shortcuts';
 
 // JupyterLab's own stylesheets for the notebook and everything it pulls in
 // (cells, output area, CodeMirror, Lumino). Theme variables are injected
@@ -209,43 +209,37 @@ export function createCommands(notebook: Notebook, session: ISessionContext): Co
   const edit = `#${id}.jp-mod-editMode`;
   const command = `#${id}.jp-mod-commandMode :focus`;
   const both = [edit, command];
-  // Keys from the shortcuts table, every binding of a command in each scope.
-  const bind = (cmd: string, selectors: string[]) =>
-    keysFor(cmd).forEach(keys =>
-      selectors.forEach(selector =>
-        commands.addKeyBinding({ keys: [...keys], command: cmd, selector }),
-      ),
-    );
-
   const cell = `#${id}.jp-mod-commandMode .jp-Cell:focus`;
-  bind('run-and-advance', both);
-  bind('run-cell', both);
-  bind('run-and-insert', both);
-  bind('command-mode', [edit]);
-  bind('edit-mode', [cell]);
-  for (const cmd of [
-    'select-above',
-    'select-below',
-    'extend-above',
-    'extend-below',
-    'insert-above',
-    'insert-below',
-    'delete',
-    'cut',
-    'copy',
-    'paste',
-    'undo',
-    'redo',
-    'to-code',
-    'to-markdown',
-    'to-raw',
-    'move-up',
-    'move-down',
-    'select-all',
-    'show-shortcuts',
-  ]) {
-    bind(cmd, [command]);
-  }
+  // Keys from the shortcuts table, rebound when the user changes them.
+  const bindings = bindShortcuts(commands, [
+    ['run-and-advance', both],
+    ['run-cell', both],
+    ['run-and-insert', both],
+    ['command-mode', [edit]],
+    ['edit-mode', [cell]],
+    ...[
+      'select-above',
+      'select-below',
+      'extend-above',
+      'extend-below',
+      'insert-above',
+      'insert-below',
+      'delete',
+      'cut',
+      'copy',
+      'paste',
+      'undo',
+      'redo',
+      'to-code',
+      'to-markdown',
+      'to-raw',
+      'move-up',
+      'move-down',
+      'select-all',
+      'show-shortcuts',
+    ].map(cmd => [cmd, [command]] as const),
+  ]);
+  notebook.disposed.connect(() => bindings.dispose());
   return commands;
 }
 
@@ -471,21 +465,24 @@ export function attachEditing(
   const bindKeys = (keys: readonly string[], command: string, selector: string) =>
     disposables.add(commands.addKeyBinding({ keys: [...keys], command, selector }));
   // Customizable ones take their keys from the shortcuts table.
-  const bind = (command: string, selector: string) =>
-    keysFor(command).forEach(keys => bindKeys(keys, command, selector));
-  bind('completer:invoke', `${edit} .jp-mod-completer-enabled`);
-  bindKeys(['Enter'], 'completer:select', `#${id} .jp-mod-completer-active`);
-  bind(
-    'tooltip:launch',
-    `${edit} .jp-InputArea-editor:not(.jp-mod-has-primary-selection)` +
-      ':not(.jp-mod-in-leading-whitespace):not(.jp-mod-completer-active)',
+  const all = [`#${id}`, searchBar];
+  disposables.add(
+    bindShortcuts(commands, [
+      ['completer:invoke', [`${edit} .jp-mod-completer-enabled`]],
+      [
+        'tooltip:launch',
+        [
+          `${edit} .jp-InputArea-editor:not(.jp-mod-has-primary-selection)` +
+            ':not(.jp-mod-in-leading-whitespace):not(.jp-mod-completer-active)',
+        ],
+      ],
+      ['find', all],
+      ['find-next', all],
+      ['find-previous', all],
+    ]),
   );
+  bindKeys(['Enter'], 'completer:select', `#${id} .jp-mod-completer-active`);
   bindKeys(['Escape'], 'tooltip:dismiss', `body.jp-mod-tooltip #${id}`);
-  for (const selector of [`#${id}`, searchBar]) {
-    bind('find', selector);
-    bind('find-next', selector);
-    bind('find-previous', selector);
-  }
   bindKeys(['Escape'], 'find-close', searchBar);
   return disposables;
 }
