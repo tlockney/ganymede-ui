@@ -130,8 +130,12 @@ to `api/drive` or `api/stdin/kernel`. The page can't answer that directly,
 so a service worker catches the request and relays it on the
 `/sw-api.v1` `BroadcastChannel`. `ServiceWorkerBridge` in `lite-sw.ts`
 answers on the page side: drive requests from the contents manager, stdin
-from the kernel client. Requests are tagged with the page's
-`browsingContextId`, since tabs share the channel.
+from the kernel client. The kernel puts the page's `browsingContextId` in
+each request and the relay adds a `requestId`; tabs and kernels share the
+channel, so the bridge skips other pages' requests and the relay matches
+the reply on both.
+
+![A kernel's synchronous request goes through the service worker and the BroadcastChannel to the page, and the answer comes back the same way](images/sw-relay.svg)
 
 An origin has one service worker per scope, and the kernel Workers must be
 controlled by it too, so the relay can't have a scope of its own. In the
