@@ -10,6 +10,38 @@ ganymede-ui is a client of Ganymede's API, as the
 Nothing here is in Ganymede's Rust core, and the app runs against any
 Jupyter server that speaks the same REST and websocket API.
 
+## What it is built from
+
+- **JupyterLab** is Jupyter's own web UI. Its features ship as npm
+  packages: `@jupyterlab/notebook` (the notebook widget),
+  `@jupyterlab/cells`, `@jupyterlab/rendermime` (output renderers),
+  `@jupyterlab/codemirror` (the editor), and more. Inside JupyterLab they
+  are loaded as plugins into an application built on **Lumino**,
+  JupyterLab's toolkit for widgets, commands and plugins. ganymede-ui uses
+  the packages as plain libraries instead, with no JupyterLab application:
+  it renders the same notebook, and does by hand the wiring JupyterLab's
+  plugins would do.
+- **`@jupyterlab/services`** is the client half of the Jupyter server API
+  (REST and websocket). Its `ServiceManager` bundles one manager each for
+  contents (notebook files), kernels, sessions (which kernel belongs to
+  which file) and kernelspecs (which kernels can be started). It is the
+  only way ganymede-ui reaches notebooks and kernels.
+- **JupyterLite** is Jupyter with no server: everything runs in the
+  browser. Its `@jupyterlite/services` package answers the same server API
+  from inside the page, stores files in the browser, and runs kernels in
+  Web Workers, so `@jupyterlab/services` works against it unchanged.
+  ganymede-ui uses only that package, not JupyterLite's application, to
+  run kernels without a server: the rest of the app sees an ordinary
+  `ServiceManager` and doesn't know the difference. This is how the
+  browser mode works, and how the iPad app runs code (see
+  [In-page server and kernels](#in-page-server-and-kernels)).
+- **cdp-kernel** ([tlockney/cdp-kernel](https://github.com/tlockney/cdp-kernel))
+  is a TypeScript and JavaScript kernel. Its browser build runs the kernel
+  in the page with no Node or Deno, and is the default in-page kernel.
+- **React** draws the app around the notebook (sidebar, toolbar, sheets),
+  **Vite** builds it, and **Workbox**, a service-worker library, makes it
+  an installable app that works offline (a PWA).
+
 ## The parts
 
 ![The shell and notebook use one ServiceManager, built by one of three backends](images/backends.svg)
@@ -60,15 +92,19 @@ whatever it holds.
 
 ## In-page server and kernels
 
-JupyterLite assembles its in-page server from Lumino plugins. ganymede-ui
-has no plugin system, so `createLiteServices` in `lite.ts` wires the same
-`@jupyterlite/services` classes by hand:
+This is the JupyterLite part: a stand-in for a Jupyter server that runs in
+the page, so kernels can run with no server at all. JupyterLite's own
+application assembles it from Lumino plugins. ganymede-ui has no plugin
+system, so `createLiteServices` in `lite.ts` wires the same
+`@jupyterlite/services` classes by hand and returns a `ServiceManager`, as
+`connect` does for a real server:
 
 - `LiteKernelClient`, `LiteSessionClient` and `LiteKernelSpecClient`
   answer the kernel, session and kernelspec APIs in the page. Kernel
-  websockets are faked with `mock-socket`.
-- Contents come from `BrowserStorageDrive` (IndexedDB through
-  `localforage`), or from the server's `ContentsManager` in `kernels:
+  websockets are faked with `mock-socket`, a library that stands in for
+  `WebSocket` inside the page.
+- Contents come from `BrowserStorageDrive` (IndexedDB, the browser's
+  database, through the `localforage` library), or from the server's `ContentsManager` in `kernels:
 'page'` mode.
 - Events and the user identity stay in the page (`LocalEvents`,
   `LocalUser`), since nothing answers `/api/events` or `/api/me` here.
@@ -167,7 +203,8 @@ stream handling, and renderer and widget seams. It was Ganymede's
 ## Mac and iPad app
 
 [`apple/`](../apple/README.md) is a SwiftUI app for macOS and iPadOS (and
-iOS) built from one set of sources with XcodeGen. It runs Ganymede in its
+iOS) built from one set of sources. XcodeGen generates the Xcode project
+from `apple/project.yml`. It runs Ganymede in its
 own process and shows this web app in a `WKWebView`:
 
 ![The app process: SwiftUI, the Ganymede server from GanymedeFFI, and a web view showing ganymede-ui](images/apple-app.svg)
