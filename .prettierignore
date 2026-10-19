@@ -10,3 +10,5 @@ package-lock.json
 CHANGELOG.md
 docs/notes/archive.md
 *.ipynb
+apple/build
+.ganymede

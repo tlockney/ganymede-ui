@@ -1,0 +1,66 @@
+# XcodeGen spec: `xcodegen generate` writes Ganymede.xcodeproj (not
+# committed). scripts/bootstrap.sh fills build/ first.
+name: Ganymede
+options:
+  bundleIdPrefix: com.ganymede-server
+  deploymentTarget:
+    macOS: '13.0'
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: '5.0'
+    MARKETING_VERSION: '0.1.0'
+    CURRENT_PROJECT_VERSION: '1'
+    CODE_SIGN_STYLE: Automatic
+targets:
+  Ganymede:
+    type: application
+    platform: macOS
+    sources:
+      - path: Sources/Ganymede
+      # ganymede-ui's build, served by the in-process server.
+      - path: build/web
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - framework: build/GanymedeFFI.xcframework
+        embed: false
+    info:
+      path: build/Info.plist
+      properties:
+        CFBundleDisplayName: Ganymede
+        LSApplicationCategoryType: public.app-category.developer-tools
+        NSHumanReadableCopyright: MIT License
+        # The web view loads the server on 127.0.0.1 over plain HTTP.
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+    entitlements:
+      path: build/Ganymede.entitlements
+      properties:
+        # Kernels are child processes from installed kernelspecs, which
+        # the App Sandbox does not allow; distribution is Developer ID.
+        com.apple.security.app-sandbox: false
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.ganymede-server.Ganymede
+        ENABLE_HARDENED_RUNTIME: YES
+  GanymedeTests:
+    type: bundle.unit-test
+    platform: macOS
+    sources:
+      - path: Tests/GanymedeTests
+      - path: Sources/Ganymede/ServerHost.swift
+    dependencies:
+      - framework: build/GanymedeFFI.xcframework
+        embed: false
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+schemes:
+  Ganymede:
+    build:
+      targets:
+        Ganymede: all
+        GanymedeTests: [test]
+    test:
+      targets: [GanymedeTests]
