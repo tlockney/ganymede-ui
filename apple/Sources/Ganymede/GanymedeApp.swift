@@ -19,6 +19,12 @@ struct GanymedeApp: App {
                     .keyboardShortcut("o", modifiers: [.command, .shift])
             }
         }
+        Settings {
+            KernelServerView()
+                .environmentObject(model)
+                .frame(width: 460)
+                .padding()
+        }
         #endif
     }
 }
