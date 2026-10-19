@@ -5,6 +5,7 @@ options:
   bundleIdPrefix: com.ganymede-server
   deploymentTarget:
     macOS: '13.0'
+    iOS: '16.0'
   createIntermediateGroups: true
 settings:
   base:
@@ -44,9 +45,63 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.ganymede-server.Ganymede
         ENABLE_HARDENED_RUNTIME: YES
+  # iPad and iPhone, from the same sources. iOS cannot launch kernel
+  # processes, so until an on-device kernel exists it edits notebooks
+  # without running them.
+  Ganymede-iOS:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources/Ganymede
+      - path: build/web
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - framework: build/GanymedeFFI.xcframework
+        embed: false
+    info:
+      path: build/Info-iOS.plist
+      properties:
+        CFBundleDisplayName: Ganymede
+        NSHumanReadableCopyright: MIT License
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        # The Documents folder appears in the Files app, and notebooks
+        # there are edited in place.
+        UIFileSharingEnabled: true
+        LSSupportsOpeningDocumentsInPlace: true
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.ganymede-server.Ganymede
+        PRODUCT_NAME: Ganymede
+        TARGETED_DEVICE_FAMILY: '1,2'
   GanymedeTests:
     type: bundle.unit-test
     platform: macOS
+    sources:
+      - path: Tests/GanymedeTests
+      - path: Sources/Ganymede/ServerHost.swift
+    dependencies:
+      - framework: build/GanymedeFFI.xcframework
+        embed: false
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+  GanymedeTests-iOS:
+    type: bundle.unit-test
+    platform: iOS
     sources:
       - path: Tests/GanymedeTests
       - path: Sources/Ganymede/ServerHost.swift
@@ -64,3 +119,10 @@ schemes:
         GanymedeTests: [test]
     test:
       targets: [GanymedeTests]
+  Ganymede-iOS:
+    build:
+      targets:
+        Ganymede-iOS: all
+        GanymedeTests-iOS: [test]
+    test:
+      targets: [GanymedeTests-iOS]

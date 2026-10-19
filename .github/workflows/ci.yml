@@ -117,3 +117,12 @@ jobs:
           xcodebuild test -project apple/Ganymede.xcodeproj -scheme Ganymede
           -destination platform=macOS -derivedDataPath apple/build/DerivedData
           CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=
+      - name: Build and test for iPadOS (simulator)
+        run: |
+          # Simulator names change with each Xcode; take the first iPad.
+          udid=$(xcrun simctl list devices available -j | jq -r '
+            [.devices | to_entries[] | select(.key | contains("iOS")) | .value[]
+             | select(.name | startswith("iPad"))][0].udid')
+          xcodebuild test -project apple/Ganymede.xcodeproj -scheme Ganymede-iOS \
+            -destination "id=$udid" -derivedDataPath apple/build/DerivedData \
+            CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=
