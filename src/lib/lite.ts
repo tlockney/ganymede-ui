@@ -36,7 +36,12 @@ import { ServiceWorkerBridge } from './lite-sw';
  * Kernels are JupyterLite kernel factories. A Worker cdp-kernel is one more
  * `kernelSpecs.register(...)` call next to the JavaScript one.
  */
-export async function createLiteServices(): Promise<ServiceManager.IManager> {
+export async function createLiteServices(
+  options: {
+    /** Where notebooks live; IndexedDB in this browser when left out. */
+    contents?: ContentsManager;
+  } = {},
+): Promise<ServiceManager.IManager> {
   // The fake server answers at this page's origin. LiteKernelClient computes
   // its websocket base from PageConfig (this origin, since nothing sets it),
   // so the settings must agree with that.
@@ -47,18 +52,7 @@ export async function createLiteServices(): Promise<ServiceManager.IManager> {
     WebSocket: WebSocket as unknown as typeof globalThis.WebSocket,
   });
 
-  // The drive only asks the server for seed files
-  // (`api/contents/<path>/all.json`, which through the dev proxy reached
-  // Ganymede and got 403) when PageConfig's `contentsAllJsonFile` option
-  // names one. jupyter-react set it; nothing here sets PageConfig, nor
-  // should index.html ever carry a `jupyter-config-data` script with it.
-  const drive = new BrowserStorageDrive({
-    // jupyter-react's storage name, so notebooks made before still show.
-    storageName: 'JupyterLite Storage',
-    localforage,
-  });
-  await drive.initialize();
-  const contents = new ContentsManager({ defaultDrive: drive, serverSettings });
+  const contents = options.contents ?? (await browserContents(serverSettings));
 
   const kernelSpecs = new KernelSpecs();
   const kernelClient = new CdpAwareKernelClient({ kernelSpecs, serverSettings });
@@ -116,6 +110,21 @@ export async function createLiteServices(): Promise<ServiceManager.IManager> {
   });
   await services.ready;
   return services;
+}
+
+async function browserContents(serverSettings: ServerConnection.ISettings) {
+  // The drive only asks the server for seed files
+  // (`api/contents/<path>/all.json`, which through the dev proxy reached
+  // Ganymede and got 403) when PageConfig's `contentsAllJsonFile` option
+  // names one. jupyter-react set it; nothing here sets PageConfig, nor
+  // should index.html ever carry a `jupyter-config-data` script with it.
+  const drive = new BrowserStorageDrive({
+    // jupyter-react's storage name, so notebooks made before still show.
+    storageName: 'JupyterLite Storage',
+    localforage,
+  });
+  await drive.initialize();
+  return new ContentsManager({ defaultDrive: drive, serverSettings });
 }
 
 /**

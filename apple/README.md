@@ -33,12 +33,13 @@ On iPadOS and iOS (`Ganymede-iOS` target, iOS 16 or later):
 - Notebooks live in the app's Documents folder, shown in the Files app
   under On My iPad, or in a folder picked with the folder button (an
   iCloud Drive or SMB folder works); the app keeps a bookmark to it.
-- iOS does not let an app launch kernel processes, so kernels run on
-  another Jupyter or Ganymede server: tap the server button and enter its
-  URL and token (for example `ganymede serve --ip 0.0.0.0` on your Mac;
-  see its [Security](https://ganymede-server.com/docs/security) page for
-  reaching it safely). Notebooks stay on the iPad. An on-device kernel
-  comes next.
+- iOS does not let an app launch kernel processes, so on the iPad the
+  page runs its own kernel: cdp-kernel's TypeScript kernel in a Worker in
+  the web view (the app opens the page with `kernels=page`). For other
+  kernels, tap the server button and enter the URL and token of another
+  Jupyter or Ganymede server (for example `ganymede serve --ip 0.0.0.0` on
+  your Mac; see its [Security](https://ganymede-server.com/docs/security)
+  page for reaching it safely). Either way, notebooks stay on the iPad.
 - Downloads open the share sheet, where Save to Files keeps them.
 - iOS may close the server's socket while the app is in the background;
   back in the foreground the app restarts the server if it stopped

@@ -23,10 +23,22 @@ export function ConnectSheet({
   const [kind, setKind] = useState<BackendConfig['kind']>(initial?.kind ?? 'ganymede');
   const [url, setUrl] = useState(initial?.kind === 'ganymede' ? initial.url : '');
   const [token, setToken] = useState(initial?.kind === 'ganymede' ? initial.token : '');
+  const [pageKernels, setPageKernels] = useState(
+    initial?.kind === 'ganymede' && initial.kernels === 'page',
+  );
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
-    onConnect(kind === 'ganymede' ? { kind, url: url.trim(), token: token.trim() } : { kind });
+    onConnect(
+      kind === 'ganymede'
+        ? {
+            kind,
+            url: url.trim(),
+            token: token.trim(),
+            ...(pageKernels ? { kernels: 'page' as const } : {}),
+          }
+        : { kind },
+    );
   };
 
   return (
@@ -78,6 +90,14 @@ export function ConnectSheet({
                 value={token}
                 onChange={e => setToken(e.target.value)}
               />
+            </label>
+            <label className="check-row">
+              <input
+                type="checkbox"
+                checked={pageKernels}
+                onChange={e => setPageKernels(e.target.checked)}
+              />
+              <span>Run kernels in this page; keep notebooks on the server</span>
             </label>
             <p className="hint">
               For another origin, start the server with{' '}
