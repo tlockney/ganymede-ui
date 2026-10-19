@@ -143,5 +143,58 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate {
         alert.addButton(withTitle: "Cancel")
         completionHandler(alert.runModal() == .alertFirstButtonReturn ? field.stringValue : nil)
     }
+    #else
+    func webView(
+        _ webView: WKWebView,
+        runJavaScriptAlertPanelWithMessage message: String,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping () -> Void
+    ) {
+        let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in completionHandler() })
+        present(alert, from: webView, orElse: completionHandler)
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        runJavaScriptConfirmPanelWithMessage message: String,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping (Bool) -> Void
+    ) {
+        let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in completionHandler(false) })
+        alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in completionHandler(true) })
+        present(alert, from: webView) { completionHandler(false) }
+    }
+
+    func webView(
+        _ webView: WKWebView,
+        runJavaScriptTextInputPanelWithPrompt prompt: String,
+        defaultText: String?,
+        initiatedByFrame frame: WKFrameInfo,
+        completionHandler: @escaping (String?) -> Void
+    ) {
+        let alert = UIAlertController(title: nil, message: prompt, preferredStyle: .alert)
+        alert.addTextField { $0.text = defaultText }
+        alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in completionHandler(nil) })
+        alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak alert] _ in
+            completionHandler(alert?.textFields?.first?.text ?? "")
+        })
+        present(alert, from: webView) { completionHandler(nil) }
+    }
+
+    /// Shows `alert` over the view controller holding `webView`; calls
+    /// `fallback` when there is none, since WebKit requires the handler.
+    private func present(_ alert: UIAlertController, from webView: WKWebView, orElse fallback: () -> Void) {
+        var top = webView.window?.rootViewController
+        while let presented = top?.presentedViewController {
+            top = presented
+        }
+        if let top {
+            top.present(alert, animated: true)
+        } else {
+            fallback()
+        }
+    }
     #endif
 }
