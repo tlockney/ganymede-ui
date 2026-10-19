@@ -129,3 +129,9 @@ export const ShieldIcon = (p: P) => (
     <path d="m7.5 10 1.75 1.75L12.75 8.25" />
   </svg>
 );
+export const KeyboardIcon = (p: P) => (
+  <svg {...base(p)}>
+    <rect x="2.5" y="5" width="15" height="10" rx="2" />
+    <path d="M5.5 8h.01M8.5 8h.01M11.5 8h.01M14.5 8h.01M5.5 11h.01M14.5 11h.01M8 11.5h4" />
+  </svg>
+);

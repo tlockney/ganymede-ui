@@ -15,6 +15,8 @@ import { Toolbar } from './components/Toolbar';
 import { NotebookPane, type NotebookController } from './components/NotebookPane';
 import { ConnectSheet } from './components/ConnectSheet';
 import { EmptyState } from './components/EmptyState';
+import { ShortcutsSheet } from './components/ShortcutsSheet';
+import { SHOW_SHORTCUTS_EVENT, matches } from './lib/shortcuts';
 
 /** A token in the page URL, as `ganymede serve` prints it, wins once. */
 function initialConfig(): BackendConfig | undefined {
@@ -43,6 +45,8 @@ export function App() {
   const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 720);
   const [openPath, setOpenPath] = useState<string>();
   const [controller, setController] = useState<NotebookController>();
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const closeShortcuts = useCallback(() => setShortcutsOpen(false), []);
 
   useEffect(() => {
     if (!probing) return;
@@ -118,7 +122,7 @@ export function App() {
   // ⌘S / Ctrl+S saves, as in any document app.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+      if (matches(e, 'save')) {
         e.preventDefault();
         void controller?.save();
       }
@@ -126,6 +130,13 @@ export function App() {
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [controller]);
+
+  // From the notebook's H, and the Apple apps' Help menu.
+  useEffect(() => {
+    const show = () => setShortcutsOpen(true);
+    window.addEventListener(SHOW_SHORTCUTS_EVENT, show);
+    return () => window.removeEventListener(SHOW_SHORTCUTS_EVENT, show);
+  }, []);
 
   return (
     <>
@@ -143,6 +154,7 @@ export function App() {
             controller={controller}
             sidebarOpen={sidebarOpen}
             onToggleSidebar={() => setSidebarOpen(o => !o)}
+            onShowShortcuts={() => setShortcutsOpen(true)}
             specs={backend?.services.kernelspecs.specs ?? undefined}
           />
           <div className="content">
@@ -174,6 +186,7 @@ export function App() {
           onConnect={c => setConfig({ ...c })}
         />
       )}
+      {shortcutsOpen && <ShortcutsSheet onClose={closeShortcuts} />}
     </>
   );
 }
