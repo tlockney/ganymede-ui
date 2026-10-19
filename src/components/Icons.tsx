@@ -60,6 +60,12 @@ export const CodeIcon = (p: P) => (
 );
 export const SaveIcon = (p: P) => (
   <svg {...base(p)}>
+    <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h7.4l3.1 3.1v7.4a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 4 14.5z" />
+    <path d="M7 4v3.5h5V4M7 16v-4.5h6V16" />
+  </svg>
+);
+export const DownloadIcon = (p: P) => (
+  <svg {...base(p)}>
     <path d="M10 3v9M6.5 8.5 10 12l3.5-3.5" />
     <path d="M4 13.5v1A2.5 2.5 0 0 0 6.5 17h7a2.5 2.5 0 0 0 2.5-2.5v-1" />
   </svg>

@@ -191,6 +191,32 @@ describe('NotebookPane', () => {
     await waitFor(() => expect(latest()!.dirty).toBe(false));
   });
 
+  it('downloads the notebook with unsaved edits, and stays dirty', async () => {
+    const { latest } = setup();
+    await waitFor(() => expect(latest()).toBeDefined());
+    act(() => modelOf().cells.get(0).sharedModel.setSource('print(3)'));
+    await waitFor(() => expect(latest()!.dirty).toBe(true));
+
+    const blobs: Blob[] = [];
+    const create = vi.spyOn(URL, 'createObjectURL').mockImplementation(b => {
+      blobs.push(b as Blob);
+      return 'blob:notebook';
+    });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      expect(this.download).toBe('Io.ipynb');
+      expect(this.href).toBe('blob:notebook');
+    });
+    act(() => latest()!.download());
+    expect(click).toHaveBeenCalledOnce();
+    const content = JSON.parse(await blobs[0]!.text()) as nbformat.INotebookContent;
+    expect(content.cells[0]!.source).toBe('print(3)');
+    expect(latest()!.dirty).toBe(true);
+    create.mockRestore();
+    click.mockRestore();
+  });
+
   it('records the kernel in the notebook when it is changed', async () => {
     const { latest } = setup();
     await waitFor(() => expect(latest()).toBeDefined());

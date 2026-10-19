@@ -11,3 +11,10 @@ starting in Downloads); it removes an existing file first, since
 a temporary folder and the share sheet offers it (Save to Files). A
 cancelled panel also reports `didFailWithError` (`URLError.cancelled`),
 which is not shown as a failure.
+
+The download Thomas found dead was the toolbar's Save button, whose icon
+was an arrow into a tray. Save now has its own icon, and a Download
+Notebook button next to it hands the browser the open notebook as
+`.ipynb` (`<a download>` on a blob URL, edits not yet saved included,
+widget state as on save), which in the apps goes through the download
+handling above.

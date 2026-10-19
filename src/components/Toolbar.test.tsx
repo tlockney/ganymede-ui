@@ -14,6 +14,7 @@ function controller(over: Partial<NotebookController> = {}): NotebookController 
     dirty: false,
     trusted: true,
     save: vi.fn(async () => {}),
+    download: vi.fn(),
     trust: vi.fn(async () => {}),
     run: vi.fn(async () => {}),
     runAll: vi.fn(async () => {}),
@@ -53,6 +54,7 @@ const ACTIONS = [
   'Restart Kernel',
   'Insert Code Cell',
   'Insert Text Cell',
+  'Download Notebook',
   'Save (⌘S)',
 ];
 
@@ -132,6 +134,7 @@ describe('Toolbar', () => {
     await userEvent.click(button('Restart Kernel'));
     await userEvent.click(button('Insert Code Cell'));
     await userEvent.click(button('Insert Text Cell'));
+    await userEvent.click(button('Download Notebook'));
     await userEvent.click(button('Save (⌘S)'));
     expect(c.run).toHaveBeenCalledOnce();
     expect(c.runAll).toHaveBeenCalledOnce();
@@ -139,6 +142,7 @@ describe('Toolbar', () => {
     expect(c.restart).toHaveBeenCalledOnce();
     expect(c.insert).toHaveBeenNthCalledWith(1, 'code');
     expect(c.insert).toHaveBeenNthCalledWith(2, 'markdown');
+    expect(c.download).toHaveBeenCalledOnce();
     expect(c.save).toHaveBeenCalledOnce();
   });
 
