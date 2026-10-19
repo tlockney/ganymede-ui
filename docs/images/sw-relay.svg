@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 720" width="760" height="720" role="img" aria-labelledby="title desc">
+  <title id="title">Service-worker relay</title>
+  <desc id="desc">A kernel in a Web Worker makes a synchronous POST to api/drive or api/stdin/kernel, carrying the page's browsingContextId, and blocks. The service worker intercepts it, adds a requestId and the path, and posts it on the /sw-api.v1 BroadcastChannel. The page's ServiceWorkerBridge skips requests from other tabs and answers drive requests from the contents manager and stdin requests from the kernel client. It posts the response with the same browsingContextId and requestId; the service worker matches both, returns it as the HTTP response, and the XHR returns in the Worker. Under npm run dev the page registers the relay alone as the service worker; in the production build Workbox's service worker loads it with importScripts.</desc>
+  <style>
+    .t { font: 14px system-ui, -apple-system, "Segoe UI", sans-serif; fill: #1d1d1f; }
+    .h { font-weight: 600; }
+    .m { font: 12.5px ui-monospace, "SF Mono", Menlo, Consolas, monospace; fill: #1d1d1f; }
+    .s { font: 12.5px system-ui, -apple-system, "Segoe UI", sans-serif; fill: #5f5f63; }
+    .box { fill: #f6f6f7; stroke: #c2c2c4; stroke-width: 1; }
+    .key { fill: #e8f0fe; stroke: #3b6fd8; stroke-width: 1.5; }
+    .alt { fill: #eef7ee; stroke: #4f9a5a; stroke-width: 1; }
+    .frame { fill: none; stroke: #8e8e93; stroke-width: 1; stroke-dasharray: 5 4; }
+    .arr { fill: none; stroke: #6e6e73; stroke-width: 1.4; }
+    .ret { stroke-dasharray: 6 4; }
+    .head { fill: #6e6e73; }
+    @media (prefers-color-scheme: dark) {
+      .t, .m { fill: #ececf0; }
+      .s { fill: #a0a0a8; }
+      .box { fill: #2a2a2e; stroke: #4a4a50; }
+      .key { fill: #1d2b45; stroke: #6f9bf0; }
+      .alt { fill: #1e3022; stroke: #5fae6a; }
+      .frame { stroke: #8e8e93; }
+      .arr { stroke: #a0a0a8; }
+      .head { fill: #a0a0a8; }
+    }
+  </style>
+  <defs>
+    <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path class="head" d="M0,0 L10,5 L0,10 z"/>
+    </marker>
+  </defs>
+
+  <!-- Lifeline heads -->
+  <rect class="alt" x="20" y="20" width="160" height="56" rx="8"/>
+  <text class="t h" x="100" y="44" text-anchor="middle">Kernel Worker</text>
+  <text class="s" x="100" y="64" text-anchor="middle">a kernel's Web Worker</text>
+  <rect class="key" x="210" y="20" width="160" height="56" rx="8"/>
+  <text class="t h" x="290" y="44" text-anchor="middle">Service worker</text>
+  <text class="s" x="290" y="64" text-anchor="middle">the relay, scope /</text>
+  <rect class="box" x="390" y="20" width="160" height="56" rx="8"/>
+  <text class="t h" x="470" y="44" text-anchor="middle">BroadcastChannel</text>
+  <text class="m" x="470" y="64" text-anchor="middle">/sw-api.v1</text>
+  <rect class="box" x="570" y="20" width="160" height="56" rx="8"/>
+  <text class="t h" x="650" y="44" text-anchor="middle">Page</text>
+  <text class="m" x="650" y="64" text-anchor="middle">ServiceWorkerBridge</text>
+
+  <!-- Lifelines -->
+  <path class="frame" d="M100,76 V520"/>
+  <path class="frame" d="M290,76 V520"/>
+  <path class="frame" d="M470,76 V520"/>
+  <path class="frame" d="M650,76 V520"/>
+
+  <!-- The Worker is blocked from the request until the response -->
+  <rect class="alt" x="94" y="130" width="12" height="360"/>
+  <text class="s" x="82" y="310" text-anchor="middle" transform="rotate(-90 82 310)">Worker thread blocked</text>
+
+  <!-- 1. Synchronous XHR -->
+  <text class="s" x="114" y="106">sync POST <tspan class="m">api/drive</tspan></text>
+  <text class="s" x="114" y="122">or <tspan class="m">api/stdin/kernel</tspan></text>
+  <path class="arr" d="M106,130 H288" marker-end="url(#a)"/>
+  <text class="s" x="114" y="148">carries browsingContextId</text>
+
+  <!-- 2. Intercept -->
+  <text class="s" x="300" y="176">fetch listener catches it,</text>
+  <text class="s" x="300" y="192">adds requestId, pathname</text>
+
+  <!-- 3. Post on the channel -->
+  <text class="s" x="300" y="222">posts the request</text>
+  <path class="arr" d="M290,232 H468" marker-end="url(#a)"/>
+
+  <!-- 4. Delivered to the page -->
+  <text class="s" x="480" y="262">every tab hears it</text>
+  <path class="arr" d="M470,272 H648" marker-end="url(#a)"/>
+
+  <!-- 5. The bridge answers -->
+  <rect class="key" x="556" y="290" width="188" height="84" rx="8"/>
+  <text class="s" x="570" y="312">skips other tabs' requests</text>
+  <text class="s" x="570" y="336"><tspan class="m">drive</tspan>: contents manager</text>
+  <text class="s" x="570" y="358"><tspan class="m">stdin</tspan>: kernel client</text>
+
+  <!-- 6. Response back the same way -->
+  <text class="s" x="480" y="410">response, same ids</text>
+  <path class="arr ret" d="M650,420 H472" marker-end="url(#a)"/>
+  <text class="s" x="300" y="448">relay matches both ids</text>
+  <path class="arr ret" d="M470,458 H292" marker-end="url(#a)"/>
+  <text class="s" x="114" y="480">JSON response; XHR returns</text>
+  <path class="arr ret" d="M290,490 H108" marker-end="url(#a)"/>
+
+  <!-- Where the relay runs -->
+  <rect class="frame" x="20" y="540" width="720" height="160" rx="10"/>
+  <text class="s" x="34" y="560">where the relay runs: one service worker at /, so the page and kernel Workers are both controlled</text>
+
+  <rect class="box" x="40" y="574" width="330" height="108" rx="8"/>
+  <text class="t h" x="56" y="598">Development, <tspan class="m">npm run dev</tspan></text>
+  <text class="s" x="56" y="620">No Workbox worker. The page registers</text>
+  <text class="s" x="56" y="638"><tspan class="m">/lite-service-worker.js</tspan> alone at scope /;</text>
+  <text class="s" x="56" y="656">it skips waiting and claims the page.</text>
+  <text class="s" x="56" y="674">(<tspan class="m">register()</tspan> in lite-sw.ts)</text>
+
+  <rect class="box" x="390" y="574" width="330" height="108" rx="8"/>
+  <text class="t h" x="406" y="598">Production build</text>
+  <text class="s" x="406" y="620">Workbox's <tspan class="m">sw.js</tspan> (registered by main.tsx)</text>
+  <text class="s" x="406" y="638">loads the relay with <tspan class="m">importScripts</tspan>.</text>
+  <text class="s" x="406" y="656">Its fetch listener answers only relay</text>
+  <text class="s" x="406" y="674">requests; Workbox handles the rest.</text>
+</svg>
