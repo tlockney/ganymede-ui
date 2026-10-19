@@ -175,9 +175,11 @@ describe('connect: browser', () => {
     expect(globalThis.fetch).not.toHaveBeenCalled();
   });
 
-  it('offers the JavaScript Web Worker kernel', () => {
+  it('offers cdp-kernel first, and the JavaScript Web Worker kernel', () => {
     const specs = services.kernelspecs.specs;
-    expect(specs?.default).toBe('javascript');
+    // JupyterLite's default is the first name in order.
+    expect(specs?.default).toBe('cdp-browser');
+    expect(specs?.kernelspecs['cdp-browser']?.display_name).toBe('TypeScript (cdp-kernel)');
     expect(specs?.kernelspecs.javascript?.display_name).toBe('JavaScript (Web Worker)');
   });
 
