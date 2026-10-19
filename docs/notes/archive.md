@@ -71,6 +71,9 @@ notebook, run JavaScript in the Worker. Light and dark.
 
 ### Not working / not done
 
+As of this entry; most of these were fixed later. The README's
+[Known gaps](../../README.md#known-gaps) has the current list.
+
 - In-browser kernel under `npm run dev`: cells stay busy. The JavaScript
   kernel creates its Worker with `new URL('./comlink.worker.js',
   import.meta.url)`, which breaks once Vite pre-bundles the package. Works in

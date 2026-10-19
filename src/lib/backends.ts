@@ -42,7 +42,10 @@ export async function connect(config: BackendConfig): Promise<Backend> {
       wsUrl: base.replace(/^http/, 'ws'),
       token: config.token,
       appendToken: true,
-      init: { credentials: config.url ? 'include' : 'same-origin' },
+      // The token authenticates; cookies cross origins only without one.
+      // A credentialed cross-origin request needs the server to answer
+      // `Access-Control-Allow-Credentials: true`, which Ganymede doesn't.
+      init: { credentials: config.url && !config.token ? 'include' : 'same-origin' },
     });
     // Fail fast with a readable error instead of a hung kernel list.
     const res = await ServerConnection.makeRequest(base + 'api/status', {}, serverSettings);
