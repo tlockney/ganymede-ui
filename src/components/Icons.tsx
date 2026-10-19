@@ -60,6 +60,12 @@ export const CodeIcon = (p: P) => (
 );
 export const SaveIcon = (p: P) => (
   <svg {...base(p)}>
+    <path d="M4 5.5A1.5 1.5 0 0 1 5.5 4h7.4l3.1 3.1v7.4a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 4 14.5z" />
+    <path d="M7 4v3.5h5V4M7 16v-4.5h6V16" />
+  </svg>
+);
+export const DownloadIcon = (p: P) => (
+  <svg {...base(p)}>
     <path d="M10 3v9M6.5 8.5 10 12l3.5-3.5" />
     <path d="M4 13.5v1A2.5 2.5 0 0 0 6.5 17h7a2.5 2.5 0 0 0 2.5-2.5v-1" />
   </svg>
@@ -121,5 +127,11 @@ export const ShieldIcon = (p: P) => (
   <svg {...base(p)}>
     <path d="M10 2.75 4 5v4.5c0 3.6 2.5 6.4 6 7.75 3.5-1.35 6-4.15 6-7.75V5z" />
     <path d="m7.5 10 1.75 1.75L12.75 8.25" />
+  </svg>
+);
+export const KeyboardIcon = (p: P) => (
+  <svg {...base(p)}>
+    <rect x="2.5" y="5" width="15" height="10" rx="2" />
+    <path d="M5.5 8h.01M8.5 8h.01M11.5 8h.01M14.5 8h.01M5.5 11h.01M14.5 11h.01M8 11.5h4" />
   </svg>
 );

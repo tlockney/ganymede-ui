@@ -6,6 +6,7 @@ struct ContentView: View {
     #if os(iOS)
     @Environment(\.scenePhase) private var phase
     @State private var picking = false
+    @State private var settings = false
     #endif
 
     var body: some View {
@@ -20,7 +21,12 @@ struct ContentView: View {
                 .navigationTitle(model.root.lastPathComponent)
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
-                    ToolbarItem(placement: .primaryAction) {
+                    ToolbarItemGroup(placement: .primaryAction) {
+                        Button {
+                            settings = true
+                        } label: {
+                            Label("Kernel Server", systemImage: "server.rack")
+                        }
                         Button {
                             picking = true
                         } label: {
@@ -28,6 +34,19 @@ struct ContentView: View {
                         }
                     }
                 }
+        }
+        .sheet(isPresented: $settings) {
+            NavigationStack {
+                KernelServerView()
+                    .navigationTitle("Kernels")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Cancel") { settings = false }
+                        }
+                    }
+            }
+            .environmentObject(model)
         }
         .fileImporter(isPresented: $picking, allowedContentTypes: [.folder]) { result in
             if case .success(let folder) = result {

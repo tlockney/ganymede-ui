@@ -7,19 +7,40 @@ struct GanymedeApp: App {
     #endif
     @StateObject private var model = AppModel.shared
 
+    // Separate bodies, since a `#if` inside a scene builder that starts
+    // with a postfix member chain does not parse.
+    #if os(macOS)
     var body: some Scene {
+        window
+            .commands {
+                CommandGroup(after: .newItem) {
+                    Button("Open Folder…") { model.chooseFolder() }
+                        .keyboardShortcut("o", modifiers: [.command, .shift])
+                }
+                CommandGroup(replacing: .help) {
+                    Button("Keyboard Shortcuts") {
+                        NotificationCenter.default.post(name: .showShortcuts, object: nil)
+                    }
+                }
+            }
+        Settings {
+            KernelServerView()
+                .environmentObject(model)
+                .frame(width: 460)
+                .padding()
+        }
+    }
+    #else
+    var body: some Scene {
+        window
+    }
+    #endif
+
+    private var window: some Scene {
         WindowGroup {
             ContentView()
                 .environmentObject(model)
         }
-        #if os(macOS)
-        .commands {
-            CommandGroup(after: .newItem) {
-                Button("Open Folder…") { model.chooseFolder() }
-                    .keyboardShortcut("o", modifiers: [.command, .shift])
-            }
-        }
-        #endif
     }
 }
 
