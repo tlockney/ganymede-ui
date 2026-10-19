@@ -17,6 +17,11 @@ struct GanymedeApp: App {
                     Button("Open Folder…") { model.chooseFolder() }
                         .keyboardShortcut("o", modifiers: [.command, .shift])
                 }
+                CommandGroup(replacing: .help) {
+                    Button("Keyboard Shortcuts") {
+                        NotificationCenter.default.post(name: .showShortcuts, object: nil)
+                    }
+                }
             }
         Settings {
             KernelServerView()

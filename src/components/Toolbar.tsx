@@ -4,6 +4,7 @@ import {
   CodeIcon,
   DownloadIcon,
   ForwardIcon,
+  KeyboardIcon,
   PlayIcon,
   RestartIcon,
   SaveIcon,
@@ -17,6 +18,7 @@ type Props = {
   controller?: NotebookController;
   sidebarOpen: boolean;
   onToggleSidebar(): void;
+  onShowShortcuts?(): void;
   specs?: KernelSpec.ISpecModels;
 };
 
@@ -38,7 +40,13 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 /** The unified titlebar and toolbar, as in a macOS document window. */
-export function Toolbar({ controller: c, sidebarOpen, onToggleSidebar, specs }: Props) {
+export function Toolbar({
+  controller: c,
+  sidebarOpen,
+  onToggleSidebar,
+  onShowShortcuts,
+  specs,
+}: Props) {
   const disabled = !c;
   const kernelDisplay =
     (c?.kernelName && specs?.kernelspecs[c.kernelName]?.display_name) || c?.kernelName;
@@ -148,6 +156,10 @@ export function Toolbar({ controller: c, sidebarOpen, onToggleSidebar, specs }: 
             </select>
           </label>
         )}
+
+        <button className="tb-button" title="Keyboard Shortcuts" onClick={onShowShortcuts}>
+          <KeyboardIcon />
+        </button>
 
         <button
           className="tb-button"

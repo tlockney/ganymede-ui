@@ -32,10 +32,16 @@ struct WebView: UIViewRepresentable {
 }
 #endif
 
+extension Notification.Name {
+    /// Posted by Help > Keyboard Shortcuts.
+    static let showShortcuts = Notification.Name("GanymedeShowShortcuts")
+}
+
 @MainActor
 final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
     private var loaded: URL?
     private weak var webView: WKWebView?
+    private var shortcuts: NSObjectProtocol?
     #if os(iOS)
     /// Where each download is written before the share sheet offers it.
     private var destinations: [ObjectIdentifier: URL] = [:]
@@ -46,11 +52,25 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         view.navigationDelegate = self
         view.uiDelegate = self
         webView = view
+        #if os(macOS)
+        // Help > Keyboard Shortcuts opens the web app's shortcuts sheet.
+        shortcuts = NotificationCenter.default.addObserver(
+            forName: .showShortcuts, object: nil, queue: .main
+        ) { [weak view] _ in
+            view?.evaluateJavaScript("window.dispatchEvent(new Event('ganymede:show-shortcuts'))")
+        }
+        #endif
         if #available(macOS 13.3, iOS 16.4, *) {
             // Safari's Web Inspector can attach (Develop menu).
             view.isInspectable = true
         }
         return view
+    }
+
+    deinit {
+        if let shortcuts {
+            NotificationCenter.default.removeObserver(shortcuts)
+        }
     }
 
     /// Loads `url` when it changed: a restart for another folder.
