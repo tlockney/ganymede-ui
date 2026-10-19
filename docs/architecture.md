@@ -12,21 +12,7 @@ Jupyter server that speaks the same REST and websocket API.
 
 ## The parts
 
-```text
- ┌──────────────────────────── the page ─────────────────────────────┐
- │  Shell (React)          Sidebar · Toolbar · sheets                 │
- │  NotebookPane           JupyterLab Notebook + SessionContext       │
- │                                    │                               │
- │                       ServiceManager.IManager   ← the one seam     │
- │            ┌───────────────────────┼───────────────────────┐       │
- │      ganymede                ganymede, kernels: page     browser   │
- │   REST + websocket      server contents + lite kernels  lite only  │
- └────────────┼───────────────────────┼───────────────────────┼──────┘
-              ▼                       ▼                       ▼
-     Ganymede (or any          Ganymede contents;     IndexedDB; kernels
-     Jupyter server):          kernels in Web         in Web Workers
-     notebooks and kernels     Workers in the page
-```
+![The shell and notebook use one ServiceManager, built by one of three backends](images/backends.svg)
 
 | Part                            | Where                                                                                                                                                                       |
 | ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -184,21 +170,7 @@ stream handling, and renderer and widget seams. It was Ganymede's
 iOS) built from one set of sources with XcodeGen. It runs Ganymede in its
 own process and shows this web app in a `WKWebView`:
 
-```text
- ┌──────────────── Ganymede.app ────────────────┐
- │ SwiftUI: AppModel, folder picker, settings   │
- │   │ ganymede_server_start(json) → URL        │
- │   ▼                                          │
- │ GanymedeFFI (Rust staticlib):                │
- │   Ganymede server on 127.0.0.1               │
- │   root_dir = notebook folder                 │
- │   static_dir = this repo's dist/             │
- │   gateway_url = kernel server, if set        │
- │   ▲                                          │
- │   │ HTTP + websocket, login cookie           │
- │ WKWebView: ganymede-ui                       │
- └──────────────────────────────────────────────┘
-```
+![The app process: SwiftUI, the Ganymede server from GanymedeFFI, and a web view showing ganymede-ui](images/apple-app.svg)
 
 - `GanymedeFFI.xcframework` is
   [`crates/ganymede-ffi`](https://github.com/tlockney/ganymede/tree/main/crates/ganymede-ffi)

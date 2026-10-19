@@ -20,3 +20,9 @@ longer path.
 `GANYMEDE_DOCS_TOKEN` secret, a fine-grained token for tlockney/ganymede
 with Contents read and write; without it the job warns and the docs show up
 on the site's next build.
+
+The two diagrams are hand-written SVGs in `docs/images/`, referenced as
+images so both GitHub and VitePress render them. An SVG in an `<img>` can't
+see the page's theme, so each carries its own light and dark colors under
+`prefers-color-scheme`; on the site that follows the system setting, not
+VitePress's theme toggle.
