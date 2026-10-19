@@ -11,6 +11,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var url: URL?
     @Published private(set) var error: String?
     @Published private(set) var root: URL
+    /// The Jupyter server kernels run on; empty for this device's own.
+    @Published private(set) var kernelServerURL: String
+    private(set) var kernelServerToken: String
 
     private var server: ServerHost?
     private let defaults = UserDefaults.standard
@@ -21,6 +24,8 @@ final class AppModel: ObservableObject {
     #endif
 
     private init() {
+        kernelServerURL = UserDefaults.standard.string(forKey: Keys.kernelServer) ?? ""
+        kernelServerToken = Keychain.get(Keys.kernelServer) ?? ""
         #if os(macOS)
         if let path = UserDefaults.standard.string(forKey: Keys.root),
            FileManager.default.fileExists(atPath: path) {
@@ -63,6 +68,10 @@ final class AppModel: ObservableObject {
             "static_dir": web.path,
             "quiet": true,
         ]
+        if !kernelServerURL.isEmpty {
+            config["gateway_url"] = kernelServerURL
+            config["gateway_token"] = kernelServerToken
+        }
         #if os(iOS)
         if let support = try? FileManager.default.url(
             for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true
@@ -116,6 +125,16 @@ final class AppModel: ObservableObject {
         start()
     }
 
+    /// Runs kernels on the server at `url` (with `token`), or on this
+    /// device when `url` is empty. Restarts the server.
+    func setKernelServer(url: String, token: String) {
+        kernelServerURL = url.trimmingCharacters(in: .whitespaces)
+        kernelServerToken = kernelServerURL.isEmpty ? "" : token
+        defaults.set(kernelServerURL, forKey: Keys.kernelServer)
+        Keychain.set(Keys.kernelServer, kernelServerToken)
+        start()
+    }
+
     #if os(macOS)
     func chooseFolder() {
         let panel = NSOpenPanel()
@@ -149,5 +168,6 @@ final class AppModel: ObservableObject {
         static let root = "rootFolder"
         static let bookmark = "rootFolderBookmark"
         static let port = "serverPort"
+        static let kernelServer = "kernelServer"
     }
 }

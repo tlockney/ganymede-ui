@@ -53,6 +53,26 @@ final class ServerHostTests: XCTestCase {
         XCTAssertThrowsError(try get(host.url))
     }
 
+    /// A server whose kernels run on another one (`gateway_url`), here a
+    /// second in-process server.
+    func testKernelServerConfigIsAccepted() throws {
+        let remote = try ServerHost(config: config(["token": "remote"]))
+        defer { remote.stop() }
+        var base = URLComponents(url: remote.url, resolvingAgainstBaseURL: false)!
+        base.query = nil
+        let local = try ServerHost(config: config([
+            "gateway_url": base.url!.absoluteString,
+            "gateway_token": "remote",
+            "cookie_secret_file": dir.appendingPathComponent("local_secret").path,
+        ]))
+        defer { local.stop() }
+        var specs = local.url
+        specs.appendPathComponent("api/kernelspecs")
+        let (status, body) = try get(specs)
+        XCTAssertEqual(status, 200, body)
+        XCTAssertTrue(body.contains("kernelspecs"), body)
+    }
+
     func testFailureThrowsTheServersMessage() {
         XCTAssertThrowsError(try ServerHost(config: config(["root_dir": "/no/such/dir"]))) { error in
             XCTAssertTrue(error.localizedDescription.contains("/no/such/dir"), "\(error)")
