@@ -173,6 +173,16 @@ a signed notebook, and Trust Notebook in the toolbar calls
 `POST /api/contents/{path}/trust`. The browser backend keeps no signatures,
 so trust there lasts while the notebook is open.
 
+Trusted HTML and JavaScript outputs don't render in the app's document, as
+they do in JupyterLab: `output-frames.ts` swaps their renderers for ones
+that put each output in an iframe with `sandbox` minus `allow-same-origin`
+(an opaque origin: no cookies, storage or app DOM), a meta CSP, and the content
+in `srcdoc`. The frame's one message out is its height, accepted only
+from that frame's window. Untrusted HTML still renders in the page
+through JupyterLab's sanitizer; Markdown outputs are always sanitized,
+since trusted Markdown would run its HTML's scripts in the page; SVG
+renders as an `<img>`. ipywidgets still render in the page.
+
 ## Shell
 
 React components in `src/components/` draw a macOS-style window: a

@@ -112,9 +112,12 @@ It is a prototype. What it doesn't do yet, or does roughly:
   ([#57](https://github.com/tlockney/ganymede-ui/issues/57)), and a failed
   save, restart or kernel change shows no error
   ([#58](https://github.com/tlockney/ganymede-ui/issues/58)).
-- **Trusted output runs in the app's page**, not a sandboxed frame
-  ([#35](https://github.com/tlockney/ganymede-ui/issues/35)), and the token
-  sits in local storage ([#55](https://github.com/tlockney/ganymede-ui/issues/55)).
+- **Widgets run in the app's page.** Trusted HTML and JavaScript outputs
+  render in sandboxed frames with no access to the app, but ipywidgets
+  render in the page itself, and the token sits in local storage
+  ([#55](https://github.com/tlockney/ganymede-ui/issues/55)). Relative
+  links and images in trusted HTML outputs don't load, since the frame
+  has no origin to resolve them against.
 - **Switching backends** leaves the old backend's kernels running with no
   way to reach them from the app
   ([#62](https://github.com/tlockney/ganymede-ui/issues/62)).
