@@ -75,6 +75,7 @@ export class KernelConnection {
   private readonly ready: Promise<void>;
   private readonly listeners = new Set<MessageListener>();
   private readonly closeListeners = new Set<(reason: Error) => void>();
+  private readonly errorListeners = new Set<(error: Error) => void>();
   private sendFormat: 'v1' | 'legacy';
   private lastInputRequest: Message<InputRequestContent> | undefined;
   private _status: ExecutionState | 'unknown' | 'closed' = 'unknown';
@@ -132,6 +133,19 @@ export class KernelConnection {
     this.closeListeners.add(listener);
     return () => {
       this.closeListeners.delete(listener);
+    };
+  }
+
+  /**
+   * Hear about frames that could not be decoded and message listeners that
+   * threw. Either way the connection carries on: the frame is dropped, and
+   * the other listeners still get the message. With no error listener these
+   * go to `console.warn`.
+   */
+  onError(listener: (error: Error) => void): () => void {
+    this.errorListeners.add(listener);
+    return () => {
+      this.errorListeners.delete(listener);
     };
   }
 
@@ -283,6 +297,7 @@ export class KernelConnection {
 
   dispose(): void {
     this.listeners.clear();
+    this.errorListeners.clear();
     if (this.ws.readyState < 2) {
       this.ws.close(1000, 'disposed');
     }
@@ -290,14 +305,19 @@ export class KernelConnection {
 
   private handleFrame(data: unknown): void {
     let decoded: ChannelMessage;
-    if (typeof data === 'string') {
-      // The server did not negotiate the v1 subprotocol; mirror its format.
-      this.sendFormat = 'legacy';
-      decoded = decodeLegacy(data);
-    } else if (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) {
-      decoded = decodeV1(data);
-    } else {
-      // Blob frames only appear if binaryType was not honoured; ignore.
+    try {
+      if (typeof data === 'string') {
+        decoded = decodeLegacy(data);
+        // The server did not negotiate the v1 subprotocol; mirror its format.
+        this.sendFormat = 'legacy';
+      } else if (data instanceof ArrayBuffer || ArrayBuffer.isView(data)) {
+        decoded = decodeV1(data);
+      } else {
+        // Blob frames only appear if binaryType was not honoured; ignore.
+        return;
+      }
+    } catch (error) {
+      this.reportError('dropped a malformed frame', error);
       return;
     }
     const { channel, message } = decoded;
@@ -307,9 +327,27 @@ export class KernelConnection {
       this.lastInputRequest = message as Message<InputRequestContent>;
     }
     for (const listener of [...this.listeners]) {
-      listener(channel, message);
+      // One listener failing must not keep the message from the rest.
+      try {
+        listener(channel, message);
+      } catch (error) {
+        this.reportError(`a listener threw on ${channel} ${message.header.msg_type}`, error);
+      }
     }
   }
+
+  private reportError(what: string, cause: unknown): void {
+    const error = new Error(`kernel ${this.kernelId}: ${what}: ${errorMessage(cause)}`, { cause });
+    if (this.errorListeners.size === 0) {
+      console.warn(error);
+      return;
+    }
+    for (const listener of [...this.errorListeners]) listener(error);
+  }
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 function describe(event: unknown): string {
