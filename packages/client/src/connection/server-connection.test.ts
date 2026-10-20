@@ -97,3 +97,47 @@ test('RestClient throws ServerError on non-2xx', async () => {
     return true;
   });
 });
+
+test('RestClient sends cookies and X-XSRFToken on writes for cookie auth', async () => {
+  const calls: RequestInit[] = [];
+  const fakeFetch: typeof fetch = async (_input, init) => {
+    calls.push(init ?? {});
+    return new Response('{}');
+  };
+  const client = new RestClient(
+    makeSettings({
+      baseUrl: 'http://h/',
+      credentials: 'include',
+      xsrfToken: () => 'x1',
+      fetch: fakeFetch,
+      WebSocket: NoopWebSocket,
+    }),
+  );
+  await client.listKernels();
+  await client.startKernel('cdp');
+  const headers = calls.map(c => c.headers as Record<string, string>);
+  assert.deepEqual(
+    calls.map(c => c.credentials),
+    ['include', 'include'],
+  );
+  assert.equal(headers[0]!['X-XSRFToken'], undefined);
+  assert.equal(headers[1]!['X-XSRFToken'], 'x1');
+  assert.equal(headers[1]!['Authorization'], undefined);
+});
+
+test("makeSettings reads the page's _xsrf cookie for its own origin only", () => {
+  const g = globalThis as { location?: unknown; document?: unknown };
+  const saved = { location: g.location, document: g.document };
+  g.location = { origin: 'http://page' };
+  g.document = { cookie: 'a=1; _xsrf=2%7Cabc; b=3' };
+  try {
+    const here = makeSettings({ baseUrl: 'http://page/base', WebSocket: NoopWebSocket });
+    assert.equal(here.credentials, 'same-origin');
+    assert.equal(here.xsrfToken(), '2|abc');
+    const there = makeSettings({ baseUrl: 'http://elsewhere/', WebSocket: NoopWebSocket });
+    assert.equal(there.xsrfToken(), undefined);
+  } finally {
+    g.location = saved.location;
+    g.document = saved.document;
+  }
+});

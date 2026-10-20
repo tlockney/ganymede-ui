@@ -16,11 +16,20 @@ for (const colorScheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme });
     await page.goto(`/?token=${TOKEN}`);
     await openNotebook(page, SHOWCASE);
-    // A fresh kernel, so execution counts start at 1 in both shots.
+    // A fresh kernel, so execution counts start at 1 in both shots. The
+    // subtitle still says Idle from before the restart, so wait for the
+    // server to finish it: cells run during the restart can be lost.
+    const restarted = page.waitForResponse(
+      r => r.request().method() === 'POST' && /\/api\/kernels\/[^/]+\/restart/.test(r.url()),
+    );
     await page.getByRole('button', { name: 'Restart Kernel' }).click();
+    await restarted;
     await waitForIdle(page);
     await page.getByRole('button', { name: 'Run All' }).click();
-    await expect(outputs(page).filter({ hasText: 'largest moon' })).toBeVisible();
+    // The HTML output is in a sandboxed frame.
+    await expect(
+      page.locator('[data-mime-type="text/html"] iframe').contentFrame().getByText('largest moon'),
+    ).toBeVisible();
     await expect(outputs(page).filter({ hasText: 'TypeError' })).toBeVisible();
     // Saved, so the title doesn't say "Edited"; the HTML cell selected.
     await page.getByRole('button', { name: /^Save/ }).click();

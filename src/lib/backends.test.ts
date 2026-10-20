@@ -291,14 +291,43 @@ describe('signedInHere', () => {
 });
 
 describe('saved config', () => {
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+  });
 
-  it('round-trips through localStorage', () => {
+  it('round-trips, with the token in sessionStorage only', () => {
     expect(loadConfig()).toBeUndefined();
     saveConfig({ kind: 'ganymede', url: 'https://x.example', token: 't' });
+    expect(JSON.parse(localStorage.getItem('ganymede-ui:backend')!)).toEqual({
+      kind: 'ganymede',
+      url: 'https://x.example',
+    });
+    expect(sessionStorage.getItem('ganymede-ui:token')).toBe('t');
     expect(loadConfig()).toEqual({ kind: 'ganymede', url: 'https://x.example', token: 't' });
     saveConfig({ kind: 'browser' });
     expect(loadConfig()).toEqual({ kind: 'browser' });
+    expect(sessionStorage.getItem('ganymede-ui:token')).toBeNull();
+  });
+
+  it('loads a server without its token once the tab is gone', () => {
+    saveConfig({ kind: 'ganymede', url: 'https://x.example', token: 't', kernels: 'page' });
+    sessionStorage.clear();
+    expect(loadConfig()).toEqual({
+      kind: 'ganymede',
+      url: 'https://x.example',
+      token: '',
+      kernels: 'page',
+    });
+  });
+
+  it('drops a token an older version left in localStorage', () => {
+    localStorage.setItem(
+      'ganymede-ui:backend',
+      JSON.stringify({ kind: 'ganymede', url: 'https://x.example', token: 'old' }),
+    );
+    expect(loadConfig()).toEqual({ kind: 'ganymede', url: 'https://x.example', token: '' });
+    expect(localStorage.getItem('ganymede-ui:backend')).not.toContain('old');
   });
 
   it('ignores a corrupt entry', () => {

@@ -117,11 +117,22 @@ export async function signedInHere(): Promise<boolean> {
 export const SAME_ORIGIN: BackendConfig = { kind: 'ganymede', url: '', token: '' };
 
 const KEY = 'ganymede-ui:backend';
+const TOKEN_KEY = 'ganymede-ui:token';
 
+/**
+ * The last backend, from localStorage, with its token from sessionStorage.
+ * The token never goes in localStorage: script on this origin can read
+ * either store, but sessionStorage ends with the tab, so a leaked token
+ * doesn't outlive it (#55). A token an older version saved is dropped.
+ */
 export function loadConfig(): BackendConfig | undefined {
   try {
     const raw = localStorage.getItem(KEY);
-    return raw ? (JSON.parse(raw) as BackendConfig) : undefined;
+    if (!raw) return undefined;
+    const config = JSON.parse(raw) as BackendConfig;
+    if (config.kind !== 'ganymede') return config;
+    if (config.token) localStorage.setItem(KEY, JSON.stringify(withoutToken(config)));
+    return { ...config, token: sessionStorage.getItem(TOKEN_KEY) ?? '' };
   } catch {
     return undefined;
   }
@@ -129,8 +140,16 @@ export function loadConfig(): BackendConfig | undefined {
 
 export function saveConfig(config: BackendConfig): void {
   try {
-    localStorage.setItem(KEY, JSON.stringify(config));
+    localStorage.setItem(KEY, JSON.stringify(withoutToken(config)));
+    if (config.kind === 'ganymede' && config.token) sessionStorage.setItem(TOKEN_KEY, config.token);
+    else sessionStorage.removeItem(TOKEN_KEY);
   } catch {
     // Private mode: the choice lasts for this page only.
   }
+}
+
+function withoutToken(config: BackendConfig): object {
+  if (config.kind !== 'ganymede') return config;
+  const { token: _token, ...rest } = config;
+  return rest;
 }

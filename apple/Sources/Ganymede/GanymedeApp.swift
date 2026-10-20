@@ -48,11 +48,11 @@ struct GanymedeApp: App {
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
-        LoginShell.adoptPath()
+        AppModel.shared.adoptLoginShellPath()
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        AppModel.shared.stop()
+        AppModel.shared.stopForQuit()
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {

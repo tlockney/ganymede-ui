@@ -38,6 +38,18 @@ export interface ServerConnection {
   /** Always ends with "/". Derived from `baseUrl` unless overridden. */
   wsUrl: string;
   token?: string;
+  /**
+   * Whether `fetch` sends cookies: `'same-origin'` by default, so a page
+   * served by its server works on the login cookie; `'include'` for a
+   * cookie session on another origin.
+   */
+  credentials: RequestCredentials;
+  /**
+   * The `_xsrf` value sent as `X-XSRFToken` on writes, as jupyter_server
+   * requires with cookie auth. By default the page's `_xsrf` cookie when
+   * `baseUrl` is the page's origin.
+   */
+  xsrfToken: () => string | undefined;
   fetch: typeof fetch;
   WebSocket: WebSocketConstructor;
 }
@@ -56,6 +68,19 @@ function defaultBaseUrl(): string {
   return 'http://localhost:8888/';
 }
 
+/** The page's `_xsrf` cookie, for a server on the page's own origin. */
+function pageXsrfCookie(baseUrl: string): () => string | undefined {
+  return () => {
+    const { location, document } = globalThis as {
+      location?: { origin?: string };
+      document?: { cookie?: string };
+    };
+    if (!location?.origin || new URL(baseUrl).origin !== location.origin) return undefined;
+    const match = /(?:^|;\s*)_xsrf=([^;]*)/.exec(document?.cookie ?? '');
+    return match ? decodeURIComponent(match[1]!) : undefined;
+  };
+}
+
 export function makeSettings(overrides: ServerConnectionOverrides = {}): ServerConnection {
   const baseUrl = withTrailingSlash(overrides.baseUrl ?? defaultBaseUrl());
   const wsUrl = withTrailingSlash(overrides.wsUrl ?? baseUrl.replace(/^http(s?):/, 'ws$1:'));
@@ -68,7 +93,14 @@ export function makeSettings(overrides: ServerConnectionOverrides = {}): ServerC
   if (!WebSocketImpl) {
     throw new Error('makeSettings: no WebSocket available; pass one in overrides');
   }
-  const settings: ServerConnection = { baseUrl, wsUrl, fetch: fetchImpl, WebSocket: WebSocketImpl };
+  const settings: ServerConnection = {
+    baseUrl,
+    wsUrl,
+    credentials: overrides.credentials ?? 'same-origin',
+    xsrfToken: overrides.xsrfToken ?? pageXsrfCookie(baseUrl),
+    fetch: fetchImpl,
+    WebSocket: WebSocketImpl,
+  };
   if (overrides.token !== undefined) {
     settings.token = overrides.token;
   }
@@ -183,15 +215,23 @@ export interface GetContentsOptions {
 export class RestClient {
   constructor(readonly settings: ServerConnection) {}
 
-  /** One request through `settings.fetch`, with the token header and JSON handling. */
+  /**
+   * One request through `settings.fetch`, with the token header, cookies
+   * per `settings.credentials`, `X-XSRFToken` on writes, and JSON handling.
+   */
   async request<T>(
     path: string,
     init: { method?: string; body?: unknown; query?: Record<string, string | undefined> } = {},
   ): Promise<T> {
     const url = apiUrl(this.settings, path, init.query);
+    const method = init.method ?? 'GET';
     const headers: Record<string, string> = {};
     if (this.settings.token) {
       headers['Authorization'] = `token ${this.settings.token}`;
+    }
+    if (method !== 'GET' && method !== 'HEAD') {
+      const xsrf = this.settings.xsrfToken();
+      if (xsrf) headers['X-XSRFToken'] = xsrf;
     }
     let body: string | undefined;
     if (init.body !== undefined) {
@@ -199,9 +239,10 @@ export class RestClient {
       body = JSON.stringify(init.body);
     }
     const response = await this.settings.fetch(url, {
-      method: init.method ?? 'GET',
+      method,
       headers,
       body,
+      credentials: this.settings.credentials,
     });
     if (!response.ok) {
       throw new ServerError(response.status, url, await response.text());
