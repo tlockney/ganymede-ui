@@ -2,9 +2,21 @@
 // test: one page is the app, another is kernel.html, and messages pass
 // between them through fake `webkit.messageHandlers`, in order. The cell
 // runs in the kernel page's Worker; the app page starts no Worker.
+import { readdirSync, rmSync } from 'node:fs';
+import { join } from 'node:path';
 import { expect, type Page, test } from '@playwright/test';
-import { GANYMEDE_URL, TOKEN } from './env';
+import { GANYMEDE_URL, ROOT_DIR, TOKEN } from './env';
 import { outputs, waitForIdle } from './helpers';
+
+// The notebook the test makes is removed afterwards, as in page-kernels.spec.ts.
+const notebooks = () => new Set(readdirSync(ROOT_DIR).filter(f => f.endsWith('.ipynb')));
+let before: Set<string>;
+test.beforeEach(() => {
+  before = notebooks();
+});
+test.afterEach(() => {
+  for (const f of notebooks()) if (!before.has(f)) rmSync(join(ROOT_DIR, f), { force: true });
+});
 
 /** `webkit.messageHandlers[name].postMessage` calling `binding`. */
 const fakeHandler = (name: string, binding: string) => `
