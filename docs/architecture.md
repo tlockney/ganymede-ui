@@ -233,10 +233,10 @@ own process and shows this web app in a `WKWebView`:
 
 Where kernels run:
 
-| Setting                                     | Mac                                                     | iPad and iPhone                              |
-| ------------------------------------------- | ------------------------------------------------------- | -------------------------------------------- |
-| No kernel server                            | Kernelspecs installed on the Mac                        | cdp-kernel in the web view (`?kernels=page`) |
-| Kernel server set (⌘, or the server button) | That server, through Ganymede's gateway (`gateway_url`) | Same                                         |
+| Setting                                     | Mac                                                     | iPad and iPhone                                     |
+| ------------------------------------------- | ------------------------------------------------------- | --------------------------------------------------- |
+| No kernel server                            | Kernelspecs installed on the Mac                        | cdp-kernel in the kernel web view (`?kernels=page`) |
+| Kernel server set (⌘, or the server button) | That server, through Ganymede's gateway (`gateway_url`) | Same                                                |
 
 iOS does not let an app launch processes, so without a kernel server the
 iPad's in-process Ganymede serves notebooks only and the page runs its own
@@ -245,6 +245,21 @@ Ganymede forwards kernel requests to it and the page connects as usual.
 Notebooks stay on the device either way. On the Mac, an app opened from
 the Finder takes `PATH` from the login shell (`LoginShell.swift`) so
 kernelspecs that run `node`, `deno` or `python3` start.
+
+In the apps, cdp-kernel's in-page kernels don't run in the UI's web view.
+`KernelHost.swift` keeps a second, hidden web view on `kernel.html`
+(`src/kernel-host.ts`), loaded from the same server when the first kernel
+starts, and relays Jupyter messages between the two pages: the UI posts
+to `webkit.messageHandlers.kernelRelay`, the kernel page to `kernelHost`,
+and Swift delivers each to the other page's `deliver` in order
+(`src/lib/kernel-relay.ts`; binary buffers travel as base64). Swift takes
+only main-frame messages from the server's origin, since WebKit gives
+subframes, the sandboxed output frames among them, the same handlers.
+Native bridges for cells, such as
+[ganymede-device](https://github.com/tlockney/ganymede-device)'s `device`
+handler, belong on the kernel web view only, so nothing the UI renders
+can call them (#99). None is registered yet. `CdpBrowserKernel` uses the
+relay whenever the page has a `kernelRelay` handler; a browser has none.
 
 A native on-device kernel, cdp-kernel running in the app's process instead
 of the web view, is planned and not started.

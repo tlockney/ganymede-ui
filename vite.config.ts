@@ -118,6 +118,12 @@ export default defineConfig({
     __dirname: '""',
   },
   worker: { format: 'es' },
+  build: {
+    rollupOptions: {
+      // kernel.html is the Apple apps' hidden kernel web view (#99).
+      input: { main: 'index.html', kernel: 'kernel.html' },
+    },
+  },
   optimizeDeps: {
     // The JavaScript kernel starts its Worker with
     // `new URL('./worker-runtime.js', import.meta.url)`; pre-bundling moves

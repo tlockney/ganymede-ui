@@ -42,6 +42,8 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     private var loaded: URL?
     private weak var webView: WKWebView?
     private var shortcuts: NSObjectProtocol?
+    /// Where the page's in-page kernels run (ganymede-ui#99).
+    private let kernels = KernelHost()
     #if os(iOS)
     /// Where each download is written before the share sheet offers it.
     private var destinations: [ObjectIdentifier: URL] = [:]
@@ -52,6 +54,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         view.navigationDelegate = self
         view.uiDelegate = self
         webView = view
+        kernels.attach(to: view)
         #if os(macOS)
         // Help > Keyboard Shortcuts opens the web app's shortcuts sheet.
         shortcuts = NotificationCenter.default.addObserver(
@@ -77,7 +80,13 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     func load(_ url: URL, in view: WKWebView) {
         guard url != loaded else { return }
         loaded = url
+        kernels.uiWillLoad(url)
         view.load(URLRequest(url: url))
+    }
+
+    /// A reload or another page: the old page's kernels go with it.
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
+        kernels.reset()
     }
 
     /// Links to other hosts open in the default browser.
