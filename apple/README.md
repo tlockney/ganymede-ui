@@ -35,7 +35,8 @@ On iPadOS and iOS (`Ganymede-iOS` target, iOS 16 or later):
   iCloud Drive or SMB folder works); the app keeps a bookmark to it.
 - iOS does not let an app launch kernel processes, so on the iPad the
   page runs its own kernel: cdp-kernel's TypeScript kernel in a Worker in
-  the web view (the app opens the page with `kernels=page`). For other
+  a hidden second web view, with Swift relaying its messages
+  (`KernelHost.swift`; the app opens the page with `kernels=page`). For other
   kernels, tap the server button and enter the URL and token of another
   Jupyter or Ganymede server (for example `ganymede serve --ip 0.0.0.0` on
   your Mac; see its [Security](https://ganymede-server.com/docs/security)

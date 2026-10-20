@@ -38,9 +38,26 @@ test('lists the notebook, runs all cells, and shows stream, result and HTML outp
       hasText: 'IO · EUROPA · GANYMEDE · CALLISTO',
     }),
   ).toBeVisible();
-  // text/html from jupyter.display(jupyter.html`...`)
-  const table = page.locator('[data-mime-type="text/html"] table.moon-table');
+  // text/html from jupyter.display(jupyter.html`...`), in a sandboxed frame
+  // sized to fit the table.
+  const frame = page.locator('[data-mime-type="text/html"] iframe');
+  await expect(frame).toHaveAttribute('sandbox', /allow-scripts/);
+  const table = frame.contentFrame().locator('table.moon-table');
   await expect(table).toBeVisible();
+  await expect.poll(async () => (await frame.boundingBox())?.height ?? 0).toBeGreaterThan(50);
+  // Opaque origin: no storage, cookies or app DOM.
+  expect(
+    await frame
+      .contentFrame()
+      .locator('body')
+      .evaluate(() => {
+        try {
+          return `${window.origin} ${String(window.parent.document)}`;
+        } catch {
+          return `${window.origin} blocked`;
+        }
+      }),
+  ).toBe('null blocked');
   await expect(table.getByRole('cell', { name: 'Callisto' })).toBeVisible();
   await expect(table.getByRole('row')).toHaveCount(5);
 });

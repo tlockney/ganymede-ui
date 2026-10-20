@@ -99,7 +99,7 @@ export async function createLiteServices(
     serverSettings,
   });
 
-  const services = new LiteServiceManager(bridge, {
+  const services = new LiteServiceManager(bridge, kernelClient, {
     serverSettings,
     contents,
     kernels,
@@ -144,15 +144,28 @@ class CdpAwareKernelClient extends LiteKernelClient {
   }
 }
 
-/** Stops the relay along with the rest when the backend is switched. */
+/**
+ * Ends this page's kernels and the relay when the backend is switched.
+ *
+ * `ServiceManager.dispose()` leaves running kernels alone, which suits a
+ * server: they stay listed under Running when the app connects to it again.
+ * Kernels in this page have no such home, and their Workers would run on,
+ * unreachable, until the tab closes. So they are shut down first, which
+ * terminates their Workers, and then the relay answers whatever is still
+ * pending (lite-sw.ts).
+ */
 class LiteServiceManager extends ServiceManager {
   constructor(
     private _bridge: ServiceWorkerBridge,
+    private _kernelClient: LiteKernelClient,
     options: Partial<ServiceManager.IOptions>,
   ) {
     super(options);
   }
   dispose(): void {
+    if (this.isDisposed) return;
+    // Synchronous underneath: each kernel is disposed on the spot.
+    void this._kernelClient.shutdownAll();
     this._bridge.dispose();
     super.dispose();
   }

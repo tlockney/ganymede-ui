@@ -41,9 +41,15 @@ export class ServiceWorkerBridge {
    */
   readonly ready: Promise<void>;
 
+  /**
+   * Answers what is still pending with `null`, so no kernel Worker waits on
+   * a page that has stopped listening, then stops listening.
+   */
   dispose(): void {
     if (this._disposed) return;
     this._disposed = true;
+    for (const requestId of this._pending) this._post(requestId, null);
+    this._pending.clear();
     this._channel.removeEventListener('message', this._onMessage);
     this._channel.close();
   }
@@ -52,25 +58,32 @@ export class ServiceWorkerBridge {
     const { data, browsingContextId, requestId, pathname } = event.data ?? {};
     // Other tabs' requests and replies share the channel.
     if (browsingContextId !== this.browsingContextId || typeof pathname !== 'string') return;
-    let response: unknown;
-    if (pathname.includes('/api/stdin/')) {
-      if (!pathname.endsWith('/kernel')) {
-        console.warn(`No stdin handler for ${pathname}`);
-        return;
-      }
-      response = await this._handleStdin(data);
-    } else {
-      try {
+    if (this._disposed) return;
+    // Every request gets an answer: the Worker sits in a synchronous
+    // request until it does. A failure answers `null`, which DriveFS turns
+    // into EINVAL and a stdin reader into no input; better than a hang.
+    this._pending.add(requestId);
+    let response: unknown = null;
+    try {
+      if (!pathname.includes('/api/stdin/')) {
         response = await this._drive.processDriveRequest(data);
-      } catch (err) {
-        // DriveFS turns a non-JSON answer into EINVAL; better than a hang.
-        console.warn('Drive request failed', data, err);
-        response = null;
+      } else if (pathname.endsWith('/kernel')) {
+        response = await this._handleStdin(data);
+      } else {
+        console.warn(`No stdin handler for ${pathname}`);
       }
+    } catch (err) {
+      console.warn(`Request to ${pathname} failed`, data, err);
     }
-    if (!this._disposed) this._channel.postMessage({ response, browsingContextId, requestId });
+    // Already answered with `null` if the bridge was disposed meanwhile.
+    if (this._pending.delete(requestId)) this._post(requestId, response);
   };
 
+  private _post(requestId: unknown, response: unknown) {
+    this._channel.postMessage({ response, browsingContextId: this.browsingContextId, requestId });
+  }
+
+  private _pending = new Set<unknown>();
   private _disposed = false;
   private _channel = new BroadcastChannel(CHANNEL);
   private _drive: DriveContentsProcessor;
