@@ -5,8 +5,13 @@ import Foundation
 /// so kernelspecs whose argv names `node`, `deno` or `python3` would not
 /// start. Take PATH from the user's login shell instead, as a terminal
 /// would have it, before the server launches any kernel.
+///
+/// A login shell can be slow (a long profile, a network home folder), so
+/// this runs off the main thread; `AppModel` waits for it before it starts
+/// the server.
 enum LoginShell {
     static func adoptPath() {
+        dispatchPrecondition(condition: .notOnQueue(.main))
         let env = ProcessInfo.processInfo.environment
         let shell = env["SHELL"] ?? "/bin/zsh"
         var paths = loginPath(shell: shell)?.split(separator: ":").map(String.init) ?? []
@@ -29,17 +34,15 @@ enum LoginShell {
         process.standardOutput = output
         process.standardError = FileHandle.nullDevice
         process.standardInput = FileHandle.nullDevice
+        let exited = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in exited.signal() }
         do {
             try process.run()
         } catch {
             return nil
         }
-        // A slow or stuck profile must not keep the app from starting.
-        let deadline = Date().addingTimeInterval(5)
-        while process.isRunning && Date() < deadline {
-            Thread.sleep(forTimeInterval: 0.05)
-        }
-        if process.isRunning {
+        // A slow or stuck profile must not keep the server from starting.
+        if exited.wait(timeout: .now() + 5) == .timedOut {
             process.terminate()
             return nil
         }
