@@ -89,8 +89,11 @@ Where the app connects is decided in this order (`App.tsx`):
    app connects to its own origin with no token.
 4. Otherwise the connect sheet asks.
 
-Switching backends disposes the old `ServiceManager`, which shuts down
-whatever it holds.
+Switching backends disposes the old `ServiceManager`. A server's kernels
+keep running, as they do when a notebook closes, and show under Running
+when the app connects to that server again. Kernels in the page have
+nowhere to come back to, so the in-page manager shuts them down first,
+which terminates their Workers.
 
 ## In-page server and kernels
 
@@ -136,6 +139,13 @@ from the kernel client. The kernel puts the page's `browsingContextId` in
 each request and the relay adds a `requestId`; tabs and kernels share the
 channel, so the bridge skips other pages' requests and the relay matches
 the reply on both.
+
+The Worker is blocked until its request is answered, so every request gets
+an answer. The bridge answers `null` when a request fails, when it has no
+handler for it, and, for whatever is still pending, when it is disposed.
+The relay answers `null` itself when a drive request gets no answer in 30
+seconds; stdin requests wait for a person, so they have no limit. DriveFS
+turns `null` into `EINVAL`.
 
 ![A kernel's synchronous request goes through the service worker and the BroadcastChannel to the page, and the answer comes back the same way](images/sw-relay.svg)
 
