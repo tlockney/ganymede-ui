@@ -65,8 +65,8 @@ calls and as a `token` query parameter on websockets; no cookies or
 HTTPS (browsers block mixed content, except `localhost`), so a remote server
 normally sits behind a TLS proxy; Ganymede's
 [security page](https://ganymede-server.com/docs/security) covers that, and
-listening beyond loopback. The connection, token included, is saved in the
-browser; see [Where your data lives](https://github.com/tlockney/ganymede-ui#where-your-data-lives).
+listening beyond loopback. The server URL is saved in the browser and the
+token only for the tab; see [Where your data lives](https://github.com/tlockney/ganymede-ui#where-your-data-lives).
 
 To try this on one machine:
 

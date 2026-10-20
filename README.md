@@ -86,14 +86,14 @@ browser. [docs/shortcuts.md](docs/shortcuts.md) lists the defaults.
   the site's data deletes the notebooks.
 - **Ganymede:** notebooks are files in the folder the server serves, and
   kernels run where the server runs them.
-- **The connection:** the chosen backend, including the server URL and
-  token, is saved in the browser's local storage
-  (`ganymede-ui:backend`) and used on the next visit. Any script on the
-  page's origin can read it, including the HTML and JavaScript output of a
-  notebook you trust ([#55](https://github.com/tlockney/ganymede-ui/issues/55)
-  tracks keeping it out). A `?token=` in the page URL is removed from the
-  address bar once read. Served by Ganymede, the app connects on the login
-  cookie and saves no token.
+- **The connection:** the chosen backend and server URL are saved in the
+  browser's local storage (`ganymede-ui:backend`) and used on the next
+  visit. The token is kept in session storage (`ganymede-ui:token`), which
+  ends with the tab, so a new tab or a restarted browser asks for it
+  again. Script on the page's origin can still read it while the tab is
+  open. A `?token=` in the page URL is removed from the address bar once
+  read. Served by Ganymede, the app connects on the login cookie and saves
+  no token.
 - **Trust:** Ganymede signs a notebook you trust, as Jupyter does, so its
   outputs render when reopened. The browser backend keeps no signatures, so
   trust lasts while the notebook is open.

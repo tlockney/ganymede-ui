@@ -82,7 +82,9 @@ Where the app connects is decided in this order (`App.tsx`):
 1. `?token=` or `?kernels=page|server` in the URL, as `ganymede serve`
    prints it and the Apple apps pass on every launch. They are removed from
    the address bar once read.
-2. The connection saved in `localStorage` (`ganymede-ui:backend`).
+2. The connection saved in `localStorage` (`ganymede-ui:backend`), with
+   its token from `sessionStorage` (`ganymede-ui:token`); the token never
+   goes in `localStorage`.
 3. A login cookie for this page's server: when `api/status` answers, the
    app connects to its own origin with no token.
 4. Otherwise the connect sheet asks.

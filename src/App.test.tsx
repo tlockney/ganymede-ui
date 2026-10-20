@@ -1,3 +1,4 @@
+import { StrictMode } from 'react';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -26,6 +27,7 @@ const { App } = await import('./App');
 beforeEach(() => {
   mocks.signedInHere.mockReset().mockResolvedValue(false);
   localStorage.clear();
+  sessionStorage.clear();
   history.replaceState(null, '', '/');
   vi.stubGlobal(
     'matchMedia',
@@ -52,12 +54,27 @@ describe('App', () => {
     expect(window.location.search).toBe('?x=1');
     expect(await screen.findByText('Io')).toBeInTheDocument();
     expect(screen.queryByText('Where should kernels run?')).not.toBeInTheDocument();
-    // Remembered for next time.
+    // Remembered for next time, the token only for this tab.
     expect(JSON.parse(localStorage.getItem('ganymede-ui:backend')!)).toEqual({
       kind: 'ganymede',
       url: '',
-      token: 'abc',
     });
+    expect(sessionStorage.getItem('ganymede-ui:token')).toBe('abc');
+  });
+
+  it('keeps the token from the page URL under StrictMode', async () => {
+    history.replaceState(null, '', '/?token=abc');
+    mocks.connect.mockResolvedValue(fakeBackend(fakeServices().services));
+    render(
+      <StrictMode>
+        <App />
+      </StrictMode>,
+    );
+    await waitFor(() => expect(mocks.connect).toHaveBeenCalled());
+    for (const [config] of mocks.connect.mock.calls) {
+      expect(config).toEqual({ kind: 'ganymede', url: '', token: 'abc' });
+    }
+    expect(window.location.search).toBe('');
   });
 
   it('runs kernels in the page when the URL asks for it', async () => {
