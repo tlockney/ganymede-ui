@@ -3,6 +3,7 @@ import type { IKernel } from '@jupyterlite/services';
 import { Signal } from '@lumino/signaling';
 import { startBrowserKernel, type BrowserKernel } from '@tlockney/cdp-kernel/browser';
 import workerUrl from '@tlockney/cdp-kernel/browser/worker?worker&url';
+import { type KernelChannels, relayAvailable, startRelayedKernel } from './kernel-relay';
 
 /** The kernelspec name, as cdp-kernel names its kernelspecs (`cdp-node`, …). */
 export const CDP_KERNEL_NAME = 'cdp-browser';
@@ -17,7 +18,8 @@ export const CDP_KERNEL_SPEC = {
 
 /**
  * cdp-kernel's browser kernel as a JupyterLite kernel: the kernel's own
- * message handling runs on this page and cells in a module Worker. Unlike
+ * message handling runs on this page and cells in a module Worker, or, in
+ * the Apple apps, both in the app's kernel web view (`kernel-relay.ts`). Unlike
  * JupyterLite's kernels, it answers every request itself, so messages pass
  * straight through in Jupyter's JSON shape both ways.
  */
@@ -27,7 +29,7 @@ export class CdpBrowserKernel implements IKernel {
   readonly location: string;
   readonly ready = Promise.resolve();
   readonly disposed = new Signal<this, void>(this);
-  private _kernel: BrowserKernel;
+  private _kernel: KernelChannels;
   private _stop: () => void;
   private _isDisposed = false;
   private _lastSession = '';
@@ -36,9 +38,11 @@ export class CdpBrowserKernel implements IKernel {
     this.id = options.id;
     this.name = options.name;
     this.location = options.location;
-    this._kernel = startBrowserKernel({
-      createWorker: () => new Worker(workerUrl, { type: 'module' }),
-    });
+    this._kernel = relayAvailable()
+      ? startRelayedKernel(this.id)
+      : startBrowserKernel({
+          createWorker: () => new Worker(workerUrl, { type: 'module' }),
+        });
     this._stop = this._kernel.onMessage((channel, msg) => {
       // LiteKernelClient routes a message to the client whose session is
       // in its header, as JupyterLite's kernels copy the parent's there.

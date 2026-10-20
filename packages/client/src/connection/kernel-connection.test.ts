@@ -265,3 +265,49 @@ test('onMessage listeners see every channel and can unsubscribe', async () => {
   assert.deepEqual(seen, ['iopub:status', 'control:interrupt_reply']);
   kc.dispose();
 });
+
+test('a malformed frame is dropped and reported; later frames still arrive', async () => {
+  const { kc, ws } = await connect();
+  const errors: Error[] = [];
+  kc.onError(error => errors.push(error));
+  const seen: string[] = [];
+  kc.onMessage((_, m) => seen.push(m.header.msg_type));
+
+  // Truncated: the offset table promises more than the frame holds.
+  const good = encodeV1('iopub', fromKernel('status', { execution_state: 'busy' }));
+  ws.onmessage?.({ data: good.slice(0, 12) });
+  ws.onmessage?.({ data: 'not json' });
+  ws.serverSend('iopub', fromKernel('status', { execution_state: 'idle' }));
+
+  assert.equal(errors.length, 2);
+  assert.match(errors[0]!.message, /kernel k1: dropped a malformed frame/);
+  assert.deepEqual(seen, ['status']);
+  assert.equal(kc.status, 'idle');
+  kc.dispose();
+});
+
+test('a throwing listener does not keep the message from the others', async () => {
+  const { kc, ws } = await connect();
+  const errors: Error[] = [];
+  kc.onError(error => errors.push(error));
+  kc.onMessage(() => {
+    throw new Error('boom');
+  });
+  const seen: string[] = [];
+  kc.onMessage((_, m) => seen.push(m.header.msg_type));
+
+  ws.serverSend('iopub', fromKernel('stream', { name: 'stdout', text: 'hi' }));
+
+  assert.deepEqual(seen, ['stream']);
+  assert.equal(errors.length, 1);
+  assert.match(errors[0]!.message, /a listener threw on iopub stream: boom/);
+  kc.dispose();
+});
+
+test('errors go to console.warn when nobody listens for them', async t => {
+  const { kc, ws } = await connect();
+  const warn = t.mock.method(console, 'warn', () => {});
+  ws.onmessage?.({ data: new ArrayBuffer(3) });
+  assert.equal(warn.mock.callCount(), 1);
+  kc.dispose();
+});

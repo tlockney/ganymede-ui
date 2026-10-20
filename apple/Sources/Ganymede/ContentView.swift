@@ -79,5 +79,16 @@ struct ContentView: View {
             }
         }
         .task { model.startIfNeeded() }
+        .alert(
+            "The kernel server's token was not saved",
+            isPresented: Binding(
+                get: { model.keychainError != nil },
+                set: { if !$0 { model.keychainError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(model.keychainError ?? "")
+        }
     }
 }

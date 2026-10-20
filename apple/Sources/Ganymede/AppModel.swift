@@ -14,8 +14,20 @@ final class AppModel: ObservableObject {
     /// The Jupyter server kernels run on; empty for this device's own.
     @Published private(set) var kernelServerURL: String
     private(set) var kernelServerToken: String
+    /// Set when the kernel server's token could not be kept in the
+    /// keychain; the page shows it in an alert.
+    @Published var keychainError: String?
 
     private var server: ServerHost?
+    /// Server starts and stops, run one after another. Both block (a start
+    /// until the server listens, a stop until its kernels are shut down),
+    /// so they run off the main actor and only their results come back.
+    private var queue: Task<Void, Never>?
+    private var queued = 0
+    #if os(macOS)
+    /// The login shell's PATH, which kernels need before the server starts.
+    private var pathReady: Task<Void, Never>?
+    #endif
     private let defaults = UserDefaults.standard
     #if os(iOS)
     /// A folder from the picker, readable only while its security scope
@@ -49,21 +61,31 @@ final class AppModel: ObservableObject {
         #endif
     }
 
-    /// Starts the server unless it is running.
+    #if os(macOS)
+    /// Takes PATH from the login shell in the background (see LoginShell);
+    /// servers wait for it.
+    func adoptLoginShellPath() {
+        pathReady = Task.detached(priority: .userInitiated) { LoginShell.adoptPath() }
+    }
+    #endif
+
+    /// Starts the server unless it is running or about to.
     func startIfNeeded() {
-        if server == nil && error == nil {
+        if server == nil && error == nil && queued == 0 {
             start()
         }
     }
 
+    /// (Re)starts the server. Returns at once: `url` is set when it
+    /// listens, `error` if it fails.
     func start() {
-        stop()
+        url = nil
         error = nil
         guard let web = Bundle.main.url(forResource: "web", withExtension: nil) else {
             error = "The app bundle has no web folder; build it with apple/scripts/bootstrap.sh."
             return
         }
-        var config: [String: Any] = [
+        var config: [String: any Sendable] = [
             "root_dir": root.path,
             "static_dir": web.path,
             "quiet": true,
@@ -79,24 +101,54 @@ final class AppModel: ObservableObject {
             config["cookie_secret_file"] = support.appendingPathComponent("cookie_secret").path
         }
         #endif
-        // The same port as last time keeps the page's origin, and with it
-        // the web app's saved state in local storage; any free port when
-        // that one is taken.
-        let saved = defaults.integer(forKey: Keys.port)
-        do {
-            let host: ServerHost
-            if saved > 0, let first = try? ServerHost(config: config.merging(["port": saved]) { $1 }) {
-                host = first
-            } else {
-                host = try ServerHost(config: config.merging(["port": 0]) { $1 })
+        let settings = config
+        #if os(macOS)
+        let path = pathReady
+        #endif
+        enqueue { [self] in
+            #if os(macOS)
+            await path?.value
+            #endif
+            let old = server
+            server = nil
+            // The same port as last time keeps the page's origin, and with
+            // it the web app's saved state in local storage.
+            let saved = defaults.integer(forKey: Keys.port)
+            let result = await Task.detached(priority: .userInitiated) {
+                old?.stop()
+                return Result { try AppModel.launch(settings, saved) }
+            }.value
+            switch result {
+            case .success(let host):
+                server = host
+                url = pageURL(host.url)
+                if let port = host.url.port {
+                    defaults.set(port, forKey: Keys.port)
+                }
+            case .failure(let failure):
+                error = failure.localizedDescription
             }
-            server = host
-            url = pageURL(host.url)
-            if let port = host.url.port {
-                defaults.set(port, forKey: Keys.port)
-            }
-        } catch {
-            self.error = error.localizedDescription
+        }
+    }
+
+    /// Starts a server on `saved`, or any free port when that one is taken.
+    private nonisolated static func launch(
+        _ config: [String: any Sendable], _ saved: Int
+    ) throws -> ServerHost {
+        if saved > 0, let host = try? ServerHost(config: config.merging(["port": saved]) { $1 }) {
+            return host
+        }
+        return try ServerHost(config: config.merging(["port": 0]) { $1 })
+    }
+
+    /// Runs `work` after whatever start is already queued.
+    private func enqueue(_ work: @escaping @MainActor @Sendable () async -> Void) {
+        let previous = queue
+        queued += 1
+        queue = Task { [self] in
+            await previous?.value
+            await work()
+            queued -= 1
         }
     }
 
@@ -116,7 +168,10 @@ final class AppModel: ObservableObject {
         return parts.url ?? url
     }
 
-    func stop() {
+    /// Stops the server as the app quits, shutting down every kernel.
+    /// Blocks: the process ends right after. A start still under way is
+    /// not waited for; its server ends with the process.
+    func stopForQuit() {
         server?.stop()
         server = nil
         url = nil
@@ -147,7 +202,12 @@ final class AppModel: ObservableObject {
         kernelServerURL = url.trimmingCharacters(in: .whitespaces)
         kernelServerToken = kernelServerURL.isEmpty ? "" : token
         defaults.set(kernelServerURL, forKey: Keys.kernelServer)
-        Keychain.set(Keys.kernelServer, kernelServerToken)
+        do {
+            try Keychain.set(Keys.kernelServer, kernelServerToken)
+        } catch {
+            keychainError = "Ganymede uses it until it quits, but will start without it next time: "
+                + error.localizedDescription
+        }
         start()
     }
 

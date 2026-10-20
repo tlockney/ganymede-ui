@@ -86,14 +86,14 @@ browser. [docs/shortcuts.md](docs/shortcuts.md) lists the defaults.
   the site's data deletes the notebooks.
 - **Ganymede:** notebooks are files in the folder the server serves, and
   kernels run where the server runs them.
-- **The connection:** the chosen backend, including the server URL and
-  token, is saved in the browser's local storage
-  (`ganymede-ui:backend`) and used on the next visit. Any script on the
-  page's origin can read it, including the HTML and JavaScript output of a
-  notebook you trust ([#55](https://github.com/tlockney/ganymede-ui/issues/55)
-  tracks keeping it out). A `?token=` in the page URL is removed from the
-  address bar once read. Served by Ganymede, the app connects on the login
-  cookie and saves no token.
+- **The connection:** the chosen backend and server URL are saved in the
+  browser's local storage (`ganymede-ui:backend`) and used on the next
+  visit. The token is kept in session storage (`ganymede-ui:token`), which
+  ends with the tab, so a new tab or a restarted browser asks for it
+  again. Script on the page's origin can still read it while the tab is
+  open. A `?token=` in the page URL is removed from the address bar once
+  read. Served by Ganymede, the app connects on the login cookie and saves
+  no token.
 - **Trust:** Ganymede signs a notebook you trust, as Jupyter does, so its
   outputs render when reopened. The browser backend keeps no signatures, so
   trust lasts while the notebook is open.
@@ -112,9 +112,12 @@ It is a prototype. What it doesn't do yet, or does roughly:
   ([#57](https://github.com/tlockney/ganymede-ui/issues/57)), and a failed
   save, restart or kernel change shows no error
   ([#58](https://github.com/tlockney/ganymede-ui/issues/58)).
-- **Trusted output runs in the app's page**, not a sandboxed frame
-  ([#35](https://github.com/tlockney/ganymede-ui/issues/35)), and the token
-  sits in local storage ([#55](https://github.com/tlockney/ganymede-ui/issues/55)).
+- **Widgets run in the app's page.** Trusted HTML and JavaScript outputs
+  render in sandboxed frames with no access to the app, but ipywidgets
+  render in the page itself, where they could read the token from
+  session storage while the tab is open. Relative
+  links and images in trusted HTML outputs don't load, since the frame
+  has no origin to resolve them against.
 - **Switching backends** leaves the old backend's kernels running with no
   way to reach them from the app
   ([#62](https://github.com/tlockney/ganymede-ui/issues/62)).

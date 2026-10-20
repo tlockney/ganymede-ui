@@ -5,7 +5,11 @@ import GanymedeFFI
 /// (crates/ganymede-ffi in tlockney/ganymede). It listens on 127.0.0.1
 /// with a token; `url` carries the token, which the server turns into a
 /// login cookie on the first load.
-final class ServerHost {
+///
+/// `@unchecked Sendable`: it is made on one thread and stopped on another,
+/// but `AppModel` hands it from one to the next and never uses it from
+/// two at once.
+final class ServerHost: @unchecked Sendable {
     struct StartError: LocalizedError {
         let message: String
         var errorDescription: String? { message }

@@ -82,13 +82,18 @@ Where the app connects is decided in this order (`App.tsx`):
 1. `?token=` or `?kernels=page|server` in the URL, as `ganymede serve`
    prints it and the Apple apps pass on every launch. They are removed from
    the address bar once read.
-2. The connection saved in `localStorage` (`ganymede-ui:backend`).
+2. The connection saved in `localStorage` (`ganymede-ui:backend`), with
+   its token from `sessionStorage` (`ganymede-ui:token`); the token never
+   goes in `localStorage`.
 3. A login cookie for this page's server: when `api/status` answers, the
    app connects to its own origin with no token.
 4. Otherwise the connect sheet asks.
 
-Switching backends disposes the old `ServiceManager`, which shuts down
-whatever it holds.
+Switching backends disposes the old `ServiceManager`. A server's kernels
+keep running, as they do when a notebook closes, and show under Running
+when the app connects to that server again. Kernels in the page have
+nowhere to come back to, so the in-page manager shuts them down first,
+which terminates their Workers.
 
 ## In-page server and kernels
 
@@ -135,6 +140,13 @@ each request and the relay adds a `requestId`; tabs and kernels share the
 channel, so the bridge skips other pages' requests and the relay matches
 the reply on both.
 
+The Worker is blocked until its request is answered, so every request gets
+an answer. The bridge answers `null` when a request fails, when it has no
+handler for it, and, for whatever is still pending, when it is disposed.
+The relay answers `null` itself when a drive request gets no answer in 30
+seconds; stdin requests wait for a person, so they have no limit. DriveFS
+turns `null` into `EINVAL`.
+
 ![A kernel's synchronous request goes through the service worker and the BroadcastChannel to the page, and the answer comes back the same way](images/sw-relay.svg)
 
 An origin has one service worker per scope, and the kernel Workers must be
@@ -172,6 +184,16 @@ Trust follows Jupyter's model: the server marks cells trusted when it serves
 a signed notebook, and Trust Notebook in the toolbar calls
 `POST /api/contents/{path}/trust`. The browser backend keeps no signatures,
 so trust there lasts while the notebook is open.
+
+Trusted HTML and JavaScript outputs don't render in the app's document, as
+they do in JupyterLab: `output-frames.ts` swaps their renderers for ones
+that put each output in an iframe with `sandbox` minus `allow-same-origin`
+(an opaque origin: no cookies, storage or app DOM), a meta CSP, and the content
+in `srcdoc`. The frame's one message out is its height, accepted only
+from that frame's window. Untrusted HTML still renders in the page
+through JupyterLab's sanitizer; Markdown outputs are always sanitized,
+since trusted Markdown would run its HTML's scripts in the page; SVG
+renders as an `<img>`. ipywidgets still render in the page.
 
 ## Shell
 
@@ -233,10 +255,10 @@ own process and shows this web app in a `WKWebView`:
 
 Where kernels run:
 
-| Setting                                     | Mac                                                     | iPad and iPhone                              |
-| ------------------------------------------- | ------------------------------------------------------- | -------------------------------------------- |
-| No kernel server                            | Kernelspecs installed on the Mac                        | cdp-kernel in the web view (`?kernels=page`) |
-| Kernel server set (⌘, or the server button) | That server, through Ganymede's gateway (`gateway_url`) | Same                                         |
+| Setting                                     | Mac                                                     | iPad and iPhone                                     |
+| ------------------------------------------- | ------------------------------------------------------- | --------------------------------------------------- |
+| No kernel server                            | Kernelspecs installed on the Mac                        | cdp-kernel in the kernel web view (`?kernels=page`) |
+| Kernel server set (⌘, or the server button) | That server, through Ganymede's gateway (`gateway_url`) | Same                                                |
 
 iOS does not let an app launch processes, so without a kernel server the
 iPad's in-process Ganymede serves notebooks only and the page runs its own
@@ -245,6 +267,21 @@ Ganymede forwards kernel requests to it and the page connects as usual.
 Notebooks stay on the device either way. On the Mac, an app opened from
 the Finder takes `PATH` from the login shell (`LoginShell.swift`) so
 kernelspecs that run `node`, `deno` or `python3` start.
+
+In the apps, cdp-kernel's in-page kernels don't run in the UI's web view.
+`KernelHost.swift` keeps a second, hidden web view on `kernel.html`
+(`src/kernel-host.ts`), loaded from the same server when the first kernel
+starts, and relays Jupyter messages between the two pages: the UI posts
+to `webkit.messageHandlers.kernelRelay`, the kernel page to `kernelHost`,
+and Swift delivers each to the other page's `deliver` in order
+(`src/lib/kernel-relay.ts`; binary buffers travel as base64). Swift takes
+only main-frame messages from the server's origin, since WebKit gives
+subframes, the sandboxed output frames among them, the same handlers.
+Native bridges for cells, such as
+[ganymede-device](https://github.com/tlockney/ganymede-device)'s `device`
+handler, belong on the kernel web view only, so nothing the UI renders
+can call them (#99). None is registered yet. `CdpBrowserKernel` uses the
+relay whenever the page has a `kernelRelay` handler; a browser has none.
 
 A native on-device kernel, cdp-kernel running in the app's process instead
 of the web view, is planned and not started.
