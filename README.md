@@ -114,8 +114,8 @@ It is a prototype. What it doesn't do yet, or does roughly:
   ([#58](https://github.com/tlockney/ganymede-ui/issues/58)).
 - **Widgets run in the app's page.** Trusted HTML and JavaScript outputs
   render in sandboxed frames with no access to the app, but ipywidgets
-  render in the page itself, and the token sits in local storage
-  ([#55](https://github.com/tlockney/ganymede-ui/issues/55)). Relative
+  render in the page itself, where they could read the token from
+  session storage while the tab is open. Relative
   links and images in trusted HTML outputs don't load, since the frame
   has no origin to resolve them against.
 - **Switching backends** leaves the old backend's kernels running with no
