@@ -17,3 +17,9 @@ what is still pending when disposed. The relay itself times out drive
 requests after 30 s; stdin has no limit, since `input()` waits for a
 person. Node's `BroadcastChannel` doesn't deliver to the same instance and
 jsdom has none, so the unit test stubs the channel with an `EventTarget`.
+
+The screenshots e2e test was flaky on `main` too (about one run in five
+locally): it clicked Restart Kernel, then waited for "Idle", which the
+subtitle still showed from before the restart, so Run All could reach the
+kernel mid-restart and its outputs never came. It now waits for the
+`POST /api/kernels/<id>/restart` response first; 12 runs in a row passed.
