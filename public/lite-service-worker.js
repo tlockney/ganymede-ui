@@ -48,25 +48,46 @@
     }
   });
 
+  /**
+   * How long a drive request may wait for the page. Stdin requests wait for
+   * a person to type, so they have no limit; the page answers them when it
+   * stops listening (src/lib/lite-sw.ts).
+   */
+  const DRIVE_TIMEOUT_MS = 30_000;
+
   /** Hand the request to the page that started the kernel; wait for its answer. */
   async function relay(request, url) {
     const message = await request.json();
     const requestId = message.requestId ?? crypto.randomUUID();
     message.requestId = requestId;
     message.pathname = url.pathname;
+    let onMessage;
+    let timer;
     const answer = new Promise(resolve => {
-      const onMessage = event => {
+      onMessage = event => {
         const data = event.data;
         // Several pages, and several kernels in one page, share the channel.
         if (data.browsingContextId !== message.browsingContextId || data.requestId !== requestId) {
           return;
         }
-        channel.removeEventListener('message', onMessage);
         resolve(new Response(JSON.stringify(data.response)));
       };
       channel.addEventListener('message', onMessage);
+      if (url.pathname.endsWith('/api/drive')) {
+        // No answer (the page is gone, or stuck): answer `null`, as the page
+        // does when a request fails, so the Worker isn't blocked for good.
+        timer = setTimeout(() => {
+          console.warn(`No answer to ${url.pathname} in ${DRIVE_TIMEOUT_MS} ms`);
+          resolve(new Response('null'));
+        }, DRIVE_TIMEOUT_MS);
+      }
     });
     channel.postMessage(message);
-    return answer;
+    try {
+      return await answer;
+    } finally {
+      clearTimeout(timer);
+      channel.removeEventListener('message', onMessage);
+    }
   }
 })();
