@@ -20,7 +20,8 @@ test.afterEach(() => {
 
 test('keeps notebooks on the server and runs kernels in the page', async ({ page }) => {
   await page.goto(`${GANYMEDE_URL}/?token=${TOKEN}&kernels=page`);
-  expect(new URL(page.url()).search).toBe('');
+  // The app drops the query on its first render, which can come after `load`.
+  await expect.poll(() => new URL(page.url()).search).toBe('');
   await expect(page.getByText('Where should kernels run?')).toHaveCount(0);
   await expect(page.getByText('kernels in this page')).toBeVisible({ timeout: 60_000 });
 

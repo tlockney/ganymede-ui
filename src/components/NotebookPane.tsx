@@ -8,6 +8,7 @@ import { Widget } from '@lumino/widgets';
 import { type Backend, trustNotebook } from '../lib/backends';
 import { attachEditing, createCommands, createNotebook, createRendermime } from '../lib/jupyterlab';
 import { downloadFile } from '../lib/download';
+import { AUTOSAVE_INTERVAL_MS, NotebookSaver, SaveConflict } from '../lib/saver';
 import { hasUntrustedOutputs } from '../lib/trust';
 import type { NotebookWidgets } from '../lib/widgets';
 
@@ -76,8 +77,11 @@ type Open = {
   model: NotebookModel;
   session: SessionContext;
   widgets: NotebookWidgets;
+  saver: NotebookSaver;
   disposables: IDisposable[];
 };
+
+const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /**
  * One notebook file: loads it through the contents API, joins or starts its
@@ -95,6 +99,10 @@ export function NotebookPane({ backend, path, onController }: Props) {
   const [kernelName, setKernelName] = useState<string>();
   const [dirty, setDirty] = useState(false);
   const [trusted, setTrusted] = useState(true);
+  /** Why the last notebook action failed, until dismissed. */
+  const [notice, setNotice] = useState<string>();
+  /** Set when autosave met a file changed on disk; a save clears it. */
+  const autosaveOff = useRef(false);
 
   // Load the file, build the notebook, and join its session.
   useEffect(() => {
@@ -153,6 +161,13 @@ export function NotebookPane({ backend, path, onController }: Props) {
       const commands = createCommands(notebook, session);
       const editing = attachEditing(notebook, session, rendermime, commands);
       const notebookWidgets = widgets.attachWidgets(session, rendermime);
+      const saver = new NotebookSaver({
+        contents: services.contents,
+        path,
+        model,
+        lastModified: file.last_modified,
+        beforeSave: () => notebookWidgets.saveState(model),
+      });
       const onKey = (e: KeyboardEvent) => commands.processKeydownEvent(e);
       // Capture phase, as a Lumino application does, so a notebook shortcut
       // (Shift+Enter) wins over the editor's own binding for the key.
@@ -163,9 +178,11 @@ export function NotebookPane({ backend, path, onController }: Props) {
         model,
         session,
         widgets: notebookWidgets,
+        saver,
         disposables: [
           editing,
           notebookWidgets,
+          { dispose: () => saver.dispose(), isDisposed: false },
           {
             dispose: () => document.removeEventListener('keydown', onKey, true),
             isDisposed: false,
@@ -180,16 +197,28 @@ export function NotebookPane({ backend, path, onController }: Props) {
       cancelled = true;
       const done = current;
       if (!done) return;
-      done.disposables.forEach(d => d.dispose());
-      // After React's commit: JupyterLab's React-based widgets unmount their
-      // own roots on dispose, which React refuses mid-render.
-      setTimeout(() => {
-        done.notebook.dispose();
-        holderOf(done.notebook).remove();
-        done.model.dispose();
-        // Leave the kernel running; the sidebar lists it under Running.
-        done.session.dispose();
-      });
+      const teardown = () => {
+        done.disposables.forEach(d => d.dispose());
+        // After React's commit: JupyterLab's React-based widgets unmount
+        // their own roots on dispose, which React refuses mid-render.
+        setTimeout(() => {
+          done.notebook.dispose();
+          holderOf(done.notebook).remove();
+          done.model.dispose();
+          // Leave the kernel running; the sidebar lists it under Running.
+          done.session.dispose();
+        });
+      };
+      // Opening another file keeps this one's edits: save them first, as
+      // autosave would, then let it go.
+      if (done.model.dirty && !autosaveOff.current) {
+        void done.saver
+          .save({ ifDirty: true })
+          .catch(e => console.error(`Couldn’t save ${path}:`, e))
+          .finally(teardown);
+      } else {
+        teardown();
+      }
     };
   }, [services, path]);
 
@@ -244,9 +273,58 @@ export function NotebookPane({ backend, path, onController }: Props) {
     };
   }, [open]);
 
+  // Don't lose unsaved edits: save every few minutes and when the page is
+  // hidden (an installed web app can be killed after that), and ask before
+  // the page closes with edits that are not saved yet.
   useEffect(() => {
     if (!open) return;
-    const { notebook, model, session, widgets } = open;
+    const { model, saver } = open;
+    const autosave = () => {
+      if (!model.dirty || autosaveOff.current) return;
+      saver.save({ ifDirty: true }).catch(e => {
+        if (e instanceof SaveConflict) {
+          autosaveOff.current = true;
+          setNotice(
+            `${basename(path)} changed on disk since it was opened. ` +
+              'Autosave is off until you save it.',
+          );
+        } else {
+          setNotice(`Couldn’t autosave ${basename(path)}: ${messageOf(e)}`);
+        }
+      });
+    };
+    const onHidden = () => document.visibilityState === 'hidden' && autosave();
+    const onUnload = (e: BeforeUnloadEvent) => {
+      if (!model.dirty) return;
+      e.preventDefault();
+      // Older browsers ask only when returnValue is set.
+      e.returnValue = '';
+    };
+    const timer = setInterval(autosave, AUTOSAVE_INTERVAL_MS);
+    document.addEventListener('visibilitychange', onHidden);
+    window.addEventListener('beforeunload', onUnload);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onHidden);
+      window.removeEventListener('beforeunload', onUnload);
+    };
+  }, [open, path]);
+
+  useEffect(() => {
+    if (!open) return;
+    const { notebook, model, session, saver } = open;
+    const fileName = basename(path);
+    // The toolbar and ⌘S fire these and forget them; a failure shows in the
+    // pane instead of only in the console.
+    const report =
+      <A extends unknown[]>(what: string, action: (...args: A) => Promise<void>) =>
+      async (...args: A) => {
+        try {
+          await action(...args);
+        } catch (e) {
+          setNotice(`Couldn’t ${what}: ${messageOf(e)}`);
+        }
+      };
     onController({
       path,
       name: basename(path),
@@ -254,25 +332,32 @@ export function NotebookPane({ backend, path, onController }: Props) {
       kernelName,
       dirty,
       trusted,
-      save: async () => {
-        widgets.saveState(model);
-        await services.contents.save(path, {
-          type: 'notebook',
-          format: 'json',
-          content: model.toJSON(),
-        });
-        model.dirty = false;
-      },
+      save: report(`save ${fileName}`, async () => {
+        try {
+          await saver.save();
+        } catch (e) {
+          if (!(e instanceof SaveConflict)) throw e;
+          if (
+            !window.confirm(
+              `${fileName} changed on disk since it was opened or last saved.\n\nOverwrite it with this copy?`,
+            )
+          )
+            return;
+          await saver.save({ overwrite: true });
+        }
+        autosaveOff.current = false;
+        setNotice(undefined);
+      }),
       download: () => {
         // Widget state goes in, as on save; that is not an edit.
         const wasDirty = model.dirty;
-        widgets.saveState(model);
+        open.widgets.saveState(model);
         model.dirty = wasDirty;
         // As nbformat writes it: one-space indent, trailing newline.
         const text = JSON.stringify(model.toJSON(), null, 1) + '\n';
         downloadFile(basename(path), text, 'application/x-ipynb+json');
       },
-      trust: async () => {
+      trust: report(`trust ${fileName}`, async () => {
         // As NotebookActions.trust, without its dialog: trusting a cell
         // re-renders its outputs. The cells' `trusted` metadata is not an
         // edit of the user's.
@@ -282,17 +367,25 @@ export function NotebookPane({ backend, path, onController }: Props) {
         setTrusted(true);
         // Unsaved changes are signed on the next save: every cell is trusted.
         await trustNotebook(backend, path);
-      },
-      run: async () => void (await NotebookActions.runAndAdvance(notebook, session)),
-      runAll: async () => void (await NotebookActions.runAll(notebook, session)),
+      }),
+      run: report('run the cell', async () => {
+        await NotebookActions.runAndAdvance(notebook, session);
+      }),
+      runAll: report('run all cells', async () => {
+        await NotebookActions.runAll(notebook, session);
+      }),
       insert: type => {
         NotebookActions.insertBelow(notebook);
         if (type !== 'code') NotebookActions.changeCellType(notebook, type);
         notebook.mode = 'edit';
       },
-      interrupt: async () => void (await session.session?.kernel?.interrupt()),
-      restart: async () => void (await session.session?.kernel?.restart()),
-      changeKernel: async name => {
+      interrupt: report('interrupt the kernel', async () => {
+        await session.session?.kernel?.interrupt();
+      }),
+      restart: report('restart the kernel', async () => {
+        await session.session?.kernel?.restart();
+      }),
+      changeKernel: report('change the kernel', async (name: string) => {
         await session.changeKernel({ name });
         const spec = services.kernelspecs.specs?.kernelspecs[name];
         if (spec) {
@@ -302,7 +395,7 @@ export function NotebookPane({ backend, path, onController }: Props) {
             language: spec.language,
           });
         }
-      },
+      }),
     });
   }, [open, path, status, kernelName, dirty, trusted, backend, services, onController]);
 
@@ -319,5 +412,17 @@ export function NotebookPane({ backend, path, onController }: Props) {
   if (!open) {
     return <div className="pane-message subtle">Opening {basename(path)}…</div>;
   }
-  return <div className="notebook-page" ref={host} />;
+  return (
+    <>
+      <div className="notebook-page" ref={host} />
+      {notice && (
+        <div className="pane-notice" role="alert">
+          <span>{notice}</span>
+          <button className="pane-notice-dismiss" onClick={() => setNotice(undefined)}>
+            Dismiss
+          </button>
+        </div>
+      )}
+    </>
+  );
 }

@@ -163,7 +163,15 @@ its `NotebookModel`, and a `SessionContext`, which starts the file's kernel
 or rejoins the one already running for it. It loads and saves nbformat
 through the backend's contents API and gives the toolbar a
 `NotebookController` (run, interrupt, restart, change kernel, save,
-download, trust).
+download, trust). A failed action shows its error in the pane.
+
+`NotebookSaver` (`saver.ts`) does the saving, as JupyterLab's document
+context does: one save at a time, a check of the file's `last_modified`
+before writing (a conflict when it is newer by more than 500 ms), and the
+dirty flag cleared only if no edit arrived during the round trip. The
+save sends the loaded `last_modified` too, which Ganymede checks again
+under its save lock (409). The pane autosaves a dirty notebook every 120
+seconds and when the page is hidden, and asks on `beforeunload`.
 
 Inside JupyterLab, the editor, renderers and commands come from plugins.
 `jupyterlab.ts` builds them once and shares them across notebooks: the

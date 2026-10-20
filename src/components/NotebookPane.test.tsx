@@ -1,4 +1,5 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as nbformat from '@jupyterlab/nbformat';
 import type { NotebookModel } from '@jupyterlab/notebook';
@@ -290,6 +291,128 @@ describe('NotebookPane', () => {
     await waitFor(() => expect(latest()!.trusted).toBe(true));
     // Trusting is not an edit.
     expect(latest()!.dirty).toBe(false);
+  });
+
+  it('shows why a save failed, and stays dirty', async () => {
+    const { fake, latest } = setup();
+    await waitFor(() => expect(latest()).toBeDefined());
+    act(() => modelOf().cells.get(0).sharedModel.setSource('print(2)'));
+    fake.contents.save.mockRejectedValueOnce(new Error('Disk full'));
+    await act(() => latest()!.save());
+    expect(screen.getByRole('alert')).toHaveTextContent('Couldn’t save Io.ipynb: Disk full');
+    expect(latest()!.dirty).toBe(true);
+
+    await userEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('shows why a kernel action failed', async () => {
+    const { latest } = setup();
+    await waitFor(() => expect(latest()).toBeDefined());
+    const session = fakes.sessions[0] as { changeKernel: ReturnType<typeof vi.fn> };
+    session.changeKernel.mockRejectedValueOnce(new Error('No such kernel: julia'));
+    await act(() => latest()!.changeKernel('julia'));
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Couldn’t change the kernel: No such kernel: julia',
+    );
+  });
+
+  it('asks before saving over a file that changed on disk', async () => {
+    const loaded = '2026-10-20T10:00:00Z';
+    const { fake, latest } = setup(
+      vi.fn(async () => ({
+        path: 'moons/Io.ipynb',
+        last_modified: loaded,
+        content: structuredClone(NOTEBOOK),
+      })),
+    );
+    await waitFor(() => expect(latest()).toBeDefined());
+    // Now someone else saves it.
+    fake.contents.get.mockResolvedValue({ last_modified: '2026-10-20T10:05:00Z' } as never);
+    act(() => modelOf().cells.get(0).sharedModel.setSource('print(2)'));
+    const confirm = vi.spyOn(window, 'confirm');
+
+    confirm.mockReturnValueOnce(false);
+    await act(() => latest()!.save());
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Io.ipynb changed on disk'));
+    expect(fake.contents.save).not.toHaveBeenCalled();
+    expect(latest()!.dirty).toBe(true);
+
+    confirm.mockReturnValueOnce(true);
+    await act(() => latest()!.save());
+    expect(fake.contents.save).toHaveBeenCalledOnce();
+    await waitFor(() => expect(latest()!.dirty).toBe(false));
+    confirm.mockRestore();
+  });
+
+  it('asks before the page closes with unsaved edits', async () => {
+    const { latest } = setup();
+    await waitFor(() => expect(latest()).toBeDefined());
+    const unload = () => {
+      const e = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(e);
+      return e.defaultPrevented;
+    };
+    expect(unload()).toBe(false);
+    act(() => modelOf().cells.get(0).sharedModel.setSource('print(2)'));
+    expect(unload()).toBe(true);
+  });
+
+  it('autosaves a dirty notebook every two minutes and when the page is hidden', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const { fake, latest } = setup();
+    await waitFor(() => expect(latest()).toBeDefined());
+
+    // Clean: nothing to save.
+    await act(() => vi.advanceTimersByTimeAsync(120_000));
+    expect(fake.contents.save).not.toHaveBeenCalled();
+
+    act(() => modelOf().cells.get(0).sharedModel.setSource('print(2)'));
+    await act(() => vi.advanceTimersByTimeAsync(120_000));
+    expect(fake.contents.save).toHaveBeenCalledOnce();
+    await waitFor(() => expect(latest()!.dirty).toBe(false));
+
+    act(() => modelOf().cells.get(0).sharedModel.setSource('print(3)'));
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await waitFor(() => expect(fake.contents.save).toHaveBeenCalledTimes(2));
+    visibility.mockRestore();
+  });
+
+  it('turns autosave off when the file changed on disk, until a save', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const { fake, latest } = setup(
+      vi.fn(async () => ({
+        path: 'moons/Io.ipynb',
+        last_modified: '2026-10-20T10:00:00Z',
+        content: structuredClone(NOTEBOOK),
+      })),
+    );
+    await waitFor(() => expect(latest()).toBeDefined());
+    fake.contents.get.mockResolvedValue({ last_modified: '2026-10-20T10:05:00Z' } as never);
+    act(() => modelOf().cells.get(0).sharedModel.setSource('print(2)'));
+
+    await act(() => vi.advanceTimersByTimeAsync(120_000));
+    expect(fake.contents.save).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent('Autosave is off until you save it');
+    await act(() => vi.advanceTimersByTimeAsync(120_000));
+    // Checked once, not every two minutes.
+    expect(fake.contents.get).toHaveBeenCalledTimes(2);
+  });
+
+  it('saves unsaved edits before letting the notebook go', async () => {
+    const { fake, latest, unmount } = setup();
+    await waitFor(() => expect(latest()).toBeDefined());
+    act(() => modelOf().cells.get(0).sharedModel.setSource('print(2)'));
+    unmount();
+    await waitFor(() => expect(fake.contents.save).toHaveBeenCalledOnce());
+    const content = fake.contents.save.mock.calls[0]![1].content as nbformat.INotebookContent;
+    expect(content.cells[0]!.source).toBe('print(2)');
+    await waitFor(() =>
+      expect((fakes.notebooks[0] as { isDisposed: boolean }).isDisposed).toBe(true),
+    );
   });
 
   it('clears the controller and disposes the notebook on unmount, leaving the kernel', async () => {

@@ -79,6 +79,12 @@ JupyterLab's; press `H` in command mode (or the keyboard button) for the
 full list. Every shortcut can be rebound there, and changes stay in this
 browser. [docs/shortcuts.md](docs/shortcuts.md) lists the defaults.
 
+A notebook with unsaved edits saves itself every two minutes, when the
+page is hidden, and when you open another file, and the browser asks before a tab with unsaved edits
+closes. If the file changed on disk since it was opened or last saved, a
+save asks before overwriting it, and autosave stops until you save. A
+failed save or kernel action shows its error above the notebook.
+
 ## Where your data lives
 
 - **This browser:** notebooks are stored in the browser's IndexedDB for this
@@ -105,13 +111,6 @@ covers tokens, cookies and cross-origin access on the server side.
 
 It is a prototype. What it doesn't do yet, or does roughly:
 
-- **Saving is manual.** There is no autosave and no warning when a tab
-  with unsaved changes closes
-  ([#56](https://github.com/tlockney/ganymede-ui/issues/56)). A save
-  overwrites the file even if it changed on disk
-  ([#57](https://github.com/tlockney/ganymede-ui/issues/57)), and a failed
-  save, restart or kernel change shows no error
-  ([#58](https://github.com/tlockney/ganymede-ui/issues/58)).
 - **Widgets run in the app's page.** Trusted HTML and JavaScript outputs
   render in sandboxed frames with no access to the app, but ipywidgets
   render in the page itself, where they could read the token from
