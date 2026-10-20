@@ -21,23 +21,31 @@ import { SHOW_SHORTCUTS_EVENT, matches } from './lib/shortcuts';
 /**
  * A token in the page URL, as `ganymede serve` prints it, wins once, and so
  * does `kernels=page` or `kernels=server`, which the Apple apps add on
- * every launch (`page` on an iPad without a kernel server).
+ * every launch (`page` on an iPad without a kernel server). Pure, as React
+ * may call a state initializer twice (#60); `stripLaunchParams` takes them
+ * out of the URL afterwards.
  */
 function initialConfig(): BackendConfig | undefined {
   const params = new URLSearchParams(window.location.search);
   const token = params.get('token');
   const kernels = params.get('kernels');
   if (token === null && kernels === null) return loadConfig();
-  params.delete('token');
-  params.delete('kernels');
-  const rest = params.toString();
-  history.replaceState(null, '', window.location.pathname + (rest ? `?${rest}` : ''));
   return {
     kind: 'ganymede',
     url: '',
     token: token ?? '',
     ...(kernels === 'page' ? { kernels: 'page' as const } : {}),
   };
+}
+
+/** Keeps the token out of history and the referrer. */
+function stripLaunchParams(): void {
+  const params = new URLSearchParams(window.location.search);
+  if (!params.has('token') && !params.has('kernels')) return;
+  params.delete('token');
+  params.delete('kernels');
+  const rest = params.toString();
+  history.replaceState(null, '', window.location.pathname + (rest ? `?${rest}` : ''));
 }
 
 export function App() {
@@ -56,6 +64,8 @@ export function App() {
   const [controller, setController] = useState<NotebookController>();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const closeShortcuts = useCallback(() => setShortcutsOpen(false), []);
+
+  useEffect(stripLaunchParams, []);
 
   useEffect(() => {
     if (!probing) return;

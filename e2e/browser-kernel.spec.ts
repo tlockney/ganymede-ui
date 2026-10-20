@@ -46,3 +46,30 @@ for (const colorScheme of ['light', 'dark'] as const) {
     await screenshot(page, testInfo, `browser-kernel-${colorScheme}`);
   });
 }
+
+test('switching backends ends the kernels in this page', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('radio', { name: /This browser/ }).click();
+  await page.getByRole('button', { name: 'Connect', exact: true }).click();
+  const backendButton = page.getByRole('button', { name: /This browser/ });
+  await expect(backendButton).toBeVisible({ timeout: 60_000 });
+
+  await page.getByRole('button', { name: 'New Notebook' }).first().click();
+  await expect(page.locator('.jp-Cell').first()).toBeVisible({ timeout: 60_000 });
+  await waitForIdle(page);
+  await page.locator('.jp-Cell .cm-content').first().click();
+  await page.keyboard.type('self.constructor.name');
+  await page.keyboard.press('Shift+Enter');
+  await expect(outputs(page).filter({ hasText: 'DedicatedWorkerGlobalScope' })).toBeVisible({
+    timeout: 60_000,
+  });
+  const kernelWorkers = page.workers().length;
+  expect(kernelWorkers).toBeGreaterThan(0);
+
+  // Connect again: the old backend's kernel Worker goes with it.
+  await backendButton.click();
+  await page.getByRole('radio', { name: /This browser/ }).click();
+  await page.getByRole('button', { name: 'Connect', exact: true }).click();
+  await expect(backendButton).toBeVisible({ timeout: 60_000 });
+  await expect.poll(() => page.workers().length).toBeLessThan(kernelWorkers);
+});
