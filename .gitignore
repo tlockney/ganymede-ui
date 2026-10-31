@@ -5,3 +5,4 @@ dev-dist/
 test-results/
 playwright-report/
 coverage/
+packages/*/dist-spike/
