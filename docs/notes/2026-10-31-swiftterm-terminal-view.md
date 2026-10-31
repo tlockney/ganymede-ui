@@ -9,3 +9,4 @@ Notes:
 - SwiftTerm 1.99 declares `swift-tools-version:6.2`, so it needs Xcode 26. It is pinned with `exactVersion` in `project.yml`.
 - Its renderer can still be drawing when SwiftUI removes the view; `updateUiClosed()` returns false until it can be released, so `dismantle` retries every 100 ms, as SwiftTerm's own SwiftUI wrapper does.
 - OSC 52 clipboard reads are refused: over SSH, a remote program would otherwise read whatever was copied last. Writes go to the pasteboard. Only http and https links open.
+- SwiftTerm runs a build plugin (`SwiftTermBuildInfoPlugin`). Xcode asks to trust it once; `xcodebuild` fails with "must be enabled before it can be used" unless given `-skipPackagePluginValidation`, which CI now passes.
