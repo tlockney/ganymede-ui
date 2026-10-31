@@ -11,6 +11,7 @@ export default tseslint.config(
       '.claude',
       'dist',
       'packages/*/dist',
+      'packages/*/dist-spike',
       'coverage',
       'playwright-report',
       'test-results',
