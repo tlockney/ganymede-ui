@@ -103,6 +103,7 @@ targets:
       - path: Sources/Ganymede/ServerHost.swift
       - path: Sources/Ganymede/KernelHost.swift
       - path: Sources/Ganymede/Terminal/TerminalTransport.swift
+      - path: Sources/Ganymede/Terminal/JupyterTerminalTransport.swift
     dependencies:
       - framework: build/GanymedeFFI.xcframework
         embed: false
@@ -117,6 +118,7 @@ targets:
       - path: Sources/Ganymede/ServerHost.swift
       - path: Sources/Ganymede/KernelHost.swift
       - path: Sources/Ganymede/Terminal/TerminalTransport.swift
+      - path: Sources/Ganymede/Terminal/JupyterTerminalTransport.swift
     dependencies:
       - framework: build/GanymedeFFI.xcframework
         embed: false

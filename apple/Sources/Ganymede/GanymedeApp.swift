@@ -16,6 +16,8 @@ struct GanymedeApp: App {
                 CommandGroup(after: .newItem) {
                     Button("Open Folder…") { model.chooseFolder() }
                         .keyboardShortcut("o", modifiers: [.command, .shift])
+                    Divider()
+                    TerminalCommands(model: model)
                 }
                 CommandGroup(replacing: .help) {
                     Button("Keyboard Shortcuts") {
@@ -23,6 +25,10 @@ struct GanymedeApp: App {
                     }
                 }
             }
+        WindowGroup("Terminal", for: TerminalTarget.self) { $target in
+            TerminalWindow(target: target ?? .local)
+                .environmentObject(model)
+        }
         Settings {
             KernelServerView()
                 .environmentObject(model)

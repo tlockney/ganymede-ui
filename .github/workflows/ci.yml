@@ -83,8 +83,9 @@ jobs:
     runs-on: macos-latest
     timeout-minutes: 60
     env:
-      # The tlockney/ganymede release whose ganymede-ffi the app links.
-      GANYMEDE_REF: v0.4.0
+      # The tlockney/ganymede commit whose ganymede-ffi the app links: main
+      # with the terminals API (#237) until a release has it.
+      GANYMEDE_REF: ad3d902a1d396809c32e6681e344d7ac0163d49c
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

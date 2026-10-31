@@ -168,6 +168,16 @@ final class AppModel: ObservableObject {
         return parts.url ?? url
     }
 
+    /// The app's own server, for clients other than the page (terminals).
+    var localServer: ServerEndpoint? {
+        server.flatMap { ServerEndpoint(serverURL: $0.url) }
+    }
+
+    /// The kernel server from Settings, if one is set.
+    var kernelServer: ServerEndpoint? {
+        ServerEndpoint(string: kernelServerURL, token: kernelServerToken)
+    }
+
     /// Stops the server as the app quits, shutting down every kernel.
     /// Blocks: the process ends right after. A start still under way is
     /// not waited for; its server ends with the process.
