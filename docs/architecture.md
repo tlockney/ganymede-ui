@@ -294,6 +294,11 @@ relay whenever the page has a `kernelRelay` handler; a browser has none.
 A native on-device kernel, cdp-kernel running in the app's process instead
 of the web view, is planned and not started.
 
+`Terminal/` holds the built-in terminal's pieces (#117): `TerminalSurface`,
+a SwiftUI view over [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm)'s
+`TerminalView`, and `TerminalTransport`, which each source of a shell
+implements. Nothing in the app shows a terminal yet.
+
 ## Tests
 
 Unit tests (Vitest, jsdom) sit next to the code as `*.test.ts(x)`. The

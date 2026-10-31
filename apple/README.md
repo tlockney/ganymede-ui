@@ -63,12 +63,16 @@ your team under Signing & Capabilities, then Run: the `Ganymede` scheme
 for the Mac, `Ganymede-iOS` for an iPad, iPhone or simulator. ⌘U runs
 the tests.
 Safari's Develop menu can inspect the web view.
+The first build asks you to trust SwiftTerm's build plugin
+(`SwiftTermBuildInfoPlugin`, which records SwiftTerm's version); choose
+Trust & Enable. From the command line, `-skipPackagePluginValidation`
+does the same.
 
 From the command line:
 
 ```sh
 xcodebuild test -project apple/Ganymede.xcodeproj -scheme Ganymede \
-  -destination platform=macOS CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=
+  -destination platform=macOS -skipPackagePluginValidation CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=
 ```
 
 For an iPad simulator, name one from `xcrun simctl list devices`:
@@ -76,7 +80,7 @@ For an iPad simulator, name one from `xcrun simctl list devices`:
 ```sh
 xcodebuild test -project apple/Ganymede.xcodeproj -scheme Ganymede-iOS \
   -destination 'platform=iOS Simulator,name=iPad Air 11-inch (M3)' \
-  CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=
+  -skipPackagePluginValidation CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=
 ```
 
 ## Download

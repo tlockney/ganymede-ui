@@ -7,6 +7,12 @@ options:
     macOS: '13.0'
     iOS: '16.0'
   createIntermediateGroups: true
+packages:
+  # The terminal view (MIT), on macOS and iOS. libghostty may replace it
+  # once its official Swift package ships (#117).
+  SwiftTerm:
+    url: https://github.com/migueldeicaza/SwiftTerm
+    exactVersion: 1.99.2
 settings:
   base:
     SWIFT_VERSION: '5.0'
@@ -26,6 +32,7 @@ targets:
     dependencies:
       - framework: build/GanymedeFFI.xcframework
         embed: false
+      - package: SwiftTerm
     info:
       path: build/Info.plist
       properties:
@@ -59,6 +66,7 @@ targets:
     dependencies:
       - framework: build/GanymedeFFI.xcframework
         embed: false
+      - package: SwiftTerm
     info:
       path: build/Info-iOS.plist
       properties:
@@ -94,6 +102,7 @@ targets:
       - path: Tests/GanymedeTests
       - path: Sources/Ganymede/ServerHost.swift
       - path: Sources/Ganymede/KernelHost.swift
+      - path: Sources/Ganymede/Terminal/TerminalTransport.swift
     dependencies:
       - framework: build/GanymedeFFI.xcframework
         embed: false
@@ -107,6 +116,7 @@ targets:
       - path: Tests/GanymedeTests
       - path: Sources/Ganymede/ServerHost.swift
       - path: Sources/Ganymede/KernelHost.swift
+      - path: Sources/Ganymede/Terminal/TerminalTransport.swift
     dependencies:
       - framework: build/GanymedeFFI.xcframework
         embed: false
