@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   type Backend,
   type BackendConfig,
@@ -17,6 +17,7 @@ import { ConnectSheet } from './components/ConnectSheet';
 import { EmptyState } from './components/EmptyState';
 import { ShortcutsSheet } from './components/ShortcutsSheet';
 import { SHOW_SHORTCUTS_EVENT, matches } from './lib/shortcuts';
+import { LAUNCH_PARAMS, type Launch, readLaunch, titleFor } from './lib/launch';
 
 /**
  * A token in the page URL, as `ganymede serve` prints it, wins once, and so
@@ -38,12 +39,14 @@ function initialConfig(): BackendConfig | undefined {
   };
 }
 
-/** Keeps the token out of history and the referrer. */
+/**
+ * Keeps the token out of history and the referrer, and the file to open out
+ * of a reload, which should come back to what is open by then.
+ */
 function stripLaunchParams(): void {
   const params = new URLSearchParams(window.location.search);
-  if (!params.has('token') && !params.has('kernels')) return;
-  params.delete('token');
-  params.delete('kernels');
+  if (!LAUNCH_PARAMS.some(p => params.has(p))) return;
+  LAUNCH_PARAMS.forEach(p => params.delete(p));
   const rest = params.toString();
   history.replaceState(null, '', window.location.pathname + (rest ? `?${rest}` : ''));
 }
@@ -52,6 +55,11 @@ export function App() {
   const scheme = useColorScheme();
   useJupyterLabTheme(scheme);
   const [config, setConfig] = useState<BackendConfig | undefined>(initialConfig);
+  // The notebook and folder the URL asks for (`?open=`, `?dir=`): a window
+  // the Apple apps open on one file.
+  const [launch] = useState<Launch>(() => readLaunch(window.location.search));
+  /** The notebook to open on the first connection, until it is opened. */
+  const pendingOpen = useRef(launch.open);
   const [backend, setBackend] = useState<Backend>();
   const [error, setError] = useState<string>();
   const [connecting, setConnecting] = useState(false);
@@ -59,7 +67,8 @@ export function App() {
   // With nothing to connect to yet, first check whether this page's server
   // has us signed in; the sheet waits for the answer.
   const [probing, setProbing] = useState(() => !config);
-  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 720);
+  // A window opened on one notebook starts on the notebook alone.
+  const [sidebarOpen, setSidebarOpen] = useState(() => !launch.open && window.innerWidth > 720);
   const [openPath, setOpenPath] = useState<string>();
   const [controller, setController] = useState<NotebookController>();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -101,6 +110,10 @@ export function App() {
           return b;
         });
         setSheetOpen(false);
+        if (pendingOpen.current) {
+          setOpenPath(pendingOpen.current);
+          pendingOpen.current = undefined;
+        }
       })
       .catch(e => {
         if (cancelled) return;
@@ -138,6 +151,11 @@ export function App() {
     [backend],
   );
 
+  // The window title, which the Apple apps show.
+  useEffect(() => {
+    document.title = titleFor(openPath);
+  }, [openPath]);
+
   // ⌘S / Ctrl+S saves, as in any document app.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -164,6 +182,7 @@ export function App() {
           backend={backend}
           connecting={connecting}
           openPath={openPath}
+          root={launch.dir}
           onOpen={setOpenPath}
           onNew={newNotebook}
           onConnect={() => setSheetOpen(true)}

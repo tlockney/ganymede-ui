@@ -93,6 +93,24 @@ describe('App', () => {
     expect(await screen.findByText('Io')).toBeInTheDocument();
   });
 
+  it('opens the notebook the URL names, in its folder, with the sidebar closed', async () => {
+    history.replaceState(null, '', '/?kernels=server&open=%2Fwork%2FOrbits.ipynb');
+    const fake = fakeServices({
+      '': [{ name: 'work', type: 'directory' }],
+      work: [{ name: 'Orbits.ipynb', type: 'notebook' }],
+    });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    const { container } = render(<App />);
+
+    await waitFor(() => expect(screen.getByTestId('pane')).toHaveTextContent('work/Orbits.ipynb'));
+    expect(window.location.search).toBe('');
+    expect(document.title).toBe('Orbits');
+    expect(container.querySelector('.window')).toHaveClass('sidebar-collapsed');
+    // The sidebar lists the notebook's folder.
+    expect(await screen.findByRole('button', { name: /work/ })).toBeInTheDocument();
+    expect(fake.contents.get).toHaveBeenCalledWith('work', { content: true });
+  });
+
   it("connects on the login cookie when this page's server has us signed in", async () => {
     mocks.signedInHere.mockResolvedValue(true);
     const fake = fakeServices({ '': [{ name: 'Io.ipynb', type: 'notebook' }] });

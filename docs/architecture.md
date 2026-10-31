@@ -89,6 +89,15 @@ Where the app connects is decided in this order (`App.tsx`):
    app connects to its own origin with no token.
 4. Otherwise the connect sheet asks.
 
+The URL can also say what to open, as an Apple app window opened on one
+file does: `?open=<path>` opens that notebook once connected, with the
+sidebar closed, and `?dir=<path>` is the folder the sidebar lists first
+(by default the notebook's folder, or the server's root). Paths are
+relative to the server's root; a leading `/` is dropped, so an absolute
+path works against a server rooted at `/`. Both are read once by
+`readLaunch` (`src/lib/launch.ts`) and removed with the others, so a reload
+keeps what is open by then. The page title is the open notebook's name.
+
 Switching backends disposes the old `ServiceManager`. A server's kernels
 keep running, as they do when a notebook closes, and show under Running
 when the app connects to that server again. Kernels in the page have

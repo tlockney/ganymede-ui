@@ -17,6 +17,8 @@ type Props = {
   backend?: Backend;
   connecting: boolean;
   openPath?: string;
+  /** The folder to list first (and again on a new connection); '' is the server's root. */
+  root?: string;
   onOpen(path: string): void;
   onNew(dir: string): void;
   onConnect(): void;
@@ -24,9 +26,17 @@ type Props = {
 
 const parent = (dir: string) => dir.split('/').slice(0, -1).join('/');
 
-export function Sidebar({ backend, connecting, openPath, onOpen, onNew, onConnect }: Props) {
+export function Sidebar({
+  backend,
+  connecting,
+  openPath,
+  root = '',
+  onOpen,
+  onNew,
+  onConnect,
+}: Props) {
   const services = backend?.services;
-  const [dir, setDir] = useState('');
+  const [dir, setDir] = useState(root);
   const [items, setItems] = useState<Contents.IModel[]>([]);
   const [error, setError] = useState<string>();
 
@@ -52,7 +62,7 @@ export function Sidebar({ backend, connecting, openPath, onOpen, onNew, onConnec
     }
   }, [services, dir]);
 
-  useEffect(() => setDir(''), [services]);
+  useEffect(() => setDir(root), [services, root]);
   useEffect(() => void refresh(), [refresh]);
   useEffect(() => {
     if (!services) return;
