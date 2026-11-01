@@ -245,8 +245,10 @@ works; changing Lumino's layout does not, so the notebook scrolls itself.
 
 Vite builds the app (`npm run build`, output in `dist/`). `vite.config.ts`
 adapts a few webpack habits of JupyterLab's packages: SVG imports as
-strings, `~pkg/` paths in stylesheets, a `require` of `package.json` in
-`@jupyter-widgets/controls`, and MathJax's CommonJS modules.
+strings, `~pkg/` paths in stylesheets, and MathJax's CommonJS modules. It
+also dedupes React (JupyterLab's packages bring React 18 copies of their
+own) and pins the build target to Safari 16, the oldest web view the
+Apple apps run in.
 
 `vite-plugin-pwa` adds the manifest and a Workbox service worker that
 precaches the app, so it works offline and installs as an app. `/api/` is
