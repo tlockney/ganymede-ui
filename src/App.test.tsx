@@ -137,6 +137,24 @@ describe('App', () => {
     expect(screen.queryByText('Where should kernels run?')).not.toBeInTheDocument();
   });
 
+  it('keeps the launch file when the sheet retries the same server', async () => {
+    history.replaceState(null, '', '/?token=bad&open=work/Orbits.ipynb');
+    const fake = fakeServices({
+      '': [{ name: 'work', type: 'directory' }],
+      work: [{ name: 'Orbits.ipynb', type: 'notebook' }],
+    });
+    mocks.connect
+      .mockRejectedValueOnce(new Error('The server refused the token.'))
+      .mockResolvedValue(fakeBackend(fake.services));
+    render(<App />);
+
+    expect(await screen.findByText('The server refused the token.')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
+
+    await waitFor(() => expect(screen.getByTestId('pane')).toHaveTextContent('work/Orbits.ipynb'));
+    expect(fake.contents.get).toHaveBeenCalledWith('work', { content: true });
+  });
+
   it('drops the launch file and folder when the sheet picks another backend', async () => {
     history.replaceState(null, '', '/?token=bad&open=work/Orbits.ipynb');
     const fake = fakeServices({ '': [{ name: 'Io.ipynb', type: 'notebook' }] });

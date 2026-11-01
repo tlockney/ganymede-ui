@@ -48,6 +48,12 @@ function stripLaunchParams(): void {
   history.replaceState(null, '', window.location.pathname + (rest ? `?${rest}` : ''));
 }
 
+/** Whether two configs reach the same notebooks, whatever the token. */
+function sameBackend(a: BackendConfig, b: BackendConfig): boolean {
+  if (a.kind !== 'ganymede' || b.kind !== 'ganymede') return a.kind === b.kind;
+  return a.url === b.url && a.kernels === b.kernels;
+}
+
 export function App() {
   const scheme = useColorScheme();
   useJupyterLabTheme(scheme);
@@ -234,14 +240,18 @@ export function App() {
           canCancel={!!backend}
           onCancel={() => setSheetOpen(false)}
           onConnect={c => {
-            // The launch file and folder belong to the first backend.
-            pendingOpen.current = undefined;
-            setSidebarRoot('');
-            history.replaceState(
-              null,
-              '',
-              window.location.pathname + withOpen(window.location.search, undefined),
-            );
+            // The launch file and folder belong to the backend they came
+            // with: keep them for a retry there (a corrected token), drop
+            // them for another.
+            if (!config || !sameBackend(c, config)) {
+              pendingOpen.current = undefined;
+              setSidebarRoot('');
+              history.replaceState(
+                null,
+                '',
+                window.location.pathname + withOpen(window.location.search, undefined),
+              );
+            }
             setConfig({ ...c });
           }}
         />

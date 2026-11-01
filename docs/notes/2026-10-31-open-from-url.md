@@ -25,5 +25,6 @@ Mac app's window title later (#132).
 - The launch file and folder belong to the first backend. If the connect
   sheet picks another one (say the first connection failed), both are
   dropped, and the sidebar starts at the root, where the other backend's
-  folders may not exist.
+  folders may not exist. Retrying the same server (same URL and kernel
+  mode, another token) keeps them.
 - A missing file shows the pane's load error, not the connect sheet.

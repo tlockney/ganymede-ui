@@ -98,7 +98,8 @@ Paths are relative to the server's root; leading, trailing and repeated
 `readLaunch` (`src/lib/launch.ts`) reads both once. `dir` is removed with
 the others; `open` is then kept in step with the open notebook, so a
 reload comes back to it. Picking another backend in the connect sheet
-drops both. The page title is the open notebook's name.
+drops both; retrying the same server there (say with a corrected token)
+keeps them. The page title is the open notebook's name.
 
 Switching backends disposes the old `ServiceManager`. A server's kernels
 keep running, as they do when a notebook closes, and show under Running
