@@ -180,6 +180,19 @@
   padding-top: 4px;
 }
 
+/* A long stream (a loop's prints, a training log) or traceback scrolls in
+ * its own box instead of pushing the rest of the notebook away (#133). */
+.notebook-page .jp-OutputArea-output[data-mime-type='application/vnd.jupyter.stdout'],
+.notebook-page .jp-OutputArea-output[data-mime-type='application/vnd.jupyter.stderr'] {
+  max-height: 32em;
+  overflow-y: auto;
+}
+
+/* Columns of numbers line up in tables (pandas, Markdown). */
+.notebook-page .jp-RenderedHTMLCommon :is(td, th) {
+  font-variant-numeric: tabular-nums;
+}
+
 /* JupyterLab's own toolbars and placeholders have no place here; the cell
  * toolbar does. */
 .notebook-page .jp-Toolbar:not(.jp-cell-toolbar),

@@ -73,6 +73,19 @@ describe('output frames', () => {
     expect(body).toContain('\\u003c/script>');
   });
 
+  it('shows untrusted SVG as an image, where its scripts do not run', async () => {
+    const svg =
+      '<svg xmlns="http://www.w3.org/2000/svg"><circle r="4"/><script>window.pwned = true</script></svg>';
+    const node = await render('image/svg+xml', svg, false);
+    expect(node.querySelector('svg')).toBeNull();
+    expect(node.querySelector('img')!.src).toBe(`data:image/svg+xml,${encodeURIComponent(svg)}`);
+    expect((window as { pwned?: boolean }).pwned).toBeUndefined();
+    // Chosen over the plain-text repr, as a trusted one is.
+    expect(
+      rendermime.preferredMimeType({ 'image/svg+xml': svg, 'text/plain': '<Figure>' }, 'ensure'),
+    ).toBe('image/svg+xml');
+  });
+
   it('sanitizes Markdown outputs even when trusted', async () => {
     const node = await render('text/markdown', 'Io <img src=x onerror="pwned=1">', true);
     expect(node.querySelector('img')?.getAttribute('onerror')).toBeNull();
