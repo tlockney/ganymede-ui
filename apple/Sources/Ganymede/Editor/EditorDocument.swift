@@ -35,6 +35,8 @@ final class EditorDocument: ObservableObject {
     private var busy = false
     /// What `problem` came from, so Try Again repeats it.
     private var failedSave = false
+    /// Counts saves and loads, so a poll answered before one is ignored.
+    private var changes = 0
     private let endpoint: @MainActor () -> ServerEndpoint?
     #if os(macOS)
     private weak var window: NSWindow?
@@ -142,6 +144,7 @@ final class EditorDocument: ObservableObject {
             }
             let snapshot = try await client.write(saving, lastModified: checking ? lastModified : nil)
             lastModified = snapshot.lastModified
+            changes += 1
             changedOnDisk = false
             problem = nil
             // Edits made while saving stay unsaved.
@@ -164,10 +167,11 @@ final class EditorDocument: ObservableObject {
     /// marks the conflict for the user to settle.
     func checkForChanges() async {
         guard loaded, !busy, !changedOnDisk, let client, lastModified != nil else { return }
-        // A save may finish while the metadata is read; compare with the
-        // time it left.
+        // A save may start or finish while the metadata is read; then the
+        // answer may predate it.
+        let before = changes
         guard let current = try? await client.read(content: false),
-              !busy, current.lastModified != lastModified
+              !busy, changes == before, current.lastModified != lastModified
         else { return }
         if dirty {
             changedOnDisk = true
@@ -180,6 +184,7 @@ final class EditorDocument: ObservableObject {
     private func take(_ snapshot: TextFileClient.Snapshot) {
         text = snapshot.text ?? ""
         lastModified = snapshot.lastModified
+        changes += 1
         dirty = false
         changedOnDisk = false
         loaded = true
