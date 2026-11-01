@@ -100,14 +100,24 @@ xcodebuild test -project apple/Ganymede.xcodeproj -scheme Ganymede-iOS \
 
 ## Download
 
-Each CI run of the `macos-app` job uploads `Ganymede-macOS` (a zipped,
-universal Release build) under the run's Artifacts. It is ad-hoc signed,
-not notarized, so after unzipping it on another Mac clear the quarantine
-flag before the first launch:
+From the release after 0.2.0, each
+[ganymede-ui release](https://github.com/tlockney/ganymede-ui/releases)
+attaches `Ganymede-macOS-<version>.zip`: a universal app signed with a
+Developer ID, notarized, and stapled. Unzip it, move `Ganymede.app` to
+Applications, and open it; Gatekeeper opens it without a warning.
+`release.yml` builds it with `scripts/release-app.sh`
+([docs/releasing.md](../docs/releasing.md)).
+
+Each CI run of the `macos-app` job also uploads `Ganymede-macOS` (a
+zipped, universal Release build) under the run's Artifacts. It is ad-hoc
+signed, not notarized, so after unzipping it on another Mac clear the
+quarantine flag before the first launch:
 
 ```sh
 xattr -dr com.apple.quarantine Ganymede.app
 ```
 
-For a notarized copy, archive it in Xcode with your Developer ID
-(Product > Archive, then Distribute App > Developer ID).
+To sign and notarize a build yourself, run `scripts/release-app.sh` after
+`bootstrap.sh`, with the variables its header lists; with
+`MACOS_CERTIFICATE_P12` unset it signs with the Developer ID certificate
+in your login keychain.
