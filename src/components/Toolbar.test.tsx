@@ -22,6 +22,8 @@ function controller(over: Partial<NotebookController> = {}): NotebookController 
     interrupt: vi.fn(async () => {}),
     restart: vi.fn(async () => {}),
     changeKernel: vi.fn(async () => {}),
+    cellType: 'code',
+    changeCellType: vi.fn(),
     ...over,
   };
 }
@@ -63,6 +65,7 @@ describe('Toolbar', () => {
     render(<Toolbar sidebarOpen onToggleSidebar={vi.fn()} />);
     expect(screen.getByText('Ganymede')).toBeInTheDocument();
     for (const title of ACTIONS) expect(button(title)).toBeDisabled();
+    expect(screen.getByLabelText('Cell Type')).toBeDisabled();
     expect(screen.queryByTitle('Kernel')).not.toBeInTheDocument();
   });
 
@@ -184,6 +187,16 @@ describe('Toolbar', () => {
     expect(button('Run All')).toBeEnabled();
   });
 
+  it('shows the active cell type and changes it', async () => {
+    const c = controller({ cellType: 'markdown' });
+    render(<Toolbar controller={c} sidebarOpen onToggleSidebar={vi.fn()} />);
+    const picker = screen.getByLabelText('Cell Type') as HTMLSelectElement;
+    expect(picker).toBeEnabled();
+    expect(picker.value).toBe('markdown');
+    await userEvent.selectOptions(picker, 'Code');
+    expect(c.changeCellType).toHaveBeenCalledWith('code');
+  });
+
   it('offers Trust Notebook only while outputs are untrusted', () => {
     const { rerender } = render(
       <Toolbar controller={controller()} sidebarOpen onToggleSidebar={vi.fn()} />,
@@ -213,7 +226,7 @@ describe('Toolbar', () => {
   it('changes the kernel from the popup', async () => {
     const c = controller();
     render(<Toolbar controller={c} specs={SPECS} sidebarOpen onToggleSidebar={vi.fn()} />);
-    const select = screen.getByRole('combobox') as HTMLSelectElement;
+    const select = screen.getByRole('combobox', { name: 'Kernel' }) as HTMLSelectElement;
     expect(select.value).toBe('python3');
     expect([...select.options].map(o => o.text)).toEqual(['Python 3', 'JavaScript']);
     await userEvent.selectOptions(select, 'javascript');

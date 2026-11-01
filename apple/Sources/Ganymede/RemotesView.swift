@@ -35,6 +35,9 @@ struct RemotesView: View {
                 Text("A remote is a Jupyter or Ganymede server, for kernels and terminals, "
                     + "an SSH host, for terminals, or both.")
             }
+            #if os(iOS)
+            SSHKeySection()
+            #endif
         }
         .formStyle(.grouped)
         .sheet(item: $editing) { remote in
@@ -114,6 +117,7 @@ struct RemotesView: View {
 struct RemoteEditor: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
+    @State private var forgotHostKey = false
     @State private var remote: Remote
     @State private var token = ""
     @State private var useSSH: Bool
@@ -157,7 +161,7 @@ struct RemoteEditor: View {
                             #if os(iOS)
                             .textInputAutocapitalization(.never)
                             #endif
-                        TextField("User", text: $ssh.user, prompt: Text("Default"))
+                        TextField("User", text: $ssh.user, prompt: Text(userPrompt))
                             .autocorrectionDisabled()
                             #if os(iOS)
                             .textInputAutocapitalization(.never)
@@ -167,10 +171,18 @@ struct RemoteEditor: View {
                             .keyboardType(.numberPad)
                             #endif
                     }
+                    #if os(iOS)
+                    if useSSH, !isNew, !forgotHostKey, model.hostKeys.key(for: remote.id) != nil {
+                        Button("Forget Host Key", role: .destructive) {
+                            model.hostKeys.forget(remote.id)
+                            forgotHostKey = true
+                        }
+                    }
+                    #endif
                 } header: {
                     Text("SSH")
                 } footer: {
-                    Text("Optional. Used for terminals.")
+                    Text(sshFooter)
                 }
             }
             .formStyle(.grouped)
@@ -184,7 +196,7 @@ struct RemoteEditor: View {
                         model.save(edited, token: token)
                         dismiss()
                     }
-                    .disabled(!edited.isValid || useSSH && !portIsValid)
+                    .disabled(!edited.isValid || useSSH && (!portIsValid || !userIsValid))
                 }
             }
         }
@@ -201,6 +213,32 @@ struct RemoteEditor: View {
         "Host name or ~/.ssh/config alias"
         #else
         "Host name"
+        #endif
+    }
+
+    private var userPrompt: String {
+        #if os(macOS)
+        "Default"
+        #else
+        "Required"
+        #endif
+    }
+
+    /// iOS has no ssh-config or local user name to fall back on.
+    private var userIsValid: Bool {
+        #if os(iOS)
+        !ssh.user.trimmingCharacters(in: .whitespaces).isEmpty
+        #else
+        true
+        #endif
+    }
+
+    private var sshFooter: String {
+        #if os(macOS)
+        "Optional. Used for terminals, with this Mac's ssh, its config and keys."
+        #else
+        "Optional. Used for terminals, signing in with the app's SSH key. The host key is "
+            + "trusted the first time and checked after that."
         #endif
     }
 
@@ -223,3 +261,84 @@ struct RemoteEditor: View {
         return result
     }
 }
+
+#if os(iOS)
+/// The app's SSH key: generate or import one, and copy its public key for
+/// the remote's ~/.ssh/authorized_keys.
+private struct SSHKeySection: View {
+    @EnvironmentObject private var model: AppModel
+    @State private var importing = false
+    @State private var confirmingRemove = false
+
+    var body: some View {
+        Section {
+            if let line = model.sshPublicKey {
+                Text(line)
+                    .font(.caption.monospaced())
+                    .textSelection(.enabled)
+                Button("Copy Public Key") { UIPasteboard.general.string = line }
+                Button("Remove Key", role: .destructive) { confirmingRemove = true }
+            } else {
+                Button("Generate Key") { model.generateSSHKey() }
+                Button("Import Key…") { importing = true }
+            }
+        } header: {
+            Text("SSH key")
+        } footer: {
+            Text("An ed25519 key kept in this device's keychain. Add the public key to "
+                + "~/.ssh/authorized_keys on each SSH remote.")
+        }
+        .sheet(isPresented: $importing) {
+            SSHKeyImport().environmentObject(model)
+        }
+        .confirmationDialog("Remove the SSH key?", isPresented: $confirmingRemove) {
+            Button("Remove", role: .destructive) { model.removeSSHKey() }
+        } message: {
+            Text("Remotes that only accept this key can't be reached until you add a new one there.")
+        }
+    }
+}
+
+/// Paste an unencrypted OpenSSH ed25519 private key.
+private struct SSHKeyImport: View {
+    @EnvironmentObject private var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var text = ""
+    @State private var failure: String?
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextEditor(text: $text)
+                        .font(.caption.monospaced())
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .frame(minHeight: 200)
+                } footer: {
+                    Text(failure ?? "Paste the contents of an ed25519 private key file, such as ~/.ssh/id_ed25519, "
+                        + "without a passphrase.")
+                }
+            }
+            .navigationTitle("Import Key")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Import") {
+                        do {
+                            try model.importSSHKey(text)
+                            dismiss()
+                        } catch {
+                            failure = error.localizedDescription
+                        }
+                    }
+                    .disabled(text.isEmpty)
+                }
+            }
+        }
+    }
+}
+#endif

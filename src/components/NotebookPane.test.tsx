@@ -21,6 +21,7 @@ const fakes = vi.hoisted(() => ({
 
 vi.mock('../lib/jupyterlab', async () => {
   const { Widget } = await import('@lumino/widgets');
+  const { Signal } = await import('@lumino/signaling');
   return {
     createRendermime: vi.fn(() => ({})),
     createNotebook: vi.fn(() => {
@@ -30,6 +31,7 @@ vi.mock('../lib/jupyterlab', async () => {
         activeCellIndex?: number;
         widgets: { model: { type: string } }[];
         isSelectedOrActive(cell: unknown): boolean;
+        activeCellChanged: InstanceType<typeof Signal>;
       };
       // Its cells, with the active one selected, for what a run needs.
       Object.defineProperty(w, 'widgets', {
@@ -40,6 +42,7 @@ vi.mock('../lib/jupyterlab', async () => {
       });
       w.isSelectedOrActive = cell =>
         (cell as { model: unknown }).model === w.model!.cells.get(w.activeCellIndex ?? 0);
+      w.activeCellChanged = new Signal(w);
       fakes.notebooks.push(w);
       return w;
     }),
@@ -83,7 +86,7 @@ const { NotebookPane } = await import('./NotebookPane');
 const { hasUntrustedOutputs } = await import('../lib/trust');
 const { attachEditing } = await import('../lib/jupyterlab');
 const { trustNotebook } = await import('../lib/backends');
-const { NotebookModel: RealNotebookModel } = await import('@jupyterlab/notebook');
+const { NotebookModel: RealNotebookModel, NotebookActions } = await import('@jupyterlab/notebook');
 
 const NOTEBOOK: nbformat.INotebookContent = {
   nbformat: 4,
@@ -409,6 +412,32 @@ describe('NotebookPane', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('reports the active cell type and changes it', async () => {
+    const { latest } = setup(
+      vi.fn(async () => ({ path: 'moons/Io.ipynb', content: untrusted(true) })),
+    );
+    await waitFor(() => expect(latest()).toBeDefined());
+    await waitFor(() => expect(latest()?.cellType).toBe('code'));
+    const notebook = fakes.notebooks[0] as {
+      activeCellIndex: number;
+      activeCellChanged: { emit(v: unknown): void };
+      activate(): void;
+    };
+    // The markdown cell becomes active.
+    act(() => {
+      notebook.activeCellIndex = 2;
+      notebook.activeCellChanged.emit(null);
+    });
+    await waitFor(() => expect(latest()?.cellType).toBe('markdown'));
+
+    const change = vi.spyOn(NotebookActions, 'changeCellType').mockImplementation(() => {});
+    const activate = vi.spyOn(notebook, 'activate');
+    act(() => latest()!.changeCellType('raw'));
+    expect(change).toHaveBeenCalledWith(notebook, 'raw');
+    expect(activate).toHaveBeenCalled();
+    change.mockRestore();
   });
 
   it('shows why a kernel action failed', async () => {

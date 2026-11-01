@@ -28,6 +28,12 @@ describe('ShortcutsSheet', () => {
     expect(screen.getByText('Delete cells').nextSibling).toHaveTextContent('D D');
   });
 
+  it('says how to reach command mode', () => {
+    render(<ShortcutsSheet onClose={vi.fn()} />);
+    expect(screen.getByText(/press Esc/)).toBeInTheDocument();
+    expect(screen.getByText('Leave the cell (command mode)').nextSibling).toHaveTextContent('Esc');
+  });
+
   it('closes with Done and with Escape', async () => {
     const onClose = vi.fn();
     render(<ShortcutsSheet onClose={onClose} />);

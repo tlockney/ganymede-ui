@@ -12,6 +12,18 @@ partway through.
    level is `patch`, `minor`, `major`, or an explicit version; the first
    release can be the version already in `package.json`
    (`scripts/release.sh 0.0.1`).
+
+   Before merging it, remove the docs' "Unreleased" notes on that branch
+   ([CLAUDE.md](https://github.com/tlockney/ganymede-ui/blob/main/CLAUDE.md#documenting-unreleased-features)): the
+   release ships everything they describe. Reword the text around a note
+   if it read as unreleased; a note added to `main` after the branch was
+   cut stays. This finds them, and the script lists them in the pull
+   request:
+
+   ```sh
+   grep -rn 'Unreleased\.' README.md docs/*.md
+   ```
+
 2. Merging that pull request (with CI green; branch protection on `main`
    is what guarantees this, since `tag-release.yml` does not check CI
    itself) runs `tag-release.yml`. It sees a `package.json` version that

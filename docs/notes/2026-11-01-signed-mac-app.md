@@ -30,3 +30,10 @@ attestation alongside the web archives. The work is in
 - Not verified yet: the secrets can't be read from a Claude session, and
   nothing here ran on macOS. A manual `release.yml` run on a branch is the
   first test.
+- The first dry run signed with the Developer ID and then stopped at the
+  version check: the app said 1.0. XcodeGen writes
+  `CFBundleShortVersionString` 1.0 and `CFBundleVersion` 1 into a
+  generated Info.plist unless `info.properties` sets them, so a
+  `MARKETING_VERSION` override does nothing. project.yml now sets both
+  from the build settings, and each check in release-app.sh says what
+  failed (the first one exited without a message).
