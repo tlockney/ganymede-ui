@@ -5,7 +5,10 @@ see them in the app, press `H` in command mode, click the keyboard button
 in the toolbar, or choose Help › Keyboard Shortcuts in the Mac app.
 
 Command mode is when a cell is selected but not being edited (press `Esc`
-to get there); edit mode is when the cursor is in a cell.
+to get there); edit mode is when the cursor is in a cell (press `Enter`).
+Single-letter shortcuts such as `M` (make the cell Markdown) work only in
+command mode; in edit mode they type the letter. The sheet says this too,
+and the toolbar's cell type picker changes a cell's type with the mouse.
 
 ## Changing a shortcut
 
@@ -63,11 +66,11 @@ origin across launches, so changes there last.
 
 ### Edit mode
 
-| Action             | Mac         | Windows, Linux  |
-| ------------------ | ----------- | --------------- |
-| Command mode       | `Esc`, `⌃M` | `Esc`, `Ctrl+M` |
-| Complete           | `⇥`         | `Tab`           |
-| Show documentation | `⇧⇥`        | `Shift+Tab`     |
+| Action                        | Mac         | Windows, Linux  |
+| ----------------------------- | ----------- | --------------- |
+| Leave the cell (command mode) | `Esc`, `⌃M` | `Esc`, `Ctrl+M` |
+| Complete                      | `⇥`         | `Tab`           |
+| Show documentation            | `⇧⇥`        | `Shift+Tab`     |
 
 ### App
 

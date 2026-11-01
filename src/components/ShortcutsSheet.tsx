@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { CommandRegistry } from '@lumino/commands';
 import {
   GROUPS,
+  GROUP_NOTES,
   SHORTCUTS,
   type Shortcut,
   customizations,
@@ -138,6 +139,7 @@ export function ShortcutsSheet({ onClose }: Props) {
           {GROUPS.map(group => (
             <section key={group}>
               <h3>{group}</h3>
+              {GROUP_NOTES[group] && <p className="shortcut-group-note">{GROUP_NOTES[group]}</p>}
               <dl>{SHORTCUTS.filter(s => s.group === group).map(row)}</dl>
             </section>
           ))}

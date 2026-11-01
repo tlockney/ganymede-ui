@@ -83,7 +83,12 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { id: 'to-raw', label: 'Change to raw', group: 'Command mode', keys: [['R']] },
   { id: 'show-shortcuts', label: 'Show keyboard shortcuts', group: 'Command mode', keys: [['H']] },
 
-  { id: 'command-mode', label: 'Command mode', group: 'Edit mode', keys: [['Escape'], ['Ctrl M']] },
+  {
+    id: 'command-mode',
+    label: 'Leave the cell (command mode)',
+    group: 'Edit mode',
+    keys: [['Escape'], ['Ctrl M']],
+  },
   { id: 'completer:invoke', label: 'Complete', group: 'Edit mode', keys: [['Tab']] },
   { id: 'tooltip:launch', label: 'Show documentation', group: 'Edit mode', keys: [['Shift Tab']] },
 
@@ -91,6 +96,18 @@ export const SHORTCUTS: readonly Shortcut[] = [
 ];
 
 export const GROUPS: readonly ShortcutGroup[] = ['Notebook', 'Command mode', 'Edit mode', 'App'];
+
+/**
+ * What each group's mode is and how to get there: single-letter shortcuts
+ * work only outside a cell's editor, which is not obvious.
+ */
+export const GROUP_NOTES: Readonly<Partial<Record<ShortcutGroup, string>>> = {
+  'Command mode':
+    'When no cell is being edited: press Esc, or click beside the editor, to leave it. ' +
+    'Letter keys act on the selected cells here, so M makes a cell Markdown.',
+  'Edit mode':
+    'While typing in a cell: press Enter or click into a code cell; double-click a Markdown cell.',
+};
 
 /**
  * Dispatched on `window` to open the shortcuts dialog: by the notebook's
