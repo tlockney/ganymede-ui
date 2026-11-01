@@ -1,6 +1,6 @@
 ## 2026-10-31, Mac terminal window (#119)
 
-File > New Terminal (⌃⇧`) opens a window with a shell from the app's own server, and File > New Terminal on Kernel Server opens one on the server set in Settings. Both go through Jupyter's `/api/terminals` (tlockney/ganymede#237): `JupyterTerminalTransport` creates the terminal with a `POST`, connects to `/terminals/websocket/{name}` with the token in the `Authorization` header, and deletes the terminal when the window closes. The same transport works against `jupyter server`, so the Mac needs no SSH to reach a remote that runs one.
+File > New Terminal (⌃⇧`) opens a window with a shell from the app's own server, and File > New Terminal on Kernel Server opens one on the server set in Settings. Both go through Jupyter's `/api/terminals`(tlockney/ganymede#237):`JupyterTerminalTransport`creates the terminal with a`POST`, connects to `/terminals/websocket/{name}`with the token in the`Authorization`header, and deletes the terminal when the window closes. The same transport works against`jupyter server`, so the Mac needs no SSH to reach a remote that runs one.
 
 CI now builds the app against a ganymede commit on `main` (`GANYMEDE_REF`) rather than v0.4.0, since no release has terminals yet. Move it back to a tag once one does.
 
