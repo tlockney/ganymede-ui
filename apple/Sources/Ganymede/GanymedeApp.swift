@@ -35,8 +35,8 @@ struct GanymedeApp: App {
                 }
             }
         }
-        WindowGroup("Terminal", for: TerminalTarget.self) { $target in
-            TerminalWindow(target: target ?? .local)
+        WindowGroup("Terminal", for: TerminalRequest.self) { $request in
+            TerminalWindow(target: request?.target ?? .local(folder: nil))
                 .environmentObject(model)
         }
         // Files opened from the Finder go to notebook windows only.

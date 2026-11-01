@@ -29,6 +29,7 @@ struct ContentView: View {
         content
             .frame(minWidth: 720, minHeight: 480)
             .navigationTitle((target ?? loaded).title)
+            .focusedSceneValue(\.windowFolder, (target ?? loaded).folder)
             // A notebook opened from the Finder (double-click, Open With,
             // the Dock) arrives here, in a new window or in the one already
             // showing that file. The claim below matches by substring, so

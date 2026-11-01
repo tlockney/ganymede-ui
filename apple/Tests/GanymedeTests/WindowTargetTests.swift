@@ -9,6 +9,13 @@ final class WindowTargetTests: XCTestCase {
         return Dictionary(uniqueKeysWithValues: items.map { ($0.name, $0.value ?? "") })
     }
 
+    func testTheFolderOfATarget() {
+        let notebook = WindowTarget.file(URL(fileURLWithPath: "/Users/me/work/a.ipynb"))
+        XCTAssertEqual(notebook.folder.path, "/Users/me/work")
+        let folder = WindowTarget.folder(URL(fileURLWithPath: "/Users/me/work", isDirectory: true))
+        XCTAssertEqual(folder.folder.path, "/Users/me/work")
+    }
+
     func testANotebookOpensByItsAbsolutePath() {
         let target = WindowTarget.file(URL(fileURLWithPath: "/Users/me/Moons & rings/Io+Europa.ipynb"))
         let page = target.pageURL(server: server, kernels: "server")

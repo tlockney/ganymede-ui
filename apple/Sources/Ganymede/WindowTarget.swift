@@ -42,6 +42,15 @@ enum WindowTarget: Codable, Hashable {
         }
     }
 
+    /// The folder the target is in: a notebook's folder, or the folder.
+    /// A terminal opened from the window starts here.
+    var folder: URL {
+        switch self {
+        case .file(let url): url.deletingLastPathComponent()
+        case .folder(let url): url
+        }
+    }
+
     /// The window title.
     var title: String {
         switch self {

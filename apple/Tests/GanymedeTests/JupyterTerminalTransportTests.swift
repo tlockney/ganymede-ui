@@ -82,6 +82,20 @@ final class JupyterTerminalTransportTests: XCTestCase {
         XCTAssertTrue(closed.isEmpty, "closing from here reports no end")
     }
 
+    func testTheShellStartsInTheFolderAskedFor() async throws {
+        let folder = dir.appendingPathComponent("sub folder", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let endpoint = try XCTUnwrap(ServerEndpoint(serverURL: host.url))
+        let transport = JupyterTerminalTransport(endpoint: endpoint, cwd: folder.path)
+        var output = ""
+        transport.onOutput = { output += String(decoding: $0, as: UTF8.self) }
+        transport.start()
+        try await waitFor("the terminal") { transport.name != nil }
+        transport.send(Array("echo \"cwd=$(basename \"$PWD\")\"\r".utf8)[...])
+        try await waitFor("the echo") { output.contains("cwd=sub folder") }
+        transport.close()
+    }
+
     func testShellExitEndsTheSession() async throws {
         let endpoint = try XCTUnwrap(ServerEndpoint(serverURL: host.url))
         let transport = JupyterTerminalTransport(endpoint: endpoint)
