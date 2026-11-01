@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Contents } from '@jupyterlab/services';
 import type { Backend } from '../lib/backends';
 import { useSignals } from '../lib/useSignal';
+import { parentOf } from '../lib/launch';
 import {
   BrowserIcon,
   ChevronLeftIcon,
@@ -17,16 +18,24 @@ type Props = {
   backend?: Backend;
   connecting: boolean;
   openPath?: string;
+  /** The folder to list on the first connection; later ones start at the root (''). */
+  root?: string;
   onOpen(path: string): void;
   onNew(dir: string): void;
   onConnect(): void;
 };
 
-const parent = (dir: string) => dir.split('/').slice(0, -1).join('/');
-
-export function Sidebar({ backend, connecting, openPath, onOpen, onNew, onConnect }: Props) {
+export function Sidebar({
+  backend,
+  connecting,
+  openPath,
+  root = '',
+  onOpen,
+  onNew,
+  onConnect,
+}: Props) {
   const services = backend?.services;
-  const [dir, setDir] = useState('');
+  const [dir, setDir] = useState(root);
   const [items, setItems] = useState<Contents.IModel[]>([]);
   const [error, setError] = useState<string>();
 
@@ -52,7 +61,14 @@ export function Sidebar({ backend, connecting, openPath, onOpen, onNew, onConnec
     }
   }, [services, dir]);
 
-  useEffect(() => setDir(''), [services]);
+  // The first connection starts in `root`, later ones at the server's root,
+  // where another backend's folder may not exist.
+  const started = useRef(false);
+  useEffect(() => {
+    if (!services) return;
+    setDir(started.current ? '' : root);
+    started.current = true;
+  }, [services, root]);
   useEffect(() => void refresh(), [refresh]);
   useEffect(() => {
     if (!services) return;
@@ -70,7 +86,7 @@ export function Sidebar({ backend, connecting, openPath, onOpen, onNew, onConnec
       <div className="sidebar-scroll">
         <div className="sidebar-section-header">
           {dir ? (
-            <button className="link-button" onClick={() => setDir(parent(dir))}>
+            <button className="link-button" onClick={() => setDir(parentOf(dir))}>
               <ChevronLeftIcon width={14} height={14} />
               {dir.split('/').pop()}
             </button>

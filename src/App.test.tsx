@@ -29,6 +29,8 @@ beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
   history.replaceState(null, '', '/');
+  document.title = 'Ganymede';
+  vi.restoreAllMocks();
   vi.stubGlobal(
     'matchMedia',
     vi.fn(() => ({ matches: false, addEventListener() {}, removeEventListener() {} })),
@@ -91,6 +93,102 @@ describe('App', () => {
     });
     expect(window.location.search).toBe('');
     expect(await screen.findByText('Io')).toBeInTheDocument();
+  });
+
+  it('opens the notebook the URL names, in its folder, with the sidebar closed', async () => {
+    history.replaceState(null, '', '/?kernels=server&open=%2Fwork%2FOrbits.ipynb');
+    const fake = fakeServices({
+      '': [{ name: 'work', type: 'directory' }],
+      work: [{ name: 'Orbits.ipynb', type: 'notebook' }],
+    });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    const { container } = render(<App />);
+
+    await waitFor(() => expect(screen.getByTestId('pane')).toHaveTextContent('work/Orbits.ipynb'));
+    // `kernels` is gone; `open` names the open notebook, for a reload.
+    expect(window.location.search).toBe('?open=work%2FOrbits.ipynb');
+    expect(document.title).toBe('Orbits');
+    expect(container.querySelector('.window')).toHaveClass('sidebar-collapsed');
+    // The sidebar lists the notebook's folder.
+    expect(await screen.findByRole('button', { name: /work/ })).toBeInTheDocument();
+    expect(fake.contents.get).toHaveBeenCalledWith('work', { content: true });
+  });
+
+  it('keeps the sidebar open when a page with a notebook open is reloaded', async () => {
+    history.replaceState(null, '', '/?open=work/Orbits.ipynb');
+    vi.spyOn(performance, 'getEntriesByType').mockReturnValue([
+      { type: 'reload' } as PerformanceNavigationTiming,
+    ]);
+    localStorage.setItem('ganymede-ui:backend', JSON.stringify({ kind: 'ganymede', url: '' }));
+    const fake = fakeServices({ '': [], work: [{ name: 'Orbits.ipynb', type: 'notebook' }] });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    const { container } = render(<App />);
+
+    await waitFor(() => expect(screen.getByTestId('pane')).toHaveTextContent('work/Orbits.ipynb'));
+    expect(container.querySelector('.window')).not.toHaveClass('sidebar-collapsed');
+  });
+
+  it('hands a missing launch file to the pane, not the connect sheet', async () => {
+    history.replaceState(null, '', '/?kernels=server&open=gone/Nope.ipynb');
+    mocks.connect.mockResolvedValue(fakeBackend(fakeServices({ '': [] }).services));
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByTestId('pane')).toHaveTextContent('gone/Nope.ipynb'));
+    expect(screen.queryByText('Where should kernels run?')).not.toBeInTheDocument();
+  });
+
+  it('keeps the launch file when the sheet retries the same server', async () => {
+    history.replaceState(null, '', '/?token=bad&open=work/Orbits.ipynb');
+    const fake = fakeServices({
+      '': [{ name: 'work', type: 'directory' }],
+      work: [{ name: 'Orbits.ipynb', type: 'notebook' }],
+    });
+    mocks.connect
+      .mockRejectedValueOnce(new Error('The server refused the token.'))
+      .mockResolvedValue(fakeBackend(fake.services));
+    render(<App />);
+
+    expect(await screen.findByText('The server refused the token.')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
+
+    await waitFor(() => expect(screen.getByTestId('pane')).toHaveTextContent('work/Orbits.ipynb'));
+    expect(fake.contents.get).toHaveBeenCalledWith('work', { content: true });
+  });
+
+  it('keeps the launch file for the first backend picked in the sheet', async () => {
+    history.replaceState(null, '', '/?open=work/Orbits.ipynb');
+    const fake = fakeServices({
+      '': [{ name: 'work', type: 'directory' }],
+      work: [{ name: 'Orbits.ipynb', type: 'notebook' }],
+    });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services, { kind: 'browser' }));
+    render(<App />);
+
+    expect(await screen.findByText('Where should kernels run?')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('radio', { name: /This browser/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
+
+    await waitFor(() => expect(screen.getByTestId('pane')).toHaveTextContent('work/Orbits.ipynb'));
+    expect(fake.contents.get).toHaveBeenCalledWith('work', { content: true });
+  });
+
+  it('drops the launch file and folder when the sheet picks another backend', async () => {
+    history.replaceState(null, '', '/?token=bad&open=work/Orbits.ipynb');
+    const fake = fakeServices({ '': [{ name: 'Io.ipynb', type: 'notebook' }] });
+    mocks.connect
+      .mockRejectedValueOnce(new Error('The server refused the token.'))
+      .mockResolvedValue(fakeBackend(fake.services, { kind: 'browser' }));
+    render(<App />);
+
+    expect(await screen.findByText('The server refused the token.')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('radio', { name: /This browser/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
+
+    // The browser's root, with nothing opened from the first server.
+    expect(await screen.findByText('Io')).toBeInTheDocument();
+    expect(fake.contents.get).toHaveBeenCalledWith('', { content: true });
+    expect(screen.queryByTestId('pane')).not.toBeInTheDocument();
+    expect(window.location.search).toBe('');
   });
 
   it("connects on the login cookie when this page's server has us signed in", async () => {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   type Backend,
   type BackendConfig,
@@ -17,6 +17,7 @@ import { ConnectSheet } from './components/ConnectSheet';
 import { EmptyState } from './components/EmptyState';
 import { ShortcutsSheet } from './components/ShortcutsSheet';
 import { SHOW_SHORTCUTS_EVENT, matches } from './lib/shortcuts';
+import { LAUNCH_PARAMS, type Launch, isReload, readLaunch, titleFor, withOpen } from './lib/launch';
 
 /**
  * A token in the page URL, as `ganymede serve` prints it, wins once, and so
@@ -38,20 +39,35 @@ function initialConfig(): BackendConfig | undefined {
   };
 }
 
-/** Keeps the token out of history and the referrer. */
+/** Keeps the token out of history and the referrer. `open` is kept in step instead. */
 function stripLaunchParams(): void {
   const params = new URLSearchParams(window.location.search);
-  if (!params.has('token') && !params.has('kernels')) return;
-  params.delete('token');
-  params.delete('kernels');
+  if (!LAUNCH_PARAMS.some(p => params.has(p))) return;
+  LAUNCH_PARAMS.forEach(p => params.delete(p));
   const rest = params.toString();
   history.replaceState(null, '', window.location.pathname + (rest ? `?${rest}` : ''));
+}
+
+/** Whether two configs reach the same notebooks, whatever the token. */
+function sameBackend(a: BackendConfig, b: BackendConfig): boolean {
+  if (a.kind !== 'ganymede' || b.kind !== 'ganymede') return a.kind === b.kind;
+  return a.url === b.url && a.kernels === b.kernels;
 }
 
 export function App() {
   const scheme = useColorScheme();
   useJupyterLabTheme(scheme);
   const [config, setConfig] = useState<BackendConfig | undefined>(initialConfig);
+  // The notebook and folder the URL asks for (`?open=`, `?dir=`): a window
+  // the Apple apps open on one file.
+  const [launch] = useState<Launch>(() => readLaunch(window.location.search));
+  /**
+   * The notebook to open on the first connection, until it is opened or
+   * the connect sheet picks another backend.
+   */
+  const pendingOpen = useRef(launch.open);
+  /** The folder the sidebar starts in; the server root once the sheet picks a backend. */
+  const [sidebarRoot, setSidebarRoot] = useState(launch.dir);
   const [backend, setBackend] = useState<Backend>();
   const [error, setError] = useState<string>();
   const [connecting, setConnecting] = useState(false);
@@ -59,7 +75,11 @@ export function App() {
   // With nothing to connect to yet, first check whether this page's server
   // has us signed in; the sheet waits for the answer.
   const [probing, setProbing] = useState(() => !config);
-  const [sidebarOpen, setSidebarOpen] = useState(() => window.innerWidth > 720);
+  // A window opened on one notebook starts on the notebook alone; a reload
+  // of any page keeps the usual layout.
+  const [sidebarOpen, setSidebarOpen] = useState(
+    () => !(launch.open && !isReload()) && window.innerWidth > 720,
+  );
   const [openPath, setOpenPath] = useState<string>();
   const [controller, setController] = useState<NotebookController>();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -101,6 +121,10 @@ export function App() {
           return b;
         });
         setSheetOpen(false);
+        if (pendingOpen.current) {
+          setOpenPath(pendingOpen.current);
+          pendingOpen.current = undefined;
+        }
       })
       .catch(e => {
         if (cancelled) return;
@@ -138,6 +162,18 @@ export function App() {
     [backend],
   );
 
+  // The window title, which the Apple apps show, and `?open=` in step with
+  // the open notebook, so a reload (⌘R, or WebKit restarting the page)
+  // comes back to it. A launch file not opened yet stays in the URL.
+  useEffect(() => {
+    document.title = titleFor(openPath);
+    if (!openPath && pendingOpen.current) return;
+    const search = withOpen(window.location.search, openPath);
+    if (search !== window.location.search) {
+      history.replaceState(null, '', window.location.pathname + search);
+    }
+  }, [openPath]);
+
   // ⌘S / Ctrl+S saves, as in any document app.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -164,6 +200,7 @@ export function App() {
           backend={backend}
           connecting={connecting}
           openPath={openPath}
+          root={sidebarRoot}
           onOpen={setOpenPath}
           onNew={newNotebook}
           onConnect={() => setSheetOpen(true)}
@@ -202,7 +239,21 @@ export function App() {
           connecting={connecting}
           canCancel={!!backend}
           onCancel={() => setSheetOpen(false)}
-          onConnect={c => setConfig({ ...c })}
+          onConnect={c => {
+            // The launch file and folder belong to the first backend: keep
+            // them for a retry there (a corrected token) or when this is
+            // the first pick, drop them for another.
+            if (config && !sameBackend(c, config)) {
+              pendingOpen.current = undefined;
+              setSidebarRoot('');
+              history.replaceState(
+                null,
+                '',
+                window.location.pathname + withOpen(window.location.search, undefined),
+              );
+            }
+            setConfig({ ...c });
+          }}
         />
       )}
       {shortcutsOpen && <ShortcutsSheet onClose={closeShortcuts} />}
