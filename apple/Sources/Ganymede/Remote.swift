@@ -17,6 +17,15 @@ struct Remote: Codable, Identifiable, Hashable {
         var user = ""
         /// Nil for the default (ssh-config, or 22).
         var port: Int?
+
+        /// Arguments for OpenSSH's `ssh`, which reads the rest from
+        /// ~/.ssh/config. `--` keeps a host from being read as an option.
+        var arguments: [String] {
+            var result: [String] = []
+            if let port { result += ["-p", String(port)] }
+            if !user.isEmpty { result += ["-l", user] }
+            return result + ["--", host]
+        }
     }
 
     /// The name, or else the server's or SSH host.

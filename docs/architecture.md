@@ -325,7 +325,11 @@ a SwiftUI view over [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm)'s
 implements. On the Mac, File > New Terminal opens a `TerminalWindow` whose
 `JupyterTerminalTransport` creates a terminal through `/api/terminals` on
 the app's own server, or on a remote's server, and speaks terminado's
-websocket protocol to it. Closing the window deletes the terminal.
+websocket protocol to it. Closing the window deletes the terminal. For
+a remote with SSH, `ProcessTerminalTransport` runs `/usr/bin/ssh` in a
+pseudo-terminal the app spawns (SwiftTerm's `LocalProcess`), so OpenSSH
+does everything it does in Terminal.app: ssh-config aliases, the agent,
+ProxyJump, and asking to trust a new host key.
 
 ## Tests
 
