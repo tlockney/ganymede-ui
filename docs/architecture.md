@@ -207,6 +207,15 @@ document context, so the app uses `KernelWidgetManager`, the manager
 JupyterLab uses for consoles, one per kernel. Widget state is written to
 the notebook's metadata before each save.
 
+Without a kernel, widgets render from that saved state, as nbviewer and VS
+Code show them and JupyterLab doesn't: a manager with no kernel builds the
+models without comms, so a slider moves and `jslink` holds, but nothing
+reaches the kernel. When a kernel starts, its manager renders new outputs
+and also loads the saved models the kernel doesn't have, as JupyterLab's
+notebook manager does, so a save keeps them. The widget-view renderer is
+not safe, as in JupyterLab (an HTML widget's value is HTML), so a notebook
+nobody trusted shows its widgets' text until Trust Notebook.
+
 Trust follows Jupyter's model: the server marks cells trusted when it serves
 a signed notebook, and Trust Notebook in the toolbar calls
 `POST /api/contents/{path}/trust`. The browser backend keeps no signatures,

@@ -49,3 +49,30 @@ for (const colorScheme of ['light', 'dark'] as const) {
     });
   }
 }
+
+// Widgets render from the state saved in the file, with no kernel (#150),
+// once the notebook is trusted: the widget-view renderer isn't safe, as in
+// JupyterLab, since an HTML widget's value is HTML.
+test('renders saved widgets without a kernel', async ({ page }, testInfo) => {
+  // Trust here without signing the fixture, which the screenshots above
+  // read untrusted.
+  await page.route('**/api/contents/**/trust', route => route.fulfill({ status: 201 }));
+  page.on('dialog', dialog => void dialog.accept());
+  await page.goto(
+    `/?token=${TOKEN}&kernels=server&open=${encodeURIComponent('reading/Widgets.ipynb')}`,
+  );
+  await waitForReady(page);
+  await expect(
+    page.getByText("IntSlider(value=4, description='Resonance', max=8, min=1)"),
+  ).toBeVisible();
+
+  await page.getByTitle('Trust Notebook').click();
+  await expect(page.locator('.widget-slider')).toBeVisible();
+  await expect(page.locator('.widget-readout')).toHaveText('4');
+  await expect(page.locator('.widget-text input')).toHaveValue('Ganymede');
+  await expect(page.locator('.widget-checkbox input')).toBeChecked();
+  await expect(page.locator('.widget-dropdown select')).toHaveValue('Jupiter');
+  // Still no kernel.
+  await expect(page.getByText(/ · Starts when you run a cell$/)).toBeVisible();
+  await screenshot(page, testInfo, 'reading-widgets-trusted-light');
+});
