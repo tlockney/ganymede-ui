@@ -106,6 +106,10 @@ export default defineConfig({
   },
   worker: { format: 'es' },
   build: {
+    // Vite 7's default baseline. Vite 8's (safari16.4) is above the Apple
+    // apps' deployment targets, macOS 13.0 and iOS 16.0, whose WKWebView is
+    // Safari 16.0 (apple/project.yml). The CSS target follows this one.
+    target: ['chrome107', 'edge107', 'firefox104', 'safari16'],
     rolldownOptions: {
       // kernel.html is the Apple apps' hidden kernel web view (#99).
       input: { main: 'index.html', kernel: 'kernel.html' },

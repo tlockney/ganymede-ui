@@ -20,7 +20,9 @@ updates:
       # vitest and its plugins must share one version, majors included.
       vitest:
         patterns: ['vitest', '@vitest/*']
-      # @vitejs/plugin-react's majors follow Vite's (#147).
+      # @vitejs/plugin-react's majors follow Vite's (#147); minor and patch
+      # bumps come here too. vitest and vite-plugin-pwa also cap their vite
+      # peer, so a Vite major can still wait for them.
       vite:
         patterns: ['vite', '@vitejs/*']
       npm:
