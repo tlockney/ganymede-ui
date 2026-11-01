@@ -22,6 +22,11 @@ built from the same sources (see
   that window to the front. File > Open… (⌘O) opens notebooks, File >
   Open Folder… (⇧⌘O) a folder, each in a new window; a new window (⌘N)
   shows the last folder opened, your home folder at first.
+- A notebook window behaves like a document window. Its title bar has the
+  file's icon (drag it, or ⌘-click it for the folders above) and a dot
+  while there are unsaved edits. File > Save (⌘S) saves. Closing the window
+  or quitting with unsaved edits asks Save, Don't Save or Cancel. File >
+  Open Recent lists the notebooks opened lately.
 - To open notebooks here by default, choose Ganymede > Make Default App
   for Notebooks, or in the Finder choose File > Get Info on a notebook,
   pick Ganymede under Open with, and click Change All.

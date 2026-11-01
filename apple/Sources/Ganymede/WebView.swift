@@ -8,6 +8,8 @@ struct WebView: NSViewRepresentable {
     /// The page's URL after each change, including the page's own
     /// `history.replaceState` (the notebook it has open, #129).
     var onNavigate: ((URL?) -> Void)? = nil
+    /// The window's document, which the page keeps up to date (#132).
+    var document: PageDocument? = nil
 
     func makeCoordinator() -> WebViewCoordinator { WebViewCoordinator() }
 
@@ -17,6 +19,7 @@ struct WebView: NSViewRepresentable {
 
     func updateNSView(_ view: WKWebView, context: Context) {
         context.coordinator.onNavigate = onNavigate
+        context.coordinator.document = document
         context.coordinator.load(url, in: view)
     }
 }
@@ -48,6 +51,11 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     private var shortcuts: NSObjectProtocol?
     private var urlObservation: NSKeyValueObservation?
     var onNavigate: ((URL?) -> Void)?
+    #if os(macOS)
+    var document: PageDocument? {
+        didSet { document?.webView = webView }
+    }
+    #endif
     /// Where the page's in-page kernels run (ganymede-ui#99).
     private let kernels = KernelHost()
     #if os(iOS)
@@ -66,6 +74,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
             Task { @MainActor in self?.onNavigate?(url) }
         }
         #if os(macOS)
+        view.configuration.userContentController.add(DocumentHandler(self), name: "document")
         // Help > Keyboard Shortcuts opens the web app's shortcuts sheet.
         shortcuts = NotificationCenter.default.addObserver(
             forName: .showShortcuts, object: nil, queue: .main
@@ -353,3 +362,28 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     }
     #endif
 }
+
+#if os(macOS)
+extension WebViewCoordinator {
+    /// The page's `document` message: its notebook and unsaved edits.
+    func received(document message: WKScriptMessage) {
+        if let update = DocumentMessage(body: message.body) {
+            document?.update(update)
+        }
+    }
+}
+
+/// The `document` handler; weak, since the content controller keeps its
+/// handlers.
+private final class DocumentHandler: NSObject, WKScriptMessageHandler {
+    weak var coordinator: WebViewCoordinator?
+
+    init(_ coordinator: WebViewCoordinator) {
+        self.coordinator = coordinator
+    }
+
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        coordinator?.received(document: message)
+    }
+}
+#endif

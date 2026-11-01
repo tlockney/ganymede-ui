@@ -10,6 +10,8 @@ import { entry, fakeBackend, fakeServices } from './test/fakes';
 const mocks = vi.hoisted(() => ({
   connect: vi.fn<(c: BackendConfig) => Promise<Backend>>(),
   signedInHere: vi.fn<() => Promise<boolean>>(),
+  /** What the pane hands the toolbar, when a test sets it. */
+  controller: undefined as undefined | { dirty: boolean; save: () => Promise<boolean> },
 }));
 
 vi.mock('./lib/backends', async importOriginal => ({
@@ -18,13 +20,25 @@ vi.mock('./lib/backends', async importOriginal => ({
   signedInHere: mocks.signedInHere,
 }));
 
-vi.mock('./components/NotebookPane', () => ({
-  NotebookPane: ({ path }: { path: string }) => <div data-testid="pane">{path}</div>,
-}));
+vi.mock('./components/NotebookPane', async () => {
+  const { useEffect } = await import('react');
+  return {
+    NotebookPane: ({ path, onController }: { path: string; onController(c: unknown): void }) => {
+      useEffect(() => {
+        if (mocks.controller) {
+          const name = path.split('/').pop();
+          onController({ name, status: 'idle', trusted: true, ...mocks.controller, path });
+        }
+      }, [path, onController]);
+      return <div data-testid="pane">{path}</div>;
+    },
+  };
+});
 
 const { App } = await import('./App');
 
 beforeEach(() => {
+  mocks.controller = undefined;
   mocks.signedInHere.mockReset().mockResolvedValue(false);
   localStorage.clear();
   sessionStorage.clear();
@@ -113,6 +127,28 @@ describe('App', () => {
     // The sidebar lists the notebook's folder.
     expect(await screen.findByRole('button', { name: /work/ })).toBeInTheDocument();
     expect(fake.contents.get).toHaveBeenCalledWith('work', { content: true });
+  });
+
+  it('tells the Mac app which notebook is open and if it has unsaved edits, and saves for it', async () => {
+    const posted: unknown[] = [];
+    vi.stubGlobal('webkit', {
+      messageHandlers: { document: { postMessage: (m: unknown) => posted.push(m) } },
+    });
+    const save = vi.fn(async () => true);
+    mocks.controller = { dirty: true, save };
+    history.replaceState(null, '', '/?kernels=server&open=work/Orbits.ipynb');
+    mocks.connect.mockResolvedValue(
+      fakeBackend(
+        fakeServices({ '': [], work: [{ name: 'Orbits.ipynb', type: 'notebook' }] }).services,
+      ),
+    );
+    render(<App />);
+
+    await waitFor(() => expect(posted).toContainEqual({ path: 'work/Orbits.ipynb', dirty: true }));
+    expect(posted[0]).toEqual({ path: null, dirty: false });
+    expect(await window.ganymede!.save()).toBe(true);
+    expect(save).toHaveBeenCalled();
+    vi.unstubAllGlobals();
   });
 
   it('keeps the sidebar open when a page with a notebook open is reloaded', async () => {
