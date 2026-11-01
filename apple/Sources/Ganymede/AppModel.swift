@@ -1,15 +1,25 @@
 import Foundation
 #if os(macOS)
 import AppKit
+import UniformTypeIdentifiers
 #endif
 
-/// Owns the server for the chosen notebook folder.
+/// Owns the app's server. On macOS one server, rooted at `/`, serves
+/// every window: each opens a notebook or folder by its absolute path
+/// (`WindowTarget`), so opening a file anywhere needs no restart and the
+/// page keeps one origin. On iOS it serves the chosen notebook folder.
 @MainActor
 final class AppModel: ObservableObject {
     static let shared = AppModel()
 
+    /// The page for the default window (iOS, and terminals' restarts).
     @Published private(set) var url: URL?
+    /// The URL the server printed, with its token; windows build their
+    /// page from it.
+    @Published private(set) var serverURL: URL?
     @Published private(set) var error: String?
+    /// The notebook folder: on macOS the last folder opened, which a window
+    /// opened on nothing shows; on iOS the folder the server serves.
     @Published private(set) var root: URL
     /// Other machines: servers for kernels and terminals, SSH for shells.
     @Published private(set) var remotes: [Remote]
@@ -88,13 +98,14 @@ final class AppModel: ObservableObject {
     /// listens, `error` if it fails.
     func start() {
         url = nil
+        serverURL = nil
         error = nil
         guard let web = Bundle.main.url(forResource: "web", withExtension: nil) else {
             error = "The app bundle has no web folder; build it with apple/scripts/bootstrap.sh."
             return
         }
         var config: [String: any Sendable] = [
-            "root_dir": root.path,
+            "root_dir": Self.serverRoot(root),
             "static_dir": web.path,
             "quiet": true,
         ]
@@ -129,6 +140,7 @@ final class AppModel: ObservableObject {
             switch result {
             case .success(let host):
                 server = host
+                serverURL = host.url
                 url = pageURL(host.url)
                 if let port = host.url.port {
                     defaults.set(port, forKey: Keys.port)
@@ -166,15 +178,37 @@ final class AppModel: ObservableObject {
     /// (cdp-kernel's TypeScript kernel in a Worker) and keeps notebooks on
     /// the server.
     private func pageURL(_ url: URL) -> URL {
-        #if os(iOS)
-        let kernels = kernelRemote == nil ? "page" : "server"
-        #else
-        let kernels = "server"
-        #endif
         guard var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
         parts.queryItems = (parts.queryItems ?? []) + [URLQueryItem(name: "kernels", value: kernels)]
         return parts.url ?? url
     }
+
+    /// The page's `kernels=`: where its kernels run.
+    private var kernels: String {
+        #if os(iOS)
+        kernelRemote == nil ? "page" : "server"
+        #else
+        "server"
+        #endif
+    }
+
+    /// What the server serves: everything on macOS, where windows open
+    /// files by absolute path; the notebook folder on iOS.
+    private static func serverRoot(_ folder: URL) -> String {
+        #if os(macOS)
+        return "/"
+        #else
+        return folder.path
+        #endif
+    }
+
+    #if os(macOS)
+    /// The page a window loads for `target`; nil until the server listens.
+    func page(for target: WindowTarget) -> URL? {
+        guard let serverURL else { return nil }
+        return target.pageURL(server: serverURL, kernels: kernels)
+    }
+    #endif
 
     /// The app's own server, for clients other than the page (terminals).
     var localServer: ServerEndpoint? {
@@ -207,12 +241,16 @@ final class AppModel: ObservableObject {
         server?.stop()
         server = nil
         url = nil
+        serverURL = nil
     }
 
-    /// Serves another folder. Kernels of the current one are shut down.
+    /// Makes `folder` the notebook folder. On macOS that is only the folder
+    /// a window opened on nothing shows (the server serves everything); on
+    /// iOS the server restarts on it, shutting down its kernels.
     func open(folder: URL) {
         #if os(macOS)
         defaults.set(folder.path, forKey: Keys.root)
+        root = folder
         #else
         guard folder.startAccessingSecurityScopedResource() else {
             error = "Ganymede was not allowed to open \(folder.lastPathComponent)."
@@ -223,9 +261,9 @@ final class AppModel: ObservableObject {
         if let bookmark = try? folder.bookmarkData() {
             defaults.set(bookmark, forKey: Keys.bookmark)
         }
-        #endif
         root = folder
         start()
+        #endif
     }
 
     /// Adds `remote`, or replaces the one with its id. `token` replaces
@@ -298,17 +336,33 @@ final class AppModel: ObservableObject {
     }
 
     #if os(macOS)
-    func chooseFolder() {
+    /// File > Open Folder…: the folder to open in a window, which also
+    /// becomes the default folder.
+    func chooseFolder() -> URL? {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
         panel.directoryURL = root
         panel.prompt = "Open"
-        panel.message = "Choose the folder of notebooks to work in. Running kernels will be shut down."
-        if panel.runModal() == .OK, let folder = panel.url {
-            open(folder: folder)
-        }
+        panel.message = "Choose a folder of notebooks."
+        guard panel.runModal() == .OK, let folder = panel.url else { return nil }
+        open(folder: folder)
+        return folder
+    }
+
+    /// File > Open…: notebooks to open, each in its own window.
+    func chooseNotebooks() -> [URL] {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = false
+        panel.canChooseFiles = true
+        panel.allowsMultipleSelection = true
+        // Ours, and the one the system gives `.ipynb` when another app
+        // exports its own.
+        panel.allowedContentTypes = [.jupyterNotebook, DefaultApp.notebookType]
+        panel.directoryURL = root
+        guard panel.runModal() == .OK else { return [] }
+        return panel.urls
     }
     #endif
 
