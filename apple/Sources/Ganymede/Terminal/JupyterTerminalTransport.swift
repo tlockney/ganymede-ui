@@ -75,6 +75,8 @@ final class JupyterTerminalTransport: TerminalTransport {
     private var socket: URLSessionWebSocketTask?
     private var size: (cols: Int, rows: Int)?
     private var ended = false
+    /// Bytes of a UTF-8 character split across `send` calls.
+    private var partial: [UInt8] = []
 
     init(endpoint: ServerEndpoint, cwd: String? = nil, session: URLSession = .shared) {
         self.endpoint = endpoint
@@ -87,7 +89,32 @@ final class JupyterTerminalTransport: TerminalTransport {
     }
 
     func send(_ data: ArraySlice<UInt8>) {
-        message(["stdin", String(decoding: data, as: UTF8.self)])
+        let (complete, rest) = Self.splitUTF8(partial + data)
+        partial = rest
+        guard !complete.isEmpty else { return }
+        message(["stdin", String(decoding: complete, as: UTF8.self)])
+    }
+
+    /// Splits off a trailing incomplete UTF-8 sequence, so a character
+    /// split across chunks is not sent as U+FFFD. Invalid bytes are not
+    /// held back.
+    nonisolated static func splitUTF8(_ bytes: [UInt8]) -> (complete: [UInt8], rest: [UInt8]) {
+        // A lead byte is at most 3 bytes before the end of an incomplete sequence.
+        var i = bytes.count - 1
+        while i >= 0, i >= bytes.count - 3, bytes[i] & 0xC0 == 0x80 {
+            i -= 1
+        }
+        guard i >= 0 else { return (bytes, []) }
+        let lead = bytes[i]
+        let length: Int
+        switch lead {
+        case 0xC0...0xDF: length = 2
+        case 0xE0...0xEF: length = 3
+        case 0xF0...0xF7: length = 4
+        default: return (bytes, [])
+        }
+        guard bytes.count - i < length else { return (bytes, []) }
+        return (Array(bytes[..<i]), Array(bytes[i...]))
     }
 
     func resize(cols: Int, rows: Int) {

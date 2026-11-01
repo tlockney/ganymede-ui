@@ -48,6 +48,19 @@ final class JupyterTerminalTransportTests: XCTestCase {
         XCTAssertNil(ServerEndpoint(string: "", token: "t"))
     }
 
+    func testSplitUTF8HoldsBackAnIncompleteCharacter() {
+        let euro: [UInt8] = Array("€".utf8)  // E2 82 AC
+        let split = JupyterTerminalTransport.splitUTF8(Array("a".utf8) + euro.prefix(2))
+        XCTAssertEqual(split.complete, Array("a".utf8))
+        XCTAssertEqual(split.rest, Array(euro.prefix(2)))
+        let joined = JupyterTerminalTransport.splitUTF8(split.rest + euro.suffix(1))
+        XCTAssertEqual(joined.complete, euro)
+        XCTAssertEqual(joined.rest, [])
+        XCTAssertEqual(JupyterTerminalTransport.splitUTF8(Array("ab€".utf8)).rest, [])
+        // A stray continuation byte is not held back.
+        XCTAssertEqual(JupyterTerminalTransport.splitUTF8([0x61, 0x80]).rest, [])
+    }
+
     func testShellRoundTripAndClose() async throws {
         let endpoint = try XCTUnwrap(ServerEndpoint(serverURL: host.url))
         let transport = JupyterTerminalTransport(endpoint: endpoint)
