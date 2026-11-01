@@ -3,6 +3,10 @@ import UniformTypeIdentifiers
 
 struct ContentView: View {
     @EnvironmentObject private var model: AppModel
+    #if os(macOS)
+    /// The notebook or folder this window shows; nil for the last folder.
+    @Binding var target: WindowTarget?
+    #endif
     #if os(iOS)
     @Environment(\.scenePhase) private var phase
     @State private var picking = false
@@ -13,7 +17,14 @@ struct ContentView: View {
         #if os(macOS)
         content
             .frame(minWidth: 720, minHeight: 480)
-            .navigationTitle(model.root.lastPathComponent)
+            .navigationTitle((target ?? .folder(model.root)).title)
+            // A notebook opened from the Finder (double-click, Open With,
+            // the Dock) arrives here, in a new window or in the one already
+            // showing that file.
+            .onOpenURL { url in
+                if url.isFileURL { target = WindowTarget(opening: url) }
+            }
+            .handlesExternalEvents(preferring: externalEvents, allowing: externalEvents)
         #else
         NavigationStack {
             content
@@ -61,9 +72,23 @@ struct ContentView: View {
         #endif
     }
 
+    #if os(macOS)
+    /// A notebook window takes the Finder's later opens of its own file
+    /// (matched by containment, so only files), and nothing else; a new
+    /// window is made for any other file.
+    private var externalEvents: Set<String> {
+        if case .file(let url) = target { return [url.absoluteString] }
+        return []
+    }
+
+    private var page: URL? { model.page(for: target) }
+    #else
+    private var page: URL? { model.url }
+    #endif
+
     private var content: some View {
         Group {
-            if let url = model.url {
+            if let url = page {
                 WebView(url: url)
             } else if let error = model.error {
                 VStack(spacing: 12) {

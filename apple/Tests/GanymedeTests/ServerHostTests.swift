@@ -70,6 +70,51 @@ final class ServerHostTests: XCTestCase {
         XCTAssertEqual(landed?.query, "kernels=page")
     }
 
+    /// The Mac app serves `/` and opens a window's notebook by its absolute
+    /// path (`WindowTarget`): the login redirect keeps `open`, and the
+    /// contents API finds the file under that path.
+    func testServesNotebooksByAbsolutePathFromTheRoot() throws {
+        let notebook = dir.appendingPathComponent("Io & Europa+.ipynb")
+        try #"{"cells": [], "metadata": {}, "nbformat": 4, "nbformat_minor": 5}"#
+            .write(to: notebook, atomically: true, encoding: .utf8)
+        let host = try ServerHost(config: config(["root_dir": "/"]))
+        defer { host.stop() }
+        let path = notebook.resolvingSymlinksInPath().path
+        let page = WindowTarget.file(URL(fileURLWithPath: path)).pageURL(server: host.url, kernels: "server")
+
+        var landed: URL?
+        let done = expectation(description: "redirect")
+        URLSession.shared.dataTask(with: page) { _, response, _ in
+            landed = response?.url
+            done.fulfill()
+        }.resume()
+        wait(for: [done], timeout: 10)
+        let items = URLComponents(url: try XCTUnwrap(landed), resolvingAgainstBaseURL: false)?.queryItems ?? []
+        XCTAssertEqual(items.first { $0.name == "open" }?.value, path)
+        XCTAssertNil(items.first { $0.name == "token" })
+
+        let token = try XCTUnwrap(
+            URLComponents(url: host.url, resolvingAgainstBaseURL: false)?
+                .queryItems?.first { $0.name == "token" }?.value
+        )
+        var contents = URLComponents(url: host.url, resolvingAgainstBaseURL: false)!
+        contents.query = nil
+        contents.path = "/api/contents" + path
+        var request = URLRequest(url: contents.url!)
+        request.setValue("token \(token)", forHTTPHeaderField: "Authorization")
+        var status = 0
+        var body = ""
+        let fetched = expectation(description: "contents")
+        URLSession.shared.dataTask(with: request) { data, response, _ in
+            status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            body = String(decoding: data ?? Data(), as: UTF8.self)
+            fetched.fulfill()
+        }.resume()
+        wait(for: [fetched], timeout: 10)
+        XCTAssertEqual(status, 200, body)
+        XCTAssertTrue(body.contains(#""type":"notebook""#), body)
+    }
+
     /// A server whose kernels run on another one (`gateway_url`), here a
     /// second in-process server.
     func testKernelServerConfigIsAccepted() throws {

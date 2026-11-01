@@ -12,10 +12,19 @@ built from the same sources (see
   [`crates/ganymede-ffi`](https://github.com/tlockney/ganymede/tree/main/crates/ganymede-ffi)
   built for macOS and iOS: `ganymede_server_start` takes the server
   config as JSON (the keys of `ganymede.toml`) and returns the URL.
-- The app starts the server on `127.0.0.1` with a random token, serving
-  the notebook folder you pick (File > Open Folder…, ⇧⌘O; your home
-  folder at first) and this repo's build as the static site. The web view
-  loads the URL; the token becomes a login cookie.
+- The app starts the server on `127.0.0.1` with a random token and this
+  repo's build as the static site. On the Mac it serves the whole disk
+  (`/`), and each window opens one notebook or folder by its path; on the
+  iPad it serves the notebook folder. The web view loads the URL; the
+  token becomes a login cookie.
+- On the Mac, double-clicking an `.ipynb` file in the Finder (or Open
+  With > Ganymede) opens it in its own window; opening it again brings
+  that window to the front. File > Open… (⌘O) opens notebooks, File >
+  Open Folder… (⇧⌘O) a folder, each in a new window; a new window (⌘N)
+  shows the last folder opened, your home folder at first.
+- To open notebooks here by default, choose Ganymede > Make Default App
+  for Notebooks, or in the Finder choose File > Get Info on a notebook,
+  pick Ganymede under Open with, and click Change All.
 - It reuses the last port, so the page keeps its origin and ganymede-ui
   its saved state.
 - Opened from the Finder, the app takes `PATH` from your login shell, so

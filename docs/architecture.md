@@ -260,10 +260,22 @@ own process and shows this web app in a `WKWebView`:
   built for macOS and iOS. Its C API takes the server config as JSON (the
   keys of `ganymede.toml`), starts the server, and returns its URL with a
   token. `ServerHost.swift` wraps it.
-- `AppModel.swift` starts the server for the chosen notebook folder with
-  the bundled `dist/` as the static site, reusing the last port so the page
-  keeps its origin and its `localStorage`. The web view loads the URL, and
-  the server trades the token for a login cookie.
+- `AppModel.swift` starts the server with the bundled `dist/` as the
+  static site, reusing the last port so the page keeps its origin and its
+  `localStorage`. On the Mac it serves `/`, and each window
+  (`WindowTarget.swift`) loads the page with `?open=` a notebook's absolute
+  path or `?dir=` a folder's, so any file opens without a restart. On iOS
+  it serves the chosen notebook folder. The server trades the token in the
+  URL for a login cookie.
+- The Mac app imports the `org.jupyter.ipynb` type (`.ipynb`, conforming
+  to `public.json`) and declares it as a document type it edits, so the
+  Finder offers it under Open With and it can be the default app for
+  notebooks (Ganymede > Make Default App for Notebooks). Notebook windows
+  are a `WindowGroup(for: WindowTarget.self)`: File > Open… and Open
+  Folder… open a window per target, or bring the one already showing it to
+  the front; a file opened from the Finder arrives through `onOpenURL` in a
+  new window, or in the window already showing that file
+  (`handlesExternalEvents`).
 - `WebView.swift` handles what a browser would: links to other hosts open
   in the default browser, downloads ask where to save (the share sheet on
   iOS), and Help > Keyboard Shortcuts on the Mac sends
