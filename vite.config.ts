@@ -105,6 +105,10 @@ export default defineConfig({
     }),
   ],
   resolve: {
+    // One React: JupyterLab's packages pin React 18 copies of their own,
+    // and hooks fail across copies. @vitejs/plugin-react set this before
+    // version 5.
+    dedupe: ['react', 'react-dom'],
     // JupyterLab stylesheets import packages webpack-style, `url('~pkg/...')`
     // (MathJax's fonts, for one).
     alias: [{ find: /^~(.*)$/, replacement: '$1' }],
@@ -119,7 +123,7 @@ export default defineConfig({
   },
   worker: { format: 'es' },
   build: {
-    rollupOptions: {
+    rolldownOptions: {
       // kernel.html is the Apple apps' hidden kernel web view (#99).
       input: { main: 'index.html', kernel: 'kernel.html' },
     },
@@ -153,17 +157,11 @@ export default defineConfig({
         'a11y/assistive-mml',
       ].map(m => `@jupyterlab/mathjax-extension > mathjax-full/js/${m}`),
     ],
-    esbuildOptions: {
+    rolldownOptions: {
       plugins: [
         {
           name: 'inline-package-version',
-          setup(build) {
-            build.onLoad({ filter: /@jupyter-widgets[\\/].*\.js$/ }, args => {
-              const code = readFileSync(args.path, 'utf8');
-              const out = inlinePackageVersion(code, args.path);
-              return out === null ? undefined : { contents: out, loader: 'js' };
-            });
-          },
+          transform: (code, id) => inlinePackageVersion(code, id),
         },
       ],
     },
