@@ -41,6 +41,10 @@ tags `vX.Y.Z` and publishes the built app (`ganymede-ui-X.Y.Z.tar.gz` and
 `.zip`, a static site) to GitHub Releases. See
 [docs/releasing.md](docs/releasing.md) and [CHANGELOG.md](CHANGELOG.md).
 
+Each pull request also gets an independent review from a Claude session
+that didn't write it; [CLAUDE.md](CLAUDE.md#independent-review) has the
+rules, including those for `spike` PRs.
+
 [docs/architecture.md](docs/architecture.md) describes how the app is put
 together; the Ganymede site renders `docs/*.md` (all but `notes.md`) under
 [ganymede-server.com/docs/ganymede-ui](https://ganymede-server.com/docs/ganymede-ui/).
