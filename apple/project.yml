@@ -38,13 +38,16 @@ packages:
   Rearrange:
     url: https://github.com/ChimeHQ/Rearrange
     exactVersion: 2.1.1
-  # Grammars (MIT), with their highlight queries.
+  # Grammars (MIT), with their highlight queries. Python 0.25, JavaScript
+  # 0.25 and YAML 0.7.1 add their scanner.c only if the manifest finds it
+  # relative to the working directory, which Xcode's isn't, so their
+  # scanners don't link; the versions before list it outright.
   TreeSitterBash:
     url: https://github.com/tree-sitter/tree-sitter-bash
     exactVersion: 0.25.1
   TreeSitterJavaScript:
     url: https://github.com/tree-sitter/tree-sitter-javascript
-    exactVersion: 0.25.0
+    exactVersion: 0.23.1
   TreeSitterJSON:
     url: https://github.com/tree-sitter/tree-sitter-json
     exactVersion: 0.24.8
@@ -53,7 +56,7 @@ packages:
     exactVersion: 0.5.4
   TreeSitterPython:
     url: https://github.com/tree-sitter/tree-sitter-python
-    exactVersion: 0.25.0
+    exactVersion: 0.23.6
   TreeSitterTOML:
     url: https://github.com/tree-sitter-grammars/tree-sitter-toml
     exactVersion: 0.7.0
@@ -62,7 +65,7 @@ packages:
     exactVersion: 0.23.2
   TreeSitterYAML:
     url: https://github.com/tree-sitter-grammars/tree-sitter-yaml
-    exactVersion: 0.7.2
+    exactVersion: 0.7.0
   # The `device` bridge for notebook cells, on the kernel web view only (#99).
   GanymedeDevice:
     url: https://github.com/tlockney/ganymede-device
