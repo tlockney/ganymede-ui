@@ -20,6 +20,9 @@ updates:
       # vitest and its plugins must share one version, majors included.
       vitest:
         patterns: ['vitest', '@vitest/*']
+      # @vitejs/plugin-react's majors follow Vite's (#147).
+      vite:
+        patterns: ['vite', '@vitejs/*']
       npm:
         patterns: ['*']
         update-types: [minor, patch]

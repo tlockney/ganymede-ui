@@ -10,6 +10,6 @@ export default defineConfig({
     emptyOutDir: true,
     target: 'es2022',
     lib: { entry: process.env.SPIKE_ENTRY ?? 'spike/entry.ts', formats: ['es'], fileName: 'agent' },
-    rollupOptions: { external: [/^@jupyterlab\//, /^@jupyter\//] },
+    rolldownOptions: { external: [/^@jupyterlab\//, /^@jupyter\//] },
   },
 });

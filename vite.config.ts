@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
 import { defineConfig, type ProxyOptions } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
@@ -7,17 +5,6 @@ import { VitePWA } from 'vite-plugin-pwa';
 // Where `npm run dev` proxies /api to. Start Ganymede with
 // `ganymede serve --port 8888 --token <token>`.
 const GANYMEDE = process.env.GANYMEDE_URL ?? 'http://127.0.0.1:8888';
-
-// `@jupyter-widgets/controls` reads its version with a CommonJS
-// `require('../package.json')` inside an ES module, which webpack allows and
-// Vite doesn't. Inline the version. Runs in the build and in the dev
-// server's dependency pre-bundling. Needed for ipywidgets (src/lib/widgets.ts).
-const VERSION_REQUIRE = /require\(['"]\.\.\/package\.json['"]\)\.version/;
-function inlinePackageVersion(code: string, id: string): string | null {
-  if (!id.includes('@jupyter-widgets') || !VERSION_REQUIRE.test(code)) return null;
-  const pkg = JSON.parse(readFileSync(resolve(dirname(id), '../package.json'), 'utf8'));
-  return code.replace(VERSION_REQUIRE, JSON.stringify(pkg.version));
-}
 
 // Proxy the API so the page and the server share an origin. Ganymede checks
 // Origin against Host, as jupyter_server does, so rewrite both.
@@ -49,10 +36,6 @@ export default defineConfig({
         const resolved = await this.resolve(source + '?raw', importer, { skipSelf: true });
         return resolved ? resolved.id : null;
       },
-    },
-    {
-      name: 'inline-package-version',
-      transform: (code, id) => inlinePackageVersion(code, id),
     },
     VitePWA({
       registerType: 'autoUpdate',
@@ -157,14 +140,6 @@ export default defineConfig({
         'a11y/assistive-mml',
       ].map(m => `@jupyterlab/mathjax-extension > mathjax-full/js/${m}`),
     ],
-    rolldownOptions: {
-      plugins: [
-        {
-          name: 'inline-package-version',
-          transform: (code, id) => inlinePackageVersion(code, id),
-        },
-      ],
-    },
   },
   server: { proxy },
   preview: { proxy },
