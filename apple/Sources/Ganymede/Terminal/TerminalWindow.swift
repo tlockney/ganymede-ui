@@ -52,7 +52,7 @@ struct TerminalWindow: View {
     private var problem: String? {
         switch target {
         case .local: model.error.map { "Ganymede could not start: \($0)" }
-        case .server(let id): model.server(of: id) == nil ? "This remote is gone or has no server. Check Settings (⌘,)." : nil
+        case .server(let id): model.remote(id)?.hasServer != true ? "This remote is gone or has no server. Check Settings (⌘,)." : nil
         }
     }
 

@@ -19,6 +19,8 @@ final class AppModel: ObservableObject {
     /// it in an alert.
     @Published var keychainError: String?
     private let store: RemoteStore
+    /// Tokens the keychain refused to store, used until the app quits.
+    private var unsavedTokens: [UUID: String] = [:]
 
     private var server: ServerHost?
     /// Server starts and stops, run one after another. Both block (a start
@@ -43,6 +45,7 @@ final class AppModel: ObservableObject {
         self.store = store
         remotes = saved.remotes
         kernelRemoteID = saved.kernels
+        keychainError = saved.problem
         #if os(macOS)
         if let path = UserDefaults.standard.string(forKey: Keys.root),
            FileManager.default.fileExists(atPath: path) {
@@ -97,7 +100,7 @@ final class AppModel: ObservableObject {
         ]
         if let remote = kernelRemote {
             config["gateway_url"] = remote.serverURL
-            config["gateway_token"] = store.token(for: remote.id)
+            config["gateway_token"] = token(for: remote.id)
         }
         #if os(iOS)
         if let support = try? FileManager.default.url(
@@ -190,11 +193,11 @@ final class AppModel: ObservableObject {
     /// A remote's server, for terminals, if it has one.
     func server(of id: UUID) -> ServerEndpoint? {
         guard let remote = remote(id), remote.hasServer else { return nil }
-        return ServerEndpoint(string: remote.serverURL, token: store.token(for: id))
+        return ServerEndpoint(string: remote.serverURL, token: token(for: id))
     }
 
     func token(for id: UUID) -> String {
-        store.token(for: id)
+        unsavedTokens[id] ?? store.token(for: id)
     }
 
     /// Stops the server as the app quits, shutting down every kernel.
@@ -233,7 +236,7 @@ final class AppModel: ObservableObject {
         remote.name = remote.name.trimmingCharacters(in: .whitespaces)
         remote.serverURL = remote.serverURL.trimmingCharacters(in: .whitespaces)
         let oldURL = self.remote(remote.id)?.serverURL
-        let oldToken = store.token(for: remote.id)
+        let oldToken = self.token(for: remote.id)
         let newToken = remote.hasServer ? (token ?? oldToken) : ""
         if let index = remotes.firstIndex(where: { $0.id == remote.id }) {
             remotes[index] = remote
@@ -243,9 +246,11 @@ final class AppModel: ObservableObject {
         if newToken != oldToken {
             do {
                 try store.setToken(newToken, for: remote.id)
+                unsavedTokens[remote.id] = nil
             } catch {
-                keychainError = "The token for \(remote.title) could not be saved in the keychain: "
-                    + error.localizedDescription
+                unsavedTokens[remote.id] = newToken
+                keychainError = "Ganymede uses the token for \(remote.title) until it quits, but could "
+                    + "not save it in the keychain: " + error.localizedDescription
             }
         }
         var restart = false
@@ -262,7 +267,12 @@ final class AppModel: ObservableObject {
     /// ran there.
     func delete(remote id: UUID) {
         remotes.removeAll { $0.id == id }
-        try? store.setToken("", for: id)
+        unsavedTokens[id] = nil
+        do {
+            try store.setToken("", for: id)
+        } catch {
+            keychainError = "Its token could not be removed from the keychain: " + error.localizedDescription
+        }
         let restart = kernelRemoteID == id
         if restart { kernelRemoteID = nil }
         persist()

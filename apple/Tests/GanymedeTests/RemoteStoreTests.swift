@@ -8,7 +8,7 @@ final class RemoteStoreTests: XCTestCase {
         var failing = false
         func get(_ key: String) -> String? { items[key] }
         func set(_ key: String, _ value: String) throws {
-            if failing { throw CocoaError(.fileWriteUnknown) }
+            if failing && !value.isEmpty { throw CocoaError(.fileWriteUnknown) }
             items[key] = value.isEmpty ? nil : value
         }
     }
@@ -52,14 +52,45 @@ final class RemoteStoreTests: XCTestCase {
         XCTAssertEqual(again.kernels, remote.id)
     }
 
-    func testAFailedMoveKeepsTheOldSetting() {
+    func testAFailedMoveKeepsTheOldTokenInUseAndRetries() throws {
         defaults.set("https://example.org", forKey: "kernelServer")
         secrets.items["kernelServer"] = "secret"
         secrets.failing = true
         let loaded = store.load()
-        XCTAssertEqual(loaded.remotes.count, 1)
-        XCTAssertEqual(defaults.string(forKey: "kernelServer"), "https://example.org")
+        let remote = try XCTUnwrap(loaded.remotes.first)
+        // The remote is saved, and its token is read from the old item.
+        XCTAssertEqual(store.token(for: remote.id), "secret")
         XCTAssertEqual(secrets.items["kernelServer"], "secret")
+        // Saving the list (an edit that session) doesn't stop the retry.
+        try store.save(loaded.remotes, kernels: nil)
+        secrets.failing = false
+        let again = store.load()
+        XCTAssertEqual(again.remotes, loaded.remotes)
+        XCTAssertEqual(secrets.items["remote.\(remote.id.uuidString)"], "secret")
+        XCTAssertNil(secrets.items["kernelServer"])
+        XCTAssertEqual(store.token(for: remote.id), "secret")
+    }
+
+    func testANewTokenReplacesTheOneNotYetMoved() throws {
+        defaults.set("https://example.org", forKey: "kernelServer")
+        secrets.items["kernelServer"] = "old"
+        secrets.failing = true
+        let remote = try XCTUnwrap(store.load().remotes.first)
+        secrets.failing = false
+        try store.setToken("new", for: remote.id)
+        XCTAssertEqual(store.token(for: remote.id), "new")
+        XCTAssertNil(secrets.items["kernelServer"])
+        XCTAssertEqual(store.load().remotes.count, 1)
+        XCTAssertEqual(store.token(for: remote.id), "new")
+    }
+
+    func testUnreadableRemotesAreKeptAside() {
+        let junk = Data("not json".utf8)
+        defaults.set(junk, forKey: "remotes")
+        let loaded = store.load()
+        XCTAssertEqual(loaded.remotes, [])
+        XCTAssertNotNil(loaded.problem)
+        XCTAssertEqual(defaults.data(forKey: "remotes.unreadable"), junk)
     }
 
     func testRemotesRoundTrip() throws {

@@ -32,7 +32,8 @@ struct ServerEndpoint: Equatable, Sendable {
     /// or not http(s).
     init?(string: String, token: String) {
         guard let url = URL(string: string.trimmingCharacters(in: .whitespaces)),
-              ["http", "https"].contains(url.scheme?.lowercased() ?? "")
+              ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
+              url.host != nil
         else { return nil }
         self.init(base: url, token: token)
     }

@@ -80,7 +80,7 @@ struct ContentView: View {
         }
         .task { model.startIfNeeded() }
         .alert(
-            "A remote was not saved",
+            "Remotes",
             isPresented: Binding(
                 get: { model.keychainError != nil },
                 set: { if !$0 { model.keychainError = nil } }

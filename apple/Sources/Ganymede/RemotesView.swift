@@ -7,6 +7,8 @@ struct RemotesView: View {
     @EnvironmentObject private var model: AppModel
     /// The remote being edited; a new one when it isn't in the list yet.
     @State private var editing: Remote?
+    /// The remote waiting for the user to confirm its removal.
+    @State private var removing: Remote?
 
     var body: some View {
         Form {
@@ -39,6 +41,17 @@ struct RemotesView: View {
             RemoteEditor(remote: remote, isNew: model.remote(remote.id) == nil)
                 .environmentObject(model)
         }
+        .confirmationDialog(
+            "Remove \(removing?.title ?? "remote")?",
+            isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
+            presenting: removing
+        ) { remote in
+            Button("Remove", role: .destructive) { model.delete(remote: remote.id) }
+        } message: { remote in
+            Text(remote.id == model.kernelRemoteID
+                ? "Kernels run on this remote. They will move to this device, and running kernels are shut down."
+                : "Its token is removed from the keychain.")
+        }
     }
 
     private var kernels: Binding<UUID?> {
@@ -59,7 +72,7 @@ struct RemotesView: View {
                 .buttonStyle(.borderless)
             #if os(macOS)
             Button(role: .destructive) {
-                model.delete(remote: remote.id)
+                removing = remote
             } label: {
                 Image(systemName: "minus.circle")
             }
@@ -69,7 +82,7 @@ struct RemotesView: View {
         }
         #if os(iOS)
         .swipeActions {
-            Button("Remove", role: .destructive) { model.delete(remote: remote.id) }
+            Button("Remove", role: .destructive) { removing = remote }
         }
         #endif
     }
@@ -171,7 +184,7 @@ struct RemoteEditor: View {
                         model.save(edited, token: token)
                         dismiss()
                     }
-                    .disabled(!edited.isValid || !portIsValid)
+                    .disabled(!edited.isValid || useSSH && !portIsValid)
                 }
             }
         }
