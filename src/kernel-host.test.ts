@@ -6,11 +6,13 @@ import type { FromKernel } from './lib/kernel-relay';
 type Listener = (channel: string, msg: unknown) => void;
 const mocks = vi.hoisted(() => ({
   kernels: [] as { send: ReturnType<typeof vi.fn>; listener?: Listener; close(): void }[],
+  options: [] as Record<string, unknown>[],
 }));
 
 vi.mock('@tlockney/cdp-kernel/browser/worker?worker&url', () => ({ default: '/worker.js' }));
 vi.mock('@tlockney/cdp-kernel/browser', () => ({
-  startBrowserKernel: () => {
+  startBrowserKernel: (options: Record<string, unknown>) => {
+    mocks.options.push(options);
     let close!: () => void;
     const kernel = {
       send: vi.fn(),
@@ -33,7 +35,7 @@ const stubWebkit = () =>
     messageHandlers: { kernelHost: { postMessage: (m: FromKernel) => posted.push(m) } },
   });
 stubWebkit();
-const { deliver } = await import('./kernel-host');
+const { deliver, deviceOptions } = await import('./kernel-host');
 // The setup unstubs globals between tests.
 beforeEach(stubWebkit);
 
@@ -58,5 +60,35 @@ describe('kernel host page', () => {
       { kernel: 'k1', op: 'message', channel: 'iopub', msg: { header: {} } },
       { kernel: 'k1', op: 'closed' },
     ]);
+  });
+
+  it('gives kernels the device preload only when the app registered its handler', () => {
+    expect(deviceOptions()).toEqual({});
+    vi.stubGlobal('webkit', {
+      messageHandlers: {
+        kernelHost: { postMessage: () => {} },
+        device: { postMessage: async () => ({}) },
+      },
+    });
+    const options = deviceOptions() as {
+      preload?: string[];
+      host?: unknown;
+      capabilities?: unknown;
+    };
+    expect(options.preload).toHaveLength(1);
+    expect(new URL(options.preload![0]!).pathname).toMatch(/preload/);
+    expect(typeof options.host).toBe('function');
+    expect(options.capabilities).toEqual({ device: true });
+  });
+
+  it('starts kernels with the device options', () => {
+    vi.stubGlobal('webkit', {
+      messageHandlers: {
+        kernelHost: { postMessage: () => {} },
+        device: { postMessage: async () => ({}) },
+      },
+    });
+    deliver({ kernel: 'dev', op: 'start' });
+    expect(mocks.options.at(-1)).toMatchObject({ capabilities: { device: true } });
   });
 });
