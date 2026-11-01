@@ -100,7 +100,7 @@ export interface TestResult {
 }
 
 /** The browser's bare "Connection error." says nothing about why. */
-function explain(message: string, baseUrl: string): string {
+function explain(message: string, baseUrl: string, local: boolean): string {
   if (!/^connection error\.?$/i.test(message.trim())) return message;
   let host = baseUrl;
   try {
@@ -108,7 +108,9 @@ function explain(message: string, baseUrl: string): string {
   } catch {
     // Show the URL as given.
   }
-  return `Couldn't reach ${host}: it isn't running, or it doesn't let this page call it (CORS).`;
+  return local
+    ? `Couldn't reach ${host}: it isn't running, or it doesn't let this page call it (CORS).`
+    : `Couldn't reach ${host}: check the network, or the provider doesn't let this page call it (CORS).`;
 }
 
 /**
@@ -132,7 +134,14 @@ export async function testModel(
       { maxTokens: 16, signal },
     );
     if (reply.stopReason === 'error' || reply.stopReason === 'aborted') {
-      return { ok: false, message: explain(reply.errorMessage ?? reply.stopReason, model.baseUrl) };
+      return {
+        ok: false,
+        message: explain(
+          reply.errorMessage ?? reply.stopReason,
+          model.baseUrl,
+          settings.provider === 'local',
+        ),
+      };
     }
     return { ok: true, message: `${model.name} answered.` };
   } catch (e) {
