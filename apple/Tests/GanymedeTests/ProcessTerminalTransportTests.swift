@@ -46,7 +46,7 @@ final class ProcessTerminalTransportTests: XCTestCase {
 
     func testAFailingExitIsReported() async throws {
         let result = try await run("exit 3")
-        XCTAssertEqual(result.reason, .some("sh exited with status 3."))
+        XCTAssertEqual(result.reason, .some("sh ended with status 3."))
     }
 
     func testCloseEndsTheProgramWithoutReporting() async throws {
@@ -54,9 +54,23 @@ final class ProcessTerminalTransportTests: XCTestCase {
         var closed = false
         transport.onClose = { _ in closed = true }
         transport.start()
+        XCTAssertTrue(transport.isRunning)
         transport.close()
-        try await Task.sleep(nanoseconds: 300_000_000)
+        for _ in 0..<40 {
+            if !transport.isRunning { break }
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        XCTAssertFalse(transport.isRunning, "close did not end the program")
+        try await Task.sleep(nanoseconds: 200_000_000)
         XCTAssertFalse(closed)
+    }
+
+    func testAMissingProgramIsReported() {
+        let transport = ProcessTerminalTransport(executable: "/nonexistent/ssh")
+        var reason: String??
+        transport.onClose = { reason = .some($0) }
+        transport.start()
+        XCTAssertEqual(reason, .some("/nonexistent/ssh is not installed."))
     }
 
     func testSSHArguments() {

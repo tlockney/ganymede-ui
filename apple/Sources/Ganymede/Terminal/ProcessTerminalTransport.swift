@@ -25,6 +25,12 @@ final class ProcessTerminalTransport: TerminalTransport {
 
     func start() {
         guard process == nil, !ended else { return }
+        // LocalProcess reports a failed exec as exit status 127, which a
+        // remote shell's last command can also end with; check up front.
+        guard FileManager.default.isExecutableFile(atPath: executable) else {
+            finish("\(executable) is not installed.")
+            return
+        }
         let relay = Relay(owner: self)
         let process = LocalProcess(delegate: relay, dispatchQueue: .main)
         self.relay = relay
@@ -60,6 +66,11 @@ final class ProcessTerminalTransport: TerminalTransport {
         process?.terminate()
     }
 
+    /// Whether the program is still running, for tests.
+    var isRunning: Bool {
+        process?.running ?? false
+    }
+
     private var name: String {
         (executable as NSString).lastPathComponent
     }
@@ -72,8 +83,9 @@ final class ProcessTerminalTransport: TerminalTransport {
     fileprivate func exited(_ code: Int32?) {
         switch code {
         case 0: finish(nil)
-        case 127: finish("\(name) could not be run.")
-        case let code?: finish("\(name) exited with status \(code).")
+        // For ssh this is the remote shell's status too, so it doesn't
+        // have to mean the connection failed; ssh has printed why if so.
+        case let code?: finish("\(name) ended with status \(code).")
         case nil: finish("\(name) was stopped by a signal.")
         }
     }
