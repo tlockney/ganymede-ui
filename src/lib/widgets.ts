@@ -21,6 +21,7 @@
  * notebook nobody trusted show their text until it is trusted.
  */
 import type { ISessionContext } from '@jupyterlab/apputils';
+import type { ICodeCellModel } from '@jupyterlab/cells';
 import type { INotebookModel } from '@jupyterlab/notebook';
 import type { IRenderMimeRegistry } from '@jupyterlab/rendermime';
 import type { Kernel } from '@jupyterlab/services';
@@ -58,11 +59,40 @@ function savedState(model: INotebookModel): SavedState | undefined {
     : undefined;
 }
 
-/** A kernel's manager, which can also take the notebook's saved widgets. */
+/**
+ * A kernel's manager that also builds the notebook's saved models the kernel
+ * doesn't have (without comms), as JupyterLab's notebook manager does: after
+ * the kernel's own, and before `restored`, so a renderer waiting for a saved
+ * model finds it. Runs again on each reconnect.
+ */
 class NotebookKernelWidgetManager extends KernelWidgetManager {
-  /** Build the saved models the kernel doesn't have, without comms. */
-  async loadSaved(state: SavedState): Promise<void> {
-    await this.set_state(this.filterExistingModelState(state));
+  // Set right after `super()`, whose `restoreWidgets` reads it only after
+  // its first `await`.
+  private saved!: () => SavedState | undefined;
+
+  constructor(
+    kernel: Kernel.IKernelConnection,
+    rendermime: IRenderMimeRegistry,
+    saved: () => SavedState | undefined,
+  ) {
+    super(kernel, rendermime);
+    this.saved = saved;
+  }
+
+  async restoreWidgets(): Promise<void> {
+    try {
+      this._kernelRestoreInProgress = true;
+      await this._loadFromKernel();
+      const state = this.saved();
+      if (state) await this.set_state(this.filterExistingModelState(state));
+      this._restoredStatus = true;
+      this._restored.emit();
+    } catch (e) {
+      // As KernelWidgetManager: a failed restore leaves the status unset.
+      console.error('Restoring widgets:', e);
+    } finally {
+      this._kernelRestoreInProgress = false;
+    }
   }
 }
 
@@ -126,16 +156,7 @@ function createKernelManager(
   rendermime: IRenderMimeRegistry,
   model: INotebookModel,
 ) {
-  const manager = register(new NotebookKernelWidgetManager(kernel, rendermime));
-  // After each restore from the kernel (it repeats on reconnect), so the
-  // kernel's own models win.
-  const loadSaved = () => {
-    const state = savedState(model);
-    if (state) manager.loadSaved(state).catch(e => console.error('Saved widget state:', e));
-  };
-  manager.restored.connect(loadSaved);
-  if (manager.restoredStatus) loadSaved();
-  return manager;
+  return register(new NotebookKernelWidgetManager(kernel, rendermime, () => savedState(model)));
 }
 
 function createSavedStateManager(rendermime: IRenderMimeRegistry, state: SavedState) {
@@ -155,6 +176,26 @@ export interface NotebookWidgets extends IDisposable {
 }
 
 /**
+ * Render the notebook's widget outputs again, with the widget-view renderer
+ * now in rendermime. Outputs keep the renderer they were drawn with, so
+ * views drawn from the saved state would stay bound to that manager. Not an
+ * edit of the user's.
+ */
+function rerenderWidgetOutputs(model: INotebookModel) {
+  const wasDirty = model.dirty;
+  for (let i = 0; i < model.cells.length; i++) {
+    const cell = model.cells.get(i);
+    if (cell.type !== 'code') continue;
+    const outputs = (cell as ICodeCellModel).outputs;
+    for (let j = 0; j < outputs.length; j++) {
+      const output = outputs.get(j);
+      if (output.data[WIDGET_VIEW_MIMETYPE] !== undefined) outputs.set(j, output.toJSON());
+    }
+  }
+  model.dirty = wasDirty;
+}
+
+/**
  * Render ipywidgets in this notebook, following its session's kernel, and
  * from the notebook's saved widget state while there is none. Call it before
  * the notebook widget gets `model`, so saved outputs render with it.
@@ -169,6 +210,7 @@ export function attachWidgets(
   const update = () => {
     const kernel = session.session?.kernel ?? null;
     if (manager && manager.kernel === kernel) return;
+    const fromSaved = manager instanceof SavedStateWidgetManager;
     manager?.dispose();
     const state = kernel ? undefined : savedState(model);
     manager = kernel
@@ -188,6 +230,9 @@ export function attachWidgets(
         -10,
       );
     }
+    // A kernel that takes over from the saved state, say the one the
+    // session rejoins on open, holds the live models.
+    if (fromSaved && kernel) rerenderWidgetOutputs(model);
   };
   update();
   session.kernelChanged.connect(update);

@@ -223,7 +223,8 @@ Code show them and JupyterLab doesn't: a manager with no kernel builds the
 models without comms, so a slider moves and `jslink` holds, but nothing
 reaches the kernel. When a kernel starts, its manager renders new outputs
 and also loads the saved models the kernel doesn't have, as JupyterLab's
-notebook manager does, so a save keeps them. The widget-view renderer is
+notebook manager does, so a save keeps them. Widget outputs drawn from the
+saved state render again then, so a kernel the session rejoins drives them. The widget-view renderer is
 not safe, as in JupyterLab (an HTML widget's value is HTML), so a notebook
 nobody trusted shows its widgets' text until Trust Notebook.
 

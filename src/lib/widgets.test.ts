@@ -1,6 +1,7 @@
 import '../test/notebook-env';
 import { describe, expect, it, vi } from 'vitest';
 import type { ISessionContext } from '@jupyterlab/apputils';
+import type { ICodeCellModel } from '@jupyterlab/cells';
 import type { IRenderMimeRegistry } from '@jupyterlab/rendermime';
 import { Signal } from '@lumino/signaling';
 
@@ -14,7 +15,8 @@ interface FakeManager {
   loaded: unknown[];
   restoredStatus: boolean;
   dispose: () => void;
-  finishRestore(): void;
+  /** Ends the restore from the kernel that the constructor started. */
+  finishLoad(): void;
 }
 const fakes = vi.hoisted(() => ({ managers: [] as FakeManager[] }));
 
@@ -39,6 +41,8 @@ vi.mock('@jupyter-widgets/jupyterlab-manager/lib/manager', () => {
     get restoredStatus() {
       return this._restoredStatus;
     }
+    _kernelRestoreInProgress = false;
+    finishLoad = () => {};
     get_state_sync() {
       return this.state;
     }
@@ -48,15 +52,15 @@ vi.mock('@jupyter-widgets/jupyterlab-manager/lib/manager', () => {
     filterExistingModelState(state: unknown) {
       return state;
     }
-    /** What a restore from the kernel ends with. */
-    finishRestore() {
-      this._restoredStatus = true;
-      this._restored.emit();
+    _loadFromKernel() {
+      return new Promise<void>(resolve => (this.finishLoad = resolve));
     }
   }
   class KernelWidgetManager extends LabWidgetManager {
     constructor(readonly kernel: unknown) {
       super();
+      // As the real one: restore from the kernel straight away.
+      void (this as unknown as { restoreWidgets(): Promise<void> }).restoreWidgets();
     }
   }
   return {
@@ -192,7 +196,7 @@ describe('attachWidgets', () => {
     expect(rendermime.addFactory).not.toHaveBeenCalled();
   });
 
-  it('hands saved widgets over to the kernel’s manager when one starts', () => {
+  it('hands saved widgets over to the kernel’s manager when one starts', async () => {
     const { session, rendermime } = setup({ kernel: null, saved: SAVED });
     const saved = fakes.managers[0]!;
     session.session.kernel = { id: 'k1' };
@@ -203,9 +207,10 @@ describe('attachWidgets', () => {
     const live = fakes.managers[1]!;
     expect(live.kernel).toBe(session.session.kernel);
     expect(rendermime.addFactory).toHaveBeenLastCalledWith(VIEW, -10);
-    // The saved models come after the kernel's own, on every restore.
+    // The saved models come after the kernel's own, and before `restored`.
     expect(live.loaded).toEqual([]);
-    live.finishRestore();
+    live.finishLoad();
+    await vi.waitFor(() => expect(live.restoredStatus).toBe(true));
     expect(live.loaded).toEqual([SAVED]);
 
     // Back to the saved state when the kernel goes.
@@ -214,5 +219,41 @@ describe('attachWidgets', () => {
     expect(live.dispose).toHaveBeenCalled();
     expect(fakes.managers).toHaveLength(3);
     expect(fakes.managers[2]!.kernel).toBeNull();
+  });
+
+  it('renders widget outputs again when a kernel takes over from the saved state', () => {
+    const { session, model } = setup({ kernel: null, saved: SAVED });
+    model.sharedModel.insertCell(0, {
+      cell_type: 'code',
+      source: 'w.IntSlider()',
+      outputs: [
+        {
+          output_type: 'execute_result',
+          execution_count: 1,
+          metadata: {},
+          data: {
+            'application/vnd.jupyter.widget-view+json': { model_id: 's1', version_major: 2 },
+            'text/plain': 'IntSlider()',
+          },
+        },
+        { output_type: 'stream', name: 'stdout', text: 'hi' },
+      ],
+    });
+    model.dirty = false;
+    const outputs = (model.cells.get(0) as ICodeCellModel).outputs;
+    const [widget, stream] = [outputs.get(0), outputs.get(1)];
+
+    session.session.kernel = { id: 'k1' };
+    session.kernelChanged.emit(undefined);
+    expect(outputs.get(0)).not.toBe(widget);
+    expect(outputs.get(0).toJSON()).toEqual(widget.toJSON());
+    expect(outputs.get(1)).toBe(stream);
+    expect(model.dirty).toBe(false);
+
+    // A new kernel after that is no hand-over from the saved state.
+    const again = outputs.get(0);
+    session.session.kernel = { id: 'k2' };
+    session.kernelChanged.emit(undefined);
+    expect(outputs.get(0)).toBe(again);
   });
 });
