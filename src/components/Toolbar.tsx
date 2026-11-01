@@ -1,5 +1,5 @@
 import type { KernelSpec } from '@jupyterlab/services';
-import type { NotebookController } from './NotebookPane';
+import type { CellType, NotebookController } from './NotebookPane';
 import {
   CodeIcon,
   DownloadIcon,
@@ -26,6 +26,12 @@ const TRUST_PROMPT =
   'Trust this notebook?\n\n' +
   'Its HTML and JavaScript outputs will render in full and can run code in ' +
   'this page. Only trust notebooks from people you trust.';
+
+const CELL_TYPES: readonly [CellType, string][] = [
+  ['code', 'Code'],
+  ['markdown', 'Markdown'],
+  ['raw', 'Raw'],
+];
 
 const STATUS_LABEL: Record<string, string> = {
   idle: 'Idle',
@@ -133,6 +139,21 @@ export function Toolbar({
           </button>
         </div>
 
+        <label className="popup-button" title="Cell Type">
+          <select
+            aria-label="Cell Type"
+            disabled={disabled}
+            value={c?.cellType ?? 'code'}
+            onChange={e => c?.changeCellType(e.target.value as CellType)}
+          >
+            {CELL_TYPES.map(([type, label]) => (
+              <option key={type} value={type}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+
         {c && !c.trusted && (
           <button
             className="tb-button"
@@ -147,7 +168,11 @@ export function Toolbar({
 
         {specs && c && (
           <label className="popup-button" title="Kernel">
-            <select value={c.kernelName ?? ''} onChange={e => void c.changeKernel(e.target.value)}>
+            <select
+              aria-label="Kernel"
+              value={c.kernelName ?? ''}
+              onChange={e => void c.changeKernel(e.target.value)}
+            >
               {!c.kernelName && (
                 <option value="" disabled>
                   {c.missingKernel ? `${c.missingKernel} (not installed)` : 'Pick a kernel'}
