@@ -11,12 +11,14 @@ final class AppModel: ObservableObject {
     @Published private(set) var url: URL?
     @Published private(set) var error: String?
     @Published private(set) var root: URL
-    /// The Jupyter server kernels run on; empty for this device's own.
-    @Published private(set) var kernelServerURL: String
-    private(set) var kernelServerToken: String
-    /// Set when the kernel server's token could not be kept in the
-    /// keychain; the page shows it in an alert.
+    /// Other machines: servers for kernels and terminals, SSH for shells.
+    @Published private(set) var remotes: [Remote]
+    /// The remote kernels run on; nil for this device.
+    @Published private(set) var kernelRemoteID: UUID?
+    /// Set when a token or the remotes could not be saved; the page shows
+    /// it in an alert.
     @Published var keychainError: String?
+    private let store: RemoteStore
 
     private var server: ServerHost?
     /// Server starts and stops, run one after another. Both block (a start
@@ -36,8 +38,11 @@ final class AppModel: ObservableObject {
     #endif
 
     private init() {
-        kernelServerURL = UserDefaults.standard.string(forKey: Keys.kernelServer) ?? ""
-        kernelServerToken = Keychain.get(Keys.kernelServer) ?? ""
+        let store = RemoteStore(defaults: .standard, secrets: KeychainStore())
+        let saved = store.load()
+        self.store = store
+        remotes = saved.remotes
+        kernelRemoteID = saved.kernels
         #if os(macOS)
         if let path = UserDefaults.standard.string(forKey: Keys.root),
            FileManager.default.fileExists(atPath: path) {
@@ -90,9 +95,9 @@ final class AppModel: ObservableObject {
             "static_dir": web.path,
             "quiet": true,
         ]
-        if !kernelServerURL.isEmpty {
-            config["gateway_url"] = kernelServerURL
-            config["gateway_token"] = kernelServerToken
+        if let remote = kernelRemote {
+            config["gateway_url"] = remote.serverURL
+            config["gateway_token"] = store.token(for: remote.id)
         }
         #if os(iOS)
         if let support = try? FileManager.default.url(
@@ -159,7 +164,7 @@ final class AppModel: ObservableObject {
     /// the server.
     private func pageURL(_ url: URL) -> URL {
         #if os(iOS)
-        let kernels = kernelServerURL.isEmpty ? "page" : "server"
+        let kernels = kernelRemote == nil ? "page" : "server"
         #else
         let kernels = "server"
         #endif
@@ -173,9 +178,23 @@ final class AppModel: ObservableObject {
         server.flatMap { ServerEndpoint(serverURL: $0.url) }
     }
 
-    /// The kernel server from Settings, if one is set.
-    var kernelServer: ServerEndpoint? {
-        ServerEndpoint(string: kernelServerURL, token: kernelServerToken)
+    /// The remote kernels run on, if one is chosen.
+    var kernelRemote: Remote? {
+        remotes.first { $0.id == kernelRemoteID && $0.hasServer }
+    }
+
+    func remote(_ id: UUID) -> Remote? {
+        remotes.first { $0.id == id }
+    }
+
+    /// A remote's server, for terminals, if it has one.
+    func server(of id: UUID) -> ServerEndpoint? {
+        guard let remote = remote(id), remote.hasServer else { return nil }
+        return ServerEndpoint(string: remote.serverURL, token: store.token(for: id))
+    }
+
+    func token(for id: UUID) -> String {
+        store.token(for: id)
     }
 
     /// Stops the server as the app quits, shutting down every kernel.
@@ -206,19 +225,66 @@ final class AppModel: ObservableObject {
         start()
     }
 
-    /// Runs kernels on the server at `url` (with `token`), or on this
-    /// device when `url` is empty. Restarts the server.
-    func setKernelServer(url: String, token: String) {
-        kernelServerURL = url.trimmingCharacters(in: .whitespaces)
-        kernelServerToken = kernelServerURL.isEmpty ? "" : token
-        defaults.set(kernelServerURL, forKey: Keys.kernelServer)
-        do {
-            try Keychain.set(Keys.kernelServer, kernelServerToken)
-        } catch {
-            keychainError = "Ganymede uses it until it quits, but will start without it next time: "
-                + error.localizedDescription
+    /// Adds `remote`, or replaces the one with its id. `token` replaces
+    /// the server's token unless nil. Restarts the server if kernels run
+    /// on this remote and its server changed.
+    func save(_ remote: Remote, token: String?) {
+        var remote = remote
+        remote.name = remote.name.trimmingCharacters(in: .whitespaces)
+        remote.serverURL = remote.serverURL.trimmingCharacters(in: .whitespaces)
+        let oldURL = self.remote(remote.id)?.serverURL
+        let oldToken = store.token(for: remote.id)
+        let newToken = remote.hasServer ? (token ?? oldToken) : ""
+        if let index = remotes.firstIndex(where: { $0.id == remote.id }) {
+            remotes[index] = remote
+        } else {
+            remotes.append(remote)
         }
+        if newToken != oldToken {
+            do {
+                try store.setToken(newToken, for: remote.id)
+            } catch {
+                keychainError = "The token for \(remote.title) could not be saved in the keychain: "
+                    + error.localizedDescription
+            }
+        }
+        var restart = false
+        if kernelRemoteID == remote.id {
+            // Kernels move to this device when the remote loses its server.
+            if !remote.hasServer { kernelRemoteID = nil }
+            restart = oldURL != remote.serverURL || newToken != oldToken
+        }
+        persist()
+        if restart { start() }
+    }
+
+    /// Removes a remote and its token. Kernels move to this device if they
+    /// ran there.
+    func delete(remote id: UUID) {
+        remotes.removeAll { $0.id == id }
+        try? store.setToken("", for: id)
+        let restart = kernelRemoteID == id
+        if restart { kernelRemoteID = nil }
+        persist()
+        if restart { start() }
+    }
+
+    /// Runs kernels on the remote's server, or on this device when nil.
+    /// Restarts the server.
+    func useForKernels(_ id: UUID?) {
+        let id = id.flatMap { self.remote($0)?.hasServer == true ? $0 : nil }
+        guard id != kernelRemoteID else { return }
+        kernelRemoteID = id
+        persist()
         start()
+    }
+
+    private func persist() {
+        do {
+            try store.save(remotes, kernels: kernelRemoteID)
+        } catch {
+            keychainError = "The remotes could not be saved: " + error.localizedDescription
+        }
     }
 
     #if os(macOS)
@@ -254,6 +320,5 @@ final class AppModel: ObservableObject {
         static let root = "rootFolder"
         static let bookmark = "rootFolderBookmark"
         static let port = "serverPort"
-        static let kernelServer = "kernelServer"
     }
 }

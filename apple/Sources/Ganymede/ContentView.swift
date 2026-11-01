@@ -25,7 +25,7 @@ struct ContentView: View {
                         Button {
                             settings = true
                         } label: {
-                            Label("Kernel Server", systemImage: "server.rack")
+                            Label("Remotes", systemImage: "server.rack")
                         }
                         Button {
                             picking = true
@@ -37,12 +37,12 @@ struct ContentView: View {
         }
         .sheet(isPresented: $settings) {
             NavigationStack {
-                KernelServerView()
-                    .navigationTitle("Kernels")
+                RemotesView()
+                    .navigationTitle("Remotes")
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
-                            Button("Cancel") { settings = false }
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { settings = false }
                         }
                     }
             }
@@ -80,7 +80,7 @@ struct ContentView: View {
         }
         .task { model.startIfNeeded() }
         .alert(
-            "The kernel server's token was not saved",
+            "A remote was not saved",
             isPresented: Binding(
                 get: { model.keychainError != nil },
                 set: { if !$0 { model.keychainError = nil } }
