@@ -23,12 +23,20 @@ export async function waitForIdle(page: Page, timeout = 60_000) {
   await expect(page.getByText(/ · Idle$/)).toBeVisible({ timeout });
 }
 
+/**
+ * The notebook is ready to run: its kernel is idle, or none is running yet
+ * and the first run starts one ("<kernel> · Starts when you run a cell").
+ */
+export async function waitForReady(page: Page, timeout = 60_000) {
+  await expect(page.getByText(/ · (Idle|Starts when you run a cell)$/)).toBeVisible({ timeout });
+}
+
 export async function openNotebook(page: Page, file: string) {
   const name = notebookName(file);
   await expect(sidebarItem(page, name)).toBeVisible();
   await sidebarItem(page, name).click();
   await expect(page.locator('.jp-Cell').first()).toBeVisible();
-  await waitForIdle(page);
+  await waitForReady(page);
 }
 
 export const outputs = (page: Page) => page.locator('.jp-OutputArea-output');

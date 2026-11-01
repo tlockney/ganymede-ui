@@ -6,7 +6,7 @@ import { readdirSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { GANYMEDE_URL, ROOT_DIR, TOKEN } from './env';
-import { outputs, waitForIdle } from './helpers';
+import { outputs, waitForReady } from './helpers';
 
 const notebooks = () => new Set(readdirSync(ROOT_DIR).filter(f => f.endsWith('.ipynb')));
 let before: Set<string>;
@@ -27,7 +27,7 @@ test('keeps notebooks on the server and runs kernels in the page', async ({ page
 
   await page.getByRole('button', { name: 'New Notebook' }).first().click();
   await expect(page.locator('.jp-Cell').first()).toBeVisible({ timeout: 60_000 });
-  await waitForIdle(page);
+  await waitForReady(page);
 
   await page.locator('.jp-Cell .cm-content').first().click();
   await page.keyboard.type('const moon: string = "Ganymede";\nmoon.toUpperCase()');

@@ -154,13 +154,15 @@ describe('NotebookPane', () => {
       path: 'moons/Io.ipynb',
       name: 'Io.ipynb',
       dirty: false,
-      status: 'connecting',
+      // No kernel until the first run, which starts the one the file names.
+      status: 'none',
+      kernelName: 'python3',
     });
     expect(modelOf().cells.length).toBe(1);
     expect(modelOf().cells.get(0).sharedModel.getSource()).toBe('print(1)');
     expect(document.querySelector('.notebook-page .notebook-holder')).toBeInTheDocument();
 
-    // One session per file, named by path, with the kernel the file asks for.
+    // One session per file, named by path, joined if running but not started.
     const session = fakes.sessions[0] as {
       options: Record<string, unknown>;
       initialize: () => void;
@@ -169,7 +171,7 @@ describe('NotebookPane', () => {
       path: 'moons/Io.ipynb',
       name: 'Io.ipynb',
       type: 'notebook',
-      kernelPreference: { name: 'python3', autoStartDefault: true },
+      kernelPreference: { shouldStart: false, autoStartDefault: false },
     });
     expect(session.initialize).toHaveBeenCalled();
   });
@@ -218,11 +220,32 @@ describe('NotebookPane', () => {
     click.mockRestore();
   });
 
+  it('starts the kernel the file names on the first run', async () => {
+    const { latest } = setup();
+    await waitFor(() => expect(latest()).toBeDefined());
+    const session = fakes.sessions[0] as { changeKernel: ReturnType<typeof vi.fn> };
+    expect(session.changeKernel).not.toHaveBeenCalled();
+    await act(() => latest()!.run());
+    expect(session.changeKernel).toHaveBeenCalledWith({ name: 'python3' });
+  });
+
+  it('only picks the kernel for the first run while none is running', async () => {
+    const { latest } = setup();
+    await waitFor(() => expect(latest()).toBeDefined());
+    const session = fakes.sessions[0] as { changeKernel: ReturnType<typeof vi.fn> };
+    await act(() => latest()!.changeKernel('ts'));
+    expect(session.changeKernel).not.toHaveBeenCalled();
+    expect(latest()!.kernelName).toBe('ts');
+    await act(() => latest()!.runAll());
+    expect(session.changeKernel).toHaveBeenCalledWith({ name: 'ts' });
+  });
+
   it('records the kernel in the notebook when it is changed', async () => {
     const { latest } = setup();
     await waitFor(() => expect(latest()).toBeDefined());
+    const session = fakes.sessions[0] as { session: unknown; changeKernel: () => void };
+    session.session = {};
     await act(() => latest()!.changeKernel('python3'));
-    const session = fakes.sessions[0] as { changeKernel: () => void };
     expect(session.changeKernel).toHaveBeenCalledWith({ name: 'python3' });
     expect(modelOf().getMetadata('kernelspec')).toEqual({
       name: 'python3',
@@ -231,13 +254,25 @@ describe('NotebookPane', () => {
     });
   });
 
-  it('falls back to the default kernel for a kernel the backend lacks', async () => {
+  it('opens a notebook whose kernel is not installed, and says so on run', async () => {
     const nb = structuredClone(NOTEBOOK);
     nb.metadata.kernelspec = { name: 'julia', display_name: 'Julia' };
     const { latest } = setup(vi.fn(async () => ({ path: 'moons/Io.ipynb', content: nb })));
     await waitFor(() => expect(latest()).toBeDefined());
-    const session = fakes.sessions[0] as { options: { kernelPreference: { name: string } } };
-    expect(session.options.kernelPreference.name).toBe('python3');
+    expect(latest()).toMatchObject({ status: 'none', missingKernel: 'Julia' });
+    expect(latest()!.kernelName).toBeUndefined();
+
+    await act(() => latest()!.run());
+    const session = fakes.sessions[0] as { changeKernel: ReturnType<typeof vi.fn> };
+    expect(session.changeKernel).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Io.ipynb uses Julia, which isn’t installed here. Pick a kernel in the toolbar to run it.',
+    );
+
+    // Picking one clears that, and the next run starts it.
+    await act(() => latest()!.changeKernel('python3'));
+    expect(latest()).toMatchObject({ kernelName: 'python3', missingKernel: undefined });
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('says why a file could not be opened', async () => {
@@ -309,7 +344,11 @@ describe('NotebookPane', () => {
   it('shows why a kernel action failed', async () => {
     const { latest } = setup();
     await waitFor(() => expect(latest()).toBeDefined());
-    const session = fakes.sessions[0] as { changeKernel: ReturnType<typeof vi.fn> };
+    const session = fakes.sessions[0] as {
+      session: unknown;
+      changeKernel: ReturnType<typeof vi.fn>;
+    };
+    session.session = {};
     session.changeKernel.mockRejectedValueOnce(new Error('No such kernel: julia'));
     await act(() => latest()!.changeKernel('julia'));
     expect(screen.getByRole('alert')).toHaveTextContent(

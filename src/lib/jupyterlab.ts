@@ -174,15 +174,35 @@ export function createNotebook(rendermime: IRenderMimeRegistry): Notebook {
  * (from `@jupyterlab/notebook-extension`'s defaults): run, modes, moving,
  * inserting, deleting and changing cells. Bound to one notebook.
  */
-export function createCommands(notebook: Notebook, session: ISessionContext): CommandRegistry {
+export function createCommands(
+  notebook: Notebook,
+  session: ISessionContext,
+  /** Runs before each run command (to start the kernel); false skips the run. */
+  beforeRun: () => Promise<boolean> = async () => true,
+): CommandRegistry {
   const commands = new CommandRegistry();
   const add = (id: string, execute: () => unknown) =>
     commands.addCommand(id, { execute: () => void execute() });
+  const run = (action: () => Promise<unknown>) => async () => {
+    if (await beforeRun()) await action();
+  };
 
-  add('run-cell', () => NotebookActions.run(notebook, session));
-  add('run-and-advance', () => NotebookActions.runAndAdvance(notebook, session));
-  add('run-and-insert', () => NotebookActions.runAndInsert(notebook, session));
-  add('run-all', () => NotebookActions.runAll(notebook, session));
+  add(
+    'run-cell',
+    run(() => NotebookActions.run(notebook, session)),
+  );
+  add(
+    'run-and-advance',
+    run(() => NotebookActions.runAndAdvance(notebook, session)),
+  );
+  add(
+    'run-and-insert',
+    run(() => NotebookActions.runAndInsert(notebook, session)),
+  );
+  add(
+    'run-all',
+    run(() => NotebookActions.runAll(notebook, session)),
+  );
   add('command-mode', () => {
     notebook.mode = 'command';
     notebook.node.focus();
