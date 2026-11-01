@@ -49,3 +49,17 @@ export function titleFor(path?: string): string {
     ?.replace(/\.ipynb$/, '');
   return name || 'Ganymede';
 }
+
+/**
+ * Whether this page load is a reload. A reload keeps `open` (see
+ * `withOpen`) but is not a window newly opened on one file, so it keeps the
+ * usual layout.
+ */
+export function isReload(): boolean {
+  try {
+    const [nav] = performance.getEntriesByType('navigation') as PerformanceNavigationTiming[];
+    return nav?.type === 'reload';
+  } catch {
+    return false;
+  }
+}

@@ -13,7 +13,11 @@ Mac app's window title later (#132).
 - `open` stays in the URL and follows the open notebook
   (`history.replaceState`), so a reload, ⌘R or WebKit restarting a crashed
   page, comes back to the same notebook. A first version stripped it and
-  claimed the same; review caught that nothing restored it.
+  claimed the same; review caught that nothing restored it. Keeping it
+  broke two e2e tests that reload and then open the notebook from the
+  sidebar, which `?open=` had collapsed: only a fresh load with `open`
+  collapses it now (`isReload` reads the Navigation Timing entry), since
+  a reload isn't a newly opened document window.
 - Paths are normalized to server paths: no leading, trailing or repeated
   slashes. The Mac app (#130) will run one server rooted at `/` and pass
   absolute file paths; a `//` would otherwise never match the sidebar's

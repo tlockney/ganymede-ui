@@ -17,7 +17,7 @@ import { ConnectSheet } from './components/ConnectSheet';
 import { EmptyState } from './components/EmptyState';
 import { ShortcutsSheet } from './components/ShortcutsSheet';
 import { SHOW_SHORTCUTS_EVENT, matches } from './lib/shortcuts';
-import { LAUNCH_PARAMS, type Launch, readLaunch, titleFor, withOpen } from './lib/launch';
+import { LAUNCH_PARAMS, type Launch, isReload, readLaunch, titleFor, withOpen } from './lib/launch';
 
 /**
  * A token in the page URL, as `ganymede serve` prints it, wins once, and so
@@ -69,8 +69,11 @@ export function App() {
   // With nothing to connect to yet, first check whether this page's server
   // has us signed in; the sheet waits for the answer.
   const [probing, setProbing] = useState(() => !config);
-  // A window opened on one notebook starts on the notebook alone.
-  const [sidebarOpen, setSidebarOpen] = useState(() => !launch.open && window.innerWidth > 720);
+  // A window opened on one notebook starts on the notebook alone; a reload
+  // of any page keeps the usual layout.
+  const [sidebarOpen, setSidebarOpen] = useState(
+    () => !(launch.open && !isReload()) && window.innerWidth > 720,
+  );
   const [openPath, setOpenPath] = useState<string>();
   const [controller, setController] = useState<NotebookController>();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);

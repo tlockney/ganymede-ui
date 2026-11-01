@@ -30,6 +30,7 @@ beforeEach(() => {
   sessionStorage.clear();
   history.replaceState(null, '', '/');
   document.title = 'Ganymede';
+  vi.restoreAllMocks();
   vi.stubGlobal(
     'matchMedia',
     vi.fn(() => ({ matches: false, addEventListener() {}, removeEventListener() {} })),
@@ -111,6 +112,20 @@ describe('App', () => {
     // The sidebar lists the notebook's folder.
     expect(await screen.findByRole('button', { name: /work/ })).toBeInTheDocument();
     expect(fake.contents.get).toHaveBeenCalledWith('work', { content: true });
+  });
+
+  it('keeps the sidebar open when a page with a notebook open is reloaded', async () => {
+    history.replaceState(null, '', '/?open=work/Orbits.ipynb');
+    vi.spyOn(performance, 'getEntriesByType').mockReturnValue([
+      { type: 'reload' } as PerformanceNavigationTiming,
+    ]);
+    localStorage.setItem('ganymede-ui:backend', JSON.stringify({ kind: 'ganymede', url: '' }));
+    const fake = fakeServices({ '': [], work: [{ name: 'Orbits.ipynb', type: 'notebook' }] });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    const { container } = render(<App />);
+
+    await waitFor(() => expect(screen.getByTestId('pane')).toHaveTextContent('work/Orbits.ipynb'));
+    expect(container.querySelector('.window')).not.toHaveClass('sidebar-collapsed');
   });
 
   it('hands a missing launch file to the pane, not the connect sheet', async () => {
