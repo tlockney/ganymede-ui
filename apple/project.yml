@@ -50,6 +50,14 @@ targets:
             LSHandlerRank: Default
             LSItemContentTypes:
               - org.jupyter.ipynb
+          # By extension, for when another app's type for .ipynb wins over
+          # ours: the Finder still offers Ganymede in Open With. (An entry
+          # with LSItemContentTypes ignores CFBundleTypeExtensions.)
+          - CFBundleTypeName: Jupyter Notebook (by extension)
+            CFBundleTypeRole: Editor
+            LSHandlerRank: Alternate
+            CFBundleTypeExtensions:
+              - ipynb
         UTImportedTypeDeclarations:
           - UTTypeIdentifier: org.jupyter.ipynb
             UTTypeDescription: Jupyter Notebook

@@ -22,6 +22,20 @@ enum WindowTarget: Codable, Hashable {
         }
     }
 
+    /// The notebook a page from the server shows, from its `open=` (a path
+    /// from the server's root, `/`, form-encoded as URLSearchParams writes
+    /// it); nil when it shows none.
+    init?(page: URL) {
+        let items = URLComponents(url: page, resolvingAgainstBaseURL: false)?
+            .percentEncodedQueryItems ?? []
+        guard let value = items.first(where: { $0.name == "open" })?.value?
+            .replacingOccurrences(of: "+", with: " ").removingPercentEncoding
+        else { return nil }
+        let path = value.drop { $0 == "/" }
+        guard !path.isEmpty else { return nil }
+        self = .file(URL(fileURLWithPath: "/" + String(path), isDirectory: false).standardizedFileURL)
+    }
+
     var url: URL {
         switch self {
         case .file(let url), .folder(let url): url

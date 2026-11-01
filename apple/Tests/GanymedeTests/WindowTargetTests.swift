@@ -49,6 +49,22 @@ final class WindowTargetTests: XCTestCase {
         XCTAssertEqual(WindowTarget(opening: file), .file(file.standardizedFileURL))
     }
 
+    func testFollowsTheNotebookThePageShows() {
+        // As the page writes it with URLSearchParams: relative to `/`,
+        // `/` as %2F and a space as +.
+        let page = URL(string: "http://127.0.0.1:8123/?open=Users%2Fme%2FMoons+%26+rings%2FIo%2BEuropa.ipynb")!
+        XCTAssertEqual(
+            WindowTarget(page: page),
+            .file(URL(fileURLWithPath: "/Users/me/Moons & rings/Io+Europa.ipynb"))
+        )
+        // The page this app loads reads back as the same notebook.
+        let target = WindowTarget.file(URL(fileURLWithPath: "/Users/me/Lunes/Ío & co.ipynb"))
+        XCTAssertEqual(WindowTarget(page: target.pageURL(server: server, kernels: "server")), target)
+        // No notebook open.
+        XCTAssertNil(WindowTarget(page: URL(string: "http://127.0.0.1:8123/")!))
+        XCTAssertNil(WindowTarget(page: URL(string: "http://127.0.0.1:8123/?dir=%2FUsers%2Fme")!))
+    }
+
     func testSurvivesStateRestoration() throws {
         let target = WindowTarget.file(URL(fileURLWithPath: "/tmp/Io.ipynb"))
         let data = try JSONEncoder().encode(target)

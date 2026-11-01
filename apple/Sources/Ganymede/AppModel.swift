@@ -170,14 +170,18 @@ final class AppModel: ObservableObject {
     /// (cdp-kernel's TypeScript kernel in a Worker) and keeps notebooks on
     /// the server.
     private func pageURL(_ url: URL) -> URL {
-        #if os(iOS)
-        let kernels = kernelServerURL.isEmpty ? "page" : "server"
-        #else
-        let kernels = "server"
-        #endif
         guard var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
         parts.queryItems = (parts.queryItems ?? []) + [URLQueryItem(name: "kernels", value: kernels)]
         return parts.url ?? url
+    }
+
+    /// The page's `kernels=`: where its kernels run.
+    private var kernels: String {
+        #if os(iOS)
+        kernelServerURL.isEmpty ? "page" : "server"
+        #else
+        "server"
+        #endif
     }
 
     /// What the server serves: everything on macOS, where windows open
@@ -191,11 +195,10 @@ final class AppModel: ObservableObject {
     }
 
     #if os(macOS)
-    /// The page a window loads for `target`, or for the last folder when
-    /// it has none; nil until the server listens.
-    func page(for target: WindowTarget?) -> URL? {
+    /// The page a window loads for `target`; nil until the server listens.
+    func page(for target: WindowTarget) -> URL? {
         guard let serverURL else { return nil }
-        return (target ?? .folder(root)).pageURL(server: serverURL, kernels: "server")
+        return target.pageURL(server: serverURL, kernels: kernels)
     }
     #endif
 
@@ -278,7 +281,9 @@ final class AppModel: ObservableObject {
         panel.canChooseDirectories = false
         panel.canChooseFiles = true
         panel.allowsMultipleSelection = true
-        panel.allowedContentTypes = [.jupyterNotebook]
+        // Ours, and the one the system gives `.ipynb` when another app
+        // exports its own.
+        panel.allowedContentTypes = [.jupyterNotebook, DefaultApp.notebookType]
         panel.directoryURL = root
         guard panel.runModal() == .OK else { return [] }
         return panel.urls

@@ -32,3 +32,15 @@ notebook, so it can be the default app for notebooks.
   path from a server rooted at `/`. Terminals from File > New Terminal
   still start in the server's root; the terminal thread passes the
   window's folder as `cwd` next.
+- From review: a window's `target` now follows the page. `WebView` observes
+  `WKWebView.url` (KVO fires on the page's own `history.replaceState`), and
+  `WindowTarget(page:)` reads the notebook from `open=`, so the title and the
+  Finder's routing match what the window shows, without reloading it. The
+  page stays on what it was loaded for (`loaded`), and a window opened on
+  nothing pins the default folder when it is made, so Open Folder… no longer
+  reloads it. `handlesExternalEvents` matches by substring, so `onOpenURL`
+  compares the file exactly and sends any other file to `openWindow(value:)`,
+  which also brings forward a window already showing it.
+- File > Open… accepts the system's type for `.ipynb` too, and a second
+  document type claims the extension (`LSHandlerRank: Alternate`), since an
+  entry with `LSItemContentTypes` ignores `CFBundleTypeExtensions`.

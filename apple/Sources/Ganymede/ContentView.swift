@@ -4,8 +4,19 @@ import UniformTypeIdentifiers
 struct ContentView: View {
     @EnvironmentObject private var model: AppModel
     #if os(macOS)
-    /// The notebook or folder this window shows; nil for the last folder.
+    /// The notebook or folder this window shows, following the page; nil
+    /// for a window opened on nothing, until its page opens a notebook.
     @Binding var target: WindowTarget?
+    /// What the page was loaded for. A window opened on nothing keeps the
+    /// folder that was the default then, so a later Open Folder… (which
+    /// changes the default) leaves it alone.
+    @State private var loaded: WindowTarget
+    @Environment(\.openWindow) private var openWindow
+
+    init(target: Binding<WindowTarget?>) {
+        _target = target
+        _loaded = State(initialValue: target.wrappedValue ?? .folder(AppModel.shared.root))
+    }
     #endif
     #if os(iOS)
     @Environment(\.scenePhase) private var phase
@@ -17,12 +28,21 @@ struct ContentView: View {
         #if os(macOS)
         content
             .frame(minWidth: 720, minHeight: 480)
-            .navigationTitle((target ?? .folder(model.root)).title)
+            .navigationTitle((target ?? loaded).title)
             // A notebook opened from the Finder (double-click, Open With,
             // the Dock) arrives here, in a new window or in the one already
-            // showing that file.
+            // showing that file. The claim below matches by substring, so
+            // another file (or the second of several opened at once) goes
+            // to its own window.
             .onOpenURL { url in
-                if url.isFileURL { target = WindowTarget(opening: url) }
+                guard url.isFileURL else { return }
+                let opening = WindowTarget(opening: url)
+                if target == nil {
+                    target = opening
+                    loaded = opening
+                } else if opening != target {
+                    openWindow(value: opening)
+                }
             }
             .handlesExternalEvents(preferring: externalEvents, allowing: externalEvents)
         #else
@@ -81,7 +101,19 @@ struct ContentView: View {
         return []
     }
 
-    private var page: URL? { model.page(for: target) }
+    private var page: URL? { model.page(for: loaded) }
+
+    /// The page opened another notebook, or closed it: the window now
+    /// shows that, for its title and for the Finder's later opens. The page
+    /// stays as it is.
+    private func follow(_ url: URL?) {
+        guard let url else { return }
+        if let shown = WindowTarget(page: url) {
+            if shown != target { target = shown }
+        } else if case .file(let file) = target {
+            target = .folder(file.deletingLastPathComponent())
+        }
+    }
     #else
     private var page: URL? { model.url }
     #endif
@@ -89,7 +121,11 @@ struct ContentView: View {
     private var content: some View {
         Group {
             if let url = page {
+                #if os(macOS)
+                WebView(url: url, onNavigate: follow)
+                #else
                 WebView(url: url)
+                #endif
             } else if let error = model.error {
                 VStack(spacing: 12) {
                     Text("Ganymede could not start").font(.headline)
