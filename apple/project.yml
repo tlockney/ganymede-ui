@@ -43,6 +43,9 @@ targets:
       path: build/Info.plist
       properties:
         CFBundleDisplayName: Ganymede
+        # XcodeGen writes 1.0 and 1 otherwise; release-app.sh sets these.
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         LSApplicationCategoryType: public.app-category.developer-tools
         NSHumanReadableCopyright: MIT License
         # The web view loads the server on 127.0.0.1 over plain HTTP.
@@ -105,6 +108,9 @@ targets:
       path: build/Info-iOS.plist
       properties:
         CFBundleDisplayName: Ganymede
+        # XcodeGen writes 1.0 and 1 otherwise; release-app.sh sets these.
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         NSHumanReadableCopyright: MIT License
         UILaunchScreen: {}
         UIApplicationSceneManifest:

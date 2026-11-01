@@ -73,16 +73,21 @@ app="$work/Ganymede.app"
 ditto "$archive/Products/Applications/Ganymede.app" "$app"
 
 # What notarization requires, checked here so a failure names it.
+fail() {
+  echo "::error::$*" >&2
+  exit 1
+}
 plist="$app/Contents/Info.plist"
-test "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")" = "$VERSION"
+shown=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")
+[[ "$shown" == "$VERSION" ]] || fail "CFBundleShortVersionString is $shown, not $VERSION"
 codesign --verify --deep --strict --verbose=2 "$app"
 details=$(codesign -dvv "$app" 2>&1)
-grep -q "TeamIdentifier=$APPLE_TEAM_ID" <<< "$details"
-grep -q 'flags=.*runtime' <<< "$details"
-grep -q '^Timestamp=' <<< "$details"
+echo "$details"
+grep -q "TeamIdentifier=$APPLE_TEAM_ID" <<< "$details" || fail "not signed by team APPLE_TEAM_ID"
+grep -q 'flags=.*runtime' <<< "$details" || fail "hardened runtime is off"
+grep -q '^Timestamp=' <<< "$details" || fail "the signature has no secure timestamp"
 if codesign -d --entitlements - --xml "$app" 2>/dev/null | grep -q get-task-allow; then
-  echo "::error::the app has the get-task-allow entitlement, which notarization rejects" >&2
-  exit 1
+  fail "the app has the get-task-allow entitlement, which notarization rejects"
 fi
 lipo -archs "$app/Contents/MacOS/Ganymede"
 
