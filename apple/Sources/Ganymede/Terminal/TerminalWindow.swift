@@ -3,12 +3,34 @@ import SwiftUI
 
 /// Where a terminal window's shell runs.
 enum TerminalTarget: Codable, Hashable {
-    /// The app's own server, on this Mac.
-    case local
+    /// The app's own server, on this Mac, starting in `folder` (the
+    /// default folder when nil).
+    case local(folder: URL?)
     /// A remote's server, from Settings.
     case server(UUID)
     /// A remote over SSH, with /usr/bin/ssh.
     case ssh(UUID)
+}
+
+/// What a terminal window is opened with. `openWindow` brings a window
+/// whose value equals the one asked for to the front instead of opening
+/// another, so each request has its own id.
+struct TerminalRequest: Codable, Hashable {
+    var id = UUID()
+    var target: TerminalTarget
+}
+
+/// The folder of the focused notebook window: its notebook's folder, or
+/// the folder it shows. New Terminal starts there.
+struct WindowFolderKey: FocusedValueKey {
+    typealias Value = URL
+}
+
+extension FocusedValues {
+    var windowFolder: URL? {
+        get { self[WindowFolderKey.self] }
+        set { self[WindowFolderKey.self] = newValue }
+    }
 }
 
 /// A terminal window: a shell on the chosen server, through
@@ -41,9 +63,10 @@ struct TerminalWindow: View {
     /// The transport for the target, once what it needs is known.
     private func makeTransport() -> TerminalTransport? {
         switch target {
-        case .local:
+        case .local(let folder):
             guard let endpoint = model.localServer else { return nil }
-            return JupyterTerminalTransport(endpoint: endpoint)
+            // The server is rooted at `/`, so an absolute path is the cwd.
+            return JupyterTerminalTransport(endpoint: endpoint, cwd: (folder ?? model.root).path)
         case .server(let id):
             guard let endpoint = model.server(of: id) else { return nil }
             return JupyterTerminalTransport(endpoint: endpoint)
@@ -55,7 +78,7 @@ struct TerminalWindow: View {
 
     private var defaultTitle: String {
         switch target {
-        case .local: "Terminal"
+        case .local(let folder): "Terminal in \((folder ?? model.root).lastPathComponent)"
         case .server(let id): "Terminal on \(model.remote(id)?.title ?? "remote")"
         case .ssh(let id): "SSH to \(model.remote(id)?.title ?? "remote")"
         }
@@ -83,10 +106,11 @@ struct TerminalWindow: View {
 struct TerminalCommands: View {
     @Environment(\.openWindow) private var openWindow
     @ObservedObject var model: AppModel
+    @FocusedValue(\.windowFolder) private var folder
 
     var body: some View {
         Button("New Terminal") {
-            openWindow(value: TerminalTarget.local)
+            open(.local(folder: folder ?? model.root))
         }
         .keyboardShortcut("`", modifiers: [.control, .shift])
         // One item per way in: a remote with both a server and SSH gets two.
@@ -94,17 +118,21 @@ struct TerminalCommands: View {
             ForEach(model.remotes) { remote in
                 if remote.ssh != nil {
                     Button("\(remote.title) (SSH)") {
-                        openWindow(value: TerminalTarget.ssh(remote.id))
+                        open(.ssh(remote.id))
                     }
                 }
                 if remote.hasServer {
                     Button("\(remote.title) (Server)") {
-                        openWindow(value: TerminalTarget.server(remote.id))
+                        open(.server(remote.id))
                     }
                 }
             }
         }
         .disabled(!model.remotes.contains { $0.hasServer || $0.ssh != nil })
+    }
+
+    private func open(_ target: TerminalTarget) {
+        openWindow(value: TerminalRequest(target: target))
     }
 }
 #endif

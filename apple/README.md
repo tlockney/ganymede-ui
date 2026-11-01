@@ -40,11 +40,12 @@ built from the same sources (see
 - Settings (⌘,) keeps a list of remotes: Jupyter or Ganymede servers,
   SSH hosts, or both. Kernels run on this Mac or, as on iPadOS, on one
   remote's server. Tokens are kept in the keychain.
-- File > New Terminal (⌃⇧`) opens a shell in the notebook folder, from
-the app's own server; File > New Terminal On opens one on a remote's
-server, if it has terminals (Ganymede with terminals, or
-`jupyter server`), or over SSH with `/usr/bin/ssh`, so `~/.ssh/config`,
-  the SSH agent and known_hosts apply. Closing the window ends the shell.
+- File > New Terminal (⌃⇧`) opens a shell from the app's own server in
+the front window's folder (its notebook's folder, or the folder it
+shows). File > New Terminal On opens one on a remote's server, if it
+has terminals (Ganymede with terminals, or `jupyter server`), or over
+SSH with `/usr/bin/ssh`, so `~/.ssh/config`, the SSH agent and
+  known_hosts apply. Closing the window ends the shell.
 - Not sandboxed: the App Sandbox does not allow launching kernels. It is
   meant to be signed with a Developer ID and notarized.
 
