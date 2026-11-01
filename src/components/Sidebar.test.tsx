@@ -41,7 +41,7 @@ describe('Sidebar', () => {
     // returns 0), so their relative order is the server's; not pinned here.
     expect(listed).toContain('notes.txt');
     expect(listed).toHaveLength(5);
-    // Only notebooks and folders can be opened.
+    // Without an editor, only notebooks and folders can be opened.
     expect(screen.getByText('notes.txt').closest('button')).toBeDisabled();
     expect(screen.getByText('Jupiter').closest('button')).toBeEnabled();
   });
@@ -54,6 +54,18 @@ describe('Sidebar', () => {
 
     await userEvent.click(screen.getByText('Saturn'));
     expect(onOpen).toHaveBeenCalledWith('Saturn.ipynb');
+  });
+
+  it('opens other files in the app’s editor when it has one', async () => {
+    const onOpenFile = vi.fn();
+    const { onOpen } = renderSidebar({ onOpenFile });
+    const notes = (await screen.findByText('notes.txt')).closest('button')!;
+    expect(notes).toBeEnabled();
+    await userEvent.click(notes);
+    expect(onOpenFile).toHaveBeenCalledWith('notes.txt');
+    await userEvent.click(screen.getByText('Saturn'));
+    expect(onOpen).toHaveBeenCalledWith('Saturn.ipynb');
+    expect(onOpenFile).toHaveBeenCalledTimes(1);
   });
 
   it('walks into a folder and back out', async () => {

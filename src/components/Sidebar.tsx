@@ -21,6 +21,8 @@ type Props = {
   /** The folder to list on the first connection; later ones start at the root (''). */
   root?: string;
   onOpen(path: string): void;
+  /** Opens a file that isn't a notebook; without it, such files can't be opened. */
+  onOpenFile?(path: string): void;
   onNew(dir: string): void;
   onConnect(): void;
 };
@@ -31,6 +33,7 @@ export function Sidebar({
   openPath,
   root = '',
   onOpen,
+  onOpenFile,
   onNew,
   onConnect,
 }: Props) {
@@ -106,12 +109,15 @@ export function Sidebar({
           {items.map(item => {
             const isNb = item.type === 'notebook';
             const isDir = item.type === 'directory';
+            const isFile = item.type === 'file' && !!onOpenFile;
             return (
               <li key={item.path}>
                 <button
                   className={`source-item ${openPath === item.path ? 'selected' : ''}`}
-                  disabled={!isNb && !isDir}
-                  onClick={() => (isDir ? setDir(item.path) : onOpen(item.path))}
+                  disabled={!isNb && !isDir && !isFile}
+                  onClick={() =>
+                    isDir ? setDir(item.path) : isNb ? onOpen(item.path) : onOpenFile?.(item.path)
+                  }
                 >
                   {isDir ? (
                     <FolderIcon className="tint" />

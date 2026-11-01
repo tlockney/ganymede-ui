@@ -44,6 +44,13 @@ struct GanymedeApp: App {
         }
         // Files opened from the Finder go to notebook windows only.
         .handlesExternalEvents(matching: [])
+        // Text files opened from a notebook window's sidebar (#122).
+        WindowGroup("Editor", for: EditorRequest.self) { $request in
+            if let request {
+                EditorWindow(request: request)
+            }
+        }
+        .handlesExternalEvents(matching: [])
         Settings {
             RemotesView()
                 .environmentObject(model)
@@ -60,6 +67,9 @@ struct GanymedeApp: App {
         WindowGroup("Terminal", for: TerminalRequest.self) { $request in
             TerminalScene(request: request)
                 .environmentObject(model)
+        }
+        WindowGroup("Editor", for: EditorRequest.self) { $request in
+            EditorScene(request: request)
         }
     }
     #endif
@@ -143,11 +153,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AppModel.shared.adoptLoginShellPath()
     }
 
-    /// Asks to save notebooks with unsaved edits first.
+    /// Asks to save notebooks and text files with unsaved edits first.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
-        guard PageDocument.hasUnsaved else { return .terminateNow }
+        guard PageDocument.hasUnsaved || EditorDocument.hasUnsaved else { return .terminateNow }
         Task { @MainActor in
-            sender.reply(toApplicationShouldTerminate: await PageDocument.confirmQuit())
+            var quit = await PageDocument.confirmQuit()
+            if quit { quit = await EditorDocument.confirmQuit() }
+            sender.reply(toApplicationShouldTerminate: quit)
         }
         return .terminateLater
     }

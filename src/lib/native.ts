@@ -21,10 +21,27 @@ declare global {
 
 type MessageHandler = { postMessage(message: unknown): void };
 
-export function postDocument(message: DocumentMessage): void {
+function handler(name: string): MessageHandler | undefined {
   const webkit = (globalThis as { webkit?: { messageHandlers?: Record<string, MessageHandler> } })
     .webkit;
-  webkit?.messageHandlers?.document?.postMessage(message);
+  return webkit?.messageHandlers?.[name];
+}
+
+export function postDocument(message: DocumentMessage): void {
+  handler('document')?.postMessage(message);
+}
+
+/**
+ * Whether the app opens text files in its own editor (#122): the Mac and
+ * iPad apps register an `openFile` handler, a browser has none.
+ */
+export function canOpenFiles(): boolean {
+  return !!handler('openFile');
+}
+
+/** Asks the app to open the file at `path` on its server in its editor. */
+export function openFile(path: string): void {
+  handler('openFile')?.postMessage({ path });
 }
 
 /** Exposes `hooks` to the app until the returned function is called. */

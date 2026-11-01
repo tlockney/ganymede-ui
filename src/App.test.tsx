@@ -151,6 +151,32 @@ describe('App', () => {
     vi.unstubAllGlobals();
   });
 
+  it('opens other files in the app’s editor, only on the app’s own server', async () => {
+    const opened: unknown[] = [];
+    vi.stubGlobal('webkit', {
+      messageHandlers: { openFile: { postMessage: (m: unknown) => opened.push(m) } },
+    });
+    localStorage.setItem('ganymede-ui:backend', JSON.stringify({ kind: 'ganymede', url: '' }));
+    const tree = { '': [{ name: 'notes.md', type: 'file' as const }] };
+    mocks.connect.mockResolvedValue(fakeBackend(fakeServices(tree).services));
+    const { unmount } = render(<App />);
+    await userEvent.click(await screen.findByText('notes.md'));
+    expect(opened).toEqual([{ path: 'notes.md' }]);
+    unmount();
+
+    // Another server's files aren't the app's to open.
+    mocks.connect.mockResolvedValue(
+      fakeBackend(fakeServices(tree).services, {
+        kind: 'ganymede',
+        url: 'http://io:8888',
+        token: '',
+      }),
+    );
+    render(<App />);
+    expect((await screen.findByText('notes.md')).closest('button')).toBeDisabled();
+    vi.unstubAllGlobals();
+  });
+
   it('keeps the sidebar open when a page with a notebook open is reloaded', async () => {
     history.replaceState(null, '', '/?open=work/Orbits.ipynb');
     vi.spyOn(performance, 'getEntriesByType').mockReturnValue([

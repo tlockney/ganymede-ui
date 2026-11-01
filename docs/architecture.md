@@ -375,6 +375,22 @@ remote (`HostKeyStore`). On iPad a terminal is its own scene
 (`WindowGroup(for: TerminalRequest.self)`); SwiftTerm's key row gives Esc,
 Ctrl, Tab and arrows on the software keyboard.
 
+`Editor/` is the text editor (#122). In the apps the page registers no
+editor of its own: its sidebar enables files that aren't notebooks when
+the app has an `openFile` message handler and the page uses the app's own
+server, and posts the file's path there. The app opens an
+`EditorWindow` (`WindowGroup(for: EditorRequest.self)`; a full-screen
+cover on iPhone). `EditorDocument` reads and saves the file with
+`TextFileClient`, through `/api/contents` with `format=text`, and polls
+its `last_modified` every few seconds: a change on disk reloads the file,
+or, with unsaved edits, shows a bar to keep either version. A save sends
+`last_modified`, which Ganymede checks (409 on a conflict), and checks it
+first itself, since `jupyter_server` doesn't. The text view is the
+system's (`CodeTextView`, TextKit 1), so find, undo, input methods,
+dictation and accessibility come with it. [Neon](https://github.com/ChimeHQ/Neon)
+highlights it with tree-sitter grammars (`Highlighting`), coloring capture
+names with system colors that follow light and dark.
+
 ## Tests
 
 Unit tests (Vitest, jsdom) sit next to the code as `*.test.ts(x)`. The
