@@ -177,8 +177,9 @@ JupyterLite's service worker, adapted.
 
 > [!NOTE]
 > **Unreleased.** Starting the kernel on the first run, `NotebookSaver` and
-> autosave, sandboxed output frames, and the reading screenshots are
-> available only from a build of `main` (HEAD), not in the latest release.
+> autosave, saved widgets without a kernel, sandboxed output frames, and
+> the reading screenshots are available only from a build of `main`
+> (HEAD), not in the latest release.
 
 `NotebookPane` shows one file. It holds JupyterLab's `Notebook` widget,
 its `NotebookModel`, and a `SessionContext`, which rejoins the kernel
