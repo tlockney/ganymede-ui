@@ -22,14 +22,15 @@ packages:
     url: https://github.com/apple/swift-nio
     exactVersion: 2.104.0
   # The text editor's highlighting (#122): Neon (BSD-3) on tree-sitter
-  # (MIT). Neon's main branch is not tagged, so it is pinned to a commit,
-  # and SwiftTreeSitter, which Neon asks for by branch, to one too.
+  # (MIT). Neon's main branch is not tagged, so it is pinned to a commit.
+  # Neon asks for SwiftTreeSitter's main branch, and SwiftPM refuses a
+  # second, different requirement on the same package, so it follows main.
   Neon:
     url: https://github.com/ChimeHQ/Neon
     revision: 38cf4a6a05a6aa1e038b65a16f773c77d4145efc
   SwiftTreeSitter:
     url: https://github.com/ChimeHQ/SwiftTreeSitter
-    revision: cbe31cb3601aa29c1f64b6e4328733511126d6d5
+    branch: main
   # Their own dependencies, pinned so a fresh resolve builds the same.
   tree-sitter:
     url: https://github.com/tree-sitter/tree-sitter
