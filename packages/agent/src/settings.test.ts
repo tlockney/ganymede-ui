@@ -147,6 +147,22 @@ describe('BrowserCredentialStore', () => {
     expect(order).toEqual([1, 2]);
   });
 
+  it('keeps the old key when a write fails', async () => {
+    const { session, local, keys } = stores();
+    await keys.setKey('anthropic', 'sk-old', false);
+    local.setItem = () => {
+      throw new DOMException('full', 'QuotaExceededError');
+    };
+    await expect(keys.setKey('anthropic', 'sk-new', true)).rejects.toThrow('full');
+    expect(session.getItem('ganymede-ui:agent-key:anthropic')).toContain('sk-old');
+  });
+
+  it('rejects a key when storage is blocked', async () => {
+    const keys = new BrowserCredentialStore(undefined, undefined);
+    await expect(keys.setKey('anthropic', 'sk', false)).rejects.toThrow(/blocks storage/);
+    await expect(keys.setKey('anthropic', '', false)).resolves.toBeUndefined();
+  });
+
   it('ignores entries that are not keys', async () => {
     const { session, keys } = stores();
     session.setItem('ganymede-ui:agent-key:anthropic', 'garbage');

@@ -19,6 +19,34 @@ function inlinePackageVersion(code: string, id: string): string | null {
   return code.replace(VERSION_REQUIRE, JSON.stringify(pkg.version));
 }
 
+// The optional agent's code: Pi, and the module the app loads it through.
+function isAgentModule(id: string): boolean {
+  return id.includes('/@earendil-works/') || id.endsWith('/packages/agent/src/models.ts');
+}
+
+type ModuleInfo = { importers: readonly string[]; dynamicImporters: readonly string[] } | null;
+
+/** Rollup's module graph, kept from the build for naming chunks at output. */
+const agentGraph: { info: (id: string) => ModuleInfo } = { info: () => null };
+
+/** Whether every import path to `id` runs through the agent's code. */
+function onlyForAgent(id: string, info: (id: string) => ModuleInfo): boolean {
+  const seen = new Set<string>();
+  const queue = [id];
+  while (queue.length) {
+    const next = queue.pop()!;
+    if (seen.has(next)) continue;
+    seen.add(next);
+    if (next !== id && isAgentModule(next)) continue;
+    const m = info(next);
+    const importers = m ? [...m.importers, ...m.dynamicImporters] : [];
+    // An entry, or a module the app reaches without the agent.
+    if (importers.length === 0) return false;
+    queue.push(...importers);
+  }
+  return true;
+}
+
 // Proxy the API so the page and the server share an origin. Ganymede checks
 // Origin against Host, as jupyter_server does, so rewrite both.
 const proxy: Record<string, ProxyOptions> = {
@@ -36,6 +64,12 @@ const proxy: Record<string, ProxyOptions> = {
 export default defineConfig({
   plugins: [
     react(),
+    {
+      name: 'agent-module-graph',
+      buildEnd() {
+        agentGraph.info = id => this.getModuleInfo(id);
+      },
+    },
     // JupyterLab's icons import SVG files as strings (webpack's raw
     // loader); in Vite a bare `.svg` import is a URL. Ask for `?raw` instead
     // for JupyterLab's own packages.
@@ -95,7 +129,7 @@ export default defineConfig({
             options: { cacheName: 'font-awesome' },
           },
           {
-            urlPattern: /\/assets\/agent-[\w-]+\.js$/,
+            urlPattern: /\/assets\/agent-[\w.-]+\.js$/,
             handler: 'CacheFirst',
             options: { cacheName: 'agent' },
           },
@@ -132,8 +166,12 @@ export default defineConfig({
       output: {
         // The agent's lazy chunks (Pi and its providers) get an `agent-`
         // prefix, which the PWA's precache leaves out.
+        // A chunk counts as the agent's when it holds Pi, or when every
+        // module in it is reached only through Pi (Pi's own dependencies).
         chunkFileNames: chunk =>
-          chunk.moduleIds.some(id => id.includes('/@earendil-works/'))
+          chunk.moduleIds.some(isAgentModule) ||
+          (chunk.moduleIds.length > 0 &&
+            chunk.moduleIds.every(id => onlyForAgent(id, agentGraph.info)))
             ? 'assets/agent-[name]-[hash].js'
             : 'assets/[name]-[hash].js',
       },

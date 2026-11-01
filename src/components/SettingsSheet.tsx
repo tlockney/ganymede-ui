@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   type AgentSettings,
   type BrowserCredentialStore,
+  DEFAULT_SETTINGS,
   PROVIDERS,
   type ProviderId,
   credentials as pageCredentials,
@@ -57,7 +58,11 @@ export function SettingsSheet({
     if (!settings.enabled || models) return;
     let cancelled = false;
     loadModels().then(
-      m => !cancelled && setModels(m),
+      m => {
+        if (cancelled) return;
+        setError(undefined);
+        setModels(m);
+      },
       e => !cancelled && setError(`The agent didn't load: ${e instanceof Error ? e.message : e}`),
     );
     return () => {
@@ -87,7 +92,39 @@ export function SettingsSheet({
   const pickProvider = (provider: ProviderId) =>
     update({ provider, model: providerInfo(provider).defaultModel });
 
-  const modelIds = models && settings.enabled ? models.modelIds(settings, store) : [];
+  // The catalog depends on the provider alone, not on each keystroke.
+  const { enabled, provider } = settings;
+  const modelIds = useMemo(
+    () =>
+      models && enabled
+        ? models.modelIds({ ...DEFAULT_SETTINGS, enabled, provider }, keyOnly(provider, ''))
+        : [],
+    [models, enabled, provider],
+  );
+
+  // Saved keys, offered for removal while the agent is off.
+  const [savedKeys, setSavedKeys] = useState(0);
+  useEffect(() => {
+    if (enabled) return;
+    let cancelled = false;
+    void store.list().then(list => !cancelled && setSavedKeys(list.length));
+    return () => {
+      cancelled = true;
+    };
+  }, [store, enabled]);
+
+  const forgetKeys = async () => {
+    for (const { providerId } of await store.list()) await store.delete(providerId);
+    setSavedKeys(0);
+    setKey('');
+    setRemember(false);
+  };
+
+  const trimmed = (): AgentSettings => ({
+    ...settings,
+    model: settings.model.trim(),
+    baseUrl: settings.baseUrl.trim(),
+  });
 
   const runTest = async () => {
     if (!models) return;
@@ -95,17 +132,23 @@ export function SettingsSheet({
     const abort = new AbortController();
     testAbort.current = abort;
     setTest({ state: 'running' });
-    const result = await models.testModel(
-      settings,
-      keyOnly(settings.provider, key.trim()),
-      abort.signal,
-    );
+    let result: { ok: boolean; message: string };
+    try {
+      result = await models.testModel(
+        trimmed(),
+        keyOnly(settings.provider, key.trim()),
+        abort.signal,
+      );
+    } catch (err) {
+      result = { ok: false, message: err instanceof Error ? err.message : String(err) };
+    }
     if (!abort.signal.aborted) setTest({ state: 'done', ...result });
   };
 
   const save = async (e: React.FormEvent) => {
     e.preventDefault();
-    const next = { ...settings, model: settings.model.trim(), baseUrl: settings.baseUrl.trim() };
+    setError(undefined);
+    const next = trimmed();
     try {
       if (next.enabled) await store.setKey(next.provider, key.trim(), remember);
       saveAgentSettings(next);
@@ -116,7 +159,9 @@ export function SettingsSheet({
   };
 
   return (
-    <div className="sheet-backdrop" onClick={e => e.target === e.currentTarget && onClose()}>
+    // No close on a backdrop click, as in the connect sheet: a text
+    // selection dragged out of a field would end there and drop the edits.
+    <div className="sheet-backdrop">
       <form
         className="sheet settings-sheet"
         role="dialog"
@@ -139,6 +184,15 @@ export function SettingsSheet({
               <p className="hint">
                 An assistant that can edit and run this notebook, with a model you choose. Off until
                 you turn it on; nothing of it loads until then.
+                {savedKeys > 0 && (
+                  <>
+                    {' '}
+                    Turning it off keeps your saved keys.{' '}
+                    <button type="button" className="link-button" onClick={() => void forgetKeys()}>
+                      Forget saved keys
+                    </button>
+                  </>
+                )}
               </p>
             )}
             {settings.enabled && (

@@ -283,8 +283,9 @@ settings button, or a `ganymede:show-settings` window event).
 - `models.ts` builds pi-ai's models for the chosen provider: Anthropic,
   OpenAI, Google, or a local OpenAI-compatible server (Ollama, LM Studio).
   The app loads it with a dynamic `import()` only when the agent is on.
-  Its chunks are named `agent-*`, and the PWA caches them on first use
-  instead of precaching them for everyone.
+  Its chunks, and chunks reached only through it, are named `agent-*`,
+  and the PWA caches them on first use instead of precaching them for
+  everyone.
 - `index.ts` and `tools.ts` are the spike's harness and notebook tools
   (ganymede-ui#124); the agent panel that uses them comes next.
 

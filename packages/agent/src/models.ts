@@ -96,10 +96,12 @@ export async function testModel(
   credentials: CredentialStore,
   signal?: AbortSignal,
 ): Promise<TestResult> {
-  const models = modelsFor(settings, credentials);
-  const model = models.getModel(settings.provider, settings.model);
-  if (!model) return { ok: false, message: `${settings.provider} has no model ${settings.model}.` };
   try {
+    const models = modelsFor(settings, credentials);
+    const model = models.getModel(settings.provider, settings.model);
+    if (!model) {
+      return { ok: false, message: `${settings.provider} has no model ${settings.model}.` };
+    }
     const reply = await models.complete(
       model,
       { messages: [{ role: 'user', content: 'Reply with the word OK.', timestamp: Date.now() }] },

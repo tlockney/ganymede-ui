@@ -142,4 +142,32 @@ describe('SettingsSheet', () => {
     await userEvent.click(toggle());
     expect(await screen.findByText("The agent didn't load: offline")).toBeInTheDocument();
   });
+
+  it('tests with trimmed values and reports a throw', async () => {
+    const { models } = renderSheet();
+    models.testModel.mockRejectedValueOnce(new Error('boom'));
+    await userEvent.click(toggle());
+    const model = screen.getByRole('combobox', { name: 'Model' });
+    await userEvent.type(model, '  ');
+    await userEvent.click(screen.getByRole('button', { name: 'Test' }));
+    expect(await screen.findByRole('status')).toHaveTextContent('boom');
+    expect(models.testModel.mock.calls[0]![0]).toMatchObject({ model: 'claude-sonnet-5-5' });
+    expect(screen.getByRole('button', { name: 'Test' })).toBeEnabled();
+  });
+
+  it('offers to forget saved keys while off', async () => {
+    const seed = new BrowserCredentialStore(sessionStorage, localStorage);
+    await seed.setKey('anthropic', 'sk-a', true);
+    await seed.setKey('google', 'sk-g', false);
+    renderSheet();
+    await userEvent.click(await screen.findByRole('button', { name: 'Forget saved keys' }));
+    await waitFor(() => expect(localStorage.length + sessionStorage.length).toBe(0));
+    expect(screen.queryByRole('button', { name: 'Forget saved keys' })).not.toBeInTheDocument();
+  });
+
+  it('stays open on a backdrop click', async () => {
+    const { onClose } = renderSheet();
+    await userEvent.click(document.querySelector('.sheet-backdrop')!);
+    expect(onClose).not.toHaveBeenCalled();
+  });
 });

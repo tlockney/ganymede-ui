@@ -130,8 +130,10 @@ export class BrowserCredentialStore implements CredentialStore {
     }
   }
 
+  /** Throws when the storage is missing or refuses the write, so a key is never lost silently. */
   private put(store: Storage | undefined, providerId: string, credential: Credential): void {
-    store?.setItem(KEY_PREFIX + providerId, JSON.stringify(credential));
+    if (!store) throw new Error('this browser blocks storage for this page');
+    store.setItem(KEY_PREFIX + providerId, JSON.stringify(credential));
   }
 
   private remove(store: Storage | undefined, providerId: string): void {
@@ -200,15 +202,20 @@ export class BrowserCredentialStore implements CredentialStore {
 
   /**
    * Sets the provider's key from the Settings sheet; an empty key removes it.
-   * `remember` picks `localStorage` over `sessionStorage`, and the key is
-   * taken out of the other.
+   * `remember` picks `localStorage` over `sessionStorage`. The new key is
+   * written first and only then taken out of the other storage, so a failed
+   * write keeps the old key and rejects.
    */
   setKey(providerId: string, key: string, remember: boolean): Promise<void> {
     return this.serial(providerId, async () => {
-      this.remove(this.local, providerId);
-      this.remove(this.session, providerId);
-      if (!key) return;
-      this.put(remember ? this.local : this.session, providerId, { type: 'api_key', key });
+      if (!key) {
+        this.remove(this.local, providerId);
+        this.remove(this.session, providerId);
+        return;
+      }
+      const [target, other] = remember ? [this.local, this.session] : [this.session, this.local];
+      this.put(target, providerId, { type: 'api_key', key });
+      this.remove(other, providerId);
     });
   }
 }
