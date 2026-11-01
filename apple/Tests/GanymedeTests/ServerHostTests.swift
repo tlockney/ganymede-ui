@@ -89,8 +89,13 @@ final class ServerHostTests: XCTestCase {
             done.fulfill()
         }.resume()
         wait(for: [done], timeout: 10)
-        let items = URLComponents(url: try XCTUnwrap(landed), resolvingAgainstBaseURL: false)?.queryItems ?? []
-        XCTAssertEqual(items.first { $0.name == "open" }?.value, path)
+        // The redirect form-encodes the query (space as `+`); the page reads
+        // it with URLSearchParams, so decode it the same way.
+        let items = URLComponents(url: try XCTUnwrap(landed), resolvingAgainstBaseURL: false)?
+            .percentEncodedQueryItems ?? []
+        let open = items.first { $0.name == "open" }?.value?
+            .replacingOccurrences(of: "+", with: " ").removingPercentEncoding
+        XCTAssertEqual(open, path)
         XCTAssertNil(items.first { $0.name == "token" })
 
         let token = try XCTUnwrap(
