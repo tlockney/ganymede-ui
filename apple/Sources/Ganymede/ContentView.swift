@@ -22,8 +22,11 @@ struct ContentView: View {
     #endif
     #if os(iOS)
     @Environment(\.scenePhase) private var phase
+    @Environment(\.openWindow) private var openWindow
     @State private var picking = false
     @State private var settings = false
+    /// A terminal shown full screen, where the app has one scene.
+    @State private var terminal: TerminalRequest?
     #endif
 
     var body: some View {
@@ -58,6 +61,15 @@ struct ContentView: View {
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar {
                     ToolbarItemGroup(placement: .primaryAction) {
+                        TerminalMenu(model: model) { request in
+                            // A scene of its own beside the notebook on iPad,
+                            // full screen where there is one scene (iPhone).
+                            if UIApplication.shared.supportsMultipleScenes {
+                                openWindow(value: request)
+                            } else {
+                                terminal = request
+                            }
+                        }
                         Button {
                             settings = true
                         } label: {
@@ -79,6 +91,18 @@ struct ContentView: View {
                     .toolbar {
                         ToolbarItem(placement: .confirmationAction) {
                             Button("Done") { settings = false }
+                        }
+                    }
+            }
+            .environmentObject(model)
+        }
+        .fullScreenCover(item: $terminal) { request in
+            NavigationStack {
+                TerminalWindow(target: request.target)
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button("Close") { terminal = nil }
                         }
                     }
             }

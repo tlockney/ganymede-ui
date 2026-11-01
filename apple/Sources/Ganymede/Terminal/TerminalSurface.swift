@@ -8,9 +8,11 @@ struct TerminalSurface: View {
     let transport: TerminalTransport
     /// The title the program running in the terminal sets (OSC 0/2).
     var onTitle: ((String) -> Void)?
+    /// The session ended from the other side, with the reason shown.
+    var onEnd: ((String?) -> Void)?
 
     var body: some View {
-        TerminalRepresentable(transport: transport, onTitle: onTitle)
+        TerminalRepresentable(transport: transport, onTitle: onTitle, onEnd: onEnd)
     }
 }
 
@@ -18,6 +20,7 @@ struct TerminalSurface: View {
 private struct TerminalRepresentable: NSViewRepresentable {
     let transport: TerminalTransport
     var onTitle: ((String) -> Void)?
+    var onEnd: ((String?) -> Void)?
 
     func makeCoordinator() -> TerminalCoordinator {
         TerminalCoordinator(transport: transport)
@@ -26,12 +29,14 @@ private struct TerminalRepresentable: NSViewRepresentable {
     func makeNSView(context: Context) -> TerminalView {
         let view = TerminalView(frame: .zero)
         context.coordinator.onTitle = onTitle
+        context.coordinator.onEnd = onEnd
         context.coordinator.attach(view)
         return view
     }
 
     func updateNSView(_ view: TerminalView, context: Context) {
         context.coordinator.onTitle = onTitle
+        context.coordinator.onEnd = onEnd
     }
 
     static func dismantleNSView(_ view: TerminalView, coordinator: TerminalCoordinator) {
@@ -43,6 +48,7 @@ private struct TerminalRepresentable: NSViewRepresentable {
 private struct TerminalRepresentable: UIViewRepresentable {
     let transport: TerminalTransport
     var onTitle: ((String) -> Void)?
+    var onEnd: ((String?) -> Void)?
 
     func makeCoordinator() -> TerminalCoordinator {
         TerminalCoordinator(transport: transport)
@@ -51,12 +57,14 @@ private struct TerminalRepresentable: UIViewRepresentable {
     func makeUIView(context: Context) -> TerminalView {
         let view = TerminalView(frame: .zero)
         context.coordinator.onTitle = onTitle
+        context.coordinator.onEnd = onEnd
         context.coordinator.attach(view)
         return view
     }
 
     func updateUIView(_ view: TerminalView, context: Context) {
         context.coordinator.onTitle = onTitle
+        context.coordinator.onEnd = onEnd
     }
 
     static func dismantleUIView(_ view: TerminalView, coordinator: TerminalCoordinator) {
@@ -71,6 +79,7 @@ private struct TerminalRepresentable: UIViewRepresentable {
 final class TerminalCoordinator: NSObject, TerminalViewDelegate {
     let transport: TerminalTransport
     var onTitle: ((String) -> Void)?
+    var onEnd: ((String?) -> Void)?
     private weak var view: TerminalView?
 
     init(transport: TerminalTransport) {
@@ -83,8 +92,9 @@ final class TerminalCoordinator: NSObject, TerminalViewDelegate {
         transport.onOutput = { [weak view] bytes in
             view?.feed(byteArray: bytes)
         }
-        transport.onClose = { [weak view] reason in
+        transport.onClose = { [weak self, weak view] reason in
             view?.feed(text: "\r\n[\(reason ?? "Session ended")]\r\n")
+            self?.onEnd?(reason)
         }
         // SwiftTerm reports the size through `sizeChanged` once the view
         // is laid out.

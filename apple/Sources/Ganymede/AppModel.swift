@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 #if os(macOS)
 import AppKit
@@ -31,6 +32,12 @@ final class AppModel: ObservableObject {
     private let store: RemoteStore
     /// Tokens the keychain refused to store, used until the app quits.
     private var unsavedTokens: [UUID: String] = [:]
+    /// The app's SSH key, for SSH remotes on iOS (the Mac uses its own
+    /// ssh and keys).
+    @Published private(set) var sshKey: Curve25519.Signing.PrivateKey?
+    private let sshKeys = SSHKeyStore(secrets: KeychainStore())
+    /// Host keys trusted on first use, per remote.
+    let hostKeys = HostKeyStore(defaults: .standard)
 
     private var server: ServerHost?
     /// Server starts and stops, run one after another. Both block (a start
@@ -56,6 +63,7 @@ final class AppModel: ObservableObject {
         remotes = saved.remotes
         kernelRemoteID = saved.kernels
         keychainError = saved.problem
+        sshKey = sshKeys.load()
         #if os(macOS)
         if let path = UserDefaults.standard.string(forKey: Keys.root),
            FileManager.default.fileExists(atPath: path) {
@@ -303,9 +311,38 @@ final class AppModel: ObservableObject {
 
     /// Removes a remote and its token. Kernels move to this device if they
     /// ran there.
+    /// The app's public key, for authorized_keys on SSH remotes.
+    var sshPublicKey: String? {
+        sshKey.map { SSHKeyStore.publicLine($0.publicKey, comment: "ganymede") }
+    }
+
+    func generateSSHKey() {
+        do {
+            sshKey = try sshKeys.generate()
+        } catch {
+            keychainError = "The SSH key could not be saved in the keychain: " + error.localizedDescription
+        }
+    }
+
+    /// Imports an unencrypted OpenSSH ed25519 key; throws when it can't be
+    /// read, for the import sheet to show.
+    func importSSHKey(_ text: String) throws {
+        sshKey = try sshKeys.importOpenSSH(text)
+    }
+
+    func removeSSHKey() {
+        do {
+            try sshKeys.remove()
+            sshKey = nil
+        } catch {
+            keychainError = "The SSH key could not be removed from the keychain: " + error.localizedDescription
+        }
+    }
+
     func delete(remote id: UUID) {
         remotes.removeAll { $0.id == id }
         unsavedTokens[id] = nil
+        hostKeys.forget(id)
         do {
             try store.setToken("", for: id)
         } catch {

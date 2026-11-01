@@ -365,7 +365,14 @@ websocket protocol to it. Closing the window deletes the terminal. For
 a remote with SSH, `ProcessTerminalTransport` runs `/usr/bin/ssh` in a
 pseudo-terminal the app spawns (SwiftTerm's `LocalProcess`), so OpenSSH
 does everything it does in Terminal.app: ssh-config aliases, the agent,
-ProxyJump, and asking to trust a new host key.
+ProxyJump, and asking to trust a new host key. iOS can't run a process,
+so there `SSHTerminalTransport` speaks SSH in the app with Apple's
+[swift-nio-ssh](https://github.com/apple/swift-nio-ssh): a pseudo-terminal
+and shell on one session channel, signed in with the app's ed25519 key
+(`SSHKey.swift`, in the keychain), and host keys trusted on first use per
+remote (`HostKeyStore`). On iPad a terminal is its own scene
+(`WindowGroup(for: TerminalRequest.self)`); SwiftTerm's key row gives Esc,
+Ctrl, Tab and arrows on the software keyboard.
 
 ## Tests
 
