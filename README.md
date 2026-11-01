@@ -128,6 +128,17 @@ covers tokens, cookies and cross-origin access on the server side.
 > from a build of `main` (HEAD); the latest release keeps it in local
 > storage with the rest of the connection.
 
+- **Agent keys:** the optional agent (Settings, off by default) keeps its
+  provider, model and server URL in local storage (`ganymede-ui:agent`).
+  An API key stays in session storage until the tab closes, or in local
+  storage if you tick "Remember the key on this device". Either way,
+  script on the page's origin can read it. The key is sent only to the
+  provider you picked, straight from the page.
+
+> [!NOTE]
+> **Unreleased.** The Settings sheet and agent settings are available only
+> from a build of `main` (HEAD), not in the latest release.
+
 ## Known gaps
 
 It is a prototype. What it doesn't do yet, or does roughly:

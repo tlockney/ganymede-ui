@@ -123,6 +123,13 @@ export const PowerIcon = (p: P) => (
     <path d="M6.2 5.6a6 6 0 1 0 7.6 0" />
   </svg>
 );
+export const SettingsIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M3.5 6h7M14.5 6h2M3.5 14h2M9.5 14h7" />
+    <circle cx="12.5" cy="6" r="2" />
+    <circle cx="7.5" cy="14" r="2" />
+  </svg>
+);
 export const ShieldIcon = (p: P) => (
   <svg {...base(p)}>
     <path d="M10 2.75 4 5v4.5c0 3.6 2.5 6.4 6 7.75 3.5-1.35 6-4.15 6-7.75V5z" />

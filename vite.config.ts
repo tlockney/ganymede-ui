@@ -85,12 +85,19 @@ export default defineConfig({
         // Font Awesome (ipywidgets' icons, src/styles/fontawesome.css): only
         // notebooks with icon widgets need it, so cache each font on first
         // use instead of precaching 170 kB for everyone.
-        globIgnores: ['**/fa-*.woff2'],
+        // The agent (packages/agent) is off by default: cache its chunks
+        // on first use too, not for everyone (ganymede-ui#165).
+        globIgnores: ['**/fa-*.woff2', '**/agent-*.js'],
         runtimeCaching: [
           {
             urlPattern: /\/assets\/fa-[\w-]+\.woff2$/,
             handler: 'CacheFirst',
             options: { cacheName: 'font-awesome' },
+          },
+          {
+            urlPattern: /\/assets\/agent-[\w-]+\.js$/,
+            handler: 'CacheFirst',
+            options: { cacheName: 'agent' },
           },
         ],
         // The server API is never cached.
@@ -122,6 +129,14 @@ export default defineConfig({
     rollupOptions: {
       // kernel.html is the Apple apps' hidden kernel web view (#99).
       input: { main: 'index.html', kernel: 'kernel.html' },
+      output: {
+        // The agent's lazy chunks (Pi and its providers) get an `agent-`
+        // prefix, which the PWA's precache leaves out.
+        chunkFileNames: chunk =>
+          chunk.moduleIds.some(id => id.includes('/@earendil-works/'))
+            ? 'assets/agent-[name]-[hash].js'
+            : 'assets/[name]-[hash].js',
+      },
     },
   },
   optimizeDeps: {

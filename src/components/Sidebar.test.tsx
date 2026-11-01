@@ -164,4 +164,16 @@ describe('Sidebar', () => {
     expect(screen.getByTitle('New Notebook')).toBeDisabled();
     expect(screen.queryByText('No files')).not.toBeInTheDocument();
   });
+
+  it('opens Settings when it can', async () => {
+    const onSettings = vi.fn();
+    renderSidebar({ onSettings });
+    await userEvent.click(screen.getByRole('button', { name: 'Settings' }));
+    expect(onSettings).toHaveBeenCalled();
+  });
+
+  it('has no Settings button without a handler', () => {
+    renderSidebar();
+    expect(screen.queryByRole('button', { name: 'Settings' })).not.toBeInTheDocument();
+  });
 });
