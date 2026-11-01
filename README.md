@@ -44,7 +44,11 @@ it also runs against a real server.
 
 ## Download the Mac app
 
-From the release after 0.2.0, each
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+Each
 [release](https://github.com/tlockney/ganymede-ui/releases) attaches
 `Ganymede-macOS-<version>.zip`, a signed and notarized app that runs the
 Ganymede server in its own process and can be the default app for
@@ -87,6 +91,10 @@ JupyterLab's; press `H` in command mode (or the keyboard button) for the
 full list. Every shortcut can be rebound there, and changes stay in this
 browser. [docs/shortcuts.md](docs/shortcuts.md) lists the defaults.
 
+> [!NOTE]
+> **Unreleased.** Autosave and the save checks below are available only
+> from a build of `main` (HEAD), not in the latest release.
+
 A notebook with unsaved edits saves itself every two minutes, when the
 page is hidden, and when you open another file, and the browser asks before a tab with unsaved edits
 closes. If the file changed on disk since it was opened or last saved, a
@@ -114,6 +122,11 @@ failed save or kernel action shows its error above the notebook.
 
 Ganymede's [security page](https://ganymede-server.com/docs/security)
 covers tokens, cookies and cross-origin access on the server side.
+
+> [!NOTE]
+> **Unreleased.** Keeping the token in session storage is available only
+> from a build of `main` (HEAD); the latest release keeps it in local
+> storage with the rest of the connection.
 
 ## Known gaps
 
