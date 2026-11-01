@@ -325,7 +325,11 @@ subframes, the sandboxed output frames among them, the same handlers.
 Native bridges for cells, such as
 [ganymede-device](https://github.com/tlockney/ganymede-device)'s `device`
 handler, belong on the kernel web view only, so nothing the UI renders
-can call them (#99). None is registered yet. `CdpBrowserKernel` uses the
+can call them (#99). When the kernel page sees a `device` handler, it
+starts each kernel with ganymede-device's preload (which installs
+`globalThis.device` in the cells' Worker), its `webkitHost()` and
+`capabilities: { device: true }`. The Swift handler itself isn't written
+yet, so today cells see no `device`. `CdpBrowserKernel` uses the
 relay whenever the page has a `kernelRelay` handler; a browser has none.
 
 A native on-device kernel, cdp-kernel running in the app's process instead

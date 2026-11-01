@@ -19,10 +19,18 @@ test.afterEach(() => {
 });
 
 /** `webkit.messageHandlers[name].postMessage` calling `binding`. */
-const fakeHandler = (name: string, binding: string) => `
+const fakeHandler = (name: string, binding: string, extra = '') => `
   window.webkit = { messageHandlers: { ${name}: {
     postMessage: m => window.${binding}(JSON.parse(JSON.stringify(m))),
-  } } };`;
+  }, ${extra} } };`;
+
+/** A stand-in for the Swift DeviceBridge: answers `hello` and the clipboard. */
+const fakeDevice = `device: { postMessage: async ({ method }) =>
+  method === 'hello'
+    ? { result: { platform: 'macos', appVersion: 'e2e', capabilities: ['clipboard.readText'] } }
+    : method === 'clipboard.readText'
+      ? { result: 'Europa' }
+      : { error: { code: 'unsupported', message: method } } }`;
 
 /** Delivers to `deliver` on `page`, one message after another, as Swift does. */
 function relayTo(page: Page, deliver: string) {
@@ -51,7 +59,7 @@ test('runs page kernels in the kernel web view, relayed', async ({ context }) =>
   await kernelPage.exposeFunction('toSwift', (m: { op: string }) =>
     m.op === 'ready' ? ready() : toApp(m),
   );
-  await kernelPage.addInitScript(fakeHandler('kernelHost', 'toSwift'));
+  await kernelPage.addInitScript(fakeHandler('kernelHost', 'toSwift', fakeDevice));
   const toKernel = relayTo(kernelPage, 'ganymedeKernelHost');
   await app.exposeFunction('toSwift', (m: unknown) => kernelReady.then(() => toKernel(m)));
   await app.addInitScript(fakeHandler('kernelRelay', 'toSwift'));
@@ -68,6 +76,12 @@ test('runs page kernels in the kernel web view, relayed', async ({ context }) =>
   await app.keyboard.type('const moon: string = "Callisto";\nmoon.toUpperCase()');
   await app.keyboard.press('Shift+Enter');
   await expect(outputs(app).filter({ hasText: 'CALLISTO' })).toBeVisible({ timeout: 60_000 });
+
+  // The device preload ran in the kernel's Worker and reaches the bridge.
+  await app.locator('.jp-Cell .cm-content').last().click();
+  await app.keyboard.type('(await device.clipboard.readText()).toUpperCase()');
+  await app.keyboard.press('Shift+Enter');
+  await expect(outputs(app).filter({ hasText: 'EUROPA' })).toBeVisible({ timeout: 60_000 });
 
   expect(kernelPage.workers().length).toBeGreaterThan(0);
   expect(appWorkers.filter(u => !u.includes('service-worker'))).toEqual([]);
