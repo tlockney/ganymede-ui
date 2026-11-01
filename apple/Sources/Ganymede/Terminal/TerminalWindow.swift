@@ -2,11 +2,11 @@
 import SwiftUI
 
 /// Where a terminal window's shell runs.
-enum TerminalTarget: String, Codable, Hashable {
+enum TerminalTarget: Codable, Hashable {
     /// The app's own server, on this Mac.
     case local
-    /// The kernel server set in Settings.
-    case kernelServer
+    /// A remote's server, from Settings.
+    case server(UUID)
 }
 
 /// A terminal window: a shell on the chosen server, through
@@ -38,21 +38,21 @@ struct TerminalWindow: View {
     private var endpoint: ServerEndpoint? {
         switch target {
         case .local: model.localServer
-        case .kernelServer: model.kernelServer
+        case .server(let id): model.server(of: id)
         }
     }
 
     private var defaultTitle: String {
         switch target {
         case .local: "Terminal"
-        case .kernelServer: "Terminal on \(model.kernelServer?.base.host ?? "kernel server")"
+        case .server(let id): "Terminal on \(model.remote(id)?.title ?? "remote")"
         }
     }
 
     private var problem: String? {
         switch target {
         case .local: model.error.map { "Ganymede could not start: \($0)" }
-        case .kernelServer: model.kernelServer == nil ? "No kernel server is set. Add one in Settings (⌘,)." : nil
+        case .server(let id): model.remote(id)?.hasServer != true ? "This remote is gone or has no server. Check Settings (⌘,)." : nil
         }
     }
 
@@ -65,7 +65,8 @@ struct TerminalWindow: View {
     }
 }
 
-/// File > New Terminal, for the window scene that `GanymedeApp` declares.
+/// File > New Terminal and New Terminal On, for the window scene that
+/// `GanymedeApp` declares.
 struct TerminalCommands: View {
     @Environment(\.openWindow) private var openWindow
     @ObservedObject var model: AppModel
@@ -75,10 +76,14 @@ struct TerminalCommands: View {
             openWindow(value: TerminalTarget.local)
         }
         .keyboardShortcut("`", modifiers: [.control, .shift])
-        Button("New Terminal on Kernel Server") {
-            openWindow(value: TerminalTarget.kernelServer)
+        Menu("New Terminal On") {
+            ForEach(model.remotes.filter(\.hasServer)) { remote in
+                Button(remote.title) {
+                    openWindow(value: TerminalTarget.server(remote.id))
+                }
+            }
         }
-        .disabled(model.kernelServer == nil)
+        .disabled(!model.remotes.contains(where: \.hasServer))
     }
 }
 #endif

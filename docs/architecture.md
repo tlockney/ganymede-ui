@@ -275,10 +275,16 @@ own process and shows this web app in a `WKWebView`:
 
 Where kernels run:
 
-| Setting                                     | Mac                                                     | iPad and iPhone                                     |
-| ------------------------------------------- | ------------------------------------------------------- | --------------------------------------------------- |
-| No kernel server                            | Kernelspecs installed on the Mac                        | cdp-kernel in the kernel web view (`?kernels=page`) |
-| Kernel server set (⌘, or the server button) | That server, through Ganymede's gateway (`gateway_url`) | Same                                                |
+| Run kernels on (⌘, or the server button) | Mac                                                     | iPad and iPhone                                     |
+| ---------------------------------------- | ------------------------------------------------------- | --------------------------------------------------- |
+| This device                              | Kernelspecs installed on the Mac                        | cdp-kernel in the kernel web view (`?kernels=page`) |
+| A remote with a server                   | That server, through Ganymede's gateway (`gateway_url`) | Same                                                |
+
+Settings keep a list of remotes (`Remote.swift`): each has a name, an
+optional Jupyter or Ganymede server (its token in the keychain), and
+optional SSH (host or ssh-config alias, user, port), for terminals. One
+remote with a server can be chosen for kernels. The single kernel server
+setting of earlier versions moves to the first remote on launch.
 
 iOS does not let an app launch processes, so without a kernel server the
 iPad's in-process Ganymede serves notebooks only and the page runs its own
@@ -311,7 +317,7 @@ a SwiftUI view over [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm)'s
 `TerminalView`, and `TerminalTransport`, which each source of a shell
 implements. On the Mac, File > New Terminal opens a `TerminalWindow` whose
 `JupyterTerminalTransport` creates a terminal through `/api/terminals` on
-the app's own server, or on the kernel server, and speaks terminado's
+the app's own server, or on a remote's server, and speaks terminado's
 websocket protocol to it. Closing the window deletes the terminal.
 
 ## Tests

@@ -30,7 +30,7 @@ struct GanymedeApp: App {
                 .environmentObject(model)
         }
         Settings {
-            KernelServerView()
+            RemotesView()
                 .environmentObject(model)
                 .frame(width: 460)
                 .padding()
