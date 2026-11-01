@@ -13,6 +13,14 @@ packages:
   SwiftTerm:
     url: https://github.com/migueldeicaza/SwiftTerm
     exactVersion: 1.99.2
+  # SSH on iOS (Apache-2.0, Apple), which can't run /usr/bin/ssh (#121).
+  swift-nio-ssh:
+    url: https://github.com/apple/swift-nio-ssh
+    exactVersion: 0.15.1
+  # Its event loops and sockets; swift-nio-ssh needs 2.81 or later.
+  swift-nio:
+    url: https://github.com/apple/swift-nio
+    exactVersion: 2.104.0
   # The `device` bridge for notebook cells, on the kernel web view only (#99).
   GanymedeDevice:
     url: https://github.com/tlockney/ganymede-device
@@ -99,6 +107,12 @@ targets:
       - framework: build/GanymedeFFI.xcframework
         embed: false
       - package: SwiftTerm
+      - package: swift-nio-ssh
+        product: NIOSSH
+      - package: swift-nio
+        product: NIOCore
+      - package: swift-nio
+        product: NIOPosix
       - package: GanymedeDevice
         product: DeviceBridge
     info:
@@ -108,7 +122,8 @@ targets:
         NSHumanReadableCopyright: MIT License
         UILaunchScreen: {}
         UIApplicationSceneManifest:
-          UIApplicationSupportsMultipleScenes: false
+          # Terminals open in their own scene beside the notebook on iPad.
+          UIApplicationSupportsMultipleScenes: true
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
           - UIInterfaceOrientationLandscapeLeft
@@ -141,6 +156,7 @@ targets:
       - path: Sources/Ganymede/WindowTarget.swift
       - path: Sources/Ganymede/Remote.swift
       - path: Sources/Ganymede/DocumentMessage.swift
+      - path: Sources/Ganymede/Terminal/SSHKey.swift
       - path: Sources/Ganymede/Terminal/ProcessTerminalTransport.swift
     dependencies:
       - framework: build/GanymedeFFI.xcframework
@@ -163,6 +179,7 @@ targets:
       - path: Sources/Ganymede/WindowTarget.swift
       - path: Sources/Ganymede/Remote.swift
       - path: Sources/Ganymede/DocumentMessage.swift
+      - path: Sources/Ganymede/Terminal/SSHKey.swift
     dependencies:
       - framework: build/GanymedeFFI.xcframework
         embed: false

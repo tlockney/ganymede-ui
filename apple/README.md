@@ -62,6 +62,14 @@ On iPadOS and iOS (`Ganymede-iOS` target, iOS 16 or later):
   Jupyter or Ganymede server (for example `ganymede serve --ip 0.0.0.0` on
   your Mac; see its [Security](https://ganymede-server.com/docs/security)
   page for reaching it safely). Either way, notebooks stay on the iPad.
+- The terminal button opens a shell on a remote, over SSH or on its
+  server's terminals. On iPad it opens in its own window beside the
+  notebook; on iPhone it covers the screen. SSH signs in with an ed25519
+  key the app generates or imports (Remotes > SSH key; copy the public
+  key into `~/.ssh/authorized_keys` on the remote) and trusts the host
+  key the first time, refusing it if it changes later. iOS drops the
+  connection soon after the app goes to the background; the terminal
+  then offers to reconnect.
 - Downloads open the share sheet, where Save to Files keeps them.
 - iOS may close the server's socket while the app is in the background;
   back in the foreground the app restarts the server if it stopped

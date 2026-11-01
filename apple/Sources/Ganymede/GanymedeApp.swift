@@ -57,6 +57,10 @@ struct GanymedeApp: App {
             ContentView()
                 .environmentObject(model)
         }
+        WindowGroup("Terminal", for: TerminalRequest.self) { $request in
+            TerminalScene(request: request)
+                .environmentObject(model)
+        }
     }
     #endif
 }

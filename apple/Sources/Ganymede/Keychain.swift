@@ -50,7 +50,11 @@ enum Keychain {
         guard !value.isEmpty else { return }
         var item = match
         item[kSecValueData as String] = Data(value.utf8)
-        item[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
+        // SSH keys stay on this device, out of backups and device moves, so
+        // each device has its own key to revoke in authorized_keys.
+        item[kSecAttrAccessible as String] = key.hasPrefix("ssh.")
+            ? kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
+            : kSecAttrAccessibleAfterFirstUnlock
         let added = SecItemAdd(item as CFDictionary, nil)
         guard added == errSecSuccess else {
             throw failed("Saving", key, added)
