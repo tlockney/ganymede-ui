@@ -66,6 +66,35 @@ describe('Toolbar', () => {
     expect(screen.queryByTitle('Kernel')).not.toBeInTheDocument();
   });
 
+  it('shows a kernel that starts on the first run', () => {
+    render(
+      <Toolbar
+        controller={controller({ status: 'none' })}
+        specs={SPECS}
+        sidebarOpen
+        onToggleSidebar={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/Python 3 · Starts when you run a cell/)).toBeInTheDocument();
+    expect(button('Run Cell (⇧↩)')).toBeEnabled();
+    expect(button('Restart Kernel')).toBeDisabled();
+  });
+
+  it("names a notebook's kernel that isn't installed", () => {
+    render(
+      <Toolbar
+        controller={controller({ status: 'none', kernelName: undefined, missingKernel: 'Julia' })}
+        specs={SPECS}
+        sidebarOpen
+        onToggleSidebar={vi.fn()}
+      />,
+    );
+    expect(screen.getByText(/Julia \(not installed\) · Starts/)).toBeInTheDocument();
+    const select = screen.getByTitle('Kernel').querySelector('select')!;
+    expect(select.value).toBe('');
+    expect(select.selectedOptions[0]).toHaveTextContent('Julia (not installed)');
+  });
+
   it('toggles the sidebar', async () => {
     const onToggle = vi.fn();
     const { rerender } = render(<Toolbar sidebarOpen onToggleSidebar={onToggle} />);

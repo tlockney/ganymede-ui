@@ -32,12 +32,13 @@ built from the same sources (see
 - Downloads from the page (links with a `download` attribute, files an
   output offers) ask where to save, starting in Downloads.
 - Quitting shuts every kernel down.
-- Settings (⌘,) can point the app at another Jupyter or Ganymede server
-  to run kernels on instead, as on iPadOS.
+- Settings (⌘,) keeps a list of remotes: Jupyter or Ganymede servers,
+  SSH hosts, or both. Kernels run on this Mac or, as on iPadOS, on one
+  remote's server. Tokens are kept in the keychain.
 - File > New Terminal (⌃⇧`) opens a shell in the notebook folder, from
-the app's own server; File > New Terminal on Kernel Server opens one on
-the server set in Settings, if it has terminals (Ganymede with
-terminals, or `jupyter server`). Closing the window ends the shell.
+the app's own server; File > New Terminal On opens one on a remote's
+server, if it has terminals (Ganymede with terminals, or
+`jupyter server`). Closing the window ends the shell.
 - Not sandboxed: the App Sandbox does not allow launching kernels. It is
   meant to be signed with a Developer ID and notarized.
 

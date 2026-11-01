@@ -131,6 +131,7 @@ targets:
       - path: Sources/Ganymede/Terminal/TerminalTransport.swift
       - path: Sources/Ganymede/Terminal/JupyterTerminalTransport.swift
       - path: Sources/Ganymede/WindowTarget.swift
+      - path: Sources/Ganymede/Remote.swift
     dependencies:
       - framework: build/GanymedeFFI.xcframework
         embed: false
@@ -147,6 +148,7 @@ targets:
       - path: Sources/Ganymede/Terminal/TerminalTransport.swift
       - path: Sources/Ganymede/Terminal/JupyterTerminalTransport.swift
       - path: Sources/Ganymede/WindowTarget.swift
+      - path: Sources/Ganymede/Remote.swift
     dependencies:
       - framework: build/GanymedeFFI.xcframework
         embed: false

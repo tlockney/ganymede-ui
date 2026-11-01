@@ -37,6 +37,7 @@ const STATUS_LABEL: Record<string, string> = {
   dead: 'Stopped',
   unknown: 'Unknown',
   terminating: 'Stopping',
+  none: 'Starts when you run a cell',
 };
 
 /** The unified titlebar and toolbar, as in a macOS document window. */
@@ -48,8 +49,9 @@ export function Toolbar({
   specs,
 }: Props) {
   const disabled = !c;
-  const kernelDisplay =
-    (c?.kernelName && specs?.kernelspecs[c.kernelName]?.display_name) || c?.kernelName;
+  const kernelDisplay = c?.missingKernel
+    ? `${c.missingKernel} (not installed)`
+    : (c?.kernelName && specs?.kernelspecs[c.kernelName]?.display_name) || c?.kernelName;
 
   return (
     <header className="toolbar">
@@ -105,7 +107,7 @@ export function Toolbar({
           <button
             className="tb-button"
             title="Restart Kernel"
-            disabled={disabled}
+            disabled={disabled || c?.status === 'none'}
             onClick={() => void c?.restart()}
           >
             <RestartIcon />
@@ -146,6 +148,11 @@ export function Toolbar({
         {specs && c && (
           <label className="popup-button" title="Kernel">
             <select value={c.kernelName ?? ''} onChange={e => void c.changeKernel(e.target.value)}>
+              {!c.kernelName && (
+                <option value="" disabled>
+                  {c.missingKernel ? `${c.missingKernel} (not installed)` : 'Pick a kernel'}
+                </option>
+              )}
               {Object.values(specs.kernelspecs).map(s =>
                 s ? (
                   <option key={s.name} value={s.name}>

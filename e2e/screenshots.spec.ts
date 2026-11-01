@@ -16,15 +16,19 @@ for (const colorScheme of ['light', 'dark'] as const) {
     await page.emulateMedia({ colorScheme });
     await page.goto(`/?token=${TOKEN}`);
     await openNotebook(page, SHOWCASE);
-    // A fresh kernel, so execution counts start at 1 in both shots. The
-    // subtitle still says Idle from before the restart, so wait for the
+    // A fresh kernel, so execution counts start at 1 in both shots: the
+    // first run starts one, or a kernel left from the other shot restarts.
+    // The subtitle still says Idle from before the restart, so wait for the
     // server to finish it: cells run during the restart can be lost.
-    const restarted = page.waitForResponse(
-      r => r.request().method() === 'POST' && /\/api\/kernels\/[^/]+\/restart/.test(r.url()),
-    );
-    await page.getByRole('button', { name: 'Restart Kernel' }).click();
-    await restarted;
-    await waitForIdle(page);
+    const restart = page.getByRole('button', { name: 'Restart Kernel' });
+    if (await restart.isEnabled()) {
+      const restarted = page.waitForResponse(
+        r => r.request().method() === 'POST' && /\/api\/kernels\/[^/]+\/restart/.test(r.url()),
+      );
+      await restart.click();
+      await restarted;
+      await waitForIdle(page);
+    }
     await page.getByRole('button', { name: 'Run All' }).click();
     // The HTML output is in a sandboxed frame.
     await expect(

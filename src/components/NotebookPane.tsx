@@ -12,14 +12,21 @@ import { AUTOSAVE_INTERVAL_MS, NotebookSaver, SaveConflict } from '../lib/saver'
 import { hasUntrustedOutputs } from '../lib/trust';
 import type { NotebookWidgets } from '../lib/widgets';
 
-export type KernelState = Kernel.Status | 'connecting';
+/** `none`: no kernel yet; one starts on the first run. */
+export type KernelState = Kernel.Status | 'connecting' | 'none';
 
 /** What the toolbar needs from the open notebook. */
 export type NotebookController = {
   path: string;
   name: string;
   status: KernelState;
+  /** The running kernel, or the one the first run will start. */
   kernelName?: string;
+  /**
+   * The kernel the file asks for when it isn't installed here (its display
+   * name): running needs another one picked first.
+   */
+  missingKernel?: string;
   dirty: boolean;
   /** False while code cells show outputs from a file nobody trusted. */
   trusted: boolean;
@@ -78,6 +85,12 @@ type Open = {
   session: SessionContext;
   widgets: NotebookWidgets;
   saver: NotebookSaver;
+  /**
+   * Before a run of the selected cells (or `all`): starts the kernel when
+   * none is running and they include a code cell. False when there is none
+   * to start.
+   */
+  ensureKernel(all?: boolean): Promise<boolean>;
   disposables: IDisposable[];
 };
 
@@ -97,10 +110,21 @@ export function NotebookPane({ backend, path, onController }: Props) {
   const [error, setError] = useState<string>();
   const [status, setStatus] = useState<KernelState>('connecting');
   const [kernelName, setKernelName] = useState<string>();
+  /** The kernel the first run starts, or the uninstalled one the file names. */
+  const [intended, setIntendedState] = useState<{ name?: string; missing?: string }>({});
+  const intendedRef = useRef(intended);
+  const setIntended = (next: { name?: string; missing?: string }) => {
+    intendedRef.current = next;
+    setIntendedState(next);
+  };
   const [dirty, setDirty] = useState(false);
   const [trusted, setTrusted] = useState(true);
   /** Why the last notebook action failed, until dismissed. */
   const [notice, setNotice] = useState<string>();
+  /** The notice saying the file's kernel is missing; picking one clears it. */
+  const kernelNotice = useRef<string>(undefined);
+  /** Whether the session has rejoined the file's running kernel, if any. */
+  const [joined, setJoined] = useState(false);
   /** Set when autosave met a file changed on disk; a save clears it. */
   const autosaveOff = useRef(false);
 
@@ -108,6 +132,7 @@ export function NotebookPane({ backend, path, onController }: Props) {
   useEffect(() => {
     let cancelled = false;
     let current: Open | undefined;
+    setJoined(false);
     (async () => {
       const [file, widgets] = await Promise.all([
         services.contents.get(path, { type: 'notebook', content: true }),
@@ -129,17 +154,25 @@ export function NotebookPane({ backend, path, onController }: Props) {
 
       // One session per notebook, found by path. `initialize` rejoins the
       // session already running for this file (on the server or in this
-      // page), or starts one with the kernel the file names.
+      // page), but starts none: opening a notebook to read it shouldn't
+      // start a kernel. The first run starts the one the file names, or the
+      // default when it names none. A kernel it names that isn't installed
+      // here (a Python notebook with no Python) is not swapped for another.
       const specs = services.kernelspecs.specs;
-      const wanted = content.metadata?.kernelspec?.name;
-      const name = wanted && specs?.kernelspecs[wanted] ? wanted : specs?.default;
+      const wanted = content.metadata?.kernelspec;
+      const installed = !!wanted?.name && !!specs?.kernelspecs[wanted.name];
+      setIntended(
+        wanted?.name && !installed
+          ? { missing: wanted.display_name || wanted.name }
+          : { name: installed ? wanted!.name : (specs?.default ?? undefined) },
+      );
       const session = new SessionContext({
         sessionManager: services.sessions,
         specsManager: services.kernelspecs,
         path,
         name: basename(path),
         type: 'notebook',
-        kernelPreference: { name, autoStartDefault: true },
+        kernelPreference: { shouldStart: false, autoStartDefault: false },
       });
 
       // Without JupyterLab's NotebookPanel, keep its habit of copying the
@@ -158,7 +191,38 @@ export function NotebookPane({ backend, path, onController }: Props) {
       };
       session.kernelChanged.connect(() => void syncLanguage());
 
-      const commands = createCommands(notebook, session);
+      const fileName = basename(path);
+      // Rejoin before anything decides there is no kernel: a run before
+      // that would replace the kernel already running for this file.
+      const joining = session.initialize();
+      const startKernel = async () => {
+        const { name, missing } = intendedRef.current;
+        if (!name) {
+          kernelNotice.current = missing
+            ? `${fileName} uses ${missing}, which isn’t installed here. Pick a kernel in the toolbar to run it.`
+            : 'There is no kernel to run this notebook. Pick one in the toolbar.';
+          setNotice(kernelNotice.current);
+          return false;
+        }
+        await session.changeKernel({ name });
+        return true;
+      };
+      // Markdown and raw cells render without a kernel.
+      const needsKernel = (all: boolean) =>
+        notebook.widgets.some(
+          cell => cell.model.type === 'code' && (all || notebook.isSelectedOrActive(cell)),
+        );
+      // Runs that come in while the kernel starts share that start.
+      let starting: Promise<boolean> | undefined;
+      const ensureKernel = async (all = false) => {
+        await joining;
+        if (session.session?.kernel || !needsKernel(all)) return true;
+        starting ??= startKernel().finally(() => (starting = undefined));
+        return starting;
+      };
+      const commands = createCommands(notebook, session, ensureKernel, e =>
+        setNotice(`Couldn’t run: ${messageOf(e)}`),
+      );
       const editing = attachEditing(notebook, session, rendermime, commands);
       const notebookWidgets = widgets.attachWidgets(session, rendermime);
       const saver = new NotebookSaver({
@@ -179,6 +243,7 @@ export function NotebookPane({ backend, path, onController }: Props) {
         session,
         widgets: notebookWidgets,
         saver,
+        ensureKernel,
         disposables: [
           editing,
           notebookWidgets,
@@ -190,7 +255,9 @@ export function NotebookPane({ backend, path, onController }: Props) {
         ],
       };
       setOpen(current);
-      await session.initialize();
+      await joining;
+      if (cancelled) return;
+      setJoined(true);
       await syncLanguage();
     })().catch(e => !cancelled && setError(e instanceof Error ? e.message : String(e)));
     return () => {
@@ -253,7 +320,15 @@ export function NotebookPane({ backend, path, onController }: Props) {
     const { session, model } = open;
     const update = () => {
       const kernel = session.session?.kernel;
-      setStatus(kernel?.connectionStatus === 'connected' ? kernel.status : 'connecting');
+      setStatus(
+        !joined
+          ? 'connecting'
+          : !session.session
+            ? 'none'
+            : kernel?.connectionStatus === 'connected'
+              ? kernel.status
+              : 'connecting',
+      );
       setKernelName(kernel?.name);
       setDirty(model.dirty);
       setTrusted(!hasUntrustedOutputs(model));
@@ -271,7 +346,7 @@ export function NotebookPane({ backend, path, onController }: Props) {
       model.stateChanged.disconnect(update);
       model.contentChanged.disconnect(update);
     };
-  }, [open]);
+  }, [open, joined]);
 
   // Don't lose unsaved edits: save every few minutes and when the page is
   // hidden (an installed web app can be killed after that), and ask before
@@ -329,7 +404,8 @@ export function NotebookPane({ backend, path, onController }: Props) {
       path,
       name: basename(path),
       status,
-      kernelName,
+      kernelName: kernelName ?? intended.name,
+      missingKernel: kernelName ? undefined : intended.missing,
       dirty,
       trusted,
       save: report(`save ${fileName}`, async () => {
@@ -369,10 +445,10 @@ export function NotebookPane({ backend, path, onController }: Props) {
         await trustNotebook(backend, path);
       }),
       run: report('run the cell', async () => {
-        await NotebookActions.runAndAdvance(notebook, session);
+        if (await open.ensureKernel()) await NotebookActions.runAndAdvance(notebook, session);
       }),
       runAll: report('run all cells', async () => {
-        await NotebookActions.runAll(notebook, session);
+        if (await open.ensureKernel(true)) await NotebookActions.runAll(notebook, session);
       }),
       insert: type => {
         NotebookActions.insertBelow(notebook);
@@ -385,8 +461,14 @@ export function NotebookPane({ backend, path, onController }: Props) {
       restart: report('restart the kernel', async () => {
         await session.session?.kernel?.restart();
       }),
+      // With no kernel yet, this only picks the one the first run starts.
       changeKernel: report('change the kernel', async (name: string) => {
-        await session.changeKernel({ name });
+        if (session.session) await session.changeKernel({ name });
+        // Also with a kernel running: if it is shut down, the next run
+        // starts this one, as the file's metadata now says.
+        setIntended({ name });
+        // Only the missing-kernel notice: an autosave warning still holds.
+        setNotice(n => (n === kernelNotice.current ? undefined : n));
         const spec = services.kernelspecs.specs?.kernelspecs[name];
         if (spec) {
           model.setMetadata('kernelspec', {
@@ -397,7 +479,7 @@ export function NotebookPane({ backend, path, onController }: Props) {
         }
       }),
     });
-  }, [open, path, status, kernelName, dirty, trusted, backend, services, onController]);
+  }, [open, path, status, kernelName, intended, dirty, trusted, backend, services, onController]);
 
   useEffect(() => () => onController(undefined), [onController]);
 

@@ -23,6 +23,8 @@ test('opens from the URL ganymede serve prints, runs a cell and saves', async ({
   await expect(page.getByText('Where should kernels run?')).toHaveCount(0);
 
   await openNotebook(page, COPY);
+  // Opening it to read starts no kernel; the first run does.
+  await expect(page.getByText(/ · Starts when you run a cell$/)).toBeVisible();
   await page.locator('.jp-CodeCell').first().click();
   await page.keyboard.press('Shift+Enter');
   await expect(

@@ -2,8 +2,8 @@ import Foundation
 import os
 import Security
 
-/// One generic-password item per key in the app's keychain: where the
-/// kernel server's token is kept, rather than in UserDefaults.
+/// One generic-password item per key in the app's keychain: where remote
+/// servers' tokens are kept, rather than in UserDefaults.
 enum Keychain {
     private static let service = "com.ganymede-server.Ganymede"
     private static let log = Logger(subsystem: service, category: "keychain")
@@ -62,4 +62,10 @@ enum Keychain {
         log.error("\(action, privacy: .public) \(key, privacy: .public) failed: \(failure.localizedDescription, privacy: .public)")
         return failure
     }
+}
+
+/// The app's secret store.
+struct KeychainStore: SecretStore {
+    func get(_ key: String) -> String? { Keychain.get(key) }
+    func set(_ key: String, _ value: String) throws { try Keychain.set(key, value) }
 }

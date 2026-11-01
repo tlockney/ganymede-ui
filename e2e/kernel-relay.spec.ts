@@ -6,7 +6,7 @@ import { readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, type Page, test } from '@playwright/test';
 import { GANYMEDE_URL, ROOT_DIR, TOKEN } from './env';
-import { outputs, waitForIdle } from './helpers';
+import { outputs, waitForReady } from './helpers';
 
 // The notebook the test makes is removed afterwards, as in page-kernels.spec.ts.
 const notebooks = () => new Set(readdirSync(ROOT_DIR).filter(f => f.endsWith('.ipynb')));
@@ -63,7 +63,7 @@ test('runs page kernels in the kernel web view, relayed', async ({ context }) =>
 
   await app.getByRole('button', { name: 'New Notebook' }).first().click();
   await expect(app.locator('.jp-Cell').first()).toBeVisible({ timeout: 60_000 });
-  await waitForIdle(app);
+  await waitForReady(app);
   await app.locator('.jp-Cell .cm-content').first().click();
   await app.keyboard.type('const moon: string = "Callisto";\nmoon.toUpperCase()');
   await app.keyboard.press('Shift+Enter');

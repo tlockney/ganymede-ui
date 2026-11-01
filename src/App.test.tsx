@@ -105,8 +105,9 @@ describe('App', () => {
     const { container } = render(<App />);
 
     await waitFor(() => expect(screen.getByTestId('pane')).toHaveTextContent('work/Orbits.ipynb'));
-    // `kernels` is gone; `open` names the open notebook, for a reload.
-    expect(window.location.search).toBe('?open=work%2FOrbits.ipynb');
+    // `kernels` is gone; `open` names the open notebook, for a reload. Set
+    // by an effect, which can run after the pane shows the file.
+    await waitFor(() => expect(window.location.search).toBe('?open=work%2FOrbits.ipynb'));
     expect(document.title).toBe('Orbits');
     expect(container.querySelector('.window')).toHaveClass('sidebar-collapsed');
     // The sidebar lists the notebook's folder.

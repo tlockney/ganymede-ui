@@ -171,8 +171,15 @@ JupyterLite's service worker, adapted.
 ## Notebook
 
 `NotebookPane` shows one file. It holds JupyterLab's `Notebook` widget,
-its `NotebookModel`, and a `SessionContext`, which starts the file's kernel
-or rejoins the one already running for it. It loads and saves nbformat
+its `NotebookModel`, and a `SessionContext`, which rejoins the kernel
+already running for the file but starts none on open: reading a notebook
+shouldn't start a kernel. The first run (toolbar, Shift+Enter, any run
+command) starts the kernel the file names, or the default when it names
+none; until then the toolbar says the kernel "Starts when you run a cell",
+and picking another kernel only changes which one that is. A kernel the
+file names that isn't installed here (a Python notebook with no Python) is
+not swapped for another: the toolbar shows it as not installed, and a run
+asks for a kernel to be picked. It loads and saves nbformat
 through the backend's contents API and gives the toolbar a
 `NotebookController` (run, interrupt, restart, change kernel, save,
 download, trust). A failed action shows its error in the pane.
@@ -287,10 +294,16 @@ own process and shows this web app in a `WKWebView`:
 
 Where kernels run:
 
-| Setting                                     | Mac                                                     | iPad and iPhone                                     |
-| ------------------------------------------- | ------------------------------------------------------- | --------------------------------------------------- |
-| No kernel server                            | Kernelspecs installed on the Mac                        | cdp-kernel in the kernel web view (`?kernels=page`) |
-| Kernel server set (⌘, or the server button) | That server, through Ganymede's gateway (`gateway_url`) | Same                                                |
+| Run kernels on (⌘, or the server button) | Mac                                                     | iPad and iPhone                                     |
+| ---------------------------------------- | ------------------------------------------------------- | --------------------------------------------------- |
+| This device                              | Kernelspecs installed on the Mac                        | cdp-kernel in the kernel web view (`?kernels=page`) |
+| A remote with a server                   | That server, through Ganymede's gateway (`gateway_url`) | Same                                                |
+
+Settings keep a list of remotes (`Remote.swift`): each has a name, an
+optional Jupyter or Ganymede server (its token in the keychain), and
+optional SSH (host or ssh-config alias, user, port), for terminals. One
+remote with a server can be chosen for kernels. The single kernel server
+setting of earlier versions moves to the first remote on launch.
 
 iOS does not let an app launch processes, so without a kernel server the
 iPad's in-process Ganymede serves notebooks only and the page runs its own
@@ -323,7 +336,7 @@ a SwiftUI view over [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm)'s
 `TerminalView`, and `TerminalTransport`, which each source of a shell
 implements. On the Mac, File > New Terminal opens a `TerminalWindow` whose
 `JupyterTerminalTransport` creates a terminal through `/api/terminals` on
-the app's own server, or on the kernel server, and speaks terminado's
+the app's own server, or on a remote's server, and speaks terminado's
 websocket protocol to it. Closing the window deletes the terminal.
 
 ## Tests

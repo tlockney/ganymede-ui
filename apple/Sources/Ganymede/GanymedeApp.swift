@@ -42,7 +42,7 @@ struct GanymedeApp: App {
         // Files opened from the Finder go to notebook windows only.
         .handlesExternalEvents(matching: [])
         Settings {
-            KernelServerView()
+            RemotesView()
                 .environmentObject(model)
                 .frame(width: 460)
                 .padding()
