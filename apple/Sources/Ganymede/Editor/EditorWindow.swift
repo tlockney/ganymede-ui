@@ -32,7 +32,7 @@ struct EditorWindow: View {
                 }
             } else if document.loaded, let problem = document.problem {
                 bar(problem) {
-                    Button("Try Again") { Task { await document.save() } }
+                    Button("Try Again") { Task { await document.retry() } }
                 }
             }
             if document.loaded {

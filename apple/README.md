@@ -105,11 +105,18 @@ The first build asks you to trust SwiftTerm's build plugin
 Trust & Enable. From the command line, `-skipPackagePluginValidation`
 does the same.
 
+The Swift packages' exact commits are in `apple/Package.resolved`, which
+`bootstrap.sh` copies into the project; CI and release builds use only
+those (`-onlyUsePackageVersionsFromResolvedFile`). After changing
+`packages` in `project.yml`, run `apple/scripts/update-packages.sh` and
+commit the new `Package.resolved`.
+
 From the command line:
 
 ```sh
 xcodebuild test -project apple/Ganymede.xcodeproj -scheme Ganymede \
-  -destination platform=macOS -skipPackagePluginValidation CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=
+  -destination platform=macOS -skipPackagePluginValidation -onlyUsePackageVersionsFromResolvedFile \
+  CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=
 ```
 
 For an iPad simulator, name one from `xcrun simctl list devices`:
@@ -117,7 +124,8 @@ For an iPad simulator, name one from `xcrun simctl list devices`:
 ```sh
 xcodebuild test -project apple/Ganymede.xcodeproj -scheme Ganymede-iOS \
   -destination 'platform=iOS Simulator,name=iPad Air 11-inch (M3)' \
-  -skipPackagePluginValidation CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=
+  -skipPackagePluginValidation -onlyUsePackageVersionsFromResolvedFile \
+  CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=
 ```
 
 ## Download

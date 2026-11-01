@@ -373,9 +373,11 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
 }
 
 extension WebViewCoordinator {
-    /// The page's `openFile` message, `{ path: string }`.
+    /// The page's `openFile` message, `{ path: string }`. Only the page
+    /// itself may send it: output frames see the same handlers.
     func received(openFile message: WKScriptMessage) {
-        guard let fields = message.body as? [String: Any], let path = fields["path"] as? String,
+        guard message.frameInfo.isMainFrame,
+              let fields = message.body as? [String: Any], let path = fields["path"] as? String,
               !path.isEmpty
         else { return }
         onOpenFile?(path)
@@ -398,9 +400,10 @@ private final class OpenFileHandler: NSObject, WKScriptMessageHandler {
 
 #if os(macOS)
 extension WebViewCoordinator {
-    /// The page's `document` message: its notebook and unsaved edits.
+    /// The page's `document` message: its notebook and unsaved edits. Only
+    /// the page itself may send it.
     func received(document message: WKScriptMessage) {
-        if let update = DocumentMessage(body: message.body) {
+        if message.frameInfo.isMainFrame, let update = DocumentMessage(body: message.body) {
             document?.update(update)
         }
     }

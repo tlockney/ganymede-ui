@@ -116,13 +116,13 @@ jobs:
         run: >
           xcodebuild test -project apple/Ganymede.xcodeproj -scheme Ganymede
           -destination platform=macOS -derivedDataPath apple/build/DerivedData
-          -skipPackagePluginValidation CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=
+          -skipPackagePluginValidation -onlyUsePackageVersionsFromResolvedFile CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=
       - name: Build the app for download
         run: |
           xcodebuild build -project apple/Ganymede.xcodeproj -scheme Ganymede \
             -configuration Release -destination 'generic/platform=macOS' \
             -derivedDataPath apple/build/DerivedData \
-            -skipPackagePluginValidation CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=
+            -skipPackagePluginValidation -onlyUsePackageVersionsFromResolvedFile CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=
           # Finder can open notebooks with it (#130).
           /usr/libexec/PlistBuddy -c 'Print :UTImportedTypeDeclarations:0:UTTypeIdentifier' \
             apple/build/DerivedData/Build/Products/Release/Ganymede.app/Contents/Info.plist \
@@ -142,4 +142,4 @@ jobs:
              | select(.name | startswith("iPad"))][0].udid')
           xcodebuild test -project apple/Ganymede.xcodeproj -scheme Ganymede-iOS \
             -destination "id=$udid" -derivedDataPath apple/build/DerivedData \
-            -skipPackagePluginValidation CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=
+            -skipPackagePluginValidation -onlyUsePackageVersionsFromResolvedFile CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=

@@ -31,7 +31,10 @@ final class EditorDocument: ObservableObject {
     /// The file changed on disk while there were unsaved edits.
     @Published private(set) var changedOnDisk = false
     private var lastModified: String?
+    /// A read or write is under way; another waits for the next try.
     private var busy = false
+    /// What `problem` came from, so Try Again repeats it.
+    private var failedSave = false
     private let endpoint: @MainActor () -> ServerEndpoint?
     #if os(macOS)
     private weak var window: NSWindow?
@@ -67,16 +70,40 @@ final class EditorDocument: ObservableObject {
 
     /// Reads the file, replacing any edits.
     func load() async {
+        await read(keepingEdits: false)
+    }
+
+    /// Repeats what failed: the save, or the read.
+    func retry() async {
+        if failedSave {
+            await save()
+        } else {
+            await read(keepingEdits: true)
+        }
+    }
+
+    /// Reads the file. With `keepingEdits`, edits made before the answer
+    /// arrives win: the file is marked as changed on disk instead.
+    private func read(keepingEdits: Bool) async {
         guard let client else {
             problem = "Ganymede's server is not running."
+            failedSave = false
             return
         }
+        guard !busy else { return }
+        busy = true
+        defer { busy = false }
         do {
             let snapshot = try await client.read()
+            if keepingEdits, dirty {
+                changedOnDisk = true
+                return
+            }
             take(snapshot)
             problem = nil
         } catch {
             problem = error.localizedDescription
+            failedSave = false
         }
     }
 
@@ -97,6 +124,7 @@ final class EditorDocument: ObservableObject {
         guard dirty else { return true }
         guard let client else {
             problem = "Ganymede's server is not running."
+            failedSave = true
             return false
         }
         guard !busy else { return false }
@@ -127,6 +155,7 @@ final class EditorDocument: ObservableObject {
             return false
         } catch {
             problem = "The file could not be saved: " + error.localizedDescription
+            failedSave = true
             return false
         }
     }
@@ -141,7 +170,8 @@ final class EditorDocument: ObservableObject {
         if dirty {
             changedOnDisk = true
         } else {
-            await load()
+            // Typing may start while the file is read.
+            await read(keepingEdits: true)
         }
     }
 

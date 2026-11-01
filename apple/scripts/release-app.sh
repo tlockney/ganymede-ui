@@ -65,7 +65,7 @@ rm -rf "$archive"
 xcodebuild archive -project "$apple/Ganymede.xcodeproj" -scheme Ganymede \
   -configuration Release -destination 'generic/platform=macOS' \
   -archivePath "$archive" -derivedDataPath "$build/DerivedData" \
-  -skipPackagePluginValidation \
+  -skipPackagePluginValidation -onlyUsePackageVersionsFromResolvedFile \
   CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="$identity" DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
   OTHER_CODE_SIGN_FLAGS="--timestamp" \
   MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="${BUILD_NUMBER:-1}"

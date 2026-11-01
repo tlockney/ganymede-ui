@@ -281,8 +281,9 @@ own process and shows this web app in a `WKWebView`:
 
 > [!NOTE]
 > **Unreleased.** Notebook windows and the `.ipynb` document type,
-> remotes, the hidden kernel web view, and the terminal are available only
-> from a build of `main` (HEAD), not in the latest release.
+> remotes, the hidden kernel web view, the terminal, and the text editor
+> are available only from a build of `main` (HEAD), not in the latest
+> release.
 
 ![The app process: SwiftUI, the Ganymede server from GanymedeFFI, and a web view showing ganymede-ui](images/apple-app.svg)
 
