@@ -15,6 +15,8 @@ const fakes = vi.hoisted(() => ({
   notebooks: [] as unknown[],
   widgets: [] as { dispose: () => void; saveState: (m: unknown) => void }[],
   editing: [] as { dispose: () => void }[],
+  /** How the next session rejoins; by default at once, finding none. */
+  initialize: undefined as undefined | ((session: { session: unknown }) => Promise<boolean>),
 }));
 
 vi.mock('../lib/jupyterlab', async () => {
@@ -26,7 +28,18 @@ vi.mock('../lib/jupyterlab', async () => {
       const w = new Widget() as InstanceType<typeof Widget> & {
         model?: NotebookModel;
         activeCellIndex?: number;
+        widgets: { model: { type: string } }[];
+        isSelectedOrActive(cell: unknown): boolean;
       };
+      // Its cells, with the active one selected, for what a run needs.
+      Object.defineProperty(w, 'widgets', {
+        get: () =>
+          Array.from({ length: w.model!.cells.length }, (_, i) => ({
+            model: w.model!.cells.get(i),
+          })),
+      });
+      w.isSelectedOrActive = cell =>
+        (cell as { model: unknown }).model === w.model!.cells.get(w.activeCellIndex ?? 0);
       fakes.notebooks.push(w);
       return w;
     }),
@@ -56,7 +69,7 @@ vi.mock('@jupyterlab/apputils', async importOriginal => {
     kernelChanged = new Signal(this);
     statusChanged = new Signal(this);
     connectionStatusChanged = new Signal(this);
-    initialize = vi.fn(async () => false);
+    initialize = vi.fn(() => fakes.initialize?.(this) ?? Promise.resolve(false));
     changeKernel = vi.fn(async () => null);
     dispose = vi.fn();
     constructor(readonly options: Record<string, unknown>) {
@@ -111,6 +124,7 @@ beforeEach(() => {
   fakes.notebooks.length = 0;
   fakes.widgets.length = 0;
   fakes.editing.length = 0;
+  fakes.initialize = undefined;
 });
 
 /** A notebook with HTML output, as read from a file nobody signed. */
@@ -154,10 +168,10 @@ describe('NotebookPane', () => {
       path: 'moons/Io.ipynb',
       name: 'Io.ipynb',
       dirty: false,
-      // No kernel until the first run, which starts the one the file names.
-      status: 'none',
       kernelName: 'python3',
     });
+    // No kernel until the first run, which starts the one the file names.
+    await waitFor(() => expect(latest()!.status).toBe('none'));
     expect(modelOf().cells.length).toBe(1);
     expect(modelOf().cells.get(0).sharedModel.getSource()).toBe('print(1)');
     expect(document.querySelector('.notebook-page .notebook-holder')).toBeInTheDocument();
@@ -258,8 +272,8 @@ describe('NotebookPane', () => {
     const nb = structuredClone(NOTEBOOK);
     nb.metadata.kernelspec = { name: 'julia', display_name: 'Julia' };
     const { latest } = setup(vi.fn(async () => ({ path: 'moons/Io.ipynb', content: nb })));
-    await waitFor(() => expect(latest()).toBeDefined());
-    expect(latest()).toMatchObject({ status: 'none', missingKernel: 'Julia' });
+    await waitFor(() => expect(latest()?.status).toBe('none'));
+    expect(latest()).toMatchObject({ missingKernel: 'Julia' });
     expect(latest()!.kernelName).toBeUndefined();
 
     await act(() => latest()!.run());
@@ -273,6 +287,62 @@ describe('NotebookPane', () => {
     await act(() => latest()!.changeKernel('python3'));
     expect(latest()).toMatchObject({ kernelName: 'python3', missingKernel: undefined });
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('is connecting, and runs nothing, until it has rejoined a running kernel', async () => {
+    let rejoin!: () => void;
+    fakes.initialize = session =>
+      new Promise<boolean>(resolve => {
+        rejoin = () => {
+          session.session = { kernel: { name: 'python3' } };
+          resolve(false);
+        };
+      });
+    const { latest } = setup();
+    await waitFor(() => expect(latest()).toBeDefined());
+    const session = fakes.sessions[0] as { changeKernel: ReturnType<typeof vi.fn> };
+    expect(latest()!.status).toBe('connecting');
+
+    const run = latest()!.run();
+    act(() => rejoin());
+    await act(() => run);
+    // The rejoined kernel runs it; none is started in its place.
+    expect(session.changeKernel).not.toHaveBeenCalled();
+  });
+
+  it('renders markdown without starting a kernel', async () => {
+    const nb = structuredClone(NOTEBOOK);
+    nb.cells = [{ cell_type: 'markdown', id: 'm1', source: '# Io', metadata: {} }];
+    const { latest } = setup(vi.fn(async () => ({ path: 'moons/Io.ipynb', content: nb })));
+    await waitFor(() => expect(latest()?.status).toBe('none'));
+    const session = fakes.sessions[0] as { changeKernel: ReturnType<typeof vi.fn> };
+    await act(() => latest()!.run());
+    await act(() => latest()!.runAll());
+    expect(session.changeKernel).not.toHaveBeenCalled();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('starts one kernel for runs that come in while it starts', async () => {
+    const { latest } = setup();
+    await waitFor(() => expect(latest()?.status).toBe('none'));
+    const session = fakes.sessions[0] as { changeKernel: ReturnType<typeof vi.fn> };
+    await act(() => Promise.all([latest()!.run(), latest()!.runAll()]));
+    expect(session.changeKernel).toHaveBeenCalledTimes(1);
+  });
+
+  it('starts the newly picked kernel after the running one is shut down', async () => {
+    const { latest } = setup();
+    await waitFor(() => expect(latest()?.status).toBe('none'));
+    const session = fakes.sessions[0] as {
+      session: unknown;
+      changeKernel: ReturnType<typeof vi.fn>;
+    };
+    session.session = { kernel: { name: 'python3' } };
+    await act(() => latest()!.changeKernel('ts'));
+    session.session = null;
+    session.changeKernel.mockClear();
+    await act(() => latest()!.run());
+    expect(session.changeKernel).toHaveBeenCalledWith({ name: 'ts' });
   });
 
   it('says why a file could not be opened', async () => {
@@ -439,6 +509,9 @@ describe('NotebookPane', () => {
     await act(() => vi.advanceTimersByTimeAsync(120_000));
     // Checked once, not every two minutes.
     expect(fake.contents.get).toHaveBeenCalledTimes(2);
+    // Picking a kernel doesn't hide it.
+    await act(() => latest()!.changeKernel('ts'));
+    expect(screen.getByRole('alert')).toHaveTextContent('Autosave is off until you save it');
   });
 
   it('saves unsaved edits before letting the notebook go', async () => {

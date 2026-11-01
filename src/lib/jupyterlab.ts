@@ -177,15 +177,26 @@ export function createNotebook(rendermime: IRenderMimeRegistry): Notebook {
 export function createCommands(
   notebook: Notebook,
   session: ISessionContext,
-  /** Runs before each run command (to start the kernel); false skips the run. */
-  beforeRun: () => Promise<boolean> = async () => true,
+  /**
+   * Runs before each run command, for the selected cells or `all` (to start
+   * the kernel); false skips the run.
+   */
+  beforeRun: (all: boolean) => Promise<boolean> = async () => true,
+  /** Where a run command's failure goes: the keyboard has no caller to tell. */
+  onError: (e: unknown) => void = e => console.error(e),
 ): CommandRegistry {
   const commands = new CommandRegistry();
   const add = (id: string, execute: () => unknown) =>
     commands.addCommand(id, { execute: () => void execute() });
-  const run = (action: () => Promise<unknown>) => async () => {
-    if (await beforeRun()) await action();
-  };
+  const run =
+    (action: () => Promise<unknown>, all = false) =>
+    async () => {
+      try {
+        if (await beforeRun(all)) await action();
+      } catch (e) {
+        onError(e);
+      }
+    };
 
   add(
     'run-cell',
@@ -201,7 +212,7 @@ export function createCommands(
   );
   add(
     'run-all',
-    run(() => NotebookActions.runAll(notebook, session)),
+    run(() => NotebookActions.runAll(notebook, session), true),
   );
   add('command-mode', () => {
     notebook.mode = 'command';

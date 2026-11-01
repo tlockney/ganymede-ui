@@ -24,3 +24,10 @@ autoStartDefault: false }`. `initialize()` still rejoins a session already
   when you run a cell" (`waitForReady`) instead of Idle. The screenshot test
   restarts the kernel only when one is running. `served.spec.ts` checks
   that opening a fresh notebook starts nothing.
+- From review: `initialize()` resolves after the pane is shown, so the
+  status stays "connecting" until it has, and `ensureKernel` awaits it. A
+  run before that would otherwise call `changeKernel` on the rejoined
+  session and replace its kernel. A run whose cells are all markdown or raw
+  starts nothing (they render without a kernel), runs that arrive while a
+  kernel starts share that start, and a keyboard run's failure shows in the
+  pane through `createCommands`' `onError`.
