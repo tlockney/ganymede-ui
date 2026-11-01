@@ -1,8 +1,9 @@
+import DeviceBridge
 import WebKit
 
 /// The hidden web view that cdp-kernel's in-page kernels run in
 /// (ganymede-ui#99): `kernel.html` from the same server, one browser kernel
-/// per kernel the UI page starts. Only this web view will register native
+/// per kernel the UI page starts. Only this web view registers native
 /// bridges such as ganymede-device's `device` handler, so nothing the UI
 /// page renders, outputs and widgets included, can reach them.
 ///
@@ -33,6 +34,9 @@ final class KernelHost: NSObject {
         webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 1, height: 1), configuration: config)
         super.init()
         config.userContentController.add(WeakHandler(self), name: Self.hostHandler)
+        // ganymede-device's `device` handler, for cells: here and nowhere
+        // else, so nothing the UI page renders can call it.
+        DeviceBridge().register(in: config.userContentController)
         if #available(macOS 13.3, iOS 16.4, *) {
             webView.isInspectable = true
         }

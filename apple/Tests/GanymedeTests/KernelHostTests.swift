@@ -4,8 +4,8 @@ import XCTest
 
 /// KernelHost between two real web views on a real server: stand-in
 /// pages for the UI and kernel.html check that messages cross both ways,
-/// in order, and that a sandboxed frame in the UI page can't post into
-/// the relay.
+/// in order, that a sandboxed frame in the UI page can't post into
+/// the relay, and that only the kernel web view has the `device` bridge.
 final class KernelHostTests: XCTestCase {
     private var dir: URL!
 
@@ -95,6 +95,16 @@ final class KernelHostTests: XCTestCase {
         let fromFrame = try await eval(ui, "window.got.some(m => m.kernel === 'evil')") as? Bool
         XCTAssertEqual(fromFrame, false)
         XCTAssertEqual(host.webView.url?.path, "/kernel.html")
+
+        // The device bridge answers in the kernel web view and is absent
+        // from the UI page.
+        let hello = try await host.webView.callAsyncJavaScript(
+            "const r = await webkit.messageHandlers.device.postMessage({ id: 1, method: 'hello', params: {} });"
+                + " return r.result.capabilities.join(',')",
+            contentWorld: .page) as? String
+        XCTAssertEqual(hello, "clipboard.readText,clipboard.writeText")
+        let inUI = try await eval(ui, "typeof webkit.messageHandlers.device") as? String
+        XCTAssertEqual(inUI, "undefined")
     }
 }
 #endif

@@ -84,7 +84,13 @@ struct TerminalWindow: View {
     }
 
     private func reconnect() {
-        guard problem == nil, let next = makeTransport() else { return }
+        // Say why when what the session needs is gone (the key, the user,
+        // or the remote itself).
+        if let problem {
+            ended = problem
+            return
+        }
+        guard let next = makeTransport() else { return }
         ended = nil
         title = ""
         generation += 1

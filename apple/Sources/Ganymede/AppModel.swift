@@ -309,8 +309,6 @@ final class AppModel: ObservableObject {
         if restart { start() }
     }
 
-    /// Removes a remote and its token. Kernels move to this device if they
-    /// ran there.
     /// The app's public key, for authorized_keys on SSH remotes.
     var sshPublicKey: String? {
         sshKey.map { SSHKeyStore.publicLine($0.publicKey, comment: "ganymede") }
@@ -339,6 +337,8 @@ final class AppModel: ObservableObject {
         }
     }
 
+    /// Removes a remote and its token. Kernels move to this device if they
+    /// ran there.
     func delete(remote id: UUID) {
         remotes.removeAll { $0.id == id }
         unsavedTokens[id] = nil

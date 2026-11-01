@@ -12,3 +12,6 @@ Notes:
 - iOS drops sockets about 30 seconds after the app is backgrounded. The terminal shows why the session ended, with Reconnect, which starts a new session in a fresh terminal view.
 - The SSH user is required on iOS, since there is no ssh-config or local user name to fall back on.
 - No test runs a real SSH session: CI has no sshd. The key format, key storage, host-key trust and fingerprints are unit-tested.
+- swift-nio-ssh 0.15.1 doesn't close the connection when a host key or sign-in is refused. A failed host-key check only reaches `errorCaught`, and a client that gives up on sign-in sends nothing. Without a close, the terminal stays blank until sshd's LoginGraceTime (120 s). The delegates now close the connection themselves, a handler closes it on any error, and the handshake has a 30-second limit.
+- Don't close the session channel on the server's EOF: OpenSSH can send EOF before `exit-status`, so wait for its close.
+- The SSH key's keychain item is `…ThisDeviceOnly`, so backups and device moves don't copy it, and each device's key can be revoked on its own.

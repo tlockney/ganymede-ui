@@ -348,8 +348,9 @@ handler, belong on the kernel web view only, so nothing the UI renders
 can call them (#99). When the kernel page sees a `device` handler, it
 starts each kernel with ganymede-device's preload (which installs
 `globalThis.device` in the cells' Worker), its `webkitHost()` and
-`capabilities: { device: true }`. The Swift handler itself isn't written
-yet, so today cells see no `device`. `CdpBrowserKernel` uses the
+`capabilities: { device: true }`. `KernelHost` registers ganymede-device's
+Swift `DeviceBridge` on that web view, so cells in the app get `device`
+(today `hello` and the clipboard). `CdpBrowserKernel` uses the
 relay whenever the page has a `kernelRelay` handler; a browser has none.
 
 A native on-device kernel, cdp-kernel running in the app's process instead

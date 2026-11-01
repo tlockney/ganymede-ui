@@ -43,39 +43,57 @@ final class SSHTerminalTransport: TerminalTransport {
         started = true
         let relay = SessionRelay(owner: self)
         let problem = self.problem
-        let auth = KeyAuthentication(user: target.user, key: NIOSSHPrivateKey(ed25519Key: key), problem: problem)
-        let hosts = HostKeyCheck(remote: target.remote, store: hostKeys, problem: problem)
+        let sshKey = NIOSSHPrivateKey(ed25519Key: key)
+        let user = target.user
+        let remote = target.remote
+        let hostKeys = self.hostKeys
         let size = self.size
         let bootstrap = ClientBootstrap(group: MultiThreadedEventLoopGroup.singleton)
             .connectTimeout(.seconds(15))
             .channelOption(ChannelOptions.socket(SocketOptionLevel(IPPROTO_TCP), TCP_NODELAY), value: 1)
             .channelInitializer { channel in
                 channel.eventLoop.makeCompletedFuture {
+                    // swift-nio-ssh doesn't close the connection when the
+                    // sign-in or host key is refused, so these do.
+                    let refuse = { channel.close(promise: nil) }
+                    let auth = KeyAuthentication(user: user, key: sshKey, problem: problem, refuse: refuse)
+                    let hosts = HostKeyCheck(remote: remote, store: hostKeys, problem: problem, refuse: refuse)
                     let ssh = NIOSSHHandler(
                         role: .client(.init(userAuthDelegate: auth, serverAuthDelegate: hosts)),
                         allocator: channel.allocator,
                         inboundChildChannelInitializer: nil
                     )
                     try channel.pipeline.syncOperations.addHandler(ssh)
+                    try channel.pipeline.syncOperations.addHandler(CloseOnError(problem: problem))
                 }
             }
         let host = target.host
         let port = target.port
         Task {
+            var connection: Channel?
             do {
                 let channel = try await bootstrap.connect(host: host, port: port).get()
-                let session = try await Self.openSession(on: channel, size: size, relay: relay)
+                connection = channel
+                // Kept now, so close() during the handshake ends it.
+                self.channel = channel
+                guard !self.ended else {
+                    channel.close(promise: nil)
+                    return
+                }
+                let session = try await Self.openSession(on: channel, size: size, relay: relay, problem: problem)
                 self.connected(channel: channel, session: session)
             } catch {
+                connection?.close(promise: nil)
                 self.finish(problem.value ?? Self.describe(error))
             }
         }
     }
 
     /// Opens the shell channel once the connection is up. Fails if the
-    /// connection closes first (a refused host key or sign-in).
+    /// connection closes first (a refused host key or sign-in), or if the
+    /// server doesn't get that far in time.
     private nonisolated static func openSession(
-        on channel: Channel, size: (cols: Int, rows: Int), relay: SessionRelay
+        on channel: Channel, size: (cols: Int, rows: Int), relay: SessionRelay, problem: Problem
     ) async throws -> Channel {
         try await channel.eventLoop.flatSubmit {
             let result = channel.eventLoop.makePromise(of: Channel.self)
@@ -88,6 +106,11 @@ final class SSHTerminalTransport: TerminalTransport {
             channel.closeFuture.whenComplete { _ in
                 complete(.failure(SSHFailure("Disconnected.")))
             }
+            let timeout = channel.eventLoop.scheduleTask(in: .seconds(30)) {
+                problem.set("The server did not finish signing in within 30 seconds.")
+                channel.close(promise: nil)
+            }
+            result.futureResult.whenComplete { _ in timeout.cancel() }
             do {
                 let ssh = try channel.pipeline.syncOperations.handler(type: NIOSSHHandler.self)
                 let promise = channel.eventLoop.makePromise(of: Channel.self)
@@ -97,7 +120,9 @@ final class SSHTerminalTransport: TerminalTransport {
                         return child.eventLoop.makeFailedFuture(SSHFailure("Unexpected channel type."))
                     }
                     return child.eventLoop.makeCompletedFuture {
-                        try child.pipeline.syncOperations.addHandler(ShellHandler(size: size, relay: relay))
+                        try child.pipeline.syncOperations.addHandler(
+                            ShellHandler(size: size, relay: relay, problem: problem)
+                        )
                     }
                 }
             } catch {
@@ -112,7 +137,6 @@ final class SSHTerminalTransport: TerminalTransport {
             channel.close(promise: nil)
             return
         }
-        self.channel = channel
         self.session = session
         session.closeFuture.whenComplete { [weak self] _ in
             // After the output and exit status queued before it.
@@ -224,12 +248,14 @@ private final class KeyAuthentication: NIOSSHClientUserAuthenticationDelegate, @
     private let user: String
     private let key: NIOSSHPrivateKey
     private let problem: Problem
+    private let refuse: () -> Void
     private var offered = false
 
-    init(user: String, key: NIOSSHPrivateKey, problem: Problem) {
+    init(user: String, key: NIOSSHPrivateKey, problem: Problem, refuse: @escaping () -> Void) {
         self.user = user
         self.key = key
         self.problem = problem
+        self.refuse = refuse
     }
 
     func nextAuthenticationType(
@@ -242,6 +268,9 @@ private final class KeyAuthentication: NIOSSHClientUserAuthenticationDelegate, @
                     + "remote's settings to ~/.ssh/authorized_keys there."
             )
             nextChallengePromise.succeed(nil)
+            // Giving up sends nothing, so the server would wait out its
+            // LoginGraceTime.
+            refuse()
             return
         }
         offered = true
@@ -256,11 +285,13 @@ private final class HostKeyCheck: NIOSSHClientServerAuthenticationDelegate, @unc
     private let remote: UUID
     private let store: HostKeyStore
     private let problem: Problem
+    private let refuse: () -> Void
 
-    init(remote: UUID, store: HostKeyStore, problem: Problem) {
+    init(remote: UUID, store: HostKeyStore, problem: Problem, refuse: @escaping () -> Void) {
         self.remote = remote
         self.store = store
         self.problem = problem
+        self.refuse = refuse
     }
 
     func validateHostKey(hostKey: NIOSSHPublicKey, validationCompletePromise: EventLoopPromise<Void>) {
@@ -274,7 +305,24 @@ private final class HostKeyCheck: NIOSSHClientServerAuthenticationDelegate, @unc
                 + "the remote's settings."
             problem.set(message)
             validationCompletePromise.fail(SSHFailure(message))
+            refuse()
         }
+    }
+}
+
+/// Closes the connection on an error, which NIOSSHHandler only passes on.
+private final class CloseOnError: ChannelInboundHandler {
+    typealias InboundIn = Any
+
+    private let problem: Problem
+
+    init(problem: Problem) {
+        self.problem = problem
+    }
+
+    func errorCaught(context: ChannelHandlerContext, error: Error) {
+        problem.set("The connection failed: \(error)")
+        context.close(promise: nil)
     }
 }
 
@@ -287,10 +335,14 @@ private final class ShellHandler: ChannelDuplexHandler {
 
     private let size: (cols: Int, rows: Int)
     private let relay: SessionRelay
+    private let problem: Problem
+    /// Replies still due, in the order the requests were sent.
+    private var pending = ["The server refused a terminal (pty) for this session.", "The server refused to start a shell."]
 
-    init(size: (cols: Int, rows: Int), relay: SessionRelay) {
+    init(size: (cols: Int, rows: Int), relay: SessionRelay, problem: Problem) {
         self.size = size
         self.relay = relay
+        self.problem = problem
     }
 
     func handlerAdded(context: ChannelHandlerContext) {
@@ -323,8 +375,15 @@ private final class ShellHandler: ChannelDuplexHandler {
         switch event {
         case let status as SSHChannelRequestEvent.ExitStatus:
             relay.exited(status.exitStatus)
-        case let event as ChannelEvent where event == .inputClosed:
+        case is ChannelSuccessEvent:
+            if !pending.isEmpty { pending.removeFirst() }
+        case is ChannelFailureEvent:
+            if !pending.isEmpty { problem.set(pending.removeFirst()) }
             context.close(promise: nil)
+        case let event as ChannelEvent where event == .inputClosed:
+            // The server's EOF can come before the exit status; its close
+            // follows, and ends the session.
+            break
         default:
             context.fireUserInboundEventTriggered(event)
         }

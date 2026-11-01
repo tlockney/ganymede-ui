@@ -42,6 +42,14 @@ JupyterLab, the app is the notebook alone (a file list, the running
 kernels, no terminals, consoles or extensions); compared with JupyterLite,
 it also runs against a real server.
 
+## Download the Mac app
+
+From the release after 0.2.0, each
+[release](https://github.com/tlockney/ganymede-ui/releases) attaches
+`Ganymede-macOS-<version>.zip`, a signed and notarized app that runs the
+Ganymede server in its own process and can be the default app for
+`.ipynb` files. See [apple/README.md](apple/README.md).
+
 ## Run
 
 You need Node.js 22.12 or later (CI uses 24). The server modes need

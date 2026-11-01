@@ -52,6 +52,7 @@ struct SSHKeyStore {
         try secrets.set(Self.key, key.rawRepresentation.base64EncodedString())
     }
 
+    /// Keychain items starting with "ssh." stay on this device (`Keychain.set`).
     private static let key = "ssh.ed25519"
 
     /// The public key as a line for `authorized_keys`.
