@@ -4,8 +4,9 @@ name: Release
 # CI on the tag, builds the app, packages `dist/` as a tarball and a zip
 # with SHA-256 checksums, and publishes a GitHub Release whose notes are
 # the version's CHANGELOG.md section, with a build provenance attestation
-# per archive. Manual runs on a branch build and package without
-# publishing. docs/releasing.md says what to do when a run fails.
+# per archive. The `macos` job adds the Mac app, signed with the Developer
+# ID, notarized and stapled. Manual runs on a branch build, sign, notarize
+# and package without publishing. docs/releasing.md says what to do when a run fails.
 
 on:
   push:
@@ -86,9 +87,65 @@ jobs:
             pkg/SHA256SUMS
           if-no-files-found: error
 
+  # The Mac app, signed with the Developer ID certificate, notarized, and
+  # stapled: Ganymede-macOS-X.Y.Z.zip (apple/scripts/release-app.sh). The
+  # secrets may live in a `release` environment with a required reviewer.
+  macos:
+    needs: [version, ci]
+    runs-on: macos-latest
+    timeout-minutes: 90
+    environment: release
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # The ganymede commit ci.yml's macos-app job builds and tests the app
+      # with, so the release links the same ganymede-ffi.
+      - name: Read GANYMEDE_REF from ci.yml
+        run: |
+          ref=$(yq -r '.jobs["macos-app"].env.GANYMEDE_REF' .github/workflows/ci.yml)
+          [[ "$ref" =~ ^[0-9a-f]{40}$|^v[0-9] ]] || { echo "::error::GANYMEDE_REF in ci.yml: $ref"; exit 1; }
+          echo "GANYMEDE_REF=$ref" >> "$GITHUB_ENV"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: tlockney/ganymede
+          ref: ${{ env.GANYMEDE_REF }}
+          path: .ganymede
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+          targets: aarch64-apple-darwin, x86_64-apple-darwin, aarch64-apple-ios, aarch64-apple-ios-sim
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - run: npm ci
+      - run: brew install xcodegen
+      - run: apple/scripts/bootstrap.sh
+        env:
+          GANYMEDE_DIR: ${{ github.workspace }}/.ganymede
+      - name: Sign, notarize, and staple
+        run: apple/scripts/release-app.sh
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          BUILD_NUMBER: ${{ github.run_number }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          MACOS_CERTIFICATE_P12: ${{ secrets.MACOS_CERTIFICATE_P12 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPSTORE_API_KEY_P8: ${{ secrets.APPSTORE_API_KEY_P8 }}
+          APPSTORE_API_KEY_ID: ${{ secrets.APPSTORE_API_KEY_ID }}
+          APPSTORE_API_ISSUER_ID: ${{ secrets.APPSTORE_API_ISSUER_ID }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: Ganymede-macOS-${{ needs.version.outputs.version }}
+          path: |
+            apple/build/Ganymede-macOS-*.zip
+            apple/build/SHA256SUMS-macOS
+          if-no-files-found: error
+
   release:
     if: github.ref_type == 'tag'
-    needs: [version, build]
+    needs: [version, build, macos]
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -107,7 +164,11 @@ jobs:
           merge-multiple: true
       - name: Check the checksums
         working-directory: dist
-        run: sha256sum -c SHA256SUMS
+        run: |
+          sha256sum -c SHA256SUMS
+          sha256sum -c SHA256SUMS-macOS
+          cat SHA256SUMS-macOS >> SHA256SUMS
+          rm SHA256SUMS-macOS
       # A signed SLSA provenance statement per archive: this repository,
       # workflow, tag, and commit built it. The checksums only catch a
       # damaged download; `gh attestation verify <archive> --repo
