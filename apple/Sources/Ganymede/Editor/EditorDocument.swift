@@ -163,9 +163,11 @@ final class EditorDocument: ObservableObject {
     /// Picks up a change on disk: reloads when there are no edits, else
     /// marks the conflict for the user to settle.
     func checkForChanges() async {
-        guard loaded, !busy, !changedOnDisk, let client, let lastModified else { return }
+        guard loaded, !busy, !changedOnDisk, let client, lastModified != nil else { return }
+        // A save may finish while the metadata is read; compare with the
+        // time it left.
         guard let current = try? await client.read(content: false),
-              current.lastModified != lastModified
+              !busy, current.lastModified != lastModified
         else { return }
         if dirty {
             changedOnDisk = true
