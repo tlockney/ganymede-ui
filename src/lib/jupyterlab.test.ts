@@ -171,3 +171,23 @@ describe('attachEditing', () => {
     ]);
   });
 });
+
+describe('createCommands', () => {
+  it('asks before each run, for the selected cells or all, and reports a failure', async () => {
+    const session = { session: { kernel } } as unknown as ISessionContext;
+    const beforeRun = vi.fn(async () => {
+      throw new Error('Kernel failed to start');
+    });
+    const onError = vi.fn();
+    const run = createCommands(notebook, session, beforeRun, onError);
+
+    await run.execute('run-and-advance');
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledTimes(1));
+    expect(beforeRun).toHaveBeenLastCalledWith(false);
+    expect(onError).toHaveBeenCalledWith(new Error('Kernel failed to start'));
+
+    await run.execute('run-all');
+    await vi.waitFor(() => expect(onError).toHaveBeenCalledTimes(2));
+    expect(beforeRun).toHaveBeenLastCalledWith(true);
+  });
+});

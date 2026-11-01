@@ -171,8 +171,15 @@ JupyterLite's service worker, adapted.
 ## Notebook
 
 `NotebookPane` shows one file. It holds JupyterLab's `Notebook` widget,
-its `NotebookModel`, and a `SessionContext`, which starts the file's kernel
-or rejoins the one already running for it. It loads and saves nbformat
+its `NotebookModel`, and a `SessionContext`, which rejoins the kernel
+already running for the file but starts none on open: reading a notebook
+shouldn't start a kernel. The first run (toolbar, Shift+Enter, any run
+command) starts the kernel the file names, or the default when it names
+none; until then the toolbar says the kernel "Starts when you run a cell",
+and picking another kernel only changes which one that is. A kernel the
+file names that isn't installed here (a Python notebook with no Python) is
+not swapped for another: the toolbar shows it as not installed, and a run
+asks for a kernel to be picked. It loads and saves nbformat
 through the backend's contents API and gives the toolbar a
 `NotebookController` (run, interrupt, restart, change kernel, save,
 download, trust). A failed action shows its error in the pane.

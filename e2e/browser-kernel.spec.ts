@@ -2,7 +2,7 @@
 // browser kernel (the default) and the JavaScript kernel, cells in Web
 // Workers. Needs no server, only the production build.
 import { expect, test } from '@playwright/test';
-import { outputs, screenshot, waitForIdle } from './helpers';
+import { outputs, screenshot, waitForReady } from './helpers';
 
 test.use({ deviceScaleFactor: 2 });
 
@@ -20,7 +20,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
 
     await page.getByRole('button', { name: 'New Notebook' }).first().click();
     await expect(page.locator('.jp-Cell').first()).toBeVisible({ timeout: 60_000 });
-    await waitForIdle(page);
+    await waitForReady(page);
 
     await page.locator('.jp-Cell .cm-content').first().click();
     // TypeScript: the default kernel is cdp-kernel's.
@@ -56,7 +56,7 @@ test('switching backends ends the kernels in this page', async ({ page }) => {
 
   await page.getByRole('button', { name: 'New Notebook' }).first().click();
   await expect(page.locator('.jp-Cell').first()).toBeVisible({ timeout: 60_000 });
-  await waitForIdle(page);
+  await waitForReady(page);
   await page.locator('.jp-Cell .cm-content').first().click();
   await page.keyboard.type('self.constructor.name');
   await page.keyboard.press('Shift+Enter');
