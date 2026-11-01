@@ -42,6 +42,32 @@ targets:
         # The web view loads the server on 127.0.0.1 over plain HTTP.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+        # Opens .ipynb files from the Finder, and can be their default app
+        # (#130). The type is imported: Jupyter defines the format.
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: Jupyter Notebook
+            CFBundleTypeRole: Editor
+            LSHandlerRank: Default
+            LSItemContentTypes:
+              - org.jupyter.ipynb
+          # By extension, for when another app's type for .ipynb wins over
+          # ours: the Finder still offers Ganymede in Open With. (An entry
+          # with LSItemContentTypes ignores CFBundleTypeExtensions.)
+          - CFBundleTypeName: Jupyter Notebook (by extension)
+            CFBundleTypeRole: Editor
+            LSHandlerRank: Alternate
+            CFBundleTypeExtensions:
+              - ipynb
+        UTImportedTypeDeclarations:
+          - UTTypeIdentifier: org.jupyter.ipynb
+            UTTypeDescription: Jupyter Notebook
+            UTTypeConformsTo:
+              - public.json
+            UTTypeTagSpecification:
+              public.filename-extension:
+                - ipynb
+              public.mime-type:
+                - application/x-ipynb+json
     entitlements:
       path: build/Ganymede.entitlements
       properties:
@@ -104,6 +130,7 @@ targets:
       - path: Sources/Ganymede/KernelHost.swift
       - path: Sources/Ganymede/Terminal/TerminalTransport.swift
       - path: Sources/Ganymede/Terminal/JupyterTerminalTransport.swift
+      - path: Sources/Ganymede/WindowTarget.swift
       - path: Sources/Ganymede/Remote.swift
       - path: Sources/Ganymede/Terminal/ProcessTerminalTransport.swift
     dependencies:
@@ -122,6 +149,7 @@ targets:
       - path: Sources/Ganymede/KernelHost.swift
       - path: Sources/Ganymede/Terminal/TerminalTransport.swift
       - path: Sources/Ganymede/Terminal/JupyterTerminalTransport.swift
+      - path: Sources/Ganymede/WindowTarget.swift
       - path: Sources/Ganymede/Remote.swift
     dependencies:
       - framework: build/GanymedeFFI.xcframework
