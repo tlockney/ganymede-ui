@@ -155,6 +155,23 @@ describe('App', () => {
     expect(fake.contents.get).toHaveBeenCalledWith('work', { content: true });
   });
 
+  it('keeps the launch file for the first backend picked in the sheet', async () => {
+    history.replaceState(null, '', '/?open=work/Orbits.ipynb');
+    const fake = fakeServices({
+      '': [{ name: 'work', type: 'directory' }],
+      work: [{ name: 'Orbits.ipynb', type: 'notebook' }],
+    });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services, { kind: 'browser' }));
+    render(<App />);
+
+    expect(await screen.findByText('Where should kernels run?')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('radio', { name: /This browser/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
+
+    await waitFor(() => expect(screen.getByTestId('pane')).toHaveTextContent('work/Orbits.ipynb'));
+    expect(fake.contents.get).toHaveBeenCalledWith('work', { content: true });
+  });
+
   it('drops the launch file and folder when the sheet picks another backend', async () => {
     history.replaceState(null, '', '/?token=bad&open=work/Orbits.ipynb');
     const fake = fakeServices({ '': [{ name: 'Io.ipynb', type: 'notebook' }] });

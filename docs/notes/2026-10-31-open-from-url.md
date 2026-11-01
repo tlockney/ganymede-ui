@@ -26,5 +26,6 @@ Mac app's window title later (#132).
   sheet picks another one (say the first connection failed), both are
   dropped, and the sidebar starts at the root, where the other backend's
   folders may not exist. Retrying the same server (same URL and kernel
-  mode, another token) keeps them.
+  mode, another token) keeps them, and so does the first pick when the
+  page started with no backend at all.
 - A missing file shows the pane's load error, not the connect sheet.

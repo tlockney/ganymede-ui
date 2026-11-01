@@ -240,10 +240,10 @@ export function App() {
           canCancel={!!backend}
           onCancel={() => setSheetOpen(false)}
           onConnect={c => {
-            // The launch file and folder belong to the backend they came
-            // with: keep them for a retry there (a corrected token), drop
-            // them for another.
-            if (!config || !sameBackend(c, config)) {
+            // The launch file and folder belong to the first backend: keep
+            // them for a retry there (a corrected token) or when this is
+            // the first pick, drop them for another.
+            if (config && !sameBackend(c, config)) {
               pendingOpen.current = undefined;
               setSidebarRoot('');
               history.replaceState(
