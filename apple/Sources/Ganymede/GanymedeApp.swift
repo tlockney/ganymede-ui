@@ -21,6 +21,9 @@ struct GanymedeApp: App {
                 .environmentObject(model)
         }
         .commands {
+            CommandGroup(replacing: .saveItem) {
+                SaveCommand()
+            }
             CommandGroup(after: .newItem) {
                 OpenCommands(model: model)
                 Divider()
@@ -63,6 +66,7 @@ struct GanymedeApp: App {
 struct OpenCommands: View {
     @Environment(\.openWindow) private var openWindow
     @ObservedObject var model: AppModel
+    @ObservedObject private var recents = Recents.shared
 
     var body: some View {
         Button("Open…") {
@@ -71,6 +75,16 @@ struct OpenCommands: View {
             }
         }
         .keyboardShortcut("o")
+        Menu("Open Recent") {
+            ForEach(recents.urls, id: \.self) { url in
+                Button(url.lastPathComponent) {
+                    openWindow(value: WindowTarget(opening: url))
+                }
+            }
+            Divider()
+            Button("Clear Menu") { recents.clear() }
+                .disabled(recents.urls.isEmpty)
+        }
         Button("Open Folder…") {
             if let folder = model.chooseFolder() {
                 openWindow(value: WindowTarget.folder(folder.standardizedFileURL))
@@ -123,6 +137,15 @@ enum DefaultApp {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
         AppModel.shared.adoptLoginShellPath()
+    }
+
+    /// Asks to save notebooks with unsaved edits first.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard PageDocument.hasUnsaved else { return .terminateNow }
+        Task { @MainActor in
+            sender.reply(toApplicationShouldTerminate: await PageDocument.confirmQuit())
+        }
+        return .terminateLater
     }
 
     func applicationWillTerminate(_ notification: Notification) {

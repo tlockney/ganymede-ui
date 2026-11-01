@@ -18,6 +18,7 @@ import { EmptyState } from './components/EmptyState';
 import { ShortcutsSheet } from './components/ShortcutsSheet';
 import { SHOW_SHORTCUTS_EVENT, matches } from './lib/shortcuts';
 import { LAUNCH_PARAMS, type Launch, isReload, readLaunch, titleFor, withOpen } from './lib/launch';
+import { exposeHooks, postDocument } from './lib/native';
 
 /**
  * A token in the page URL, as `ganymede serve` prints it, wins once, and so
@@ -173,6 +174,23 @@ export function App() {
       history.replaceState(null, '', window.location.pathname + search);
     }
   }, [openPath]);
+
+  // The Mac app's window: its title bar's edited dot and proxy icon, and
+  // its Save, close and quit prompts.
+  const controllerRef = useRef(controller);
+  controllerRef.current = controller;
+  useEffect(
+    () =>
+      exposeHooks({
+        save: async () => {
+          const c = controllerRef.current;
+          return !c?.dirty || (await c.save());
+        },
+      }),
+    [],
+  );
+  const dirty = !!openPath && controller?.path === openPath && controller.dirty;
+  useEffect(() => postDocument({ path: openPath ?? null, dirty }), [openPath, dirty]);
 
   // ⌘S / Ctrl+S saves, as in any document app.
   useEffect(() => {

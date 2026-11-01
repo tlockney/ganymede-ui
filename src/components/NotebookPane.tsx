@@ -30,7 +30,8 @@ export type NotebookController = {
   dirty: boolean;
   /** False while code cells show outputs from a file nobody trusted. */
   trusted: boolean;
-  save(): Promise<void>;
+  /** Saves the notebook; false when it wasn't (the pane says why). */
+  save(): Promise<boolean>;
   /** Download the notebook as it is now, unsaved edits included, as .ipynb. */
   download(): void;
   /** Trust the notebook: render its outputs in full, and sign it on the server. */
@@ -408,22 +409,28 @@ export function NotebookPane({ backend, path, onController }: Props) {
       missingKernel: kernelName ? undefined : intended.missing,
       dirty,
       trusted,
-      save: report(`save ${fileName}`, async () => {
+      save: async () => {
         try {
-          await saver.save();
-        } catch (e) {
-          if (!(e instanceof SaveConflict)) throw e;
-          if (
-            !window.confirm(
-              `${fileName} changed on disk since it was opened or last saved.\n\nOverwrite it with this copy?`,
+          try {
+            await saver.save();
+          } catch (e) {
+            if (!(e instanceof SaveConflict)) throw e;
+            if (
+              !window.confirm(
+                `${fileName} changed on disk since it was opened or last saved.\n\nOverwrite it with this copy?`,
+              )
             )
-          )
-            return;
-          await saver.save({ overwrite: true });
+              return false;
+            await saver.save({ overwrite: true });
+          }
+        } catch (e) {
+          setNotice(`Couldn’t save ${fileName}: ${messageOf(e)}`);
+          return false;
         }
         autosaveOff.current = false;
         setNotice(undefined);
-      }),
+        return true;
+      },
       download: () => {
         // Widget state goes in, as on save; that is not an edit.
         const wasDirty = model.dirty;

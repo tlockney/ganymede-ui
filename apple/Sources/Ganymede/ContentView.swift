@@ -12,6 +12,8 @@ struct ContentView: View {
     /// changes the default) leaves it alone.
     @State private var loaded: WindowTarget
     @Environment(\.openWindow) private var openWindow
+    /// The open notebook's file and unsaved edits, as the page reports them.
+    @StateObject private var document = PageDocument()
 
     init(target: Binding<WindowTarget?>) {
         _target = target
@@ -45,6 +47,8 @@ struct ContentView: View {
                 }
             }
             .handlesExternalEvents(preferring: externalEvents, allowing: externalEvents)
+            .background(WindowReader { document.attach(to: $0) })
+            .focusedSceneObject(document)
         #else
         NavigationStack {
             content
@@ -122,7 +126,7 @@ struct ContentView: View {
         Group {
             if let url = page {
                 #if os(macOS)
-                WebView(url: url, onNavigate: follow)
+                WebView(url: url, onNavigate: follow, document: document)
                 #else
                 WebView(url: url)
                 #endif

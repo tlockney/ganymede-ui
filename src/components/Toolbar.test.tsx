@@ -13,7 +13,7 @@ function controller(over: Partial<NotebookController> = {}): NotebookController 
     kernelName: 'python3',
     dirty: false,
     trusted: true,
-    save: vi.fn(async () => {}),
+    save: vi.fn(async () => true),
     download: vi.fn(),
     trust: vi.fn(async () => {}),
     run: vi.fn(async () => {}),

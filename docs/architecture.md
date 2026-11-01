@@ -292,6 +292,17 @@ own process and shows this web app in a `WKWebView`:
   the front; a file opened from the Finder arrives through `onOpenURL` in a
   new window, or in the window already showing that file
   (`handlesExternalEvents`).
+- A notebook window acts as a document window (`DocumentWindow.swift`).
+  The page posts `{ path, dirty }` to the `document` message handler
+  (`src/lib/native.ts`) whenever the open notebook or its unsaved state
+  changes. The window's `PageDocument` sets the proxy icon
+  (`representedURL`) and the edited dot (`isDocumentEdited`), and adds the
+  file to Open Recent (`NSDocumentController`). File > Save, and the Save /
+  Don't Save prompts on close and quit, call `window.ganymede.save()` in
+  the page with `callAsyncJavaScript`. That save returns whether the
+  notebook was saved, so a failed save keeps the window open. The close
+  prompt comes from a stand-in window delegate that forwards everything
+  else to SwiftUI's.
 - `WebView.swift` handles what a browser would: links to other hosts open
   in the default browser, downloads ask where to save (the share sheet on
   iOS), and Help > Keyboard Shortcuts on the Mac sends
