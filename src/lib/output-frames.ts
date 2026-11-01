@@ -12,13 +12,17 @@
  *
  * Untrusted HTML still renders in the page through JupyterLab's sanitizer,
  * and Markdown outputs are always sanitized, since trusted Markdown would
- * otherwise run its HTML's scripts in the page. SVG is already safe: it
- * renders as an `<img>`, where scripts don't run.
+ * otherwise run its HTML's scripts in the page. SVG renders as an `<img>`,
+ * where scripts don't run and nothing else loads, so it shows untrusted
+ * too: JupyterLab shows "Cannot display an untrusted SVG" instead, which
+ * hides every SVG plot in a notebook made elsewhere (#133).
  */
 import {
   RenderedHTML,
   RenderedJavaScript,
   RenderedMarkdown,
+  RenderedSVG,
+  renderSVG,
   type IRenderMimeRegistry,
 } from '@jupyterlab/rendermime';
 import type { IRenderMime } from '@jupyterlab/rendermime-interfaces';
@@ -187,7 +191,21 @@ export class SanitizedMarkdown extends RenderedMarkdown {
   }
 }
 
-/** Replaces the registry's HTML, JavaScript and Markdown renderers, keeping their ranks. */
+/** SVG as an `<img>`, trusted or not. */
+export class ImageSVG extends RenderedSVG {
+  override render(model: IRenderMime.IMimeModel): Promise<void> {
+    const metadata = model.metadata[this.mimeType] as { unconfined?: boolean } | undefined;
+    return renderSVG({
+      host: this.node,
+      source: String(model.data[this.mimeType] ?? ''),
+      trusted: true,
+      unconfined: metadata?.unconfined,
+      translator: this.translator,
+    });
+  }
+}
+
+/** Replaces the registry's HTML, JavaScript, Markdown and SVG renderers, keeping their ranks. */
 export function installOutputFrames(registry: IRenderMimeRegistry): void {
   const replace = (
     mimeTypes: string[],
@@ -201,4 +219,5 @@ export function installOutputFrames(registry: IRenderMimeRegistry): void {
   replace(['text/html'], true, options => new FramedHTML(options));
   replace(['text/javascript', 'application/javascript'], false, o => new FramedJavaScript(o));
   replace(['text/markdown'], true, options => new SanitizedMarkdown(options));
+  replace(['image/svg+xml'], true, options => new ImageSVG(options));
 }

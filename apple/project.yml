@@ -133,9 +133,11 @@ targets:
       - path: Sources/Ganymede/WindowTarget.swift
       - path: Sources/Ganymede/Remote.swift
       - path: Sources/Ganymede/DocumentMessage.swift
+      - path: Sources/Ganymede/Terminal/ProcessTerminalTransport.swift
     dependencies:
       - framework: build/GanymedeFFI.xcframework
         embed: false
+      - package: SwiftTerm
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
