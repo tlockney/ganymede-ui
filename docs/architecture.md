@@ -220,7 +220,16 @@ in `srcdoc`. The frame's one message out is its height, accepted only
 from that frame's window. Untrusted HTML still renders in the page
 through JupyterLab's sanitizer; Markdown outputs are always sanitized,
 since trusted Markdown would run its HTML's scripts in the page; SVG
-renders as an `<img>`. ipywidgets still render in the page.
+renders as an `<img>`, untrusted too (JupyterLab refuses untrusted SVG,
+which hid every SVG plot in a notebook made elsewhere), since an image
+runs no scripts and loads nothing. ipywidgets still render in the page.
+
+Long stream and error outputs scroll inside a box 32em high instead of
+growing the notebook, and table cells use tabular figures so columns of
+numbers line up. `e2e/reading.spec.ts` screenshots notebooks made
+elsewhere (`e2e/fixtures/reading`, built by
+`scripts/make-reading-fixtures.py` with a real Python kernel) in light and
+dark, to check how the app reads them.
 
 ## Shell
 
