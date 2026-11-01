@@ -5,6 +5,9 @@ import WebKit
 #if os(macOS)
 struct WebView: NSViewRepresentable {
     let url: URL
+    /// The page's URL after each change, including the page's own
+    /// `history.replaceState` (the notebook it has open, #129).
+    var onNavigate: ((URL?) -> Void)? = nil
 
     func makeCoordinator() -> WebViewCoordinator { WebViewCoordinator() }
 
@@ -13,6 +16,7 @@ struct WebView: NSViewRepresentable {
     }
 
     func updateNSView(_ view: WKWebView, context: Context) {
+        context.coordinator.onNavigate = onNavigate
         context.coordinator.load(url, in: view)
     }
 }
@@ -42,6 +46,8 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     private var loaded: URL?
     private weak var webView: WKWebView?
     private var shortcuts: NSObjectProtocol?
+    private var urlObservation: NSKeyValueObservation?
+    var onNavigate: ((URL?) -> Void)?
     /// Where the page's in-page kernels run (ganymede-ui#99).
     private let kernels = KernelHost()
     #if os(iOS)
@@ -55,6 +61,10 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         view.uiDelegate = self
         webView = view
         kernels.attach(to: view)
+        urlObservation = view.observe(\.url, options: [.new]) { [weak self] _, change in
+            let url = change.newValue ?? nil
+            Task { @MainActor in self?.onNavigate?(url) }
+        }
         #if os(macOS)
         // Help > Keyboard Shortcuts opens the web app's shortcuts sheet.
         shortcuts = NotificationCenter.default.addObserver(
