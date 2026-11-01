@@ -170,4 +170,58 @@ describe('SettingsSheet', () => {
     await userEvent.click(document.querySelector('.sheet-backdrop')!);
     expect(onClose).not.toHaveBeenCalled();
   });
+
+  it("doesn't test a blank server URL", async () => {
+    const { models } = renderSheet();
+    await userEvent.click(toggle());
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Provider' }), 'local');
+    await userEvent.clear(screen.getByRole('textbox', { name: 'Server' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Test' }));
+    expect(models.testModel).not.toHaveBeenCalled();
+  });
+
+  it("doesn't test or save a blank model", async () => {
+    const { models, onClose } = renderSheet();
+    await userEvent.click(toggle());
+    const model = screen.getByRole('combobox', { name: 'Model' });
+    await userEvent.clear(model);
+    await userEvent.type(model, '   ');
+    await userEvent.click(screen.getByRole('button', { name: 'Test' }));
+    await userEvent.click(save());
+    expect(models.testModel).not.toHaveBeenCalled();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('drops a running test when the key changes', async () => {
+    const { models } = renderSheet();
+    let finish!: (r: { ok: boolean; message: string }) => void;
+    models.testModel.mockImplementationOnce(() => new Promise(r => (finish = r)));
+    await userEvent.click(toggle());
+    await userEvent.click(screen.getByRole('button', { name: 'Test' }));
+    await userEvent.type(screen.getByPlaceholderText('Anthropic API key'), 'sk-new');
+    finish({ ok: true, message: 'stale answer' });
+    await new Promise(r => setTimeout(r, 0));
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+    const signal = models.testModel.mock.calls[0]![2] as AbortSignal;
+    expect(signal.aborted).toBe(true);
+  });
+
+  it('keeps the Remember tick for a provider with no key yet', async () => {
+    renderSheet();
+    await userEvent.click(toggle());
+    const remember = screen.getByRole('checkbox', { name: /Remember the key/ });
+    await userEvent.click(remember);
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Provider' }), 'google');
+    await new Promise(r => setTimeout(r, 0));
+    expect(screen.getByRole('checkbox', { name: /Remember the key/ })).toBeChecked();
+  });
+
+  it('asks browsers not to save the key as a password', async () => {
+    renderSheet();
+    await userEvent.click(toggle());
+    expect(screen.getByPlaceholderText('Anthropic API key')).toHaveAttribute(
+      'autocomplete',
+      'new-password',
+    );
+  });
 });

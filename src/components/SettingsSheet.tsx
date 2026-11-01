@@ -46,7 +46,8 @@ export function SettingsSheet({
     void store.read(settings.provider).then(c => {
       if (cancelled) return;
       setKey(c?.type === 'api_key' ? (c.key ?? '') : '');
-      setRemember(store.remembered(settings.provider));
+      // A provider with no key yet keeps the current tick.
+      if (c) setRemember(store.remembered(settings.provider));
     });
     return () => {
       cancelled = true;
@@ -126,8 +127,13 @@ export function SettingsSheet({
     baseUrl: settings.baseUrl.trim(),
   });
 
+  const form = useRef<HTMLFormElement>(null);
+
   const runTest = async () => {
     if (!models) return;
+    // The same checks as Save: a blank server URL would make the OpenAI
+    // client fall back to api.openai.com and send the key there.
+    if (form.current && !form.current.reportValidity()) return;
     testAbort.current?.abort();
     const abort = new AbortController();
     testAbort.current = abort;
@@ -163,6 +169,7 @@ export function SettingsSheet({
     // selection dragged out of a field would end there and drop the edits.
     <div className="sheet-backdrop">
       <form
+        ref={form}
         className="sheet settings-sheet"
         role="dialog"
         aria-labelledby="settings-title"
@@ -216,6 +223,8 @@ export function SettingsSheet({
                     list="agent-models"
                     value={settings.model}
                     required
+                    pattern=".*\S.*"
+                    title="A model name"
                     autoComplete="off"
                     spellCheck={false}
                     onChange={e => update({ model: e.target.value })}
@@ -241,10 +250,13 @@ export function SettingsSheet({
                   <span>Key</span>
                   <input
                     type="password"
-                    autoComplete="off"
+                    // Keeps browsers from offering to save the key in the
+                    // password manager, outside the storage the sheet describes.
+                    autoComplete="new-password"
                     placeholder={info.needsKey ? `${info.name} API key` : 'Optional'}
                     value={key}
                     onChange={e => {
+                      testAbort.current?.abort();
                       setTest(undefined);
                       setKey(e.target.value);
                     }}

@@ -110,6 +110,17 @@ describe('testModel', () => {
     });
   });
 
+  it('refuses a blank or non-http server URL without sending anything', async () => {
+    const fetch = vi.fn(async () => chatStream('OK'));
+    vi.stubGlobal('fetch', fetch);
+    for (const baseUrl of ['', '  ', 'file:///etc', 'localhost:11434']) {
+      const result = await testModel({ ...local, baseUrl }, keyOnly('local', 'sk-local'));
+      expect(result.ok).toBe(false);
+      expect(result.message).toMatch(/server URL/);
+    }
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it('reports a model the provider does not have', async () => {
     const result = await testModel(
       { ...DEFAULT_SETTINGS, enabled: true, model: 'no-such-model' },

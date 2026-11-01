@@ -11,3 +11,5 @@ Notes:
 - pi-ai's OpenAI-compatible client refuses to send a request without an API key, so a local server with no key gets the placeholder `none`, which Ollama and LM Studio ignore. The unit test against a stubbed `fetch` found this.
 - Ollama answers a page on another origin only if `OLLAMA_ORIGINS` allows it; the sheet says so.
 - OpenAI's CORS from a browser was unsettled in the spike; the Test button is the way to find out with a real key.
+- A blank base URL is not harmless: pi-ai passes it to the OpenAI client as `baseURL`, and the client falls back to `https://api.openai.com/v1`, so a local server's key would go to OpenAI. `models.ts` refuses anything but an http(s) URL for the local provider, and the Test button runs the form's checks first, as Save does.
+- `autoComplete="off"` doesn't stop Chrome or Safari offering to save a password field; `new-password` does, which keeps the key out of the password manager.

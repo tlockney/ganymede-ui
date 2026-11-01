@@ -9,14 +9,32 @@ import { googleProvider } from '@earendil-works/pi-ai/providers/google';
 import { openaiProvider } from '@earendil-works/pi-ai/providers/openai';
 import type { AgentSettings } from './settings';
 
+/**
+ * The local server's URL, checked: a blank one would make the OpenAI client
+ * fall back to api.openai.com and send the key there.
+ */
+function localUrl(baseUrl: string): string {
+  let url: URL;
+  try {
+    url = new URL(baseUrl);
+  } catch {
+    throw new Error(`Not a server URL: "${baseUrl}"`);
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    throw new Error(`Not an http(s) server URL: "${baseUrl}"`);
+  }
+  return baseUrl;
+}
+
 /** A local OpenAI-compatible server, with the one model the settings name. */
 function localProvider(settings: AgentSettings) {
+  const baseUrl = localUrl(settings.baseUrl);
   const model: Model<'openai-completions'> = {
     id: settings.model,
     name: settings.model,
     api: 'openai-completions',
     provider: 'local',
-    baseUrl: settings.baseUrl,
+    baseUrl,
     reasoning: false,
     input: ['text'],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -29,7 +47,7 @@ function localProvider(settings: AgentSettings) {
   return createProvider({
     id: 'local',
     name: 'Local server',
-    baseUrl: settings.baseUrl,
+    baseUrl,
     // A key is optional. pi-ai's OpenAI client won't send a request without
     // one, so a server that takes none gets a placeholder, which Ollama and
     // LM Studio ignore.
@@ -84,7 +102,13 @@ export interface TestResult {
 /** The browser's bare "Connection error." says nothing about why. */
 function explain(message: string, baseUrl: string): string {
   if (!/^connection error\.?$/i.test(message.trim())) return message;
-  return `Couldn't reach ${new URL(baseUrl).host}: it isn't running, or it doesn't let this page call it (CORS).`;
+  let host = baseUrl;
+  try {
+    host = new URL(baseUrl).host;
+  } catch {
+    // Show the URL as given.
+  }
+  return `Couldn't reach ${host}: it isn't running, or it doesn't let this page call it (CORS).`;
 }
 
 /**

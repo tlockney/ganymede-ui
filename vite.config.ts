@@ -131,7 +131,8 @@ export default defineConfig({
           {
             urlPattern: /\/assets\/agent-[\w.-]+\.js$/,
             handler: 'CacheFirst',
-            options: { cacheName: 'agent' },
+            // Hashed names: each release adds new ones, so keep the cache bounded.
+            options: { cacheName: 'agent', expiration: { maxEntries: 40 } },
           },
         ],
         // The server API is never cached.
