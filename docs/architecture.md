@@ -220,7 +220,16 @@ in `srcdoc`. The frame's one message out is its height, accepted only
 from that frame's window. Untrusted HTML still renders in the page
 through JupyterLab's sanitizer; Markdown outputs are always sanitized,
 since trusted Markdown would run its HTML's scripts in the page; SVG
-renders as an `<img>`. ipywidgets still render in the page.
+renders as an `<img>`, untrusted too (JupyterLab refuses untrusted SVG,
+which hid every SVG plot in a notebook made elsewhere), since an image
+runs no scripts and loads nothing. ipywidgets still render in the page.
+
+Long stream and error outputs scroll inside a box 32em high instead of
+growing the notebook, and table cells use tabular figures so columns of
+numbers line up. `e2e/reading.spec.ts` screenshots notebooks made
+elsewhere (`e2e/fixtures/reading`, built by
+`scripts/make-reading-fixtures.py` with a real Python kernel) in light and
+dark, to check how the app reads them.
 
 ## Shell
 
@@ -325,7 +334,11 @@ subframes, the sandboxed output frames among them, the same handlers.
 Native bridges for cells, such as
 [ganymede-device](https://github.com/tlockney/ganymede-device)'s `device`
 handler, belong on the kernel web view only, so nothing the UI renders
-can call them (#99). None is registered yet. `CdpBrowserKernel` uses the
+can call them (#99). When the kernel page sees a `device` handler, it
+starts each kernel with ganymede-device's preload (which installs
+`globalThis.device` in the cells' Worker), its `webkitHost()` and
+`capabilities: { device: true }`. The Swift handler itself isn't written
+yet, so today cells see no `device`. `CdpBrowserKernel` uses the
 relay whenever the page has a `kernelRelay` handler; a browser has none.
 
 A native on-device kernel, cdp-kernel running in the app's process instead

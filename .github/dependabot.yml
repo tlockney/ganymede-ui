@@ -17,6 +17,9 @@ updates:
     schedule:
       interval: weekly
     groups:
+      # vitest and its plugins must share one version, majors included.
+      vitest:
+        patterns: ['vitest', '@vitest/*']
       npm:
         patterns: ['*']
         update-types: [minor, patch]
@@ -28,3 +31,6 @@ updates:
       # (src/styles/fontawesome.css).
       - dependency-name: '@fortawesome/fontawesome-free'
         update-types: [version-update:semver-major]
+      # Must match the version @jupyterlab/ui-components uses; 0.17.1 broke
+      # the tests while JupyterLab 4.6 was on 0.16.7. Bump with JupyterLab.
+      - dependency-name: '@jupyter/web-components'
