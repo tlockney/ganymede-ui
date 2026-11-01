@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readLaunch, titleFor } from './launch';
+import { readLaunch, titleFor, withOpen } from './launch';
 
 describe('readLaunch', () => {
   it('opens nothing by default, at the root', () => {
@@ -23,6 +23,13 @@ describe('readLaunch', () => {
     expect(readLaunch('?dir=/Users/me/notes/')).toEqual({ dir: 'Users/me/notes' });
   });
 
+  it('collapses repeated slashes, so the path matches the sidebar', () => {
+    expect(readLaunch('?open=/Users//me///Orbits.ipynb')).toEqual({
+      open: 'Users/me/Orbits.ipynb',
+      dir: 'Users/me',
+    });
+  });
+
   it('takes the folder from dir when given', () => {
     expect(readLaunch('?open=a/b.ipynb&dir=a/c')).toEqual({ open: 'a/b.ipynb', dir: 'a/c' });
     expect(readLaunch('?open=a/b.ipynb&dir=')).toEqual({ open: 'a/b.ipynb', dir: '' });
@@ -39,5 +46,14 @@ describe('titleFor', () => {
   it("is the notebook's name, or the app's", () => {
     expect(titleFor('a/Orbits.ipynb')).toBe('Orbits');
     expect(titleFor(undefined)).toBe('Ganymede');
+  });
+});
+
+describe('withOpen', () => {
+  it('sets or removes open and keeps the rest', () => {
+    expect(withOpen('?x=1', 'a/b c.ipynb')).toBe('?x=1&open=a%2Fb+c.ipynb');
+    expect(readLaunch(withOpen('', 'a/b c.ipynb')).open).toBe('a/b c.ipynb');
+    expect(withOpen('?open=a.ipynb&x=1', undefined)).toBe('?x=1');
+    expect(withOpen('?open=a.ipynb', undefined)).toBe('');
   });
 });

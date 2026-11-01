@@ -17,7 +17,7 @@ import { ConnectSheet } from './components/ConnectSheet';
 import { EmptyState } from './components/EmptyState';
 import { ShortcutsSheet } from './components/ShortcutsSheet';
 import { SHOW_SHORTCUTS_EVENT, matches } from './lib/shortcuts';
-import { LAUNCH_PARAMS, type Launch, readLaunch, titleFor } from './lib/launch';
+import { LAUNCH_PARAMS, type Launch, readLaunch, titleFor, withOpen } from './lib/launch';
 
 /**
  * A token in the page URL, as `ganymede serve` prints it, wins once, and so
@@ -39,10 +39,7 @@ function initialConfig(): BackendConfig | undefined {
   };
 }
 
-/**
- * Keeps the token out of history and the referrer, and the file to open out
- * of a reload, which should come back to what is open by then.
- */
+/** Keeps the token out of history and the referrer. `open` is kept in step instead. */
 function stripLaunchParams(): void {
   const params = new URLSearchParams(window.location.search);
   if (!LAUNCH_PARAMS.some(p => params.has(p))) return;
@@ -58,8 +55,13 @@ export function App() {
   // The notebook and folder the URL asks for (`?open=`, `?dir=`): a window
   // the Apple apps open on one file.
   const [launch] = useState<Launch>(() => readLaunch(window.location.search));
-  /** The notebook to open on the first connection, until it is opened. */
+  /**
+   * The notebook to open on the first connection, until it is opened or
+   * the connect sheet picks another backend.
+   */
   const pendingOpen = useRef(launch.open);
+  /** The folder the sidebar starts in; the server root once the sheet picks a backend. */
+  const [sidebarRoot, setSidebarRoot] = useState(launch.dir);
   const [backend, setBackend] = useState<Backend>();
   const [error, setError] = useState<string>();
   const [connecting, setConnecting] = useState(false);
@@ -151,9 +153,16 @@ export function App() {
     [backend],
   );
 
-  // The window title, which the Apple apps show.
+  // The window title, which the Apple apps show, and `?open=` in step with
+  // the open notebook, so a reload (⌘R, or WebKit restarting the page)
+  // comes back to it. A launch file not opened yet stays in the URL.
   useEffect(() => {
     document.title = titleFor(openPath);
+    if (!openPath && pendingOpen.current) return;
+    const search = withOpen(window.location.search, openPath);
+    if (search !== window.location.search) {
+      history.replaceState(null, '', window.location.pathname + search);
+    }
   }, [openPath]);
 
   // ⌘S / Ctrl+S saves, as in any document app.
@@ -182,7 +191,7 @@ export function App() {
           backend={backend}
           connecting={connecting}
           openPath={openPath}
-          root={launch.dir}
+          root={sidebarRoot}
           onOpen={setOpenPath}
           onNew={newNotebook}
           onConnect={() => setSheetOpen(true)}
@@ -221,7 +230,17 @@ export function App() {
           connecting={connecting}
           canCancel={!!backend}
           onCancel={() => setSheetOpen(false)}
-          onConnect={c => setConfig({ ...c })}
+          onConnect={c => {
+            // The launch file and folder belong to the first backend.
+            pendingOpen.current = undefined;
+            setSidebarRoot('');
+            history.replaceState(
+              null,
+              '',
+              window.location.pathname + withOpen(window.location.search, undefined),
+            );
+            setConfig({ ...c });
+          }}
         />
       )}
       {shortcutsOpen && <ShortcutsSheet onClose={closeShortcuts} />}

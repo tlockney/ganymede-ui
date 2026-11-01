@@ -29,6 +29,7 @@ beforeEach(() => {
   localStorage.clear();
   sessionStorage.clear();
   history.replaceState(null, '', '/');
+  document.title = 'Ganymede';
   vi.stubGlobal(
     'matchMedia',
     vi.fn(() => ({ matches: false, addEventListener() {}, removeEventListener() {} })),
@@ -103,12 +104,41 @@ describe('App', () => {
     const { container } = render(<App />);
 
     await waitFor(() => expect(screen.getByTestId('pane')).toHaveTextContent('work/Orbits.ipynb'));
-    expect(window.location.search).toBe('');
+    // `kernels` is gone; `open` names the open notebook, for a reload.
+    expect(window.location.search).toBe('?open=work%2FOrbits.ipynb');
     expect(document.title).toBe('Orbits');
     expect(container.querySelector('.window')).toHaveClass('sidebar-collapsed');
     // The sidebar lists the notebook's folder.
     expect(await screen.findByRole('button', { name: /work/ })).toBeInTheDocument();
     expect(fake.contents.get).toHaveBeenCalledWith('work', { content: true });
+  });
+
+  it('hands a missing launch file to the pane, not the connect sheet', async () => {
+    history.replaceState(null, '', '/?kernels=server&open=gone/Nope.ipynb');
+    mocks.connect.mockResolvedValue(fakeBackend(fakeServices({ '': [] }).services));
+    render(<App />);
+
+    await waitFor(() => expect(screen.getByTestId('pane')).toHaveTextContent('gone/Nope.ipynb'));
+    expect(screen.queryByText('Where should kernels run?')).not.toBeInTheDocument();
+  });
+
+  it('drops the launch file and folder when the sheet picks another backend', async () => {
+    history.replaceState(null, '', '/?token=bad&open=work/Orbits.ipynb');
+    const fake = fakeServices({ '': [{ name: 'Io.ipynb', type: 'notebook' }] });
+    mocks.connect
+      .mockRejectedValueOnce(new Error('The server refused the token.'))
+      .mockResolvedValue(fakeBackend(fake.services, { kind: 'browser' }));
+    render(<App />);
+
+    expect(await screen.findByText('The server refused the token.')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('radio', { name: /This browser/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
+
+    // The browser's root, with nothing opened from the first server.
+    expect(await screen.findByText('Io')).toBeInTheDocument();
+    expect(fake.contents.get).toHaveBeenCalledWith('', { content: true });
+    expect(screen.queryByTestId('pane')).not.toBeInTheDocument();
+    expect(window.location.search).toBe('');
   });
 
   it("connects on the login cookie when this page's server has us signed in", async () => {
