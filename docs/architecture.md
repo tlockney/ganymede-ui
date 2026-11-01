@@ -309,7 +309,10 @@ of the web view, is planned and not started.
 `Terminal/` holds the built-in terminal's pieces (#117): `TerminalSurface`,
 a SwiftUI view over [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm)'s
 `TerminalView`, and `TerminalTransport`, which each source of a shell
-implements. Nothing in the app shows a terminal yet.
+implements. On the Mac, File > New Terminal opens a `TerminalWindow` whose
+`JupyterTerminalTransport` creates a terminal through `/api/terminals` on
+the app's own server, or on the kernel server, and speaks terminado's
+websocket protocol to it. Closing the window deletes the terminal.
 
 ## Tests
 
