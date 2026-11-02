@@ -46,6 +46,11 @@ shows). File > New Terminal On opens one on a remote's server, if it
 has terminals (Ganymede with terminals, or `jupyter server`), or over
 SSH with `/usr/bin/ssh`, so `~/.ssh/config`, the SSH agent and
   known_hosts apply. Closing the window ends the shell.
+- Other files in the sidebar (not notebooks) open in a text editor
+  window: the system text view with syntax highlighting for Python,
+  JavaScript, TypeScript, JSON, Markdown, shell, YAML and TOML. ⌘S saves.
+  When the file changes on disk the editor reloads it, or, with unsaved
+  edits, asks which version to keep.
 - Not sandboxed: the App Sandbox does not allow launching kernels. It is
   meant to be signed with a Developer ID and notarized.
 
@@ -70,6 +75,9 @@ On iPadOS and iOS (`Ganymede-iOS` target, iOS 16 or later):
   key the first time, refusing it if it changes later. iOS drops the
   connection soon after the app goes to the background; the terminal
   then offers to reconnect.
+- Other files in the sidebar open in a text editor, beside the notebook
+  on iPad and over it on iPhone. Edits are saved when the app goes to the
+  background, since iOS may close the editor's window there.
 - Downloads open the share sheet, where Save to Files keeps them.
 - iOS may close the server's socket while the app is in the background;
   back in the foreground the app restarts the server if it stopped
@@ -97,11 +105,18 @@ The first build asks you to trust SwiftTerm's build plugin
 Trust & Enable. From the command line, `-skipPackagePluginValidation`
 does the same.
 
+The Swift packages' exact commits are in `apple/Package.resolved`, which
+`bootstrap.sh` copies into the project; CI and release builds use only
+those (`-onlyUsePackageVersionsFromResolvedFile`). After changing
+`packages` in `project.yml`, run `apple/scripts/update-packages.sh` and
+commit the new `Package.resolved`.
+
 From the command line:
 
 ```sh
 xcodebuild test -project apple/Ganymede.xcodeproj -scheme Ganymede \
-  -destination platform=macOS -skipPackagePluginValidation CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=
+  -destination platform=macOS -skipPackagePluginValidation -onlyUsePackageVersionsFromResolvedFile \
+  CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=
 ```
 
 For an iPad simulator, name one from `xcrun simctl list devices`:
@@ -109,7 +124,8 @@ For an iPad simulator, name one from `xcrun simctl list devices`:
 ```sh
 xcodebuild test -project apple/Ganymede.xcodeproj -scheme Ganymede-iOS \
   -destination 'platform=iOS Simulator,name=iPad Air 11-inch (M3)' \
-  -skipPackagePluginValidation CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=
+  -skipPackagePluginValidation -onlyUsePackageVersionsFromResolvedFile \
+  CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=
 ```
 
 ## Download

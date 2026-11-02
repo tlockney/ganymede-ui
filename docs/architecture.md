@@ -321,8 +321,9 @@ own process and shows this web app in a `WKWebView`:
 
 > [!NOTE]
 > **Unreleased.** Notebook windows and the `.ipynb` document type,
-> remotes, the hidden kernel web view, and the terminal are available only
-> from a build of `main` (HEAD), not in the latest release.
+> remotes, the hidden kernel web view, the terminal, and the text editor
+> are available only from a build of `main` (HEAD), not in the latest
+> release.
 
 ![The app process: SwiftUI, the Ganymede server from GanymedeFFI, and a web view showing ganymede-ui](images/apple-app.svg)
 
@@ -429,6 +430,22 @@ and shell on one session channel, signed in with the app's ed25519 key
 remote (`HostKeyStore`). On iPad a terminal is its own scene
 (`WindowGroup(for: TerminalRequest.self)`); SwiftTerm's key row gives Esc,
 Ctrl, Tab and arrows on the software keyboard.
+
+`Editor/` is the text editor (#122). In the apps the page registers no
+editor of its own: its sidebar enables files that aren't notebooks when
+the app has an `openFile` message handler and the page uses the app's own
+server, and posts the file's path there. The app opens an
+`EditorWindow` (`WindowGroup(for: EditorRequest.self)`; a full-screen
+cover on iPhone). `EditorDocument` reads and saves the file with
+`TextFileClient`, through `/api/contents` with `format=text`, and polls
+its `last_modified` every few seconds: a change on disk reloads the file,
+or, with unsaved edits, shows a bar to keep either version. A save sends
+`last_modified`, which Ganymede checks (409 on a conflict), and checks it
+first itself, since `jupyter_server` doesn't. The text view is the
+system's (`CodeTextView`, TextKit 1), so find, undo, input methods,
+dictation and accessibility come with it. [Neon](https://github.com/ChimeHQ/Neon)
+highlights it with tree-sitter grammars (`Highlighting`), coloring capture
+names with system colors that follow light and dark.
 
 ## Tests
 

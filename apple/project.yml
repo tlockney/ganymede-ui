@@ -21,6 +21,51 @@ packages:
   swift-nio:
     url: https://github.com/apple/swift-nio
     exactVersion: 2.104.0
+  # The text editor's highlighting (#122): Neon (BSD-3) on tree-sitter
+  # (MIT). Neon's main branch is not tagged, so it is pinned to a commit.
+  # Neon asks for SwiftTreeSitter's main branch, and SwiftPM refuses a
+  # second, different requirement on the same package, so it follows main.
+  Neon:
+    url: https://github.com/ChimeHQ/Neon
+    revision: 38cf4a6a05a6aa1e038b65a16f773c77d4145efc
+  SwiftTreeSitter:
+    url: https://github.com/ChimeHQ/SwiftTreeSitter
+    branch: main
+  # Their own dependencies, pinned so a fresh resolve builds the same.
+  tree-sitter:
+    url: https://github.com/tree-sitter/tree-sitter
+    exactVersion: 0.25.10
+  Rearrange:
+    url: https://github.com/ChimeHQ/Rearrange
+    exactVersion: 2.1.1
+  # Grammars (MIT), with their highlight queries. Python 0.25, JavaScript
+  # 0.25 and YAML 0.7.1 add their scanner.c only if the manifest finds it
+  # relative to the working directory, which Xcode's isn't, so their
+  # scanners don't link; the versions before list it outright.
+  TreeSitterBash:
+    url: https://github.com/tree-sitter/tree-sitter-bash
+    exactVersion: 0.25.1
+  TreeSitterJavaScript:
+    url: https://github.com/tree-sitter/tree-sitter-javascript
+    exactVersion: 0.23.1
+  TreeSitterJSON:
+    url: https://github.com/tree-sitter/tree-sitter-json
+    exactVersion: 0.24.8
+  TreeSitterMarkdown:
+    url: https://github.com/tree-sitter-grammars/tree-sitter-markdown
+    exactVersion: 0.5.4
+  TreeSitterPython:
+    url: https://github.com/tree-sitter/tree-sitter-python
+    exactVersion: 0.23.6
+  TreeSitterTOML:
+    url: https://github.com/tree-sitter-grammars/tree-sitter-toml
+    exactVersion: 0.7.0
+  TreeSitterTypeScript:
+    url: https://github.com/tree-sitter/tree-sitter-typescript
+    exactVersion: 0.23.2
+  TreeSitterYAML:
+    url: https://github.com/tree-sitter-grammars/tree-sitter-yaml
+    exactVersion: 0.7.0
   # The `device` bridge for notebook cells, on the kernel web view only (#99).
   GanymedeDevice:
     url: https://github.com/tlockney/ganymede-device
@@ -47,6 +92,16 @@ targets:
       - package: SwiftTerm
       - package: GanymedeDevice
         product: DeviceBridge
+      - package: Neon
+      - package: SwiftTreeSitter
+      - package: TreeSitterBash
+      - package: TreeSitterJavaScript
+      - package: TreeSitterJSON
+      - package: TreeSitterMarkdown
+      - package: TreeSitterPython
+      - package: TreeSitterTOML
+      - package: TreeSitterTypeScript
+      - package: TreeSitterYAML
     info:
       path: build/Info.plist
       properties:
@@ -118,6 +173,16 @@ targets:
         product: NIOPosix
       - package: GanymedeDevice
         product: DeviceBridge
+      - package: Neon
+      - package: SwiftTreeSitter
+      - package: TreeSitterBash
+      - package: TreeSitterJavaScript
+      - package: TreeSitterJSON
+      - package: TreeSitterMarkdown
+      - package: TreeSitterPython
+      - package: TreeSitterTOML
+      - package: TreeSitterTypeScript
+      - package: TreeSitterYAML
     info:
       path: build/Info-iOS.plist
       properties:
@@ -163,6 +228,7 @@ targets:
       - path: Sources/Ganymede/Remote.swift
       - path: Sources/Ganymede/DocumentMessage.swift
       - path: Sources/Ganymede/Terminal/SSHKey.swift
+      - path: Sources/Ganymede/Editor/TextFile.swift
       - path: Sources/Ganymede/Terminal/ProcessTerminalTransport.swift
     dependencies:
       - framework: build/GanymedeFFI.xcframework
@@ -186,6 +252,7 @@ targets:
       - path: Sources/Ganymede/Remote.swift
       - path: Sources/Ganymede/DocumentMessage.swift
       - path: Sources/Ganymede/Terminal/SSHKey.swift
+      - path: Sources/Ganymede/Editor/TextFile.swift
     dependencies:
       - framework: build/GanymedeFFI.xcframework
         embed: false

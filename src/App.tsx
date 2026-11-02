@@ -20,7 +20,7 @@ import { SettingsSheet } from './components/SettingsSheet';
 import { SHOW_SETTINGS_EVENT } from '@ganymede-ui/agent/settings';
 import { SHOW_SHORTCUTS_EVENT, matches } from './lib/shortcuts';
 import { LAUNCH_PARAMS, type Launch, isReload, readLaunch, titleFor, withOpen } from './lib/launch';
-import { exposeHooks, postDocument } from './lib/native';
+import { canOpenFiles, exposeHooks, openFile, postDocument } from './lib/native';
 
 /**
  * A token in the page URL, as `ganymede serve` prints it, wins once, and so
@@ -193,6 +193,11 @@ export function App() {
       }),
     [],
   );
+  // The Apple apps edit other files in their own editor, on their own
+  // server: the one this page came from.
+  const editsFiles =
+    canOpenFiles() && backend?.config.kind === 'ganymede' && backend.config.url === '';
+
   const dirty = !!openPath && controller?.path === openPath && controller.dirty;
   useEffect(() => postDocument({ path: openPath ?? null, dirty }), [openPath, dirty]);
 
@@ -231,6 +236,7 @@ export function App() {
           openPath={openPath}
           root={sidebarRoot}
           onOpen={setOpenPath}
+          onOpenFile={editsFiles ? openFile : undefined}
           onNew={newNotebook}
           onConnect={() => setSheetOpen(true)}
           onSettings={() => setSettingsOpen(true)}

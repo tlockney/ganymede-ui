@@ -21,4 +21,10 @@ rm -rf "$apple/build/web"
 cp -R "$repo/dist" "$apple/build/web"
 
 (cd "$apple" && xcodegen generate)
+# The packages' exact commits (#122): builds use only these
+# (-onlyUsePackageVersionsFromResolvedFile); scripts/update-packages.sh
+# changes them.
+swiftpm="$apple/Ganymede.xcodeproj/project.xcworkspace/xcshareddata/swiftpm"
+mkdir -p "$swiftpm"
+cp "$apple/Package.resolved" "$swiftpm/Package.resolved"
 echo "open $apple/Ganymede.xcodeproj"

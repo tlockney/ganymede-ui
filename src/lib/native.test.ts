@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { exposeHooks, postDocument } from './native';
+import { canOpenFiles, exposeHooks, openFile, postDocument } from './native';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -10,6 +10,16 @@ describe('native', () => {
     vi.stubGlobal('webkit', { messageHandlers: { document: { postMessage } } });
     postDocument({ path: 'moons/Io.ipynb', dirty: true });
     expect(postMessage).toHaveBeenCalledWith({ path: 'moons/Io.ipynb', dirty: true });
+  });
+
+  it('opens files in the app’s editor only when the app has one', () => {
+    expect(canOpenFiles()).toBe(false);
+    openFile('notes.txt');
+    const postMessage = vi.fn();
+    vi.stubGlobal('webkit', { messageHandlers: { openFile: { postMessage } } });
+    expect(canOpenFiles()).toBe(true);
+    openFile('moons/Io.md');
+    expect(postMessage).toHaveBeenCalledWith({ path: 'moons/Io.md' });
   });
 
   it('exposes the hooks until they are taken back', async () => {

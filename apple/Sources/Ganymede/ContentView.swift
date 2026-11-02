@@ -27,6 +27,8 @@ struct ContentView: View {
     @State private var settings = false
     /// A terminal shown full screen, where the app has one scene.
     @State private var terminal: TerminalRequest?
+    /// A text file being edited full screen, where the app has one scene.
+    @State private var editing: EditorRequest?
     #endif
 
     var body: some View {
@@ -108,6 +110,11 @@ struct ContentView: View {
             }
             .environmentObject(model)
         }
+        .fullScreenCover(item: $editing) { request in
+            NavigationStack {
+                EditorWindow(request: request) { editing = nil }
+            }
+        }
         .fileImporter(isPresented: $picking, allowedContentTypes: [.folder]) { result in
             if case .success(let folder) = result {
                 model.open(folder: folder)
@@ -151,9 +158,19 @@ struct ContentView: View {
         Group {
             if let url = page {
                 #if os(macOS)
-                WebView(url: url, onNavigate: follow, document: document)
+                WebView(url: url, onNavigate: follow, document: document) { path in
+                    openWindow(value: EditorRequest(path: path))
+                }
                 #else
-                WebView(url: url)
+                WebView(url: url) { path in
+                    // Beside the notebook on iPad, full screen on iPhone.
+                    let request = EditorRequest(path: path)
+                    if UIApplication.shared.supportsMultipleScenes {
+                        openWindow(value: request)
+                    } else {
+                        editing = request
+                    }
+                }
                 #endif
             } else if let error = model.error {
                 VStack(spacing: 12) {

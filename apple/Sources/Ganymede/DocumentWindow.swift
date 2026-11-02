@@ -204,16 +204,21 @@ struct WindowReader: NSViewRepresentable {
     }
 }
 
-/// File > Save (⌘S), for the front notebook window.
+/// File > Save (⌘S), for the front notebook or text file window.
 struct SaveCommand: View {
     @FocusedObject private var document: PageDocument?
+    @FocusedObject private var editor: EditorDocument?
 
     var body: some View {
         Button("Save") {
-            Task { await document?.save() }
+            if let editor {
+                Task { await editor.save() }
+            } else {
+                Task { await document?.save() }
+            }
         }
         .keyboardShortcut("s")
-        .disabled(document?.file == nil)
+        .disabled(editor == nil && document?.file == nil)
     }
 }
 #endif
