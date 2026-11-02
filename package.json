@@ -56,7 +56,7 @@
     "@lumino/messaging": "2.0.5",
     "@lumino/signaling": "2.1.6",
     "@lumino/widgets": "2.10.0",
-    "@tlockney/cdp-kernel": "0.7.1",
+    "@tlockney/cdp-kernel": "0.7.2",
     "@tlockney/ganymede-device": "github:tlockney/ganymede-device",
     "localforage": "1.10.0",
     "mock-socket": "9.3.1",
