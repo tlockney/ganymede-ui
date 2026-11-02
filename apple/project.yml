@@ -229,6 +229,7 @@ targets:
       - path: Sources/Ganymede/DocumentMessage.swift
       - path: Sources/Ganymede/Terminal/SSHKey.swift
       - path: Sources/Ganymede/Editor/TextFile.swift
+      - path: Sources/Ganymede/Editor/CodeEditing.swift
       - path: Sources/Ganymede/Terminal/ProcessTerminalTransport.swift
     dependencies:
       - framework: build/GanymedeFFI.xcframework
@@ -253,6 +254,7 @@ targets:
       - path: Sources/Ganymede/DocumentMessage.swift
       - path: Sources/Ganymede/Terminal/SSHKey.swift
       - path: Sources/Ganymede/Editor/TextFile.swift
+      - path: Sources/Ganymede/Editor/CodeEditing.swift
     dependencies:
       - framework: build/GanymedeFFI.xcframework
         embed: false

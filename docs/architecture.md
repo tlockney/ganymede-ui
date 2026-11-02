@@ -445,7 +445,13 @@ first itself, since `jupyter_server` doesn't. The text view is the
 system's (`CodeTextView`, TextKit 1), so find, undo, input methods,
 dictation and accessibility come with it. [Neon](https://github.com/ChimeHQ/Neon)
 highlights it with tree-sitter grammars (`Highlighting`), coloring capture
-names with system colors that follow light and dark.
+names with system colors that follow light and dark. `CodeEditing` is
+the typing help, as plain functions on the text that both platforms'
+delegates call: Return keeps the indent and adds a level after an opener,
+brackets and quotes pair, and backspace deletes an empty pair. The indent
+is the file's own (tabs, or 2 or 4 spaces), else the language's.
+`LineNumbers` draws the line numbers: an `NSRulerView` on the Mac, a
+gutter inside the text view on iOS.
 
 ## Tests
 
