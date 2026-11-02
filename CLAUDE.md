@@ -3,6 +3,41 @@
 Guidance for Claude working in this repository. [CONTRIBUTING.md](CONTRIBUTING.md)
 has the build, test, and pull request rules; this file adds what it doesn't.
 
+## Documenting unreleased features
+
+ganymede-server.com renders this repo's `docs/*.md` (all but `notes.md`)
+from `main`, and the README on GitHub is `main`'s too, but people install
+the latest release. So when a change documents a feature, setting, or
+behavior that the latest release doesn't have, add this note next to it
+in `README.md` or `docs/*.md`:
+
+```md
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+```
+
+It renders as a note on GitHub and on the site. Keep the words
+`**Unreleased.**` as they are: the release looks for them. The rest of
+the note may say what is unreleased, or what the release does instead.
+Put one note per section the feature adds, not one per paragraph. A fix
+to a feature that is already released needs no note.
+
+## Cutting a release
+
+Releases follow [docs/releasing.md](docs/releasing.md). Before the
+release pull request merges, review every "Unreleased" note:
+
+```sh
+grep -rn 'Unreleased\.' README.md docs/*.md
+```
+
+`scripts/release.sh --execute` prints them and lists them in the pull
+request. The release ships everything on `main` when the branch was cut,
+so on the release branch remove each of those notes, and reword the text
+around a note if it read as unreleased. A note added to `main` after the
+branch was cut stays.
+
 ## Independent review
 
 Every PR gets a review from a Claude session that didn't write it. A

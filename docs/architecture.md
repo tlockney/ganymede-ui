@@ -46,16 +46,17 @@ Jupyter server that speaks the same REST and websocket API.
 
 ![The shell and notebook use one ServiceManager, built by one of three backends](images/backends.svg)
 
-| Part                            | Where                                                                                                                                                                       |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Backends                        | [`src/lib/backends.ts`](../src/lib/backends.ts)                                                                                                                             |
-| In-page server and kernels      | [`src/lib/lite.ts`](../src/lib/lite.ts), [`src/lib/cdp-kernel.ts`](../src/lib/cdp-kernel.ts)                                                                                |
-| Service-worker relay            | [`src/lib/lite-sw.ts`](../src/lib/lite-sw.ts), [`public/lite-service-worker.js`](../public/lite-service-worker.js)                                                          |
-| Notebook                        | [`src/components/NotebookPane.tsx`](../src/components/NotebookPane.tsx), [`src/lib/jupyterlab.ts`](../src/lib/jupyterlab.ts), [`src/lib/widgets.ts`](../src/lib/widgets.ts) |
-| Shell                           | [`src/App.tsx`](../src/App.tsx), [`src/components/`](../src/components/), [`src/styles/`](../src/styles/)                                                                   |
-| Build and PWA                   | [`vite.config.ts`](../vite.config.ts)                                                                                                                                       |
-| Protocol package (not used yet) | [`packages/client/`](../packages/client/)                                                                                                                                   |
-| Mac and iPad app                | [`apple/`](../apple/README.md)                                                                                                                                              |
+| Part                             | Where                                                                                                                                                                       |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Backends                         | [`src/lib/backends.ts`](../src/lib/backends.ts)                                                                                                                             |
+| In-page server and kernels       | [`src/lib/lite.ts`](../src/lib/lite.ts), [`src/lib/cdp-kernel.ts`](../src/lib/cdp-kernel.ts)                                                                                |
+| Service-worker relay             | [`src/lib/lite-sw.ts`](../src/lib/lite-sw.ts), [`public/lite-service-worker.js`](../public/lite-service-worker.js)                                                          |
+| Notebook                         | [`src/components/NotebookPane.tsx`](../src/components/NotebookPane.tsx), [`src/lib/jupyterlab.ts`](../src/lib/jupyterlab.ts), [`src/lib/widgets.ts`](../src/lib/widgets.ts) |
+| Shell                            | [`src/App.tsx`](../src/App.tsx), [`src/components/`](../src/components/), [`src/styles/`](../src/styles/)                                                                   |
+| Build and PWA                    | [`vite.config.ts`](../vite.config.ts)                                                                                                                                       |
+| Agent (optional, off by default) | [`packages/agent/`](../packages/agent/), [`src/components/SettingsSheet.tsx`](../src/components/SettingsSheet.tsx)                                                          |
+| Protocol package (not used yet)  | [`packages/client/`](../packages/client/)                                                                                                                                   |
+| Mac and iPad app                 | [`apple/`](../apple/README.md)                                                                                                                                              |
 
 ## Backends
 
@@ -88,6 +89,11 @@ Where the app connects is decided in this order (`App.tsx`):
 3. A login cookie for this page's server: when `api/status` answers, the
    app connects to its own origin with no token.
 4. Otherwise the connect sheet asks.
+
+> [!NOTE]
+> **Unreleased.** The token in `sessionStorage`, `?open=` and `?dir=`, and
+> server kernels that keep running after a backend switch are available
+> only from a build of `main` (HEAD), not in the latest release.
 
 The URL can also say what to open, as an Apple app window opened on one
 file does: `?open=<path>` opens that notebook once connected, with the
@@ -170,6 +176,12 @@ JupyterLite's service worker, adapted.
 
 ## Notebook
 
+> [!NOTE]
+> **Unreleased.** Starting the kernel on the first run, `NotebookSaver` and
+> autosave, saved widgets without a kernel, sandboxed output frames, and
+> the reading screenshots are available only from a build of `main`
+> (HEAD), not in the latest release.
+
 `NotebookPane` shows one file. It holds JupyterLab's `Notebook` widget,
 its `NotebookModel`, and a `SessionContext`, which rejoins the kernel
 already running for the file but starts none on open: reading a notebook
@@ -206,6 +218,16 @@ ipywidgets load with the first notebook, as their own chunk
 document context, so the app uses `KernelWidgetManager`, the manager
 JupyterLab uses for consoles, one per kernel. Widget state is written to
 the notebook's metadata before each save.
+
+Without a kernel, widgets render from that saved state, as nbviewer and VS
+Code show them and JupyterLab doesn't: a manager with no kernel builds the
+models without comms, so a slider moves and `jslink` holds, but nothing
+reaches the kernel. When a kernel starts, its manager renders new outputs
+and also loads the saved models the kernel doesn't have, as JupyterLab's
+notebook manager does, so a save keeps them. Widget outputs drawn from the
+saved state render again then, so a kernel the session rejoins drives them. The widget-view renderer is
+not safe, as in JupyterLab (an HTML widget's value is HTML), so a notebook
+nobody trusted shows its widgets' text until Trust Notebook.
 
 Trust follows Jupyter's model: the server marks cells trusted when it serves
 a signed notebook, and Trust Notebook in the toolbar calls
@@ -256,6 +278,34 @@ never cached. The release is this `dist/` as a static site
 (`ganymede-ui-X.Y.Z.tar.gz` and `.zip`), which `ganymede ui install`
 downloads; see [releasing](releasing.md).
 
+## Agent
+
+An optional agent (ganymede-ui#123) built on Pi Durable
+(`@earendil-works/pi-durable`) lives in [`packages/agent`](../packages/agent/).
+It is off by default and turned on in the Settings sheet (the sidebar's
+settings button, or a `ganymede:show-settings` window event).
+
+- `settings.ts` holds the settings (provider, model, a local server's URL)
+  and the API keys. The app imports it up front, so it has no Pi runtime
+  code. Settings go in `localStorage`; a key goes in `sessionStorage`, or
+  `localStorage` when the person asks to remember it, behind pi-ai's
+  `CredentialStore` interface. Keys never go in IndexedDB: kernel Workers
+  on the page's origin can open IndexedDB but have no Web Storage. The
+  Apple apps will keep keys in the Keychain behind the same interface
+  (ganymede-ui#166).
+- `models.ts` builds pi-ai's models for the chosen provider: Anthropic,
+  OpenAI, Google, or a local OpenAI-compatible server (Ollama, LM Studio).
+  The app loads it with a dynamic `import()` only when the agent is on.
+  Its chunks, and chunks reached only through it, are named `agent-*`,
+  and the PWA caches them on first use instead of precaching them for
+  everyone.
+- `index.ts` and `tools.ts` are the spike's harness and notebook tools
+  (ganymede-ui#124); the agent panel that uses them comes next.
+
+> [!NOTE]
+> **Unreleased.** The Settings sheet and agent settings are available only
+> from a build of `main` (HEAD), not in the latest release.
+
 ## Protocol package
 
 [`packages/client`](../packages/client/) is Jupyter protocol code with no
@@ -270,6 +320,11 @@ stream handling, and renderer and widget seams. It was Ganymede's
 iOS) built from one set of sources. XcodeGen generates the Xcode project
 from `apple/project.yml`. It runs Ganymede in its
 own process and shows this web app in a `WKWebView`:
+
+> [!NOTE]
+> **Unreleased.** Notebook windows and the `.ipynb` document type,
+> remotes, the hidden kernel web view, and the terminal are available only
+> from a build of `main` (HEAD), not in the latest release.
 
 ![The app process: SwiftUI, the Ganymede server from GanymedeFFI, and a web view showing ganymede-ui](images/apple-app.svg)
 
@@ -368,7 +423,14 @@ websocket protocol to it. Closing the window deletes the terminal. For
 a remote with SSH, `ProcessTerminalTransport` runs `/usr/bin/ssh` in a
 pseudo-terminal the app spawns (SwiftTerm's `LocalProcess`), so OpenSSH
 does everything it does in Terminal.app: ssh-config aliases, the agent,
-ProxyJump, and asking to trust a new host key.
+ProxyJump, and asking to trust a new host key. iOS can't run a process,
+so there `SSHTerminalTransport` speaks SSH in the app with Apple's
+[swift-nio-ssh](https://github.com/apple/swift-nio-ssh): a pseudo-terminal
+and shell on one session channel, signed in with the app's ed25519 key
+(`SSHKey.swift`, in the keychain), and host keys trusted on first use per
+remote (`HostKeyStore`). On iPad a terminal is its own scene
+(`WindowGroup(for: TerminalRequest.self)`); SwiftTerm's key row gives Esc,
+Ctrl, Tab and arrows on the software keyboard.
 
 ## Tests
 

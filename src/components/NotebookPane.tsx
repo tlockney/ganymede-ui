@@ -12,6 +12,8 @@ import { AUTOSAVE_INTERVAL_MS, NotebookSaver, SaveConflict } from '../lib/saver'
 import { hasUntrustedOutputs } from '../lib/trust';
 import type { NotebookWidgets } from '../lib/widgets';
 
+export type CellType = nbformat.CellType;
+
 /** `none`: no kernel yet; one starts on the first run. */
 export type KernelState = Kernel.Status | 'connecting' | 'none';
 
@@ -39,6 +41,10 @@ export type NotebookController = {
   run(): Promise<void>;
   runAll(): Promise<void>;
   insert(type: 'code' | 'markdown'): void;
+  /** The active cell's type. */
+  cellType: CellType;
+  /** Change the selected cells (or the active one) to `type`. */
+  changeCellType(type: CellType): void;
   interrupt(): Promise<void>;
   restart(): Promise<void>;
   changeKernel(name: string): Promise<void>;
@@ -95,6 +101,12 @@ type Open = {
   disposables: IDisposable[];
 };
 
+function activeType(notebook: Notebook): CellType | undefined {
+  const cells = notebook.model?.cells;
+  const i = notebook.activeCellIndex;
+  return cells && i >= 0 && i < cells.length ? cells.get(i).type : undefined;
+}
+
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /**
@@ -120,6 +132,7 @@ export function NotebookPane({ backend, path, onController }: Props) {
   };
   const [dirty, setDirty] = useState(false);
   const [trusted, setTrusted] = useState(true);
+  const [cellType, setCellType] = useState<CellType>('code');
   /** Why the last notebook action failed, until dismissed. */
   const [notice, setNotice] = useState<string>();
   /** The notice saying the file's kernel is missing; picking one clears it. */
@@ -151,7 +164,6 @@ export function NotebookPane({ backend, path, onController }: Props) {
       model.fromJSON(content);
       model.dirty = false;
       const notebook = createNotebook(rendermime);
-      notebook.model = model;
 
       // One session per notebook, found by path. `initialize` rejoins the
       // session already running for this file (on the server or in this
@@ -175,6 +187,10 @@ export function NotebookPane({ backend, path, onController }: Props) {
         type: 'notebook',
         kernelPreference: { shouldStart: false, autoStartDefault: false },
       });
+      // Before the notebook gets its model, so saved widget outputs render
+      // from the file's widget state.
+      const notebookWidgets = widgets.attachWidgets(session, rendermime, model);
+      notebook.model = model;
 
       // Without JupyterLab's NotebookPanel, keep its habit of copying the
       // kernel's language_info into the notebook: the editors take their
@@ -225,7 +241,6 @@ export function NotebookPane({ backend, path, onController }: Props) {
         setNotice(`Couldn’t run: ${messageOf(e)}`),
       );
       const editing = attachEditing(notebook, session, rendermime, commands);
-      const notebookWidgets = widgets.attachWidgets(session, rendermime);
       const saver = new NotebookSaver({
         contents: services.contents,
         path,
@@ -349,6 +364,19 @@ export function NotebookPane({ backend, path, onController }: Props) {
     };
   }, [open, joined]);
 
+  // The active cell's type for the toolbar. Changing a cell's type replaces
+  // its widget, which makes the new one active.
+  useEffect(() => {
+    if (!open) return;
+    const { notebook } = open;
+    const update = () => setCellType(activeType(notebook) ?? 'code');
+    update();
+    notebook.activeCellChanged.connect(update);
+    return () => {
+      notebook.activeCellChanged.disconnect(update);
+    };
+  }, [open]);
+
   // Don't lose unsaved edits: save every few minutes and when the page is
   // hidden (an installed web app can be killed after that), and ask before
   // the page closes with edits that are not saved yet.
@@ -409,6 +437,13 @@ export function NotebookPane({ backend, path, onController }: Props) {
       missingKernel: kernelName ? undefined : intended.missing,
       dirty,
       trusted,
+      cellType,
+      changeCellType: type => {
+        NotebookActions.changeCellType(notebook, type);
+        setCellType(activeType(notebook) ?? type);
+        // Back to the notebook, so its shortcuts work after the picker.
+        notebook.activate();
+      },
       save: async () => {
         try {
           try {
@@ -486,7 +521,19 @@ export function NotebookPane({ backend, path, onController }: Props) {
         }
       }),
     });
-  }, [open, path, status, kernelName, intended, dirty, trusted, backend, services, onController]);
+  }, [
+    open,
+    path,
+    status,
+    kernelName,
+    intended,
+    dirty,
+    trusted,
+    cellType,
+    backend,
+    services,
+    onController,
+  ]);
 
   useEffect(() => () => onController(undefined), [onController]);
 

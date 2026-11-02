@@ -16,6 +16,8 @@ import { NotebookPane, type NotebookController } from './components/NotebookPane
 import { ConnectSheet } from './components/ConnectSheet';
 import { EmptyState } from './components/EmptyState';
 import { ShortcutsSheet } from './components/ShortcutsSheet';
+import { SettingsSheet } from './components/SettingsSheet';
+import { SHOW_SETTINGS_EVENT } from '@ganymede-ui/agent/settings';
 import { SHOW_SHORTCUTS_EVENT, matches } from './lib/shortcuts';
 import { LAUNCH_PARAMS, type Launch, isReload, readLaunch, titleFor, withOpen } from './lib/launch';
 import { exposeHooks, postDocument } from './lib/native';
@@ -85,6 +87,8 @@ export function App() {
   const [controller, setController] = useState<NotebookController>();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const closeShortcuts = useCallback(() => setShortcutsOpen(false), []);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const closeSettings = useCallback(() => setSettingsOpen(false), []);
 
   useEffect(stripLaunchParams, []);
 
@@ -211,6 +215,13 @@ export function App() {
     return () => window.removeEventListener(SHOW_SHORTCUTS_EVENT, show);
   }, []);
 
+  // From the sidebar, and later the Apple apps' Settings menu (#166).
+  useEffect(() => {
+    const show = () => setSettingsOpen(true);
+    window.addEventListener(SHOW_SETTINGS_EVENT, show);
+    return () => window.removeEventListener(SHOW_SETTINGS_EVENT, show);
+  }, []);
+
   return (
     <>
       <div className={`window ${sidebarOpen ? '' : 'sidebar-collapsed'}`} data-scheme={scheme}>
@@ -222,6 +233,7 @@ export function App() {
           onOpen={setOpenPath}
           onNew={newNotebook}
           onConnect={() => setSheetOpen(true)}
+          onSettings={() => setSettingsOpen(true)}
         />
         <main className="main">
           <Toolbar
@@ -275,6 +287,7 @@ export function App() {
         />
       )}
       {shortcutsOpen && <ShortcutsSheet onClose={closeShortcuts} />}
+      {settingsOpen && <SettingsSheet onClose={closeSettings} />}
     </>
   );
 }

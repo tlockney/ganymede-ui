@@ -6,6 +6,34 @@ import { VitePWA } from 'vite-plugin-pwa';
 // `ganymede serve --port 8888 --token <token>`.
 const GANYMEDE = process.env.GANYMEDE_URL ?? 'http://127.0.0.1:8888';
 
+// The optional agent's code: Pi, and the module the app loads it through.
+function isAgentModule(id: string): boolean {
+  return id.includes('/@earendil-works/') || id.endsWith('/packages/agent/src/models.ts');
+}
+
+type ModuleInfo = { importers: readonly string[]; dynamicImporters: readonly string[] } | null;
+
+/** Rollup's module graph, kept from the build for naming chunks at output. */
+const agentGraph: { info: (id: string) => ModuleInfo } = { info: () => null };
+
+/** Whether every import path to `id` runs through the agent's code. */
+function onlyForAgent(id: string, info: (id: string) => ModuleInfo): boolean {
+  const seen = new Set<string>();
+  const queue = [id];
+  while (queue.length) {
+    const next = queue.pop()!;
+    if (seen.has(next)) continue;
+    seen.add(next);
+    if (next !== id && isAgentModule(next)) continue;
+    const m = info(next);
+    const importers = m ? [...m.importers, ...m.dynamicImporters] : [];
+    // An entry, or a module the app reaches without the agent.
+    if (importers.length === 0) return false;
+    queue.push(...importers);
+  }
+  return true;
+}
+
 // Proxy the API so the page and the server share an origin. Ganymede checks
 // Origin against Host, as jupyter_server does, so rewrite both.
 const proxy: Record<string, ProxyOptions> = {
@@ -23,6 +51,12 @@ const proxy: Record<string, ProxyOptions> = {
 export default defineConfig({
   plugins: [
     react(),
+    {
+      name: 'agent-module-graph',
+      buildEnd() {
+        agentGraph.info = id => this.getModuleInfo(id);
+      },
+    },
     // JupyterLab's icons import SVG files as strings (webpack's raw
     // loader); in Vite a bare `.svg` import is a URL. Ask for `?raw` instead
     // for JupyterLab's own packages.
@@ -68,12 +102,20 @@ export default defineConfig({
         // Font Awesome (ipywidgets' icons, src/styles/fontawesome.css): only
         // notebooks with icon widgets need it, so cache each font on first
         // use instead of precaching 170 kB for everyone.
-        globIgnores: ['**/fa-*.woff2'],
+        // The agent (packages/agent) is off by default: cache its chunks
+        // on first use too, not for everyone (ganymede-ui#165).
+        globIgnores: ['**/fa-*.woff2', '**/agent-*.js'],
         runtimeCaching: [
           {
             urlPattern: /\/assets\/fa-[\w-]+\.woff2$/,
             handler: 'CacheFirst',
             options: { cacheName: 'font-awesome' },
+          },
+          {
+            urlPattern: /\/assets\/agent-[\w.-]+\.js$/,
+            handler: 'CacheFirst',
+            // Hashed names: each release adds new ones, so keep the cache bounded.
+            options: { cacheName: 'agent', expiration: { maxEntries: 40 } },
           },
         ],
         // The server API is never cached.
@@ -113,6 +155,18 @@ export default defineConfig({
     rolldownOptions: {
       // kernel.html is the Apple apps' hidden kernel web view (#99).
       input: { main: 'index.html', kernel: 'kernel.html' },
+      output: {
+        // The agent's lazy chunks (Pi and its providers) get an `agent-`
+        // prefix, which the PWA's precache leaves out.
+        // A chunk counts as the agent's when it holds Pi, or when every
+        // module in it is reached only through Pi (Pi's own dependencies).
+        chunkFileNames: chunk =>
+          chunk.moduleIds.some(isAgentModule) ||
+          (chunk.moduleIds.length > 0 &&
+            chunk.moduleIds.every(id => onlyForAgent(id, agentGraph.info)))
+            ? 'assets/agent-[name]-[hash].js'
+            : 'assets/[name]-[hash].js',
+      },
     },
   },
   optimizeDeps: {

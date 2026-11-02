@@ -68,6 +68,11 @@ normally sits behind a TLS proxy; Ganymede's
 listening beyond loopback. The server URL is saved in the browser and the
 token only for the tab; see [Where your data lives](https://github.com/tlockney/ganymede-ui#where-your-data-lives).
 
+> [!NOTE]
+> **Unreleased.** Keeping the token only for the tab is available only
+> from a build of `main` (HEAD); the latest release saves it with the
+> server URL.
+
 To try this on one machine:
 
 ```sh
