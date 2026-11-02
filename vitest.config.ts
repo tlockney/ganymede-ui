@@ -6,6 +6,8 @@ import react from '@vitejs/plugin-react';
 // stay out of the test run.
 export default defineConfig({
   plugins: [react()],
+  // One React, as in vite.config.ts.
+  resolve: { dedupe: ['react', 'react-dom'] },
   test: {
     environment: 'jsdom',
     include: ['src/**/*.test.{ts,tsx}', 'packages/agent/src/**/*.test.ts'],
