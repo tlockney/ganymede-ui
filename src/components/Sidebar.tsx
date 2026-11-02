@@ -12,6 +12,7 @@ import {
   NotebookIcon,
   PowerIcon,
   ServerIcon,
+  SettingsIcon,
 } from './Icons';
 
 type Props = {
@@ -23,6 +24,8 @@ type Props = {
   onOpen(path: string): void;
   onNew(dir: string): void;
   onConnect(): void;
+  /** Opens the Settings sheet; no Settings button without it. */
+  onSettings?(): void;
 };
 
 export function Sidebar({
@@ -33,6 +36,7 @@ export function Sidebar({
   onOpen,
   onNew,
   onConnect,
+  onSettings,
 }: Props) {
   const services = backend?.services;
   const [dir, setDir] = useState(root);
@@ -161,16 +165,28 @@ export function Sidebar({
         )}
       </div>
 
-      <button className="backend-chip" onClick={onConnect}>
-        {backend?.config.kind === 'browser' ? <BrowserIcon /> : <ServerIcon />}
-        <span className="chip-text">
-          <span className="chip-title">
-            {connecting ? 'Connecting…' : (backend?.label ?? 'Not connected')}
+      <div className="sidebar-footer">
+        <button className="backend-chip" onClick={onConnect}>
+          {backend?.config.kind === 'browser' ? <BrowserIcon /> : <ServerIcon />}
+          <span className="chip-text">
+            <span className="chip-title">
+              {connecting ? 'Connecting…' : (backend?.label ?? 'Not connected')}
+            </span>
+            {backend && !connecting && <span className="chip-detail">{backend.detail}</span>}
           </span>
-          {backend && !connecting && <span className="chip-detail">{backend.detail}</span>}
-        </span>
-        <span className={`status-dot ${backend && !connecting ? 's-idle' : 's-connecting'}`} />
-      </button>
+          <span className={`status-dot ${backend && !connecting ? 's-idle' : 's-connecting'}`} />
+        </button>
+        {onSettings && (
+          <button
+            className="icon-button settings-button"
+            aria-label="Settings"
+            title="Settings"
+            onClick={onSettings}
+          >
+            <SettingsIcon />
+          </button>
+        )}
+      </div>
     </aside>
   );
 }

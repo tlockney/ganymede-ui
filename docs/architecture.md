@@ -46,16 +46,17 @@ Jupyter server that speaks the same REST and websocket API.
 
 ![The shell and notebook use one ServiceManager, built by one of three backends](images/backends.svg)
 
-| Part                            | Where                                                                                                                                                                       |
-| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Backends                        | [`src/lib/backends.ts`](../src/lib/backends.ts)                                                                                                                             |
-| In-page server and kernels      | [`src/lib/lite.ts`](../src/lib/lite.ts), [`src/lib/cdp-kernel.ts`](../src/lib/cdp-kernel.ts)                                                                                |
-| Service-worker relay            | [`src/lib/lite-sw.ts`](../src/lib/lite-sw.ts), [`public/lite-service-worker.js`](../public/lite-service-worker.js)                                                          |
-| Notebook                        | [`src/components/NotebookPane.tsx`](../src/components/NotebookPane.tsx), [`src/lib/jupyterlab.ts`](../src/lib/jupyterlab.ts), [`src/lib/widgets.ts`](../src/lib/widgets.ts) |
-| Shell                           | [`src/App.tsx`](../src/App.tsx), [`src/components/`](../src/components/), [`src/styles/`](../src/styles/)                                                                   |
-| Build and PWA                   | [`vite.config.ts`](../vite.config.ts)                                                                                                                                       |
-| Protocol package (not used yet) | [`packages/client/`](../packages/client/)                                                                                                                                   |
-| Mac and iPad app                | [`apple/`](../apple/README.md)                                                                                                                                              |
+| Part                             | Where                                                                                                                                                                       |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Backends                         | [`src/lib/backends.ts`](../src/lib/backends.ts)                                                                                                                             |
+| In-page server and kernels       | [`src/lib/lite.ts`](../src/lib/lite.ts), [`src/lib/cdp-kernel.ts`](../src/lib/cdp-kernel.ts)                                                                                |
+| Service-worker relay             | [`src/lib/lite-sw.ts`](../src/lib/lite-sw.ts), [`public/lite-service-worker.js`](../public/lite-service-worker.js)                                                          |
+| Notebook                         | [`src/components/NotebookPane.tsx`](../src/components/NotebookPane.tsx), [`src/lib/jupyterlab.ts`](../src/lib/jupyterlab.ts), [`src/lib/widgets.ts`](../src/lib/widgets.ts) |
+| Shell                            | [`src/App.tsx`](../src/App.tsx), [`src/components/`](../src/components/), [`src/styles/`](../src/styles/)                                                                   |
+| Build and PWA                    | [`vite.config.ts`](../vite.config.ts)                                                                                                                                       |
+| Agent (optional, off by default) | [`packages/agent/`](../packages/agent/), [`src/components/SettingsSheet.tsx`](../src/components/SettingsSheet.tsx)                                                          |
+| Protocol package (not used yet)  | [`packages/client/`](../packages/client/)                                                                                                                                   |
+| Mac and iPad app                 | [`apple/`](../apple/README.md)                                                                                                                                              |
 
 ## Backends
 
@@ -263,6 +264,34 @@ precaches the app, so it works offline and installs as an app. `/api/` is
 never cached. The release is this `dist/` as a static site
 (`ganymede-ui-X.Y.Z.tar.gz` and `.zip`), which `ganymede ui install`
 downloads; see [releasing](releasing.md).
+
+## Agent
+
+An optional agent (ganymede-ui#123) built on Pi Durable
+(`@earendil-works/pi-durable`) lives in [`packages/agent`](../packages/agent/).
+It is off by default and turned on in the Settings sheet (the sidebar's
+settings button, or a `ganymede:show-settings` window event).
+
+- `settings.ts` holds the settings (provider, model, a local server's URL)
+  and the API keys. The app imports it up front, so it has no Pi runtime
+  code. Settings go in `localStorage`; a key goes in `sessionStorage`, or
+  `localStorage` when the person asks to remember it, behind pi-ai's
+  `CredentialStore` interface. Keys never go in IndexedDB: kernel Workers
+  on the page's origin can open IndexedDB but have no Web Storage. The
+  Apple apps will keep keys in the Keychain behind the same interface
+  (ganymede-ui#166).
+- `models.ts` builds pi-ai's models for the chosen provider: Anthropic,
+  OpenAI, Google, or a local OpenAI-compatible server (Ollama, LM Studio).
+  The app loads it with a dynamic `import()` only when the agent is on.
+  Its chunks, and chunks reached only through it, are named `agent-*`,
+  and the PWA caches them on first use instead of precaching them for
+  everyone.
+- `index.ts` and `tools.ts` are the spike's harness and notebook tools
+  (ganymede-ui#124); the agent panel that uses them comes next.
+
+> [!NOTE]
+> **Unreleased.** The Settings sheet and agent settings are available only
+> from a build of `main` (HEAD), not in the latest release.
 
 ## Protocol package
 

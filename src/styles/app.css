@@ -252,11 +252,27 @@ button {
   font-weight: 600;
 }
 
-.backend-chip {
+.sidebar-footer {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 6px;
   margin: 8px 10px 10px;
+}
+
+.settings-button {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+}
+
+.backend-chip {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
   padding: 8px 10px;
   border: 0;
   border-radius: 9px;
@@ -668,7 +684,8 @@ button {
   color: var(--text);
 }
 
-.form-rows input {
+.form-rows input,
+.form-rows select {
   height: 26px;
   padding: 0 8px;
   border: 0.5px solid var(--separator);
@@ -680,7 +697,8 @@ button {
   user-select: text;
 }
 
-.form-rows input:focus {
+.form-rows input:focus,
+.form-rows select:focus {
   box-shadow: 0 0 0 3.5px var(--accent-soft);
   border-color: var(--accent);
 }
@@ -806,6 +824,37 @@ button {
   font-size: 11px;
   color: var(--red);
   text-align: right;
+}
+
+.settings-sheet h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.settings-sheet .form-rows {
+  margin-top: 10px;
+}
+
+.settings-sheet .hint {
+  margin-top: 0;
+}
+
+.settings-test {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-left: 66px;
+}
+
+.settings-test .test-ok {
+  color: var(--green);
+}
+
+.settings-test .test-failed {
+  color: var(--red);
+  font-size: 11px;
+  overflow-wrap: anywhere;
 }
 
 .sheet-buttons .reset-all {

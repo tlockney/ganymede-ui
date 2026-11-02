@@ -3,7 +3,12 @@
   "version": "0.0.0",
   "private": true,
   "type": "module",
-  "description": "Spike: an optional agent for ganymede-ui on Pi Durable, driving notebooks and kernels through the Jupyter API.",
+  "description": "An optional agent for ganymede-ui on Pi Durable, driving notebooks and kernels through the Jupyter API.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./settings": "./src/settings.ts",
+    "./models": "./src/models.ts"
+  },
   "dependencies": {
     "@earendil-works/chord": "1.4.0",
     "@earendil-works/pi-ai": "1.4.0",
