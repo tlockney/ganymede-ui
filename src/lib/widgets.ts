@@ -6,11 +6,22 @@
  * has none of those, so this uses the same manager JupyterLab uses for
  * consoles, `KernelWidgetManager`, which needs only the kernel: one per
  * kernel, with the widget-view renderer swapped in the notebook's rendermime.
- * `saveState` writes the live widgets' state into the notebook's metadata
- * before a save, as JupyterLab's notebook manager does with its "Save
- * Widget State Automatically" setting on.
+ *
+ * Without a kernel, widgets render from the state saved in the notebook's
+ * metadata, as nbviewer and VS Code show them: a manager with no kernel
+ * builds the models from that state, with no comms, so the views work in
+ * the page (a slider moves, `jslink` holds) but nothing reaches Python.
+ * When a kernel starts, its manager takes over for new outputs and loads
+ * the saved models that the kernel doesn't have, as JupyterLab's notebook
+ * manager does. `saveState` writes the widgets' state into the metadata
+ * before a save, as JupyterLab does with its "Save Widget State
+ * Automatically" setting on.
+ *
+ * The widget-view renderer is not safe (as in JupyterLab), so outputs of a
+ * notebook nobody trusted show their text until it is trusted.
  */
 import type { ISessionContext } from '@jupyterlab/apputils';
+import type { ICodeCellModel } from '@jupyterlab/cells';
 import type { INotebookModel } from '@jupyterlab/notebook';
 import type { IRenderMimeRegistry } from '@jupyterlab/rendermime';
 import type { Kernel } from '@jupyterlab/services';
@@ -19,6 +30,7 @@ import type { ExportMap } from '@jupyter-widgets/base/lib/registry';
 import { JUPYTER_CONTROLS_VERSION } from '@jupyter-widgets/controls/lib/version';
 import {
   KernelWidgetManager,
+  LabWidgetManager,
   WIDGET_STATE_MIMETYPE,
   WIDGET_VIEW_MIMETYPE,
 } from '@jupyter-widgets/jupyterlab-manager/lib/manager';
@@ -36,8 +48,78 @@ import '@jupyter-widgets/controls/css/widgets-base.css';
 // chunk; see the stylesheet.
 import '../styles/fontawesome.css';
 
-function createManager(kernel: Kernel.IKernelConnection, rendermime: IRenderMimeRegistry) {
-  const manager = new KernelWidgetManager(kernel, rendermime);
+/** `metadata.widgets[WIDGET_STATE_MIMETYPE]`, as nbformat saves it. */
+type SavedState = Parameters<LabWidgetManager['set_state']>[0];
+
+function savedState(model: INotebookModel): SavedState | undefined {
+  const widgets = model.getMetadata('widgets') as Record<string, unknown> | undefined;
+  const state = widgets?.[WIDGET_STATE_MIMETYPE] as SavedState | undefined;
+  return state && typeof state.state === 'object' && Object.keys(state.state).length > 0
+    ? state
+    : undefined;
+}
+
+/**
+ * A kernel's manager that also builds the notebook's saved models the kernel
+ * doesn't have (without comms), as JupyterLab's notebook manager does: after
+ * the kernel's own, and before `restored`, so a renderer waiting for a saved
+ * model finds it. Runs again on each reconnect.
+ */
+class NotebookKernelWidgetManager extends KernelWidgetManager {
+  // Set right after `super()`, whose `restoreWidgets` reads it only after
+  // its first `await`.
+  private saved!: () => SavedState | undefined;
+
+  constructor(
+    kernel: Kernel.IKernelConnection,
+    rendermime: IRenderMimeRegistry,
+    saved: () => SavedState | undefined,
+  ) {
+    super(kernel, rendermime);
+    this.saved = saved;
+  }
+
+  async restoreWidgets(): Promise<void> {
+    try {
+      this._kernelRestoreInProgress = true;
+      await this._loadFromKernel();
+      const state = this.saved();
+      if (state) await this.set_state(this.filterExistingModelState(state));
+      this._restoredStatus = true;
+      this._restored.emit();
+    } catch (e) {
+      // As KernelWidgetManager: a failed restore leaves the status unset.
+      console.error('Restoring widgets:', e);
+    } finally {
+      this._kernelRestoreInProgress = false;
+    }
+  }
+}
+
+/** Widgets from the notebook's saved state, for when there is no kernel. */
+class SavedStateWidgetManager extends LabWidgetManager {
+  get kernel(): Kernel.IKernelConnection | null {
+    return null;
+  }
+
+  // No comms: `set_state` builds every model without one.
+  async _get_comm_info(): Promise<object> {
+    return {};
+  }
+
+  async _create_comm(): Promise<never> {
+    throw new Error('There is no kernel for this widget to talk to.');
+  }
+
+  /** Build the models, then let renderers waiting for them try again. */
+  async load(state: SavedState): Promise<void> {
+    await this.set_state(state);
+    this._restoredStatus = true;
+    this._restored.emit();
+  }
+}
+
+function register<T extends LabWidgetManager>(manager: T): T {
   manager.register({
     name: '@jupyter-widgets/base',
     version: base.JUPYTER_WIDGETS_VERSION,
@@ -69,6 +151,20 @@ function createManager(kernel: Kernel.IKernelConnection, rendermime: IRenderMime
   return manager;
 }
 
+function createKernelManager(
+  kernel: Kernel.IKernelConnection,
+  rendermime: IRenderMimeRegistry,
+  model: INotebookModel,
+) {
+  return register(new NotebookKernelWidgetManager(kernel, rendermime, () => savedState(model)));
+}
+
+function createSavedStateManager(rendermime: IRenderMimeRegistry, state: SavedState) {
+  const manager = register(new SavedStateWidgetManager(rendermime));
+  manager.load(state).catch(e => console.error('Saved widget state:', e));
+  return manager;
+}
+
 export interface NotebookWidgets extends IDisposable {
   /**
    * Put the state of the live widgets into the notebook's metadata
@@ -79,18 +175,49 @@ export interface NotebookWidgets extends IDisposable {
   saveState(model: INotebookModel): void;
 }
 
-/** Render ipywidgets in this notebook, following its session's kernel. */
+/**
+ * Render the notebook's widget outputs again, with the widget-view renderer
+ * now in rendermime. Outputs keep the renderer they were drawn with, so
+ * views drawn from the saved state would stay bound to that manager. Not an
+ * edit of the user's.
+ */
+function rerenderWidgetOutputs(model: INotebookModel) {
+  const wasDirty = model.dirty;
+  for (let i = 0; i < model.cells.length; i++) {
+    const cell = model.cells.get(i);
+    if (cell.type !== 'code') continue;
+    const outputs = (cell as ICodeCellModel).outputs;
+    for (let j = 0; j < outputs.length; j++) {
+      const output = outputs.get(j);
+      if (output.data[WIDGET_VIEW_MIMETYPE] !== undefined) outputs.set(j, output.toJSON());
+    }
+  }
+  model.dirty = wasDirty;
+}
+
+/**
+ * Render ipywidgets in this notebook, following its session's kernel, and
+ * from the notebook's saved widget state while there is none. Call it before
+ * the notebook widget gets `model`, so saved outputs render with it.
+ */
 export function attachWidgets(
   session: ISessionContext,
   rendermime: IRenderMimeRegistry,
+  model: INotebookModel,
 ): NotebookWidgets {
-  let manager: KernelWidgetManager | undefined;
+  let manager: LabWidgetManager | undefined;
   let disposed = false;
   const update = () => {
-    const kernel = session.session?.kernel;
+    const kernel = session.session?.kernel ?? null;
     if (manager && manager.kernel === kernel) return;
+    const fromSaved = manager instanceof SavedStateWidgetManager;
     manager?.dispose();
-    manager = kernel ? createManager(kernel, rendermime) : undefined;
+    const state = kernel ? undefined : savedState(model);
+    manager = kernel
+      ? createKernelManager(kernel, rendermime, model)
+      : state
+        ? createSavedStateManager(rendermime, state)
+        : undefined;
     rendermime.removeMimeType(WIDGET_VIEW_MIMETYPE);
     if (manager) {
       const m = manager;
@@ -103,6 +230,9 @@ export function attachWidgets(
         -10,
       );
     }
+    // A kernel that takes over from the saved state, say the one the
+    // session rejoins on open, holds the live models.
+    if (fromSaved && kernel) rerenderWidgetOutputs(model);
   };
   update();
   session.kernelChanged.connect(update);
@@ -118,7 +248,8 @@ export function attachWidgets(
       manager?.dispose();
     },
     saveState(model) {
-      if (!manager) return;
+      // Without a kernel the saved state is what there is: leave it.
+      if (!(manager instanceof KernelWidgetManager)) return;
       const state = manager.get_state_sync({ drop_defaults: true });
       const live = Object.keys((state as { state?: object }).state ?? {}).length > 0;
       if (!live && model.getMetadata('widgets') === undefined) return;

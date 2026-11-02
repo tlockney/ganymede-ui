@@ -164,7 +164,6 @@ export function NotebookPane({ backend, path, onController }: Props) {
       model.fromJSON(content);
       model.dirty = false;
       const notebook = createNotebook(rendermime);
-      notebook.model = model;
 
       // One session per notebook, found by path. `initialize` rejoins the
       // session already running for this file (on the server or in this
@@ -188,6 +187,10 @@ export function NotebookPane({ backend, path, onController }: Props) {
         type: 'notebook',
         kernelPreference: { shouldStart: false, autoStartDefault: false },
       });
+      // Before the notebook gets its model, so saved widget outputs render
+      // from the file's widget state.
+      const notebookWidgets = widgets.attachWidgets(session, rendermime, model);
+      notebook.model = model;
 
       // Without JupyterLab's NotebookPanel, keep its habit of copying the
       // kernel's language_info into the notebook: the editors take their
@@ -238,7 +241,6 @@ export function NotebookPane({ backend, path, onController }: Props) {
         setNotice(`Couldn’t run: ${messageOf(e)}`),
       );
       const editing = attachEditing(notebook, session, rendermime, commands);
-      const notebookWidgets = widgets.attachWidgets(session, rendermime);
       const saver = new NotebookSaver({
         contents: services.contents,
         path,

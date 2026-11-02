@@ -178,8 +178,9 @@ JupyterLite's service worker, adapted.
 
 > [!NOTE]
 > **Unreleased.** Starting the kernel on the first run, `NotebookSaver` and
-> autosave, sandboxed output frames, and the reading screenshots are
-> available only from a build of `main` (HEAD), not in the latest release.
+> autosave, saved widgets without a kernel, sandboxed output frames, and
+> the reading screenshots are available only from a build of `main`
+> (HEAD), not in the latest release.
 
 `NotebookPane` shows one file. It holds JupyterLab's `Notebook` widget,
 its `NotebookModel`, and a `SessionContext`, which rejoins the kernel
@@ -217,6 +218,16 @@ ipywidgets load with the first notebook, as their own chunk
 document context, so the app uses `KernelWidgetManager`, the manager
 JupyterLab uses for consoles, one per kernel. Widget state is written to
 the notebook's metadata before each save.
+
+Without a kernel, widgets render from that saved state, as nbviewer and VS
+Code show them and JupyterLab doesn't: a manager with no kernel builds the
+models without comms, so a slider moves and `jslink` holds, but nothing
+reaches the kernel. When a kernel starts, its manager renders new outputs
+and also loads the saved models the kernel doesn't have, as JupyterLab's
+notebook manager does, so a save keeps them. Widget outputs drawn from the
+saved state render again then, so a kernel the session rejoins drives them. The widget-view renderer is
+not safe, as in JupyterLab (an HTML widget's value is HTML), so a notebook
+nobody trusted shows its widgets' text until Trust Notebook.
 
 Trust follows Jupyter's model: the server marks cells trusted when it serves
 a signed notebook, and Trust Notebook in the toolbar calls
