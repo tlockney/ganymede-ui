@@ -284,7 +284,7 @@ export class KeychainCredentialStore implements KeyStore {
     return next;
   }
 
-  remembered(): boolean {
+  remembered(_providerId: string): boolean {
     return true;
   }
 
@@ -322,7 +322,8 @@ export class KeychainCredentialStore implements KeyStore {
     return this.serial(providerId, () => this.put(providerId, ''));
   }
 
-  setKey(providerId: string, key: string): Promise<void> {
+  /** `remember` is ignored: the Keychain always keeps the key. */
+  setKey(providerId: string, key: string, _remember: boolean): Promise<void> {
     return this.serial(providerId, () => this.put(providerId, key));
   }
 }
