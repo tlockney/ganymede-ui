@@ -102,16 +102,30 @@ export function onAgentSettingsChange(listener: () => void): () => void {
 }
 
 /**
+ * Where the Settings sheet and the agent keep API keys: pi-ai's
+ * `CredentialStore`, plus what the sheet needs.
+ */
+export interface KeyStore extends CredentialStore {
+  /** Keys always outlive the page (the apps' Keychain), so the sheet offers no "Remember". */
+  readonly persistent: boolean;
+  /** Whether the provider's key outlives the page. */
+  remembered(providerId: string): boolean;
+  /** Sets the provider's key; an empty key removes it. `remember` matters only when not `persistent`. */
+  setKey(providerId: string, key: string, remember: boolean): Promise<void>;
+}
+
+/**
  * API keys, one per provider, as pi-ai's `CredentialStore`, so Pi's models
  * read them when they make a request.
  *
  * A key lives in `sessionStorage` (this tab, until it closes) unless the
  * person asks to remember it, which puts it in `localStorage`. Never in
  * IndexedDB: kernels in this page run in Workers on the same origin, and a
- * Worker can open IndexedDB but has no Web Storage. The Apple apps will
- * supply a Keychain store with the same interface (ganymede-ui#166).
+ * Worker can open IndexedDB but has no Web Storage. The Apple apps use
+ * `KeychainCredentialStore` instead.
  */
-export class BrowserCredentialStore implements CredentialStore {
+export class BrowserCredentialStore implements KeyStore {
+  readonly persistent = false;
   private chains = new Map<string, Promise<unknown>>();
 
   constructor(
@@ -232,11 +246,109 @@ export function keyOnly(providerId: string, key: string): CredentialStore {
   };
 }
 
-/** The page's key store, shared by the Settings sheet and the agent. */
-export const credentials = new BrowserCredentialStore();
+/** The Apple apps' `agentKeys` script message handler, which answers each message. */
+export interface AgentKeysHandler {
+  postMessage(
+    body: { op: 'get'; provider: string } | { op: 'set'; provider: string; key: string },
+  ): Promise<unknown>;
+}
 
 /**
- * Asks the app to show its Settings sheet. The Apple apps' Settings menu
- * item (⌘,) will send it (ganymede-ui#166).
+ * API keys in the Apple apps' Keychain, through the app's `agentKeys`
+ * handler (ganymede-ui#166). The app answers only the page it loaded, not
+ * output frames, and the kernels' web view has no such handler.
+ */
+export class KeychainCredentialStore implements KeyStore {
+  readonly persistent = true;
+  private chains = new Map<string, Promise<unknown>>();
+
+  constructor(private handler: AgentKeysHandler) {}
+
+  private async get(providerId: string): Promise<Credential | undefined> {
+    const key = await this.handler.postMessage({ op: 'get', provider: providerId });
+    return typeof key === 'string' && key ? { type: 'api_key', key } : undefined;
+  }
+
+  /** Rejects with the app's error when the Keychain refuses, so a key is never lost silently. */
+  private async put(providerId: string, key: string): Promise<void> {
+    await this.handler.postMessage({ op: 'set', provider: providerId, key });
+  }
+
+  private serial<T>(providerId: string, task: () => Promise<T>): Promise<T> {
+    const previous = this.chains.get(providerId) ?? Promise.resolve();
+    const next = previous.catch(() => {}).then(task);
+    this.chains.set(
+      providerId,
+      next.catch(() => {}),
+    );
+    return next;
+  }
+
+  remembered(_providerId: string): boolean {
+    return true;
+  }
+
+  read(providerId: string): Promise<Credential | undefined> {
+    return this.get(providerId);
+  }
+
+  /** The app stores keys only for the known providers, so asks about each. */
+  async list(): Promise<readonly CredentialInfo[]> {
+    const found: CredentialInfo[] = [];
+    for (const { id } of PROVIDERS) {
+      if (await this.get(id).catch(() => undefined))
+        found.push({ providerId: id, type: 'api_key' });
+    }
+    return found;
+  }
+
+  modify(
+    providerId: string,
+    fn: (current: Credential | undefined) => Promise<Credential | undefined>,
+  ): Promise<Credential | undefined> {
+    return this.serial(providerId, async () => {
+      const current = await this.get(providerId);
+      const next = await fn(current);
+      if (next === undefined) return current;
+      if (next.type !== 'api_key' || !next.key) {
+        throw new Error('the Keychain store holds only API keys');
+      }
+      await this.put(providerId, next.key);
+      return next;
+    });
+  }
+
+  delete(providerId: string): Promise<void> {
+    return this.serial(providerId, () => this.put(providerId, ''));
+  }
+
+  /** `remember` is ignored: the Keychain always keeps the key. */
+  setKey(providerId: string, key: string, _remember: boolean): Promise<void> {
+    return this.serial(providerId, () => this.put(providerId, key));
+  }
+}
+
+/** The app's `agentKeys` handler, when this page runs in the Apple apps. */
+function agentKeysHandler(): AgentKeysHandler | undefined {
+  try {
+    const webkit = (globalThis as { webkit?: { messageHandlers?: Record<string, unknown> } })
+      .webkit;
+    const handler = webkit?.messageHandlers?.agentKeys as AgentKeysHandler | undefined;
+    return typeof handler?.postMessage === 'function' ? handler : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The page's key store, shared by the Settings sheet and the agent: the Keychain in the apps. */
+export function pageKeyStore(handler = agentKeysHandler()): KeyStore {
+  return handler ? new KeychainCredentialStore(handler) : new BrowserCredentialStore();
+}
+
+export const credentials: KeyStore = pageKeyStore();
+
+/**
+ * Asks the app to show its Settings sheet. The Mac app's Agent Settings
+ * menu item sends it (ganymede-ui#166).
  */
 export const SHOW_SETTINGS_EVENT = 'ganymede:show-settings';

@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   BrowserCredentialStore,
+  KeychainCredentialStore,
   loadAgentSettings,
   saveAgentSettings,
   DEFAULT_SETTINGS,
@@ -223,5 +224,32 @@ describe('SettingsSheet', () => {
       'autocomplete',
       'new-password',
     );
+  });
+
+  it('offers no Remember in the apps, where the Keychain keeps keys', async () => {
+    const items = new Map<string, string>();
+    const store = new KeychainCredentialStore({
+      postMessage: async body => {
+        if (body.op === 'get') return items.get(body.provider) ?? null;
+        items.set(body.provider, body.key);
+        return null;
+      },
+    });
+    const onClose = vi.fn();
+    render(
+      <SettingsSheet
+        onClose={onClose}
+        store={store}
+        loadModels={vi.fn(async () => fakeModels())}
+      />,
+    );
+    await userEvent.click(toggle());
+    expect(screen.queryByRole('checkbox', { name: /Remember the key/ })).not.toBeInTheDocument();
+    expect(screen.getByText(/keeps the key in the Keychain/)).toBeInTheDocument();
+    await userEvent.type(screen.getByPlaceholderText('Anthropic API key'), 'sk-ant');
+    await userEvent.click(save());
+    expect(onClose).toHaveBeenCalled();
+    expect(items.get('anthropic')).toBe('sk-ant');
+    expect(JSON.stringify({ ...localStorage, ...sessionStorage })).not.toContain('sk-ant');
   });
 });

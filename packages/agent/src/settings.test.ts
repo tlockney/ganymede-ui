@@ -1,11 +1,14 @@
 // @vitest-environment node
 import { describe, expect, it } from 'vitest';
 import {
+  type AgentKeysHandler,
   BrowserCredentialStore,
   DEFAULT_SETTINGS,
+  KeychainCredentialStore,
   keyOnly,
   loadAgentSettings,
   onAgentSettingsChange,
+  pageKeyStore,
   saveAgentSettings,
 } from './settings';
 
@@ -176,5 +179,65 @@ describe('keyOnly', () => {
     expect(await store.read('anthropic')).toEqual({ type: 'api_key', key: 'sk-test' });
     expect(await store.read('openai')).toBeUndefined();
     expect(await keyOnly('local', '').read('local')).toBeUndefined();
+  });
+});
+
+/** The apps' `agentKeys` handler, over a map instead of the Keychain. */
+function fakeKeychain(fail?: string) {
+  const items = new Map<string, string>();
+  const handler: AgentKeysHandler = {
+    postMessage: async body => {
+      if (body.op === 'get') return items.get(body.provider) ?? null;
+      if (fail) throw new Error(fail);
+      if (body.key) items.set(body.provider, body.key);
+      else items.delete(body.provider);
+      return null;
+    },
+  };
+  return { items, keys: new KeychainCredentialStore(handler) };
+}
+
+describe('KeychainCredentialStore', () => {
+  it('keeps keys in the app, always remembered', async () => {
+    const { items, keys } = fakeKeychain();
+    expect(keys.persistent).toBe(true);
+    await keys.setKey('anthropic', 'sk-ant', false);
+    expect(items.get('anthropic')).toBe('sk-ant');
+    expect(await keys.read('anthropic')).toEqual({ type: 'api_key', key: 'sk-ant' });
+    expect(keys.remembered('anthropic')).toBe(true);
+    expect(await keys.list()).toEqual([{ providerId: 'anthropic', type: 'api_key' }]);
+  });
+
+  it('removes a key on an empty key or delete', async () => {
+    const { items, keys } = fakeKeychain();
+    await keys.setKey('openai', 'sk-1', true);
+    await keys.setKey('openai', '', true);
+    expect(items.has('openai')).toBe(false);
+    await keys.setKey('google', 'g-1', true);
+    await keys.delete('google');
+    expect(await keys.read('google')).toBeUndefined();
+  });
+
+  it('writes back what modify returns', async () => {
+    const { items, keys } = fakeKeychain();
+    await keys.setKey('anthropic', 'sk-old', true);
+    const next = await keys.modify('anthropic', async c => {
+      expect(c).toEqual({ type: 'api_key', key: 'sk-old' });
+      return { type: 'api_key', key: 'sk-new' };
+    });
+    expect(next).toEqual({ type: 'api_key', key: 'sk-new' });
+    expect(items.get('anthropic')).toBe('sk-new');
+  });
+
+  it("rejects when the app can't save the key", async () => {
+    const { keys } = fakeKeychain('The user name or passphrase you entered is not correct.');
+    await expect(keys.setKey('anthropic', 'sk', true)).rejects.toThrow(/passphrase/);
+  });
+});
+
+describe('pageKeyStore', () => {
+  it('uses the Keychain in the apps and browser storage elsewhere', () => {
+    expect(pageKeyStore({ postMessage: async () => null })).toBeInstanceOf(KeychainCredentialStore);
+    expect(pageKeyStore(undefined)).toBeInstanceOf(BrowserCredentialStore);
   });
 });

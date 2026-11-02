@@ -48,6 +48,8 @@ struct WebView: UIViewRepresentable {
 extension Notification.Name {
     /// Posted by Help > Keyboard Shortcuts.
     static let showShortcuts = Notification.Name("GanymedeShowShortcuts")
+    /// Posted by Ganymede > Agent Settings.
+    static let showAgentSettings = Notification.Name("GanymedeShowAgentSettings")
 }
 
 @MainActor
@@ -55,6 +57,8 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     private var loaded: URL?
     private weak var webView: WKWebView?
     private var shortcuts: NSObjectProtocol?
+    private var agentSettings: NSObjectProtocol?
+    private let agentKeys = AgentKeys(secrets: KeychainStore())
     private var urlObservation: NSKeyValueObservation?
     var onNavigate: ((URL?) -> Void)?
     var onOpenFile: ((String) -> Void)?
@@ -82,6 +86,10 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         }
         // The page's sidebar opens text files in the app's editor (#122).
         view.configuration.userContentController.add(OpenFileHandler(self), name: "openFile")
+        // The agent's API keys, in the Keychain (#166).
+        view.configuration.userContentController.addScriptMessageHandler(
+            AgentKeysHandler(self), contentWorld: .page, name: "agentKeys"
+        )
         #if os(macOS)
         view.configuration.userContentController.add(DocumentHandler(self), name: "document")
         // Help > Keyboard Shortcuts opens the web app's shortcuts sheet.
@@ -89,6 +97,14 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
             forName: .showShortcuts, object: nil, queue: .main
         ) { [weak view] _ in
             view?.evaluateJavaScript("window.dispatchEvent(new Event('ganymede:show-shortcuts'))")
+        }
+        // Ganymede > Agent Settings opens the page's Settings sheet, in the
+        // front window only.
+        agentSettings = NotificationCenter.default.addObserver(
+            forName: .showAgentSettings, object: nil, queue: .main
+        ) { [weak view] _ in
+            guard let view, view.window?.isKeyWindow == true else { return }
+            view.evaluateJavaScript("window.dispatchEvent(new Event('ganymede:show-settings'))")
         }
         #endif
         if #available(macOS 13.3, iOS 16.4, *) {
@@ -101,6 +117,9 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     deinit {
         if let shortcuts {
             NotificationCenter.default.removeObserver(shortcuts)
+        }
+        if let agentSettings {
+            NotificationCenter.default.removeObserver(agentSettings)
         }
     }
 
@@ -395,6 +414,51 @@ private final class OpenFileHandler: NSObject, WKScriptMessageHandler {
 
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
         coordinator?.received(openFile: message)
+    }
+}
+
+extension WebViewCoordinator {
+    /// The page's `agentKeys` message (#166). Only the page the app loaded
+    /// may read or set keys: not output frames, and not another site.
+    func received(
+        agentKeys message: WKScriptMessage, reply: @escaping (Any?, String?) -> Void
+    ) {
+        let origin = message.frameInfo.securityOrigin
+        guard AgentKeys.trusted(
+            isMainFrame: message.frameInfo.isMainFrame,
+            scheme: origin.protocol, host: origin.host, port: origin.port,
+            page: loaded
+        ) else {
+            reply(nil, AgentKeys.Failure.notThePage.localizedDescription)
+            return
+        }
+        do {
+            reply(try agentKeys.handle(message.body), nil)
+        } catch {
+            reply(nil, error.localizedDescription)
+        }
+    }
+}
+
+/// The `agentKeys` handler, which answers each message; weak, since the
+/// content controller keeps its handlers.
+private final class AgentKeysHandler: NSObject, WKScriptMessageHandlerWithReply {
+    weak var coordinator: WebViewCoordinator?
+
+    init(_ coordinator: WebViewCoordinator) {
+        self.coordinator = coordinator
+    }
+
+    func userContentController(
+        _ controller: WKUserContentController,
+        didReceive message: WKScriptMessage,
+        replyHandler: @escaping (Any?, String?) -> Void
+    ) {
+        guard let coordinator else {
+            replyHandler(nil, "the window is closing")
+            return
+        }
+        coordinator.received(agentKeys: message, reply: replyHandler)
     }
 }
 

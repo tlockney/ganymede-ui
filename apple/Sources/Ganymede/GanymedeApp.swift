@@ -30,6 +30,12 @@ struct GanymedeApp: App {
                 TerminalCommands(model: model)
             }
             CommandGroup(after: .appSettings) {
+                // The page's agent settings (#166); ⌘, is the app's own
+                // Settings window (remotes).
+                Button("Agent Settings…") {
+                    NotificationCenter.default.post(name: .showAgentSettings, object: nil)
+                }
+                .keyboardShortcut(",", modifiers: [.command, .option])
                 DefaultAppCommand()
             }
             CommandGroup(replacing: .help) {

@@ -290,9 +290,15 @@ settings button, or a `ganymede:show-settings` window event).
   code. Settings go in `localStorage`; a key goes in `sessionStorage`, or
   `localStorage` when the person asks to remember it, behind pi-ai's
   `CredentialStore` interface. Keys never go in IndexedDB: kernel Workers
-  on the page's origin can open IndexedDB but have no Web Storage. The
-  Apple apps will keep keys in the Keychain behind the same interface
-  (ganymede-ui#166).
+  on the page's origin can open IndexedDB but have no Web Storage. In the
+  Apple apps, `KeychainCredentialStore` keeps keys in the Keychain behind
+  the same interface: it asks the app's `agentKeys` script message
+  handler, which answers only the main frame on the origin of the page
+  the app loaded, and only for the four providers (ganymede-ui#166).
+  Any page on that origin passes, including an HTML file served from
+  `/files` until ganymede sandboxes it (ganymede#298), as it could read
+  web storage before.
+  The Settings sheet then shows no "Remember" choice.
 - `models.ts` builds pi-ai's models for the chosen provider: Anthropic,
   OpenAI, Google, or a local OpenAI-compatible server (Ollama, LM Studio).
   The app loads it with a dynamic `import()` only when the agent is on.
