@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   type AgentSettings,
-  type BrowserCredentialStore,
   DEFAULT_SETTINGS,
   PROVIDERS,
+  type KeyStore,
   type ProviderId,
   credentials as pageCredentials,
   keyOnly,
@@ -19,7 +19,7 @@ const loadAgentModels = (): Promise<AgentModels> => import('@ganymede-ui/agent/m
 type Props = {
   onClose(): void;
   /** For tests: the key store and the runtime loader. */
-  store?: BrowserCredentialStore;
+  store?: KeyStore;
   loadModels?: () => Promise<AgentModels>;
 };
 
@@ -262,14 +262,16 @@ export function SettingsSheet({
                     }}
                   />
                 </label>
-                <label className="check-row">
-                  <input
-                    type="checkbox"
-                    checked={remember}
-                    onChange={e => setRemember(e.target.checked)}
-                  />
-                  <span>Remember the key on this device</span>
-                </label>
+                {!store.persistent && (
+                  <label className="check-row">
+                    <input
+                      type="checkbox"
+                      checked={remember}
+                      onChange={e => setRemember(e.target.checked)}
+                    />
+                    <span>Remember the key on this device</span>
+                  </label>
+                )}
                 <p className="hint">
                   {settings.provider === 'local' ? (
                     <>
@@ -279,8 +281,9 @@ export function SettingsSheet({
                   ) : (
                     <>The key goes only to {info.name}, from this page.</>
                   )}{' '}
-                  Without Remember, the key lasts until this tab closes. Remembered, any page on
-                  this origin can read it.
+                  {store.persistent
+                    ? 'The app keeps the key in the Keychain.'
+                    : 'Without Remember, the key lasts until this tab closes. Remembered, any page on this origin can read it.'}
                 </p>
                 <div className="settings-test">
                   <button

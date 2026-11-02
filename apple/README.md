@@ -40,6 +40,8 @@ built from the same sources (see
 - Settings (⌘,) keeps a list of remotes: Jupyter or Ganymede servers,
   SSH hosts, or both. Kernels run on this Mac or, as on iPadOS, on one
   remote's server. Tokens are kept in the keychain.
+- Ganymede > Agent Settings… (⌥⌘,) opens the page's agent settings. The
+  agent's API keys are kept in the keychain too.
 - File > New Terminal (⌃⇧`) opens a shell from the app's own server in
 the front window's folder (its notebook's folder, or the folder it
 shows). File > New Terminal On opens one on a remote's server, if it

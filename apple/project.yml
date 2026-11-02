@@ -226,6 +226,7 @@ targets:
       - path: Sources/Ganymede/Terminal/JupyterTerminalTransport.swift
       - path: Sources/Ganymede/WindowTarget.swift
       - path: Sources/Ganymede/Remote.swift
+      - path: Sources/Ganymede/AgentKeys.swift
       - path: Sources/Ganymede/DocumentMessage.swift
       - path: Sources/Ganymede/Terminal/SSHKey.swift
       - path: Sources/Ganymede/Editor/TextFile.swift
@@ -251,6 +252,7 @@ targets:
       - path: Sources/Ganymede/Terminal/JupyterTerminalTransport.swift
       - path: Sources/Ganymede/WindowTarget.swift
       - path: Sources/Ganymede/Remote.swift
+      - path: Sources/Ganymede/AgentKeys.swift
       - path: Sources/Ganymede/DocumentMessage.swift
       - path: Sources/Ganymede/Terminal/SSHKey.swift
       - path: Sources/Ganymede/Editor/TextFile.swift
