@@ -32,14 +32,18 @@ function controller(path: string, over: Partial<NotebookController> = {}) {
 
 function setup(openPath?: string, c?: NotebookController, existing?: string[]) {
   const fake = contents(existing);
-  const setOpenPath = vi.fn();
+  let open = openPath;
+  const setOpenPath = vi.fn((update: (p: string | undefined) => string | undefined) => {
+    open = update(open);
+  });
+  const opened = () => open;
   const actions = fileActions({
     contents: fake as unknown as Contents.IManager,
     openPath,
     controller: c,
     setOpenPath,
   });
-  return { fake, setOpenPath, actions };
+  return { fake, setOpenPath, opened, actions };
 }
 
 const nb = (path: string) => ({ path, name: path.split('/').pop()!, type: 'notebook' as const });
@@ -77,16 +81,34 @@ describe('fileActions', () => {
 
   it('saves the open notebook before moving its folder, and follows it', async () => {
     const c = controller('moons/Io.ipynb', { dirty: true });
-    const { fake, setOpenPath, actions } = setup('moons/Io.ipynb', c);
+    const { fake, setOpenPath, opened, actions } = setup('moons/Io.ipynb', c);
     await actions.rename(dir('moons'), 'satellites');
     expect(c.save).toHaveBeenCalled();
     expect(fake.rename).toHaveBeenCalledWith('moons', 'satellites');
     // Its later edits and its kernel go to the new path before it reopens.
     expect(c.moved).toHaveBeenCalledWith('satellites/Io.ipynb', expect.any(Function));
-    expect(setOpenPath).toHaveBeenCalledWith('satellites/Io.ipynb');
+    expect(opened()).toBe('satellites/Io.ipynb');
     expect(vi.mocked(c.moved).mock.invocationCallOrder[0]).toBeLessThan(
       setOpenPath.mock.invocationCallOrder[0],
     );
+  });
+
+  it('leaves another notebook open if one was opened while the folder moved', async () => {
+    let finish!: () => void;
+    const c = controller('moons/Io.ipynb', {
+      moved: vi.fn(async (_next: string, move: () => Promise<unknown>) => {
+        await move();
+        await new Promise<void>(r => (finish = r));
+      }),
+    });
+    const { setOpenPath, opened, actions } = setup('moons/Io.ipynb', c);
+    const renaming = actions.rename(dir('moons'), 'satellites');
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    // The rename field committed on blur: a click on Europa.
+    setOpenPath(() => 'Europa.ipynb');
+    finish();
+    await renaming;
+    expect(opened()).toBe('Europa.ipynb');
   });
 
   it('won’t move a folder whose open notebook is still loading', async () => {
@@ -112,13 +134,13 @@ describe('fileActions', () => {
 
   it('closes the open notebook, unsaved, before deleting it or its folder', async () => {
     const c = controller('moons/Io.ipynb', { dirty: true });
-    const { fake, setOpenPath, actions } = setup('moons/Io.ipynb', c);
+    const { fake, setOpenPath, opened, actions } = setup('moons/Io.ipynb', c);
     await actions.remove(nb('Europa.ipynb'));
     expect(setOpenPath).not.toHaveBeenCalled();
     await actions.remove(dir('moons'));
     expect(c.discard).toHaveBeenCalled();
     expect(c.save).not.toHaveBeenCalled();
-    expect(setOpenPath).toHaveBeenCalledWith(undefined);
+    expect(opened()).toBeUndefined();
     expect(fake.delete).toHaveBeenLastCalledWith('moons');
   });
 

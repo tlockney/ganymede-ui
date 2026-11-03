@@ -38,7 +38,9 @@ type Options = {
   openPath?: string;
   /** The open notebook's, when it is `openPath`'s. */
   controller?: NotebookController;
-  setOpenPath(path: string | undefined): void;
+  /** App's setter; given an updater, so a move or delete that ends after
+   * another notebook was opened leaves that one open. */
+  setOpenPath(update: (open: string | undefined) => string | undefined): void;
 };
 
 export function fileActions({ contents, openPath, controller, setOpenPath }: Options): FileActions {
@@ -67,7 +69,8 @@ export function fileActions({ contents, openPath, controller, setOpenPath }: Opt
       // state.
       const moved = next + openPath!.slice(item.path.length);
       await open!.moved(moved, move);
-      setOpenPath(moved);
+      const from = openPath;
+      setOpenPath(p => (p === from ? moved : p));
       return true;
     },
 
@@ -86,7 +89,7 @@ export function fileActions({ contents, openPath, controller, setOpenPath }: Opt
         undo?.();
         throw e;
       }
-      if (holdsOpen) setOpenPath(undefined);
+      if (holdsOpen) setOpenPath(p => (within(p, item.path) ? undefined : p));
     },
 
     async newFolder(dir) {

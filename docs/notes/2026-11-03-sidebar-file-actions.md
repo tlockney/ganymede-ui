@@ -22,7 +22,10 @@
   `setName`). Without that the reopened pane found no session at the new
   path and the next run started a fresh kernel, orphaning the old one
   with its state (review catch). The move is refused while the notebook
-  is still loading (no controller yet).
+  is still loading (no controller yet). The rename field commits on blur,
+  so a click on another notebook can open it while the move runs; the
+  move then switches only if the moved notebook is still the one open
+  (`setOpenPath` gets an updater), as #202's title rename does.
 - Deleting the open notebook (or its folder) calls the controller's new
   `discard()` before the delete: closing saves unsaved edits, which would
   write the deleted file back. `discard()` returns an undo, so a failed
