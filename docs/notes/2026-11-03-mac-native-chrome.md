@@ -1,4 +1,4 @@
-## 2026-11-03, Native sidebar, toolbar and menus in the Mac app (#206, #207)
+## 2026-11-03, Native sidebar, toolbar and menus in the Mac app (#207)
 
 The Mac app loads the page with `chrome=native` (#205) and draws the rest
 in SwiftUI: a `NavigationSplitView` with the window's folder as the
