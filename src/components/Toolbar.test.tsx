@@ -25,6 +25,8 @@ function controller(over: Partial<NotebookController> = {}): NotebookController 
     cellType: 'code',
     changeCellType: vi.fn(),
     rename: vi.fn(async () => true),
+    discard: vi.fn(() => () => {}),
+    moved: vi.fn(async () => {}),
     ...over,
   };
 }

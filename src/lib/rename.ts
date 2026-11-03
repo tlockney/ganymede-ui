@@ -11,16 +11,19 @@ const EXT = '.ipynb';
 
 /**
  * The path `input` renames `path` to, in the same folder, or undefined when
- * it names the file as it is (or nothing). Throws when it can't be a name.
+ * it names the file as it is (or nothing). A notebook's name is shown and
+ * typed without `.ipynb`, which is added; another file or folder keeps the
+ * name as typed. Throws when it can't be a name.
  */
-export function renamedPath(path: string, input: string): string | undefined {
+export function renamedPath(path: string, input: string, notebook = true): string | undefined {
   const name = input.trim();
-  if (!name || name === titleFor(path)) return undefined;
+  const shown = notebook ? titleFor(path) : (path.split('/').pop() ?? path);
+  if (!name || name === shown) return undefined;
   if (name.includes('/') || name.includes('\\')) {
     throw new Error('A name can’t contain “/” or “\\”.');
   }
   if (name.startsWith('.')) throw new Error('A name can’t start with “.”.');
-  const file = name.endsWith(EXT) ? name : name + EXT;
+  const file = !notebook || name.endsWith(EXT) ? name : name + EXT;
   const dir = parentOf(path);
   const next = dir ? `${dir}/${file}` : file;
   return next === path ? undefined : next;
