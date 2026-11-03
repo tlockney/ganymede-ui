@@ -152,9 +152,33 @@ export class Owners {
     this._outer.delete(`${inner.side}:${inner.id}`);
   }
 
-  /** Forgets every session but those in `outer`. */
-  keepSessions(outer: ReadonlySet<string>): void {
-    for (const id of [...this._sessions.keys()]) if (!outer.has(id)) this.deleteSession(id);
+  /** The UI's session ids known now. */
+  sessionIds(): Set<string> {
+    return new Set(this._sessions.keys());
+  }
+
+  /** Forgets the sessions in `known` that are not in `listed`. */
+  pruneSessions(known: ReadonlySet<string>, listed: ReadonlySet<string>): void {
+    for (const id of known) if (!listed.has(id)) this.deleteSession(id);
+  }
+
+  /**
+   * Sessions a move left behind because ending them failed: listings skip
+   * them, so they don't take the UI's id back, until they are gone.
+   */
+  private _orphans = new Set<string>();
+
+  orphan(side: Side, id: string): void {
+    this._orphans.add(`${side}:${id}`);
+  }
+
+  /** Whether a side's session is an orphan; forgets orphans no longer listed. */
+  isOrphan(side: Side, id: string): boolean {
+    return this._orphans.has(`${side}:${id}`);
+  }
+
+  pruneOrphans(listed: ReadonlySet<string>): void {
+    for (const key of this._orphans) if (!listed.has(key)) this._orphans.delete(key);
   }
 
   get sessionCount(): number {
@@ -270,6 +294,9 @@ export class MixedSessionClient implements Session.ISessionAPIClient {
     for (;;) {
       await Promise.allSettled([...this._moves]);
       const count = this._moveCount;
+      // Only ids known before listing may be pruned: a session started
+      // meanwhile may be missing from this listing.
+      const known = this._owners.sessionIds();
       const [server, page] = await Promise.all([
         this._server.listRunning(),
         this._page.listRunning(),
@@ -277,11 +304,15 @@ export class MixedSessionClient implements Session.ISessionAPIClient {
       // A move that began meanwhile may show its session on both sides, or
       // on the new side under an id not yet mapped: list again after it.
       if (this._moveCount !== count || this._moves.size > 0) continue;
+      this._owners.pruneOrphans(
+        new Set([...server.map(m => `server:${m.id}`), ...page.map(m => `page:${m.id}`)]),
+      );
+      const live = (side: Side) => (m: Session.IModel) => !this._owners.isOrphan(side, m.id);
       const models = [
-        ...server.map(m => this._outer('server', m)),
-        ...page.map(m => this._outer('page', m)),
+        ...server.filter(live('server')).map(m => this._outer('server', m)),
+        ...page.filter(live('page')).map(m => this._outer('page', m)),
       ];
-      this._owners.keepSessions(new Set(models.map(m => m.id)));
+      this._owners.pruneSessions(known, new Set(models.map(m => m.id)));
       return models;
     }
   }
@@ -341,6 +372,8 @@ export class MixedSessionClient implements Session.ISessionAPIClient {
     try {
       await this._client(inner.side).shutdown(inner.id);
     } catch (err) {
+      // Left running: keep listings from mapping the UI's id back to it.
+      this._owners.orphan(inner.side, inner.id);
       console.warn(`Ending session ${inner.id} after moving it failed:`, err);
     }
     return { ...started, id: model.id };

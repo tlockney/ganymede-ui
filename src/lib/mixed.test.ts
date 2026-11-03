@@ -238,6 +238,43 @@ describe('MixedSessionClient', () => {
     expect(owners.sessionCount).toBe(0);
   });
 
+  it('keeps a session started while a listing runs', async () => {
+    const { owners } = await setup();
+    const server = sessionClient('server');
+    const page = sessionClient('page');
+    const client = new MixedSessionClient(settings, server.client, page.client, owners);
+
+    let release!: () => void;
+    const held = new Promise<void>(r => (release = r));
+    const list = server.client.listRunning.bind(server.client);
+    server.client.listRunning = async () => (await held, list());
+
+    const listing = client.listRunning();
+    await Promise.resolve();
+    const started = await client.startNew(options('cdp-browser'));
+    release();
+    await listing;
+    expect(owners.ofSession(started.id).side).toBe('page');
+  });
+
+  it('keeps a move when ending the old session fails', async () => {
+    const { owners } = await setup();
+    const server = sessionClient('server');
+    const page = sessionClient('page');
+    const client = new MixedSessionClient(settings, server.client, page.client, owners);
+    const started = await client.startNew(options('cdp-node'));
+    server.client.shutdown = async () => {
+      throw new Error('busy');
+    };
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    await client.update({ id: started.id, kernel: { name: 'cdp-browser' } });
+    expect(server.running.size).toBe(1);
+    const listed = await client.listRunning();
+    expect(listed.map(s => [s.id, s.kernel?.name])).toEqual([[started.id, 'cdp-browser']]);
+    expect(owners.ofSession(started.id).side).toBe('page');
+  });
+
   it('updates in place when the kernel stays on the same side', async () => {
     const { owners } = await setup();
     const server = sessionClient('server');
