@@ -48,6 +48,19 @@ describe('NotebookTitle', () => {
     expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
   });
 
+  it('lets ⌘S through to the app', async () => {
+    const onKey = vi.fn();
+    window.addEventListener('keydown', onKey);
+    try {
+      render(<NotebookTitle name="Untitled" dirty onRename={vi.fn(async () => true)} />);
+      await userEvent.click(screen.getByRole('button', { name: 'Untitled' }));
+      await userEvent.keyboard('{Meta>}s{/Meta}');
+      expect(onKey).toHaveBeenCalledWith(expect.objectContaining({ key: 's', metaKey: true }));
+    } finally {
+      window.removeEventListener('keydown', onKey);
+    }
+  });
+
   it('renames when the field loses focus', async () => {
     const onRename = vi.fn(async () => true);
     render(

@@ -53,9 +53,11 @@ export function NotebookTitle({ name, dirty, onRename }: Props) {
     if (ok || !retry) {
       setEditing(false);
     } else {
-      // Try again: the pane says what went wrong.
+      // Try again: the pane says what went wrong. Unless the user has
+      // moved on (into a cell, say).
       settled.current = false;
-      field.focus();
+      const active = document.activeElement;
+      if (active === field || active === document.body || active === null) field.focus();
     }
   };
 
@@ -73,13 +75,14 @@ export function NotebookTitle({ name, dirty, onRename }: Props) {
         enterKeyHint="done"
         size={Math.max(8, name.length + 2)}
         onKeyDown={e => {
-          // The notebook's own shortcuts listen on the document.
-          e.stopPropagation();
+          // Other keys (⌘S among them) reach the app as usual.
           if (e.key === 'Enter') {
             e.preventDefault();
+            e.stopPropagation();
             void commit(true);
           } else if (e.key === 'Escape') {
             e.preventDefault();
+            e.stopPropagation();
             settled.current = true;
             setEditing(false);
           }

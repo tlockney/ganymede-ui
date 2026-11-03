@@ -26,11 +26,14 @@ describe('renamedPath', () => {
 });
 
 describe('renameFile', () => {
-  function contents(existing: string[]) {
+  /** Files by path; two paths with the same id are one file (a case-insensitive disk). */
+  function contents(existing: string[] | Record<string, string>) {
+    const ids = Array.isArray(existing) ? Object.fromEntries(existing.map(p => [p, p])) : existing;
     return {
       get: vi.fn(async (path: string) => {
-        if (!existing.includes(path)) throw new Error('Not found');
-        return { path };
+        const id = ids[path];
+        if (!id) throw new Error(`Could not find file with path ${path}`);
+        return { path, name: path, created: id, last_modified: id };
       }),
       rename: vi.fn(async () => ({})),
     };
@@ -50,10 +53,37 @@ describe('renameFile', () => {
     expect(c.rename).not.toHaveBeenCalled();
   });
 
-  it('lets a change of case through', async () => {
+  it('lets a change of case through when the new name finds this file', async () => {
     // On a case-insensitive disk, `io.ipynb` is found: it is this file.
-    const c = contents(['Io.ipynb', 'io.ipynb']);
+    const c = contents({ 'Io.ipynb': 'a', 'io.ipynb': 'a' });
     await renameFile(c as unknown as Contents.IManager, 'Io.ipynb', 'io.ipynb');
+    expect(c.rename).toHaveBeenCalled();
+  });
+
+  it('refuses a change of case onto another file', async () => {
+    // Case-sensitive storage (the browser's) can hold both.
+    const c = contents({ 'Io.ipynb': 'a', 'io.ipynb': 'b' });
+    await expect(
+      renameFile(c as unknown as Contents.IManager, 'Io.ipynb', 'io.ipynb'),
+    ).rejects.toThrow(/already exists/);
+    expect(c.rename).not.toHaveBeenCalled();
+  });
+
+  it('stops when it can’t tell whether the name is taken', async () => {
+    const c = contents(['Io.ipynb']);
+    c.get.mockRejectedValueOnce(
+      Object.assign(new Error('Forbidden'), { response: { status: 403 } }),
+    );
+    await expect(
+      renameFile(c as unknown as Contents.IManager, 'Io.ipynb', 'Europa.ipynb'),
+    ).rejects.toThrow('Forbidden');
+    expect(c.rename).not.toHaveBeenCalled();
+  });
+
+  it('takes a 404 as nothing there', async () => {
+    const c = contents(['Io.ipynb']);
+    c.get.mockRejectedValueOnce(Object.assign(new Error('x'), { response: { status: 404 } }));
+    await renameFile(c as unknown as Contents.IManager, 'Io.ipynb', 'Europa.ipynb');
     expect(c.rename).toHaveBeenCalled();
   });
 });

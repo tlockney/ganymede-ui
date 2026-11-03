@@ -32,29 +32,49 @@ export function renamedPath(path: string, input: string, notebook = true): strin
   return next === path ? undefined : next;
 }
 
-/** Whether something is at `path` already. */
-async function exists(contents: Contents.IManager, path: string): Promise<boolean> {
+/** Whether an error from the contents API says there is nothing there. */
+function notFound(e: unknown): boolean {
+  const status = (e as { response?: { status?: number } } | undefined)?.response?.status;
+  if (status !== undefined) return status === 404;
+  // JupyterLite's in-browser drive throws a plain Error.
+  return e instanceof Error && /could not find|not found|no such/i.test(e.message);
+}
+
+/** What is at `path`, or undefined when nothing is. Other errors are thrown. */
+async function lookUp(
+  contents: Contents.IManager,
+  path: string,
+): Promise<Contents.IModel | undefined> {
   try {
-    await contents.get(path, { content: false });
-    return true;
-  } catch {
-    return false;
+    return await contents.get(path, { content: false });
+  } catch (e) {
+    if (notFound(e)) return undefined;
+    throw e;
   }
 }
 
 /**
  * Rename `path` to `next`, refusing to replace a file that is there. A
- * change of case alone is let through: on a Mac's file system that file
- * is this one.
+ * change of case alone is let through when `next` finds this same file,
+ * as on a Mac's case-insensitive disk; not when it is another file, as in
+ * the browser's case-sensitive storage.
  */
 export async function renameFile(
   contents: Contents.IManager,
   path: string,
   next: string,
 ): Promise<void> {
-  const caseOnly = next.toLowerCase() === path.toLowerCase();
-  if (!caseOnly && (await exists(contents, next))) {
-    throw new Error(`“${next.split('/').pop()}” already exists. Choose another name.`);
+  const there = await lookUp(contents, next);
+  if (there) {
+    const self = next.toLowerCase() === path.toLowerCase() && (await lookUp(contents, path));
+    const same =
+      !!self &&
+      self.created === there.created &&
+      self.last_modified === there.last_modified &&
+      self.name.toLowerCase() === there.name.toLowerCase();
+    if (!same) {
+      throw new Error(`“${next.split('/').pop()}” already exists. Choose another name.`);
+    }
   }
   await contents.rename(path, next);
 }

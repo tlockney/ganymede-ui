@@ -21,3 +21,10 @@
 - The sidebar follows through `fileChanged`, the window title and
   `?open=` through `openPath`, and the Mac window's proxy icon through
   `postDocument`.
+- Review follow-ups: edits typed while the rename runs are saved to the
+  new path before the pane reopens there. A case-only rename goes ahead
+  only when the new name finds this same file (same `created` and
+  `last_modified`); in the browser's case-sensitive storage it can be
+  another file, and JupyterLite's `rename` would replace it. Only a 404
+  (or JupyterLite's "Could not find") counts as nothing there. The field
+  stops only Enter and Escape, so ⌘S still saves.

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as nbformat from '@jupyterlab/nbformat';
 import type { NotebookModel } from '@jupyterlab/notebook';
 import '../test/notebook-env';
-import { fakeBackend, fakeServices } from '../test/fakes';
+import { entry, fakeBackend, fakeServices } from '../test/fakes';
 import type { NotebookController } from './NotebookPane';
 
 // No kernel and no real notebook widget: the pane's loading, dirty state and
@@ -442,6 +442,33 @@ describe('NotebookPane', () => {
         fake.contents.rename.mock.invocationCallOrder[0]!,
       );
       expect(onRenamed).toHaveBeenCalledWith('moons/Europa.ipynb');
+    });
+
+    it('saves edits made during the rename to the new file', async () => {
+      const { fake, latest, onRenamed } = setup(files());
+      await waitFor(() => expect(latest()).toBeDefined());
+      // An edit lands while the rename is on its way.
+      fake.contents.rename.mockImplementationOnce(async (_from: string, to: string) => {
+        modelOf().cells.get(0).sharedModel.setSource('print(3)');
+        return entry({ name: to, path: to, type: 'notebook' });
+      });
+      await act(async () => void (await latest()!.rename('Europa')));
+      expect(fake.contents.save).toHaveBeenLastCalledWith(
+        'moons/Europa.ipynb',
+        expect.objectContaining({ type: 'notebook' }),
+      );
+      const saved = fake.contents.save.mock.lastCall![1] as { content: nbformat.INotebookContent };
+      expect(saved.content.cells[0]!.source).toBe('print(3)');
+      expect(onRenamed).toHaveBeenCalledWith('moons/Europa.ipynb');
+    });
+
+    it('clears a failed rename’s notice when the name goes back', async () => {
+      const { latest } = setup(files('moons/Europa.ipynb'));
+      await waitFor(() => expect(latest()).toBeDefined());
+      await act(async () => void (await latest()!.rename('Europa')));
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+      await act(async () => void (await latest()!.rename('Io')));
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
 
     it('does nothing for the same name', async () => {
