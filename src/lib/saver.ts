@@ -70,13 +70,16 @@ export class NotebookSaver {
   }
 
   /**
-   * Move the file with `move`, which resolves with its new path. Saves
-   * wait for it and then go to the new path, so none lands at the old
-   * one mid-move (and recreates it there).
+   * Move the file with `move`, which resolves with its new path and, if
+   * the backend says, its `last_modified` there (a rename may bump it).
+   * Saves wait for it and then go to the new path, so none lands at the
+   * old one mid-move (and recreates it there).
    */
-  move(move: () => Promise<string>): Promise<void> {
+  move(move: () => Promise<{ path: string; lastModified?: string }>): Promise<void> {
     const run = this.queue.then(async () => {
-      this.o.path = await move();
+      const moved = await move();
+      this.o.path = moved.path;
+      this.lastModified = moved.lastModified || this.lastModified;
     });
     this.queue = run.catch(() => {});
     return run;

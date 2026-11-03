@@ -1,4 +1,5 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
+import { useCallback, useState } from 'react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as nbformat from '@jupyterlab/nbformat';
@@ -420,6 +421,36 @@ describe('NotebookPane', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('settles under a parent that keeps its controller and passes a new onRenamed each render', async () => {
+    const fake = fakeServices();
+    fake.contents.get = vi.fn(async () => ({
+      path: 'moons/Io.ipynb',
+      content: structuredClone(NOTEBOOK),
+    })) as never;
+    const onController = vi.fn();
+    const backend = fakeBackend(fake.services);
+    function Parent() {
+      const [, setController] = useState<unknown>();
+      // As App: a stable onController, an onRenamed made anew each render.
+      const report = useCallback((c: unknown) => {
+        onController(c);
+        setController(c);
+      }, []);
+      return (
+        <NotebookPane
+          backend={backend}
+          path="moons/Io.ipynb"
+          onController={report}
+          onRenamed={() => {}}
+        />
+      );
+    }
+    render(<Parent />);
+    await waitFor(() => expect(onController).toHaveBeenCalledWith(expect.anything()));
+    await new Promise(r => setTimeout(r, 200));
+    expect(onController.mock.calls.length).toBeLessThan(20);
   });
 
   describe('rename', () => {

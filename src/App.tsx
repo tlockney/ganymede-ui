@@ -92,6 +92,11 @@ export function App() {
     if (narrow) setSidebarOpen(false);
   }, [narrow]);
   const [openPath, setOpenPath] = useState<string>();
+  // Not if another notebook was opened while it renamed.
+  const followRename = useCallback(
+    (from: string, to: string) => setOpenPath(p => (p === from ? to : p)),
+    [],
+  );
   const [controller, setController] = useState<NotebookController>();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const closeShortcuts = useCallback(() => setShortcutsOpen(false), []);
@@ -304,8 +309,7 @@ export function App() {
                 backend={backend}
                 path={openPath}
                 onController={setController}
-                // Not if another notebook was opened while it renamed.
-                onRenamed={(from, to) => setOpenPath(p => (p === from ? to : p))}
+                onRenamed={followRename}
               />
             ) : (
               <EmptyState

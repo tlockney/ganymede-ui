@@ -60,7 +60,7 @@ export async function renameFile(
   contents: Contents.IManager,
   path: string,
   next: string,
-): Promise<void> {
+): Promise<Contents.IModel> {
   const there = await lookUp(contents, next);
   if (there) {
     const self = next.toLowerCase() === path.toLowerCase() && (await lookUp(contents, path));
@@ -73,5 +73,5 @@ export async function renameFile(
       throw new Error(`“${next.split('/').pop()}” already exists. Choose another name.`);
     }
   }
-  await contents.rename(path, next);
+  return contents.rename(path, next);
 }

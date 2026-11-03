@@ -36,3 +36,11 @@
   another file, and JupyterLite's `rename` would replace it. Only a 404
   (or JupyterLite's "Could not find") counts as nothing there. The field
   stops only Enter and Escape, so ⌘S still saves.
+- Review catch after merging main: an inline `onRenamed` in App plus
+  `onRenamed` in the pane's controller-effect deps looped (the effect sets
+  App's controller state, App renders a new function, the effect runs
+  again), pegging the main thread while idle. App.test mocks the pane, so
+  nothing caught it. The pane now keeps `onRenamed` in a ref, App passes a
+  `useCallback`, and a pane test renders it under a stateful parent.
+- `NotebookSaver.move` also takes the renamed file's `last_modified`, for
+  backends whose rename bumps it (else the next save is a conflict).

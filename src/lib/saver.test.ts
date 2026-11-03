@@ -65,17 +65,27 @@ describe('NotebookSaver', () => {
 
   it('holds saves while the file moves, then writes to the new path', async () => {
     const { contents, saver, edit } = setup();
-    const move = deferred<string>();
+    const move = deferred<{ path: string }>();
     const moving = saver.move(() => move.promise);
     edit('2');
     const saving = saver.save();
     await Promise.resolve();
     expect(contents.save).not.toHaveBeenCalled();
-    move.resolve('moons/Io.ipynb');
+    move.resolve({ path: 'moons/Io.ipynb' });
     await moving;
     await saving;
     expect(contents.save).toHaveBeenCalledOnce();
     expect(contents.save.mock.calls[0]![0]).toBe('moons/Io.ipynb');
+  });
+
+  it('takes the moved file’s last_modified, so the next save isn’t a conflict', async () => {
+    const { contents, saver, state, edit } = setup();
+    // A backend whose rename bumps the file's time.
+    state.disk = '2026-10-20T11:00:00.000000Z';
+    await saver.move(async () => ({ path: 'moons/Io.ipynb', lastModified: state.disk }));
+    edit('2');
+    await saver.save();
+    expect(contents.save).toHaveBeenCalledOnce();
   });
 
   it('keeps the path when the move fails', async () => {

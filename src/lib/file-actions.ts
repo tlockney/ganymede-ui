@@ -45,16 +45,25 @@ type Options = {
 
 export function fileActions({ contents, openPath, controller, setOpenPath }: Options): FileActions {
   const open = controller?.path === openPath ? controller : undefined;
+  /**
+   * The open notebook's controller when `item` is or holds it. Without one
+   * (it is still opening), a move couldn't take its kernel along or stop it
+   * saving to the old path, and a delete couldn't stop it writing the file
+   * back, so neither goes ahead.
+   */
+  const holder = (item: FileItem) => {
+    if (!within(openPath, item.path)) return undefined;
+    if (!open) throw new Error('The open notebook is still loading; try again.');
+    return open;
+  };
   return {
     async rename(item, input) {
+      const held = holder(item);
       // The open notebook renames itself: it saves first and its kernel follows.
-      if (open && item.path === openPath) return open.rename(input);
+      if (held && item.path === openPath) return held.rename(input);
       const next = renamedPath(item.path, input, item.type === 'notebook');
       if (!next) return false;
-      const holdsOpen = item.type === 'directory' && within(openPath, item.path);
-      // Without the notebook's controller (it is still opening), the move
-      // couldn't take its kernel along or stop it saving to the old path.
-      if (holdsOpen && !open) throw new Error('The open notebook is still loading; try again.');
+      const holdsOpen = !!held;
       // The edits go with the file.
       if (holdsOpen && open!.dirty && !(await open!.save())) {
         throw new Error('The open notebook couldn’t be saved first.');
@@ -75,14 +84,19 @@ export function fileActions({ contents, openPath, controller, setOpenPath }: Opt
     },
 
     async duplicate(item) {
+      // The copy has the open notebook's unsaved edits too.
+      if (item.path === openPath && open?.dirty && !(await open.save())) {
+        throw new Error('The open notebook couldn’t be saved first.');
+      }
       await contents.copy(item.path, parentOf(item.path));
     },
 
     async remove(item) {
-      const holdsOpen = within(openPath, item.path);
+      const held = holder(item);
+      const holdsOpen = !!held;
       // No saving while it is deleted: that would put the file back. If the
       // delete fails, the notebook stays open with its edits.
-      const undo = holdsOpen ? open?.discard() : undefined;
+      const undo = held?.discard();
       try {
         await contents.delete(item.path);
       } catch (e) {

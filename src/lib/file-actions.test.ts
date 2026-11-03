@@ -119,6 +119,24 @@ describe('fileActions', () => {
     expect(setOpenPath).not.toHaveBeenCalled();
   });
 
+  it('won’t rename or delete the open notebook while it is still loading', async () => {
+    const { fake, actions } = setup('moons/Io.ipynb', controller('Europa.ipynb'));
+    await expect(actions.rename(nb('moons/Io.ipynb'), 'Ganymede')).rejects.toThrow(/still loading/);
+    await expect(actions.remove(nb('moons/Io.ipynb'))).rejects.toThrow(/still loading/);
+    expect(fake.rename).not.toHaveBeenCalled();
+    expect(fake.delete).not.toHaveBeenCalled();
+  });
+
+  it('saves the open notebook before duplicating it', async () => {
+    const c = controller('moons/Io.ipynb', { dirty: true });
+    const { fake, actions } = setup('moons/Io.ipynb', c);
+    await actions.duplicate(nb('moons/Io.ipynb'));
+    expect(c.save).toHaveBeenCalled();
+    expect(vi.mocked(c.save).mock.invocationCallOrder[0]).toBeLessThan(
+      fake.copy.mock.invocationCallOrder[0]!,
+    );
+  });
+
   it('won’t move a folder whose open notebook didn’t save', async () => {
     const c = controller('moons/Io.ipynb', { dirty: true, save: vi.fn(async () => false) });
     const { fake, actions } = setup('moons/Io.ipynb', c);

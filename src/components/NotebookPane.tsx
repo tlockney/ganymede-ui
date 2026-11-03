@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { SessionContext } from '@jupyterlab/apputils';
 import type * as nbformat from '@jupyterlab/nbformat';
 import { type Notebook, NotebookActions, NotebookModel } from '@jupyterlab/notebook';
-import type { Kernel } from '@jupyterlab/services';
+import type { Contents, Kernel } from '@jupyterlab/services';
 import type { IDisposable } from '@lumino/disposable';
 import { Widget } from '@lumino/widgets';
 import { type Backend, trustNotebook } from '../lib/backends';
@@ -143,6 +143,11 @@ const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
  * or to the browser's own storage.
  */
 export function NotebookPane({ backend, path, onController, onRenamed }: Props) {
+  // A ref, not a dependency of the controller effect: a parent that
+  // passes a new function each render would otherwise loop (the effect
+  // sets the parent's controller state, which renders it again).
+  const onRenamedRef = useRef(onRenamed);
+  onRenamedRef.current = onRenamed;
   const { services } = backend;
   const host = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState<Open>();
@@ -482,8 +487,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         // Saves (⌘S, autosave, quit) wait for the move and then go to the
         // new path, so none recreates the old file.
         await saver.move(async () => {
-          await rename();
-          return to;
+          const model = (await rename()) as Partial<Contents.IModel> | undefined;
+          return { path: to, lastModified: model?.last_modified };
         });
         // The kernel follows the file, so reopening it there rejoins it.
         try {
@@ -605,7 +610,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
           return false;
         }
         clearRenameNotice();
-        onRenamed?.(path, to);
+        onRenamedRef.current?.(path, to);
         return true;
       },
       discard: () => {
@@ -646,7 +651,6 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
     backend,
     services,
     onController,
-    onRenamed,
   ]);
 
   useEffect(() => () => onController(undefined), [onController]);
