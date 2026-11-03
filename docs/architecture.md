@@ -90,11 +90,6 @@ Where the app connects is decided in this order (`App.tsx`):
    app connects to its own origin with no token.
 4. Otherwise the connect sheet asks.
 
-> [!NOTE]
-> **Unreleased.** The token in `sessionStorage`, `?open=` and `?dir=`, and
-> server kernels that keep running after a backend switch are available
-> only from a build of `main` (HEAD), not in the latest release.
-
 The URL can also say what to open, as an Apple app window opened on one
 file does: `?open=<path>` opens that notebook once connected, with the
 sidebar closed, and `?dir=<path>` is the folder the sidebar lists on that
@@ -175,12 +170,6 @@ production build Workbox's worker loads it with `importScripts`
 JupyterLite's service worker, adapted.
 
 ## Notebook
-
-> [!NOTE]
-> **Unreleased.** Starting the kernel on the first run, `NotebookSaver` and
-> autosave, saved widgets without a kernel, sandboxed output frames, and
-> the reading screenshots are available only from a build of `main`
-> (HEAD), not in the latest release.
 
 `NotebookPane` shows one file. It holds JupyterLab's `Notebook` widget,
 its `NotebookModel`, and a `SessionContext`, which rejoins the kernel
@@ -308,10 +297,6 @@ settings button, or a `ganymede:show-settings` window event).
 - `index.ts` and `tools.ts` are the spike's harness and notebook tools
   (ganymede-ui#124); the agent panel that uses them comes next.
 
-> [!NOTE]
-> **Unreleased.** The Settings sheet and agent settings are available only
-> from a build of `main` (HEAD), not in the latest release.
-
 ## Protocol package
 
 [`packages/client`](../packages/client/) is Jupyter protocol code with no
@@ -326,12 +311,6 @@ stream handling, and renderer and widget seams. It was Ganymede's
 iOS) built from one set of sources. XcodeGen generates the Xcode project
 from `apple/project.yml`. It runs Ganymede in its
 own process and shows this web app in a `WKWebView`:
-
-> [!NOTE]
-> **Unreleased.** Notebook windows and the `.ipynb` document type,
-> remotes, the hidden kernel web view, the terminal, and the text editor
-> are available only from a build of `main` (HEAD), not in the latest
-> release.
 
 ![The app process: SwiftUI, the Ganymede server from GanymedeFFI, and a web view showing ganymede-ui](images/apple-app.svg)
 
