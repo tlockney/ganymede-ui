@@ -30,6 +30,10 @@ built from the same sources (see
 - To open notebooks here by default, choose Ganymede > Make Default App
   for Notebooks, or in the Finder choose File > Get Info on a notebook,
   pick Ganymede under Open with, and click Change All.
+- Notebooks get a Quick Look preview (select one in the Finder and press
+  Space) and a Finder thumbnail of their first cells. The preview renders
+  the notebook as the app does, read-only, with outputs untrusted, and
+  without a server or kernel.
 - It reuses the last port, so the page keeps its origin and ganymede-ui
   its saved state.
 - Opened from the Finder, the app takes `PATH` from your login shell, so

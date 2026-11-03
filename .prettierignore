@@ -1,5 +1,6 @@
 .claude
 dist
+dist-quicklook
 dev-dist
 packages/*/dist
 packages/*/dist-spike

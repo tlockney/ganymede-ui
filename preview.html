@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Nothing loads from the network: outputs show what the file holds. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self' ganymede-preview: data: blob:; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; frame-src 'none'"
+    />
+    <title>Ganymede preview</title>
+  </head>
+  <body>
+    <!-- The Mac app's Quick Look preview; see src/preview.ts. -->
+    <main class="notebook-page preview-page">
+      <div id="notebook" class="notebook-holder"></div>
+    </main>
+    <script type="module" src="/src/preview.ts"></script>
+  </body>
+</html>

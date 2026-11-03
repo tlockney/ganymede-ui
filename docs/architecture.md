@@ -329,9 +329,9 @@ own process and shows this web app in a `WKWebView`:
 
 > [!NOTE]
 > **Unreleased.** Notebook windows and the `.ipynb` document type,
-> remotes, the hidden kernel web view, the terminal, and the text editor
-> are available only from a build of `main` (HEAD), not in the latest
-> release.
+> remotes, the hidden kernel web view, the terminal, the text editor, and
+> Quick Look are available only from a build of `main` (HEAD), not in the
+> latest release.
 
 ![The app process: SwiftUI, the Ganymede server from GanymedeFFI, and a web view showing ganymede-ui](images/apple-app.svg)
 
@@ -356,6 +356,16 @@ own process and shows this web app in a `WKWebView`:
   the front; a file opened from the Finder arrives through `onOpenURL` in a
   new window, or in the window already showing that file
   (`handlesExternalEvents`).
+- Two sandboxed app extensions give notebooks a Quick Look preview and a
+  Finder thumbnail (`apple/Sources/QuickLook`). The preview shows
+  `preview.html`, a page of its own (`vite build --mode quicklook`, about
+  5 MB) that renders the file with this app's notebook view and
+  rendermime, read-only and with every output untrusted, in a web view
+  that loads it through a `ganymede-preview:` scheme handler: WebKit runs
+  no module scripts from `file:` URLs, and there is no server. Its
+  Content-Security-Policy loads nothing from the network. The thumbnail
+  draws the first headings, code, and outputs (or the first PNG or JPEG)
+  natively from the JSON, which is quicker than starting a web view.
 - A notebook window acts as a document window (`DocumentWindow.swift`).
   The page posts `{ path, dirty }` to the `document` message handler
   (`src/lib/native.ts`) whenever the open notebook or its unsaved state
