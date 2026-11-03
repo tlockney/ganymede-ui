@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { SessionContext } from '@jupyterlab/apputils';
 import type * as nbformat from '@jupyterlab/nbformat';
 import { type Notebook, NotebookActions, NotebookModel } from '@jupyterlab/notebook';
-import type { Kernel } from '@jupyterlab/services';
+import type { Contents, Kernel } from '@jupyterlab/services';
 import type { IDisposable } from '@lumino/disposable';
 import type { CommandRegistry } from '@lumino/commands';
 import { Widget } from '@lumino/widgets';
@@ -14,6 +14,7 @@ import type { Cell } from '@jupyterlab/cells';
 import { downloadFile } from '../lib/download';
 import { AUTOSAVE_INTERVAL_MS, NotebookSaver, SaveConflict } from '../lib/saver';
 import { hasUntrustedOutputs } from '../lib/trust';
+import { renameFile, renamedPath } from '../lib/rename';
 import type { NotebookWidgets } from '../lib/widgets';
 
 export type CellType = nbformat.CellType;
@@ -40,12 +41,6 @@ export type NotebookController = {
   save(): Promise<boolean>;
   /** Download the notebook as it is now, unsaved edits included, as .ipynb. */
   download(): void;
-  /**
-   * Drop unsaved edits when the pane lets the notebook go, instead of
-   * saving them: the app calls it before closing a notebook it moved to
-   * the Trash, which a save would write back.
-   */
-  discard(): void;
   /** Trust the notebook: render its outputs in full, and sign it on the server. */
   trust(): Promise<void>;
   run(): Promise<void>;
@@ -63,12 +58,32 @@ export type NotebookController = {
    * (`move-up`, `to-markdown`, …); false when there is no such command.
    */
   command(id: string): boolean;
+  /**
+   * Rename the file to what the user typed (`.ipynb` added), in the same
+   * folder; false when it wasn't (the pane says why).
+   */
+  rename(input: string): Promise<boolean>;
+  /**
+   * Stop saving: the file is being deleted from under the notebook (the
+   * sidebar), and a save would write it back. The function it returns
+   * undoes that, for when the delete failed.
+   */
+  discard(): () => void;
+  /**
+   * Move the file to `next` with `move` (its folder's rename in the
+   * sidebar). Saves wait for it and then go to `next`, edits made since
+   * are saved there, and the session moves so the kernel follows when
+   * the file reopens. Rejects, with nothing moved, when `move` does.
+   */
+  moved(next: string, move: () => Promise<unknown>): Promise<void>;
 };
 
 type Props = {
   backend: Backend;
   path: string;
   onController(c: NotebookController | undefined): void;
+  /** The file at `from` was renamed to `to`: open it there, if it is still the one open. */
+  onRenamed?(from: string, to: string): void;
 };
 
 const basename = (p: string) => p.split('/').pop() ?? p;
@@ -115,6 +130,8 @@ type Open = {
   ensureKernel(all?: boolean): Promise<boolean>;
   /** The notebook's commands, which its keys run. */
   commands: CommandRegistry;
+  /** Settles once the session has rejoined the file's kernel, if any. */
+  joining: Promise<unknown>;
   disposables: IDisposable[];
 };
 
@@ -133,7 +150,12 @@ const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
  * JupyterLab document context, so the same code saves to a Ganymede server
  * or to the browser's own storage.
  */
-export function NotebookPane({ backend, path, onController }: Props) {
+export function NotebookPane({ backend, path, onController, onRenamed }: Props) {
+  // A ref, not a dependency of the controller effect: a parent that
+  // passes a new function each render would otherwise loop (the effect
+  // sets the parent's controller state, which renders it again).
+  const onRenamedRef = useRef(onRenamed);
+  onRenamedRef.current = onRenamed;
   const { services } = backend;
   const host = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState<Open>();
@@ -158,6 +180,10 @@ export function NotebookPane({ backend, path, onController }: Props) {
   const [joined, setJoined] = useState(false);
   /** Set when autosave met a file changed on disk; a save clears it. */
   const autosaveOff = useRef(false);
+  /** Set once the file is deleted from under the notebook: no save may put it back. */
+  const gone = useRef(false);
+  /** A rename in progress: the pane's teardown waits for it to move the session. */
+  const renaming = useRef<Promise<void>>(undefined);
   /** The cell menu (#200), open under a cell's "…" button. */
   const [menu, setMenu] = useState<{ cell: Cell; anchor: HTMLElement }>();
 
@@ -283,6 +309,7 @@ export function NotebookPane({ backend, path, onController }: Props) {
         saver,
         ensureKernel,
         commands,
+        joining,
         disposables: [
           editing,
           cellControls,
@@ -317,14 +344,20 @@ export function NotebookPane({ backend, path, onController }: Props) {
         });
       };
       // Opening another file keeps this one's edits: save them first, as
-      // autosave would, then let it go.
-      if (done.model.dirty && !autosaveOff.current) {
-        void done.saver
-          .save({ ifDirty: true })
-          .catch(e => console.error(`Couldn’t save ${path}:`, e))
-          .finally(teardown);
+      // autosave would, then let it go. A rename in progress finishes
+      // first: it needs the session, and the save goes to the new path.
+      const save = () =>
+        done.model.dirty && !autosaveOff.current && !gone.current
+          ? done.saver
+              .save({ ifDirty: true })
+              .catch(e => console.error(`Couldn’t save ${path}:`, e))
+          : undefined;
+      if (renaming.current) {
+        void renaming.current.then(save).finally(teardown);
       } else {
-        teardown();
+        const saving = save();
+        if (saving) void saving.finally(teardown);
+        else teardown();
       }
     };
   }, [services, path]);
@@ -408,7 +441,7 @@ export function NotebookPane({ backend, path, onController }: Props) {
     if (!open) return;
     const { model, saver } = open;
     const autosave = () => {
-      if (!model.dirty || autosaveOff.current) return;
+      if (!model.dirty || autosaveOff.current || gone.current) return;
       saver.save({ ifDirty: true }).catch(e => {
         if (e instanceof SaveConflict) {
           autosaveOff.current = true;
@@ -453,6 +486,39 @@ export function NotebookPane({ backend, path, onController }: Props) {
           setNotice(`Couldn’t ${what}: ${messageOf(e)}`);
         }
       };
+    // Move the file to `to` with `rename` (the file's own rename, or its
+    // folder's in the sidebar), taking the saves and the kernel along.
+    const moved = async (to: string, rename: () => Promise<unknown>) => {
+      const moving = (async () => {
+        // The session to move: after it has joined the file's kernel.
+        await open.joining;
+        const sessionToMove = session.session;
+        // Saves (⌘S, autosave, quit) wait for the move and then go to the
+        // new path, so none recreates the old file.
+        await saver.move(async () => {
+          const model = (await rename()) as Partial<Contents.IModel> | undefined;
+          return { path: to, lastModified: model?.last_modified };
+        });
+        // The kernel follows the file, so reopening it there rejoins it.
+        try {
+          await sessionToMove?.setPath(to);
+          await sessionToMove?.setName(basename(to));
+        } catch (e) {
+          console.warn(`Couldn’t move the session to ${to}:`, e);
+        }
+        // Edits typed meanwhile go to the new file before it reopens there;
+        // any typed during this save, by the teardown save as this pane goes.
+        await saver
+          .save({ ifDirty: true })
+          .catch(e => console.error(`Couldn’t save the latest edits to ${to}:`, e));
+      })();
+      renaming.current = moving.catch(() => {});
+      try {
+        await moving;
+      } finally {
+        renaming.current = undefined;
+      }
+    };
     onController({
       path,
       name: basename(path),
@@ -469,6 +535,8 @@ export function NotebookPane({ backend, path, onController }: Props) {
         notebook.activate();
       },
       save: async () => {
+        // Deleted: a save would put it back.
+        if (gone.current) return false;
         try {
           try {
             await saver.save();
@@ -489,9 +557,6 @@ export function NotebookPane({ backend, path, onController }: Props) {
         autosaveOff.current = false;
         setNotice(undefined);
         return true;
-      },
-      discard: () => {
-        autosaveOff.current = true;
       },
       download: () => {
         // Widget state goes in, as on save; that is not an edit.
@@ -536,6 +601,41 @@ export function NotebookPane({ backend, path, onController }: Props) {
         void commands.execute(id).catch(e => setNotice(`Couldn’t ${id}: ${messageOf(e)}`));
         return true;
       },
+      rename: async (input: string) => {
+        let next: string | undefined;
+        const clearRenameNotice = () =>
+          setNotice(n => (n?.startsWith(`Couldn’t rename ${fileName}`) ? undefined : n));
+        try {
+          next = renamedPath(path, input);
+          if (!next) {
+            clearRenameNotice();
+            return true;
+          }
+          // The edits go with the file.
+          if (model.dirty) await saver.save();
+        } catch (e) {
+          setNotice(`Couldn’t rename ${fileName}: ${messageOf(e)}`);
+          return false;
+        }
+        const to = next;
+        try {
+          await moved(to, () => renameFile(services.contents, path, to));
+        } catch (e) {
+          setNotice(`Couldn’t rename ${fileName}: ${messageOf(e)}`);
+          return false;
+        }
+        clearRenameNotice();
+        onRenamedRef.current?.(path, to);
+        return true;
+      },
+      discard: () => {
+        const was = gone.current;
+        gone.current = true;
+        return () => {
+          gone.current = was;
+        };
+      },
+      moved,
       // With no kernel yet, this only picks the one the first run starts.
       changeKernel: report('change the kernel', async (name: string) => {
         if (session.session) await session.changeKernel({ name });

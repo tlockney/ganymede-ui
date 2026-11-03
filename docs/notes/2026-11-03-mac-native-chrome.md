@@ -29,8 +29,8 @@ sidebar, a customizable toolbar, and Cell and Kernel menus.
   Finder.
 - `close` has to discard, not just unmount: the pane saves dirty edits
   when it lets a notebook go, and the saver recreates a missing file, so
-  a trashed notebook with unsaved edits came back. `NotebookController`
-  gained `discard()`, which turns that save off.
+  a trashed notebook with unsaved edits came back. `close` calls
+  `NotebookController.discard()` (from #221) first, which turns that save off.
 - Renaming the open notebook on disk leaves its session at the old path,
   so the reopened notebook gets a new kernel and the old one keeps
   running. It should go through the page's rename once #221 lands.

@@ -15,7 +15,6 @@ function controller(over: Partial<NotebookController> = {}): NotebookController 
     trusted: true,
     save: vi.fn(async () => true),
     download: vi.fn(),
-    discard: vi.fn(),
     trust: vi.fn(async () => {}),
     run: vi.fn(async () => {}),
     runAll: vi.fn(async () => {}),
@@ -26,6 +25,9 @@ function controller(over: Partial<NotebookController> = {}): NotebookController 
     cellType: 'code',
     changeCellType: vi.fn(),
     command: vi.fn(() => false),
+    rename: vi.fn(async () => true),
+    discard: vi.fn(() => () => {}),
+    moved: vi.fn(async () => {}),
     ...over,
   };
 }
