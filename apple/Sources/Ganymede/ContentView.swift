@@ -11,6 +11,9 @@ struct ContentView: View {
     /// folder that was the default then, so a later Open Folder… (which
     /// changes the default) leaves it alone.
     @State private var loaded: WindowTarget
+    /// The folder the sidebar lists and New Notebook uses. It stays put
+    /// when the page opens a notebook in a subfolder, which moves `target`.
+    @State private var sidebarRoot: URL
     @Environment(\.openWindow) private var openWindow
     /// The open notebook's file and unsaved edits, as the page reports them.
     @StateObject private var document = PageDocument()
@@ -19,7 +22,9 @@ struct ContentView: View {
 
     init(target: Binding<WindowTarget?>) {
         _target = target
-        _loaded = State(initialValue: target.wrappedValue ?? .folder(AppModel.shared.root))
+        let loaded = target.wrappedValue ?? .folder(AppModel.shared.root)
+        _loaded = State(initialValue: loaded)
+        _sidebarRoot = State(initialValue: loaded.folder)
     }
     #endif
     #if os(iOS)
@@ -40,7 +45,7 @@ struct ContentView: View {
         // The app draws the sidebar, toolbar and menus; the page shows the
         // notebook (#206, #207).
         NavigationSplitView {
-            FolderSidebar(folder: (target ?? loaded).folder, page: pageModel) { path in
+            FolderSidebar(folder: sidebarRoot, page: pageModel) { path in
                 openWindow(value: EditorRequest(path: path))
             }
             .navigationSplitViewColumnWidth(min: 180, ideal: 240, max: 400)
@@ -48,12 +53,12 @@ struct ContentView: View {
             content
         }
         .toolbar(id: "notebook") {
-            NotebookToolbar(page: pageModel, folder: (target ?? loaded).folder)
+            NotebookToolbar(page: pageModel, folder: sidebarRoot)
         }
         .navigationSubtitle(pageModel.state.subtitle)
         .frame(minWidth: 720, minHeight: 480)
         .navigationTitle((target ?? loaded).title)
-        .focusedSceneValue(\.windowFolder, (target ?? loaded).folder)
+        .focusedSceneValue(\.windowFolder, sidebarRoot)
         // A notebook opened from the Finder (double-click, Open With,
         // the Dock) arrives here, in a new window or in the one already
         // showing that file. The claim below matches by substring, so
@@ -65,6 +70,7 @@ struct ContentView: View {
             if target == nil {
                 target = opening
                 loaded = opening
+                sidebarRoot = opening.folder
             } else if opening != target {
                 openWindow(value: opening)
             }

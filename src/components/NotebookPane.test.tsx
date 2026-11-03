@@ -55,6 +55,12 @@ vi.mock('../lib/jupyterlab', async () => {
   };
 });
 
+// The touch cell controls need JupyterLab's cells; cell-controls.test.ts
+// covers them.
+vi.mock('../lib/cell-controls', () => ({
+  attachCellControls: vi.fn(() => ({ dispose: vi.fn(), isDisposed: false })),
+}));
+
 vi.mock('../lib/widgets', () => ({
   attachWidgets: vi.fn(() => {
     const widgets = { dispose: vi.fn(), isDisposed: false, saveState: vi.fn() };

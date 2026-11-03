@@ -9,7 +9,7 @@ import {
   signedInHere,
 } from './lib/backends';
 import { useColorScheme } from './lib/useColorScheme';
-import { useNarrow } from './lib/useNarrow';
+import { TOUCH_QUERY, useMedia, useNarrow } from './lib/useNarrow';
 import { useJupyterLabTheme } from './lib/theme';
 import { Sidebar } from './components/Sidebar';
 import { Toolbar } from './components/Toolbar';
@@ -27,6 +27,7 @@ import {
   isReload,
   readLaunch,
   titleFor,
+  withDir,
   withOpen,
 } from './lib/launch';
 import {
@@ -94,6 +95,10 @@ export function App() {
   const pendingOpen = useRef(launch.open);
   /** The folder the sidebar starts in; the server root once the sheet picks a backend. */
   const [sidebarRoot, setSidebarRoot] = useState(launch.dir);
+  /** The folder the sidebar shows, where new notebooks go. */
+  const [folder, setFolder] = useState(launch.dir);
+  /** Why the last New Notebook failed, until dismissed or the next one. */
+  const [newError, setNewError] = useState<string>();
   const [backend, setBackend] = useState<Backend>();
   const [error, setError] = useState<string>();
   const [connecting, setConnecting] = useState(false);
@@ -109,6 +114,13 @@ export function App() {
   // has done its job (a notebook opened), on a tap outside it, and on Esc.
   // The app draws its own sidebar with `chrome=native`, so the page's never floats.
   const sidebarFloats = !native && narrow && sidebarOpen;
+  // The cells' touch controls (#200): on a touch screen, or in a narrow
+  // window. Not for narrowness with `chrome=native`, where the web view
+  // beside the Mac app's sidebar can be under 720px in a wide window.
+  const touch = useMedia(TOUCH_QUERY);
+  useEffect(() => {
+    document.documentElement.classList.toggle('touch-ui', touch || (narrow && !native));
+  }, [touch, narrow, native]);
   const afterPick = useCallback(() => {
     if (narrow) setSidebarOpen(false);
   }, [narrow]);
@@ -172,41 +184,64 @@ export function App() {
   }, [config]);
 
   const newNotebook = useCallback(
-    async (dir: string) => {
-      if (!backend) return;
+    /** Resolves true once the new notebook opens, false if it wasn't created. */
+    async (dir: string): Promise<boolean> => {
+      if (!backend) return false;
+      setNewError(undefined);
       const { services } = backend;
-      const model = await services.contents.newUntitled({ type: 'notebook', path: dir });
-      const spec = services.kernelspecs.specs;
-      const name = spec?.default;
-      if (name && spec?.kernelspecs[name]) {
-        const ks = spec.kernelspecs[name]!;
-        const nb = await services.contents.get(model.path, { content: true });
-        nb.content.metadata = {
-          ...nb.content.metadata,
-          kernelspec: { name, display_name: ks.display_name, language: ks.language },
-        };
-        await services.contents.save(model.path, {
-          type: 'notebook',
-          format: 'json',
-          content: nb.content,
-        });
+      let model;
+      try {
+        model = await services.contents.newUntitled({ type: 'notebook', path: dir });
+      } catch (e) {
+        // Said, not dropped: a click that does nothing reads as a dead button.
+        const where = dir ? `“${dir.split('/').pop()}”` : 'this folder';
+        setNewError(
+          `Couldn’t create a notebook in ${where}: ${e instanceof Error ? e.message : String(e)}`,
+        );
+        return false;
+      }
+      // The default kernel, for the first run. Without it the notebook
+      // still opens, and its kernel picker asks.
+      try {
+        const spec = services.kernelspecs.specs;
+        const name = spec?.default;
+        if (name && spec?.kernelspecs[name]) {
+          const ks = spec.kernelspecs[name]!;
+          const nb = await services.contents.get(model.path, { content: true });
+          nb.content.metadata = {
+            ...nb.content.metadata,
+            kernelspec: { name, display_name: ks.display_name, language: ks.language },
+          };
+          await services.contents.save(model.path, {
+            type: 'notebook',
+            format: 'json',
+            content: nb.content,
+          });
+        }
+      } catch (e) {
+        console.warn(`Couldn’t set the kernel of ${model.path}:`, e);
       }
       setOpenPath(model.path);
+      return true;
     },
     [backend],
   );
 
-  // The window title, which the Apple apps show, and `?open=` in step with
-  // the open notebook, so a reload (⌘R, or WebKit restarting the page)
-  // comes back to it. A launch file not opened yet stays in the URL.
+  // A failed New Notebook's notice goes once something else opens.
+  useEffect(() => setNewError(undefined), [openPath, backend]);
+
+  // The window title, which the Apple apps show, and `?open=` and `?dir=`
+  // in step with the open notebook and the sidebar's folder, so a reload
+  // (⌘R, or WebKit restarting the page) comes back to both. A launch file
+  // not opened yet stays in the URL.
   useEffect(() => {
     document.title = titleFor(openPath);
     if (!openPath && pendingOpen.current) return;
-    const search = withOpen(window.location.search, openPath);
+    const search = withDir(withOpen(window.location.search, openPath), folder);
     if (search !== window.location.search) {
       history.replaceState(null, '', window.location.pathname + search);
     }
-  }, [openPath]);
+  }, [openPath, folder]);
 
   // The Mac app's window: its title bar's edited dot and proxy icon, and
   // its Save, close and quit prompts.
@@ -233,12 +268,8 @@ export function App() {
         return true;
       case 'new-notebook':
         if (!backend) return false;
-        try {
-          await newNotebook(clean(arg ?? ''));
-          return true;
-        } catch {
-          return false;
-        }
+        // A failure shows the page's notice (#195) and returns false.
+        return newNotebook(clean(arg ?? ''));
       case 'show-shortcuts':
         setShortcutsOpen(true);
         return true;
@@ -393,7 +424,8 @@ export function App() {
                 : undefined
             }
             // Closes once the notebook opens, so a failure leaves the sidebar up.
-            onNew={dir => void newNotebook(dir).then(afterPick)}
+            onNew={dir => void newNotebook(dir).then(opened => opened && afterPick())}
+            onDirChange={setFolder}
             onClose={sidebarFloats ? () => setSidebarOpen(false) : undefined}
             onConnect={() => setSheetOpen(true)}
             onSettings={() => setSettingsOpen(true)}
@@ -429,9 +461,17 @@ export function App() {
               <EmptyState
                 backend={backend}
                 connecting={connecting}
-                onNew={() => newNotebook('')}
+                onNew={() => void newNotebook(folder)}
                 onConnect={() => setSheetOpen(true)}
               />
+            )}
+            {newError && (
+              <div className="pane-notice" role="alert">
+                <span>{newError}</span>
+                <button className="pane-notice-dismiss" onClick={() => setNewError(undefined)}>
+                  Dismiss
+                </button>
+              </div>
             )}
           </div>
         </main>
@@ -453,7 +493,7 @@ export function App() {
               history.replaceState(
                 null,
                 '',
-                window.location.pathname + withOpen(window.location.search, undefined),
+                window.location.pathname + withDir(withOpen(window.location.search, undefined), ''),
               );
             }
             setConfig({ ...c });

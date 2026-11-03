@@ -34,3 +34,11 @@ sidebar, a customizable toolbar, and Cell and Kernel menus.
 - Renaming the open notebook on disk leaves its session at the old path,
   so the reopened notebook gets a new kernel and the old one keeps
   running. It should go through the page's rename once #221 lands.
+- The web view beside a 240px native sidebar is under 720px in windows up
+  to about 960px wide, so width-based "phone" rules misfire on the Mac.
+  The cells' touch controls now follow a `touch-ui` class on the root
+  (touch screen, or a narrow window without `chrome=native`) instead of a
+  width media query, and the narrow notebook padding skips `chrome-native`.
+- The sidebar's root is its own state: `target` follows the page into a
+  subfolder's notebook, and rooting the sidebar there lost the way back up.
+- Running kernels have no UI with native chrome yet (#225).

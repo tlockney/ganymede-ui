@@ -47,4 +47,18 @@ final class FolderEntryTests: XCTestCase {
         XCTAssertEqual(FolderEntry.path("moons/Io.ipynb", movedFrom: "moons", to: "satellites"), "satellites/Io.ipynb")
         XCTAssertNil(FolderEntry.path("rings/A.ipynb", movedFrom: "moons", to: "satellites"))
     }
+
+    func testListsASymlinkedFolderAsAFolder() throws {
+        let fm = FileManager.default
+        let dir = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try fm.createDirectory(at: dir.appendingPathComponent("real"), withIntermediateDirectories: true)
+        try fm.createSymbolicLink(
+            at: dir.appendingPathComponent("linked"), withDestinationURL: dir.appendingPathComponent("real")
+        )
+        defer { try? fm.removeItem(at: dir) }
+
+        let entries = try FolderEntry.list(dir)
+        XCTAssertEqual(entries.map(\.name), ["linked", "real"])
+        XCTAssertEqual(entries.map(\.isDirectory), [true, true])
+    }
 }

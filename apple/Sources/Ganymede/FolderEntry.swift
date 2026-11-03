@@ -28,7 +28,9 @@ struct FolderEntry: Identifiable, Hashable {
             options: [.skipsHiddenFiles]
         )
         let entries = urls.map { url -> FolderEntry in
-            let values = try? url.resourceValues(forKeys: [.isDirectoryKey, .isPackageKey])
+            // Through a symlink, so a linked folder expands as the contents API's did.
+            let values = try? url.resolvingSymlinksInPath()
+                .resourceValues(forKeys: [.isDirectoryKey, .isPackageKey])
             let isDirectory = (values?.isDirectory ?? false) && !(values?.isPackage ?? false)
             return FolderEntry(url: url, isDirectory: isDirectory)
         }

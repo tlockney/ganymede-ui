@@ -20,7 +20,7 @@ built from the same sources (see
 - On the Mac, double-clicking an `.ipynb` file in the Finder (or Open
   With > Ganymede) opens it in its own window; opening it again brings
   that window to the front. File > Open… (⌘O) opens notebooks, File >
-  Open Folder… (⇧⌘O) a folder, each in a new window; a new window (⌘N)
+  Open Folder… (⇧⌘O) a folder, each in a new window; a new window (⌥⌘N)
   shows the last folder opened, your home folder at first.
 - A notebook window behaves like a document window. Its title bar has the
   file's icon (drag it, or ⌘-click it for the folders above) and a dot
@@ -128,8 +128,9 @@ open apple/Ganymede.xcodeproj
 `bootstrap.sh` builds the XCFramework and this repo's `dist/` into
 `apple/build/` and generates the Xcode project from `project.yml`. Pick
 your team under Signing & Capabilities, then Run: the `Ganymede` scheme
-for the Mac, `Ganymede-iOS` for an iPad, iPhone or simulator. ⌘U runs
-the tests.
+for the Mac, `Ganymede-iOS` for an iPad, iPhone or simulator. With the
+`Ganymede` scheme selected, Run opens the Mac app even when a phone is
+plugged in. ⌘U runs the tests.
 Safari's Develop menu can inspect the web view.
 The first build asks you to trust SwiftTerm's build plugin
 (`SwiftTermBuildInfoPlugin`, which records SwiftTerm's version); choose

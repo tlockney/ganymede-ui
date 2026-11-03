@@ -8,6 +8,9 @@ import type { CommandRegistry } from '@lumino/commands';
 import { Widget } from '@lumino/widgets';
 import { type Backend, trustNotebook } from '../lib/backends';
 import { attachEditing, createCommands, createNotebook, createRendermime } from '../lib/jupyterlab';
+import { attachCellControls } from '../lib/cell-controls';
+import { CellMenu } from './CellMenu';
+import type { Cell } from '@jupyterlab/cells';
 import { downloadFile } from '../lib/download';
 import { AUTOSAVE_INTERVAL_MS, NotebookSaver, SaveConflict } from '../lib/saver';
 import { hasUntrustedOutputs } from '../lib/trust';
@@ -155,6 +158,8 @@ export function NotebookPane({ backend, path, onController }: Props) {
   const [joined, setJoined] = useState(false);
   /** Set when autosave met a file changed on disk; a save clears it. */
   const autosaveOff = useRef(false);
+  /** The cell menu (#200), open under a cell's "…" button. */
+  const [menu, setMenu] = useState<{ cell: Cell; anchor: HTMLElement }>();
 
   // Load the file, build the notebook, and join its session.
   useEffect(() => {
@@ -255,6 +260,9 @@ export function NotebookPane({ backend, path, onController }: Props) {
         setNotice(`Couldn’t run: ${messageOf(e)}`),
       );
       const editing = attachEditing(notebook, session, rendermime, commands);
+      const cellControls = attachCellControls(notebook, (cell, anchor) =>
+        setMenu({ cell, anchor }),
+      );
       const saver = new NotebookSaver({
         contents: services.contents,
         path,
@@ -277,6 +285,7 @@ export function NotebookPane({ backend, path, onController }: Props) {
         commands,
         disposables: [
           editing,
+          cellControls,
           notebookWidgets,
           { dispose: () => saver.dispose(), isDisposed: false },
           {
@@ -575,6 +584,23 @@ export function NotebookPane({ backend, path, onController }: Props) {
   return (
     <>
       <div className="notebook-page" ref={host} />
+      {menu && (
+        <CellMenu
+          notebook={open.notebook}
+          cell={menu.cell}
+          anchor={menu.anchor}
+          run={async () => {
+            try {
+              if (await open.ensureKernel()) {
+                await NotebookActions.run(open.notebook, open.session);
+              }
+            } catch (e) {
+              setNotice(`Couldn’t run the cell: ${messageOf(e)}`);
+            }
+          }}
+          onClose={() => setMenu(undefined)}
+        />
+      )}
       {notice && (
         <div className="pane-notice" role="alert">
           <span>{notice}</span>

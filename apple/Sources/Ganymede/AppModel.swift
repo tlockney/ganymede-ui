@@ -50,6 +50,9 @@ final class AppModel: ObservableObject {
     private var pathReady: Task<Void, Never>?
     #endif
     private let defaults = UserDefaults.standard
+    /// Where the server is started and stopped: at the QoS of its own
+    /// threads (#192).
+    nonisolated private static let serverQueue = DispatchQueue(label: "ganymede.server", qos: .default)
     #if os(iOS)
     /// A folder from the picker, readable only while its security scope
     /// is held.
@@ -141,10 +144,18 @@ final class AppModel: ObservableObject {
             // The same port as last time keeps the page's origin, and with
             // it the web app's saved state in local storage.
             let saved = defaults.integer(forKey: Keys.port)
-            let result = await Task.detached(priority: .userInitiated) {
-                old?.stop()
-                return Result { try AppModel.launch(settings, saved) }
-            }.value
+            // On a Default-QoS queue, not in a task: the call waits on the
+            // server's Rust threads, which run at Default, and a
+            // user-initiated thread waiting on them is a priority
+            // inversion (#192). A detached task would be escalated to
+            // this main-actor task's priority as soon as it is awaited;
+            // a continuation does not escalate the queue's work.
+            let result: Result<ServerHost, Error> = await withCheckedContinuation { done in
+                Self.serverQueue.async {
+                    old?.stop()
+                    done.resume(returning: Result { try AppModel.launch(settings, saved) })
+                }
+            }
             switch result {
             case .success(let host):
                 server = host
