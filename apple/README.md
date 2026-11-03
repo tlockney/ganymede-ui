@@ -41,7 +41,7 @@ built from the same sources (see
 - Downloads from the page (links with a `download` attribute, files an
   output offers) ask where to save, starting in Downloads.
 - Quitting shuts every kernel down.
-- The kernel menu also lists "TypeScript (cdp-kernel, in app)": cdp-kernel
+- The kernel menu also lists "TypeScript (cdp-kernel, in app)" (unreleased): cdp-kernel
   running in the app's hidden kernel web view, as on the iPad. Its cells get
   ganymede-device's `device` (see [docs/device.md](../docs/device.md));
   process kernels can't reach the app.

@@ -44,7 +44,7 @@ async function setup(pageKernels: Set<string> = new Set()) {
 }
 
 describe('MixedKernelSpecClient', () => {
-  it("adds the page's specs the server lacks, marked as in the app", async () => {
+  it("adds the page's cdp-kernel spec, marked as in the app, and no other", async () => {
     const { owners, merged } = await setup();
     expect(merged.default).toBe('cdp-node');
     expect(Object.keys(merged.kernelspecs).sort()).toEqual([
@@ -53,7 +53,7 @@ describe('MixedKernelSpecClient', () => {
       'javascript',
     ]);
     expect(merged.kernelspecs['cdp-browser']!.display_name).toBe('TypeScript (cdp-kernel, in app)');
-    // The server's spec keeps a name both sides have.
+    // The page's Web Worker kernel stays out; the server's keeps its name.
     expect(merged.kernelspecs.javascript!.display_name).toBe('JavaScript (Node)');
     expect([...owners.pageSpecs]).toEqual(['cdp-browser']);
   });
@@ -98,6 +98,19 @@ describe('MixedKernelClient', () => {
     expect(page.calls).toEqual(['startNew cdp-browser', 'interrupt page-k', 'shutdown page-k']);
     expect(server.calls).toEqual(['startNew cdp-node', 'restart server-k']);
     expect((await client.listRunning()).map(k => k.id)).toEqual(['server-k', 'page-k']);
+  });
+
+  it('keeps routing a page kernel to the page after it ends', async () => {
+    const { owners } = await setup();
+    const client = new MixedKernelClient(
+      settings,
+      kernelClient('server'),
+      kernelClient('page'),
+      owners,
+    );
+    const { id } = await client.startNew({ name: 'cdp-browser' });
+    // hasKernel no longer knows it (setup's set is empty), as during a restart.
+    expect(owners.ofKernel(id)).toBe('page');
   });
 });
 
@@ -170,6 +183,59 @@ describe('MixedSessionClient', () => {
     expect((await client.listRunning()).map(s => s.id)).toEqual([started.id]);
     await client.shutdown(started.id);
     expect(page.running.size).toBe(0);
+  });
+
+  it('lists the session once, under its id, while it moves', async () => {
+    const { owners } = await setup();
+    const server = sessionClient('server');
+    const page = sessionClient('page');
+    const client = new MixedSessionClient(settings, server.client, page.client, owners);
+    const started = await client.startNew(options('cdp-node'));
+
+    // Hold the page's start until a listing has begun.
+    let release!: () => void;
+    const held = new Promise<void>(r => (release = r));
+    const start = page.client.startNew.bind(page.client);
+    page.client.startNew = async o => (await held, start(o));
+
+    const moving = client.update({ id: started.id, kernel: { name: 'cdp-browser' } });
+    const listing = client.listRunning();
+    await Promise.resolve();
+    release();
+    const [moved, listed] = await Promise.all([moving, listing]);
+    expect(moved.id).toBe(started.id);
+    expect(listed.map(s => [s.id, s.kernel?.name])).toEqual([[started.id, 'cdp-browser']]);
+    expect(server.running.size).toBe(0);
+  });
+
+  it('leaves the session where it was when the move fails', async () => {
+    const { owners } = await setup();
+    const server = sessionClient('server');
+    const page = sessionClient('page');
+    const client = new MixedSessionClient(settings, server.client, page.client, owners);
+    const started = await client.startNew(options('cdp-node'));
+    page.client.startNew = async () => {
+      throw new Error('no kernel');
+    };
+
+    await expect(
+      client.update({ id: started.id, kernel: { name: 'cdp-browser' } }),
+    ).rejects.toThrow('no kernel');
+    expect(server.running.size).toBe(1);
+    expect((await client.getModel(started.id)).kernel?.name).toBe('cdp-node');
+    expect((await client.listRunning()).map(s => s.id)).toEqual([started.id]);
+  });
+
+  it('forgets sessions that ended elsewhere', async () => {
+    const { owners } = await setup();
+    const server = sessionClient('server');
+    const page = sessionClient('page');
+    const client = new MixedSessionClient(settings, server.client, page.client, owners);
+    const started = await client.startNew(options('cdp-node'));
+    await client.update({ id: started.id, kernel: { name: 'cdp-browser' } });
+    page.running.clear();
+    expect(await client.listRunning()).toEqual([]);
+    expect(owners.sessionCount).toBe(0);
   });
 
   it('updates in place when the kernel stays on the same side', async () => {

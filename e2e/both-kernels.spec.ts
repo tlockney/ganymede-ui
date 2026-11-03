@@ -36,7 +36,7 @@ test("lists the server's kernels and the page's, and moves between them", async 
   await waitForReady(page);
 
   const picker = page.getByLabel('Kernel');
-  await expect(picker.locator('option', { hasText: 'in app' })).toHaveCount(2);
+  await expect(picker.locator('option', { hasText: 'in app' })).toHaveCount(1);
   await expect(picker.locator(`option[value="${KERNEL}"]`)).toHaveCount(1);
 
   // The server's kernel: Node has `process`.

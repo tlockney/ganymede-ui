@@ -13,6 +13,7 @@ import {
   ServiceManager,
 } from '@jupyterlab/services';
 import { WebSocket as PageSocket } from 'mock-socket';
+import { CDP_KERNEL_NAME } from './cdp-kernel';
 import { createLiteParts, type LiteParts } from './lite';
 
 /**
@@ -42,7 +43,7 @@ export async function createMixedServices(
     ...serverSettings,
     WebSocket: dispatchingSocket(url => {
       const id = kernelIdFrom(url);
-      return id !== undefined && lite.hasKernel(id);
+      return id !== undefined && owners.ofKernel(id) === 'page';
     }),
   });
 
@@ -78,7 +79,7 @@ export async function createMixedServices(
     serverSettings: settings,
     kernelSpecAPIClient: kernelSpecClient,
   });
-  const services = new MixedServiceManager(lite.services, {
+  const services = new MixedServiceManager(() => lite.dispose(), {
     serverSettings: settings,
     contents,
     kernels,
@@ -91,12 +92,23 @@ export async function createMixedServices(
 
 type Side = 'server' | 'page';
 
+/** The page's kernel specs that join the server's: cdp-kernel, for `device`. */
+export const PAGE_SPECS: ReadonlySet<string> = new Set([CDP_KERNEL_NAME]);
+
 /** Which side owns a kernel spec, a kernel, or a session. */
 export class Owners {
   /** Page kernel spec names that made it into the merged list. */
   readonly pageSpecs = new Set<string>();
+  /**
+   * Every page kernel id seen, kept after the kernel ends, so a late call
+   * or socket for it (a restart's, say) still goes to the page and not to
+   * the server.
+   */
+  private _pageKernels = new Set<string>();
   /** The UI's session ids, each with its side and that side's session id. */
-  readonly sessions = new Map<string, { side: Side; id: string }>();
+  private _sessions = new Map<string, { side: Side; id: string }>();
+  /** The reverse: `side:id` to the UI's id. */
+  private _outer = new Map<string, string>();
 
   constructor(private _lite: Pick<LiteParts, 'hasKernel'>) {}
 
@@ -105,25 +117,52 @@ export class Owners {
   }
 
   ofKernel(id: string): Side {
-    return this._lite.hasKernel(id) ? 'page' : 'server';
+    return this._pageKernels.has(id) || this._lite.hasKernel(id) ? 'page' : 'server';
+  }
+
+  /** Remembers `id` as a page kernel. */
+  pageKernel(id: string | undefined): void {
+    if (id) this._pageKernels.add(id);
   }
 
   /** The side and inner id of the UI's session `id`; an unknown id is taken as the server's. */
   ofSession(id: string): { side: Side; id: string } {
-    return this.sessions.get(id) ?? { side: 'server', id };
+    return this._sessions.get(id) ?? { side: 'server', id };
   }
 
-  /** The UI's id for a side's session `id`. */
+  /** The UI's id for a side's session `id`, which becomes its own if it has none. */
   outerSession(side: Side, id: string): string {
-    for (const [outer, inner] of this.sessions) {
-      if (inner.side === side && inner.id === id) return outer;
-    }
-    this.sessions.set(id, { side, id });
+    const outer = this._outer.get(`${side}:${id}`);
+    if (outer !== undefined) return outer;
+    this.setSession(id, side, id);
     return id;
+  }
+
+  /** Points the UI's session `outer` at a side's session `id`. */
+  setSession(outer: string, side: Side, id: string): void {
+    this.deleteSession(outer);
+    this._sessions.set(outer, { side, id });
+    this._outer.set(`${side}:${id}`, outer);
+  }
+
+  deleteSession(outer: string): void {
+    const inner = this._sessions.get(outer);
+    if (!inner) return;
+    this._sessions.delete(outer);
+    this._outer.delete(`${inner.side}:${inner.id}`);
+  }
+
+  /** Forgets every session but those in `outer`. */
+  keepSessions(outer: ReadonlySet<string>): void {
+    for (const id of [...this._sessions.keys()]) if (!outer.has(id)) this.deleteSession(id);
+  }
+
+  get sessionCount(): number {
+    return this._sessions.size;
   }
 }
 
-/** The server's kernel specs, then the page's whose names the server lacks. */
+/** The server's kernel specs, then the page's in PAGE_SPECS that the server lacks. */
 export class MixedKernelSpecClient implements KernelSpec.IKernelSpecAPIClient {
   constructor(
     readonly serverSettings: ServerConnection.ISettings,
@@ -137,11 +176,12 @@ export class MixedKernelSpecClient implements KernelSpec.IKernelSpecAPIClient {
     const kernelspecs = { ...server.kernelspecs };
     this._owners.pageSpecs.clear();
     for (const [name, spec] of Object.entries(page.kernelspecs)) {
-      if (!spec || name in kernelspecs) continue;
+      if (!spec || !PAGE_SPECS.has(name) || name in kernelspecs) continue;
       kernelspecs[name] = { ...spec, display_name: inApp(spec.display_name) };
       this._owners.pageSpecs.add(name);
     }
-    return { default: server.default || page.default, kernelspecs };
+    const fallback = this._owners.pageSpecs.values().next().value;
+    return { default: server.default || fallback || '', kernelspecs };
   }
 }
 
@@ -167,14 +207,17 @@ export class MixedKernelClient implements Kernel.IKernelAPIClient {
       this._server.listRunning(),
       this._page.listRunning(),
     ]);
+    for (const k of page) this._owners.pageKernel(k.id);
     return [...server, ...page];
   }
   getModel(id: string): Promise<Kernel.IModel | undefined> {
     return this._for(id).getModel(id);
   }
-  startNew(options: Kernel.IKernelOptions = {}): Promise<Kernel.IModel> {
-    const side = this._owners.ofSpec(options.name);
-    return (side === 'page' ? this._page : this._server).startNew(options);
+  async startNew(options: Kernel.IKernelOptions = {}): Promise<Kernel.IModel> {
+    if (this._owners.ofSpec(options.name) === 'server') return this._server.startNew(options);
+    const model = await this._page.startNew(options);
+    this._owners.pageKernel(model.id);
+    return model;
   }
   restart(id: string): Promise<void> {
     return this._for(id).restart(id);
@@ -189,11 +232,16 @@ export class MixedKernelClient implements Kernel.IKernelAPIClient {
 
 /**
  * Sessions on either side, under ids the UI keeps. Changing a session's
- * kernel to one on the other side ends it there and starts it again on the
- * new side for the same path; the UI's session id stays the same, since
- * the UI's session connection never learns a new one.
+ * kernel to one on the other side starts it again on the new side for the
+ * same path, then ends it on the old one; the UI's session id stays the
+ * same, since the UI's session connection never learns a new one.
  */
 export class MixedSessionClient implements Session.ISessionAPIClient {
+  /** Moves under way; listings wait for them, so none sees a session half moved. */
+  private _moves = new Set<Promise<unknown>>();
+  /** Counts moves started, so a listing can tell one began while it ran. */
+  private _moveCount = 0;
+
   constructor(
     readonly serverSettings: ServerConnection.ISettings,
     private _server: Session.ISessionAPIClient,
@@ -206,6 +254,7 @@ export class MixedSessionClient implements Session.ISessionAPIClient {
   }
 
   private _outer(side: Side, model: Session.IModel): Session.IModel {
+    if (side === 'page') this._owners.pageKernel(model.kernel?.id);
     return { ...model, id: this._owners.outerSession(side, model.id) };
   }
 
@@ -218,11 +267,23 @@ export class MixedSessionClient implements Session.ISessionAPIClient {
   }
 
   async listRunning(): Promise<Session.IModel[]> {
-    const [server, page] = await Promise.all([
-      this._server.listRunning(),
-      this._page.listRunning(),
-    ]);
-    return [...server.map(m => this._outer('server', m)), ...page.map(m => this._outer('page', m))];
+    for (;;) {
+      await Promise.allSettled([...this._moves]);
+      const count = this._moveCount;
+      const [server, page] = await Promise.all([
+        this._server.listRunning(),
+        this._page.listRunning(),
+      ]);
+      // A move that began meanwhile may show its session on both sides, or
+      // on the new side under an id not yet mapped: list again after it.
+      if (this._moveCount !== count || this._moves.size > 0) continue;
+      const models = [
+        ...server.map(m => this._outer('server', m)),
+        ...page.map(m => this._outer('page', m)),
+      ];
+      this._owners.keepSessions(new Set(models.map(m => m.id)));
+      return models;
+    }
   }
 
   async getModel(id: string): Promise<Session.IModel> {
@@ -238,7 +299,7 @@ export class MixedSessionClient implements Session.ISessionAPIClient {
   async shutdown(id: string): Promise<void> {
     const inner = this._owners.ofSession(id);
     await this._client(inner.side).shutdown(inner.id);
-    this._owners.sessions.delete(id);
+    this._owners.deleteSession(id);
   }
 
   async update(model: Parameters<Session.ISessionAPIClient['update']>[0]): Promise<Session.IModel> {
@@ -249,15 +310,39 @@ export class MixedSessionClient implements Session.ISessionAPIClient {
       return { ...updated, id: model.id };
     }
     // The new kernel is on the other side: move the session there.
+    this._moveCount++;
+    const move = this._move(model, inner, side);
+    this._moves.add(move);
+    try {
+      return await move;
+    } finally {
+      this._moves.delete(move);
+    }
+  }
+
+  /**
+   * Starts the session on `side`, points the UI's id at it, then ends the
+   * old one. If the start fails, nothing has changed.
+   */
+  private async _move(
+    model: Parameters<Session.ISessionAPIClient['update']>[0],
+    inner: { side: Side; id: string },
+    side: Side,
+  ): Promise<Session.IModel> {
     const old = await this._client(inner.side).getModel(inner.id);
-    await this._client(inner.side).shutdown(inner.id);
     const started = await this._client(side).startNew({
       path: model.path ?? old.path,
       name: model.name ?? old.name,
       type: model.type ?? old.type,
       kernel: model.kernel as Session.ISessionOptions['kernel'],
     });
-    this._owners.sessions.set(model.id, { side, id: started.id });
+    if (side === 'page') this._owners.pageKernel(started.kernel?.id);
+    this._owners.setSession(model.id, side, started.id);
+    try {
+      await this._client(inner.side).shutdown(inner.id);
+    } catch (err) {
+      console.warn(`Ending session ${inner.id} after moving it failed:`, err);
+    }
     return { ...started, id: model.id };
   }
 }
@@ -290,20 +375,19 @@ export function dispatchingSocket(isPage: (url: string) => boolean): typeof WebS
 }
 
 /**
- * The combined manager. Disposing it also disposes the page's manager,
- * which shuts the page's kernels down (`lite.ts`); the server's kernels
- * are left running, as with any server.
+ * The combined manager. Disposing it also shuts the page's kernels down
+ * (`lite.ts`); the server's kernels are left running, as with any server.
  */
 class MixedServiceManager extends ServiceManager {
   constructor(
-    private _page: ServiceManager.IManager,
+    private _disposePage: () => void,
     options: Partial<ServiceManager.IOptions>,
   ) {
     super(options);
   }
   dispose(): void {
     if (this.isDisposed) return;
-    this._page.dispose();
+    this._disposePage();
     super.dispose();
   }
 }

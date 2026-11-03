@@ -80,7 +80,7 @@ Anything that can build one is a backend. `connect(config)` in
 
 Where the app connects is decided in this order (`App.tsx`):
 
-1. `?token=` or `?kernels=page|server` in the URL, as `ganymede serve`
+1. `?token=` or `?kernels=page|both|server` in the URL, as `ganymede serve`
    prints it and the Apple apps pass on every launch. They are removed from
    the address bar once read.
 2. The connection saved in `localStorage` (`ganymede-ui:backend`), with
@@ -397,7 +397,8 @@ setting of earlier versions moves to the first remote on launch.
 iOS does not let an app launch processes, so without a kernel server the
 iPad's in-process Ganymede serves notebooks only and the page runs its own
 kernel, the `kernels: 'page'` backend above. With a kernel server set,
-Ganymede forwards kernel requests to it and the page connects as usual.
+Ganymede forwards kernel requests to it, and the page lists those kernels
+beside its own (`kernels: 'both'`, above).
 Notebooks stay on the device either way. On the Mac, an app opened from
 the Finder takes `PATH` from the login shell (`LoginShell.swift`) so
 kernelspecs that run `node`, `deno` or `python3` start.
