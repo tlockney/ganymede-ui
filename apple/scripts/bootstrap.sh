@@ -3,6 +3,7 @@
 # generates Ganymede.xcodeproj:
 #   GanymedeFFI.xcframework  from a checkout of tlockney/ganymede
 #   web/                     this repo's `npm run build`
+#   quicklook/               its Quick Look page, `vite build --mode quicklook` (#135)
 # Needs macOS with Xcode, Rust (rustup), Node, and XcodeGen.
 #   GANYMEDE_DIR=~/src/ganymede apple/scripts/bootstrap.sh
 set -euo pipefail
@@ -19,6 +20,9 @@ cp -R "$ganymede/target/xcframework/GanymedeFFI.xcframework" "$apple/build/"
 (cd "$repo" && { [ -d node_modules ] || npm ci; } && npm run build)
 rm -rf "$apple/build/web"
 cp -R "$repo/dist" "$apple/build/web"
+(cd "$repo" && npx vite build --mode quicklook)
+rm -rf "$apple/build/quicklook"
+cp -R "$repo/dist-quicklook" "$apple/build/quicklook"
 
 (cd "$apple" && xcodegen generate)
 # The packages' exact commits (#122): builds use only these

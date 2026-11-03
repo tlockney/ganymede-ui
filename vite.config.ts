@@ -1,4 +1,4 @@
-import { defineConfig, type ProxyOptions } from 'vite';
+import { defineConfig, type ProxyOptions, type UserConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
 
@@ -48,7 +48,7 @@ const proxy: Record<string, ProxyOptions> = {
   },
 };
 
-export default defineConfig({
+const config: UserConfig = {
   plugins: [
     react(),
     {
@@ -71,6 +71,8 @@ export default defineConfig({
         return resolved ? resolved.id : null;
       },
     },
+    // Not in the Quick Look build (quickLook below), which keeps the plugins
+    // before this one.
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['icons/icon.svg', 'icons/apple-touch-icon.png'],
@@ -201,4 +203,25 @@ export default defineConfig({
   },
   server: { proxy },
   preview: { proxy },
-});
+};
+
+/**
+ * `vite build --mode quicklook`: the Mac app's Quick Look preview page
+ * (preview.html, #135) alone, into dist-quicklook/. The extension bundles
+ * it and serves it to its web view. No PWA: the page never has a server.
+ */
+function quickLook(base: UserConfig): UserConfig {
+  return {
+    ...base,
+    plugins: base.plugins!.slice(0, -1),
+    // public/ holds the PWA's icons and service-worker relay.
+    publicDir: false,
+    build: {
+      ...base.build,
+      outDir: 'dist-quicklook',
+      rolldownOptions: { input: { preview: 'preview.html' } },
+    },
+  };
+}
+
+export default defineConfig(({ mode }) => (mode === 'quicklook' ? quickLook(config) : config));

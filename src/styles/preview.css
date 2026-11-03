@@ -1,0 +1,30 @@
+/* The Quick Look preview (preview.html): the notebook alone, filling the panel. */
+
+body {
+  background: var(--window-bg);
+}
+
+.preview-page {
+  position: fixed;
+  inset: 0;
+}
+
+.preview-error {
+  margin: 24px;
+  color: var(--text-2);
+  font: 14px/1.4 var(--font-ui);
+}
+
+/* No toolbar above the notebook, and no cell is being worked on. */
+.preview-page .jp-WindowedPanel-outer {
+  padding-top: 20px;
+  scroll-padding-top: 0;
+}
+
+.preview-page .jp-Cell.jp-mod-active::before {
+  display: none;
+}
+
+.preview-page .jp-Notebook .jp-Cell.jp-mod-active .jp-Collapser {
+  background: transparent;
+}
