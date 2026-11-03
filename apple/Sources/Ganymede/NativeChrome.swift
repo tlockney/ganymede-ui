@@ -29,8 +29,12 @@ struct FolderSidebar: View {
             Button("New Notebook") { page.run("new-notebook", arg: FolderEntry.serverPath(folder)) }
             Button("New Folder") { newFolder(in: folder) }
         }
-        // A notebook made or saved by the page shows up.
+        // A notebook made or saved by the page shows up, and so do changes
+        // made outside the app when it comes back to the front.
         .onChange(of: page.state.path) { _ in generation += 1 }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            generation += 1
+        }
     }
 
     private var actions: FolderActions {
@@ -41,6 +45,8 @@ struct FolderSidebar: View {
             newNotebook: { page.run("new-notebook", arg: FolderEntry.serverPath($0)) },
             newFolder: newFolder(in:),
             reveal: { NSWorkspace.shared.activateFileViewerSelecting([$0.url]) },
+            rename: rename,
+            duplicate: duplicate,
             trash: trash
         )
     }
@@ -69,10 +75,72 @@ struct FolderSidebar: View {
         }
     }
 
+    private func rename(_ entry: FolderEntry) {
+        let holdsOpen = FolderEntry.path(page.state.path, isAt: entry.serverPath)
+        // The page would save its edits back to the old path.
+        if holdsOpen && page.state.dirty {
+            let alert = NSAlert()
+            alert.messageText = "Save “\(entry.title)” before renaming it."
+            alert.informativeText = "The open notebook has unsaved changes."
+            alert.runModal()
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = "Rename “\(entry.name)”"
+        alert.addButton(withTitle: "Rename")
+        alert.addButton(withTitle: "Cancel")
+        let field = NSTextField(string: entry.name)
+        field.frame = NSRect(x: 0, y: 0, width: 260, height: 24)
+        alert.accessoryView = field
+        alert.window.initialFirstResponder = field
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let name = field.stringValue.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty, name != entry.name, !name.contains("/") else { return }
+        let target = entry.url.deletingLastPathComponent().appendingPathComponent(name)
+        do {
+            try FileManager.default.moveItem(at: entry.url, to: target)
+            generation += 1
+            if let moved = FolderEntry.path(
+                page.state.path, movedFrom: entry.serverPath, to: FolderEntry.serverPath(target)
+            ) {
+                page.run("open", arg: moved)
+            }
+        } catch {
+            NSAlert(error: error).runModal()
+        }
+    }
+
+    private func duplicate(_ entry: FolderEntry) {
+        let fm = FileManager.default
+        let target = FolderEntry.duplicateURL(for: entry.url) { fm.fileExists(atPath: $0.path) }
+        do {
+            try fm.copyItem(at: entry.url, to: target)
+            generation += 1
+        } catch {
+            NSAlert(error: error).runModal()
+        }
+    }
+
     private func trash(_ entry: FolderEntry) {
+        // The page would write the notebook back on its next save, so it
+        // closes it, after asking.
+        let holdsOpen = FolderEntry.path(page.state.path, isAt: entry.serverPath)
+        if holdsOpen {
+            let alert = NSAlert()
+            alert.messageText = entry.isDirectory
+                ? "“\(entry.name)” holds the open notebook."
+                : "“\(entry.title)” is open in this window."
+            alert.informativeText = page.state.dirty
+                ? "It has unsaved changes. Move it to the Trash and close it without saving?"
+                : "Move it to the Trash and close it?"
+            alert.addButton(withTitle: "Move to Trash")
+            alert.addButton(withTitle: "Cancel")
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+        }
         do {
             try FileManager.default.trashItem(at: entry.url, resultingItemURL: nil)
             generation += 1
+            if holdsOpen { page.run("close") }
         } catch {
             NSAlert(error: error).runModal()
         }
@@ -87,6 +155,8 @@ struct FolderActions {
     var newNotebook: (URL) -> Void
     var newFolder: (URL) -> Void
     var reveal: (FolderEntry) -> Void
+    var rename: (FolderEntry) -> Void
+    var duplicate: (FolderEntry) -> Void
     var trash: (FolderEntry) -> Void
 }
 
@@ -156,6 +226,8 @@ private struct FolderContents: View {
             }
         }
         Divider()
+        Button("Rename…") { actions.rename(entry) }
+        Button("Duplicate") { actions.duplicate(entry) }
         Button("Show in Finder") { actions.reveal(entry) }
         Divider()
         Button("Move to Trash") { actions.trash(entry) }

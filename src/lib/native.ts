@@ -28,6 +28,7 @@ export type NativeHooks = {
  */
 export const PAGE_COMMANDS = {
   open: 'arg',
+  close: '',
   'new-notebook': 'arg',
   save: '',
   download: '',

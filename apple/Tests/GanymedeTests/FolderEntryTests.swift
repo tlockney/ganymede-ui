@@ -25,4 +25,26 @@ final class FolderEntryTests: XCTestCase {
             "Users/me/Moons & rings/Io.ipynb"
         )
     }
+
+    func testDuplicatesAreNamedAsFinderNamesThem() {
+        let io = URL(fileURLWithPath: "/moons/Io.ipynb")
+        var taken: Set<String> = []
+        XCTAssertEqual(FolderEntry.duplicateURL(for: io) { taken.contains($0.path) }.path, "/moons/Io copy.ipynb")
+        taken = ["/moons/Io copy.ipynb", "/moons/Io copy 2.ipynb"]
+        XCTAssertEqual(FolderEntry.duplicateURL(for: io) { taken.contains($0.path) }.path, "/moons/Io copy 3.ipynb")
+        let folder = URL(fileURLWithPath: "/moons/rings")
+        XCTAssertEqual(FolderEntry.duplicateURL(for: folder) { _ in false }.path, "/moons/rings copy")
+    }
+
+    func testTheOpenNotebookFollowsAMoveOfItOrItsFolder() {
+        XCTAssertTrue(FolderEntry.path("moons/Io.ipynb", isAt: "moons"))
+        XCTAssertFalse(FolderEntry.path("moonshot/Io.ipynb", isAt: "moons"))
+        XCTAssertFalse(FolderEntry.path(nil, isAt: "moons"))
+        XCTAssertEqual(
+            FolderEntry.path("moons/Io.ipynb", movedFrom: "moons/Io.ipynb", to: "moons/Europa.ipynb"),
+            "moons/Europa.ipynb"
+        )
+        XCTAssertEqual(FolderEntry.path("moons/Io.ipynb", movedFrom: "moons", to: "satellites"), "satellites/Io.ipynb")
+        XCTAssertNil(FolderEntry.path("rings/A.ipynb", movedFrom: "moons", to: "satellites"))
+    }
 }

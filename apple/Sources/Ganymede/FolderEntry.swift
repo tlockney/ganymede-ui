@@ -37,4 +37,31 @@ struct FolderEntry: Identifiable, Hashable {
             return a.name.localizedStandardCompare(b.name) == .orderedAscending
         }
     }
+
+    /// Where Duplicate puts a copy of `url`: "Io copy.ipynb", then
+    /// "Io copy 2.ipynb" and so on, as Finder names them.
+    static func duplicateURL(for url: URL, exists: (URL) -> Bool) -> URL {
+        let dir = url.deletingLastPathComponent()
+        let ext = url.pathExtension
+        let base = ext.isEmpty ? url.lastPathComponent : url.deletingPathExtension().lastPathComponent
+        var n = 1
+        while true {
+            let name = n == 1 ? "\(base) copy" : "\(base) copy \(n)"
+            let candidate = dir.appendingPathComponent(ext.isEmpty ? name : "\(name).\(ext)")
+            if !exists(candidate) { return candidate }
+            n += 1
+        }
+    }
+
+    /// Whether `path` (a server path) is `entry` or inside it.
+    static func path(_ path: String?, isAt entry: String) -> Bool {
+        guard let path else { return false }
+        return path == entry || path.hasPrefix(entry + "/")
+    }
+
+    /// `path` after the item at `old` moved to `new`, or nil when it isn't there.
+    static func path(_ path: String?, movedFrom old: String, to new: String) -> String? {
+        guard let path, Self.path(path, isAt: old) else { return nil }
+        return new + path.dropFirst(old.count)
+    }
 }

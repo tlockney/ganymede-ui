@@ -20,3 +20,10 @@ sidebar, a customizable toolbar, and Cell and Kernel menus.
   New Window moves to ⌥⌘N.
 - Settings stays as it was (Remotes in ⌘,, Agent Settings ⌥⌘,); merging
   them is the rest of #206.
+- The sidebar works on the disk, so the page can be left holding a path
+  that's gone. Rename reopens the notebook at its new path (and refuses
+  while it has unsaved edits, which the page would save to the old path).
+  Move to Trash asks first and then closes it with a new `close` page
+  command, since the next save would otherwise write it back. The sidebar
+  lists again when the app comes to the front, to pick up changes made in
+  Finder.
