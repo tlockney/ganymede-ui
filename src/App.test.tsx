@@ -216,7 +216,7 @@ describe('App', () => {
     expect(await run('no-such-command')).toBe(false);
     // An absolute path, as the Mac app passes it, is cleaned as `?open=` is.
     expect(await run('open', '/Europa.ipynb')).toBe(true);
-    await waitFor(() => expect(screen.getByTestId('pane')).toHaveTextContent('Europa.ipynb'));
+    await waitFor(() => expect(screen.getByTestId('pane')).toHaveTextContent(/^Europa\.ipynb$/));
     expect(await run('show-shortcuts')).toBe(true);
     expect(await screen.findByText('Keyboard Shortcuts')).toBeInTheDocument();
     vi.unstubAllGlobals();
