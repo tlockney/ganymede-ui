@@ -1,5 +1,5 @@
 import { StrictMode } from 'react';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Backend, BackendConfig } from './lib/backends';
@@ -12,6 +12,8 @@ const mocks = vi.hoisted(() => ({
   signedInHere: vi.fn<() => Promise<boolean>>(),
   /** What the pane hands the toolbar, when a test sets it. */
   controller: undefined as undefined | { dirty: boolean; save: () => Promise<boolean> },
+  /** The last pane's `onRenamed`. */
+  onRenamed: undefined as undefined | ((from: string, to: string) => void),
 }));
 
 vi.mock('./lib/backends', async importOriginal => ({
@@ -23,7 +25,16 @@ vi.mock('./lib/backends', async importOriginal => ({
 vi.mock('./components/NotebookPane', async () => {
   const { useEffect } = await import('react');
   return {
-    NotebookPane: ({ path, onController }: { path: string; onController(c: unknown): void }) => {
+    NotebookPane: ({
+      path,
+      onController,
+      onRenamed,
+    }: {
+      path: string;
+      onController(c: unknown): void;
+      onRenamed?(from: string, to: string): void;
+    }) => {
+      mocks.onRenamed = onRenamed;
       useEffect(() => {
         if (mocks.controller) {
           const name = path.split('/').pop();
@@ -173,7 +184,11 @@ describe('App', () => {
       }),
     );
     render(<App />);
-    expect((await screen.findByText('notes.md')).closest('button')).toBeDisabled();
+    // Not opened, though its file menu still works.
+    const notes = (await screen.findByText('notes.md')).closest('button')!;
+    expect(notes).toHaveAttribute('aria-disabled', 'true');
+    await userEvent.click(notes);
+    expect(opened).toEqual([{ path: 'notes.md' }]);
     vi.unstubAllGlobals();
   });
 
@@ -189,6 +204,29 @@ describe('App', () => {
 
     await waitFor(() => expect(screen.getByTestId('pane')).toHaveTextContent('work/Orbits.ipynb'));
     expect(container.querySelector('.window')).not.toHaveClass('sidebar-collapsed');
+  });
+
+  it('follows a rename, unless another notebook was opened meanwhile', async () => {
+    history.replaceState(null, '', '/?kernels=server&open=work%2FOrbits.ipynb');
+    const fake = fakeServices({
+      '': [{ name: 'work', type: 'directory' }],
+      work: [
+        { name: 'Orbits.ipynb', type: 'notebook' },
+        { name: 'Moons.ipynb', type: 'notebook' },
+      ],
+    });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId('pane')).toHaveTextContent('work/Orbits.ipynb'));
+    const renamed = mocks.onRenamed!;
+    act(() => renamed('work/Orbits.ipynb', 'work/Kepler.ipynb'));
+    expect(screen.getByTestId('pane')).toHaveTextContent('work/Kepler.ipynb');
+
+    // A rename that ends after Moons was opened leaves Moons open.
+    await userEvent.click(await screen.findByRole('button', { name: /^Moons/ }));
+    await waitFor(() => expect(screen.getByTestId('pane')).toHaveTextContent('work/Moons.ipynb'));
+    act(() => renamed('work/Kepler.ipynb', 'work/Laws.ipynb'));
+    expect(screen.getByTestId('pane')).toHaveTextContent('work/Moons.ipynb');
   });
 
   it('hands a missing launch file to the pane, not the connect sheet', async () => {

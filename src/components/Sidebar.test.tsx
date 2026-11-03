@@ -189,3 +189,176 @@ describe('Sidebar', () => {
     expect(screen.queryByRole('button', { name: 'Settings' })).not.toBeInTheDocument();
   });
 });
+
+describe('Sidebar file menu', () => {
+  function actions() {
+    return {
+      rename: vi.fn(async () => true),
+      duplicate: vi.fn(async () => {}),
+      remove: vi.fn(async () => {}),
+      newFolder: vi.fn(async (dir: string) => (dir ? `${dir}/Untitled Folder` : 'Untitled Folder')),
+    };
+  }
+  const openMenu = async (name: string) => {
+    await userEvent.click(await screen.findByRole('button', { name: `Actions for ${name}` }));
+    return screen.getByRole('menu');
+  };
+  const item = (name: string) => screen.getByRole('menuitem', { name });
+
+  it('has no menu without actions', async () => {
+    renderSidebar();
+    await screen.findByText('Saturn');
+    expect(screen.queryByRole('button', { name: /^Actions for/ })).not.toBeInTheDocument();
+  });
+
+  it('renames in place: Enter renames, Escape cancels', async () => {
+    const a = actions();
+    renderSidebar({ actions: a });
+    await openMenu('Saturn');
+    await userEvent.click(item('Rename'));
+    const field = screen.getByRole('textbox', { name: 'New name for Saturn' });
+    expect(field).toHaveFocus();
+    await userEvent.type(field, '{Escape}');
+    expect(a.rename).not.toHaveBeenCalled();
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+
+    await openMenu('Saturn');
+    await userEvent.click(item('Rename'));
+    await userEvent.clear(screen.getByRole('textbox'));
+    await userEvent.type(screen.getByRole('textbox'), 'Titan{Enter}');
+    expect(a.rename).toHaveBeenCalledOnce();
+    expect(a.rename).toHaveBeenCalledWith(
+      expect.objectContaining({ path: 'Saturn.ipynb' }),
+      'Titan',
+    );
+  });
+
+  it('duplicates files but not folders', async () => {
+    const a = actions();
+    renderSidebar({ actions: a });
+    await openMenu('notes.txt');
+    await userEvent.click(item('Duplicate'));
+    expect(a.duplicate).toHaveBeenCalledWith(expect.objectContaining({ path: 'notes.txt' }));
+    await openMenu('moons');
+    expect(screen.queryByRole('menuitem', { name: 'Duplicate' })).not.toBeInTheDocument();
+  });
+
+  it('deletes only after confirmation', async () => {
+    const a = actions();
+    const confirm = vi.fn(() => false);
+    vi.stubGlobal('confirm', confirm);
+    renderSidebar({ actions: a });
+    await openMenu('moons');
+    await userEvent.click(item('Delete…'));
+    expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/^Delete the folder “moons”/));
+    expect(a.remove).not.toHaveBeenCalled();
+    confirm.mockReturnValue(true);
+    await openMenu('Jupiter');
+    await userEvent.click(item('Delete…'));
+    expect(confirm).toHaveBeenLastCalledWith(expect.stringMatching(/^Delete “Jupiter”\?/));
+    expect(a.remove).toHaveBeenCalledWith(expect.objectContaining({ path: 'Jupiter.ipynb' }));
+  });
+
+  it('makes a notebook or folder in a folder, and names the folder', async () => {
+    const a = actions();
+    const { onNew } = renderSidebar({ actions: a });
+    await openMenu('moons');
+    await userEvent.click(item('New Notebook in “moons”'));
+    expect(onNew).toHaveBeenCalledWith('moons');
+    await openMenu('Saturn');
+    await userEvent.click(item('New Notebook'));
+    expect(onNew).toHaveBeenLastCalledWith('');
+
+    await openMenu('moons');
+    await userEvent.click(item('New Folder in “moons”'));
+    expect(a.newFolder).toHaveBeenCalledWith('moons');
+    // Into the folder, to name the new one once it is listed.
+    expect(await screen.findByRole('button', { name: /moons/ })).toBeInTheDocument();
+  });
+
+  it('opens on right-click and on a long press, which doesn’t open the item', async () => {
+    const a = actions();
+    const { onOpen } = renderSidebar({ actions: a });
+    const saturn = (await screen.findByText('Saturn')).closest('button')!;
+    await userEvent.pointer({ keys: '[MouseRight]', target: saturn });
+    expect(screen.getByRole('menu', { name: 'Actions for Saturn.ipynb' })).toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+
+    vi.useFakeTimers();
+    try {
+      act(() => {
+        saturn.dispatchEvent(
+          new PointerEvent('pointerdown', {
+            bubbles: true,
+            pointerType: 'touch',
+          } as PointerEventInit),
+        );
+      });
+      act(() => vi.advanceTimersByTime(600));
+      expect(screen.getByRole('menu')).toBeInTheDocument();
+      act(() => {
+        saturn.dispatchEvent(new PointerEvent('pointerup', { bubbles: true }));
+        saturn.click();
+      });
+      expect(onOpen).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('lets a mouse click through after a long press whose click never came', async () => {
+    const a = actions();
+    const { onOpen } = renderSidebar({ actions: a });
+    const saturn = (await screen.findByText('Saturn')).closest('button')!;
+    vi.useFakeTimers();
+    try {
+      act(() => {
+        saturn.dispatchEvent(
+          new PointerEvent('pointerdown', {
+            bubbles: true,
+            pointerType: 'touch',
+          } as PointerEventInit),
+        );
+      });
+      act(() => vi.advanceTimersByTime(600));
+      // The menu opened under the finger, which lifts there: no click on the row.
+      act(() => saturn.dispatchEvent(new PointerEvent('pointerup', { bubbles: true })));
+    } finally {
+      vi.useRealTimers();
+    }
+    await userEvent.keyboard('{Escape}');
+    // Then a trackpad click opens the notebook, and a right-click the menu.
+    await userEvent.click(saturn);
+    expect(onOpen).toHaveBeenCalledWith('Saturn.ipynb');
+    await userEvent.pointer({ keys: '[MouseRight]', target: saturn });
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+  });
+
+  it('moves between items with the arrow keys, and gives focus back on Escape', async () => {
+    renderSidebar({ actions: actions() });
+    const more = await screen.findByRole('button', { name: 'Actions for Saturn' });
+    await userEvent.click(more);
+    expect(item('Rename')).toHaveFocus();
+    await userEvent.keyboard('{ArrowDown}');
+    expect(item('Duplicate')).toHaveFocus();
+    await userEvent.keyboard('{ArrowUp}{ArrowUp}');
+    expect(item('New Folder')).toHaveFocus();
+    await userEvent.keyboard('{Home}');
+    expect(item('Rename')).toHaveFocus();
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(more).toHaveFocus();
+  });
+
+  it('says why an action failed', async () => {
+    const a = actions();
+    a.duplicate.mockRejectedValueOnce(new Error('Disk full'));
+    renderSidebar({ actions: a });
+    await openMenu('notes.txt');
+    await userEvent.click(item('Duplicate'));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Couldn’t duplicate notes.txt: Disk full',
+    );
+  });
+});

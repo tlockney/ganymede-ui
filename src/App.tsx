@@ -30,6 +30,7 @@ import {
   withOpen,
 } from './lib/launch';
 import { canOpenFiles, exposeHooks, openFile, postDocument } from './lib/native';
+import { fileActions } from './lib/file-actions';
 
 /**
  * A token in the page URL, as `ganymede serve` prints it, wins once, and so
@@ -103,6 +104,11 @@ export function App() {
     if (narrow) setSidebarOpen(false);
   }, [narrow]);
   const [openPath, setOpenPath] = useState<string>();
+  // Not if another notebook was opened while it renamed.
+  const followRename = useCallback(
+    (from: string, to: string) => setOpenPath(p => (p === from ? to : p)),
+    [],
+  );
   const [controller, setController] = useState<NotebookController>();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const closeShortcuts = useCallback(() => setShortcutsOpen(false), []);
@@ -306,6 +312,15 @@ export function App() {
           onClose={sidebarFloats ? () => setSidebarOpen(false) : undefined}
           onConnect={() => setSheetOpen(true)}
           onSettings={() => setSettingsOpen(true)}
+          actions={
+            backend &&
+            fileActions({
+              contents: backend.services.contents,
+              openPath,
+              controller,
+              setOpenPath,
+            })
+          }
         />
         {sidebarFloats && (
           <div
@@ -330,6 +345,7 @@ export function App() {
                 backend={backend}
                 path={openPath}
                 onController={setController}
+                onRenamed={followRename}
               />
             ) : (
               <EmptyState
