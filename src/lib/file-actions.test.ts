@@ -25,7 +25,7 @@ function controller(path: string, over: Partial<NotebookController> = {}) {
     save: vi.fn(async () => true),
     rename: vi.fn(async () => true),
     discard: vi.fn(() => undo),
-    moved: vi.fn(async () => {}),
+    moved: vi.fn(async (_next: string, move: () => Promise<unknown>) => void (await move())),
     ...over,
   } as unknown as NotebookController;
 }
@@ -82,7 +82,7 @@ describe('fileActions', () => {
     expect(c.save).toHaveBeenCalled();
     expect(fake.rename).toHaveBeenCalledWith('moons', 'satellites');
     // Its later edits and its kernel go to the new path before it reopens.
-    expect(c.moved).toHaveBeenCalledWith('satellites/Io.ipynb');
+    expect(c.moved).toHaveBeenCalledWith('satellites/Io.ipynb', expect.any(Function));
     expect(setOpenPath).toHaveBeenCalledWith('satellites/Io.ipynb');
     expect(vi.mocked(c.moved).mock.invocationCallOrder[0]).toBeLessThan(
       setOpenPath.mock.invocationCallOrder[0],

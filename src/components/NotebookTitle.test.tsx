@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { NotebookTitle } from './NotebookTitle';
@@ -74,5 +74,23 @@ describe('NotebookTitle', () => {
     await userEvent.click(screen.getByRole('button', { name: 'elsewhere' }));
     expect(onRename).toHaveBeenCalledOnce();
     expect(onRename).toHaveBeenCalledWith('Untitled1');
+  });
+
+  it('closes after a failed Enter once focus has moved on', async () => {
+    let fail!: () => void;
+    const onRename = vi.fn(() => new Promise<boolean>(r => (fail = () => r(false))));
+    render(
+      <>
+        <NotebookTitle name="Untitled" dirty={false} onRename={onRename} />
+        <button>elsewhere</button>
+      </>,
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Untitled' }));
+    await userEvent.type(field(), '2{Enter}');
+    // Into a cell while it renames; then the rename fails.
+    await userEvent.click(screen.getByRole('button', { name: 'elsewhere' }));
+    await act(async () => fail());
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'elsewhere' })).toHaveFocus();
   });
 });

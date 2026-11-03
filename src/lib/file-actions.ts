@@ -57,14 +57,17 @@ export function fileActions({ contents, openPath, controller, setOpenPath }: Opt
       if (holdsOpen && open!.dirty && !(await open!.save())) {
         throw new Error('The open notebook couldn’t be saved first.');
       }
-      await renameFile(contents, item.path, next);
-      if (holdsOpen) {
-        // It stops saving to the old path, saves later edits to the new
-        // one, and its kernel follows, so it reopens there with its state.
-        const moved = next + openPath!.slice(item.path.length);
-        await open!.moved(moved);
-        setOpenPath(moved);
+      const move = () => renameFile(contents, item.path, next);
+      if (!holdsOpen) {
+        await move();
+        return true;
       }
+      // Through the notebook: its saves wait for the move and then go to
+      // the new path, and its kernel follows, so it reopens there with its
+      // state.
+      const moved = next + openPath!.slice(item.path.length);
+      await open!.moved(moved, move);
+      setOpenPath(moved);
       return true;
     },
 

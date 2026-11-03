@@ -50,14 +50,15 @@ export function NotebookTitle({ name, dirty, onRename }: Props) {
     setBusy(true);
     const ok = await onRename(field.value);
     setBusy(false);
-    if (ok || !retry) {
+    // After Enter, try again: the pane says what went wrong. Unless the
+    // user has moved on (into a cell, say): then the field closes.
+    const active = document.activeElement;
+    const stayed = active === field || active === document.body || active === null;
+    if (ok || !retry || !stayed) {
       setEditing(false);
     } else {
-      // Try again: the pane says what went wrong. Unless the user has
-      // moved on (into a cell, say).
       settled.current = false;
-      const active = document.activeElement;
-      if (active === field || active === document.body || active === null) field.focus();
+      field.focus();
     }
   };
 

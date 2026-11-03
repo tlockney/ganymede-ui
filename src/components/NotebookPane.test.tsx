@@ -441,7 +441,7 @@ describe('NotebookPane', () => {
       expect(fake.contents.save.mock.invocationCallOrder[0]).toBeLessThan(
         fake.contents.rename.mock.invocationCallOrder[0]!,
       );
-      expect(onRenamed).toHaveBeenCalledWith('moons/Europa.ipynb');
+      expect(onRenamed).toHaveBeenCalledWith('moons/Io.ipynb', 'moons/Europa.ipynb');
     });
 
     it('saves edits made during the rename to the new file', async () => {
@@ -459,7 +459,7 @@ describe('NotebookPane', () => {
       );
       const saved = fake.contents.save.mock.lastCall![1] as { content: nbformat.INotebookContent };
       expect(saved.content.cells[0]!.source).toBe('print(3)');
-      expect(onRenamed).toHaveBeenCalledWith('moons/Europa.ipynb');
+      expect(onRenamed).toHaveBeenCalledWith('moons/Io.ipynb', 'moons/Europa.ipynb');
     });
 
     it('saves edits made while the session moves to the new file', async () => {
@@ -479,6 +479,55 @@ describe('NotebookPane', () => {
       expect((saved[1] as { content: nbformat.INotebookContent }).content.cells[0]!.source).toBe(
         'print(5)',
       );
+    });
+
+    it('sends a save made during the rename to the new path', async () => {
+      const { fake, latest } = setup(files());
+      await waitFor(() => expect(latest()).toBeDefined());
+      let finish!: () => void;
+      fake.contents.rename.mockImplementationOnce(async (_from: string, to: string) => {
+        await new Promise<void>(r => (finish = r));
+        return entry({ name: to, path: to, type: 'notebook' });
+      });
+      let renaming!: Promise<boolean>;
+      act(() => void (renaming = latest()!.rename('Europa')));
+      await waitFor(() => expect(fake.contents.rename).toHaveBeenCalled());
+      // ⌘S, mid-rename, with an edit to save.
+      act(() => modelOf().cells.get(0).sharedModel.setSource('print(6)'));
+      let saving!: Promise<boolean>;
+      act(() => void (saving = latest()!.save()));
+      await act(async () => {
+        finish();
+        await renaming;
+        await saving;
+      });
+      const paths = fake.contents.save.mock.calls.map(c => c[0]);
+      expect(paths).toContain('moons/Europa.ipynb');
+      expect(paths).not.toContain('moons/Io.ipynb');
+    });
+
+    it('moves the session once it has joined, even if the pane goes meanwhile', async () => {
+      let join!: () => void;
+      fakes.initialize = () => new Promise(r => (join = () => r(false)));
+      const { latest, unmount, onRenamed } = setup(files());
+      await waitFor(() => expect(latest()).toBeDefined());
+      const ctx = fakes.sessions[0] as { session: unknown; dispose: () => void };
+      const session = { setPath: vi.fn(async () => {}), setName: vi.fn(async () => {}) };
+      let renaming!: Promise<boolean>;
+      act(() => void (renaming = latest()!.rename('Europa')));
+      // Another notebook opens before the session has joined.
+      unmount();
+      ctx.session = session;
+      await act(async () => {
+        join();
+        await renaming;
+      });
+      expect(session.setPath).toHaveBeenCalledWith('moons/Europa.ipynb');
+      await waitFor(() => expect(ctx.dispose).toHaveBeenCalled());
+      expect(vi.mocked(ctx.dispose).mock.invocationCallOrder[0]).toBeGreaterThan(
+        session.setPath.mock.invocationCallOrder[0]!,
+      );
+      expect(onRenamed).toHaveBeenCalledWith('moons/Io.ipynb', 'moons/Europa.ipynb');
     });
 
     it('clears a failed rename’s notice when the name goes back', async () => {
@@ -519,16 +568,20 @@ describe('NotebookPane', () => {
       act(() => modelOf().cells.get(0).sharedModel.setSource('print(4)'));
       await waitFor(() => expect(latest()!.dirty).toBe(true));
 
-      await act(() => latest()!.moved('satellites/Io.ipynb'));
+      const folderMove = vi.fn(async () => {});
+      await act(() => latest()!.moved('satellites/Io.ipynb', folderMove));
+      expect(folderMove).toHaveBeenCalledOnce();
       expect(fake.contents.save).toHaveBeenCalledWith(
         'satellites/Io.ipynb',
         expect.objectContaining({ type: 'notebook' }),
       );
       expect(session.setPath).toHaveBeenCalledWith('satellites/Io.ipynb');
       expect(session.setName).toHaveBeenCalledWith('Io.ipynb');
-      // Nothing more goes to the old path.
+      // Later saves go to the new path too.
       fake.contents.save.mockClear();
+      act(() => modelOf().cells.get(0).sharedModel.setSource('print(7)'));
       await act(() => latest()!.save());
+      expect(fake.contents.save).toHaveBeenCalledWith('satellites/Io.ipynb', expect.anything());
       expect(fake.contents.save).not.toHaveBeenCalledWith('moons/Io.ipynb', expect.anything());
     });
 

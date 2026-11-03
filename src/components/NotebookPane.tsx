@@ -61,19 +61,20 @@ export type NotebookController = {
    */
   discard(): () => void;
   /**
-   * The file was moved to `next` (its folder was renamed in the sidebar):
-   * stop saving to the old path, save edits made since to `next`, and move
-   * the session there so the kernel follows when the file reopens.
+   * Move the file to `next` with `move` (its folder's rename in the
+   * sidebar). Saves wait for it and then go to `next`, edits made since
+   * are saved there, and the session moves so the kernel follows when
+   * the file reopens. Rejects, with nothing moved, when `move` does.
    */
-  moved(next: string): Promise<void>;
+  moved(next: string, move: () => Promise<unknown>): Promise<void>;
 };
 
 type Props = {
   backend: Backend;
   path: string;
   onController(c: NotebookController | undefined): void;
-  /** The file was renamed to `path`: open it there. */
-  onRenamed?(path: string): void;
+  /** The file at `from` was renamed to `to`: open it there, if it is still the one open. */
+  onRenamed?(from: string, to: string): void;
 };
 
 const basename = (p: string) => p.split('/').pop() ?? p;
@@ -118,6 +119,8 @@ type Open = {
    * to start.
    */
   ensureKernel(all?: boolean): Promise<boolean>;
+  /** Settles once the session has rejoined the file's kernel, if any. */
+  joining: Promise<unknown>;
   disposables: IDisposable[];
 };
 
@@ -161,8 +164,10 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
   const [joined, setJoined] = useState(false);
   /** Set when autosave met a file changed on disk; a save clears it. */
   const autosaveOff = useRef(false);
-  /** Set once the file is renamed or deleted: it is no longer at `path` to save to. */
-  const renamed = useRef(false);
+  /** Set once the file is deleted from under the notebook: no save may put it back. */
+  const gone = useRef(false);
+  /** A rename in progress: the pane's teardown waits for it to move the session. */
+  const renaming = useRef<Promise<void>>(undefined);
 
   // Load the file, build the notebook, and join its session.
   useEffect(() => {
@@ -282,6 +287,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         widgets: notebookWidgets,
         saver,
         ensureKernel,
+        joining,
         disposables: [
           editing,
           notebookWidgets,
@@ -315,14 +321,20 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         });
       };
       // Opening another file keeps this one's edits: save them first, as
-      // autosave would, then let it go.
-      if (done.model.dirty && !autosaveOff.current && !renamed.current) {
-        void done.saver
-          .save({ ifDirty: true })
-          .catch(e => console.error(`Couldn’t save ${path}:`, e))
-          .finally(teardown);
+      // autosave would, then let it go. A rename in progress finishes
+      // first: it needs the session, and the save goes to the new path.
+      const save = () =>
+        done.model.dirty && !autosaveOff.current && !gone.current
+          ? done.saver
+              .save({ ifDirty: true })
+              .catch(e => console.error(`Couldn’t save ${path}:`, e))
+          : undefined;
+      if (renaming.current) {
+        void renaming.current.then(save).finally(teardown);
       } else {
-        teardown();
+        const saving = save();
+        if (saving) void saving.finally(teardown);
+        else teardown();
       }
     };
   }, [services, path]);
@@ -406,7 +418,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
     if (!open) return;
     const { model, saver } = open;
     const autosave = () => {
-      if (!model.dirty || autosaveOff.current || renamed.current) return;
+      if (!model.dirty || autosaveOff.current || gone.current) return;
       saver.save({ ifDirty: true }).catch(e => {
         if (e instanceof SaveConflict) {
           autosaveOff.current = true;
@@ -451,31 +463,37 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
           setNotice(`Couldn’t ${what}: ${messageOf(e)}`);
         }
       };
-    // The file is now at `next`, by a rename here or a folder move in the
-    // sidebar: stop saving to the old path, and take edits made since and
-    // the kernel along.
-    const moved = async (next: string) => {
-      renamed.current = true;
-      // The kernel follows the file, so reopening it there rejoins it.
-      try {
-        await session.session?.setPath(next);
-        await session.session?.setName(basename(next));
-      } catch (e) {
-        console.warn(`Couldn’t move the session to ${next}:`, e);
-      }
-      // Edits typed while it moved go to the new file, not the old: last,
-      // so none land after it.
-      if (model.dirty) {
+    // Move the file to `to` with `rename` (the file's own rename, or its
+    // folder's in the sidebar), taking the saves and the kernel along.
+    const moved = async (to: string, rename: () => Promise<unknown>) => {
+      const moving = (async () => {
+        // The session to move: after it has joined the file's kernel.
+        await open.joining;
+        const sessionToMove = session.session;
+        // Saves (⌘S, autosave, quit) wait for the move and then go to the
+        // new path, so none recreates the old file.
+        await saver.move(async () => {
+          await rename();
+          return to;
+        });
+        // The kernel follows the file, so reopening it there rejoins it.
         try {
-          open.widgets.saveState(model);
-          await services.contents.save(next, {
-            type: 'notebook',
-            format: 'json',
-            content: model.toJSON(),
-          });
+          await sessionToMove?.setPath(to);
+          await sessionToMove?.setName(basename(to));
         } catch (e) {
-          setNotice(`Couldn’t save the latest edits to ${basename(next)}: ${messageOf(e)}`);
+          console.warn(`Couldn’t move the session to ${to}:`, e);
         }
+        // Edits typed meanwhile go to the new file before it reopens there;
+        // any typed during this save, by the teardown save as this pane goes.
+        await saver
+          .save({ ifDirty: true })
+          .catch(e => console.error(`Couldn’t save the latest edits to ${to}:`, e));
+      })();
+      renaming.current = moving.catch(() => {});
+      try {
+        await moving;
+      } finally {
+        renaming.current = undefined;
       }
     };
     onController({
@@ -494,9 +512,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         notebook.activate();
       },
       save: async () => {
-        // Moved or deleted: a save would put it back at the old path. A
-        // moved file reopens at its new path, where its edits went.
-        if (renamed.current) return false;
+        // Deleted: a save would put it back.
+        if (gone.current) return false;
         try {
           try {
             await saver.save();
@@ -567,21 +584,26 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
           }
           // The edits go with the file.
           if (model.dirty) await saver.save();
-          await renameFile(services.contents, path, next);
+        } catch (e) {
+          setNotice(`Couldn’t rename ${fileName}: ${messageOf(e)}`);
+          return false;
+        }
+        const to = next;
+        try {
+          await moved(to, () => renameFile(services.contents, path, to));
         } catch (e) {
           setNotice(`Couldn’t rename ${fileName}: ${messageOf(e)}`);
           return false;
         }
         clearRenameNotice();
-        await moved(next);
-        onRenamed?.(next);
+        onRenamed?.(path, to);
         return true;
       },
       discard: () => {
-        const was = renamed.current;
-        renamed.current = true;
+        const was = gone.current;
+        gone.current = true;
         return () => {
-          renamed.current = was;
+          gone.current = was;
         };
       },
       moved,

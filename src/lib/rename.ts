@@ -4,12 +4,10 @@
  * person can read.
  */
 import type { Contents } from '@jupyterlab/services';
-import { parentOf } from './launch';
+import { parentOf, titleFor } from './launch';
+import { status } from './saver';
 
 const EXT = '.ipynb';
-
-/** The name shown for a notebook: the file name without `.ipynb`. */
-export const titleName = (path: string) => (path.split('/').pop() ?? path).replace(/\.ipynb$/, '');
 
 /**
  * The path `input` renames `path` to, in the same folder, or undefined when
@@ -19,14 +17,13 @@ export const titleName = (path: string) => (path.split('/').pop() ?? path).repla
  */
 export function renamedPath(path: string, input: string, notebook = true): string | undefined {
   const name = input.trim();
-  const shown = notebook ? titleName(path) : (path.split('/').pop() ?? path);
+  const shown = notebook ? titleFor(path) : (path.split('/').pop() ?? path);
   if (!name || name === shown) return undefined;
   if (name.includes('/') || name.includes('\\')) {
     throw new Error('A name can’t contain “/” or “\\”.');
   }
   if (name.startsWith('.')) throw new Error('A name can’t start with “.”.');
   const file = !notebook || name.endsWith(EXT) ? name : name + EXT;
-  if (file === EXT) return undefined;
   const dir = parentOf(path);
   const next = dir ? `${dir}/${file}` : file;
   return next === path ? undefined : next;
@@ -34,8 +31,8 @@ export function renamedPath(path: string, input: string, notebook = true): strin
 
 /** Whether an error from the contents API says there is nothing there. */
 function notFound(e: unknown): boolean {
-  const status = (e as { response?: { status?: number } } | undefined)?.response?.status;
-  if (status !== undefined) return status === 404;
+  const code = status(e);
+  if (code !== undefined) return code === 404;
   // JupyterLite's in-browser drive throws a plain Error.
   return e instanceof Error && /could not find|not found|no such/i.test(e.message);
 }
