@@ -259,7 +259,7 @@
 @media (hover: none), (pointer: coarse), (max-width: 720px) {
   /* A gutter for the "…" button, clear of the code. */
   .notebook-page .jp-Cell {
-    padding-right: 40px !important;
+    padding-right: 44px !important;
   }
 
   .notebook-page .gn-cell-more {
@@ -268,7 +268,7 @@
     right: 0;
     display: grid;
     place-items: center;
-    width: 40px;
+    width: 44px;
     height: 44px;
     padding: 0;
     border: 0;
@@ -290,7 +290,7 @@
     justify-content: center;
     gap: 8px;
     /* Under the cell's content, clear of the gutter. */
-    margin: 2px -40px -4px 0;
+    margin: 2px -44px -4px 0;
     opacity: 0.55;
     transition: opacity 0.15s ease;
   }

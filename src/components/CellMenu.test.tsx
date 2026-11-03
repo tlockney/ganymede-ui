@@ -1,5 +1,5 @@
 import '../test/notebook-env';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { Cell } from '@jupyterlab/cells';
@@ -13,11 +13,13 @@ vi.mock('../lib/cell-controls', async importOriginal => ({
 }));
 
 const { CellMenu } = await import('./CellMenu');
+const { Signal } = await import('@lumino/signaling');
 
 function setup(index: number, type = 'code') {
   const cells = [0, 1, 2].map(i => ({ model: { type: i === index ? type : 'code' } }));
   const notebook = {
     widgets: cells,
+    model: { cells: { changed: new Signal({}) } },
     isDisposed: false,
     activate: vi.fn(),
   } as unknown as Notebook;
@@ -60,6 +62,12 @@ describe('CellMenu', () => {
     await userEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
     expect(onClose).toHaveBeenCalled();
     expect(applyCellAction).toHaveBeenCalledWith(notebook, cell, 'delete', run);
+  });
+
+  it('closes when the cells change', () => {
+    const { notebook, onClose } = setup(1);
+    act(() => (notebook.model!.cells.changed as unknown as { emit(v: unknown): void }).emit({}));
+    expect(onClose).toHaveBeenCalledOnce();
   });
 
   it('closes on Escape and on a tap outside', async () => {

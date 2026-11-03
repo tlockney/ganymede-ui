@@ -170,6 +170,15 @@ describe('attachCellControls', () => {
     expect(cell(2).node.querySelector(':scope > .gn-cell-more')).not.toBeNull();
   });
 
+  it('keeps the notebook from seeing a double tap on a control', () => {
+    const seen = vi.fn();
+    notebook.node.addEventListener('dblclick', seen);
+    buttons('Add Code Cell')[0]!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    expect(seen).not.toHaveBeenCalled();
+    cell(0).node.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    expect(seen).toHaveBeenCalledOnce();
+  });
+
   it('stops listening when disposed', () => {
     controls.dispose();
     buttons('Cell Actions')[0]!.click();

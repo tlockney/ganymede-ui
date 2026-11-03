@@ -151,7 +151,8 @@ export function attachCellControls(
     else if (what === 'code' || what === 'markdown') addCellAfter(notebook, cell, what);
   };
   // The notebook takes a mousedown in a cell to select it, drag it or
-  // focus its editor; a tap on a control is none of those.
+  // focus its editor, and a double click to edit Markdown; a tap on a
+  // control is none of those.
   const onDown = (e: Event) => {
     if ((e.target as Element | null)?.closest('[data-gn-control]')) e.stopPropagation();
   };
@@ -159,6 +160,7 @@ export function attachCellControls(
   node.addEventListener('click', onClick);
   node.addEventListener('mousedown', onDown, true);
   node.addEventListener('pointerdown', onDown, true);
+  node.addEventListener('dblclick', onDown, true);
 
   return new DisposableDelegate(() => {
     disposed = true;
@@ -166,5 +168,6 @@ export function attachCellControls(
     node.removeEventListener('click', onClick);
     node.removeEventListener('mousedown', onDown, true);
     node.removeEventListener('pointerdown', onDown, true);
+    node.removeEventListener('dblclick', onDown, true);
   });
 }

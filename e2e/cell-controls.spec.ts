@@ -38,6 +38,7 @@ test.describe('on a phone', () => {
     await expect(more).toHaveCount(1);
     const box = (await more.first().boundingBox())!;
     expect(box.height).toBeGreaterThanOrEqual(44);
+    expect(box.width).toBeGreaterThanOrEqual(44);
 
     // A text cell after the first, then a code cell after that.
     await page.getByRole('button', { name: 'Add Text Cell' }).first().tap();

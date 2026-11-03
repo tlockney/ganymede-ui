@@ -55,10 +55,15 @@ export function CellMenu({ notebook, cell, anchor, run, onClose }: Props) {
     return () => window.removeEventListener('keydown', onKey, true);
   }, [onClose]);
 
-  // A cell removed while the menu is open (an undo, another window) closes it.
+  // Any change to the cells (an undo, another window) closes it: the cell
+  // may be gone, and Move Up/Down may no longer apply.
   useEffect(() => {
-    if (index < 0) onClose();
-  }, [index, onClose]);
+    const cells = notebook.model?.cells;
+    if (!cells) return;
+    const close = () => onClose();
+    cells.changed.connect(close);
+    return () => void cells.changed.disconnect(close);
+  }, [notebook, onClose]);
 
   const pick = (action: CellMenuAction) => {
     onClose();
