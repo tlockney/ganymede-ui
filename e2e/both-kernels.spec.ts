@@ -6,7 +6,7 @@ import { readdirSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, type Page, test } from '@playwright/test';
 import { GANYMEDE_URL, KERNEL, ROOT_DIR, TOKEN } from './env';
-import { outputs, waitForIdle, waitForReady } from './helpers';
+import { outputs, waitForReady } from './helpers';
 
 const notebooks = () => new Set(readdirSync(ROOT_DIR).filter(f => f.endsWith('.ipynb')));
 let before: Set<string>;
@@ -18,11 +18,18 @@ test.afterEach(() => {
   for (const f of notebooks()) if (!before.has(f)) rmSync(join(ROOT_DIR, f), { force: true });
 });
 
+/** Waits until `name` is the notebook's kernel and it is idle. */
+async function idleOn(page: Page, name: string) {
+  await expect(page.getByText(`${name} · Idle`, { exact: true })).toBeVisible({ timeout: 60_000 });
+}
+
 async function run(page: Page, code: string) {
   const cell = page.locator('.jp-Cell').last();
   await cell.locator('.cm-content').click();
   await page.keyboard.press('ControlOrMeta+a');
   await page.keyboard.type(code);
+  // Typing can land elsewhere if the notebook re-renders mid-switch.
+  await expect(cell.locator('.cm-content')).toHaveText(code);
   await page.keyboard.press('Shift+Enter');
 }
 
@@ -46,13 +53,14 @@ test("lists the server's kernels and the page's, and moves between them", async 
 
   // The page's TypeScript kernel runs in a browser Worker: no `process`.
   await picker.selectOption('cdp-browser');
-  await waitForIdle(page);
+  // The old kernel shows Idle until the switch is done, so wait for the new one.
+  await idleOn(page, 'TypeScript (cdp-kernel, in app)');
   await run(page, 'const where: string = typeof process; where');
   await expect(outputs(page).filter({ hasText: 'undefined' })).toBeVisible({ timeout: 60_000 });
 
   // And back to the server.
   await picker.selectOption(KERNEL);
-  await waitForIdle(page);
+  await idleOn(page, await picker.locator(`option[value="${KERNEL}"]`).innerText());
   await run(page, '"on " + typeof process');
   await expect(outputs(page).filter({ hasText: 'on object' })).toBeVisible({ timeout: 60_000 });
 });
