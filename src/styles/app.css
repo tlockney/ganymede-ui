@@ -342,7 +342,8 @@ button {
 }
 
 .toolbar button,
-.toolbar select {
+.toolbar select,
+.sidebar-close {
   app-region: no-drag;
   -webkit-app-region: no-drag;
 }
