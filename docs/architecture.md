@@ -356,6 +356,16 @@ own process and shows this web app in a `WKWebView`:
   notebook was saved, so a failed save keeps the window open. The close
   prompt comes from a stand-in window delegate that forwards everything
   else to SwiftUI's.
+- Native chrome (#205): loaded with `chrome=native`, the page shows only
+  the notebook, with no sidebar or toolbar, so the app can draw its own.
+  The page posts its `PageState` (open path, unsaved edits, kernel and its
+  status, cell type, the kernels to pick from, the backend) to the `state`
+  message handler whenever it changes, and the app runs commands with
+  `window.ganymede.command(id, arg)`: the page's own (`PAGE_COMMANDS` in
+  `src/lib/native.ts`: open, new-notebook, run, interrupt, cell-type, …)
+  or any notebook command by its id in the shortcuts table. In the app,
+  `PageModel` (`WebView.swift`) holds the state and runs the commands, and
+  `PageCommand` builds the script with its arguments JSON-encoded.
 - `WebView.swift` handles what a browser would: links to other hosts open
   in the default browser, downloads ask where to save (the share sheet on
   iOS), and Help > Keyboard Shortcuts on the Mac sends

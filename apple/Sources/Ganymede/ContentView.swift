@@ -14,6 +14,8 @@ struct ContentView: View {
     @Environment(\.openWindow) private var openWindow
     /// The open notebook's file and unsaved edits, as the page reports them.
     @StateObject private var document = PageDocument()
+    /// What the page shows, for the native toolbar and menus (#205).
+    @StateObject private var pageModel = PageModel()
 
     init(target: Binding<WindowTarget?>) {
         _target = target
@@ -29,6 +31,8 @@ struct ContentView: View {
     @State private var terminal: TerminalRequest?
     /// A text file being edited full screen, where the app has one scene.
     @State private var editing: EditorRequest?
+    /// What the page shows, for the native toolbar and menus (#205).
+    @StateObject private var pageModel = PageModel()
     #endif
 
     var body: some View {
@@ -158,11 +162,11 @@ struct ContentView: View {
         Group {
             if let url = page {
                 #if os(macOS)
-                WebView(url: url, onNavigate: follow, document: document) { path in
+                WebView(url: url, onNavigate: follow, document: document, page: pageModel) { path in
                     openWindow(value: EditorRequest(path: path))
                 }
                 #else
-                WebView(url: url) { path in
+                WebView(url: url, page: pageModel) { path in
                     // Beside the notebook on iPad, full screen on iPhone.
                     let request = EditorRequest(path: path)
                     if UIApplication.shared.supportsMultipleScenes {

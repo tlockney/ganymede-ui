@@ -4,6 +4,7 @@ import type * as nbformat from '@jupyterlab/nbformat';
 import { type Notebook, NotebookActions, NotebookModel } from '@jupyterlab/notebook';
 import type { Kernel } from '@jupyterlab/services';
 import type { IDisposable } from '@lumino/disposable';
+import type { CommandRegistry } from '@lumino/commands';
 import { Widget } from '@lumino/widgets';
 import { type Backend, trustNotebook } from '../lib/backends';
 import { attachEditing, createCommands, createNotebook, createRendermime } from '../lib/jupyterlab';
@@ -48,6 +49,11 @@ export type NotebookController = {
   interrupt(): Promise<void>;
   restart(): Promise<void>;
   changeKernel(name: string): Promise<void>;
+  /**
+   * Runs one of the notebook's commands by its id in the shortcuts table
+   * (`move-up`, `to-markdown`, …); false when there is no such command.
+   */
+  command(id: string): boolean;
 };
 
 type Props = {
@@ -98,6 +104,8 @@ type Open = {
    * to start.
    */
   ensureKernel(all?: boolean): Promise<boolean>;
+  /** The notebook's commands, which its keys run. */
+  commands: CommandRegistry;
   disposables: IDisposable[];
 };
 
@@ -260,6 +268,7 @@ export function NotebookPane({ backend, path, onController }: Props) {
         widgets: notebookWidgets,
         saver,
         ensureKernel,
+        commands,
         disposables: [
           editing,
           notebookWidgets,
@@ -503,6 +512,11 @@ export function NotebookPane({ backend, path, onController }: Props) {
       restart: report('restart the kernel', async () => {
         await session.session?.kernel?.restart();
       }),
+      command: id => {
+        if (!open.commands.hasCommand(id)) return false;
+        void open.commands.execute(id);
+        return true;
+      },
       // With no kernel yet, this only picks the one the first run starts.
       changeKernel: report('change the kernel', async (name: string) => {
         if (session.session) await session.changeKernel({ name });

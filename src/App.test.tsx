@@ -11,7 +11,8 @@ const mocks = vi.hoisted(() => ({
   connect: vi.fn<(c: BackendConfig) => Promise<Backend>>(),
   signedInHere: vi.fn<() => Promise<boolean>>(),
   /** What the pane hands the toolbar, when a test sets it. */
-  controller: undefined as undefined | { dirty: boolean; save: () => Promise<boolean> },
+  controller: undefined as
+    undefined | ({ dirty: boolean; save: () => Promise<boolean> } & Record<string, unknown>),
 }));
 
 vi.mock('./lib/backends', async importOriginal => ({
@@ -148,6 +149,75 @@ describe('App', () => {
     expect(posted[0]).toEqual({ path: null, dirty: false });
     expect(await window.ganymede!.save()).toBe(true);
     expect(save).toHaveBeenCalled();
+    vi.unstubAllGlobals();
+  });
+
+  it('leaves the sidebar and toolbar to the app with chrome=native', async () => {
+    history.replaceState(null, '', '/?kernels=server&chrome=native&open=Io.ipynb');
+    mocks.connect.mockResolvedValue(
+      fakeBackend(fakeServices({ '': [{ name: 'Io.ipynb', type: 'notebook' }] }).services),
+    );
+    const { container } = render(<App />);
+    await waitFor(() => expect(screen.getByTestId('pane')).toHaveTextContent('Io.ipynb'));
+    expect(container.querySelector('.window')).toHaveClass('chrome-native');
+    expect(container.querySelector('aside.sidebar')).toBeNull();
+    expect(container.querySelector('header.toolbar')).toBeNull();
+    // Kept for a reload.
+    expect(new URLSearchParams(window.location.search).get('chrome')).toBe('native');
+  });
+
+  it('runs the app’s commands and tells it what to show', async () => {
+    const states: Record<string, unknown>[] = [];
+    vi.stubGlobal('webkit', {
+      messageHandlers: {
+        state: { postMessage: (m: Record<string, unknown>) => states.push(m) },
+      },
+    });
+    const runAll = vi.fn(async () => {});
+    const changeCellType = vi.fn();
+    const command = vi.fn((id: string) => id === 'move-up');
+    mocks.controller = {
+      dirty: false,
+      save: vi.fn(async () => true),
+      runAll,
+      changeCellType,
+      command,
+      kernelName: 'python3',
+      cellType: 'code',
+    };
+    const fake = fakeServices({
+      '': [
+        { name: 'Io.ipynb', type: 'notebook' },
+        { name: 'Europa.ipynb', type: 'notebook' },
+      ],
+    });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    history.replaceState(null, '', '/?kernels=server&open=Io.ipynb');
+    render(<App />);
+    await waitFor(() =>
+      expect(states.at(-1)).toMatchObject({
+        path: 'Io.ipynb',
+        status: 'idle',
+        kernel: 'python3',
+        kernelDisplayName: 'Python 3',
+        cellType: 'code',
+        kernels: [{ name: 'python3', displayName: 'Python 3' }],
+      }),
+    );
+
+    const run = window.ganymede!.command;
+    expect(await run('run-all')).toBe(true);
+    expect(runAll).toHaveBeenCalled();
+    expect(await run('cell-type', 'markdown')).toBe(true);
+    expect(changeCellType).toHaveBeenCalledWith('markdown');
+    expect(await run('cell-type', 'heading')).toBe(false);
+    // The notebook's own commands, by their shortcut-table ids.
+    expect(await run('move-up')).toBe(true);
+    expect(await run('no-such-command')).toBe(false);
+    expect(await run('open', 'Europa.ipynb')).toBe(true);
+    await waitFor(() => expect(screen.getByTestId('pane')).toHaveTextContent('Europa.ipynb'));
+    expect(await run('show-shortcuts')).toBe(true);
+    expect(await screen.findByText('Keyboard Shortcuts')).toBeInTheDocument();
     vi.unstubAllGlobals();
   });
 

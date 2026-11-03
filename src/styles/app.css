@@ -102,6 +102,12 @@ button {
   grid-template-columns: 0 1fr;
 }
 
+/* The Apple apps draw the sidebar and toolbar (#205): the page is the notebook. */
+.window.chrome-native {
+  --toolbar-h: 0px;
+  grid-template-columns: 1fr;
+}
+
 /* ---------- Sidebar ---------- */
 
 .sidebar {

@@ -10,6 +10,8 @@ struct WebView: NSViewRepresentable {
     var onNavigate: ((URL?) -> Void)? = nil
     /// The window's document, which the page keeps up to date (#132).
     var document: PageDocument? = nil
+    /// What the page shows and the commands it runs, for native chrome (#205).
+    var page: PageModel? = nil
     /// Opens a text file from the sidebar, by its path on the server (#122).
     var onOpenFile: ((String) -> Void)? = nil
 
@@ -22,6 +24,7 @@ struct WebView: NSViewRepresentable {
     func updateNSView(_ view: WKWebView, context: Context) {
         context.coordinator.onNavigate = onNavigate
         context.coordinator.document = document
+        context.coordinator.page = page
         context.coordinator.onOpenFile = onOpenFile
         context.coordinator.load(url, in: view)
     }
@@ -29,6 +32,8 @@ struct WebView: NSViewRepresentable {
 #else
 struct WebView: UIViewRepresentable {
     let url: URL
+    /// What the page shows and the commands it runs, for native chrome (#205).
+    var page: PageModel? = nil
     /// Opens a text file from the sidebar, by its path on the server (#122).
     var onOpenFile: ((String) -> Void)? = nil
 
@@ -39,6 +44,7 @@ struct WebView: UIViewRepresentable {
     }
 
     func updateUIView(_ view: WKWebView, context: Context) {
+        context.coordinator.page = page
         context.coordinator.onOpenFile = onOpenFile
         context.coordinator.load(url, in: view)
     }
@@ -62,6 +68,9 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     private var urlObservation: NSKeyValueObservation?
     var onNavigate: ((URL?) -> Void)?
     var onOpenFile: ((String) -> Void)?
+    var page: PageModel? {
+        didSet { page?.webView = webView }
+    }
     #if os(macOS)
     var document: PageDocument? {
         didSet { document?.webView = webView }
@@ -86,6 +95,8 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         }
         // The page's sidebar opens text files in the app's editor (#122).
         view.configuration.userContentController.add(OpenFileHandler(self), name: "openFile")
+        // What the page shows, for native toolbars and menus (#205).
+        view.configuration.userContentController.add(StateHandler(self), name: "state")
         // The agent's API keys, in the Keychain (#166).
         view.configuration.userContentController.addScriptMessageHandler(
             AgentKeysHandler(self), contentWorld: .page, name: "agentKeys"
@@ -459,6 +470,46 @@ private final class AgentKeysHandler: NSObject, WKScriptMessageHandlerWithReply 
             return
         }
         coordinator.received(agentKeys: message, reply: replyHandler)
+    }
+}
+
+/// What a window's page shows, and the commands it runs: the native
+/// toolbar and menus read `state` and call `run` (#205).
+@MainActor
+final class PageModel: ObservableObject {
+    @Published private(set) var state = PageState()
+    weak var webView: WKWebView?
+
+    func update(_ state: PageState) {
+        if state != self.state { self.state = state }
+    }
+
+    /// Runs one of the page's commands (`PageCommand`).
+    func run(_ id: String, arg: String? = nil) {
+        webView?.evaluateJavaScript(PageCommand.script(id, arg: arg), completionHandler: nil)
+    }
+}
+
+extension WebViewCoordinator {
+    /// The page's `state` message. Only the page itself may send it.
+    func received(state message: WKScriptMessage) {
+        if message.frameInfo.isMainFrame, let state = PageState(body: message.body) {
+            page?.update(state)
+        }
+    }
+}
+
+/// The `state` handler; weak, since the content controller keeps its
+/// handlers.
+private final class StateHandler: NSObject, WKScriptMessageHandler {
+    weak var coordinator: WebViewCoordinator?
+
+    init(_ coordinator: WebViewCoordinator) {
+        self.coordinator = coordinator
+    }
+
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        coordinator?.received(state: message)
     }
 }
 
