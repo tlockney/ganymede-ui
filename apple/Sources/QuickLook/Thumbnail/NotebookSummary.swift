@@ -57,6 +57,9 @@ struct NotebookSummary: Equatable {
     private mutating func addMarkdown(_ source: String) {
         var paragraph: [String] = []
         var fence: [String]?
+        /// The opening fence's character and length: CommonMark closes a
+        /// fence only on a run of the same character at least as long.
+        var opener: (Character, Int) = ("`", 0)
         func flush() {
             let text = paragraph.joined(separator: " ")
             if !text.isEmpty { blocks.append(.text(String(text.prefix(Self.maxParagraph)))) }
@@ -65,15 +68,20 @@ struct NotebookSummary: Equatable {
         for raw in source.components(separatedBy: "\n") {
             let line = raw.trimmingCharacters(in: .whitespaces)
             // Fenced code is code: a `# comment` in it is not a heading.
-            if line.hasPrefix("```") || line.hasPrefix("~~~") {
-                if let code = fence {
-                    if !code.isEmpty { blocks.append(.code(Array(code.prefix(Self.maxCodeLines)))) }
-                    fence = nil
-                } else {
+            if let mark = line.first, mark == "`" || mark == "~" {
+                let run = line.prefix(while: { $0 == mark }).count
+                if run >= 3, fence == nil {
                     flush()
                     fence = []
+                    opener = (mark, run)
+                    continue
                 }
-                continue
+                if let code = fence, mark == opener.0, run >= opener.1,
+                   line.dropFirst(run).allSatisfy({ $0 == " " }) {
+                    if !code.isEmpty { blocks.append(.code(Array(code.prefix(Self.maxCodeLines)))) }
+                    fence = nil
+                    continue
+                }
             }
             if fence != nil {
                 fence!.append(raw)

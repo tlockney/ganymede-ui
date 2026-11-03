@@ -36,6 +36,17 @@ final class NotebookSummaryTests: XCTestCase {
         ])
     }
 
+    func testClosesAFenceOnlyOnAMatchingFence() throws {
+        let result = try summary([
+            ["cell_type": "markdown", "source": "````md\n```py\n# not a heading\n```\n````\n~~~\n```\n~~~\n# Done"],
+        ])
+        XCTAssertEqual(result.blocks, [
+            .code(["```py", "# not a heading", "```"]),
+            .code(["```"]),
+            .heading("Done", level: 1),
+        ])
+    }
+
     func testTakesCodeAndTheFirstOutputOfEachCell() throws {
         let result = try summary([
             [
