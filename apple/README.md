@@ -113,8 +113,9 @@ open apple/Ganymede.xcodeproj
 `bootstrap.sh` builds the XCFramework and this repo's `dist/` into
 `apple/build/` and generates the Xcode project from `project.yml`. Pick
 your team under Signing & Capabilities, then Run: the `Ganymede` scheme
-for the Mac, `Ganymede-iOS` for an iPad, iPhone or simulator. ⌘U runs
-the tests.
+for the Mac, `Ganymede-iOS` for an iPad, iPhone or simulator. With the
+`Ganymede` scheme selected, Run opens the Mac app even when a phone is
+plugged in. ⌘U runs the tests.
 Safari's Develop menu can inspect the web view.
 The first build asks you to trust SwiftTerm's build plugin
 (`SwiftTermBuildInfoPlugin`, which records SwiftTerm's version); choose

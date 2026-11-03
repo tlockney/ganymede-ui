@@ -1,5 +1,6 @@
 import type { KernelSpec } from '@jupyterlab/services';
 import type { CellType, NotebookController } from './NotebookPane';
+import { NotebookTitle } from './NotebookTitle';
 import {
   CodeIcon,
   DownloadIcon,
@@ -71,10 +72,13 @@ export function Toolbar({
           <SidebarIcon />
         </button>
         <div className="title-block">
-          <div className="title">
-            {c ? c.name.replace(/\.ipynb$/, '') : 'Ganymede'}
-            {c?.dirty && <span className="edited"> — Edited</span>}
-          </div>
+          <NotebookTitle
+            // A fresh field for each notebook.
+            key={c?.path}
+            name={c ? c.name.replace(/\.ipynb$/, '') : 'Ganymede'}
+            dirty={!!c?.dirty}
+            onRename={c?.rename}
+          />
           {c && (
             <div className="subtitle">
               <span className={`status-dot s-${c.status}`} />

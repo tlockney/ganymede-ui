@@ -1,10 +1,11 @@
 import { act, render, screen, waitFor } from '@testing-library/react';
+import { useCallback, useState } from 'react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as nbformat from '@jupyterlab/nbformat';
 import type { NotebookModel } from '@jupyterlab/notebook';
 import '../test/notebook-env';
-import { fakeBackend, fakeServices } from '../test/fakes';
+import { entry, fakeBackend, fakeServices } from '../test/fakes';
 import type { NotebookController } from './NotebookPane';
 
 // No kernel and no real notebook widget: the pane's loading, dirty state and
@@ -54,6 +55,12 @@ vi.mock('../lib/jupyterlab', async () => {
     }),
   };
 });
+
+// The touch cell controls need JupyterLab's cells; cell-controls.test.ts
+// covers them.
+vi.mock('../lib/cell-controls', () => ({
+  attachCellControls: vi.fn(() => ({ dispose: vi.fn(), isDisposed: false })),
+}));
 
 vi.mock('../lib/widgets', () => ({
   attachWidgets: vi.fn(() => {
@@ -111,15 +118,17 @@ function setup(
   fake.contents.get = get as never;
   const controllers: (NotebookController | undefined)[] = [];
   const onController = vi.fn((c: NotebookController | undefined) => controllers.push(c));
+  const onRenamed = vi.fn();
   const utils = render(
     <NotebookPane
       backend={fakeBackend(fake.services)}
       path="moons/Io.ipynb"
       onController={onController}
+      onRenamed={onRenamed}
     />,
   );
   const latest = () => controllers[controllers.length - 1];
-  return { ...utils, fake, onController, latest };
+  return { ...utils, fake, onController, onRenamed, latest };
 }
 
 beforeEach(() => {
@@ -414,6 +423,219 @@ describe('NotebookPane', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
+  it('settles under a parent that keeps its controller and passes a new onRenamed each render', async () => {
+    const fake = fakeServices();
+    fake.contents.get = vi.fn(async () => ({
+      path: 'moons/Io.ipynb',
+      content: structuredClone(NOTEBOOK),
+    })) as never;
+    const onController = vi.fn();
+    const backend = fakeBackend(fake.services);
+    function Parent() {
+      const [, setController] = useState<unknown>();
+      // As App: a stable onController, an onRenamed made anew each render.
+      const report = useCallback((c: unknown) => {
+        onController(c);
+        setController(c);
+      }, []);
+      return (
+        <NotebookPane
+          backend={backend}
+          path="moons/Io.ipynb"
+          onController={report}
+          onRenamed={() => {}}
+        />
+      );
+    }
+    render(<Parent />);
+    await waitFor(() => expect(onController).toHaveBeenCalledWith(expect.anything()));
+    await new Promise(r => setTimeout(r, 200));
+    expect(onController.mock.calls.length).toBeLessThan(20);
+  });
+
+  describe('rename', () => {
+    /** The notebook, and nothing else: `taken` names a file that exists too. */
+    const files = (taken?: string) =>
+      vi.fn(async (path: string) => {
+        if (path === 'moons/Io.ipynb') {
+          return { path, content: structuredClone(NOTEBOOK), last_modified: '' };
+        }
+        if (path === taken) return { path, type: 'notebook' };
+        throw new Error('Not found');
+      }) as unknown as Parameters<typeof setup>[0];
+
+    it('saves unsaved edits, renames the file and opens it there', async () => {
+      const { fake, latest, onRenamed } = setup(files());
+      await waitFor(() => expect(latest()).toBeDefined());
+      act(() => modelOf().cells.get(0).sharedModel.setSource('print(2)'));
+      await waitFor(() => expect(latest()!.dirty).toBe(true));
+
+      let ok: boolean | undefined;
+      await act(async () => void (ok = await latest()!.rename('Europa')));
+      expect(ok).toBe(true);
+      expect(fake.contents.save).toHaveBeenCalledWith('moons/Io.ipynb', expect.anything());
+      expect(fake.contents.rename).toHaveBeenCalledWith('moons/Io.ipynb', 'moons/Europa.ipynb');
+      expect(fake.contents.save.mock.invocationCallOrder[0]).toBeLessThan(
+        fake.contents.rename.mock.invocationCallOrder[0]!,
+      );
+      expect(onRenamed).toHaveBeenCalledWith('moons/Io.ipynb', 'moons/Europa.ipynb');
+    });
+
+    it('saves edits made during the rename to the new file', async () => {
+      const { fake, latest, onRenamed } = setup(files());
+      await waitFor(() => expect(latest()).toBeDefined());
+      // An edit lands while the rename is on its way.
+      fake.contents.rename.mockImplementationOnce(async (_from: string, to: string) => {
+        modelOf().cells.get(0).sharedModel.setSource('print(3)');
+        return entry({ name: to, path: to, type: 'notebook' });
+      });
+      await act(async () => void (await latest()!.rename('Europa')));
+      expect(fake.contents.save).toHaveBeenLastCalledWith(
+        'moons/Europa.ipynb',
+        expect.objectContaining({ type: 'notebook' }),
+      );
+      const saved = fake.contents.save.mock.lastCall![1] as { content: nbformat.INotebookContent };
+      expect(saved.content.cells[0]!.source).toBe('print(3)');
+      expect(onRenamed).toHaveBeenCalledWith('moons/Io.ipynb', 'moons/Europa.ipynb');
+    });
+
+    it('saves edits made while the session moves to the new file', async () => {
+      const { fake, latest } = setup(files());
+      await waitFor(() => expect(latest()).toBeDefined());
+      const session = {
+        setPath: vi.fn(async () => {
+          modelOf().cells.get(0).sharedModel.setSource('print(5)');
+        }),
+        setName: vi.fn(async () => {}),
+      };
+      (fakes.sessions[0] as { session: unknown }).session = session;
+      await act(async () => void (await latest()!.rename('Europa')));
+      expect(session.setPath).toHaveBeenCalledWith('moons/Europa.ipynb');
+      const saved = fake.contents.save.mock.lastCall!;
+      expect(saved[0]).toBe('moons/Europa.ipynb');
+      expect((saved[1] as { content: nbformat.INotebookContent }).content.cells[0]!.source).toBe(
+        'print(5)',
+      );
+    });
+
+    it('sends a save made during the rename to the new path', async () => {
+      const { fake, latest } = setup(files());
+      await waitFor(() => expect(latest()).toBeDefined());
+      let finish!: () => void;
+      fake.contents.rename.mockImplementationOnce(async (_from: string, to: string) => {
+        await new Promise<void>(r => (finish = r));
+        return entry({ name: to, path: to, type: 'notebook' });
+      });
+      let renaming!: Promise<boolean>;
+      act(() => void (renaming = latest()!.rename('Europa')));
+      await waitFor(() => expect(fake.contents.rename).toHaveBeenCalled());
+      // ⌘S, mid-rename, with an edit to save.
+      act(() => modelOf().cells.get(0).sharedModel.setSource('print(6)'));
+      let saving!: Promise<boolean>;
+      act(() => void (saving = latest()!.save()));
+      await act(async () => {
+        finish();
+        await renaming;
+        await saving;
+      });
+      const paths = fake.contents.save.mock.calls.map(c => c[0]);
+      expect(paths).toContain('moons/Europa.ipynb');
+      expect(paths).not.toContain('moons/Io.ipynb');
+    });
+
+    it('moves the session once it has joined, even if the pane goes meanwhile', async () => {
+      let join!: () => void;
+      fakes.initialize = () => new Promise(r => (join = () => r(false)));
+      const { latest, unmount, onRenamed } = setup(files());
+      await waitFor(() => expect(latest()).toBeDefined());
+      const ctx = fakes.sessions[0] as { session: unknown; dispose: () => void };
+      const session = { setPath: vi.fn(async () => {}), setName: vi.fn(async () => {}) };
+      let renaming!: Promise<boolean>;
+      act(() => void (renaming = latest()!.rename('Europa')));
+      // Another notebook opens before the session has joined.
+      unmount();
+      ctx.session = session;
+      await act(async () => {
+        join();
+        await renaming;
+      });
+      expect(session.setPath).toHaveBeenCalledWith('moons/Europa.ipynb');
+      await waitFor(() => expect(ctx.dispose).toHaveBeenCalled());
+      expect(vi.mocked(ctx.dispose).mock.invocationCallOrder[0]).toBeGreaterThan(
+        session.setPath.mock.invocationCallOrder[0]!,
+      );
+      expect(onRenamed).toHaveBeenCalledWith('moons/Io.ipynb', 'moons/Europa.ipynb');
+    });
+
+    it('clears a failed rename’s notice when the name goes back', async () => {
+      const { latest } = setup(files('moons/Europa.ipynb'));
+      await waitFor(() => expect(latest()).toBeDefined());
+      await act(async () => void (await latest()!.rename('Europa')));
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+      await act(async () => void (await latest()!.rename('Io')));
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('does nothing for the same name', async () => {
+      const { fake, latest, onRenamed } = setup(files());
+      await waitFor(() => expect(latest()).toBeDefined());
+      await act(async () => void (await latest()!.rename(' Io ')));
+      expect(fake.contents.rename).not.toHaveBeenCalled();
+      expect(onRenamed).not.toHaveBeenCalled();
+    });
+
+    it('won’t replace a file that exists', async () => {
+      const { fake, latest, onRenamed } = setup(files('moons/Europa.ipynb'));
+      await waitFor(() => expect(latest()).toBeDefined());
+      let ok: boolean | undefined;
+      await act(async () => void (ok = await latest()!.rename('Europa.ipynb')));
+      expect(ok).toBe(false);
+      expect(fake.contents.rename).not.toHaveBeenCalled();
+      expect(onRenamed).not.toHaveBeenCalled();
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Couldn’t rename Io.ipynb: “Europa.ipynb” already exists. Choose another name.',
+      );
+    });
+
+    it('moves its session and later edits when its folder moves', async () => {
+      const { fake, latest } = setup(files());
+      await waitFor(() => expect(latest()).toBeDefined());
+      const session = { setPath: vi.fn(async () => {}), setName: vi.fn(async () => {}) };
+      (fakes.sessions[0] as { session: unknown }).session = session;
+      act(() => modelOf().cells.get(0).sharedModel.setSource('print(4)'));
+      await waitFor(() => expect(latest()!.dirty).toBe(true));
+
+      const folderMove = vi.fn(async () => {});
+      await act(() => latest()!.moved('satellites/Io.ipynb', folderMove));
+      expect(folderMove).toHaveBeenCalledOnce();
+      expect(fake.contents.save).toHaveBeenCalledWith(
+        'satellites/Io.ipynb',
+        expect.objectContaining({ type: 'notebook' }),
+      );
+      expect(session.setPath).toHaveBeenCalledWith('satellites/Io.ipynb');
+      expect(session.setName).toHaveBeenCalledWith('Io.ipynb');
+      // Later saves go to the new path too.
+      fake.contents.save.mockClear();
+      act(() => modelOf().cells.get(0).sharedModel.setSource('print(7)'));
+      await act(() => latest()!.save());
+      expect(fake.contents.save).toHaveBeenCalledWith('satellites/Io.ipynb', expect.anything());
+      expect(fake.contents.save).not.toHaveBeenCalledWith('moons/Io.ipynb', expect.anything());
+    });
+
+    it('says why a rename failed', async () => {
+      const { fake, latest, onRenamed } = setup(files());
+      await waitFor(() => expect(latest()).toBeDefined());
+      fake.contents.rename.mockRejectedValueOnce(new Error('Permission denied'));
+      let ok: boolean | undefined;
+      await act(async () => void (ok = await latest()!.rename('Europa')));
+      expect(ok).toBe(false);
+      expect(onRenamed).not.toHaveBeenCalled();
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Couldn’t rename Io.ipynb: Permission denied',
+      );
+    });
+  });
+
   it('reports the active cell type and changes it', async () => {
     const { latest } = setup(
       vi.fn(async () => ({ path: 'moons/Io.ipynb', content: untrusted(true) })),
@@ -537,6 +759,22 @@ describe('NotebookPane', () => {
       document.dispatchEvent(new Event('visibilitychange'));
     });
     await waitFor(() => expect(fake.contents.save).toHaveBeenCalledTimes(2));
+    visibility.mockRestore();
+  });
+
+  it('stops autosaving once discarded, and starts again when that is undone', async () => {
+    const { fake, latest } = setup();
+    await waitFor(() => expect(latest()).toBeDefined());
+    act(() => modelOf().cells.get(0).sharedModel.setSource('print(2)'));
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    const hide = () => act(async () => void document.dispatchEvent(new Event('visibilitychange')));
+
+    const undo = latest()!.discard();
+    await hide();
+    expect(fake.contents.save).not.toHaveBeenCalled();
+    undo();
+    await hide();
+    await waitFor(() => expect(fake.contents.save).toHaveBeenCalledOnce());
     visibility.mockRestore();
   });
 

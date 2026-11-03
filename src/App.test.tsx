@@ -1,5 +1,5 @@
 import { StrictMode } from 'react';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Backend, BackendConfig } from './lib/backends';
@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => ({
   /** What the pane hands the toolbar, when a test sets it. */
   controller: undefined as
     undefined | ({ dirty: boolean; save: () => Promise<boolean> } & Record<string, unknown>),
+  /** The last pane's `onRenamed`. */
+  onRenamed: undefined as undefined | ((from: string, to: string) => void),
 }));
 
 vi.mock('./lib/backends', async importOriginal => ({
@@ -24,7 +26,16 @@ vi.mock('./lib/backends', async importOriginal => ({
 vi.mock('./components/NotebookPane', async () => {
   const { useEffect } = await import('react');
   return {
-    NotebookPane: ({ path, onController }: { path: string; onController(c: unknown): void }) => {
+    NotebookPane: ({
+      path,
+      onController,
+      onRenamed,
+    }: {
+      path: string;
+      onController(c: unknown): void;
+      onRenamed?(from: string, to: string): void;
+    }) => {
+      mocks.onRenamed = onRenamed;
       useEffect(() => {
         if (mocks.controller) {
           const name = path.split('/').pop();
@@ -244,7 +255,11 @@ describe('App', () => {
       }),
     );
     render(<App />);
-    expect((await screen.findByText('notes.md')).closest('button')).toBeDisabled();
+    // Not opened, though its file menu still works.
+    const notes = (await screen.findByText('notes.md')).closest('button')!;
+    expect(notes).toHaveAttribute('aria-disabled', 'true');
+    await userEvent.click(notes);
+    expect(opened).toEqual([{ path: 'notes.md' }]);
     vi.unstubAllGlobals();
   });
 
@@ -260,6 +275,29 @@ describe('App', () => {
 
     await waitFor(() => expect(screen.getByTestId('pane')).toHaveTextContent('work/Orbits.ipynb'));
     expect(container.querySelector('.window')).not.toHaveClass('sidebar-collapsed');
+  });
+
+  it('follows a rename, unless another notebook was opened meanwhile', async () => {
+    history.replaceState(null, '', '/?kernels=server&open=work%2FOrbits.ipynb');
+    const fake = fakeServices({
+      '': [{ name: 'work', type: 'directory' }],
+      work: [
+        { name: 'Orbits.ipynb', type: 'notebook' },
+        { name: 'Moons.ipynb', type: 'notebook' },
+      ],
+    });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId('pane')).toHaveTextContent('work/Orbits.ipynb'));
+    const renamed = mocks.onRenamed!;
+    act(() => renamed('work/Orbits.ipynb', 'work/Kepler.ipynb'));
+    expect(screen.getByTestId('pane')).toHaveTextContent('work/Kepler.ipynb');
+
+    // A rename that ends after Moons was opened leaves Moons open.
+    await userEvent.click(await screen.findByRole('button', { name: /^Moons/ }));
+    await waitFor(() => expect(screen.getByTestId('pane')).toHaveTextContent('work/Moons.ipynb'));
+    act(() => renamed('work/Kepler.ipynb', 'work/Laws.ipynb'));
+    expect(screen.getByTestId('pane')).toHaveTextContent('work/Moons.ipynb');
   });
 
   it('hands a missing launch file to the pane, not the connect sheet', async () => {
@@ -380,6 +418,87 @@ describe('App', () => {
         metadata: { kernelspec: { name: 'python3', display_name: 'Python 3', language: 'python' } },
       },
     });
+  });
+
+  // On the Mac the server's root is `/`: a new notebook there fails (#194).
+  it('creates a new notebook in the folder the window shows, and keeps it in the URL', async () => {
+    history.replaceState(null, '', '/?kernels=server&dir=%2FUsers%2Fme');
+    const fake = fakeServices({ 'Users/me': [] });
+    fake.contents.newUntitled.mockResolvedValue(
+      entry({ name: 'Untitled.ipynb', type: 'notebook' }, 'Users/me'),
+    );
+    fake.contents.get.mockImplementation(async (path: string) =>
+      path === 'Users/me/Untitled.ipynb'
+        ? entry({ name: path, type: 'notebook', content: { metadata: {}, cells: [] } })
+        : entry({ name: 'me', path, type: 'directory', content: [] }),
+    );
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    render(<App />);
+
+    await waitFor(() => expect(window.location.search).toBe('?dir=Users%2Fme'));
+    // The empty pane's button, which used the server's root.
+    await userEvent.click(await screen.findByText('New Notebook', { selector: '.push-button' }));
+    await waitFor(() =>
+      expect(screen.getByTestId('pane')).toHaveTextContent('Users/me/Untitled.ipynb'),
+    );
+    expect(fake.contents.newUntitled).toHaveBeenCalledWith({ type: 'notebook', path: 'Users/me' });
+    // The notebook's own folder: no `dir` needed.
+    await waitFor(() => expect(window.location.search).toBe('?open=Users%2Fme%2FUntitled.ipynb'));
+  });
+
+  it('says why a new notebook could not be created', async () => {
+    const fake = fakeServices({ '': [] });
+    fake.contents.newUntitled.mockRejectedValue(new Error('Permission denied'));
+    localStorage.setItem(
+      'ganymede-ui:backend',
+      JSON.stringify({ kind: 'ganymede', url: '', token: 't' }),
+    );
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /New Notebook/ }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Couldn’t create a notebook in this folder: Permission denied',
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('opens a new notebook even when its kernel could not be set', async () => {
+    const fake = fakeServices({ '': [] });
+    fake.contents.newUntitled.mockResolvedValue(
+      entry({ name: 'Untitled.ipynb', type: 'notebook' }),
+    );
+    fake.contents.save.mockRejectedValue(new Error('disk full'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    localStorage.setItem(
+      'ganymede-ui:backend',
+      JSON.stringify({ kind: 'ganymede', url: '', token: 't' }),
+    );
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    render(<App />);
+
+    await userEvent.click(await screen.findByText('New Notebook', { selector: '.push-button' }));
+    await waitFor(() => expect(screen.getByTestId('pane')).toHaveTextContent('Untitled.ipynb'));
+    expect(warn).toHaveBeenCalled();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('clears a failed New Notebook notice when a notebook opens', async () => {
+    const fake = fakeServices({ '': [{ name: 'Io.ipynb', type: 'notebook' }] });
+    fake.contents.newUntitled.mockRejectedValue(new Error('Permission denied'));
+    localStorage.setItem(
+      'ganymede-ui:backend',
+      JSON.stringify({ kind: 'ganymede', url: '', token: 't' }),
+    );
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    render(<App />);
+
+    await userEvent.click(await screen.findByText('New Notebook', { selector: '.push-button' }));
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    await userEvent.click(screen.getByText('Io'));
+    await waitFor(() => expect(screen.getByTestId('pane')).toHaveTextContent('Io.ipynb'));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   describe('on a phone-narrow window', () => {

@@ -45,6 +45,9 @@ export function fakeServices(tree: Record<string, Entry[]> = { '': [] }) {
       entry({ name: path, path, type: 'notebook', ...model }),
     ),
     newUntitled: vi.fn(),
+    rename: vi.fn(async (_from: string, to: string) =>
+      entry({ name: to.split('/').pop() ?? to, path: to, type: 'notebook' }),
+    ),
   };
   const sessions = {
     runningChanged,

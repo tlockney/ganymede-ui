@@ -14,9 +14,12 @@ export async function openWithToken(page: Page) {
   await page.goto(`/?token=${TOKEN}`);
 }
 
-/** The sidebar entry for a notebook (the "Running" list adds the kernel name). */
+/**
+ * The sidebar entry for a notebook (the "Running" list adds the kernel
+ * name). In the sidebar: the toolbar's title is a button by that name too.
+ */
 export const sidebarItem = (page: Page, name: string) =>
-  page.getByRole('button', { name, exact: true });
+  page.locator('.sidebar').getByRole('button', { name, exact: true });
 
 /** The toolbar subtitle: "<kernel> · Idle". */
 export async function waitForIdle(page: Page, timeout = 60_000) {
