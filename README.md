@@ -76,7 +76,9 @@ and connect it to a server with `--allow-origin`.
 [docs/deploying.md](docs/deploying.md) has both setups step by step.
 
 [`apple/`](apple/README.md) builds a Mac and an iPad/iPhone app that run
-Ganymede in their own process and show this app in a web view.
+Ganymede in their own process and show this app in a web view. On the
+iPad and iPhone, TypeScript cells get a `device` global for native
+features such as the clipboard; [docs/device.md](docs/device.md) lists them.
 
 ## Using it
 
