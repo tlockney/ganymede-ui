@@ -141,7 +141,11 @@ final class AppModel: ObservableObject {
             // The same port as last time keeps the page's origin, and with
             // it the web app's saved state in local storage.
             let saved = defaults.integer(forKey: Keys.port)
-            let result = await Task.detached(priority: .userInitiated) {
+            // `.medium` (Default QoS), not higher: the call waits on the
+            // server's Rust threads, which run at Default, and a
+            // user-initiated thread waiting on them is a priority
+            // inversion (#192).
+            let result = await Task.detached(priority: .medium) {
                 old?.stop()
                 return Result { try AppModel.launch(settings, saved) }
             }.value
