@@ -102,6 +102,10 @@ targets:
       - package: TreeSitterTOML
       - package: TreeSitterTypeScript
       - package: TreeSitterYAML
+      # Quick Look preview and Finder thumbnails for notebooks (#135),
+      # embedded in Contents/PlugIns.
+      - target: GanymedeQuickLook
+      - target: GanymedeThumbnail
     info:
       path: build/Info.plist
       properties:
@@ -149,6 +153,72 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.ganymede-server.Ganymede
+        ENABLE_HARDENED_RUNTIME: YES
+  # Quick Look's preview of a notebook (#135): ganymede-ui's notebook view
+  # from `npm run build:quicklook`, read-only, no server or kernel.
+  GanymedeQuickLook:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: Sources/QuickLook/Preview
+      - path: build/quicklook
+        type: folder
+        buildPhase: resources
+    info:
+      path: build/Info-QuickLook.plist
+      properties:
+        CFBundleDisplayName: Ganymede Quick Look
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSHumanReadableCopyright: MIT License
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.quicklook.preview
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).PreviewViewController
+          NSExtensionAttributes:
+            QLSupportedContentTypes:
+              - org.jupyter.ipynb
+            QLSupportsSearchableItems: false
+    entitlements:
+      path: build/GanymedeQuickLook.entitlements
+      properties:
+        # Quick Look runs preview extensions only sandboxed.
+        com.apple.security.app-sandbox: true
+        # WebKit's networking process serves even the extension's own
+        # scheme, and a sandboxed web view without this is reported to
+        # draw nothing. The page's Content-Security-Policy loads nothing
+        # from the network.
+        com.apple.security.network.client: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.ganymede-server.Ganymede.QuickLook
+        ENABLE_HARDENED_RUNTIME: YES
+  # The Finder's thumbnail of a notebook (#135), drawn natively.
+  GanymedeThumbnail:
+    type: app-extension
+    platform: macOS
+    sources:
+      - path: Sources/QuickLook/Thumbnail
+    info:
+      path: build/Info-Thumbnail.plist
+      properties:
+        CFBundleDisplayName: Ganymede Thumbnails
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSHumanReadableCopyright: MIT License
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.quicklook.thumbnail
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ThumbnailProvider
+          NSExtensionAttributes:
+            QLSupportedContentTypes:
+              - org.jupyter.ipynb
+            QLThumbnailMinimumDimension: 0
+    entitlements:
+      path: build/GanymedeThumbnail.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.ganymede-server.Ganymede.Thumbnail
         ENABLE_HARDENED_RUNTIME: YES
   # iPad and iPhone, from the same sources. iOS cannot launch kernel
   # processes, so until an on-device kernel exists it edits notebooks
@@ -232,6 +302,9 @@ targets:
       - path: Sources/Ganymede/Editor/TextFile.swift
       - path: Sources/Ganymede/Editor/CodeEditing.swift
       - path: Sources/Ganymede/Terminal/ProcessTerminalTransport.swift
+      - path: Sources/QuickLook/Preview/PreviewResources.swift
+      - path: Sources/QuickLook/Thumbnail/NotebookSummary.swift
+      - path: Sources/QuickLook/Thumbnail/ThumbnailProvider.swift
     dependencies:
       - framework: build/GanymedeFFI.xcframework
         embed: false

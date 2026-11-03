@@ -147,6 +147,14 @@ export function createRendermime(path: string, contents: Contents.IManager): IRe
   });
 }
 
+/**
+ * A rendermime registry with no server behind it, for the Quick Look
+ * preview (#135): relative links and images in Markdown don't resolve.
+ */
+export function createStaticRendermime(): IRenderMimeRegistry {
+  return baseRendermime.clone();
+}
+
 let notebookCount = 0;
 
 /** A notebook widget with no model yet, with an id safe in selectors. */
