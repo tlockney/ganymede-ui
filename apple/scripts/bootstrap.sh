@@ -12,6 +12,24 @@ repo=$(cd "$apple/.." && pwd)
 ganymede=${GANYMEDE_DIR:?set GANYMEDE_DIR to a checkout of tlockney/ganymede}
 mkdir -p "$apple/build"
 
+# The XCFramework's iOS slices need Xcode's iOS SDKs (#186). Without them
+# the build fails much later, in a crate's build script, with no hint.
+for sdk in iphoneos iphonesimulator; do
+  if ! xcrun --sdk "$sdk" --show-sdk-path >/dev/null 2>&1; then
+    echo "error: the $sdk SDK isn't available." >&2
+    developer=$(xcode-select -p 2>/dev/null || true)
+    case "$developer" in
+      *.app/Contents/Developer)
+        echo "Install Xcode's iOS platform: xcodebuild -downloadPlatform iOS" >&2
+        echo "(or Xcode > Settings > Components), then run this again." >&2 ;;
+      *)
+        echo "xcode-select points at '${developer:-nothing}', not Xcode. Run:" >&2
+        echo "  sudo xcode-select -s /Applications/Xcode.app/Contents/Developer" >&2 ;;
+    esac
+    exit 1
+  fi
+done
+
 rustup target add aarch64-apple-darwin x86_64-apple-darwin aarch64-apple-ios aarch64-apple-ios-sim
 (cd "$ganymede" && scripts/build-xcframework.sh)
 rm -rf "$apple/build/GanymedeFFI.xcframework"

@@ -97,6 +97,10 @@ Needs macOS 13 or later, Xcode 16, Rust (rustup), Node 24, and
 [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`),
 plus a checkout of [tlockney/ganymede](https://github.com/tlockney/ganymede).
 
+Xcode must be the active developer directory (`xcode-select -p`) and have
+the iOS platform installed (`xcodebuild -downloadPlatform iOS`);
+`bootstrap.sh` checks both before it builds.
+
 ```sh
 GANYMEDE_DIR=~/src/ganymede apple/scripts/bootstrap.sh
 open apple/Ganymede.xcodeproj
