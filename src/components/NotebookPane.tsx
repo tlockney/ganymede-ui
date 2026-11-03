@@ -54,6 +54,11 @@ export type NotebookController = {
    * folder; false when it wasn't (the pane says why).
    */
   rename(input: string): Promise<boolean>;
+  /**
+   * Stop saving: the file was deleted or moved from under the notebook
+   * (the sidebar), and a save would write it back.
+   */
+  discard(): void;
 };
 
 type Props = {
@@ -149,7 +154,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
   const [joined, setJoined] = useState(false);
   /** Set when autosave met a file changed on disk; a save clears it. */
   const autosaveOff = useRef(false);
-  /** Set once the file is renamed: it is no longer at `path` to save to. */
+  /** Set once the file is renamed or deleted: it is no longer at `path` to save to. */
   const renamed = useRef(false);
 
   // Load the file, build the notebook, and join its session.
@@ -535,6 +540,9 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         }
         onRenamed?.(next);
         return true;
+      },
+      discard: () => {
+        renamed.current = true;
       },
       // With no kernel yet, this only picks the one the first run starts.
       changeKernel: report('change the kernel', async (name: string) => {

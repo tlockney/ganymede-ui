@@ -168,7 +168,7 @@ button {
   cursor: default;
 }
 
-.source-item:hover:not(:disabled) {
+.source-item:hover:not(:disabled, [aria-disabled='true']) {
   background: var(--hover);
 }
 
@@ -176,7 +176,8 @@ button {
   background: var(--selected);
 }
 
-.source-item:disabled {
+.source-item:disabled,
+.source-item[aria-disabled='true'] {
   color: var(--text-3);
 }
 
@@ -976,4 +977,144 @@ button {
   -webkit-user-select: text;
   app-region: no-drag;
   -webkit-app-region: no-drag;
+}
+
+/* ---------- Popup menus (#203) ---------- */
+
+.popup-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+}
+
+.popup-menu {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  min-width: 200px;
+  max-height: calc(100% - 16px);
+  overflow-y: auto;
+  padding: 5px;
+  border-radius: 10px;
+  background: var(--sheet-bg);
+  backdrop-filter: blur(40px) saturate(1.8);
+  -webkit-backdrop-filter: blur(40px) saturate(1.8);
+  box-shadow: var(--shadow-sheet);
+}
+
+.popup-menu-item {
+  display: flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.popup-menu-item:hover:not(:disabled),
+.popup-menu-item:focus-visible {
+  background: var(--accent);
+  color: #fff;
+  outline: none;
+}
+
+.popup-menu-item:disabled {
+  opacity: 0.4;
+}
+
+.popup-menu-item.destructive:not(:hover, :focus-visible) {
+  color: var(--red);
+}
+
+.popup-menu-separator {
+  height: 0.5px;
+  margin: 4px 8px;
+  background: var(--separator);
+}
+
+@media (pointer: coarse) {
+  .popup-menu-item {
+    min-height: 44px;
+    font-size: 15px;
+  }
+}
+
+/* ---------- Sidebar file actions (#203) ---------- */
+
+.file-item {
+  position: relative;
+}
+
+.file-item .source-item {
+  -webkit-touch-callout: none;
+}
+
+/* The "…" button: on hover, on the selected row, and always on touch. */
+.file-item .row-more {
+  position: absolute;
+  top: 3px;
+  right: 4px;
+  opacity: 0;
+}
+
+.file-item:hover .row-more,
+.file-item .row-more:focus-visible,
+.file-item .row-more[aria-expanded='true'],
+.file-item:has(.source-item.selected) .row-more {
+  opacity: 1;
+}
+
+.file-item:hover .source-item,
+.file-item:has(.source-item.selected) .source-item {
+  padding-right: 30px;
+}
+
+@media (hover: none), (pointer: coarse) {
+  .file-item .row-more {
+    top: 0;
+    right: 0;
+    width: 36px;
+    height: 100%;
+    opacity: 1;
+  }
+  .file-item .source-item {
+    height: 36px;
+    padding-right: 38px;
+  }
+}
+
+.rename-field {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  margin: 0 -4px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 4px;
+  outline: 2px solid var(--accent);
+  background: var(--window-bg);
+  color: var(--text);
+  font: inherit;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.sidebar-alert {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin: 4px 8px;
+  padding: 6px 8px;
+  border: 1px solid var(--red);
+  border-radius: 8px;
+  font-size: 12px;
+}
+
+.sidebar-alert span {
+  flex: 1;
 }

@@ -173,7 +173,11 @@ describe('App', () => {
       }),
     );
     render(<App />);
-    expect((await screen.findByText('notes.md')).closest('button')).toBeDisabled();
+    // Not opened, though its file menu still works.
+    const notes = (await screen.findByText('notes.md')).closest('button')!;
+    expect(notes).toHaveAttribute('aria-disabled', 'true');
+    await userEvent.click(notes);
+    expect(opened).toEqual([{ path: 'notes.md' }]);
     vi.unstubAllGlobals();
   });
 

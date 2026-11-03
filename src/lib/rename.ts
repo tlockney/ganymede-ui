@@ -8,21 +8,24 @@ import { parentOf } from './launch';
 
 const EXT = '.ipynb';
 
-/** The name shown in the title: the file name without `.ipynb`. */
+/** The name shown for a notebook: the file name without `.ipynb`. */
 export const titleName = (path: string) => (path.split('/').pop() ?? path).replace(/\.ipynb$/, '');
 
 /**
  * The path `input` renames `path` to, in the same folder, or undefined when
- * it names the file as it is (or nothing). Throws when it can't be a name.
+ * it names the file as it is (or nothing). A notebook's name is shown and
+ * typed without `.ipynb`, which is added; another file or folder keeps the
+ * name as typed. Throws when it can't be a name.
  */
-export function renamedPath(path: string, input: string): string | undefined {
+export function renamedPath(path: string, input: string, notebook = true): string | undefined {
   const name = input.trim();
-  if (!name || name === titleName(path)) return undefined;
+  const shown = notebook ? titleName(path) : (path.split('/').pop() ?? path);
+  if (!name || name === shown) return undefined;
   if (name.includes('/') || name.includes('\\')) {
     throw new Error('A name can’t contain “/” or “\\”.');
   }
   if (name.startsWith('.')) throw new Error('A name can’t start with “.”.');
-  const file = name.endsWith(EXT) ? name : name + EXT;
+  const file = !notebook || name.endsWith(EXT) ? name : name + EXT;
   if (file === EXT) return undefined;
   const dir = parentOf(path);
   const next = dir ? `${dir}/${file}` : file;

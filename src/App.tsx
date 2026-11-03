@@ -21,6 +21,7 @@ import { SHOW_SETTINGS_EVENT } from '@ganymede-ui/agent/settings';
 import { SHOW_SHORTCUTS_EVENT, matches } from './lib/shortcuts';
 import { LAUNCH_PARAMS, type Launch, isReload, readLaunch, titleFor, withOpen } from './lib/launch';
 import { canOpenFiles, exposeHooks, openFile, postDocument } from './lib/native';
+import { fileActions } from './lib/file-actions';
 
 /**
  * A token in the page URL, as `ganymede serve` prints it, wins once, and so
@@ -240,6 +241,15 @@ export function App() {
           onNew={newNotebook}
           onConnect={() => setSheetOpen(true)}
           onSettings={() => setSettingsOpen(true)}
+          actions={
+            backend &&
+            fileActions({
+              contents: backend.services.contents,
+              openPath,
+              controller,
+              setOpenPath,
+            })
+          }
         />
         <main className="main">
           <Toolbar
