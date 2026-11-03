@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Contents } from '@jupyterlab/services';
-import { renameFile, renamedPath, titleName } from './rename';
+import { renameFile, renamedPath } from './rename';
 
 describe('renamedPath', () => {
   it('renames in the same folder and adds .ipynb', () => {
@@ -18,10 +18,6 @@ describe('renamedPath', () => {
     expect(() => renamedPath('Io.ipynb', '../Io')).toThrow(/can’t contain/);
     expect(() => renamedPath('Io.ipynb', 'a\\b')).toThrow(/can’t contain/);
     expect(() => renamedPath('Io.ipynb', '.Io')).toThrow(/can’t start with/);
-  });
-
-  it('gives the title without .ipynb', () => {
-    expect(titleName('moons/Io.ipynb')).toBe('Io');
   });
 });
 

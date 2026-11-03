@@ -41,7 +41,7 @@ export type SaveOptions = {
  * the dirty flag cleared only when no edit arrived during the round trip.
  */
 export class NotebookSaver {
-  private readonly o: Options;
+  private o: Options;
   private lastModified?: string;
   /** Bumped on every change to the model, to spot edits during a save. */
   private generation = 0;
@@ -65,6 +65,19 @@ export class NotebookSaver {
     const run = this.queue
       .then(() => this.write({ ...options, ifDirty: options.ifDirty || queued }))
       .finally(() => this.pending--);
+    this.queue = run.catch(() => {});
+    return run;
+  }
+
+  /**
+   * Move the file with `move`, which resolves with its new path. Saves
+   * wait for it and then go to the new path, so none lands at the old
+   * one mid-move (and recreates it there).
+   */
+  move(move: () => Promise<string>): Promise<void> {
+    const run = this.queue.then(async () => {
+      this.o.path = await move();
+    });
     this.queue = run.catch(() => {});
     return run;
   }
@@ -121,7 +134,8 @@ export class NotebookSaver {
   }
 }
 
-function status(e: unknown): number | undefined {
+/** The HTTP status of a contents API error, if it has one. */
+export function status(e: unknown): number | undefined {
   const response = (e as { response?: { status?: unknown } } | undefined)?.response;
   return typeof response?.status === 'number' ? response.status : undefined;
 }

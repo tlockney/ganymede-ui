@@ -256,7 +256,8 @@ export function App() {
                 backend={backend}
                 path={openPath}
                 onController={setController}
-                onRenamed={setOpenPath}
+                // Not if another notebook was opened while it renamed.
+                onRenamed={(from, to) => setOpenPath(p => (p === from ? to : p))}
               />
             ) : (
               <EmptyState

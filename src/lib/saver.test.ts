@@ -63,6 +63,31 @@ describe('NotebookSaver', () => {
     expect(model.dirty).toBe(false);
   });
 
+  it('holds saves while the file moves, then writes to the new path', async () => {
+    const { contents, saver, edit } = setup();
+    const move = deferred<string>();
+    const moving = saver.move(() => move.promise);
+    edit('2');
+    const saving = saver.save();
+    await Promise.resolve();
+    expect(contents.save).not.toHaveBeenCalled();
+    move.resolve('moons/Io.ipynb');
+    await moving;
+    await saving;
+    expect(contents.save).toHaveBeenCalledOnce();
+    expect(contents.save.mock.calls[0]![0]).toBe('moons/Io.ipynb');
+  });
+
+  it('keeps the path when the move fails', async () => {
+    const { contents, saver, edit } = setup();
+    await expect(saver.move(async () => Promise.reject(new Error('taken')))).rejects.toThrow(
+      'taken',
+    );
+    edit('2');
+    await saver.save();
+    expect(contents.save.mock.calls[0]![0]).toBe('Io.ipynb');
+  });
+
   it('keeps the notebook dirty for an edit made during the save', async () => {
     const { model, contents, saver, edit } = setup();
     const write = deferred<Contents.IModel>();

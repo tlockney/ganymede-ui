@@ -15,9 +15,17 @@
   `io.ipynb` finds `Io.ipynb`.
 - Unsaved edits are saved first, then `contents.rename`, then the
   kernel's session follows (`setPath`/`setName`), so the pane reopened at
-  the new path (its key is the path) rejoins the same kernel. The old
-  pane neither autosaves nor saves on close once renamed: that would
-  write the old file back.
+  the new path (its key is the path) rejoins the same kernel.
+- The rename runs inside the saver's queue (`NotebookSaver.move`), which
+  then points the saver at the new path. Any save made meanwhile (⌘S,
+  autosave, the Mac app's save on quit) waits and goes to the new file;
+  saving to the old path mid-rename would recreate it, since the saver
+  treats a missing file as one to write.
+- The rename waits for the session to join the file's kernel before it
+  moves it, and the pane's teardown waits for the rename: leaving for
+  another notebook mid-rename used to dispose the session first, which
+  left the kernel at the old path. `onRenamed(from, to)` switches the
+  open notebook only if it is still `from`.
 - The sidebar follows through `fileChanged`, the window title and
   `?open=` through `openPath`, and the Mac window's proxy icon through
   `postDocument`.
