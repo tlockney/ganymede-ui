@@ -44,10 +44,6 @@ it also runs against a real server.
 
 ## Download the Mac app
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
-
 Each
 [release](https://github.com/tlockney/ganymede-ui/releases) attaches
 `Ganymede-macOS-<version>.zip`, a signed and notarized app that runs the
@@ -91,10 +87,6 @@ JupyterLab's; press `H` in command mode (or the keyboard button) for the
 full list. Every shortcut can be rebound there, and changes stay in this
 browser. [docs/shortcuts.md](docs/shortcuts.md) lists the defaults.
 
-> [!NOTE]
-> **Unreleased.** Autosave and the save checks below are available only
-> from a build of `main` (HEAD), not in the latest release.
-
 A notebook with unsaved edits saves itself every two minutes, when the
 page is hidden, and when you open another file, and the browser asks before a tab with unsaved edits
 closes. If the file changed on disk since it was opened or last saved, a
@@ -123,11 +115,6 @@ failed save or kernel action shows its error above the notebook.
 Ganymede's [security page](https://ganymede-server.com/docs/security)
 covers tokens, cookies and cross-origin access on the server side.
 
-> [!NOTE]
-> **Unreleased.** Keeping the token in session storage is available only
-> from a build of `main` (HEAD); the latest release keeps it in local
-> storage with the rest of the connection.
-
 - **Agent keys:** the optional agent (Settings, off by default) keeps its
   provider, model and server URL in local storage (`ganymede-ui:agent`).
   An API key stays in session storage until the tab closes, or in local
@@ -138,10 +125,6 @@ covers tokens, cookies and cross-origin access on the server side.
   ganymede sandboxes `/files` (ganymede#298), an HTML file opened from
   the notebook folder counts as one. The key is sent only to the provider you picked, straight from
   the page.
-
-> [!NOTE]
-> **Unreleased.** The Settings sheet and agent settings are available only
-> from a build of `main` (HEAD), not in the latest release.
 
 ## Known gaps
 
