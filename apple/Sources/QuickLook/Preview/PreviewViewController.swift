@@ -34,7 +34,8 @@ final class PreviewViewController: NSViewController, QLPreviewingController, WKN
             return
         }
         loading = { [weak self] error in
-            guard let self, error == nil else { return handler(error) }
+            guard let self else { return handler(error ?? CocoaError(.userCancelled)) }
+            if let error { return handler(error) }
             // The page defines `ganymedePreview` when its module runs, which
             // is before `load`; waiting a moment more costs nothing if not.
             let script = """

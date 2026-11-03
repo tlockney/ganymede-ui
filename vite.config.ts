@@ -71,8 +71,7 @@ const config: UserConfig = {
         return resolved ? resolved.id : null;
       },
     },
-    // Not in the Quick Look build (quickLook below), which keeps the plugins
-    // before this one.
+    // Not in the Quick Look build (quickLook below).
     VitePWA({
       registerType: 'autoUpdate',
       includeAssets: ['icons/icon.svg', 'icons/apple-touch-icon.png'],
@@ -213,7 +212,9 @@ const config: UserConfig = {
 function quickLook(base: UserConfig): UserConfig {
   return {
     ...base,
-    plugins: base.plugins!.slice(0, -1),
+    plugins: base
+      .plugins!.flat()
+      .filter(p => !(p && 'name' in p && p.name.startsWith('vite-plugin-pwa'))),
     // public/ holds the PWA's icons and service-worker relay.
     publicDir: false,
     build: {
