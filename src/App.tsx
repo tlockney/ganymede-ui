@@ -9,6 +9,7 @@ import {
   signedInHere,
 } from './lib/backends';
 import { useColorScheme } from './lib/useColorScheme';
+import { useNarrow } from './lib/useNarrow';
 import { useJupyterLabTheme } from './lib/theme';
 import { Sidebar } from './components/Sidebar';
 import { Toolbar } from './components/Toolbar';
@@ -80,9 +81,14 @@ export function App() {
   const [probing, setProbing] = useState(() => !config);
   // A window opened on one notebook starts on the notebook alone; a reload
   // of any page keeps the usual layout.
-  const [sidebarOpen, setSidebarOpen] = useState(
-    () => !(launch.open && !isReload()) && window.innerWidth > 720,
-  );
+  const narrow = useNarrow();
+  const [sidebarOpen, setSidebarOpen] = useState(() => !(launch.open && !isReload()) && !narrow);
+  // On a phone the sidebar floats over the notebook: it closes when it
+  // has done its job (a notebook opened), on a tap outside it, and on Esc.
+  const sidebarFloats = narrow && sidebarOpen;
+  const afterPick = useCallback(() => {
+    if (narrow) setSidebarOpen(false);
+  }, [narrow]);
   const [openPath, setOpenPath] = useState<string>();
   const [controller, setController] = useState<NotebookController>();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -213,6 +219,15 @@ export function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [controller]);
 
+  useEffect(() => {
+    if (!sidebarFloats) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSidebarOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [sidebarFloats]);
+
   // From the notebook's H, and the Apple apps' Help menu.
   useEffect(() => {
     const show = () => setShortcutsOpen(true);
@@ -235,12 +250,34 @@ export function App() {
           connecting={connecting}
           openPath={openPath}
           root={sidebarRoot}
-          onOpen={setOpenPath}
-          onOpenFile={editsFiles ? openFile : undefined}
-          onNew={newNotebook}
+          onOpen={path => {
+            setOpenPath(path);
+            afterPick();
+          }}
+          onOpenFile={
+            editsFiles
+              ? path => {
+                  openFile(path);
+                  afterPick();
+                }
+              : undefined
+          }
+          onNew={dir => {
+            void newNotebook(dir);
+            afterPick();
+          }}
+          onClose={sidebarFloats ? () => setSidebarOpen(false) : undefined}
           onConnect={() => setSheetOpen(true)}
           onSettings={() => setSettingsOpen(true)}
         />
+        {sidebarFloats && (
+          <div
+            className="sidebar-scrim"
+            aria-hidden="true"
+            data-testid="sidebar-scrim"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
         <main className="main">
           <Toolbar
             controller={controller}
