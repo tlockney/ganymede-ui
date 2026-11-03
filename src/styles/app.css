@@ -102,9 +102,13 @@ button {
   grid-template-columns: 0 1fr;
 }
 
-/* The Apple apps draw the sidebar and toolbar (#205): the page is the notebook. */
-.window.chrome-native {
+/* The Apple apps draw the sidebar and toolbar (#205): the page is the
+ * notebook. On the root, so the sheets outside the window follow. */
+:root.chrome-native {
   --toolbar-h: 0px;
+}
+
+.window.chrome-native {
   grid-template-columns: 1fr;
 }
 

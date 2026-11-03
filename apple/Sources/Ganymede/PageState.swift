@@ -42,8 +42,9 @@ struct PageState: Decodable, Equatable {
 
     var hasNotebook: Bool { path != nil }
     var isBusy: Bool { status == "busy" }
-    /// Whether a kernel is running to interrupt or restart.
-    var hasKernel: Bool { status != nil && status != "none" && status != "dead" }
+    /// Whether there is a kernel to restart: one has started, even if it
+    /// has since died (when Restart is most needed).
+    var hasKernel: Bool { status != nil && status != "none" }
 }
 
 /// The page's commands, as `window.ganymede.command(id, arg)` runs them

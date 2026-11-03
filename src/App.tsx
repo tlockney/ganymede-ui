@@ -19,7 +19,15 @@ import { ShortcutsSheet } from './components/ShortcutsSheet';
 import { SettingsSheet } from './components/SettingsSheet';
 import { SHOW_SETTINGS_EVENT } from '@ganymede-ui/agent/settings';
 import { SHOW_SHORTCUTS_EVENT, matches } from './lib/shortcuts';
-import { LAUNCH_PARAMS, type Launch, isReload, readLaunch, titleFor, withOpen } from './lib/launch';
+import {
+  LAUNCH_PARAMS,
+  clean,
+  type Launch,
+  isReload,
+  readLaunch,
+  titleFor,
+  withOpen,
+} from './lib/launch';
 import {
   canOpenFiles,
   exposeHooks,
@@ -73,6 +81,10 @@ export function App() {
   const [launch] = useState<Launch>(() => readLaunch(window.location.search));
   // The Apple apps draw the sidebar, toolbar and menus themselves (#205).
   const [native] = useState(() => nativeChrome());
+  // On the root, so the sheets (outside the window) lose the toolbar's offset too.
+  useEffect(() => {
+    document.documentElement.classList.toggle('chrome-native', native);
+  }, [native]);
   /**
    * The notebook to open on the first connection, until it is opened or
    * the connect sheet picks another backend.
@@ -198,14 +210,21 @@ export function App() {
   runCommand.current = async (id, arg) => {
     const c = controller;
     switch (id) {
-      case 'open':
-        if (!backend || !arg) return false;
-        setOpenPath(arg);
+      case 'open': {
+        // As `?open=`: the app may pass an absolute path.
+        const path = arg && clean(arg);
+        if (!backend || !path) return false;
+        setOpenPath(path);
         return true;
+      }
       case 'new-notebook':
         if (!backend) return false;
-        await newNotebook(arg ?? '');
-        return true;
+        try {
+          await newNotebook(clean(arg ?? ''));
+          return true;
+        } catch {
+          return false;
+        }
       case 'show-shortcuts':
         setShortcutsOpen(true);
         return true;

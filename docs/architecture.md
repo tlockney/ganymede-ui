@@ -366,6 +366,11 @@ own process and shows this web app in a `WKWebView`:
   or any notebook command by its id in the shortcuts table. In the app,
   `PageModel` (`WebView.swift`) holds the state and runs the commands, and
   `PageCommand` builds the script with its arguments JSON-encoded.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release.
+
 - `WebView.swift` handles what a browser would: links to other hosts open
   in the default browser, downloads ask where to save (the share sheet on
   iOS), and Help > Keyboard Shortcuts on the Mac sends

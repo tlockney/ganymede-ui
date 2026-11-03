@@ -214,7 +214,8 @@ describe('App', () => {
     // The notebook's own commands, by their shortcut-table ids.
     expect(await run('move-up')).toBe(true);
     expect(await run('no-such-command')).toBe(false);
-    expect(await run('open', 'Europa.ipynb')).toBe(true);
+    // An absolute path, as the Mac app passes it, is cleaned as `?open=` is.
+    expect(await run('open', '/Europa.ipynb')).toBe(true);
     await waitFor(() => expect(screen.getByTestId('pane')).toHaveTextContent('Europa.ipynb'));
     expect(await run('show-shortcuts')).toBe(true);
     expect(await screen.findByText('Keyboard Shortcuts')).toBeInTheDocument();
