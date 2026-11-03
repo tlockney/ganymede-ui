@@ -1061,8 +1061,8 @@ button {
   max-height: calc(100vh - var(--toolbar-h) - 150px - var(--safe-bottom));
 }
 
-/* As NARROW_QUERY (src/lib/useNarrow.ts, #198): 720px, the Mac window's
- * minimum, is wide. */
+/* The narrow-window block above, with the insets: it has to come after
+ * the rules in this section to win over them. */
 @media (max-width: 719.98px) {
   .window {
     grid-template-columns: 0 1fr;
@@ -1074,6 +1074,13 @@ button {
   /* No traffic lights on a phone: no 80px floor, only the inset. */
   .toolbar,
   .window.sidebar-collapsed .toolbar {
+    padding-left: calc(12px + var(--safe-left));
+  }
+  /* A phone's 12px cell gutter, plus the inset. */
+  .window .notebook-page .jp-WindowedPanel-inner {
+    padding-right: calc(12px + var(--safe-right));
+  }
+  .window.sidebar-collapsed .notebook-page .jp-WindowedPanel-inner {
     padding-left: calc(12px + var(--safe-left));
   }
 }

@@ -88,6 +88,8 @@ test.describe('narrow landscape phone', () => {
     await page.getByRole('button', { name: 'Show Sidebar' }).click();
     await expect(page.locator('.sidebar')).toHaveCSS('padding-left', '47px');
     await expect.poll(async () => (await box(page, '.sidebar')).width).toBe(248 + 47);
+    // The phone's 12px cell gutter, plus the inset.
+    await expect(page.locator('.jp-WindowedPanel-inner')).toHaveCSS('padding-right', '59px');
   });
 });
 
@@ -106,6 +108,6 @@ test('no insets in a narrow window, no change', async ({ page }) => {
   // lights to make room for (#198).
   await expect(page.locator('.window')).toHaveClass(/sidebar-collapsed/);
   await expect(page.locator('.toolbar')).toHaveCSS('padding-left', '12px');
-  await expect(page.locator('.jp-WindowedPanel-inner')).toHaveCSS('padding', '0px 32px');
+  await expect(page.locator('.jp-WindowedPanel-inner')).toHaveCSS('padding', '0px 12px');
   await expect(page.locator('.jp-WindowedPanel-outer')).toHaveCSS('padding-bottom', '150px');
 });
