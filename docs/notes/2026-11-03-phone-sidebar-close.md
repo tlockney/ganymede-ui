@@ -14,3 +14,9 @@ opened but not closed.
 - `.sidebar-collapsed .toolbar` kept 80px of left padding for the Mac
   traffic lights on phones too, because it outranks the narrow rule's
   `.toolbar`. The narrow rule now names both.
+- The narrow breakpoint is now `max-width: 719.98px`, in app.css and
+  `NARROW_QUERY`: the Mac window's minimum width is 720px, and at
+  exactly 720 the narrow rule dropped the traffic lights' toolbar padding.
+- Esc leaves the sidebar alone while a sheet is up (the Connect sheet has
+  no Esc of its own), and New Notebook closes the sidebar only once the
+  notebook exists, so a failure doesn't hide it.

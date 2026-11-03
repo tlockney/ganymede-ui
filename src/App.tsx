@@ -219,14 +219,16 @@ export function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [controller]);
 
+  // Esc on a sheet opened from the sidebar closes the sheet, not the sidebar.
+  const sheetShown = sheetOpen || shortcutsOpen || settingsOpen;
   useEffect(() => {
-    if (!sidebarFloats) return;
+    if (!sidebarFloats || sheetShown) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') setSidebarOpen(false);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [sidebarFloats]);
+  }, [sidebarFloats, sheetShown]);
 
   // From the notebook's H, and the Apple apps' Help menu.
   useEffect(() => {
@@ -262,10 +264,8 @@ export function App() {
                 }
               : undefined
           }
-          onNew={dir => {
-            void newNotebook(dir);
-            afterPick();
-          }}
+          // Closes once the notebook opens, so a failure leaves the sidebar up.
+          onNew={dir => void newNotebook(dir).then(afterPick)}
           onClose={sidebarFloats ? () => setSidebarOpen(false) : undefined}
           onConnect={() => setSheetOpen(true)}
           onSettings={() => setSettingsOpen(true)}

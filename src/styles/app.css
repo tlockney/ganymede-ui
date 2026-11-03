@@ -886,7 +886,8 @@ button {
 
 /* ---------- Narrow windows and touch ---------- */
 
-@media (max-width: 720px) {
+/* As NARROW_QUERY (src/lib/useNarrow.ts): 720px, the Mac window's minimum, is wide. */
+@media (max-width: 719.98px) {
   .window {
     grid-template-columns: 0 1fr;
   }

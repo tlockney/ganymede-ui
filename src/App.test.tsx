@@ -316,7 +316,7 @@ describe('App', () => {
       vi.stubGlobal(
         'matchMedia',
         vi.fn((q: string) => ({
-          matches: q === '(max-width: 720px)',
+          matches: q === '(max-width: 719.98px)',
           addEventListener() {},
           removeEventListener() {},
         })),
@@ -353,6 +353,14 @@ describe('App', () => {
       await userEvent.click(screen.getByRole('button', { name: 'Show Sidebar' }));
       await userEvent.keyboard('{Escape}');
       expect(win).toHaveClass('sidebar-collapsed');
+    });
+
+    it('leaves the sidebar open on Esc while a sheet opened from it is up', async () => {
+      const win = await openSidebar();
+      await userEvent.click(win.querySelector('.backend-chip')!);
+      expect(await screen.findByText('Where should kernels run?')).toBeInTheDocument();
+      await userEvent.keyboard('{Escape}');
+      expect(win).not.toHaveClass('sidebar-collapsed');
     });
 
     it('closes the sidebar once it opens a notebook', async () => {
