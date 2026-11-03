@@ -1,5 +1,8 @@
-import AppKit
 import XCTest
+
+// The Quick Look extensions are Mac-only.
+#if os(macOS)
+import AppKit
 
 /// What the Finder's notebook thumbnail draws (#135).
 final class NotebookSummaryTests: XCTestCase {
@@ -97,3 +100,4 @@ final class NotebookSummaryTests: XCTestCase {
         XCTAssertTrue(dark, "nothing drawn")
     }
 }
+#endif

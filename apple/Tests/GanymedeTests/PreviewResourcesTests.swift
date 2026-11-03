@@ -1,5 +1,8 @@
 import XCTest
 
+// The Quick Look extensions are Mac-only.
+#if os(macOS)
+
 /// The Quick Look preview's files, served to its web view (#135).
 final class PreviewResourcesTests: XCTestCase {
     private var root: URL!
@@ -50,3 +53,4 @@ final class PreviewResourcesTests: XCTestCase {
         XCTAssertEqual(PreviewResources.mimeType(for: URL(fileURLWithPath: "/a/preview.html")), "text/html")
     }
 }
+#endif
