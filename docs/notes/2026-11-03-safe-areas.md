@@ -19,3 +19,9 @@
 - Chromium emulates insets over CDP (`Emulation.setSafeAreaInsetsOverride`),
   which e2e/safe-area.spec.ts uses at phone sizes, plus a zero-inset run
   that checks the desktop layout is unchanged.
+- Review catch: `src/main.tsx` imports app.css before jupyter.css, so an
+  app.css rule for the notebook's `.jp-WindowedPanel-*` paddings at the
+  same specificity silently loses. The inset rules carry a `.window`
+  prefix for that. The narrow-window block only pads the toolbar while
+  the sidebar is open, so a collapsed sidebar keeps room for the traffic
+  lights (80px) or window controls at the Mac app's 720px minimum.

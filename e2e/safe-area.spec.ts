@@ -34,6 +34,8 @@ test.describe('portrait phone', () => {
     expect(title.y).toBeGreaterThanOrEqual(59);
     const outer = page.locator('.jp-WindowedPanel-outer');
     await expect(outer).toHaveCSS('padding-top', `${52 + 59 + 28}px`);
+    // 30vh (255.6px), plus the home indicator.
+    await expect(outer).toHaveCSS('padding-bottom', '289.6px');
   });
 });
 
@@ -46,6 +48,8 @@ test.describe('landscape phone', () => {
     await expect(page.locator('.sidebar')).toHaveCSS('padding-bottom', '21px');
     expect((await box(page, '.sidebar')).width).toBe(248 + 59);
     await expect(page.locator('.toolbar')).toHaveCSS('padding-right', `${12 + 59}px`);
+    await expect(page.locator('.jp-WindowedPanel-inner')).toHaveCSS('padding-right', '59px');
+    await expect(page.locator('.jp-WindowedPanel-outer')).toHaveCSS('padding-bottom', '138.9px');
 
     // With the sidebar hidden, the toolbar and cells start past the notch.
     await page.getByRole('button', { name: 'Hide Sidebar' }).click();
@@ -59,4 +63,15 @@ test('no insets, no change', async ({ page }) => {
   expect((await box(page, '.toolbar')).height).toBe(52);
   expect((await box(page, '.sidebar')).width).toBe(248);
   await expect(page.locator('.jp-WindowedPanel-inner')).toHaveCSS('padding', '0px 32px');
+});
+
+test('no insets in a narrow window, no change', async ({ page }) => {
+  // The Mac app's minimum width is 720px.
+  await page.setViewportSize({ width: 700, height: 500 });
+  await openBrowserNotebook(page, { top: 0, right: 0, bottom: 0, left: 0 });
+  // The sidebar starts closed at this width: room for the traffic lights.
+  await expect(page.locator('.window')).toHaveClass(/sidebar-collapsed/);
+  await expect(page.locator('.toolbar')).toHaveCSS('padding-left', '80px');
+  await expect(page.locator('.jp-WindowedPanel-inner')).toHaveCSS('padding', '0px 32px');
+  await expect(page.locator('.jp-WindowedPanel-outer')).toHaveCSS('padding-bottom', '150px');
 });

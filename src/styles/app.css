@@ -977,7 +977,9 @@ button {
   padding-left: max(80px, calc(var(--titlebar-left) + 14px), calc(14px + var(--safe-left)));
 }
 
-.notebook-page .jp-WindowedPanel-outer {
+/* `.window` first: jupyter.css loads after this file and sets these
+ * paddings at (0,2,0). */
+.window .notebook-page .jp-WindowedPanel-outer {
   padding-bottom: calc(30vh + var(--safe-bottom));
 }
 
@@ -985,7 +987,7 @@ button {
   padding-left: max(32px, var(--safe-left));
 }
 
-.notebook-page .jp-WindowedPanel-inner {
+.window .notebook-page .jp-WindowedPanel-inner {
   padding-right: max(32px, var(--safe-right));
 }
 
@@ -1016,13 +1018,9 @@ button {
   .window {
     grid-template-columns: 0 1fr;
   }
-  .window.sidebar-collapsed .toolbar,
+  /* With the sidebar open over the notebook; a collapsed sidebar's rule
+   * above still wins, as on main. */
   .toolbar {
     padding-left: calc(12px + var(--safe-left));
-  }
-  .window.sidebar-collapsed .notebook-page .jp-WindowedPanel-inner,
-  .window:not(.sidebar-collapsed) .notebook-page .jp-WindowedPanel-inner {
-    padding-right: max(12px, var(--safe-right));
-    padding-left: max(12px, var(--safe-left));
   }
 }
