@@ -117,6 +117,10 @@ test.describe('on a phone', () => {
     await expect(more).toBeVisible();
     expect((await more.boundingBox())!.width).toBeGreaterThanOrEqual(36);
 
+    // Measure once the sidebar has slid in (#198).
+    await page
+      .locator('.sidebar')
+      .evaluate(el => Promise.all(el.getAnimations().map(a => a.finished)));
     const box = (await row.boundingBox())!;
     const cdp = await page.context().newCDPSession(page);
     const point = { x: box.x + 30, y: box.y + box.height / 2 };

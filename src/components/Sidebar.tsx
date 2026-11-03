@@ -16,6 +16,7 @@ import {
   PowerIcon,
   ServerIcon,
   SettingsIcon,
+  SidebarIcon,
 } from './Icons';
 
 type Props = {
@@ -33,6 +34,8 @@ type Props = {
   onSettings?(): void;
   /** Rename, duplicate, delete and new folder (#203); no file menu without them. */
   actions?: FileActions;
+  /** Hides the sidebar where it covers the notebook (a phone); no close button without it. */
+  onClose?(): void;
 };
 
 /** How long a touch is held to open the file menu. */
@@ -49,6 +52,7 @@ export function Sidebar({
   onConnect,
   onSettings,
   actions,
+  onClose,
 }: Props) {
   const services = backend?.services;
   const [dir, setDir] = useState(root);
@@ -202,7 +206,18 @@ export function Sidebar({
 
   return (
     <aside className="sidebar">
-      <div className="sidebar-titlebar" />
+      <div className="sidebar-titlebar">
+        {onClose && (
+          <button
+            className="tb-button sidebar-close"
+            aria-label="Hide Sidebar"
+            title="Hide Sidebar"
+            onClick={onClose}
+          >
+            <SidebarIcon />
+          </button>
+        )}
+      </div>
       <div className="sidebar-scroll">
         <div className="sidebar-section-header">
           {dir ? (

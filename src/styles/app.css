@@ -343,7 +343,8 @@ button {
 }
 
 .toolbar button,
-.toolbar select {
+.toolbar select,
+.sidebar-close {
   app-region: no-drag;
   -webkit-app-region: no-drag;
 }
@@ -886,7 +887,8 @@ button {
 
 /* ---------- Narrow windows and touch ---------- */
 
-@media (max-width: 720px) {
+/* As NARROW_QUERY (src/lib/useNarrow.ts): 720px, the Mac window's minimum, is wide. */
+@media (max-width: 719.98px) {
   .window {
     grid-template-columns: 0 1fr;
   }
@@ -894,10 +896,20 @@ button {
     position: fixed;
     inset: 0 auto 0 0;
     z-index: 20;
-    width: var(--sidebar-w);
+    width: min(var(--sidebar-w), 85vw);
     background: var(--sidebar-solid);
+    box-shadow: 0 0 24px rgba(0, 0, 0, 0.18);
+    animation: sidebar-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
   }
-  .toolbar {
+  /* The close button sits where the toolbar's Show Sidebar button was. */
+  .sidebar-titlebar {
+    display: flex;
+    align-items: center;
+    padding-left: 12px;
+  }
+  /* No traffic lights on a phone. */
+  .toolbar,
+  .sidebar-collapsed .toolbar {
     padding-left: 12px;
   }
   .toolbar .popup-button,
@@ -906,6 +918,34 @@ button {
   }
   .notebook-page .jp-WindowedPanel-inner {
     padding: 0 12px;
+  }
+}
+
+/* Covers the notebook while the sidebar floats over it; a tap closes the sidebar. */
+.sidebar-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 19;
+  background: rgba(0, 0, 0, 0.25);
+  animation: scrim-in 0.22s ease-out;
+}
+
+@keyframes sidebar-in {
+  from {
+    transform: translateX(-100%);
+  }
+}
+
+@keyframes scrim-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .window:not(.sidebar-collapsed) .sidebar,
+  .sidebar-scrim {
+    animation: none;
   }
 }
 
@@ -937,6 +977,86 @@ button {
   color: var(--accent);
   font: inherit;
   cursor: pointer;
+}
+
+/* ---------- Cell menu (#200) ---------- */
+
+.cell-menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+}
+
+.cell-menu {
+  position: fixed;
+  display: flex;
+  flex-direction: column;
+  min-width: 200px;
+  max-height: calc(100% - 16px);
+  overflow-y: auto;
+  padding: 6px;
+  border-radius: 12px;
+  background: var(--sheet-bg);
+  backdrop-filter: blur(40px) saturate(1.8);
+  -webkit-backdrop-filter: blur(40px) saturate(1.8);
+  box-shadow: var(--shadow-sheet);
+  animation: fade 0.12s ease-out;
+}
+
+.cell-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 44px;
+  padding: 0 14px 0 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  font-size: 15px;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.cell-menu-item:hover:not(:disabled),
+.cell-menu-item:focus-visible,
+.cell-menu-item:active:not(:disabled) {
+  background: var(--control-bg-hover);
+  outline: none;
+}
+
+.cell-menu-item:disabled {
+  opacity: 0.4;
+}
+
+.cell-menu-item.destructive {
+  color: var(--red);
+}
+
+.cell-menu-check {
+  width: 18px;
+  color: var(--accent);
+  text-align: center;
+}
+
+.cell-menu-heading {
+  padding: 6px 14px 2px 28px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+
+.cell-menu-separator {
+  height: 0.5px;
+  margin: 4px 8px;
+  background: var(--separator);
+}
+
+@media (pointer: fine) {
+  .cell-menu-item {
+    min-height: 30px;
+    font-size: 13px;
+  }
 }
 
 /* ---------- Notebook title (#202) ---------- */

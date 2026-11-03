@@ -42,6 +42,55 @@ export async function createLiteServices(
     contents?: ContentsManager;
   } = {},
 ): Promise<ServiceManager.IManager> {
+  const parts = await createLiteParts(options);
+  const { serverSettings, contents, kernelClient, sessionClient, kernelSpecClient } = parts;
+  const kernels = new KernelManager({
+    kernelAPIClient: kernelClient,
+    kernelSpecAPIClient: kernelSpecClient,
+    serverSettings,
+  });
+  const sessions = new SessionManager({
+    kernelManager: kernels,
+    serverSettings,
+    sessionAPIClient: sessionClient,
+  });
+  const kernelspecs = new KernelSpecManager({
+    kernelSpecAPIClient: kernelSpecClient,
+    serverSettings,
+  });
+  const services = new LiteServiceManager(parts, {
+    serverSettings,
+    contents,
+    kernels,
+    sessions,
+    kernelspecs,
+    events: new LocalEvents(serverSettings),
+    user: new LocalUser({ serverSettings }),
+  });
+  await services.ready;
+  return services;
+}
+
+/**
+ * The in-page server's API clients, without managers of their own, for a
+ * backend that combines them with a real server's (`mixed.ts`).
+ */
+export type LiteParts = {
+  /** The fake server's settings: this page's origin, mock-socket websockets. */
+  serverSettings: ServerConnection.ISettings;
+  contents: ContentsManager;
+  kernelClient: LiteKernelClient;
+  sessionClient: LiteSessionClient;
+  kernelSpecClient: LiteKernelSpecClient;
+  /** Whether `id` is one of this page's running kernels. */
+  hasKernel(id: string): boolean;
+  /** Shuts this page's kernels down and stops the relay (see LiteServiceManager). */
+  dispose(): void;
+};
+
+export async function createLiteParts(
+  options: { contents?: ContentsManager } = {},
+): Promise<LiteParts> {
   // The fake server answers at this page's origin. LiteKernelClient computes
   // its websocket base from PageConfig (this origin, since nothing sets it),
   // so the settings must agree with that.
@@ -83,33 +132,27 @@ export async function createLiteServices(
     create: async options => new CdpBrowserKernel(options),
   });
 
-  const kernelSpecClient = new LiteKernelSpecClient({ kernelSpecs, serverSettings });
-  const kernels = new KernelManager({
-    kernelAPIClient: kernelClient,
-    kernelSpecAPIClient: kernelSpecClient,
-    serverSettings,
-  });
-  const sessions = new SessionManager({
-    kernelManager: kernels,
-    serverSettings,
-    sessionAPIClient: new LiteSessionClient({ kernelClient, serverSettings }),
-  });
-  const kernelspecs = new KernelSpecManager({
-    kernelSpecAPIClient: kernelSpecClient,
-    serverSettings,
-  });
-
-  const services = new LiteServiceManager(bridge, kernelClient, {
+  let disposed = false;
+  return {
     serverSettings,
     contents,
-    kernels,
-    sessions,
-    kernelspecs,
-    events: new LocalEvents(serverSettings),
-    user: new LocalUser({ serverSettings }),
-  });
-  await services.ready;
-  return services;
+    kernelClient,
+    sessionClient: new LiteSessionClient({ kernelClient, serverSettings }),
+    kernelSpecClient: new LiteKernelSpecClient({ kernelSpecs, serverSettings }),
+    hasKernel: id => runningKernels(kernelClient).has(id),
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      // Synchronous underneath: each kernel is disposed on the spot.
+      void kernelClient.shutdownAll();
+      bridge.dispose();
+    },
+  };
+}
+
+/** LiteKernelClient's private map of running kernels, by id. */
+function runningKernels(client: LiteKernelClient): Map<string, unknown> {
+  return (client as unknown as { _kernels: Map<string, unknown> })._kernels;
 }
 
 async function browserContents(serverSettings: ServerConnection.ISettings) {
@@ -133,9 +176,7 @@ async function browserContents(serverSettings: ServerConnection.ISettings) {
  */
 class CdpAwareKernelClient extends LiteKernelClient {
   async interrupt(kernelId: string): Promise<void> {
-    // `_kernels` is LiteKernelClient's private map of running kernels.
-    const kernels = (this as unknown as { _kernels: Map<string, unknown> })._kernels;
-    const kernel = kernels.get(kernelId);
+    const kernel = runningKernels(this).get(kernelId);
     if (kernel instanceof CdpBrowserKernel) {
       kernel.interrupt();
       return;
@@ -156,17 +197,14 @@ class CdpAwareKernelClient extends LiteKernelClient {
  */
 class LiteServiceManager extends ServiceManager {
   constructor(
-    private _bridge: ServiceWorkerBridge,
-    private _kernelClient: LiteKernelClient,
+    private _parts: LiteParts,
     options: Partial<ServiceManager.IOptions>,
   ) {
     super(options);
   }
   dispose(): void {
     if (this.isDisposed) return;
-    // Synchronous underneath: each kernel is disposed on the spot.
-    void this._kernelClient.shutdownAll();
-    this._bridge.dispose();
+    this._parts.dispose();
     super.dispose();
   }
 }

@@ -1,5 +1,5 @@
 import { StrictMode } from 'react';
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Backend, BackendConfig } from './lib/backends';
@@ -347,5 +347,76 @@ describe('App', () => {
         metadata: { kernelspec: { name: 'python3', display_name: 'Python 3', language: 'python' } },
       },
     });
+  });
+
+  describe('on a phone-narrow window', () => {
+    beforeEach(() => {
+      vi.stubGlobal(
+        'matchMedia',
+        vi.fn((q: string) => ({
+          matches: q === '(max-width: 719.98px)',
+          addEventListener() {},
+          removeEventListener() {},
+        })),
+      );
+      localStorage.setItem('ganymede-ui:backend', JSON.stringify({ kind: 'browser' }));
+    });
+
+    async function openSidebar() {
+      const fake = fakeServices({ '': [{ name: 'Io.ipynb', type: 'notebook' }] });
+      mocks.connect.mockResolvedValue(fakeBackend(fake.services, { kind: 'browser' }));
+      const view = render(<App />);
+      const win = view.container.querySelector('.window')!;
+      // Starts closed: the notebook gets the screen.
+      await waitFor(() => expect(mocks.connect).toHaveBeenCalled());
+      expect(win).toHaveClass('sidebar-collapsed');
+      expect(screen.queryByTestId('sidebar-scrim')).not.toBeInTheDocument();
+      await userEvent.click(screen.getByRole('button', { name: 'Show Sidebar' }));
+      expect(win).not.toHaveClass('sidebar-collapsed');
+      return win as HTMLElement;
+    }
+
+    it('closes the sidebar from its own button', async () => {
+      const win = await openSidebar();
+      const sidebar = win.querySelector('aside')!;
+      await userEvent.click(within(sidebar).getByRole('button', { name: 'Hide Sidebar' }));
+      expect(win).toHaveClass('sidebar-collapsed');
+    });
+
+    it('closes the sidebar on a tap outside it, and on Escape', async () => {
+      const win = await openSidebar();
+      await userEvent.click(screen.getByTestId('sidebar-scrim'));
+      expect(win).toHaveClass('sidebar-collapsed');
+
+      await userEvent.click(screen.getByRole('button', { name: 'Show Sidebar' }));
+      await userEvent.keyboard('{Escape}');
+      expect(win).toHaveClass('sidebar-collapsed');
+    });
+
+    it('leaves the sidebar open on Esc while a sheet opened from it is up', async () => {
+      const win = await openSidebar();
+      await userEvent.click(win.querySelector('.backend-chip')!);
+      expect(await screen.findByText('Where should kernels run?')).toBeInTheDocument();
+      await userEvent.keyboard('{Escape}');
+      expect(win).not.toHaveClass('sidebar-collapsed');
+    });
+
+    it('closes the sidebar once it opens a notebook', async () => {
+      const win = await openSidebar();
+      await userEvent.click(await screen.findByRole('button', { name: 'Io' }));
+      expect(screen.getByTestId('pane')).toHaveTextContent('Io.ipynb');
+      expect(win).toHaveClass('sidebar-collapsed');
+    });
+  });
+
+  it('keeps the sidebar beside the notebook on a wide window', async () => {
+    localStorage.setItem('ganymede-ui:backend', JSON.stringify({ kind: 'browser' }));
+    const fake = fakeServices({ '': [{ name: 'Io.ipynb', type: 'notebook' }] });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services, { kind: 'browser' }));
+    const { container } = render(<App />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Io' }));
+    expect(container.querySelector('.window')).not.toHaveClass('sidebar-collapsed');
+    expect(screen.queryByTestId('sidebar-scrim')).not.toBeInTheDocument();
+    expect(container.querySelector('.sidebar-close')).toBeNull();
   });
 });
