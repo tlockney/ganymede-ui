@@ -532,7 +532,15 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         }
         renamed.current = true;
         clearRenameNotice();
-        // Edits typed while it renamed go to the new file, not the old.
+        // The kernel follows the file, so reopening it there rejoins it.
+        try {
+          await session.session?.setPath(next);
+          await session.session?.setName(basename(next));
+        } catch (e) {
+          console.warn(`Couldn’t move the session to ${next}:`, e);
+        }
+        // Edits typed while it renamed go to the new file, not the old: last,
+        // so none land after it.
         if (model.dirty) {
           try {
             open.widgets.saveState(model);
@@ -544,13 +552,6 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
           } catch (e) {
             setNotice(`Couldn’t save the latest edits to ${basename(next)}: ${messageOf(e)}`);
           }
-        }
-        // The kernel follows the file, so reopening it there rejoins it.
-        try {
-          await session.session?.setPath(next);
-          await session.session?.setName(basename(next));
-        } catch (e) {
-          console.warn(`Couldn’t move the session to ${next}:`, e);
         }
         onRenamed?.(next);
         return true;
