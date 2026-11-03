@@ -61,7 +61,7 @@ Other Apps sets whether it asks).
 
 ```ts
 await device.info();
-// { platform: "ipados", appVersion: "0.3.0", osVersion: "26.1", capabilities: ["clipboard.readText", "clipboard.writeText"] }
+// { platform: "ipados", appVersion: "0.3.0", osVersion: "26.1.0", capabilities: ["clipboard.readText", "clipboard.writeText"] }
 ```
 
 `platform` is `"ipados"` on an iPad and `"ios"` on an iPhone.
@@ -89,9 +89,9 @@ A call that fails rejects with a `DeviceError` whose `code` says why:
 Every method takes an optional `{ signal }` (an `AbortSignal`) to cancel
 it. Interrupting the kernel cancels pending calls too.
 
-If the app has the bridge but it doesn't answer when the kernel starts,
-the kernel starts without `device` and prints one line on stderr saying
-why.
+If the bridge answers `hello` with an error or a malformed reply, the
+kernel starts without `device` and prints one line on stderr saying why.
+If it doesn't answer at all, `device` is just `undefined`.
 
 ## Safety
 
