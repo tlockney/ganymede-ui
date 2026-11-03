@@ -111,15 +111,17 @@ function setup(
   fake.contents.get = get as never;
   const controllers: (NotebookController | undefined)[] = [];
   const onController = vi.fn((c: NotebookController | undefined) => controllers.push(c));
+  const onRenamed = vi.fn();
   const utils = render(
     <NotebookPane
       backend={fakeBackend(fake.services)}
       path="moons/Io.ipynb"
       onController={onController}
+      onRenamed={onRenamed}
     />,
   );
   const latest = () => controllers[controllers.length - 1];
-  return { ...utils, fake, onController, latest };
+  return { ...utils, fake, onController, onRenamed, latest };
 }
 
 beforeEach(() => {
@@ -412,6 +414,69 @@ describe('NotebookPane', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  describe('rename', () => {
+    /** The notebook, and nothing else: `taken` names a file that exists too. */
+    const files = (taken?: string) =>
+      vi.fn(async (path: string) => {
+        if (path === 'moons/Io.ipynb') {
+          return { path, content: structuredClone(NOTEBOOK), last_modified: '' };
+        }
+        if (path === taken) return { path, type: 'notebook' };
+        throw new Error('Not found');
+      }) as unknown as Parameters<typeof setup>[0];
+
+    it('saves unsaved edits, renames the file and opens it there', async () => {
+      const { fake, latest, onRenamed } = setup(files());
+      await waitFor(() => expect(latest()).toBeDefined());
+      act(() => modelOf().cells.get(0).sharedModel.setSource('print(2)'));
+      await waitFor(() => expect(latest()!.dirty).toBe(true));
+
+      let ok: boolean | undefined;
+      await act(async () => void (ok = await latest()!.rename('Europa')));
+      expect(ok).toBe(true);
+      expect(fake.contents.save).toHaveBeenCalledWith('moons/Io.ipynb', expect.anything());
+      expect(fake.contents.rename).toHaveBeenCalledWith('moons/Io.ipynb', 'moons/Europa.ipynb');
+      expect(fake.contents.save.mock.invocationCallOrder[0]).toBeLessThan(
+        fake.contents.rename.mock.invocationCallOrder[0]!,
+      );
+      expect(onRenamed).toHaveBeenCalledWith('moons/Europa.ipynb');
+    });
+
+    it('does nothing for the same name', async () => {
+      const { fake, latest, onRenamed } = setup(files());
+      await waitFor(() => expect(latest()).toBeDefined());
+      await act(async () => void (await latest()!.rename(' Io ')));
+      expect(fake.contents.rename).not.toHaveBeenCalled();
+      expect(onRenamed).not.toHaveBeenCalled();
+    });
+
+    it('won’t replace a file that exists', async () => {
+      const { fake, latest, onRenamed } = setup(files('moons/Europa.ipynb'));
+      await waitFor(() => expect(latest()).toBeDefined());
+      let ok: boolean | undefined;
+      await act(async () => void (ok = await latest()!.rename('Europa.ipynb')));
+      expect(ok).toBe(false);
+      expect(fake.contents.rename).not.toHaveBeenCalled();
+      expect(onRenamed).not.toHaveBeenCalled();
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Couldn’t rename Io.ipynb: “Europa.ipynb” already exists. Choose another name.',
+      );
+    });
+
+    it('says why a rename failed', async () => {
+      const { fake, latest, onRenamed } = setup(files());
+      await waitFor(() => expect(latest()).toBeDefined());
+      fake.contents.rename.mockRejectedValueOnce(new Error('Permission denied'));
+      let ok: boolean | undefined;
+      await act(async () => void (ok = await latest()!.rename('Europa')));
+      expect(ok).toBe(false);
+      expect(onRenamed).not.toHaveBeenCalled();
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Couldn’t rename Io.ipynb: Permission denied',
+      );
+    });
   });
 
   it('reports the active cell type and changes it', async () => {

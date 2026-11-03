@@ -937,3 +937,43 @@ button {
   font: inherit;
   cursor: pointer;
 }
+
+/* ---------- Notebook title (#202) ---------- */
+
+/* Reads as the title; a click edits it in place. */
+.title-button {
+  max-width: 100%;
+  margin: 0 -4px;
+  padding: 1px 4px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  font: inherit;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: text;
+  vertical-align: bottom;
+  app-region: no-drag;
+  -webkit-app-region: no-drag;
+}
+
+.title-button:hover {
+  background: var(--hover);
+}
+
+.title-field {
+  max-width: min(320px, 50vw);
+  margin: 0 -4px;
+  padding: 1px 4px;
+  border: 0;
+  border-radius: 5px;
+  outline: 2px solid var(--accent);
+  background: var(--window-bg);
+  color: var(--text);
+  font: 600 13px var(--font-ui);
+  user-select: text;
+  -webkit-user-select: text;
+  app-region: no-drag;
+  -webkit-app-region: no-drag;
+}

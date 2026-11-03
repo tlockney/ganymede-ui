@@ -256,6 +256,7 @@ export function App() {
                 backend={backend}
                 path={openPath}
                 onController={setController}
+                onRenamed={setOpenPath}
               />
             ) : (
               <EmptyState

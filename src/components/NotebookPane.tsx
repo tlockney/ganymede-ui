@@ -10,6 +10,7 @@ import { attachEditing, createCommands, createNotebook, createRendermime } from 
 import { downloadFile } from '../lib/download';
 import { AUTOSAVE_INTERVAL_MS, NotebookSaver, SaveConflict } from '../lib/saver';
 import { hasUntrustedOutputs } from '../lib/trust';
+import { renameFile, renamedPath } from '../lib/rename';
 import type { NotebookWidgets } from '../lib/widgets';
 
 export type CellType = nbformat.CellType;
@@ -48,12 +49,19 @@ export type NotebookController = {
   interrupt(): Promise<void>;
   restart(): Promise<void>;
   changeKernel(name: string): Promise<void>;
+  /**
+   * Rename the file to what the user typed (`.ipynb` added), in the same
+   * folder; false when it wasn't (the pane says why).
+   */
+  rename(input: string): Promise<boolean>;
 };
 
 type Props = {
   backend: Backend;
   path: string;
   onController(c: NotebookController | undefined): void;
+  /** The file was renamed to `path`: open it there. */
+  onRenamed?(path: string): void;
 };
 
 const basename = (p: string) => p.split('/').pop() ?? p;
@@ -116,7 +124,7 @@ const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
  * JupyterLab document context, so the same code saves to a Ganymede server
  * or to the browser's own storage.
  */
-export function NotebookPane({ backend, path, onController }: Props) {
+export function NotebookPane({ backend, path, onController, onRenamed }: Props) {
   const { services } = backend;
   const host = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState<Open>();
@@ -141,6 +149,8 @@ export function NotebookPane({ backend, path, onController }: Props) {
   const [joined, setJoined] = useState(false);
   /** Set when autosave met a file changed on disk; a save clears it. */
   const autosaveOff = useRef(false);
+  /** Set once the file is renamed: it is no longer at `path` to save to. */
+  const renamed = useRef(false);
 
   // Load the file, build the notebook, and join its session.
   useEffect(() => {
@@ -294,7 +304,7 @@ export function NotebookPane({ backend, path, onController }: Props) {
       };
       // Opening another file keeps this one's edits: save them first, as
       // autosave would, then let it go.
-      if (done.model.dirty && !autosaveOff.current) {
+      if (done.model.dirty && !autosaveOff.current && !renamed.current) {
         void done.saver
           .save({ ifDirty: true })
           .catch(e => console.error(`Couldn’t save ${path}:`, e))
@@ -384,7 +394,7 @@ export function NotebookPane({ backend, path, onController }: Props) {
     if (!open) return;
     const { model, saver } = open;
     const autosave = () => {
-      if (!model.dirty || autosaveOff.current) return;
+      if (!model.dirty || autosaveOff.current || renamed.current) return;
       saver.save({ ifDirty: true }).catch(e => {
         if (e instanceof SaveConflict) {
           autosaveOff.current = true;
@@ -503,6 +513,29 @@ export function NotebookPane({ backend, path, onController }: Props) {
       restart: report('restart the kernel', async () => {
         await session.session?.kernel?.restart();
       }),
+      rename: async (input: string) => {
+        let next: string | undefined;
+        try {
+          next = renamedPath(path, input);
+          if (!next) return true;
+          // The edits go with the file.
+          if (model.dirty) await saver.save();
+          await renameFile(services.contents, path, next);
+        } catch (e) {
+          setNotice(`Couldn’t rename ${fileName}: ${messageOf(e)}`);
+          return false;
+        }
+        renamed.current = true;
+        // The kernel follows the file, so reopening it there rejoins it.
+        try {
+          await session.session?.setPath(next);
+          await session.session?.setName(basename(next));
+        } catch (e) {
+          console.warn(`Couldn’t move the session to ${next}:`, e);
+        }
+        onRenamed?.(next);
+        return true;
+      },
       // With no kernel yet, this only picks the one the first run starts.
       changeKernel: report('change the kernel', async (name: string) => {
         if (session.session) await session.changeKernel({ name });
@@ -533,6 +566,7 @@ export function NotebookPane({ backend, path, onController }: Props) {
     backend,
     services,
     onController,
+    onRenamed,
   ]);
 
   useEffect(() => () => onController(undefined), [onController]);
