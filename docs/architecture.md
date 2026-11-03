@@ -80,7 +80,7 @@ Anything that can build one is a backend. `connect(config)` in
 
 Where the app connects is decided in this order (`App.tsx`):
 
-1. `?token=` or `?kernels=page|server` in the URL, as `ganymede serve`
+1. `?token=` or `?kernels=page|both|server` in the URL, as `ganymede serve`
    prints it and the Apple apps pass on every launch. They are removed from
    the address bar once read.
 2. The connection saved in `localStorage` (`ganymede-ui:backend`), with
@@ -387,6 +387,22 @@ Where kernels run:
 | This device                              | Kernelspecs installed on the Mac                        | cdp-kernel in the kernel web view (`?kernels=page`) |
 | A remote with a server                   | That server, through Ganymede's gateway (`gateway_url`) | Same                                                |
 
+Both apps also list the page's own kernels beside the server's
+(`?kernels=both`, `src/lib/mixed.ts`) whenever the server has kernels:
+always on the Mac, and on the iPad when a remote runs kernels. Those
+kernels run in the kernel web view below, the only place cells can reach
+the app's bridges, such as ganymede-device's `device` (#185). One service
+manager answers the UI: it merges the kernel specs (a page spec whose name
+the server has is dropped), starts each kernel on the side that owns its
+spec, routes later kernel and session calls by id, and opens a page
+kernel's websocket on the page's fake server. Changing a notebook's
+kernel to one on the other side starts its session again on the new side,
+then ends it on the old one, under the same session id.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
 Settings keep a list of remotes (`Remote.swift`): each has a name, an
 optional Jupyter or Ganymede server (its token in the keychain), and
 optional SSH (host or ssh-config alias, user, port), for terminals. One
@@ -396,7 +412,8 @@ setting of earlier versions moves to the first remote on launch.
 iOS does not let an app launch processes, so without a kernel server the
 iPad's in-process Ganymede serves notebooks only and the page runs its own
 kernel, the `kernels: 'page'` backend above. With a kernel server set,
-Ganymede forwards kernel requests to it and the page connects as usual.
+Ganymede forwards kernel requests to it, and the page lists those kernels
+beside its own (`kernels: 'both'`, above).
 Notebooks stay on the device either way. On the Mac, an app opened from
 the Finder takes `PATH` from the login shell (`LoginShell.swift`) so
 kernelspecs that run `node`, `deno` or `python3` start.

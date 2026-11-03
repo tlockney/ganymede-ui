@@ -59,6 +59,20 @@ describe('ConnectSheet', () => {
     });
   });
 
+  it("keeps the server's kernels beside the page's", async () => {
+    const { onConnect } = renderSheet({
+      initial: { kind: 'ganymede', url: '', token: '', kernels: 'both' },
+    });
+    expect(screen.getByRole('checkbox', { name: /Run kernels in this page/ })).toBeChecked();
+    await userEvent.click(connectButton());
+    expect(onConnect).toHaveBeenCalledWith({
+      kind: 'ganymede',
+      url: '',
+      token: '',
+      kernels: 'both',
+    });
+  });
+
   it('remembers kernels in the page', () => {
     renderSheet({ initial: { kind: 'ganymede', url: '', token: '', kernels: 'page' } });
     expect(screen.getByRole('checkbox', { name: /Run kernels in this page/ })).toBeChecked();

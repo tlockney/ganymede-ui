@@ -352,7 +352,8 @@ button {
 }
 
 .toolbar button,
-.toolbar select {
+.toolbar select,
+.sidebar-close {
   app-region: no-drag;
   -webkit-app-region: no-drag;
 }
@@ -895,7 +896,8 @@ button {
 
 /* ---------- Narrow windows and touch ---------- */
 
-@media (max-width: 720px) {
+/* As NARROW_QUERY (src/lib/useNarrow.ts): 720px, the Mac window's minimum, is wide. */
+@media (max-width: 719.98px) {
   .window {
     grid-template-columns: 0 1fr;
   }
@@ -903,10 +905,20 @@ button {
     position: fixed;
     inset: 0 auto 0 0;
     z-index: 20;
-    width: var(--sidebar-w);
+    width: min(var(--sidebar-w), 85vw);
     background: var(--sidebar-solid);
+    box-shadow: 0 0 24px rgba(0, 0, 0, 0.18);
+    animation: sidebar-in 0.22s cubic-bezier(0.2, 0.8, 0.2, 1);
   }
-  .toolbar {
+  /* The close button sits where the toolbar's Show Sidebar button was. */
+  .sidebar-titlebar {
+    display: flex;
+    align-items: center;
+    padding-left: 12px;
+  }
+  /* No traffic lights on a phone. */
+  .toolbar,
+  .sidebar-collapsed .toolbar {
     padding-left: 12px;
   }
   .toolbar .popup-button,
@@ -915,6 +927,34 @@ button {
   }
   .notebook-page .jp-WindowedPanel-inner {
     padding: 0 12px;
+  }
+}
+
+/* Covers the notebook while the sidebar floats over it; a tap closes the sidebar. */
+.sidebar-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 19;
+  background: rgba(0, 0, 0, 0.25);
+  animation: scrim-in 0.22s ease-out;
+}
+
+@keyframes sidebar-in {
+  from {
+    transform: translateX(-100%);
+  }
+}
+
+@keyframes scrim-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .window:not(.sidebar-collapsed) .sidebar,
+  .sidebar-scrim {
+    animation: none;
   }
 }
 

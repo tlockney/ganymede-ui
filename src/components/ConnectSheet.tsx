@@ -23,9 +23,10 @@ export function ConnectSheet({
   const [kind, setKind] = useState<BackendConfig['kind']>(initial?.kind ?? 'ganymede');
   const [url, setUrl] = useState(initial?.kind === 'ganymede' ? initial.url : '');
   const [token, setToken] = useState(initial?.kind === 'ganymede' ? initial.token : '');
-  const [pageKernels, setPageKernels] = useState(
-    initial?.kind === 'ganymede' && initial.kernels === 'page',
-  );
+  // 'both' (the Mac app's server plus its in-app kernels) shows as checked
+  // and is kept as it is.
+  const initialKernels = initial?.kind === 'ganymede' ? initial.kernels : undefined;
+  const [pageKernels, setPageKernels] = useState(initialKernels !== undefined);
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,7 +36,7 @@ export function ConnectSheet({
             kind,
             url: url.trim(),
             token: token.trim(),
-            ...(pageKernels ? { kernels: 'page' as const } : {}),
+            ...(pageKernels ? { kernels: initialKernels ?? ('page' as const) } : {}),
           }
         : { kind },
     );
