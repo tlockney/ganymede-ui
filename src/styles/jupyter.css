@@ -256,69 +256,69 @@
   display: none;
 }
 
-@media (hover: none), (pointer: coarse), (max-width: 720px) {
-  /* A gutter for the "…" button, clear of the code. */
-  .notebook-page .jp-Cell {
-    padding-right: 44px !important;
-  }
+/* `touch-ui` is on the root on touch screens and in narrow windows, but not
+ * for a narrow web view beside the Mac app's own sidebar (App.tsx). */
+/* A gutter for the "…" button, clear of the code. */
+.touch-ui .notebook-page .jp-Cell {
+  padding-right: 44px !important;
+}
 
-  .notebook-page .gn-cell-more {
-    position: absolute;
-    top: 4px;
-    right: 0;
-    display: grid;
-    place-items: center;
-    width: 44px;
-    height: 44px;
-    padding: 0;
-    border: 0;
-    border-radius: 10px;
-    background: transparent;
-    color: var(--text-2);
-    font: 600 20px/1 var(--font-ui);
-    cursor: pointer;
-    -webkit-tap-highlight-color: transparent;
-  }
+.touch-ui .notebook-page .gn-cell-more {
+  position: absolute;
+  top: 4px;
+  right: 0;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-2);
+  font: 600 20px/1 var(--font-ui);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
 
-  .notebook-page .gn-cell-more:active,
-  .notebook-page .gn-cell-more:focus-visible {
-    background: var(--control-bg-hover);
-  }
+.touch-ui .notebook-page .gn-cell-more:active,
+.touch-ui .notebook-page .gn-cell-more:focus-visible {
+  background: var(--control-bg-hover);
+}
 
-  .notebook-page .gn-add-cell {
-    display: flex;
-    justify-content: center;
-    gap: 8px;
-    /* Under the cell's content, clear of the gutter. */
-    margin: 2px -44px -4px 0;
-    opacity: 0.55;
-    transition: opacity 0.15s ease;
-  }
+.touch-ui .notebook-page .gn-add-cell {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  /* Under the cell's content, clear of the gutter. */
+  margin: 2px -44px -4px 0;
+  opacity: 0.55;
+  transition: opacity 0.15s ease;
+}
 
-  .notebook-page .jp-Cell.jp-mod-active .gn-add-cell,
-  .notebook-page .gn-add-cell:focus-within {
-    opacity: 1;
-  }
+.touch-ui .notebook-page .jp-Cell.jp-mod-active .gn-add-cell,
+.touch-ui .notebook-page .gn-add-cell:focus-within {
+  opacity: 1;
+}
 
-  .notebook-page .gn-add-button {
-    min-width: 72px;
-    height: 36px;
-    padding: 0 14px;
-    border: 0.5px solid var(--cell-border);
-    border-radius: 18px;
-    background: var(--window-bg);
-    color: var(--accent);
-    font: 500 13px var(--font-ui);
-    cursor: pointer;
-    -webkit-tap-highlight-color: transparent;
-  }
+.touch-ui .notebook-page .gn-add-button {
+  min-width: 72px;
+  height: 36px;
+  padding: 0 14px;
+  border: 0.5px solid var(--cell-border);
+  border-radius: 18px;
+  background: var(--window-bg);
+  color: var(--accent);
+  font: 500 13px var(--font-ui);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
 
-  .notebook-page .gn-add-button:active {
-    background: var(--accent-soft);
-  }
+.touch-ui .notebook-page .gn-add-button:active {
+  background: var(--accent-soft);
+}
 
-  /* The cell menu has these actions. */
-  .notebook-page .jp-cell-toolbar {
-    display: none !important;
-  }
+/* The cell menu has these actions. */
+.touch-ui .notebook-page .jp-cell-toolbar {
+  display: none !important;
 }

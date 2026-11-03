@@ -21,7 +21,7 @@ partway through.
    request:
 
    ```sh
-   grep -rn 'Unreleased\.' README.md docs/*.md
+   grep -rn 'Unreleased\.' README.md apple/README.md docs/*.md
    ```
 
 2. Merging that pull request (with CI green; branch protection on `main`

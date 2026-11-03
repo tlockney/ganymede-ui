@@ -8,7 +8,7 @@
 export type Launch = { open?: string; dir: string };
 
 /** A server path: no leading, trailing or repeated slashes. */
-const clean = (path: string) => path.split('/').filter(Boolean).join('/');
+export const clean = (path: string) => path.split('/').filter(Boolean).join('/');
 
 /** The folder a server path is in; '' for the root. */
 export const parentOf = (path: string) => path.split('/').slice(0, -1).join('/');

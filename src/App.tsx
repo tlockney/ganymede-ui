@@ -9,7 +9,7 @@ import {
   signedInHere,
 } from './lib/backends';
 import { useColorScheme } from './lib/useColorScheme';
-import { useNarrow } from './lib/useNarrow';
+import { TOUCH_QUERY, useMedia, useNarrow } from './lib/useNarrow';
 import { useJupyterLabTheme } from './lib/theme';
 import { Sidebar } from './components/Sidebar';
 import { Toolbar } from './components/Toolbar';
@@ -22,6 +22,7 @@ import { SHOW_SETTINGS_EVENT } from '@ganymede-ui/agent/settings';
 import { SHOW_SHORTCUTS_EVENT, matches } from './lib/shortcuts';
 import {
   LAUNCH_PARAMS,
+  clean,
   type Launch,
   isReload,
   readLaunch,
@@ -29,7 +30,14 @@ import {
   withDir,
   withOpen,
 } from './lib/launch';
-import { canOpenFiles, exposeHooks, openFile, postDocument } from './lib/native';
+import {
+  canOpenFiles,
+  exposeHooks,
+  nativeChrome,
+  openFile,
+  postDocument,
+  postState,
+} from './lib/native';
 import { fileActions } from './lib/file-actions';
 
 /**
@@ -75,6 +83,12 @@ export function App() {
   // The notebook and folder the URL asks for (`?open=`, `?dir=`): a window
   // the Apple apps open on one file.
   const [launch] = useState<Launch>(() => readLaunch(window.location.search));
+  // The Apple apps draw the sidebar, toolbar and menus themselves (#205).
+  const [native] = useState(() => nativeChrome());
+  // On the root, so the sheets (outside the window) lose the toolbar's offset too.
+  useEffect(() => {
+    document.documentElement.classList.toggle('chrome-native', native);
+  }, [native]);
   /**
    * The notebook to open on the first connection, until it is opened or
    * the connect sheet picks another backend.
@@ -99,7 +113,15 @@ export function App() {
   const [sidebarOpen, setSidebarOpen] = useState(() => !(launch.open && !isReload()) && !narrow);
   // On a phone the sidebar floats over the notebook: it closes when it
   // has done its job (a notebook opened), on a tap outside it, and on Esc.
-  const sidebarFloats = narrow && sidebarOpen;
+  // The app draws its own sidebar with `chrome=native`, so the page's never floats.
+  const sidebarFloats = !native && narrow && sidebarOpen;
+  // The cells' touch controls (#200): on a touch screen, or in a narrow
+  // window. Not for narrowness with `chrome=native`, where the web view
+  // beside the Mac app's sidebar can be under 720px in a wide window.
+  const touch = useMedia(TOUCH_QUERY);
+  useEffect(() => {
+    document.documentElement.classList.toggle('touch-ui', touch || (narrow && !native));
+  }, [touch, narrow, native]);
   const afterPick = useCallback(() => {
     if (narrow) setSidebarOpen(false);
   }, [narrow]);
@@ -231,6 +253,79 @@ export function App() {
   // its Save, close and quit prompts.
   const controllerRef = useRef(controller);
   controllerRef.current = controller;
+  // The app's menus and toolbar run the page's commands (#205); a ref, so
+  // the hooks stay put while what they act on changes.
+  const runCommand = useRef<(id: string, arg?: string) => Promise<boolean>>(async () => false);
+  runCommand.current = async (id, arg) => {
+    const c = controller;
+    switch (id) {
+      case 'open': {
+        // As `?open=`: the app may pass an absolute path.
+        const path = arg && clean(arg);
+        if (!backend || !path) return false;
+        setOpenPath(path);
+        return true;
+      }
+      case 'close':
+        // Without saving: the app closes a notebook it moved to the Trash.
+        if (!openPath) return false;
+        c?.discard();
+        setOpenPath(undefined);
+        return true;
+      case 'new-notebook':
+        if (!backend) return false;
+        // A failure shows the page's notice (#195) and returns false.
+        return newNotebook(clean(arg ?? ''));
+      case 'show-shortcuts':
+        setShortcutsOpen(true);
+        return true;
+      case 'show-settings':
+        setSettingsOpen(true);
+        return true;
+      case 'connect':
+        setSheetOpen(true);
+        return true;
+    }
+    if (!c) return false;
+    switch (id) {
+      case 'save':
+        return c.save();
+      case 'download':
+        c.download();
+        return true;
+      case 'trust':
+        await c.trust();
+        return true;
+      case 'run':
+        await c.run();
+        return true;
+      case 'run-all':
+        await c.runAll();
+        return true;
+      case 'interrupt':
+        await c.interrupt();
+        return true;
+      case 'restart':
+        await c.restart();
+        return true;
+      case 'insert-code':
+        c.insert('code');
+        return true;
+      case 'insert-markdown':
+        c.insert('markdown');
+        return true;
+      case 'cell-type':
+        if (arg !== 'code' && arg !== 'markdown' && arg !== 'raw') return false;
+        c.changeCellType(arg);
+        return true;
+      case 'change-kernel':
+        if (!arg) return false;
+        await c.changeKernel(arg);
+        return true;
+      default:
+        return c.command(id);
+    }
+  };
   useEffect(
     () =>
       exposeHooks({
@@ -238,6 +333,7 @@ export function App() {
           const c = controllerRef.current;
           return !c?.dirty || (await c.save());
         },
+        command: (id, arg) => runCommand.current(id, arg),
       }),
     [],
   );
@@ -248,6 +344,29 @@ export function App() {
 
   const dirty = !!openPath && controller?.path === openPath && controller.dirty;
   useEffect(() => postDocument({ path: openPath ?? null, dirty }), [openPath, dirty]);
+
+  // Everything the app's toolbar and menus show (#205).
+  const specs = backend?.services.kernelspecs.specs ?? undefined;
+  const shown = !!openPath && controller?.path === openPath ? controller : undefined;
+  useEffect(() => {
+    const kernel = shown?.kernelName ?? null;
+    postState({
+      path: openPath ?? null,
+      dirty,
+      status: shown?.status ?? null,
+      kernel,
+      kernelDisplayName:
+        shown?.missingKernel ??
+        (kernel ? (specs?.kernelspecs[kernel]?.display_name ?? kernel) : null),
+      kernelMissing: !!shown?.missingKernel,
+      trusted: shown?.trusted ?? true,
+      cellType: shown?.cellType ?? null,
+      kernels: Object.values(specs?.kernelspecs ?? {}).flatMap(k =>
+        k ? [{ name: k.name, displayName: k.display_name }] : [],
+      ),
+      backend: backend ? { label: backend.label, detail: backend.detail } : null,
+    });
+  }, [openPath, dirty, shown, specs, backend]);
 
   // ⌘S / Ctrl+S saves, as in any document app.
   useEffect(() => {
@@ -288,40 +407,45 @@ export function App() {
 
   return (
     <>
-      <div className={`window ${sidebarOpen ? '' : 'sidebar-collapsed'}`} data-scheme={scheme}>
-        <Sidebar
-          backend={backend}
-          connecting={connecting}
-          openPath={openPath}
-          root={sidebarRoot}
-          onOpen={path => {
-            setOpenPath(path);
-            afterPick();
-          }}
-          onOpenFile={
-            editsFiles
-              ? path => {
-                  openFile(path);
-                  afterPick();
-                }
-              : undefined
-          }
-          // Closes once the notebook opens, so a failure leaves the sidebar up.
-          onNew={dir => void newNotebook(dir).then(opened => opened && afterPick())}
-          onDirChange={setFolder}
-          onClose={sidebarFloats ? () => setSidebarOpen(false) : undefined}
-          onConnect={() => setSheetOpen(true)}
-          onSettings={() => setSettingsOpen(true)}
-          actions={
-            backend &&
-            fileActions({
-              contents: backend.services.contents,
-              openPath,
-              controller,
-              setOpenPath,
-            })
-          }
-        />
+      <div
+        className={`window ${sidebarOpen ? '' : 'sidebar-collapsed'} ${native ? 'chrome-native' : ''}`}
+        data-scheme={scheme}
+      >
+        {!native && (
+          <Sidebar
+            backend={backend}
+            connecting={connecting}
+            openPath={openPath}
+            root={sidebarRoot}
+            onOpen={path => {
+              setOpenPath(path);
+              afterPick();
+            }}
+            onOpenFile={
+              editsFiles
+                ? path => {
+                    openFile(path);
+                    afterPick();
+                  }
+                : undefined
+            }
+            // Closes once the notebook opens, so a failure leaves the sidebar up.
+            onNew={dir => void newNotebook(dir).then(opened => opened && afterPick())}
+            onDirChange={setFolder}
+            onClose={sidebarFloats ? () => setSidebarOpen(false) : undefined}
+            onConnect={() => setSheetOpen(true)}
+            onSettings={() => setSettingsOpen(true)}
+            actions={
+              backend &&
+              fileActions({
+                contents: backend.services.contents,
+                openPath,
+                controller,
+                setOpenPath,
+              })
+            }
+          />
+        )}
         {sidebarFloats && (
           <div
             className="sidebar-scrim"
@@ -331,13 +455,15 @@ export function App() {
           />
         )}
         <main className="main">
-          <Toolbar
-            controller={controller}
-            sidebarOpen={sidebarOpen}
-            onToggleSidebar={() => setSidebarOpen(o => !o)}
-            onShowShortcuts={() => setShortcutsOpen(true)}
-            specs={backend?.services.kernelspecs.specs ?? undefined}
-          />
+          {!native && (
+            <Toolbar
+              controller={controller}
+              sidebarOpen={sidebarOpen}
+              onToggleSidebar={() => setSidebarOpen(o => !o)}
+              onShowShortcuts={() => setShortcutsOpen(true)}
+              specs={specs}
+            />
+          )}
           <div className="content">
             {backend && openPath ? (
               <NotebookPane

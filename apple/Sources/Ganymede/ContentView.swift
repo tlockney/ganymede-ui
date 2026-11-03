@@ -11,13 +11,20 @@ struct ContentView: View {
     /// folder that was the default then, so a later Open Folder… (which
     /// changes the default) leaves it alone.
     @State private var loaded: WindowTarget
+    /// The folder the sidebar lists and New Notebook uses. It stays put
+    /// when the page opens a notebook in a subfolder, which moves `target`.
+    @State private var sidebarRoot: URL
     @Environment(\.openWindow) private var openWindow
     /// The open notebook's file and unsaved edits, as the page reports them.
     @StateObject private var document = PageDocument()
+    /// What the page shows, for the native toolbar and menus (#205).
+    @StateObject private var pageModel = PageModel()
 
     init(target: Binding<WindowTarget?>) {
         _target = target
-        _loaded = State(initialValue: target.wrappedValue ?? .folder(AppModel.shared.root))
+        let loaded = target.wrappedValue ?? .folder(AppModel.shared.root)
+        _loaded = State(initialValue: loaded)
+        _sidebarRoot = State(initialValue: loaded.folder)
     }
     #endif
     #if os(iOS)
@@ -29,32 +36,49 @@ struct ContentView: View {
     @State private var terminal: TerminalRequest?
     /// A text file being edited full screen, where the app has one scene.
     @State private var editing: EditorRequest?
+    /// What the page shows, for the native toolbar and menus (#205).
+    @StateObject private var pageModel = PageModel()
     #endif
 
     var body: some View {
         #if os(macOS)
-        content
-            .frame(minWidth: 720, minHeight: 480)
-            .navigationTitle((target ?? loaded).title)
-            .focusedSceneValue(\.windowFolder, (target ?? loaded).folder)
-            // A notebook opened from the Finder (double-click, Open With,
-            // the Dock) arrives here, in a new window or in the one already
-            // showing that file. The claim below matches by substring, so
-            // another file (or the second of several opened at once) goes
-            // to its own window.
-            .onOpenURL { url in
-                guard url.isFileURL else { return }
-                let opening = WindowTarget(opening: url)
-                if target == nil {
-                    target = opening
-                    loaded = opening
-                } else if opening != target {
-                    openWindow(value: opening)
-                }
+        // The app draws the sidebar, toolbar and menus; the page shows the
+        // notebook (#206, #207).
+        NavigationSplitView {
+            FolderSidebar(folder: sidebarRoot, page: pageModel) { path in
+                openWindow(value: EditorRequest(path: path))
             }
-            .handlesExternalEvents(preferring: externalEvents, allowing: externalEvents)
-            .background(WindowReader { document.attach(to: $0) })
-            .focusedSceneObject(document)
+            .navigationSplitViewColumnWidth(min: 180, ideal: 240, max: 400)
+        } detail: {
+            content
+        }
+        .toolbar(id: "notebook") {
+            NotebookToolbar(page: pageModel, folder: sidebarRoot)
+        }
+        .navigationSubtitle(pageModel.state.subtitle)
+        .frame(minWidth: 720, minHeight: 480)
+        .navigationTitle((target ?? loaded).title)
+        .focusedSceneValue(\.windowFolder, sidebarRoot)
+        // A notebook opened from the Finder (double-click, Open With,
+        // the Dock) arrives here, in a new window or in the one already
+        // showing that file. The claim below matches by substring, so
+        // another file (or the second of several opened at once) goes
+        // to its own window.
+        .onOpenURL { url in
+            guard url.isFileURL else { return }
+            let opening = WindowTarget(opening: url)
+            if target == nil {
+                target = opening
+                loaded = opening
+                sidebarRoot = opening.folder
+            } else if opening != target {
+                openWindow(value: opening)
+            }
+        }
+        .handlesExternalEvents(preferring: externalEvents, allowing: externalEvents)
+        .background(WindowReader { document.attach(to: $0) })
+        .focusedSceneObject(document)
+        .focusedSceneObject(pageModel)
         #else
         NavigationStack {
             content
@@ -158,11 +182,11 @@ struct ContentView: View {
         Group {
             if let url = page {
                 #if os(macOS)
-                WebView(url: url, onNavigate: follow, document: document) { path in
+                WebView(url: url, onNavigate: follow, document: document, page: pageModel) { path in
                     openWindow(value: EditorRequest(path: path))
                 }
                 #else
-                WebView(url: url) { path in
+                WebView(url: url, page: pageModel) { path in
                     // Beside the notebook on iPad, full screen on iPhone.
                     let request = EditorRequest(path: path)
                     if UIApplication.shared.supportsMultipleScenes {

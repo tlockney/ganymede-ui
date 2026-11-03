@@ -24,6 +24,7 @@ function controller(over: Partial<NotebookController> = {}): NotebookController 
     changeKernel: vi.fn(async () => {}),
     cellType: 'code',
     changeCellType: vi.fn(),
+    command: vi.fn(() => false),
     rename: vi.fn(async () => true),
     discard: vi.fn(() => () => {}),
     moved: vi.fn(async () => {}),

@@ -62,17 +62,19 @@ enum WindowTarget: Codable, Hashable {
     /// The page for this target on a server rooted at `/`, as ganymede-ui
     /// reads it (#129): `open=` a notebook's path, or `dir=` a folder's.
     /// `server` is the URL the server printed (with its token); `kernels`
-    /// says where kernels run.
-    func pageURL(server: URL, kernels: String) -> URL {
+    /// says where kernels run. With `nativeChrome` the page leaves the
+    /// sidebar and toolbar to the app (`chrome=native`, #205).
+    func pageURL(server: URL, kernels: String, nativeChrome: Bool = false) -> URL {
         guard var parts = URLComponents(url: server, resolvingAgainstBaseURL: false) else {
             return server
         }
-        let added: [(String, String)] = {
+        var added: [(String, String)] = {
             switch self {
             case .file(let url): [("kernels", kernels), ("open", url.path)]
             case .folder(let url): [("kernels", kernels), ("dir", url.path)]
             }
         }()
+        if nativeChrome { added.append(("chrome", "native")) }
         // Encoded by hand: URLComponents leaves `+` and `&` alone in query
         // values, which a page reads as a space and a separator.
         let encoded = added.map { name, value in "\(name)=\(Self.encode(value))" }

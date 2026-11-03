@@ -7,15 +7,23 @@ import { useEffect, useState } from 'react';
  */
 export const NARROW_QUERY = '(max-width: 719.98px)';
 
-/** Whether the window is phone-narrow, live (an iPad split view can cross it). */
-export function useNarrow(): boolean {
-  const [narrow, setNarrow] = useState(() => window.matchMedia(NARROW_QUERY).matches);
+/** A touch screen: the cells get their own controls (#200). */
+export const TOUCH_QUERY = '(hover: none), (pointer: coarse)';
+
+/** Whether `query` matches, live (an iPad split view can cross a width). */
+export function useMedia(query: string): boolean {
+  const [matches, setMatches] = useState(() => window.matchMedia(query).matches);
   useEffect(() => {
-    const mq = window.matchMedia(NARROW_QUERY);
-    const onChange = () => setNarrow(mq.matches);
+    const mq = window.matchMedia(query);
+    const onChange = () => setMatches(mq.matches);
     onChange();
     mq.addEventListener('change', onChange);
     return () => mq.removeEventListener('change', onChange);
-  }, []);
-  return narrow;
+  }, [query]);
+  return matches;
+}
+
+/** Whether the window is phone-narrow, live. */
+export function useNarrow(): boolean {
+  return useMedia(NARROW_QUERY);
 }

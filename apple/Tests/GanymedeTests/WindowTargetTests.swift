@@ -45,6 +45,14 @@ final class WindowTargetTests: XCTestCase {
         XCTAssertEqual(target.title, "notes")
     }
 
+    func testNativeChromeAsksThePageToHideItsOwn() {
+        let target = WindowTarget.folder(URL(fileURLWithPath: "/Users/me/notes", isDirectory: true))
+        XCTAssertEqual(
+            query(target.pageURL(server: server, kernels: "server", nativeChrome: true)),
+            ["token": "abc", "kernels": "server", "dir": "/Users/me/notes", "chrome": "native"]
+        )
+    }
+
     func testOpeningTellsFoldersFromFiles() throws {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

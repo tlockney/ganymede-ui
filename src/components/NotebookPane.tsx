@@ -4,6 +4,7 @@ import type * as nbformat from '@jupyterlab/nbformat';
 import { type Notebook, NotebookActions, NotebookModel } from '@jupyterlab/notebook';
 import type { Contents, Kernel } from '@jupyterlab/services';
 import type { IDisposable } from '@lumino/disposable';
+import type { CommandRegistry } from '@lumino/commands';
 import { Widget } from '@lumino/widgets';
 import { type Backend, trustNotebook } from '../lib/backends';
 import { attachEditing, createCommands, createNotebook, createRendermime } from '../lib/jupyterlab';
@@ -52,6 +53,11 @@ export type NotebookController = {
   interrupt(): Promise<void>;
   restart(): Promise<void>;
   changeKernel(name: string): Promise<void>;
+  /**
+   * Runs one of the notebook's commands by its id in the shortcuts table
+   * (`move-up`, `to-markdown`, …); false when there is no such command.
+   */
+  command(id: string): boolean;
   /**
    * Rename the file to what the user typed (`.ipynb` added), in the same
    * folder; false when it wasn't (the pane says why).
@@ -122,6 +128,8 @@ type Open = {
    * to start.
    */
   ensureKernel(all?: boolean): Promise<boolean>;
+  /** The notebook's commands, which its keys run. */
+  commands: CommandRegistry;
   /** Settles once the session has rejoined the file's kernel, if any. */
   joining: Promise<unknown>;
   disposables: IDisposable[];
@@ -300,6 +308,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         widgets: notebookWidgets,
         saver,
         ensureKernel,
+        commands,
         joining,
         disposables: [
           editing,
@@ -586,6 +595,12 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       restart: report('restart the kernel', async () => {
         await session.session?.kernel?.restart();
       }),
+      command: id => {
+        const { commands } = open;
+        if (!commands.hasCommand(id) || !commands.isEnabled(id)) return false;
+        void commands.execute(id).catch(e => setNotice(`Couldn’t ${id}: ${messageOf(e)}`));
+        return true;
+      },
       rename: async (input: string) => {
         let next: string | undefined;
         const clearRenameNotice = () =>

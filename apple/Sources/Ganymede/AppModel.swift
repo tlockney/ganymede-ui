@@ -227,7 +227,8 @@ final class AppModel: ObservableObject {
     /// The page a window loads for `target`; nil until the server listens.
     func page(for target: WindowTarget) -> URL? {
         guard let serverURL else { return nil }
-        return target.pageURL(server: serverURL, kernels: kernels)
+        // The window draws the sidebar, toolbar and menus (#206, #207).
+        return target.pageURL(server: serverURL, kernels: kernels, nativeChrome: true)
     }
     #endif
 
