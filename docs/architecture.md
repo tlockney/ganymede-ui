@@ -96,11 +96,12 @@ sidebar closed, and `?dir=<path>` is the folder the sidebar lists on that
 first connection (by default the notebook's folder, or the server's root).
 Paths are relative to the server's root; leading, trailing and repeated
 `/` are dropped, so an absolute path works against a server rooted at `/`.
-`readLaunch` (`src/lib/launch.ts`) reads both once. `dir` is removed with
-the others; `open` is then kept in step with the open notebook, so a
-reload comes back to it. Picking another backend in the connect sheet
-drops both; retrying the same server there (say with a corrected token)
-keeps them. The page title is the open notebook's name.
+`readLaunch` (`src/lib/launch.ts`) reads both once. Both then stay in the
+URL, kept in step with the open notebook and the folder the sidebar shows
+(`dir` is left out when the page would start there anyway), so a reload
+comes back to both. New notebooks go in the sidebar's folder. Picking
+another backend in the connect sheet drops both; retrying the same server
+there (say with a corrected token) keeps them. The page title is the open notebook's name.
 
 Switching backends disposes the old `ServiceManager`. A server's kernels
 keep running, as they do when a notebook closes, and show under Running

@@ -27,18 +27,33 @@ export function readLaunch(search: string): Launch {
 
 /**
  * The query parameters the app reads once and then removes from the URL.
- * `open` stays: the app keeps it in step with the open notebook, so a
- * reload comes back to it.
+ * `open` and `dir` stay: the app keeps them in step with the open notebook
+ * and the sidebar's folder, so a reload comes back to both.
  */
-export const LAUNCH_PARAMS = ['token', 'kernels', 'dir'] as const;
+export const LAUNCH_PARAMS = ['token', 'kernels'] as const;
 
-/** `search` with `open` set to `path`, or removed when there is none. */
-export function withOpen(search: string, path?: string): string {
+/** `search` with `name` set to `value`, or removed when there is none. */
+function withParam(search: string, name: string, value?: string): string {
   const params = new URLSearchParams(search);
-  if (path) params.set('open', path);
-  else params.delete('open');
+  if (value) params.set(name, value);
+  else params.delete(name);
   const rest = params.toString();
   return rest ? `?${rest}` : '';
+}
+
+/** `search` with `open` set to `path`, or removed when there is none. */
+export const withOpen = (search: string, path?: string) => withParam(search, 'open', path);
+
+/**
+ * `search` with `dir` set to `folder`, left out when `readLaunch` would
+ * start there anyway (the open notebook's folder, or the root).
+ */
+export function withDir(search: string, folder: string): string {
+  const without = withParam(search, 'dir');
+  if (readLaunch(without).dir === folder) return without;
+  const params = new URLSearchParams(without);
+  params.set('dir', folder);
+  return `?${params.toString()}`;
 }
 
 /** The window title for an open notebook, or the app's name. */
