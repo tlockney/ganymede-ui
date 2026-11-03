@@ -15,6 +15,7 @@ function controller(over: Partial<NotebookController> = {}): NotebookController 
     trusted: true,
     save: vi.fn(async () => true),
     download: vi.fn(),
+    discard: vi.fn(),
     trust: vi.fn(async () => {}),
     run: vi.fn(async () => {}),
     runAll: vi.fn(async () => {}),

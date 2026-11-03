@@ -37,6 +37,12 @@ export type NotebookController = {
   save(): Promise<boolean>;
   /** Download the notebook as it is now, unsaved edits included, as .ipynb. */
   download(): void;
+  /**
+   * Drop unsaved edits when the pane lets the notebook go, instead of
+   * saving them: the app calls it before closing a notebook it moved to
+   * the Trash, which a save would write back.
+   */
+  discard(): void;
   /** Trust the notebook: render its outputs in full, and sign it on the server. */
   trust(): Promise<void>;
   run(): Promise<void>;
@@ -474,6 +480,9 @@ export function NotebookPane({ backend, path, onController }: Props) {
         autosaveOff.current = false;
         setNotice(undefined);
         return true;
+      },
+      discard: () => {
+        autosaveOff.current = true;
       },
       download: () => {
         // Widget state goes in, as on save; that is not an edit.

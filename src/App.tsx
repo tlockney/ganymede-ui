@@ -220,6 +220,7 @@ export function App() {
       case 'close':
         // Without saving: the app closes a notebook it moved to the Trash.
         if (!openPath) return false;
+        c?.discard();
         setOpenPath(undefined);
         return true;
       case 'new-notebook':
