@@ -42,6 +42,25 @@ export async function createLiteServices(
     contents?: ContentsManager;
   } = {},
 ): Promise<ServiceManager.IManager> {
+  return (await createLiteParts(options)).services;
+}
+
+/**
+ * The in-page server's API clients, beside its service manager, for a
+ * backend that combines them with a real server's (`mixed.ts`).
+ */
+export type LiteParts = {
+  services: ServiceManager.IManager;
+  kernelClient: LiteKernelClient;
+  sessionClient: LiteSessionClient;
+  kernelSpecClient: LiteKernelSpecClient;
+  /** Whether `id` is one of this page's running kernels. */
+  hasKernel(id: string): boolean;
+};
+
+export async function createLiteParts(
+  options: { contents?: ContentsManager } = {},
+): Promise<LiteParts> {
   // The fake server answers at this page's origin. LiteKernelClient computes
   // its websocket base from PageConfig (this origin, since nothing sets it),
   // so the settings must agree with that.
@@ -89,10 +108,11 @@ export async function createLiteServices(
     kernelSpecAPIClient: kernelSpecClient,
     serverSettings,
   });
+  const sessionClient = new LiteSessionClient({ kernelClient, serverSettings });
   const sessions = new SessionManager({
     kernelManager: kernels,
     serverSettings,
-    sessionAPIClient: new LiteSessionClient({ kernelClient, serverSettings }),
+    sessionAPIClient: sessionClient,
   });
   const kernelspecs = new KernelSpecManager({
     kernelSpecAPIClient: kernelSpecClient,
@@ -109,7 +129,18 @@ export async function createLiteServices(
     user: new LocalUser({ serverSettings }),
   });
   await services.ready;
-  return services;
+  return {
+    services,
+    kernelClient,
+    sessionClient,
+    kernelSpecClient,
+    hasKernel: id => runningKernels(kernelClient).has(id),
+  };
+}
+
+/** LiteKernelClient's private map of running kernels, by id. */
+function runningKernels(client: LiteKernelClient): Map<string, unknown> {
+  return (client as unknown as { _kernels: Map<string, unknown> })._kernels;
 }
 
 async function browserContents(serverSettings: ServerConnection.ISettings) {
@@ -133,9 +164,7 @@ async function browserContents(serverSettings: ServerConnection.ISettings) {
  */
 class CdpAwareKernelClient extends LiteKernelClient {
   async interrupt(kernelId: string): Promise<void> {
-    // `_kernels` is LiteKernelClient's private map of running kernels.
-    const kernels = (this as unknown as { _kernels: Map<string, unknown> })._kernels;
-    const kernel = kernels.get(kernelId);
+    const kernel = runningKernels(this).get(kernelId);
     if (kernel instanceof CdpBrowserKernel) {
       kernel.interrupt();
       return;

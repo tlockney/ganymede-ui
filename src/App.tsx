@@ -24,8 +24,9 @@ import { canOpenFiles, exposeHooks, openFile, postDocument } from './lib/native'
 
 /**
  * A token in the page URL, as `ganymede serve` prints it, wins once, and so
- * does `kernels=page` or `kernels=server`, which the Apple apps add on
- * every launch (`page` on an iPad without a kernel server). Pure, as React
+ * does `kernels=page`, `kernels=both` or `kernels=server`, which the Apple
+ * apps add on every launch (`page` on an iPad without a kernel server,
+ * `both` on the Mac). Pure, as React
  * may call a state initializer twice (#60); `stripLaunchParams` takes them
  * out of the URL afterwards.
  */
@@ -38,7 +39,7 @@ function initialConfig(): BackendConfig | undefined {
     kind: 'ganymede',
     url: '',
     token: token ?? '',
-    ...(kernels === 'page' ? { kernels: 'page' as const } : {}),
+    ...(kernels === 'page' || kernels === 'both' ? { kernels } : {}),
   };
 }
 

@@ -372,6 +372,22 @@ Where kernels run:
 | This device                              | Kernelspecs installed on the Mac                        | cdp-kernel in the kernel web view (`?kernels=page`) |
 | A remote with a server                   | That server, through Ganymede's gateway (`gateway_url`) | Same                                                |
 
+Both apps also list the page's own kernels beside the server's
+(`?kernels=both`, `src/lib/mixed.ts`) whenever the server has kernels:
+always on the Mac, and on the iPad when a remote runs kernels. Those
+kernels run in the kernel web view below, the only place cells can reach
+the app's bridges, such as ganymede-device's `device` (#185). One service
+manager answers the UI: it merges the kernel specs (a page spec whose name
+the server has is dropped), starts each kernel on the side that owns its
+spec, routes later kernel and session calls by id, and opens a page
+kernel's websocket on the page's fake server. Changing a notebook's
+kernel to one on the other side ends its session there and starts it
+again on the new side, under the same session id.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
 Settings keep a list of remotes (`Remote.swift`): each has a name, an
 optional Jupyter or Ganymede server (its token in the keychain), and
 optional SSH (host or ssh-config alias, user, port), for terminals. One
