@@ -310,4 +310,49 @@ describe('App', () => {
       },
     });
   });
+
+  // On the Mac the server's root is `/`: a new notebook there fails (#194).
+  it('creates a new notebook in the folder the window shows, and keeps it in the URL', async () => {
+    history.replaceState(null, '', '/?kernels=server&dir=%2FUsers%2Fme');
+    const fake = fakeServices({ 'Users/me': [] });
+    fake.contents.newUntitled.mockResolvedValue(
+      entry({ name: 'Untitled.ipynb', type: 'notebook' }, 'Users/me'),
+    );
+    fake.contents.get.mockImplementation(async (path: string) =>
+      path === 'Users/me/Untitled.ipynb'
+        ? entry({ name: path, type: 'notebook', content: { metadata: {}, cells: [] } })
+        : entry({ name: 'me', path, type: 'directory', content: [] }),
+    );
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    render(<App />);
+
+    await waitFor(() => expect(window.location.search).toBe('?dir=Users%2Fme'));
+    // The empty pane's button, which used the server's root.
+    const buttons = await screen.findAllByRole('button', { name: /New Notebook/ });
+    await userEvent.click(buttons.find(b => b.classList.contains('push-button'))!);
+    await waitFor(() =>
+      expect(screen.getByTestId('pane')).toHaveTextContent('Users/me/Untitled.ipynb'),
+    );
+    expect(fake.contents.newUntitled).toHaveBeenCalledWith({ type: 'notebook', path: 'Users/me' });
+    // The notebook's own folder: no `dir` needed.
+    await waitFor(() => expect(window.location.search).toBe('?open=Users%2Fme%2FUntitled.ipynb'));
+  });
+
+  it('says why a new notebook could not be created', async () => {
+    const fake = fakeServices({ '': [] });
+    fake.contents.newUntitled.mockRejectedValue(new Error('Permission denied'));
+    localStorage.setItem(
+      'ganymede-ui:backend',
+      JSON.stringify({ kind: 'ganymede', url: '', token: 't' }),
+    );
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    render(<App />);
+
+    await userEvent.click(await screen.findByRole('button', { name: /New Notebook/ }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Couldn’t create a notebook in this folder: Permission denied',
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
 });

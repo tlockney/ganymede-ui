@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readLaunch, titleFor, withOpen } from './launch';
+import { readLaunch, titleFor, withDir, withOpen } from './launch';
 
 describe('readLaunch', () => {
   it('opens nothing by default, at the root', () => {
@@ -55,5 +55,17 @@ describe('withOpen', () => {
     expect(readLaunch(withOpen('', 'a/b c.ipynb')).open).toBe('a/b c.ipynb');
     expect(withOpen('?open=a.ipynb&x=1', undefined)).toBe('?x=1');
     expect(withOpen('?open=a.ipynb', undefined)).toBe('');
+  });
+});
+
+describe('withDir', () => {
+  it('keeps the folder for a reload, unless the page would start there anyway', () => {
+    expect(withDir('', 'Users/me')).toBe('?dir=Users%2Fme');
+    expect(readLaunch(withDir('?x=1', 'a b/c')).dir).toBe('a b/c');
+    expect(withDir('?dir=Users%2Fme', '')).toBe('');
+    // The open notebook's folder is the default.
+    expect(withDir('?open=a%2Fb.ipynb&dir=x', 'a')).toBe('?open=a%2Fb.ipynb');
+    // The root, with a notebook open elsewhere, has to be said.
+    expect(readLaunch(withDir('?open=a%2Fb.ipynb', '')).dir).toBe('');
   });
 });

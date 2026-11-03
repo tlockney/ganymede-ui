@@ -25,6 +25,8 @@ type Props = {
   /** Opens a file that isn't a notebook; without it, such files can't be opened. */
   onOpenFile?(path: string): void;
   onNew(dir: string): void;
+  /** Told the folder shown, each time it changes. */
+  onDirChange?(dir: string): void;
   onConnect(): void;
   /** Opens the Settings sheet; no Settings button without it. */
   onSettings?(): void;
@@ -38,6 +40,7 @@ export function Sidebar({
   onOpen,
   onOpenFile,
   onNew,
+  onDirChange,
   onConnect,
   onSettings,
 }: Props) {
@@ -77,6 +80,7 @@ export function Sidebar({
     started.current = true;
   }, [services, root]);
   useEffect(() => void refresh(), [refresh]);
+  useEffect(() => onDirChange?.(dir), [dir, onDirChange]);
   useEffect(() => {
     if (!services) return;
     const onChange = () => void refresh();
