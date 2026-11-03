@@ -440,6 +440,27 @@ describe('NotebookPane', () => {
     change.mockRestore();
   });
 
+  it('runs the notebook’s own commands for the app, and says when one fails', async () => {
+    const { CommandRegistry } = await import('@lumino/commands');
+    const { createCommands } = await import('../lib/jupyterlab');
+    const registry = new CommandRegistry();
+    const moveUp = vi.fn(async () => {
+      throw new Error('no cell');
+    });
+    registry.addCommand('move-up', { execute: moveUp });
+    registry.addCommand('find-close', { execute: vi.fn(), isEnabled: () => false });
+    vi.mocked(createCommands).mockReturnValueOnce(registry);
+    const { latest } = setup();
+    await waitFor(() => expect(latest()).toBeDefined());
+
+    expect(latest()!.command('no-such-command')).toBe(false);
+    // Disabled: nothing to close.
+    expect(latest()!.command('find-close')).toBe(false);
+    expect(latest()!.command('move-up')).toBe(true);
+    expect(moveUp).toHaveBeenCalled();
+    expect(await screen.findByText(/Couldn’t move-up: no cell/)).toBeInTheDocument();
+  });
+
   it('shows why a kernel action failed', async () => {
     const { latest } = setup();
     await waitFor(() => expect(latest()).toBeDefined());

@@ -513,8 +513,9 @@ export function NotebookPane({ backend, path, onController }: Props) {
         await session.session?.kernel?.restart();
       }),
       command: id => {
-        if (!open.commands.hasCommand(id)) return false;
-        void open.commands.execute(id);
+        const { commands } = open;
+        if (!commands.hasCommand(id) || !commands.isEnabled(id)) return false;
+        void commands.execute(id).catch(e => setNotice(`Couldn’t ${id}: ${messageOf(e)}`));
         return true;
       },
       // With no kernel yet, this only picks the one the first run starts.
