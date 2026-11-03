@@ -19,9 +19,11 @@ export type BackendConfig =
       /**
        * `page` keeps notebooks on the server but runs kernels in this page,
        * as the browser backend does: for a server with no kernels of its
-       * own, such as the one inside the iPad app.
+       * own, such as the one inside the iPad app. `both` lists the
+       * server's kernels and the page's together, as the Mac app does so
+       * that cells can reach the app (#185).
        */
-      kernels?: 'page';
+      kernels?: 'page' | 'both';
     }
   | {
       kind: 'browser';
@@ -63,6 +65,11 @@ export async function connect(config: BackendConfig): Promise<Backend> {
         contents: new ContentsManager({ serverSettings }),
       });
       return { config, label: 'Ganymede', detail: `${host}, kernels in this page`, services };
+    }
+    if (config.kernels === 'both') {
+      const { createMixedServices } = await import('./mixed');
+      const services = await createMixedServices(serverSettings);
+      return { config, label: 'Ganymede', detail: `${host}, and kernels in this page`, services };
     }
     const services = new ServiceManager({ serverSettings });
     await services.ready;

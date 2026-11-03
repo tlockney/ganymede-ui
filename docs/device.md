@@ -16,17 +16,22 @@ It is early: today it has the text clipboard and nothing else.
 
 ## Where `device` exists
 
-`device` exists only in a kernel that the app runs itself. In practice
+`device` exists only in a kernel that the app runs itself: cdp-kernel's
+TypeScript kernel, which the app runs in a hidden web view. In practice
 that means:
 
-- **iPad and iPhone, with no kernel server set.** The app runs
-  cdp-kernel's TypeScript kernel in a hidden web view and gives each
-  kernel `device`.
-- **Not on the Mac.** The Mac app runs kernels as Mac processes (the
-  kernelspecs installed there), and those can't reach the app
-  ([#185](https://github.com/tlockney/ganymede-ui/issues/185)).
-- **Not on a remote kernel, and not in a browser.** Both are planned; see
-  [Methods](#methods).
+- **iPad and iPhone.** With no kernel server set, it is the only kernel.
+  With one set, it is listed beside the server's kernels as "TypeScript
+  (cdp-kernel, in app)".
+- **Mac.** Pick "TypeScript (cdp-kernel, in app)" in the kernel menu. The
+  Mac's own kernelspecs run as processes and can't reach the app.
+- **Not on a remote kernel, not in a Mac process kernel, and not in a
+  browser.** All are planned; see [Methods](#methods).
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release. In ganymede-ui 0.3.0, `device` exists only on the
+> iPad and iPhone with no kernel server set.
 
 Everywhere else, `device` is `undefined`, so check for it before using
 it. `device.has()` says whether this app answers a method:

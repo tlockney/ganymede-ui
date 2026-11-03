@@ -181,10 +181,12 @@ final class AppModel: ObservableObject {
     }
 
     /// The page to open, saying where kernels run: the page remembers its
-    /// last connection, so it is told every time. iOS can't launch kernel
-    /// processes, so without a kernel server the page runs its own
-    /// (cdp-kernel's TypeScript kernel in a Worker) and keeps notebooks on
-    /// the server.
+    /// last connection, so it is told every time. The page always offers
+    /// its own kernels (cdp-kernel's TypeScript kernel, run in `KernelHost`),
+    /// since only those reach the app's bridges, such as ganymede-device's
+    /// `device` (#185). iOS can't launch kernel processes, so without a
+    /// kernel server they are the only ones; otherwise the server's are
+    /// listed beside them.
     private func pageURL(_ url: URL) -> URL {
         guard var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
         parts.queryItems = (parts.queryItems ?? []) + [URLQueryItem(name: "kernels", value: kernels)]
@@ -194,9 +196,9 @@ final class AppModel: ObservableObject {
     /// The page's `kernels=`: where its kernels run.
     private var kernels: String {
         #if os(iOS)
-        kernelRemote == nil ? "page" : "server"
+        kernelRemote == nil ? "page" : "both"
         #else
-        "server"
+        "both"
         #endif
     }
 
