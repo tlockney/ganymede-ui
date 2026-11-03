@@ -958,10 +958,15 @@ button {
   grid-template-columns: calc(var(--sidebar-w) + var(--safe-left)) 1fr;
 }
 
-/* Not while collapsed: the padding would keep a strip of it open. */
+/* Not while collapsed: the padding would keep a strip of it open. It
+ * eases with the column so the list doesn't jump on Hide Sidebar. */
 .window:not(.sidebar-collapsed) .sidebar {
   padding-left: var(--safe-left);
   padding-bottom: var(--safe-bottom);
+}
+
+.sidebar {
+  transition: padding-left 0.28s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .sidebar-titlebar,
@@ -1004,6 +1009,8 @@ button {
   padding-right: var(--safe-right);
   padding-bottom: var(--safe-bottom);
   padding-left: var(--safe-left);
+  /* A sheet taller than the window scrolls, down to the inset. */
+  overflow-y: auto;
 }
 
 .sheet {
@@ -1014,13 +1021,19 @@ button {
   max-height: calc(100vh - var(--toolbar-h) - 150px - var(--safe-bottom));
 }
 
-@media (max-width: 720px) {
+/* As NARROW_QUERY (src/lib/useNarrow.ts, #198): 720px, the Mac window's
+ * minimum, is wide. */
+@media (max-width: 719.98px) {
   .window {
     grid-template-columns: 0 1fr;
   }
-  /* With the sidebar open over the notebook; a collapsed sidebar's rule
-   * above still wins, as on main. */
-  .toolbar {
+  /* The overlay adds the inset to its width, as the wide column does. */
+  .window:not(.sidebar-collapsed) .sidebar {
+    width: calc(min(var(--sidebar-w), 85vw) + var(--safe-left));
+  }
+  /* No traffic lights on a phone: no 80px floor, only the inset. */
+  .toolbar,
+  .window.sidebar-collapsed .toolbar {
     padding-left: calc(12px + var(--safe-left));
   }
 }

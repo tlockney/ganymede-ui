@@ -51,10 +51,43 @@ test.describe('landscape phone', () => {
     await expect(page.locator('.jp-WindowedPanel-inner')).toHaveCSS('padding-right', '59px');
     await expect(page.locator('.jp-WindowedPanel-outer')).toHaveCSS('padding-bottom', '138.9px');
 
+    // The find bar clears the notch on the right.
+    await page.locator('.jp-Cell').first().click();
+    await page.keyboard.press('ControlOrMeta+f');
+    const find = page.locator('.jp-DocumentSearch-overlay');
+    await expect(find).toBeVisible();
+    const bar = await find.boundingBox();
+    expect(bar!.x + bar!.width).toBeLessThanOrEqual(852 - 59 - 16);
+    await page.keyboard.press('Escape');
+
     // With the sidebar hidden, the toolbar and cells start past the notch.
     await page.getByRole('button', { name: 'Hide Sidebar' }).click();
     await expect(page.locator('.toolbar')).toHaveCSS('padding-left', '80px');
     await expect(page.locator('.jp-WindowedPanel-inner')).toHaveCSS('padding-left', '59px');
+  });
+
+  test('a sheet taller than the window scrolls to its buttons', async ({ page }) => {
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send('Emulation.setSafeAreaInsetsOverride', {
+      insets: { top: 0, right: 59, bottom: 21, left: 59 },
+    });
+    await page.goto('/');
+    await page.addStyleTag({ content: '.sheet { min-height: 600px; }' });
+    const connect = page.getByRole('button', { name: 'Connect', exact: true });
+    await connect.scrollIntoViewIfNeeded();
+    const button = (await connect.boundingBox())!;
+    expect(button.y + button.height).toBeLessThanOrEqual(393 - 21);
+  });
+});
+
+test.describe('narrow landscape phone', () => {
+  test.use({ viewport: { width: 700, height: 340 }, hasTouch: true });
+
+  test('the sidebar overlay adds the inset to its width', async ({ page }) => {
+    await openBrowserNotebook(page, { top: 0, right: 47, bottom: 21, left: 47 });
+    await page.getByRole('button', { name: 'Show Sidebar' }).click();
+    await expect(page.locator('.sidebar')).toHaveCSS('padding-left', '47px');
+    await expect.poll(async () => (await box(page, '.sidebar')).width).toBe(248 + 47);
   });
 });
 
@@ -69,9 +102,10 @@ test('no insets in a narrow window, no change', async ({ page }) => {
   // The Mac app's minimum width is 720px.
   await page.setViewportSize({ width: 700, height: 500 });
   await openBrowserNotebook(page, { top: 0, right: 0, bottom: 0, left: 0 });
-  // The sidebar starts closed at this width: room for the traffic lights.
+  // The sidebar starts closed at this width, and phones have no traffic
+  // lights to make room for (#198).
   await expect(page.locator('.window')).toHaveClass(/sidebar-collapsed/);
-  await expect(page.locator('.toolbar')).toHaveCSS('padding-left', '80px');
+  await expect(page.locator('.toolbar')).toHaveCSS('padding-left', '12px');
   await expect(page.locator('.jp-WindowedPanel-inner')).toHaveCSS('padding', '0px 32px');
   await expect(page.locator('.jp-WindowedPanel-outer')).toHaveCSS('padding-bottom', '150px');
 });

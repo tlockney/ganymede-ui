@@ -222,9 +222,9 @@
  * panel at the pane's top right. */
 .notebook-page .notebook-holder > .jp-DocumentSearch-overlay {
   top: calc(var(--toolbar-h) + 8px);
-  right: 16px;
-  max-width: calc(100% - 32px);
-  min-width: min(405px, calc(100% - 32px));
+  right: calc(16px + var(--safe-right));
+  max-width: calc(100% - 32px - var(--safe-right));
+  min-width: min(405px, calc(100% - 32px - var(--safe-right)));
   padding: 4px;
   border: 0.5px solid var(--cell-border);
   border-radius: 8px;

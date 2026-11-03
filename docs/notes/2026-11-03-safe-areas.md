@@ -22,6 +22,14 @@
 - Review catch: `src/main.tsx` imports app.css before jupyter.css, so an
   app.css rule for the notebook's `.jp-WindowedPanel-*` paddings at the
   same specificity silently loses. The inset rules carry a `.window`
-  prefix for that. The narrow-window block only pads the toolbar while
-  the sidebar is open, so a collapsed sidebar keeps room for the traffic
-  lights (80px) or window controls at the Mac app's 720px minimum.
+  prefix for that.
+- The narrow block uses `(max-width: 719.98px)`, as #198's `NARROW_QUERY`
+  does: 720px is the Mac window's minimum and is wide, so a second
+  `max-width: 720px` block would give an open sidebar a 0px column there.
+  Below that width there are no traffic lights, so the toolbar pads by
+  12px plus the inset, with no 80px floor; #198 drops that floor on phones
+  and an 80px rule here would have silently brought it back.
+- Sheets scroll in their backdrop, so a tall sheet on a landscape phone
+  reaches its buttons above the home indicator. The find bar clears the
+  right inset, and the sidebar's inset padding eases with the column
+  instead of snapping on Hide Sidebar.
