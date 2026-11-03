@@ -462,6 +462,25 @@ describe('NotebookPane', () => {
       expect(onRenamed).toHaveBeenCalledWith('moons/Europa.ipynb');
     });
 
+    it('saves edits made while the session moves to the new file', async () => {
+      const { fake, latest } = setup(files());
+      await waitFor(() => expect(latest()).toBeDefined());
+      const session = {
+        setPath: vi.fn(async () => {
+          modelOf().cells.get(0).sharedModel.setSource('print(5)');
+        }),
+        setName: vi.fn(async () => {}),
+      };
+      (fakes.sessions[0] as { session: unknown }).session = session;
+      await act(async () => void (await latest()!.rename('Europa')));
+      expect(session.setPath).toHaveBeenCalledWith('moons/Europa.ipynb');
+      const saved = fake.contents.save.mock.lastCall!;
+      expect(saved[0]).toBe('moons/Europa.ipynb');
+      expect((saved[1] as { content: nbformat.INotebookContent }).content.cells[0]!.source).toBe(
+        'print(5)',
+      );
+    });
+
     it('clears a failed rename’s notice when the name goes back', async () => {
       const { latest } = setup(files('moons/Europa.ipynb'));
       await waitFor(() => expect(latest()).toBeDefined());
