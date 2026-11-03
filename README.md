@@ -141,8 +141,15 @@ It is a prototype. What it doesn't do yet, or does roughly:
 - **Switching backends** leaves the old backend's kernels running with no
   way to reach them from the app
   ([#62](https://github.com/tlockney/ganymede-ui/issues/62)).
-- **No file operations** beyond new notebook: no rename, delete or upload.
-  No command palette or menus (the Mac app has a menu bar).
+- **Few file operations**: new notebook, and renaming the open notebook
+  from its title in the toolbar; no delete or upload. No command palette
+  or menus (the Mac app has a menu bar).
+
+  > [!NOTE]
+  > **Unreleased.** Renaming from the title is available only from a
+  > build of `main` (HEAD), not in the latest release, which has no
+  > rename at all.
+
 - **Widgets** need a running kernel; saved widget state isn't restored
   without one.
 - **The Mac app** is a CI build, ad-hoc signed and not notarized; the iPad

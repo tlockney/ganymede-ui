@@ -515,9 +515,14 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       }),
       rename: async (input: string) => {
         let next: string | undefined;
+        const clearRenameNotice = () =>
+          setNotice(n => (n?.startsWith(`Couldn’t rename ${fileName}`) ? undefined : n));
         try {
           next = renamedPath(path, input);
-          if (!next) return true;
+          if (!next) {
+            clearRenameNotice();
+            return true;
+          }
           // The edits go with the file.
           if (model.dirty) await saver.save();
           await renameFile(services.contents, path, next);
@@ -526,6 +531,20 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
           return false;
         }
         renamed.current = true;
+        clearRenameNotice();
+        // Edits typed while it renamed go to the new file, not the old.
+        if (model.dirty) {
+          try {
+            open.widgets.saveState(model);
+            await services.contents.save(next, {
+              type: 'notebook',
+              format: 'json',
+              content: model.toJSON(),
+            });
+          } catch (e) {
+            setNotice(`Couldn’t save the latest edits to ${basename(next)}: ${messageOf(e)}`);
+          }
+        }
         // The kernel follows the file, so reopening it there rejoins it.
         try {
           await session.session?.setPath(next);
