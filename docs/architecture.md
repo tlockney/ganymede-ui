@@ -366,7 +366,11 @@ own process and shows this web app in a `WKWebView`:
   `src/lib/native.ts`: open, new-notebook, run, interrupt, cell-type, …)
   or any notebook command by its id in the shortcuts table. In the app,
   `PageModel` (`WebView.swift`) holds the state and runs the commands, and
-  `PageCommand` builds the script with its arguments JSON-encoded.
+  `PageCommand` builds the script with its arguments JSON-encoded. The Mac
+  app loads every window this way (#206, #207): its sidebar reads the
+  folder from disk with `FileManager`, not the contents API, since its
+  server is rooted at `/` on the same machine, and its toolbar and Cell
+  and Kernel menus run the page's commands.
 
   > [!NOTE]
   > **Unreleased.** Available only from a build of `main` (HEAD), not in

@@ -9,7 +9,7 @@ ganymede-server.com renders this repo's `docs/*.md` (all but `notes.md`)
 from `main`, and the README on GitHub is `main`'s too, but people install
 the latest release. So when a change documents a feature, setting, or
 behavior that the latest release doesn't have, add this note next to it
-in `README.md` or `docs/*.md`:
+in `README.md`, `apple/README.md` or `docs/*.md`:
 
 ```md
 > [!NOTE]
@@ -29,7 +29,7 @@ Releases follow [docs/releasing.md](docs/releasing.md). Before the
 release pull request merges, review every "Unreleased" note:
 
 ```sh
-grep -rn 'Unreleased\.' README.md docs/*.md
+grep -rn 'Unreleased\.' README.md apple/README.md docs/*.md
 ```
 
 `scripts/release.sh --execute` prints them and lists them in the pull

@@ -815,6 +815,18 @@ describe('NotebookPane', () => {
     );
   });
 
+  it('drops unsaved edits when the app discards them before letting the notebook go', async () => {
+    const { fake, latest, unmount } = setup();
+    await waitFor(() => expect(latest()).toBeDefined());
+    act(() => modelOf().cells.get(0).sharedModel.setSource('print(2)'));
+    latest()!.discard();
+    unmount();
+    await waitFor(() =>
+      expect((fakes.notebooks[0] as { isDisposed: boolean }).isDisposed).toBe(true),
+    );
+    expect(fake.contents.save).not.toHaveBeenCalled();
+  });
+
   it('clears the controller and disposes the notebook on unmount, leaving the kernel', async () => {
     const { latest, onController, unmount } = setup();
     await waitFor(() => expect(latest()).toBeDefined());

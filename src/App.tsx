@@ -9,7 +9,7 @@ import {
   signedInHere,
 } from './lib/backends';
 import { useColorScheme } from './lib/useColorScheme';
-import { useNarrow } from './lib/useNarrow';
+import { TOUCH_QUERY, useMedia, useNarrow } from './lib/useNarrow';
 import { useJupyterLabTheme } from './lib/theme';
 import { Sidebar } from './components/Sidebar';
 import { Toolbar } from './components/Toolbar';
@@ -115,6 +115,13 @@ export function App() {
   // has done its job (a notebook opened), on a tap outside it, and on Esc.
   // The app draws its own sidebar with `chrome=native`, so the page's never floats.
   const sidebarFloats = !native && narrow && sidebarOpen;
+  // The cells' touch controls (#200): on a touch screen, or in a narrow
+  // window. Not for narrowness with `chrome=native`, where the web view
+  // beside the Mac app's sidebar can be under 720px in a wide window.
+  const touch = useMedia(TOUCH_QUERY);
+  useEffect(() => {
+    document.documentElement.classList.toggle('touch-ui', touch || (narrow && !native));
+  }, [touch, narrow, native]);
   const afterPick = useCallback(() => {
     if (narrow) setSidebarOpen(false);
   }, [narrow]);
@@ -259,6 +266,12 @@ export function App() {
         setOpenPath(path);
         return true;
       }
+      case 'close':
+        // Without saving: the app closes a notebook it moved to the Trash.
+        if (!openPath) return false;
+        c?.discard();
+        setOpenPath(undefined);
+        return true;
       case 'new-notebook':
         if (!backend) return false;
         // A failure shows the page's notice (#195) and returns false.

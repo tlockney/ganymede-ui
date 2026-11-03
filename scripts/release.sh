@@ -77,7 +77,7 @@ git push --quiet -u origin "$branch"
 
 # Docs for features not yet released say "Unreleased." (CLAUDE.md). The
 # ones this release ships come out on $branch before it merges.
-unreleased=$(grep -rn 'Unreleased\.' README.md docs/*.md || true)
+unreleased=$(grep -rn 'Unreleased\.' README.md apple/README.md docs/*.md || true)
 if [[ -n "$unreleased" ]]; then
   echo "Unreleased notes; remove those this release ships on $branch:"
   echo "$unreleased"

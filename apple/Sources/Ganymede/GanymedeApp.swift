@@ -21,8 +21,21 @@ struct GanymedeApp: App {
                 .environmentObject(model)
         }
         .commands {
+            // The window's sidebar, toolbar and notebook menus (#206, #207).
+            SidebarCommands()
+            ToolbarCommands()
+            CommandGroup(replacing: .newItem) {
+                NewCommands(model: model)
+            }
             CommandGroup(replacing: .saveItem) {
                 SaveCommand()
+                DownloadCommand()
+            }
+            CommandMenu("Cell") {
+                CellMenu()
+            }
+            CommandMenu("Kernel") {
+                KernelMenu()
             }
             CommandGroup(after: .newItem) {
                 OpenCommands(model: model)

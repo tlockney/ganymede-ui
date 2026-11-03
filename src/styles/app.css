@@ -937,7 +937,8 @@ button {
   .toolbar .segmented[aria-label='Insert'] {
     display: none;
   }
-  .notebook-page .jp-WindowedPanel-inner {
+  /* Not beside the Mac app's own sidebar, which narrows a wide window's web view. */
+  .window:not(.chrome-native) .notebook-page .jp-WindowedPanel-inner {
     padding: 0 12px;
   }
 }
@@ -1348,10 +1349,10 @@ button {
     padding-left: calc(12px + var(--safe-left));
   }
   /* A phone's 12px cell gutter, plus the inset. */
-  .window .notebook-page .jp-WindowedPanel-inner {
+  .window:not(.chrome-native) .notebook-page .jp-WindowedPanel-inner {
     padding-right: calc(12px + var(--safe-right));
   }
-  .window.sidebar-collapsed .notebook-page .jp-WindowedPanel-inner {
+  .window.sidebar-collapsed:not(.chrome-native) .notebook-page .jp-WindowedPanel-inner {
     padding-left: calc(12px + var(--safe-left));
   }
 }

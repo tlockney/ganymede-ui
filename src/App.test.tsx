@@ -187,7 +187,9 @@ describe('App', () => {
     const runAll = vi.fn(async () => {});
     const changeCellType = vi.fn();
     const command = vi.fn((id: string) => id === 'move-up');
+    const discard = vi.fn();
     mocks.controller = {
+      discard,
       dirty: false,
       save: vi.fn(async () => true),
       runAll,
@@ -228,6 +230,11 @@ describe('App', () => {
     // An absolute path, as the Mac app passes it, is cleaned as `?open=` is.
     expect(await run('open', '/Europa.ipynb')).toBe(true);
     await waitFor(() => expect(screen.getByTestId('pane')).toHaveTextContent(/^Europa\.ipynb$/));
+    // Closed without saving: the app moved it to the Trash.
+    expect(await run('close')).toBe(true);
+    expect(discard).toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByTestId('pane')).not.toBeInTheDocument());
+    expect(await run('close')).toBe(false);
     expect(await run('show-shortcuts')).toBe(true);
     expect(await screen.findByText('Keyboard Shortcuts')).toBeInTheDocument();
     vi.unstubAllGlobals();
@@ -551,6 +558,18 @@ describe('App', () => {
       expect(await screen.findByText('Where should kernels run?')).toBeInTheDocument();
       await userEvent.keyboard('{Escape}');
       expect(win).not.toHaveClass('sidebar-collapsed');
+    });
+
+    it('gives the cells their touch controls, but not beside the Mac app’s own sidebar', async () => {
+      const root = document.documentElement;
+      const first = render(<App />);
+      await waitFor(() => expect(root).toHaveClass('touch-ui'));
+      first.unmount();
+      // The web view beside the native sidebar is narrow in a wide window.
+      history.replaceState(null, '', '/?chrome=native');
+      render(<App />);
+      await waitFor(() => expect(root).toHaveClass('chrome-native'));
+      expect(root).not.toHaveClass('touch-ui');
     });
 
     it('closes the sidebar once it opens a notebook', async () => {
