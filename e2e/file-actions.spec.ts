@@ -2,7 +2,7 @@
 // duplicate, delete with confirmation, and new folder; deleting the open
 // notebook closes it, renaming it keeps it open.
 import { expect, type Page, test } from '@playwright/test';
-import { waitForReady } from './helpers';
+import { outputs, waitForReady } from './helpers';
 
 async function connect(page: Page) {
   await page.goto('/');
@@ -63,6 +63,44 @@ test('renames, duplicates, deletes and makes folders from the sidebar', async ({
   await expect(files(page)).toHaveText(['moons', copy]);
   await expect(page.locator('.jp-Cell')).toHaveCount(0);
   await expect(page).toHaveTitle('Ganymede');
+});
+
+test('moving the folder that holds the open notebook keeps its kernel', async ({ page }) => {
+  await connect(page);
+  await page.getByRole('button', { name: 'New Notebook' }).first().click();
+  await expect(page.locator('.jp-Cell').first()).toBeVisible({ timeout: 60_000 });
+  await waitForReady(page);
+  await page.getByRole('button', { name: 'Actions for Untitled' }).click();
+  await menuItem(page, 'New Folder').click();
+  await page.getByRole('textbox', { name: /^New name for Untitled Folder/ }).fill('moons');
+  await page.keyboard.press('Enter');
+  await expect(files(page).first()).toHaveText('moons');
+  await page.getByRole('button', { name: 'Actions for moons' }).click();
+  await menuItem(page, 'New Notebook in “moons”').click();
+  await expect(page).toHaveURL(/[?&]open=moons%2FUntitled/, { timeout: 60_000 });
+  await waitForReady(page);
+
+  const cell = page.locator('.jp-Cell .cm-content').first();
+  await cell.click();
+  await page.keyboard.type('var moon = 41');
+  await page.keyboard.press('Shift+Enter');
+  await expect(page.getByText(/ · Idle$/)).toBeVisible({ timeout: 60_000 });
+  // An edit not yet saved goes along too.
+  await page.locator('.jp-Cell .cm-content').last().click();
+  await page.keyboard.type('moon + 1');
+
+  await page.locator('.sidebar').getByRole('button', { name: 'moons', exact: true }).waitFor();
+  await page.getByRole('button', { name: 'Actions for moons' }).click();
+  await menuItem(page, 'Rename').click();
+  await page.getByRole('textbox', { name: 'New name for moons' }).fill('satellites');
+  await page.keyboard.press('Enter');
+  await expect(page).toHaveURL(/[?&]open=satellites%2FUntitled/);
+  await waitForReady(page);
+  await expect(page.locator('.jp-Cell').last()).toContainText('moon + 1');
+  // The same kernel: the variable is still there.
+  await page.locator('.jp-Cell .cm-content').last().click();
+  await page.keyboard.press('Shift+Enter');
+  await expect(outputs(page).filter({ hasText: '42' })).toBeVisible({ timeout: 60_000 });
 });
 
 test.describe('on a phone', () => {

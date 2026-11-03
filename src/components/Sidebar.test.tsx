@@ -307,6 +307,50 @@ describe('Sidebar file menu', () => {
     }
   });
 
+  it('lets a mouse click through after a long press whose click never came', async () => {
+    const a = actions();
+    const { onOpen } = renderSidebar({ actions: a });
+    const saturn = (await screen.findByText('Saturn')).closest('button')!;
+    vi.useFakeTimers();
+    try {
+      act(() => {
+        saturn.dispatchEvent(
+          new PointerEvent('pointerdown', {
+            bubbles: true,
+            pointerType: 'touch',
+          } as PointerEventInit),
+        );
+      });
+      act(() => vi.advanceTimersByTime(600));
+      // The menu opened under the finger, which lifts there: no click on the row.
+      act(() => saturn.dispatchEvent(new PointerEvent('pointerup', { bubbles: true })));
+    } finally {
+      vi.useRealTimers();
+    }
+    await userEvent.keyboard('{Escape}');
+    // Then a trackpad click opens the notebook, and a right-click the menu.
+    await userEvent.click(saturn);
+    expect(onOpen).toHaveBeenCalledWith('Saturn.ipynb');
+    await userEvent.pointer({ keys: '[MouseRight]', target: saturn });
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+  });
+
+  it('moves between items with the arrow keys, and gives focus back on Escape', async () => {
+    renderSidebar({ actions: actions() });
+    const more = await screen.findByRole('button', { name: 'Actions for Saturn' });
+    await userEvent.click(more);
+    expect(item('Rename')).toHaveFocus();
+    await userEvent.keyboard('{ArrowDown}');
+    expect(item('Duplicate')).toHaveFocus();
+    await userEvent.keyboard('{ArrowUp}{ArrowUp}');
+    expect(item('New Folder')).toHaveFocus();
+    await userEvent.keyboard('{Home}');
+    expect(item('Rename')).toHaveFocus();
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(more).toHaveFocus();
+  });
+
   it('says why an action failed', async () => {
     const a = actions();
     a.duplicate.mockRejectedValueOnce(new Error('Disk full'));

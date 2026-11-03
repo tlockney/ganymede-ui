@@ -15,7 +15,8 @@ const MARGIN = 8;
 
 /**
  * A menu at a point or under a button, kept inside the window, sized for
- * touch where the pointer is coarse. Escape, a pick or a tap outside closes it.
+ * touch where the pointer is coarse. Escape, a pick or a tap outside closes it;
+ * the arrow keys, Home and End move between its items.
  */
 export function ContextMenu({ at, label, items, onClose }: Props) {
   const menu = useRef<HTMLDivElement>(null);
@@ -41,25 +42,49 @@ export function ContextMenu({ at, label, items, onClose }: Props) {
     setPlace({ top, left });
   }, [at]);
 
+  // Where focus was when it opened (the "…" button, or the row): it goes
+  // back there when the menu is dismissed. A pick leaves focus to what the
+  // pick opens (a rename field, a dialog).
+  const opener = useRef<Element | null>(null);
+  const dismiss = () => {
+    onClose();
+    const back = opener.current;
+    if (back instanceof HTMLElement && back.isConnected) back.focus();
+  };
+  const dismissRef = useRef(dismiss);
+  dismissRef.current = dismiss;
+
   useEffect(() => {
-    menu.current?.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus();
+    opener.current = document.activeElement;
+    const enabled = () =>
+      Array.from(menu.current?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? []);
+    enabled()[0]?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
+      const items = enabled();
+      const at = items.indexOf(document.activeElement as HTMLButtonElement);
+      const to: Record<string, number> = {
+        ArrowDown: at < 0 ? 0 : (at + 1) % items.length,
+        ArrowUp: at < 0 ? items.length - 1 : (at - 1 + items.length) % items.length,
+        Home: 0,
+        End: items.length - 1,
+      };
+      if (e.key === 'Escape') dismissRef.current();
+      else if (e.key in to) items[to[e.key]]?.focus();
+      else return;
       e.preventDefault();
       e.stopPropagation();
-      onClose();
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [onClose]);
+  }, []);
 
   return (
     <div
       className="popup-menu-backdrop"
-      onPointerDown={onClose}
+      onPointerDown={dismiss}
       onContextMenu={e => {
         e.preventDefault();
-        onClose();
+        dismiss();
       }}
     >
       <div

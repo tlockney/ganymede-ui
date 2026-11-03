@@ -55,10 +55,17 @@ export type NotebookController = {
    */
   rename(input: string): Promise<boolean>;
   /**
-   * Stop saving: the file was deleted or moved from under the notebook
-   * (the sidebar), and a save would write it back.
+   * Stop saving: the file is being deleted from under the notebook (the
+   * sidebar), and a save would write it back. The function it returns
+   * undoes that, for when the delete failed.
    */
-  discard(): void;
+  discard(): () => void;
+  /**
+   * The file was moved to `next` (its folder was renamed in the sidebar):
+   * stop saving to the old path, save edits made since to `next`, and move
+   * the session there so the kernel follows when the file reopens.
+   */
+  moved(next: string): Promise<void>;
 };
 
 type Props = {
@@ -444,6 +451,32 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
           setNotice(`Couldn’t ${what}: ${messageOf(e)}`);
         }
       };
+    // The file is now at `next`, by a rename here or a folder move in the
+    // sidebar: stop saving to the old path, and take edits made since and
+    // the kernel along.
+    const moved = async (next: string) => {
+      renamed.current = true;
+      // Edits typed while it moved go to the new file, not the old.
+      if (model.dirty) {
+        try {
+          open.widgets.saveState(model);
+          await services.contents.save(next, {
+            type: 'notebook',
+            format: 'json',
+            content: model.toJSON(),
+          });
+        } catch (e) {
+          setNotice(`Couldn’t save the latest edits to ${basename(next)}: ${messageOf(e)}`);
+        }
+      }
+      // The kernel follows the file, so reopening it there rejoins it.
+      try {
+        await session.session?.setPath(next);
+        await session.session?.setName(basename(next));
+      } catch (e) {
+        console.warn(`Couldn’t move the session to ${next}:`, e);
+      }
+    };
     onController({
       path,
       name: basename(path),
@@ -460,6 +493,9 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         notebook.activate();
       },
       save: async () => {
+        // Moved or deleted: a save would put it back at the old path. A
+        // moved file reopens at its new path, where its edits went.
+        if (renamed.current) return false;
         try {
           try {
             await saver.save();
@@ -535,34 +571,19 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
           setNotice(`Couldn’t rename ${fileName}: ${messageOf(e)}`);
           return false;
         }
-        renamed.current = true;
         clearRenameNotice();
-        // Edits typed while it renamed go to the new file, not the old.
-        if (model.dirty) {
-          try {
-            open.widgets.saveState(model);
-            await services.contents.save(next, {
-              type: 'notebook',
-              format: 'json',
-              content: model.toJSON(),
-            });
-          } catch (e) {
-            setNotice(`Couldn’t save the latest edits to ${basename(next)}: ${messageOf(e)}`);
-          }
-        }
-        // The kernel follows the file, so reopening it there rejoins it.
-        try {
-          await session.session?.setPath(next);
-          await session.session?.setName(basename(next));
-        } catch (e) {
-          console.warn(`Couldn’t move the session to ${next}:`, e);
-        }
+        await moved(next);
         onRenamed?.(next);
         return true;
       },
       discard: () => {
+        const was = renamed.current;
         renamed.current = true;
+        return () => {
+          renamed.current = was;
+        };
       },
+      moved,
       // With no kernel yet, this only picks the one the first run starts.
       changeKernel: report('change the kernel', async (name: string) => {
         if (session.session) await session.changeKernel({ name });

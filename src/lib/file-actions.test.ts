@@ -16,13 +16,16 @@ function contents(existing: string[] = []) {
   };
 }
 
+const undo = vi.fn();
+
 function controller(path: string, over: Partial<NotebookController> = {}) {
   return {
     path,
     dirty: false,
     save: vi.fn(async () => true),
     rename: vi.fn(async () => true),
-    discard: vi.fn(),
+    discard: vi.fn(() => undo),
+    moved: vi.fn(async () => {}),
     ...over,
   } as unknown as NotebookController;
 }
@@ -78,8 +81,20 @@ describe('fileActions', () => {
     await actions.rename(dir('moons'), 'satellites');
     expect(c.save).toHaveBeenCalled();
     expect(fake.rename).toHaveBeenCalledWith('moons', 'satellites');
-    expect(c.discard).toHaveBeenCalled();
+    // Its later edits and its kernel go to the new path before it reopens.
+    expect(c.moved).toHaveBeenCalledWith('satellites/Io.ipynb');
     expect(setOpenPath).toHaveBeenCalledWith('satellites/Io.ipynb');
+    expect(vi.mocked(c.moved).mock.invocationCallOrder[0]).toBeLessThan(
+      setOpenPath.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('won’t move a folder whose open notebook is still loading', async () => {
+    // The controller reported is the last notebook's, not the one opening.
+    const { fake, setOpenPath, actions } = setup('moons/Io.ipynb', controller('Europa.ipynb'));
+    await expect(actions.rename(dir('moons'), 'satellites')).rejects.toThrow(/still loading/);
+    expect(fake.rename).not.toHaveBeenCalled();
+    expect(setOpenPath).not.toHaveBeenCalled();
   });
 
   it('won’t move a folder whose open notebook didn’t save', async () => {
@@ -105,6 +120,17 @@ describe('fileActions', () => {
     expect(c.save).not.toHaveBeenCalled();
     expect(setOpenPath).toHaveBeenCalledWith(undefined);
     expect(fake.delete).toHaveBeenLastCalledWith('moons');
+  });
+
+  it('keeps the open notebook, and saving, when the delete fails', async () => {
+    undo.mockClear();
+    const c = controller('moons/Io.ipynb', { dirty: true });
+    const { fake, setOpenPath, actions } = setup('moons/Io.ipynb', c);
+    fake.delete.mockRejectedValueOnce(new Error('Forbidden'));
+    await expect(actions.remove(dir('moons'))).rejects.toThrow('Forbidden');
+    expect(c.discard).toHaveBeenCalled();
+    expect(undo).toHaveBeenCalled();
+    expect(setOpenPath).not.toHaveBeenCalled();
   });
 
   it('makes an untitled folder', async () => {

@@ -1,8 +1,9 @@
 /**
  * What the sidebar's file menu does (#203): rename, duplicate and delete a
  * file or folder, and make a folder. The open notebook is handled through
- * its controller, so a rename keeps it open (and its kernel) at the new
- * path, and a delete closes it without saving it back.
+ * its controller, so a rename (of it or a folder holding it) keeps it open
+ * at the new path with its kernel, and a delete closes it without saving
+ * it back.
  */
 import type { Contents } from '@jupyterlab/services';
 import type { NotebookController } from '../components/NotebookPane';
@@ -49,15 +50,20 @@ export function fileActions({ contents, openPath, controller, setOpenPath }: Opt
       const next = renamedPath(item.path, input, item.type === 'notebook');
       if (!next) return false;
       const holdsOpen = item.type === 'directory' && within(openPath, item.path);
-      // The edits go with the file; once moved, the pane stops saving to
-      // the old path and reopens at the new one.
-      if (holdsOpen && open?.dirty && !(await open.save())) {
+      // Without the notebook's controller (it is still opening), the move
+      // couldn't take its kernel along or stop it saving to the old path.
+      if (holdsOpen && !open) throw new Error('The open notebook is still loading; try again.');
+      // The edits go with the file.
+      if (holdsOpen && open!.dirty && !(await open!.save())) {
         throw new Error('The open notebook couldn’t be saved first.');
       }
       await renameFile(contents, item.path, next);
       if (holdsOpen) {
-        open?.discard();
-        setOpenPath(next + openPath!.slice(item.path.length));
+        // It stops saving to the old path, saves later edits to the new
+        // one, and its kernel follows, so it reopens there with its state.
+        const moved = next + openPath!.slice(item.path.length);
+        await open!.moved(moved);
+        setOpenPath(moved);
       }
       return true;
     },
@@ -67,12 +73,17 @@ export function fileActions({ contents, openPath, controller, setOpenPath }: Opt
     },
 
     async remove(item) {
-      if (within(openPath, item.path)) {
-        // Closed without saving: that would put the file back.
-        open?.discard();
-        setOpenPath(undefined);
+      const holdsOpen = within(openPath, item.path);
+      // No saving while it is deleted: that would put the file back. If the
+      // delete fails, the notebook stays open with its edits.
+      const undo = holdsOpen ? open?.discard() : undefined;
+      try {
+        await contents.delete(item.path);
+      } catch (e) {
+        undo?.();
+        throw e;
       }
-      await contents.delete(item.path);
+      if (holdsOpen) setOpenPath(undefined);
     },
 
     async newFolder(dir) {

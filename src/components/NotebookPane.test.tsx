@@ -492,6 +492,27 @@ describe('NotebookPane', () => {
       );
     });
 
+    it('moves its session and later edits when its folder moves', async () => {
+      const { fake, latest } = setup(files());
+      await waitFor(() => expect(latest()).toBeDefined());
+      const session = { setPath: vi.fn(async () => {}), setName: vi.fn(async () => {}) };
+      (fakes.sessions[0] as { session: unknown }).session = session;
+      act(() => modelOf().cells.get(0).sharedModel.setSource('print(4)'));
+      await waitFor(() => expect(latest()!.dirty).toBe(true));
+
+      await act(() => latest()!.moved('satellites/Io.ipynb'));
+      expect(fake.contents.save).toHaveBeenCalledWith(
+        'satellites/Io.ipynb',
+        expect.objectContaining({ type: 'notebook' }),
+      );
+      expect(session.setPath).toHaveBeenCalledWith('satellites/Io.ipynb');
+      expect(session.setName).toHaveBeenCalledWith('Io.ipynb');
+      // Nothing more goes to the old path.
+      fake.contents.save.mockClear();
+      await act(() => latest()!.save());
+      expect(fake.contents.save).not.toHaveBeenCalledWith('moons/Io.ipynb', expect.anything());
+    });
+
     it('says why a rename failed', async () => {
       const { fake, latest, onRenamed } = setup(files());
       await waitFor(() => expect(latest()).toBeDefined());
@@ -608,6 +629,22 @@ describe('NotebookPane', () => {
       document.dispatchEvent(new Event('visibilitychange'));
     });
     await waitFor(() => expect(fake.contents.save).toHaveBeenCalledTimes(2));
+    visibility.mockRestore();
+  });
+
+  it('stops autosaving once discarded, and starts again when that is undone', async () => {
+    const { fake, latest } = setup();
+    await waitFor(() => expect(latest()).toBeDefined());
+    act(() => modelOf().cells.get(0).sharedModel.setSource('print(2)'));
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden');
+    const hide = () => act(async () => void document.dispatchEvent(new Event('visibilitychange')));
+
+    const undo = latest()!.discard();
+    await hide();
+    expect(fake.contents.save).not.toHaveBeenCalled();
+    undo();
+    await hide();
+    await waitFor(() => expect(fake.contents.save).toHaveBeenCalledOnce());
     visibility.mockRestore();
   });
 

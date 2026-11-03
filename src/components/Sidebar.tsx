@@ -117,6 +117,10 @@ export function Sidebar({
   const longPress = (item: FileItem) =>
     actions && {
       onPointerDown(e: React.PointerEvent) {
+        // A new press: a long press whose click never came (the menu opened
+        // under the finger) doesn't swallow this one.
+        if (press.current) clearTimeout(press.current.timer);
+        press.current = undefined;
         if (e.pointerType !== 'touch') return;
         const { clientX: x, clientY: y } = e;
         const timer = window.setTimeout(() => {
