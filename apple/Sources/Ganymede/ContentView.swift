@@ -37,28 +37,42 @@ struct ContentView: View {
 
     var body: some View {
         #if os(macOS)
-        content
-            .frame(minWidth: 720, minHeight: 480)
-            .navigationTitle((target ?? loaded).title)
-            .focusedSceneValue(\.windowFolder, (target ?? loaded).folder)
-            // A notebook opened from the Finder (double-click, Open With,
-            // the Dock) arrives here, in a new window or in the one already
-            // showing that file. The claim below matches by substring, so
-            // another file (or the second of several opened at once) goes
-            // to its own window.
-            .onOpenURL { url in
-                guard url.isFileURL else { return }
-                let opening = WindowTarget(opening: url)
-                if target == nil {
-                    target = opening
-                    loaded = opening
-                } else if opening != target {
-                    openWindow(value: opening)
-                }
+        // The app draws the sidebar, toolbar and menus; the page shows the
+        // notebook (#206, #207).
+        NavigationSplitView {
+            FolderSidebar(folder: (target ?? loaded).folder, page: pageModel) { path in
+                openWindow(value: EditorRequest(path: path))
             }
-            .handlesExternalEvents(preferring: externalEvents, allowing: externalEvents)
-            .background(WindowReader { document.attach(to: $0) })
-            .focusedSceneObject(document)
+            .navigationSplitViewColumnWidth(min: 180, ideal: 240, max: 400)
+        } detail: {
+            content
+        }
+        .toolbar(id: "notebook") {
+            NotebookToolbar(page: pageModel, folder: (target ?? loaded).folder)
+        }
+        .navigationSubtitle(pageModel.state.subtitle)
+        .frame(minWidth: 720, minHeight: 480)
+        .navigationTitle((target ?? loaded).title)
+        .focusedSceneValue(\.windowFolder, (target ?? loaded).folder)
+        // A notebook opened from the Finder (double-click, Open With,
+        // the Dock) arrives here, in a new window or in the one already
+        // showing that file. The claim below matches by substring, so
+        // another file (or the second of several opened at once) goes
+        // to its own window.
+        .onOpenURL { url in
+            guard url.isFileURL else { return }
+            let opening = WindowTarget(opening: url)
+            if target == nil {
+                target = opening
+                loaded = opening
+            } else if opening != target {
+                openWindow(value: opening)
+            }
+        }
+        .handlesExternalEvents(preferring: externalEvents, allowing: externalEvents)
+        .background(WindowReader { document.attach(to: $0) })
+        .focusedSceneObject(document)
+        .focusedSceneObject(pageModel)
         #else
         NavigationStack {
             content

@@ -52,4 +52,18 @@ final class PageStateTests: XCTestCase {
             #"window.ganymede ? window.ganymede.command(...["open","a \"b\"\\c.ipynb"]) : false"#
         )
     }
+
+    func testSubtitleNamesTheKernelAndItsState() {
+        var state = PageState()
+        XCTAssertEqual(state.subtitle, "")
+        state.path = "Io.ipynb"
+        XCTAssertEqual(state.subtitle, "No kernel · Starts when you run a cell")
+        state.kernelDisplayName = "TypeScript"
+        state.status = "busy"
+        XCTAssertEqual(state.subtitle, "TypeScript · Running")
+        state.kernelMissing = true
+        state.kernelDisplayName = "Python 3"
+        state.status = "none"
+        XCTAssertEqual(state.subtitle, "Python 3 (not installed) · Starts when you run a cell")
+    }
 }

@@ -38,6 +38,21 @@ built from the same sources (see
   its saved state.
 - Opened from the Finder, the app takes `PATH` from your login shell, so
   kernelspecs that run `node`, `deno` or `python3` start.
+- The window's sidebar, toolbar and menus are the app's own (macOS
+  only; the page shows just the notebook). The sidebar lists the
+  window's folder as a tree; right-click an item to open it in a new
+  window, show it in the Finder, make a notebook or folder there, or move
+  it to the Trash. The toolbar runs cells, interrupts and restarts the
+  kernel, inserts cells, sets the cell type, picks the kernel and trusts
+  the notebook; View › Customize Toolbar arranges it. File › New Notebook
+  (⌘N) makes one in the window's folder, New Window (⌥⌘N) opens another
+  window. The Cell menu runs, inserts, moves and deletes cells and opens
+  Find; the Kernel menu interrupts (⌘.), restarts, changes and trusts.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release, which uses the page's own sidebar and toolbar.
+
 - Downloads from the page (links with a `download` attribute, files an
   output offers) ask where to save, starting in Downloads.
 - Quitting shuts every kernel down.

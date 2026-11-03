@@ -41,6 +41,29 @@ struct PageState: Decodable, Equatable {
     }
 
     var hasNotebook: Bool { path != nil }
+    var isCode: Bool { cellType == "code" }
+
+    /// The window's subtitle: the kernel and what it is doing, as the
+    /// page's own toolbar showed it.
+    var subtitle: String {
+        guard hasNotebook else { return "" }
+        let kernel = kernelDisplayName.map { kernelMissing ? "\($0) (not installed)" : $0 } ?? "No kernel"
+        return "\(kernel) · \(Self.statusLabel(status))"
+    }
+
+    static func statusLabel(_ status: String?) -> String {
+        switch status {
+        case "idle": "Idle"
+        case "busy": "Running"
+        case "starting": "Starting"
+        case "restarting", "autorestarting": "Restarting"
+        case "connecting": "Connecting"
+        case "dead": "Stopped"
+        case "terminating": "Stopping"
+        case "none", nil: "Starts when you run a cell"
+        case let other?: other.capitalized
+        }
+    }
     var isBusy: Bool { status == "busy" }
     /// Whether a kernel is running to interrupt or restart.
     var hasKernel: Bool { status != nil && status != "none" && status != "dead" }
