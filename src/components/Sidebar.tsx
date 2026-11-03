@@ -80,7 +80,7 @@ export function Sidebar({
     started.current = true;
   }, [services, root]);
   useEffect(() => void refresh(), [refresh]);
-  useEffect(() => onDirChange?.(dir), [dir, onDirChange]);
+  useEffect(() => void onDirChange?.(dir), [dir, onDirChange]);
   useEffect(() => {
     if (!services) return;
     const onChange = () => void refresh();

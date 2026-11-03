@@ -328,8 +328,7 @@ describe('App', () => {
 
     await waitFor(() => expect(window.location.search).toBe('?dir=Users%2Fme'));
     // The empty pane's button, which used the server's root.
-    const buttons = await screen.findAllByRole('button', { name: /New Notebook/ });
-    await userEvent.click(buttons.find(b => b.classList.contains('push-button'))!);
+    await userEvent.click(await screen.findByText('New Notebook', { selector: '.push-button' }));
     await waitFor(() =>
       expect(screen.getByTestId('pane')).toHaveTextContent('Users/me/Untitled.ipynb'),
     );
@@ -353,6 +352,43 @@ describe('App', () => {
       'Couldn’t create a notebook in this folder: Permission denied',
     );
     await userEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('opens a new notebook even when its kernel could not be set', async () => {
+    const fake = fakeServices({ '': [] });
+    fake.contents.newUntitled.mockResolvedValue(
+      entry({ name: 'Untitled.ipynb', type: 'notebook' }),
+    );
+    fake.contents.save.mockRejectedValue(new Error('disk full'));
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    localStorage.setItem(
+      'ganymede-ui:backend',
+      JSON.stringify({ kind: 'ganymede', url: '', token: 't' }),
+    );
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    render(<App />);
+
+    await userEvent.click(await screen.findByText('New Notebook', { selector: '.push-button' }));
+    await waitFor(() => expect(screen.getByTestId('pane')).toHaveTextContent('Untitled.ipynb'));
+    expect(warn).toHaveBeenCalled();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('clears a failed New Notebook notice when a notebook opens', async () => {
+    const fake = fakeServices({ '': [{ name: 'Io.ipynb', type: 'notebook' }] });
+    fake.contents.newUntitled.mockRejectedValue(new Error('Permission denied'));
+    localStorage.setItem(
+      'ganymede-ui:backend',
+      JSON.stringify({ kind: 'ganymede', url: '', token: 't' }),
+    );
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    render(<App />);
+
+    await userEvent.click(await screen.findByText('New Notebook', { selector: '.push-button' }));
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    await userEvent.click(screen.getByText('Io'));
+    await waitFor(() => expect(screen.getByTestId('pane')).toHaveTextContent('Io.ipynb'));
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 });

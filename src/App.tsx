@@ -159,8 +159,20 @@ export function App() {
       if (!backend) return;
       setNewError(undefined);
       const { services } = backend;
+      let model;
       try {
-        const model = await services.contents.newUntitled({ type: 'notebook', path: dir });
+        model = await services.contents.newUntitled({ type: 'notebook', path: dir });
+      } catch (e) {
+        // Said, not dropped: a click that does nothing reads as a dead button.
+        const where = dir ? `“${dir.split('/').pop()}”` : 'this folder';
+        setNewError(
+          `Couldn’t create a notebook in ${where}: ${e instanceof Error ? e.message : String(e)}`,
+        );
+        return;
+      }
+      // The default kernel, for the first run. Without it the notebook
+      // still opens, and its kernel picker asks.
+      try {
         const spec = services.kernelspecs.specs;
         const name = spec?.default;
         if (name && spec?.kernelspecs[name]) {
@@ -176,17 +188,16 @@ export function App() {
             content: nb.content,
           });
         }
-        setOpenPath(model.path);
       } catch (e) {
-        // Said, not dropped: a click that does nothing reads as a dead button.
-        const where = dir ? `“${dir.split('/').pop()}”` : 'this folder';
-        setNewError(
-          `Couldn’t create a notebook in ${where}: ${e instanceof Error ? e.message : String(e)}`,
-        );
+        console.warn(`Couldn’t set the kernel of ${model.path}:`, e);
       }
+      setOpenPath(model.path);
     },
     [backend],
   );
+
+  // A failed New Notebook's notice goes once something else opens.
+  useEffect(() => setNewError(undefined), [openPath, backend]);
 
   // The window title, which the Apple apps show, and `?open=` and `?dir=`
   // in step with the open notebook and the sidebar's folder, so a reload
@@ -316,7 +327,7 @@ export function App() {
               history.replaceState(
                 null,
                 '',
-                window.location.pathname + withOpen(window.location.search, undefined),
+                window.location.pathname + withDir(withOpen(window.location.search, undefined), ''),
               );
             }
             setConfig({ ...c });
