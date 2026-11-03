@@ -13,6 +13,7 @@ import {
   PowerIcon,
   ServerIcon,
   SettingsIcon,
+  SidebarIcon,
 } from './Icons';
 
 type Props = {
@@ -30,6 +31,8 @@ type Props = {
   onConnect(): void;
   /** Opens the Settings sheet; no Settings button without it. */
   onSettings?(): void;
+  /** Hides the sidebar where it covers the notebook (a phone); no close button without it. */
+  onClose?(): void;
 };
 
 export function Sidebar({
@@ -43,6 +46,7 @@ export function Sidebar({
   onDirChange,
   onConnect,
   onSettings,
+  onClose,
 }: Props) {
   const services = backend?.services;
   const [dir, setDir] = useState(root);
@@ -93,7 +97,18 @@ export function Sidebar({
 
   return (
     <aside className="sidebar">
-      <div className="sidebar-titlebar" />
+      <div className="sidebar-titlebar">
+        {onClose && (
+          <button
+            className="tb-button sidebar-close"
+            aria-label="Hide Sidebar"
+            title="Hide Sidebar"
+            onClick={onClose}
+          >
+            <SidebarIcon />
+          </button>
+        )}
+      </div>
       <div className="sidebar-scroll">
         <div className="sidebar-section-header">
           {dir ? (

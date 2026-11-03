@@ -9,6 +9,7 @@ import {
   signedInHere,
 } from './lib/backends';
 import { useColorScheme } from './lib/useColorScheme';
+import { useNarrow } from './lib/useNarrow';
 import { useJupyterLabTheme } from './lib/theme';
 import { Sidebar } from './components/Sidebar';
 import { Toolbar } from './components/Toolbar';
@@ -32,8 +33,9 @@ import { canOpenFiles, exposeHooks, openFile, postDocument } from './lib/native'
 
 /**
  * A token in the page URL, as `ganymede serve` prints it, wins once, and so
- * does `kernels=page` or `kernels=server`, which the Apple apps add on
- * every launch (`page` on an iPad without a kernel server). Pure, as React
+ * does `kernels=page`, `kernels=both` or `kernels=server`, which the Apple
+ * apps add on every launch (`page` on an iPad without a kernel server,
+ * `both` on the Mac). Pure, as React
  * may call a state initializer twice (#60); `stripLaunchParams` takes them
  * out of the URL afterwards.
  */
@@ -46,7 +48,7 @@ function initialConfig(): BackendConfig | undefined {
     kind: 'ganymede',
     url: '',
     token: token ?? '',
-    ...(kernels === 'page' ? { kernels: 'page' as const } : {}),
+    ...(kernels === 'page' || kernels === 'both' ? { kernels } : {}),
   };
 }
 
@@ -92,9 +94,14 @@ export function App() {
   const [probing, setProbing] = useState(() => !config);
   // A window opened on one notebook starts on the notebook alone; a reload
   // of any page keeps the usual layout.
-  const [sidebarOpen, setSidebarOpen] = useState(
-    () => !(launch.open && !isReload()) && window.innerWidth > 720,
-  );
+  const narrow = useNarrow();
+  const [sidebarOpen, setSidebarOpen] = useState(() => !(launch.open && !isReload()) && !narrow);
+  // On a phone the sidebar floats over the notebook: it closes when it
+  // has done its job (a notebook opened), on a tap outside it, and on Esc.
+  const sidebarFloats = narrow && sidebarOpen;
+  const afterPick = useCallback(() => {
+    if (narrow) setSidebarOpen(false);
+  }, [narrow]);
   const [openPath, setOpenPath] = useState<string>();
   const [controller, setController] = useState<NotebookController>();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -155,8 +162,9 @@ export function App() {
   }, [config]);
 
   const newNotebook = useCallback(
-    async (dir: string) => {
-      if (!backend) return;
+    /** Resolves true once the new notebook opens, false if it wasn't created. */
+    async (dir: string): Promise<boolean> => {
+      if (!backend) return false;
       setNewError(undefined);
       const { services } = backend;
       let model;
@@ -168,7 +176,7 @@ export function App() {
         setNewError(
           `Couldn’t create a notebook in ${where}: ${e instanceof Error ? e.message : String(e)}`,
         );
-        return;
+        return false;
       }
       // The default kernel, for the first run. Without it the notebook
       // still opens, and its kernel picker asks.
@@ -192,6 +200,7 @@ export function App() {
         console.warn(`Couldn’t set the kernel of ${model.path}:`, e);
       }
       setOpenPath(model.path);
+      return true;
     },
     [backend],
   );
@@ -246,6 +255,17 @@ export function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [controller]);
 
+  // Esc on a sheet opened from the sidebar closes the sheet, not the sidebar.
+  const sheetShown = sheetOpen || shortcutsOpen || settingsOpen;
+  useEffect(() => {
+    if (!sidebarFloats || sheetShown) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setSidebarOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [sidebarFloats, sheetShown]);
+
   // From the notebook's H, and the Apple apps' Help menu.
   useEffect(() => {
     const show = () => setShortcutsOpen(true);
@@ -268,13 +288,33 @@ export function App() {
           connecting={connecting}
           openPath={openPath}
           root={sidebarRoot}
-          onOpen={setOpenPath}
-          onOpenFile={editsFiles ? openFile : undefined}
-          onNew={newNotebook}
+          onOpen={path => {
+            setOpenPath(path);
+            afterPick();
+          }}
+          onOpenFile={
+            editsFiles
+              ? path => {
+                  openFile(path);
+                  afterPick();
+                }
+              : undefined
+          }
+          // Closes once the notebook opens, so a failure leaves the sidebar up.
+          onNew={dir => void newNotebook(dir).then(opened => opened && afterPick())}
           onDirChange={setFolder}
+          onClose={sidebarFloats ? () => setSidebarOpen(false) : undefined}
           onConnect={() => setSheetOpen(true)}
           onSettings={() => setSettingsOpen(true)}
         />
+        {sidebarFloats && (
+          <div
+            className="sidebar-scrim"
+            aria-hidden="true"
+            data-testid="sidebar-scrim"
+            onClick={() => setSidebarOpen(false)}
+          />
+        )}
         <main className="main">
           <Toolbar
             controller={controller}
@@ -295,7 +335,7 @@ export function App() {
               <EmptyState
                 backend={backend}
                 connecting={connecting}
-                onNew={() => newNotebook(folder)}
+                onNew={() => void newNotebook(folder)}
                 onConnect={() => setSheetOpen(true)}
               />
             )}

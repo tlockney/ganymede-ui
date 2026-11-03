@@ -41,6 +41,10 @@ built from the same sources (see
 - Downloads from the page (links with a `download` attribute, files an
   output offers) ask where to save, starting in Downloads.
 - Quitting shuts every kernel down.
+- The kernel menu also lists "TypeScript (cdp-kernel, in app)" (unreleased): cdp-kernel
+  running in the app's hidden kernel web view, as on the iPad. Its cells get
+  ganymede-device's `device` (see [docs/device.md](../docs/device.md));
+  process kernels can't reach the app.
 - Settings (⌘,) keeps a list of remotes: Jupyter or Ganymede servers,
   SSH hosts, or both. Kernels run on this Mac or, as on iPadOS, on one
   remote's server. Tokens are kept in the keychain.
@@ -109,8 +113,9 @@ open apple/Ganymede.xcodeproj
 `bootstrap.sh` builds the XCFramework and this repo's `dist/` into
 `apple/build/` and generates the Xcode project from `project.yml`. Pick
 your team under Signing & Capabilities, then Run: the `Ganymede` scheme
-for the Mac, `Ganymede-iOS` for an iPad, iPhone or simulator. ⌘U runs
-the tests.
+for the Mac, `Ganymede-iOS` for an iPad, iPhone or simulator. With the
+`Ganymede` scheme selected, Run opens the Mac app even when a phone is
+plugged in. ⌘U runs the tests.
 Safari's Develop menu can inspect the web view.
 The first build asks you to trust SwiftTerm's build plugin
 (`SwiftTermBuildInfoPlugin`, which records SwiftTerm's version); choose
