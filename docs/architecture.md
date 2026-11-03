@@ -381,8 +381,8 @@ manager answers the UI: it merges the kernel specs (a page spec whose name
 the server has is dropped), starts each kernel on the side that owns its
 spec, routes later kernel and session calls by id, and opens a page
 kernel's websocket on the page's fake server. Changing a notebook's
-kernel to one on the other side ends its session there and starts it
-again on the new side, under the same session id.
+kernel to one on the other side starts its session again on the new side,
+then ends it on the old one, under the same session id.
 
 > [!NOTE]
 > **Unreleased.** Available only from a build of `main` (HEAD), not in
