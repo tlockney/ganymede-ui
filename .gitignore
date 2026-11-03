@@ -2,7 +2,6 @@ node_modules/
 dist/
 dist-quicklook/
 dev-dist/
-dist-quicklook/
 *.tsbuildinfo
 test-results/
 playwright-report/

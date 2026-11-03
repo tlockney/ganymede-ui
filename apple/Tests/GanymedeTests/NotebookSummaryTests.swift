@@ -25,6 +25,17 @@ final class NotebookSummaryTests: XCTestCase {
         ])
     }
 
+    func testReadsFencedCodeInMarkdownAsCode() throws {
+        let result = try summary([
+            ["cell_type": "markdown", "source": "Install:\n```bash\n# deps\npip install x\n```\n" + String(repeating: "a", count: 1000)],
+        ])
+        XCTAssertEqual(result.blocks, [
+            .text("Install:"),
+            .code(["# deps", "pip install x"]),
+            .text(String(repeating: "a", count: NotebookSummary.maxParagraph)),
+        ])
+    }
+
     func testTakesCodeAndTheFirstOutputOfEachCell() throws {
         let result = try summary([
             [

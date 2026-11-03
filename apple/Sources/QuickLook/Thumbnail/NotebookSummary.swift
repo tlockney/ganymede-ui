@@ -22,6 +22,8 @@ struct NotebookSummary: Equatable {
     static let maxBlocks = 16
     static let maxCodeLines = 14
     static let maxOutputLines = 6
+    /// A paragraph can be a whole inline `data:` image; a page shows far less.
+    static let maxParagraph = 400
 
     init(data: Data) throws {
         guard let notebook = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -54,12 +56,29 @@ struct NotebookSummary: Equatable {
 
     private mutating func addMarkdown(_ source: String) {
         var paragraph: [String] = []
+        var fence: [String]?
         func flush() {
-            if !paragraph.isEmpty { blocks.append(.text(paragraph.joined(separator: " "))) }
+            let text = paragraph.joined(separator: " ")
+            if !text.isEmpty { blocks.append(.text(String(text.prefix(Self.maxParagraph)))) }
             paragraph = []
         }
         for raw in source.components(separatedBy: "\n") {
             let line = raw.trimmingCharacters(in: .whitespaces)
+            // Fenced code is code: a `# comment` in it is not a heading.
+            if line.hasPrefix("```") || line.hasPrefix("~~~") {
+                if let code = fence {
+                    if !code.isEmpty { blocks.append(.code(Array(code.prefix(Self.maxCodeLines)))) }
+                    fence = nil
+                } else {
+                    flush()
+                    fence = []
+                }
+                continue
+            }
+            if fence != nil {
+                fence!.append(raw)
+                continue
+            }
             let hashes = line.prefix(while: { $0 == "#" }).count
             if (1...6).contains(hashes), line.dropFirst(hashes).first == " " {
                 flush()
@@ -71,6 +90,7 @@ struct NotebookSummary: Equatable {
             }
         }
         flush()
+        if let code = fence, !code.isEmpty { blocks.append(.code(Array(code.prefix(Self.maxCodeLines)))) }
     }
 
     private mutating func addCode(_ cell: [String: Any]) {
