@@ -273,6 +273,12 @@ describe('MixedSessionClient', () => {
     const listed = await client.listRunning();
     expect(listed.map(s => [s.id, s.kernel?.name])).toEqual([[started.id, 'cdp-browser']]);
     expect(owners.ofSession(started.id).side).toBe('page');
+
+    // Once ending it works, the next listing ends it.
+    server.client.shutdown = async id => void server.running.delete(id);
+    await client.listRunning();
+    await Promise.resolve();
+    expect(server.running.size).toBe(0);
   });
 
   it('updates in place when the kernel stays on the same side', async () => {

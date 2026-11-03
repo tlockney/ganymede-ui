@@ -307,6 +307,16 @@ export class MixedSessionClient implements Session.ISessionAPIClient {
       this._owners.pruneOrphans(
         new Set([...server.map(m => `server:${m.id}`), ...page.map(m => `page:${m.id}`)]),
       );
+      // Try again to end orphans still running, so they don't outlive the
+      // app unseen; the next listing forgets them once they are gone.
+      for (const side of ['server', 'page'] as const) {
+        for (const m of side === 'server' ? server : page) {
+          if (!this._owners.isOrphan(side, m.id)) continue;
+          this._client(side)
+            .shutdown(m.id)
+            .catch(() => {});
+        }
+      }
       const live = (side: Side) => (m: Session.IModel) => !this._owners.isOrphan(side, m.id);
       const models = [
         ...server.filter(live('server')).map(m => this._outer('server', m)),
