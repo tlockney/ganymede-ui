@@ -21,6 +21,11 @@ struct ContentView: View {
     @StateObject private var pageModel = PageModel()
     /// This window, for the Finder's open requests (#228).
     @State private var windowID = UUID()
+    /// The bottom panel's terminals (#248), and whether it shows and how
+    /// tall it is, kept with the window across launches.
+    @StateObject private var panel = PanelController()
+    @SceneStorage("panel.shown") private var panelShown = false
+    @SceneStorage("panel.height") private var panelHeight = PanelController.defaultHeight
 
     init(target: Binding<WindowTarget?>) {
         _target = target
@@ -54,10 +59,18 @@ struct ContentView: View {
             }
             .navigationSplitViewColumnWidth(min: 180, ideal: 240, max: 400)
         } detail: {
-            content
+            workspace
         }
         .toolbar {
             NotebookToolbar(page: pageModel, document: document, folder: sidebarRoot)
+            ToolbarItem {
+                Button {
+                    panel.toggle(startingOn: .local(folder: sidebarRoot))
+                } label: {
+                    Label(panel.isShown ? "Hide Terminal Panel" : "Show Terminal Panel", systemImage: "rectangle.bottomthird.inset.filled")
+                }
+                .help(panel.isShown ? "Hide the terminal panel (⌃`)" : "Show the terminal panel (⌃`)")
+            }
         }
         .navigationSubtitle(pageModel.state.subtitle)
         .frame(minWidth: 720, minHeight: 480)
@@ -83,6 +96,13 @@ struct ContentView: View {
         .background(WindowReader { document.attach(to: $0) })
         .focusedSceneObject(document)
         .focusedSceneObject(pageModel)
+        .focusedSceneObject(panel)
+        .onAppear {
+            panel.isShown = panelShown
+            panel.resize(to: panelHeight, available: .infinity)
+        }
+        .onChange(of: panel.isShown) { panelShown = $0 }
+        .onChange(of: panel.height) { panelHeight = $0 }
         #else
         Group {
             if drawsNativeChrome {
@@ -165,6 +185,23 @@ struct ContentView: View {
     }
 
     private var page: URL? { model.page(for: loaded) }
+
+    /// The notebook, with the bottom panel under it (#248). The panel stays
+    /// in the view tree while hidden, so its terminals keep running.
+    private var workspace: some View {
+        GeometryReader { area in
+            VStack(spacing: 0) {
+                content
+                    .frame(maxHeight: .infinity)
+                BottomPanel(panel: panel, folder: sidebarRoot, available: area.size.height)
+                    .frame(height: panel.isShown ? nil : 0)
+                    .clipped()
+                    .opacity(panel.isShown ? 1 : 0)
+                    .allowsHitTesting(panel.isShown)
+                    .accessibilityHidden(!panel.isShown)
+            }
+        }
+    }
 
     /// The page opened another notebook, or closed it: the window now
     /// shows that, for its title and for the Finder's later opens. The page
