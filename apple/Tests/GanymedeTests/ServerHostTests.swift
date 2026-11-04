@@ -25,10 +25,15 @@ final class ServerHostTests: XCTestCase {
         ].merging(extra) { $1 }
     }
 
-    private func get(_ url: URL) throws -> (Int, String) {
+    /// GETs `url`. `requestTimeout` bounds the request itself, so a refused
+    /// connection that the iOS simulator is slow to report (#175) still
+    /// ends before the wait does.
+    private func get(_ url: URL, requestTimeout: TimeInterval? = nil) throws -> (Int, String) {
         var result: Result<(Int, String), Error>?
         let done = expectation(description: url.absoluteString)
-        URLSession.shared.dataTask(with: url) { data, response, error in
+        var request = URLRequest(url: url)
+        if let requestTimeout { request.timeoutInterval = requestTimeout }
+        URLSession.shared.dataTask(with: request) { data, response, error in
             if let error {
                 result = .failure(error)
             } else {
@@ -50,7 +55,8 @@ final class ServerHostTests: XCTestCase {
         XCTAssertEqual(status, 200)
         XCTAssertTrue(body.contains("ganymede-ui test"), body)
         host.stop()
-        XCTAssertThrowsError(try get(host.url))
+        // Refused, or timed out: either way not served. A response fails.
+        XCTAssertThrowsError(try get(host.url, requestTimeout: 2))
     }
 
     /// The app tells the page where kernels run with `kernels=` next to
