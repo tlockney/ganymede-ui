@@ -30,7 +30,7 @@ export function renamedPath(path: string, input: string, notebook = true): strin
 }
 
 /** Whether an error from the contents API says there is nothing there. */
-function notFound(e: unknown): boolean {
+export function notFound(e: unknown): boolean {
   const code = status(e);
   if (code !== undefined) return code === 404;
   // JupyterLite's in-browser drive throws a plain Error.

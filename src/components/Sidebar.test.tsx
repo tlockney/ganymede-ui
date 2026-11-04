@@ -1,6 +1,6 @@
-import { act, render, screen, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Session } from '@jupyterlab/services';
 import { entry, fakeBackend, fakeServices } from '../test/fakes';
 import { Sidebar } from './Sidebar';
@@ -29,6 +29,9 @@ function renderSidebar(props: Partial<Parameters<typeof Sidebar>[0]> = {}, tree 
 
 const names = () =>
   [...document.querySelectorAll('.source-list:first-of-type .item-name')].map(n => n.textContent);
+
+// Recents are kept in local storage (#215).
+beforeEach(() => localStorage.clear());
 
 describe('Sidebar', () => {
   it('lists folders first, then files by name, without hidden files or .ipynb', async () => {
@@ -360,5 +363,93 @@ describe('Sidebar file menu', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent(
       'Couldn’t duplicate notes.txt: Disk full',
     );
+  });
+});
+
+describe('Sidebar search and Recents', () => {
+  const nb = (text: string) => ({
+    cells: [{ cell_type: 'code', source: [text], metadata: {}, outputs: [] }],
+    metadata: {},
+    nbformat: 4,
+    nbformat_minor: 5,
+  });
+  const tree = {
+    '': [
+      { name: 'Saturn.ipynb', type: 'notebook' as const, content: nb('titan = moon()') },
+      { name: 'moons', type: 'directory' as const },
+    ],
+    moons: [
+      { name: 'Io.ipynb', type: 'notebook' as const, content: nb('volcanoes = 400') },
+      { name: 'inner', type: 'directory' as const },
+    ],
+    'moons/inner': [{ name: 'Europa.ipynb', type: 'notebook' as const, content: nb('ice') }],
+  };
+  const results = () =>
+    within(screen.getByRole('list', { name: 'Search results' }))
+      .queryAllByRole('button')
+      .map(b => b.textContent);
+
+  it('finds file names in the folder and its subfolders', async () => {
+    const { onOpen } = renderSidebar({}, tree as never);
+    await screen.findByText('Saturn');
+    const field = screen.getByRole('searchbox', { name: 'Search files' });
+    await userEvent.type(field, 'EUR');
+    await waitFor(() => expect(results()).toEqual(['Europamoons/inner']));
+    // The folder's own listing is out of the way.
+    expect(screen.getByText('Saturn').closest('ul')).not.toBeVisible();
+
+    await userEvent.clear(field);
+    await userEvent.type(field, 'o');
+    await waitFor(() => expect(results()).toHaveLength(3));
+    expect(results()).toEqual(expect.arrayContaining(['moons', 'Iomoons', 'Europamoons/inner']));
+    await userEvent.click(screen.getByRole('button', { name: /^Io/ }));
+    expect(onOpen).toHaveBeenCalledWith('moons/Io.ipynb');
+
+    // A folder opens in the sidebar and ends the search; Escape clears it.
+    await userEvent.click(
+      within(screen.getByRole('list', { name: 'Search results' })).getByRole('button', {
+        name: 'moons',
+      }),
+    );
+    expect(field).toHaveValue('');
+    expect(await screen.findByText('Io')).toBeVisible();
+    await userEvent.type(field, 'zzz');
+    expect(await screen.findByText('No matches')).toBeInTheDocument();
+    await userEvent.type(field, '{Escape}');
+    expect(field).toHaveValue('');
+  });
+
+  it('searches inside notebooks when asked', async () => {
+    renderSidebar({}, tree as never);
+    await screen.findByText('Saturn');
+    await userEvent.type(screen.getByRole('searchbox'), 'volcano');
+    expect(await screen.findByText('No matches')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Search notebook contents' }));
+    await waitFor(() => expect(results()).toEqual(['Iovolcanoes = 400']));
+  });
+
+  it('lists recently opened notebooks, opens one, and clears them', async () => {
+    const { fake, onOpen, onNew, onConnect, rerender } = renderSidebar(
+      { openPath: 'moons/Io.ipynb' },
+      tree as never,
+    );
+    const recents = () =>
+      within(screen.getByRole('list', { name: 'Recents' }))
+        .getAllByRole('button')
+        .map(b => b.textContent);
+    await waitFor(() => expect(recents()).toEqual(['Iomoons']));
+    rerender(
+      <Sidebar
+        backend={fakeBackend(fake.services)}
+        connecting={false}
+        openPath="Saturn.ipynb"
+        {...{ onOpen, onNew, onConnect }}
+      />,
+    );
+    await waitFor(() => expect(recents()).toEqual(['Saturn', 'Iomoons']));
+    await userEvent.click(within(screen.getByRole('list', { name: 'Recents' })).getByText('Io'));
+    expect(onOpen).toHaveBeenCalledWith('moons/Io.ipynb');
+    await userEvent.click(screen.getByRole('button', { name: 'Clear' }));
+    expect(screen.queryByRole('list', { name: 'Recents' })).not.toBeInTheDocument();
   });
 });
