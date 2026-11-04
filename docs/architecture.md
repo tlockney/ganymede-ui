@@ -305,6 +305,11 @@ settings button, or a `ganymede:show-settings` window event).
   `/files` until ganymede sandboxes it (ganymede#298), as it could read
   web storage before.
   The Settings sheet then shows no "Remember" choice.
+- The iPad and iPhone apps edit the same settings on their own Settings
+  screen (ganymede-ui#210): the app calls `window.ganymede.call`
+  (`src/lib/native-agent.ts`) to read and save them, list a provider's
+  models and run Test, and writes the key to the Keychain item the page
+  reads. The page's Settings sheet stays for the browser and the Mac.
 - `models.ts` builds pi-ai's models for the chosen provider: Anthropic,
   OpenAI, Google, or a local OpenAI-compatible server (Ollama, LM Studio).
   The app loads it with a dynamic `import()` only when the agent is on.

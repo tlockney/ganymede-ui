@@ -3,12 +3,18 @@ import SwiftUI
 /// Settings: the remotes, and where kernels run. Kernels run on this
 /// device (the Mac's kernelspecs, or TypeScript kernels on iOS) or on one
 /// remote's server, which the in-process server proxies (`gateway_url`).
-struct RemotesView: View {
+struct RemotesView<Extra: View>: View {
     @EnvironmentObject private var model: AppModel
+    /// Sections after these: the iPad and iPhone's Settings screen (#210).
+    private let extra: Extra
     /// The remote being edited; a new one when it isn't in the list yet.
     @State private var editing: Remote?
     /// The remote waiting for the user to confirm its removal.
     @State private var removing: Remote?
+
+    init(@ViewBuilder extra: () -> Extra) {
+        self.extra = extra()
+    }
 
     var body: some View {
         Form {
@@ -38,6 +44,7 @@ struct RemotesView: View {
             #if os(iOS)
             SSHKeySection()
             #endif
+            extra
         }
         .formStyle(.grouped)
         .sheet(item: $editing) { remote in
@@ -342,3 +349,9 @@ private struct SSHKeyImport: View {
     }
 }
 #endif
+
+extension RemotesView where Extra == EmptyView {
+    init() {
+        self.init { EmptyView() }
+    }
+}

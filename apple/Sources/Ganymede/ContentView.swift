@@ -149,16 +149,12 @@ struct ContentView: View {
         .modifier(KeychainAlert(model: model))
         .sheet(isPresented: $settings) {
             NavigationStack {
-                RemotesView()
-                    .navigationTitle("Remotes")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Done") { settings = false }
-                        }
-                    }
+                SettingsScreen(page: pageModel) { settings = false }
             }
             .environmentObject(model)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .showAppSettings)) { note in
+            if note.object as? PageModel === pageModel { settings = true }
         }
         .fullScreenCover(item: $terminal) { request in
             NavigationStack {
@@ -255,7 +251,7 @@ struct ContentView: View {
             }
     }
 
-    /// The app's own buttons: terminals, remotes, the notebook folder.
+    /// The app's own buttons: terminals, Settings, the notebook folder.
     @ViewBuilder
     private var appButtons: some View {
         TerminalMenu(model: model) { request in
@@ -270,8 +266,9 @@ struct ContentView: View {
         Button {
             settings = true
         } label: {
-            Label("Remotes", systemImage: "server.rack")
+            Label("Settings", systemImage: "gearshape")
         }
+        .keyboardShortcut(",")
         Button {
             picking = true
         } label: {

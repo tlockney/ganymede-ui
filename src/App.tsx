@@ -40,6 +40,7 @@ import {
   runningSessions,
   type RunningSession,
 } from './lib/native';
+import { agentCall } from './lib/native-agent';
 import { useSignals } from './lib/useSignal';
 import { fileActions } from './lib/file-actions';
 import { useFileDrop } from './lib/file-drop';
@@ -374,6 +375,7 @@ export function App() {
           return !c?.dirty || (await c.save());
         },
         command: (id, arg) => runCommand.current(id, arg),
+        call: agentCall,
       }),
     [],
   );
