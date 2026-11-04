@@ -52,7 +52,7 @@ struct ContentView: View {
         } detail: {
             content
         }
-        .toolbar(id: "notebook") {
+        .toolbar {
             NotebookToolbar(page: pageModel, folder: sidebarRoot)
         }
         .navigationSubtitle(pageModel.state.subtitle)

@@ -44,7 +44,7 @@ built from the same sources (see
   window, show it in the Finder, make a notebook or folder there, or move
   it to the Trash. The toolbar runs cells, interrupts and restarts the
   kernel, inserts cells, sets the cell type, picks the kernel and trusts
-  the notebook; View › Customize Toolbar arranges it. File › New Notebook
+  the notebook. File › New Notebook
   (⌘N) makes one in the window's folder, New Window (⌥⌘N) opens another
   window. The Cell menu runs, inserts, moves and deletes cells and opens
   Find; the Kernel menu interrupts (⌘.), restarts, changes and trusts.
