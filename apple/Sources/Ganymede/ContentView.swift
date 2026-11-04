@@ -19,6 +19,8 @@ struct ContentView: View {
     @StateObject private var document = PageDocument()
     /// What the page shows, for the native toolbar and menus (#205).
     @StateObject private var pageModel = PageModel()
+    /// This window, for the Finder's open requests (#228).
+    @State private var windowID = UUID()
 
     init(target: Binding<WindowTarget?>) {
         _target = target
@@ -68,6 +70,14 @@ struct ContentView: View {
             guard !pending.isEmpty else { return }
             DispatchQueue.main.async(execute: takeOpenRequests)
         }
+        .onAppear {
+            model.openRequests.register(windowID, blank: target == nil)
+            model.openRequests.openWindow = { [openWindow] in openWindow(value: $0) }
+        }
+        .onChange(of: target) { target in
+            model.openRequests.register(windowID, blank: target == nil)
+        }
+        .onDisappear { model.openRequests.unregister(windowID) }
         .background(WindowReader { document.attach(to: $0) })
         .focusedSceneObject(document)
         .focusedSceneObject(pageModel)

@@ -19,6 +19,12 @@ never ran.
   `application(_:open:)` before `applicationDidFinishLaunching`) go to
   the window the app opened on nothing. Other files open with
   `openWindow(value:)`, which brings forward a window already showing one.
+- Notebook windows register with the queue, and say whether they show
+  nothing yet. At launch a window restored with a notebook leaves the
+  queue to the blank launch window. When no notebook window is open (only
+  a terminal, editor or Settings window, so the app is still running),
+  the queue opens a window per file itself, with an `openWindow` a
+  notebook window left it.
 - `OpenRequestsTests` cover which window shows which file. Nothing tests
   the delegate path on CI: that needs the Finder and a real scene.
 - Not yet tried on a Mac. If SwiftUI ever stops passing

@@ -1,4 +1,6 @@
+#if os(macOS)
 import Combine
+#endif
 import Foundation
 #if canImport(UniformTypeIdentifiers)
 import UniformTypeIdentifiers
@@ -96,10 +98,11 @@ enum WindowTarget: Codable, Hashable {
     }
 }
 
+#if os(macOS)
 /// Notebooks and folders the Finder asked the app to open (double-click,
 /// Open With, the Dock), until a window takes them (#228). The app
-/// delegate adds them; every notebook window watches `pending`, and the
-/// first to see them takes them all.
+/// delegate adds them; notebook windows register here and watch
+/// `pending`, and the first to see them takes them all.
 @MainActor
 final class OpenRequests: ObservableObject {
     @Published private(set) var pending: [WindowTarget] = []
@@ -109,23 +112,48 @@ final class OpenRequests: ObservableObject {
     /// on nothing then shows the first itself, instead of staying empty
     /// beside a window for it.
     private var atLaunch = false
+    /// The notebook windows, by id: whether each shows nothing yet.
+    private var windows: [UUID: Bool] = [:]
+    /// Opens a notebook window, for requests that come while none is open
+    /// (only a terminal, editor or Settings window). Set by the windows.
+    var openWindow: ((WindowTarget) -> Void)?
 
     /// Adds the file URLs among `urls`, each once.
     func add(_ urls: [URL]) {
+        var added = pending
         for target in urls.filter(\.isFileURL).map(WindowTarget.init(opening:))
-        where !pending.contains(target) {
-            pending.append(target)
+        where !added.contains(target) {
+            added.append(target)
         }
-        if launching, !pending.isEmpty { atLaunch = true }
+        guard added != pending else { return }
+        if launching { atLaunch = true }
+        // No notebook window to take them: open one for each.
+        if !launching, windows.isEmpty, let openWindow {
+            added.forEach(openWindow)
+            return
+        }
+        pending = added
     }
 
     func finishLaunching() {
         launching = false
     }
 
+    /// A notebook window, and whether it shows nothing yet.
+    func register(_ id: UUID, blank: Bool) {
+        windows[id] = blank
+    }
+
+    func unregister(_ id: UUID) {
+        windows[id] = nil
+    }
+
     /// Takes every request. A window opened on nothing (`blank`) shows the
     /// first itself if they came at launch; the rest each get a window.
+    /// While a blank window waits for them at launch, other windows (ones
+    /// restored with a notebook) take nothing.
     func take(blank: Bool) -> (shown: WindowTarget?, others: [WindowTarget]) {
+        if atLaunch, !blank, windows.values.contains(true) { return (nil, []) }
         defer {
             pending = []
             atLaunch = false
@@ -134,6 +162,7 @@ final class OpenRequests: ObservableObject {
         return (first, Array(pending.dropFirst()))
     }
 }
+#endif
 
 #if canImport(UniformTypeIdentifiers)
 extension UTType {

@@ -333,9 +333,12 @@ own process and shows this web app in a `WKWebView`:
   notebooks (Ganymede > Make Default App for Notebooks). Notebook windows
   are a `WindowGroup(for: WindowTarget.self)`: File > Open… and Open
   Folder… open a window per target, or bring the one already showing it to
-  the front; a file opened from the Finder arrives through `onOpenURL` in a
-  new window, or in the window already showing that file
-  (`handlesExternalEvents`).
+  the front. Files opened from the Finder come to the app delegate's
+  `application(_:open:)`, which queues them in `OpenRequests`; the first
+  notebook window to see the queue takes it. The window the app opened on
+  nothing at launch shows the first file, and the others open with
+  `openWindow(value:)`, which brings forward a window already showing one.
+  With no notebook window open, each file gets a new one.
 - Two sandboxed app extensions give notebooks a Quick Look preview and a
   Finder thumbnail (`apple/Sources/QuickLook`). The preview shows
   `preview.html`, a page of its own (`vite build --mode quicklook`, about
