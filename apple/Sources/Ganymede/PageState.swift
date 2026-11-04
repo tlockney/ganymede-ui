@@ -14,6 +14,23 @@ struct PageState: Decodable, Equatable {
         var detail: String
     }
 
+    /// A notebook with a running kernel on the page's backend (#225).
+    struct Session: Decodable, Equatable, Identifiable {
+        var id: String
+        /// The notebook's server path.
+        var path: String
+        /// The kernel's display name.
+        var kernel: String?
+        /// The kernel's execution state as the server last reported it.
+        var state: String?
+
+        /// The notebook's name without `.ipynb`.
+        var title: String {
+            let name = path.split(separator: "/").last.map(String.init) ?? path
+            return name.hasSuffix(".ipynb") ? String(name.dropLast(6)) : name
+        }
+    }
+
     /// The open notebook's server path; nil when none is open.
     var path: String?
     var dirty = false
@@ -27,8 +44,16 @@ struct PageState: Decodable, Equatable {
     var cellType: String?
     var kernels: [Kernel] = []
     var backend: Backend?
+    /// Running sessions; absent from a page older than #225.
+    var running: [Session]?
 
     init() {}
+
+    var sessions: [Session] { running ?? [] }
+    /// Whether a kernel runs for the notebook at `path`.
+    func isRunning(_ path: String) -> Bool { sessions.contains { $0.path == path } }
+    /// Sessions other than the open notebook's.
+    var otherSessions: [Session] { sessions.filter { $0.path != path } }
 
     /// From a message body as WebKit hands it over (dictionaries, arrays,
     /// strings, numbers, NSNull); nil for anything else.

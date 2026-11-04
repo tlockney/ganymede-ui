@@ -82,6 +82,18 @@ features such as the clipboard; [docs/device.md](docs/device.md) lists them.
 
 ## Using it
 
+On a first run, the empty window says where notebooks live and where
+kernels run, with buttons to show the folder and to change where kernels
+run, and offers a sample notebook: a short TypeScript tour with
+Markdown, a table and a plot, copied into the folder the sidebar shows
+(as `Ganymede Tour.ipynb`, numbered if one is there already). "Don’t
+Show Again" hides it in this browser (`ganymede-ui:onboarding` in local
+storage).
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
 Open a notebook from the sidebar, which also lists running kernels. The
 toolbar runs, interrupts and restarts the kernel, switches kernels, trusts
 the notebook, downloads it, and saves (⌘S). Keyboard shortcuts follow
