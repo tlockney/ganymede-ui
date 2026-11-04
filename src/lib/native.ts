@@ -20,6 +20,8 @@ export type DocumentMessage = { path: string | null; dirty: boolean };
 export type NativeHooks = {
   save(): Promise<boolean>;
   command(id: string, arg?: string): Promise<boolean>;
+  /** A call that answers with a value: the agent's settings for the app (#210, `native-agent.ts`). */
+  call(id: string, arg?: string): Promise<unknown>;
 };
 
 /**

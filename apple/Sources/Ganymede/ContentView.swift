@@ -39,6 +39,9 @@ struct ContentView: View {
     @Environment(\.openWindow) private var openWindow
     @State private var picking = false
     @State private var settings = false
+    /// Settings' Keyboard Shortcuts was tapped: show the page's sheet when
+    /// Settings has gone.
+    @State private var shortcutsNext = false
     /// A terminal shown full screen, where the app has one scene.
     @State private var terminal: TerminalRequest?
     /// A text file being edited full screen, where the app has one scene.
@@ -169,18 +172,23 @@ struct ContentView: View {
         }
         .focusedSceneObject(pageModel)
         .modifier(KeychainAlert(model: model))
-        .sheet(isPresented: $settings) {
+        .sheet(isPresented: $settings, onDismiss: {
+            // Keyboard Shortcuts is the page's sheet: once this one is gone.
+            if shortcutsNext {
+                shortcutsNext = false
+                pageModel.run("show-shortcuts")
+            }
+        }) {
             NavigationStack {
-                RemotesView()
-                    .navigationTitle("Remotes")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Done") { settings = false }
-                        }
-                    }
+                SettingsScreen(page: pageModel, showShortcuts: shortcutsShown ? {
+                    shortcutsNext = true
+                    settings = false
+                } : nil) { settings = false }
             }
             .environmentObject(model)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .showAppSettings)) { note in
+            if note.object as? PageModel === pageModel { settings = true }
         }
         .fullScreenCover(item: $terminal) { request in
             NavigationStack {
@@ -296,7 +304,7 @@ struct ContentView: View {
             }
     }
 
-    /// The app's own buttons: terminals, remotes, the notebook folder.
+    /// The app's own buttons: terminals, Settings, the notebook folder.
     @ViewBuilder
     private var appButtons: some View {
         TerminalMenu(model: model) { request in
@@ -311,13 +319,21 @@ struct ContentView: View {
         Button {
             settings = true
         } label: {
-            Label("Remotes", systemImage: "server.rack")
+            Label("Settings", systemImage: "gearshape")
         }
+        .keyboardShortcut(",")
         Button {
             picking = true
         } label: {
             Label("Open Folder", systemImage: "folder")
         }
+    }
+
+    /// Whether a notebook is on screen to show the page's shortcuts sheet
+    /// in: on the iPhone the page is parked behind the list until one is
+    /// pushed.
+    private var shortcutsShown: Bool {
+        pageModel.state.hasNotebook && (!isPhone || !phonePath.isEmpty)
     }
 
     private var title: String {

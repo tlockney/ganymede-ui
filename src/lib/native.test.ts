@@ -33,7 +33,7 @@ describe('native', () => {
 
   it('exposes the hooks until they are taken back', async () => {
     const save = vi.fn(async () => true);
-    const remove = exposeHooks({ save, command: async () => false });
+    const remove = exposeHooks({ save, command: async () => false, call: async () => null });
     expect(await window.ganymede!.save()).toBe(true);
     remove();
     expect(window.ganymede).toBeUndefined();

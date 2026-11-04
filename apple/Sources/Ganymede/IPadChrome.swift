@@ -368,7 +368,11 @@ struct IPadNotebookToolbar: ToolbarContent {
                     .disabled(page.state.trusted)
                 Divider()
                 Button { page.run("show-shortcuts") } label: { Label("Keyboard Shortcuts", systemImage: "keyboard") }
-                Button { page.run("show-settings") } label: { Label("Agent Settings", systemImage: "sparkles") }
+                Button {
+                    NotificationCenter.default.post(name: .showAppSettings, object: page)
+                } label: {
+                    Label("Settings", systemImage: "gearshape")
+                }
             } label: {
                 Label("More", systemImage: "ellipsis.circle")
             }

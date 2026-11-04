@@ -59,4 +59,53 @@ final class AgentKeysTests: XCTestCase {
         let https = URL(string: "https://example.org/ui/")!
         XCTAssertTrue(AgentKeys.trusted(isMainFrame: true, scheme: "https", host: "example.org", port: 0, page: https))
     }
+
+    // MARK: - The Settings screen's agent (#210)
+
+    private let answer: [String: Any] = [
+        "enabled": true, "provider": "anthropic", "model": "claude-sonnet-5-5",
+        "baseUrl": "http://localhost:11434/v1",
+        "providers": [
+            ["id": "anthropic", "name": "Anthropic", "defaultModel": "claude-sonnet-5-5", "needsKey": true],
+            ["id": "local", "name": "Local server", "defaultModel": "llama3.1", "needsKey": false],
+        ],
+    ]
+
+    func testReadsThePagesAgentSettings() throws {
+        let panel = try XCTUnwrap(AgentPanel(body: answer))
+        XCTAssertTrue(panel.enabled)
+        XCTAssertEqual(panel.providers.map(\.id), ["anthropic", "local"])
+        XCTAssertEqual(panel.current?.needsKey, true)
+        XCTAssertNil(AgentPanel(body: nil))
+        XCTAssertNil(AgentPanel(body: ["enabled": true]))
+        var noProviders = answer
+        noProviders["providers"] = [[String: Any]]()
+        XCTAssertNil(AgentPanel(body: noProviders))
+    }
+
+    func testPicksAProviderWithItsDefaultModel() throws {
+        var panel = try XCTUnwrap(AgentPanel(body: answer))
+        panel.model = "claude-opus-5-5"
+        panel.pick("local")
+        XCTAssertEqual(panel.provider, "local")
+        XCTAssertEqual(panel.model, "llama3.1")
+        XCTAssertEqual(panel.current?.needsKey, false)
+        // An unknown provider, or the same one, changes nothing.
+        panel.model = "mistral"
+        panel.pick("elsewhere")
+        panel.pick("local")
+        XCTAssertEqual(panel.provider, "local")
+        XCTAssertEqual(panel.model, "mistral")
+    }
+
+    func testWritesTheSettingsForThePage() throws {
+        let panel = try XCTUnwrap(AgentPanel(body: answer))
+        let saved = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(panel.json().utf8)) as? [String: Any])
+        XCTAssertEqual(Set(saved.keys), ["enabled", "provider", "model", "baseUrl"])
+        XCTAssertEqual(saved["model"] as? String, "claude-sonnet-5-5")
+        let test = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(panel.json(key: "sk-1").utf8)) as? [String: Any])
+        XCTAssertEqual(test["key"] as? String, "sk-1")
+    }
 }

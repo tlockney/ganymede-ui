@@ -60,3 +60,63 @@ struct AgentKeys {
         }
     }
 }
+
+/// The agent's settings as the app's Settings screen edits them (#210):
+/// the page's `AgentPanel` (src/lib/native-agent.ts). The page keeps them;
+/// the API key is the Keychain's (`AgentKeys`).
+struct AgentPanel: Equatable {
+    struct Provider: Equatable, Identifiable {
+        let id: String
+        let name: String
+        let defaultModel: String
+        let needsKey: Bool
+    }
+
+    var enabled: Bool
+    var provider: String
+    var model: String
+    /// The local server's URL; only the `local` provider uses it.
+    var baseUrl: String
+    let providers: [Provider]
+
+    /// From the page's `agent-settings` answer; nil when it isn't one.
+    init?(body: Any?) {
+        guard let fields = body as? [String: Any],
+              let enabled = fields["enabled"] as? Bool,
+              let provider = fields["provider"] as? String,
+              let model = fields["model"] as? String,
+              let baseUrl = fields["baseUrl"] as? String,
+              let list = fields["providers"] as? [[String: Any]]
+        else { return nil }
+        let providers = list.compactMap { p -> Provider? in
+            guard let id = p["id"] as? String, let name = p["name"] as? String,
+                  let defaultModel = p["defaultModel"] as? String, let needsKey = p["needsKey"] as? Bool
+            else { return nil }
+            return Provider(id: id, name: name, defaultModel: defaultModel, needsKey: needsKey)
+        }
+        guard !providers.isEmpty else { return nil }
+        self.enabled = enabled
+        self.provider = provider
+        self.model = model
+        self.baseUrl = baseUrl
+        self.providers = providers
+    }
+
+    var current: Provider? { providers.first { $0.id == provider } }
+
+    /// Picks a provider, with its default model, as the page's sheet does.
+    mutating func pick(_ id: String) {
+        guard id != provider, let next = providers.first(where: { $0.id == id }) else { return }
+        provider = id
+        model = next.defaultModel
+    }
+
+    /// The settings for `save-agent-settings`, and with `key` for
+    /// `test-agent`.
+    func json(key: String? = nil) -> String {
+        var fields: [String: Any] = ["enabled": enabled, "provider": provider, "model": model, "baseUrl": baseUrl]
+        if let key { fields["key"] = key }
+        let data = (try? JSONSerialization.data(withJSONObject: fields, options: [.sortedKeys])) ?? Data("{}".utf8)
+        return String(decoding: data, as: UTF8.self)
+    }
+}
