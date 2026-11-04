@@ -23,6 +23,33 @@ struct FolderSidebar: View {
             Section(folder.lastPathComponent.isEmpty ? folder.path : folder.lastPathComponent) {
                 FolderContents(folder: folder, actions: actions, generation: generation)
             }
+            // Kernels keep running when their notebook is closed or another
+            // is opened; here they can be found and shut down (#225).
+            if !page.state.sessions.isEmpty {
+                Section("Running") {
+                    ForEach(page.state.sessions) { session in
+                        Button {
+                            page.run("open", arg: session.path)
+                        } label: {
+                            HStack {
+                                Label(session.title, systemImage: "bolt.fill")
+                                Spacer()
+                                if let kernel = session.kernel {
+                                    Text(kernel).foregroundStyle(.secondary).font(.caption)
+                                }
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help(session.path + (session.state.map { " · " + PageState.statusLabel($0) } ?? ""))
+                        .contextMenu {
+                            Button("Open") { page.run("open", arg: session.path) }
+                            Divider()
+                            Button("Shut Down Kernel") { page.run("shutdown-kernel", arg: session.id) }
+                        }
+                    }
+                }
+            }
         }
         .listStyle(.sidebar)
         .contextMenu {
@@ -40,6 +67,7 @@ struct FolderSidebar: View {
     private var actions: FolderActions {
         FolderActions(
             openPath: page.state.path,
+            isRunning: { page.state.isRunning($0) },
             open: open,
             openInNewWindow: { openWindow(value: WindowTarget(opening: $0.url)) },
             newNotebook: { page.run("new-notebook", arg: FolderEntry.serverPath($0)) },
@@ -146,6 +174,8 @@ struct FolderSidebar: View {
 /// What a sidebar row can do, handed down the tree.
 struct FolderActions {
     var openPath: String?
+    /// Whether a notebook, by server path, has a running kernel (#225).
+    var isRunning: (String) -> Bool
     var open: (FolderEntry) -> Void
     var openInNewWindow: (FolderEntry) -> Void
     var newNotebook: (URL) -> Void
@@ -178,9 +208,19 @@ private struct FolderContents: View {
                     Button {
                         actions.open(entry)
                     } label: {
-                        Label(entry.title, systemImage: entry.isNotebook ? "book.pages" : "doc.text")
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(Rectangle())
+                        HStack {
+                            Label(entry.title, systemImage: entry.isNotebook ? "book.pages" : "doc.text")
+                            Spacer()
+                            if entry.isNotebook, actions.isRunning(entry.serverPath) {
+                                // Its kernel is running.
+                                Circle()
+                                    .fill(Color.green)
+                                    .frame(width: 6, height: 6)
+                                    .accessibilityLabel("Kernel running")
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .padding(.vertical, 1)
@@ -238,6 +278,8 @@ private struct FolderContents: View {
 /// items into the others when a notebook opened from the Finder (#226).
 struct NotebookToolbar: ToolbarContent {
     @ObservedObject var page: PageModel
+    /// Saved as File > Save saves it, and enabled when that is.
+    @ObservedObject var document: PageDocument
     /// Where New Notebook puts it: the window's folder.
     let folder: URL
 
@@ -249,6 +291,11 @@ struct NotebookToolbar: ToolbarContent {
                 Label("New Notebook", systemImage: "square.and.pencil")
             }
             .help("New Notebook (⌘N)")
+        }
+        ToolbarItem {
+            Button { Task { await document.save() } } label: { Label("Save", systemImage: "square.and.arrow.down") }
+                .help("Save (⌘S)")
+                .disabled(document.file == nil)
         }
         ToolbarItem {
             ControlGroup {
@@ -463,6 +510,8 @@ struct KernelMenu: View {
             .disabled(page?.state.isBusy != true)
         Button("Restart") { page?.run("restart") }
             .disabled(page?.state.hasKernel != true)
+        Button("Shut Down Other Kernels") { page?.run("shutdown-others") }
+            .disabled(page?.state.otherSessions.isEmpty ?? true)
         Divider()
         Menu("Change Kernel") {
             ForEach(page?.state.kernels ?? [], id: \.name) { kernel in

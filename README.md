@@ -107,6 +107,19 @@ closes. If the file changed on disk since it was opened or last saved, a
 save asks before overwriting it, and autosave stops until you save. A
 failed save or kernel action shows its error above the notebook.
 
+### Running cells and errors
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+The cell the kernel is running says so under its input, with how long it
+has run and an Interrupt button; cells waiting behind it say they are
+queued. When something goes wrong, the notice above the notebook says
+what happened and offers the next step: Restart when the kernel died,
+Retry when the server couldn't be reached or a save failed, and a kernel
+picker when the notebook's kernel isn't installed here.
+
 ## Where your data lives
 
 - **This browser:** notebooks are stored in the browser's IndexedDB for this
@@ -154,13 +167,16 @@ It is a prototype. What it doesn't do yet, or does roughly:
   way to reach them from the app
   ([#62](https://github.com/tlockney/ganymede-ui/issues/62)).
 - **File operations** are in the sidebar (rename, duplicate, delete, new
-  folder) and the toolbar's title (rename the open notebook); there is no
-  upload yet. No command palette or menus (the Mac app has a menu bar).
+  folder) and the toolbar's title (rename the open notebook). A notebook
+  dragged in from Finder or Files is copied into the sidebar's folder,
+  and opened when dropped on the notebook; other files can't be uploaded
+  yet. No command palette or menus (the Mac app has a menu bar).
 
   > [!NOTE]
-  > **Unreleased.** The sidebar's file menu and renaming from the title
-  > are available only from a build of `main` (HEAD), not in the latest
-  > release, which has no file operations beyond New Notebook.
+  > **Unreleased.** The sidebar's file menu, renaming from the title and
+  > dropping notebooks in are available only from a build of `main`
+  > (HEAD), not in the latest release, which has no file operations
+  > beyond New Notebook.
 
 - **Widgets** need a running kernel; saved widget state isn't restored
   without one.

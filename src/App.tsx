@@ -37,8 +37,12 @@ import {
   openFile,
   postDocument,
   postState,
+  runningSessions,
+  type RunningSession,
 } from './lib/native';
+import { useSignals } from './lib/useSignal';
 import { fileActions } from './lib/file-actions';
+import { useFileDrop } from './lib/file-drop';
 import { copySample } from './lib/sample';
 
 /**
@@ -236,6 +240,15 @@ export function App() {
     [backend],
   );
 
+  // A notebook dropped on the window from Finder or Files is copied into
+  // the sidebar's folder and opened (#216).
+  const drop = useFileDrop({
+    contents: backend?.services.contents,
+    dir: folder,
+    onCopied: paths => setOpenPath(paths[0]),
+    onError: setNewError,
+  });
+
   // A failed New Notebook's notice goes once something else opens.
   useEffect(() => setNewError(undefined), [openPath, backend]);
 
@@ -279,6 +292,25 @@ export function App() {
         if (!backend) return false;
         // A failure shows the page's notice (#195) and returns false.
         return newNotebook(clean(arg ?? ''));
+      case 'shutdown-kernel': {
+        // By session id, or by the notebook's path as `open` takes it.
+        const s = running.find(r => r.id === arg || (!!arg && r.path === clean(arg)));
+        if (!backend || !s) return false;
+        // False, not a rejection: the app runs commands without waiting.
+        return backend.services.sessions.shutdown(s.id).then(
+          () => true,
+          () => false,
+        );
+      }
+      case 'shutdown-others': {
+        if (!backend) return false;
+        const others = running.filter(r => r.path !== openPath);
+        // Each one tried; false when any failed.
+        const done = await Promise.allSettled(
+          others.map(r => backend.services.sessions.shutdown(r.id)),
+        );
+        return done.every(d => d.status === 'fulfilled');
+      }
       case 'show-shortcuts':
         setShortcutsOpen(true);
         return true;
@@ -353,8 +385,12 @@ export function App() {
   const dirty = !!openPath && controller?.path === openPath && controller.dirty;
   useEffect(() => postDocument({ path: openPath ?? null, dirty }), [openPath, dirty]);
 
-  // Everything the app's toolbar and menus show (#205).
+  // Everything the app's toolbar and menus show (#205), and its Running
+  // list (#225).
   const specs = backend?.services.kernelspecs.specs ?? undefined;
+  useSignals(backend?.services.sessions.runningChanged);
+  const running = runningSessions(backend?.services.sessions.running() ?? [], specs);
+  const runningKey = JSON.stringify(running);
   const shown = !!openPath && controller?.path === openPath ? controller : undefined;
   useEffect(() => {
     const kernel = shown?.kernelName ?? null;
@@ -373,8 +409,9 @@ export function App() {
         k ? [{ name: k.name, displayName: k.display_name }] : [],
       ),
       backend: backend ? { label: backend.label, detail: backend.detail } : null,
+      running: JSON.parse(runningKey) as RunningSession[],
     });
-  }, [openPath, dirty, shown, specs, backend]);
+  }, [openPath, dirty, shown, specs, backend, runningKey]);
 
   // ⌘S / Ctrl+S saves, as in any document app.
   useEffect(() => {
@@ -473,7 +510,7 @@ export function App() {
               specs={specs}
             />
           )}
-          <div className="content">
+          <div className={`content ${drop.active ? 'drop-active' : ''}`} {...drop.handlers}>
             {backend && openPath ? (
               <NotebookPane
                 key={`${backend.config.kind}:${openPath}`}

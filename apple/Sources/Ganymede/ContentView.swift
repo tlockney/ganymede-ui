@@ -40,6 +40,8 @@ struct ContentView: View {
     @State private var editing: EditorRequest?
     /// What the page shows, for the native toolbar and menus (#205).
     @StateObject private var pageModel = PageModel()
+    /// The iPad's sidebar and notebook columns (#208).
+    @State private var columns = NavigationSplitViewVisibility.automatic
     #endif
 
     var body: some View {
@@ -55,7 +57,7 @@ struct ContentView: View {
             content
         }
         .toolbar {
-            NotebookToolbar(page: pageModel, folder: sidebarRoot)
+            NotebookToolbar(page: pageModel, document: document, folder: sidebarRoot)
         }
         .navigationSubtitle(pageModel.state.subtitle)
         .frame(minWidth: 720, minHeight: 480)
@@ -82,35 +84,30 @@ struct ContentView: View {
         .focusedSceneObject(document)
         .focusedSceneObject(pageModel)
         #else
-        NavigationStack {
-            content
-                .ignoresSafeArea(.container, edges: .bottom)
-                .navigationTitle(model.root.lastPathComponent)
-                .navigationBarTitleDisplayMode(.inline)
-                .toolbar {
-                    ToolbarItemGroup(placement: .primaryAction) {
-                        TerminalMenu(model: model) { request in
-                            // A scene of its own beside the notebook on iPad,
-                            // full screen where there is one scene (iPhone).
-                            if UIApplication.shared.supportsMultipleScenes {
-                                openWindow(value: request)
-                            } else {
-                                terminal = request
-                            }
+        Group {
+            if drawsNativeChrome {
+                // The iPad draws the sidebar and toolbar; the page shows the
+                // notebook (#208).
+                GeometryReader { window in
+                    NavigationSplitView(columnVisibility: $columns) {
+                        IPadSidebar(folder: model.root, page: pageModel, openFile: openEditor) {
+                            // In portrait the sidebar covers the notebook:
+                            // it gets out of the way once one is opened.
+                            if window.size.width < window.size.height { columns = .detailOnly }
                         }
-                        Button {
-                            settings = true
-                        } label: {
-                            Label("Remotes", systemImage: "server.rack")
-                        }
-                        Button {
-                            picking = true
-                        } label: {
-                            Label("Open Folder", systemImage: "folder")
-                        }
+                    } detail: {
+                        NavigationStack { notebook }
+                    }
+                    // Back in landscape, the sidebar shows again by default.
+                    .onChange(of: window.size.width > window.size.height) { landscape in
+                        if landscape { columns = .automatic }
                     }
                 }
+            } else {
+                NavigationStack { notebook }
+            }
         }
+        .focusedSceneObject(pageModel)
         .sheet(isPresented: $settings) {
             NavigationStack {
                 RemotesView()
@@ -182,6 +179,72 @@ struct ContentView: View {
     }
     #else
     private var page: URL? { model.url }
+
+    /// The page with its navigation bar: one title, the notebook's on the
+    /// iPad, and the app's own buttons beside the notebook's.
+    private var notebook: some View {
+        content
+            .ignoresSafeArea(.container, edges: .bottom)
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                if drawsNativeChrome {
+                    // The title over the kernel and its state, which the
+                    // page's own toolbar showed (the Mac's window subtitle).
+                    ToolbarItem(placement: .principal) {
+                        VStack(spacing: 0) {
+                            Text(title).font(.headline).lineLimit(1)
+                            if !pageModel.state.subtitle.isEmpty {
+                                Text(pageModel.state.subtitle)
+                                    .font(.caption)
+                                    .foregroundStyle(pageModel.state.kernelMissing ? AnyShapeStyle(Color.red) : AnyShapeStyle(.secondary))
+                                    .lineLimit(1)
+                            }
+                        }
+                    }
+                    IPadNotebookToolbar(page: pageModel)
+                }
+                ToolbarItemGroup(placement: .primaryAction) {
+                    TerminalMenu(model: model) { request in
+                        // A scene of its own beside the notebook on iPad,
+                        // full screen where there is one scene (iPhone).
+                        if UIApplication.shared.supportsMultipleScenes {
+                            openWindow(value: request)
+                        } else {
+                            terminal = request
+                        }
+                    }
+                    Button {
+                        settings = true
+                    } label: {
+                        Label("Remotes", systemImage: "server.rack")
+                    }
+                    Button {
+                        picking = true
+                    } label: {
+                        Label("Open Folder", systemImage: "folder")
+                    }
+                }
+            }
+    }
+
+    private var title: String {
+        if drawsNativeChrome, let path = pageModel.state.path {
+            return URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
+        }
+        return model.root.lastPathComponent
+    }
+
+    /// A text file from the sidebar: beside the notebook on iPad, full
+    /// screen on iPhone.
+    private func openEditor(_ path: String) {
+        let request = EditorRequest(path: path)
+        if UIApplication.shared.supportsMultipleScenes {
+            openWindow(value: request)
+        } else {
+            editing = request
+        }
+    }
     #endif
 
     private var content: some View {
@@ -192,15 +255,7 @@ struct ContentView: View {
                     openWindow(value: EditorRequest(path: path))
                 }
                 #else
-                WebView(url: url, page: pageModel) { path in
-                    // Beside the notebook on iPad, full screen on iPhone.
-                    let request = EditorRequest(path: path)
-                    if UIApplication.shared.supportsMultipleScenes {
-                        openWindow(value: request)
-                    } else {
-                        editing = request
-                    }
-                }
+                WebView(url: url, page: pageModel, onOpenFile: openEditor)
                 #endif
             } else if let error = model.error {
                 VStack(spacing: 12) {

@@ -4,6 +4,7 @@ import type { Backend } from '../lib/backends';
 import { useSignals } from '../lib/useSignal';
 import { parentOf } from '../lib/launch';
 import { type FileActions, type FileItem, deletePrompt } from '../lib/file-actions';
+import { useFileDrop } from '../lib/file-drop';
 import { ContextMenu, type MenuItem } from './ContextMenu';
 import {
   BrowserIcon,
@@ -205,11 +206,14 @@ export function Sidebar({
       await actions?.rename(item, input);
     });
 
+  // Notebooks dropped from Finder or Files are copied into this folder (#216).
+  const drop = useFileDrop({ contents: services?.contents, dir, onError: setActionError });
+
   useSignals(services?.sessions.runningChanged);
   const running = services ? [...services.sessions.running()] : [];
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${drop.active ? 'drop-active' : ''}`} {...drop.handlers}>
       <div className="sidebar-titlebar">
         {onClose && (
           <button

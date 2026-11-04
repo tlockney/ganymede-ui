@@ -45,17 +45,17 @@ struct GanymedeApp: App {
                 TerminalCommands(model: model)
             }
             CommandGroup(after: .appSettings) {
-                // The page's agent settings (#166); ⌘, is the app's own
-                // Settings window (remotes).
+                // The page's agent settings (#166), also under Settings ›
+                // Agent; ⌘, is the app's own Settings window (#206).
                 Button("Agent Settings…") {
-                    NotificationCenter.default.post(name: .showAgentSettings, object: nil)
+                    NotebookWindows.show(.showAgentSettings)
                 }
                 .keyboardShortcut(",", modifiers: [.command, .option])
                 DefaultAppCommand()
             }
             CommandGroup(replacing: .help) {
                 Button("Keyboard Shortcuts") {
-                    NotificationCenter.default.post(name: .showShortcuts, object: nil)
+                    NotebookWindows.show(.showShortcuts)
                 }
             }
         }
@@ -72,10 +72,8 @@ struct GanymedeApp: App {
         }
         .handlesExternalEvents(matching: [])
         Settings {
-            RemotesView()
+            SettingsWindow()
                 .environmentObject(model)
-                .frame(width: 460)
-                .padding()
         }
     }
     #else
@@ -84,6 +82,8 @@ struct GanymedeApp: App {
             ContentView()
                 .environmentObject(model)
         }
+        // Holding ⌘ lists them, and the iPadOS menu bar shows them (#208).
+        .commands { IPadCommands() }
         WindowGroup("Terminal", for: TerminalRequest.self) { $request in
             TerminalScene(request: request)
                 .environmentObject(model)

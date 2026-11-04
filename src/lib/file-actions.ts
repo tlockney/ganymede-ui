@@ -36,7 +36,7 @@ export function deletePrompt(item: FileItem): string {
 type Options = {
   contents: Contents.IManager;
   /** The running sessions: a renamed notebook's kernel goes with it. */
-  sessions?: Pick<Session.IManager, 'running' | 'connectTo'>;
+  sessions?: Pick<Session.IManager, 'running' | 'refreshRunning' | 'connectTo'>;
   openPath?: string;
   /** The open notebook's, when it is `openPath`'s. */
   controller?: NotebookController;

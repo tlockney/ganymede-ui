@@ -42,7 +42,9 @@ built from the same sources (see
   only; the page shows just the notebook). The sidebar lists the
   window's folder as a tree; right-click an item to open it in a new
   window, show it in the Finder, make a notebook or folder there, or move
-  it to the Trash. The toolbar runs cells, interrupts and restarts the
+  it to the Trash. A dot marks notebooks whose kernel is running, and a
+  Running section lists them; right-click one to shut its kernel down, or
+  choose Kernel › Shut Down Other Kernels. The toolbar saves, runs cells, interrupts and restarts the
   kernel, inserts cells, sets the cell type, picks the kernel and trusts
   the notebook. File › New Notebook (⌘N) makes one in the window's
   folder, New Window (⌥⌘N) opens another window, and Rename… renames the
@@ -60,9 +62,16 @@ built from the same sources (see
   running in the app's hidden kernel web view, as on the iPad. Its cells get
   ganymede-device's `device` (see [docs/device.md](../docs/device.md));
   process kernels can't reach the app.
-- Settings (⌘,) keeps a list of remotes: Jupyter or Ganymede servers,
-  SSH hosts, or both. Kernels run on this Mac or, as on iPadOS, on one
+- Settings (⌘,) has tabs. General makes Ganymede the default app for
+  notebooks. Agent and Shortcuts open the page's agent settings and
+  shortcut list in the front notebook window. Remotes keeps a
+  list of remotes: Jupyter or Ganymede servers, SSH hosts, or both. Kernels run on this Mac or, as on iPadOS, on one
   remote's server. Tokens are kept in the keychain.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release, which opens Remotes alone in Settings.
+
 - Ganymede > Agent Settings… (⌥⌘,) opens the page's agent settings. The
   agent's API keys are kept in the keychain too.
 - File > New Terminal (⌃⇧`) opens a shell from the app's own server in
@@ -93,6 +102,21 @@ On iPadOS and iOS (`Ganymede-iOS` target, iOS 16 or later):
   Jupyter or Ganymede server (for example `ganymede serve --ip 0.0.0.0` on
   your Mac; see its [Security](https://ganymede-server.com/docs/security)
   page for reaching it safely). Either way, notebooks stay on the iPad.
+- On the iPad the sidebar, toolbar and key commands are the app's own,
+  as on the Mac; the page shows just the notebook. The sidebar lists the
+  notebook folder as a tree, hides in portrait and comes back with a swipe
+  from the edge; long-press an item to rename, duplicate or delete it, or
+  make a notebook or folder in it. The navigation bar runs cells and
+  interrupts the kernel, and its ⋯ menu inserts cells, sets the cell
+  type, restarts or changes the kernel, saves, downloads and trusts. With
+  a keyboard, hold ⌘ to see the commands: New Notebook ⌘N, Save ⌘S, Run
+  All ⇧⌘↩, Interrupt ⌘., Find ⌘F. The iPhone keeps the page's own
+  sidebar and toolbar.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release, which uses the page's own sidebar and toolbar.
+
 - The terminal button opens a shell on a remote, over SSH or on its
   server's terminals. On iPad it opens in its own window beside the
   notebook; on iPhone it covers the screen. SSH signs in with an ed25519
