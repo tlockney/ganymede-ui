@@ -30,6 +30,7 @@ struct GanymedeApp: App {
             }
             CommandGroup(replacing: .saveItem) {
                 SaveCommand()
+                RenameCommand()
                 DownloadCommand()
             }
             CommandMenu("Cell") {
