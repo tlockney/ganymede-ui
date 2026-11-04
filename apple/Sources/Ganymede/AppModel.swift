@@ -202,7 +202,12 @@ final class AppModel: ObservableObject {
     /// listed beside them.
     private func pageURL(_ url: URL) -> URL {
         guard var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
-        parts.queryItems = (parts.queryItems ?? []) + [URLQueryItem(name: "kernels", value: kernels)]
+        var items = [URLQueryItem(name: "kernels", value: kernels)]
+        #if os(iOS)
+        // The iPad draws the sidebar, toolbar and key commands (#208).
+        if drawsNativeChrome { items.append(URLQueryItem(name: "chrome", value: "native")) }
+        #endif
+        parts.queryItems = (parts.queryItems ?? []) + items
         return parts.url ?? url
     }
 
