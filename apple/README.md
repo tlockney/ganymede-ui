@@ -110,6 +110,19 @@ On iPadOS and iOS (`Ganymede-iOS` target, iOS 16 or later):
   back in the foreground the app restarts the server if it stopped
   answering, on the same port.
 
+## TestFlight
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+Each ganymede-ui release uploads the iPad and iPhone app to TestFlight for
+internal testers (`release.yml`'s `ios` job, set up as
+[docs/releasing.md](../docs/releasing.md#the-ipad-and-iphone-app-testflight)
+says). Members of the team's internal testing group install it with the
+TestFlight app. TestFlight builds expire after 90 days; the next release
+replaces them.
+
 ## Build
 
 Needs macOS 13 or later, Xcode 16, Rust (rustup), Node 24, and
