@@ -1,5 +1,6 @@
 import SwiftTerm
 import SwiftUI
+import WebKit
 
 /// A terminal drawn by SwiftTerm, connected to `transport`: output is fed
 /// to the screen, keystrokes and size changes go back. The transport is
@@ -62,9 +63,21 @@ private struct TerminalRepresentable: NSViewRepresentable {
             if focused, !has {
                 window.makeFirstResponder(view)
             } else if !focused, has {
-                window.makeFirstResponder(nil)
+                // Back to the notebook when there is one in the window.
+                window.makeFirstResponder(visibleWebView(in: window.contentView))
             }
         }
+    }
+
+    /// The first web view on show under `view`: the notebook page, not
+    /// a hidden kernel web view.
+    private static func visibleWebView(in view: NSView?) -> WKWebView? {
+        guard let view, !view.isHiddenOrHasHiddenAncestor else { return nil }
+        if let web = view as? WKWebView, !web.frame.isEmpty { return web }
+        for child in view.subviews {
+            if let web = visibleWebView(in: child) { return web }
+        }
+        return nil
     }
 
     static func dismantleNSView(_ view: TerminalView, coordinator: TerminalCoordinator) {

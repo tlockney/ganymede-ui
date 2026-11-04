@@ -25,7 +25,8 @@ struct BottomPanel: View {
                 .gesture(
                     DragGesture(minimumDistance: 1, coordinateSpace: .global)
                         .onChanged { drag in
-                            let start = dragStart ?? panel.height
+                            // From the height drawn, which a shorter window may clamp.
+                            let start = dragStart ?? PanelController.clamp(panel.height, available: available)
                             dragStart = start
                             panel.resize(to: start - drag.translation.height, available: available)
                             NSCursor.resizeUpDown.set()
