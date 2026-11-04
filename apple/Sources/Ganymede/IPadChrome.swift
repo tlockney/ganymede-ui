@@ -20,6 +20,8 @@ struct IPadSidebar: View {
     let folder: URL
     @ObservedObject var page: PageModel
     let openFile: (String) -> Void
+    /// After a notebook is opened from the sidebar.
+    var opened: () -> Void = {}
     @Environment(\.scenePhase) private var phase
     /// Bumped to list the folders again after a change.
     @State private var generation = 0
@@ -109,6 +111,7 @@ struct IPadSidebar: View {
     private func open(_ entry: FolderEntry) {
         if entry.isNotebook {
             page.run("open", arg: path(entry))
+            opened()
         } else {
             openFile(path(entry))
         }
@@ -327,9 +330,14 @@ struct IPadNotebookToolbar: ToolbarContent {
 // MARK: - Key commands
 
 /// The iPad's menu commands, which holding ⌘ lists and the iPadOS menu
-/// bar shows. They act on the focused scene's page.
+/// bar shows. They act on the focused scene's page. As on the Mac, keys
+/// the page handles itself (⇧↩ to run, A and B to insert) are not key
+/// equivalents, which would also fire while typing; so Run, Restart and
+/// Insert are in the menu bar (iPadOS 26) but not the ⌘ overlay.
 struct IPadCommands: Commands {
     var body: some Commands {
+        // Show/Hide Sidebar (⌃⌘S).
+        SidebarCommands()
         CommandGroup(replacing: .newItem) { IPadNewNotebook() }
         CommandGroup(replacing: .saveItem) { IPadPageButton("Save", "save", key: "s") }
         CommandMenu("Cell") {

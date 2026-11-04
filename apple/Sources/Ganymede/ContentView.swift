@@ -40,6 +40,8 @@ struct ContentView: View {
     @State private var editing: EditorRequest?
     /// What the page shows, for the native toolbar and menus (#205).
     @StateObject private var pageModel = PageModel()
+    /// The iPad's sidebar and notebook columns (#208).
+    @State private var columns = NavigationSplitViewVisibility.automatic
     #endif
 
     var body: some View {
@@ -86,10 +88,16 @@ struct ContentView: View {
             if drawsNativeChrome {
                 // The iPad draws the sidebar and toolbar; the page shows the
                 // notebook (#208).
-                NavigationSplitView {
-                    IPadSidebar(folder: model.root, page: pageModel, openFile: openEditor)
-                } detail: {
-                    NavigationStack { notebook }
+                GeometryReader { window in
+                    NavigationSplitView(columnVisibility: $columns) {
+                        IPadSidebar(folder: model.root, page: pageModel, openFile: openEditor) {
+                            // In portrait the sidebar covers the notebook:
+                            // it gets out of the way once one is opened.
+                            if window.size.width < window.size.height { columns = .detailOnly }
+                        }
+                    } detail: {
+                        NavigationStack { notebook }
+                    }
                 }
             } else {
                 NavigationStack { notebook }
@@ -177,6 +185,19 @@ struct ContentView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 if drawsNativeChrome {
+                    // The title over the kernel and its state, which the
+                    // page's own toolbar showed (the Mac's window subtitle).
+                    ToolbarItem(placement: .principal) {
+                        VStack(spacing: 0) {
+                            Text(title).font(.headline).lineLimit(1)
+                            if !pageModel.state.subtitle.isEmpty {
+                                Text(pageModel.state.subtitle)
+                                    .font(.caption)
+                                    .foregroundStyle(pageModel.state.kernelMissing ? AnyShapeStyle(Color.red) : AnyShapeStyle(.secondary))
+                                    .lineLimit(1)
+                            }
+                        }
+                    }
                     IPadNotebookToolbar(page: pageModel)
                 }
                 ToolbarItemGroup(placement: .primaryAction) {

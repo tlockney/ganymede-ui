@@ -23,5 +23,14 @@ unchanged until #209, so it is gated on the `.pad` idiom
 - `.commands` puts New Notebook, Save, Cell and Kernel items in the ⌘
   overlay and the iPadOS menu bar. They find the page through
   `focusedSceneObject`, as on the Mac.
+- With the page's toolbar hidden, the kernel and its state (Idle,
+  Stopped, not installed) go under the title in the navigation bar's
+  principal item, as the Mac shows them in the window subtitle;
+  `navigationSubtitle` is macOS only.
+- In portrait the sidebar is an overlay, and plain buttons don't close
+  it, so opening a notebook from it sets the split view to detail only.
+- Keys the page handles itself (⇧↩, A, B) are not key equivalents, as on
+  the Mac, so Run and Insert show in the menu bar but not the ⌘ overlay.
+  `SidebarCommands` gives Show/Hide Sidebar.
 - Not yet: a Running section (it needs `PageState.running` from #235), and
   a check on a real iPad.
