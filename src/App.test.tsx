@@ -48,11 +48,13 @@ vi.mock('./components/NotebookPane', async () => {
 });
 
 const { App } = await import('./App');
+const { resetOnboardingForTests } = await import('./lib/onboarding');
 
 beforeEach(() => {
   mocks.controller = undefined;
   mocks.signedInHere.mockReset().mockResolvedValue(false);
   localStorage.clear();
+  resetOnboardingForTests();
   sessionStorage.clear();
   history.replaceState(null, '', '/');
   document.title = 'Ganymede';
@@ -188,8 +190,10 @@ describe('App', () => {
     const changeCellType = vi.fn();
     const command = vi.fn((id: string) => id === 'move-up');
     const discard = vi.fn();
+    const rename = vi.fn(async () => true);
     mocks.controller = {
       discard,
+      rename,
       dirty: false,
       save: vi.fn(async () => true),
       runAll,
@@ -227,6 +231,10 @@ describe('App', () => {
     // The notebook's own commands, by their shortcut-table ids.
     expect(await run('move-up')).toBe(true);
     expect(await run('no-such-command')).toBe(false);
+    // File › Rename: the page's own rename, which saves and keeps the kernel.
+    expect(await run('rename', 'Callisto')).toBe(true);
+    expect(rename).toHaveBeenCalledWith('Callisto');
+    expect(await run('rename')).toBe(false);
     // An absolute path, as the Mac app passes it, is cleaned as `?open=` is.
     expect(await run('open', '/Europa.ipynb')).toBe(true);
     await waitFor(() => expect(screen.getByTestId('pane')).toHaveTextContent(/^Europa\.ipynb$/));
@@ -237,6 +245,64 @@ describe('App', () => {
     expect(await run('close')).toBe(false);
     expect(await run('show-shortcuts')).toBe(true);
     expect(await screen.findByText('Keyboard Shortcuts')).toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
+
+  it('tells the app what is running and shuts kernels down for it', async () => {
+    const states: Record<string, unknown>[] = [];
+    vi.stubGlobal('webkit', {
+      messageHandlers: {
+        state: { postMessage: (m: Record<string, unknown>) => states.push(m) },
+      },
+    });
+    mocks.controller = { dirty: false, save: vi.fn(async () => true) };
+    const fake = fakeServices({ '': [{ name: 'Io.ipynb', type: 'notebook' }] });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    history.replaceState(null, '', '/?kernels=server&open=Io.ipynb');
+    render(<App />);
+    await waitFor(() => expect(states.at(-1)).toMatchObject({ path: 'Io.ipynb', running: [] }));
+
+    const session = (id: string, path: string) =>
+      ({
+        id,
+        path,
+        name: '',
+        type: 'notebook',
+        kernel: { id: `k-${id}`, name: 'python3' },
+      }) as never;
+    act(() =>
+      fake.setRunning([
+        session('s1', 'Io.ipynb'),
+        session('s2', 'Europa.ipynb'),
+        session('s3', 'Callisto.ipynb'),
+      ]),
+    );
+    await waitFor(() =>
+      expect(states.at(-1)?.running).toEqual([
+        { id: 's1', path: 'Io.ipynb', kernel: 'Python 3', state: null },
+        { id: 's2', path: 'Europa.ipynb', kernel: 'Python 3', state: null },
+        { id: 's3', path: 'Callisto.ipynb', kernel: 'Python 3', state: null },
+      ]),
+    );
+
+    const run = window.ganymede!.command;
+    // By id, or by path as the app passes it.
+    expect(await run('shutdown-kernel', 's2')).toBe(true);
+    expect(fake.sessions.shutdown).toHaveBeenLastCalledWith('s2');
+    expect(await run('shutdown-kernel', '/Callisto.ipynb')).toBe(true);
+    expect(fake.sessions.shutdown).toHaveBeenLastCalledWith('s3');
+    expect(await run('shutdown-kernel', 'nothing')).toBe(false);
+    // All but the open notebook's.
+    fake.sessions.shutdown.mockClear();
+    expect(await run('shutdown-others')).toBe(true);
+    expect(fake.sessions.shutdown.mock.calls).toEqual([['s2'], ['s3']]);
+    // A failed shutdown is false, not a rejection, and the rest still run.
+    fake.sessions.shutdown.mockClear();
+    fake.sessions.shutdown.mockRejectedValueOnce(new Error('gone'));
+    expect(await run('shutdown-others')).toBe(false);
+    expect(fake.sessions.shutdown.mock.calls).toEqual([['s2'], ['s3']]);
+    fake.sessions.shutdown.mockRejectedValueOnce(new Error('gone'));
+    expect(await run('shutdown-kernel', 's2')).toBe(false);
     vi.unstubAllGlobals();
   });
 
@@ -451,6 +517,45 @@ describe('App', () => {
     expect(fake.contents.newUntitled).toHaveBeenCalledWith({ type: 'notebook', path: 'Users/me' });
     // The notebook's own folder: no `dir` needed.
     await waitFor(() => expect(window.location.search).toBe('?open=Users%2Fme%2FUntitled.ipynb'));
+  });
+
+  it('copies the sample notebook into the folder, under a free name, and opens it', async () => {
+    history.replaceState(null, '', '/?kernels=server&dir=moons');
+    // A copy from an earlier run is there already.
+    const fake = fakeServices({ moons: [], 'moons/Ganymede Tour.ipynb': [] });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    render(<App />);
+
+    expect(await screen.findByText('Welcome to Ganymede')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /Open Sample Notebook/ }));
+    await waitFor(() =>
+      expect(screen.getByTestId('pane')).toHaveTextContent('moons/Ganymede Tour 2.ipynb'),
+    );
+    expect(fake.contents.save).toHaveBeenCalledOnce();
+    expect(fake.contents.save).toHaveBeenCalledWith(
+      'moons/Ganymede Tour 2.ipynb',
+      expect.objectContaining({ type: 'notebook', format: 'json' }),
+    );
+  });
+
+  it('offers Show Folder only while the sidebar is closed', async () => {
+    history.replaceState(null, '', '/?kernels=server');
+    mocks.connect.mockResolvedValue(fakeBackend(fakeServices({ '': [] }).services));
+    render(<App />);
+
+    // A wide window starts with the sidebar open, so the button would do nothing.
+    expect(await screen.findByText('Welcome to Ganymede')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Show Folder' })).not.toBeInTheDocument();
+  });
+
+  it('does not welcome again once dismissed', async () => {
+    localStorage.setItem('ganymede-ui:onboarding', 'dismissed');
+    localStorage.setItem('ganymede-ui:backend', JSON.stringify({ kind: 'browser' }));
+    mocks.connect.mockResolvedValue(fakeBackend(fakeServices().services, { kind: 'browser' }));
+    render(<App />);
+
+    expect(await screen.findByText(/Choose a notebook in the sidebar/)).toBeInTheDocument();
+    expect(screen.queryByText('Welcome to Ganymede')).not.toBeInTheDocument();
   });
 
   it('says why a new notebook could not be created', async () => {

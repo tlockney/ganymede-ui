@@ -6,6 +6,7 @@ import { parentOf } from '../lib/launch';
 import { type FileActions, type FileItem, deletePrompt } from '../lib/file-actions';
 import { useFileSearch } from '../lib/search';
 import { clearRecents, recentsKey, useRecents } from '../lib/recents';
+import { useFileDrop } from '../lib/file-drop';
 import { ContextMenu, type MenuItem } from './ContextMenu';
 import { RecentList, SearchField, SearchResults } from './SidebarSearch';
 import {
@@ -214,12 +215,14 @@ export function Sidebar({
   const search = useFileSearch(services?.contents, dir, query, withContents);
   const searching = !!query.trim();
   const recents = useRecents(backend, openPath);
+  // Notebooks dropped from Finder or Files are copied into this folder (#216).
+  const drop = useFileDrop({ contents: services?.contents, dir, onError: setActionError });
 
   useSignals(services?.sessions.runningChanged);
   const running = services ? [...services.sessions.running()] : [];
 
   return (
-    <aside className="sidebar">
+    <aside className={`sidebar ${drop.active ? 'drop-active' : ''}`} {...drop.handlers}>
       <div className="sidebar-titlebar">
         {onClose && (
           <button

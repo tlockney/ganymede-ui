@@ -30,6 +30,7 @@ struct GanymedeApp: App {
             }
             CommandGroup(replacing: .saveItem) {
                 SaveCommand()
+                RenameCommand()
                 DownloadCommand()
             }
             CommandMenu("Cell") {
@@ -83,6 +84,8 @@ struct GanymedeApp: App {
             ContentView()
                 .environmentObject(model)
         }
+        // Holding ⌘ lists them, and the iPadOS menu bar shows them (#208).
+        .commands { IPadCommands() }
         WindowGroup("Terminal", for: TerminalRequest.self) { $request in
             TerminalScene(request: request)
                 .environmentObject(model)

@@ -23,6 +23,33 @@ struct FolderSidebar: View {
             Section(folder.lastPathComponent.isEmpty ? folder.path : folder.lastPathComponent) {
                 FolderContents(folder: folder, actions: actions, generation: generation)
             }
+            // Kernels keep running when their notebook is closed or another
+            // is opened; here they can be found and shut down (#225).
+            if !page.state.sessions.isEmpty {
+                Section("Running") {
+                    ForEach(page.state.sessions) { session in
+                        Button {
+                            page.run("open", arg: session.path)
+                        } label: {
+                            HStack {
+                                Label(session.title, systemImage: "bolt.fill")
+                                Spacer()
+                                if let kernel = session.kernel {
+                                    Text(kernel).foregroundStyle(.secondary).font(.caption)
+                                }
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .help(session.path + (session.state.map { " · " + PageState.statusLabel($0) } ?? ""))
+                        .contextMenu {
+                            Button("Open") { page.run("open", arg: session.path) }
+                            Divider()
+                            Button("Shut Down Kernel") { page.run("shutdown-kernel", arg: session.id) }
+                        }
+                    }
+                }
+            }
         }
         .listStyle(.sidebar)
         .contextMenu {
@@ -40,6 +67,7 @@ struct FolderSidebar: View {
     private var actions: FolderActions {
         FolderActions(
             openPath: page.state.path,
+            isRunning: { page.state.isRunning($0) },
             open: open,
             openInNewWindow: { openWindow(value: WindowTarget(opening: $0.url)) },
             newNotebook: { page.run("new-notebook", arg: FolderEntry.serverPath($0)) },
@@ -76,26 +104,22 @@ struct FolderSidebar: View {
     }
 
     private func rename(_ entry: FolderEntry) {
+        // The open notebook renames through the page, which saves its
+        // edits first and keeps its kernel.
+        if !entry.isDirectory, page.state.path == entry.serverPath {
+            if let name = askName(for: entry.name) { page.run("rename", arg: name) }
+            return
+        }
         let holdsOpen = FolderEntry.path(page.state.path, isAt: entry.serverPath)
         // The page would save its edits back to the old path.
         if holdsOpen && page.state.dirty {
             let alert = NSAlert()
-            alert.messageText = "Save “\(entry.title)” before renaming it."
+            alert.messageText = "Save “\(entry.title)” before renaming its folder."
             alert.informativeText = "The open notebook has unsaved changes."
             alert.runModal()
             return
         }
-        let alert = NSAlert()
-        alert.messageText = "Rename “\(entry.name)”"
-        alert.addButton(withTitle: "Rename")
-        alert.addButton(withTitle: "Cancel")
-        let field = NSTextField(string: entry.name)
-        field.frame = NSRect(x: 0, y: 0, width: 260, height: 24)
-        alert.accessoryView = field
-        alert.window.initialFirstResponder = field
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        let name = field.stringValue.trimmingCharacters(in: .whitespaces)
-        guard !name.isEmpty, name != entry.name, !name.contains("/") else { return }
+        guard let name = askName(for: entry.name), name != entry.name, !name.contains("/") else { return }
         let target = entry.url.deletingLastPathComponent().appendingPathComponent(name)
         do {
             try FileManager.default.moveItem(at: entry.url, to: target)
@@ -150,6 +174,8 @@ struct FolderSidebar: View {
 /// What a sidebar row can do, handed down the tree.
 struct FolderActions {
     var openPath: String?
+    /// Whether a notebook, by server path, has a running kernel (#225).
+    var isRunning: (String) -> Bool
     var open: (FolderEntry) -> Void
     var openInNewWindow: (FolderEntry) -> Void
     var newNotebook: (URL) -> Void
@@ -182,9 +208,19 @@ private struct FolderContents: View {
                     Button {
                         actions.open(entry)
                     } label: {
-                        Label(entry.title, systemImage: entry.isNotebook ? "book.pages" : "doc.text")
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(Rectangle())
+                        HStack {
+                            Label(entry.title, systemImage: entry.isNotebook ? "book.pages" : "doc.text")
+                            Spacer()
+                            if entry.isNotebook, actions.isRunning(entry.serverPath) {
+                                // Its kernel is running.
+                                Circle()
+                                    .fill(Color.green)
+                                    .frame(width: 6, height: 6)
+                                    .accessibilityLabel("Kernel running")
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .padding(.vertical, 1)
@@ -376,6 +412,39 @@ struct NewCommands: View {
     }
 }
 
+/// Asks for a new name, starting from `current`; nil when cancelled or
+/// left empty.
+@MainActor
+func askName(for current: String) -> String? {
+    let alert = NSAlert()
+    alert.messageText = "Rename “\(current)”"
+    alert.addButton(withTitle: "Rename")
+    alert.addButton(withTitle: "Cancel")
+    let field = NSTextField(string: current)
+    field.frame = NSRect(x: 0, y: 0, width: 260, height: 24)
+    alert.accessoryView = field
+    alert.window.initialFirstResponder = field
+    guard alert.runModal() == .alertFirstButtonReturn else { return nil }
+    let name = field.stringValue.trimmingCharacters(in: .whitespaces)
+    return name.isEmpty ? nil : name
+}
+
+/// File > Rename…: the open notebook, through the page's rename, which
+/// saves first and keeps the kernel. The name is shown without `.ipynb`,
+/// as the page's title shows it.
+struct RenameCommand: View {
+    @FocusedObject private var page: PageModel?
+
+    var body: some View {
+        Button("Rename…") {
+            guard let page, let path = page.state.path else { return }
+            let title = URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
+            if let name = askName(for: title) { page.run("rename", arg: name) }
+        }
+        .disabled(page?.state.hasNotebook != true)
+    }
+}
+
 /// File > Download Notebook…, beside Save.
 struct DownloadCommand: View {
     @FocusedObject private var page: PageModel?
@@ -434,6 +503,8 @@ struct KernelMenu: View {
             .disabled(page?.state.isBusy != true)
         Button("Restart") { page?.run("restart") }
             .disabled(page?.state.hasKernel != true)
+        Button("Shut Down Other Kernels") { page?.run("shutdown-others") }
+            .disabled(page?.state.otherSessions.isEmpty ?? true)
         Divider()
         Menu("Change Kernel") {
             ForEach(page?.state.kernels ?? [], id: \.name) { kernel in

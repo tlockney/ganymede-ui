@@ -1,7 +1,17 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 export type MenuItem =
-  { label: string; onSelect(): void; destructive?: boolean; disabled?: boolean } | 'separator';
+  | {
+      label: string;
+      onSelect(): void;
+      destructive?: boolean;
+      disabled?: boolean;
+      /** One of a set to pick from (a cell's type): checked when it is the one. */
+      checked?: boolean;
+    }
+  | 'separator'
+  /** A label over the items after it. */
+  | { heading: string };
 
 type Props = {
   /** Where it opens: a point (right-click, long-press) or under an element. */
@@ -78,6 +88,9 @@ export function ContextMenu({ at, label, items, onClose }: Props) {
     return () => window.removeEventListener('keydown', onKey, true);
   }, []);
 
+  // Items line up past the check marks' column, when there is one.
+  const checks = items.some(i => typeof i === 'object' && 'label' in i && i.checked !== undefined);
+
   return (
     <div
       className="popup-menu-backdrop"
@@ -89,7 +102,7 @@ export function ContextMenu({ at, label, items, onClose }: Props) {
     >
       <div
         ref={menu}
-        className="popup-menu"
+        className={`popup-menu ${checks ? 'with-checks' : ''}`}
         role="menu"
         aria-label={label}
         style={place ?? { visibility: 'hidden' }}
@@ -98,11 +111,16 @@ export function ContextMenu({ at, label, items, onClose }: Props) {
         {items.map((item, i) =>
           item === 'separator' ? (
             <div key={i} className="popup-menu-separator" role="separator" />
+          ) : 'heading' in item ? (
+            <div key={i} className="popup-menu-heading" role="presentation">
+              {item.heading}
+            </div>
           ) : (
             <button
               key={i}
               type="button"
-              role="menuitem"
+              role={item.checked === undefined ? 'menuitem' : 'menuitemradio'}
+              aria-checked={item.checked}
               className={`popup-menu-item ${item.destructive ? 'destructive' : ''}`}
               disabled={item.disabled}
               onClick={() => {
@@ -110,6 +128,11 @@ export function ContextMenu({ at, label, items, onClose }: Props) {
                 item.onSelect();
               }}
             >
+              {checks && (
+                <span className="popup-menu-check" aria-hidden>
+                  {item.checked ? '✓' : ''}
+                </span>
+              )}
               {item.label}
             </button>
           ),
