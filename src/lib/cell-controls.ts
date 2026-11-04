@@ -1,6 +1,7 @@
 /**
  * Cell controls for touch (#200): a "…" button on each cell that opens the
- * cell menu, and an add-cell bar after each cell. With no hardware keyboard
+ * cell menu, a handle under it that moves the cell when dragged (#216,
+ * `cell-drag.ts`), and an add-cell bar after each cell. With no hardware keyboard
  * (an iPhone, an iPad on its own) these are the only way to add a Markdown
  * cell, change a cell's type, move or delete one: the toolbar hides Insert
  * and Cell Type on narrow screens, and JupyterLab's cell toolbar hides
@@ -13,6 +14,7 @@
 import type { Cell } from '@jupyterlab/cells';
 import { type Notebook, NotebookActions } from '@jupyterlab/notebook';
 import { DisposableDelegate, type IDisposable } from '@lumino/disposable';
+import { dragCell } from './cell-drag';
 
 export type CellMenuAction =
   'run' | 'code' | 'markdown' | 'raw' | 'move-up' | 'move-down' | 'duplicate' | 'delete';
@@ -31,6 +33,15 @@ export const CELL_MENU: readonly { action: CellMenuAction; label: string; type?:
 
 const MORE = 'gn-cell-more';
 const ADD = 'gn-add-cell';
+const DRAG = 'gn-cell-drag';
+
+/** Six dots, the usual grip. */
+const GRIP =
+  '<svg viewBox="0 0 12 18" width="12" height="18" aria-hidden="true" fill="currentColor">' +
+  [3, 9, 15]
+    .map(cy => `<circle cx="3" cy="${cy}" r="1.6"/><circle cx="9" cy="${cy}" r="1.6"/>`)
+    .join('') +
+  '</svg>';
 
 /** Make `cell` the active cell and the only one selected, in command mode. */
 export function selectOnly(notebook: Notebook, cell: Cell): boolean {
@@ -103,13 +114,15 @@ function decorate(cell: Cell): void {
   }
   const more = button(MORE, 'Cell Actions', '…', 'menu');
   more.setAttribute('aria-haspopup', 'menu');
+  const drag = button(DRAG, 'Drag to Move Cell', '', 'drag');
+  drag.innerHTML = GRIP;
   const bar = document.createElement('div');
   bar.className = ADD;
   bar.append(
     button('gn-add-button', 'Add Code Cell', '+ Code', 'code'),
     button('gn-add-button', 'Add Text Cell', '+ Text', 'markdown'),
   );
-  node.append(more, bar);
+  node.append(more, drag, bar);
   void cell.ready.then(() => {
     if (!cell.isDisposed && node.lastElementChild !== bar) node.append(bar);
   });
@@ -152,9 +165,15 @@ export function attachCellControls(
   };
   // The notebook takes a mousedown in a cell to select it, drag it or
   // focus its editor, and a double click to edit Markdown; a tap on a
-  // control is none of those.
+  // control is none of those. A press on the handle starts a drag.
   const onDown = (e: Event) => {
-    if ((e.target as Element | null)?.closest('[data-gn-control]')) e.stopPropagation();
+    const control = (e.target as Element | null)?.closest<HTMLElement>('[data-gn-control]');
+    if (!control) return;
+    e.stopPropagation();
+    if (e.type !== 'pointerdown' || control.dataset.gnControl !== 'drag') return;
+    const cellNode = control.closest('.jp-Cell');
+    const cell = notebook.widgets.find(w => w.node === cellNode);
+    if (cell) dragCell(notebook, cell, control, e as PointerEvent);
   };
   const node = notebook.node;
   node.addEventListener('click', onClick);

@@ -252,6 +252,7 @@
  * and in narrow windows only (src/lib/cell-controls.ts). A desktop window
  * keeps the toolbar and JupyterLab's cell toolbar instead. */
 .notebook-page .gn-cell-more,
+.notebook-page .gn-cell-drag,
 .notebook-page .gn-add-cell {
   display: none;
 }
@@ -316,6 +317,67 @@
 
 .touch-ui .notebook-page .gn-add-button:active {
   background: var(--accent-soft);
+}
+
+/* The drag handle (#216, src/lib/cell-drag.ts), under the "…" button. A
+ * finger on it drags the cell, not the page. */
+.touch-ui .notebook-page .gn-cell-drag {
+  position: absolute;
+  top: 48px;
+  right: 0;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-3);
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.touch-ui .notebook-page .gn-cell-drag:active,
+.touch-ui .notebook-page .gn-cell-drag:focus-visible {
+  background: var(--control-bg-hover);
+  color: var(--text-2);
+}
+
+/* The cell being dragged follows the pointer, above the others. */
+.notebook-page .jp-Cell.gn-dragging {
+  z-index: 10;
+  border-radius: 10px;
+  background: var(--window-bg);
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.18);
+  opacity: 0.92;
+}
+
+.gn-cell-dragging,
+.gn-cell-dragging * {
+  cursor: grabbing !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+}
+
+/* Where the dragged cell will land: before this cell, or after it. */
+.notebook-page .gn-drop-line {
+  position: absolute;
+  top: -2px;
+  right: 0;
+  left: 0;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--accent);
+  pointer-events: none;
+}
+
+.notebook-page .gn-drop-line.after {
+  top: auto;
+  bottom: -2px;
 }
 
 /* The cell menu has these actions. */

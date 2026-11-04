@@ -39,6 +39,7 @@ import {
   postState,
 } from './lib/native';
 import { fileActions } from './lib/file-actions';
+import { useFileDrop } from './lib/file-drop';
 
 /**
  * A token in the page URL, as `ganymede serve` prints it, wins once, and so
@@ -232,6 +233,15 @@ export function App() {
     },
     [backend],
   );
+
+  // A notebook dropped on the window from Finder or Files is copied into
+  // the sidebar's folder and opened (#216).
+  const drop = useFileDrop({
+    contents: backend?.services.contents,
+    dir: folder,
+    onCopied: paths => setOpenPath(paths[0]),
+    onError: setNewError,
+  });
 
   // A failed New Notebook's notice goes once something else opens.
   useEffect(() => setNewError(undefined), [openPath, backend]);
@@ -464,7 +474,7 @@ export function App() {
               specs={specs}
             />
           )}
-          <div className="content">
+          <div className={`content ${drop.active ? 'drop-active' : ''}`} {...drop.handlers}>
             {backend && openPath ? (
               <NotebookPane
                 key={`${backend.config.kind}:${openPath}`}
