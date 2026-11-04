@@ -101,6 +101,15 @@ struct ContentView: View {
                     .toolbar {
                         ToolbarItemGroup(placement: .navigationBarLeading) { appButtons }
                     }
+                    .overlay {
+                        // The server didn't start: said here, not only on
+                        // the notebook screen.
+                        if model.url == nil, model.error != nil {
+                            startProblem.background(Color(uiColor: .systemBackground))
+                        }
+                    }
+                    // Keeps the page in the window while the list shows.
+                    .background(ParkedPage(store: phonePage).frame(width: 1, height: 1))
                     .navigationDestination(for: PhoneScreen.self) { _ in notebook }
                 }
                 .task { model.startIfNeeded() }
@@ -132,6 +141,7 @@ struct ContentView: View {
             }
         }
         .focusedSceneObject(pageModel)
+        .modifier(KeychainAlert(model: model))
         .sheet(isPresented: $settings) {
             NavigationStack {
                 RemotesView()
@@ -293,21 +303,39 @@ struct ContentView: View {
                 #else
                 WebView(url: url, page: pageModel, onOpenFile: openEditor, store: isPhone ? phonePage : nil)
                 #endif
-            } else if let error = model.error {
-                VStack(spacing: 12) {
-                    Text("Ganymede could not start").font(.headline)
-                    Text(error)
-                        .textSelection(.enabled)
-                        .multilineTextAlignment(.center)
-                    Button("Try Again") { model.start() }
-                }
-                .padding()
+            } else if model.error != nil {
+                startProblem
             } else {
                 ProgressView()
             }
         }
         .task { model.startIfNeeded() }
-        .alert(
+        #if os(macOS)
+        .modifier(KeychainAlert(model: model))
+        #endif
+    }
+
+    /// The server didn't start, and why, with Try Again.
+    @ViewBuilder
+    private var startProblem: some View {
+        VStack(spacing: 12) {
+            Text("Ganymede could not start").font(.headline)
+            Text(model.error ?? "")
+                .textSelection(.enabled)
+                .multilineTextAlignment(.center)
+            Button("Try Again") { model.start() }
+        }
+        .padding()
+    }
+}
+
+/// A keychain problem with the remotes' tokens, on the window or, on iOS,
+/// the whole app's screen (not only the notebook's, #209).
+private struct KeychainAlert: ViewModifier {
+    @ObservedObject var model: AppModel
+
+    func body(content: Content) -> some View {
+        content.alert(
             "Remotes",
             isPresented: Binding(
                 get: { model.keychainError != nil },

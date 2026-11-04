@@ -204,7 +204,8 @@ final class AppModel: ObservableObject {
         guard var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
         var items = [URLQueryItem(name: "kernels", value: kernels)]
         #if os(iOS)
-        // The iPad draws the sidebar, toolbar and key commands (#208).
+        // The iPad and iPhone draw the sidebar, toolbar and key commands
+        // (#208, #209).
         if drawsNativeChrome { items.append(URLQueryItem(name: "chrome", value: "native")) }
         #endif
         parts.queryItems = (parts.queryItems ?? []) + items
