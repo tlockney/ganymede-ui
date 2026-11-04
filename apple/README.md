@@ -75,11 +75,11 @@ built from the same sources (see
 - Ganymede > Agent Settings… (⌥⌘,) opens the page's agent settings. The
   agent's API keys are kept in the keychain too.
 - Terminals open in the notebook window's bottom panel, as tabs under
-  the notebook. View > Show Terminal Panel (⌃`) or the toolbar button
+  the notebook. View > Show Terminal Panel (`` ⌃` ``) or the toolbar button
   shows it, starting a shell in the window's folder (its notebook's
   folder, or the folder it shows) if it has none; drag its top edge to
   resize it. Hiding the panel keeps its shells running; closing a tab
-  ends that one. File > New Terminal (⌃⇧`) adds a shell to the panel,
+  ends that one. File > New Terminal (`` ⌃⇧` ``) adds a shell to the panel,
   and File > New Terminal On, or the panel's + menu, one on a remote's
   server, if it has terminals (Ganymede with terminals, or
   `jupyter server`), or over SSH with `/usr/bin/ssh`, so `~/.ssh/config`,
