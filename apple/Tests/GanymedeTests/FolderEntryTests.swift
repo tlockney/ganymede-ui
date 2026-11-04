@@ -61,4 +61,35 @@ final class FolderEntryTests: XCTestCase {
         XCTAssertEqual(entries.map(\.name), ["linked", "real"])
         XCTAssertEqual(entries.map(\.isDirectory), [true, true])
     }
+
+    func testServerPathsUnderTheIPadsNotebookFolder() {
+        let root = URL(fileURLWithPath: "/tmp/notebooks", isDirectory: true)
+        XCTAssertEqual(FolderEntry.serverPath(root.appendingPathComponent("moons/Io.ipynb"), root: root), "moons/Io.ipynb")
+        XCTAssertEqual(FolderEntry.serverPath(root, root: root), "")
+        XCTAssertEqual(
+            FolderEntry.serverPath(URL(fileURLWithPath: "/tmp/notebooks/"), root: root), ""
+        )
+        // Outside the folder: the absolute path without its slash, which the
+        // server reads under its own root, where it won't exist.
+        XCTAssertEqual(FolderEntry.serverPath(URL(fileURLWithPath: "/etc/hosts"), root: root), "etc/hosts")
+    }
+
+    /// iOS can hand over a folder as `/var/…` and list its items under
+    /// `/private/var/…`: a root reached through a symlink still gives
+    /// relative paths.
+    func testServerPathsThroughASymlinkedRoot() throws {
+        let fm = FileManager.default
+        let base = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let real = base.appendingPathComponent("real")
+        try fm.createDirectory(at: real.appendingPathComponent("moons"), withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: base) }
+        let link = base.appendingPathComponent("link")
+        try fm.createSymbolicLink(at: link, withDestinationURL: real)
+        let file = real.appendingPathComponent("moons/Io.ipynb")
+        try Data("{}".utf8).write(to: file)
+
+        XCTAssertEqual(FolderEntry.serverPath(file, root: link), "moons/Io.ipynb")
+        XCTAssertEqual(FolderEntry.serverPath(link.appendingPathComponent("moons/Io.ipynb"), root: real), "moons/Io.ipynb")
+        XCTAssertEqual(FolderEntry.serverPath(real, root: link), "")
+    }
 }
