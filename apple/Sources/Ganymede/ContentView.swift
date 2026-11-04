@@ -196,7 +196,9 @@ struct ContentView: View {
                 content
                     .frame(maxHeight: .infinity)
                 BottomPanel(panel: panel, folder: sidebarRoot, available: area.size.height)
-                    .frame(height: panel.isShown ? nil : 0)
+                    // Top-aligned, so a hidden panel's views (AppKit cursor
+                    // rects included) sit below the window, not over the notebook.
+                    .frame(height: panel.isShown ? nil : 0, alignment: .top)
                     .clipped()
                     .opacity(panel.isShown ? 1 : 0)
                     .allowsHitTesting(panel.isShown)

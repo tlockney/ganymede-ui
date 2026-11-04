@@ -63,27 +63,34 @@ private struct TerminalRepresentable: NSViewRepresentable {
             if focused, !has {
                 window.makeFirstResponder(view)
             } else if !focused, has {
-                // Back to the notebook when there is one in the window.
-                window.makeFirstResponder(visibleWebView(in: window.contentView))
+                returnKeyboardToPage(in: window)
             }
         }
-    }
-
-    /// The first web view on show under `view`: the notebook page, not
-    /// a hidden kernel web view.
-    private static func visibleWebView(in view: NSView?) -> WKWebView? {
-        guard let view, !view.isHiddenOrHasHiddenAncestor else { return nil }
-        if let web = view as? WKWebView, !web.frame.isEmpty { return web }
-        for child in view.subviews {
-            if let web = visibleWebView(in: child) { return web }
-        }
-        return nil
     }
 
     static func dismantleNSView(_ view: TerminalView, coordinator: TerminalCoordinator) {
         coordinator.detach()
         TerminalCoordinator.closeWhenIdle(view)
     }
+}
+
+/// Gives the keyboard back to the notebook when a terminal gives it up,
+/// or to the window when it shows no notebook.
+@MainActor
+func returnKeyboardToPage(in window: NSWindow) {
+    window.makeFirstResponder(visibleWebView(in: window.contentView))
+}
+
+/// The first web view on show under `view`: the notebook page, not a
+/// hidden kernel web view (a subview of it).
+@MainActor
+private func visibleWebView(in view: NSView?) -> WKWebView? {
+    guard let view, !view.isHiddenOrHasHiddenAncestor else { return nil }
+    if let web = view as? WKWebView, !web.frame.isEmpty { return web }
+    for child in view.subviews {
+        if let web = visibleWebView(in: child) { return web }
+    }
+    return nil
 }
 #else
 private struct TerminalRepresentable: UIViewRepresentable {

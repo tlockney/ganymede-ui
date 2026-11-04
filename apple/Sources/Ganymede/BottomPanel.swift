@@ -95,6 +95,12 @@ struct BottomPanel: View {
 
     private func close(_ id: PanelTerminal.ID) {
         titles[id] = nil
+        // The last terminal's view goes away rather than giving up the
+        // keyboard, so hand it to the notebook here. Otherwise the next
+        // selected terminal takes it.
+        if panel.terminals.count == 1, let window = NSApp.keyWindow {
+            returnKeyboardToPage(in: window)
+        }
         panel.close(id)
     }
 }
