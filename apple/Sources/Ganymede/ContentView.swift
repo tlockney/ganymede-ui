@@ -24,6 +24,11 @@ struct ContentView: View {
     /// File › New Tab or New Window, when this window is the one they
     /// opened (#247): its folder, and whether it stands alone.
     @State private var request: WorkspaceTabs.Request?
+    /// The bottom panel's terminals (#248), and whether it shows and how
+    /// tall it is, kept with the window across launches.
+    @StateObject private var panel = PanelController()
+    @SceneStorage("panel.shown") private var panelShown = false
+    @SceneStorage("panel.height") private var panelHeight = PanelController.defaultHeight
 
     init(target: Binding<WindowTarget?>) {
         _target = target
@@ -49,6 +54,10 @@ struct ContentView: View {
     @StateObject private var pageModel = PageModel()
     /// The iPad's sidebar and notebook columns (#208).
     @State private var columns = NavigationSplitViewVisibility.automatic
+    /// The iPhone's page, kept while the folder list shows (#209).
+    @StateObject private var phonePage = WebViewStore()
+    /// The iPhone's screens over the folder list: the notebook, or none.
+    @State private var phonePath: [PhoneScreen] = []
     #endif
 
     var body: some View {
@@ -61,10 +70,18 @@ struct ContentView: View {
             }
             .navigationSplitViewColumnWidth(min: 180, ideal: 240, max: 400)
         } detail: {
-            content
+            workspace
         }
         .toolbar {
             NotebookToolbar(page: pageModel, document: document, folder: sidebarRoot)
+            ToolbarItem {
+                Button {
+                    panel.toggle(startingOn: .local(folder: sidebarRoot))
+                } label: {
+                    Label(panel.isShown ? "Hide Terminal Panel" : "Show Terminal Panel", systemImage: "rectangle.bottomthird.inset.filled")
+                }
+                .help(panel.isShown ? "Hide the terminal panel (⌃`)" : "Show the terminal panel (⌃`)")
+            }
         }
         .navigationSubtitle(pageModel.state.subtitle)
         .frame(minWidth: 720, minHeight: 480)
@@ -98,9 +115,52 @@ struct ContentView: View {
         })
         .focusedSceneObject(document)
         .focusedSceneObject(pageModel)
+        .focusedSceneObject(panel)
+        .onAppear {
+            panel.resize(to: panelHeight, available: .infinity)
+            // Shells don't outlive the app: a panel that was showing comes
+            // back with a new one, as ⌃` would start.
+            if panelShown { panel.show(startingOn: .local(folder: sidebarRoot)) }
+        }
+        .onChange(of: panel.isShown) { panelShown = $0 }
+        .onChange(of: panel.height) { panelHeight = $0 }
         #else
         Group {
-            if drawsNativeChrome {
+            if isPhone {
+                // The iPhone: the folder list, and the notebook pushed onto
+                // it (#209). The page lives in `phonePage`, so it keeps
+                // running while the list shows and the list can open
+                // notebooks in it.
+                NavigationStack(path: $phonePath) {
+                    IPadSidebar(folder: model.root, page: pageModel, openFile: openEditor) {
+                        phonePath = [.notebook]
+                    }
+                    .toolbar {
+                        ToolbarItemGroup(placement: .navigationBarLeading) { appButtons }
+                    }
+                    .overlay {
+                        // The server didn't start: said here, not only on
+                        // the notebook screen.
+                        if model.url == nil, model.error != nil {
+                            startProblem.background(Color(uiColor: .systemBackground))
+                        }
+                    }
+                    // Keeps the page in the window while the list shows.
+                    .background(ParkedPage(store: phonePage).frame(width: 1, height: 1))
+                    .onAppear { phonePage.park() }
+                    .navigationDestination(for: PhoneScreen.self) { _ in notebook }
+                }
+                .task { model.startIfNeeded() }
+                .task(id: model.url) {
+                    if let url = model.url {
+                        phonePage.load(url, page: pageModel, onOpenFile: openEditor)
+                    } else {
+                        // Stopped, to restart (Open Folder, Try Again,
+                        // remotes, resume): load the new server's page.
+                        phonePage.forget(page: pageModel)
+                    }
+                }
+            } else if drawsNativeChrome {
                 // The iPad draws the sidebar and toolbar; the page shows the
                 // notebook (#208).
                 GeometryReader { window in
@@ -123,6 +183,7 @@ struct ContentView: View {
             }
         }
         .focusedSceneObject(pageModel)
+        .modifier(KeychainAlert(model: model))
         .sheet(isPresented: $settings) {
             NavigationStack {
                 RemotesView()
@@ -181,6 +242,25 @@ struct ContentView: View {
 
     private var page: URL? { model.page(for: loaded) }
 
+    /// The notebook, with the bottom panel under it (#248). The panel stays
+    /// in the view tree while hidden, so its terminals keep running.
+    private var workspace: some View {
+        GeometryReader { area in
+            VStack(spacing: 0) {
+                content
+                    .frame(maxHeight: .infinity)
+                BottomPanel(panel: panel, folder: sidebarRoot, available: area.size.height)
+                    // Top-aligned, so a hidden panel's views (AppKit cursor
+                    // rects included) sit below the window, not over the notebook.
+                    .frame(height: panel.isShown ? nil : 0, alignment: .top)
+                    .clipped()
+                    .opacity(panel.isShown ? 1 : 0)
+                    .allowsHitTesting(panel.isShown)
+                    .accessibilityHidden(!panel.isShown)
+            }
+        }
+    }
+
     /// The page opened another notebook, or closed it: the window now
     /// shows that, for its title and for the Finder's later opens. The page
     /// stays as it is.
@@ -195,11 +275,16 @@ struct ContentView: View {
     #else
     private var page: URL? { model.url }
 
-    /// The page with its navigation bar: one title, the notebook's on the
-    /// iPad, and the app's own buttons beside the notebook's.
+    /// The iPhone's screens over its folder list (#209).
+    enum PhoneScreen: Hashable { case notebook }
+
+    /// The page with its navigation bar: one title, the notebook's, and the
+    /// app's own buttons beside the notebook's (on the iPhone, on the list).
     private var notebook: some View {
         content
-            .ignoresSafeArea(.container, edges: .bottom)
+            // Under the home indicator, except above the iPhone's bottom
+            // toolbar.
+            .ignoresSafeArea(.container, edges: isPhone ? [] : .bottom)
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -217,30 +302,37 @@ struct ContentView: View {
                             }
                         }
                     }
-                    IPadNotebookToolbar(page: pageModel)
+                    IPadNotebookToolbar(page: pageModel, bottom: isPhone)
                 }
-                ToolbarItemGroup(placement: .primaryAction) {
-                    TerminalMenu(model: model) { request in
-                        // A scene of its own beside the notebook on iPad,
-                        // full screen where there is one scene (iPhone).
-                        if UIApplication.shared.supportsMultipleScenes {
-                            openWindow(value: request)
-                        } else {
-                            terminal = request
-                        }
-                    }
-                    Button {
-                        settings = true
-                    } label: {
-                        Label("Remotes", systemImage: "server.rack")
-                    }
-                    Button {
-                        picking = true
-                    } label: {
-                        Label("Open Folder", systemImage: "folder")
-                    }
+                // On the iPhone these are on the folder list.
+                if !isPhone {
+                    ToolbarItemGroup(placement: .primaryAction) { appButtons }
                 }
             }
+    }
+
+    /// The app's own buttons: terminals, remotes, the notebook folder.
+    @ViewBuilder
+    private var appButtons: some View {
+        TerminalMenu(model: model) { request in
+            // A scene of its own beside the notebook on iPad,
+            // full screen where there is one scene (iPhone).
+            if UIApplication.shared.supportsMultipleScenes {
+                openWindow(value: request)
+            } else {
+                terminal = request
+            }
+        }
+        Button {
+            settings = true
+        } label: {
+            Label("Remotes", systemImage: "server.rack")
+        }
+        Button {
+            picking = true
+        } label: {
+            Label("Open Folder", systemImage: "folder")
+        }
     }
 
     private var title: String {
@@ -270,23 +362,41 @@ struct ContentView: View {
                     openWindow(value: EditorRequest(path: path))
                 }
                 #else
-                WebView(url: url, page: pageModel, onOpenFile: openEditor)
+                WebView(url: url, page: pageModel, onOpenFile: openEditor, store: isPhone ? phonePage : nil)
                 #endif
-            } else if let error = model.error {
-                VStack(spacing: 12) {
-                    Text("Ganymede could not start").font(.headline)
-                    Text(error)
-                        .textSelection(.enabled)
-                        .multilineTextAlignment(.center)
-                    Button("Try Again") { model.start() }
-                }
-                .padding()
+            } else if model.error != nil {
+                startProblem
             } else {
                 ProgressView()
             }
         }
         .task { model.startIfNeeded() }
-        .alert(
+        #if os(macOS)
+        .modifier(KeychainAlert(model: model))
+        #endif
+    }
+
+    /// The server didn't start, and why, with Try Again.
+    @ViewBuilder
+    private var startProblem: some View {
+        VStack(spacing: 12) {
+            Text("Ganymede could not start").font(.headline)
+            Text(model.error ?? "")
+                .textSelection(.enabled)
+                .multilineTextAlignment(.center)
+            Button("Try Again") { model.start() }
+        }
+        .padding()
+    }
+}
+
+/// A keychain problem with the remotes' tokens, on the window or, on iOS,
+/// the whole app's screen (not only the notebook's, #209).
+private struct KeychainAlert: ViewModifier {
+    @ObservedObject var model: AppModel
+
+    func body(content: Content) -> some View {
+        content.alert(
             "Remotes",
             isPresented: Binding(
                 get: { model.keychainError != nil },

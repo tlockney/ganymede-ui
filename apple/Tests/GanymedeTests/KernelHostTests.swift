@@ -102,7 +102,10 @@ final class KernelHostTests: XCTestCase {
             "const r = await webkit.messageHandlers.device.postMessage({ id: 1, method: 'hello', params: {} });"
                 + " return r.result.capabilities.join(',')",
             contentWorld: .page) as? String
-        XCTAssertEqual(hello, "clipboard.readText,clipboard.writeText")
+        // A Mac has no haptics, so it lists only what every bridge answers.
+        XCTAssertEqual(
+            hello,
+            "clipboard.readText,clipboard.writeText,clipboard.readImage,clipboard.writeImage,info,openURL")
         let inUI = try await eval(ui, "typeof webkit.messageHandlers.device") as? String
         XCTAssertEqual(inUI, "undefined")
     }

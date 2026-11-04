@@ -91,12 +91,24 @@ built from the same sources (see
 
 - Ganymede > Agent Settings… (⌥⌘,) opens the page's agent settings. The
   agent's API keys are kept in the keychain too.
-- File > New Terminal (⌃⇧`) opens a shell from the app's own server in
-the front window's folder (its notebook's folder, or the folder it
-shows). File > New Terminal On opens one on a remote's server, if it
-has terminals (Ganymede with terminals, or `jupyter server`), or over
-SSH with `/usr/bin/ssh`, so `~/.ssh/config`, the SSH agent and
-  known_hosts apply. Closing the window ends the shell.
+- Terminals open in the notebook window's bottom panel, as tabs under
+  the notebook. View > Show Terminal Panel (`` ⌃` ``) or the toolbar button
+  shows it, starting a shell in the window's folder (its notebook's
+  folder, or the folder it shows) if it has none; drag its top edge to
+  resize it. Hiding the panel keeps its shells running; closing a tab
+  ends that one. Since `` ⌃` `` toggles the panel, programs in a panel
+  terminal don't receive it (a terminal window of its own still does).
+  File > New Terminal (`` ⌃⇧` ``) adds a shell to the panel, and
+  File > New Terminal On, or the panel's + menu, one on a remote's
+  server, if it has terminals (Ganymede with terminals, or
+  `jupyter server`), or over SSH with `/usr/bin/ssh`, so `~/.ssh/config`,
+  the SSH agent and known_hosts apply. File > New Terminal Window opens a
+  shell in a window of its own.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release, where every terminal opens in its own window.
+
 - Other files in the sidebar (not notebooks) open in a text editor
   window: the system text view with syntax highlighting for Python,
   JavaScript, TypeScript, JSON, Markdown, shell, YAML and TOML, line
@@ -130,8 +142,17 @@ On iPadOS and iOS (`Ganymede-iOS` target, iOS 16 or later):
   type, restarts or changes the kernel, shuts down other kernels, saves,
   downloads and trusts. With
   a keyboard, hold ⌘ to see the commands: New Notebook ⌘N, Save ⌘S, Run
-  All ⇧⌘↩, Interrupt ⌘., Find ⌘F. The iPhone keeps the page's own
-  sidebar and toolbar.
+  All ⇧⌘↩, Interrupt ⌘., Find ⌘F.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release, which uses the page's own sidebar and toolbar.
+
+- On the iPhone the first screen lists the notebook folder, with the same
+  long-press actions and Running section as the iPad's sidebar, and the
+  terminal, remotes and folder buttons. Tapping a notebook opens it;
+  swipe from the left edge or tap Back to return to the list. The
+  notebook's run controls and its ⋯ menu are in the bottom toolbar.
 
   > [!NOTE]
   > **Unreleased.** Available only from a build of `main` (HEAD), not in
