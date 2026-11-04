@@ -260,6 +260,8 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// A reload or another page: the old page's kernels go with it.
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         kernels.reset()
+        // The new page takes commands once it has posted its state.
+        page?.reset()
     }
 
     /// Links to other hosts open in the default browser.
