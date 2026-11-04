@@ -517,6 +517,26 @@ button {
   min-height: 0;
 }
 
+/* A notebook dragged in from Finder or Files (#216, src/lib/file-drop.ts). */
+.content.drop-active::after {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  z-index: 20;
+  border: 2px solid var(--accent);
+  border-radius: 12px;
+  background: var(--accent-soft);
+  pointer-events: none;
+}
+
+.sidebar.drop-active {
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.sidebar.drop-active .sidebar-scroll {
+  background: var(--accent-soft);
+}
+
 .notebook-page {
   position: absolute;
   inset: 0;
@@ -1309,6 +1329,12 @@ button {
 
 .pane-notice {
   max-width: min(560px, calc(100% - 32px - var(--safe-left) - var(--safe-right)));
+}
+
+/* A drop that fails for several files lists one error per line. */
+.pane-notice > span,
+.sidebar-alert > span {
+  white-space: pre-line;
 }
 
 .sheet-backdrop {
