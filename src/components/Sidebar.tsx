@@ -280,7 +280,7 @@ export function Sidebar({
             <ComposeIcon width={16} height={16} />
           </button>
         </div>
-        <ul className="source-list" hidden={searching}>
+        <ul className="source-list folder-list" aria-label="Files" hidden={searching}>
           {items.map(item => {
             const isNb = item.type === 'notebook';
             const isDir = item.type === 'directory';

@@ -42,7 +42,9 @@ test('renames the open notebook from its title', async ({ page }) => {
   await expect(page).toHaveTitle('Galilean moons');
   await expect(page).toHaveURL(/[?&]open=Galilean(\+|%20)moons\.ipynb/);
   const sidebar = page.locator('.sidebar');
-  await expect(sidebar.getByRole('button', { name: 'Galilean moons', exact: true })).toHaveCount(1);
+  await expect(
+    sidebar.locator('.folder-list').getByRole('button', { name: 'Galilean moons', exact: true }),
+  ).toHaveCount(1);
   await expect(sidebar.getByRole('button', { name: /^Galilean moons\s*cdp-/ })).toBeVisible();
   await expect(outputs(page).filter({ hasText: '42' })).toBeVisible();
   await expect(page.getByText(/ · Idle$/)).toBeVisible();
