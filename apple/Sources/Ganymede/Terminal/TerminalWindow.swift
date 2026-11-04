@@ -1,24 +1,5 @@
 import SwiftUI
 
-/// Where a terminal window's shell runs.
-enum TerminalTarget: Codable, Hashable {
-    /// The app's own server, on this Mac, starting in `folder` (the
-    /// default folder when nil). The iOS server has no terminals.
-    case local(folder: URL?)
-    /// A remote's server, from Settings.
-    case server(UUID)
-    /// A remote over SSH: /usr/bin/ssh on the Mac, swift-nio-ssh on iOS.
-    case ssh(UUID)
-}
-
-/// What a terminal window is opened with. `openWindow` brings a window
-/// whose value equals the one asked for to the front instead of opening
-/// another, so each request has its own id.
-struct TerminalRequest: Codable, Hashable, Identifiable {
-    var id = UUID()
-    var target: TerminalTarget
-}
-
 #if os(macOS)
 /// The folder of the focused notebook window: its notebook's folder, or
 /// the folder it shows. New Terminal starts there.
@@ -41,6 +22,12 @@ extension FocusedValues {
 struct TerminalWindow: View {
     @EnvironmentObject private var model: AppModel
     let target: TerminalTarget
+    /// In a notebook window's bottom panel (#248): no window title or
+    /// minimum window size of its own; the title goes to `onTitle`.
+    var inPanel = false
+    var onTitle: ((String) -> Void)?
+    /// Whether the terminal has the keyboard; see `TerminalSurface.focused`.
+    var focused: Bool?
     @State private var transport: TerminalTransport?
     @State private var title = ""
     /// Why the session ended, once it has.
@@ -51,7 +38,7 @@ struct TerminalWindow: View {
     var body: some View {
         VStack(spacing: 0) {
             if let transport {
-                TerminalSurface(transport: transport, onTitle: { title = $0 }, onEnd: { ended = $0 ?? "Session ended." })
+                TerminalSurface(transport: transport, onTitle: { title = $0; onTitle?($0) }, onEnd: { ended = $0 ?? "Session ended." }, focused: focused)
                     .id(generation)
             } else if let problem {
                 Text(problem)
@@ -75,10 +62,7 @@ struct TerminalWindow: View {
                 .background(.bar)
             }
         }
-        #if os(macOS)
-        .frame(minWidth: 480, minHeight: 280)
-        #endif
-        .navigationTitle(title.isEmpty ? defaultTitle : title)
+        .modifier(OwnWindow(enabled: !inPanel, title: title.isEmpty ? defaultTitle : title))
         .onAppear(perform: connect)
         .onChange(of: model.url) { _ in connect() }
     }
@@ -93,6 +77,8 @@ struct TerminalWindow: View {
         guard let next = makeTransport() else { return }
         ended = nil
         title = ""
+        // The panel's tab goes back to its own title until the new shell sets one.
+        onTitle?("")
         generation += 1
         transport = next
     }
@@ -127,11 +113,7 @@ struct TerminalWindow: View {
     }
 
     private var defaultTitle: String {
-        switch target {
-        case .local(let folder): "Terminal in \((folder ?? model.root).lastPathComponent)"
-        case .server(let id): "Terminal on \(model.remote(id)?.title ?? "remote")"
-        case .ssh(let id): "SSH to \(model.remote(id)?.title ?? "remote")"
-        }
+        model.title(for: target)
     }
 
     private var problem: String? {
@@ -172,6 +154,35 @@ struct TerminalWindow: View {
     private func connect() {
         guard transport == nil, problem == nil else { return }
         transport = makeTransport()
+    }
+}
+
+/// A terminal window's title and minimum size, left off in a panel.
+private struct OwnWindow: ViewModifier {
+    let enabled: Bool
+    let title: String
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content
+                #if os(macOS)
+                .frame(minWidth: 480, minHeight: 280)
+                #endif
+                .navigationTitle(title)
+        } else {
+            content
+        }
+    }
+}
+
+extension AppModel {
+    /// What a terminal on `target` is called before its shell names it.
+    func title(for target: TerminalTarget) -> String {
+        switch target {
+        case .local(let folder): "Terminal in \((folder ?? root).lastPathComponent)"
+        case .server(let id): "Terminal on \(remote(id)?.title ?? "remote")"
+        case .ssh(let id): "SSH to \(remote(id)?.title ?? "remote")"
+        }
     }
 }
 
@@ -224,12 +235,18 @@ struct TerminalCommands: View {
     @Environment(\.openWindow) private var openWindow
     @ObservedObject var model: AppModel
     @FocusedValue(\.windowFolder) private var folder
+    /// The front notebook window's bottom panel, where new terminals go
+    /// (#248); a window of their own when no notebook window is in front.
+    @FocusedObject private var panel: PanelController?
 
     var body: some View {
         Button("New Terminal") {
             open(.local(folder: folder ?? model.root))
         }
         .keyboardShortcut("`", modifiers: [.control, .shift])
+        Button("New Terminal Window") {
+            openWindow(value: TerminalRequest(target: .local(folder: folder ?? model.root)))
+        }
         // One item per way in: a remote with both a server and SSH gets two.
         Menu("New Terminal On") {
             ForEach(model.remotes) { remote in
@@ -249,7 +266,11 @@ struct TerminalCommands: View {
     }
 
     private func open(_ target: TerminalTarget) {
-        openWindow(value: TerminalRequest(target: target))
+        if let panel {
+            panel.add(target)
+        } else {
+            openWindow(value: TerminalRequest(target: target))
+        }
     }
 }
 #endif

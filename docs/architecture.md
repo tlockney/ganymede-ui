@@ -475,10 +475,17 @@ of the web view, is planned and not started.
 `Terminal/` holds the built-in terminal's pieces (#117): `TerminalSurface`,
 a SwiftUI view over [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm)'s
 `TerminalView`, and `TerminalTransport`, which each source of a shell
-implements. On the Mac, File > New Terminal opens a `TerminalWindow` whose
+implements. On the Mac, terminals live in the notebook window's bottom
+panel (#248): `PanelController` holds the window's terminals, its
+selection, whether the panel shows and its height, and `BottomPanel` draws
+a `TerminalWindow` per terminal as a tab. Hidden terminals stay in the
+view tree, so their sessions keep running; only the one on show has the
+keyboard. File > New Terminal adds one to the panel, and File > New
+Terminal Window opens one in a window of its own. A
 `JupyterTerminalTransport` creates a terminal through `/api/terminals` on
 the app's own server, or on a remote's server, and speaks terminado's
-websocket protocol to it. Closing the window deletes the terminal. For
+websocket protocol to it. Closing the tab or window deletes the terminal.
+For
 a remote with SSH, `ProcessTerminalTransport` runs `/usr/bin/ssh` in a
 pseudo-terminal the app spawns (SwiftTerm's `LocalProcess`), so OpenSSH
 does everything it does in Terminal.app: ssh-config aliases, the agent,
@@ -490,6 +497,10 @@ and shell on one session channel, signed in with the app's ed25519 key
 remote (`HostKeyStore`). On iPad a terminal is its own scene
 (`WindowGroup(for: TerminalRequest.self)`); SwiftTerm's key row gives Esc,
 Ctrl, Tab and arrows on the software keyboard.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, where each Mac terminal opens in a window of its own.
 
 `Editor/` is the text editor (#122). In the apps the page registers no
 editor of its own: its sidebar enables files that aren't notebooks when

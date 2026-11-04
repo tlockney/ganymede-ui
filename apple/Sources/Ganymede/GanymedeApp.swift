@@ -25,6 +25,9 @@ struct GanymedeApp: App {
         .commands {
             // The window's sidebar, toolbar and notebook menus (#206, #207).
             SidebarCommands()
+            CommandGroup(after: .sidebar) {
+                PanelCommands(model: model)
+            }
             CommandGroup(replacing: .newItem) {
                 NewCommands(model: model)
             }

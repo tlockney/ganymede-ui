@@ -1,5 +1,6 @@
 import SwiftTerm
 import SwiftUI
+import WebKit
 
 /// A terminal drawn by SwiftTerm, connected to `transport`: output is fed
 /// to the screen, keystrokes and size changes go back. The transport is
@@ -10,9 +11,13 @@ struct TerminalSurface: View {
     var onTitle: ((String) -> Void)?
     /// The session ended from the other side, with the reason shown.
     var onEnd: ((String?) -> Void)?
+    /// Whether the terminal has the keyboard (Mac): true takes it, false
+    /// gives it up if it has it, nil leaves it to the user's clicks. The
+    /// bottom panel (#248) sets it so keys never go to a hidden shell.
+    var focused: Bool?
 
     var body: some View {
-        TerminalRepresentable(transport: transport, onTitle: onTitle, onEnd: onEnd)
+        TerminalRepresentable(transport: transport, onTitle: onTitle, onEnd: onEnd, focused: focused)
     }
 }
 
@@ -21,6 +26,7 @@ private struct TerminalRepresentable: NSViewRepresentable {
     let transport: TerminalTransport
     var onTitle: ((String) -> Void)?
     var onEnd: ((String?) -> Void)?
+    var focused: Bool?
 
     func makeCoordinator() -> TerminalCoordinator {
         TerminalCoordinator(transport: transport)
@@ -31,12 +37,35 @@ private struct TerminalRepresentable: NSViewRepresentable {
         context.coordinator.onTitle = onTitle
         context.coordinator.onEnd = onEnd
         context.coordinator.attach(view)
+        context.coordinator.focused = focused
+        Self.applyFocus(focused, to: view)
         return view
     }
 
     func updateNSView(_ view: TerminalView, context: Context) {
         context.coordinator.onTitle = onTitle
         context.coordinator.onEnd = onEnd
+        // Only on a change, so a click into the notebook isn't undone by
+        // the next update.
+        if focused != context.coordinator.focused {
+            context.coordinator.focused = focused
+            Self.applyFocus(focused, to: view)
+        }
+    }
+
+    /// Takes or gives up the keyboard, on the next turn of the run loop:
+    /// a new view is not in its window yet, and SwiftUI may be mid-update.
+    private static func applyFocus(_ focused: Bool?, to view: TerminalView) {
+        guard let focused else { return }
+        DispatchQueue.main.async {
+            guard let window = view.window else { return }
+            let has = window.firstResponder === view
+            if focused, !has {
+                window.makeFirstResponder(view)
+            } else if !focused, has {
+                returnKeyboardToPage(in: window)
+            }
+        }
     }
 
     static func dismantleNSView(_ view: TerminalView, coordinator: TerminalCoordinator) {
@@ -44,11 +73,32 @@ private struct TerminalRepresentable: NSViewRepresentable {
         TerminalCoordinator.closeWhenIdle(view)
     }
 }
+
+/// Gives the keyboard back to the notebook when a terminal gives it up,
+/// or to the window when it shows no notebook.
+@MainActor
+func returnKeyboardToPage(in window: NSWindow) {
+    window.makeFirstResponder(visibleWebView(in: window.contentView))
+}
+
+/// The first web view on show under `view`: the notebook page, not a
+/// hidden kernel web view (a subview of it).
+@MainActor
+private func visibleWebView(in view: NSView?) -> WKWebView? {
+    guard let view, !view.isHiddenOrHasHiddenAncestor else { return nil }
+    if let web = view as? WKWebView, !web.frame.isEmpty { return web }
+    for child in view.subviews {
+        if let web = visibleWebView(in: child) { return web }
+    }
+    return nil
+}
 #else
 private struct TerminalRepresentable: UIViewRepresentable {
     let transport: TerminalTransport
     var onTitle: ((String) -> Void)?
     var onEnd: ((String?) -> Void)?
+    /// Not used on iOS, which has no bottom panel.
+    var focused: Bool?
 
     func makeCoordinator() -> TerminalCoordinator {
         TerminalCoordinator(transport: transport)
@@ -80,6 +130,8 @@ final class TerminalCoordinator: NSObject, TerminalViewDelegate {
     let transport: TerminalTransport
     var onTitle: ((String) -> Void)?
     var onEnd: ((String?) -> Void)?
+    /// The last `TerminalSurface.focused` applied (Mac).
+    var focused: Bool?
     private weak var view: TerminalView?
 
     init(transport: TerminalTransport) {
