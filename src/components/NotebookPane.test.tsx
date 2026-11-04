@@ -62,6 +62,13 @@ vi.mock('../lib/cell-controls', () => ({
   attachCellControls: vi.fn(() => ({ dispose: vi.fn(), isDisposed: false })),
 }));
 
+// The running and queued lines need JupyterLab's cells; run-status.test.ts
+// covers them.
+const runStatus = vi.hoisted(() => ({ clear: vi.fn() }));
+vi.mock('../lib/run-status', () => ({
+  attachRunStatus: vi.fn(() => ({ ...runStatus, dispose: vi.fn(), isDisposed: false })),
+}));
+
 vi.mock('../lib/widgets', () => ({
   attachWidgets: vi.fn(() => {
     const widgets = { dispose: vi.fn(), isDisposed: false, saveState: vi.fn() };
@@ -292,13 +299,156 @@ describe('NotebookPane', () => {
     const session = fakes.sessions[0] as { changeKernel: ReturnType<typeof vi.fn> };
     expect(session.changeKernel).not.toHaveBeenCalled();
     expect(screen.getByRole('alert')).toHaveTextContent(
-      'Io.ipynb uses Julia, which isn’t installed here. Pick a kernel in the toolbar to run it.',
+      'Io.ipynb uses Julia, which isn’t installed here.',
     );
 
-    // Picking one clears that, and the next run starts it.
-    await act(() => latest()!.changeKernel('python3'));
-    expect(latest()).toMatchObject({ kernelName: 'python3', missingKernel: undefined });
+    // Picking one in the notice clears it, and the next run starts it.
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Pick a Kernel' }), [
+      'python3',
+    ]);
+    await waitFor(() =>
+      expect(latest()).toMatchObject({ kernelName: 'python3', missingKernel: undefined }),
+    );
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    await act(() => latest()!.run());
+    expect(session.changeKernel).toHaveBeenCalledWith({ name: 'python3' });
+  });
+
+  describe('problems (#213)', () => {
+    type FakeKernel = {
+      name: string;
+      status: string;
+      connectionStatus: string;
+      isDisposed: boolean;
+      reconnect: ReturnType<typeof vi.fn>;
+    };
+    type FakeSession = {
+      session: { kernel: FakeKernel } | null;
+      changeKernel: ReturnType<typeof vi.fn>;
+      statusChanged: { emit(v: unknown): void };
+      connectionStatusChanged: { emit(v: unknown): void };
+      kernelChanged: { emit(v: unknown): void };
+    };
+    const kernel = (over: Partial<FakeKernel> = {}): FakeKernel => ({
+      name: 'python3',
+      status: 'idle',
+      connectionStatus: 'connected',
+      isDisposed: false,
+      reconnect: vi.fn(async () => {}),
+      ...over,
+    });
+    /** Open the notebook with a kernel running. */
+    async function running() {
+      const s = setup();
+      await waitFor(() => expect(s.latest()?.status).toBe('none'));
+      const session = fakes.sessions[0] as FakeSession;
+      session.session = { kernel: kernel() };
+      act(() => session.kernelChanged.emit(null));
+      await waitFor(() => expect(s.latest()?.status).toBe('idle'));
+      return { ...s, session };
+    }
+
+    it('says the kernel died, and Restart starts a new one', async () => {
+      const { latest, session } = await running();
+      runStatus.clear.mockClear();
+      // A dead kernel disposes itself, closing its connection.
+      session.session!.kernel = kernel({
+        status: 'dead',
+        connectionStatus: 'disconnected',
+        isDisposed: true,
+      });
+      act(() => session.statusChanged.emit('dead'));
+      await waitFor(() => expect(latest()?.status).toBe('dead'));
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'The Python 3 kernel stopped. It may have crashed or run out of memory.',
+      );
+      // The cells it was running aren't running any more.
+      expect(runStatus.clear).toHaveBeenCalled();
+
+      session.changeKernel.mockImplementationOnce(async () => {
+        session.session!.kernel = kernel();
+        session.kernelChanged.emit(null);
+        return null;
+      });
+      await userEvent.click(screen.getByRole('button', { name: 'Restart' }));
+      expect(session.changeKernel).toHaveBeenCalledWith({ name: 'python3' });
+      await waitFor(() => expect(latest()?.status).toBe('idle'));
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('says when the kernel’s connection is lost, and Retry reconnects', async () => {
+      const { session } = await running();
+      const k = session.session!.kernel;
+      k.connectionStatus = 'disconnected';
+      act(() => session.connectionStatusChanged.emit('disconnected'));
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Lost the connection to the kernel.',
+      );
+      await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+      expect(k.reconnect).toHaveBeenCalledOnce();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('says when the server can’t be reached to save, and Retry saves', async () => {
+      const { fake, latest } = setup();
+      await waitFor(() => expect(latest()).toBeDefined());
+      act(() => modelOf().cells.get(0).sharedModel.setSource('print(2)'));
+      fake.contents.save.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+      await act(() => latest()!.save());
+      const alert = screen.getByRole('alert');
+      expect(alert).toHaveTextContent('Couldn’t reach the server to save Io.ipynb.');
+      expect(alert).toHaveTextContent('Your edits are still here.');
+      expect(latest()!.dirty).toBe(true);
+
+      await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+      await waitFor(() => expect(fake.contents.save).toHaveBeenCalledTimes(2));
+      await waitFor(() => expect(latest()!.dirty).toBe(false));
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('says when the server can’t be reached to open the file, and Retry opens it', async () => {
+      const get = vi
+        .fn()
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockResolvedValue({ path: 'moons/Io.ipynb', content: structuredClone(NOTEBOOK) });
+      const { latest } = setup(get);
+      expect(await screen.findByText('Couldn’t open Io.ipynb')).toBeInTheDocument();
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Couldn’t reach the server to open Io.ipynb.',
+      );
+      await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+      await waitFor(() => expect(latest()).toBeDefined());
+      expect(get).toHaveBeenCalledTimes(2);
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('says when a restart can’t reach the server, and Retry restarts', async () => {
+      const { latest, session } = await running();
+      const restart = vi
+        .fn()
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockResolvedValue(undefined);
+      Object.assign(session.session!.kernel, { restart });
+      await act(() => latest()!.restart());
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Couldn’t reach the server to restart the kernel.',
+      );
+      await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+      await waitFor(() => expect(restart).toHaveBeenCalledTimes(2));
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('says the kernel died when a run fails under a dead kernel', async () => {
+      const { latest, session } = await running();
+      session.session!.kernel.status = 'dead';
+      const run = vi
+        .spyOn(NotebookActions, 'runAndAdvance')
+        .mockRejectedValueOnce(new Error('Kernel is dead'));
+      await act(() => latest()!.run());
+      expect(screen.getByRole('alert')).toHaveTextContent('The Python 3 kernel stopped.');
+      expect(screen.getByRole('button', { name: 'Restart' })).toBeInTheDocument();
+      run.mockRestore();
+    });
   });
 
   it('is connecting, and runs nothing, until it has rejoined a running kernel', async () => {
@@ -417,7 +567,10 @@ describe('NotebookPane', () => {
     fake.contents.save.mockRejectedValueOnce(new Error('Disk full'));
     await act(() => latest()!.save());
     expect(screen.getByRole('alert')).toHaveTextContent('Couldn’t save Io.ipynb: Disk full');
+    expect(screen.getByRole('alert')).toHaveTextContent('Your edits are still here.');
     expect(latest()!.dirty).toBe(true);
+    // Retry is offered; Dismiss leaves it.
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole('button', { name: 'Dismiss' }));
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();

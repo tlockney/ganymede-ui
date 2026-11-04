@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { SessionContext } from '@jupyterlab/apputils';
 import type * as nbformat from '@jupyterlab/nbformat';
 import { type Notebook, NotebookActions, NotebookModel } from '@jupyterlab/notebook';
-import type { Contents, Kernel } from '@jupyterlab/services';
+import type { Contents, Kernel, KernelSpec } from '@jupyterlab/services';
 import type { IDisposable } from '@lumino/disposable';
 import type { CommandRegistry } from '@lumino/commands';
 import { Widget } from '@lumino/widgets';
@@ -13,6 +13,20 @@ import { CellMenu } from './CellMenu';
 import type { Cell } from '@jupyterlab/cells';
 import { downloadFile } from '../lib/download';
 import { AUTOSAVE_INTERVAL_MS, NotebookSaver, SaveConflict } from '../lib/saver';
+import {
+  type Problem,
+  connectionLost,
+  failed,
+  isUnreachable,
+  kernelDead,
+  messageOf,
+  missingKernel,
+  saveConflict,
+  saveFailed,
+  unreachable,
+} from '../lib/problems';
+import { type RunStatus, attachRunStatus } from '../lib/run-status';
+import { ProblemNotice } from './ProblemNotice';
 import { hasUntrustedOutputs } from '../lib/trust';
 import { renameFile, renamedPath } from '../lib/rename';
 import type { NotebookWidgets } from '../lib/widgets';
@@ -130,6 +144,8 @@ type Open = {
   ensureKernel(all?: boolean): Promise<boolean>;
   /** The notebook's commands, which its keys run. */
   commands: CommandRegistry;
+  /** Which cells run and wait, shown on them. */
+  runStatus: RunStatus;
   /** Settles once the session has rejoined the file's kernel, if any. */
   joining: Promise<unknown>;
   disposables: IDisposable[];
@@ -141,7 +157,23 @@ function activeType(notebook: Notebook): CellType | undefined {
   return cells && i >= 0 && i < cells.length ? cells.get(i).type : undefined;
 }
 
-const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
+/** A notice: what went wrong, and what Retry runs again, if it is offered. */
+type Notice = { problem: Problem; retry?: () => void };
+
+/** Why a run failed: the kernel died under it, or something else. */
+function runFailed(
+  session: SessionContext,
+  kernelspecs: KernelSpec.IManager,
+  e: unknown,
+  what = 'run',
+): Problem {
+  const kernel = session.session?.kernel;
+  if (kernel?.status === 'dead') {
+    const spec = kernelspecs.specs?.kernelspecs[kernel.name];
+    return kernelDead(spec?.display_name ?? kernel.name);
+  }
+  return failed(what, e);
+}
 
 /**
  * One notebook file: loads it through the contents API, joins or starts its
@@ -159,7 +191,10 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
   const { services } = backend;
   const host = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState<Open>();
-  const [error, setError] = useState<string>();
+  /** Why the file couldn't be opened. */
+  const [error, setError] = useState<unknown>();
+  /** Bumped by Retry after the file couldn't be opened, to load it again. */
+  const [attempt, setAttempt] = useState(0);
   const [status, setStatus] = useState<KernelState>('connecting');
   const [kernelName, setKernelName] = useState<string>();
   /** The kernel the first run starts, or the uninstalled one the file names. */
@@ -172,10 +207,15 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
   const [dirty, setDirty] = useState(false);
   const [trusted, setTrusted] = useState(true);
   const [cellType, setCellType] = useState<CellType>('code');
-  /** Why the last notebook action failed, until dismissed. */
-  const [notice, setNotice] = useState<string>();
-  /** The notice saying the file's kernel is missing; picking one clears it. */
-  const kernelNotice = useRef<string>(undefined);
+  /** Why the last notebook action failed, and what to do next, until dismissed. */
+  const [notice, setNoticeState] = useState<Notice>();
+  const setNotice = (problem: Problem | undefined, retry?: () => void) =>
+    setNoticeState(problem && { problem, retry });
+  /** Clear the notice if it is of one of these kinds. */
+  const clearNotice = (...kinds: Problem['kind'][]) =>
+    setNoticeState(n => (n && kinds.includes(n.problem.kind) ? undefined : n));
+  /** The latest controller, for the notice's buttons. */
+  const controllerRef = useRef<NotebookController>(undefined);
   /** Whether the session has rejoined the file's running kernel, if any. */
   const [joined, setJoined] = useState(false);
   /** Set when autosave met a file changed on disk; a save clears it. */
@@ -192,6 +232,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
     let cancelled = false;
     let current: Open | undefined;
     setJoined(false);
+    setError(undefined);
     (async () => {
       const [file, widgets] = await Promise.all([
         services.contents.get(path, { type: 'notebook', content: true }),
@@ -260,10 +301,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       const startKernel = async () => {
         const { name, missing } = intendedRef.current;
         if (!name) {
-          kernelNotice.current = missing
-            ? `${fileName} uses ${missing}, which isn’t installed here. Pick a kernel in the toolbar to run it.`
-            : 'There is no kernel to run this notebook. Pick one in the toolbar.';
-          setNotice(kernelNotice.current);
+          setNotice(missingKernel(fileName, missing));
           return false;
         }
         await session.changeKernel({ name });
@@ -283,12 +321,18 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         return starting;
       };
       const commands = createCommands(notebook, session, ensureKernel, e =>
-        setNotice(`Couldn’t run: ${messageOf(e)}`),
+        setNotice(runFailed(session, services.kernelspecs, e)),
       );
       const editing = attachEditing(notebook, session, rendermime, commands);
       const cellControls = attachCellControls(notebook, (cell, anchor) =>
         setMenu({ cell, anchor }),
       );
+      const runStatus = attachRunStatus(notebook, {
+        interrupt: () =>
+          void session.session?.kernel
+            ?.interrupt()
+            .catch(e => setNotice(failed('interrupt the kernel', e))),
+      });
       const saver = new NotebookSaver({
         contents: services.contents,
         path,
@@ -309,10 +353,12 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         saver,
         ensureKernel,
         commands,
+        runStatus,
         joining,
         disposables: [
           editing,
           cellControls,
+          runStatus,
           notebookWidgets,
           { dispose: () => saver.dispose(), isDisposed: false },
           {
@@ -326,7 +372,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       if (cancelled) return;
       setJoined(true);
       await syncLanguage();
-    })().catch(e => !cancelled && setError(e instanceof Error ? e.message : String(e)));
+    })().catch(e => !cancelled && setError(e ?? new Error('Unknown error')));
     return () => {
       cancelled = true;
       const done = current;
@@ -360,7 +406,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         else teardown();
       }
     };
-  }, [services, path]);
+  }, [services, path, attempt]);
 
   // Put the Lumino widget in the page. The widget lives in a holder node
   // that moves in and out of the pane: when the pane goes, the holder is
@@ -390,18 +436,46 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
   // Kernel status and dirty state for the toolbar.
   useEffect(() => {
     if (!open) return;
-    const { session, model } = open;
+    const { session, model, runStatus } = open;
+    /** The kernel last seen dead or cut off, so each says so once. */
+    let dead: unknown;
+    let lost: unknown;
     const update = () => {
       const kernel = session.session?.kernel;
-      setStatus(
-        !joined
-          ? 'connecting'
-          : !session.session
-            ? 'none'
+      const next: KernelState = !joined
+        ? 'connecting'
+        : !session.session
+          ? 'none'
+          : // A dead kernel disposes itself, which also closes its connection.
+            kernel?.status === 'dead'
+            ? 'dead'
             : kernel?.connectionStatus === 'connected'
               ? kernel.status
-              : 'connecting',
-      );
+              : 'connecting';
+      setStatus(next);
+      if (kernel && next === 'dead') {
+        if (dead !== kernel) {
+          dead = kernel;
+          runStatus.clear();
+          setNotice(runFailed(session, services.kernelspecs, undefined));
+        }
+      } else if (dead) {
+        dead = undefined;
+        clearNotice('kernel-dead');
+      }
+      // The websocket gave up reconnecting (a live kernel's, not one that
+      // died or was shut down or replaced).
+      const cut =
+        joined && !!kernel && !kernel.isDisposed && kernel.connectionStatus === 'disconnected';
+      if (kernel && cut) {
+        if (lost !== kernel) {
+          lost = kernel;
+          setNotice(connectionLost(), () => void kernel.reconnect().catch(() => {}));
+        }
+      } else if (lost) {
+        lost = undefined;
+        clearNotice('connection-lost');
+      }
       setKernelName(kernel?.name);
       setDirty(model.dirty);
       setTrusted(!hasUntrustedOutputs(model));
@@ -419,7 +493,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       model.stateChanged.disconnect(update);
       model.contentChanged.disconnect(update);
     };
-  }, [open, joined]);
+  }, [open, joined, services]);
 
   // The active cell's type for the toolbar. Changing a cell's type replaces
   // its widget, which makes the new one active.
@@ -445,12 +519,9 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       saver.save({ ifDirty: true }).catch(e => {
         if (e instanceof SaveConflict) {
           autosaveOff.current = true;
-          setNotice(
-            `${basename(path)} changed on disk since it was opened. ` +
-              'Autosave is off until you save it.',
-          );
+          setNotice(saveConflict(basename(path)));
         } else {
-          setNotice(`Couldn’t autosave ${basename(path)}: ${messageOf(e)}`);
+          setNotice(saveFailed(basename(path), e, true), autosave);
         }
       });
     };
@@ -477,15 +548,25 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
     const fileName = basename(path);
     // The toolbar and ⌘S fire these and forget them; a failure shows in the
     // pane instead of only in the console.
-    const report =
-      <A extends unknown[]>(what: string, action: (...args: A) => Promise<void>) =>
-      async (...args: A) => {
+    // Retry runs the action again with the same arguments.
+    const report = <A extends unknown[]>(what: string, action: (...args: A) => Promise<void>) => {
+      const run = async (...args: A) => {
         try {
           await action(...args);
         } catch (e) {
-          setNotice(`Couldn’t ${what}: ${messageOf(e)}`);
+          setNotice(failed(what, e, { retry: true }), () => void run(...args));
         }
       };
+      return run;
+    };
+    // A run's failure: when the kernel died under it, say that instead.
+    const reportRun = (what: string, action: () => Promise<void>) => async () => {
+      try {
+        await action();
+      } catch (e) {
+        setNotice(runFailed(session, services.kernelspecs, e, what));
+      }
+    };
     // Move the file to `to` with `rename` (the file's own rename, or its
     // folder's in the sidebar), taking the saves and the kernel along.
     const moved = async (to: string, rename: () => Promise<unknown>) => {
@@ -519,7 +600,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         renaming.current = undefined;
       }
     };
-    onController({
+    const controller: NotebookController = {
       path,
       name: basename(path),
       status,
@@ -551,7 +632,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
             await saver.save({ overwrite: true });
           }
         } catch (e) {
-          setNotice(`Couldn’t save ${fileName}: ${messageOf(e)}`);
+          setNotice(saveFailed(fileName, e), () => void controller.save());
           return false;
         }
         autosaveOff.current = false;
@@ -578,10 +659,10 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         // Unsaved changes are signed on the next save: every cell is trusted.
         await trustNotebook(backend, path);
       }),
-      run: report('run the cell', async () => {
+      run: reportRun('run the cell', async () => {
         if (await open.ensureKernel()) await NotebookActions.runAndAdvance(notebook, session);
       }),
-      runAll: report('run all cells', async () => {
+      runAll: reportRun('run all cells', async () => {
         if (await open.ensureKernel(true)) await NotebookActions.runAll(notebook, session);
       }),
       insert: type => {
@@ -593,18 +674,27 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         await session.session?.kernel?.interrupt();
       }),
       restart: report('restart the kernel', async () => {
-        await session.session?.kernel?.restart();
+        const kernel = session.session?.kernel;
+        // A dead kernel can't restart (it disposed its connection): start
+        // a new one of the same kind in its place.
+        if (kernel && (kernel.status === 'dead' || kernel.isDisposed)) {
+          await session.changeKernel({ name: kernel.name });
+        } else {
+          await kernel?.restart();
+        }
+        open.runStatus.clear();
       }),
       command: id => {
         const { commands } = open;
         if (!commands.hasCommand(id) || !commands.isEnabled(id)) return false;
-        void commands.execute(id).catch(e => setNotice(`Couldn’t ${id}: ${messageOf(e)}`));
+        void commands.execute(id).catch(e => setNotice(failed(id, e)));
         return true;
       },
       rename: async (input: string) => {
         let next: string | undefined;
-        const clearRenameNotice = () =>
-          setNotice(n => (n?.startsWith(`Couldn’t rename ${fileName}`) ? undefined : n));
+        const clearRenameNotice = () => clearNotice('rename-failed');
+        const renameFailed = (e: unknown) =>
+          setNotice(failed(`rename ${fileName}`, e, { kind: 'rename-failed' }));
         try {
           next = renamedPath(path, input);
           if (!next) {
@@ -614,14 +704,14 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
           // The edits go with the file.
           if (model.dirty) await saver.save();
         } catch (e) {
-          setNotice(`Couldn’t rename ${fileName}: ${messageOf(e)}`);
+          renameFailed(e);
           return false;
         }
         const to = next;
         try {
           await moved(to, () => renameFile(services.contents, path, to));
         } catch (e) {
-          setNotice(`Couldn’t rename ${fileName}: ${messageOf(e)}`);
+          renameFailed(e);
           return false;
         }
         clearRenameNotice();
@@ -643,7 +733,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         // starts this one, as the file's metadata now says.
         setIntended({ name });
         // Only the missing-kernel notice: an autosave warning still holds.
-        setNotice(n => (n === kernelNotice.current ? undefined : n));
+        clearNotice('missing-kernel');
         const spec = services.kernelspecs.specs?.kernelspecs[name];
         if (spec) {
           model.setMetadata('kernelspec', {
@@ -653,7 +743,9 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
           });
         }
       }),
-    });
+    };
+    controllerRef.current = controller;
+    onController(controller);
   }, [
     open,
     path,
@@ -671,10 +763,21 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
   useEffect(() => () => onController(undefined), [onController]);
 
   if (error) {
+    const offline = isUnreachable(error);
     return (
-      <div className="pane-message">
+      <div className="pane-message" role="alert">
         <h2>Couldn’t open {basename(path)}</h2>
-        <p>{error}</p>
+        <p>{offline ? unreachable(`open ${basename(path)}`).message : messageOf(error)}</p>
+        {offline && <p>Check that it is running and the network is up.</p>}
+        <p>
+          <button
+            type="button"
+            className="pane-message-action"
+            onClick={() => setAttempt(a => a + 1)}
+          >
+            Retry
+          </button>
+        </p>
       </div>
     );
   }
@@ -695,19 +798,28 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
                 await NotebookActions.run(open.notebook, open.session);
               }
             } catch (e) {
-              setNotice(`Couldn’t run the cell: ${messageOf(e)}`);
+              setNotice(runFailed(open.session, services.kernelspecs, e, 'run the cell'));
             }
           }}
           onClose={() => setMenu(undefined)}
         />
       )}
       {notice && (
-        <div className="pane-notice" role="alert">
-          <span>{notice}</span>
-          <button className="pane-notice-dismiss" onClick={() => setNotice(undefined)}>
-            Dismiss
-          </button>
-        </div>
+        <ProblemNotice
+          problem={notice.problem}
+          specs={services.kernelspecs.specs}
+          onDismiss={() => setNotice(undefined)}
+          onPickKernel={name => void controllerRef.current?.changeKernel(name)}
+          onAction={action => {
+            const c = controllerRef.current;
+            if (action === 'restart') void c?.restart();
+            else if (action === 'save') void c?.save();
+            else if (notice.retry) {
+              setNotice(undefined);
+              notice.retry();
+            }
+          }}
+        />
       )}
     </>
   );

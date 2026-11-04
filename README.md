@@ -95,6 +95,19 @@ closes. If the file changed on disk since it was opened or last saved, a
 save asks before overwriting it, and autosave stops until you save. A
 failed save or kernel action shows its error above the notebook.
 
+### Running cells and errors
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+The cell the kernel is running says so under its input, with how long it
+has run and an Interrupt button; cells waiting behind it say they are
+queued. When something goes wrong, the notice above the notebook says
+what happened and offers the next step: Restart when the kernel died,
+Retry when the server couldn't be reached or a save failed, and a kernel
+picker when the notebook's kernel isn't installed here.
+
 ## Where your data lives
 
 - **This browser:** notebooks are stored in the browser's IndexedDB for this

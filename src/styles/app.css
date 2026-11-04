@@ -1001,6 +1001,111 @@ button {
   cursor: pointer;
 }
 
+/* What happened, what to do next (#213), and a button for it. */
+.pane-notice-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.pane-notice-hint {
+  color: var(--text-2);
+  font-size: 12px;
+}
+
+.pane-notice-actions {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.pane-notice-action,
+.pane-message-action {
+  padding: 3px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+
+.pane-notice-picker select {
+  padding: 3px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  font: inherit;
+}
+
+/* A kernel that is only missing, not broken, is a warning. */
+.pane-notice.problem-missing-kernel,
+.pane-notice.problem-save-conflict {
+  border-color: var(--orange);
+}
+
+@media (max-width: 600px) {
+  .pane-notice {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .pane-notice-actions {
+    justify-content: flex-end;
+  }
+}
+
+/* ---------- Running and queued cells (#213) ---------- */
+
+.gn-run-status {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin: 2px 0 2px var(--jp-cell-collapser-width, 8px);
+  padding-left: var(--jp-cell-prompt-width, 64px);
+  color: var(--text-2);
+  font: 12px var(--font-ui);
+  font-variant-numeric: tabular-nums;
+}
+
+.gn-run-status::before {
+  content: '';
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--gray);
+}
+
+.gn-run-status[data-phase='running']::before {
+  background: var(--orange);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.gn-run-interrupt {
+  padding: 1px 8px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--control-bg);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.gn-run-interrupt:hover {
+  background: var(--control-bg-hover);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gn-run-status[data-phase='running']::before {
+    animation: none;
+  }
+}
+
 /* ---------- Cell menu (#200) ---------- */
 
 .cell-menu-backdrop {
