@@ -1558,3 +1558,64 @@ button {
     min-height: 36px;
   }
 }
+
+/* ---------- Keyboard bar (#209) ---------- */
+
+/* 16px or more, so iOS doesn't zoom the page when a cell is focused: the
+ * zoom would also hide the keyboard bar, which shows only at scale 1. Only
+ * the editor: outputs keep their size. The query is TOUCH_QUERY's. */
+@media (hover: none), (pointer: coarse) {
+  :root .notebook-page .jp-InputArea-editor {
+    --jp-code-font-size: 16px;
+  }
+}
+
+/* Above the on-screen keyboard: `top` is where the visible area ends. */
+.keyboard-bar {
+  position: fixed;
+  left: 0;
+  right: 0;
+  z-index: 40;
+  transform: translateY(-100%);
+  display: flex;
+  gap: 6px;
+  padding: 6px max(8px, var(--safe-right)) 6px max(8px, var(--safe-left));
+  height: 48px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  background: var(--toolbar-bg);
+  -webkit-backdrop-filter: saturate(180%) blur(20px);
+  backdrop-filter: saturate(180%) blur(20px);
+  border-top: 0.5px solid var(--separator);
+}
+
+.keyboard-bar::-webkit-scrollbar {
+  display: none;
+}
+
+.keyboard-bar-key {
+  flex: none;
+  min-width: 36px;
+  height: 36px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--control-bg);
+  font-size: 16px;
+  touch-action: manipulation;
+}
+
+.keyboard-bar-key.text {
+  font-family: var(--font-mono);
+}
+
+.keyboard-bar-key.primary {
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.keyboard-bar-key:active {
+  background: var(--control-bg-hover);
+}

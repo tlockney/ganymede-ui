@@ -33,6 +33,7 @@ vi.mock('../lib/jupyterlab', async () => {
         widgets: { model: { type: string } }[];
         isSelectedOrActive(cell: unknown): boolean;
         activeCellChanged: InstanceType<typeof Signal>;
+        stateChanged: InstanceType<typeof Signal>;
       };
       // Its cells, with the active one selected, for what a run needs.
       Object.defineProperty(w, 'widgets', {
@@ -44,6 +45,8 @@ vi.mock('../lib/jupyterlab', async () => {
       w.isSelectedOrActive = cell =>
         (cell as { model: unknown }).model === w.model!.cells.get(w.activeCellIndex ?? 0);
       w.activeCellChanged = new Signal(w);
+      // The keyboard bar (#209) follows the mode.
+      w.stateChanged = new Signal(w);
       fakes.notebooks.push(w);
       return w;
     }),
