@@ -1001,86 +1001,6 @@ button {
   cursor: pointer;
 }
 
-/* ---------- Cell menu (#200) ---------- */
-
-.cell-menu-backdrop {
-  position: fixed;
-  inset: 0;
-  z-index: 90;
-}
-
-.cell-menu {
-  position: fixed;
-  display: flex;
-  flex-direction: column;
-  min-width: 200px;
-  max-height: calc(100% - 16px);
-  overflow-y: auto;
-  padding: 6px;
-  border-radius: 12px;
-  background: var(--sheet-bg);
-  backdrop-filter: blur(40px) saturate(1.8);
-  -webkit-backdrop-filter: blur(40px) saturate(1.8);
-  box-shadow: var(--shadow-sheet);
-  animation: fade 0.12s ease-out;
-}
-
-.cell-menu-item {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  min-height: 44px;
-  padding: 0 14px 0 6px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  font-size: 15px;
-  text-align: left;
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-}
-
-.cell-menu-item:hover:not(:disabled),
-.cell-menu-item:focus-visible,
-.cell-menu-item:active:not(:disabled) {
-  background: var(--control-bg-hover);
-  outline: none;
-}
-
-.cell-menu-item:disabled {
-  opacity: 0.4;
-}
-
-.cell-menu-item.destructive {
-  color: var(--red);
-}
-
-.cell-menu-check {
-  width: 18px;
-  color: var(--accent);
-  text-align: center;
-}
-
-.cell-menu-heading {
-  padding: 6px 14px 2px 28px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--text-3);
-}
-
-.cell-menu-separator {
-  height: 0.5px;
-  margin: 4px 8px;
-  background: var(--separator);
-}
-
-@media (pointer: fine) {
-  .cell-menu-item {
-    min-height: 30px;
-    font-size: 13px;
-  }
-}
-
 /* ---------- Notebook title (#202) ---------- */
 
 /* Reads as the title; a click edits it in place. */
@@ -1177,6 +1097,30 @@ button {
   height: 0.5px;
   margin: 4px 8px;
   background: var(--separator);
+}
+
+/* A menu with a set to pick from (a cell's type, #200): a column for the
+   check mark, and the labels lined up past it. */
+.popup-menu.with-checks .popup-menu-item {
+  gap: 4px;
+  padding-left: 6px;
+}
+
+.popup-menu-check {
+  width: 18px;
+  flex: none;
+  text-align: center;
+}
+
+.popup-menu-heading {
+  padding: 6px 12px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+
+.popup-menu.with-checks .popup-menu-heading {
+  padding-left: 28px;
 }
 
 @media (pointer: coarse) {

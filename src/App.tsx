@@ -439,6 +439,7 @@ export function App() {
               backend &&
               fileActions({
                 contents: backend.services.contents,
+                sessions: backend.services.sessions,
                 openPath,
                 controller,
                 setOpenPath,
