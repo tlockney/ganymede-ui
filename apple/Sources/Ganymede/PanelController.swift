@@ -22,15 +22,6 @@ final class PanelController: ObservableObject {
     @Published private(set) var terminals: [PanelTerminal] = []
     @Published var selection: PanelTerminal.ID?
 
-    init(isShown: Bool = false, height: Double = PanelController.defaultHeight) {
-        self.isShown = isShown
-        self.height = max(Self.minHeight, height)
-    }
-
-    var selected: PanelTerminal? {
-        terminals.first { $0.id == selection }
-    }
-
     /// Shows the panel; with no terminal in it yet, starts one on `target`.
     func show(startingOn target: TerminalTarget) {
         isShown = true

@@ -26,6 +26,8 @@ struct TerminalWindow: View {
     /// minimum window size of its own; the title goes to `onTitle`.
     var inPanel = false
     var onTitle: ((String) -> Void)?
+    /// Whether the terminal has the keyboard; see `TerminalSurface.focused`.
+    var focused: Bool?
     @State private var transport: TerminalTransport?
     @State private var title = ""
     /// Why the session ended, once it has.
@@ -36,7 +38,7 @@ struct TerminalWindow: View {
     var body: some View {
         VStack(spacing: 0) {
             if let transport {
-                TerminalSurface(transport: transport, onTitle: { title = $0; onTitle?($0) }, onEnd: { ended = $0 ?? "Session ended." })
+                TerminalSurface(transport: transport, onTitle: { title = $0; onTitle?($0) }, onEnd: { ended = $0 ?? "Session ended." }, focused: focused)
                     .id(generation)
             } else if let problem {
                 Text(problem)
@@ -75,6 +77,8 @@ struct TerminalWindow: View {
         guard let next = makeTransport() else { return }
         ended = nil
         title = ""
+        // The panel's tab goes back to its own title until the new shell sets one.
+        onTitle?("")
         generation += 1
         transport = next
     }

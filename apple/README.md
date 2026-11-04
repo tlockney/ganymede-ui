@@ -79,8 +79,10 @@ built from the same sources (see
   shows it, starting a shell in the window's folder (its notebook's
   folder, or the folder it shows) if it has none; drag its top edge to
   resize it. Hiding the panel keeps its shells running; closing a tab
-  ends that one. File > New Terminal (`` ⌃⇧` ``) adds a shell to the panel,
-  and File > New Terminal On, or the panel's + menu, one on a remote's
+  ends that one. Since `` ⌃` `` toggles the panel, programs in a panel
+  terminal don't receive it (a terminal window of its own still does).
+  File > New Terminal (`` ⌃⇧` ``) adds a shell to the panel, and
+  File > New Terminal On, or the panel's + menu, one on a remote's
   server, if it has terminals (Ganymede with terminals, or
   `jupyter server`), or over SSH with `/usr/bin/ssh`, so `~/.ssh/config`,
   the SSH agent and known_hosts apply. File > New Terminal Window opens a

@@ -77,6 +77,8 @@ final class PanelControllerTests: XCTestCase {
     }
 
     func testAStoredHeightBelowTheMinimumIsRaised() {
-        XCTAssertEqual(PanelController(height: 10).height, PanelController.minHeight)
+        let panel = PanelController()
+        panel.resize(to: 10, available: .infinity)
+        XCTAssertEqual(panel.height, PanelController.minHeight)
     }
 }

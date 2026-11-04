@@ -28,6 +28,7 @@ struct BottomPanel: View {
                             let start = dragStart ?? panel.height
                             dragStart = start
                             panel.resize(to: start - drag.translation.height, available: available)
+                            NSCursor.resizeUpDown.set()
                         }
                         .onEnded { _ in dragStart = nil }
                 )
@@ -36,7 +37,14 @@ struct BottomPanel: View {
             ZStack {
                 ForEach(panel.terminals) { terminal in
                     let selected = terminal.id == panel.selection
-                    TerminalWindow(target: terminal.target, inPanel: true) { titles[terminal.id] = $0 }
+                    TerminalWindow(
+                        target: terminal.target,
+                        inPanel: true,
+                        onTitle: { titles[terminal.id] = $0.isEmpty ? nil : $0 },
+                        // Only the terminal on show has the keyboard, so keys
+                        // never go to a hidden shell; a new one gets it.
+                        focused: selected && panel.isShown
+                    )
                         .opacity(selected ? 1 : 0)
                         .allowsHitTesting(selected)
                         .accessibilityHidden(!selected)
@@ -50,7 +58,9 @@ struct BottomPanel: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(height: panel.height)
+        // Kept within the window as it gets shorter; the stored height
+        // comes back when it grows.
+        .frame(height: PanelController.clamp(panel.height, available: available))
         .background(Color(nsColor: .windowBackgroundColor))
     }
 
@@ -165,12 +175,16 @@ private struct ResizeEdge: View {
             .padding(.vertical, 2)
             .contentShape(Rectangle())
             .onHover { inside in
-                if inside { NSCursor.resizeUpDown.push() } else { NSCursor.pop() }
+                // set, not push/pop: an exit can be lost when the panel
+                // hides under the pointer, which would leave the stack off.
+                if inside { NSCursor.resizeUpDown.set() } else { NSCursor.arrow.set() }
             }
     }
 }
 
 /// View › Show/Hide Terminal Panel (⌃`), for the front notebook window.
+/// As a menu shortcut it comes before the terminal, so programs in a panel
+/// terminal don't get ⌃` (NUL); terminal windows of their own still do.
 struct PanelCommands: View {
     @FocusedObject private var panel: PanelController?
     @FocusedValue(\.windowFolder) private var folder

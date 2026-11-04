@@ -98,8 +98,10 @@ struct ContentView: View {
         .focusedSceneObject(pageModel)
         .focusedSceneObject(panel)
         .onAppear {
-            panel.isShown = panelShown
             panel.resize(to: panelHeight, available: .infinity)
+            // Shells don't outlive the app: a panel that was showing comes
+            // back with a new one, as ⌃` would start.
+            if panelShown { panel.show(startingOn: .local(folder: sidebarRoot)) }
         }
         .onChange(of: panel.isShown) { panelShown = $0 }
         .onChange(of: panel.height) { panelHeight = $0 }
