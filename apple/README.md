@@ -117,8 +117,17 @@ On iPadOS and iOS (`Ganymede-iOS` target, iOS 16 or later):
   type, restarts or changes the kernel, shuts down other kernels, saves,
   downloads and trusts. With
   a keyboard, hold ⌘ to see the commands: New Notebook ⌘N, Save ⌘S, Run
-  All ⇧⌘↩, Interrupt ⌘., Find ⌘F. The iPhone keeps the page's own
-  sidebar and toolbar.
+  All ⇧⌘↩, Interrupt ⌘., Find ⌘F.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release, which uses the page's own sidebar and toolbar.
+
+- On the iPhone the first screen lists the notebook folder, with the same
+  long-press actions and Running section as the iPad's sidebar, and the
+  terminal, remotes and folder buttons. Tapping a notebook opens it;
+  swipe from the left edge or tap Back to return to the list. The
+  notebook's run controls and its ⋯ menu are in the bottom toolbar.
 
   > [!NOTE]
   > **Unreleased.** Available only from a build of `main` (HEAD), not in

@@ -36,11 +36,23 @@ struct WebView: UIViewRepresentable {
     var page: PageModel? = nil
     /// Opens a text file from the sidebar, by its path on the server (#122).
     var onOpenFile: ((String) -> Void)? = nil
+    /// Keeps the page alive while it is off screen (the iPhone, #209).
+    var store: WebViewStore? = nil
 
-    func makeCoordinator() -> WebViewCoordinator { WebViewCoordinator() }
+    func makeCoordinator() -> WebViewCoordinator { store?.coordinator ?? WebViewCoordinator() }
 
     func makeUIView(context: Context) -> WKWebView {
-        context.coordinator.makeWebView()
+        store?.webView ?? context.coordinator.makeWebView()
+    }
+
+    /// A stored page goes back to its parking place once its screen has
+    /// let it go.
+    static func dismantleUIView(_ view: WKWebView, coordinator: WebViewCoordinator) {
+        // After SwiftUI has taken the screen's views out of the window, and
+        // again once a pop's animation is surely over; the list's
+        // `onAppear` parks it too.
+        DispatchQueue.main.async { coordinator.park?() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { coordinator.park?() }
     }
 
     func updateUIView(_ view: WKWebView, context: Context) {
@@ -48,6 +60,67 @@ struct WebView: UIViewRepresentable {
         context.coordinator.onOpenFile = onOpenFile
         context.coordinator.load(url, in: view)
     }
+}
+#endif
+
+#if os(iOS)
+/// One page that outlives the views showing it. On the iPhone the notebook
+/// is pushed onto the folder list and popped off it again (#209); the page,
+/// its state and the app's commands go on while the list shows, so popping
+/// doesn't reload it and the list can read `PageModel` and open notebooks.
+///
+/// WebKit suspends a web view that is in no window (see `KernelHost`), so
+/// while the notebook screen isn't showing, the web view waits in
+/// `parking`, a hidden view behind the list (`ParkedPage`).
+@MainActor
+final class WebViewStore: ObservableObject {
+    private(set) lazy var coordinator: WebViewCoordinator = {
+        let coordinator = WebViewCoordinator()
+        coordinator.park = { [weak self] in self?.park() }
+        return coordinator
+    }()
+    private(set) lazy var webView: WKWebView = coordinator.makeWebView(keepRunning: true)
+    /// Holds the web view while no screen shows it.
+    let parking: UIView = {
+        let view = UIView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
+        view.alpha = 0
+        view.isUserInteractionEnabled = false
+        return view
+    }()
+
+    /// Loads the page off screen, if it isn't already.
+    func load(_ url: URL, page: PageModel, onOpenFile: @escaping (String) -> Void) {
+        let view = webView
+        // After the view exists: setting `page` hands it the view.
+        coordinator.page = page
+        coordinator.onOpenFile = onOpenFile
+        coordinator.load(url, in: view)
+        park()
+    }
+
+    /// The server stopped (a restart reuses its port, so the page's URL
+    /// comes back the same): the next `load` loads the page again, and its
+    /// commands wait for it.
+    func forget(page: PageModel) {
+        coordinator.forget()
+        page.reset()
+    }
+
+    /// Puts the web view back in `parking` when no screen in the window
+    /// holds it.
+    func park() {
+        guard webView.window == nil || webView.superview == nil else { return }
+        parking.addSubview(webView)
+    }
+}
+
+/// The hidden view behind the iPhone's list that keeps its page in the
+/// window (`WebViewStore.parking`).
+struct ParkedPage: UIViewRepresentable {
+    let store: WebViewStore
+
+    func makeUIView(context: Context) -> UIView { store.parking }
+    func updateUIView(_ view: UIView, context: Context) {}
 }
 #endif
 
@@ -93,6 +166,10 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     private var urlObservation: NSKeyValueObservation?
     var onNavigate: ((URL?) -> Void)?
     var onOpenFile: ((String) -> Void)?
+    #if os(iOS)
+    /// Puts a stored page back where it waits off screen (`WebViewStore`).
+    var park: (() -> Void)?
+    #endif
     var page: PageModel? {
         didSet { page?.webView = webView }
     }
@@ -108,8 +185,14 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     private var destinations: [ObjectIdentifier: URL] = [:]
     #endif
 
-    func makeWebView() -> WKWebView {
-        let view = WKWebView(frame: .zero, configuration: WKWebViewConfiguration())
+    /// `keepRunning`: the page runs at full speed while it isn't visible
+    /// (the iPhone's page while its list shows, #209).
+    func makeWebView(keepRunning: Bool = false) -> WKWebView {
+        let config = WKWebViewConfiguration()
+        if keepRunning, #available(macOS 14.0, iOS 17.0, *) {
+            config.preferences.inactiveSchedulingPolicy = .none
+        }
+        let view = WKWebView(frame: .zero, configuration: config)
         view.navigationDelegate = self
         view.uiDelegate = self
         webView = view
@@ -161,6 +244,11 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         }
     }
 
+    /// The next `load` loads even the same URL: the server restarted.
+    func forget() {
+        loaded = nil
+    }
+
     /// Loads `url` when it changed: a restart for another folder.
     func load(_ url: URL, in view: WKWebView) {
         guard url != loaded else { return }
@@ -172,6 +260,8 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// A reload or another page: the old page's kernels go with it.
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         kernels.reset()
+        // The new page takes commands once it has posted its state.
+        page?.reset()
     }
 
     /// Links to other hosts open in the default browser.
@@ -505,15 +595,45 @@ private final class AgentKeysHandler: NSObject, WKScriptMessageHandlerWithReply 
 @MainActor
 final class PageModel: ObservableObject {
     @Published private(set) var state = PageState()
-    weak var webView: WKWebView?
+    weak var webView: WKWebView? {
+        didSet { flush() }
+    }
+    /// Whether the page has posted its state with a backend, so its
+    /// commands are ready.
+    private var ready = false
+    /// Commands run before then: the iPhone's list can be tapped while the
+    /// page is still loading (#209).
+    private var pending: [String] = []
 
     func update(_ state: PageState) {
         if state != self.state { self.state = state }
+        // Ready once it is connected: before that, `open` and
+        // `new-notebook` have no backend to act on.
+        if !ready, state.backend != nil {
+            ready = true
+            flush()
+        }
     }
 
-    /// Runs one of the page's commands (`PageCommand`).
+    /// Runs one of the page's commands (`PageCommand`), once the page is
+    /// ready for them.
     func run(_ id: String, arg: String? = nil) {
-        webView?.evaluateJavaScript(PageCommand.script(id, arg: arg), completionHandler: nil)
+        pending.append(PageCommand.script(id, arg: arg))
+        flush()
+    }
+
+    /// The page is going away: commands wait for the next one's state.
+    func reset() {
+        ready = false
+    }
+
+    private func flush() {
+        guard ready, let webView, !pending.isEmpty else { return }
+        let scripts = pending
+        pending = []
+        for script in scripts {
+            webView.evaluateJavaScript(script, completionHandler: nil)
+        }
     }
 }
 

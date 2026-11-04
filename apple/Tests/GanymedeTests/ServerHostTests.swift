@@ -25,15 +25,11 @@ final class ServerHostTests: XCTestCase {
         ].merging(extra) { $1 }
     }
 
-    /// GETs `url`. `requestTimeout` bounds the request itself, so a refused
-    /// connection that the iOS simulator is slow to report (#175) still
-    /// ends before the wait does.
-    private func get(_ url: URL, requestTimeout: TimeInterval? = nil) throws -> (Int, String) {
+    /// GETs `url`.
+    private func get(_ url: URL) throws -> (Int, String) {
         var result: Result<(Int, String), Error>?
         let done = expectation(description: url.absoluteString)
-        var request = URLRequest(url: url)
-        if let requestTimeout { request.timeoutInterval = requestTimeout }
-        URLSession.shared.dataTask(with: request) { data, response, error in
+        URLSession.shared.dataTask(with: url) { data, response, error in
             if let error {
                 result = .failure(error)
             } else {
@@ -55,8 +51,29 @@ final class ServerHostTests: XCTestCase {
         XCTAssertEqual(status, 200)
         XCTAssertTrue(body.contains("ganymede-ui test"), body)
         host.stop()
-        // Refused, or timed out: either way not served. A response fails.
-        XCTAssertThrowsError(try get(host.url, requestTimeout: 2))
+        // A plain connect, not a request: on the iOS simulator URLSession
+        // can call back more than 10 s after a refused connection, even
+        // past its own timeout (#175).
+        let port = try XCTUnwrap(host.url.port)
+        XCTAssertFalse(accepts(port), "still listening on \(port) after stop()")
+    }
+
+    /// Whether 127.0.0.1 accepts a TCP connection on `port`. With nothing
+    /// listening, connect fails at once with ECONNREFUSED.
+    private func accepts(_ port: Int) -> Bool {
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        guard fd >= 0 else { return false }
+        defer { close(fd) }
+        var address = sockaddr_in()
+        address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_port = in_port_t(UInt16(port).bigEndian)
+        address.sin_addr.s_addr = inet_addr("127.0.0.1")
+        return withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) == 0
+            }
+        }
     }
 
     /// The app tells the page where kernels run with `kernels=` next to
