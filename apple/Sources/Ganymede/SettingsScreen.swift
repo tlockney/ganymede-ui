@@ -116,7 +116,9 @@ struct AgentSettingsView: View {
         }
         .onDisappear {
             saveKey()
-            testRun?.cancel()
+            // Also on pushing Choose a Model: a cancelled test must not
+            // leave the button at "Testing…".
+            stopTest()
             // Leaving cancels the wait above: save what is there now.
             if changed, let panel { Task { @MainActor in await save(panel) } }
         }
