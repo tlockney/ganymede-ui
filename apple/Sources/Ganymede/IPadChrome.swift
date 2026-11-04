@@ -53,7 +53,9 @@ struct IPadSidebar: View {
                             }
                             .contentShape(Rectangle())
                         }
-                        .swipeActions {
+                        // A swipe only reveals the button: shutting down loses the
+                        // kernel's state.
+                        .swipeActions(allowsFullSwipe: false) {
                             Button("Shut Down") { page.run("shutdown-kernel", arg: session.id) }
                                 .tint(.red)
                         }
@@ -397,7 +399,7 @@ struct IPadCommands: Commands {
         CommandMenu("Kernel") {
             IPadPageButton("Interrupt", "interrupt", key: ".")
             IPadPageButton("Restart", "restart")
-            IPadPageButton("Shut Down Other Kernels", "shutdown-others")
+            IPadPageButton("Shut Down Other Kernels", "shutdown-others") { !$0.otherSessions.isEmpty }
         }
     }
 }
@@ -419,18 +421,24 @@ private struct IPadPageButton: View {
     let id: String
     var key: KeyEquivalent?
     var modifiers: EventModifiers = .command
+    /// When it can run; by default, while a notebook is open.
+    var enabled: (PageState) -> Bool
     @FocusedObject private var page: PageModel?
 
-    init(_ title: String, _ id: String, key: KeyEquivalent? = nil, modifiers: EventModifiers = .command) {
+    init(
+        _ title: String, _ id: String, key: KeyEquivalent? = nil, modifiers: EventModifiers = .command,
+        enabled: @escaping (PageState) -> Bool = { $0.hasNotebook }
+    ) {
         self.title = title
         self.id = id
         self.key = key
         self.modifiers = modifiers
+        self.enabled = enabled
     }
 
     var body: some View {
         let button = Button(title) { page?.run(id) }
-            .disabled(page?.state.hasNotebook != true)
+            .disabled(!(page.map { enabled($0.state) } ?? false))
         if let key {
             button.keyboardShortcut(key, modifiers: modifiers)
         } else {
