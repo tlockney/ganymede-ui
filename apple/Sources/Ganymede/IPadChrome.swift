@@ -166,10 +166,11 @@ struct IPadSidebar: View {
                     Button { openMatch(match) } label: {
                         VStack(alignment: .leading, spacing: 2) {
                             Label(match.title, systemImage: match.isDirectory ? "folder" : match.isNotebook ? "book.pages" : "doc.text")
-                            if let snippet = match.snippet {
-                                Text(snippet).font(.caption).foregroundStyle(.secondary).lineLimit(2)
-                            } else if !match.folder.isEmpty {
+                            if !match.folder.isEmpty {
                                 Text(match.folder).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                            if let snippet = match.snippet {
+                                Text(snippet).font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(2)
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
