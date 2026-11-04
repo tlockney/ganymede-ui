@@ -117,17 +117,24 @@ export function handedOff(path: string): Promise<string | undefined> | undefined
  * can't be moved stays where it was; the file has moved regardless.
  */
 export async function moveSessions(
-  sessions: Pick<Session.IManager, 'running' | 'connectTo'>,
+  sessions: Pick<Session.IManager, 'running' | 'refreshRunning' | 'connectTo'>,
   from: string,
   to: string,
   skip?: string,
 ): Promise<void> {
   const inside = (p: string) => p === from || p.startsWith(`${from}/`);
+  // running() is polled: catch sessions started elsewhere since.
+  await sessions.refreshRunning().catch((e: unknown) => console.warn('Couldn’t list sessions:', e));
   const models = [...sessions.running()].filter(m => inside(m.path) && m.path !== skip);
   await Promise.all(
     models.map(async model => {
       const path = to + model.path.slice(from.length);
-      const session = sessions.connectTo({ model });
+      // Comms off: this connection only renames, and must not answer
+      // another client's comm_open by closing it.
+      const session = sessions.connectTo({
+        model,
+        kernelConnectionOptions: { handleComms: false },
+      });
       try {
         await session.setPath(path);
         await session.setName(path.split('/').pop() ?? path);

@@ -372,8 +372,11 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       const pending = renaming.current;
       const work = pending ? pending.done.then(() => save() ?? unsaved.current) : save();
       const next = pending?.to ?? done.saver.path;
+      // If the pending rename fails, the save goes to the old path instead.
+      const now = done.saver.path;
       if (work) {
         handOff(next, work);
+        if (now !== next) handOff(now, work);
         void work.finally(teardown);
       } else {
         if (unsaved.current) handOff(next, Promise.resolve(unsaved.current));

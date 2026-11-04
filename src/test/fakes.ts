@@ -52,6 +52,7 @@ export function fakeServices(tree: Record<string, Entry[]> = { '': [] }) {
   const sessions = {
     runningChanged,
     running: () => running[Symbol.iterator](),
+    refreshRunning: vi.fn(async () => {}),
     shutdown: vi.fn(async () => {}),
   };
   const kernelspecs = {
