@@ -38,7 +38,7 @@ function notFound(e: unknown): boolean {
 }
 
 /** What is at `path`, or undefined when nothing is. Other errors are thrown. */
-async function lookUp(
+export async function lookUp(
   contents: Contents.IManager,
   path: string,
 ): Promise<Contents.IModel | undefined> {

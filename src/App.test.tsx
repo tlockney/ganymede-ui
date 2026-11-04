@@ -48,11 +48,13 @@ vi.mock('./components/NotebookPane', async () => {
 });
 
 const { App } = await import('./App');
+const { resetOnboardingForTests } = await import('./lib/onboarding');
 
 beforeEach(() => {
   mocks.controller = undefined;
   mocks.signedInHere.mockReset().mockResolvedValue(false);
   localStorage.clear();
+  resetOnboardingForTests();
   sessionStorage.clear();
   history.replaceState(null, '', '/');
   document.title = 'Ganymede';
@@ -457,6 +459,45 @@ describe('App', () => {
     expect(fake.contents.newUntitled).toHaveBeenCalledWith({ type: 'notebook', path: 'Users/me' });
     // The notebook's own folder: no `dir` needed.
     await waitFor(() => expect(window.location.search).toBe('?open=Users%2Fme%2FUntitled.ipynb'));
+  });
+
+  it('copies the sample notebook into the folder, under a free name, and opens it', async () => {
+    history.replaceState(null, '', '/?kernels=server&dir=moons');
+    // A copy from an earlier run is there already.
+    const fake = fakeServices({ moons: [], 'moons/Ganymede Tour.ipynb': [] });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    render(<App />);
+
+    expect(await screen.findByText('Welcome to Ganymede')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /Open Sample Notebook/ }));
+    await waitFor(() =>
+      expect(screen.getByTestId('pane')).toHaveTextContent('moons/Ganymede Tour 2.ipynb'),
+    );
+    expect(fake.contents.save).toHaveBeenCalledOnce();
+    expect(fake.contents.save).toHaveBeenCalledWith(
+      'moons/Ganymede Tour 2.ipynb',
+      expect.objectContaining({ type: 'notebook', format: 'json' }),
+    );
+  });
+
+  it('offers Show Folder only while the sidebar is closed', async () => {
+    history.replaceState(null, '', '/?kernels=server');
+    mocks.connect.mockResolvedValue(fakeBackend(fakeServices({ '': [] }).services));
+    render(<App />);
+
+    // A wide window starts with the sidebar open, so the button would do nothing.
+    expect(await screen.findByText('Welcome to Ganymede')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Show Folder' })).not.toBeInTheDocument();
+  });
+
+  it('does not welcome again once dismissed', async () => {
+    localStorage.setItem('ganymede-ui:onboarding', 'dismissed');
+    localStorage.setItem('ganymede-ui:backend', JSON.stringify({ kind: 'browser' }));
+    mocks.connect.mockResolvedValue(fakeBackend(fakeServices().services, { kind: 'browser' }));
+    render(<App />);
+
+    expect(await screen.findByText(/Choose a notebook in the sidebar/)).toBeInTheDocument();
+    expect(screen.queryByText('Welcome to Ganymede')).not.toBeInTheDocument();
   });
 
   it('says why a new notebook could not be created', async () => {
