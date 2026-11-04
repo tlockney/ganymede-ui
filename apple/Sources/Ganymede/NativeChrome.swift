@@ -255,6 +255,11 @@ struct NotebookToolbar: ToolbarContent {
             .help("New Notebook (⌘N)")
         }
         ToolbarItem {
+            Button { page.run("save") } label: { Label("Save", systemImage: "square.and.arrow.down") }
+                .help("Save (⌘S)")
+                .disabled(!page.state.dirty)
+        }
+        ToolbarItem {
             ControlGroup {
                 Button { page.run("run") } label: { Label("Run", systemImage: "play.fill") }
                     .help("Run the selected cell and select the next (⇧↩)")

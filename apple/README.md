@@ -42,7 +42,7 @@ built from the same sources (see
   only; the page shows just the notebook). The sidebar lists the
   window's folder as a tree; right-click an item to open it in a new
   window, show it in the Finder, make a notebook or folder there, or move
-  it to the Trash. The toolbar runs cells, interrupts and restarts the
+  it to the Trash. The toolbar saves, runs cells, interrupts and restarts the
   kernel, inserts cells, sets the cell type, picks the kernel and trusts
   the notebook. File › New Notebook
   (⌘N) makes one in the window's folder, New Window (⌥⌘N) opens another
@@ -60,8 +60,10 @@ built from the same sources (see
   running in the app's hidden kernel web view, as on the iPad. Its cells get
   ganymede-device's `device` (see [docs/device.md](../docs/device.md));
   process kernels can't reach the app.
-- Settings (⌘,) keeps a list of remotes: Jupyter or Ganymede servers,
-  SSH hosts, or both. Kernels run on this Mac or, as on iPadOS, on one
+- Settings (⌘,) has tabs. General makes Ganymede the default app for
+  notebooks. Agent and Shortcuts open the page's agent settings and
+  shortcut list in the front notebook window (unreleased). Remotes keeps a
+  list of remotes: Jupyter or Ganymede servers, SSH hosts, or both. Kernels run on this Mac or, as on iPadOS, on one
   remote's server. Tokens are kept in the keychain.
 - Ganymede > Agent Settings… (⌥⌘,) opens the page's agent settings. The
   agent's API keys are kept in the keychain too.

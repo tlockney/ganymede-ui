@@ -103,18 +103,20 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         )
         #if os(macOS)
         view.configuration.userContentController.add(DocumentHandler(self), name: "document")
-        // Help > Keyboard Shortcuts opens the web app's shortcuts sheet.
+        // Help > Keyboard Shortcuts opens the web app's shortcuts sheet, and
+        // Ganymede > Agent Settings its Settings sheet, in the front window
+        // only. The main window, not the key one: from the Settings window's
+        // tabs (#206), Settings is key and the notebook window is still main.
         shortcuts = NotificationCenter.default.addObserver(
             forName: .showShortcuts, object: nil, queue: .main
         ) { [weak view] _ in
-            view?.evaluateJavaScript("window.dispatchEvent(new Event('ganymede:show-shortcuts'))")
+            guard let view, view.window?.isMainWindow == true else { return }
+            view.evaluateJavaScript("window.dispatchEvent(new Event('ganymede:show-shortcuts'))")
         }
-        // Ganymede > Agent Settings opens the page's Settings sheet, in the
-        // front window only.
         agentSettings = NotificationCenter.default.addObserver(
             forName: .showAgentSettings, object: nil, queue: .main
         ) { [weak view] _ in
-            guard let view, view.window?.isKeyWindow == true else { return }
+            guard let view, view.window?.isMainWindow == true else { return }
             view.evaluateJavaScript("window.dispatchEvent(new Event('ganymede:show-settings'))")
         }
         #endif

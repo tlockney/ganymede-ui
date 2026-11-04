@@ -44,8 +44,8 @@ struct GanymedeApp: App {
                 TerminalCommands(model: model)
             }
             CommandGroup(after: .appSettings) {
-                // The page's agent settings (#166); ⌘, is the app's own
-                // Settings window (remotes).
+                // The page's agent settings (#166), also under Settings ›
+                // Agent; ⌘, is the app's own Settings window (#206).
                 Button("Agent Settings…") {
                     NotificationCenter.default.post(name: .showAgentSettings, object: nil)
                 }
@@ -71,10 +71,8 @@ struct GanymedeApp: App {
         }
         .handlesExternalEvents(matching: [])
         Settings {
-            RemotesView()
+            SettingsWindow()
                 .environmentObject(model)
-                .frame(width: 460)
-                .padding()
         }
     }
     #else
