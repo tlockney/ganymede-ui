@@ -1,6 +1,33 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Contents } from '@jupyterlab/services';
-import { renameFile, renamedPath } from './rename';
+import { handOff, handedOff, renameFile, renamedPath } from './rename';
+
+describe('handOff', () => {
+  it('leaves a save for every pane that opens the file until it is done', async () => {
+    let finish!: (failed?: string) => void;
+    handOff('moons/Io.ipynb', new Promise(r => (finish = r)));
+    // Twice, as StrictMode runs the pane's effect.
+    const first = handedOff('moons/Io.ipynb');
+    expect(first).toBeDefined();
+    expect(handedOff('moons/Io.ipynb')).toBe(first);
+    expect(handedOff('moons/Europa.ipynb')).toBeUndefined();
+    finish('Couldn’t save');
+    expect(await first).toBe('Couldn’t save');
+    expect(handedOff('moons/Io.ipynb')).toBeUndefined();
+  });
+
+  it('waits for every save left at the path, keeping a failure', async () => {
+    let finish!: () => void;
+    handOff('Io.ipynb', Promise.resolve('Couldn’t save'));
+    handOff('Io.ipynb', new Promise<undefined>(r => (finish = () => r(undefined))));
+    let settled = false;
+    const handed = handedOff('Io.ipynb')!.then(f => ((settled = true), f));
+    await new Promise(r => setTimeout(r, 0));
+    expect(settled).toBe(false);
+    finish();
+    expect(await handed).toBe('Couldn’t save');
+  });
+});
 
 describe('renamedPath', () => {
   it('renames in the same folder and adds .ipynb', () => {
