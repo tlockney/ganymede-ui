@@ -1,3 +1,4 @@
+import type { Session } from '@jupyterlab/services';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   canOpenFiles,
@@ -6,6 +7,7 @@ import {
   openFile,
   postDocument,
   postState,
+  runningSessions,
 } from './native';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -49,12 +51,44 @@ describe('native', () => {
       cellType: 'code',
       kernels: [{ name: 'cdp', displayName: 'TypeScript' }],
       backend: { label: 'Ganymede', detail: 'local server' },
+      running: [{ id: 's1', path: 'Io.ipynb', kernel: 'TypeScript', state: 'idle' }],
     };
     postState(state);
     const postMessage = vi.fn();
     vi.stubGlobal('webkit', { messageHandlers: { state: { postMessage } } });
     postState(state);
     expect(postMessage).toHaveBeenCalledWith(state);
+  });
+
+  it('lists running sessions by display name, with the kernel’s state', () => {
+    const specs = {
+      default: 'cdp',
+      kernelspecs: {
+        cdp: { name: 'cdp', display_name: 'TypeScript', language: 'ts', argv: [], resources: {} },
+      },
+    };
+    const sessions = [
+      {
+        id: 's1',
+        path: 'Io.ipynb',
+        name: '',
+        type: 'notebook',
+        kernel: { id: 'k1', name: 'cdp', execution_state: 'busy' },
+      },
+      {
+        id: 's2',
+        path: 'moons/Europa.ipynb',
+        name: '',
+        type: 'notebook',
+        kernel: { id: 'k2', name: 'gone' },
+      },
+      { id: 's3', path: 'Ganymede.ipynb', name: '', type: 'notebook', kernel: null },
+    ] as unknown as Session.IModel[];
+    expect(runningSessions(sessions, specs)).toEqual([
+      { id: 's1', path: 'Io.ipynb', kernel: 'TypeScript', state: 'busy' },
+      { id: 's2', path: 'moons/Europa.ipynb', kernel: 'gone', state: null },
+      { id: 's3', path: 'Ganymede.ipynb', kernel: null, state: null },
+    ]);
   });
 
   it('reads chrome=native from the URL', () => {

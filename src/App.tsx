@@ -37,7 +37,10 @@ import {
   openFile,
   postDocument,
   postState,
+  runningSessions,
+  type RunningSession,
 } from './lib/native';
+import { useSignals } from './lib/useSignal';
 import { fileActions } from './lib/file-actions';
 
 /**
@@ -276,6 +279,19 @@ export function App() {
         if (!backend) return false;
         // A failure shows the page's notice (#195) and returns false.
         return newNotebook(clean(arg ?? ''));
+      case 'shutdown-kernel': {
+        // By session id, or by the notebook's path as `open` takes it.
+        const s = running.find(r => r.id === arg || (!!arg && r.path === clean(arg)));
+        if (!backend || !s) return false;
+        await backend.services.sessions.shutdown(s.id);
+        return true;
+      }
+      case 'shutdown-others': {
+        if (!backend) return false;
+        const others = running.filter(r => r.path !== openPath);
+        await Promise.all(others.map(r => backend.services.sessions.shutdown(r.id)));
+        return true;
+      }
       case 'show-shortcuts':
         setShortcutsOpen(true);
         return true;
@@ -345,8 +361,12 @@ export function App() {
   const dirty = !!openPath && controller?.path === openPath && controller.dirty;
   useEffect(() => postDocument({ path: openPath ?? null, dirty }), [openPath, dirty]);
 
-  // Everything the app's toolbar and menus show (#205).
+  // Everything the app's toolbar and menus show (#205), and its Running
+  // list (#225).
   const specs = backend?.services.kernelspecs.specs ?? undefined;
+  useSignals(backend?.services.sessions.runningChanged);
+  const running = runningSessions(backend?.services.sessions.running() ?? [], specs);
+  const runningKey = JSON.stringify(running);
   const shown = !!openPath && controller?.path === openPath ? controller : undefined;
   useEffect(() => {
     const kernel = shown?.kernelName ?? null;
@@ -365,8 +385,9 @@ export function App() {
         k ? [{ name: k.name, displayName: k.display_name }] : [],
       ),
       backend: backend ? { label: backend.label, detail: backend.detail } : null,
+      running: JSON.parse(runningKey) as RunningSession[],
     });
-  }, [openPath, dirty, shown, specs, backend]);
+  }, [openPath, dirty, shown, specs, backend, runningKey]);
 
   // ⌘S / Ctrl+S saves, as in any document app.
   useEffect(() => {

@@ -42,7 +42,9 @@ built from the same sources (see
   only; the page shows just the notebook). The sidebar lists the
   window's folder as a tree; right-click an item to open it in a new
   window, show it in the Finder, make a notebook or folder there, or move
-  it to the Trash. The toolbar runs cells, interrupts and restarts the
+  it to the Trash. A dot marks notebooks whose kernel is running, and a
+  Running section lists them; right-click one to shut its kernel down, or
+  choose Kernel › Shut Down Other Kernels. The toolbar runs cells, interrupts and restarts the
   kernel, inserts cells, sets the cell type, picks the kernel and trusts
   the notebook. File › New Notebook
   (⌘N) makes one in the window's folder, New Window (⌥⌘N) opens another

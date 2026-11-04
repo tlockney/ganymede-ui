@@ -23,6 +23,27 @@ final class PageStateTests: XCTestCase {
         XCTAssertEqual(state?.cellType, "markdown")
         XCTAssertEqual(state?.kernels, [PageState.Kernel(name: "cdp", displayName: "TypeScript")])
         XCTAssertEqual(state?.backend?.detail, "local server")
+        XCTAssertEqual(state?.sessions, [])
+    }
+
+    func testReadsTheRunningSessions() {
+        let body: [String: Any] = [
+            "path": "moons/Io.ipynb", "dirty": false, "status": "idle", "kernel": "cdp",
+            "kernelDisplayName": "TypeScript", "kernelMissing": false, "trusted": true,
+            "cellType": "code", "kernels": [Any](), "backend": NSNull(),
+            "running": [
+                ["id": "s1", "path": "moons/Io.ipynb", "kernel": "TypeScript", "state": "busy"],
+                ["id": "s2", "path": "Europa.ipynb", "kernel": NSNull(), "state": NSNull()],
+            ],
+        ]
+        let state = PageState(body: body)
+        XCTAssertEqual(state?.sessions.map(\.id), ["s1", "s2"])
+        XCTAssertEqual(state?.sessions.first?.state, "busy")
+        XCTAssertEqual(state?.sessions.last?.title, "Europa")
+        XCTAssertNil(state?.sessions.last?.kernel)
+        XCTAssertEqual(state?.isRunning("Europa.ipynb"), true)
+        XCTAssertEqual(state?.isRunning("Callisto.ipynb"), false)
+        XCTAssertEqual(state?.otherSessions.map(\.id), ["s2"])
     }
 
     func testNoNotebookOpen() {
