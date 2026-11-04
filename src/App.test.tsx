@@ -453,6 +453,35 @@ describe('App', () => {
     await waitFor(() => expect(window.location.search).toBe('?open=Users%2Fme%2FUntitled.ipynb'));
   });
 
+  it('copies the sample notebook into the folder, under a free name, and opens it', async () => {
+    history.replaceState(null, '', '/?kernels=server&dir=moons');
+    // A copy from an earlier run is there already.
+    const fake = fakeServices({ moons: [], 'moons/Ganymede Tour.ipynb': [] });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    render(<App />);
+
+    expect(await screen.findByText('Welcome to Ganymede')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: /Open Sample Notebook/ }));
+    await waitFor(() =>
+      expect(screen.getByTestId('pane')).toHaveTextContent('moons/Ganymede Tour 2.ipynb'),
+    );
+    expect(fake.contents.save).toHaveBeenCalledOnce();
+    expect(fake.contents.save).toHaveBeenCalledWith(
+      'moons/Ganymede Tour 2.ipynb',
+      expect.objectContaining({ type: 'notebook', format: 'json' }),
+    );
+  });
+
+  it('does not welcome again once dismissed', async () => {
+    localStorage.setItem('ganymede-ui:onboarding', 'dismissed');
+    localStorage.setItem('ganymede-ui:backend', JSON.stringify({ kind: 'browser' }));
+    mocks.connect.mockResolvedValue(fakeBackend(fakeServices().services, { kind: 'browser' }));
+    render(<App />);
+
+    expect(await screen.findByText(/Choose a notebook in the sidebar/)).toBeInTheDocument();
+    expect(screen.queryByText('Welcome to Ganymede')).not.toBeInTheDocument();
+  });
+
   it('says why a new notebook could not be created', async () => {
     const fake = fakeServices({ '': [] });
     fake.contents.newUntitled.mockRejectedValue(new Error('Permission denied'));

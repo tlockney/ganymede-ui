@@ -39,6 +39,7 @@ import {
   postState,
 } from './lib/native';
 import { fileActions } from './lib/file-actions';
+import { copySample } from './lib/sample';
 
 /**
  * A token in the page URL, as `ganymede serve` prints it, wins once, and so
@@ -479,6 +480,15 @@ export function App() {
                 connecting={connecting}
                 onNew={() => void newNotebook(folder)}
                 onConnect={() => setSheetOpen(true)}
+                folder={folder}
+                onShowFolder={native ? undefined : () => setSidebarOpen(true)}
+                onOpenSample={
+                  backend &&
+                  (async () => {
+                    const { contents, kernelspecs } = backend.services;
+                    setOpenPath(await copySample(contents, folder, kernelspecs.specs));
+                  })
+                }
               />
             )}
             {newError && (
