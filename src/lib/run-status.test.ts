@@ -158,6 +158,36 @@ describe('attachRunStatus', () => {
     status.dispose();
   });
 
+  it('drops a running cell that is deleted, so the next one runs', async () => {
+    const status = attachRunStatus(notebook, { interrupt, now: () => clock });
+    model(0).executionState = 'running';
+    model(1).executionState = 'running';
+    // JupyterLab reports a removed cell as undefined in oldValues.
+    notebook.model!.sharedModel.deleteCell(0);
+    await Promise.resolve();
+    // b was queued behind a; it now runs.
+    expect(line(0)).toHaveTextContent('Running 0:00');
+    model(1).executionState = 'running';
+    expect(line(1)).toHaveTextContent('Queued, 1 cell ahead');
+    model(0).executionState = 'idle';
+    model(1).executionState = 'idle';
+    expect(notebook.node.querySelectorAll('.gn-run-status')).toHaveLength(0);
+    status.dispose();
+  });
+
+  it('forgets a running cell that is moved, so the next run is not queued behind it', async () => {
+    const status = attachRunStatus(notebook, { interrupt, now: () => clock });
+    model(0).executionState = 'running';
+    // A move is a delete plus an insert of a copy, which is not running.
+    notebook.model!.sharedModel.moveCell(0, 2);
+    await Promise.resolve();
+    expect(notebook.node.querySelectorAll('.gn-run-status')).toHaveLength(0);
+    model(0).executionState = 'running';
+    expect(line(0)).toHaveTextContent('Running 0:00');
+    model(0).executionState = 'idle';
+    status.dispose();
+  });
+
   it('forgets the queue when cleared, as on a restart', () => {
     const status = attachRunStatus(notebook, { interrupt, now: () => clock });
     model(0).executionState = 'running';

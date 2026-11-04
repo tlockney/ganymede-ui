@@ -16,7 +16,6 @@
  */
 import type { Cell, ICellModel, ICodeCellModel } from '@jupyterlab/cells';
 import type { Notebook } from '@jupyterlab/notebook';
-import type { IObservableList } from '@jupyterlab/observables';
 import type { IDisposable } from '@lumino/disposable';
 
 export type RunState =
@@ -171,9 +170,14 @@ export function attachRunStatus(notebook: Notebook, { interrupt, now = Date.now 
   };
 
   const cells = notebook.model?.cells;
-  const onCells = (_: unknown, change: IObservableList.IChangedArgs<ICellModel>) => {
-    change.oldValues.forEach(unwatch);
-    change.newValues.forEach(watch);
+  const onCells = () => {
+    // Reconcile with the list: a removal's oldValues are undefined (and a
+    // move is a removal plus an insert of a copy), so a removed cell is
+    // found by its absence.
+    const present = new Set<ICellModel>();
+    if (cells) for (let i = 0; i < cells.length; i++) present.add(cells.get(i));
+    [...watched].filter(m => !present.has(m)).forEach(unwatch);
+    present.forEach(watch);
     // The notebook makes the new cells' widgets in its own handler, which
     // may run after this one.
     queueMicrotask(render);
