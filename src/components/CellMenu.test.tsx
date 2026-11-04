@@ -76,8 +76,22 @@ describe('CellMenu', () => {
     expect(onClose).toHaveBeenCalledTimes(1);
     await userEvent.pointer({
       keys: '[MouseLeft]',
-      target: document.querySelector('.cell-menu-backdrop')!,
+      target: document.querySelector('.popup-menu-backdrop')!,
     });
     expect(onClose).toHaveBeenCalledTimes(2);
+  });
+
+  it('is the shared popup menu, with its arrow keys', async () => {
+    setup(0);
+    const menu = screen.getByRole('menu', { name: 'Cell Actions' });
+    expect(menu).toHaveClass('popup-menu');
+    expect(document.querySelector('.cell-menu')).toBeNull();
+    expect(screen.getByRole('menuitem', { name: 'Run' })).toHaveFocus();
+    await userEvent.keyboard('{End}');
+    expect(screen.getByRole('menuitem', { name: 'Delete' })).toHaveFocus();
+    await userEvent.keyboard('{ArrowDown}');
+    expect(screen.getByRole('menuitem', { name: 'Run' })).toHaveFocus();
+    await userEvent.keyboard('{ArrowDown}');
+    expect(screen.getByRole('menuitemradio', { name: /Code/ })).toHaveFocus();
   });
 });

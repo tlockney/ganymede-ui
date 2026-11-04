@@ -622,6 +622,130 @@ describe('NotebookPane', () => {
       expect(fake.contents.save).not.toHaveBeenCalledWith('moons/Io.ipynb', expect.anything());
     });
 
+    it('moves a kernel started while the file was being renamed', async () => {
+      const { fake, latest } = setup(files());
+      await waitFor(() => expect(latest()).toBeDefined());
+      let finish!: () => void;
+      fake.contents.rename.mockImplementationOnce(async (_from: string, to: string) => {
+        await new Promise<void>(r => (finish = r));
+        return entry({ name: to, path: to, type: 'notebook' });
+      });
+      let renaming!: Promise<boolean>;
+      act(() => void (renaming = latest()!.rename('Europa')));
+      await waitFor(() => expect(fake.contents.rename).toHaveBeenCalled());
+      // A run starts the first kernel while the rename is on its way.
+      const session = { setPath: vi.fn(async () => {}), setName: vi.fn(async () => {}) };
+      (fakes.sessions[0] as { session: unknown }).session = session;
+      await act(async () => {
+        finish();
+        await renaming;
+      });
+      expect(session.setPath).toHaveBeenCalledWith('moons/Europa.ipynb');
+      expect(session.setName).toHaveBeenCalledWith('Europa.ipynb');
+    });
+
+    it('also rejects with why a rename failed, for a caller that shows it', async () => {
+      const { latest } = setup(files('moons/Europa.ipynb'));
+      await waitFor(() => expect(latest()).toBeDefined());
+      await act(() =>
+        expect(latest()!.rename('Europa', { throws: true })).rejects.toThrow(
+          '“Europa.ipynb” already exists. Choose another name.',
+        ),
+      );
+      expect(screen.getByRole('alert')).toHaveTextContent('Couldn’t rename Io.ipynb');
+    });
+
+    describe('reopened at the new path', () => {
+      /** As App: the pane remounts at the new path when it is renamed. */
+      function reopening(fake: ReturnType<typeof fakeServices>) {
+        const controllers: (NotebookController | undefined)[] = [];
+        const backend = fakeBackend(fake.services);
+        function Parent() {
+          const [path, setPath] = useState('moons/Io.ipynb');
+          const report = useCallback(
+            (c: NotebookController | undefined) => void controllers.push(c),
+            [],
+          );
+          return (
+            <NotebookPane
+              key={path}
+              backend={backend}
+              path={path}
+              onController={report}
+              onRenamed={(from, to) => setPath(p => (p === from ? to : p))}
+            />
+          );
+        }
+        render(<Parent />);
+        return () => controllers[controllers.length - 1];
+      }
+
+      /** Io's notebook, at either name, once it is there. */
+      const both = (fake: ReturnType<typeof fakeServices>) =>
+        vi.fn(async (path: string) => {
+          const renamed = fake.contents.rename.mock.calls.length > 0;
+          if (path !== (renamed ? 'moons/Europa.ipynb' : 'moons/Io.ipynb')) {
+            throw new Error('Not found');
+          }
+          return { path, content: structuredClone(NOTEBOOK), last_modified: '' };
+        }) as never;
+
+      it('says why the edits typed during the rename weren’t saved', async () => {
+        const fake = fakeServices();
+        fake.contents.get = both(fake);
+        const latest = reopening(fake);
+        await waitFor(() => expect(latest()).toBeDefined());
+        fake.contents.rename.mockImplementationOnce(async (_from: string, to: string) => {
+          modelOf().cells.get(0).sharedModel.setSource('print(8)');
+          return entry({ name: to, path: to, type: 'notebook' });
+        });
+        fake.contents.save.mockRejectedValue(new Error('Disk full'));
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+        await act(async () => void (await latest()!.rename('Europa')));
+        await waitFor(() => expect(latest()?.path).toBe('moons/Europa.ipynb'));
+        expect(await screen.findByRole('alert')).toHaveTextContent(
+          'Couldn’t save the latest edits to Europa.ipynb: Disk full',
+        );
+        vi.mocked(console.error).mockRestore();
+      });
+
+      it('loads the file after the old pane’s last save', async () => {
+        const fake = fakeServices();
+        fake.contents.get = both(fake);
+        const latest = reopening(fake);
+        await waitFor(() => expect(latest()).toBeDefined());
+        const edit = (source: string) => modelOf().cells.get(0).sharedModel.setSource(source);
+        // An edit during the rename, and another during the save of that one.
+        fake.contents.rename.mockImplementationOnce(async (_from: string, to: string) => {
+          edit('print(9)');
+          return entry({ name: to, path: to, type: 'notebook' });
+        });
+        let finish!: () => void;
+        fake.contents.save
+          .mockImplementationOnce(async (path: string) => {
+            edit('print(10)');
+            return entry({ name: path, path, type: 'notebook' });
+          })
+          // The old pane's teardown save, of the last edit.
+          .mockImplementationOnce(async (path: string) => {
+            await new Promise<void>(r => (finish = r));
+            return entry({ name: path, path, type: 'notebook' });
+          });
+        await act(async () => void (await latest()!.rename('Europa')));
+        await waitFor(() => expect(fake.contents.save).toHaveBeenCalledTimes(2));
+        // The new pane's loads, not the rename's check that nothing is there.
+        const loads = () =>
+          (fake.contents.get.mock.calls as unknown as [string, { content?: boolean }][]).filter(
+            ([path, options]) => path === 'moons/Europa.ipynb' && options?.content,
+          );
+        await new Promise(r => setTimeout(r, 50));
+        expect(loads()).toHaveLength(0);
+        await act(async () => finish());
+        await waitFor(() => expect(loads()).toHaveLength(1));
+        await waitFor(() => expect(latest()?.path).toBe('moons/Europa.ipynb'));
+      });
+    });
+
     it('says why a rename failed', async () => {
       const { fake, latest, onRenamed } = setup(files());
       await waitFor(() => expect(latest()).toBeDefined());

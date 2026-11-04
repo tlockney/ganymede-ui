@@ -1,9 +1,10 @@
 /**
  * Renaming the open notebook from its title (#202): the new path from what
  * the user typed, and the rename through the contents API, with messages a
- * person can read.
+ * person can read; and what a rename takes along (#224): the outgoing
+ * pane's last save, and the sessions of notebooks that aren't open.
  */
-import type { Contents } from '@jupyterlab/services';
+import type { Contents, Session } from '@jupyterlab/services';
 import { parentOf, titleFor } from './launch';
 import { status } from './saver';
 
@@ -74,4 +75,67 @@ export async function renameFile(
     }
   }
   return contents.rename(path, next);
+}
+
+/**
+ * What a notebook pane on its way out leaves for the pane that opens its
+ * file next, by the file's path (after a rename, the new one): its last
+ * save, which the next pane loads after so it neither misses those edits
+ * nor saves over them, and why that save failed, which the next pane shows.
+ */
+const handoffs = new Map<string, Promise<string | undefined>>();
+
+/**
+ * Leave `work` for the next pane at `path`: a save, resolving with why it
+ * failed (a notice), or undefined when it didn't. It is dropped once it is
+ * done: a pane opening the file later has nothing to wait for.
+ */
+export function handOff(path: string, work: Promise<string | undefined>): void {
+  const before = handoffs.get(path);
+  const all = before ? Promise.all([before, work]).then(([a, b]) => b ?? a) : work;
+  handoffs.set(path, all);
+  void all.then(() => {
+    if (handoffs.get(path) === all) handoffs.delete(path);
+  });
+}
+
+/**
+ * For a pane opening `path`: what the last one there left, to wait for
+ * before loading the file, or undefined when nothing is pending. Left in
+ * place, not taken: under StrictMode the pane's effect runs twice, and
+ * the second run has to wait too.
+ */
+export function handedOff(path: string): Promise<string | undefined> | undefined {
+  return handoffs.get(path);
+}
+
+/**
+ * After `from` (a file or folder) was renamed to `to`, point the sessions
+ * of the notebooks in it at their new paths, so Running shows where they
+ * are and reopening one rejoins its kernel. `skip` is a path whose session
+ * moves another way (the open notebook's, with its pane). A session that
+ * can't be moved stays where it was; the file has moved regardless.
+ */
+export async function moveSessions(
+  sessions: Pick<Session.IManager, 'running' | 'connectTo'>,
+  from: string,
+  to: string,
+  skip?: string,
+): Promise<void> {
+  const inside = (p: string) => p === from || p.startsWith(`${from}/`);
+  const models = [...sessions.running()].filter(m => inside(m.path) && m.path !== skip);
+  await Promise.all(
+    models.map(async model => {
+      const path = to + model.path.slice(from.length);
+      const session = sessions.connectTo({ model });
+      try {
+        await session.setPath(path);
+        await session.setName(path.split('/').pop() ?? path);
+      } catch (e) {
+        console.warn(`Couldn’t move the session to ${path}:`, e);
+      } finally {
+        session.dispose();
+      }
+    }),
+  );
 }

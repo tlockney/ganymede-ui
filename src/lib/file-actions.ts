@@ -5,10 +5,10 @@
  * at the new path with its kernel, and a delete closes it without saving
  * it back.
  */
-import type { Contents } from '@jupyterlab/services';
+import type { Contents, Session } from '@jupyterlab/services';
 import type { NotebookController } from '../components/NotebookPane';
 import { parentOf } from './launch';
-import { renameFile, renamedPath } from './rename';
+import { moveSessions, renameFile, renamedPath } from './rename';
 
 export type FileItem = Pick<Contents.IModel, 'path' | 'name' | 'type'>;
 
@@ -35,6 +35,8 @@ export function deletePrompt(item: FileItem): string {
 
 type Options = {
   contents: Contents.IManager;
+  /** The running sessions: a renamed notebook's kernel goes with it. */
+  sessions?: Pick<Session.IManager, 'running' | 'connectTo'>;
   openPath?: string;
   /** The open notebook's, when it is `openPath`'s. */
   controller?: NotebookController;
@@ -43,7 +45,13 @@ type Options = {
   setOpenPath(update: (open: string | undefined) => string | undefined): void;
 };
 
-export function fileActions({ contents, openPath, controller, setOpenPath }: Options): FileActions {
+export function fileActions({
+  contents,
+  sessions,
+  openPath,
+  controller,
+  setOpenPath,
+}: Options): FileActions {
   const open = controller?.path === openPath ? controller : undefined;
   /**
    * The open notebook's controller when `item` is or holds it. Without one
@@ -59,8 +67,10 @@ export function fileActions({ contents, openPath, controller, setOpenPath }: Opt
   return {
     async rename(item, input) {
       const held = holder(item);
-      // The open notebook renames itself: it saves first and its kernel follows.
-      if (held && item.path === openPath) return held.rename(input);
+      // The open notebook renames itself: it saves first and its kernel
+      // follows. It says why it failed in the pane, which the sidebar can
+      // cover (on a phone), so the sidebar says it too.
+      if (held && item.path === openPath) return held.rename(input, { throws: true });
       const next = renamedPath(item.path, input, item.type === 'notebook');
       if (!next) return false;
       const holdsOpen = !!held;
@@ -69,8 +79,12 @@ export function fileActions({ contents, openPath, controller, setOpenPath }: Opt
         throw new Error('The open notebook couldn’t be saved first.');
       }
       const move = () => renameFile(contents, item.path, next);
+      // The kernels of the notebooks that aren't open go along too, so
+      // Running doesn't point at a missing file (#224).
+      const others = () => sessions && moveSessions(sessions, item.path, next, openPath);
       if (!holdsOpen) {
         await move();
+        await others();
         return true;
       }
       // Through the notebook: its saves wait for the move and then go to
@@ -80,6 +94,7 @@ export function fileActions({ contents, openPath, controller, setOpenPath }: Opt
       await open!.moved(moved, move);
       const from = openPath;
       setOpenPath(p => (p === from ? moved : p));
+      await others();
       return true;
     },
 
