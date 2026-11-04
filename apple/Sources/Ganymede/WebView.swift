@@ -58,6 +58,31 @@ extension Notification.Name {
     static let showAgentSettings = Notification.Name("GanymedeShowAgentSettings")
 }
 
+#if os(macOS)
+/// The windows that show a notebook page, for the commands that open one
+/// of the page's sheets from elsewhere: a menu while a Terminal or Editor
+/// window is in front, or the Settings window (#206).
+@MainActor
+enum NotebookWindows {
+    /// Every notebook page's web view.
+    static let views = NSHashTable<WKWebView>.weakObjects()
+
+    /// The frontmost window showing a notebook page, if any.
+    static var front: NSWindow? {
+        let windows = Set(views.allObjects.compactMap { $0.window }.map(ObjectIdentifier.init))
+        return NSApp.orderedWindows.first { windows.contains(ObjectIdentifier($0)) }
+    }
+
+    /// Brings the front notebook window forward and shows one of its
+    /// page's sheets there (`.showShortcuts`, `.showAgentSettings`).
+    static func show(_ name: Notification.Name) {
+        guard let window = front else { return }
+        window.makeKeyAndOrderFront(nil)
+        NotificationCenter.default.post(name: name, object: window)
+    }
+}
+#endif
+
 @MainActor
 final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
     private var loaded: URL?
@@ -103,20 +128,22 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         )
         #if os(macOS)
         view.configuration.userContentController.add(DocumentHandler(self), name: "document")
-        // Help > Keyboard Shortcuts opens the web app's shortcuts sheet.
+        // Help > Keyboard Shortcuts, Ganymede > Agent Settings and the
+        // Settings window's tabs (#206) name the window to show them in:
+        // the front notebook window (`NotebookWindows.front`).
         shortcuts = NotificationCenter.default.addObserver(
             forName: .showShortcuts, object: nil, queue: .main
-        ) { [weak view] _ in
-            view?.evaluateJavaScript("window.dispatchEvent(new Event('ganymede:show-shortcuts'))")
+        ) { [weak view] note in
+            guard let view, let window = view.window, note.object as? NSWindow === window else { return }
+            view.evaluateJavaScript("window.dispatchEvent(new Event('ganymede:show-shortcuts'))")
         }
-        // Ganymede > Agent Settings opens the page's Settings sheet, in the
-        // front window only.
         agentSettings = NotificationCenter.default.addObserver(
             forName: .showAgentSettings, object: nil, queue: .main
-        ) { [weak view] _ in
-            guard let view, view.window?.isKeyWindow == true else { return }
+        ) { [weak view] note in
+            guard let view, let window = view.window, note.object as? NSWindow === window else { return }
             view.evaluateJavaScript("window.dispatchEvent(new Event('ganymede:show-settings'))")
         }
+        NotebookWindows.views.add(view)
         #endif
         if #available(macOS 13.3, iOS 16.4, *) {
             // Safari's Web Inspector can attach (Develop menu).

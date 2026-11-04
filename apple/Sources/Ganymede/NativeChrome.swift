@@ -278,6 +278,8 @@ private struct FolderContents: View {
 /// items into the others when a notebook opened from the Finder (#226).
 struct NotebookToolbar: ToolbarContent {
     @ObservedObject var page: PageModel
+    /// Saved as File > Save saves it, and enabled when that is.
+    @ObservedObject var document: PageDocument
     /// Where New Notebook puts it: the window's folder.
     let folder: URL
 
@@ -289,6 +291,11 @@ struct NotebookToolbar: ToolbarContent {
                 Label("New Notebook", systemImage: "square.and.pencil")
             }
             .help("New Notebook (⌘N)")
+        }
+        ToolbarItem {
+            Button { Task { await document.save() } } label: { Label("Save", systemImage: "square.and.arrow.down") }
+                .help("Save (⌘S)")
+                .disabled(document.file == nil)
         }
         ToolbarItem {
             ControlGroup {
