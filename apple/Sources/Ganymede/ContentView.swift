@@ -56,7 +56,7 @@ struct ContentView: View {
         // The app draws the sidebar, toolbar and menus; the page shows the
         // notebook (#206, #207).
         NavigationSplitView {
-            FolderSidebar(folder: sidebarRoot, page: pageModel) { path in
+            NavigatorSidebar(folder: sidebarRoot, page: pageModel) { path in
                 openWindow(value: EditorRequest(path: path))
             }
             .navigationSplitViewColumnWidth(min: 180, ideal: 240, max: 400)

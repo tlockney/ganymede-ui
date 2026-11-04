@@ -39,12 +39,16 @@ built from the same sources (see
 - Opened from the Finder, the app takes `PATH` from your login shell, so
   kernelspecs that run `node`, `deno` or `python3` start.
 - The window's sidebar, toolbar and menus are the app's own (macOS
-  only; the page shows just the notebook). The sidebar lists the
-  window's folder as a tree; right-click an item to open it in a new
-  window, show it in the Finder, make a notebook or folder there, or move
-  it to the Trash. A dot marks notebooks whose kernel is running, and a
-  Running section lists them; right-click one to shut its kernel down, or
-  choose Kernel › Shut Down Other Kernels. The toolbar saves, runs cells, interrupts and restarts the
+  only; the page shows just the notebook). The sidebar has five tabs
+  (⌘1 to ⌘5). Files lists the window's folder as a tree; right-click an
+  item to open it in a new tab, show it in the Finder, make a notebook
+  or folder there, or move it to the Trash. A dot marks notebooks whose
+  kernel is running. Search finds file and folder names under the
+  window's folder and, with "Search notebook contents" ticked, the text
+  of its notebooks, showing the matching line. Running lists running
+  kernels; right-click one to shut it down, or choose Kernel › Shut Down
+  Other Kernels. Recents lists the notebooks opened lately. Outline is
+  empty for now. The toolbar saves, runs cells, interrupts and restarts the
   kernel, inserts cells, sets the cell type, picks the kernel and trusts
   the notebook. File › New Notebook (⌘N) makes one in the window's
   folder, New Tab (⌘T) opens another tab, New Window (⌥⌘N) a window of its own, and Rename… renames the

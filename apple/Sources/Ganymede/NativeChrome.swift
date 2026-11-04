@@ -23,33 +23,6 @@ struct FolderSidebar: View {
             Section(folder.lastPathComponent.isEmpty ? folder.path : folder.lastPathComponent) {
                 FolderContents(folder: folder, actions: actions, generation: generation)
             }
-            // Kernels keep running when their notebook is closed or another
-            // is opened; here they can be found and shut down (#225).
-            if !page.state.sessions.isEmpty {
-                Section("Running") {
-                    ForEach(page.state.sessions) { session in
-                        Button {
-                            page.run("open", arg: session.path)
-                        } label: {
-                            HStack {
-                                Label(session.title, systemImage: "bolt.fill")
-                                Spacer()
-                                if let kernel = session.kernel {
-                                    Text(kernel).foregroundStyle(.secondary).font(.caption)
-                                }
-                            }
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .help(session.path + (session.state.map { " · " + PageState.statusLabel($0) } ?? ""))
-                        .contextMenu {
-                            Button("Open") { page.run("open", arg: session.path) }
-                            Divider()
-                            Button("Shut Down Kernel") { page.run("shutdown-kernel", arg: session.id) }
-                        }
-                    }
-                }
-            }
         }
         .listStyle(.sidebar)
         .contextMenu {
@@ -267,6 +240,44 @@ private struct FolderContents: View {
         Button("Show in Finder") { actions.reveal(entry) }
         Divider()
         Button("Move to Trash") { actions.trash(entry) }
+    }
+}
+
+/// Kernels that keep running when their notebook is closed or another is
+/// opened, to find and shut down (#225): the navigator's Running tab (#246).
+struct RunningList: View {
+    @ObservedObject var page: PageModel
+
+    var body: some View {
+        List {
+            ForEach(page.state.sessions) { session in
+                Button {
+                    page.run("open", arg: session.path)
+                } label: {
+                    HStack {
+                        Label(session.title, systemImage: "bolt.fill")
+                        Spacer()
+                        if let kernel = session.kernel {
+                            Text(kernel).foregroundStyle(.secondary).font(.caption)
+                        }
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(session.path + (session.state.map { " · " + PageState.statusLabel($0) } ?? ""))
+                .contextMenu {
+                    Button("Open") { page.run("open", arg: session.path) }
+                    Divider()
+                    Button("Shut Down Kernel") { page.run("shutdown-kernel", arg: session.id) }
+                }
+            }
+        }
+        .listStyle(.sidebar)
+        .overlay {
+            if page.state.sessions.isEmpty {
+                Text("No kernels running").foregroundStyle(.secondary)
+            }
+        }
     }
 }
 
