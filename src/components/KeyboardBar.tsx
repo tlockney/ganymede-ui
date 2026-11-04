@@ -11,6 +11,7 @@ import {
   heightWithoutKeyboard,
   keepCaretAbove,
   keyboardUp,
+  takesText,
   pressBarKey,
 } from '../lib/keyboard-bar';
 import { TOUCH_QUERY } from '../lib/useNarrow';
@@ -22,9 +23,9 @@ const BAR_HEIGHT = 48;
 function barBottom(notebook: Notebook): number | undefined {
   const viewport = window.visualViewport;
   if (!viewport || !window.matchMedia?.(TOUCH_QUERY).matches) return undefined;
-  const editing = !!editingTarget(notebook);
-  const full = heightWithoutKeyboard(window.innerWidth, window.innerHeight, editing);
-  if (!editing || !keyboardUp(viewport, full)) return undefined;
+  const typing = takesText(document.activeElement);
+  const full = heightWithoutKeyboard(window.innerWidth, window.innerHeight, typing);
+  if (!keyboardUp(viewport, full) || !editingTarget(notebook)) return undefined;
   return viewport.offsetTop + viewport.height;
 }
 

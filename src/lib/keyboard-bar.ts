@@ -38,23 +38,48 @@ export const BAR_KEYS: readonly BarKey[] = [
   ),
 ];
 
-/** The window's last height at each width while no cell was being edited. */
+/** The window's last height at each width while nothing took typing. */
 const lastFree = new Map<number, number>();
 
 /**
  * The window's height without the on-screen keyboard, at `width`. In
  * Safari the keyboard shrinks only the visual viewport; in the apps it can
  * shrink the web view itself, and with it `innerHeight`. So the height is
- * recorded only while no cell is being edited (`editing` false), when no
- * keyboard can be up, and a window made shorter, as in Stage Manager,
+ * recorded only while no text field has the focus (`typing` false), when
+ * no keyboard can be up, and a window made shorter, as in Stage Manager,
  * counts as shorter.
  */
-export function heightWithoutKeyboard(width: number, height: number, editing: boolean): number {
-  if (!editing) {
+export function heightWithoutKeyboard(width: number, height: number, typing: boolean): number {
+  if (!typing) {
     lastFree.set(width, height);
     return height;
   }
   return Math.max(lastFree.get(width) ?? 0, height);
+}
+
+/** Inputs that bring up no keyboard. */
+const NOT_TYPED = new Set([
+  'button',
+  'checkbox',
+  'color',
+  'file',
+  'hidden',
+  'image',
+  'radio',
+  'range',
+  'reset',
+  'submit',
+]);
+
+/**
+ * Whether `element` takes typing, and so may hold the on-screen keyboard:
+ * a cell's editor, and also the sidebar's search or a kernel's `input()`.
+ */
+export function takesText(element: Element | null): boolean {
+  if (!element) return false;
+  if (element instanceof HTMLTextAreaElement) return true;
+  if (element instanceof HTMLInputElement) return !NOT_TYPED.has(element.type);
+  return !!element.closest('[contenteditable]:not([contenteditable="false"])');
 }
 
 /** For tests: forget the heights seen. */

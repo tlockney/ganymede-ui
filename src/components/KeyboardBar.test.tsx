@@ -81,6 +81,22 @@ describe('KeyboardBar', () => {
     expect(screen.getByRole('toolbar', { name: 'Keys' })).toHaveStyle({ top: '450px' });
   });
 
+  it('shows when a cell is tapped straight from another text field', async () => {
+    const { input } = setup();
+    await settle();
+    // The sidebar's search brings the keyboard up, which shrinks the web view.
+    const search = document.createElement('input');
+    document.body.append(search);
+    vi.stubGlobal('innerHeight', 450);
+    await keyboardComesUp(search);
+    expect(screen.queryByRole('toolbar')).toBeNull();
+    // The keyboard stays up as the focus moves into the cell.
+    input.focus();
+    await settle();
+    expect(screen.getByRole('toolbar', { name: 'Keys' })).toHaveStyle({ top: '450px' });
+    search.remove();
+  });
+
   it('keeps the focus in the editor and runs the cell', async () => {
     const { input, commands } = setup();
     await keyboardComesUp(input);

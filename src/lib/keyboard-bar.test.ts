@@ -10,6 +10,7 @@ import {
   keyboardUp,
   pressBarKey,
   resetHeights,
+  takesText,
   typeText,
 } from './keyboard-bar';
 
@@ -60,6 +61,22 @@ describe('keyboard bar', () => {
     expect(keyboardUp({ height: 500, scale: 1 }, heightWithoutKeyboard(390, 500, true))).toBe(
       false,
     );
+  });
+
+  it('counts any text field as possibly holding the keyboard', () => {
+    const search = document.createElement('input');
+    const box = document.createElement('input');
+    box.type = 'checkbox';
+    const editor = document.createElement('div');
+    editor.setAttribute('contenteditable', 'true');
+    const line = document.createElement('span');
+    editor.append(line);
+    expect(takesText(search)).toBe(true);
+    expect(takesText(document.createElement('textarea'))).toBe(true);
+    expect(takesText(line)).toBe(true);
+    expect(takesText(box)).toBe(false);
+    expect(takesText(document.createElement('button'))).toBe(false);
+    expect(takesText(null)).toBe(false);
   });
 
   it('has Run, Esc, Tab, the arrows and symbols', () => {

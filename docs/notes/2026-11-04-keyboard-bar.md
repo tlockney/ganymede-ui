@@ -12,7 +12,8 @@
   a scale of 1. In Safari the keyboard shrinks only the visual viewport,
   but in the apps SwiftUI's keyboard avoidance can shrink the web view,
   and `innerHeight` with it, so the page keeps the height at each width
-  from while no cell was being edited, when no keyboard can be up. (The
+  from while no text field had the focus (a cell, the sidebar's search,
+  an `input()` box), when no keyboard can be up. (The
   tallest height seen, as first written, never went down: a Stage Manager
   window made shorter then showed the bar with a hardware keyboard.)
   Rotating with the keyboard up hides the bar until it comes up again.
