@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 #if canImport(UniformTypeIdentifiers)
 import UniformTypeIdentifiers
@@ -92,6 +93,45 @@ enum WindowTarget: Codable, Hashable {
 
     private static func encode(_ value: String) -> String {
         value.addingPercentEncoding(withAllowedCharacters: queryValue) ?? value
+    }
+}
+
+/// Notebooks and folders the Finder asked the app to open (double-click,
+/// Open With, the Dock), until a window takes them (#228). The app
+/// delegate adds them; every notebook window watches `pending`, and the
+/// first to see them takes them all.
+@MainActor
+final class OpenRequests: ObservableObject {
+    @Published private(set) var pending: [WindowTarget] = []
+    /// Until the app has finished launching.
+    private var launching = true
+    /// Whether `pending` came while the app launched: the window it opened
+    /// on nothing then shows the first itself, instead of staying empty
+    /// beside a window for it.
+    private var atLaunch = false
+
+    /// Adds the file URLs among `urls`, each once.
+    func add(_ urls: [URL]) {
+        for target in urls.filter(\.isFileURL).map(WindowTarget.init(opening:))
+        where !pending.contains(target) {
+            pending.append(target)
+        }
+        if launching, !pending.isEmpty { atLaunch = true }
+    }
+
+    func finishLaunching() {
+        launching = false
+    }
+
+    /// Takes every request. A window opened on nothing (`blank`) shows the
+    /// first itself if they came at launch; the rest each get a window.
+    func take(blank: Bool) -> (shown: WindowTarget?, others: [WindowTarget]) {
+        defer {
+            pending = []
+            atLaunch = false
+        }
+        guard blank, atLaunch, let first = pending.first else { return (nil, pending) }
+        return (first, Array(pending.dropFirst()))
     }
 }
 

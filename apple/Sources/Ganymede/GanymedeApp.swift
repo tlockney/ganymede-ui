@@ -20,6 +20,8 @@ struct GanymedeApp: App {
             ContentView(target: $target)
                 .environmentObject(model)
         }
+        // Files opened from the Finder go through the app delegate (#228).
+        .handlesExternalEvents(matching: [])
         .commands {
             // The window's sidebar, toolbar and notebook menus (#206, #207).
             SidebarCommands()
@@ -60,7 +62,6 @@ struct GanymedeApp: App {
             TerminalWindow(target: request?.target ?? .local(folder: nil))
                 .environmentObject(model)
         }
-        // Files opened from the Finder go to notebook windows only.
         .handlesExternalEvents(matching: [])
         // Text files opened from a notebook window's sidebar (#122).
         WindowGroup("Editor", for: EditorRequest.self) { $request in
@@ -169,6 +170,20 @@ enum DefaultApp {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
         AppModel.shared.adoptLoginShellPath()
+    }
+
+    /// Files opened from the Finder (double-click, Open With, the Dock),
+    /// for the notebook windows to open (#228). SwiftUI's own routing
+    /// (`onOpenURL` with `handlesExternalEvents`) made a window for the
+    /// file that then refused it, so the notebook never opened. When the
+    /// app is launched to open files, this comes before
+    /// `applicationDidFinishLaunching`.
+    func application(_ application: NSApplication, open urls: [URL]) {
+        AppModel.shared.openRequests.add(urls)
+    }
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        AppModel.shared.openRequests.finishLaunching()
     }
 
     /// Asks to save notebooks and text files with unsaved edits first.

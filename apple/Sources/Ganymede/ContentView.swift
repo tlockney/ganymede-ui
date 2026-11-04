@@ -59,23 +59,15 @@ struct ContentView: View {
         .frame(minWidth: 720, minHeight: 480)
         .navigationTitle((target ?? loaded).title)
         .focusedSceneValue(\.windowFolder, sidebarRoot)
-        // A notebook opened from the Finder (double-click, Open With,
-        // the Dock) arrives here, in a new window or in the one already
-        // showing that file. The claim below matches by substring, so
-        // another file (or the second of several opened at once) goes
-        // to its own window.
-        .onOpenURL { url in
-            guard url.isFileURL else { return }
-            let opening = WindowTarget(opening: url)
-            if target == nil {
-                target = opening
-                loaded = opening
-                sidebarRoot = opening.folder
-            } else if opening != target {
-                openWindow(value: opening)
-            }
+        // Notebooks opened from the Finder (#228): the first window to see
+        // them takes them. Each opens in its own window (or brings forward
+        // the one showing it), except that the window the app opened on
+        // nothing at launch shows the first itself. Later, so the change
+        // to `pending` is not made while views update.
+        .onReceive(model.openRequests.$pending) { pending in
+            guard !pending.isEmpty else { return }
+            DispatchQueue.main.async(execute: takeOpenRequests)
         }
-        .handlesExternalEvents(preferring: externalEvents, allowing: externalEvents)
         .background(WindowReader { document.attach(to: $0) })
         .focusedSceneObject(document)
         .focusedSceneObject(pageModel)
@@ -153,12 +145,16 @@ struct ContentView: View {
     }
 
     #if os(macOS)
-    /// A notebook window takes the Finder's later opens of its own file
-    /// (matched by containment, so only files), and nothing else; a new
-    /// window is made for any other file.
-    private var externalEvents: Set<String> {
-        if case .file(let url) = target { return [url.absoluteString] }
-        return []
+    private func takeOpenRequests() {
+        let (shown, others) = model.openRequests.take(blank: target == nil)
+        if let shown {
+            target = shown
+            loaded = shown
+            sidebarRoot = shown.folder
+        }
+        for other in others {
+            openWindow(value: other)
+        }
     }
 
     private var page: URL? { model.page(for: loaded) }

@@ -46,6 +46,8 @@ final class AppModel: ObservableObject {
     private var queue: Task<Void, Never>?
     private var queued = 0
     #if os(macOS)
+    /// Files the Finder asked to open, for the notebook windows (#228).
+    let openRequests = OpenRequests()
     /// The login shell's PATH, which kernels need before the server starts.
     private var pathReady: Task<Void, Never>?
     #endif
