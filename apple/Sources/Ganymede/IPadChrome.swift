@@ -35,6 +35,36 @@ struct IPadSidebar: View {
             Section(folder.lastPathComponent) {
                 IPadFolderContents(folder: folder, root: folder, actions: actions, generation: generation)
             }
+            // Kernels keep running when their notebook is closed or another
+            // is opened; here they can be found and shut down (#225).
+            if !page.state.sessions.isEmpty {
+                Section("Running") {
+                    ForEach(page.state.sessions) { session in
+                        Button {
+                            page.run("open", arg: session.path)
+                            opened()
+                        } label: {
+                            HStack {
+                                Label(session.title, systemImage: "bolt.fill")
+                                Spacer()
+                                if let kernel = session.kernel {
+                                    Text(kernel).foregroundStyle(.secondary).font(.caption)
+                                }
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .swipeActions {
+                            Button("Shut Down") { page.run("shutdown-kernel", arg: session.id) }
+                                .tint(.red)
+                        }
+                        .contextMenu {
+                            Button { page.run("shutdown-kernel", arg: session.id) } label: {
+                                Label("Shut Down Kernel", systemImage: "power")
+                            }
+                        }
+                    }
+                }
+            }
         }
         .listStyle(.sidebar)
         .navigationTitle("Notebooks")
@@ -75,6 +105,7 @@ struct IPadSidebar: View {
     private var actions: IPadFolderActions {
         IPadFolderActions(
             openPath: page.state.path,
+            isRunning: { page.state.isRunning($0) },
             open: open,
             newNotebook: newNotebook(in:),
             newFolder: newFolder(in:),
@@ -187,6 +218,8 @@ struct IPadSidebar: View {
 /// What a sidebar row can do, handed down the tree.
 struct IPadFolderActions {
     var openPath: String?
+    /// Whether a notebook's kernel is running, by its server path.
+    var isRunning: (String) -> Bool = { _ in false }
     var open: (FolderEntry) -> Void
     var newNotebook: (URL) -> Void
     var newFolder: (URL) -> Void
@@ -218,9 +251,19 @@ private struct IPadFolderContents: View {
                     Button {
                         actions.open(entry)
                     } label: {
-                        Label(entry.title, systemImage: entry.isNotebook ? "book.pages" : "doc.text")
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(Rectangle())
+                        HStack {
+                            Label(entry.title, systemImage: entry.isNotebook ? "book.pages" : "doc.text")
+                            Spacer()
+                            if entry.isNotebook, actions.isRunning(FolderEntry.serverPath(entry.url, root: root)) {
+                                // Its kernel is running.
+                                Circle()
+                                    .fill(Color.green)
+                                    .frame(width: 6, height: 6)
+                                    .accessibilityLabel("Kernel running")
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                     }
                     .listRowBackground(
                         FolderEntry.serverPath(entry.url, root: root) == actions.openPath
@@ -288,6 +331,10 @@ struct IPadNotebookToolbar: ToolbarContent {
                 Divider()
                 Button { page.run("restart") } label: { Label("Restart Kernel", systemImage: "arrow.clockwise") }
                     .disabled(!page.state.hasKernel)
+                Button { page.run("shutdown-others") } label: {
+                    Label("Shut Down Other Kernels", systemImage: "power")
+                }
+                .disabled(page.state.otherSessions.isEmpty)
                 Menu {
                     ForEach(page.state.kernels, id: \.name) { kernel in
                         Button {
@@ -350,6 +397,7 @@ struct IPadCommands: Commands {
         CommandMenu("Kernel") {
             IPadPageButton("Interrupt", "interrupt", key: ".")
             IPadPageButton("Restart", "restart")
+            IPadPageButton("Shut Down Other Kernels", "shutdown-others")
         }
     }
 }

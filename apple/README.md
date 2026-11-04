@@ -99,9 +99,12 @@ On iPadOS and iOS (`Ganymede-iOS` target, iOS 16 or later):
   as on the Mac; the page shows just the notebook. The sidebar lists the
   notebook folder as a tree, hides in portrait and comes back with a swipe
   from the edge; long-press an item to rename, duplicate or delete it, or
-  make a notebook or folder in it. The navigation bar runs cells and
+  make a notebook or folder in it. A dot marks notebooks whose kernel is
+  running, and a Running section lists them; swipe or long-press one to
+  shut its kernel down. The navigation bar runs cells and
   interrupts the kernel, and its ⋯ menu inserts cells, sets the cell
-  type, restarts or changes the kernel, saves, downloads and trusts. With
+  type, restarts or changes the kernel, shuts down other kernels, saves,
+  downloads and trusts. With
   a keyboard, hold ⌘ to see the commands: New Notebook ⌘N, Save ⌘S, Run
   All ⇧⌘↩, Interrupt ⌘., Find ⌘F. The iPhone keeps the page's own
   sidebar and toolbar.
