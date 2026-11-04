@@ -83,6 +83,11 @@ function stripLaunchParams(): void {
 }
 
 /** Whether two configs reach the same notebooks, whatever the token. */
+/** The Apple app's own server: the one this page came from. */
+function isAppServer(config: BackendConfig): boolean {
+  return config.kind === 'ganymede' && config.url === '';
+}
+
 function sameBackend(a: BackendConfig, b: BackendConfig): boolean {
   if (a.kind !== 'ganymede' || b.kind !== 'ganymede') return a.kind === b.kind;
   return a.url === b.url && a.kernels === b.kernels;
@@ -332,8 +337,10 @@ export function App() {
       case 'file-moved': {
         // The app's sidebar renames and deletes with the file system, which
         // the contents manager doesn't hear of (#240).
+        // Its sidebar lists the app's own files, so only that server's
+        // Recents follow: a remote one may hold the same path.
         const move = fileMove(arg);
-        if (!backend || !move) return false;
+        if (!backend || !move || !isAppServer(backend.config)) return false;
         const key = recentsKey(backend.config);
         if (move.to === null) forgetRecent(key, move.from);
         else moveRecent(key, move.from, move.to);
@@ -407,8 +414,7 @@ export function App() {
   );
   // The Apple apps edit other files in their own editor, on their own
   // server: the one this page came from.
-  const editsFiles =
-    canOpenFiles() && backend?.config.kind === 'ganymede' && backend.config.url === '';
+  const editsFiles = canOpenFiles() && !!backend && isAppServer(backend.config);
 
   const dirty = !!openPath && controller?.path === openPath && controller.dirty;
   useEffect(() => postDocument({ path: openPath ?? null, dirty }), [openPath, dirty]);

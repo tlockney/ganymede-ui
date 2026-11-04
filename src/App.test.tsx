@@ -409,6 +409,9 @@ describe('App', () => {
     expect(notes).toHaveAttribute('aria-disabled', 'true');
     await userEvent.click(notes);
     expect(opened).toEqual([{ path: 'notes.md' }]);
+    // Nor do the app's renames and deletes move its Recents (#240).
+    const gone = JSON.stringify({ from: 'notes.md', to: null });
+    expect(await window.ganymede!.command('file-moved', gone)).toBe(false);
     vi.unstubAllGlobals();
   });
 
