@@ -294,6 +294,13 @@ describe('App', () => {
     fake.sessions.shutdown.mockClear();
     expect(await run('shutdown-others')).toBe(true);
     expect(fake.sessions.shutdown.mock.calls).toEqual([['s2'], ['s3']]);
+    // A failed shutdown is false, not a rejection, and the rest still run.
+    fake.sessions.shutdown.mockClear();
+    fake.sessions.shutdown.mockRejectedValueOnce(new Error('gone'));
+    expect(await run('shutdown-others')).toBe(false);
+    expect(fake.sessions.shutdown.mock.calls).toEqual([['s2'], ['s3']]);
+    fake.sessions.shutdown.mockRejectedValueOnce(new Error('gone'));
+    expect(await run('shutdown-kernel', 's2')).toBe(false);
     vi.unstubAllGlobals();
   });
 

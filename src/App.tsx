@@ -283,14 +283,20 @@ export function App() {
         // By session id, or by the notebook's path as `open` takes it.
         const s = running.find(r => r.id === arg || (!!arg && r.path === clean(arg)));
         if (!backend || !s) return false;
-        await backend.services.sessions.shutdown(s.id);
-        return true;
+        // False, not a rejection: the app runs commands without waiting.
+        return backend.services.sessions.shutdown(s.id).then(
+          () => true,
+          () => false,
+        );
       }
       case 'shutdown-others': {
         if (!backend) return false;
         const others = running.filter(r => r.path !== openPath);
-        await Promise.all(others.map(r => backend.services.sessions.shutdown(r.id)));
-        return true;
+        // Each one tried; false when any failed.
+        const done = await Promise.allSettled(
+          others.map(r => backend.services.sessions.shutdown(r.id)),
+        );
+        return done.every(d => d.status === 'fulfilled');
       }
       case 'show-shortcuts':
         setShortcutsOpen(true);
