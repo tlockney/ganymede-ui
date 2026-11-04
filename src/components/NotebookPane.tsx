@@ -28,7 +28,7 @@ import {
 import { type RunStatus, attachRunStatus } from '../lib/run-status';
 import { ProblemNotice } from './ProblemNotice';
 import { hasUntrustedOutputs } from '../lib/trust';
-import { renameFile, renamedPath } from '../lib/rename';
+import { handOff, handedOff, renameFile, renamedPath } from '../lib/rename';
 import type { NotebookWidgets } from '../lib/widgets';
 
 export type CellType = nbformat.CellType;
@@ -74,9 +74,11 @@ export type NotebookController = {
   command(id: string): boolean;
   /**
    * Rename the file to what the user typed (`.ipynb` added), in the same
-   * folder; false when it wasn't (the pane says why).
+   * folder; false when it wasn't (the pane says why). With `throws`, a
+   * failure also rejects with why, for a caller that shows it too (the
+   * sidebar, which can cover the pane).
    */
-  rename(input: string): Promise<boolean>;
+  rename(input: string, options?: { throws?: boolean }): Promise<boolean>;
   /**
    * Stop saving: the file is being deleted from under the notebook (the
    * sidebar), and a save would write it back. The function it returns
@@ -223,7 +225,9 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
   /** Set once the file is deleted from under the notebook: no save may put it back. */
   const gone = useRef(false);
   /** A rename in progress: the pane's teardown waits for it to move the session. */
-  const renaming = useRef<Promise<void>>(undefined);
+  const renaming = useRef<{ done: Promise<void>; to: string }>(undefined);
+  /** Why the edits typed during a rename weren't saved: shown when the file reopens. */
+  const unsaved = useRef<string>(undefined);
   /** The cell menu (#200), open under a cell's "…" button. */
   const [menu, setMenu] = useState<{ cell: Cell; anchor: HTMLElement }>();
 
@@ -234,6 +238,12 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
     setJoined(false);
     setError(undefined);
     (async () => {
+      // The last pane here (before a rename, say) may still be saving to
+      // the file: load what it saved, and say if it couldn't.
+      const handed = handedOff(path);
+      const lastSave = handed && (await handed);
+      if (cancelled) return;
+      if (lastSave) setNotice({ kind: 'save-failed', message: lastSave, actions: [] });
       const [file, widgets] = await Promise.all([
         services.contents.get(path, { type: 'notebook', content: true }),
         // ipywidgets live in their own chunk; load them alongside the file so
@@ -392,18 +402,28 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       // Opening another file keeps this one's edits: save them first, as
       // autosave would, then let it go. A rename in progress finishes
       // first: it needs the session, and the save goes to the new path.
-      const save = () =>
-        done.model.dirty && !autosaveOff.current && !gone.current
-          ? done.saver
-              .save({ ifDirty: true })
-              .catch(e => console.error(`Couldn’t save ${path}:`, e))
-          : undefined;
-      if (renaming.current) {
-        void renaming.current.then(save).finally(teardown);
+      // The pane that opens the file next waits for the save, and shows
+      // why it failed (#224).
+      const save = () => {
+        if (!done.model.dirty || autosaveOff.current || gone.current) return undefined;
+        const to = done.saver.path;
+        return done.saver.save({ ifDirty: true }).then(
+          () => undefined,
+          (e: unknown) => {
+            console.error(`Couldn’t save ${to}:`, e);
+            return `Couldn’t save the latest edits to ${basename(to)}: ${messageOf(e)}`;
+          },
+        );
+      };
+      const pending = renaming.current;
+      const work = pending ? pending.done.then(() => save() ?? unsaved.current) : save();
+      const next = pending?.to ?? done.saver.path;
+      if (work) {
+        handOff(next, work);
+        void work.finally(teardown);
       } else {
-        const saving = save();
-        if (saving) void saving.finally(teardown);
-        else teardown();
+        if (unsaved.current) handOff(next, Promise.resolve(unsaved.current));
+        teardown();
       }
     };
   }, [services, path, attempt]);
@@ -571,9 +591,9 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
     // folder's in the sidebar), taking the saves and the kernel along.
     const moved = async (to: string, rename: () => Promise<unknown>) => {
       const moving = (async () => {
-        // The session to move: after it has joined the file's kernel.
+        unsaved.current = undefined;
+        // Once the session has joined the file's kernel, if any.
         await open.joining;
-        const sessionToMove = session.session;
         // Saves (⌘S, autosave, quit) wait for the move and then go to the
         // new path, so none recreates the old file.
         await saver.move(async () => {
@@ -581,6 +601,9 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
           return { path: to, lastModified: model?.last_modified };
         });
         // The kernel follows the file, so reopening it there rejoins it.
+        // Read now, not before the move: a run during it may have started
+        // one (#224).
+        const sessionToMove = session.session;
         try {
           await sessionToMove?.setPath(to);
           await sessionToMove?.setName(basename(to));
@@ -588,12 +611,16 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
           console.warn(`Couldn’t move the session to ${to}:`, e);
         }
         // Edits typed meanwhile go to the new file before it reopens there;
-        // any typed during this save, by the teardown save as this pane goes.
-        await saver
-          .save({ ifDirty: true })
-          .catch(e => console.error(`Couldn’t save the latest edits to ${to}:`, e));
+        // any typed during this save, by the teardown save as this pane
+        // goes, which the reopened pane waits for. If this save fails, the
+        // teardown tries again, and the reopened pane says why it failed.
+        await saver.save({ ifDirty: true }).catch(e => {
+          console.error(`Couldn’t save the latest edits to ${to}:`, e);
+          unsaved.current = `Couldn’t save the latest edits to ${basename(to)}: ${messageOf(e)}`;
+          setNotice({ kind: 'save-failed', message: unsaved.current, actions: [] });
+        });
       })();
-      renaming.current = moving.catch(() => {});
+      renaming.current = { done: moving.catch(() => {}), to };
       try {
         await moving;
       } finally {
@@ -690,11 +717,14 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         void commands.execute(id).catch(e => setNotice(failed(id, e)));
         return true;
       },
-      rename: async (input: string) => {
+      rename: async (input: string, options?: { throws?: boolean }) => {
         let next: string | undefined;
         const clearRenameNotice = () => clearNotice('rename-failed');
-        const renameFailed = (e: unknown) =>
+        const renameFailed = (e: unknown) => {
           setNotice(failed(`rename ${fileName}`, e, { kind: 'rename-failed' }));
+          if (options?.throws) throw e;
+          return false;
+        };
         try {
           next = renamedPath(path, input);
           if (!next) {
@@ -704,15 +734,13 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
           // The edits go with the file.
           if (model.dirty) await saver.save();
         } catch (e) {
-          renameFailed(e);
-          return false;
+          return renameFailed(e);
         }
         const to = next;
         try {
           await moved(to, () => renameFile(services.contents, path, to));
         } catch (e) {
-          renameFailed(e);
-          return false;
+          return renameFailed(e);
         }
         clearRenameNotice();
         onRenamedRef.current?.(path, to);

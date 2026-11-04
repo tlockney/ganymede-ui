@@ -76,26 +76,22 @@ struct FolderSidebar: View {
     }
 
     private func rename(_ entry: FolderEntry) {
+        // The open notebook renames through the page, which saves its
+        // edits first and keeps its kernel.
+        if !entry.isDirectory, page.state.path == entry.serverPath {
+            if let name = askName(for: entry.name) { page.run("rename", arg: name) }
+            return
+        }
         let holdsOpen = FolderEntry.path(page.state.path, isAt: entry.serverPath)
         // The page would save its edits back to the old path.
         if holdsOpen && page.state.dirty {
             let alert = NSAlert()
-            alert.messageText = "Save “\(entry.title)” before renaming it."
+            alert.messageText = "Save “\(entry.title)” before renaming its folder."
             alert.informativeText = "The open notebook has unsaved changes."
             alert.runModal()
             return
         }
-        let alert = NSAlert()
-        alert.messageText = "Rename “\(entry.name)”"
-        alert.addButton(withTitle: "Rename")
-        alert.addButton(withTitle: "Cancel")
-        let field = NSTextField(string: entry.name)
-        field.frame = NSRect(x: 0, y: 0, width: 260, height: 24)
-        alert.accessoryView = field
-        alert.window.initialFirstResponder = field
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        let name = field.stringValue.trimmingCharacters(in: .whitespaces)
-        guard !name.isEmpty, name != entry.name, !name.contains("/") else { return }
+        guard let name = askName(for: entry.name), name != entry.name, !name.contains("/") else { return }
         let target = entry.url.deletingLastPathComponent().appendingPathComponent(name)
         do {
             try FileManager.default.moveItem(at: entry.url, to: target)
@@ -373,6 +369,39 @@ struct NewCommands: View {
             openWindow(value: WindowTarget.folder(folder ?? model.root))
         }
         .keyboardShortcut("n", modifiers: [.command, .option])
+    }
+}
+
+/// Asks for a new name, starting from `current`; nil when cancelled or
+/// left empty.
+@MainActor
+func askName(for current: String) -> String? {
+    let alert = NSAlert()
+    alert.messageText = "Rename “\(current)”"
+    alert.addButton(withTitle: "Rename")
+    alert.addButton(withTitle: "Cancel")
+    let field = NSTextField(string: current)
+    field.frame = NSRect(x: 0, y: 0, width: 260, height: 24)
+    alert.accessoryView = field
+    alert.window.initialFirstResponder = field
+    guard alert.runModal() == .alertFirstButtonReturn else { return nil }
+    let name = field.stringValue.trimmingCharacters(in: .whitespaces)
+    return name.isEmpty ? nil : name
+}
+
+/// File > Rename…: the open notebook, through the page's rename, which
+/// saves first and keeps the kernel. The name is shown without `.ipynb`,
+/// as the page's title shows it.
+struct RenameCommand: View {
+    @FocusedObject private var page: PageModel?
+
+    var body: some View {
+        Button("Rename…") {
+            guard let page, let path = page.state.path else { return }
+            let title = URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
+            if let name = askName(for: title) { page.run("rename", arg: name) }
+        }
+        .disabled(page?.state.hasNotebook != true)
     }
 }
 

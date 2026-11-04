@@ -85,6 +85,11 @@ export class NotebookSaver {
     return run;
   }
 
+  /** The file it saves to: after a move, the new path. */
+  get path(): string {
+    return this.o.path;
+  }
+
   dispose() {
     this.o.model.contentChanged.disconnect(this.bump, this);
   }

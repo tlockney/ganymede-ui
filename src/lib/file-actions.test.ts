@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { Contents } from '@jupyterlab/services';
+import type { Contents, Session } from '@jupyterlab/services';
 import type { NotebookController } from '../components/NotebookPane';
 import { deletePrompt, fileActions, within } from './file-actions';
 
@@ -18,6 +18,23 @@ function contents(existing: string[] = []) {
 
 const undo = vi.fn();
 
+/** Running sessions at `paths`; each move is recorded as [from, to]. */
+function sessions(paths: string[] = []) {
+  const moves: [string, string][] = [];
+  const disposed: string[] = [];
+  return {
+    moves,
+    disposed,
+    running: () =>
+      paths.map(path => ({ id: path, path, name: '', type: 'notebook' }))[Symbol.iterator](),
+    connectTo: vi.fn(({ model }: { model: { path: string } }) => ({
+      setPath: vi.fn(async (to: string) => void moves.push([model.path, to])),
+      setName: vi.fn(async () => {}),
+      dispose: () => disposed.push(model.path),
+    })),
+  };
+}
+
 function controller(path: string, over: Partial<NotebookController> = {}) {
   return {
     path,
@@ -30,7 +47,12 @@ function controller(path: string, over: Partial<NotebookController> = {}) {
   } as unknown as NotebookController;
 }
 
-function setup(openPath?: string, c?: NotebookController, existing?: string[]) {
+function setup(
+  openPath?: string,
+  c?: NotebookController,
+  existing?: string[],
+  running?: ReturnType<typeof sessions>,
+) {
   const fake = contents(existing);
   let open = openPath;
   const setOpenPath = vi.fn((update: (p: string | undefined) => string | undefined) => {
@@ -39,6 +61,7 @@ function setup(openPath?: string, c?: NotebookController, existing?: string[]) {
   const opened = () => open;
   const actions = fileActions({
     contents: fake as unknown as Contents.IManager,
+    sessions: running as unknown as Session.IManager | undefined,
     openPath,
     controller: c,
     setOpenPath,
@@ -75,8 +98,44 @@ describe('fileActions', () => {
     const c = controller('Io.ipynb');
     const { fake, actions } = setup('Io.ipynb', c);
     await actions.rename(nb('Io.ipynb'), 'Europa');
-    expect(c.rename).toHaveBeenCalledWith('Europa');
+    expect(c.rename).toHaveBeenCalledWith('Europa', { throws: true });
     expect(fake.rename).not.toHaveBeenCalled();
+  });
+
+  it('says in the sidebar why the open notebook’s own rename failed', async () => {
+    // The pane shows it too; on a phone, under the sidebar.
+    const c = controller('Io.ipynb', {
+      rename: vi.fn(async (_input: string, options?: { throws?: boolean }) => {
+        if (options?.throws) throw new Error('“Europa.ipynb” already exists.');
+        return false;
+      }),
+    });
+    const { actions } = setup('Io.ipynb', c);
+    await expect(actions.rename(nb('Io.ipynb'), 'Europa')).rejects.toThrow(/already exists/);
+  });
+
+  it('moves the session of a notebook that isn’t open with it', async () => {
+    const running = sessions(['moons/Io.ipynb', 'moons/Europa.ipynb']);
+    const { actions } = setup(undefined, undefined, [], running);
+    await actions.rename(nb('moons/Io.ipynb'), 'Ganymede');
+    expect(running.moves).toEqual([['moons/Io.ipynb', 'moons/Ganymede.ipynb']]);
+    expect(running.disposed).toEqual(['moons/Io.ipynb']);
+  });
+
+  it('moves the sessions in a folder, but the open notebook’s through its pane', async () => {
+    const running = sessions(['moons/Io.ipynb', 'moons/inner/Europa.ipynb', 'Callisto.ipynb']);
+    const c = controller('moons/Io.ipynb');
+    const { actions } = setup('moons/Io.ipynb', c, [], running);
+    await actions.rename(dir('moons'), 'satellites');
+    expect(c.moved).toHaveBeenCalledWith('satellites/Io.ipynb', expect.any(Function));
+    expect(running.moves).toEqual([['moons/inner/Europa.ipynb', 'satellites/inner/Europa.ipynb']]);
+  });
+
+  it('moves no session when the rename fails', async () => {
+    const running = sessions(['Io.ipynb']);
+    const { actions } = setup(undefined, undefined, ['Europa.ipynb'], running);
+    await expect(actions.rename(nb('Io.ipynb'), 'Europa')).rejects.toThrow(/already exists/);
+    expect(running.connectTo).not.toHaveBeenCalled();
   });
 
   it('saves the open notebook before moving its folder, and follows it', async () => {
@@ -160,6 +219,19 @@ describe('fileActions', () => {
     expect(c.save).not.toHaveBeenCalled();
     expect(opened()).toBeUndefined();
     expect(fake.delete).toHaveBeenLastCalledWith('moons');
+  });
+
+  it('leaves another notebook open if one was opened while the delete ran', async () => {
+    let finish!: () => void;
+    const c = controller('moons/Io.ipynb');
+    const { fake, setOpenPath, opened, actions } = setup('moons/Io.ipynb', c);
+    fake.delete.mockImplementationOnce(() => new Promise<void>(r => (finish = r)));
+    const removing = actions.remove(dir('moons'));
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    setOpenPath(() => 'Europa.ipynb');
+    finish();
+    await removing;
+    expect(opened()).toBe('Europa.ipynb');
   });
 
   it('keeps the open notebook, and saving, when the delete fails', async () => {
