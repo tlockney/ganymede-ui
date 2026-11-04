@@ -69,6 +69,7 @@ built from the same sources (see
   > [!NOTE]
   > **Unreleased.** Available only from a build of `main` (HEAD), not in
   > the latest release, which opens Remotes alone in Settings.
+
 - Ganymede > Agent Settings… (⌥⌘,) opens the page's agent settings. The
   agent's API keys are kept in the keychain too.
 - File > New Terminal (⌃⇧`) opens a shell from the app's own server in
