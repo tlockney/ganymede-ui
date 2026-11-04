@@ -27,6 +27,20 @@ describe('handOff', () => {
     finish();
     expect(await handed).toBe('Couldn’t save');
   });
+
+  it('leaves one save at both paths when a pane closes mid-rename', async () => {
+    let finish!: (failed?: string) => void;
+    const save = new Promise<string | undefined>(r => (finish = r));
+    handOff('Io.ipynb', save);
+    handOff('moons/Io.ipynb', save);
+    expect(handedOff('Io.ipynb')).toBe(save);
+    expect(handedOff('moons/Io.ipynb')).toBe(save);
+    finish();
+    await save;
+    await new Promise(r => setTimeout(r, 0));
+    expect(handedOff('Io.ipynb')).toBeUndefined();
+    expect(handedOff('moons/Io.ipynb')).toBeUndefined();
+  });
 });
 
 describe('renamedPath', () => {
