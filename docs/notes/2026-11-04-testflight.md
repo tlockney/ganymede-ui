@@ -32,5 +32,9 @@ the secrets and the one-time setup in the Apple account.
   set, each build asks in App Store Connect.
 - The GitHub Release doesn't wait for the `ios` job, so a TestFlight
   failure doesn't hold back the web archives and the Mac app.
-- Not verified yet: nothing here ran on macOS, and the iOS secrets don't
-  exist yet. A manual `release.yml` run on a branch is the first test.
+- First dry runs (manual `release.yml` on the branch): run 7 archived and
+  signed with the Apple Distribution certificate and profile, then failed
+  its own icon check. On iOS, actool records the icon under
+  `CFBundleIcons > CFBundlePrimaryIcon > CFBundleIconName`, not the
+  top-level `CFBundleIconName` a Mac app has. Run 8 uploaded 0.3.0 (8) to
+  App Store Connect.
