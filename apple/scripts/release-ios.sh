@@ -119,8 +119,10 @@ xcodebuild archive -project "$apple/Ganymede.xcodeproj" -scheme Ganymede-iOS \
 plist="$archive/Products/Applications/Ganymede.app/Info.plist"
 shown=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")
 [[ "$shown" == "$VERSION" ]] || fail "CFBundleShortVersionString is $shown, not $VERSION"
-/usr/libexec/PlistBuddy -c 'Print :CFBundleIconName' "$plist" > /dev/null ||
-  fail "the app has no icon (CFBundleIconName), which App Store Connect rejects"
+# actool records an iOS app icon under CFBundleIcons, not the top-level
+# CFBundleIconName a Mac app has.
+/usr/libexec/PlistBuddy -c 'Print :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconName' "$plist" > /dev/null ||
+  fail "the app has no icon (CFBundleIcons), which App Store Connect rejects"
 
 # Export re-signs for App Store distribution. With destination `upload`
 # it also sends the build to App Store Connect, which processes it for
