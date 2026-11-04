@@ -116,6 +116,9 @@ function decorate(cell: Cell): void {
   more.setAttribute('aria-haspopup', 'menu');
   const drag = button(DRAG, 'Drag to Move Cell', '', 'drag');
   drag.innerHTML = GRIP;
+  // Pointer only: the keyboard and VoiceOver move cells from the … menu.
+  drag.tabIndex = -1;
+  drag.setAttribute('aria-hidden', 'true');
   const bar = document.createElement('div');
   bar.className = ADD;
   bar.append(

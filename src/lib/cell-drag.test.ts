@@ -130,6 +130,9 @@ describe('dragging the handle', () => {
   it('gives every cell a handle', () => {
     expect(notebook.widgets.every(w => w.node.querySelector('.gn-cell-drag'))).toBe(true);
     expect(handle(0).getAttribute('aria-label')).toBe('Drag to Move Cell');
+    // Keyboard and VoiceOver users move cells from the … menu instead.
+    expect(handle(0).tabIndex).toBe(-1);
+    expect(handle(0).getAttribute('aria-hidden')).toBe('true');
   });
 
   it('moves a cell down', () => {

@@ -1387,6 +1387,12 @@ button {
   max-width: min(560px, calc(100% - 32px - var(--safe-left) - var(--safe-right)));
 }
 
+/* A drop that fails for several files lists one error per line. */
+.pane-notice > span,
+.sidebar-alert > span {
+  white-space: pre-line;
+}
+
 .sheet-backdrop {
   padding-right: var(--safe-right);
   padding-bottom: var(--safe-bottom);
