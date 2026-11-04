@@ -24,11 +24,13 @@ export type NativeHooks = {
 /**
  * The commands the page runs for the app beside the notebook's own (the
  * shortcuts table's ids, such as `run-cell` or `move-up`). Those marked
- * `arg` take one: a path, a folder, a cell type or a kernel name.
+ * `arg` take one: a path, a folder, a new name, a cell type or a kernel
+ * name.
  */
 export const PAGE_COMMANDS = {
   open: 'arg',
   close: '',
+  rename: 'arg',
   'new-notebook': 'arg',
   save: '',
   download: '',

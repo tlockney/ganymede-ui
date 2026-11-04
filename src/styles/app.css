@@ -590,6 +590,56 @@ button {
   margin: 2px 0 16px;
 }
 
+/* The first-run welcome (#214), under the empty state's buttons. */
+.onboarding {
+  width: min(460px, calc(100% - 32px));
+  margin-top: 28px;
+  padding: 16px 18px;
+  border-radius: 12px;
+  background: var(--control-bg);
+  text-align: left;
+}
+
+.onboarding h2 {
+  margin: 0 0 10px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.onboarding-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.onboarding-row svg {
+  flex: none;
+  color: var(--text-2);
+}
+
+.empty-state .onboarding-row p {
+  flex: 1;
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.onboarding-row .push-button {
+  flex: none;
+}
+
+.onboarding .sheet-error {
+  margin: 0 0 10px;
+}
+
+.onboarding-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 /* ---------- Buttons ---------- */
 
 .push-button {

@@ -40,6 +40,7 @@ import {
 } from './lib/native';
 import { fileActions } from './lib/file-actions';
 import { useFileDrop } from './lib/file-drop';
+import { copySample } from './lib/sample';
 
 /**
  * A token in the page URL, as `ganymede serve` prints it, wins once, and so
@@ -102,6 +103,8 @@ export function App() {
   /** Why the last New Notebook failed, until dismissed or the next one. */
   const [newError, setNewError] = useState<string>();
   const [backend, setBackend] = useState<Backend>();
+  const backendRef = useRef(backend);
+  backendRef.current = backend;
   const [error, setError] = useState<string>();
   const [connecting, setConnecting] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(() => !config);
@@ -303,6 +306,11 @@ export function App() {
       case 'download':
         c.download();
         return true;
+      case 'rename':
+        // A new name, as the title takes it: saves first and keeps the
+        // kernel, and a failure shows the page's notice.
+        if (!arg) return false;
+        return c.rename(arg);
       case 'trust':
         await c.trust();
         return true;
@@ -489,6 +497,17 @@ export function App() {
                 connecting={connecting}
                 onNew={() => void newNotebook(folder)}
                 onConnect={() => setSheetOpen(true)}
+                folder={folder}
+                onShowFolder={native || sidebarOpen ? undefined : () => setSidebarOpen(true)}
+                onOpenSample={
+                  backend &&
+                  (async () => {
+                    const { contents, kernelspecs } = backend.services;
+                    const path = await copySample(contents, folder, kernelspecs.specs);
+                    // Not if the backend changed while the copy ran.
+                    if (backendRef.current === backend) setOpenPath(path);
+                  })
+                }
               />
             )}
             {newError && (

@@ -44,4 +44,20 @@ describe('EmptyState', () => {
     expect(screen.getByText('Connecting…')).toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
+
+  it('welcomes a first run once connected, when the sample can be opened', () => {
+    localStorage.clear();
+    const { rerender } = render(
+      <EmptyState
+        backend={fakeBackend(fakeServices().services)}
+        connecting={false}
+        onNew={vi.fn()}
+        onConnect={vi.fn()}
+        onOpenSample={vi.fn(async () => {})}
+      />,
+    );
+    expect(screen.getByText('Welcome to Ganymede')).toBeInTheDocument();
+    rerender(<EmptyState connecting={false} onNew={vi.fn()} onConnect={vi.fn()} />);
+    expect(screen.queryByText('Welcome to Ganymede')).not.toBeInTheDocument();
+  });
 });
