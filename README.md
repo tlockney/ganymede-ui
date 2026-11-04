@@ -108,7 +108,7 @@ down and reads up to 200 notebooks, and says when it stopped early.
 Above the folder, Recents lists the last eight notebooks you opened from
 this browser, on each backend; on the iPhone it stands in for the Mac
 app's File > Open Recent. The iPad app draws its own sidebar, with the
-same search and Recents.
+same search and Recents, though a folder in its results doesn't open yet.
 
 > [!NOTE]
 > **Unreleased.** Available only from a build of `main` (HEAD), not in
