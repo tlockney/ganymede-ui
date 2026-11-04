@@ -19,12 +19,14 @@ function contents(existing: string[] = []) {
 const undo = vi.fn();
 
 /** Running sessions at `paths`; each move is recorded as [from, to]. */
-function sessions(paths: string[] = []) {
+function sessions(paths: string[] = [], startedElsewhere: string[] = []) {
   const moves: [string, string][] = [];
   const disposed: string[] = [];
   return {
     moves,
     disposed,
+    // The next poll finds sessions another client started.
+    refreshRunning: vi.fn(async () => void paths.push(...startedElsewhere.splice(0))),
     running: () =>
       paths.map(path => ({ id: path, path, name: '', type: 'notebook' }))[Symbol.iterator](),
     connectTo: vi.fn(({ model }: { model: { path: string } }) => ({
@@ -129,6 +131,16 @@ describe('fileActions', () => {
     await actions.rename(dir('moons'), 'satellites');
     expect(c.moved).toHaveBeenCalledWith('satellites/Io.ipynb', expect.any(Function));
     expect(running.moves).toEqual([['moons/inner/Europa.ipynb', 'satellites/inner/Europa.ipynb']]);
+  });
+
+  it('moves a session started elsewhere since the last poll, without handling its comms', async () => {
+    const running = sessions([], ['moons/Io.ipynb']);
+    const { actions } = setup(undefined, undefined, [], running);
+    await actions.rename(nb('moons/Io.ipynb'), 'Ganymede');
+    expect(running.moves).toEqual([['moons/Io.ipynb', 'moons/Ganymede.ipynb']]);
+    expect(running.connectTo).toHaveBeenCalledWith(
+      expect.objectContaining({ kernelConnectionOptions: { handleComms: false } }),
+    );
   });
 
   it('moves no session when the rename fails', async () => {
