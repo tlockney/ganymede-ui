@@ -78,12 +78,24 @@ built from the same sources (see
 
 - Ganymede > Agent Settings… (⌥⌘,) opens the page's agent settings. The
   agent's API keys are kept in the keychain too.
-- File > New Terminal (⌃⇧`) opens a shell from the app's own server in
-the front window's folder (its notebook's folder, or the folder it
-shows). File > New Terminal On opens one on a remote's server, if it
-has terminals (Ganymede with terminals, or `jupyter server`), or over
-SSH with `/usr/bin/ssh`, so `~/.ssh/config`, the SSH agent and
-  known_hosts apply. Closing the window ends the shell.
+- Terminals open in the notebook window's bottom panel, as tabs under
+  the notebook. View > Show Terminal Panel (`` ⌃` ``) or the toolbar button
+  shows it, starting a shell in the window's folder (its notebook's
+  folder, or the folder it shows) if it has none; drag its top edge to
+  resize it. Hiding the panel keeps its shells running; closing a tab
+  ends that one. Since `` ⌃` `` toggles the panel, programs in a panel
+  terminal don't receive it (a terminal window of its own still does).
+  File > New Terminal (`` ⌃⇧` ``) adds a shell to the panel, and
+  File > New Terminal On, or the panel's + menu, one on a remote's
+  server, if it has terminals (Ganymede with terminals, or
+  `jupyter server`), or over SSH with `/usr/bin/ssh`, so `~/.ssh/config`,
+  the SSH agent and known_hosts apply. File > New Terminal Window opens a
+  shell in a window of its own.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release, where every terminal opens in its own window.
+
 - Other files in the sidebar (not notebooks) open in a text editor
   window: the system text view with syntax highlighting for Python,
   JavaScript, TypeScript, JSON, Markdown, shell, YAML and TOML, line
@@ -102,8 +114,8 @@ On iPadOS and iOS (`Ganymede-iOS` target, iOS 16 or later):
   page runs its own kernel: cdp-kernel's TypeScript kernel in a Worker in
   a hidden second web view, with Swift relaying its messages
   (`KernelHost.swift`; the app opens the page with `kernels=page`). For other
-  kernels, tap the server button and enter the URL and token of another
-  Jupyter or Ganymede server (for example `ganymede serve --ip 0.0.0.0` on
+  kernels, add a remote with the URL and token of another Jupyter or
+  Ganymede server (for example `ganymede serve --ip 0.0.0.0` on
   your Mac; see its [Security](https://ganymede-server.com/docs/security)
   page for reaching it safely). Either way, notebooks stay on the iPad.
 - On the iPad the sidebar, toolbar and key commands are the app's own,
@@ -127,7 +139,7 @@ On iPadOS and iOS (`Ganymede-iOS` target, iOS 16 or later):
 
 - On the iPhone the first screen lists the notebook folder, with the same
   long-press actions and Running section as the iPad's sidebar, and the
-  terminal, remotes and folder buttons. Tapping a notebook opens it;
+  terminal, Settings and folder buttons. Tapping a notebook opens it;
   swipe from the left edge or tap Back to return to the list. The
   notebook's run controls and its ⋯ menu are in the bottom toolbar.
 
@@ -135,10 +147,21 @@ On iPadOS and iOS (`Ganymede-iOS` target, iOS 16 or later):
   > **Unreleased.** Available only from a build of `main` (HEAD), not in
   > the latest release, which uses the page's own sidebar and toolbar.
 
+- Settings (the gear button, ⌘, with a keyboard, or Settings in the ⋯
+  menu) is one screen: where kernels run, the remotes, the SSH key, the
+  optional agent (on or off, provider, model, API key and a test), and,
+  with a keyboard attached, the notebook's keyboard shortcuts. The API
+  key goes to the Keychain.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release, which has a Remotes screen and the page's agent
+  > settings sheet.
+
 - The terminal button opens a shell on a remote, over SSH or on its
   server's terminals. On iPad it opens in its own window beside the
   notebook; on iPhone it covers the screen. SSH signs in with an ed25519
-  key the app generates or imports (Remotes > SSH key; copy the public
+  key the app generates or imports (Settings > SSH key; copy the public
   key into `~/.ssh/authorized_keys` on the remote) and trusts the host
   key the first time, refusing it if it changes later. iOS drops the
   connection soon after the app goes to the background; the terminal

@@ -10,6 +10,7 @@ import { type Backend, trustNotebook } from '../lib/backends';
 import { attachEditing, createCommands, createNotebook, createRendermime } from '../lib/jupyterlab';
 import { attachCellControls } from '../lib/cell-controls';
 import { CellMenu } from './CellMenu';
+import { KeyboardBar } from './KeyboardBar';
 import type { Cell } from '@jupyterlab/cells';
 import { downloadFile } from '../lib/download';
 import { AUTOSAVE_INTERVAL_MS, NotebookSaver, SaveConflict } from '../lib/saver';
@@ -836,6 +837,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
   return (
     <>
       <div className="notebook-page" ref={host} />
+      <KeyboardBar notebook={open.notebook} commands={open.commands} />
       {menu && (
         <CellMenu
           notebook={open.notebook}

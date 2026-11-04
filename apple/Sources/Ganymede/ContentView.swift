@@ -21,6 +21,11 @@ struct ContentView: View {
     @StateObject private var pageModel = PageModel()
     /// This window, for the Finder's open requests (#228).
     @State private var windowID = UUID()
+    /// The bottom panel's terminals (#248), and whether it shows and how
+    /// tall it is, kept with the window across launches.
+    @StateObject private var panel = PanelController()
+    @SceneStorage("panel.shown") private var panelShown = false
+    @SceneStorage("panel.height") private var panelHeight = PanelController.defaultHeight
 
     init(target: Binding<WindowTarget?>) {
         _target = target
@@ -34,6 +39,9 @@ struct ContentView: View {
     @Environment(\.openWindow) private var openWindow
     @State private var picking = false
     @State private var settings = false
+    /// Settings' Keyboard Shortcuts was tapped: show the page's sheet when
+    /// Settings has gone.
+    @State private var shortcutsNext = false
     /// A terminal shown full screen, where the app has one scene.
     @State private var terminal: TerminalRequest?
     /// A text file being edited full screen, where the app has one scene.
@@ -58,10 +66,18 @@ struct ContentView: View {
             }
             .navigationSplitViewColumnWidth(min: 180, ideal: 240, max: 400)
         } detail: {
-            content
+            workspace
         }
         .toolbar {
             NotebookToolbar(page: pageModel, document: document, folder: sidebarRoot)
+            ToolbarItem {
+                Button {
+                    panel.toggle(startingOn: .local(folder: sidebarRoot))
+                } label: {
+                    Label(panel.isShown ? "Hide Terminal Panel" : "Show Terminal Panel", systemImage: "rectangle.bottomthird.inset.filled")
+                }
+                .help(panel.isShown ? "Hide the terminal panel (⌃`)" : "Show the terminal panel (⌃`)")
+            }
         }
         .navigationSubtitle(pageModel.state.subtitle)
         .frame(minWidth: 720, minHeight: 480)
@@ -87,6 +103,15 @@ struct ContentView: View {
         .background(WindowReader { document.attach(to: $0) })
         .focusedSceneObject(document)
         .focusedSceneObject(pageModel)
+        .focusedSceneObject(panel)
+        .onAppear {
+            panel.resize(to: panelHeight, available: .infinity)
+            // Shells don't outlive the app: a panel that was showing comes
+            // back with a new one, as ⌃` would start.
+            if panelShown { panel.show(startingOn: .local(folder: sidebarRoot)) }
+        }
+        .onChange(of: panel.isShown) { panelShown = $0 }
+        .onChange(of: panel.height) { panelHeight = $0 }
         #else
         Group {
             if isPhone {
@@ -147,18 +172,23 @@ struct ContentView: View {
         }
         .focusedSceneObject(pageModel)
         .modifier(KeychainAlert(model: model))
-        .sheet(isPresented: $settings) {
+        .sheet(isPresented: $settings, onDismiss: {
+            // Keyboard Shortcuts is the page's sheet: once this one is gone.
+            if shortcutsNext {
+                shortcutsNext = false
+                pageModel.run("show-shortcuts")
+            }
+        }) {
             NavigationStack {
-                RemotesView()
-                    .navigationTitle("Remotes")
-                    .navigationBarTitleDisplayMode(.inline)
-                    .toolbar {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Button("Done") { settings = false }
-                        }
-                    }
+                SettingsScreen(page: pageModel, showShortcuts: shortcutsShown ? {
+                    shortcutsNext = true
+                    settings = false
+                } : nil) { settings = false }
             }
             .environmentObject(model)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .showAppSettings)) { note in
+            if note.object as? PageModel === pageModel { settings = true }
         }
         .fullScreenCover(item: $terminal) { request in
             NavigationStack {
@@ -204,6 +234,25 @@ struct ContentView: View {
     }
 
     private var page: URL? { model.page(for: loaded) }
+
+    /// The notebook, with the bottom panel under it (#248). The panel stays
+    /// in the view tree while hidden, so its terminals keep running.
+    private var workspace: some View {
+        GeometryReader { area in
+            VStack(spacing: 0) {
+                content
+                    .frame(maxHeight: .infinity)
+                BottomPanel(panel: panel, folder: sidebarRoot, available: area.size.height)
+                    // Top-aligned, so a hidden panel's views (AppKit cursor
+                    // rects included) sit below the window, not over the notebook.
+                    .frame(height: panel.isShown ? nil : 0, alignment: .top)
+                    .clipped()
+                    .opacity(panel.isShown ? 1 : 0)
+                    .allowsHitTesting(panel.isShown)
+                    .accessibilityHidden(!panel.isShown)
+            }
+        }
+    }
 
     /// The page opened another notebook, or closed it: the window now
     /// shows that, for its title and for the Finder's later opens. The page
@@ -255,7 +304,7 @@ struct ContentView: View {
             }
     }
 
-    /// The app's own buttons: terminals, remotes, the notebook folder.
+    /// The app's own buttons: terminals, Settings, the notebook folder.
     @ViewBuilder
     private var appButtons: some View {
         TerminalMenu(model: model) { request in
@@ -270,13 +319,21 @@ struct ContentView: View {
         Button {
             settings = true
         } label: {
-            Label("Remotes", systemImage: "server.rack")
+            Label("Settings", systemImage: "gearshape")
         }
+        .keyboardShortcut(",")
         Button {
             picking = true
         } label: {
             Label("Open Folder", systemImage: "folder")
         }
+    }
+
+    /// Whether a notebook is on screen to show the page's shortcuts sheet
+    /// in: on the iPhone the page is parked behind the list until one is
+    /// pushed.
+    private var shortcutsShown: Bool {
+        pageModel.state.hasNotebook && (!isPhone || !phonePath.isEmpty)
     }
 
     private var title: String {

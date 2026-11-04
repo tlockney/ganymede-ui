@@ -305,6 +305,17 @@ settings button, or a `ganymede:show-settings` window event).
   `/files` until ganymede sandboxes it (ganymede#298), as it could read
   web storage before.
   The Settings sheet then shows no "Remember" choice.
+- The iPad and iPhone apps edit the same settings on their own Settings
+  screen (ganymede-ui#210): the app calls `window.ganymede.call`
+  (`src/lib/native-agent.ts`) to read and save them, list a provider's
+  models and run Test, and writes the key to the Keychain item the page
+  reads. The page's Settings sheet stays for the browser and the Mac.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release, where the iPad and iPhone apps open the page's
+  > Settings sheet.
+
 - `models.ts` builds pi-ai's models for the chosen provider: Anthropic,
   OpenAI, Google, or a local OpenAI-compatible server (Ollama, LM Studio).
   The app loads it with a dynamic `import()` only when the agent is on.
@@ -475,10 +486,17 @@ of the web view, is planned and not started.
 `Terminal/` holds the built-in terminal's pieces (#117): `TerminalSurface`,
 a SwiftUI view over [SwiftTerm](https://github.com/migueldeicaza/SwiftTerm)'s
 `TerminalView`, and `TerminalTransport`, which each source of a shell
-implements. On the Mac, File > New Terminal opens a `TerminalWindow` whose
+implements. On the Mac, terminals live in the notebook window's bottom
+panel (#248): `PanelController` holds the window's terminals, its
+selection, whether the panel shows and its height, and `BottomPanel` draws
+a `TerminalWindow` per terminal as a tab. Hidden terminals stay in the
+view tree, so their sessions keep running; only the one on show has the
+keyboard. File > New Terminal adds one to the panel, and File > New
+Terminal Window opens one in a window of its own. A
 `JupyterTerminalTransport` creates a terminal through `/api/terminals` on
 the app's own server, or on a remote's server, and speaks terminado's
-websocket protocol to it. Closing the window deletes the terminal. For
+websocket protocol to it. Closing the tab or window deletes the terminal.
+For
 a remote with SSH, `ProcessTerminalTransport` runs `/usr/bin/ssh` in a
 pseudo-terminal the app spawns (SwiftTerm's `LocalProcess`), so OpenSSH
 does everything it does in Terminal.app: ssh-config aliases, the agent,
@@ -490,6 +508,10 @@ and shell on one session channel, signed in with the app's ed25519 key
 remote (`HostKeyStore`). On iPad a terminal is its own scene
 (`WindowGroup(for: TerminalRequest.self)`); SwiftTerm's key row gives Esc,
 Ctrl, Tab and arrows on the software keyboard.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, where each Mac terminal opens in a window of its own.
 
 `Editor/` is the text editor (#122). In the apps the page registers no
 editor of its own: its sidebar enables files that aren't notebooks when

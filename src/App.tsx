@@ -45,6 +45,7 @@ import {
   type PageState,
   type SearchRequest,
 } from './lib/native';
+import { agentCall } from './lib/native-agent';
 import { useSignals } from './lib/useSignal';
 import { fileActions } from './lib/file-actions';
 import { useFileSearch } from './lib/search';
@@ -409,6 +410,7 @@ export function App() {
           return !c?.dirty || (await c.save());
         },
         command: (id, arg) => runCommand.current(id, arg),
+        call: agentCall,
       }),
     [],
   );

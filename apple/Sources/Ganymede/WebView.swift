@@ -129,6 +129,9 @@ extension Notification.Name {
     static let showShortcuts = Notification.Name("GanymedeShowShortcuts")
     /// Posted by Ganymede > Agent Settings.
     static let showAgentSettings = Notification.Name("GanymedeShowAgentSettings")
+    /// The iPad and iPhone app's Settings screen (#210), for the scene
+    /// whose page is the object.
+    static let showAppSettings = Notification.Name("GanymedeShowAppSettings")
 }
 
 #if os(macOS)
@@ -599,8 +602,8 @@ final class PageModel: ObservableObject {
         didSet { flush() }
     }
     /// Whether the page has posted its state with a backend, so its
-    /// commands are ready.
-    private var ready = false
+    /// commands and calls are ready.
+    @Published private(set) var ready = false
     /// Commands run before then: the iPhone's list can be tapped while the
     /// page is still loading (#209).
     private var pending: [String] = []
@@ -625,6 +628,34 @@ final class PageModel: ObservableObject {
     /// The page is going away: commands wait for the next one's state.
     func reset() {
         ready = false
+    }
+
+    enum CallError: LocalizedError {
+        case notReady
+
+        var errorDescription: String? { "The notebook page hasn't loaded." }
+    }
+
+    /// One of the page's calls (`window.ganymede.call`, #210), with its
+    /// answer as JSON values. Throws when the page isn't ready, or with the
+    /// page's error.
+    @MainActor
+    func call(_ id: String, arg: String? = nil) async throws -> Any? {
+        guard ready, let webView else { throw CallError.notReady }
+        // The completion-handler form: the async one traps on a null answer.
+        return try await withCheckedThrowingContinuation { done in
+            webView.callAsyncJavaScript(
+                "return await window.ganymede.call(id, arg ?? undefined)",
+                arguments: ["id": id, "arg": arg ?? NSNull()],
+                in: nil,
+                in: .page
+            ) { result in
+                switch result {
+                case .success(let value): done.resume(returning: value)
+                case .failure(let error): done.resume(throwing: error)
+                }
+            }
+        }
     }
 
     private func flush() {
