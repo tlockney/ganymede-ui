@@ -1562,9 +1562,10 @@ button {
 /* ---------- Keyboard bar (#209) ---------- */
 
 /* 16px or more, so iOS doesn't zoom the page when a cell is focused: the
- * zoom would also hide the keyboard bar, which shows only at scale 1. */
-@media (pointer: coarse) {
-  :root .notebook-page {
+ * zoom would also hide the keyboard bar, which shows only at scale 1. Only
+ * the editor: outputs keep their size. The query is TOUCH_QUERY's. */
+@media (hover: none), (pointer: coarse) {
+  :root .notebook-page .jp-InputArea-editor {
     --jp-code-font-size: 16px;
   }
 }

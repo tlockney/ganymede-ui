@@ -23,6 +23,9 @@ symbols code needs most. tab, esc and the arrows do what the keys do: tab
 completes or indents, esc leaves edit mode. Swipe the bar sideways for
 more symbols.
 
+On a touch screen, code in cells is 16 pixels, larger than elsewhere, so
+that iOS doesn't zoom in when you start editing a cell.
+
 ## Changing a shortcut
 
 Every shortcut can be rebound in the same sheet. On a row, + records a

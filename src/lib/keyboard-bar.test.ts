@@ -48,12 +48,18 @@ describe('keyboard bar', () => {
   });
 
   it('remembers the window’s height from before the keyboard, at each width', () => {
-    expect(heightWithoutKeyboard(390, 800)).toBe(800);
+    expect(heightWithoutKeyboard(390, 800, false)).toBe(800);
     // The app's web view shrinks with the keyboard: still 800 without it.
-    expect(heightWithoutKeyboard(390, 450)).toBe(800);
-    expect(keyboardUp({ height: 450, scale: 1 }, heightWithoutKeyboard(390, 450))).toBe(true);
+    expect(heightWithoutKeyboard(390, 450, true)).toBe(800);
+    expect(keyboardUp({ height: 450, scale: 1 }, heightWithoutKeyboard(390, 450, true))).toBe(true);
     // Turned sideways: another width, its own height.
-    expect(heightWithoutKeyboard(800, 390)).toBe(390);
+    expect(heightWithoutKeyboard(800, 390, false)).toBe(390);
+    // A window made shorter while no cell is edited (Stage Manager) is
+    // shorter: a hardware keyboard then gets no bar.
+    expect(heightWithoutKeyboard(390, 500, false)).toBe(500);
+    expect(keyboardUp({ height: 500, scale: 1 }, heightWithoutKeyboard(390, 500, true))).toBe(
+      false,
+    );
   });
 
   it('has Run, Esc, Tab, the arrows and symbols', () => {

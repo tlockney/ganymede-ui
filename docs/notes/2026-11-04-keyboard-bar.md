@@ -11,8 +11,12 @@
   more than 120 points shorter than the window without the keyboard, at
   a scale of 1. In Safari the keyboard shrinks only the visual viewport,
   but in the apps SwiftUI's keyboard avoidance can shrink the web view,
-  and `innerHeight` with it, so the page keeps the tallest height seen at
-  each width as the height without the keyboard. A hardware keyboard
+  and `innerHeight` with it, so the page keeps the height at each width
+  from while no cell was being edited, when no keyboard can be up. (The
+  tallest height seen, as first written, never went down: a Stage Manager
+  window made shorter then showed the bar with a hardware keyboard.)
+  Rotating with the keyboard up hides the bar until it comes up again.
+  A hardware keyboard
   shrinks nothing, so it gets no bar; a pinch zoom shrinks the viewport
   at a scale above 1.
   It sits at `visualViewport.offsetTop + height`, moved up its own
@@ -21,17 +25,18 @@
   editor, with `keyCode` set by hand: a constructed `KeyboardEvent` has
   `keyCode` 0, and Lumino's keyboard layout matches by `keyCode` only, so
   without it Tab never reached the completer (a test binds Tab in a real
-  `CommandRegistry`). They go through the document's capture listener first, as a
-  real key does, so Tab completes from the kernel, and CodeMirror's
+  `CommandRegistry`). They go through the document's capture listener
+  first, as a real key does, so Tab completes from the kernel, and CodeMirror's
   keymap handles what's left (checked with a real `EditorView` in jsdom).
   Run and esc run `run-and-advance` and `command-mode`, so a rebound
   Shift+Enter doesn't change what Run does. Symbols are a CodeMirror
   transaction with `userEvent: 'input.type'`, as typing is: into every
   cursor, and not into a read-only cell. JupyterLab's `replaceSelection`
   writes to the model at the first cursor and ignores read-only.
-- On a touch screen the code font is 16px: iOS zooms the page when it
-  focuses text smaller than that, and the bar shows only at scale 1, so
-  at 12.5px it would never have shown on an iPhone.
+- On a touch screen (`TOUCH_QUERY`) the cell editors' code font is
+  16px: iOS zooms the page when it focuses text smaller than that, and
+  the bar shows only at scale 1, so at 12.5px it would never have shown
+  on an iPhone. Outputs keep 12.5px.
 - The buttons call `preventDefault` on `pointerdown` and `mousedown` and
   have `tabIndex={-1}`: a tap must not take the focus, or the keyboard
   goes down.

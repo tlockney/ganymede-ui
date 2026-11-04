@@ -38,24 +38,28 @@ export const BAR_KEYS: readonly BarKey[] = [
   ),
 ];
 
-/** The tallest the window has been at each width: its height without a keyboard. */
-const tallest = new Map<number, number>();
+/** The window's last height at each width while no cell was being edited. */
+const lastFree = new Map<number, number>();
 
 /**
  * The window's height without the on-screen keyboard, at `width`. In
  * Safari the keyboard shrinks only the visual viewport; in the apps it can
- * shrink the web view itself, and with it `innerHeight`, so the height
- * from before the keyboard came up is kept.
+ * shrink the web view itself, and with it `innerHeight`. So the height is
+ * recorded only while no cell is being edited (`editing` false), when no
+ * keyboard can be up, and a window made shorter, as in Stage Manager,
+ * counts as shorter.
  */
-export function heightWithoutKeyboard(width: number, height: number): number {
-  const most = Math.max(tallest.get(width) ?? 0, height);
-  tallest.set(width, most);
-  return most;
+export function heightWithoutKeyboard(width: number, height: number, editing: boolean): number {
+  if (!editing) {
+    lastFree.set(width, height);
+    return height;
+  }
+  return Math.max(lastFree.get(width) ?? 0, height);
 }
 
 /** For tests: forget the heights seen. */
 export function resetHeights(): void {
-  tallest.clear();
+  lastFree.clear();
 }
 
 /**
