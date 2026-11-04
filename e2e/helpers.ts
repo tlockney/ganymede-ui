@@ -19,7 +19,7 @@ export async function openWithToken(page: Page) {
  * name). In the sidebar: the toolbar's title is a button by that name too.
  */
 export const sidebarItem = (page: Page, name: string) =>
-  page.locator('.sidebar').getByRole('button', { name, exact: true });
+  page.locator('.sidebar .folder-list').getByRole('button', { name, exact: true });
 
 /** The toolbar subtitle: "<kernel> · Idle". */
 export async function waitForIdle(page: Page, timeout = 60_000) {

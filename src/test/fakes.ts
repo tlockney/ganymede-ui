@@ -33,12 +33,22 @@ export function fakeServices(tree: Record<string, Entry[]> = { '': [] }) {
     fileChanged,
     get: vi.fn(async (path: string) => {
       const items = tree[path];
-      if (!items) throw new Error(`No such directory: ${path}`);
+      if (!items) {
+        // A file in a listed folder, with its `content` if the tree gives one.
+        const dir = path.includes('/') ? path.slice(0, path.lastIndexOf('/')) : '';
+        const file = tree[dir]?.find(i => (i.path ?? (dir ? `${dir}/${i.name}` : i.name)) === path);
+        if (file) return entry(file, dir);
+        // As a server answers: a 404.
+        throw Object.assign(new Error(`No such directory: ${path}`), {
+          response: { status: 404 },
+        });
+      }
       return entry({
         name: path.split('/').pop() ?? '',
         path,
         type: 'directory',
-        content: items.map(i => entry(i, path)),
+        // A listing leaves out what is in each file, as a server does.
+        content: items.map(i => entry({ ...i, content: null }, path)),
       });
     }),
     save: vi.fn(async (path: string, model: Partial<Contents.IModel>) =>

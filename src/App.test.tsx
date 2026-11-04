@@ -139,7 +139,7 @@ describe('App', () => {
     expect(document.title).toBe('Orbits');
     expect(container.querySelector('.window')).toHaveClass('sidebar-collapsed');
     // The sidebar lists the notebook's folder.
-    expect(await screen.findByRole('button', { name: /work/ })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'work' })).toBeInTheDocument();
     expect(fake.contents.get).toHaveBeenCalledWith('work', { content: true });
   });
 

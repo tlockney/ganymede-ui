@@ -4,8 +4,11 @@ import type { Backend } from '../lib/backends';
 import { useSignals } from '../lib/useSignal';
 import { parentOf } from '../lib/launch';
 import { type FileActions, type FileItem, deletePrompt } from '../lib/file-actions';
+import { useFileSearch } from '../lib/search';
+import { clearRecents, recentsKey, useRecents } from '../lib/recents';
 import { useFileDrop } from '../lib/file-drop';
 import { ContextMenu, type MenuItem } from './ContextMenu';
+import { RecentList, SearchField, SearchResults } from './SidebarSearch';
 import {
   BrowserIcon,
   ChevronLeftIcon,
@@ -206,6 +209,12 @@ export function Sidebar({
       await actions?.rename(item, input);
     });
 
+  // Search in the folder shown and below it, and recently opened notebooks (#215).
+  const [query, setQuery] = useState('');
+  const [withContents, setWithContents] = useState(false);
+  const search = useFileSearch(services?.contents, dir, query, withContents);
+  const searching = !!query.trim();
+  const recents = useRecents(backend, openPath);
   // Notebooks dropped from Finder or Files are copied into this folder (#216).
   const drop = useFileDrop({ contents: services?.contents, dir, onError: setActionError });
 
@@ -227,7 +236,36 @@ export function Sidebar({
         )}
       </div>
       <div className="sidebar-scroll">
-        <div className="sidebar-section-header">
+        <SearchField
+          query={query}
+          onQuery={setQuery}
+          withContents={withContents}
+          onWithContents={setWithContents}
+          disabled={!services}
+        />
+        {searching ? (
+          <SearchResults
+            state={search}
+            dir={dir}
+            openPath={openPath}
+            canOpenFiles={!!onOpenFile}
+            onPick={item => {
+              if (item.type === 'directory') {
+                setDir(item.path);
+                setQuery('');
+              } else if (item.type === 'notebook') onOpen(item.path);
+              else onOpenFile?.(item.path);
+            }}
+          />
+        ) : (
+          <RecentList
+            paths={recents}
+            openPath={openPath}
+            onOpen={onOpen}
+            onClear={() => backend && clearRecents(recentsKey(backend.config))}
+          />
+        )}
+        <div className="sidebar-section-header" hidden={searching}>
           {dir ? (
             <button className="link-button" onClick={() => setDir(parentOf(dir))}>
               <ChevronLeftIcon width={14} height={14} />
@@ -245,7 +283,7 @@ export function Sidebar({
             <ComposeIcon width={16} height={16} />
           </button>
         </div>
-        <ul className="source-list">
+        <ul className="source-list folder-list" aria-label="Files" hidden={searching}>
           {items.map(item => {
             const isNb = item.type === 'notebook';
             const isDir = item.type === 'directory';

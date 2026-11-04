@@ -13,7 +13,7 @@ async function connect(page: Page) {
   });
 }
 
-const files = (page: Page) => page.locator('.sidebar .source-list').first().locator('.item-name');
+const files = (page: Page) => page.locator('.sidebar .folder-list').locator('.item-name');
 const menuItem = (page: Page, name: string) => page.getByRole('menuitem', { name });
 
 test('renames, duplicates, deletes and makes folders from the sidebar', async ({ page }) => {
@@ -33,9 +33,13 @@ test('renames, duplicates, deletes and makes folders from the sidebar', async ({
   await expect(page.locator('.jp-Cell').first()).toBeVisible();
 
   // Duplicate it, by right-click.
-  await page.locator('.sidebar').getByRole('button', { name: 'Io', exact: true }).first().click({
-    button: 'right',
-  });
+  await page
+    .locator('.sidebar .folder-list')
+    .getByRole('button', { name: 'Io', exact: true })
+    .first()
+    .click({
+      button: 'right',
+    });
   await menuItem(page, 'Duplicate').click();
   // Named by the backend: "Io-Copy1" on a Jupyter server, "Io (copy)" here.
   await expect(files(page)).toHaveCount(2);
@@ -89,7 +93,10 @@ test('moving the folder that holds the open notebook keeps its kernel', async ({
   await page.locator('.jp-Cell .cm-content').last().click();
   await page.keyboard.type('moon + 1');
 
-  await page.locator('.sidebar').getByRole('button', { name: 'moons', exact: true }).waitFor();
+  await page
+    .locator('.sidebar .folder-list')
+    .getByRole('button', { name: 'moons', exact: true })
+    .waitFor();
   await page.getByRole('button', { name: 'Actions for moons' }).click();
   await menuItem(page, 'Rename').click();
   await page.getByRole('textbox', { name: 'New name for moons' }).fill('satellites');
@@ -111,7 +118,9 @@ test.describe('on a phone', () => {
     await page.getByRole('button', { name: 'New Notebook' }).last().click();
     await expect(page.locator('.jp-Cell').first()).toBeVisible({ timeout: 60_000 });
     await page.getByRole('button', { name: 'Show Sidebar' }).tap();
-    const row = page.locator('.sidebar').getByRole('button', { name: 'Untitled', exact: true });
+    const row = page
+      .locator('.sidebar .folder-list')
+      .getByRole('button', { name: 'Untitled', exact: true });
     // The "…" button is there on touch, 36px wide.
     const more = page.getByRole('button', { name: 'Actions for Untitled' });
     await expect(more).toBeVisible();
