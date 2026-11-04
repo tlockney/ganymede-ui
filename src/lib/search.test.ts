@@ -257,6 +257,33 @@ describe('useFileSearch', () => {
     await waitFor(() => expect(fake.contents.get).toHaveBeenCalledTimes(8));
   });
 
+  it('reads a notebook again after it is saved here', async () => {
+    const tree = structuredClone(TREE);
+    const fake = fakeServices(tree);
+    const contents = fake.services.contents as Contents.IManager;
+    const { result, rerender } = renderHook(({ q }) => useFileSearch(contents, '', q, true), {
+      initialProps: { q: 'volcano' },
+    });
+    await waitFor(() =>
+      expect(result.current.matches.map(m => m.item.path)).toEqual(['moons/Io.ipynb']),
+    );
+    // Saved with new text; the reused listing still has the old last_modified.
+    const io = tree.moons.find(i => i.name === 'Io.ipynb')!;
+    io.content = nb('geyser');
+    io.last_modified = '2';
+    act(() =>
+      fake.contents.fileChanged.emit({
+        type: 'save',
+        oldValue: null,
+        newValue: { path: 'moons/Io.ipynb' },
+      }),
+    );
+    rerender({ q: 'geyser' });
+    await waitFor(() =>
+      expect(result.current.matches.map(m => m.item.path)).toEqual(['moons/Io.ipynb']),
+    );
+  });
+
   it('does not show the last query’s matches while the next one runs', async () => {
     const { contents } = contentsOf();
     const { result, rerender } = renderHook(({ q }) => useFileSearch(contents, '', q, false), {

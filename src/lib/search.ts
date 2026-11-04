@@ -228,8 +228,12 @@ export function useFileSearch(
   useEffect(() => {
     if (!contents) return;
     const onChange = (_: unknown, change: Contents.IChangedArgs) => {
-      // A save doesn't change the tree; the source cache checks last_modified.
-      if (change.type === 'save') return;
+      // A save doesn't change the tree, but the listing's last_modified is
+      // now old, so drop the saved file's sources and read it again.
+      if (change.type === 'save') {
+        if (change.newValue?.path) cache.current.delete(change.newValue.path);
+        return;
+      }
       forget();
       setChanges(n => n + 1);
     };
