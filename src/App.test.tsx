@@ -48,11 +48,13 @@ vi.mock('./components/NotebookPane', async () => {
 });
 
 const { App } = await import('./App');
+const { resetOnboardingForTests } = await import('./lib/onboarding');
 
 beforeEach(() => {
   mocks.controller = undefined;
   mocks.signedInHere.mockReset().mockResolvedValue(false);
   localStorage.clear();
+  resetOnboardingForTests();
   sessionStorage.clear();
   history.replaceState(null, '', '/');
   document.title = 'Ganymede';
@@ -470,6 +472,16 @@ describe('App', () => {
       'moons/Ganymede Tour 2.ipynb',
       expect.objectContaining({ type: 'notebook', format: 'json' }),
     );
+  });
+
+  it('offers Show Folder only while the sidebar is closed', async () => {
+    history.replaceState(null, '', '/?kernels=server');
+    mocks.connect.mockResolvedValue(fakeBackend(fakeServices({ '': [] }).services));
+    render(<App />);
+
+    // A wide window starts with the sidebar open, so the button would do nothing.
+    expect(await screen.findByText('Welcome to Ganymede')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Show Folder' })).not.toBeInTheDocument();
   });
 
   it('does not welcome again once dismissed', async () => {

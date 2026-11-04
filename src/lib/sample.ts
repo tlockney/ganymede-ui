@@ -106,8 +106,9 @@ const CELLS: Cell[] = [
 
 /**
  * The kernel the sample asks for: a TypeScript one the backend has (its
- * default if that is one, then cdp-kernel's), else the default, else
- * cdp-kernel's browser kernel, which the pane then shows as not installed.
+ * default if that is one, then cdp-kernel's), else cdp-kernel's browser
+ * kernel, which the pane then shows as not installed with Pick a Kernel.
+ * Never a kernel in another language, where every cell would fail.
  */
 export function sampleKernel(specs?: KernelSpec.ISpecModels | null): Kernelspec {
   const all = Object.values(specs?.kernelspecs ?? {}).flatMap(k => (k ? [k] : []));
@@ -117,7 +118,6 @@ export function sampleKernel(specs?: KernelSpec.ISpecModels | null): Kernelspec 
     (byDefault && isTs(byDefault) ? byDefault : undefined) ??
     all.find(k => isTs(k) && k.name.startsWith('cdp-')) ??
     all.find(isTs) ??
-    byDefault ??
     CDP_BROWSER;
   return { name: pick.name, display_name: pick.display_name, language: pick.language };
 }
@@ -163,7 +163,8 @@ export async function freePath(
 /**
  * Writes a copy of the sample into `dir` under a free name, through the
  * contents API, and returns its path. An earlier copy, perhaps edited, is
- * left as it is.
+ * left as it is; only two windows copying at the same moment could pick
+ * the same name, and then the later save wins.
  */
 export async function copySample(
   contents: Contents.IManager,

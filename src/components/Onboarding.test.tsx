@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { BackendConfig } from '../lib/backends';
 import { fakeBackend, fakeServices } from '../test/fakes';
+import { resetOnboardingForTests } from '../lib/onboarding';
 import { Onboarding } from './Onboarding';
 
 const backend = (config?: BackendConfig) => fakeBackend(fakeServices().services, config);
@@ -17,7 +18,10 @@ function show(props: Partial<Parameters<typeof Onboarding>[0]> = {}) {
   return { ...callbacks, ...result };
 }
 
-beforeEach(() => localStorage.clear());
+beforeEach(() => {
+  localStorage.clear();
+  resetOnboardingForTests();
+});
 afterEach(() => vi.restoreAllMocks());
 
 describe('Onboarding', () => {
@@ -96,9 +100,13 @@ describe('Onboarding', () => {
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new Error('SecurityError');
     });
-    show();
+    const { unmount } = show();
     expect(screen.getByText('Welcome to Ganymede')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Don’t Show Again' }));
+    expect(screen.queryByText('Welcome to Ganymede')).not.toBeInTheDocument();
+    // Still gone when the empty window comes back, e.g. after closing a notebook.
+    unmount();
+    show();
     expect(screen.queryByText('Welcome to Ganymede')).not.toBeInTheDocument();
   });
 });

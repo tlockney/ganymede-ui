@@ -7,7 +7,11 @@ import type { Backend } from './backends';
  */
 const KEY = 'ganymede-ui:onboarding';
 
+/** Set on dismissal, so it holds for this page when storage is off. */
+let dismissedHere = false;
+
 export function onboardingDismissed(): boolean {
+  if (dismissedHere) return true;
   try {
     return localStorage.getItem(KEY) === 'dismissed';
   } catch {
@@ -15,7 +19,13 @@ export function onboardingDismissed(): boolean {
   }
 }
 
+/** For tests: forget a dismissal kept only in this page. */
+export function resetOnboardingForTests(): void {
+  dismissedHere = false;
+}
+
 export function dismissOnboarding(): void {
+  dismissedHere = true;
   try {
     localStorage.setItem(KEY, 'dismissed');
   } catch {

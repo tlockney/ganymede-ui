@@ -102,6 +102,8 @@ export function App() {
   /** Why the last New Notebook failed, until dismissed or the next one. */
   const [newError, setNewError] = useState<string>();
   const [backend, setBackend] = useState<Backend>();
+  const backendRef = useRef(backend);
+  backendRef.current = backend;
   const [error, setError] = useState<string>();
   const [connecting, setConnecting] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(() => !config);
@@ -481,12 +483,14 @@ export function App() {
                 onNew={() => void newNotebook(folder)}
                 onConnect={() => setSheetOpen(true)}
                 folder={folder}
-                onShowFolder={native ? undefined : () => setSidebarOpen(true)}
+                onShowFolder={native || sidebarOpen ? undefined : () => setSidebarOpen(true)}
                 onOpenSample={
                   backend &&
                   (async () => {
                     const { contents, kernelspecs } = backend.services;
-                    setOpenPath(await copySample(contents, folder, kernelspecs.specs));
+                    const path = await copySample(contents, folder, kernelspecs.specs);
+                    // Not if the backend changed while the copy ran.
+                    if (backendRef.current === backend) setOpenPath(path);
                   })
                 }
               />

@@ -68,12 +68,12 @@ describe('sampleKernel', () => {
     });
   });
 
-  it('falls back to the default, then to cdp-kernel’s browser kernel', () => {
+  it('never asks for a kernel in another language, falling back to cdp-kernel’s browser kernel', () => {
     const python = {
       default: 'python3',
       kernelspecs: { python3: spec('python3', 'python') },
     } as KernelSpec.ISpecModels;
-    expect(sampleKernel(python).name).toBe('python3');
+    expect(sampleKernel(python).name).toBe('cdp-browser');
     expect(sampleKernel(undefined).name).toBe('cdp-browser');
   });
 });
