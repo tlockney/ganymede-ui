@@ -99,6 +99,67 @@ hardened runtime does not stop it starting kernel processes or shells
 WebKit's own processes, which Apple signs. A notarization failure names
 the binary and the reason in the printed log.
 
+## The iPad and iPhone app (TestFlight)
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+The `ios` job in `release.yml` builds the `Ganymede-iOS` scheme the same
+way as the `macos` job, then runs `apple/scripts/release-ios.sh`, which:
+
+1. imports the Apple Distribution certificate into a temporary keychain
+   and installs the App Store provisioning profile, after checking that
+   the profile is for `<team>.com.ganymede-server.Ganymede` and lists no
+   devices;
+2. archives the Release build with the version from `package.json` and
+   the run number as the build number, and checks the version and icon;
+3. exports it for App Store distribution and uploads it to App Store
+   Connect (`xcodebuild -exportArchive` with destination `upload` and the
+   API key), marked for internal TestFlight testing only.
+
+App Store Connect then processes the build, which takes a few minutes,
+and it appears under TestFlight for the internal testing group. External
+testing needs App Review, which would weigh rule 2.5.2 (apps that run
+code), so the builds stay internal.
+
+It reads the team and API key secrets from the table above, and these:
+
+| Secret                     | What it is                                                                   |
+| -------------------------- | ---------------------------------------------------------------------------- |
+| `IOS_CERTIFICATE_P12`      | An Apple Distribution certificate and private key, base64                    |
+| `IOS_CERTIFICATE_PASSWORD` | The .p12 password                                                            |
+| `IOS_PROVISIONING_PROFILE` | An App Store provisioning profile for `com.ganymede-server.Ganymede`, base64 |
+
+Without those three, the script signs automatically through the API key
+(`-allowProvisioningUpdates`), which works only if the key has the Admin
+role, and lets Xcode create certificates and profiles on its own.
+
+Set up once, outside the repo:
+
+1. Register the explicit App ID `com.ganymede-server.Ganymede` under
+   Certificates, Identifiers & Profiles.
+2. Create an Apple Distribution certificate, export it with its private
+   key from Keychain Access as a .p12, and store it with `base64 -i
+cert.p12 | pbcopy` as `IOS_CERTIFICATE_P12`.
+3. Create an App Store Connect provisioning profile (Distribution) for
+   that App ID and certificate, and store it the same way as
+   `IOS_PROVISIONING_PROFILE`. It lasts a year, as the certificate does;
+   the job prints its expiry date.
+4. Create the app in App Store Connect (iOS platform, that bundle ID) and
+   an internal testing group under TestFlight.
+
+Each build waits under TestFlight for the export compliance answer until
+it's given. The app's own networking is HTTPS/TLS and SSH, both standard
+encryption; once you've settled that answer, setting
+`ITSAppUsesNonExemptEncryption` in `apple/project.yml` skips the question.
+
+To try it without releasing, start `release.yml` by hand on a branch, as
+for the Mac app. Unlike the Mac app, that run uploads to TestFlight. App
+Store Connect rejects a build number it already has for the version, and
+a rerun keeps its run number, so once a run has uploaded, start a new run
+rather than rerunning it.
+
 ## When it fails
 
 Find the failed `release.yml` run under the tag in the Actions tab. The
@@ -110,8 +171,8 @@ workflow itself, depending on how far it got.
 
 A flaky runner, a network error, an npm download that timed out, or
 Apple's notary service being slow or down: the code is fine. An expired
-certificate or API key, or a wrong secret, fails the `macos` job with a
-message naming it; replace the secret, then rerun. Rerun the failed jobs from the run's page, or start a fresh
+certificate, profile or API key, or a wrong secret, fails the `macos` or
+`ios` job with a message naming it; replace the secret, then rerun. Rerun the failed jobs from the run's page, or start a fresh
 run on the tag:
 
 ```sh

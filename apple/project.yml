@@ -231,6 +231,8 @@ targets:
       - path: build/web
         type: folder
         buildPhase: resources
+      # The app icon and the privacy manifest App Store Connect checks (#188).
+      - path: Resources/iOS
     dependencies:
       - framework: build/GanymedeFFI.xcframework
         embed: false
@@ -285,6 +287,11 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.ganymede-server.Ganymede
         PRODUCT_NAME: Ganymede
         TARGETED_DEVICE_FAMILY: '1,2'
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # release-ios.sh names its App Store profile here, for this target
+        # only: on the command line it would reach the packages' targets,
+        # which can't take one. Empty otherwise.
+        PROVISIONING_PROFILE_SPECIFIER: $(GANYMEDE_IOS_PROFILE)
   GanymedeTests:
     type: bundle.unit-test
     platform: macOS
