@@ -12,7 +12,8 @@ The API comes from
 [ganymede-device](https://github.com/tlockney/ganymede-device), which has
 the TypeScript package, the app's Swift side, and the
 [design and phases](https://github.com/tlockney/ganymede-device/blob/main/docs/plan.md).
-It is early: today it has the text clipboard and nothing else.
+It is early: today it has device details, the clipboard (text and
+images), haptics and opening URLs.
 
 ## Where `device` exists
 
@@ -50,12 +51,32 @@ For editor types, add this line once to a cell or a project file:
 
 ## Methods
 
-| Method                             | Returns                    | In the app | Remote kernel | Browser                |
-| ---------------------------------- | -------------------------- | ---------- | ------------- | ---------------------- |
-| `device.info()`                    | platform, version, methods | yes        | planned       | planned                |
-| `device.has(method)`               | `boolean`, synchronously   | yes        | planned       | planned                |
-| `device.clipboard.readText()`      | `string`, or `null`        | yes        | planned       | planned, after a click |
-| `device.clipboard.writeText(text)` | nothing                    | yes        | planned       | planned, after a click |
+| Method                               | Returns                    | In the app | Remote kernel | Browser                |
+| ------------------------------------ | -------------------------- | ---------- | ------------- | ---------------------- |
+| `device.info()`                      | platform, version, methods | yes        | planned       | planned                |
+| `device.has(method)`                 | `boolean`, synchronously   | yes        | planned       | planned                |
+| `device.clipboard.readText()`        | `string`, or `null`        | yes        | planned       | planned, after a click |
+| `device.clipboard.writeText(text)`   | nothing                    | yes        | planned       | planned, after a click |
+| `device.clipboard.readImage()`       | PNG bytes, or `null`       | yes        | planned       | planned, after a click |
+| `device.clipboard.writeImage(image)` | nothing                    | yes        | planned       | planned, after a click |
+| `device.haptics.impact(style)`       | nothing                    | iPhone     | planned       | no                     |
+| `device.haptics.notification(type)`  | nothing                    | iPhone     | planned       | no                     |
+| `device.haptics.selection()`         | nothing                    | iPhone     | planned       | no                     |
+| `device.openURL(url, { inApp })`     | nothing                    | yes        | planned       | planned                |
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, which has only `info`, `has` and the text
+> clipboard.
+
+`writeImage` takes PNG, JPEG, GIF, HEIC or TIFF bytes (a `Uint8Array`,
+`ArrayBuffer` or `Blob`). Haptics are there only on an iPhone: iPads and
+Macs have no Taptic Engine, so `device.has('haptics.impact')` is false
+on them. `impact` takes `light`, `medium` (the default), `heavy`,
+`soft` or `rigid`; `notification` takes `success`, `warning` or
+`error`. `openURL` opens `http`, `https` and `mailto` URLs only; with
+`inApp: true` an iPhone or iPad shows a web page in a Safari view
+instead of switching to Safari, and a Mac ignores it.
 
 A browser lets a page use the clipboard only after a click, so there the
 page will show a prompt to click first. On iPadOS, reading the clipboard
@@ -71,8 +92,18 @@ await device.info();
 
 `platform` is `"ipados"` on an iPad and `"ios"` on an iPhone.
 
-Next come methods that need no permission: device details, haptics,
-images on the clipboard, alerts and pickers, share and open URL. After
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+`info()` also reads the device's state when it is called: the hardware
+`model` (such as `"iPad13,4"`), `isPad`, `screen` (`width` and `height`
+in points, and `scale`), `battery` (`level` from 0 to 1, or `null` when
+unknown, and `charging`; absent on a Mac without one), `darkMode` and
+`locale` (such as `"en-US"`).
+
+Next come the rest of the methods that need no permission: alerts and
+pickers, share, files and sounds. After
 those, methods behind a system permission, such as location and
 notifications. The
 [phases](https://github.com/tlockney/ganymede-device/blob/main/docs/plan.md#phases)
