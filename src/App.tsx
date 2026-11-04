@@ -82,12 +82,12 @@ function stripLaunchParams(): void {
   history.replaceState(null, '', window.location.pathname + (rest ? `?${rest}` : ''));
 }
 
-/** Whether two configs reach the same notebooks, whatever the token. */
 /** The Apple app's own server: the one this page came from. */
 function isAppServer(config: BackendConfig): boolean {
   return config.kind === 'ganymede' && config.url === '';
 }
 
+/** Whether two configs reach the same notebooks, whatever the token. */
 function sameBackend(a: BackendConfig, b: BackendConfig): boolean {
   if (a.kind !== 'ganymede' || b.kind !== 'ganymede') return a.kind === b.kind;
   return a.url === b.url && a.kernels === b.kernels;
