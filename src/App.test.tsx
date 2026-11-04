@@ -248,6 +248,64 @@ describe('App', () => {
     vi.unstubAllGlobals();
   });
 
+  it('tells the app what is running and shuts kernels down for it', async () => {
+    const states: Record<string, unknown>[] = [];
+    vi.stubGlobal('webkit', {
+      messageHandlers: {
+        state: { postMessage: (m: Record<string, unknown>) => states.push(m) },
+      },
+    });
+    mocks.controller = { dirty: false, save: vi.fn(async () => true) };
+    const fake = fakeServices({ '': [{ name: 'Io.ipynb', type: 'notebook' }] });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    history.replaceState(null, '', '/?kernels=server&open=Io.ipynb');
+    render(<App />);
+    await waitFor(() => expect(states.at(-1)).toMatchObject({ path: 'Io.ipynb', running: [] }));
+
+    const session = (id: string, path: string) =>
+      ({
+        id,
+        path,
+        name: '',
+        type: 'notebook',
+        kernel: { id: `k-${id}`, name: 'python3' },
+      }) as never;
+    act(() =>
+      fake.setRunning([
+        session('s1', 'Io.ipynb'),
+        session('s2', 'Europa.ipynb'),
+        session('s3', 'Callisto.ipynb'),
+      ]),
+    );
+    await waitFor(() =>
+      expect(states.at(-1)?.running).toEqual([
+        { id: 's1', path: 'Io.ipynb', kernel: 'Python 3', state: null },
+        { id: 's2', path: 'Europa.ipynb', kernel: 'Python 3', state: null },
+        { id: 's3', path: 'Callisto.ipynb', kernel: 'Python 3', state: null },
+      ]),
+    );
+
+    const run = window.ganymede!.command;
+    // By id, or by path as the app passes it.
+    expect(await run('shutdown-kernel', 's2')).toBe(true);
+    expect(fake.sessions.shutdown).toHaveBeenLastCalledWith('s2');
+    expect(await run('shutdown-kernel', '/Callisto.ipynb')).toBe(true);
+    expect(fake.sessions.shutdown).toHaveBeenLastCalledWith('s3');
+    expect(await run('shutdown-kernel', 'nothing')).toBe(false);
+    // All but the open notebook's.
+    fake.sessions.shutdown.mockClear();
+    expect(await run('shutdown-others')).toBe(true);
+    expect(fake.sessions.shutdown.mock.calls).toEqual([['s2'], ['s3']]);
+    // A failed shutdown is false, not a rejection, and the rest still run.
+    fake.sessions.shutdown.mockClear();
+    fake.sessions.shutdown.mockRejectedValueOnce(new Error('gone'));
+    expect(await run('shutdown-others')).toBe(false);
+    expect(fake.sessions.shutdown.mock.calls).toEqual([['s2'], ['s3']]);
+    fake.sessions.shutdown.mockRejectedValueOnce(new Error('gone'));
+    expect(await run('shutdown-kernel', 's2')).toBe(false);
+    vi.unstubAllGlobals();
+  });
+
   it('opens other files in the app’s editor, only on the app’s own server', async () => {
     const opened: unknown[] = [];
     vi.stubGlobal('webkit', {

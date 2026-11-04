@@ -1,3 +1,4 @@
+import type { KernelSpec, Session } from '@jupyterlab/services';
 /**
  * The Mac app's document window (#132): the page tells it which notebook is
  * open and whether it has unsaved edits, through the `document` script
@@ -25,12 +26,15 @@ export type NativeHooks = {
  * The commands the page runs for the app beside the notebook's own (the
  * shortcuts table's ids, such as `run-cell` or `move-up`). Those marked
  * `arg` take one: a path, a folder, a new name, a cell type or a kernel
- * name.
+ * name. `shutdown-kernel` takes a running session's id or its notebook's
+ * path; `shutdown-others` shuts down every kernel but the open notebook's.
  */
 export const PAGE_COMMANDS = {
   open: 'arg',
   close: '',
   rename: 'arg',
+  'shutdown-kernel': 'arg',
+  'shutdown-others': '',
   'new-notebook': 'arg',
   save: '',
   download: '',
@@ -71,7 +75,35 @@ export type PageState = {
   kernels: { name: string; displayName: string }[];
   /** Where kernels run: the backend's label and detail, or null before it connects. */
   backend: { label: string; detail: string } | null;
+  /** The backend's running sessions: each notebook with a kernel (#225). */
+  running: RunningSession[];
 };
+
+export type RunningSession = {
+  id: string;
+  /** The notebook's server path. */
+  path: string;
+  /** The kernel's display name, or its name when it has no spec here. */
+  kernel: string | null;
+  /** The kernel's execution state as the server last reported it, or null. */
+  state: string | null;
+};
+
+/** `PageState.running` from the backend's sessions. */
+export function runningSessions(
+  sessions: Iterable<Session.IModel>,
+  specs?: KernelSpec.ISpecModels | null,
+): RunningSession[] {
+  return [...sessions].map(s => {
+    const name = s.kernel?.name;
+    return {
+      id: s.id,
+      path: s.path,
+      kernel: name ? (specs?.kernelspecs[name]?.display_name ?? name) : null,
+      state: (s.kernel as { execution_state?: string } | null)?.execution_state ?? null,
+    };
+  });
+}
 
 declare global {
   interface Window {
