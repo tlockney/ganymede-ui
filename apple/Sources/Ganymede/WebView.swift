@@ -36,17 +36,40 @@ struct WebView: UIViewRepresentable {
     var page: PageModel? = nil
     /// Opens a text file from the sidebar, by its path on the server (#122).
     var onOpenFile: ((String) -> Void)? = nil
+    /// Keeps the page alive while it is off screen (the iPhone, #209).
+    var store: WebViewStore? = nil
 
-    func makeCoordinator() -> WebViewCoordinator { WebViewCoordinator() }
+    func makeCoordinator() -> WebViewCoordinator { store?.coordinator ?? WebViewCoordinator() }
 
     func makeUIView(context: Context) -> WKWebView {
-        context.coordinator.makeWebView()
+        store?.webView ?? context.coordinator.makeWebView()
     }
 
     func updateUIView(_ view: WKWebView, context: Context) {
         context.coordinator.page = page
         context.coordinator.onOpenFile = onOpenFile
         context.coordinator.load(url, in: view)
+    }
+}
+#endif
+
+#if os(iOS)
+/// One page that outlives the views showing it. On the iPhone the notebook
+/// is pushed onto the folder list and popped off it again (#209); the page,
+/// its state and the app's commands go on while the list shows, so popping
+/// doesn't reload it and the list can read `PageModel` and open notebooks.
+@MainActor
+final class WebViewStore: ObservableObject {
+    let coordinator = WebViewCoordinator()
+    private(set) lazy var webView: WKWebView = coordinator.makeWebView()
+
+    /// Loads the page off screen, if it isn't already.
+    func load(_ url: URL, page: PageModel, onOpenFile: @escaping (String) -> Void) {
+        let view = webView
+        // After the view exists: setting `page` hands it the view.
+        coordinator.page = page
+        coordinator.onOpenFile = onOpenFile
+        coordinator.load(url, in: view)
     }
 }
 #endif

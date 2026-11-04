@@ -42,6 +42,10 @@ struct ContentView: View {
     @StateObject private var pageModel = PageModel()
     /// The iPad's sidebar and notebook columns (#208).
     @State private var columns = NavigationSplitViewVisibility.automatic
+    /// The iPhone's page, kept while the folder list shows (#209).
+    @StateObject private var phonePage = WebViewStore()
+    /// The iPhone's screens over the folder list: the notebook, or none.
+    @State private var phonePath: [PhoneScreen] = []
     #endif
 
     var body: some View {
@@ -85,7 +89,27 @@ struct ContentView: View {
         .focusedSceneObject(pageModel)
         #else
         Group {
-            if drawsNativeChrome {
+            if isPhone {
+                // The iPhone: the folder list, and the notebook pushed onto
+                // it (#209). The page lives in `phonePage`, so it keeps
+                // running while the list shows and the list can open
+                // notebooks in it.
+                NavigationStack(path: $phonePath) {
+                    IPadSidebar(folder: model.root, page: pageModel, openFile: openEditor) {
+                        phonePath = [.notebook]
+                    }
+                    .toolbar {
+                        ToolbarItemGroup(placement: .navigationBarLeading) { appButtons }
+                    }
+                    .navigationDestination(for: PhoneScreen.self) { _ in notebook }
+                }
+                .task { model.startIfNeeded() }
+                .task(id: model.url) {
+                    if let url = model.url {
+                        phonePage.load(url, page: pageModel, onOpenFile: openEditor)
+                    }
+                }
+            } else if drawsNativeChrome {
                 // The iPad draws the sidebar and toolbar; the page shows the
                 // notebook (#208).
                 GeometryReader { window in
@@ -180,11 +204,16 @@ struct ContentView: View {
     #else
     private var page: URL? { model.url }
 
-    /// The page with its navigation bar: one title, the notebook's on the
-    /// iPad, and the app's own buttons beside the notebook's.
+    /// The iPhone's screens over its folder list (#209).
+    enum PhoneScreen: Hashable { case notebook }
+
+    /// The page with its navigation bar: one title, the notebook's, and the
+    /// app's own buttons beside the notebook's (on the iPhone, on the list).
     private var notebook: some View {
         content
-            .ignoresSafeArea(.container, edges: .bottom)
+            // Under the home indicator, except above the iPhone's bottom
+            // toolbar.
+            .ignoresSafeArea(.container, edges: isPhone ? [] : .bottom)
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -202,30 +231,37 @@ struct ContentView: View {
                             }
                         }
                     }
-                    IPadNotebookToolbar(page: pageModel)
+                    IPadNotebookToolbar(page: pageModel, bottom: isPhone)
                 }
-                ToolbarItemGroup(placement: .primaryAction) {
-                    TerminalMenu(model: model) { request in
-                        // A scene of its own beside the notebook on iPad,
-                        // full screen where there is one scene (iPhone).
-                        if UIApplication.shared.supportsMultipleScenes {
-                            openWindow(value: request)
-                        } else {
-                            terminal = request
-                        }
-                    }
-                    Button {
-                        settings = true
-                    } label: {
-                        Label("Remotes", systemImage: "server.rack")
-                    }
-                    Button {
-                        picking = true
-                    } label: {
-                        Label("Open Folder", systemImage: "folder")
-                    }
+                // On the iPhone these are on the folder list.
+                if !isPhone {
+                    ToolbarItemGroup(placement: .primaryAction) { appButtons }
                 }
             }
+    }
+
+    /// The app's own buttons: terminals, remotes, the notebook folder.
+    @ViewBuilder
+    private var appButtons: some View {
+        TerminalMenu(model: model) { request in
+            // A scene of its own beside the notebook on iPad,
+            // full screen where there is one scene (iPhone).
+            if UIApplication.shared.supportsMultipleScenes {
+                openWindow(value: request)
+            } else {
+                terminal = request
+            }
+        }
+        Button {
+            settings = true
+        } label: {
+            Label("Remotes", systemImage: "server.rack")
+        }
+        Button {
+            picking = true
+        } label: {
+            Label("Open Folder", systemImage: "folder")
+        }
     }
 
     private var title: String {
@@ -255,7 +291,7 @@ struct ContentView: View {
                     openWindow(value: EditorRequest(path: path))
                 }
                 #else
-                WebView(url: url, page: pageModel, onOpenFile: openEditor)
+                WebView(url: url, page: pageModel, onOpenFile: openEditor, store: isPhone ? phonePage : nil)
                 #endif
             } else if let error = model.error {
                 VStack(spacing: 12) {

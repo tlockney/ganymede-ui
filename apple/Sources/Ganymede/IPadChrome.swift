@@ -4,12 +4,17 @@ import UIKit
 
 // The iPad's own sidebar, toolbar and key commands (#208), as the Mac has
 // (#206, #207). The page shows only the notebook (`chrome=native`); these
-// read `PageModel.state` and run its commands. The iPhone keeps the
-// page's own chrome until #209.
+// read `PageModel.state` and run its commands. The iPhone uses the same
+// sidebar as its root screen and pushes the notebook onto it (#209).
 
-/// Whether this device draws the notebook's chrome natively: the iPad.
+/// Whether this device draws the notebook's chrome natively: the iPad and
+/// the iPhone.
 @MainActor
-var drawsNativeChrome: Bool { UIDevice.current.userInterfaceIdiom == .pad }
+var drawsNativeChrome: Bool { [.pad, .phone].contains(UIDevice.current.userInterfaceIdiom) }
+
+/// Whether this is a phone: one column, the notebook pushed onto the list.
+@MainActor
+var isPhone: Bool { UIDevice.current.userInterfaceIdiom == .phone }
 
 // MARK: - Sidebar
 
@@ -152,6 +157,7 @@ struct IPadSidebar: View {
 
     private func newNotebook(in dir: URL) {
         page.run("new-notebook", arg: FolderEntry.serverPath(dir, root: folder))
+        opened()
     }
 
     private func newFolder(in parent: URL) {
@@ -313,9 +319,11 @@ private struct IPadFolderContents: View {
 /// on their own, the rest in a menu.
 struct IPadNotebookToolbar: ToolbarContent {
     @ObservedObject var page: PageModel
+    /// In the bottom toolbar, in thumb reach: the iPhone (#209).
+    var bottom = false
 
     var body: some ToolbarContent {
-        ToolbarItemGroup(placement: .navigationBarTrailing) {
+        ToolbarItemGroup(placement: bottom ? .bottomBar : .navigationBarTrailing) {
             Button { page.run("run") } label: { Label("Run", systemImage: "play.fill") }
                 .disabled(!page.state.hasNotebook)
             Button { page.run("run-all") } label: { Label("Run All", systemImage: "forward.fill") }
