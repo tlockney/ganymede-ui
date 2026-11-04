@@ -48,14 +48,14 @@ struct GanymedeApp: App {
                 // The page's agent settings (#166), also under Settings ›
                 // Agent; ⌘, is the app's own Settings window (#206).
                 Button("Agent Settings…") {
-                    NotificationCenter.default.post(name: .showAgentSettings, object: nil)
+                    NotebookWindows.show(.showAgentSettings)
                 }
                 .keyboardShortcut(",", modifiers: [.command, .option])
                 DefaultAppCommand()
             }
             CommandGroup(replacing: .help) {
                 Button("Keyboard Shortcuts") {
-                    NotificationCenter.default.post(name: .showShortcuts, object: nil)
+                    NotebookWindows.show(.showShortcuts)
                 }
             }
         }

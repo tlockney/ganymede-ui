@@ -55,7 +55,7 @@ struct ContentView: View {
             content
         }
         .toolbar {
-            NotebookToolbar(page: pageModel, folder: sidebarRoot)
+            NotebookToolbar(page: pageModel, document: document, folder: sidebarRoot)
         }
         .navigationSubtitle(pageModel.state.subtitle)
         .frame(minWidth: 720, minHeight: 480)

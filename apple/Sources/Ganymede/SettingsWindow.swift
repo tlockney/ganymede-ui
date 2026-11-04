@@ -36,9 +36,7 @@ private struct GeneralSettings: View {
         Form {
             Section {
                 LabeledContent("Notebooks") {
-                    Button("Make Ganymede the Default App") {
-                        Task { await DefaultApp.claimNotebooks() }
-                    }
+                    DefaultAppCommand()
                 }
                 Text("Double-clicking an .ipynb file in the Finder then opens it here.")
                     .font(.caption)
@@ -50,19 +48,27 @@ private struct GeneralSettings: View {
     }
 }
 
-/// A tab for settings the page keeps: a button opens them in the front
-/// notebook window (its main window, since Settings is the key window).
+/// A tab for settings the page keeps: a button brings the front notebook
+/// window forward and opens them there. With no notebook window open, the
+/// button is off.
 private struct PageSettings: View {
     let text: String
     let button: String
     let notification: Notification.Name
+    @State private var hasNotebook = NotebookWindows.front != nil
 
     var body: some View {
         VStack(spacing: 12) {
             Text(text).foregroundStyle(.secondary).multilineTextAlignment(.center)
-            Button(button) {
-                NotificationCenter.default.post(name: notification, object: nil)
-            }
+            Button(button) { NotebookWindows.show(notification) }
+                .disabled(!hasNotebook)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
+            hasNotebook = NotebookWindows.front != nil
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.willCloseNotification)) { _ in
+            // The closing window is still listed; check once it has gone.
+            DispatchQueue.main.async { hasNotebook = NotebookWindows.front != nil }
         }
         .padding(24)
         .frame(maxWidth: .infinity)

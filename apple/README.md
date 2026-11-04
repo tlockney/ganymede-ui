@@ -62,9 +62,13 @@ built from the same sources (see
   process kernels can't reach the app.
 - Settings (⌘,) has tabs. General makes Ganymede the default app for
   notebooks. Agent and Shortcuts open the page's agent settings and
-  shortcut list in the front notebook window (unreleased). Remotes keeps a
+  shortcut list in the front notebook window. Remotes keeps a
   list of remotes: Jupyter or Ganymede servers, SSH hosts, or both. Kernels run on this Mac or, as on iPadOS, on one
   remote's server. Tokens are kept in the keychain.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release, which opens Remotes alone in Settings.
 - Ganymede > Agent Settings… (⌥⌘,) opens the page's agent settings. The
   agent's API keys are kept in the keychain too.
 - File > New Terminal (⌃⇧`) opens a shell from the app's own server in
