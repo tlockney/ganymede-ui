@@ -10,6 +10,18 @@ Single-letter shortcuts such as `M` (make the cell Markdown) work only in
 command mode; in edit mode they type the letter. The sheet says this too,
 and the toolbar's cell type picker changes a cell's type with the mouse.
 
+## On a touch screen
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+While you edit a cell with the on-screen keyboard (an iPhone, or an iPad
+without a keyboard attached), a bar above the keyboard has Run (as
+Shift+Enter), esc, tab, the four arrows, and the symbols code needs most.
+They do what the keys do: tab completes or indents, esc leaves edit mode.
+Swipe the bar sideways for more symbols.
+
 ## Changing a shortcut
 
 Every shortcut can be rebound in the same sheet. On a row, + records a
