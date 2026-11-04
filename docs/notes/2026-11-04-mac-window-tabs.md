@@ -18,5 +18,12 @@ AppKit's own window tabs rather than a tab bar drawn inside the window.
   `WindowReader` sees it, which is too late for AppKit to tab it, so
   `WorkspaceTabs.join` takes the main window at that moment and adds the
   new window to it on the next run loop.
-- File › New Window sets `nextOpensAlone`, so that window opens untabbed
-  and then accepts tabs.
+- `WindowGroup(for:)` brings forward a window already showing the value
+  it is opened with, so File › New Tab opened nothing when the front
+  window showed that folder. New Tab and New Window now open the group
+  by id (`openWindow(id:)`), which always makes a window. The folder,
+  and for New Window "open alone", travel in a request that the new
+  window reads as it opens; one no window takes lapses after 2 s, so it
+  can't make a later window open untabbed.
+- Windows restored at launch are not added to each other by hand, so
+  separate windows stay separate across a relaunch.

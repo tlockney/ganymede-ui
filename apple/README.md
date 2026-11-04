@@ -18,9 +18,9 @@ built from the same sources (see
   iPad it serves the notebook folder. The web view loads the URL; the
   token becomes a login cookie.
 - On the Mac, double-clicking an `.ipynb` file in the Finder (or Open
-  With > Ganymede) opens it in its own window; opening it again brings
-  that window to the front. File > Open… (⌘O) opens notebooks, File >
-  Open Folder… (⇧⌘O) a folder, each in a new window; a new window (⌥⌘N)
+  With > Ganymede) opens it in a new tab (see tabs below); opening it
+  again brings that tab to the front. File > Open… (⌘O) opens notebooks,
+  File > Open Folder… (⇧⌘O) a folder, each in a new tab; a new window (⌥⌘N)
   shows the last folder opened, your home folder at first.
 - A notebook window behaves like a document window. Its title bar has the
   file's icon (drag it, or ⌘-click it for the folders above) and a dot
@@ -59,7 +59,10 @@ built from the same sources (see
   window, with the system's window tabs: drag a tab out to make it a
   window, or choose Window › Merge All Windows to bring windows back
   together. Each tab keeps its own toolbar. Right-click a notebook or
-  folder in the sidebar and choose Open in New Tab.
+  folder in the sidebar and choose Open in New Tab. Notebooks opened from
+  the Finder or File › Open… open as tabs too. Ganymede uses tabs whatever
+  System Settings › Desktop & Dock › "Prefer tabs when opening
+  documents" says; windows restored at launch come back as they were.
 
   > [!NOTE]
   > **Unreleased.** Available only from a build of `main` (HEAD), not in

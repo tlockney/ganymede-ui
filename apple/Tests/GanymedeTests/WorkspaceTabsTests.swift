@@ -9,11 +9,6 @@ final class WorkspaceTabsTests: XCTestCase {
         NSWindow(contentRect: NSRect(x: 0, y: 0, width: 200, height: 100), styleMask: [.titled], backing: .buffered, defer: true)
     }
 
-    override func tearDown() {
-        WorkspaceTabs.nextOpensAlone = false
-        super.tearDown()
-    }
-
     func testAJoinedWindowPrefersTabsWithTheSharedIdentifier() {
         let w = window()
         WorkspaceTabs.join(w)
@@ -21,12 +16,10 @@ final class WorkspaceTabsTests: XCTestCase {
         XCTAssertEqual(w.tabbingMode, .preferred)
     }
 
-    func testNewWindowOpensAloneOnceThenAcceptsTabs() {
-        WorkspaceTabs.nextOpensAlone = true
+    func testAWindowOpenedAloneRefusesTabsOnlyAsItOpens() {
         let alone = window()
-        WorkspaceTabs.join(alone)
+        WorkspaceTabs.join(alone, alone: true)
         XCTAssertEqual(alone.tabbingMode, .disallowed)
-        XCTAssertFalse(WorkspaceTabs.nextOpensAlone, "only the next window")
         let next = window()
         WorkspaceTabs.join(next)
         XCTAssertEqual(next.tabbingMode, .preferred)
@@ -35,6 +28,30 @@ final class WorkspaceTabsTests: XCTestCase {
         DispatchQueue.main.async { opened.fulfill() }
         wait(for: [opened], timeout: 1)
         XCTAssertEqual(alone.tabbingMode, .preferred)
+    }
+
+    func testNewTabAlwaysOpensAWindowAndLeavesItsRequestForIt() {
+        var opened: [String] = []
+        let folder = URL(fileURLWithPath: "/tmp/moons")
+        WorkspaceTabs.open(folder: folder, alone: true) { opened.append($0) }
+        XCTAssertEqual(opened, [WorkspaceTabs.sceneID], "by id, so never an existing window")
+        let request = WorkspaceTabs.pending
+        XCTAssertEqual(request?.folder, folder)
+        XCTAssertEqual(request?.alone, true)
+        WorkspaceTabs.take(request!)
+        XCTAssertNil(WorkspaceTabs.pending, "taken by the window it opened")
+    }
+
+    func testAnUntakenRequestLapses() {
+        WorkspaceTabs.open(folder: URL(fileURLWithPath: "/tmp"), alone: true) { _ in }
+        XCTAssertNotNil(WorkspaceTabs.pending)
+        let lapsed = expectation(description: "lapsed")
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_500_000_000)
+            lapsed.fulfill()
+        }
+        wait(for: [lapsed], timeout: 5)
+        XCTAssertNil(WorkspaceTabs.pending)
     }
 
     func testJoiningTwiceChangesNothing() {

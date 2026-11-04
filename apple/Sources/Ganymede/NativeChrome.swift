@@ -69,7 +69,7 @@ struct FolderSidebar: View {
             openPath: page.state.path,
             isRunning: { page.state.isRunning($0) },
             open: open,
-            openInNewWindow: { openWindow(value: WindowTarget(opening: $0.url)) },
+            openInNewTab: { openWindow(value: WindowTarget(opening: $0.url)) },
             newNotebook: { page.run("new-notebook", arg: FolderEntry.serverPath($0)) },
             newFolder: newFolder(in:),
             reveal: { NSWorkspace.shared.activateFileViewerSelecting([$0.url]) },
@@ -177,7 +177,7 @@ struct FolderActions {
     /// Whether a notebook, by server path, has a running kernel (#225).
     var isRunning: (String) -> Bool
     var open: (FolderEntry) -> Void
-    var openInNewWindow: (FolderEntry) -> Void
+    var openInNewTab: (FolderEntry) -> Void
     var newNotebook: (URL) -> Void
     var newFolder: (URL) -> Void
     var reveal: (FolderEntry) -> Void
@@ -252,13 +252,13 @@ private struct FolderContents: View {
     @ViewBuilder
     private func menu(for entry: FolderEntry) -> some View {
         if entry.isDirectory {
-            Button("Open in New Tab") { actions.openInNewWindow(entry) }
+            Button("Open in New Tab") { actions.openInNewTab(entry) }
             Button("New Notebook Here") { actions.newNotebook(entry.url) }
             Button("New Folder Here") { actions.newFolder(entry.url) }
         } else {
             Button("Open") { actions.open(entry) }
             if entry.isNotebook {
-                Button("Open in New Tab") { actions.openInNewWindow(entry) }
+                Button("Open in New Tab") { actions.openInNewTab(entry) }
             }
         }
         Divider()
@@ -412,14 +412,14 @@ struct NewCommands: View {
             }
         }
         .keyboardShortcut("n")
+        // Always a new window, even when one already shows the folder.
         Button("New Tab") {
-            openWindow(value: WindowTarget.folder(folder ?? model.root))
+            WorkspaceTabs.open(folder: folder ?? model.root, alone: false) { openWindow(id: $0) }
         }
         .keyboardShortcut("t")
         Button("New Window") {
             // A window of its own, not a tab of the front one (#247).
-            WorkspaceTabs.nextOpensAlone = true
-            openWindow(value: WindowTarget.folder(folder ?? model.root))
+            WorkspaceTabs.open(folder: folder ?? model.root, alone: true) { openWindow(id: $0) }
         }
         .keyboardShortcut("n", modifiers: [.command, .option])
     }

@@ -6,29 +6,65 @@ import AppKit
 /// identifier and prefers tabs, so a new one joins the front window as a
 /// tab. AppKit gives the tab bar, dragging a tab out into a window,
 /// Window › Merge All Windows and Move Tab to New Window, and each tab
-/// keeps its own toolbar, so the toolbar follows the active tab.
+/// keeps its own toolbar, so the toolbar follows the active tab. This
+/// holds whatever System Settings › Desktop & Dock › "Prefer tabs when
+/// opening documents" says.
 @MainActor
 enum WorkspaceTabs {
     static let identifier = "ganymede.workspace"
+    /// The notebook window group's id, so File › New Tab and New Window
+    /// can always open a new window (by value, SwiftUI brings forward one
+    /// already showing that value instead).
+    static let sceneID = "workspace"
 
-    /// Set before opening a window that should stand alone (File › New
-    /// Window); the next window to join takes it and opens untabbed.
-    static var nextOpensAlone = false
+    /// A new notebook window asked for by File › New Tab or New Window: the
+    /// folder it shows, and whether it opens as a window of its own.
+    struct Request: Equatable {
+        var id = UUID()
+        var folder: URL
+        var alone: Bool
+    }
+
+    /// The request the next notebook window opened on nothing takes. It
+    /// lapses after a moment if no window takes it.
+    private(set) static var pending: Request?
+
+    /// True until shortly after launch, while the system restores windows:
+    /// they come back as they were, tabbed or not, so none is added to
+    /// another by hand.
+    static var launching = true
+
+    /// Opens a new notebook window on `folder`, as a tab of the front
+    /// window or, with `alone`, a window of its own.
+    static func open(folder: URL, alone: Bool, with openWindow: (String) -> Void) {
+        let request = Request(folder: folder, alone: alone)
+        pending = request
+        openWindow(sceneID)
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            if pending == request { pending = nil }
+        }
+    }
+
+    /// Hands the pending request to the window that takes it.
+    static func take(_ request: Request) {
+        if pending == request { pending = nil }
+    }
 
     /// Makes `window` one of the app's tabbable windows. Called once the
     /// window exists; if AppKit hasn't already made it a tab of the front
-    /// window, it is added as one.
-    static func join(_ window: NSWindow) {
+    /// window, it is added as one, unless `alone`.
+    static func join(_ window: NSWindow, alone: Bool = false) {
         guard window.tabbingIdentifier != identifier else { return }
         window.tabbingIdentifier = identifier
-        if nextOpensAlone {
-            nextOpensAlone = false
+        if alone {
             window.tabbingMode = .disallowed
             // Later windows may still join this one as tabs.
             DispatchQueue.main.async { window.tabbingMode = .preferred }
             return
         }
         window.tabbingMode = .preferred
+        guard !launching else { return }
         // SwiftUI may show the window before this runs, which is too late
         // for AppKit to tab it; then add it to the front window by hand.
         // The front window is taken now, before the new one becomes main.
