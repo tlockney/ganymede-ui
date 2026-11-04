@@ -98,8 +98,12 @@ struct FileSearch {
                     results.stoppedEarly = true
                     return results
                 }
-                if Self.nameMatches(entry.name, query: query), results.names.count < maxResults {
-                    results.names.append(Match(entry: entry, snippet: nil))
+                if Self.nameMatches(entry.name, query: query) {
+                    if results.names.count < maxResults {
+                        results.names.append(Match(entry: entry, snippet: nil))
+                    } else {
+                        results.stoppedEarly = true
+                    }
                 }
                 if entry.isDirectory {
                     if depth + 1 < maxDepth {
@@ -107,8 +111,8 @@ struct FileSearch {
                     } else {
                         results.stoppedEarly = true
                     }
-                } else if contents, entry.isNotebook, results.contents.count < maxResults {
-                    if notebooksRead >= maxNotebooksRead {
+                } else if contents, entry.isNotebook {
+                    if notebooksRead >= maxNotebooksRead || results.contents.count >= maxResults {
                         results.stoppedEarly = true
                         continue
                     }

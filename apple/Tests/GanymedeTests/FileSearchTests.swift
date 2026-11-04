@@ -70,6 +70,15 @@ final class FileSearchTests: XCTestCase {
         XCTAssertTrue(search.run("zzz", in: root, contents: false).stoppedEarly)
     }
 
+    func testStopsAtTheResultLimitAndSaysSo() {
+        var search = FileSearch()
+        search.maxResults = 1
+        // "o" names moons, Orbits.ipynb and notes.txt, among others.
+        let results = search.run("o", in: root, contents: false)
+        XCTAssertEqual(results.names.count, 1)
+        XCTAssertTrue(results.stoppedEarly)
+    }
+
     func testACancelledSearchStops() {
         let results = FileSearch().run("i", in: root, contents: true, isCancelled: { true })
         XCTAssertEqual(results, FileSearch.Results())

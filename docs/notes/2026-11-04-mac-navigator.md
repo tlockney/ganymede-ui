@@ -14,3 +14,9 @@ Outline, Recents), layout B from the app mockups (#245).
 - ⌘1 to ⌘5 select tabs, as Xcode's navigators. If main-area tabs (#247)
   later want ⌘1 to ⌘9 as Safari does, one of the two has to move.
 - Outline is a placeholder until #212 lands.
+- The scan runs in a detached task, which doesn't inherit cancellation.
+  `withTaskCancellationHandler` passes the view task's cancellation on,
+  and the scan checks `Task.isCancelled` between entries, so a newer
+  query stops the older scan instead of letting scans pile up.
+- Not done yet: terminals in Running and the server line at the foot
+  of the sidebar (#246 stays open for them).

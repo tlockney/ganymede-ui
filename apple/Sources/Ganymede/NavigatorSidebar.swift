@@ -152,7 +152,7 @@ private struct SearchNavigator: View {
     private var status: some View {
         if FileSearch.normalized(query).isEmpty {
             EmptyView()
-        } else if searching && results == FileSearch.Results() {
+        } else if searching && results.names.isEmpty && results.contents.isEmpty {
             Text("Searching…").foregroundStyle(.secondary)
         } else if results.names.isEmpty && results.contents.isEmpty {
             Text(results.stoppedEarly ? "No matches in the files searched" : "No matches")
@@ -214,22 +214,35 @@ private struct SearchNavigator: View {
         }
     }
 
+    /// Runs as the view's task for the query: a newer query cancels it,
+    /// and with it the scan. Only the latest search changes `results` and
+    /// `searching`, so an older one never shows its matches or clears the
+    /// flag under a newer query. The previous results stay until the new
+    /// ones arrive.
     private func search() async {
         guard !FileSearch.normalized(query).isEmpty else {
             results = FileSearch.Results()
+            searching = false
             return
         }
-        // Wait for typing to stop; a newer query cancels this task.
+        searching = true
+        // Wait for typing to stop.
         try? await Task.sleep(nanoseconds: 250_000_000)
         guard !Task.isCancelled else { return }
-        searching = true
-        defer { searching = false }
         let (query, folder, contents) = (query, folder, contents)
-        let found = await Task.detached(priority: .userInitiated) {
-            FileSearch().run(query, in: folder, contents: contents)
-        }.value
+        // Off the main thread; a detached task doesn't inherit
+        // cancellation, so pass it on, and the scan checks its own flag.
+        let scan = Task.detached(priority: .userInitiated) {
+            FileSearch().run(query, in: folder, contents: contents, isCancelled: { Task.isCancelled })
+        }
+        let found = await withTaskCancellationHandler {
+            await scan.value
+        } onCancel: {
+            scan.cancel()
+        }
         guard !Task.isCancelled else { return }
         results = found
+        searching = false
     }
 }
 
