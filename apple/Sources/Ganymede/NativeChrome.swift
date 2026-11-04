@@ -236,14 +236,17 @@ private struct FolderContents: View {
 
 // MARK: - Toolbar
 
-/// The notebook's controls, in the window's toolbar.
-struct NotebookToolbar: CustomizableToolbarContent {
+/// The notebook's controls, in the window's toolbar. Not customizable:
+/// a customizable toolbar (`.toolbar(id:)`) joins every window's toolbar
+/// into one AppKit family, and AppKit threw while syncing a new window's
+/// items into the others when a notebook opened from the Finder (#226).
+struct NotebookToolbar: ToolbarContent {
     @ObservedObject var page: PageModel
     /// Where New Notebook puts it: the window's folder.
     let folder: URL
 
-    var body: some CustomizableToolbarContent {
-        ToolbarItem(id: "new-notebook", placement: .navigation) {
+    var body: some ToolbarContent {
+        ToolbarItem(placement: .navigation) {
             Button {
                 page.run("new-notebook", arg: FolderEntry.serverPath(folder))
             } label: {
@@ -251,7 +254,7 @@ struct NotebookToolbar: CustomizableToolbarContent {
             }
             .help("New Notebook (⌘N)")
         }
-        ToolbarItem(id: "run") {
+        ToolbarItem {
             ControlGroup {
                 Button { page.run("run") } label: { Label("Run", systemImage: "play.fill") }
                     .help("Run the selected cell and select the next (⇧↩)")
@@ -260,7 +263,7 @@ struct NotebookToolbar: CustomizableToolbarContent {
             }
             .disabled(!page.state.hasNotebook)
         }
-        ToolbarItem(id: "kernel-control") {
+        ToolbarItem {
             ControlGroup {
                 Button { page.run("interrupt") } label: { Label("Interrupt", systemImage: "stop.fill") }
                     .help("Interrupt the kernel (⌘.)")
@@ -272,7 +275,7 @@ struct NotebookToolbar: CustomizableToolbarContent {
                 .disabled(!page.state.hasKernel)
             }
         }
-        ToolbarItem(id: "insert") {
+        ToolbarItem {
             Menu {
                 Button("Code Cell") { page.run("insert-code") }
                 Button("Markdown Cell") { page.run("insert-markdown") }
@@ -282,7 +285,7 @@ struct NotebookToolbar: CustomizableToolbarContent {
             .help("Insert a cell below")
             .disabled(!page.state.hasNotebook)
         }
-        ToolbarItem(id: "cell-type") {
+        ToolbarItem {
             Picker("Cell Type", selection: cellType) {
                 Text("Code").tag("code")
                 Text("Markdown").tag("markdown")
@@ -291,10 +294,10 @@ struct NotebookToolbar: CustomizableToolbarContent {
             .help("The selected cell's type")
             .disabled(!page.state.hasNotebook)
         }
-        ToolbarItem(id: "kernel") {
+        ToolbarItem {
             KernelPicker(page: page)
         }
-        ToolbarItem(id: "trust") {
+        ToolbarItem {
             Button { confirmTrust(page) } label: { Label("Trust", systemImage: "checkmark.shield") }
                 .help("Trust this notebook's HTML and JavaScript outputs")
                 .disabled(!page.state.hasNotebook || page.state.trusted)
