@@ -310,6 +310,12 @@ settings button, or a `ganymede:show-settings` window event).
   (`src/lib/native-agent.ts`) to read and save them, list a provider's
   models and run Test, and writes the key to the Keychain item the page
   reads. The page's Settings sheet stays for the browser and the Mac.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release, where the iPad and iPhone apps open the page's
+  > Settings sheet.
+
 - `models.ts` builds pi-ai's models for the chosen provider: Anthropic,
   OpenAI, Google, or a local OpenAI-compatible server (Ollama, LM Studio).
   The app loads it with a dynamic `import()` only when the agent is on.

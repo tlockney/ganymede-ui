@@ -8,6 +8,9 @@ import SwiftUI
 /// sheets are for the browser.
 struct SettingsScreen: View {
     @ObservedObject var page: PageModel
+    /// Opens the page's shortcuts sheet once this one has gone; nil while
+    /// no notebook is on screen to show it in.
+    var showShortcuts: (() -> Void)?
     let done: () -> Void
     @State private var hardwareKeyboard = GCKeyboard.coalesced != nil
 
@@ -22,19 +25,16 @@ struct SettingsScreen: View {
             }
             if hardwareKeyboard {
                 Section {
+                    // The page's sheet: it rebinds keys, which only the
+                    // page can.
                     Button {
-                        done()
-                        // The page's sheet, once this one has gone: it
-                        // rebinds keys, which only the page can.
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                            page.run("show-shortcuts")
-                        }
+                        showShortcuts?()
                     } label: {
                         Label("Keyboard Shortcuts", systemImage: "keyboard")
                     }
-                    .disabled(!page.state.hasNotebook)
+                    .disabled(showShortcuts == nil)
                 } footer: {
-                    Text(page.state.hasNotebook
+                    Text(showShortcuts != nil
                         ? "Lists the notebook's shortcuts, and changes them."
                         : "Open a notebook to see its shortcuts.")
                 }
@@ -64,8 +64,10 @@ struct AgentSettingsView: View {
     var secrets: SecretStore = KeychainStore()
 
     @State private var panel: AgentPanel?
-    /// What the page has, so loading doesn't save it straight back.
-    @State private var saved: AgentPanel?
+    /// Whether the person changed the settings, so loading them doesn't
+    /// save them straight back.
+    @State private var changed = false
+    @State private var testRun: Task<Void, Never>?
     @State private var problem: String?
     @State private var key = ""
     @State private var models: [String] = []
@@ -83,30 +85,41 @@ struct AgentSettingsView: View {
                     Text(problem).foregroundStyle(.secondary).multilineTextAlignment(.center)
                 }
                 .padding()
-            } else {
+            } else if page.ready {
                 ProgressView()
+            } else {
+                // No backend yet: the server didn't start, or a remote
+                // can't be reached. The settings load once it connects.
+                VStack(spacing: 8) {
+                    ProgressView()
+                    Text("The agent’s settings load once the notebook page has connected to its server.")
+                        .foregroundStyle(.secondary)
+                        .multilineTextAlignment(.center)
+                }
+                .padding()
             }
         }
         .navigationTitle("Agent")
         .navigationBarTitleDisplayMode(.inline)
         .task(id: page.ready) { await load() }
         // Saved a moment after the last change, not on each keystroke.
+        // Saves run in order on the page, so the last one wins.
         .task(id: panel) {
-            guard let panel, panel != saved,
+            guard changed, let panel,
                   (try? await Task.sleep(nanoseconds: 400_000_000)) != nil
             else { return }
-            do {
-                _ = try await page.call("save-agent-settings", arg: panel.json())
-                saved = panel
-            } catch {
-                result = (false, "The settings weren’t saved: \(error.localizedDescription)")
-            }
+            await save(panel)
         }
         .task(id: key) {
             guard (try? await Task.sleep(nanoseconds: 600_000_000)) != nil else { return }
             saveKey()
         }
-        .onDisappear { saveKey() }
+        .onDisappear {
+            saveKey()
+            testRun?.cancel()
+            // Leaving cancels the wait above: save what is there now.
+            if changed, let panel { Task { @MainActor in await save(panel) } }
+        }
     }
 
     private func form(_ panel: AgentPanel) -> some View {
@@ -139,21 +152,24 @@ struct AgentSettingsView: View {
                             .autocorrectionDisabled()
                     }
                 }
-                if panel.current?.needsKey ?? true {
-                    Section {
-                        SecureField("API Key", text: $key)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .onSubmit(saveKey)
-                    } header: {
-                        Text("API Key")
-                    } footer: {
-                        Text("Kept in the Keychain on this device.")
-                    }
+                Section {
+                    SecureField(panel.current?.needsKey ?? true ? "API Key" : "API Key (optional)", text: $key)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .onSubmit(saveKey)
+                } header: {
+                    Text("API Key")
+                } footer: {
+                    Text(panel.current?.needsKey ?? true
+                        ? "Kept in the Keychain on this device."
+                        : "Only if the server asks for one. Kept in the Keychain on this device.")
                 }
                 Section {
-                    Button(testing ? "Testing…" : "Test") { Task { await test(panel) } }
-                        .disabled(testing)
+                    Button(testing ? "Testing…" : "Test") {
+                        testRun?.cancel()
+                        testRun = Task { @MainActor in await test(panel) }
+                    }
+                    .disabled(testing)
                     if let result {
                         Label(result.message, systemImage: result.ok ? "checkmark.circle" : "xmark.octagon")
                             .foregroundStyle(result.ok ? Color.green : Color.red)
@@ -177,7 +193,9 @@ struct AgentSettingsView: View {
             get: { panel![keyPath: field] },
             set: {
                 panel?[keyPath: field] = $0
-                result = nil
+                changed = true
+                stopTest()
+                if field as AnyKeyPath == \AgentPanel.enabled, let panel { savedKeys = hasSavedKeys(panel) }
             }
         )
     }
@@ -192,7 +210,6 @@ struct AgentSettingsView: View {
             }
             key = secrets.get(AgentKeys.account(loaded.provider)) ?? ""
             savedKeys = hasSavedKeys(loaded)
-            saved = loaded
             panel = loaded
         } catch {
             problem = error.localizedDescription
@@ -203,18 +220,36 @@ struct AgentSettingsView: View {
         // The key typed so far is the old provider's.
         saveKey()
         panel?.pick(provider)
+        changed = true
         key = secrets.get(AgentKeys.account(provider)) ?? ""
+        stopTest()
+    }
+
+    private func save(_ panel: AgentPanel) async {
+        do {
+            _ = try await page.call("save-agent-settings", arg: panel.json())
+        } catch {
+            result = (false, "The settings weren’t saved: \(error.localizedDescription)")
+        }
+    }
+
+    /// A change makes the last test's answer out of date.
+    private func stopTest() {
+        testRun?.cancel()
+        testRun = nil
+        testing = false
         result = nil
     }
 
     private func saveKey() {
-        guard let panel, panel.current?.needsKey ?? true else { return }
+        guard let panel else { return }
         let account = AgentKeys.account(panel.provider)
         let trimmed = key.trimmingCharacters(in: .whitespacesAndNewlines)
         // Only when it changed: an empty field mustn't keep rewriting.
         guard trimmed != (secrets.get(account) ?? "") else { return }
         do {
             try secrets.set(account, trimmed)
+            savedKeys = hasSavedKeys(panel)
         } catch {
             result = (false, "The key wasn’t saved: \(error.localizedDescription)")
         }
@@ -241,13 +276,17 @@ struct AgentSettingsView: View {
     private func test(_ panel: AgentPanel) async {
         testing = true
         result = nil
-        defer { testing = false }
+        defer { if !Task.isCancelled { testing = false } }
+        let answer: [String: Any]?
         do {
-            let answer = try await page.call("test-agent", arg: panel.json(key: key)) as? [String: Any]
-            result = (answer?["ok"] as? Bool ?? false, answer?["message"] as? String ?? "No answer.")
+            answer = try await page.call("test-agent", arg: panel.json(key: key)) as? [String: Any]
         } catch {
-            result = (false, error.localizedDescription)
+            if !Task.isCancelled { result = (false, error.localizedDescription) }
+            return
         }
+        // A change since it started: its answer is for other settings.
+        guard !Task.isCancelled else { return }
+        result = (answer?["ok"] as? Bool ?? false, answer?["message"] as? String ?? "No answer.")
     }
 }
 #endif

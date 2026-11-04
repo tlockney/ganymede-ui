@@ -98,8 +98,8 @@ On iPadOS and iOS (`Ganymede-iOS` target, iOS 16 or later):
   page runs its own kernel: cdp-kernel's TypeScript kernel in a Worker in
   a hidden second web view, with Swift relaying its messages
   (`KernelHost.swift`; the app opens the page with `kernels=page`). For other
-  kernels, add a remote in Settings (the server button in the latest
-  release) with the URL and token of another Jupyter or Ganymede server (for example `ganymede serve --ip 0.0.0.0` on
+  kernels, add a remote with the URL and token of another Jupyter or
+  Ganymede server (for example `ganymede serve --ip 0.0.0.0` on
   your Mac; see its [Security](https://ganymede-server.com/docs/security)
   page for reaching it safely). Either way, notebooks stay on the iPad.
 - On the iPad the sidebar, toolbar and key commands are the app's own,
