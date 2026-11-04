@@ -81,7 +81,7 @@ export function KeyboardBar({
           key={key.label}
           type="button"
           tabIndex={-1}
-          className={`keyboard-bar-key ${key.kind}`}
+          className={`keyboard-bar-key ${key.kind}${'primary' in key ? ' primary' : ''}`}
           title={'title' in key ? key.title : undefined}
           aria-label={'title' in key ? key.title : key.text}
           // Keep the focus, and with it the keyboard, in the editor.

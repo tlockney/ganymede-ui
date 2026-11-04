@@ -12,7 +12,7 @@ import type { CommandRegistry } from '@lumino/commands';
 import type { Notebook } from '@jupyterlab/notebook';
 
 export type BarKey =
-  | { kind: 'command'; label: string; title: string; command: string }
+  | { kind: 'command'; label: string; title: string; command: string; primary?: true }
   | { kind: 'key'; label: string; title: string; key: string; keyCode: number }
   | { kind: 'text'; label: string; text: string };
 
@@ -20,7 +20,13 @@ const symbol = (text: string): BarKey => ({ kind: 'text', label: text, text });
 
 /** The bar, in order. */
 export const BAR_KEYS: readonly BarKey[] = [
-  { kind: 'command', label: 'Run', title: 'Run the cell', command: 'run-and-advance' },
+  {
+    kind: 'command',
+    label: 'Run',
+    title: 'Run the cell',
+    command: 'run-and-advance',
+    primary: true,
+  },
   { kind: 'command', label: 'esc', title: 'Stop editing', command: 'command-mode' },
   { kind: 'key', label: 'tab', title: 'Tab', key: 'Tab', keyCode: 9 },
   { kind: 'key', label: '←', title: 'Left', key: 'ArrowLeft', keyCode: 37 },
@@ -113,6 +119,37 @@ export function pressBarKey(notebook: Notebook, commands: CommandRegistry, key: 
     Object.defineProperty(event, 'which', { get: () => key.keyCode });
     target.dispatchEvent(event);
   } else {
-    notebook.activeCell?.editor?.replaceSelection?.(key.text);
+    typeText(notebook.activeCell?.editor, key.text);
+  }
+}
+
+/** A CodeMirror view, as much of it as typing needs. */
+type View = {
+  state: {
+    readOnly: boolean;
+    replaceSelection(text: string): object;
+  };
+  dispatch(spec: object): void;
+};
+
+/**
+ * Types `text` as a key would: into each selection, as user input, and
+ * not into a read-only cell. JupyterLab's `replaceSelection` writes to the
+ * model at the first cursor only, and ignores read-only.
+ */
+export function typeText(
+  editor: { replaceSelection?(text: string): void; editor?: unknown } | null | undefined,
+  text: string,
+) {
+  const view = editor?.editor as View | undefined;
+  if (view?.state && typeof view.dispatch === 'function') {
+    if (view.state.readOnly) return;
+    view.dispatch({
+      ...view.state.replaceSelection(text),
+      scrollIntoView: true,
+      userEvent: 'input.type',
+    });
+  } else {
+    editor?.replaceSelection?.(text);
   }
 }

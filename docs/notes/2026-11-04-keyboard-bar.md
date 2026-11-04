@@ -25,8 +25,13 @@
   real key does, so Tab completes from the kernel, and CodeMirror's
   keymap handles what's left (checked with a real `EditorView` in jsdom).
   Run and esc run `run-and-advance` and `command-mode`, so a rebound
-  Shift+Enter doesn't change what Run does. Symbols go through
-  `replaceSelection`.
+  Shift+Enter doesn't change what Run does. Symbols are a CodeMirror
+  transaction with `userEvent: 'input.type'`, as typing is: into every
+  cursor, and not into a read-only cell. JupyterLab's `replaceSelection`
+  writes to the model at the first cursor and ignores read-only.
+- On a touch screen the code font is 16px: iOS zooms the page when it
+  focuses text smaller than that, and the bar shows only at scale 1, so
+  at 12.5px it would never have shown on an iPhone.
 - The buttons call `preventDefault` on `pointerdown` and `mousedown` and
   have `tabIndex={-1}`: a tap must not take the focus, or the keyboard
   goes down.

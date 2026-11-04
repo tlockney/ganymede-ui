@@ -10,6 +10,7 @@ import {
   keyboardUp,
   pressBarKey,
   resetHeights,
+  typeText,
 } from './keyboard-bar';
 
 /** A notebook whose active cell's editor is a textarea, focused. */
@@ -164,5 +165,26 @@ describe('keyboard bar', () => {
     caretAt(410);
     keepCaretAbove(402, input);
     expect(scroller.scrollTop).toBe(16);
+  });
+
+  it('types into every selection as input, and not into a read-only cell', () => {
+    const dispatch = vi.fn();
+    const view = {
+      state: { readOnly: false, replaceSelection: (text: string) => ({ changes: text }) },
+      dispatch,
+    };
+    const replaceSelection = vi.fn();
+    typeText({ editor: view, replaceSelection }, '(');
+    expect(dispatch).toHaveBeenCalledWith({
+      changes: '(',
+      scrollIntoView: true,
+      userEvent: 'input.type',
+    });
+    expect(replaceSelection).not.toHaveBeenCalled();
+
+    view.state.readOnly = true;
+    typeText({ editor: view, replaceSelection }, ')');
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(replaceSelection).not.toHaveBeenCalled();
   });
 });

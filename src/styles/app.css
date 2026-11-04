@@ -1561,6 +1561,14 @@ button {
 
 /* ---------- Keyboard bar (#209) ---------- */
 
+/* 16px or more, so iOS doesn't zoom the page when a cell is focused: the
+ * zoom would also hide the keyboard bar, which shows only at scale 1. */
+@media (pointer: coarse) {
+  :root .notebook-page {
+    --jp-code-font-size: 16px;
+  }
+}
+
 /* Above the on-screen keyboard: `top` is where the visible area ends. */
 .keyboard-bar {
   position: fixed;
@@ -1601,7 +1609,7 @@ button {
   font-family: var(--font-mono);
 }
 
-.keyboard-bar-key.command:first-child {
+.keyboard-bar-key.primary {
   background: var(--accent);
   color: #fff;
   font-weight: 600;
