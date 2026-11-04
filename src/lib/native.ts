@@ -1,4 +1,5 @@
 import type { KernelSpec, Session } from '@jupyterlab/services';
+import type { SearchState } from './search';
 /**
  * The Mac app's document window (#132): the page tells it which notebook is
  * open and whether it has unsaved edits, through the `document` script
@@ -28,6 +29,8 @@ export type NativeHooks = {
  * `arg` take one: a path, a folder, a new name, a cell type or a kernel
  * name. `shutdown-kernel` takes a running session's id or its notebook's
  * path; `shutdown-others` shuts down every kernel but the open notebook's.
+ * `search` takes a `SearchRequest` as JSON (an empty query ends it), and
+ * `clear-recents` empties the Recents list (#240).
  */
 export const PAGE_COMMANDS = {
   open: 'arg',
@@ -50,7 +53,36 @@ export const PAGE_COMMANDS = {
   'show-shortcuts': '',
   'show-settings': '',
   connect: '',
+  search: 'arg',
+  'clear-recents': '',
 } as const;
+
+/** What the app's sidebar searches for (#240): the `search` command's argument. */
+export type SearchRequest = {
+  query: string;
+  /** The folder to search in and below, as a server path; '' for the root. */
+  dir?: string;
+  /** Also search what the notebooks say. */
+  contents?: boolean;
+};
+
+/** The `search` command's argument, or null when it isn't one. */
+export function searchRequest(arg: string | undefined): SearchRequest | null {
+  if (!arg) return null;
+  try {
+    const value: unknown = JSON.parse(arg);
+    if (!value || typeof value !== 'object') return null;
+    const { query, dir, contents } = value as Record<string, unknown>;
+    if (typeof query !== 'string') return null;
+    return {
+      query,
+      dir: typeof dir === 'string' ? dir.replace(/^\/+|\/+$/g, '') : '',
+      contents: contents === true,
+    };
+  } catch {
+    return null;
+  }
+}
 
 /**
  * What the page posts to the app's `state` handler whenever any of it
@@ -77,7 +109,38 @@ export type PageState = {
   backend: { label: string; detail: string } | null;
   /** The backend's running sessions: each notebook with a kernel (#225). */
   running: RunningSession[];
+  /** The notebooks opened last on this backend, newest first (#240). */
+  recents: string[];
+  /** The app's sidebar search and what it found, or null with none (#240). */
+  search: PageSearch | null;
 };
+
+/** A sidebar search's results, as the page's sidebar shows them (#215, #240). */
+export type PageSearch = {
+  query: string;
+  matches: { path: string; name: string; type: string; snippet: string | null }[];
+  searching: boolean;
+  /** A limit stopped the search short. */
+  truncated: boolean;
+  error: string | null;
+};
+
+/** `PageState.search` from the search hook's state, for `query`. */
+export function pageSearch(query: string, state: SearchState): PageSearch | null {
+  if (!query.trim()) return null;
+  return {
+    query,
+    matches: state.matches.map(m => ({
+      path: m.item.path,
+      name: m.item.name,
+      type: m.item.type,
+      snippet: m.snippet ?? null,
+    })),
+    searching: state.searching,
+    truncated: state.truncated,
+    error: state.error ?? null,
+  };
+}
 
 export type RunningSession = {
   id: string;

@@ -29,11 +29,19 @@ struct IPadSidebar: View {
     @State private var newName = ""
     @State private var deleting: FolderEntry?
     @State private var failure: String?
+    /// The search field's text, and whether it reads notebooks too (#240).
+    @State private var query = ""
+    @State private var searchContents = false
 
     var body: some View {
         List {
-            Section(folder.lastPathComponent) {
-                IPadFolderContents(folder: folder, root: folder, actions: actions, generation: generation)
+            if query.trimmingCharacters(in: .whitespaces).isEmpty {
+                recentsSection
+                Section(folder.lastPathComponent) {
+                    IPadFolderContents(folder: folder, root: folder, actions: actions, generation: generation)
+                }
+            } else {
+                searchResults
             }
             // Kernels keep running when their notebook is closed or another
             // is opened; here they can be found and shut down (#225).
@@ -70,6 +78,10 @@ struct IPadSidebar: View {
         }
         .listStyle(.sidebar)
         .navigationTitle("Notebooks")
+        // The page searches (`src/lib/search.ts`), after typing pauses.
+        .searchable(text: $query, prompt: "Find files")
+        .onChange(of: query) { _ in search() }
+        .onChange(of: searchContents) { _ in search() }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
@@ -102,6 +114,103 @@ struct IPadSidebar: View {
         .alert("Couldn't do that", isPresented: failureShown, presenting: failure) { _ in
             Button("OK", role: .cancel) {}
         } message: { Text($0) }
+    }
+
+    // MARK: Search and Recents (#240)
+
+    private func search() {
+        page.run("search", arg: PageState.searchRequest(query, contents: searchContents))
+    }
+
+    /// The notebooks opened last on this backend, as the page keeps them.
+    @ViewBuilder
+    private var recentsSection: some View {
+        let recents = page.state.recents ?? []
+        if !recents.isEmpty {
+            Section {
+                ForEach(recents, id: \.self) { path in
+                    Button {
+                        page.run("open", arg: path)
+                        opened()
+                    } label: {
+                        Label(Self.title(path), systemImage: "clock")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                    }
+                    .listRowBackground(path == page.state.path ? Color.accentColor.opacity(0.18) : nil)
+                }
+            } header: {
+                HStack {
+                    Text("Recents")
+                    Spacer()
+                    Button("Clear") { page.run("clear-recents") }
+                        .font(.caption)
+                        .textCase(nil)
+                }
+            }
+        }
+    }
+
+    /// What the search found in the folder and below it.
+    @ViewBuilder
+    private var searchResults: some View {
+        Section {
+            Toggle("Search notebook contents", isOn: $searchContents)
+            if let search = page.state.search {
+                ForEach(search.matches) { match in
+                    Button { openMatch(match) } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Label(match.title, systemImage: match.isDirectory ? "folder" : match.isNotebook ? "book.pages" : "doc.text")
+                            if let snippet = match.snippet {
+                                Text(snippet).font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                            } else if !match.folder.isEmpty {
+                                Text(match.folder).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                    }
+                    .disabled(match.isDirectory)
+                }
+                if search.searching {
+                    HStack(spacing: 8) {
+                        ProgressView()
+                        Text("Searching…").foregroundStyle(.secondary)
+                    }
+                } else if let error = search.error {
+                    Text(error).foregroundStyle(.secondary).font(.caption)
+                } else if search.matches.isEmpty {
+                    Text("No matches").foregroundStyle(.secondary)
+                }
+                if search.truncated {
+                    Text("Stopped early: the folder has too many files to search.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            } else {
+                HStack(spacing: 8) {
+                    ProgressView()
+                    Text("Searching…").foregroundStyle(.secondary)
+                }
+            }
+        } header: {
+            Text("Results")
+        }
+    }
+
+    private func openMatch(_ match: PageState.Search.Match) {
+        if match.isNotebook {
+            page.run("open", arg: match.path)
+            opened()
+        } else if !match.isDirectory {
+            openFile(match.path)
+        }
+    }
+
+    /// A notebook path's name without `.ipynb`.
+    private static func title(_ path: String) -> String {
+        let name = path.split(separator: "/").last.map(String.init) ?? path
+        return name.hasSuffix(".ipynb") ? String(name.dropLast(6)) : name
     }
 
     private var actions: IPadFolderActions {

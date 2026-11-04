@@ -37,11 +37,17 @@ import {
   openFile,
   postDocument,
   postState,
+  pageSearch,
   runningSessions,
+  searchRequest,
   type RunningSession,
+  type PageState,
+  type SearchRequest,
 } from './lib/native';
 import { useSignals } from './lib/useSignal';
 import { fileActions } from './lib/file-actions';
+import { useFileSearch } from './lib/search';
+import { clearRecents, recentsKey, useRecents } from './lib/recents';
 import { useFileDrop } from './lib/file-drop';
 import { copySample } from './lib/sample';
 
@@ -311,6 +317,17 @@ export function App() {
         );
         return done.every(d => d.status === 'fulfilled');
       }
+      case 'search': {
+        // The app's sidebar searches through the page (#240).
+        const request = searchRequest(arg);
+        if (!request) return false;
+        setNativeSearch(request);
+        return true;
+      }
+      case 'clear-recents':
+        if (!backend) return false;
+        clearRecents(recentsKey(backend.config));
+        return true;
       case 'show-shortcuts':
         setShortcutsOpen(true);
         return true;
@@ -392,6 +409,18 @@ export function App() {
   const running = runningSessions(backend?.services.sessions.running() ?? [], specs);
   const runningKey = JSON.stringify(running);
   const shown = !!openPath && controller?.path === openPath ? controller : undefined;
+  // The app's sidebar's search and Recents (#240): the page's sidebar has
+  // its own, so these run only with `chrome=native`.
+  const [nativeSearch, setNativeSearch] = useState<SearchRequest>({ query: '' });
+  const found = useFileSearch(
+    native ? backend?.services.contents : undefined,
+    nativeSearch.dir ?? '',
+    nativeSearch.query,
+    !!nativeSearch.contents,
+  );
+  const searchKey = JSON.stringify(pageSearch(nativeSearch.query, found));
+  const recents = useRecents(native ? backend : undefined, openPath);
+  const recentsKeyed = JSON.stringify(recents);
   useEffect(() => {
     const kernel = shown?.kernelName ?? null;
     postState({
@@ -410,8 +439,10 @@ export function App() {
       ),
       backend: backend ? { label: backend.label, detail: backend.detail } : null,
       running: JSON.parse(runningKey) as RunningSession[],
+      recents: JSON.parse(recentsKeyed) as string[],
+      search: JSON.parse(searchKey) as PageState['search'],
     });
-  }, [openPath, dirty, shown, specs, backend, runningKey]);
+  }, [openPath, dirty, shown, specs, backend, runningKey, recentsKeyed, searchKey]);
 
   // ⌘S / Ctrl+S saves, as in any document app.
   useEffect(() => {

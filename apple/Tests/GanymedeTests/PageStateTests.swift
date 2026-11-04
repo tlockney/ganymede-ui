@@ -46,6 +46,40 @@ final class PageStateTests: XCTestCase {
         XCTAssertEqual(state?.otherSessions.map(\.id), ["s2"])
     }
 
+    func testReadsTheSearchAndRecents() {
+        let body: [String: Any] = [
+            "path": NSNull(), "dirty": false, "status": NSNull(), "kernel": NSNull(),
+            "kernelDisplayName": NSNull(), "kernelMissing": false, "trusted": true,
+            "cellType": NSNull(), "kernels": [Any](), "backend": NSNull(), "running": [Any](),
+            "recents": ["moons/Io.ipynb", "Europa.ipynb"],
+            "search": [
+                "query": "io",
+                "matches": [
+                    ["path": "moons/Io.ipynb", "name": "Io.ipynb", "type": "notebook", "snippet": NSNull()],
+                    ["path": "Callisto.ipynb", "name": "Callisto.ipynb", "type": "notebook", "snippet": "io = 1"],
+                    ["path": "io", "name": "io", "type": "directory", "snippet": NSNull()],
+                ],
+                "searching": false, "truncated": true, "error": NSNull(),
+            ],
+        ]
+        let state = PageState(body: body)
+        XCTAssertEqual(state?.recents, ["moons/Io.ipynb", "Europa.ipynb"])
+        let matches = state?.search?.matches ?? []
+        XCTAssertEqual(matches.map(\.title), ["Io", "Callisto", "io"])
+        XCTAssertEqual(matches.map(\.folder), ["moons", "", ""])
+        XCTAssertEqual(matches[1].snippet, "io = 1")
+        XCTAssertTrue(matches[2].isDirectory)
+        XCTAssertEqual(state?.search?.truncated, true)
+    }
+
+    func testBuildsTheSearchRequest() throws {
+        let request = PageState.searchRequest("io \"x\"", in: "moons", contents: true)
+        let value = try JSONSerialization.jsonObject(with: Data(request.utf8)) as? [String: Any]
+        XCTAssertEqual(value?["query"] as? String, "io \"x\"")
+        XCTAssertEqual(value?["dir"] as? String, "moons")
+        XCTAssertEqual(value?["contents"] as? Bool, true)
+    }
+
     func testNoNotebookOpen() {
         let body: [String: Any] = [
             "path": NSNull(), "dirty": false, "status": NSNull(), "kernel": NSNull(),
@@ -56,6 +90,9 @@ final class PageStateTests: XCTestCase {
         XCTAssertNotNil(state)
         XCTAssertEqual(state?.hasNotebook, false)
         XCTAssertEqual(state?.hasKernel, false)
+        // A page older than #240 sends neither.
+        XCTAssertNil(state?.search)
+        XCTAssertNil(state?.recents)
     }
 
     func testIgnoresOtherMessages() {

@@ -306,6 +306,56 @@ describe('App', () => {
     vi.unstubAllGlobals();
   });
 
+  it('searches and keeps Recents for the app’s own sidebar (#240)', async () => {
+    const states: Record<string, unknown>[] = [];
+    vi.stubGlobal('webkit', {
+      messageHandlers: {
+        state: { postMessage: (m: Record<string, unknown>) => states.push(m) },
+      },
+    });
+    mocks.controller = { dirty: false, save: vi.fn(async () => true) };
+    const fake = fakeServices({
+      '': [
+        { name: 'Io.ipynb', type: 'notebook' },
+        { name: 'moons', type: 'directory' },
+      ],
+      moons: [{ name: 'Europa.ipynb', type: 'notebook' }],
+    });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    history.replaceState(null, '', '/?kernels=server&chrome=native&open=Io.ipynb');
+    render(<App />);
+    await waitFor(() =>
+      expect(states.at(-1)).toMatchObject({
+        path: 'Io.ipynb',
+        recents: ['Io.ipynb'],
+        search: null,
+      }),
+    );
+
+    const run = window.ganymede!.command;
+    expect(await run('search', 'not json')).toBe(false);
+    expect(await run('search', JSON.stringify({ query: 'eur' }))).toBe(true);
+    await waitFor(
+      () =>
+        expect(states.at(-1)?.search).toEqual({
+          query: 'eur',
+          matches: [
+            { path: 'moons/Europa.ipynb', name: 'Europa.ipynb', type: 'notebook', snippet: null },
+          ],
+          searching: false,
+          truncated: false,
+          error: null,
+        }),
+      { timeout: 3000 },
+    );
+    expect(await run('search', JSON.stringify({ query: '' }))).toBe(true);
+    await waitFor(() => expect(states.at(-1)?.search).toBeNull());
+
+    expect(await run('clear-recents')).toBe(true);
+    await waitFor(() => expect(states.at(-1)?.recents).toEqual([]));
+    vi.unstubAllGlobals();
+  });
+
   it('opens other files in the app’s editor, only on the app’s own server', async () => {
     const opened: unknown[] = [];
     vi.stubGlobal('webkit', {
