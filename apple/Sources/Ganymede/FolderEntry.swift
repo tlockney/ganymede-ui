@@ -19,6 +19,19 @@ struct FolderEntry: Identifiable, Hashable {
         String(url.standardizedFileURL.path.drop { $0 == "/" })
     }
 
+    /// A file's path on a server rooted at `root`, as the iPad's is at its
+    /// notebook folder (#208): relative, with no leading slash; "" for the
+    /// root itself. Symlinks are resolved on both sides, since iOS lists
+    /// `/private/var/…` for a folder it hands over as `/var/…`.
+    static func serverPath(_ url: URL, root: URL) -> String {
+        let base = root.standardizedFileURL.resolvingSymlinksInPath().path
+        let path = url.standardizedFileURL.resolvingSymlinksInPath().path
+        guard path != base else { return "" }
+        let prefix = base.hasSuffix("/") ? base : base + "/"
+        guard path.hasPrefix(prefix) else { return serverPath(url) }
+        return String(path.dropFirst(prefix.count))
+    }
+
     /// The visible items in `folder`: folders first, then files, each in
     /// Finder order. Hidden files and packages' insides are left out.
     static func list(_ folder: URL, fileManager: FileManager = .default) throws -> [FolderEntry] {

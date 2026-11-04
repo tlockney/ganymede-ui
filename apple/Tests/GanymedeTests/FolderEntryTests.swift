@@ -61,4 +61,15 @@ final class FolderEntryTests: XCTestCase {
         XCTAssertEqual(entries.map(\.name), ["linked", "real"])
         XCTAssertEqual(entries.map(\.isDirectory), [true, true])
     }
+
+    func testServerPathsUnderTheIPadsNotebookFolder() {
+        let root = URL(fileURLWithPath: "/tmp/notebooks", isDirectory: true)
+        XCTAssertEqual(FolderEntry.serverPath(root.appendingPathComponent("moons/Io.ipynb"), root: root), "moons/Io.ipynb")
+        XCTAssertEqual(FolderEntry.serverPath(root, root: root), "")
+        XCTAssertEqual(
+            FolderEntry.serverPath(URL(fileURLWithPath: "/tmp/notebooks/"), root: root), ""
+        )
+        // Outside the folder: the absolute form, which the server refuses.
+        XCTAssertEqual(FolderEntry.serverPath(URL(fileURLWithPath: "/etc/hosts"), root: root), "etc/hosts")
+    }
 }
