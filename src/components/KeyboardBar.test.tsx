@@ -4,6 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { CommandRegistry } from '@lumino/commands';
 import type { Notebook } from '@jupyterlab/notebook';
 import { Signal } from '@lumino/signaling';
+import { resetHeights } from '../lib/keyboard-bar';
+import { TOUCH_QUERY } from '../lib/useNarrow';
 import { KeyboardBar } from './KeyboardBar';
 
 class FakeViewport extends EventTarget {
@@ -21,13 +23,14 @@ beforeEach(() => {
   vi.stubGlobal('visualViewport', viewport);
   vi.stubGlobal('innerHeight', 800);
   vi.stubGlobal('matchMedia', (query: string) => ({
-    matches: query === '(pointer: coarse)' && coarse,
+    matches: query === TOUCH_QUERY && coarse,
   }));
   vi.stubGlobal('requestAnimationFrame', (f: FrameRequestCallback) => setTimeout(f, 0));
   vi.stubGlobal('cancelAnimationFrame', (id: number) => clearTimeout(id));
 });
 
 afterEach(() => {
+  resetHeights();
   vi.unstubAllGlobals();
   document.body.replaceChildren();
 });
@@ -67,6 +70,15 @@ describe('KeyboardBar', () => {
     input.blur();
     await settle();
     expect(screen.queryByRole('toolbar')).toBeNull();
+  });
+
+  it('shows when the keyboard shrinks the app’s web view too', async () => {
+    const { input } = setup();
+    await settle();
+    // The web view, and so the window, gets as short as the visible area.
+    vi.stubGlobal('innerHeight', 450);
+    await keyboardComesUp(input);
+    expect(screen.getByRole('toolbar', { name: 'Keys' })).toHaveStyle({ top: '450px' });
   });
 
   it('keeps the focus in the editor and runs the cell', async () => {

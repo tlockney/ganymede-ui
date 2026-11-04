@@ -6,15 +6,22 @@
   apps and the browser on either get it. The native route, a
   `UIInputView` as the web view's `inputAccessoryView`, means swapping
   the class of WebKit's private `WKContentView` at run time.
-- The bar shows when three things hold: the pointer is coarse, a cell's
-  editor has the focus in edit mode, and the visual viewport is more than
-  120 points shorter than the window at a scale of 1. The on-screen
-  keyboard shrinks only the visual viewport; a hardware keyboard shrinks
-  nothing, so it gets no bar; a pinch zoom shrinks it at a scale above 1.
+- The bar shows when three things hold: a touch screen (`TOUCH_QUERY`),
+  a cell's editor has the focus in edit mode, and the visual viewport is
+  more than 120 points shorter than the window without the keyboard, at
+  a scale of 1. In Safari the keyboard shrinks only the visual viewport,
+  but in the apps SwiftUI's keyboard avoidance can shrink the web view,
+  and `innerHeight` with it, so the page keeps the tallest height seen at
+  each width as the height without the keyboard. A hardware keyboard
+  shrinks nothing, so it gets no bar; a pinch zoom shrinks the viewport
+  at a scale above 1.
   It sits at `visualViewport.offsetTop + height`, moved up its own
   height, and follows the viewport's `resize` and `scroll`.
 - Tab and the arrows are synthetic `keydown` events sent to the focused
-  editor. They go through the document's capture listener first, as a
+  editor, with `keyCode` set by hand: a constructed `KeyboardEvent` has
+  `keyCode` 0, and Lumino's keyboard layout matches by `keyCode` only, so
+  without it Tab never reached the completer (a test binds Tab in a real
+  `CommandRegistry`). They go through the document's capture listener first, as a
   real key does, so Tab completes from the kernel, and CodeMirror's
   keymap handles what's left (checked with a real `EditorView` in jsdom).
   Run and esc run `run-and-advance` and `command-mode`, so a rebound
@@ -23,5 +30,8 @@
 - The buttons call `preventDefault` on `pointerdown` and `mousedown` and
   have `tabIndex={-1}`: a tap must not take the focus, or the keyboard
   goes down.
+- The browser keeps the caret above the keyboard, which is where the
+  bar is drawn. While the bar shows, each `selectionchange` scrolls the
+  caret's scroller up by however much the caret is under the bar.
 - Untried on a real iPhone. WebKit's own bar (the arrows and Done) stays
   under ours; hiding it is the same private-class swap as above.

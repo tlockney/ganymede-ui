@@ -5,13 +5,25 @@
 import { useEffect, useState } from 'react';
 import type { CommandRegistry } from '@lumino/commands';
 import type { Notebook } from '@jupyterlab/notebook';
-import { BAR_KEYS, editingTarget, keyboardUp, pressBarKey } from '../lib/keyboard-bar';
+import {
+  BAR_KEYS,
+  editingTarget,
+  heightWithoutKeyboard,
+  keepCaretAbove,
+  keyboardUp,
+  pressBarKey,
+} from '../lib/keyboard-bar';
+import { TOUCH_QUERY } from '../lib/useNarrow';
+
+/** The bar's height: 36 px keys and 6 px above and below. */
+const BAR_HEIGHT = 48;
 
 /** Where the visible area ends, when the bar shows. */
 function barBottom(notebook: Notebook): number | undefined {
   const viewport = window.visualViewport;
-  if (!viewport || !window.matchMedia?.('(pointer: coarse)').matches) return undefined;
-  if (!keyboardUp(viewport, window.innerHeight) || !editingTarget(notebook)) return undefined;
+  if (!viewport || !window.matchMedia?.(TOUCH_QUERY).matches) return undefined;
+  const full = heightWithoutKeyboard(window.innerWidth, window.innerHeight);
+  if (!keyboardUp(viewport, full) || !editingTarget(notebook)) return undefined;
   return viewport.offsetTop + viewport.height;
 }
 
@@ -48,6 +60,18 @@ export function KeyboardBar({
       notebook.stateChanged.disconnect(update);
     };
   }, [notebook]);
+
+  // The browser keeps the caret above the keyboard, where the bar is.
+  useEffect(() => {
+    if (bottom === undefined) return;
+    const reveal = () => {
+      const target = editingTarget(notebook);
+      if (target) keepCaretAbove(bottom - BAR_HEIGHT, target);
+    };
+    reveal();
+    document.addEventListener('selectionchange', reveal);
+    return () => document.removeEventListener('selectionchange', reveal);
+  }, [notebook, bottom]);
 
   if (bottom === undefined) return null;
   return (

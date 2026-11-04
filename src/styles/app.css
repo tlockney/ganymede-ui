@@ -1570,7 +1570,8 @@ button {
   transform: translateY(-100%);
   display: flex;
   gap: 6px;
-  padding: 6px max(8px, var(--safe-left)) 6px max(8px, var(--safe-right));
+  padding: 6px max(8px, var(--safe-right)) 6px max(8px, var(--safe-left));
+  height: 48px;
   overflow-x: auto;
   overscroll-behavior-x: contain;
   scrollbar-width: none;

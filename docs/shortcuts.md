@@ -17,10 +17,11 @@ and the toolbar's cell type picker changes a cell's type with the mouse.
 > the latest release.
 
 While you edit a cell with the on-screen keyboard (an iPhone, or an iPad
-without a keyboard attached), a bar above the keyboard has Run (as
-Shift+Enter), esc, tab, the four arrows, and the symbols code needs most.
-They do what the keys do: tab completes or indents, esc leaves edit mode.
-Swipe the bar sideways for more symbols.
+without a keyboard attached), a bar above the keyboard has Run (run and
+advance, Shift+Enter by default), esc, tab, the four arrows, and the
+symbols code needs most. tab, esc and the arrows do what the keys do: tab
+completes or indents, esc leaves edit mode. Swipe the bar sideways for
+more symbols.
 
 ## Changing a shortcut
 
