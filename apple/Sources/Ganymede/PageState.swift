@@ -58,6 +58,24 @@ struct PageState: Decodable, Equatable {
         /// A limit stopped the search short.
         var truncated: Bool
         var error: String?
+        /// Whether a file that isn't a notebook opens in the app's editor:
+        /// only from the app's own server.
+        var opensFiles: Bool?
+
+        /// Whether tapping `match` opens it.
+        func opens(_ match: Match) -> Bool {
+            match.isNotebook || (!match.isDirectory && opensFiles == true)
+        }
+    }
+
+    /// The `file-moved` command's argument: a file or folder the app
+    /// renamed (`to`) or deleted (`to` nil) itself, for the page's Recents.
+    static func fileMoved(from: String, to: String?) -> String {
+        let move: [String: Any] = ["from": from, "to": to ?? NSNull()]
+        guard let data = try? JSONSerialization.data(withJSONObject: move, options: [.sortedKeys]) else {
+            return "{}"
+        }
+        return String(decoding: data, as: UTF8.self)
     }
 
     /// The `search` command's argument: what to look for, in which folder

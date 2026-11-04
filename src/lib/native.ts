@@ -55,6 +55,7 @@ export const PAGE_COMMANDS = {
   connect: '',
   search: 'arg',
   'clear-recents': '',
+  'file-moved': 'arg',
 } as const;
 
 /** What the app's sidebar searches for (#240): the `search` command's argument. */
@@ -79,6 +80,25 @@ export function searchRequest(arg: string | undefined): SearchRequest | null {
       dir: typeof dir === 'string' ? dir.replace(/^\/+|\/+$/g, '') : '',
       contents: contents === true,
     };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The `file-moved` command's argument: a file or folder the app renamed
+ * (`to`) or deleted (`to: null`) itself, not through the contents API, so
+ * the page's Recents follow it (#240). Null when it isn't one.
+ */
+export function fileMove(arg: string | undefined): { from: string; to: string | null } | null {
+  if (!arg) return null;
+  try {
+    const value: unknown = JSON.parse(arg);
+    if (!value || typeof value !== 'object') return null;
+    const { from, to } = value as Record<string, unknown>;
+    if (typeof from !== 'string' || !from) return null;
+    if (to !== null && (typeof to !== 'string' || !to)) return null;
+    return { from, to };
   } catch {
     return null;
   }
@@ -123,13 +143,23 @@ export type PageSearch = {
   /** A limit stopped the search short. */
   truncated: boolean;
   error: string | null;
+  /**
+   * Whether the app can open a file that isn't a notebook: only from its
+   * own server, as the page's sidebar offers it (`editsFiles`).
+   */
+  opensFiles: boolean;
 };
 
 /** `PageState.search` from the search hook's state, for `query`. */
-export function pageSearch(query: string, state: SearchState): PageSearch | null {
+export function pageSearch(
+  query: string,
+  state: SearchState,
+  opensFiles = false,
+): PageSearch | null {
   if (!query.trim()) return null;
   return {
     query,
+    opensFiles,
     matches: state.matches.map(m => ({
       path: m.item.path,
       name: m.item.name,

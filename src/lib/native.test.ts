@@ -6,6 +6,7 @@ import {
   nativeChrome,
   openFile,
   postDocument,
+  fileMove,
   pageSearch,
   postState,
   runningSessions,
@@ -137,6 +138,26 @@ describe('native', () => {
       searching: true,
       truncated: true,
       error: null,
+      opensFiles: false,
     });
+    expect(
+      pageSearch('io', { matches: [], searching: false, truncated: false }, true)?.opensFiles,
+    ).toBe(true);
+  });
+
+  it('reads the files the app moved or deleted itself (#240)', () => {
+    expect(fileMove(JSON.stringify({ from: 'Io.ipynb', to: 'moons/Io.ipynb' }))).toEqual({
+      from: 'Io.ipynb',
+      to: 'moons/Io.ipynb',
+    });
+    expect(fileMove(JSON.stringify({ from: 'moons', to: null }))).toEqual({
+      from: 'moons',
+      to: null,
+    });
+    expect(fileMove(JSON.stringify({ from: '', to: null }))).toBeNull();
+    expect(fileMove(JSON.stringify({ from: 'a' }))).toBeNull();
+    expect(fileMove(JSON.stringify({ from: 'a', to: '' }))).toBeNull();
+    expect(fileMove('a')).toBeNull();
+    expect(fileMove(undefined)).toBeNull();
   });
 });

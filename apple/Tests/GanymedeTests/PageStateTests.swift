@@ -46,7 +46,7 @@ final class PageStateTests: XCTestCase {
         XCTAssertEqual(state?.otherSessions.map(\.id), ["s2"])
     }
 
-    func testReadsTheSearchAndRecents() {
+    func testReadsTheSearchAndRecents() throws {
         let body: [String: Any] = [
             "path": NSNull(), "dirty": false, "status": NSNull(), "kernel": NSNull(),
             "kernelDisplayName": NSNull(), "kernelMissing": false, "trusted": true,
@@ -70,6 +70,25 @@ final class PageStateTests: XCTestCase {
         XCTAssertEqual(matches[1].snippet, "io = 1")
         XCTAssertTrue(matches[2].isDirectory)
         XCTAssertEqual(state?.search?.truncated, true)
+        // Without opensFiles (another server), only notebooks open.
+        let search = try XCTUnwrap(state?.search)
+        XCTAssertEqual(matches.map { search.opens($0) }, [true, true, false])
+        var own = search
+        own.opensFiles = true
+        let file = PageState.Search.Match(path: "notes.md", name: "notes.md", type: "file", snippet: nil)
+        XCTAssertTrue(own.opens(file))
+        XCTAssertFalse(search.opens(file))
+        XCTAssertFalse(own.opens(matches[2]))
+    }
+
+    func testBuildsTheFileMovedArgument() throws {
+        let moved = try JSONSerialization.jsonObject(
+            with: Data(PageState.fileMoved(from: "Io.ipynb", to: "moons/Io.ipynb").utf8)) as? [String: Any]
+        XCTAssertEqual(moved?["from"] as? String, "Io.ipynb")
+        XCTAssertEqual(moved?["to"] as? String, "moons/Io.ipynb")
+        let deleted = try JSONSerialization.jsonObject(
+            with: Data(PageState.fileMoved(from: "moons", to: nil).utf8)) as? [String: Any]
+        XCTAssertTrue(deleted?["to"] is NSNull)
     }
 
     func testBuildsTheSearchRequest() throws {

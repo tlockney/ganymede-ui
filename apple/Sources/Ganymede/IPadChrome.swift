@@ -82,6 +82,11 @@ struct IPadSidebar: View {
         .searchable(text: $query, prompt: "Find files")
         .onChange(of: query) { _ in search() }
         .onChange(of: searchContents) { _ in search() }
+        // A reloaded page has no search, and a keystroke before the page
+        // was ready went nowhere: ask again, or it says Searching… for good.
+        .onChange(of: page.state.search == nil && page.state.backend != nil) { lost in
+            if lost, !query.trimmingCharacters(in: .whitespaces).isEmpty { search() }
+        }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
@@ -170,13 +175,10 @@ struct IPadSidebar: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .contentShape(Rectangle())
                     }
-                    .disabled(match.isDirectory)
+                    .disabled(!search.opens(match))
                 }
                 if search.searching {
-                    HStack(spacing: 8) {
-                        ProgressView()
-                        Text("Searching…").foregroundStyle(.secondary)
-                    }
+                    searchingRow
                 } else if let error = search.error {
                     Text(error).foregroundStyle(.secondary).font(.caption)
                 } else if search.matches.isEmpty {
@@ -188,13 +190,17 @@ struct IPadSidebar: View {
                         .foregroundStyle(.secondary)
                 }
             } else {
-                HStack(spacing: 8) {
-                    ProgressView()
-                    Text("Searching…").foregroundStyle(.secondary)
-                }
+                searchingRow
             }
         } header: {
             Text("Results")
+        }
+    }
+
+    private var searchingRow: some View {
+        HStack(spacing: 8) {
+            ProgressView()
+            Text("Searching…").foregroundStyle(.secondary)
         }
     }
 
@@ -202,7 +208,7 @@ struct IPadSidebar: View {
         if match.isNotebook {
             page.run("open", arg: match.path)
             opened()
-        } else if !match.isDirectory {
+        } else if page.state.search?.opens(match) == true {
             openFile(match.path)
         }
     }
@@ -292,6 +298,8 @@ struct IPadSidebar: View {
         let target = entry.url.deletingLastPathComponent().appendingPathComponent(file)
         attempt {
             try FileManager.default.moveItem(at: entry.url, to: target)
+            page.run("file-moved", arg: PageState.fileMoved(
+                from: path(entry), to: FolderEntry.serverPath(target, root: folder)))
             if let moved = FolderEntry.path(
                 page.state.path, movedFrom: path(entry), to: FolderEntry.serverPath(target, root: folder)
             ) {
@@ -312,6 +320,7 @@ struct IPadSidebar: View {
         let holdsOpen = FolderEntry.path(page.state.path, isAt: path(entry))
         attempt {
             try FileManager.default.removeItem(at: entry.url)
+            page.run("file-moved", arg: PageState.fileMoved(from: path(entry), to: nil))
             if holdsOpen { page.run("close") }
         }
     }
