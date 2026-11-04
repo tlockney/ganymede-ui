@@ -186,6 +186,22 @@ through the backend's contents API and gives the toolbar a
 `NotebookController` (run, interrupt, restart, change kernel, save,
 download, trust). A failed action shows its error in the pane.
 
+`problems.ts` turns failures into what the pane's notice says: what
+happened, and the next step as a button (Restart for a dead kernel,
+Retry for an unreachable server, a lost kernel connection or a failed
+save, a kernel picker for a missing kernelspec). Restarting a dead
+kernel starts a new one of the same kind, since a dead kernel's
+connection can't restart it. `run-status.ts` shows, on the cells, which
+one the kernel is running (with its time and an Interrupt button) and
+which are queued behind it. JupyterLab marks every cell sent to the
+kernel as running, and a kernel runs them in order, so the first one
+still marked is the one running.
+
+> [!NOTE]
+> **Unreleased.** The notice's next steps and the running and queued
+> cells are available only from a build of `main` (HEAD), not in the
+> latest release.
+
 `NotebookSaver` (`saver.ts`) does the saving, as JupyterLab's document
 context does: one save at a time, a check of the file's `last_modified`
 before writing (a conflict when it is newer by more than 500 ms), and the
