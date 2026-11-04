@@ -110,12 +110,17 @@ struct ContentView: View {
                     }
                     // Keeps the page in the window while the list shows.
                     .background(ParkedPage(store: phonePage).frame(width: 1, height: 1))
+                    .onAppear { phonePage.park() }
                     .navigationDestination(for: PhoneScreen.self) { _ in notebook }
                 }
                 .task { model.startIfNeeded() }
                 .task(id: model.url) {
                     if let url = model.url {
                         phonePage.load(url, page: pageModel, onOpenFile: openEditor)
+                    } else {
+                        // Stopped, to restart (Open Folder, Try Again,
+                        // remotes, resume): load the new server's page.
+                        phonePage.forget(page: pageModel)
                     }
                 }
             } else if drawsNativeChrome {

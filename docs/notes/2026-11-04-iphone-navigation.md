@@ -29,3 +29,8 @@ notebook's controls (`IPadNotebookToolbar`) go in the bottom toolbar.
 - Not done yet from #209: Recents on the list (with #240), the keyboard
   accessory bar, and Rename in the ⋯ menu (rename is on the list's
   long-press menu). The check on a real iPhone is still to do.
+- A restart (Open Folder, Try Again, a remotes change, `resume()`) reuses
+  the server's port, so the page URL comes back the same, and the
+  long-lived coordinator would skip loading it. While the server is down
+  (`model.url` is nil) the store forgets its loaded URL and `PageModel`
+  waits for the new page's state, so the restarted server's page loads.

@@ -48,8 +48,11 @@ struct WebView: UIViewRepresentable {
     /// A stored page goes back to its parking place once its screen has
     /// let it go.
     static func dismantleUIView(_ view: WKWebView, coordinator: WebViewCoordinator) {
-        // After SwiftUI has taken the screen's views out of the window.
+        // After SwiftUI has taken the screen's views out of the window, and
+        // again once a pop's animation is surely over; the list's
+        // `onAppear` parks it too.
         DispatchQueue.main.async { coordinator.park?() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { coordinator.park?() }
     }
 
     func updateUIView(_ view: WKWebView, context: Context) {
@@ -93,6 +96,14 @@ final class WebViewStore: ObservableObject {
         coordinator.onOpenFile = onOpenFile
         coordinator.load(url, in: view)
         park()
+    }
+
+    /// The server stopped (a restart reuses its port, so the page's URL
+    /// comes back the same): the next `load` loads the page again, and its
+    /// commands wait for it.
+    func forget(page: PageModel) {
+        coordinator.forget()
+        page.reset()
     }
 
     /// Puts the web view back in `parking` when no screen in the window
@@ -231,6 +242,11 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         if let agentSettings {
             NotificationCenter.default.removeObserver(agentSettings)
         }
+    }
+
+    /// The next `load` loads even the same URL: the server restarted.
+    func forget() {
+        loaded = nil
     }
 
     /// Loads `url` when it changed: a restart for another folder.
@@ -599,6 +615,11 @@ final class PageModel: ObservableObject {
     func run(_ id: String, arg: String? = nil) {
         pending.append(PageCommand.script(id, arg: arg))
         flush()
+    }
+
+    /// The page is going away: commands wait for the next one's state.
+    func reset() {
+        ready = false
     }
 
     private func flush() {
