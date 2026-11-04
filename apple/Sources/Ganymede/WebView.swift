@@ -598,7 +598,8 @@ final class PageModel: ObservableObject {
     weak var webView: WKWebView? {
         didSet { flush() }
     }
-    /// Whether the page has posted its state, so its commands are ready.
+    /// Whether the page has posted its state with a backend, so its
+    /// commands are ready.
     private var ready = false
     /// Commands run before then: the iPhone's list can be tapped while the
     /// page is still loading (#209).
@@ -606,7 +607,9 @@ final class PageModel: ObservableObject {
 
     func update(_ state: PageState) {
         if state != self.state { self.state = state }
-        if !ready {
+        // Ready once it is connected: before that, `open` and
+        // `new-notebook` have no backend to act on.
+        if !ready, state.backend != nil {
             ready = true
             flush()
         }

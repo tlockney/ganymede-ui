@@ -20,8 +20,8 @@ notebook's controls (`IPadNotebookToolbar`) go in the bottom toolbar.
   into its screen; when that screen goes, `dismantleUIView` parks it
   again. It also gets `inactiveSchedulingPolicy = .none` on iOS 17.
 - A tap on the list can come before the page is ready for commands.
-  `PageModel` now queues commands until the page has posted its first
-  state, so the pushed notebook screen still opens what was tapped.
+  `PageModel` now queues commands until the page has posted a state
+  with a backend (its first state, on mount, has none yet), so the pushed notebook screen still opens what was tapped.
 - Errors from starting the server and from the keychain show on the list
   as well, since the notebook screen may never be opened.
 - New Notebook from the list also pushes the notebook, on the iPad too
