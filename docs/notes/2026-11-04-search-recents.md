@@ -31,8 +31,9 @@
   error. The list updates in other tabs through the `storage` event.
 - The sidebar records the open notebook itself, so `App.tsx` is
   unchanged; with `chrome=native` the page's sidebar isn't drawn and
-  nothing is recorded, which is fine since the Mac app has File > Open
-  Recent. Renames and deletes are followed through the contents
+  nothing is recorded. The Mac app has File > Open Recent; the iPad,
+  also `chrome=native` since #237, gets search and Recents in its own
+  sidebar with #240. Renames and deletes are followed through the contents
   manager's `fileChanged` signal, which covers the sidebar's file menu
   and the title rename alike, and a renamed or deleted folder takes its
   notebooks with it. Each recent is checked once per page load
