@@ -188,8 +188,10 @@ describe('App', () => {
     const changeCellType = vi.fn();
     const command = vi.fn((id: string) => id === 'move-up');
     const discard = vi.fn();
+    const rename = vi.fn(async () => true);
     mocks.controller = {
       discard,
+      rename,
       dirty: false,
       save: vi.fn(async () => true),
       runAll,
@@ -227,6 +229,10 @@ describe('App', () => {
     // The notebook's own commands, by their shortcut-table ids.
     expect(await run('move-up')).toBe(true);
     expect(await run('no-such-command')).toBe(false);
+    // File › Rename: the page's own rename, which saves and keeps the kernel.
+    expect(await run('rename', 'Callisto')).toBe(true);
+    expect(rename).toHaveBeenCalledWith('Callisto');
+    expect(await run('rename')).toBe(false);
     // An absolute path, as the Mac app passes it, is cleaned as `?open=` is.
     expect(await run('open', '/Europa.ipynb')).toBe(true);
     await waitFor(() => expect(screen.getByTestId('pane')).toHaveTextContent(/^Europa\.ipynb$/));
