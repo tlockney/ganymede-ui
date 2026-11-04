@@ -252,13 +252,13 @@ private struct FolderContents: View {
     @ViewBuilder
     private func menu(for entry: FolderEntry) -> some View {
         if entry.isDirectory {
-            Button("Open in New Window") { actions.openInNewWindow(entry) }
+            Button("Open in New Tab") { actions.openInNewWindow(entry) }
             Button("New Notebook Here") { actions.newNotebook(entry.url) }
             Button("New Folder Here") { actions.newFolder(entry.url) }
         } else {
             Button("Open") { actions.open(entry) }
             if entry.isNotebook {
-                Button("Open in New Window") { actions.openInNewWindow(entry) }
+                Button("Open in New Tab") { actions.openInNewWindow(entry) }
             }
         }
         Divider()
@@ -412,7 +412,13 @@ struct NewCommands: View {
             }
         }
         .keyboardShortcut("n")
+        Button("New Tab") {
+            openWindow(value: WindowTarget.folder(folder ?? model.root))
+        }
+        .keyboardShortcut("t")
         Button("New Window") {
+            // A window of its own, not a tab of the front one (#247).
+            WorkspaceTabs.nextOpensAlone = true
             openWindow(value: WindowTarget.folder(folder ?? model.root))
         }
         .keyboardShortcut("n", modifiers: [.command, .option])

@@ -81,6 +81,8 @@ struct ContentView: View {
         }
         .onDisappear { model.openRequests.unregister(windowID) }
         .background(WindowReader { document.attach(to: $0) })
+        // Notebook windows are tabs too (#247).
+        .workspaceTab()
         .focusedSceneObject(document)
         .focusedSceneObject(pageModel)
         #else

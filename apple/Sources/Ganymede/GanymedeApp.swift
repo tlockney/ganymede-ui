@@ -59,15 +59,18 @@ struct GanymedeApp: App {
                 }
             }
         }
+        // Terminals and text files open as tabs of the front window (#247).
         WindowGroup("Terminal", for: TerminalRequest.self) { $request in
             TerminalWindow(target: request?.target ?? .local(folder: nil))
                 .environmentObject(model)
+                .workspaceTab()
         }
         .handlesExternalEvents(matching: [])
         // Text files opened from a notebook window's sidebar (#122).
         WindowGroup("Editor", for: EditorRequest.self) { $request in
             if let request {
                 EditorWindow(request: request)
+                    .workspaceTab()
             }
         }
         .handlesExternalEvents(matching: [])

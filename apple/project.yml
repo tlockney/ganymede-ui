@@ -307,6 +307,7 @@ targets:
       - path: Sources/Ganymede/DocumentMessage.swift
       - path: Sources/Ganymede/PageState.swift
       - path: Sources/Ganymede/FolderEntry.swift
+      - path: Sources/Ganymede/WorkspaceTabs.swift
       - path: Sources/Ganymede/Terminal/SSHKey.swift
       - path: Sources/Ganymede/Editor/TextFile.swift
       - path: Sources/Ganymede/Editor/CodeEditing.swift
@@ -338,6 +339,7 @@ targets:
       - path: Sources/Ganymede/DocumentMessage.swift
       - path: Sources/Ganymede/PageState.swift
       - path: Sources/Ganymede/FolderEntry.swift
+      - path: Sources/Ganymede/WorkspaceTabs.swift
       - path: Sources/Ganymede/Terminal/SSHKey.swift
       - path: Sources/Ganymede/Editor/TextFile.swift
       - path: Sources/Ganymede/Editor/CodeEditing.swift

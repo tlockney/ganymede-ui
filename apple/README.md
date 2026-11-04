@@ -47,13 +47,23 @@ built from the same sources (see
   choose Kernel › Shut Down Other Kernels. The toolbar saves, runs cells, interrupts and restarts the
   kernel, inserts cells, sets the cell type, picks the kernel and trusts
   the notebook. File › New Notebook (⌘N) makes one in the window's
-  folder, New Window (⌥⌘N) opens another window, and Rename… renames the
+  folder, New Tab (⌘T) opens another tab, New Window (⌥⌘N) a window of its own, and Rename… renames the
   open notebook (saving it first; its kernel keeps running). The Cell menu runs, inserts, moves and deletes cells and opens
   Find; the Kernel menu interrupts (⌘.), restarts, changes and trusts.
 
   > [!NOTE]
   > **Unreleased.** Available only from a build of `main` (HEAD), not in
   > the latest release, which uses the page's own sidebar and toolbar.
+
+- Notebook, text file and terminal windows open as tabs of the front
+  window, with the system's window tabs: drag a tab out to make it a
+  window, or choose Window › Merge All Windows to bring windows back
+  together. Each tab keeps its own toolbar. Right-click a notebook or
+  folder in the sidebar and choose Open in New Tab.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release, where each opens in a window of its own.
 
 - Downloads from the page (links with a `download` attribute, files an
   output offers) ask where to save, starting in Downloads.
