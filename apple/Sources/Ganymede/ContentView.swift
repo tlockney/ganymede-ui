@@ -98,6 +98,10 @@ struct ContentView: View {
                     } detail: {
                         NavigationStack { notebook }
                     }
+                    // Back in landscape, the sidebar shows again by default.
+                    .onChange(of: window.size.width > window.size.height) { landscape in
+                        if landscape { columns = .automatic }
+                    }
                 }
             } else {
                 NavigationStack { notebook }
