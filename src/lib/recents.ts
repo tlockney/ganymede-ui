@@ -20,7 +20,7 @@ type Store = Record<string, string[]>;
 
 /** Which list a backend's notebooks go in: its notebooks' location, not its kernels'. */
 export function recentsKey(config: BackendConfig): string {
-  return config.kind === 'browser' ? 'browser' : `ganymede:${config.url}`;
+  return config.kind === 'browser' ? 'browser' : `ganymede:${config.url.replace(/\/+$/, '')}`;
 }
 
 function read(): Store {

@@ -16,8 +16,11 @@
   `AbortController`: a newer query cancels the older one's remaining
   requests, and its late matches are dropped (a test holds one notebook's
   fetch until the newer search has shown its results). The listing is
-  reused across queries in the same folder until `fileChanged` fires;
-  notebook sources are cached by `last_modified`.
+  reused across queries in the same folder until a file is added,
+  renamed or deleted here (`fileChanged`, but not its `save`), which also
+  re-runs the search. Notebook sources are cached by the listing's
+  `last_modified`, so edits made outside this page show only after the
+  field is cleared, which drops the listing and the cache.
 - Recents (`src/lib/recents.ts`): the last eight notebooks opened, newest
   first, in local storage under `ganymede-ui:recents`, one list per
   backend (by where its files are: the server URL, or this browser), at

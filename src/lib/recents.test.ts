@@ -41,6 +41,8 @@ describe('recents', () => {
     expect(
       recentsKey({ kind: 'ganymede', url: 'http://h:8888', token: 'u', kernels: 'page' }),
     ).toBe(server);
+    // Nor does a trailing slash, which connect() strips too.
+    expect(recentsKey({ kind: 'ganymede', url: 'http://h:8888/', token: 't' })).toBe(server);
     addRecent(browser, 'x.ipynb');
     addRecent(server, 'y.ipynb');
     expect(loadRecents(browser)).toEqual(['x.ipynb']);

@@ -98,6 +98,8 @@ export async function listTree(
     });
     level = below;
   }
+  // Requests finish in any order: sort for a stable list.
+  items.sort((a, b) => a.path.localeCompare(b.path));
   return { items, truncated };
 }
 
@@ -216,6 +218,8 @@ export function useFileSearch(
   const [state, setState] = useState<SearchState>(IDLE);
   const tree = useRef<{ key: string; listing: Promise<Listing>; abort(): void }>(undefined);
   const cache = useRef<SourceCache>(new Map());
+  // Bumped when a file is added, renamed or deleted, so the search re-runs.
+  const [changes, setChanges] = useState(0);
   const forget = useCallback(() => {
     tree.current?.abort();
     tree.current = undefined;
@@ -223,9 +227,15 @@ export function useFileSearch(
 
   useEffect(() => {
     if (!contents) return;
-    contents.fileChanged.connect(forget);
+    const onChange = (_: unknown, change: Contents.IChangedArgs) => {
+      // A save doesn't change the tree; the source cache checks last_modified.
+      if (change.type === 'save') return;
+      forget();
+      setChanges(n => n + 1);
+    };
+    contents.fileChanged.connect(onChange);
     return () => {
-      contents.fileChanged.disconnect(forget);
+      contents.fileChanged.disconnect(onChange);
       forget();
     };
   }, [contents, forget]);
@@ -233,12 +243,17 @@ export function useFileSearch(
   useEffect(() => {
     const q = query.trim();
     if (!contents || !q) {
+      // A cleared field ends the search: the next one lists afresh, which
+      // picks up changes made outside this page, and the sources go.
+      forget();
+      cache.current.clear();
       setState(IDLE);
       return;
     }
     const ctrl = new AbortController();
     const { signal } = ctrl;
-    setState(s => ({ ...s, searching: true, error: undefined }));
+    // The last query's matches would be wrong for this one: clear them.
+    setState({ matches: [], searching: true, truncated: false });
     const run = async () => {
       try {
         if (tree.current?.key !== dir) {
@@ -281,7 +296,7 @@ export function useFileSearch(
       window.clearTimeout(timer);
       ctrl.abort();
     };
-  }, [contents, dir, query, withContents, forget]);
+  }, [contents, dir, query, withContents, forget, changes]);
 
   return state;
 }

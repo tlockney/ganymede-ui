@@ -227,6 +227,47 @@ describe('useFileSearch', () => {
     expect(result.current.matches).toEqual([]);
   });
 
+  it('searches again after a rename or delete, but not after a save', async () => {
+    const { contents, fake } = contentsOf();
+    const { result } = renderHook(() => useFileSearch(contents, '', 'sat', false));
+    await waitFor(() =>
+      expect(result.current.matches.map(m => m.item.path)).toEqual(['Saturn.ipynb']),
+    );
+    expect(fake.contents.get).toHaveBeenCalledTimes(4);
+
+    // A save leaves the tree as it is.
+    act(() =>
+      fake.contents.fileChanged.emit({
+        type: 'save',
+        oldValue: null,
+        newValue: { path: 'Saturn.ipynb' },
+      }),
+    );
+    await new Promise(r => setTimeout(r, 400));
+    expect(fake.contents.get).toHaveBeenCalledTimes(4);
+
+    // A delete re-runs the same query on a fresh listing.
+    act(() =>
+      fake.contents.fileChanged.emit({
+        type: 'delete',
+        oldValue: { path: 'Saturn.ipynb' },
+        newValue: null,
+      }),
+    );
+    await waitFor(() => expect(fake.contents.get).toHaveBeenCalledTimes(8));
+  });
+
+  it('does not show the last query’s matches while the next one runs', async () => {
+    const { contents } = contentsOf();
+    const { result, rerender } = renderHook(({ q }) => useFileSearch(contents, '', q, false), {
+      initialProps: { q: 'sat' },
+    });
+    await waitFor(() => expect(result.current.matches).toHaveLength(1));
+    rerender({ q: 'satx' });
+    expect(result.current.searching).toBe(true);
+    expect(result.current.matches).toEqual([]);
+  });
+
   it('drops a stale content search when the query changes', async () => {
     const { contents, fake } = contentsOf();
     const get = fake.contents.get.getMockImplementation()!;

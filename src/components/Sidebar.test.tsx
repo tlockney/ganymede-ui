@@ -51,9 +51,11 @@ describe('Sidebar', () => {
 
   it('opens a notebook and marks the open one', async () => {
     const { onOpen } = renderSidebar({ openPath: 'Jupiter.ipynb' });
-    const jupiter = (await screen.findByText('Jupiter')).closest('button')!;
+    // In the folder list: Recents lists the open notebook too.
+    const files = await screen.findByRole('list', { name: 'Files' });
+    const jupiter = (await within(files).findByText('Jupiter')).closest('button')!;
     expect(jupiter).toHaveClass('selected');
-    expect(screen.getByText('Saturn').closest('button')).not.toHaveClass('selected');
+    expect(within(files).getByText('Saturn').closest('button')).not.toHaveClass('selected');
 
     await userEvent.click(screen.getByText('Saturn'));
     expect(onOpen).toHaveBeenCalledWith('Saturn.ipynb');
