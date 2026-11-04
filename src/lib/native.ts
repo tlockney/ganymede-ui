@@ -25,13 +25,14 @@ export type NativeHooks = {
 /**
  * The commands the page runs for the app beside the notebook's own (the
  * shortcuts table's ids, such as `run-cell` or `move-up`). Those marked
- * `arg` take one: a path, a folder, a cell type or a kernel name.
- * `shutdown-kernel` takes a running session's id or its notebook's path;
- * `shutdown-others` shuts down every kernel but the open notebook's.
+ * `arg` take one: a path, a folder, a new name, a cell type or a kernel
+ * name. `shutdown-kernel` takes a running session's id or its notebook's
+ * path; `shutdown-others` shuts down every kernel but the open notebook's.
  */
 export const PAGE_COMMANDS = {
   open: 'arg',
   close: '',
+  rename: 'arg',
   'shutdown-kernel': 'arg',
   'shutdown-others': '',
   'new-notebook': 'arg',

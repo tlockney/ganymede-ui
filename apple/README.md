@@ -46,9 +46,9 @@ built from the same sources (see
   Running section lists them; right-click one to shut its kernel down, or
   choose Kernel › Shut Down Other Kernels. The toolbar runs cells, interrupts and restarts the
   kernel, inserts cells, sets the cell type, picks the kernel and trusts
-  the notebook. File › New Notebook
-  (⌘N) makes one in the window's folder, New Window (⌥⌘N) opens another
-  window. The Cell menu runs, inserts, moves and deletes cells and opens
+  the notebook. File › New Notebook (⌘N) makes one in the window's
+  folder, New Window (⌥⌘N) opens another window, and Rename… renames the
+  open notebook (saving it first; its kernel keeps running). The Cell menu runs, inserts, moves and deletes cells and opens
   Find; the Kernel menu interrupts (⌘.), restarts, changes and trusts.
 
   > [!NOTE]

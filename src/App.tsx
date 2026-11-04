@@ -309,6 +309,11 @@ export function App() {
       case 'download':
         c.download();
         return true;
+      case 'rename':
+        // A new name, as the title takes it: saves first and keeps the
+        // kernel, and a failure shows the page's notice.
+        if (!arg) return false;
+        return c.rename(arg);
       case 'trust':
         await c.trust();
         return true;
