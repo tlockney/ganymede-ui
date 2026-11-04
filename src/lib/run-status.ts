@@ -176,6 +176,8 @@ export function attachRunStatus(notebook: Notebook, { interrupt, now = Date.now 
     // found by its absence.
     const present = new Set<ICellModel>();
     if (cells) for (let i = 0; i < cells.length; i++) present.add(cells.get(i));
+    // Removing the running cell doesn't stop the kernel running it, so the
+    // next one shows as running early: queue timing is an estimate.
     [...watched].filter(m => !present.has(m)).forEach(unwatch);
     present.forEach(watch);
     // The notebook makes the new cells' widgets in its own handler, which

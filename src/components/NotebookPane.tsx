@@ -168,13 +168,14 @@ function runFailed(
   kernelspecs: KernelSpec.IManager,
   e: unknown,
   what = 'run',
+  retry = false,
 ): Problem {
   const kernel = session.session?.kernel;
   if (kernel?.status === 'dead') {
     const spec = kernelspecs.specs?.kernelspecs[kernel.name];
     return kernelDead(spec?.display_name ?? kernel.name);
   }
-  return failed(what, e);
+  return failed(what, e, { retry });
 }
 
 /**
@@ -213,15 +214,28 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
   const [notice, setNoticeState] = useState<Notice>();
   const setNotice = (problem: Problem | undefined, retry?: () => void) =>
     setNoticeState(problem && { problem, retry });
-  /** Clear the notice if it is of one of these kinds. */
+  /**
+   * Set, to its notice, when autosave met a file changed on disk; a save
+   * clears it.
+   */
+  const autosaveOff = useRef<Problem>(undefined);
+  /**
+   * Clear the notice if it is of one of these kinds. A save conflict
+   * outlasts the notices shown over it: autosave stays off until a save, so
+   * it comes back when they clear.
+   */
   const clearNotice = (...kinds: Problem['kind'][]) =>
-    setNoticeState(n => (n && kinds.includes(n.problem.kind) ? undefined : n));
+    setNoticeState(n =>
+      n && kinds.includes(n.problem.kind)
+        ? autosaveOff.current && n.problem.kind !== 'save-conflict'
+          ? { problem: autosaveOff.current }
+          : undefined
+        : n,
+    );
   /** The latest controller, for the notice's buttons. */
   const controllerRef = useRef<NotebookController>(undefined);
   /** Whether the session has rejoined the file's running kernel, if any. */
   const [joined, setJoined] = useState(false);
-  /** Set when autosave met a file changed on disk; a save clears it. */
-  const autosaveOff = useRef(false);
   /** Set once the file is deleted from under the notebook: no save may put it back. */
   const gone = useRef(false);
   /** A rename in progress: the pane's teardown waits for it to move the session. */
@@ -538,8 +552,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       if (!model.dirty || autosaveOff.current || gone.current) return;
       saver.save({ ifDirty: true }).catch(e => {
         if (e instanceof SaveConflict) {
-          autosaveOff.current = true;
-          setNotice(saveConflict(basename(path)));
+          autosaveOff.current = saveConflict(basename(path));
+          setNotice(autosaveOff.current);
         } else {
           setNotice(saveFailed(basename(path), e, true), autosave);
         }
@@ -580,12 +594,16 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       return run;
     };
     // A run's failure: when the kernel died under it, say that instead.
-    const reportRun = (what: string, action: () => Promise<void>) => async () => {
-      try {
-        await action();
-      } catch (e) {
-        setNotice(runFailed(session, services.kernelspecs, e, what));
-      }
+    // Retry runs it again, on the cells selected then.
+    const reportRun = (what: string, action: () => Promise<void>) => {
+      const run = async () => {
+        try {
+          await action();
+        } catch (e) {
+          setNotice(runFailed(session, services.kernelspecs, e, what, true), () => void run());
+        }
+      };
+      return run;
     };
     // Move the file to `to` with `rename` (the file's own rename, or its
     // folder's in the sidebar), taking the saves and the kernel along.
@@ -662,8 +680,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
           setNotice(saveFailed(fileName, e), () => void controller.save());
           return false;
         }
-        autosaveOff.current = false;
-        setNotice(undefined);
+        autosaveOff.current = undefined;
+        clearNotice('save-conflict', 'save-failed');
         return true;
       },
       download: () => {
@@ -820,13 +838,16 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
           notebook={open.notebook}
           cell={menu.cell}
           anchor={menu.anchor}
-          run={async () => {
+          run={async function run() {
             try {
               if (await open.ensureKernel()) {
                 await NotebookActions.run(open.notebook, open.session);
               }
             } catch (e) {
-              setNotice(runFailed(open.session, services.kernelspecs, e, 'run the cell'));
+              setNotice(
+                runFailed(open.session, services.kernelspecs, e, 'run the cell', true),
+                () => void run(),
+              );
             }
           }}
           onClose={() => setMenu(undefined)}
@@ -836,14 +857,14 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         <ProblemNotice
           problem={notice.problem}
           specs={services.kernelspecs.specs}
-          onDismiss={() => setNotice(undefined)}
+          onDismiss={() => clearNotice(notice.problem.kind)}
           onPickKernel={name => void controllerRef.current?.changeKernel(name)}
           onAction={action => {
             const c = controllerRef.current;
             if (action === 'restart') void c?.restart();
             else if (action === 'save') void c?.save();
             else if (notice.retry) {
-              setNotice(undefined);
+              clearNotice(notice.problem.kind);
               notice.retry();
             }
           }}

@@ -73,7 +73,7 @@ describe('problems', () => {
     });
   });
 
-  it('offers Retry for other failures only when asked, or when unreachable', () => {
+  it('offers Retry for other failures only when asked', () => {
     expect(failed('restart the kernel', new Error('Nope'))).toMatchObject({
       kind: 'failed',
       message: 'Couldn’t restart the kernel: Nope',
@@ -82,7 +82,14 @@ describe('problems', () => {
     expect(failed('restart the kernel', new Error('Nope'), { retry: true }).actions).toEqual([
       'retry',
     ]);
-    expect(failed('restart the kernel', new TypeError('Failed to fetch'))).toMatchObject({
+    // Unreachable says so, with Retry only when there is something to retry.
+    expect(failed('rename Io.ipynb', new TypeError('Failed to fetch'))).toMatchObject({
+      message: 'Couldn’t reach the server to rename Io.ipynb.',
+      actions: [],
+    });
+    expect(
+      failed('restart the kernel', new TypeError('Failed to fetch'), { retry: true }),
+    ).toMatchObject({
       message: 'Couldn’t reach the server to restart the kernel.',
       actions: ['retry'],
     });

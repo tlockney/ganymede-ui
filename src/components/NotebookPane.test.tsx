@@ -64,10 +64,18 @@ vi.mock('../lib/cell-controls', () => ({
 
 // The running and queued lines need JupyterLab's cells; run-status.test.ts
 // covers them.
-const runStatus = vi.hoisted(() => ({ clear: vi.fn() }));
-vi.mock('../lib/run-status', () => ({
-  attachRunStatus: vi.fn(() => ({ ...runStatus, dispose: vi.fn(), isDisposed: false })),
+const runStatus = vi.hoisted(() => ({
+  clear: vi.fn(),
+  options: undefined as { interrupt(): void } | undefined,
 }));
+vi.mock('../lib/run-status', () => ({
+  attachRunStatus: vi.fn((_: unknown, options: { interrupt(): void }) => {
+    runStatus.options = options;
+    return { clear: runStatus.clear, dispose: vi.fn(), isDisposed: false };
+  }),
+}));
+/** What the pane gave the running line: its Interrupt. */
+const runStatusOptions = () => runStatus.options!;
 
 vi.mock('../lib/widgets', () => ({
   attachWidgets: vi.fn(() => {
@@ -338,8 +346,8 @@ describe('NotebookPane', () => {
       ...over,
     });
     /** Open the notebook with a kernel running. */
-    async function running() {
-      const s = setup();
+    async function running(get?: Parameters<typeof setup>[0]) {
+      const s = setup(get);
       await waitFor(() => expect(s.latest()?.status).toBe('none'));
       const session = fakes.sessions[0] as FakeSession;
       session.session = { kernel: kernel() };
@@ -436,6 +444,68 @@ describe('NotebookPane', () => {
       await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
       await waitFor(() => expect(restart).toHaveBeenCalledTimes(2));
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('says when a run can’t reach the server, and Retry runs again', async () => {
+      const { latest } = await running();
+      const run = vi
+        .spyOn(NotebookActions, 'runAndAdvance')
+        .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+        .mockResolvedValue(true);
+      await act(() => latest()!.run());
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Couldn’t reach the server to run the cell.',
+      );
+      await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+      await waitFor(() => expect(run).toHaveBeenCalledTimes(2));
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+      run.mockRestore();
+    });
+
+    it('offers no Retry when there is nothing to run again', async () => {
+      const { latest, session } = await running();
+      const interrupt = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+      Object.assign(session.session!.kernel, { interrupt });
+      act(() => runStatusOptions().interrupt());
+      expect(await screen.findByRole('alert')).toHaveTextContent(
+        'Couldn’t reach the server to interrupt the kernel.',
+      );
+      expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
+      expect(latest()).toBeDefined();
+    });
+
+    it('shows the save conflict again once a kernel notice over it clears', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      const { fake, session } = await running(
+        vi.fn(async () => ({
+          path: 'moons/Io.ipynb',
+          last_modified: '2026-10-20T10:00:00Z',
+          content: structuredClone(NOTEBOOK),
+        })),
+      );
+      fake.contents.get.mockResolvedValue({ last_modified: '2026-10-20T10:05:00Z' } as never);
+      act(() => modelOf().cells.get(0).sharedModel.setSource('print(2)'));
+      await act(() => vi.advanceTimersByTimeAsync(120_000));
+      expect(screen.getByRole('alert')).toHaveTextContent('Autosave is off until you save it');
+
+      session.session!.kernel = kernel({
+        status: 'dead',
+        connectionStatus: 'disconnected',
+        isDisposed: true,
+      });
+      act(() => session.statusChanged.emit('dead'));
+      await waitFor(() =>
+        expect(screen.getByRole('alert')).toHaveTextContent('The Python 3 kernel stopped.'),
+      );
+      session.changeKernel.mockImplementationOnce(async () => {
+        session.session!.kernel = kernel();
+        session.kernelChanged.emit(null);
+        return null;
+      });
+      await userEvent.click(screen.getByRole('button', { name: 'Restart' }));
+      await waitFor(() =>
+        expect(screen.getByRole('alert')).toHaveTextContent('Autosave is off until you save it'),
+      );
     });
 
     it('says the kernel died when a run fails under a dead kernel', async () => {

@@ -80,12 +80,12 @@ export function connectionLost(): Problem {
 }
 
 /** The server couldn't be reached to do `what` ("save Io.ipynb"). */
-export function unreachable(what: string): Problem {
+export function unreachable(what: string, retry = true): Problem {
   return {
     kind: 'unreachable',
     message: `Couldn’t reach the server to ${what}.`,
-    hint: 'Check that it is running and the network is up, then retry.',
-    actions: ['retry'],
+    hint: 'Check that it is running and the network is up, then try again.',
+    actions: retry ? ['retry'] : [],
   };
 }
 
@@ -130,13 +130,13 @@ export function saveFailed(fileName: string, e: unknown, auto = false): Problem 
 
 /**
  * Doing `what` ("restart the kernel") failed with `e`. `retry` offers
- * Retry; one that never reached the server always does.
+ * Retry, for a caller that has something to run again.
  */
 export function failed(
   what: string,
   e: unknown,
   { retry = false, kind = 'failed' }: { retry?: boolean; kind?: ProblemKind } = {},
 ): Problem {
-  if (isUnreachable(e)) return { ...unreachable(what), kind };
+  if (isUnreachable(e)) return { ...unreachable(what, retry), kind };
   return { kind, message: `Couldn’t ${what}: ${messageOf(e)}`, actions: retry ? ['retry'] : [] };
 }

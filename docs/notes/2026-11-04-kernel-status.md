@@ -39,7 +39,14 @@ and each notice says what happened and offers the next step.
 - "Server unreachable" is a `ServerConnection.NetworkError` or a
   `TypeError` whose message is a browser's fetch failure ("Failed to
   fetch", "NetworkError when…", "Load failed"). An answer that said no
-  (403, 404, 500) is not that, and keeps its own message.
+  (403, 404, 500) is not that, and keeps its own message. Retry is offered
+  only where there is something to run again: a run (on the cells
+  selected then), a save, a restart, opening the file. An unreachable
+  interrupt, command or rename says so without it.
+- The pane has one notice. A save conflict outlasts the notices shown
+  over it: autosave stays off until a save, so when a kernel notice
+  clears, the conflict notice comes back. A save clears only save
+  notices.
 - A file that couldn't be opened gets a Retry button that loads it again.
 - The toolbar (`Toolbar.tsx`) is unchanged: it still shows the kernel's
   name and state under the title. Restart there also starts a new kernel
