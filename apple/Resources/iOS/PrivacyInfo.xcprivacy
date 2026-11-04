@@ -3,7 +3,9 @@
 <!-- The app's privacy manifest, which App Store Connect checks on upload:
      no tracking, no collected data, and the reason for each "required
      reason" API the app calls. UserDefaults holds the app's own settings
-     (CA92.1). -->
+     (CA92.1). The embedded server reads file modification times (stat) for
+     its contents API, in the app container (C617.1) and in folders the
+     user picked (3B52.1). -->
 <plist version="1.0">
 <dict>
 	<key>NSPrivacyTracking</key>
@@ -20,6 +22,15 @@
 			<key>NSPrivacyAccessedAPITypeReasons</key>
 			<array>
 				<string>CA92.1</string>
+			</array>
+		</dict>
+		<dict>
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>C617.1</string>
+				<string>3B52.1</string>
 			</array>
 		</dict>
 	</array>

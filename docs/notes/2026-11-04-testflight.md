@@ -24,8 +24,10 @@ the secrets and the one-time setup in the Apple account.
   has `apple/Resources/iOS/Assets.xcassets` with one 1024-point icon.
   Chromium screenshots are always RGBA, so `scripts/render-icons.mjs`
   draws that icon on a canvas and writes an RGB PNG itself.
-- A privacy manifest (`PrivacyInfo.xcprivacy`) declares the app's one
-  "required reason" API, UserDefaults (CA92.1).
+- A privacy manifest (`PrivacyInfo.xcprivacy`) declares the app's
+  "required reason" APIs: UserDefaults (CA92.1), and file timestamps,
+  which the embedded ganymede-contents reads with `stat` (C617.1 for the
+  app container, 3B52.1 for folders the user picked).
 - Export compliance is not declared: the app uses HTTPS/TLS and SSH
   (swift-nio-ssh), both standard encryption, but the exemption answer is
   the account holder's to give. Until `ITSAppUsesNonExemptEncryption` is
@@ -37,4 +39,4 @@ the secrets and the one-time setup in the Apple account.
   its own icon check. On iOS, actool records the icon under
   `CFBundleIcons > CFBundlePrimaryIcon > CFBundleIconName`, not the
   top-level `CFBundleIconName` a Mac app has. Run 8 uploaded 0.3.0 (8) to
-  App Store Connect.
+  App Store Connect. Installing it from TestFlight is still to be tried.
