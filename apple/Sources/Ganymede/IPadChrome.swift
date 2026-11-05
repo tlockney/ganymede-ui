@@ -440,6 +440,8 @@ struct IPadNotebookToolbar: ToolbarContent {
     @ObservedObject var page: PageModel
     /// In the bottom toolbar, in thumb reach: the iPhone (#209).
     var bottom = false
+    /// Asks for the notebook's new name (#209).
+    var rename: () -> Void = {}
 
     var body: some ToolbarContent {
         ToolbarItemGroup(placement: bottom ? .bottomBar : .navigationBarTrailing) {
@@ -482,6 +484,7 @@ struct IPadNotebookToolbar: ToolbarContent {
                 Divider()
                 Button { page.run("save") } label: { Label("Save", systemImage: "square.and.arrow.down") }
                     .disabled(!page.state.dirty)
+                Button(action: rename) { Label("Rename…", systemImage: "pencil") }
                 Button { page.run("download") } label: { Label("Download", systemImage: "arrow.down.doc") }
                 Button { page.run("trust") } label: { Label("Trust Notebook", systemImage: "checkmark.shield") }
                     .disabled(page.state.trusted)

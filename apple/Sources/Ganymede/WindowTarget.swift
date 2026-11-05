@@ -27,18 +27,27 @@ enum WindowTarget: Codable, Hashable {
         }
     }
 
-    /// The notebook a page from the server shows, from its `open=` (a path
-    /// from the server's root, `/`, form-encoded as URLSearchParams writes
-    /// it); nil when it shows none.
+    /// What a page from the server shows: the notebook its `open=` names,
+    /// or else the folder its `dir=` names (the sidebar's folder, #220), or
+    /// else the server's root. Both are paths from the server's root, `/`,
+    /// form-encoded as URLSearchParams writes them. Nil for a URL that
+    /// can't be read.
     init?(page: URL) {
-        let items = URLComponents(url: page, resolvingAgainstBaseURL: false)?
-            .percentEncodedQueryItems ?? []
-        guard let value = items.first(where: { $0.name == "open" })?.value?
-            .replacingOccurrences(of: "+", with: " ").removingPercentEncoding
-        else { return nil }
-        let path = value.drop { $0 == "/" }
-        guard !path.isEmpty else { return nil }
-        self = .file(URL(fileURLWithPath: "/" + String(path), isDirectory: false).standardizedFileURL)
+        guard let parts = URLComponents(url: page, resolvingAgainstBaseURL: false) else { return nil }
+        let items = parts.percentEncodedQueryItems ?? []
+        func path(_ name: String) -> String? {
+            guard let value = items.first(where: { $0.name == name })?.value?
+                .replacingOccurrences(of: "+", with: " ").removingPercentEncoding
+            else { return nil }
+            let path = value.split(separator: "/").joined(separator: "/")
+            return path.isEmpty ? nil : path
+        }
+        if let file = path("open") {
+            self = .file(URL(fileURLWithPath: "/" + file, isDirectory: false).standardizedFileURL)
+        } else {
+            let folder = path("dir").map { "/" + $0 } ?? "/"
+            self = .folder(URL(fileURLWithPath: folder, isDirectory: true))
+        }
     }
 
     var url: URL {
