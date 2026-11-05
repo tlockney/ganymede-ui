@@ -110,6 +110,30 @@ final class OpenRequestsTests: XCTestCase {
         XCTAssertEqual(OpenRequests.fileURLs(in: event), [a])
     }
 
+    func testFilesThatComeLateInLaunchStillGoToTheBlankWindow() {
+        // AppKit can deliver them after applicationDidFinishLaunching; the
+        // app ends launch a moment later (#266).
+        let requests = OpenRequests()
+        var opened: [WindowTarget] = []
+        requests.openWindow = { opened.append($0) }
+        requests.register(UUID(), blank: true)
+        requests.add([a])
+        XCTAssertTrue(opened.isEmpty)
+        XCTAssertEqual(requests.take(blank: true).shown, .file(a))
+        requests.finishLaunching()
+        XCTAssertTrue(opened.isEmpty)
+    }
+
+    func testFilesNoWindowTookAtLaunchOpenWhenLaunchEnds() {
+        let requests = OpenRequests()
+        var opened: [WindowTarget] = []
+        requests.openWindow = { opened.append($0) }
+        requests.add([a, b])
+        requests.finishLaunching()
+        XCTAssertEqual(opened, [.file(a), .file(b)])
+        XCTAssertTrue(requests.pending.isEmpty)
+    }
+
     func testOnePublishPerBatch() {
         let requests = OpenRequests()
         var published = 0

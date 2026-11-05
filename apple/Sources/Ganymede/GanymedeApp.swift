@@ -197,16 +197,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// (`OpenRequests`).
     @objc private func openDocuments(_ event: NSAppleEventDescriptor, withReply reply: NSAppleEventDescriptor) {
         let urls = OpenRequests.fileURLs(in: event)
-        OpenLog.log.info("open documents: \(urls.map(\.path).joined(separator: ", "), privacy: .public)")
+        OpenLog.log.notice("open documents: \(urls.map(\.path).joined(separator: ", "), privacy: .public)")
         AppModel.shared.openRequests.add(urls)
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        AppModel.shared.openRequests.finishLaunching()
-        // Windows the system restores have come back by now (#247).
+        // Windows the system restores have come back by now (#247). Files
+        // the app was launched to open can come after this method (seen on
+        // a Mac, #266), so they count as opened at launch until then too:
+        // the window the app opened on nothing shows the first, instead of
+        // staying beside it as a stray tab.
         Task { @MainActor in
             try? await Task.sleep(nanoseconds: 1_000_000_000)
             WorkspaceTabs.launching = false
+            AppModel.shared.openRequests.finishLaunching()
         }
     }
 

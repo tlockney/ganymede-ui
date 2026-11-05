@@ -27,3 +27,14 @@ one button, then showed the welcome.
   fades in after 0.6 s, so a quick start goes from the logo to the
   welcome. jsdom flushes effects inside `render`, so the test renders
   the first frame with `renderToStaticMarkup`.
+- On Thomas's Mac (Remote Control, `open -a` on a copy of the app), main
+  did call `application(_:open:)`, so the delegate theory isn't
+  confirmed; a real Finder double-click on the quarantined installed app
+  (app translocation) is still untested. Every cold open did leave a
+  stray tab, though: the window opened on nothing, showing the welcome
+  in front, with the notebook in a tab behind it. The files came after
+  `applicationDidFinishLaunching`, so they didn't count as opened at
+  launch. `OpenRequests` now ends launch a second later, with
+  `WorkspaceTabs.launching`, and gives any file still unclaimed then a
+  window of its own.
+- The open log line is at notice level, so a plain `log stream` shows it.

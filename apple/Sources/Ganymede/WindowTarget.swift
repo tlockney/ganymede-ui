@@ -108,7 +108,7 @@ enum WindowTarget: Codable, Hashable {
 @MainActor
 final class OpenRequests: ObservableObject {
     @Published private(set) var pending: [WindowTarget] = []
-    /// Until the app has finished launching.
+    /// Until shortly after the app has finished launching.
     private var launching = true
     /// Whether `pending` came while the app launched: the window it opened
     /// on nothing then shows the first itself, instead of staying empty
@@ -139,8 +139,15 @@ final class OpenRequests: ObservableObject {
         pending = added
     }
 
+    /// Ends launch. Files no window took by now (none opened) each get a
+    /// window.
     func finishLaunching() {
         launching = false
+        guard !pending.isEmpty, let openWindow else { return }
+        let left = pending
+        pending = []
+        atLaunch = false
+        left.forEach(openWindow)
     }
 
     /// The file URLs an Open Documents Apple Event names: a list, or one.
