@@ -69,7 +69,7 @@ packages:
   # The `device` bridge for notebook cells, on the kernel web view only (#99).
   GanymedeDevice:
     url: https://github.com/tlockney/ganymede-device
-    revision: f978944298eb46b28a1c1378dc7f213bc661b139
+    revision: 515b1ebb40c982308a7885a570c530b7b4f81904
 settings:
   base:
     SWIFT_VERSION: '5.0'
@@ -86,6 +86,8 @@ targets:
       - path: build/web
         type: folder
         buildPhase: resources
+      # The app icon, in macOS's grid (#281; scripts/mac-icon.py).
+      - path: Resources/macOS
     dependencies:
       - framework: build/GanymedeFFI.xcframework
         embed: false
@@ -154,6 +156,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.ganymede-server.Ganymede
         ENABLE_HARDENED_RUNTIME: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
   # Quick Look's preview of a notebook (#135): ganymede-ui's notebook view
   # from `npm run build:quicklook`, read-only, no server or kernel.
   GanymedeQuickLook:
@@ -302,18 +305,21 @@ targets:
       - path: Sources/Ganymede/Terminal/TerminalTransport.swift
       - path: Sources/Ganymede/Terminal/TerminalTarget.swift
       - path: Sources/Ganymede/PanelController.swift
+      - path: Sources/Ganymede/Terminal/OpenTerminals.swift
       - path: Sources/Ganymede/Terminal/JupyterTerminalTransport.swift
       - path: Sources/Ganymede/WindowTarget.swift
       - path: Sources/Ganymede/Remote.swift
       - path: Sources/Ganymede/AgentKeys.swift
       - path: Sources/Ganymede/DocumentMessage.swift
       - path: Sources/Ganymede/PageState.swift
+      - path: Sources/Ganymede/KernelSpecs.swift
       - path: Sources/Ganymede/FolderEntry.swift
       - path: Sources/Ganymede/WorkspaceTabs.swift
       - path: Sources/Ganymede/FileSearch.swift
       - path: Sources/Ganymede/Terminal/SSHKey.swift
       - path: Sources/Ganymede/Editor/TextFile.swift
       - path: Sources/Ganymede/Editor/CodeEditing.swift
+      - path: Sources/Ganymede/FileStack.swift
       - path: Sources/Ganymede/Terminal/ProcessTerminalTransport.swift
       - path: Sources/QuickLook/Preview/PreviewResources.swift
       - path: Sources/QuickLook/Thumbnail/NotebookSummary.swift
@@ -337,18 +343,21 @@ targets:
       - path: Sources/Ganymede/Terminal/TerminalTransport.swift
       - path: Sources/Ganymede/Terminal/TerminalTarget.swift
       - path: Sources/Ganymede/PanelController.swift
+      - path: Sources/Ganymede/Terminal/OpenTerminals.swift
       - path: Sources/Ganymede/Terminal/JupyterTerminalTransport.swift
       - path: Sources/Ganymede/WindowTarget.swift
       - path: Sources/Ganymede/Remote.swift
       - path: Sources/Ganymede/AgentKeys.swift
       - path: Sources/Ganymede/DocumentMessage.swift
       - path: Sources/Ganymede/PageState.swift
+      - path: Sources/Ganymede/KernelSpecs.swift
       - path: Sources/Ganymede/FolderEntry.swift
       - path: Sources/Ganymede/WorkspaceTabs.swift
       - path: Sources/Ganymede/FileSearch.swift
       - path: Sources/Ganymede/Terminal/SSHKey.swift
       - path: Sources/Ganymede/Editor/TextFile.swift
       - path: Sources/Ganymede/Editor/CodeEditing.swift
+      - path: Sources/Ganymede/FileStack.swift
     dependencies:
       - framework: build/GanymedeFFI.xcframework
         embed: false

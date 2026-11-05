@@ -145,6 +145,24 @@ final class OpenRequestsTests: XCTestCase {
         XCTAssertEqual(opened, [.file(a)])
     }
 
+    func testTheFirstFileAtLaunchIsBroughtForwardWhenLaunchEnds() {
+        // Restored windows can come back in front of it (#268).
+        let requests = OpenRequests()
+        requests.add([a, b])
+        XCTAssertNil(requests.front)
+        _ = requests.take(blank: false)
+        requests.finishLaunching()
+        XCTAssertEqual(requests.front, .file(a))
+        requests.broughtForward()
+        XCTAssertNil(requests.front)
+    }
+
+    func testNothingIsBroughtForwardAfterAPlainLaunch() {
+        let requests = OpenRequests()
+        requests.finishLaunching()
+        XCTAssertNil(requests.front)
+    }
+
     func testOnePublishPerBatch() {
         let requests = OpenRequests()
         var published = 0

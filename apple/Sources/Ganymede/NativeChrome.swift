@@ -17,6 +17,9 @@ struct FolderSidebar: View {
     @Environment(\.openWindow) private var openWindow
     /// Bumped to list the folders again after a change made here.
     @State private var generation = 0
+    /// The expanded folders, kept per window across launches and while
+    /// another navigator tab shows (#207).
+    @SceneStorage("files.expanded") private var expanded = ""
 
     var body: some View {
         List {
@@ -41,6 +44,12 @@ struct FolderSidebar: View {
         FolderActions(
             openPath: page.state.path,
             isRunning: { page.state.isRunning($0) },
+            isExpanded: { url in
+                Binding(
+                    get: { FolderEntry.expandedPaths(expanded).contains(url.path) },
+                    set: { expanded = FolderEntry.expandedPaths(expanded, setting: url.path, to: $0) }
+                )
+            },
             open: open,
             openInNewTab: { openWindow(value: WindowTarget(opening: $0.url)) },
             newNotebook: { page.run("new-notebook", arg: FolderEntry.serverPath($0)) },
@@ -149,6 +158,8 @@ struct FolderActions {
     var openPath: String?
     /// Whether a notebook, by server path, has a running kernel (#225).
     var isRunning: (String) -> Bool
+    /// Whether a folder, by file URL, is expanded.
+    var isExpanded: (URL) -> Binding<Bool>
     var open: (FolderEntry) -> Void
     var openInNewTab: (FolderEntry) -> Void
     var newNotebook: (URL) -> Void
@@ -171,7 +182,7 @@ private struct FolderContents: View {
         Group {
             ForEach(entries) { entry in
                 if entry.isDirectory {
-                    DisclosureGroup {
+                    DisclosureGroup(isExpanded: actions.isExpanded(entry.url)) {
                         FolderContents(folder: entry.url, actions: actions, generation: generation)
                     } label: {
                         Label(entry.name, systemImage: "folder")
@@ -247,37 +258,90 @@ private struct FolderContents: View {
 /// opened, to find and shut down (#225): the navigator's Running tab (#246).
 struct RunningList: View {
     @ObservedObject var page: PageModel
+    /// Terminals in any window (#246).
+    @ObservedObject var terminals = OpenTerminals.shared
 
     var body: some View {
         List {
-            ForEach(page.state.sessions) { session in
-                Button {
-                    page.run("open", arg: session.path)
-                } label: {
-                    HStack {
-                        Label(session.title, systemImage: "bolt.fill")
-                        Spacer()
-                        if let kernel = session.kernel {
-                            Text(kernel).foregroundStyle(.secondary).font(.caption)
+            Section("Kernels") {
+                ForEach(page.state.sessions) { session in
+                    Button {
+                        page.run("open", arg: session.path)
+                    } label: {
+                        HStack {
+                            Label(session.title, systemImage: "bolt.fill")
+                            Spacer()
+                            if let kernel = session.kernel {
+                                Text(kernel).foregroundStyle(.secondary).font(.caption)
+                            }
                         }
+                        .contentShape(Rectangle())
                     }
-                    .contentShape(Rectangle())
+                    .buttonStyle(.plain)
+                    .help(session.path + (session.state.map { " · " + PageState.statusLabel($0) } ?? ""))
+                    .contextMenu {
+                        Button("Open") { page.run("open", arg: session.path) }
+                        Divider()
+                        Button("Shut Down Kernel") { page.run("shutdown-kernel", arg: session.id) }
+                    }
                 }
-                .buttonStyle(.plain)
-                .help(session.path + (session.state.map { " · " + PageState.statusLabel($0) } ?? ""))
-                .contextMenu {
-                    Button("Open") { page.run("open", arg: session.path) }
-                    Divider()
-                    Button("Shut Down Kernel") { page.run("shutdown-kernel", arg: session.id) }
+                if page.state.sessions.isEmpty {
+                    Text("No kernels running").foregroundStyle(.secondary)
+                }
+            }
+            Section("Terminals") {
+                ForEach(terminals.entries) { terminal in
+                    Button(action: terminal.reveal) {
+                        HStack {
+                            Label(terminal.title, systemImage: "terminal")
+                                .lineLimit(1)
+                            Spacer()
+                            Text(terminal.inPanel ? "Panel" : "Tab")
+                                .foregroundStyle(.secondary).font(.caption)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .help(terminal.title)
+                    .contextMenu {
+                        Button("Show", action: terminal.reveal)
+                        Divider()
+                        Button("Close Terminal", action: terminal.close)
+                    }
+                }
+                if terminals.entries.isEmpty {
+                    Text("No terminals open").foregroundStyle(.secondary)
                 }
             }
         }
         .listStyle(.sidebar)
-        .overlay {
-            if page.state.sessions.isEmpty {
-                Text("No kernels running").foregroundStyle(.secondary)
-            }
+    }
+}
+
+/// The foot of the navigator sidebar (#246): where kernels run, and how
+/// many kernels and terminals there are.
+struct ServerLine: View {
+    @ObservedObject var page: PageModel
+    @ObservedObject var terminals = OpenTerminals.shared
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Circle()
+                .fill(page.state.backend == nil ? Color.secondary : Color.green)
+                .frame(width: 7, height: 7)
+                .accessibilityHidden(true)
+            Text(page.state.backend?.label ?? "Not connected")
+                .lineLimit(1)
+            Spacer(minLength: 4)
+            Text(OpenTerminals.summary(kernels: page.state.sessions.count, terminals: terminals.entries.count))
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
         }
+        .font(.caption)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .help(page.state.backend?.detail ?? "")
+        .accessibilityElement(children: .combine)
     }
 }
 

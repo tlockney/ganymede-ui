@@ -9,6 +9,7 @@ import { clearRecents, recentsKey, useRecents } from '../lib/recents';
 import { useFileDrop } from '../lib/file-drop';
 import { ContextMenu, type MenuItem } from './ContextMenu';
 import { RecentList, SearchField, SearchResults } from './SidebarSearch';
+import type { OutlineItem } from '../lib/outline';
 import { formatMemory, useKernelMemory } from '../lib/kernel-usage';
 import {
   BrowserIcon,
@@ -43,6 +44,10 @@ type Props = {
   actions?: FileActions;
   /** Hides the sidebar where it covers the notebook (a phone); no close button without it. */
   onClose?(): void;
+  /** The open notebook's headings (#212); no Outline section when empty. */
+  outline?: OutlineItem[];
+  /** Goes to a heading's cell. */
+  onOutline?(item: OutlineItem): void;
   /** Whether the sidebar shows; kernel memory is asked for only then. */
   visible?: boolean;
 };
@@ -63,6 +68,8 @@ export function Sidebar({
   onSettings,
   actions,
   onClose,
+  outline = [],
+  onOutline,
   visible = true,
 }: Props) {
   const services = backend?.services;
@@ -224,6 +231,8 @@ export function Sidebar({
 
   useSignals(services?.sessions.runningChanged);
   const running = services ? [...services.sessions.running()] : [];
+  // Headings indent from the outline's top level, not from #.
+  const minLevel = Math.min(6, ...outline.map(item => item.level));
   // Each kernel's memory, from a server with the metrics endpoint (#241).
   const memory = useKernelMemory(
     // Not for a backend whose kernels all run in the page: the server
@@ -377,6 +386,28 @@ export function Sidebar({
             items={menuItems(menu.item)}
             onClose={() => setMenu(undefined)}
           />
+        )}
+
+        {outline.length > 0 && onOutline && !searching && (
+          <nav aria-label="Outline">
+            <div className="sidebar-section-header">
+              <span>Outline</span>
+            </div>
+            <ul className="source-list outline-list">
+              {outline.map((item, i) => (
+                <li key={`${item.cell}-${i}`}>
+                  <button
+                    className="source-item outline-item"
+                    style={{ paddingLeft: `${8 + (Math.min(item.level, 6) - minLevel) * 12}px` }}
+                    title={item.text}
+                    onClick={() => onOutline(item)}
+                  >
+                    <span className="item-name">{item.text}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </nav>
         )}
 
         {running.length > 0 && (

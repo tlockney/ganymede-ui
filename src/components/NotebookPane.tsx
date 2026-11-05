@@ -31,6 +31,7 @@ import { ProblemNotice } from './ProblemNotice';
 import { hasUntrustedOutputs } from '../lib/trust';
 import { handOff, handedOff, renameFile, renamedPath } from '../lib/rename';
 import type { NotebookWidgets } from '../lib/widgets';
+import { type OutlineItem, outlineOf } from '../lib/outline';
 
 export type CellType = nbformat.CellType;
 
@@ -93,6 +94,10 @@ export type NotebookController = {
    * the file reopens. Rejects, with nothing moved, when `move` does.
    */
   moved(next: string, move: () => Promise<unknown>): Promise<void>;
+  /** The Markdown cells' headings, in order (#212). */
+  outline: OutlineItem[];
+  /** Selects the cell at `index` and scrolls it to the top; false when there is none. */
+  goToCell(index: number): boolean;
 };
 
 type Props = {
@@ -211,6 +216,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
   const [dirty, setDirty] = useState(false);
   const [trusted, setTrusted] = useState(true);
   const [cellType, setCellType] = useState<CellType>('code');
+  const [outline, setOutline] = useState<OutlineItem[]>([]);
   /** Why the last notebook action failed, and what to do next, until dismissed. */
   const [notice, setNoticeState] = useState<Notice>();
   const setNotice = (problem: Problem | undefined, retry?: () => void) =>
@@ -546,6 +552,49 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
     };
   }, [open]);
 
+  // The outline (#212), 300 ms after the cells stop changing: typing in
+  // a cell changes the model on every key. Cells added, removed or moved
+  // update it at once, so a heading never points at the wrong cell.
+  useEffect(() => {
+    if (!open) return;
+    const { model } = open;
+    let last = '';
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const update = () => {
+      timer = undefined;
+      const cells = Array.from({ length: model.cells.length }, (_, i) => {
+        const cell = model.cells.get(i);
+        // Only Markdown cells have headings: outputs streaming into a
+        // code cell don't re-read every source.
+        return {
+          type: cell.type,
+          source: cell.type === 'markdown' ? cell.sharedModel.getSource() : '',
+        };
+      });
+      const next = outlineOf(cells);
+      const key = JSON.stringify(next);
+      if (key === last) return;
+      last = key;
+      setOutline(next);
+    };
+    const later = () => {
+      if (timer !== undefined) clearTimeout(timer);
+      timer = setTimeout(update, 300);
+    };
+    const now = () => {
+      if (timer !== undefined) clearTimeout(timer);
+      update();
+    };
+    update();
+    model.contentChanged.connect(later);
+    model.cells.changed.connect(now);
+    return () => {
+      if (timer !== undefined) clearTimeout(timer);
+      model.contentChanged.disconnect(later);
+      model.cells.changed.disconnect(now);
+    };
+  }, [open]);
+
   // Don't lose unsaved edits: save every few minutes and when the page is
   // hidden (an installed web app can be killed after that), and ask before
   // the page closes with edits that are not saved yet.
@@ -776,6 +825,17 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         };
       },
       moved,
+      outline,
+      goToCell: index => {
+        const cell = notebook.widgets[index];
+        if (!cell) return false;
+        notebook.mode = 'command';
+        notebook.deselectAll();
+        notebook.activeCellIndex = index;
+        void notebook.scrollToCell(cell, 'start');
+        notebook.activate();
+        return true;
+      },
       // With no kernel yet, this only picks the one the first run starts.
       changeKernel: report('change the kernel', async (name: string) => {
         if (session.session) await session.changeKernel({ name });
@@ -805,6 +865,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
     dirty,
     trusted,
     cellType,
+    outline,
     backend,
     services,
     onController,

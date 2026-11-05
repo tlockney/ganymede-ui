@@ -46,6 +46,26 @@ final class PageStateTests: XCTestCase {
         XCTAssertEqual(state?.otherSessions.map(\.id), ["s2"])
     }
 
+    func testReadsTheOutline() {
+        var body: [String: Any] = [
+            "path": "Io.ipynb", "dirty": false, "status": "idle", "kernel": "cdp",
+            "kernelDisplayName": "TypeScript", "kernelMissing": false, "trusted": true,
+            "cellType": "code", "kernels": [Any](), "backend": NSNull(),
+            "outline": [
+                ["level": 1, "text": "Io", "cell": 0],
+                ["level": 2, "text": "Volcanoes & plumes", "cell": 3],
+            ],
+        ]
+        let state = PageState(body: body)
+        XCTAssertEqual(state?.headings, [
+            PageState.Heading(level: 1, text: "Io", cell: 0),
+            PageState.Heading(level: 2, text: "Volcanoes & plumes", cell: 3),
+        ])
+        // A page from before #212 sends none.
+        body["outline"] = nil
+        XCTAssertEqual(PageState(body: body)?.headings, [])
+    }
+
     func testReadsTheSearchAndRecents() throws {
         let body: [String: Any] = [
             "path": NSNull(), "dirty": false, "status": NSNull(), "kernel": NSNull(),

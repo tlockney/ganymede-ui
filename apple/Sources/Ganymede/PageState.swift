@@ -68,6 +68,15 @@ struct PageState: Decodable, Equatable {
         }
     }
 
+    /// A heading of the open notebook, for the Outline (#212).
+    struct Heading: Decodable, Equatable {
+        /// 1 to 6, as `#` to `######`.
+        var level: Int
+        var text: String
+        /// The index of the cell it is in: the `go-to-cell` command's argument.
+        var cell: Int
+    }
+
     /// The `file-moved` command's argument: a file or folder the app
     /// renamed (`to`) or deleted (`to` nil) itself, for the page's Recents.
     static func fileMoved(from: String, to: String?) -> String {
@@ -107,10 +116,13 @@ struct PageState: Decodable, Equatable {
     var recents: [String]?
     /// The sidebar search, while there is one (#240).
     var search: Search?
+    /// The open notebook's headings; absent from a page older than #212.
+    var outline: [Heading]?
 
     init() {}
 
     var sessions: [Session] { running ?? [] }
+    var headings: [Heading] { outline ?? [] }
     /// Whether a kernel runs for the notebook at `path`.
     func isRunning(_ path: String) -> Bool { sessions.contains { $0.path == path } }
     /// Sessions other than the open notebook's.

@@ -2,45 +2,16 @@
 import AppKit
 import SwiftUI
 
-/// The Mac window's sidebar (#246): a strip of navigator tabs, each using
-/// the sidebar's full height, as Xcode's navigators do.
-enum NavigatorTab: String, CaseIterable, Identifiable {
-    case files, search, running, outline, recents
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .files: "Files"
-        case .search: "Search"
-        case .running: "Running"
-        case .outline: "Outline"
-        case .recents: "Recents"
-        }
-    }
-
-    var symbol: String {
-        switch self {
-        case .files: "folder"
-        case .search: "magnifyingglass"
-        case .running: "bolt"
-        case .outline: "list.bullet.indent"
-        case .recents: "clock"
-        }
-    }
-
-    /// ⌘1 to ⌘5, as Xcode's navigators.
-    var shortcut: KeyEquivalent {
-        KeyEquivalent(Character(String((Self.allCases.firstIndex(of: self) ?? 0) + 1)))
-    }
-}
-
+/// The Mac window's sidebar (#246): a strip of navigator tabs
+/// (`NavigatorTab`), each using the sidebar's full height, as Xcode's
+/// navigators do.
 struct NavigatorSidebar: View {
     let folder: URL
     @ObservedObject var page: PageModel
     let openFile: (String) -> Void
     /// The selected tab, kept per window.
     @SceneStorage("navigator.tab") private var tab: NavigatorTab = .files
+    @ObservedObject private var terminals = OpenTerminals.shared
 
     var body: some View {
         VStack(spacing: 0) {
@@ -60,10 +31,10 @@ struct NavigatorSidebar: View {
                     .accessibilityLabel(item.title)
                     .accessibilityAddTraits(tab == item ? .isSelected : [])
                     .keyboardShortcut(item.shortcut, modifiers: .command)
-                    // A running kernel count, on the Running tab.
+                    // How many kernels and terminals run, on the Running tab.
                     .overlay(alignment: .topTrailing) {
-                        if item == .running, !page.state.sessions.isEmpty {
-                            Text("\(page.state.sessions.count)")
+                        if item == .running, running > 0 {
+                            Text("\(running)")
                                 .font(.system(size: 9, weight: .semibold))
                                 .padding(.horizontal, 3)
                                 .background(Capsule().fill(Color.accentColor))
@@ -85,12 +56,16 @@ struct NavigatorSidebar: View {
             case .running:
                 RunningList(page: page)
             case .outline:
-                OutlineNavigator()
+                OutlineNavigator(page: page)
             case .recents:
                 RecentsNavigator(page: page)
             }
+            Divider()
+            ServerLine(page: page)
         }
     }
+
+    private var running: Int { page.state.sessions.count + terminals.entries.count }
 }
 
 // MARK: - Search
@@ -248,16 +223,41 @@ private struct SearchNavigator: View {
 
 // MARK: - Outline
 
-/// The open notebook's headings come with #212.
+/// The open notebook's Markdown headings (#212), indented by level;
+/// clicking one selects its cell and scrolls it to the top.
 private struct OutlineNavigator: View {
+    @ObservedObject var page: PageModel
+
     var body: some View {
-        VStack {
-            Spacer()
-            Text("No outline yet")
-                .foregroundStyle(.secondary)
-            Spacer()
+        let headings = page.state.headings
+        // Indent from the outline's top level, not from `#`.
+        let top = headings.map(\.level).min() ?? 1
+        List {
+            ForEach(Array(headings.enumerated()), id: \.offset) { _, heading in
+                Button {
+                    page.run("go-to-cell", arg: String(heading.cell))
+                } label: {
+                    Text(heading.text)
+                        .fontWeight(heading.level == top ? .semibold : .regular)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .padding(.leading, CGFloat(max(0, heading.level - top)) * 12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(heading.text)
+            }
         }
-        .frame(maxWidth: .infinity)
+        .listStyle(.sidebar)
+        .overlay {
+            if headings.isEmpty {
+                Text(page.state.hasNotebook ? "No headings in this notebook" : "No notebook open")
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding()
+            }
+        }
     }
 }
 

@@ -43,12 +43,17 @@ built from the same sources (see
   (⌘1 to ⌘5). Files lists the window's folder as a tree; right-click an
   item to open it in a new tab, show it in the Finder, make a notebook
   or folder there, or move it to the Trash. A dot marks notebooks whose
-  kernel is running. Search finds file and folder names under the
+  kernel is running. Each window keeps its sidebar shown or hidden, its
+  tab and its expanded folders across launches. Search finds file and folder names under the
   window's folder and, with "Search notebook contents" ticked, the text
   of its notebooks, showing the matching line. Running lists running
-  kernels; right-click one to shut it down, or choose Kernel › Shut Down
-  Other Kernels. Recents lists the notebooks opened lately. Outline is
-  empty for now. The toolbar saves, runs cells, interrupts and restarts the
+  kernels and the terminals open in any window; click a terminal to bring
+  it to the front, or right-click a kernel or terminal to shut it down
+  (or choose Kernel › Shut Down Other Kernels). The foot of the sidebar
+  shows where kernels run and how many kernels and terminals there are.
+  Recents lists the notebooks opened lately. Outline lists the open
+  notebook's headings; click one to go to its cell. The toolbar saves,
+  runs cells, interrupts and restarts the
   kernel, inserts cells, sets the cell type, picks the kernel and trusts
   the notebook. File › New Notebook (⌘N) makes one in the window's
   folder, New Tab (⌘T) opens another tab, New Window (⌥⌘N) a window of its own, and Rename… renames the
@@ -83,7 +88,8 @@ built from the same sources (see
   notebooks. Agent and Shortcuts open the page's agent settings and
   shortcut list in the front notebook window. Remotes keeps a
   list of remotes: Jupyter or Ganymede servers, SSH hosts, or both. Kernels run on this Mac or, as on iPadOS, on one
-  remote's server. Tokens are kept in the keychain.
+  remote's server. Tokens are kept in the keychain. Kernels shows
+  where kernels run and the kernels installed there.
 
   > [!NOTE]
   > **Unreleased.** Available only from a build of `main` (HEAD), not in
@@ -172,17 +178,35 @@ On iPadOS and iOS (`Ganymede-iOS` target, iOS 16 or later):
   > settings sheet.
 
 - The terminal button opens a shell on a remote, over SSH or on its
-  server's terminals. On iPad it opens in its own window beside the
-  notebook; on iPhone it covers the screen. SSH signs in with an ed25519
+  server's terminals. On iPad it opens in the bottom panel (see below);
+  on iPhone it covers the screen. SSH signs in with an ed25519
   key the app generates or imports (Settings > SSH key; copy the public
   key into `~/.ssh/authorized_keys` on the remote) and trusts the host
   key the first time, refusing it if it changes later. iOS drops the
   connection soon after the app goes to the background; the terminal
   then offers to reconnect.
-- Other files in the sidebar open in a text editor, beside the notebook
-  on iPad and over it on iPhone, with the same highlighting, line
+- Other files in the sidebar open in a text editor, over the notebook
+  on iPad (see below) and on iPhone, with the same highlighting, line
   numbers, auto-indent and pairing as on the Mac. Edits are saved when the app goes to the
-  background, since iOS may close the editor's window there.
+  background, since iOS may close the editor there.
+- The iPad's workspace follows the Mac's. The sidebar has the same
+  navigator tabs (⌘1 to ⌘5 with a keyboard): Files, Search, Running
+  (kernels and the panel's terminals), Outline (empty for now) and
+  Recents. A text file opens over the notebook, one at a time; Close
+  (which asks to save) or opening a notebook from the sidebar goes
+  back to it, saving edits on the way. Terminals open in a bottom panel
+  under the notebook, as tabs: drag its handle to resize it, use its
+  arrows to have it fill the screen and back, and hide it with its
+  chevron, the toolbar's panel button or ⌃`; hidden, its shells keep
+  running. The toolbar's Fill the Screen hides the sidebar and panel
+  until it is tapped again. The Agent, Outline and Variables inspector
+  comes with the Mac's (#249).
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release, where text files and terminals open in windows
+  > of their own beside the notebook.
+
 - Downloads open the share sheet, where Save to Files keeps them.
 - iOS may close the server's socket while the app is in the background;
   back in the foreground the app restarts the server if it stopped

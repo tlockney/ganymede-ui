@@ -1,5 +1,6 @@
 import type { KernelSpec, Session } from '@jupyterlab/services';
 import type { SearchState } from './search';
+import type { OutlineItem } from './outline';
 /**
  * The Mac app's document window (#132): the page tells it which notebook is
  * open and whether it has unsaved edits, through the `document` script
@@ -32,7 +33,8 @@ export type NativeHooks = {
  * name. `shutdown-kernel` takes a running session's id or its notebook's
  * path; `shutdown-others` shuts down every kernel but the open notebook's.
  * `search` takes a `SearchRequest` as JSON (an empty query ends it), and
- * `clear-recents` empties the Recents list (#240).
+ * `clear-recents` empties the Recents list (#240). `go-to-cell` takes a
+ * cell's index, as `PageState.outline` gives it (#212).
  */
 export const PAGE_COMMANDS = {
   open: 'arg',
@@ -59,6 +61,7 @@ export const PAGE_COMMANDS = {
   search: 'arg',
   'clear-recents': '',
   'file-moved': 'arg',
+  'go-to-cell': 'arg',
 } as const;
 
 /** What the app's sidebar searches for (#240): the `search` command's argument. */
@@ -136,6 +139,8 @@ export type PageState = {
   recents: string[];
   /** The app's sidebar search and what it found, or null with none (#240). */
   search: PageSearch | null;
+  /** The open notebook's headings, for the app's Outline (#212); empty with none. */
+  outline: OutlineItem[];
 };
 
 /** A sidebar search's results, as the page's sidebar shows them (#215, #240). */
