@@ -11,8 +11,8 @@ import {
   heightWithoutKeyboard,
   keepCaretAbove,
   keyboardUp,
-  takesText,
   pressBarKey,
+  takesText,
 } from '../lib/keyboard-bar';
 import { TOUCH_QUERY } from '../lib/useNarrow';
 

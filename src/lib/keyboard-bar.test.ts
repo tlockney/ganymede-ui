@@ -73,6 +73,7 @@ describe('keyboard bar', () => {
     editor.append(line);
     expect(takesText(search)).toBe(true);
     expect(takesText(document.createElement('textarea'))).toBe(true);
+    expect(takesText(document.createElement('select'))).toBe(true);
     expect(takesText(line)).toBe(true);
     expect(takesText(box)).toBe(false);
     expect(takesText(document.createElement('button'))).toBe(false);
