@@ -61,6 +61,9 @@ struct ContentView: View {
     @StateObject private var phonePage = WebViewStore()
     /// The iPhone's screens over the folder list: the notebook, or none.
     @State private var phonePath: [PhoneScreen] = []
+    /// The ⋯ menu's Rename… is asking for a name (#209).
+    @State private var renaming = false
+    @State private var newName = ""
     #endif
 
     var body: some View {
@@ -310,12 +313,29 @@ struct ContentView: View {
                             }
                         }
                     }
-                    IPadNotebookToolbar(page: pageModel, bottom: isPhone)
+                    IPadNotebookToolbar(page: pageModel, bottom: isPhone) {
+                        newName = title
+                        renaming = true
+                    }
                 }
                 // On the iPhone these are on the folder list.
                 if !isPhone {
                     ToolbarItemGroup(placement: .primaryAction) { appButtons }
                 }
+            }
+            // The page renames the open notebook: it saves its edits first
+            // and keeps the kernel, and adds `.ipynb`.
+            .alert("Rename Notebook", isPresented: $renaming) {
+                TextField("Name", text: $newName)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                Button("Rename") {
+                    let name = newName.trimmingCharacters(in: .whitespaces)
+                    if !name.isEmpty, !name.contains("/"), name != title {
+                        pageModel.run("rename", arg: name)
+                    }
+                }
+                Button("Cancel", role: .cancel) {}
             }
     }
 
