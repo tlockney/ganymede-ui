@@ -302,6 +302,7 @@ targets:
       - path: Sources/Ganymede/Terminal/TerminalTransport.swift
       - path: Sources/Ganymede/Terminal/TerminalTarget.swift
       - path: Sources/Ganymede/PanelController.swift
+      - path: Sources/Ganymede/Terminal/OpenTerminals.swift
       - path: Sources/Ganymede/Terminal/JupyterTerminalTransport.swift
       - path: Sources/Ganymede/WindowTarget.swift
       - path: Sources/Ganymede/Remote.swift
@@ -337,6 +338,7 @@ targets:
       - path: Sources/Ganymede/Terminal/TerminalTransport.swift
       - path: Sources/Ganymede/Terminal/TerminalTarget.swift
       - path: Sources/Ganymede/PanelController.swift
+      - path: Sources/Ganymede/Terminal/OpenTerminals.swift
       - path: Sources/Ganymede/Terminal/JupyterTerminalTransport.swift
       - path: Sources/Ganymede/WindowTarget.swift
       - path: Sources/Ganymede/Remote.swift

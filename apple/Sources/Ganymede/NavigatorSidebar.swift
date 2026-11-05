@@ -41,6 +41,7 @@ struct NavigatorSidebar: View {
     let openFile: (String) -> Void
     /// The selected tab, kept per window.
     @SceneStorage("navigator.tab") private var tab: NavigatorTab = .files
+    @ObservedObject private var terminals = OpenTerminals.shared
 
     var body: some View {
         VStack(spacing: 0) {
@@ -60,10 +61,10 @@ struct NavigatorSidebar: View {
                     .accessibilityLabel(item.title)
                     .accessibilityAddTraits(tab == item ? .isSelected : [])
                     .keyboardShortcut(item.shortcut, modifiers: .command)
-                    // A running kernel count, on the Running tab.
+                    // How many kernels and terminals run, on the Running tab.
                     .overlay(alignment: .topTrailing) {
-                        if item == .running, !page.state.sessions.isEmpty {
-                            Text("\(page.state.sessions.count)")
+                        if item == .running, running > 0 {
+                            Text("\(running)")
                                 .font(.system(size: 9, weight: .semibold))
                                 .padding(.horizontal, 3)
                                 .background(Capsule().fill(Color.accentColor))
@@ -89,8 +90,12 @@ struct NavigatorSidebar: View {
             case .recents:
                 RecentsNavigator(page: page)
             }
+            Divider()
+            ServerLine(page: page)
         }
     }
+
+    private var running: Int { page.state.sessions.count + terminals.entries.count }
 }
 
 // MARK: - Search
