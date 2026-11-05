@@ -42,7 +42,7 @@ final class KernelHost: NSObject {
         config.userContentController.add(WeakHandler(self), name: Self.hostHandler)
         // ganymede-device's `device` handler, for cells: here and nowhere
         // else, so nothing the UI page renders can call it.
-        device.register(in: config.userContentController)
+        self.device.register(in: config.userContentController)
         webView.navigationDelegate = self
         if #available(macOS 13.3, iOS 16.4, *) {
             webView.isInspectable = true
