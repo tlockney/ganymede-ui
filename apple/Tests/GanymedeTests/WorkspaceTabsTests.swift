@@ -9,6 +9,19 @@ final class WorkspaceTabsTests: XCTestCase {
         NSWindow(contentRect: NSRect(x: 0, y: 0, width: 200, height: 100), styleMask: [.titled], backing: .buffered, defer: true)
     }
 
+    func testMarksTheTabWhileTheKernelIsBusy() {
+        let w = window()
+        XCTAssertNil(w.tab.accessoryView)
+        WorkspaceTabs.markBusy(w, true)
+        let dot = w.tab.accessoryView
+        XCTAssertNotNil(dot)
+        // Busy again keeps the same mark.
+        WorkspaceTabs.markBusy(w, true)
+        XCTAssertTrue(w.tab.accessoryView === dot)
+        WorkspaceTabs.markBusy(w, false)
+        XCTAssertNil(w.tab.accessoryView)
+    }
+
     func testAJoinedWindowPrefersTabsWithTheSharedIdentifier() {
         let w = window()
         WorkspaceTabs.join(w)

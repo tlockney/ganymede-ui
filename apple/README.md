@@ -47,7 +47,8 @@ built from the same sources (see
   tab and its expanded folders across launches. Search finds file and folder names under the
   window's folder and, with "Search notebook contents" ticked, the text
   of its notebooks, showing the matching line. Running lists running
-  kernels and the terminals open in any window; click a terminal to bring
+  kernels, each with its memory when the server reports it (a Ganymede
+  server does), and the terminals open in any window; click a terminal to bring
   it to the front, or right-click a kernel or terminal to shut it down
   (or choose Kernel › Shut Down Other Kernels). The foot of the sidebar
   shows where kernels run and how many kernels and terminals there are.
@@ -67,7 +68,8 @@ built from the same sources (see
 - Notebook, text file and terminal windows open as tabs of the front
   window, with the system's window tabs: drag a tab out to make it a
   window, or choose Window › Merge All Windows to bring windows back
-  together. Each tab keeps its own toolbar. Right-click a notebook or
+  together. Each tab keeps its own toolbar, and a notebook's tab shows a
+  dot while its kernel is running. Right-click a notebook or
   folder in the sidebar and choose Open in New Tab. Notebooks opened from
   the Finder or File › Open… open as tabs too. Ganymede uses tabs whatever
   System Settings › Desktop & Dock › "Prefer tabs when opening

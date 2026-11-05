@@ -3,6 +3,7 @@ import { StrictMode } from 'react';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ServerConnection } from '@jupyterlab/services';
 import type { Backend, BackendConfig } from './lib/backends';
 import { entry, fakeBackend, fakeServices } from './test/fakes';
 import { debugKernel } from './test/debug-kernel';
@@ -403,9 +404,30 @@ describe('App', () => {
     );
     await waitFor(() =>
       expect(states.at(-1)?.running).toEqual([
-        { id: 's1', path: 'Io.ipynb', kernel: 'Python 3', state: null, kernelId: 'k-s1' },
-        { id: 's2', path: 'Europa.ipynb', kernel: 'Python 3', state: null, kernelId: 'k-s2' },
-        { id: 's3', path: 'Callisto.ipynb', kernel: 'Python 3', state: null, kernelId: 'k-s3' },
+        {
+          id: 's1',
+          path: 'Io.ipynb',
+          kernel: 'Python 3',
+          state: null,
+          kernelId: 'k-s1',
+          memory: null,
+        },
+        {
+          id: 's2',
+          path: 'Europa.ipynb',
+          kernel: 'Python 3',
+          state: null,
+          kernelId: 'k-s2',
+          memory: null,
+        },
+        {
+          id: 's3',
+          path: 'Callisto.ipynb',
+          kernel: 'Python 3',
+          state: null,
+          kernelId: 'k-s3',
+          memory: null,
+        },
       ]),
     );
 
@@ -427,6 +449,58 @@ describe('App', () => {
     expect(fake.sessions.shutdown.mock.calls).toEqual([['s2'], ['s3']]);
     fake.sessions.shutdown.mockRejectedValueOnce(new Error('gone'));
     expect(await run('shutdown-kernel', 's2')).toBe(false);
+    vi.unstubAllGlobals();
+  });
+
+  it('reads the kernels’ memory while the app’s Running list asks for it (#241)', async () => {
+    const states: Record<string, unknown>[] = [];
+    vi.stubGlobal('webkit', {
+      messageHandlers: {
+        state: { postMessage: (m: Record<string, unknown>) => states.push(m) },
+      },
+    });
+    mocks.controller = { dirty: false, save: vi.fn(async () => true) };
+    const fake = fakeServices({ '': [{ name: 'Io.ipynb', type: 'notebook' }] });
+    const asked: string[] = [];
+    (fake.services as { serverSettings: ServerConnection.ISettings }).serverSettings =
+      ServerConnection.makeSettings({
+        baseUrl: 'http://server/',
+        fetch: ((input: RequestInfo) => {
+          asked.push(typeof input === 'string' ? input : input.url);
+          return Promise.resolve(
+            new Response(JSON.stringify({ content: { kernel_memory: 2048 } })),
+          );
+        }) as typeof fetch,
+      });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    history.replaceState(null, '', '/?kernels=server&chrome=native&open=Io.ipynb');
+    render(<App />);
+    await waitFor(() => expect(states.at(-1)).toMatchObject({ path: 'Io.ipynb' }));
+    act(() =>
+      fake.setRunning([
+        {
+          id: 's1',
+          path: 'Io.ipynb',
+          name: '',
+          type: 'notebook',
+          kernel: { id: 'k1', name: 'python3' },
+        } as never,
+      ]),
+    );
+    await waitFor(() =>
+      expect(states.at(-1)?.running).toMatchObject([{ kernelId: 'k1', memory: null }]),
+    );
+    // Not asked until the list shows.
+    expect(asked).toEqual([]);
+
+    const run = window.ganymede!.command;
+    expect(await run('watch-memory', 'yes')).toBe(false);
+    expect(await run('watch-memory', 'on')).toBe(true);
+    await waitFor(() =>
+      expect(states.at(-1)?.running).toMatchObject([{ kernelId: 'k1', memory: 2048 }]),
+    );
+    expect(asked[0]).toMatch(/kernel_usage\/get_usage\/k1/);
+    expect(await run('watch-memory', 'off')).toBe(true);
     vi.unstubAllGlobals();
   });
 
