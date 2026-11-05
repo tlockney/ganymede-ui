@@ -183,6 +183,8 @@ struct ContentView: View {
         .background(WindowReader { window in
             document.attach(to: window)
             WorkspaceTabs.join(window, alone: request?.alone ?? false)
+            // A page already running when the window arrives gets its dot.
+            WorkspaceTabs.markBusy(window, pageModel.state.isBusy)
             // A window opened as launch ended may get its NSWindow only
             // after `front` was published.
             if let front = model.openRequests.front, front == target {
@@ -200,6 +202,10 @@ struct ContentView: View {
         }
         .onChange(of: panel.isShown) { panelShown = $0 }
         .onChange(of: panel.height) { panelHeight = $0 }
+        // A dot on the tab while its kernel runs (#247).
+        .onChange(of: pageModel.state.isBusy) { busy in
+            if let window = document.window { WorkspaceTabs.markBusy(window, busy) }
+        }
         .focusedSceneObject(inspector)
         .onAppear {
             inspector.isShown = inspectorShown
