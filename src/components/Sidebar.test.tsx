@@ -1,7 +1,7 @@
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Session } from '@jupyterlab/services';
+import { ServerConnection, type Session } from '@jupyterlab/services';
 import { entry, fakeBackend, fakeServices } from '../test/fakes';
 import { Sidebar } from './Sidebar';
 
@@ -176,6 +176,35 @@ describe('Sidebar', () => {
     expect(onOpen).toHaveBeenCalledWith('moons/Io.ipynb');
     await userEvent.click(within(item).getByTitle('Shut Down'));
     expect(fake.sessions.shutdown).toHaveBeenCalledWith('s1');
+  });
+
+  it("shows a running kernel's memory from the server (#241)", async () => {
+    const { fake } = renderSidebar();
+    await screen.findByText('Saturn');
+    const asked: string[] = [];
+    (fake.services as { serverSettings: ServerConnection.ISettings }).serverSettings =
+      ServerConnection.makeSettings({
+        baseUrl: 'http://server/',
+        fetch: ((input: RequestInfo) => {
+          asked.push(typeof input === 'string' ? input : input.url);
+          return Promise.resolve(
+            new Response(JSON.stringify({ content: { kernel_memory: 61865984 } })),
+          );
+        }) as typeof fetch,
+      });
+    act(() =>
+      fake.setRunning([
+        {
+          id: 's1',
+          name: 'Io.ipynb',
+          path: 'moons/Io.ipynb',
+          type: 'notebook',
+          kernel: { id: 'k1', name: 'python3' },
+        } as Session.IModel,
+      ]),
+    );
+    expect(await screen.findByTitle('Kernel memory')).toHaveTextContent('59.0 MB');
+    expect(asked[0]).toMatch(/^http:\/\/server\/api\/metrics\/v1\/kernel_usage\/get_usage\/k1/);
   });
 
   it('shows the backend, and opens the connect sheet from it', async () => {
