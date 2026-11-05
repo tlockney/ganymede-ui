@@ -35,6 +35,9 @@ export type NativeHooks = {
  * `search` takes a `SearchRequest` as JSON (an empty query ends it), and
  * `clear-recents` empties the Recents list (#240). `go-to-cell` takes a
  * cell's index, as `PageState.outline` gives it (#212).
+ * `watch-memory` takes `on` or `off`: whether the app's Running list shows,
+ * so the page asks the server for each kernel's memory and posts it in
+ * `RunningSession.memory` (#241).
  */
 export const PAGE_COMMANDS = {
   open: 'arg',
@@ -63,6 +66,7 @@ export const PAGE_COMMANDS = {
   'clear-recents': '',
   'file-moved': 'arg',
   'go-to-cell': 'arg',
+  'watch-memory': 'arg',
 } as const;
 
 /** What the app's sidebar searches for (#240): the `search` command's argument. */
@@ -191,12 +195,18 @@ export type RunningSession = {
   state: string | null;
   /** The kernel's id, for its log (#248), or null with no kernel. */
   kernelId: string | null;
+  /**
+   * The kernel's memory in bytes while the app's Running list asks for it
+   * (#241); null otherwise, or when the server can't say.
+   */
+  memory: number | null;
 };
 
 /** `PageState.running` from the backend's sessions. */
 export function runningSessions(
   sessions: Iterable<Session.IModel>,
   specs?: KernelSpec.ISpecModels | null,
+  memory?: ReadonlyMap<string, number>,
 ): RunningSession[] {
   return [...sessions].map(s => {
     const name = s.kernel?.name;
@@ -206,6 +216,7 @@ export function runningSessions(
       kernel: name ? (specs?.kernelspecs[name]?.display_name ?? name) : null,
       state: (s.kernel as { execution_state?: string } | null)?.execution_state ?? null,
       kernelId: s.kernel?.id ?? null,
+      memory: (s.kernel && memory?.get(s.kernel.id)) ?? null,
     };
   });
 }

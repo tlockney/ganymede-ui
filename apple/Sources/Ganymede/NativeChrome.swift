@@ -274,11 +274,18 @@ struct RunningList: View {
                             if let kernel = session.kernel {
                                 Text(kernel).foregroundStyle(.secondary).font(.caption)
                             }
+                            if let memory = session.memoryLabel {
+                                Text(memory)
+                                    .foregroundStyle(.secondary)
+                                    .font(.caption.monospacedDigit())
+                                    .help("Kernel memory")
+                            }
                         }
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .help(session.path + (session.state.map { " · " + PageState.statusLabel($0) } ?? ""))
+                    .help(session.path + (session.state.map { " · " + PageState.statusLabel($0) } ?? "")
+                        + (session.memoryLabel.map { " · " + $0 } ?? ""))
                     .contextMenu {
                         Button("Open") { page.run("open", arg: session.path) }
                         Divider()
@@ -315,6 +322,14 @@ struct RunningList: View {
             }
         }
         .listStyle(.sidebar)
+        // The page asks the server for each kernel's memory only while
+        // the list shows (#241).
+        .onAppear { page.run("watch-memory", arg: "on") }
+        .onDisappear { page.run("watch-memory", arg: "off") }
+        // A page loaded again starts without being asked.
+        .onChange(of: page.ready) { ready in
+            if ready { page.run("watch-memory", arg: "on") }
+        }
     }
 }
 
