@@ -7,13 +7,20 @@ name: Release
 # per archive. The `macos` job adds the Mac app, signed with the Developer
 # ID, notarized and stapled. The `ios` job uploads the iPad and iPhone app
 # to TestFlight. Manual runs on a branch build, sign, notarize and package
-# without publishing a release (they do upload to TestFlight).
-# docs/releasing.md says what to do when a run fails.
+# without publishing a release (they do upload to TestFlight); with
+# `testflight_only`, they skip the web archives and the Mac app and only
+# upload the iPad and iPhone app. docs/releasing.md says what to do when
+# a run fails.
 
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
+    inputs:
+      testflight_only:
+        description: Only upload the iPad and iPhone app to TestFlight (skip the web archives and the Mac app)
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -37,11 +44,18 @@ jobs:
           persist-credentials: false
       - id: version
         name: Read the package.json version; a tag must match it
+        env:
+          TESTFLIGHT_ONLY: ${{ inputs.testflight_only }}
         run: |
           version=$(jq -r .version package.json)
           test -n "$version"
           if [[ "$GITHUB_REF_TYPE" == tag && "$GITHUB_REF_NAME" != "v$version" ]]; then
             echo "::error::tag $GITHUB_REF_NAME does not match package.json version $version"
+            exit 1
+          fi
+          # On a tag it would skip the release job and still end green.
+          if [[ "$GITHUB_REF_TYPE" == tag && "$TESTFLIGHT_ONLY" == true ]]; then
+            echo "::error::testflight_only skips the release; run it on a branch, not a tag"
             exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -54,6 +68,7 @@ jobs:
 
   build:
     needs: [version, ci]
+    if: ${{ !inputs.testflight_only }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -94,6 +109,7 @@ jobs:
   # secrets may live in a `release` environment with a required reviewer.
   macos:
     needs: [version, ci]
+    if: ${{ !inputs.testflight_only }}
     runs-on: macos-latest
     timeout-minutes: 90
     environment: release

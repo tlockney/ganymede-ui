@@ -195,10 +195,11 @@ On iPadOS and iOS (`Ganymede-iOS` target, iOS 16 or later):
 > the latest release.
 
 Each ganymede-ui release uploads the iPad and iPhone app to TestFlight for
-internal testers (`release.yml`'s `ios` job, set up as
+internal testers, and a `testflight_only` run of the Release workflow
+uploads the current `main` between releases (`release.yml`'s `ios` job, set up as
 [docs/releasing.md](../docs/releasing.md#the-ipad-and-iphone-app-testflight)
 says). Members of the team's internal testing group install it with the
-TestFlight app. TestFlight builds expire after 90 days; the next release
+TestFlight app. TestFlight builds expire after 90 days; the next upload
 replaces them.
 
 ## Build
