@@ -165,13 +165,13 @@ final class OpenRequests: ObservableObject {
         pending = added
     }
 
-    /// Ends launch. Files no window took by now (none opened) each get a
-    /// window.
     /// The window `front` named has come forward.
     func broughtForward() {
         front = nil
     }
 
+    /// Ends launch. Files no window took by now (none opened) each get a
+    /// window.
     func finishLaunching() {
         launching = false
         if !pending.isEmpty, let openWindow = openWindow ?? fallbackOpenWindow {
