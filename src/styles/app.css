@@ -405,6 +405,13 @@ button {
   white-space: nowrap;
 }
 
+/* A long kernel name ends in "…" rather than running under the Run buttons. */
+.subtitle-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .tb-button {
   display: inline-grid;
   place-items: center;
@@ -1479,6 +1486,16 @@ button {
   }
   .window.sidebar-collapsed:not(.chrome-native) .notebook-page .jp-WindowedPanel-inner {
     padding-left: calc(12px + var(--safe-left));
+  }
+  /* The iPhone app's page (`chrome=native` on a touch screen): the same
+   * gutter, and less space above the first cell, under the app's own bars.
+   * The Mac's narrow web view beside its sidebar isn't `touch-ui`. */
+  .touch-ui .window.chrome-native .notebook-page .jp-WindowedPanel-inner {
+    padding-right: calc(12px + var(--safe-right));
+    padding-left: calc(12px + var(--safe-left));
+  }
+  .touch-ui .window .notebook-page .jp-WindowedPanel-outer {
+    padding-top: calc(var(--toolbar-h) + 8px);
   }
 }
 

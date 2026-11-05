@@ -36,6 +36,11 @@ test.describe('on a phone', () => {
     await newBrowserNotebook(page);
     const more = page.getByRole('button', { name: 'Cell Actions' });
     await expect(more).toHaveCount(1);
+    // The new notebook's first cell: its add-cell bar is under its editor.
+    const first = page.locator('.jp-Cell').first();
+    const editor = (await first.locator('.jp-InputArea-editor').boundingBox())!;
+    const bar = (await first.locator('.gn-add-cell').boundingBox())!;
+    expect(bar.y).toBeGreaterThanOrEqual(editor.y + editor.height);
     const box = (await more.first().boundingBox())!;
     expect(box.height).toBeGreaterThanOrEqual(44);
     expect(box.width).toBeGreaterThanOrEqual(44);

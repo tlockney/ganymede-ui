@@ -33,7 +33,8 @@ test.describe('portrait phone', () => {
     const title = await box(page, '.toolbar .title');
     expect(title.y).toBeGreaterThanOrEqual(59);
     const outer = page.locator('.jp-WindowedPanel-outer');
-    await expect(outer).toHaveCSS('padding-top', `${52 + 59 + 28}px`);
+    // A phone's 8px gap above the first cell (#263), under the toolbar.
+    await expect(outer).toHaveCSS('padding-top', `${52 + 59 + 8}px`);
     // 30vh (255.6px), plus the home indicator.
     await expect(outer).toHaveCSS('padding-bottom', '289.6px');
   });

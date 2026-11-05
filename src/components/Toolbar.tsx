@@ -82,7 +82,9 @@ export function Toolbar({
           {c && (
             <div className="subtitle">
               <span className={`status-dot s-${c.status}`} />
-              {kernelDisplay ?? 'No kernel'} · {STATUS_LABEL[c.status] ?? c.status}
+              <span className="subtitle-text">
+                {kernelDisplay ?? 'No kernel'} · {STATUS_LABEL[c.status] ?? c.status}
+              </span>
             </div>
           )}
         </div>

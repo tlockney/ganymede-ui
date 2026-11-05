@@ -347,6 +347,17 @@
   color: var(--text-2);
 }
 
+/* JupyterLab stacks the prompt over the editor at 760px and under: the
+ * "…" button and the handle line up with the editor, not the prompt. */
+@media (width <= 760px) {
+  .touch-ui .notebook-page .gn-cell-more {
+    top: 35px;
+  }
+  .touch-ui .notebook-page .gn-cell-drag {
+    top: 79px;
+  }
+}
+
 /* The cell being dragged follows the pointer, above the others. */
 .notebook-page .jp-Cell.gn-dragging {
   z-index: 10;
