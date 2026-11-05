@@ -178,17 +178,35 @@ On iPadOS and iOS (`Ganymede-iOS` target, iOS 16 or later):
   > settings sheet.
 
 - The terminal button opens a shell on a remote, over SSH or on its
-  server's terminals. On iPad it opens in its own window beside the
-  notebook; on iPhone it covers the screen. SSH signs in with an ed25519
+  server's terminals. On iPad it opens in the bottom panel (see below);
+  on iPhone it covers the screen. SSH signs in with an ed25519
   key the app generates or imports (Settings > SSH key; copy the public
   key into `~/.ssh/authorized_keys` on the remote) and trusts the host
   key the first time, refusing it if it changes later. iOS drops the
   connection soon after the app goes to the background; the terminal
   then offers to reconnect.
-- Other files in the sidebar open in a text editor, beside the notebook
-  on iPad and over it on iPhone, with the same highlighting, line
+- Other files in the sidebar open in a text editor, over the notebook
+  on iPad (see below) and on iPhone, with the same highlighting, line
   numbers, auto-indent and pairing as on the Mac. Edits are saved when the app goes to the
-  background, since iOS may close the editor's window there.
+  background, since iOS may close the editor there.
+- The iPad's workspace follows the Mac's. The sidebar has the same
+  navigator tabs (⌘1 to ⌘5 with a keyboard): Files, Search, Running
+  (kernels and the panel's terminals), Outline (empty for now) and
+  Recents. A text file opens over the notebook, one at a time; Close
+  (which asks to save) or opening a notebook from the sidebar goes
+  back to it, saving edits on the way. Terminals open in a bottom panel
+  under the notebook, as tabs: drag its handle to resize it, use its
+  arrows to have it fill the screen and back, and hide it with its
+  chevron, the toolbar's panel button or ⌃`; hidden, its shells keep
+  running. The toolbar's Fill the Screen hides the sidebar and panel
+  until it is tapped again. The Agent, Outline and Variables inspector
+  comes with the Mac's (#249).
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release, where text files and terminals open in windows
+  > of their own beside the notebook.
+
 - Downloads open the share sheet, where Save to Files keeps them.
 - iOS may close the server's socket while the app is in the background;
   back in the foreground the app restarts the server if it stopped
