@@ -70,6 +70,16 @@ describe('plainText', () => {
     expect(plainText('``a ` b``')).toBe('a ` b');
   });
 
+  it('keeps backslashes inside code spans', () => {
+    expect(plainText('Regex `\\*` and `\\.`')).toBe('Regex \\* and \\.');
+    expect(plainText('Path `C:\\\\Users`')).toBe('Path C:\\\\Users');
+    expect(plainText('Not code: \\`x\\`')).toBe('Not code: `x`');
+  });
+
+  it('keeps an autolink’s address', () => {
+    expect(plainText('See <https://jupyter.org/a_b_c>')).toBe('See https://jupyter.org/a_b_c');
+  });
+
   it('drops tags only, not comparisons', () => {
     expect(plainText('When x < 5 and y > 3')).toBe('When x < 5 and y > 3');
     expect(plainText('List<int> in `Map<K, V>`')).toBe('List in Map<K, V>');

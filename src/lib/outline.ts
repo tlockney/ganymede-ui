@@ -32,8 +32,13 @@ export function plainText(markdown: string): string {
   const last = () => 0xe000 + kept.length;
   return (
     markdown
-      .replace(/\\([\\`*_{}[\]()#+\-.!~<>])/g, (_, c: string) => keep(c))
-      .replace(/(`+)(.+?)\1/g, (_, _ticks: string, code: string) => keep(code))
+      // One pass: a backslash inside a code span is code, not an escape.
+      .replace(
+        /\\([\\`*_{}[\]()#+\-.!~<>])|(`+)(.+?)\2/g,
+        (_, c?: string, _ticks?: string, code?: string) => keep(c ?? code ?? ''),
+      )
+      // Autolinks keep their address as the text.
+      .replace(/<([A-Za-z][A-Za-z0-9+.-]{1,31}:[^\s<>]*)>/g, (_, url: string) => keep(url))
       .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
       .replace(/!?\[([^\]]*)\]\[[^\]]*\]/g, '$1')
       // Tags only: `x < 5 and y > 3` stays.
