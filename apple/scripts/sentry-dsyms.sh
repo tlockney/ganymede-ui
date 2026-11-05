@@ -10,9 +10,10 @@ archive=${1:?usage: sentry-dsyms.sh <xcarchive>}
 dsyms="$archive/dSYMs"
 [ -d "$dsyms" ] || { echo "error: no $dsyms" >&2; exit 1; }
 
-# Warn, not fail: a release without Rust lines still ships.
+# Warn, not fail: a release without Rust lines still ships. grep -c, not
+# -q: it reads to the end, so dwarfdump gets no SIGPIPE under pipefail.
 app_dsym="$dsyms/Ganymede.app.dSYM"
-if [ -d "$app_dsym" ] && ! dwarfdump --debug-line "$app_dsym" 2>/dev/null | grep -q 'ganymede-ffi/src/lib.rs'; then
+if [ -d "$app_dsym" ] && ! dwarfdump --debug-line "$app_dsym" 2>/dev/null | grep -c 'ganymede-ffi/src/lib.rs' >/dev/null; then
   echo "::warning::$app_dsym has no line tables for ganymede-ffi; Rust frames will show without files and lines"
 fi
 

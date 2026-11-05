@@ -202,7 +202,8 @@ enum CrashReportsPrompt {
         alert.showsHelp = true
         let help = PrivacyHelp()
         alert.delegate = help
-        let answer = alert.runModal()
+        // The delegate is weak: keep `help` alive while the alert runs.
+        let answer = withExtendedLifetime(help) { alert.runModal() }
         reports.set(answer == .alertSecondButtonReturn)
     }
 
