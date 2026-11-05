@@ -149,10 +149,10 @@ cert.p12 | pbcopy` as `IOS_CERTIFICATE_P12`.
 4. Create the app in App Store Connect (iOS platform, that bundle ID) and
    an internal testing group under TestFlight.
 
-Each build waits under TestFlight for the export compliance answer until
-it's given. The app's own networking is HTTPS/TLS and SSH, both standard
-encryption; once you've settled that answer, setting
-`ITSAppUsesNonExemptEncryption` in `apple/project.yml` skips the question.
+The apps declare `ITSAppUsesNonExemptEncryption = NO` in
+`apple/project.yml` (standard TLS and SSH only, #322), so builds go
+straight to testing without the export compliance question. Revisit the
+key if the apps add non-standard encryption.
 
 To try it without releasing, start `release.yml` by hand on a branch, as
 for the Mac app. Unlike the Mac app, that run uploads to TestFlight. App
