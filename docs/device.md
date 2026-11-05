@@ -13,7 +13,7 @@ The API comes from
 the TypeScript package, the app's Swift side, and the
 [design and phases](https://github.com/tlockney/ganymede-device/blob/main/docs/plan.md).
 It is early: today it has device details, the clipboard (text and
-images), haptics and opening URLs.
+images), haptics, opening URLs and dialogs.
 
 ## Where `device` exists
 
@@ -51,18 +51,37 @@ For editor types, add this line once to a cell or a project file:
 
 ## Methods
 
-| Method                               | Returns                    | In the app | Remote kernel | Browser                |
-| ------------------------------------ | -------------------------- | ---------- | ------------- | ---------------------- |
-| `device.info()`                      | platform, version, methods | yes        | planned       | planned                |
-| `device.has(method)`                 | `boolean`, synchronously   | yes        | planned       | planned                |
-| `device.clipboard.readText()`        | `string`, or `null`        | yes        | planned       | planned, after a click |
-| `device.clipboard.writeText(text)`   | nothing                    | yes        | planned       | planned, after a click |
-| `device.clipboard.readImage()`       | PNG bytes, or `null`       | yes        | planned       | planned, after a click |
-| `device.clipboard.writeImage(image)` | nothing                    | yes        | planned       | planned, after a click |
-| `device.haptics.impact(style)`       | nothing                    | iPhone     | planned       | no                     |
-| `device.haptics.notification(type)`  | nothing                    | iPhone     | planned       | no                     |
-| `device.haptics.selection()`         | nothing                    | iPhone     | planned       | no                     |
-| `device.openURL(url, { inApp })`     | nothing                    | yes        | planned       | planned                |
+<!-- device-table:start (generated: node scripts/device-table.mjs --write) -->
+
+| Method                                                                    | Returns                                                    | In the app | Remote kernel | Browser                |
+| ------------------------------------------------------------------------- | ---------------------------------------------------------- | ---------- | ------------- | ---------------------- |
+| `device.info()`                                                           | platform, version, methods, and the device's current state | yes        | planned       | planned                |
+| `device.clipboard.readText()`                                             | `string`, or `null`                                        | yes        | planned       | planned, after a click |
+| `device.clipboard.writeText(text)`                                        | nothing                                                    | yes        | planned       | planned, after a click |
+| `device.clipboard.readImage()`                                            | PNG bytes, or `null`                                       | yes        | planned       | planned, after a click |
+| `device.clipboard.writeImage(image)`                                      | nothing                                                    | yes        | planned       | planned, after a click |
+| `device.haptics.impact(style)`                                            | nothing                                                    | iPhone     | planned       | no                     |
+| `device.haptics.notification(type)`                                       | nothing                                                    | iPhone     | planned       | no                     |
+| `device.haptics.selection()`                                              | nothing                                                    | iPhone     | planned       | no                     |
+| `device.openURL(url, { inApp })`                                          | nothing                                                    | yes        | planned       | planned, after a click |
+| `device.ui.alert(message, { title })`                                     | nothing, once closed                                       | yes        | planned       | planned                |
+| `device.ui.confirm(message, { title, destructive, okLabel })`             | `boolean`                                                  | yes        | planned       | planned                |
+| `device.ui.prompt(message, { title, placeholder, defaultValue, secure })` | `string`, or `null`                                        | yes        | planned       | planned                |
+| `device.ui.actionSheet(title, options, { message, cancel, destructive })` | the option's index, or `null`                              | yes        | planned       | planned                |
+| `device.ui.pickDate({ mode, title, value, min, max })`                    | `Date`, or `null`                                          | yes        | planned       | planned                |
+
+- `device.info()`: A browser has no model or battery.
+- `device.clipboard.readText()`: iPadOS shows its paste prompt; a browser needs a click for the Clipboard API.
+- `device.clipboard.writeText(text)`: A browser needs a click for the Clipboard API.
+- `device.clipboard.readImage()`: PNG. iPadOS shows its paste prompt; a browser needs a click for the Clipboard API.
+- `device.clipboard.writeImage(image)`: A browser needs a click for the Clipboard API, and takes PNG only.
+- `device.haptics.impact(style)`: iPhone only: iPads and Macs have no Taptic Engine. A browser has no haptics API Safari supports.
+- `device.haptics.notification(type)`: iPhone only: iPads and Macs have no Taptic Engine.
+- `device.haptics.selection()`: iPhone only: iPads and Macs have no Taptic Engine.
+- `device.openURL(url, { inApp })`: http, https and mailto only. `inApp` works on iPhone and iPad, not the Mac; a browser opens a tab after a click.
+- `device.ui.alert(message, { title })`: A sheet on the Mac, an alert on iPhone and iPad; a browser will show it in the cell's output.
+
+<!-- device-table:end -->
 
 > [!NOTE]
 > **Unreleased.** Available only from a build of `main` (HEAD), not in
@@ -102,8 +121,20 @@ in points, and `scale`), `battery` (`level` from 0 to 1, or `null` when
 unknown, and `charging`; absent on a Mac without one), `darkMode` and
 `locale` (such as `"en-US"`).
 
-Next come the rest of the methods that need no permission: alerts and
-pickers, share, files and sounds. After
+The `ui` dialogs (alert, confirm, prompt, action sheet, date picker)
+show as a sheet over the notebook on the Mac and as an alert on iPhone
+and iPad. One shows at a time; a second call waits for the first to
+close. Dismissing one is not an error: it returns `null` or `false`.
+Interrupting the kernel closes it and rejects `cancelled`.
+
+```ts
+if (await device?.ui.confirm('Delete the scratch files?', { destructive: true })) {
+  // ...
+}
+```
+
+Next come the rest of the methods that need no permission: share,
+Quick Look, file and photo pickers, and sounds. After
 those, methods behind a system permission, such as location and
 notifications. The
 [phases](https://github.com/tlockney/ganymede-device/blob/main/docs/plan.md#phases)
