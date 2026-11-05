@@ -18,6 +18,9 @@ final class KernelHost: NSObject {
     static let hostHandler = "kernelHost"
 
     let webView: WKWebView
+    /// ganymede-device's `device` handler. Kept so that a new kernel page
+    /// starts with no dialog, picker or sound left from the old one.
+    private let device: DeviceBridge
     private weak var ui: WKWebView?
     private var pageURL: URL?
     private var loaded = false
@@ -32,11 +35,13 @@ final class KernelHost: NSObject {
             config.preferences.inactiveSchedulingPolicy = .none
         }
         webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 1, height: 1), configuration: config)
+        device = DeviceBridge()
         super.init()
         config.userContentController.add(WeakHandler(self), name: Self.hostHandler)
         // ganymede-device's `device` handler, for cells: here and nowhere
         // else, so nothing the UI page renders can call it.
-        DeviceBridge().register(in: config.userContentController)
+        device.register(in: config.userContentController)
+        webView.navigationDelegate = self
         if #available(macOS 13.3, iOS 16.4, *) {
             webView.isInspectable = true
         }
@@ -119,6 +124,19 @@ final class KernelHost: NSObject {
         parts.query = nil
         parts.fragment = nil
         return parts.url
+    }
+}
+
+extension KernelHost: WKNavigationDelegate {
+    /// The kernel page is going away (a reset, a reload): its device calls
+    /// can no longer be answered, and the new page's call ids start over.
+    func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        device.dropAll()
+    }
+
+    /// The kernel page's process died, and its kernels with it.
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        device.dropAll()
     }
 }
 
