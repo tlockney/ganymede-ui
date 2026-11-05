@@ -160,6 +160,18 @@ Store Connect rejects a build number it already has for the version, and
 a rerun keeps its run number, so once a run has uploaded, start a new run
 rather than rerunning it.
 
+To put the current `main` on TestFlight without a release, start
+`release.yml` on `main` with `testflight_only` checked (Actions > Release >
+Run workflow), or:
+
+```sh
+gh workflow run release.yml --ref main -f testflight_only=true --repo tlockney/ganymede-ui
+```
+
+It runs CI and the `ios` job only. The build carries the `package.json`
+version and the run number, so it shows in TestFlight as a newer build of
+the current version.
+
 ## When it fails
 
 Find the failed `release.yml` run under the tag in the Actions tab. The
