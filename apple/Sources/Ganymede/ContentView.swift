@@ -27,6 +27,13 @@ struct ContentView: View {
     /// The bottom panel's terminals (#248), and whether it shows and how
     /// tall it is, kept with the window across launches.
     @StateObject private var panel = PanelController()
+    /// What the window shows, kept with it so a window the system
+    /// restores comes back on it (#268). SwiftUI's own restoring of
+    /// `target` brought notebook windows back on the folder.
+    @SceneStorage("window.target") private var savedTarget = ""
+    /// Whether the page has said what it shows; until then a restored
+    /// `target` that comes late still replaces what the page was loaded for.
+    @State private var pageReported = false
     @SceneStorage("panel.shown") private var panelShown = false
     @SceneStorage("panel.height") private var panelHeight = PanelController.defaultHeight
 
@@ -103,12 +110,25 @@ struct ContentView: View {
             if let request {
                 WorkspaceTabs.take(request)
                 if target == nil { target = .folder(request.folder) }
+            } else if target == nil, let saved = WindowTarget(saved: savedTarget) {
+                // A window the system restored, without its value.
+                show(saved)
             }
             model.openRequests.register(windowID, blank: target == nil)
             model.openRequests.openWindow = { [openWindow] in openWindow(value: $0) }
         }
         .onChange(of: target) { target in
             model.openRequests.register(windowID, blank: target == nil)
+            savedTarget = WindowTarget.saved(target)
+            // Restored after the view was made, before the page said
+            // anything: show it, not what the page was loaded for.
+            if let target, !pageReported, target != loaded { show(target) }
+        }
+        // Brought forward after launch: restored windows can come back in
+        // front of a notebook opened from the Finder (#268).
+        .onReceive(model.openRequests.$front) { front in
+            guard let front, front == target else { return }
+            document.window?.makeKeyAndOrderFront(nil)
         }
         .onDisappear { model.openRequests.unregister(windowID) }
         // Notebook windows are tabs too (#247).
@@ -238,14 +258,17 @@ struct ContentView: View {
     #if os(macOS)
     private func takeOpenRequests() {
         let (shown, others) = model.openRequests.take(blank: target == nil)
-        if let shown {
-            target = shown
-            loaded = shown
-            sidebarRoot = shown.folder
-        }
+        if let shown { show(shown) }
         for other in others {
             openWindow(value: other)
         }
+    }
+
+    /// Shows `shown` in this window: the page loads it.
+    private func show(_ shown: WindowTarget) {
+        target = shown
+        loaded = shown
+        sidebarRoot = shown.folder
     }
 
     private var page: URL? { model.page(for: loaded) }
@@ -274,6 +297,7 @@ struct ContentView: View {
     /// stays as it is.
     private func follow(_ url: URL?) {
         guard let url else { return }
+        pageReported = true
         if let shown = WindowTarget(page: url) {
             if shown != target { target = shown }
         } else if case .file(let file) = target {

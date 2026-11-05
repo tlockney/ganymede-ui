@@ -114,6 +114,12 @@ final class OpenRequests: ObservableObject {
     /// on nothing then shows the first itself, instead of staying empty
     /// beside a window for it.
     private var atLaunch = false
+    /// The first file asked for while the app launched, to bring forward
+    /// once launch ends: windows the system restores can come back in
+    /// front of it (#268).
+    private var firstAtLaunch: WindowTarget?
+    /// The window to bring forward, set when launch ends.
+    @Published private(set) var front: WindowTarget?
     /// The notebook windows, by id: whether each shows nothing yet.
     private var windows: [UUID: Bool] = [:]
     /// Opens a notebook window, for requests that come after launch. Set by
@@ -136,7 +142,10 @@ final class OpenRequests: ObservableObject {
             added.append(target)
         }
         guard added != pending else { return }
-        if launching { atLaunch = true }
+        if launching {
+            atLaunch = true
+            if firstAtLaunch == nil { firstAtLaunch = added.first }
+        }
         // Once launched, each opens in a window (a new tab, or the window
         // already showing it) at once, without waiting for a window to
         // notice the queue: nothing is left pending if none does.
@@ -151,11 +160,14 @@ final class OpenRequests: ObservableObject {
     /// window.
     func finishLaunching() {
         launching = false
-        guard !pending.isEmpty, let openWindow = openWindow ?? fallbackOpenWindow else { return }
-        let left = pending
-        pending = []
-        atLaunch = false
-        left.forEach(openWindow)
+        if !pending.isEmpty, let openWindow = openWindow ?? fallbackOpenWindow {
+            let left = pending
+            pending = []
+            atLaunch = false
+            left.forEach(openWindow)
+        }
+        front = firstAtLaunch
+        firstAtLaunch = nil
     }
 
     /// The file URLs an Open Documents Apple Event names: a list, or one.
@@ -189,6 +201,21 @@ final class OpenRequests: ObservableObject {
     }
 }
 #endif
+
+extension WindowTarget {
+    /// For `@SceneStorage`, which keeps strings: JSON, or "" for none.
+    static func saved(_ target: WindowTarget?) -> String {
+        guard let target, let data = try? JSONEncoder().encode(target) else { return "" }
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    init?(saved: String) {
+        guard !saved.isEmpty,
+              let target = try? JSONDecoder().decode(WindowTarget.self, from: Data(saved.utf8))
+        else { return nil }
+        self = target
+    }
+}
 
 #if os(macOS)
 /// What the app was asked to open, in the unified log (Console, category

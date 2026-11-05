@@ -197,7 +197,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// (`OpenRequests`).
     @objc private func openDocuments(_ event: NSAppleEventDescriptor, withReply reply: NSAppleEventDescriptor) {
         let urls = OpenRequests.fileURLs(in: event)
-        OpenLog.log.notice("open documents: \(urls.map(\.path).joined(separator: ", "), privacy: .public)")
+        OpenLog.log.notice("open documents: \(urls.map(\.path).joined(separator: ", "), privacy: .private(mask: .hash))")
         AppModel.shared.openRequests.add(urls)
     }
 
