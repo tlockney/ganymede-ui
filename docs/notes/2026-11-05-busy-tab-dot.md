@@ -9,3 +9,6 @@
   stays busy, so the dot doesn't flicker as `PageState` updates.
 - Still open on #247: splitting a tab right (native window tabs can't),
   and the by-hand Mac check.
+- The mark is also applied when the window attaches, so a page already
+  busy then (a restored tab reconnecting mid-run) gets its dot without
+  waiting for the next run.

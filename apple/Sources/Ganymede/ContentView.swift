@@ -183,6 +183,8 @@ struct ContentView: View {
         .background(WindowReader { window in
             document.attach(to: window)
             WorkspaceTabs.join(window, alone: request?.alone ?? false)
+            // A page already running when the window arrives gets its dot.
+            WorkspaceTabs.markBusy(window, pageModel.state.isBusy)
             // A window opened as launch ended may get its NSWindow only
             // after `front` was published.
             if let front = model.openRequests.front, front == target {
