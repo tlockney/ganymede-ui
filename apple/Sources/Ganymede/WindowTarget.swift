@@ -31,9 +31,12 @@ enum WindowTarget: Codable, Hashable {
     /// or else the folder its `dir=` names (the sidebar's folder, #220), or
     /// else the server's root. Both are paths from the server's root, `/`,
     /// form-encoded as URLSearchParams writes them. Nil for a URL that
-    /// can't be read.
+    /// isn't the app's page, which is served at the server's root: a file
+    /// the page linked to, or an error page.
     init?(page: URL) {
-        guard let parts = URLComponents(url: page, resolvingAgainstBaseURL: false) else { return nil }
+        guard let parts = URLComponents(url: page, resolvingAgainstBaseURL: false),
+              parts.path.isEmpty || parts.path == "/"
+        else { return nil }
         let items = parts.percentEncodedQueryItems ?? []
         func path(_ name: String) -> String? {
             guard let value = items.first(where: { $0.name == name })?.value?
