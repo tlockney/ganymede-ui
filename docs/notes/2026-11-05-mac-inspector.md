@@ -19,3 +19,10 @@
 - The page's own Variables view stays reachable in the Mac app from the
   command palette. Sending that entry to the inspector instead needs a
   page-to-app message and is left for a follow-up.
+- `useVariables` drops its rows when it goes inactive. Nothing is read
+  while hidden, so the kernel can change unseen (another notebook, a
+  restart); shown again, it says it is reading instead of showing the
+  old kernel's rows until the new read lands.
+- The page's Variables view and the inspector can both be active, each
+  with its own hook, so a run then sends the debug requests twice. The
+  follow-up that routes the palette entry to the inspector removes that.
