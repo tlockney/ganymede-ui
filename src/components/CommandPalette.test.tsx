@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { PaletteEntry } from '../lib/palette';
@@ -57,6 +57,14 @@ describe('CommandPalette', () => {
     expect(active()).toHaveTextContent('Restart Kernel');
     await userEvent.keyboard('{Enter}');
     expect(onRun).toHaveBeenCalledWith(ENTRIES[2], undefined);
+  });
+
+  it('ignores Return while an input method is composing', () => {
+    const { onRun } = setup();
+    fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Enter', isComposing: true });
+    expect(onRun).not.toHaveBeenCalled();
+    fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Enter' });
+    expect(onRun).toHaveBeenCalledWith(ENTRIES[1], undefined);
   });
 
   it('gives focus back when it closes', () => {
