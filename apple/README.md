@@ -136,6 +136,18 @@ built from the same sources (see
   > **Unreleased.** Available only from a build of `main` (HEAD), not in
   > the latest release.
 
+- Any of the notebook, the bottom panel and the inspector can fill the
+  window: the arrows button in the panel's or inspector's header, or
+  View > Fill Window (⇧⌘↩), which fills it with the panel when a panel
+  terminal has the keyboard and with the notebook otherwise. The other
+  areas fold into thin strips at the window's edges; clicking one, the
+  same button, ⇧⌘↩, or showing the sidebar, panel or inspector brings the
+  layout back.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release.
+
 - Other files in the sidebar (not notebooks) open in a text editor
   window: the system text view with syntax highlighting for Python,
   JavaScript, TypeScript, JSON, Markdown, shell, YAML and TOML, line
