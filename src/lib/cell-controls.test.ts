@@ -152,6 +152,14 @@ describe('attachCellControls', () => {
     }
   });
 
+  it('keeps the add-cell bar last when the cell adds parts later', async () => {
+    const late = document.createElement('div');
+    cell(0).node.append(late);
+    await new Promise(r => setTimeout(r, 0));
+    expect(cell(0).node.lastElementChild?.className).toBe('gn-add-cell');
+    expect(late.nextElementSibling?.className).toBe('gn-add-cell');
+  });
+
   it('opens the menu for the cell its button is on', () => {
     buttons('Cell Actions')[1]!.click();
     expect(onMenu).toHaveBeenCalledWith(cell(1), buttons('Cell Actions')[1]);

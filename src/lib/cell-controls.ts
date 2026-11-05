@@ -126,6 +126,14 @@ function decorate(cell: Cell): void {
     button('gn-add-button', 'Add Text Cell', '+ Text', 'markdown'),
   );
   node.append(more, drag, bar);
+  // The cell adds its input and output areas when it is first attached,
+  // which for a new notebook's first cell can be after `ready`: whenever
+  // its children change, the bar goes back to the end.
+  const keepLast = new MutationObserver(() => {
+    if (!cell.isDisposed && node.lastElementChild !== bar) node.append(bar);
+  });
+  keepLast.observe(node, { childList: true });
+  cell.disposed.connect(() => keepLast.disconnect());
   void cell.ready.then(() => {
     if (!cell.isDisposed && node.lastElementChild !== bar) node.append(bar);
   });
