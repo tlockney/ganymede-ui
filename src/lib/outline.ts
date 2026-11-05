@@ -13,41 +13,49 @@ export type OutlineCell = { type: string; source: string };
 const FENCE = /^ {0,3}(`{3,}|~{3,})/;
 const ATX = /^ {0,3}(#{1,6})(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*$/;
 const SETEXT = /^ {0,3}(=+|-+)[ \t]*$/;
-const HTML_HEADING = /^\s*<h([1-6])\b[^>]*>(.*?)<\/h\1>/i;
+const HTML_HEADING = /^ {0,3}<h([1-6])\b[^>]*>(.*?)<\/h\1>/i;
 
 /**
  * Heading text without Markdown: links and images keep their text,
- * emphasis and code marks go, HTML tags go, entities for `&`, `<`, `>`
- * and quotes are decoded, and runs of spaces become one.
+ * emphasis and code marks go (code keeps what is inside it as written),
+ * HTML tags go, entities for `&`, `<`, `>` and quotes are decoded, and
+ * runs of spaces become one.
  */
 export function plainText(markdown: string): string {
-  // Escaped marks are kept aside (as private-use characters) while the
-  // marks around them go.
+  // Code spans and escaped marks are set aside, as private-use
+  // characters, while the marks around them go.
   const kept: string[] = [];
+  const keep = (text: string) => {
+    kept.push(text);
+    return String.fromCharCode(0xe000 + kept.length - 1);
+  };
+  const last = () => 0xe000 + kept.length;
   return (
     markdown
-      .replace(/\\([\\`*_{}[\]()#+\-.!~<>])/g, (_, c: string) => {
-        kept.push(c);
-        return String.fromCharCode(0xe000 + kept.length - 1);
-      })
+      .replace(/\\([\\`*_{}[\]()#+\-.!~<>])/g, (_, c: string) => keep(c))
+      .replace(/(`+)(.+?)\1/g, (_, _ticks: string, code: string) => keep(code))
       .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
       .replace(/!?\[([^\]]*)\]\[[^\]]*\]/g, '$1')
-      .replace(/<[^>]+>/g, '')
+      // Tags only: `x < 5 and y > 3` stays.
+      .replace(/<\/?[A-Za-z][^<>]*>/g, '')
       .replace(/\*\*(.+?)\*\*/g, '$1')
       .replace(/\*(.+?)\*/g, '$1')
       // Underscores mark emphasis only at word edges: snake_case stays.
       .replace(/(^|[^\p{L}\p{N}_])__(.+?)__(?![\p{L}\p{N}_])/gu, '$1$2')
       .replace(/(^|[^\p{L}\p{N}_])_(.+?)_(?![\p{L}\p{N}_])/gu, '$1$2')
       .replace(/~~(.+?)~~/g, '$1')
-      .replace(/`+([^`]*)`+/g, '$1')
-      .replace(/&amp;/g, '&')
       .replace(/&lt;/g, '<')
       .replace(/&gt;/g, '>')
       .replace(/&quot;/g, '"')
       .replace(/&#39;/g, "'")
+      // Last, so `&amp;lt;` reads `&lt;`.
+      .replace(/&amp;/g, '&')
       .replace(/\s+/g, ' ')
-      .replace(/[\ue000-\uf8ff]/g, c => kept[c.charCodeAt(0) - 0xe000] ?? '')
       .trim()
+      .replace(/[\ue000-\uf8ff]/g, c => {
+        const code = c.charCodeAt(0);
+        return code < last() ? kept[code - 0xe000] : c;
+      })
   );
 }
 
@@ -90,8 +98,12 @@ export function headingsOf(source: string): { level: number; text: string }[] {
       continue;
     }
     // A setext heading's text is one line here: the line just before.
+    // A list item or quote followed by `---` is a rule, not a heading.
     const blank = !line.trim();
-    paragraph = blank || /^ {4,}|^\t/.test(line) ? undefined : line;
+    paragraph =
+      blank || /^ {4,}|^\t/.test(line) || /^ {0,3}([-*+]|\d+[.)])([ \t]|$)|^ {0,3}>/.test(line)
+        ? undefined
+        : line;
   }
   return found;
 }

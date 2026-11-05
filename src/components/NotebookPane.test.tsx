@@ -581,11 +581,10 @@ describe('NotebookPane', () => {
     // An edit shows a moment later.
     act(() => modelOf().cells.get(2).sharedModel.setSource('## Plumes & rings'));
     await waitFor(() => expect(latest()?.outline.at(-1)?.text).toBe('Plumes & rings'));
-    // So does a cell going.
+    // A cell going updates it at once, so no heading points at the
+    // wrong cell meanwhile.
     act(() => modelOf().sharedModel.deleteCell(0));
-    await waitFor(() =>
-      expect(latest()?.outline).toEqual([{ level: 2, text: 'Plumes & rings', cell: 1 }]),
-    );
+    expect(latest()?.outline).toEqual([{ level: 2, text: 'Plumes & rings', cell: 1 }]);
 
     const notebook = fakes.notebooks[0] as {
       activeCellIndex?: number;

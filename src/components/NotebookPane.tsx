@@ -552,8 +552,9 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
     };
   }, [open]);
 
-  // The outline (#212), a moment after the cells stop changing: typing
-  // in a cell changes the model on every key.
+  // The outline (#212), 300 ms after the cells stop changing: typing in
+  // a cell changes the model on every key. Cells added, removed or moved
+  // update it at once, so a heading never points at the wrong cell.
   useEffect(() => {
     if (!open) return;
     const { model } = open;
@@ -563,7 +564,12 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       timer = undefined;
       const cells = Array.from({ length: model.cells.length }, (_, i) => {
         const cell = model.cells.get(i);
-        return { type: cell.type, source: cell.sharedModel.getSource() };
+        // Only Markdown cells have headings: outputs streaming into a
+        // code cell don't re-read every source.
+        return {
+          type: cell.type,
+          source: cell.type === 'markdown' ? cell.sharedModel.getSource() : '',
+        };
       });
       const next = outlineOf(cells);
       const key = JSON.stringify(next);
@@ -572,15 +578,20 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       setOutline(next);
     };
     const later = () => {
-      if (timer === undefined) timer = setTimeout(update, 300);
+      if (timer !== undefined) clearTimeout(timer);
+      timer = setTimeout(update, 300);
+    };
+    const now = () => {
+      if (timer !== undefined) clearTimeout(timer);
+      update();
     };
     update();
     model.contentChanged.connect(later);
-    model.cells.changed.connect(later);
+    model.cells.changed.connect(now);
     return () => {
       if (timer !== undefined) clearTimeout(timer);
       model.contentChanged.disconnect(later);
-      model.cells.changed.disconnect(later);
+      model.cells.changed.disconnect(now);
     };
   }, [open]);
 
