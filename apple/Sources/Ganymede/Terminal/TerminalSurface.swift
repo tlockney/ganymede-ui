@@ -82,6 +82,13 @@ func returnKeyboardToPage(in window: NSWindow) {
     window.makeFirstResponder(visibleWebView(in: window.contentView))
 }
 
+/// Whether a terminal has the keyboard in `window`: ⇧⌘↩ then fills the
+/// window with the bottom panel rather than the notebook (#250).
+@MainActor
+func terminalHasKeyboard(in window: NSWindow) -> Bool {
+    window.firstResponder is TerminalView
+}
+
 /// The first web view on show under `view`: the notebook page, not a
 /// hidden kernel web view (a subview of it).
 @MainActor

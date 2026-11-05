@@ -13,6 +13,13 @@ enum InspectorTab: String, CaseIterable, Identifiable {
         case .variables: "Variables"
         }
     }
+
+    var systemImage: String {
+        switch self {
+        case .outline: "list.bullet.indent"
+        case .variables: "x.squareroot"
+        }
+    }
 }
 
 /// One window's right inspector (#249): whether it shows, which tab, and

@@ -19,6 +19,10 @@ struct BottomPanel: View {
     let kernelID: String?
     /// The server the page uses, which keeps the kernel's log.
     let server: ServerEndpoint?
+    /// It fills the window (#250): as tall as the area, not resizable.
+    var fills = false
+    /// Its fill control: fills the window, or restores the layout.
+    var toggleFill: () -> Void = {}
     /// Titles the shells set, by terminal.
     @State private var titles: [PanelTerminal.ID: String] = [:]
     /// The height when a drag of the top edge began.
@@ -27,6 +31,7 @@ struct BottomPanel: View {
     var body: some View {
         VStack(spacing: 0) {
             ResizeEdge()
+                .allowsHitTesting(!fills)
                 .gesture(
                     DragGesture(minimumDistance: 1, coordinateSpace: .global)
                         .onChanged { drag in
@@ -79,7 +84,8 @@ struct BottomPanel: View {
         }
         // Kept within the window as it gets shorter; the stored height
         // comes back when it grows.
-        .frame(height: PanelController.clamp(panel.height, available: available))
+        .frame(height: fills ? nil : CGFloat(PanelController.clamp(panel.height, available: available)))
+        .frame(maxHeight: fills ? .infinity : nil)
         .background(Color(nsColor: .windowBackgroundColor))
     }
 
@@ -107,6 +113,7 @@ struct BottomPanel: View {
                 .padding(.horizontal, 6)
             }
             NewTerminalMenu(model: model) { panel.add($0) } local: { panel.add(.local(folder: folder)) }
+            FillButton(fills: fills, area: "panel", action: toggleFill)
             Button {
                 panel.isShown = false
             } label: {
@@ -355,6 +362,24 @@ private struct ResizeEdge: View {
                 // hides under the pointer, which would leave the stack off.
                 if inside { NSCursor.resizeUpDown.set() } else { NSCursor.arrow.set() }
             }
+    }
+}
+
+/// An area's control to fill the window with it, or restore the layout
+/// (#250).
+struct FillButton: View {
+    let fills: Bool
+    /// The area, for the help tag: "panel", "inspector".
+    let area: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: fills ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right")
+        }
+        .buttonStyle(.borderless)
+        .help(fills ? "Restore the layout (⇧⌘↩)" : "Fill the window with the \(area)")
+        .accessibilityLabel(fills ? "Restore Layout" : "Fill Window")
     }
 }
 

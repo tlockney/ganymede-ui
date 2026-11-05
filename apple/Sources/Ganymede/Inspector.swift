@@ -11,37 +11,27 @@ struct Inspector: View {
     /// The width of the area the notebook and inspector share, for the
     /// limit on how wide the inspector gets.
     let available: Double
+    /// It fills the window (#250): as wide as the area, not resizable.
+    var fills = false
+    /// Its fill control: fills the window, or restores the layout.
+    var toggleFill: () -> Void = {}
     /// The width when a drag of the leading edge began.
     @State private var dragStart: Double?
 
     var body: some View {
         HStack(spacing: 0) {
-            Rectangle()
-                .fill(SwiftUI.Color(nsColor: .separatorColor))
-                .frame(width: 1)
-                .padding(.horizontal, 2)
-                .contentShape(Rectangle())
-                .onHover { inside in
-                    if inside { NSCursor.resizeLeftRight.set() } else { NSCursor.arrow.set() }
-                }
-                .gesture(
-                    DragGesture(minimumDistance: 1, coordinateSpace: .global)
-                        .onChanged { drag in
-                            let start = dragStart ?? inspector.width
-                            dragStart = start
-                            inspector.resize(to: start - drag.translation.width, available: available)
-                            NSCursor.resizeLeftRight.set()
-                        }
-                        .onEnded { _ in dragStart = nil }
-                )
+            if !fills { resizeEdge }
             VStack(spacing: 0) {
-                Picker("Inspector", selection: $inspector.tab) {
-                    ForEach(InspectorTab.allCases) { tab in
-                        Text(tab.title).tag(tab)
+                HStack(spacing: 6) {
+                    Picker("Inspector", selection: $inspector.tab) {
+                        ForEach(InspectorTab.allCases) { tab in
+                            Text(tab.title).tag(tab)
+                        }
                     }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    FillButton(fills: fills, area: "inspector", action: toggleFill)
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
                 .padding(8)
                 Divider()
                 switch inspector.tab {
@@ -55,8 +45,31 @@ struct Inspector: View {
         }
         // Kept within the window as it gets narrower; the stored width
         // comes back when it is wide again.
-        .frame(width: min(inspector.width, max(InspectorController.minWidth, available - InspectorController.notebookRoom)))
+        .frame(width: fills ? nil : CGFloat(min(inspector.width, max(InspectorController.minWidth, available - InspectorController.notebookRoom))))
+        .frame(maxWidth: fills ? .infinity : nil)
         .background(.background)
+    }
+
+    /// Its leading edge, which resizes it.
+    private var resizeEdge: some View {
+        Rectangle()
+            .fill(SwiftUI.Color(nsColor: .separatorColor))
+            .frame(width: 1)
+            .padding(.horizontal, 2)
+            .contentShape(Rectangle())
+            .onHover { inside in
+                if inside { NSCursor.resizeLeftRight.set() } else { NSCursor.arrow.set() }
+            }
+            .gesture(
+                DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                    .onChanged { drag in
+                        let start = dragStart ?? inspector.width
+                        dragStart = start
+                        inspector.resize(to: start - drag.translation.width, available: available)
+                        NSCursor.resizeLeftRight.set()
+                    }
+                    .onEnded { _ in dragStart = nil }
+            )
     }
 }
 
@@ -144,6 +157,77 @@ private struct VariableRow: View {
             }
         }
         .help("\(row.name): \(row.type) = \(row.value)")
+    }
+}
+
+/// The areas a filling one folds (#250), as a thin row or column of
+/// icons; clicking one brings it back.
+struct FoldedStrip: View {
+    struct Item {
+        var title: String
+        var systemImage: String
+        var action: () -> Void
+    }
+
+    static let thickness: CGFloat = 28
+
+    let items: [Item]
+    let axis: Axis
+
+    var body: some View {
+        let layout = axis == .vertical
+            ? AnyLayout(VStackLayout(spacing: 4))
+            : AnyLayout(HStackLayout(spacing: 4))
+        layout {
+            ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                Button(action: item.action) {
+                    if axis == .vertical {
+                        Image(systemName: item.systemImage)
+                            .frame(width: 20, height: 20)
+                    } else {
+                        Label(item.title, systemImage: item.systemImage)
+                            .lineLimit(1)
+                    }
+                }
+                .buttonStyle(.borderless)
+                .help("Show \(item.title)")
+                .accessibilityLabel("Show \(item.title)")
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(4)
+        .frame(width: axis == .vertical ? Self.thickness : nil, height: axis == .horizontal ? Self.thickness : nil)
+        .frame(maxWidth: axis == .horizontal ? .infinity : nil, maxHeight: axis == .vertical ? .infinity : nil,
+               alignment: .topLeading)
+    }
+}
+
+/// What ⇧⌘↩ acts on in the front notebook window (#250).
+struct WindowFill {
+    var filled: WindowArea?
+    /// Fills the window with the area that has the keyboard, or restores.
+    var toggle: () -> Void
+}
+
+struct WindowFillKey: FocusedValueKey {
+    typealias Value = WindowFill
+}
+
+extension FocusedValues {
+    var windowFill: WindowFill? {
+        get { self[WindowFillKey.self] }
+        set { self[WindowFillKey.self] = newValue }
+    }
+}
+
+/// View › Fill Window / Restore Layout (⇧⌘↩).
+struct FillCommands: View {
+    @FocusedValue(\.windowFill) private var fill
+
+    var body: some View {
+        Button(fill?.filled == nil ? "Fill Window" : "Restore Layout") { fill?.toggle() }
+            .keyboardShortcut(.return, modifiers: [.command, .shift])
+            .disabled(fill == nil)
     }
 }
 

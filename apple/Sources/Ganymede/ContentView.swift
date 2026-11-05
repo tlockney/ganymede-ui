@@ -47,6 +47,9 @@ struct ContentView: View {
     @SceneStorage("inspector.shown") private var inspectorShown = false
     @SceneStorage("inspector.tab") private var inspectorTab = InspectorTab.outline.rawValue
     @SceneStorage("inspector.width") private var inspectorWidth = InspectorController.defaultWidth
+    /// The area filling the window, if any (#250). Not kept across
+    /// launches: a window comes back with its usual layout.
+    @State private var layout = WindowLayout()
 
     init(target: Binding<WindowTarget?>) {
         _target = target
@@ -100,8 +103,18 @@ struct ContentView: View {
         // The app draws the sidebar, toolbar and menus; the page shows the
         // notebook (#206, #207).
         NavigationSplitView(columnVisibility: Binding(
-            get: { sidebarShown ? .all : .detailOnly },
-            set: { sidebarShown = $0 != .detailOnly }
+            // An area filling the window folds the sidebar (#250);
+            // showing it again brings the layout back.
+            get: { sidebarShown && layout.filled == nil ? .all : .detailOnly },
+            set: { visibility in
+                if layout.filled != nil {
+                    guard visibility != .detailOnly else { return }
+                    layout.restore()
+                    sidebarShown = true
+                } else {
+                    sidebarShown = visibility != .detailOnly
+                }
+            }
         )) {
             NavigatorSidebar(folder: sidebarRoot, page: pageModel) { path in
                 openWindow(value: EditorRequest(path: path))
@@ -200,20 +213,55 @@ struct ContentView: View {
             // back with a new one, as ⌃` would start.
             if panelShown { panel.show(startingOn: .local(folder: sidebarRoot)) }
         }
-        .onChange(of: panel.isShown) { panelShown = $0 }
+        .onChange(of: panel.isShown) { shown in
+            panelShown = shown
+            layout.noteChange(of: .panel, shown: shown)
+        }
         .onChange(of: panel.height) { panelHeight = $0 }
+        // The keyboard follows the fill: the notebook under a filled panel
+        // or inspector is out of sight, so it mustn't keep the keys
+        // (command mode would edit cells unseen). A panel terminal that
+        // has them keeps them; restoring gives them back to the notebook.
+        .onChange(of: layout.filled) { filled in
+            guard let window = document.window else { return }
+            switch filled {
+            case .panel?:
+                if !terminalHasKeyboard(in: window) { window.makeFirstResponder(nil) }
+            case .inspector?:
+                window.makeFirstResponder(nil)
+            case .notebook?:
+                break
+            case nil:
+                if window.firstResponder == nil || window.firstResponder === window {
+                    returnKeyboardToPage(in: window)
+                }
+            }
+        }
         // A dot on the tab while its kernel runs (#247).
         .onChange(of: pageModel.state.isBusy) { busy in
             if let window = document.window { WorkspaceTabs.markBusy(window, busy) }
         }
         .focusedSceneObject(inspector)
+        .focusedSceneValue(\.windowFill, WindowFill(filled: layout.filled) {
+            // The area with the keyboard: a panel terminal, or the notebook.
+            if layout.filled != nil {
+                layout.restore()
+            } else if panel.isShown, let window = document.window, terminalHasKeyboard(in: window) {
+                layout.toggle(.panel)
+            } else {
+                layout.toggle(.notebook)
+            }
+        })
         .onAppear {
             inspector.isShown = inspectorShown
             inspector.tab = InspectorTab(rawValue: inspectorTab) ?? .outline
             inspector.resize(to: inspectorWidth, available: .infinity)
             if inspector.wantsVariables { pageModel.run("inspect-variables", arg: "on") }
         }
-        .onChange(of: inspector.isShown) { inspectorShown = $0 }
+        .onChange(of: inspector.isShown) { shown in
+            inspectorShown = shown
+            layout.noteChange(of: .inspector, shown: shown)
+        }
         .onChange(of: inspector.tab) { inspectorTab = $0.rawValue }
         .onChange(of: inspector.width) { inspectorWidth = $0 }
         // The page reads the variables only while the inspector shows them.
@@ -394,34 +442,107 @@ struct ContentView: View {
     private var workspace: some View {
         GeometryReader { whole in
             HStack(spacing: 0) {
-                notebookAndPanel
-                if inspector.isShown {
-                    Inspector(inspector: inspector, page: pageModel, available: whole.size.width)
+                // Areas folded by another filling the window (#250): one
+                // click brings the layout back with that area showing.
+                if layout.filled != nil, !leadingStrip.isEmpty {
+                    FoldedStrip(items: leadingStrip, axis: .vertical)
+                    Divider()
+                }
+                ZStack {
+                    notebookAndPanel
+                        .opacity(layout.filled == .inspector ? 0 : 1)
+                        .allowsHitTesting(layout.filled != .inspector)
+                        .accessibilityHidden(layout.filled == .inspector)
+                    if layout.filled == .inspector {
+                        Inspector(
+                            inspector: inspector, page: pageModel, available: whole.size.width,
+                            fills: true, toggleFill: { layout.toggle(.inspector) }
+                        )
+                    }
+                }
+                if layout.filled == nil, inspector.isShown {
+                    Inspector(
+                        inspector: inspector, page: pageModel, available: whole.size.width,
+                        fills: false, toggleFill: { layout.toggle(.inspector) }
+                    )
+                } else if layout.folds(.inspector) {
+                    Divider()
+                    FoldedStrip(
+                        items: InspectorTab.allCases.map { tab in
+                            FoldedStrip.Item(title: tab.title, systemImage: tab.systemImage) {
+                                layout.restore()
+                                inspector.show(tab)
+                            }
+                        },
+                        axis: .vertical
+                    )
                 }
             }
         }
     }
 
+    /// The leading strip while an area fills the window: the sidebar, and
+    /// the notebook when it is folded.
+    private var leadingStrip: [FoldedStrip.Item] {
+        var items: [FoldedStrip.Item] = []
+        if sidebarShown {
+            items.append(.init(title: "Sidebar", systemImage: "sidebar.left") { layout.restore() })
+        }
+        // A filled panel has the notebook's row over it instead.
+        if layout.filled == .inspector {
+            items.append(.init(title: (target ?? loaded).title, systemImage: "doc.text") { layout.restore() })
+            if panel.isShown {
+                items.append(.init(title: "Terminal Panel", systemImage: "rectangle.bottomthird.inset.filled") {
+                    layout.restore()
+                })
+            }
+        }
+        return items
+    }
+
     /// The notebook, with the bottom panel under it.
     private var notebookAndPanel: some View {
         GeometryReader { area in
+            let panelShows = layout.shows(.panel, normally: panel.isShown)
+            let panelFills = layout.filled == .panel
             VStack(spacing: 0) {
                 content
-                    .frame(maxHeight: .infinity)
+                    .frame(maxHeight: panelFills ? FoldedStrip.thickness : .infinity)
+                    .overlay {
+                        if panelFills {
+                            FoldedStrip(
+                                items: [.init(title: (target ?? loaded).title, systemImage: "doc.text") { layout.restore() }],
+                                axis: .horizontal
+                            )
+                            .background(.bar)
+                        }
+                    }
                 BottomPanel(
                     panel: panel,
                     folder: sidebarRoot,
                     available: area.size.height,
                     kernelID: pageModel.state.kernelID,
-                    server: model.serverURL.flatMap(ServerEndpoint.init(serverURL:))
+                    server: model.serverURL.flatMap(ServerEndpoint.init(serverURL:)),
+                    fills: panelFills,
+                    toggleFill: { layout.toggle(.panel) }
                 )
                     // Top-aligned, so a hidden panel's views (AppKit cursor
                     // rects included) sit below the window, not over the notebook.
-                    .frame(height: panel.isShown ? nil : 0, alignment: .top)
+                    .frame(height: panelShows ? nil : 0, alignment: .top)
                     .clipped()
-                    .opacity(panel.isShown ? 1 : 0)
-                    .allowsHitTesting(panel.isShown)
-                    .accessibilityHidden(!panel.isShown)
+                    .opacity(panelShows ? 1 : 0)
+                    .allowsHitTesting(panelShows)
+                    .accessibilityHidden(!panelShows)
+                if layout.filled == .notebook {
+                    Divider()
+                    FoldedStrip(
+                        items: [.init(title: "Terminal Panel", systemImage: "rectangle.bottomthird.inset.filled") {
+                            layout.restore()
+                            panel.show(startingOn: .local(folder: sidebarRoot))
+                        }],
+                        axis: .horizontal
+                    )
+                }
             }
         }
     }
