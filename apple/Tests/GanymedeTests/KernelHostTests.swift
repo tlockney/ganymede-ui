@@ -105,7 +105,8 @@ final class KernelHostTests: XCTestCase {
         // A Mac has no haptics, so it lists only what every bridge answers.
         XCTAssertEqual(
             hello,
-            "clipboard.readText,clipboard.writeText,clipboard.readImage,clipboard.writeImage,info,openURL")
+            "clipboard.readText,clipboard.writeText,clipboard.readImage,clipboard.writeImage,info,openURL,"
+                + "ui.alert,ui.confirm,ui.prompt,ui.actionSheet,ui.pickDate")
         let inUI = try await eval(ui, "typeof webkit.messageHandlers.device") as? String
         XCTAssertEqual(inUI, "undefined")
     }
