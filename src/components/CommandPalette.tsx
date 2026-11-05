@@ -1,4 +1,4 @@
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { type PaletteEntry, filterEntries } from '../lib/palette';
 
 type Props = {
@@ -24,11 +24,28 @@ export function CommandPalette({ entries, onRun, onClose }: Props) {
   const id = useId();
 
   const shown = useMemo(() => filterEntries(entries, query), [entries, query]);
-  // The first one that can run, after each new filter.
-  useEffect(() => {
+  // The first one that can run, after each new filter. Only the query
+  // resets it: new entries from a re-render (a kernel starting) don't
+  // move the selection under the person's ↩.
+  const firstEnabled = () => {
     const first = shown.findIndex(e => !e.disabled);
-    setActive(first < 0 ? 0 : first);
-  }, [shown]);
+    return first < 0 ? 0 : first;
+  };
+  useEffect(() => setActive(firstEnabled()), [query]); // eslint-disable-line react-hooks/exhaustive-deps
+  // A shorter list (an entry gone) keeps the selection on the list.
+  if (active >= shown.length && shown.length) setActive(firstEnabled());
+
+  // Focus goes back where it was when the palette closes, so command-mode
+  // keys keep working, unless the command moved it.
+  useLayoutEffect(() => {
+    const before = document.activeElement;
+    const root = field.current?.closest('.sheet-backdrop');
+    return () => {
+      const now = document.activeElement;
+      const lost = !now || now === document.body || (root?.contains(now) ?? false);
+      if (lost && before instanceof HTMLElement && before.isConnected) before.focus();
+    };
+  }, []);
 
   useEffect(() => {
     field.current?.focus();
@@ -62,7 +79,8 @@ export function CommandPalette({ entries, onRun, onClose }: Props) {
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    // The notebook and the app's shortcuts don't see keys typed here.
+    // The app's shortcuts (on `window`) don't see keys typed here. The
+    // notebook's capture-phase handler does, but matches only inside it.
     e.stopPropagation();
     if (e.key === 'Escape') {
       e.preventDefault();

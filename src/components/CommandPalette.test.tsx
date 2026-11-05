@@ -45,6 +45,33 @@ describe('CommandPalette', () => {
     expect(onRun).toHaveBeenCalledWith(ENTRIES[2], undefined);
   });
 
+  it('keeps the selection when the app re-renders with new entries', async () => {
+    const onRun = vi.fn();
+    const { rerender } = render(
+      <CommandPalette entries={ENTRIES} onRun={onRun} onClose={vi.fn()} />,
+    );
+    await userEvent.keyboard('{ArrowDown}');
+    expect(active()).toHaveTextContent('Restart Kernel');
+    // A kernel starting re-renders App, which builds the entries anew.
+    rerender(<CommandPalette entries={[...ENTRIES]} onRun={onRun} onClose={vi.fn()} />);
+    expect(active()).toHaveTextContent('Restart Kernel');
+    await userEvent.keyboard('{Enter}');
+    expect(onRun).toHaveBeenCalledWith(ENTRIES[2], undefined);
+  });
+
+  it('gives focus back when it closes', () => {
+    const before = document.createElement('button');
+    document.body.append(before);
+    before.focus();
+    const { unmount } = render(
+      <CommandPalette entries={ENTRIES} onRun={vi.fn()} onClose={vi.fn()} />,
+    );
+    expect(screen.getByRole('combobox')).toHaveFocus();
+    unmount();
+    expect(before).toHaveFocus();
+    before.remove();
+  });
+
   it('moves with the arrows, skipping what can’t run, and wraps', async () => {
     const { onRun } = setup();
     await userEvent.keyboard('{ArrowDown}');

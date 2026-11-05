@@ -23,7 +23,10 @@ Restart, a Change Kernel entry for each kernel, and the notebooks you
 opened recently. Type to filter, use `↑` and `↓` to pick, `↩` to run, and
 `Esc` to close. Rename… asks for the new name in the same field. The
 toolbar's command button opens it too (handy on a touch screen), and the
-Mac app has View › Command Palette….
+Mac app has View › Command Palette…. Firefox keeps `Ctrl+Shift+P` (`⇧⌘P`)
+for a private window, so there use the toolbar button or rebind the
+palette in the Shortcuts sheet. In the Mac app the menu's `⇧⌘P` stays as
+it is when you rebind it.
 
 ## On a touch screen
 
