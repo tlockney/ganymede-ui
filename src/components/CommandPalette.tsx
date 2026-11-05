@@ -79,6 +79,8 @@ export function CommandPalette({ entries, onRun, onClose }: Props) {
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    // ↩ that confirms an input method's composition isn't a submit.
+    if (e.nativeEvent.isComposing) return;
     // The app's shortcuts (on `window`) don't see keys typed here. The
     // notebook's capture-phase handler does, but matches only inside it.
     e.stopPropagation();
