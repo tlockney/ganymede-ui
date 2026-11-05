@@ -9,8 +9,14 @@
   app's own commands, one Change Kernel per kernelspec and Recents.
   Disabled entries stay listed (greyed), so you can learn that a command
   exists before a notebook is open.
-- The field stops propagation of every keydown, so neither the notebook's
-  bindings nor the app's ⌘S see what is typed there.
+- The field stops propagation of every keydown, so the app's ⌘S (on
+  `window`) doesn't see what is typed there. The notebook's handler
+  listens on `document` in the capture phase, so it does see the keys,
+  but it matches only when focus is inside the notebook.
+- Review follow-ups: the selection resets only when the query changes,
+  not on every App render (a kernel starting re-rendered App and sent ↩
+  to the top entry); focus goes back where it was when the palette
+  closes; ⇧⌘P does nothing while Settings, Shortcuts or Connect is open.
 - The Mac app's View › Command Palette… has ⇧⌘P. The menu takes the key
   before the web view, so the page's own ⇧⌘P listener never fires there,
   and the palette opens once.

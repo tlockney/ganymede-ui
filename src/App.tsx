@@ -166,6 +166,7 @@ export function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   /** The Variables view beside the notebook (#242). */
   const [variablesOpen, setVariablesOpen] = useState(false);
+  const otherSheetShown = useRef(false);
   const closeShortcuts = useCallback(() => setShortcutsOpen(false), []);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
@@ -373,7 +374,7 @@ export function App() {
         setSettingsOpen(true);
         return true;
       case 'command-palette':
-        setPaletteOpen(true);
+        if (!otherSheetShown.current) setPaletteOpen(true);
         return true;
       case 'toggle-variables':
         setVariablesOpen(o => !o);
@@ -514,7 +515,8 @@ export function App() {
         void controller?.save();
       } else if (matches(e, 'command-palette')) {
         e.preventDefault();
-        setPaletteOpen(true);
+        // Not over another sheet: its Esc would close it, not the palette.
+        if (!otherSheetShown.current) setPaletteOpen(true);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -523,6 +525,7 @@ export function App() {
 
   // Esc on a sheet opened from the sidebar closes the sheet, not the sidebar.
   const sheetShown = sheetOpen || shortcutsOpen || settingsOpen || paletteOpen;
+  otherSheetShown.current = sheetOpen || shortcutsOpen || settingsOpen;
   useEffect(() => {
     if (!sidebarFloats || sheetShown) return;
     const onKey = (e: KeyboardEvent) => {

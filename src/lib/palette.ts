@@ -111,13 +111,20 @@ export function paletteEntries(context: PaletteContext): PaletteEntry[] {
     ),
     ...context.recents
       .filter(p => p !== context.path)
-      .map(p => app('open', `Open ${nameOf(p)}`, 'Recent', { arg: p, keys: '' })),
+      // The folder tells two notebooks of one name apart, and filters.
+      .map(p => app('open', `Open ${nameOf(p)}`, recentGroup(p), { arg: p, keys: '' })),
     app('toggle-variables', 'Show or Hide Variables', 'View', { disabled: !open }),
     app('show-shortcuts', 'Keyboard Shortcuts', 'Help'),
     app('show-settings', 'Settings…', 'App'),
     app('connect', 'Connect to a Server…', 'App'),
   ];
   return entries;
+}
+
+/** "Recent", with the notebook's folder when it has one. */
+function recentGroup(path: string): string {
+  const folder = path.split('/').slice(0, -1).join('/');
+  return folder ? `Recent · ${folder}` : 'Recent';
 }
 
 /** The shortcuts table's label with its first letter raised. */

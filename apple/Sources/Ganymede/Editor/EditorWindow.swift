@@ -21,6 +21,13 @@ struct EditorWindow: View {
         _document = StateObject(wrappedValue: EditorDocument(path: request.path) { AppModel.shared.localServer })
         self.onClose = onClose
     }
+
+    /// A document that outlives this view: the iPad's detail area keeps
+    /// it while the notebook shows (#251).
+    init(document: EditorDocument, onClose: (() -> Void)? = nil) {
+        _document = StateObject(wrappedValue: document)
+        self.onClose = onClose
+    }
     #endif
 
     var body: some View {
@@ -68,7 +75,9 @@ struct EditorWindow: View {
             }
         }
         .task {
-            await document.load()
+            // A document shown before keeps its edits; the poll below
+            // still notices changes on disk.
+            if !document.loaded { await document.load() }
             // Changes on disk, from another app or a kernel.
             while !Task.isCancelled {
                 try? await Task.sleep(nanoseconds: 3_000_000_000)

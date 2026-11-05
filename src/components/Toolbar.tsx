@@ -393,6 +393,9 @@ export function Toolbar({
   const menu = items
     .filter(i => hidden.has(i.key) && i.menu.length)
     .flatMap((i, n) => (n ? ['separator' as const, ...i.menu] : i.menu));
+  // Everything fits again: the menu closes, so it doesn't reopen by
+  // itself when the window narrows later.
+  if (menuOpen && !menu.length) setMenuOpen(false);
 
   return (
     <header className="toolbar" ref={toolbar}>

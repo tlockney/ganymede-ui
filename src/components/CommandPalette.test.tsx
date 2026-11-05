@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { PaletteEntry } from '../lib/palette';
@@ -43,6 +43,41 @@ describe('CommandPalette', () => {
     expect(screen.getAllByRole('option')).toHaveLength(1);
     await userEvent.keyboard('{Enter}');
     expect(onRun).toHaveBeenCalledWith(ENTRIES[2], undefined);
+  });
+
+  it('keeps the selection when the app re-renders with new entries', async () => {
+    const onRun = vi.fn();
+    const { rerender } = render(
+      <CommandPalette entries={ENTRIES} onRun={onRun} onClose={vi.fn()} />,
+    );
+    await userEvent.keyboard('{ArrowDown}');
+    expect(active()).toHaveTextContent('Restart Kernel');
+    // A kernel starting re-renders App, which builds the entries anew.
+    rerender(<CommandPalette entries={[...ENTRIES]} onRun={onRun} onClose={vi.fn()} />);
+    expect(active()).toHaveTextContent('Restart Kernel');
+    await userEvent.keyboard('{Enter}');
+    expect(onRun).toHaveBeenCalledWith(ENTRIES[2], undefined);
+  });
+
+  it('ignores Return while an input method is composing', () => {
+    const { onRun } = setup();
+    fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Enter', isComposing: true });
+    expect(onRun).not.toHaveBeenCalled();
+    fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Enter' });
+    expect(onRun).toHaveBeenCalledWith(ENTRIES[1], undefined);
+  });
+
+  it('gives focus back when it closes', () => {
+    const before = document.createElement('button');
+    document.body.append(before);
+    before.focus();
+    const { unmount } = render(
+      <CommandPalette entries={ENTRIES} onRun={vi.fn()} onClose={vi.fn()} />,
+    );
+    expect(screen.getByRole('combobox')).toHaveFocus();
+    unmount();
+    expect(before).toHaveFocus();
+    before.remove();
   });
 
   it('moves with the arrows, skipping what can’t run, and wraps', async () => {
