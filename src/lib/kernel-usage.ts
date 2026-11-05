@@ -69,18 +69,22 @@ export function useKernelMemory(
     const ids = key ? key.split(' ') : [];
     if (!settings || !active || !visible || !ids.length) return;
     let stopped = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    // The next ask waits for this one: the server can take up to 10 s to
+    // answer for a kernel, so asks on a fixed interval would overlap and
+    // could land out of order.
     const ask = async () => {
       const values = await Promise.all(ids.map(id => kernelMemory(settings, id)));
       if (stopped) return;
       const next = new Map<string, number>();
       values.forEach((bytes, i) => bytes !== null && next.set(ids[i], bytes));
       setMemory(next);
+      timer = setTimeout(() => void ask(), MEMORY_POLL_MS);
     };
     void ask();
-    const timer = setInterval(() => void ask(), MEMORY_POLL_MS);
     return () => {
       stopped = true;
-      clearInterval(timer);
+      clearTimeout(timer);
     };
   }, [settings, key, active, visible]);
 

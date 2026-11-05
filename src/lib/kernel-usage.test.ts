@@ -84,6 +84,25 @@ describe('useKernelMemory', () => {
     expect(asked).toHaveLength(4);
   });
 
+  it('waits for a slow answer before asking again', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let answer: (r: Response) => void = () => {};
+    const { settings, asked } = server(() => new Promise<Response>(resolve => (answer = resolve)));
+    const { result } = renderHook(() => useKernelMemory(settings, ['a'], true));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(MEMORY_POLL_MS * 3);
+    });
+    expect(asked).toHaveLength(1);
+    await act(async () => {
+      answer(usage(4096));
+    });
+    await waitFor(() => expect(result.current.get('a')).toBe(4096));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(MEMORY_POLL_MS);
+    });
+    expect(asked).toHaveLength(2);
+  });
+
   it('asks nothing without server settings or kernels', async () => {
     const { settings, asked } = server(() => usage(1));
     renderHook(() => useKernelMemory(undefined, ['a'], true));
