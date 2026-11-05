@@ -269,16 +269,16 @@ struct ContentView: View {
         }
     }
 
-    /// The page opened another notebook, or closed it: the window now
-    /// shows that, for its title and for the Finder's later opens. The page
+    /// The page opened another notebook, closed it, or moved to another
+    /// folder (#220): the window now shows that, for its title, the
+    /// folder restored on relaunch and the Finder's later opens. The page
     /// stays as it is.
     private func follow(_ url: URL?) {
-        guard let url else { return }
-        if let shown = WindowTarget(page: url) {
-            if shown != target { target = shown }
-        } else if case .file(let file) = target {
-            target = .folder(file.deletingLastPathComponent())
-        }
+        guard let url, let shown = WindowTarget(page: url), shown != target else { return }
+        // A window opened on nothing stays blank on the folder it loaded,
+        // so it can still take the Finder's files at launch (#228).
+        if target == nil, case .folder = shown, shown.url.path == loaded.url.path { return }
+        target = shown
     }
     #else
     private var page: URL? { model.url }
