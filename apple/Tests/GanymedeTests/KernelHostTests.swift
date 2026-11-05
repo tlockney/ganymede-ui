@@ -106,7 +106,8 @@ final class KernelHostTests: XCTestCase {
         XCTAssertEqual(
             hello,
             "clipboard.readText,clipboard.writeText,clipboard.readImage,clipboard.writeImage,info,openURL,"
-                + "ui.alert,ui.confirm,ui.prompt,ui.actionSheet,ui.pickDate")
+                + "ui.alert,ui.confirm,ui.prompt,ui.actionSheet,ui.pickDate,share,preview,"
+                + "files.pick,files.export,photos.pick,sound.play,sound.player,sound.control,sound.close")
         let inUI = try await eval(ui, "typeof webkit.messageHandlers.device") as? String
         XCTAssertEqual(inUI, "undefined")
     }

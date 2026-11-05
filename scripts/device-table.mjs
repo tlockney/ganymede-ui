@@ -4,6 +4,7 @@
 // with Prettier. `npm run check` fails when they differ; run
 // `node scripts/device-table.mjs --write` after bumping ganymede-device.
 import { readFileSync, writeFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { supportTable } from '@tlockney/ganymede-device';
 import prettier from 'prettier';
 
@@ -18,7 +19,7 @@ if (from < 0 || to < from) {
   console.error(`docs/device.md: missing the ${start} ... ${end} markers`);
   process.exit(1);
 }
-const options = (await prettier.resolveConfig(file.pathname)) ?? {};
+const options = (await prettier.resolveConfig(fileURLToPath(file))) ?? {};
 const table = (await prettier.format(supportTable(), { ...options, parser: 'markdown' })).trimEnd();
 const next = `${text.slice(0, from)}${start}\n\n${table}\n\n${text.slice(to)}`;
 

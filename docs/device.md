@@ -69,6 +69,13 @@ For editor types, add this line once to a cell or a project file:
 | `device.ui.prompt(message, { title, placeholder, defaultValue, secure })` | `string`, or `null`                                        | yes        | planned       | planned                |
 | `device.ui.actionSheet(title, options, { message, cancel, destructive })` | the option's index, or `null`                              | yes        | planned       | planned                |
 | `device.ui.pickDate({ mode, title, value, min, max })`                    | `Date`, or `null`                                          | yes        | planned       | planned                |
+| `device.share({ text, url, files })`                                      | `true` when sent, `false` when dismissed                   | yes        | planned       | planned, after a click |
+| `device.preview(files)`                                                   | nothing, once closed                                       | yes        | planned       | no                     |
+| `device.files.pick({ types, multiple })`                                  | `File[]`, `[]` when cancelled                              | yes        | planned       | planned, after a click |
+| `device.files.export(data, { name })`                                     | `true` when saved, `false` when cancelled                  | yes        | planned       | planned                |
+| `device.sound.play(data, { volume })`                                     | nothing, once it starts                                    | yes        | planned       | planned, after a click |
+| `device.sound.player(data)`                                               | a `SoundPlayer`                                            | yes        | no            | planned                |
+| `device.photos.pick({ limit })`                                           | `File[]`, `[]` when cancelled                              | yes        | planned       | planned, after a click |
 
 - `device.info()`: A browser has no model or battery.
 - `device.clipboard.readText()`: iPadOS shows its paste prompt; a browser needs a click for the Clipboard API.
@@ -80,6 +87,12 @@ For editor types, add this line once to a cell or a project file:
 - `device.haptics.selection()`: iPhone only: iPads and Macs have no Taptic Engine.
 - `device.openURL(url, { inApp })`: http, https and mailto only. `inApp` works on iPhone and iPad, not the Mac; a browser opens a tab after a click.
 - `device.ui.alert(message, { title })`: A sheet on the Mac, an alert on iPhone and iPad; a browser will show it in the cell's output.
+- `device.share({ text, url, files })`: The share sheet; `NSSharingServicePicker` on the Mac. A browser will use the Web Share API, after a click.
+- `device.preview(files)`: Quick Look, which picks the viewer from each file name's extension. A browser has no Quick Look.
+- `device.files.pick({ types, multiple })`: The open panel on the Mac, the document picker on iPad and iPhone. Files are copied in; no access to where they came from is kept.
+- `device.files.export(data, { name })`: The save panel on the Mac, the document picker on iPad and iPhone. A browser will download the file.
+- `device.sound.player(data)`: Play, pause, stop, seek and volume; close it, or hold it with `await using`. Remote kernels: a handle wouldn't survive a disconnect.
+- `device.photos.pick({ limit })`: The system photo picker, which needs no photo library permission. A browser will show a file picker for images.
 
 <!-- device-table:end -->
 
@@ -133,9 +146,20 @@ if (await device?.ui.confirm('Delete the scratch files?', { destructive: true })
 }
 ```
 
-Next come the rest of the methods that need no permission: share,
-Quick Look, file and photo pickers, and sounds. After
-those, methods behind a system permission, such as location and
+Share, Quick Look and the file and photo pickers take turns with the
+dialogs the same way, and an interrupt closes them. Picked files come in
+by value, as `File`s, with no access kept to where they came from;
+together they are at most 16 MiB. `share` takes `http`, `https` and
+`mailto` URLs only. A sound player stays open until it is closed (or
+leaves an `await using` block) or the notebook's page reloads, not when
+its kernel restarts, so close what you open; a page has at most 32 open.
+
+```ts
+const [file] = await device.files.pick({ types: ['audio/*'] });
+await using player = await device.sound.player(file);
+```
+
+Next come methods behind a system permission, such as location and
 notifications. The
 [phases](https://github.com/tlockney/ganymede-device/blob/main/docs/plan.md#phases)
 list them.
