@@ -81,7 +81,10 @@ private struct KernelSettings: View {
                         }
                     }
                     if specs.specs.isEmpty {
-                        Text("No kernels installed.").foregroundStyle(.secondary)
+                        // A remote's list comes through the server's gateway,
+                        // which has none until it first reaches the remote.
+                        Text(model.kernelRemote == nil ? "No kernels installed." : "No kernels listed yet.")
+                            .foregroundStyle(.secondary)
                     }
                 } else if let error {
                     Text(error).foregroundStyle(.secondary)
@@ -96,12 +99,14 @@ private struct KernelSettings: View {
         }
         .formStyle(.grouped)
         .padding()
-        // Again when the server restarts, as it does when kernels move.
-        .task(id: model.url) { await load() }
+        // Again when the server restarts, as it does when kernels move, or
+        // fails to start. `serverURL` is cleared as a restart begins, so a
+        // stopping server isn't asked.
+        .task(id: "\(model.serverURL?.absoluteString ?? "")\n\(model.error ?? "")") { await load() }
     }
 
     private func load() async {
-        guard let server = model.localServer else {
+        guard let server = model.serverURL.flatMap(ServerEndpoint.init(serverURL:)) else {
             specs = nil
             error = model.error.map { "Ganymede could not start: \($0)" } ?? "Waiting for the server…"
             return
@@ -109,6 +114,13 @@ private struct KernelSettings: View {
         do {
             specs = try await KernelSpecs.load(from: server)
             error = nil
+            // A remote's list may not have arrived yet: ask once more.
+            if specs?.specs.isEmpty == true, model.kernelRemote != nil {
+                try await Task.sleep(nanoseconds: 5_000_000_000)
+                specs = try await KernelSpecs.load(from: server)
+            }
+        } catch is CancellationError {
+            return
         } catch {
             specs = nil
             self.error = "Couldn’t list the kernels: \(error.localizedDescription)"
