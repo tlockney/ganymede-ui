@@ -12,6 +12,9 @@ struct IPadPanel: View {
     @ObservedObject var panel: PanelController
     /// The height of the area the notebook and panel share.
     let available: Double
+    /// Whether the panel is on screen: shown, and not under a filled
+    /// screen.
+    let shown: Bool
     /// Whether the panel fills that area, the notebook hidden.
     @Binding var filling: Bool
     /// Titles the shells set, by terminal.
@@ -30,7 +33,10 @@ struct IPadPanel: View {
                     TerminalWindow(
                         target: terminal.target,
                         inPanel: true,
-                        onTitle: { titles[terminal.id] = $0.isEmpty ? nil : $0 }
+                        onTitle: { titles[terminal.id] = $0.isEmpty ? nil : $0 },
+                        // Only the terminal on show has the keyboard, so keys
+                        // never go to a hidden shell; a new one gets it.
+                        focused: selected && shown
                     )
                     .opacity(selected ? 1 : 0)
                     .allowsHitTesting(selected)
@@ -193,6 +199,14 @@ final class IPadOpenFiles: ObservableObject {
     func close(_ path: String) {
         stack = FileStack.closing(path, in: stack)
         documents[path] = nil
+    }
+
+    /// Saves the kept documents with edits that no screen shows, whose
+    /// editors can't save them when the app goes to the background.
+    func saveHidden() {
+        for (path, document) in documents where document.dirty && !stack.contains(path) {
+            Task { await document.save() }
+        }
     }
 
     /// Back to the notebook. Files with edits are saved on the way, as

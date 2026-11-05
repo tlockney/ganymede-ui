@@ -31,3 +31,11 @@
 - From PR #274's review: the ⋯ menu's Rename passes any non-empty name
   to the page, whose `renamedPath` rejects a `/` with a notice, as it
   does `\` and a leading `.`; before, the app dropped `/` silently.
+- From PR #277's review: hiding the panel or switching its tabs only
+  changed opacity and hit testing, so a terminal that had the keyboard
+  kept it. The iOS `TerminalRepresentable` now honours `focused` as the
+  Mac's does (`becomeFirstResponder`/`resignFirstResponder`), and the
+  panel passes `selected && shown`. Also: a text file's screen keeps the
+  terminal, panel and fill buttons; the panel stops filling once its
+  last terminal closes, however it closed; and kept documents with
+  edits but no screen are saved when the app goes to the background.

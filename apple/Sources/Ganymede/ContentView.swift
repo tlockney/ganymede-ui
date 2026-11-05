@@ -213,6 +213,11 @@ struct ContentView: View {
                 .focusedSceneValue(\.iPadPanel, IPadPanelToggle(shown: panelShown, toggle: togglePanel))
                 .onAppear { panel.resize(to: panelHeight, available: .infinity) }
                 .onChange(of: panel.height) { panelHeight = $0 }
+                // However the last terminal closed, the next one opens
+                // under the notebook, not filling the screen.
+                .onChange(of: panel.terminals.isEmpty) { empty in
+                    if empty { panelFills = false }
+                }
             } else {
                 NavigationStack { notebook }
             }
@@ -260,6 +265,9 @@ struct ContentView: View {
             }
         }
         .onChange(of: phase) { phase in
+            // Files with edits but no screen of their own (a save on the
+            // way back to the notebook failed): iOS may end the scene.
+            if phase == .background { openFiles.saveHidden() }
             if phase == .active {
                 Task { await model.resume() }
             }
@@ -334,13 +342,18 @@ struct ContentView: View {
                                 openFiles.close(path)
                             }
                             .navigationBarBackButtonHidden(true)
+                            // The terminal, panel and fill buttons, as over
+                            // the notebook.
+                            .toolbar {
+                                ToolbarItemGroup(placement: .primaryAction) { appButtons }
+                            }
                         }
                 }
                 .frame(maxHeight: notebookHidden ? 0 : .infinity)
                 .opacity(notebookHidden ? 0 : 1)
                 .allowsHitTesting(!notebookHidden)
                 .accessibilityHidden(notebookHidden)
-                IPadPanel(panel: panel, available: area.size.height, filling: $panelFills)
+                IPadPanel(panel: panel, available: area.size.height, shown: panelShown, filling: $panelFills)
                     .frame(height: panelShown ? nil : 0, alignment: .top)
                     .clipped()
                     .opacity(panelShown ? 1 : 0)
