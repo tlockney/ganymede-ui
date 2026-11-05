@@ -56,6 +56,7 @@ export const PAGE_COMMANDS = {
   'change-kernel': 'arg',
   'show-shortcuts': '',
   'show-settings': '',
+  'command-palette': '',
   connect: '',
   search: 'arg',
   'clear-recents': '',

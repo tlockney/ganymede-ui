@@ -142,6 +142,13 @@ export const KeyboardIcon = (p: P) => (
     <path d="M5.5 8h.01M8.5 8h.01M11.5 8h.01M14.5 8h.01M5.5 11h.01M14.5 11h.01M8 11.5h4" />
   </svg>
 );
+/** A command line in a box: the command palette (#211). */
+export const CommandIcon = (p: P) => (
+  <svg {...base(p)}>
+    <rect x="2.5" y="4" width="15" height="12" rx="2" />
+    <path d="M6 8.5l2.5 2-2.5 2M10.5 12.5H14" />
+  </svg>
+);
 export const MoreIcon = (p: P) => (
   <svg {...base(p)} fill="currentColor" stroke="none">
     <circle cx="5" cy="10" r="1.5" />

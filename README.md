@@ -103,6 +103,14 @@ browser. [docs/shortcuts.md](docs/shortcuts.md) lists the defaults.
 
 > [!NOTE]
 > **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+`⇧⌘P` (`Ctrl+Shift+P`), or the toolbar's command button, opens a command
+palette: type to find any command, kernel or recent notebook, and press
+`↩` to run it.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
 > the latest release, nor in a Ganymede before the metrics endpoint
 > (tlockney/ganymede#361).
 

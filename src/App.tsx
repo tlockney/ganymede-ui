@@ -49,7 +49,16 @@ import { agentCall } from './lib/native-agent';
 import { useSignals } from './lib/useSignal';
 import { fileActions } from './lib/file-actions';
 import { useFileSearch } from './lib/search';
-import { clearRecents, forgetRecent, moveRecent, recentsKey, useRecents } from './lib/recents';
+import {
+  clearRecents,
+  forgetRecent,
+  loadRecents,
+  moveRecent,
+  recentsKey,
+  useRecents,
+} from './lib/recents';
+import { paletteEntries } from './lib/palette';
+import { CommandPalette } from './components/CommandPalette';
 import { useFileDrop } from './lib/file-drop';
 import { copySample } from './lib/sample';
 
@@ -153,6 +162,8 @@ export function App() {
   );
   const [controller, setController] = useState<NotebookController>();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
+  const otherSheetShown = useRef(false);
   const closeShortcuts = useCallback(() => setShortcutsOpen(false), []);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
@@ -359,6 +370,9 @@ export function App() {
       case 'show-settings':
         setSettingsOpen(true);
         return true;
+      case 'command-palette':
+        if (!otherSheetShown.current) setPaletteOpen(true);
+        return true;
       case 'connect':
         setSheetOpen(true);
         return true;
@@ -485,12 +499,17 @@ export function App() {
     });
   }, [openPath, dirty, shown, specs, backend, runningKey, recentsKeyed, searchKey]);
 
-  // ⌘S / Ctrl+S saves, as in any document app.
+  // ⌘S / Ctrl+S saves, as in any document app; ⇧⌘P opens the command
+  // palette (#211).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (matches(e, 'save')) {
         e.preventDefault();
         void controller?.save();
+      } else if (matches(e, 'command-palette')) {
+        e.preventDefault();
+        // Not over another sheet: its Esc would close it, not the palette.
+        if (!otherSheetShown.current) setPaletteOpen(true);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -498,7 +517,8 @@ export function App() {
   }, [controller]);
 
   // Esc on a sheet opened from the sidebar closes the sheet, not the sidebar.
-  const sheetShown = sheetOpen || shortcutsOpen || settingsOpen;
+  const sheetShown = sheetOpen || shortcutsOpen || settingsOpen || paletteOpen;
+  otherSheetShown.current = sheetOpen || shortcutsOpen || settingsOpen;
   useEffect(() => {
     if (!sidebarFloats || sheetShown) return;
     const onKey = (e: KeyboardEvent) => {
@@ -585,6 +605,7 @@ export function App() {
               sidebarOpen={sidebarOpen}
               onToggleSidebar={() => setSidebarOpen(o => !o)}
               onShowShortcuts={() => setShortcutsOpen(true)}
+              onShowPalette={() => setPaletteOpen(true)}
               specs={specs}
             />
           )}
@@ -652,6 +673,26 @@ export function App() {
             }
             setConfig({ ...c });
           }}
+        />
+      )}
+      {paletteOpen && (
+        <CommandPalette
+          entries={paletteEntries({
+            path: shown?.path,
+            folder,
+            kernels: Object.values(specs?.kernelspecs ?? {}).flatMap(k =>
+              k ? [{ name: k.name, displayName: k.display_name }] : [],
+            ),
+            kernel: shown?.kernelName,
+            recents: backend ? loadRecents(recentsKey(backend.config)) : [],
+            trusted: shown?.trusted ?? true,
+            connected: !!backend,
+          })}
+          onRun={(entry, arg) => {
+            setPaletteOpen(false);
+            void runCommand.current(entry.id, arg);
+          }}
+          onClose={() => setPaletteOpen(false)}
         />
       )}
       {shortcutsOpen && <ShortcutsSheet onClose={closeShortcuts} />}

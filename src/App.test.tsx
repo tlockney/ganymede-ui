@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server';
 import { StrictMode } from 'react';
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Backend, BackendConfig } from './lib/backends';
@@ -267,6 +267,41 @@ describe('App', () => {
     expect(await run('show-shortcuts')).toBe(true);
     expect(await screen.findByText('Keyboard Shortcuts')).toBeInTheDocument();
     vi.unstubAllGlobals();
+  });
+
+  it('opens the command palette with Ctrl+Shift+P, the toolbar and the app, and runs a command (#211)', async () => {
+    const runAll = vi.fn(async () => {});
+    mocks.controller = {
+      dirty: false,
+      save: vi.fn(async () => true),
+      runAll,
+      kernelName: 'python3',
+    };
+    const fake = fakeServices({ '': [{ name: 'Io.ipynb', type: 'notebook' }] });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    history.replaceState(null, '', '/?kernels=server&open=Io.ipynb');
+    render(<App />);
+    await screen.findByTestId('pane');
+
+    fireEvent.keyDown(window, {
+      key: 'P',
+      code: 'KeyP',
+      keyCode: 80,
+      ctrlKey: true,
+      shiftKey: true,
+    });
+    const palette = await screen.findByRole('dialog', { name: 'Command palette' });
+    await userEvent.keyboard('run all{Enter}');
+    expect(runAll).toHaveBeenCalled();
+    expect(palette).not.toBeInTheDocument();
+
+    await userEvent.click(screen.getByTitle('Command Palette'));
+    expect(await screen.findByRole('dialog', { name: 'Command palette' })).toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog', { name: 'Command palette' })).not.toBeInTheDocument();
+
+    expect(await window.ganymede!.command('command-palette')).toBe(true);
+    expect(await screen.findByRole('dialog', { name: 'Command palette' })).toBeInTheDocument();
   });
 
   it('tells the app what is running and shuts kernels down for it', async () => {
