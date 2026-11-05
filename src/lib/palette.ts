@@ -112,6 +112,7 @@ export function paletteEntries(context: PaletteContext): PaletteEntry[] {
     ...context.recents
       .filter(p => p !== context.path)
       .map(p => app('open', `Open ${nameOf(p)}`, 'Recent', { arg: p, keys: '' })),
+    app('toggle-variables', 'Show or Hide Variables', 'View', { disabled: !open }),
     app('show-shortcuts', 'Keyboard Shortcuts', 'Help'),
     app('show-settings', 'Settings…', 'App'),
     app('connect', 'Connect to a Server…', 'App'),

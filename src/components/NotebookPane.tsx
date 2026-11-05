@@ -93,6 +93,8 @@ export type NotebookController = {
    * the file reopens. Rejects, with nothing moved, when `move` does.
    */
   moved(next: string, move: () => Promise<unknown>): Promise<void>;
+  /** The running kernel's connection, for the Variables view (#242); none before the first run. */
+  kernel?: Kernel.IKernelConnection;
 };
 
 type Props = {
@@ -776,6 +778,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         };
       },
       moved,
+      kernel: session.session?.kernel ?? undefined,
       // With no kernel yet, this only picks the one the first run starts.
       changeKernel: report('change the kernel', async (name: string) => {
         if (session.session) await session.changeKernel({ name });
