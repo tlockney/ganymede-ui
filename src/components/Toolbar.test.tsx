@@ -1,9 +1,10 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { KernelSpec } from '@jupyterlab/services';
 import type { NotebookController } from './NotebookPane';
 import { Toolbar } from './Toolbar';
+import { overflowing } from '../lib/overflow';
 
 function controller(over: Partial<NotebookController> = {}): NotebookController {
   return {
@@ -237,5 +238,161 @@ describe('Toolbar', () => {
     expect([...select.options].map(o => o.text)).toEqual(['Python 3', 'JavaScript']);
     await userEvent.selectOptions(select, 'javascript');
     expect(c.changeKernel).toHaveBeenCalledWith('javascript');
+  });
+});
+
+describe('overflowing', () => {
+  const items = [
+    { key: 'run', priority: Infinity, width: 28 },
+    { key: 'insert', priority: 4, width: 60 },
+    { key: 'kernel', priority: 2, width: 120 },
+    { key: 'download', priority: 0, width: 28 },
+    { key: 'save', priority: 5, width: 28 },
+  ];
+  // 28 + 60 + 120 + 28 + 28, and four 8px gaps.
+  const all = 264 + 32;
+
+  it('hides nothing when everything fits', () => {
+    expect(overflowing(items, all)).toEqual(new Set());
+  });
+
+  it('hides the lowest priority first, leaving room for the "…" button', () => {
+    // Without Download: 236 and three gaps, plus 8 + 28 for "…": 296.
+    expect(overflowing(items, all - 1)).toEqual(new Set(['download', 'kernel']));
+    expect(overflowing(items, 300)).toEqual(new Set());
+    expect(overflowing(items, 200)).toEqual(new Set(['download', 'kernel']));
+    expect(overflowing(items, 160)).toEqual(new Set(['download', 'kernel', 'insert']));
+  });
+
+  it('never hides what has no priority (Run)', () => {
+    expect(overflowing(items, 10)).toEqual(new Set(['download', 'kernel', 'insert', 'save']));
+  });
+});
+
+describe('Toolbar overflow (#201)', () => {
+  /** A toolbar `width` wide, each item 28px but the pickers 110px and the groups 60–90px. */
+  function layout(width: number) {
+    const sizes: Record<string, number> = {
+      'run-more': 90,
+      insert: 60,
+      'cell-type': 110,
+      kernel: 110,
+    };
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      return this.classList.contains('toolbar') ? width : 0;
+    });
+    // The title is wider than the room it keeps (120px).
+    vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      return this.classList.contains('title') ? 200 : 0;
+    });
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      const w = sizes[this.dataset.key ?? ''] ?? 28;
+      return { width: w, height: 28, top: 0, left: 0, right: w, bottom: 28, x: 0, y: 0 } as DOMRect;
+    });
+  }
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it('does not reopen the menu after the window widens and narrows', async () => {
+    layout(393);
+    const c = controller({ dirty: true });
+    const bar = (status: NotebookController['status']) => (
+      <Toolbar
+        controller={{ ...c, status }}
+        sidebarOpen={false}
+        onToggleSidebar={() => {}}
+        specs={SPECS}
+      />
+    );
+    const { rerender } = render(bar('idle'));
+    await userEvent.click(screen.getByTitle('More'));
+    vi.restoreAllMocks();
+    layout(1280);
+    rerender(bar('busy'));
+    expect(screen.queryByTitle('More')).not.toBeInTheDocument();
+    vi.restoreAllMocks();
+    layout(393);
+    rerender(bar('idle'));
+    rerender(bar('busy'));
+    expect(screen.queryByRole('menu', { name: 'More' })).not.toBeInTheDocument();
+  });
+
+  const shown = () =>
+    [...document.querySelectorAll<HTMLElement>('.toolbar-trailing .tb-item')].map(
+      i => i.dataset.key,
+    );
+
+  it('keeps everything on a wide window, with no "…"', () => {
+    layout(1280);
+    render(
+      <Toolbar controller={controller()} sidebarOpen onToggleSidebar={() => {}} specs={SPECS} />,
+    );
+    expect(shown()).toEqual([
+      'run',
+      'run-more',
+      'insert',
+      'cell-type',
+      'kernel',
+      'shortcuts',
+      'download',
+      'save',
+    ]);
+    expect(screen.queryByTitle('More')).not.toBeInTheDocument();
+  });
+
+  it('keeps the run controls and Save on a phone, with the rest in the menu by name', async () => {
+    layout(393);
+    const c = controller({ dirty: true });
+    render(<Toolbar controller={c} sidebarOpen={false} onToggleSidebar={() => {}} specs={SPECS} />);
+    expect(shown()).toEqual(['run', 'run-more', 'save']);
+    await userEvent.click(screen.getByTitle('More'));
+    const menu = screen.getByRole('menu', { name: 'More' });
+    expect([...menu.querySelectorAll('button')].map(b => b.textContent)).toEqual([
+      'Insert Code Cell',
+      'Insert Text Cell',
+      // The checked one is marked.
+      '✓Code',
+      'Markdown',
+      'Raw',
+      '✓Python 3',
+      'JavaScript',
+      'Download Notebook',
+    ]);
+    await userEvent.click(screen.getByRole('menuitemradio', { name: 'Markdown' }));
+    expect(c.changeCellType).toHaveBeenCalledWith('markdown');
+    await userEvent.click(screen.getByTitle('More'));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Download Notebook' }));
+    expect(c.download).toHaveBeenCalled();
+  });
+
+  it('keeps Run and "…" on the narrowest phone', async () => {
+    layout(320);
+    const c = controller({ dirty: true });
+    render(<Toolbar controller={c} sidebarOpen={false} onToggleSidebar={() => {}} specs={SPECS} />);
+    expect(shown()).toEqual(['run']);
+    await userEvent.click(screen.getByTitle('More'));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Run All' }));
+    expect(c.runAll).toHaveBeenCalled();
+    await userEvent.click(screen.getByTitle('More'));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Save' }));
+    expect(c.save).toHaveBeenCalled();
+  });
+
+  it('moves the least needed first as the window narrows', () => {
+    layout(700);
+    render(
+      <Toolbar controller={controller()} sidebarOpen onToggleSidebar={() => {}} specs={SPECS} />,
+    );
+    const kept = shown();
+    expect(kept).toContain('run');
+    expect(kept).toContain('save');
+    expect(kept).not.toContain('download');
+    expect(screen.getByTitle('More')).toBeInTheDocument();
   });
 });
