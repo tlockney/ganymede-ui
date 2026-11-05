@@ -41,6 +41,12 @@ if [[ -n "$(git status --porcelain)" ]]; then
   echo "error: the working tree has changes; commit or remove them first" >&2
   exit 1
 fi
+# git-cliff rebuilds CHANGELOG.md from history. A shallow clone can't reach
+# older releases' merges, and their entries would drop out (ganymede-ui#179).
+if [[ "$(git rev-parse --is-shallow-repository)" == true ]]; then
+  echo "Shallow clone: fetching the full history for the changelog" >&2
+  git fetch --quiet --unshallow --tags origin main
+fi
 git fetch --quiet --tags origin main
 if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]]; then
   echo "error: release from an up-to-date main (HEAD is not origin/main)" >&2
