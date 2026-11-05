@@ -225,7 +225,7 @@ private struct SearchNavigator: View {
 
 /// The open notebook's Markdown headings (#212), indented by level;
 /// clicking one selects its cell and scrolls it to the top.
-private struct OutlineNavigator: View {
+struct OutlineNavigator: View {
     @ObservedObject var page: PageModel
 
     var body: some View {
