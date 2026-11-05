@@ -96,7 +96,9 @@ storage).
 
 Open a notebook from the sidebar, which also lists running kernels. The
 toolbar runs, interrupts and restarts the kernel, switches kernels, trusts
-the notebook, downloads it, and saves (⌘S). Keyboard shortcuts follow
+the notebook, downloads it, and saves (⌘S). In a narrow window, the
+toolbar buttons that don't fit move into a "…" menu at its end, listed by
+name (unreleased: only from a build of `main`). Keyboard shortcuts follow
 JupyterLab's; press `H` in command mode (or the keyboard button) for the
 full list. Every shortcut can be rebound there, and changes stay in this
 browser. [docs/shortcuts.md](docs/shortcuts.md) lists the defaults.

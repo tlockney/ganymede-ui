@@ -378,6 +378,23 @@ button {
   min-width: 0;
 }
 
+/* The buttons keep their width (what doesn't fit is in "…", #201); the
+ * title takes what is left and truncates. */
+.toolbar-leading {
+  flex: 1 1 auto;
+}
+
+.toolbar-trailing {
+  flex: none;
+}
+
+/* Each toolbar item, measured as one (#201). */
+.tb-item {
+  display: flex;
+  flex: none;
+  align-items: center;
+}
+
 .title-block {
   min-width: 0;
   margin-left: 4px;
@@ -1015,10 +1032,6 @@ button {
   .toolbar,
   .sidebar-collapsed .toolbar {
     padding-left: 12px;
-  }
-  .toolbar .popup-button,
-  .toolbar .segmented[aria-label='Insert'] {
-    display: none;
   }
   /* Not beside the Mac app's own sidebar, which narrows a wide window's web view. */
   .window:not(.chrome-native) .notebook-page .jp-WindowedPanel-inner {
