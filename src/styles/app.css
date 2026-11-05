@@ -597,6 +597,12 @@ button {
   margin: 2px 0 16px;
 }
 
+/* Said only if connecting takes a moment, so a quick start goes from the
+   logo straight to the buttons. */
+.empty-state .connecting {
+  animation: fade 0.2s ease 0.6s both;
+}
+
 /* The first-run welcome (#214), under the empty state's buttons. */
 .onboarding {
   width: min(460px, calc(100% - 32px));

@@ -31,7 +31,7 @@ export function EmptyState({
       </div>
       <h1>Ganymede</h1>
       {connecting ? (
-        <p className="subtle">Connecting…</p>
+        <p className="subtle connecting">Connecting…</p>
       ) : backend ? (
         <>
           <p className="subtle">Choose a notebook in the sidebar, or start a new one.</p>
