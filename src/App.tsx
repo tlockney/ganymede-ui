@@ -48,6 +48,7 @@ import {
   type SearchRequest,
 } from './lib/native';
 import { agentCall } from './lib/native-agent';
+import { sendTestReport } from './lib/crash-reports';
 import { useSignals } from './lib/useSignal';
 import { fileActions } from './lib/file-actions';
 import { useFileSearch } from './lib/search';
@@ -461,7 +462,8 @@ export function App() {
           return !c?.dirty || (await c.save());
         },
         command: (id, arg) => runCommand.current(id, arg),
-        call: agentCall,
+        // `test-crash-report`: the app's debug menu checks that reports arrive (#318, #319).
+        call: (id, arg) => (id === 'test-crash-report' ? sendTestReport() : agentCall(id, arg)),
       }),
     [],
   );

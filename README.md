@@ -208,6 +208,19 @@ covers tokens, cookies and cross-origin access on the server side.
   ganymede sandboxes `/files` (ganymede#298), an HTML file opened from
   the notebook folder counts as one. The key is sent only to the provider you picked, straight from
   the page.
+- **Error reports:** off by default. In a browser, Settings > "Send
+  error reports" (kept in local storage, `ganymede-ui:crash-reports`); in
+  the Mac and iPad apps, the app's own setting. When on, an unhandled
+  error in the page's own code sends its type, message and stack, the
+  release, and the browser and OS to Ganymede's Sentry. Breadcrumbs,
+  URLs, host names, notebook content and errors from your own code (a
+  notebook's JavaScript output) are left out in the page before anything
+  is sent. Ganymede's [privacy page](https://ganymede-server.com/docs/privacy)
+  has the rules for every part.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release.
 
 ## Known gaps
 

@@ -1,6 +1,25 @@
 import { defineConfig, type ProxyOptions, type UserConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { VitePWA } from 'vite-plugin-pwa';
+import { execFileSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
+
+// The release error reports carry (src/lib/crash-reports.ts, #319):
+// `ganymede-ui@<version>+<commit>`, so a TestFlight build from main and
+// the release it follows don't share one.
+function release(): string {
+  const { version } = JSON.parse(readFileSync('package.json', 'utf8')) as { version: string };
+  let commit = process.env.GITHUB_SHA ?? '';
+  if (!commit) {
+    try {
+      commit = execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+    } catch {
+      // Not a checkout: the version alone.
+    }
+  }
+  return commit ? `ganymede-ui@${version}+${commit.slice(0, 12)}` : `ganymede-ui@${version}`;
+}
+process.env.VITE_RELEASE ??= release();
 
 // Where `npm run dev` proxies /api to. Start Ganymede with
 // `ganymede serve --port 8888 --token <token>`.
@@ -149,6 +168,9 @@ const config: UserConfig = {
   },
   worker: { format: 'es' },
   build: {
+    // Source maps for Sentry (scripts/sentry-sourcemaps.sh), which uploads
+    // and then deletes them: `hidden` leaves no reference in the bundles.
+    sourcemap: process.env.SENTRY_SOURCEMAPS === '1' ? 'hidden' : false,
     // Vite 7's default baseline. Vite 8's (safari16.4) is above the Apple
     // apps' deployment targets, macOS 13.0 and iOS 16.0, whose WKWebView is
     // Safari 16.0 (apple/project.yml). The CSS target follows this one.
@@ -220,6 +242,8 @@ function quickLook(base: UserConfig): UserConfig {
     build: {
       ...base.build,
       outDir: 'dist-quicklook',
+      // The preview page sends no error reports, so it needs no source maps.
+      sourcemap: false,
       rolldownOptions: { input: { preview: 'preview.html' } },
     },
   };

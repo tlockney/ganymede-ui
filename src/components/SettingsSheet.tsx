@@ -11,6 +11,12 @@ import {
   providerInfo,
   saveAgentSettings,
 } from '@ganymede-ui/agent/settings';
+import {
+  type CrashReportsSetting,
+  crashReportsSetting,
+  saveCrashReports,
+  sendTestReport,
+} from '../lib/crash-reports';
 
 /** The agent's runtime: pi-ai and its providers, loaded only once the agent is on. */
 export type AgentModels = typeof import('@ganymede-ui/agent/models');
@@ -21,16 +27,24 @@ type Props = {
   /** For tests: the key store and the runtime loader. */
   store?: KeyStore;
   loadModels?: () => Promise<AgentModels>;
+  /** For tests: the error-report setting as the page loaded it. */
+  reports?: CrashReportsSetting;
 };
 
 type Test = { state: 'running' } | { state: 'done'; ok: boolean; message: string };
 
-/** App settings. For now only the optional agent (ganymede-ui#123): off, or a provider, model and key. */
+/**
+ * App settings: the optional agent (ganymede-ui#123), off or a provider,
+ * model and key; and, in a browser, error reports (#319).
+ */
 export function SettingsSheet({
   onClose,
   store = pageCredentials,
   loadModels = loadAgentModels,
+  reports = crashReportsSetting(),
 }: Props) {
+  const [sendReports, setSendReports] = useState(reports.enabled);
+  const [testSent, setTestSent] = useState(false);
   const [settings, setSettings] = useState<AgentSettings>(() => loadAgentSettings());
   const [key, setKey] = useState('');
   const [remember, setRemember] = useState(false);
@@ -158,6 +172,7 @@ export function SettingsSheet({
     try {
       if (next.enabled) await store.setKey(next.provider, key.trim(), remember);
       saveAgentSettings(next);
+      if (reports.owner === 'page') saveCrashReports(sendReports);
       onClose();
     } catch (err) {
       setError(`The key wasn't saved: ${err instanceof Error ? err.message : err}`);
@@ -304,6 +319,44 @@ export function SettingsSheet({
             )}
           </div>
         </section>
+
+        {reports.owner === 'page' && (
+          <section>
+            <h3>Error reports</h3>
+            <div className="form-rows">
+              <label className="check-row">
+                <input
+                  type="checkbox"
+                  checked={sendReports}
+                  onChange={e => setSendReports(e.target.checked)}
+                />
+                <span>Send error reports</span>
+              </label>
+              <p className="hint">
+                When this page fails, send the error and where in Ganymede&rsquo;s code it happened
+                to Ganymede&rsquo;s Sentry, with the browser and OS. Never notebook content, file
+                names, addresses or errors from your own code.{' '}
+                <a href="https://ganymede-server.com/docs/privacy" target="_blank" rel="noreferrer">
+                  Privacy
+                </a>
+                . Takes effect when the page next loads.
+              </p>
+              {reports.enabled && (
+                <div className="settings-test">
+                  <button
+                    type="button"
+                    className="push-button"
+                    disabled={testSent}
+                    onClick={() => void sendTestReport(reports).then(setTestSent)}
+                  >
+                    Send a test report
+                  </button>
+                  {testSent && <span role="status">Sent.</span>}
+                </div>
+              )}
+            </div>
+          </section>
+        )}
 
         {error && <p className="sheet-error">{error}</p>}
 

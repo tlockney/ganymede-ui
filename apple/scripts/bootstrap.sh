@@ -36,6 +36,9 @@ rm -rf "$apple/build/GanymedeFFI.xcframework"
 cp -R "$ganymede/target/xcframework/GanymedeFFI.xcframework" "$apple/build/"
 
 (cd "$repo" && { [ -d node_modules ] || npm ci; } && npm run build)
+# Release builds (SENTRY_SOURCEMAPS=1): the web UI's source maps go to
+# Sentry, not into the app (#319).
+if [ "${SENTRY_SOURCEMAPS:-}" = 1 ]; then "$repo/scripts/sentry-sourcemaps.sh" "$repo/dist"; fi
 rm -rf "$apple/build/web"
 cp -R "$repo/dist" "$apple/build/web"
 (cd "$repo" && npm run build:quicklook)
