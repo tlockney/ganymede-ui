@@ -216,6 +216,25 @@ struct ContentView: View {
             layout.noteChange(of: .panel, shown: shown)
         }
         .onChange(of: panel.height) { panelHeight = $0 }
+        // The keyboard follows the fill: the notebook under a filled panel
+        // or inspector is out of sight, so it mustn't keep the keys
+        // (command mode would edit cells unseen). A panel terminal that
+        // has them keeps them; restoring gives them back to the notebook.
+        .onChange(of: layout.filled) { filled in
+            guard let window = document.window else { return }
+            switch filled {
+            case .panel?:
+                if !terminalHasKeyboard(in: window) { window.makeFirstResponder(nil) }
+            case .inspector?:
+                window.makeFirstResponder(nil)
+            case .notebook?:
+                break
+            case nil:
+                if window.firstResponder == nil || window.firstResponder === window {
+                    returnKeyboardToPage(in: window)
+                }
+            }
+        }
         .focusedSceneObject(inspector)
         .focusedSceneValue(\.windowFill, WindowFill(filled: layout.filled) {
             // The area with the keyboard: a panel terminal, or the notebook.
@@ -463,8 +482,14 @@ struct ContentView: View {
         if sidebarShown {
             items.append(.init(title: "Sidebar", systemImage: "sidebar.left") { layout.restore() })
         }
-        if layout.folds(.notebook) {
+        // A filled panel has the notebook's row over it instead.
+        if layout.filled == .inspector {
             items.append(.init(title: (target ?? loaded).title, systemImage: "doc.text") { layout.restore() })
+            if panel.isShown {
+                items.append(.init(title: "Terminal Panel", systemImage: "rectangle.bottomthird.inset.filled") {
+                    layout.restore()
+                })
+            }
         }
         return items
     }

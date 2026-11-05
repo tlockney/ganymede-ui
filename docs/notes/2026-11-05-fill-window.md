@@ -23,3 +23,11 @@
 - Esc doesn't restore, though the issue asked for it: the notebook uses
   Esc for command mode and terminals pass it to programs, so a window-wide
   Esc would take it from both.
+- The keyboard follows the fill. Under a filled panel or inspector the
+  notebook is out of sight, and in command mode its keys would edit
+  cells unseen, so the window's first responder is cleared, unless a
+  panel terminal already has the keys (then it keeps them). Restoring
+  gives the keys back to the notebook when nothing else took them.
+- Strips: with the panel filled, the notebook shows once, in the row over
+  the panel. With the inspector filled, the leading column has the
+  notebook and, when it was shown, the terminal panel.
