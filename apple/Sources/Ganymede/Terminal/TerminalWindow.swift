@@ -244,7 +244,7 @@ struct TerminalCommands: View {
             open(.local(folder: folder ?? model.root))
         }
         .keyboardShortcut("`", modifiers: [.control, .shift])
-        Button("New Terminal Window") {
+        Button("New Terminal Tab") {
             openWindow(value: TerminalRequest(target: .local(folder: folder ?? model.root)))
         }
         // One item per way in: a remote with both a server and SSH gets two.
