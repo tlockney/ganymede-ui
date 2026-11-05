@@ -107,6 +107,7 @@ browser. [docs/shortcuts.md](docs/shortcuts.md) lists the defaults.
 
 In a narrow window, toolbar buttons that don't fit move into a "…" menu
 at the toolbar's end, listed by name. Run always stays.
+
 `⇧⌘P` (`Ctrl+Shift+P`), or the toolbar's command button, opens a command
 palette: type to find any command, kernel or recent notebook, and press
 `↩` to run it.
@@ -115,6 +116,16 @@ notebook: name, type and a short value, read again after each run, with
 objects that expand a level at a time. It needs a kernel that speaks the
 Jupyter debugger protocol (cdp-kernel's Node and Deno kernels, ipykernel);
 others say they can't list variables.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, nor in a Ganymede before the metrics endpoint
+> (tlockney/ganymede#361).
+
+Each running kernel shows its memory beside its name, from the server's
+jupyter-resource-usage endpoint, updated every few seconds while the
+sidebar is open. A server without the endpoint, or a kernel running in
+the page, shows none.
 
 The search field at the top of the sidebar finds files by name in the
 folder shown and its subfolders; tick "Search notebook contents" to also
