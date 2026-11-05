@@ -75,9 +75,35 @@ final class WindowTargetTests: XCTestCase {
         // The page this app loads reads back as the same notebook.
         let target = WindowTarget.file(URL(fileURLWithPath: "/Users/me/Lunes/Ío & co.ipynb"))
         XCTAssertEqual(WindowTarget(page: target.pageURL(server: server, kernels: "server")), target)
-        // No notebook open.
-        XCTAssertNil(WindowTarget(page: URL(string: "http://127.0.0.1:8123/")!))
-        XCTAssertNil(WindowTarget(page: URL(string: "http://127.0.0.1:8123/?dir=%2FUsers%2Fme")!))
+    }
+
+    func testFollowsTheFolderThePageShows() {
+        // No notebook open: the sidebar's folder, from `dir=` (#220).
+        XCTAssertEqual(
+            WindowTarget(page: URL(string: "http://127.0.0.1:8123/?dir=Users%2Fme%2FMoons+%26+rings")!),
+            .folder(URL(fileURLWithPath: "/Users/me/Moons & rings", isDirectory: true))
+        )
+        XCTAssertEqual(
+            WindowTarget(page: URL(string: "http://127.0.0.1:8123/?kernels=server&dir=%2FUsers%2Fme%2F")!),
+            .folder(URL(fileURLWithPath: "/Users/me", isDirectory: true))
+        )
+        // `open=` wins over `dir=`.
+        XCTAssertEqual(
+            WindowTarget(page: URL(string: "http://127.0.0.1:8123/?dir=Users&open=Users%2FIo.ipynb")!),
+            .file(URL(fileURLWithPath: "/Users/Io.ipynb"))
+        )
+        // Neither: the server's root.
+        XCTAssertEqual(
+            WindowTarget(page: URL(string: "http://127.0.0.1:8123/")!),
+            .folder(URL(fileURLWithPath: "/", isDirectory: true))
+        )
+        XCTAssertEqual(
+            WindowTarget(page: URL(string: "http://127.0.0.1:8123/?dir=")!),
+            .folder(URL(fileURLWithPath: "/", isDirectory: true))
+        )
+        // A folder window's page reads back as the same folder.
+        let target = WindowTarget.folder(URL(fileURLWithPath: "/Users/me/Lunes & co", isDirectory: true))
+        XCTAssertEqual(WindowTarget(page: target.pageURL(server: server, kernels: "server")), target)
     }
 
     func testSurvivesStateRestoration() throws {
