@@ -200,6 +200,10 @@ struct ContentView: View {
         }
         .onChange(of: panel.isShown) { panelShown = $0 }
         .onChange(of: panel.height) { panelHeight = $0 }
+        // A dot on the tab while its kernel runs (#247).
+        .onChange(of: pageModel.state.isBusy) { busy in
+            if let window = document.window { WorkspaceTabs.markBusy(window, busy) }
+        }
         .focusedSceneObject(inspector)
         .onAppear {
             inspector.isShown = inspectorShown

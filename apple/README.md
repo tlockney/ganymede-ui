@@ -67,7 +67,8 @@ built from the same sources (see
 - Notebook, text file and terminal windows open as tabs of the front
   window, with the system's window tabs: drag a tab out to make it a
   window, or choose Window › Merge All Windows to bring windows back
-  together. Each tab keeps its own toolbar. Right-click a notebook or
+  together. Each tab keeps its own toolbar, and a notebook's tab shows a
+  dot while its kernel is running. Right-click a notebook or
   folder in the sidebar and choose Open in New Tab. Notebooks opened from
   the Finder or File › Open… open as tabs too. Ganymede uses tabs whatever
   System Settings › Desktop & Dock › "Prefer tabs when opening

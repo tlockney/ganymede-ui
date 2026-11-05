@@ -78,6 +78,23 @@ enum WorkspaceTabs {
         }
     }
 
+    /// Marks `window`'s tab with a dot while its notebook's kernel is busy
+    /// (#247), so a run in a background tab shows. Nothing while idle.
+    static func markBusy(_ window: NSWindow, _ busy: Bool) {
+        let marked = window.tab.accessoryView != nil
+        guard busy != marked else { return }
+        window.tab.accessoryView = busy ? busyDot() : nil
+    }
+
+    private static func busyDot() -> NSView {
+        let image = NSImage(systemSymbolName: "circle.fill", accessibilityDescription: "Kernel running")
+        let view = NSImageView(image: image ?? NSImage())
+        view.symbolConfiguration = NSImage.SymbolConfiguration(pointSize: 7, weight: .regular)
+        view.contentTintColor = .controlAccentColor
+        view.toolTip = "Kernel running"
+        return view
+    }
+
     /// The window a new one joins: the main window, if it is another of
     /// ours and visible.
     private static func host(for window: NSWindow) -> NSWindow? {
