@@ -29,6 +29,8 @@ struct ContentView: View {
     @StateObject private var panel = PanelController()
     @SceneStorage("panel.shown") private var panelShown = false
     @SceneStorage("panel.height") private var panelHeight = PanelController.defaultHeight
+    /// Whether the sidebar shows, kept with the window across launches (#207).
+    @SceneStorage("sidebar.shown") private var sidebarShown = true
 
     init(target: Binding<WindowTarget?>) {
         _target = target
@@ -67,7 +69,10 @@ struct ContentView: View {
         #if os(macOS)
         // The app draws the sidebar, toolbar and menus; the page shows the
         // notebook (#206, #207).
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: Binding(
+            get: { sidebarShown ? .all : .detailOnly },
+            set: { sidebarShown = $0 != .detailOnly }
+        )) {
             NavigatorSidebar(folder: sidebarRoot, page: pageModel) { path in
                 openWindow(value: EditorRequest(path: path))
             }
