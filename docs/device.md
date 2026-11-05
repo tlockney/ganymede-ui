@@ -151,8 +151,8 @@ dialogs the same way, and an interrupt closes them. Picked files come in
 by value, as `File`s, with no access kept to where they came from;
 together they are at most 16 MiB. `share` takes `http`, `https` and
 `mailto` URLs only. A sound player stays open until it is closed (or
-leaves an `await using` block) or the notebook's page reloads, not when
-its kernel restarts, so close what you open; a page has at most 32 open.
+leaves an `await using` block) or its kernel restarts or shuts down; a
+kernel has at most 32 open.
 
 ```ts
 const [file] = await device.files.pick({ types: ['audio/*'] });
