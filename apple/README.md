@@ -142,7 +142,7 @@ On iPadOS and iOS (`Ganymede-iOS` target, iOS 16 or later):
   shut its kernel down. The navigation bar runs cells and
   interrupts the kernel, and its ⋯ menu inserts cells, sets the cell
   type, restarts or changes the kernel, shuts down other kernels, saves,
-  downloads and trusts. With
+  renames, downloads and trusts. With
   a keyboard, hold ⌘ to see the commands: New Notebook ⌘N, Save ⌘S, Run
   All ⇧⌘↩, Interrupt ⌘., Find ⌘F.
 

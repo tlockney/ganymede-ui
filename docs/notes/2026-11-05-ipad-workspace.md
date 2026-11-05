@@ -28,3 +28,6 @@
 - Not done here: the inspector (Agent, Outline, Variables) waits with
   the Mac's #249; the kernel log in the panel waits on ganymede#365, as
   on the Mac. Device checks are in #273.
+- From PR #274's review: the ⋯ menu's Rename passes any non-empty name
+  to the page, whose `renamedPath` rejects a `/` with a notice, as it
+  does `\` and a leading `.`; before, the app dropped `/` silently.

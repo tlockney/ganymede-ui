@@ -72,6 +72,9 @@ struct ContentView: View {
     @State private var panelFills = false
     /// Whether the iPad's window is taller than wide.
     @State private var portrait = false
+    /// The ⋯ menu's Rename… is asking for a name (#209).
+    @State private var renaming = false
+    @State private var newName = ""
     #endif
 
     var body: some View {
@@ -298,16 +301,16 @@ struct ContentView: View {
         }
     }
 
-    /// The page opened another notebook, or closed it: the window now
-    /// shows that, for its title and for the Finder's later opens. The page
+    /// The page opened another notebook, closed it, or moved to another
+    /// folder (#220): the window now shows that, for its title, the
+    /// folder restored on relaunch and the Finder's later opens. The page
     /// stays as it is.
     private func follow(_ url: URL?) {
-        guard let url else { return }
-        if let shown = WindowTarget(page: url) {
-            if shown != target { target = shown }
-        } else if case .file(let file) = target {
-            target = .folder(file.deletingLastPathComponent())
-        }
+        guard let url, let shown = WindowTarget(page: url), shown != target else { return }
+        // A window opened on nothing stays blank on the folder it loaded,
+        // so it can still take the Finder's files at launch (#228).
+        if target == nil, case .folder = shown, shown.url.path == loaded.url.path { return }
+        target = shown
     }
     #else
     private var page: URL? { model.url }
@@ -383,12 +386,29 @@ struct ContentView: View {
                             }
                         }
                     }
-                    IPadNotebookToolbar(page: pageModel, bottom: isPhone)
+                    IPadNotebookToolbar(page: pageModel, bottom: isPhone) {
+                        newName = title
+                        renaming = true
+                    }
                 }
                 // On the iPhone these are on the folder list.
                 if !isPhone {
                     ToolbarItemGroup(placement: .primaryAction) { appButtons }
                 }
+            }
+            // The page renames the open notebook: it saves its edits first
+            // and keeps the kernel, and adds `.ipynb`.
+            .alert("Rename Notebook", isPresented: $renaming) {
+                TextField("Name", text: $newName)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                Button("Rename") {
+                    // The page judges the name, with a notice for one it
+                    // can't use.
+                    let name = newName.trimmingCharacters(in: .whitespaces)
+                    if !name.isEmpty { pageModel.run("rename", arg: name) }
+                }
+                Button("Cancel", role: .cancel) {}
             }
     }
 
