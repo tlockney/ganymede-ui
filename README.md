@@ -105,6 +105,9 @@ browser. [docs/shortcuts.md](docs/shortcuts.md) lists the defaults.
 > **Unreleased.** Available only from a build of `main` (HEAD), not in
 > the latest release.
 
+In a narrow window, toolbar buttons that don't fit move into a "…" menu
+at the toolbar's end, listed by name. Run always stays.
+
 `⇧⌘P` (`Ctrl+Shift+P`), or the toolbar's command button, opens a command
 palette: type to find any command, kernel or recent notebook, and press
 `↩` to run it.
