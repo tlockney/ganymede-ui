@@ -5,6 +5,7 @@ import {
   CodeIcon,
   DownloadIcon,
   ForwardIcon,
+  CommandIcon,
   KeyboardIcon,
   PlayIcon,
   RestartIcon,
@@ -20,6 +21,8 @@ type Props = {
   sidebarOpen: boolean;
   onToggleSidebar(): void;
   onShowShortcuts?(): void;
+  /** Opens the command palette (#211); no button without it. */
+  onShowPalette?(): void;
   specs?: KernelSpec.ISpecModels;
 };
 
@@ -53,6 +56,7 @@ export function Toolbar({
   sidebarOpen,
   onToggleSidebar,
   onShowShortcuts,
+  onShowPalette,
   specs,
 }: Props) {
   const disabled = !c;
@@ -193,6 +197,12 @@ export function Toolbar({
               )}
             </select>
           </label>
+        )}
+
+        {onShowPalette && (
+          <button className="tb-button" title="Command Palette" onClick={onShowPalette}>
+            <CommandIcon />
+          </button>
         )}
 
         <button className="tb-button" title="Keyboard Shortcuts" onClick={onShowShortcuts}>

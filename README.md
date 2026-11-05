@@ -101,6 +101,14 @@ JupyterLab's; press `H` in command mode (or the keyboard button) for the
 full list. Every shortcut can be rebound there, and changes stay in this
 browser. [docs/shortcuts.md](docs/shortcuts.md) lists the defaults.
 
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+`⇧⌘P` (`Ctrl+Shift+P`), or the toolbar's command button, opens a command
+palette: type to find any command, kernel or recent notebook, and press
+`↩` to run it.
+
 The search field at the top of the sidebar finds files by name in the
 folder shown and its subfolders; tick "Search notebook contents" to also
 search what the notebooks there say. It looks up to six folder levels

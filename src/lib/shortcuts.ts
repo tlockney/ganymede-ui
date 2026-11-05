@@ -93,6 +93,12 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { id: 'tooltip:launch', label: 'Show documentation', group: 'Edit mode', keys: [['Shift Tab']] },
 
   { id: 'save', label: 'Save', group: 'App', keys: [['Accel S']] },
+  {
+    id: 'command-palette',
+    label: 'Command palette',
+    group: 'App',
+    keys: [['Accel Shift P']],
+  },
 ];
 
 export const GROUPS: readonly ShortcutGroup[] = ['Notebook', 'Command mode', 'Edit mode', 'App'];

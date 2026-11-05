@@ -485,6 +485,17 @@ struct DownloadCommand: View {
 
 /// The Cell menu. Keys the page already handles (⇧↩, A, B, M, DD, …) are
 /// not menu shortcuts: a menu key equivalent would also fire while typing.
+/// View › Command Palette… (⇧⌘P): the page's palette of every command (#211).
+struct CommandPaletteCommand: View {
+    @FocusedObject private var page: PageModel?
+
+    var body: some View {
+        Button("Command Palette…") { page?.run("command-palette") }
+            .keyboardShortcut("p", modifiers: [.command, .shift])
+            .disabled(page == nil)
+    }
+}
+
 struct CellMenu: View {
     @FocusedObject private var page: PageModel?
 

@@ -53,7 +53,7 @@ built from the same sources (see
   the notebook. File › New Notebook (⌘N) makes one in the window's
   folder, New Tab (⌘T) opens another tab, New Window (⌥⌘N) a window of its own, and Rename… renames the
   open notebook (saving it first; its kernel keeps running). The Cell menu runs, inserts, moves and deletes cells and opens
-  Find; the Kernel menu interrupts (⌘.), restarts, changes and trusts.
+  Find; the Kernel menu interrupts (⌘.), restarts, changes and trusts. View › Command Palette… (⇧⌘P) finds and runs any of these by name.
 
   > [!NOTE]
   > **Unreleased.** Available only from a build of `main` (HEAD), not in
