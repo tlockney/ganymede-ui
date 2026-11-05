@@ -334,8 +334,9 @@ export function SettingsSheet({
               </label>
               <p className="hint">
                 When this page fails, send the error and where in Ganymede&rsquo;s code it happened
-                to Ganymede&rsquo;s Sentry, with the browser and OS. Never notebook content, file
-                names, addresses or errors from your own code.{' '}
+                to Ganymede&rsquo;s Sentry, with the browser and OS. Never notebook content, paths
+                under your home folder, server addresses or errors from your own code. An error
+                message can name a file in your notebook folder.{' '}
                 <a href="https://ganymede-server.com/docs/privacy" target="_blank" rel="noreferrer">
                   Privacy
                 </a>
