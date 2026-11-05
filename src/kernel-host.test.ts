@@ -91,4 +91,21 @@ describe('kernel host page', () => {
     deliver({ kernel: 'dev', op: 'start' });
     expect(mocks.options.at(-1)).toMatchObject({ capabilities: { device: true } });
   });
+
+  it("releases a kernel's device handler when the kernel closes, and only that one", async () => {
+    const sent: unknown[] = [];
+    vi.stubGlobal('webkit', {
+      messageHandlers: {
+        kernelHost: { postMessage: () => {} },
+        device: { postMessage: async (m: unknown) => (sent.push(m), {}) },
+      },
+    });
+    deliver({ kernel: 'a', op: 'start' });
+    const a = mocks.kernels.at(-1)!;
+    const aOwner = (mocks.options.at(-1)!.host as { owner: number }).owner;
+    deliver({ kernel: 'b', op: 'start' });
+    a.close();
+    await Promise.resolve();
+    expect(sent).toEqual([{ owner: aOwner, release: true }]);
+  });
 });

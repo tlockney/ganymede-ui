@@ -39,15 +39,19 @@ export function deviceOptions() {
 }
 
 function start(id: string): void {
+  const device = deviceOptions();
   const kernel = startBrowserKernel({
     createWorker: () => new Worker(workerUrl, { type: 'module' }),
-    ...deviceOptions(),
+    ...device,
   });
   kernels.set(id, kernel);
   kernel.onMessage((channel, msg) =>
     post({ kernel: id, op: 'message', channel, msg: encodeMessage(msg) }),
   );
   void kernel.closed.then(() => {
+    // Swift stops this kernel's sounds and closes its players. A restart
+    // needs nothing: the new Worker's hello does it (ganymede-device#37).
+    device.host?.release();
     if (kernels.get(id) !== kernel) return;
     kernels.delete(id);
     post({ kernel: id, op: 'closed' });
