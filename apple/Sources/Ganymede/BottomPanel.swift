@@ -231,7 +231,7 @@ private struct KernelLogView: View {
             .padding()
     }
 
-    private func color(of line: KernelLog.Line) -> Color {
+    private func color(of line: KernelLog.Line) -> SwiftUI.Color {
         switch line.source {
         case "stderr": return .red
         case "host": return .secondary
