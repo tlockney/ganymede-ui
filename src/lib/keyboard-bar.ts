@@ -73,11 +73,14 @@ const NOT_TYPED = new Set([
 
 /**
  * Whether `element` takes typing, and so may hold the on-screen keyboard:
- * a cell's editor, and also the sidebar's search or a kernel's `input()`.
+ * a cell's editor, and also the sidebar's search or a kernel's `input()`,
+ * and a select, whose picker on an iPhone shows where the keyboard does.
  */
 export function takesText(element: Element | null): boolean {
   if (!element) return false;
   if (element instanceof HTMLTextAreaElement) return true;
+  // On an iPhone a select's picker takes the keyboard's place.
+  if (element instanceof HTMLSelectElement) return true;
   if (element instanceof HTMLInputElement) return !NOT_TYPED.has(element.type);
   return !!element.closest('[contenteditable]:not([contenteditable="false"])');
 }
