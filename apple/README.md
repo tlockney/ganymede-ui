@@ -248,6 +248,29 @@ On iPadOS and iOS (`Ganymede-iOS` target, iOS 16 or later):
   back in the foreground the app restarts the server if it stopped
   answering, on the same port.
 
+## Crash reports
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+Off until you say yes. On first launch the app asks once whether to send
+crash reports ("Don't Send" is the default); Settings > General on the
+Mac, or Settings on iPad and iPhone, changes it. When on, crashes in the
+app and panics in its embedded server (ganymede-ffi) go to Ganymede's
+Sentry with the stack, the app's version, the OS and the device model.
+Breadcrumbs, screenshots, sessions, the device name, paths under your
+home folder and notebook content are left out in the app before anything
+is sent. The page's own error reports follow the same choice. Settings
+has test buttons (an error, a Swift crash, a Rust panic) while it's on.
+Ganymede's [privacy page](https://ganymede-server.com/docs/privacy) has
+the rules.
+
+Release builds upload the archive's dSYMs to Sentry
+(`scripts/sentry-dsyms.sh`, needs `SENTRY_AUTH_TOKEN`), including
+TestFlight-only runs. ganymede-ffi's static library keeps its line
+tables, so Rust frames show files and lines too.
+
 ## TestFlight
 
 > [!NOTE]

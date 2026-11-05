@@ -23,6 +23,7 @@ struct SettingsScreen: View {
                     Label("Agent", systemImage: "sparkles")
                 }
             }
+            CrashReportsSettings()
             if hardwareKeyboard {
                 Section {
                     // The page's sheet: it rebinds keys, which only the

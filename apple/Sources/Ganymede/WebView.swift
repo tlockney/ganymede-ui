@@ -204,6 +204,8 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
             let url = change.newValue ?? nil
             Task { @MainActor in self?.onNavigate?(url) }
         }
+        // The page's error reports follow the app's choice (#318, #319).
+        view.configuration.userContentController.addUserScript(CrashReports.shared.pageScript)
         // The page's sidebar opens text files in the app's editor (#122).
         view.configuration.userContentController.add(OpenFileHandler(self), name: "openFile")
         // What the page shows, for native toolbars and menus (#205).

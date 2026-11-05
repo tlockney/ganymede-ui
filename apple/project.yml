@@ -66,6 +66,11 @@ packages:
   TreeSitterYAML:
     url: https://github.com/tree-sitter-grammars/tree-sitter-yaml
     exactVersion: 0.7.0
+  # Opt-in crash reports (#318, MIT): Sentry's SDK, as its static
+  # XCFramework. Started only when the person says yes (CrashReports.swift).
+  Sentry:
+    url: https://github.com/getsentry/sentry-cocoa
+    exactVersion: 9.31.0
   # The `device` bridge for notebook cells, on the kernel web view only (#99).
   GanymedeDevice:
     url: https://github.com/tlockney/ganymede-device
@@ -94,6 +99,7 @@ targets:
       - package: SwiftTerm
       - package: GanymedeDevice
         product: DeviceBridge
+      - package: Sentry
       - package: Neon
       - package: SwiftTreeSitter
       - package: TreeSitterBash
@@ -248,6 +254,7 @@ targets:
         product: NIOPosix
       - package: GanymedeDevice
         product: DeviceBridge
+      - package: Sentry
       - package: Neon
       - package: SwiftTreeSitter
       - package: TreeSitterBash
@@ -323,6 +330,7 @@ targets:
       - path: Sources/Ganymede/Editor/TextFile.swift
       - path: Sources/Ganymede/Editor/CodeEditing.swift
       - path: Sources/Ganymede/FileStack.swift
+      - path: Sources/Ganymede/CrashScrub.swift
       - path: Sources/Ganymede/Terminal/ProcessTerminalTransport.swift
       - path: Sources/QuickLook/Preview/PreviewResources.swift
       - path: Sources/QuickLook/Thumbnail/NotebookSummary.swift
@@ -364,6 +372,7 @@ targets:
       - path: Sources/Ganymede/Editor/TextFile.swift
       - path: Sources/Ganymede/Editor/CodeEditing.swift
       - path: Sources/Ganymede/FileStack.swift
+      - path: Sources/Ganymede/CrashScrub.swift
     dependencies:
       - framework: build/GanymedeFFI.xcframework
         embed: false

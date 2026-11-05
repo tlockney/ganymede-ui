@@ -71,6 +71,8 @@ xcodebuild archive -project "$apple/Ganymede.xcodeproj" -scheme Ganymede \
   MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="${BUILD_NUMBER:-1}"
 app="$work/Ganymede.app"
 ditto "$archive/Products/Applications/Ganymede.app" "$app"
+# Symbols for crash reports (#318).
+"$apple/scripts/sentry-dsyms.sh" "$archive"
 
 # What notarization requires, checked here so a failure names it.
 fail() {

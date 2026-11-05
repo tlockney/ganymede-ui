@@ -145,6 +145,7 @@ jobs:
       - name: Sign, notarize, and staple
         run: apple/scripts/release-app.sh
         env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           VERSION: ${{ needs.version.outputs.version }}
           BUILD_NUMBER: ${{ github.run_number }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -200,6 +201,7 @@ jobs:
       - name: Sign and upload to TestFlight
         run: apple/scripts/release-ios.sh
         env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
           VERSION: ${{ needs.version.outputs.version }}
           BUILD_NUMBER: ${{ github.run_number }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}

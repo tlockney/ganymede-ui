@@ -116,6 +116,9 @@ xcodebuild archive -project "$apple/Ganymede.xcodeproj" -scheme Ganymede-iOS \
   DEVELOPMENT_TEAM="$APPLE_TEAM_ID" "${signing[@]}" \
   MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="${BUILD_NUMBER:-1}"
 
+# Symbols for crash reports (#318).
+"$apple/scripts/sentry-dsyms.sh" "$archive"
+
 plist="$archive/Products/Applications/Ganymede.app/Info.plist"
 shown=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")
 [[ "$shown" == "$VERSION" ]] || fail "CFBundleShortVersionString is $shown, not $VERSION"
