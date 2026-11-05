@@ -17,6 +17,9 @@ struct FolderSidebar: View {
     @Environment(\.openWindow) private var openWindow
     /// Bumped to list the folders again after a change made here.
     @State private var generation = 0
+    /// The expanded folders, kept per window across launches and while
+    /// another navigator tab shows (#207).
+    @SceneStorage("files.expanded") private var expanded = ""
 
     var body: some View {
         List {
@@ -41,6 +44,12 @@ struct FolderSidebar: View {
         FolderActions(
             openPath: page.state.path,
             isRunning: { page.state.isRunning($0) },
+            isExpanded: { url in
+                Binding(
+                    get: { FolderEntry.expandedPaths(expanded).contains(url.path) },
+                    set: { expanded = FolderEntry.expandedPaths(expanded, setting: url.path, to: $0) }
+                )
+            },
             open: open,
             openInNewTab: { openWindow(value: WindowTarget(opening: $0.url)) },
             newNotebook: { page.run("new-notebook", arg: FolderEntry.serverPath($0)) },
@@ -149,6 +158,8 @@ struct FolderActions {
     var openPath: String?
     /// Whether a notebook, by server path, has a running kernel (#225).
     var isRunning: (String) -> Bool
+    /// Whether a folder, by file URL, is expanded.
+    var isExpanded: (URL) -> Binding<Bool>
     var open: (FolderEntry) -> Void
     var openInNewTab: (FolderEntry) -> Void
     var newNotebook: (URL) -> Void
@@ -171,7 +182,7 @@ private struct FolderContents: View {
         Group {
             ForEach(entries) { entry in
                 if entry.isDirectory {
-                    DisclosureGroup {
+                    DisclosureGroup(isExpanded: actions.isExpanded(entry.url)) {
                         FolderContents(folder: entry.url, actions: actions, generation: generation)
                     } label: {
                         Label(entry.name, systemImage: "folder")

@@ -43,7 +43,8 @@ built from the same sources (see
   (⌘1 to ⌘5). Files lists the window's folder as a tree; right-click an
   item to open it in a new tab, show it in the Finder, make a notebook
   or folder there, or move it to the Trash. A dot marks notebooks whose
-  kernel is running. Search finds file and folder names under the
+  kernel is running. Each window keeps its sidebar shown or hidden, its
+  tab and its expanded folders across launches. Search finds file and folder names under the
   window's folder and, with "Search notebook contents" ticked, the text
   of its notebooks, showing the matching line. Running lists running
   kernels and the terminals open in any window; click a terminal to bring
