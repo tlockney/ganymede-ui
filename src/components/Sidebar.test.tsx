@@ -128,6 +128,30 @@ describe('Sidebar', () => {
     expect(await screen.findByText('Europa')).toBeInTheDocument();
   });
 
+  it('outlines the open notebook and goes to a heading (#212)', async () => {
+    const onOutline = vi.fn();
+    const outline = [
+      { level: 2, text: 'Io', cell: 0 },
+      { level: 3, text: 'Volcanoes', cell: 0 },
+      { level: 2, text: 'Europa', cell: 4 },
+    ];
+    renderSidebar({ openPath: 'Jupiter.ipynb', outline, onOutline });
+    const nav = await screen.findByRole('navigation', { name: 'Outline' });
+    const items = within(nav).getAllByRole('button');
+    expect(items.map(b => b.textContent)).toEqual(['Io', 'Volcanoes', 'Europa']);
+    // Indented from the top level present (## here), not from #.
+    expect(items[0]).toHaveStyle({ paddingLeft: '8px' });
+    expect(items[1]).toHaveStyle({ paddingLeft: '20px' });
+    await userEvent.click(items[2]);
+    expect(onOutline).toHaveBeenCalledWith(outline[2]);
+  });
+
+  it('shows no Outline without headings', async () => {
+    renderSidebar({ openPath: 'Jupiter.ipynb', outline: [], onOutline: vi.fn() });
+    await screen.findByText('Saturn');
+    expect(screen.queryByRole('navigation', { name: 'Outline' })).not.toBeInTheDocument();
+  });
+
   it('lists running sessions and shuts one down', async () => {
     const { fake, onOpen } = renderSidebar();
     await screen.findByText('Saturn');

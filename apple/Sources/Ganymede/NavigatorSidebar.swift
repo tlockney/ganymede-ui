@@ -85,7 +85,7 @@ struct NavigatorSidebar: View {
             case .running:
                 RunningList(page: page)
             case .outline:
-                OutlineNavigator()
+                OutlineNavigator(page: page)
             case .recents:
                 RecentsNavigator(page: page)
             }
@@ -248,16 +248,41 @@ private struct SearchNavigator: View {
 
 // MARK: - Outline
 
-/// The open notebook's headings come with #212.
+/// The open notebook's Markdown headings (#212), indented by level;
+/// clicking one selects its cell and scrolls it to the top.
 private struct OutlineNavigator: View {
+    @ObservedObject var page: PageModel
+
     var body: some View {
-        VStack {
-            Spacer()
-            Text("No outline yet")
-                .foregroundStyle(.secondary)
-            Spacer()
+        let headings = page.state.headings
+        // Indent from the outline's top level, not from `#`.
+        let top = headings.map(\.level).min() ?? 1
+        List {
+            ForEach(Array(headings.enumerated()), id: \.offset) { _, heading in
+                Button {
+                    page.run("go-to-cell", arg: String(heading.cell))
+                } label: {
+                    Text(heading.text)
+                        .fontWeight(heading.level == top ? .semibold : .regular)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .padding(.leading, CGFloat(max(0, heading.level - top)) * 12)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(heading.text)
+            }
         }
-        .frame(maxWidth: .infinity)
+        .listStyle(.sidebar)
+        .overlay {
+            if headings.isEmpty {
+                Text(page.state.hasNotebook ? "No headings in this notebook" : "No notebook open")
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding()
+            }
+        }
     }
 }
 

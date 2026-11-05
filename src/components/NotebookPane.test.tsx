@@ -34,6 +34,9 @@ vi.mock('../lib/jupyterlab', async () => {
         isSelectedOrActive(cell: unknown): boolean;
         activeCellChanged: InstanceType<typeof Signal>;
         stateChanged: InstanceType<typeof Signal>;
+        mode?: string;
+        deselectAll(): void;
+        scrollToCell(cell: unknown, align?: string): Promise<void>;
       };
       // Its cells, with the active one selected, for what a run needs.
       Object.defineProperty(w, 'widgets', {
@@ -47,6 +50,9 @@ vi.mock('../lib/jupyterlab', async () => {
       w.activeCellChanged = new Signal(w);
       // The keyboard bar (#209) follows the mode.
       w.stateChanged = new Signal(w);
+      // The outline goes to a heading's cell (#212).
+      w.deselectAll = vi.fn();
+      w.scrollToCell = vi.fn(async () => {});
       fakes.notebooks.push(w);
       return w;
     }),
@@ -555,6 +561,45 @@ describe('NotebookPane', () => {
     await act(() => latest()!.runAll());
     expect(session.changeKernel).not.toHaveBeenCalled();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('outlines the Markdown headings, follows edits, and goes to a heading’s cell (#212)', async () => {
+    const nb = structuredClone(NOTEBOOK);
+    nb.cells = [
+      { cell_type: 'markdown', id: 'm1', source: '# Io\n## Volcanoes', metadata: {} },
+      ...nb.cells,
+      { cell_type: 'markdown', id: 'm2', source: '## Plumes', metadata: {} },
+    ];
+    const { latest } = setup(vi.fn(async () => ({ path: 'moons/Io.ipynb', content: nb })));
+    await waitFor(() =>
+      expect(latest()?.outline).toEqual([
+        { level: 1, text: 'Io', cell: 0 },
+        { level: 2, text: 'Volcanoes', cell: 0 },
+        { level: 2, text: 'Plumes', cell: 2 },
+      ]),
+    );
+    // An edit shows a moment later.
+    act(() => modelOf().cells.get(2).sharedModel.setSource('## Plumes & rings'));
+    await waitFor(() => expect(latest()?.outline.at(-1)?.text).toBe('Plumes & rings'));
+    // So does a cell going.
+    act(() => modelOf().sharedModel.deleteCell(0));
+    await waitFor(() =>
+      expect(latest()?.outline).toEqual([{ level: 2, text: 'Plumes & rings', cell: 1 }]),
+    );
+
+    const notebook = fakes.notebooks[0] as {
+      activeCellIndex?: number;
+      mode?: string;
+      scrollToCell: ReturnType<typeof vi.fn>;
+    };
+    expect(latest()!.goToCell(1)).toBe(true);
+    expect(notebook.activeCellIndex).toBe(1);
+    expect(notebook.mode).toBe('command');
+    expect(notebook.scrollToCell).toHaveBeenCalledWith(
+      expect.objectContaining({ model: modelOf().cells.get(1) }),
+      'start',
+    );
+    expect(latest()!.goToCell(5)).toBe(false);
   });
 
   it('starts one kernel for runs that come in while it starts', async () => {

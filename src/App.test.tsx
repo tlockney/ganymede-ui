@@ -201,9 +201,12 @@ describe('App', () => {
     const command = vi.fn((id: string) => id === 'move-up');
     const discard = vi.fn();
     const rename = vi.fn(async () => true);
+    const goToCell = vi.fn((i: number) => i < 3);
     mocks.controller = {
       discard,
       rename,
+      goToCell,
+      outline: [{ level: 1, text: 'Io', cell: 2 }],
       dirty: false,
       save: vi.fn(async () => true),
       runAll,
@@ -229,10 +232,18 @@ describe('App', () => {
         kernelDisplayName: 'Python 3',
         cellType: 'code',
         kernels: [{ name: 'python3', displayName: 'Python 3' }],
+        outline: [{ level: 1, text: 'Io', cell: 2 }],
       }),
     );
 
     const run = window.ganymede!.command;
+    // The app's Outline (#212).
+    expect(await run('go-to-cell', '2')).toBe(true);
+    expect(goToCell).toHaveBeenCalledWith(2);
+    expect(await run('go-to-cell', '7')).toBe(false);
+    expect(await run('go-to-cell', 'one')).toBe(false);
+    expect(await run('go-to-cell')).toBe(false);
+    expect(goToCell).toHaveBeenCalledTimes(2);
     expect(await run('run-all')).toBe(true);
     expect(runAll).toHaveBeenCalled();
     expect(await run('cell-type', 'markdown')).toBe(true);

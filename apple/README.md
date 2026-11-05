@@ -47,8 +47,8 @@ built from the same sources (see
   window's folder and, with "Search notebook contents" ticked, the text
   of its notebooks, showing the matching line. Running lists running
   kernels; right-click one to shut it down, or choose Kernel › Shut Down
-  Other Kernels. Recents lists the notebooks opened lately. Outline is
-  empty for now. The toolbar saves, runs cells, interrupts and restarts the
+  Other Kernels. Recents lists the notebooks opened lately. Outline
+  lists the open notebook's headings; click one to go to its cell. The toolbar saves, runs cells, interrupts and restarts the
   kernel, inserts cells, sets the cell type, picks the kernel and trusts
   the notebook. File › New Notebook (⌘N) makes one in the window's
   folder, New Tab (⌘T) opens another tab, New Window (⌥⌘N) a window of its own, and Rename… renames the

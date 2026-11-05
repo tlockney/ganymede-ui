@@ -114,6 +114,15 @@ doesn't open yet.
 > **Unreleased.** Available only from a build of `main` (HEAD), not in
 > the latest release.
 
+Below the folder, Outline lists the open notebook's Markdown headings,
+indented by level; click one to select its cell and scroll to it. It
+updates as you edit. The Mac app shows the same list in its sidebar's
+Outline tab.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
 A notebook with unsaved edits saves itself every two minutes, when the
 page is hidden, and when you open another file, and the browser asks before a tab with unsaved edits
 closes. If the file changed on disk since it was opened or last saved, a
