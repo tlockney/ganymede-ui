@@ -45,7 +45,12 @@ struct BottomPanel: View {
                         onTitle: { titles[terminal.id] = $0.isEmpty ? nil : $0 },
                         // Only the terminal on show has the keyboard, so keys
                         // never go to a hidden shell; a new one gets it.
-                        focused: selected && panel.isShown
+                        focused: selected && panel.isShown,
+                        reveal: {
+                            panel.selection = terminal.id
+                            panel.isShown = true
+                        },
+                        shutDown: { close(terminal.id) }
                     )
                         .opacity(selected ? 1 : 0)
                         .allowsHitTesting(selected)

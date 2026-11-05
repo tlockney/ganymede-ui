@@ -92,4 +92,16 @@ final class FolderEntryTests: XCTestCase {
         XCTAssertEqual(FolderEntry.serverPath(link.appendingPathComponent("moons/Io.ipynb"), root: real), "moons/Io.ipynb")
         XCTAssertEqual(FolderEntry.serverPath(real, root: link), "")
     }
+
+    /// The sidebar keeps its expanded folders per window (#207).
+    func testStoresExpandedFolders() {
+        var stored = ""
+        stored = FolderEntry.expandedPaths(stored, setting: "/moons/outer", to: true)
+        stored = FolderEntry.expandedPaths(stored, setting: "/moons", to: true)
+        XCTAssertEqual(stored, "/moons\n/moons/outer")
+        XCTAssertEqual(FolderEntry.expandedPaths(stored), ["/moons", "/moons/outer"])
+        stored = FolderEntry.expandedPaths(stored, setting: "/moons/outer", to: false)
+        XCTAssertEqual(stored, "/moons")
+        XCTAssertEqual(FolderEntry.expandedPaths(""), [])
+    }
 }

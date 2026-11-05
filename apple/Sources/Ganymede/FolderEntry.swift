@@ -79,4 +79,18 @@ struct FolderEntry: Identifiable, Hashable {
         guard let path, Self.path(path, isAt: old) else { return nil }
         return new + path.dropFirst(old.count)
     }
+
+    /// The expanded folders' paths from what the sidebar stores: one path
+    /// per line (#207).
+    static func expandedPaths(_ stored: String) -> Set<String> {
+        Set(stored.split(separator: "\n").map(String.init))
+    }
+
+    /// `stored` with `path` expanded or collapsed, its lines sorted so the
+    /// same set is always stored the same way.
+    static func expandedPaths(_ stored: String, setting path: String, to expanded: Bool) -> String {
+        var paths = expandedPaths(stored)
+        if expanded { paths.insert(path) } else { paths.remove(path) }
+        return paths.sorted().joined(separator: "\n")
+    }
 }

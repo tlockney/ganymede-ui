@@ -43,12 +43,17 @@ built from the same sources (see
   (⌘1 to ⌘5). Files lists the window's folder as a tree; right-click an
   item to open it in a new tab, show it in the Finder, make a notebook
   or folder there, or move it to the Trash. A dot marks notebooks whose
-  kernel is running. Search finds file and folder names under the
+  kernel is running. Each window keeps its sidebar shown or hidden, its
+  tab and its expanded folders across launches. Search finds file and folder names under the
   window's folder and, with "Search notebook contents" ticked, the text
   of its notebooks, showing the matching line. Running lists running
-  kernels; right-click one to shut it down, or choose Kernel › Shut Down
-  Other Kernels. Recents lists the notebooks opened lately. Outline
-  lists the open notebook's headings; click one to go to its cell. The toolbar saves, runs cells, interrupts and restarts the
+  kernels and the terminals open in any window; click a terminal to bring
+  it to the front, or right-click a kernel or terminal to shut it down
+  (or choose Kernel › Shut Down Other Kernels). The foot of the sidebar
+  shows where kernels run and how many kernels and terminals there are.
+  Recents lists the notebooks opened lately. Outline lists the open
+  notebook's headings; click one to go to its cell. The toolbar saves,
+  runs cells, interrupts and restarts the
   kernel, inserts cells, sets the cell type, picks the kernel and trusts
   the notebook. File › New Notebook (⌘N) makes one in the window's
   folder, New Tab (⌘T) opens another tab, New Window (⌥⌘N) a window of its own, and Rename… renames the
