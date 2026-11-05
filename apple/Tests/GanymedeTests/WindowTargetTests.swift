@@ -115,4 +115,14 @@ final class WindowTargetTests: XCTestCase {
         let data = try JSONEncoder().encode(target)
         XCTAssertEqual(try JSONDecoder().decode(WindowTarget.self, from: data), target)
     }
+
+    func testSavedForSceneStorageRoundTrips() {
+        let file = WindowTarget.file(URL(fileURLWithPath: "/Users/me/a b.ipynb"))
+        let folder = WindowTarget.folder(URL(fileURLWithPath: "/Users/me/notebooks", isDirectory: true))
+        XCTAssertEqual(WindowTarget(saved: WindowTarget.saved(file)), file)
+        XCTAssertEqual(WindowTarget(saved: WindowTarget.saved(folder)), folder)
+        XCTAssertEqual(WindowTarget.saved(nil), "")
+        XCTAssertNil(WindowTarget(saved: ""))
+        XCTAssertNil(WindowTarget(saved: "not json"))
+    }
 }

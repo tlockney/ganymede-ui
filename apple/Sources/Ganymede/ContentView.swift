@@ -27,6 +27,16 @@ struct ContentView: View {
     /// The bottom panel's terminals (#248), and whether it shows and how
     /// tall it is, kept with the window across launches.
     @StateObject private var panel = PanelController()
+    /// What the window shows, kept with it so a window the system
+    /// restores comes back on it (#268). SwiftUI's own restoring of
+    /// `target` brought notebook windows back on the folder.
+    @SceneStorage("window.target") private var savedTarget = ""
+    /// The sidebar's folder, kept likewise: it can differ from the
+    /// notebook's own folder.
+    @SceneStorage("window.sidebar") private var savedSidebar = ""
+    /// Whether the page has said what it shows; until then a restored
+    /// `target` that comes late still replaces what the page was loaded for.
+    @State private var pageReported = false
     @SceneStorage("panel.shown") private var panelShown = false
     @SceneStorage("panel.height") private var panelHeight = PanelController.defaultHeight
     /// Whether the sidebar shows, kept with the window across launches (#207).
@@ -111,18 +121,48 @@ struct ContentView: View {
             if let request {
                 WorkspaceTabs.take(request)
                 if target == nil { target = .folder(request.folder) }
+            } else if target == nil, let saved = WindowTarget(saved: savedTarget) {
+                // A window the system restored, without its value.
+                show(saved)
             }
+            // A restored window (its value restored or not) gets its
+            // sidebar's folder back too.
+            if request == nil, WindowTarget(saved: savedTarget) == target {
+                restoreSidebar()
+            }
+            savedSidebar = sidebarRoot.path
+            savedTarget = WindowTarget.saved(target)
             model.openRequests.register(windowID, blank: target == nil)
             model.openRequests.openWindow = { [openWindow] in openWindow(value: $0) }
         }
         .onChange(of: target) { target in
             model.openRequests.register(windowID, blank: target == nil)
+            // Restored after the view was made, before the page said
+            // anything: show it, not what the page was loaded for.
+            if let target, !pageReported, target != loaded {
+                let restored = WindowTarget(saved: savedTarget) == target
+                show(target)
+                if restored { restoreSidebar() }
+            }
+            savedTarget = WindowTarget.saved(target)
+        }
+        .onChange(of: sidebarRoot) { savedSidebar = $0.path }
+        // Brought forward after launch: restored windows can come back in
+        // front of a notebook opened from the Finder (#268).
+        .onReceive(model.openRequests.$front) { front in
+            guard let front, front == target, let window = document.window else { return }
+            bringForward(window)
         }
         .onDisappear { model.openRequests.unregister(windowID) }
         // Notebook windows are tabs too (#247).
         .background(WindowReader { window in
             document.attach(to: window)
             WorkspaceTabs.join(window, alone: request?.alone ?? false)
+            // A window opened as launch ended may get its NSWindow only
+            // after `front` was published.
+            if let front = model.openRequests.front, front == target {
+                DispatchQueue.main.async { bringForward(window) }
+            }
         })
         .focusedSceneObject(document)
         .focusedSceneObject(pageModel)
@@ -246,14 +286,28 @@ struct ContentView: View {
     #if os(macOS)
     private func takeOpenRequests() {
         let (shown, others) = model.openRequests.take(blank: target == nil)
-        if let shown {
-            target = shown
-            loaded = shown
-            sidebarRoot = shown.folder
-        }
+        if let shown { show(shown) }
         for other in others {
             openWindow(value: other)
         }
+    }
+
+    /// Shows `shown` in this window: the page loads it.
+    private func show(_ shown: WindowTarget) {
+        target = shown
+        loaded = shown
+        sidebarRoot = shown.folder
+    }
+
+    /// The sidebar's folder as this window last had it, if it was saved.
+    private func restoreSidebar() {
+        guard !savedSidebar.isEmpty else { return }
+        sidebarRoot = URL(fileURLWithPath: savedSidebar, isDirectory: true)
+    }
+
+    private func bringForward(_ window: NSWindow) {
+        window.makeKeyAndOrderFront(nil)
+        model.openRequests.broughtForward()
     }
 
     private var page: URL? { model.page(for: loaded) }
@@ -282,7 +336,14 @@ struct ContentView: View {
     /// folder restored on relaunch and the Finder's later opens. The page
     /// stays as it is.
     private func follow(_ url: URL?) {
-        guard let url, let shown = WindowTarget(page: url), shown != target else { return }
+        guard let url else { return }
+        let shown = WindowTarget(page: url)
+        // Not the app's own load of `loaded`, which this KVO also reports:
+        // only the page moving elsewhere.
+        if shown?.url.standardizedFileURL.path != loaded.url.standardizedFileURL.path {
+            pageReported = true
+        }
+        guard let shown, shown != target else { return }
         // A window opened on nothing stays blank on the folder it loaded,
         // so it can still take the Finder's files at launch (#228).
         if target == nil, case .folder = shown, shown.url.path == loaded.url.path { return }
