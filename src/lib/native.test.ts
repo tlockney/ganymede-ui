@@ -58,7 +58,14 @@ describe('native', () => {
       kernels: [{ name: 'cdp', displayName: 'TypeScript' }],
       backend: { label: 'Ganymede', detail: 'local server' },
       running: [
-        { id: 's1', path: 'Io.ipynb', kernel: 'TypeScript', state: 'idle', kernelId: 'k1' },
+        {
+          id: 's1',
+          path: 'Io.ipynb',
+          kernel: 'TypeScript',
+          state: 'idle',
+          kernelId: 'k1',
+          memory: null,
+        },
       ],
       recents: ['Io.ipynb'],
       search: null,
@@ -97,9 +104,29 @@ describe('native', () => {
       { id: 's3', path: 'Ganymede.ipynb', name: '', type: 'notebook', kernel: null },
     ] as unknown as Session.IModel[];
     expect(runningSessions(sessions, specs)).toEqual([
-      { id: 's1', path: 'Io.ipynb', kernel: 'TypeScript', state: 'busy', kernelId: 'k1' },
-      { id: 's2', path: 'moons/Europa.ipynb', kernel: 'gone', state: null, kernelId: 'k2' },
-      { id: 's3', path: 'Ganymede.ipynb', kernel: null, state: null, kernelId: null },
+      {
+        id: 's1',
+        path: 'Io.ipynb',
+        kernel: 'TypeScript',
+        state: 'busy',
+        kernelId: 'k1',
+        memory: null,
+      },
+      {
+        id: 's2',
+        path: 'moons/Europa.ipynb',
+        kernel: 'gone',
+        state: null,
+        kernelId: 'k2',
+        memory: null,
+      },
+      { id: 's3', path: 'Ganymede.ipynb', kernel: null, state: null, kernelId: null, memory: null },
+    ]);
+    // With the memory the server reported (#241): a kernel without a value has none.
+    expect(runningSessions(sessions, specs, new Map([['k1', 2048]])).map(s => s.memory)).toEqual([
+      2048,
+      null,
+      null,
     ]);
   });
 

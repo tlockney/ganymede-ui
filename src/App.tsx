@@ -62,6 +62,7 @@ import {
 import { paletteEntries } from './lib/palette';
 import { CommandPalette } from './components/CommandPalette';
 import { VariablesPanel } from './components/VariablesPanel';
+import { useKernelMemory } from './lib/kernel-usage';
 import { nodeAt, useVariables } from './lib/useVariables';
 import { useFileDrop } from './lib/file-drop';
 import { copySample } from './lib/sample';
@@ -169,6 +170,8 @@ export function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   /** The Variables view beside the notebook (#242). */
   const [variablesOpen, setVariablesOpen] = useState(false);
+  /** The app's Running list shows (#241): the page asks for each kernel's memory for it. */
+  const [watchMemory, setWatchMemory] = useState(false);
   /** The app's inspector shows its Variables view (#249): the page reads them for it. */
   const [appVariables, setAppVariables] = useState(false);
   const otherSheetShown = useRef(false);
@@ -384,6 +387,10 @@ export function App() {
       case 'toggle-variables':
         setVariablesOpen(o => !o);
         return true;
+      case 'watch-memory':
+        if (arg !== 'on' && arg !== 'off') return false;
+        setWatchMemory(arg === 'on');
+        return true;
       case 'inspect-variables':
         if (arg !== 'on' && arg !== 'off') return false;
         setAppVariables(arg === 'on');
@@ -469,7 +476,17 @@ export function App() {
   // list (#225).
   const specs = backend?.services.kernelspecs.specs ?? undefined;
   useSignals(backend?.services.sessions.runningChanged);
-  const running = runningSessions(backend?.services.sessions.running() ?? [], specs);
+  const sessions = [...(backend?.services.sessions.running() ?? [])];
+  // Each kernel's memory for the app's Running list (#241), as the page's
+  // sidebar asks for it: not from a backend whose kernels all run in the page.
+  const memory = useKernelMemory(
+    backend?.config.kind === 'ganymede' && backend.config.kernels !== 'page'
+      ? backend.services.serverSettings
+      : undefined,
+    sessions.flatMap(s => (s.kernel ? [s.kernel.id] : [])),
+    native && watchMemory,
+  );
+  const running = runningSessions(sessions, specs, memory);
   const runningKey = JSON.stringify(running);
   const shown = !!openPath && controller?.path === openPath ? controller : undefined;
   const showVariables = variablesOpen && !!shown;
