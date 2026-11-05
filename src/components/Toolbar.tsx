@@ -18,6 +18,7 @@ import {
   SidebarIcon,
   StopIcon,
   TextIcon,
+  VariablesIcon,
 } from './Icons';
 
 type Props = {
@@ -27,6 +28,9 @@ type Props = {
   onShowShortcuts?(): void;
   /** Opens the command palette (#211); no button without it. */
   onShowPalette?(): void;
+  /** Shows or hides the Variables view (#242); no button without it. */
+  onToggleVariables?(): void;
+  variablesOpen?: boolean;
   specs?: KernelSpec.ISpecModels;
 };
 
@@ -71,6 +75,8 @@ export function Toolbar({
   onToggleSidebar,
   onShowShortcuts,
   onShowPalette,
+  onToggleVariables,
+  variablesOpen = false,
   specs,
 }: Props) {
   const disabled = !c;
@@ -244,6 +250,30 @@ export function Toolbar({
           checked: c.kernelName === s.name,
           onSelect: () => void c.changeKernel(s.name),
         })),
+      ],
+    });
+  }
+  if (onToggleVariables) {
+    items.push({
+      key: 'variables',
+      priority: 2.5,
+      node: (
+        <button
+          className="tb-button"
+          title={variablesOpen ? 'Hide Variables' : 'Show Variables'}
+          aria-pressed={variablesOpen}
+          disabled={disabled}
+          onClick={onToggleVariables}
+        >
+          <VariablesIcon />
+        </button>
+      ),
+      menu: [
+        {
+          label: variablesOpen ? 'Hide Variables' : 'Show Variables',
+          disabled,
+          onSelect: onToggleVariables,
+        },
       ],
     });
   }

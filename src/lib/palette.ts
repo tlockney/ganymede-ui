@@ -113,6 +113,7 @@ export function paletteEntries(context: PaletteContext): PaletteEntry[] {
       .filter(p => p !== context.path)
       // The folder tells two notebooks of one name apart, and filters.
       .map(p => app('open', `Open ${nameOf(p)}`, recentGroup(p), { arg: p, keys: '' })),
+    app('toggle-variables', 'Show or Hide Variables', 'View', { disabled: !open }),
     app('show-shortcuts', 'Keyboard Shortcuts', 'Help'),
     app('show-settings', 'Settings…', 'App'),
     app('connect', 'Connect to a Server…', 'App'),

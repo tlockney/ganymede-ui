@@ -304,6 +304,23 @@ describe('App', () => {
     expect(await screen.findByRole('dialog', { name: 'Command palette' })).toBeInTheDocument();
   });
 
+  it('shows the Variables view from the toolbar and the app (#242)', async () => {
+    mocks.controller = { dirty: false, save: vi.fn(async () => true), kernelName: 'python3' };
+    const fake = fakeServices({ '': [{ name: 'Io.ipynb', type: 'notebook' }] });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    history.replaceState(null, '', '/?kernels=server&open=Io.ipynb');
+    render(<App />);
+    await screen.findByTestId('pane');
+    await userEvent.click(screen.getByTitle('Show Variables'));
+    const view = screen.getByRole('complementary', { name: 'Variables' });
+    // No kernel yet in this fake.
+    expect(view).toHaveTextContent('Run a cell to see its variables.');
+    await userEvent.click(screen.getByTitle('Hide Variables'));
+    expect(screen.queryByRole('complementary', { name: 'Variables' })).not.toBeInTheDocument();
+    expect(await window.ganymede!.command('toggle-variables')).toBe(true);
+    expect(await screen.findByRole('complementary', { name: 'Variables' })).toBeInTheDocument();
+  });
+
   it('tells the app what is running and shuts kernels down for it', async () => {
     const states: Record<string, unknown>[] = [];
     vi.stubGlobal('webkit', {

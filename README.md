@@ -112,6 +112,12 @@ at the toolbar's end, listed by name. Run always stays.
 palette: type to find any command, kernel or recent notebook, and press
 `↩` to run it.
 
+The toolbar's Variables button shows what the cells defined, beside the
+notebook: name, type and a short value, read again after each run, with
+objects that expand a level at a time. It needs a kernel that speaks the
+Jupyter debugger protocol (cdp-kernel's Node and Deno kernels, ipykernel);
+others say they can't list variables.
+
 > [!NOTE]
 > **Unreleased.** Available only from a build of `main` (HEAD), not in
 > the latest release, nor in a Ganymede before the metrics endpoint

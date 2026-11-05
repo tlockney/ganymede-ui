@@ -57,6 +57,7 @@ export const PAGE_COMMANDS = {
   'show-shortcuts': '',
   'show-settings': '',
   'command-palette': '',
+  'toggle-variables': '',
   connect: '',
   search: 'arg',
   'clear-recents': '',

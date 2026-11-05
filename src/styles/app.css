@@ -1750,3 +1750,125 @@ button {
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+/* ---------- Inspector: Variables (#242) ---------- */
+
+.content.with-inspector .notebook-page {
+  right: var(--inspector-w);
+}
+
+.content {
+  --inspector-w: 300px;
+}
+
+.inspector {
+  position: absolute;
+  top: var(--toolbar-h);
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  width: var(--inspector-w);
+  border-left: 0.5px solid var(--separator);
+  background: var(--window-bg);
+}
+
+/* The Mac app's own toolbar is above the web view. */
+.chrome-native .inspector {
+  top: 0;
+}
+
+.inspector-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 8px 8px 12px;
+  border-bottom: 0.5px solid var(--separator);
+}
+
+.inspector-header h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.inspector-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.inspector-empty {
+  margin: 24px 16px;
+  color: var(--text-2);
+  text-align: center;
+}
+
+.variables-table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 12px;
+}
+
+.variables-table th {
+  position: sticky;
+  top: 0;
+  padding: 4px 8px;
+  background: var(--window-bg);
+  color: var(--text-2);
+  font-weight: 500;
+  text-align: left;
+}
+
+.variables-table th:nth-child(1) {
+  width: 38%;
+}
+
+.variables-table th:nth-child(2) {
+  width: 22%;
+}
+
+.variables-table td {
+  padding: 3px 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-top: 0.5px solid var(--separator);
+}
+
+.variable-name {
+  font-family: var(--font-mono);
+}
+
+.variable-type {
+  color: var(--text-2);
+}
+
+.variable-value {
+  font-family: var(--font-mono);
+}
+
+.variable-toggle {
+  display: inline-block;
+  width: 14px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-2);
+  font: inherit;
+  cursor: default;
+}
+
+/* A phone: the view covers the notebook. */
+@media (max-width: 719.98px) {
+  .content.with-inspector .notebook-page {
+    right: 0;
+  }
+  .inspector {
+    width: auto;
+    left: 0;
+    border-left: 0;
+  }
+}

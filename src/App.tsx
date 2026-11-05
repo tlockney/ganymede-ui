@@ -59,6 +59,7 @@ import {
 } from './lib/recents';
 import { paletteEntries } from './lib/palette';
 import { CommandPalette } from './components/CommandPalette';
+import { VariablesPanel } from './components/VariablesPanel';
 import { useFileDrop } from './lib/file-drop';
 import { copySample } from './lib/sample';
 
@@ -163,6 +164,8 @@ export function App() {
   const [controller, setController] = useState<NotebookController>();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
+  /** The Variables view beside the notebook (#242). */
+  const [variablesOpen, setVariablesOpen] = useState(false);
   const otherSheetShown = useRef(false);
   const closeShortcuts = useCallback(() => setShortcutsOpen(false), []);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -373,6 +376,9 @@ export function App() {
       case 'command-palette':
         if (!otherSheetShown.current) setPaletteOpen(true);
         return true;
+      case 'toggle-variables':
+        setVariablesOpen(o => !o);
+        return true;
       case 'connect':
         setSheetOpen(true);
         return true;
@@ -448,6 +454,7 @@ export function App() {
   const running = runningSessions(backend?.services.sessions.running() ?? [], specs);
   const runningKey = JSON.stringify(running);
   const shown = !!openPath && controller?.path === openPath ? controller : undefined;
+  const showVariables = variablesOpen && !!shown;
   // The app's sidebar's search and Recents (#240): the page's sidebar has
   // its own, so these run only with `chrome=native`.
   const [nativeSearch, setNativeSearch] = useState<SearchRequest>({ query: '' });
@@ -606,10 +613,15 @@ export function App() {
               onToggleSidebar={() => setSidebarOpen(o => !o)}
               onShowShortcuts={() => setShortcutsOpen(true)}
               onShowPalette={() => setPaletteOpen(true)}
+              onToggleVariables={() => setVariablesOpen(o => !o)}
+              variablesOpen={variablesOpen}
               specs={specs}
             />
           )}
-          <div className={`content ${drop.active ? 'drop-active' : ''}`} {...drop.handlers}>
+          <div
+            className={`content${drop.active ? ' drop-active' : ''}${showVariables ? ' with-inspector' : ''}`}
+            {...drop.handlers}
+          >
             {backend && openPath ? (
               <NotebookPane
                 key={`${backend.config.kind}:${openPath}`}
@@ -638,6 +650,13 @@ export function App() {
                     if (backendRef.current === backend) setOpenPath(path);
                   })
                 }
+              />
+            )}
+            {showVariables && (
+              <VariablesPanel
+                kernel={shown?.kernel}
+                status={shown?.status}
+                onClose={() => setVariablesOpen(false)}
               />
             )}
             {newError && (

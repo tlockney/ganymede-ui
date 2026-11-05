@@ -94,6 +94,8 @@ export type NotebookController = {
    * the file reopens. Rejects, with nothing moved, when `move` does.
    */
   moved(next: string, move: () => Promise<unknown>): Promise<void>;
+  /** The running kernel's connection, for the Variables view (#242); none before the first run. */
+  kernel?: Kernel.IKernelConnection;
   /** The Markdown cells' headings, in order (#212). */
   outline: OutlineItem[];
   /** Selects the cell at `index` and scrolls it to the top; false when there is none. */
@@ -825,6 +827,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         };
       },
       moved,
+      kernel: session.session?.kernel ?? undefined,
       outline,
       goToCell: index => {
         const cell = notebook.widgets[index];
