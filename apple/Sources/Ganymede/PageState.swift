@@ -84,6 +84,34 @@ struct PageState: Decodable, Equatable {
         var cell: Int
     }
 
+    /// The kernel's variables, as the inspector's Variables view shows
+    /// them (#249): rows in order, members under their object.
+    struct Variables: Decodable, Equatable {
+        struct Row: Decodable, Equatable, Identifiable {
+            var name: String
+            var type: String
+            var value: String
+            /// Its names from the top: the `toggle-variable` command's argument.
+            var path: [String]
+            var depth: Int
+            var expandable: Bool
+            var expanded: Bool
+
+            var id: String { path.joined(separator: "\u{0}") }
+        }
+
+        /// `no-kernel`, `unsupported`, `loading`, `error` or `ready`.
+        var state: String
+        var message: String?
+        var rows: [Row]
+    }
+
+    /// The `toggle-variable` command's argument: `row`'s path as JSON.
+    static func variablePath(_ row: Variables.Row) -> String {
+        guard let data = try? JSONSerialization.data(withJSONObject: row.path) else { return "[]" }
+        return String(decoding: data, as: UTF8.self)
+    }
+
     /// The `file-moved` command's argument: a file or folder the app
     /// renamed (`to`) or deleted (`to` nil) itself, for the page's Recents.
     static func fileMoved(from: String, to: String?) -> String {
@@ -125,6 +153,9 @@ struct PageState: Decodable, Equatable {
     var search: Search?
     /// The open notebook's headings; absent from a page older than #212.
     var outline: [Heading]?
+    /// The kernel's variables while the inspector asks for them
+    /// (`inspect-variables`, #249); nil otherwise and from older pages.
+    var variables: Variables?
 
     init() {}
 

@@ -8,10 +8,13 @@ import {
   postDocument,
   fileMove,
   pageSearch,
+  pageVariables,
   postState,
   runningSessions,
   searchRequest,
+  variablePath,
 } from './native';
+import { nodeAt, type VariableNode } from './useVariables';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -60,6 +63,7 @@ describe('native', () => {
       recents: ['Io.ipynb'],
       search: null,
       outline: [{ level: 1, text: 'Io', cell: 0 }],
+      variables: null,
     };
     postState(state);
     const postMessage = vi.fn();
@@ -162,5 +166,53 @@ describe('native', () => {
     expect(fileMove(JSON.stringify({ from: 'a', to: '' }))).toBeNull();
     expect(fileMove('a')).toBeNull();
     expect(fileMove(undefined)).toBeNull();
+  });
+
+  it('flattens the variables for the app’s inspector, expanded rows under their parents', () => {
+    const variables: VariableNode[] = [
+      {
+        name: 'a',
+        value: '{…}',
+        type: 'object',
+        variablesReference: 4,
+        path: ['a'],
+        children: [
+          { name: 'x', value: '1', type: 'number', variablesReference: 0, path: ['a', 'x'] },
+        ],
+      },
+      { name: 'b', value: '[…]', type: 'Array', variablesReference: 5, path: ['b'] },
+      { name: 'c', value: '2', type: 'number', variablesReference: 0, path: ['c'] },
+    ];
+    const open = new Set(['a']);
+    const shown = pageVariables({ kind: 'ready', variables }, n => open.has(n.path.join('.')));
+    expect(shown.state).toBe('ready');
+    expect(shown.message).toBeNull();
+    expect(shown.rows.map(r => [r.path.join('.'), r.depth, r.expandable, r.expanded])).toEqual([
+      ['a', 0, true, true],
+      ['a.x', 1, false, false],
+      ['b', 0, true, false],
+      ['c', 0, false, false],
+    ]);
+    // Collapsed, its members stay hidden even when they were read.
+    open.clear();
+    expect(pageVariables({ kind: 'ready', variables }, () => false).rows).toHaveLength(3);
+    expect(pageVariables({ kind: 'error', message: 'gone' }, () => false)).toEqual({
+      state: 'error',
+      message: 'gone',
+      rows: [],
+    });
+    expect(pageVariables({ kind: 'no-kernel' }, () => false).rows).toEqual([]);
+    expect(nodeAt(variables, ['a', 'x'])?.value).toBe('1');
+    expect(nodeAt(variables, ['a', 'y'])).toBeUndefined();
+    expect(nodeAt(variables, ['z'])).toBeUndefined();
+  });
+
+  it('reads a variable’s path from the toggle-variable command', () => {
+    expect(variablePath(JSON.stringify(['a', 'x']))).toEqual(['a', 'x']);
+    expect(variablePath('[]')).toBeNull();
+    expect(variablePath('[1]')).toBeNull();
+    expect(variablePath('"a"')).toBeNull();
+    expect(variablePath('a')).toBeNull();
+    expect(variablePath(undefined)).toBeNull();
   });
 });

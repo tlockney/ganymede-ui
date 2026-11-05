@@ -41,6 +41,12 @@ struct ContentView: View {
     @SceneStorage("panel.height") private var panelHeight = PanelController.defaultHeight
     /// Whether the sidebar shows, kept with the window across launches (#207).
     @SceneStorage("sidebar.shown") private var sidebarShown = true
+    /// The right inspector (#249), and whether it shows, on which tab and
+    /// how wide, kept with the window across launches.
+    @StateObject private var inspector = InspectorController()
+    @SceneStorage("inspector.shown") private var inspectorShown = false
+    @SceneStorage("inspector.tab") private var inspectorTab = InspectorTab.outline.rawValue
+    @SceneStorage("inspector.width") private var inspectorWidth = InspectorController.defaultWidth
 
     init(target: Binding<WindowTarget?>) {
         _target = target
@@ -114,6 +120,14 @@ struct ContentView: View {
                 }
                 .help(panel.isShown ? "Hide the terminal panel (⌃`)" : "Show the terminal panel (⌃`)")
             }
+            ToolbarItem {
+                Button {
+                    inspector.toggle()
+                } label: {
+                    Label(inspector.isShown ? "Hide Inspector" : "Show Inspector", systemImage: "sidebar.right")
+                }
+                .help(inspector.isShown ? "Hide the inspector (⌥⌘0)" : "Show the inspector (⌥⌘0)")
+            }
         }
         .navigationSubtitle(pageModel.state.subtitle)
         .frame(minWidth: 720, minHeight: 480)
@@ -186,6 +200,26 @@ struct ContentView: View {
         }
         .onChange(of: panel.isShown) { panelShown = $0 }
         .onChange(of: panel.height) { panelHeight = $0 }
+        .focusedSceneObject(inspector)
+        .onAppear {
+            inspector.isShown = inspectorShown
+            inspector.tab = InspectorTab(rawValue: inspectorTab) ?? .outline
+            inspector.resize(to: inspectorWidth, available: .infinity)
+            if inspector.wantsVariables { pageModel.run("inspect-variables", arg: "on") }
+        }
+        .onChange(of: inspector.isShown) { inspectorShown = $0 }
+        .onChange(of: inspector.tab) { inspectorTab = $0.rawValue }
+        .onChange(of: inspector.width) { inspectorWidth = $0 }
+        // The page reads the variables only while the inspector shows them.
+        .onChange(of: inspector.wantsVariables) { wants in
+            pageModel.run("inspect-variables", arg: wants ? "on" : "off")
+        }
+        // A page loaded again forgets it was asked.
+        .onChange(of: pageModel.state.variables == nil) { none in
+            if none, inspector.wantsVariables {
+                pageModel.run("inspect-variables", arg: "on")
+            }
+        }
         #else
         Group {
             if isPhone {
@@ -352,6 +386,18 @@ struct ContentView: View {
     /// The notebook, with the bottom panel under it (#248). The panel stays
     /// in the view tree while hidden, so its terminals keep running.
     private var workspace: some View {
+        GeometryReader { whole in
+            HStack(spacing: 0) {
+                notebookAndPanel
+                if inspector.isShown {
+                    Inspector(inspector: inspector, page: pageModel, available: whole.size.width)
+                }
+            }
+        }
+    }
+
+    /// The notebook, with the bottom panel under it.
+    private var notebookAndPanel: some View {
         GeometryReader { area in
             VStack(spacing: 0) {
                 content

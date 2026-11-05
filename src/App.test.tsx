@@ -5,6 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Backend, BackendConfig } from './lib/backends';
 import { entry, fakeBackend, fakeServices } from './test/fakes';
+import { debugKernel } from './test/debug-kernel';
 
 // The shell's wiring: which backend it connects to, the sheet, and new
 // notebooks. The backends and the notebook pane are tested on their own.
@@ -319,6 +320,56 @@ describe('App', () => {
     expect(screen.queryByRole('complementary', { name: 'Variables' })).not.toBeInTheDocument();
     expect(await window.ganymede!.command('toggle-variables')).toBe(true);
     expect(await screen.findByRole('complementary', { name: 'Variables' })).toBeInTheDocument();
+  });
+
+  it('reads the variables for the app’s inspector and expands them for it (#249)', async () => {
+    const states: Record<string, unknown>[] = [];
+    vi.stubGlobal('webkit', {
+      messageHandlers: {
+        state: { postMessage: (m: Record<string, unknown>) => states.push(m) },
+      },
+    });
+    const kernel = debugKernel({
+      inspectVariables: {
+        variables: [
+          { name: 'a', value: '{…}', type: 'object', variablesReference: 4 },
+          { name: 'b', value: '2', type: 'number', variablesReference: 0 },
+        ],
+      },
+      variables: { variables: [{ name: 'x', value: '1', type: 'number', variablesReference: 0 }] },
+    });
+    mocks.controller = {
+      dirty: false,
+      save: vi.fn(async () => true),
+      kernelName: 'python3',
+      kernel,
+    };
+    const fake = fakeServices({ '': [{ name: 'Io.ipynb', type: 'notebook' }] });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    history.replaceState(null, '', '/?kernels=server&open=Io.ipynb');
+    render(<App />);
+    await waitFor(() => expect(states.at(-1)).toMatchObject({ path: 'Io.ipynb', variables: null }));
+    // Not read until the app shows them.
+    expect(kernel.requestDebug).not.toHaveBeenCalled();
+
+    const run = window.ganymede!.command;
+    expect(await run('inspect-variables', 'maybe')).toBe(false);
+    expect(await run('inspect-variables', 'on')).toBe(true);
+    const names = () =>
+      (states.at(-1)?.variables as { rows?: { name: string }[] } | null)?.rows?.map(r => r.name);
+    await waitFor(() => expect(names()).toEqual(['a', 'b']));
+    expect(await run('toggle-variable', JSON.stringify(['a']))).toBe(true);
+    await waitFor(() => expect(names()).toEqual(['a', 'x', 'b']));
+    expect(states.at(-1)?.variables).toMatchObject({
+      state: 'ready',
+      rows: [{ expanded: true }, { depth: 1, path: ['a', 'x'] }, { expandable: false }],
+    });
+    expect(await run('toggle-variable', JSON.stringify(['nope']))).toBe(false);
+    expect(await run('toggle-variable', 'a')).toBe(false);
+    expect(await run('toggle-variable', JSON.stringify(['a']))).toBe(true);
+    await waitFor(() => expect(names()).toEqual(['a', 'b']));
+    expect(await run('inspect-variables', 'off')).toBe(true);
+    await waitFor(() => expect(states.at(-1)?.variables).toBeNull());
   });
 
   it('tells the app what is running and shuts kernels down for it', async () => {

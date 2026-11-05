@@ -115,6 +115,13 @@ export function useVariables(
   };
 }
 
+/** The node at `path` in `nodes`, or undefined. Pure. */
+export function nodeAt(nodes: VariableNode[], path: string[]): VariableNode | undefined {
+  const node = nodes.find(n => n.name === path[0]);
+  if (!node || path.length === 1) return node;
+  return nodeAt(node.children ?? [], path.slice(1));
+}
+
 /** `nodes` with the node at `path` given `children`. Pure. */
 export function withChildren(
   nodes: VariableNode[],
