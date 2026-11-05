@@ -168,9 +168,10 @@ Run workflow), or:
 gh workflow run release.yml --ref main -f testflight_only=true --repo tlockney/ganymede-ui
 ```
 
-It runs CI and the `ios` job only. The build carries the `package.json`
-version and the run number, so it shows in TestFlight as a newer build of
-the current version.
+It runs the `version`, CI and `ios` jobs only, and refuses to run on a
+tag. The build carries the last released `package.json` version and the
+run number, so in TestFlight it looks like a newer build of that release
+while holding unreleased code; check the build number against the run.
 
 ## When it fails
 
