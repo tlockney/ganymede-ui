@@ -415,6 +415,10 @@ struct NewCommands: View {
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
+        // The menus exist before any window, so their `openWindow` lets
+        // files opened at a cold launch get a window when SwiftUI made
+        // none (#266).
+        let _ = model.openRequests.useFallback { [openWindow] in openWindow(value: $0) }
         Button("New Notebook") {
             if let page {
                 page.run("new-notebook", arg: FolderEntry.serverPath(folder ?? model.root))

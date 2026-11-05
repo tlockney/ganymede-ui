@@ -119,6 +119,14 @@ final class OpenRequests: ObservableObject {
     /// Opens a notebook window, for requests that come after launch. Set by
     /// the notebook windows.
     var openWindow: ((WindowTarget) -> Void)?
+    /// The same, from the app's menus, for when no notebook window has
+    /// appeared: launched from the Finder to open a file, SwiftUI may make
+    /// no window at all, leaving the app with no UI (#266).
+    var fallbackOpenWindow: ((WindowTarget) -> Void)?
+
+    func useFallback(_ open: @escaping (WindowTarget) -> Void) {
+        fallbackOpenWindow = open
+    }
 
     /// Adds the file URLs among `urls`, each once.
     func add(_ urls: [URL]) {
@@ -132,7 +140,7 @@ final class OpenRequests: ObservableObject {
         // Once launched, each opens in a window (a new tab, or the window
         // already showing it) at once, without waiting for a window to
         // notice the queue: nothing is left pending if none does.
-        if !launching, let openWindow {
+        if !launching, let openWindow = openWindow ?? fallbackOpenWindow {
             added.forEach(openWindow)
             return
         }
@@ -143,7 +151,7 @@ final class OpenRequests: ObservableObject {
     /// window.
     func finishLaunching() {
         launching = false
-        guard !pending.isEmpty, let openWindow else { return }
+        guard !pending.isEmpty, let openWindow = openWindow ?? fallbackOpenWindow else { return }
         let left = pending
         pending = []
         atLaunch = false

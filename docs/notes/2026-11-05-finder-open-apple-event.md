@@ -38,3 +38,12 @@ one button, then showed the welcome.
   `WorkspaceTabs.launching`, and gives any file still unclaimed then a
   window of its own.
 - The open log line is at notice level, so a plain `log stream` shows it.
+- Thomas narrowed it down: opening a notebook while the app runs works,
+  but launching the app from the Finder by opening a notebook shows no
+  window at all. When an app is launched to open a document, SwiftUI
+  makes no window of its own, expecting the document's scene to take
+  it, and every scene here refuses external events. The files then wait
+  in `OpenRequests` for a window that never comes, and `openWindow` is
+  only set by a window. The menus exist without any window, so
+  `NewCommands` hands its `openWindow` to `OpenRequests` as a fallback,
+  and when launch ends, files no window took open through it.

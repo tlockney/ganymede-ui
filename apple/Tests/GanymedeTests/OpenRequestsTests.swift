@@ -134,6 +134,17 @@ final class OpenRequestsTests: XCTestCase {
         XCTAssertTrue(requests.pending.isEmpty)
     }
 
+    func testAColdLaunchWithNoWindowOpensThemFromTheMenus() {
+        // Launched from the Finder, SwiftUI made no window (#266).
+        let requests = OpenRequests()
+        var opened: [WindowTarget] = []
+        requests.fallbackOpenWindow = { opened.append($0) }
+        requests.add([a])
+        XCTAssertTrue(opened.isEmpty)
+        requests.finishLaunching()
+        XCTAssertEqual(opened, [.file(a)])
+    }
+
     func testOnePublishPerBatch() {
         let requests = OpenRequests()
         var published = 0
