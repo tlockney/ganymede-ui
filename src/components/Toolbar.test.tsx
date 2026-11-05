@@ -29,6 +29,8 @@ function controller(over: Partial<NotebookController> = {}): NotebookController 
     rename: vi.fn(async () => true),
     discard: vi.fn(() => () => {}),
     moved: vi.fn(async () => {}),
+    outline: [],
+    goToCell: vi.fn(() => true),
     ...over,
   };
 }

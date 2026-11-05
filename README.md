@@ -111,6 +111,7 @@ at the toolbar's end, listed by name. Run always stays.
 `⇧⌘P` (`Ctrl+Shift+P`), or the toolbar's command button, opens a command
 palette: type to find any command, kernel or recent notebook, and press
 `↩` to run it.
+
 The toolbar's Variables button shows what the cells defined, beside the
 notebook: name, type and a short value, read again after each run, with
 objects that expand a level at a time. It needs a kernel that speaks the
@@ -135,6 +136,15 @@ Above the folder, Recents lists the last eight notebooks you opened from
 this browser, on each backend. The iPad and iPhone apps draw their own
 sidebar, with the same search and Recents, though a folder in its results
 doesn't open yet.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+Below the folder, Outline lists the open notebook's Markdown headings,
+indented by level; click one to select its cell and scroll to it. It
+updates as you edit. The Mac app shows the same list in its sidebar's
+Outline tab.
 
 > [!NOTE]
 > **Unreleased.** Available only from a build of `main` (HEAD), not in

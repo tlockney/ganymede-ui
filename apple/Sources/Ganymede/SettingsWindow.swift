@@ -13,6 +13,8 @@ struct SettingsWindow: View {
             RemotesView()
                 .padding()
                 .tabItem { Label("Remotes", systemImage: "server.rack") }
+            KernelSettings()
+                .tabItem { Label("Kernels", systemImage: "cpu") }
             PageSettings(
                 text: "The agent's model, API keys and tools are set in the notebook window.",
                 button: "Open Agent Settings…",
@@ -45,6 +47,84 @@ private struct GeneralSettings: View {
         }
         .formStyle(.grouped)
         .padding()
+    }
+}
+
+/// Kernels: where they run, and the kernels installed there (#206).
+private struct KernelSettings: View {
+    @EnvironmentObject private var model: AppModel
+    @State private var specs: KernelSpecs?
+    @State private var error: String?
+
+    var body: some View {
+        Form {
+            Section {
+                LabeledContent("Kernels run on", value: model.kernelRemote?.title ?? "This Mac")
+                Text("Choose where in the Remotes tab.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Section {
+                if let specs {
+                    ForEach(specs.specs) { spec in
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(spec.displayName)
+                                Text([spec.name, spec.language].compactMap { $0 }.joined(separator: " · "))
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            if spec.name == specs.defaultName {
+                                Text("Default").font(.caption).foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    if specs.specs.isEmpty {
+                        // A remote's list comes through the server's gateway,
+                        // which has none until it first reaches the remote.
+                        Text(model.kernelRemote == nil ? "No kernels installed." : "No kernels listed yet.")
+                            .foregroundStyle(.secondary)
+                    }
+                } else if let error {
+                    Text(error).foregroundStyle(.secondary)
+                } else {
+                    ProgressView().frame(maxWidth: .infinity)
+                }
+            } header: {
+                Text("Installed")
+            } footer: {
+                Text("Kernels are Jupyter kernelspecs. To add TypeScript, run `cdp-kernel install --runtime node`.")
+            }
+        }
+        .formStyle(.grouped)
+        .padding()
+        // Again when the server restarts, as it does when kernels move, or
+        // fails to start. `serverURL` is cleared as a restart begins, so a
+        // stopping server isn't asked.
+        .task(id: "\(model.serverURL?.absoluteString ?? "")\n\(model.error ?? "")") { await load() }
+    }
+
+    private func load() async {
+        guard let server = model.serverURL.flatMap(ServerEndpoint.init(serverURL:)) else {
+            specs = nil
+            error = model.error.map { "Ganymede could not start: \($0)" } ?? "Waiting for the server…"
+            return
+        }
+        do {
+            specs = try await KernelSpecs.load(from: server)
+            error = nil
+            // A remote's list may not have arrived yet: ask once more.
+            if specs?.specs.isEmpty == true, model.kernelRemote != nil {
+                try await Task.sleep(nanoseconds: 5_000_000_000)
+                specs = try await KernelSpecs.load(from: server)
+            }
+        } catch is CancellationError {
+            return
+        } catch {
+            specs = nil
+            self.error = "Couldn’t list the kernels: \(error.localizedDescription)"
+        }
     }
 }
 

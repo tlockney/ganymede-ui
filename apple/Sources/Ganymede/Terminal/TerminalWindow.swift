@@ -1,4 +1,7 @@
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 #if os(macOS)
 /// The folder of the focused notebook window: its notebook's folder, or
@@ -28,6 +31,16 @@ struct TerminalWindow: View {
     var onTitle: ((String) -> Void)?
     /// Whether the terminal has the keyboard; see `TerminalSurface.focused`.
     var focused: Bool?
+    #if os(macOS)
+    /// For the Running list (#246): what shows this terminal and what ends
+    /// it, besides its window coming to the front. Left out, closing the
+    /// window ends it.
+    var reveal: (() -> Void)?
+    var shutDown: (() -> Void)?
+    /// Its entry in `OpenTerminals`.
+    @State private var entry = UUID()
+    @State private var window = WeakWindow()
+    #endif
     @State private var transport: TerminalTransport?
     @State private var title = ""
     /// Why the session ended, once it has.
@@ -65,7 +78,32 @@ struct TerminalWindow: View {
         .modifier(OwnWindow(enabled: !inPanel, title: title.isEmpty ? defaultTitle : title))
         .onAppear(perform: connect)
         .onChange(of: model.url) { _ in connect() }
+        #if os(macOS)
+        .background(WindowReader { window.window = $0 })
+        .onAppear(perform: register)
+        .onChange(of: title) { _ in register() }
+        .onDisappear { OpenTerminals.shared.remove(entry) }
+        #endif
     }
+
+    #if os(macOS)
+    /// Lists the terminal, or updates its title, in `OpenTerminals`.
+    private func register() {
+        let window = window
+        let reveal = reveal
+        let shutDown = shutDown
+        OpenTerminals.shared.update(.init(
+            id: entry,
+            title: title.isEmpty ? defaultTitle : title,
+            inPanel: inPanel,
+            reveal: {
+                reveal?()
+                window.window?.makeKeyAndOrderFront(nil)
+            },
+            close: shutDown ?? { window.window?.performClose(nil) }
+        ))
+    }
+    #endif
 
     private func reconnect() {
         // Say why when what the session needs is gone (the key, the user,
@@ -156,6 +194,13 @@ struct TerminalWindow: View {
         transport = makeTransport()
     }
 }
+
+#if os(macOS)
+/// The window a terminal is in, without keeping it open.
+final class WeakWindow {
+    weak var window: NSWindow?
+}
+#endif
 
 /// A terminal window's title and minimum size, left off in a panel.
 private struct OwnWindow: ViewModifier {

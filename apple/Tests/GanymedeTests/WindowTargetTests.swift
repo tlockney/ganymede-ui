@@ -101,6 +101,10 @@ final class WindowTargetTests: XCTestCase {
             WindowTarget(page: URL(string: "http://127.0.0.1:8123/?dir=")!),
             .folder(URL(fileURLWithPath: "/", isDirectory: true))
         )
+        // Not the app's page: a file a link in an output opened, or an
+        // error page. The window keeps what it shows.
+        XCTAssertNil(WindowTarget(page: URL(string: "http://127.0.0.1:8123/files/report.html")!))
+        XCTAssertNil(WindowTarget(page: URL(string: "http://127.0.0.1:8123/api/contents?dir=Users")!))
         // A folder window's page reads back as the same folder.
         let target = WindowTarget.folder(URL(fileURLWithPath: "/Users/me/Lunes & co", isDirectory: true))
         XCTAssertEqual(WindowTarget(page: target.pageURL(server: server, kernels: "server")), target)
@@ -110,5 +114,15 @@ final class WindowTargetTests: XCTestCase {
         let target = WindowTarget.file(URL(fileURLWithPath: "/tmp/Io.ipynb"))
         let data = try JSONEncoder().encode(target)
         XCTAssertEqual(try JSONDecoder().decode(WindowTarget.self, from: data), target)
+    }
+
+    func testSavedForSceneStorageRoundTrips() {
+        let file = WindowTarget.file(URL(fileURLWithPath: "/Users/me/a b.ipynb"))
+        let folder = WindowTarget.folder(URL(fileURLWithPath: "/Users/me/notebooks", isDirectory: true))
+        XCTAssertEqual(WindowTarget(saved: WindowTarget.saved(file)), file)
+        XCTAssertEqual(WindowTarget(saved: WindowTarget.saved(folder)), folder)
+        XCTAssertEqual(WindowTarget.saved(nil), "")
+        XCTAssertNil(WindowTarget(saved: ""))
+        XCTAssertNil(WindowTarget(saved: "not json"))
     }
 }

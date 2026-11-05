@@ -12,7 +12,7 @@ final class PageDocument: ObservableObject {
     @Published private(set) var dirty = false
     /// The page, which saves through `window.ganymede.save()`.
     weak var webView: WKWebView?
-    private weak var window: NSWindow?
+    private(set) weak var window: NSWindow?
     private var closeGuard: CloseGuard?
 
     /// Every window's document, for the prompt on quit.
