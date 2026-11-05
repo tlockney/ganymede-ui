@@ -1,5 +1,6 @@
 // The Variables view (#242) on cdp-kernel's Node kernel: after Run All it
 // lists the notebook's variables, and an array expands one level.
+// A row with children starts with its ▸ toggle, so names match after it.
 import { expect, test } from '@playwright/test';
 import { FIXTURE } from './env';
 import { openNotebook, openWithToken, outputs, waitForIdle } from './helpers';
@@ -13,9 +14,9 @@ test('lists the variables after a run and expands an object', async ({ page }) =
 
   await page.getByTitle('Show Variables').click();
   const view = page.getByRole('complementary', { name: 'Variables' });
-  const moons = view.getByRole('row').filter({ hasText: /^moons/ });
+  const moons = view.getByRole('row').filter({ hasText: /^▸?moons/ });
   await expect(moons).toBeVisible({ timeout: 30_000 });
-  await expect(view.getByRole('row').filter({ hasText: /^rows/ })).toBeVisible();
+  await expect(view.getByRole('row').filter({ hasText: /^▸?rows/ })).toBeVisible();
 
   await view.getByRole('button', { name: 'Expand moons' }).click();
   // The array's first element, one level down.
