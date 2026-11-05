@@ -86,6 +86,8 @@ targets:
       - path: build/web
         type: folder
         buildPhase: resources
+      # The app icon, in macOS's grid (#281; scripts/mac-icon.py).
+      - path: Resources/macOS
     dependencies:
       - framework: build/GanymedeFFI.xcframework
         embed: false
@@ -154,6 +156,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.ganymede-server.Ganymede
         ENABLE_HARDENED_RUNTIME: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
   # Quick Look's preview of a notebook (#135): ganymede-ui's notebook view
   # from `npm run build:quicklook`, read-only, no server or kernel.
   GanymedeQuickLook:
