@@ -101,6 +101,16 @@ JupyterLab's; press `H` in command mode (or the keyboard button) for the
 full list. Every shortcut can be rebound there, and changes stay in this
 browser. [docs/shortcuts.md](docs/shortcuts.md) lists the defaults.
 
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, nor in a Ganymede before the metrics endpoint
+> (tlockney/ganymede#361).
+
+Each running kernel shows its memory beside its name, from the server's
+jupyter-resource-usage endpoint, updated every few seconds while the
+sidebar is open. A server without the endpoint, or a kernel running in
+the page, shows none.
+
 The search field at the top of the sidebar finds files by name in the
 folder shown and its subfolders; tick "Search notebook contents" to also
 search what the notebooks there say. It looks up to six folder levels
