@@ -83,7 +83,8 @@ built from the same sources (see
   notebooks. Agent and Shortcuts open the page's agent settings and
   shortcut list in the front notebook window. Remotes keeps a
   list of remotes: Jupyter or Ganymede servers, SSH hosts, or both. Kernels run on this Mac or, as on iPadOS, on one
-  remote's server. Tokens are kept in the keychain.
+  remote's server. Tokens are kept in the keychain. Kernels shows
+  where kernels run and the kernels installed there.
 
   > [!NOTE]
   > **Unreleased.** Available only from a build of `main` (HEAD), not in
