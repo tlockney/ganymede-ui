@@ -356,7 +356,13 @@ struct ContentView: View {
             VStack(spacing: 0) {
                 content
                     .frame(maxHeight: .infinity)
-                BottomPanel(panel: panel, folder: sidebarRoot, available: area.size.height)
+                BottomPanel(
+                    panel: panel,
+                    folder: sidebarRoot,
+                    available: area.size.height,
+                    kernelID: pageModel.state.kernelID,
+                    server: model.serverURL.flatMap(ServerEndpoint.init(serverURL:))
+                )
                     // Top-aligned, so a hidden panel's views (AppKit cursor
                     // rects included) sit below the window, not over the notebook.
                     .frame(height: panel.isShown ? nil : 0, alignment: .top)

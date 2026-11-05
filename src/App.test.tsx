@@ -335,9 +335,9 @@ describe('App', () => {
     );
     await waitFor(() =>
       expect(states.at(-1)?.running).toEqual([
-        { id: 's1', path: 'Io.ipynb', kernel: 'Python 3', state: null },
-        { id: 's2', path: 'Europa.ipynb', kernel: 'Python 3', state: null },
-        { id: 's3', path: 'Callisto.ipynb', kernel: 'Python 3', state: null },
+        { id: 's1', path: 'Io.ipynb', kernel: 'Python 3', state: null, kernelId: 'k-s1' },
+        { id: 's2', path: 'Europa.ipynb', kernel: 'Python 3', state: null, kernelId: 'k-s2' },
+        { id: 's3', path: 'Callisto.ipynb', kernel: 'Python 3', state: null, kernelId: 'k-s3' },
       ]),
     );
 

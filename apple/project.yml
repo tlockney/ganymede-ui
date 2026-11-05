@@ -313,6 +313,7 @@ targets:
       - path: Sources/Ganymede/DocumentMessage.swift
       - path: Sources/Ganymede/PageState.swift
       - path: Sources/Ganymede/KernelSpecs.swift
+      - path: Sources/Ganymede/KernelLog.swift
       - path: Sources/Ganymede/FolderEntry.swift
       - path: Sources/Ganymede/WorkspaceTabs.swift
       - path: Sources/Ganymede/FileSearch.swift
@@ -351,6 +352,7 @@ targets:
       - path: Sources/Ganymede/DocumentMessage.swift
       - path: Sources/Ganymede/PageState.swift
       - path: Sources/Ganymede/KernelSpecs.swift
+      - path: Sources/Ganymede/KernelLog.swift
       - path: Sources/Ganymede/FolderEntry.swift
       - path: Sources/Ganymede/WorkspaceTabs.swift
       - path: Sources/Ganymede/FileSearch.swift

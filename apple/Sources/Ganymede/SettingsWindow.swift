@@ -119,9 +119,10 @@ private struct KernelSettings: View {
                 try await Task.sleep(nanoseconds: 5_000_000_000)
                 specs = try await KernelSpecs.load(from: server)
             }
-        } catch is CancellationError {
-            return
         } catch {
+            // A cancelled load throws URLError(.cancelled), not
+            // CancellationError: either way a newer task owns the text.
+            if Task.isCancelled { return }
             specs = nil
             self.error = "Couldn’t list the kernels: \(error.localizedDescription)"
         }
