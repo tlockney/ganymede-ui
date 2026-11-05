@@ -10,8 +10,10 @@ From the review of #298.
   one-point marker after the last line, tracked with onAppear and
   onDisappear, since macOS 13 has no scroll position API). Scrolled up
   to read a traceback, it stays put.
-- A read error shows as a bar over the top of the lines once there are
+- A read error shows as a bar at the top of the lines once there are
   lines, so a server that stops answering doesn't look like a quiet
-  kernel. It is an overlay, not a row above the scroll view: shrinking
-  the scroll view could push the end marker out of view and stop the
-  log following.
+  kernel. It is a top safe-area inset on the scroll view, not a row
+  above it: shrinking the scroll view could push the end marker out of
+  view and stop the log following. An overlay kept the size but covered
+  the first lines when scrolled to the top; the inset moves them below
+  the bar.

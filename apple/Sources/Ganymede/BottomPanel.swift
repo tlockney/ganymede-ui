@@ -229,27 +229,28 @@ private struct KernelLogView: View {
                 .textSelection(.enabled)
                 .padding(8)
             }
+            // A server that stops answering shouldn't look like a quiet
+            // kernel. An inset rather than a bar above the scroll view, so
+            // the view keeps its size and a log at its end stays following,
+            // and the first lines start below the bar instead of under it.
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if let error {
+                    VStack(spacing: 0) {
+                        Label(error, systemImage: "exclamationmark.triangle")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(.bar)
+                        Divider()
+                    }
+                }
+            }
             .onChange(of: log.after) { _ in
                 if atEnd { reader.scrollTo(Self.end, anchor: .bottom) }
             }
             .onAppear { reader.scrollTo(Self.end, anchor: .bottom) }
-        }
-        // A server that stops answering shouldn't look like a quiet kernel.
-        // Over the lines rather than above them, so the scroll view keeps
-        // its size and a log at its end stays following.
-        .overlay(alignment: .top) {
-            if let error {
-                VStack(spacing: 0) {
-                    Label(error, systemImage: "exclamationmark.triangle")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(.bar)
-                    Divider()
-                }
-            }
         }
     }
 
