@@ -82,7 +82,13 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      # Source maps go to Sentry for error reports (#319), not into the archives.
       - run: npm run build
+        env:
+          SENTRY_SOURCEMAPS: '1'
+      - run: scripts/sentry-sourcemaps.sh dist
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
       # The archives unpack to one ganymede-ui-X.Y.Z/ directory holding the
       # built site (index.html at its top) and the license.
       - name: Package
@@ -142,6 +148,8 @@ jobs:
       - run: apple/scripts/bootstrap.sh
         env:
           GANYMEDE_DIR: ${{ github.workspace }}/.ganymede
+          SENTRY_SOURCEMAPS: '1'
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
       - name: Sign, notarize, and staple
         run: apple/scripts/release-app.sh
         env:
@@ -197,6 +205,8 @@ jobs:
       - run: apple/scripts/bootstrap.sh
         env:
           GANYMEDE_DIR: ${{ github.workspace }}/.ganymede
+          SENTRY_SOURCEMAPS: '1'
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
       - name: Sign and upload to TestFlight
         run: apple/scripts/release-ios.sh
         env:
