@@ -59,6 +59,33 @@ describe('CommandPalette', () => {
     expect(onRun).toHaveBeenCalledWith(ENTRIES[2], undefined);
   });
 
+  it('keeps the same command selected when entries arrive before it', async () => {
+    const onRun = vi.fn();
+    const { rerender } = render(
+      <CommandPalette entries={ENTRIES} onRun={onRun} onClose={vi.fn()} />,
+    );
+    await userEvent.keyboard('{ArrowDown}');
+    expect(active()).toHaveTextContent('Restart Kernel');
+    // Kernelspecs load: a Change Kernel row lands above it.
+    const more: PaletteEntry[] = [
+      ENTRIES[0],
+      {
+        id: 'change-kernel',
+        label: 'Change Kernel to Python',
+        group: 'Kernel',
+        keys: '',
+        arg: 'py',
+      },
+      ...ENTRIES.slice(1),
+    ];
+    rerender(<CommandPalette entries={more} onRun={onRun} onClose={vi.fn()} />);
+    expect(active()).toHaveTextContent('Restart Kernel');
+    // It becomes disabled: the first that can run is selected.
+    const off = more.map(e => (e.id === 'restart' ? { ...e, disabled: true } : e));
+    rerender(<CommandPalette entries={off} onRun={onRun} onClose={vi.fn()} />);
+    expect(active()).toHaveTextContent('Change Kernel to Python');
+  });
+
   it('ignores Return while an input method is composing', () => {
     const { onRun } = setup();
     fireEvent.keyDown(screen.getByRole('combobox'), { key: 'Enter', isComposing: true });
