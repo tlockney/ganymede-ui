@@ -17,3 +17,12 @@ Agent and Shortcuts tabs. Kernels was the one still missing.
 - `KernelSpecs(json:)` parses the response, and has tests.
 - Still open in #206: the customizable toolbar. It was left out because
   `.toolbar(id:)` crashed AppKit on Finder opens (#226).
+
+Review follow-up:
+
+- The tab now reloads on `serverURL` together with `model.error`, not on
+  `url`. `start()` clears `serverURL` at once, so the reload doesn't ask a
+  server that is being stopped, and a failed start shows its message.
+- With kernels on a remote, an empty list reads "No kernels listed yet"
+  and is read once more after 5 s. The gateway's kernelspec cache stays
+  empty until it first reaches the remote.
