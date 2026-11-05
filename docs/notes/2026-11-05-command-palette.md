@@ -22,3 +22,7 @@
   and the palette opens once.
 - Rename… switches the same field to a prompt, prefilled with the current
   name, instead of opening a separate dialog.
+- The selection is held by entry (command and argument), not by row
+  index, so Change Kernel rows arriving when kernelspecs load don't move
+  it to another command. If the entry goes away or becomes disabled, the
+  first one that can run is selected (review on #278).

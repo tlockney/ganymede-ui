@@ -16,7 +16,8 @@ type Props = {
  */
 export function CommandPalette({ entries, onRun, onClose }: Props) {
   const [query, setQuery] = useState('');
-  const [active, setActive] = useState(0);
+  /** The selected entry, by `keyOf`; none picks the first that can run. */
+  const [selected, setSelected] = useState<string>();
   const [asking, setAsking] = useState<PaletteEntry>();
   const [text, setText] = useState('');
   const field = useRef<HTMLInputElement>(null);
@@ -24,16 +25,18 @@ export function CommandPalette({ entries, onRun, onClose }: Props) {
   const id = useId();
 
   const shown = useMemo(() => filterEntries(entries, query), [entries, query]);
-  // The first one that can run, after each new filter. Only the query
-  // resets it: new entries from a re-render (a kernel starting) don't
-  // move the selection under the person's ↩.
-  const firstEnabled = () => {
+  // The selection is held by entry, not position, so entries arriving or
+  // going (kernels loading, a kernel starting) don't move it under the
+  // person's ↩. A new filter, or the entry going away or becoming
+  // disabled, falls back to the first one that can run.
+  const active = useMemo(() => {
+    const kept = shown.findIndex(e => keyOf(e) === selected && !e.disabled);
+    if (kept >= 0) return kept;
     const first = shown.findIndex(e => !e.disabled);
     return first < 0 ? 0 : first;
-  };
-  useEffect(() => setActive(firstEnabled()), [query]); // eslint-disable-line react-hooks/exhaustive-deps
-  // A shorter list (an entry gone) keeps the selection on the list.
-  if (active >= shown.length && shown.length) setActive(firstEnabled());
+  }, [shown, selected]);
+  const select = (i: number) => setSelected(shown[i] && keyOf(shown[i]));
+  useEffect(() => setSelected(undefined), [query]);
 
   // Focus goes back where it was when the palette closes, so command-mode
   // keys keep working, unless the command moved it.
@@ -75,7 +78,7 @@ export function CommandPalette({ entries, onRun, onClose }: Props) {
     do {
       next = (next + by + shown.length) % shown.length;
     } while (shown[next]?.disabled);
-    setActive(next);
+    select(next);
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -165,7 +168,7 @@ export function CommandPalette({ entries, onRun, onClose }: Props) {
             >
               {shown.map((entry, i) => (
                 <li
-                  key={`${entry.id}\n${entry.arg ?? ''}`}
+                  key={keyOf(entry)}
                   id={optionId(i)}
                   data-index={i}
                   role="option"
@@ -174,7 +177,7 @@ export function CommandPalette({ entries, onRun, onClose }: Props) {
                   className={`palette-item${i === active ? ' active' : ''}`}
                   // Keeps focus in the field.
                   onMouseDown={e => e.preventDefault()}
-                  onMouseMove={() => !entry.disabled && i !== active && setActive(i)}
+                  onMouseMove={() => !entry.disabled && i !== active && select(i)}
                   onClick={() => choose(entry)}
                 >
                   <span className="palette-label">{entry.label}</span>
@@ -192,4 +195,9 @@ export function CommandPalette({ entries, onRun, onClose }: Props) {
       </div>
     </div>
   );
+}
+
+/** An entry's identity: its command and argument. */
+function keyOf(entry: PaletteEntry): string {
+  return `${entry.id}\n${entry.arg ?? ''}`;
 }
