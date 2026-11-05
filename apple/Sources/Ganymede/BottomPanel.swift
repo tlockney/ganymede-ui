@@ -3,8 +3,8 @@ import AppKit
 import SwiftTerm
 import SwiftUI
 
-/// A notebook window's bottom panel (#248): terminals as tabs under the
-/// notebook, resized from its top edge. Every terminal stays in the view
+/// A notebook window's bottom panel (#248): the notebook kernel's log and
+/// terminals as tabs under the notebook, resized from its top edge. Every terminal stays in the view
 /// tree while the panel is hidden or another tab is selected, so its shell
 /// keeps running; closing a tab ends it.
 struct BottomPanel: View {
@@ -15,6 +15,10 @@ struct BottomPanel: View {
     /// The height of the area the notebook and panel share, for the limit
     /// on how tall the panel gets.
     let available: Double
+    /// The open notebook's kernel, for the Kernel Log tab; nil with none.
+    let kernelID: String?
+    /// The server the page uses, which keeps the kernel's log.
+    let server: ServerEndpoint?
     /// Titles the shells set, by terminal.
     @State private var titles: [PanelTerminal.ID: String] = [:]
     /// The height when a drag of the top edge began.
@@ -37,8 +41,16 @@ struct BottomPanel: View {
             header
             Divider()
             ZStack {
+                KernelLogView(
+                    kernelID: kernelID,
+                    server: server,
+                    active: panel.isShown && panel.showsLog
+                )
+                    .opacity(panel.showsLog ? 1 : 0)
+                    .allowsHitTesting(panel.showsLog)
+                    .accessibilityHidden(!panel.showsLog)
                 ForEach(panel.terminals) { terminal in
-                    let selected = terminal.id == panel.selection
+                    let selected = terminal.id == panel.selection && !panel.showsLog
                     TerminalWindow(
                         target: terminal.target,
                         inPanel: true,
@@ -47,7 +59,7 @@ struct BottomPanel: View {
                         // never go to a hidden shell; a new one gets it.
                         focused: selected && panel.isShown,
                         reveal: {
-                            panel.selection = terminal.id
+                            panel.select(terminal.id)
                             panel.isShown = true
                         },
                         shutDown: { close(terminal.id) }
@@ -56,7 +68,7 @@ struct BottomPanel: View {
                         .allowsHitTesting(selected)
                         .accessibilityHidden(!selected)
                 }
-                if panel.terminals.isEmpty {
+                if panel.terminals.isEmpty && !panel.showsLog {
                     VStack(spacing: 8) {
                         Text("No terminals").foregroundStyle(.secondary)
                         Button("New Terminal") { panel.add(.local(folder: folder)) }
@@ -75,11 +87,19 @@ struct BottomPanel: View {
         HStack(spacing: 2) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 2) {
+                    PanelTab(
+                        title: "Kernel Log",
+                        systemImage: "doc.plaintext",
+                        selected: panel.showsLog,
+                        select: { panel.showLog() },
+                        close: nil
+                    )
                     ForEach(panel.terminals) { terminal in
                         PanelTab(
                             title: titles[terminal.id] ?? model.title(for: terminal.target),
-                            selected: terminal.id == panel.selection,
-                            select: { panel.selection = terminal.id },
+                            systemImage: "terminal",
+                            selected: terminal.id == panel.selection && !panel.showsLog,
+                            select: { panel.select(terminal.id) },
                             close: { close(terminal.id) }
                         )
                     }
@@ -105,7 +125,7 @@ struct BottomPanel: View {
         // keyboard, so hand it to the notebook here, if a terminal had it
         // (the click on × came from this, the key window). Otherwise the
         // next selected terminal takes it.
-        if panel.terminals.count == 1, let window = NSApp.keyWindow,
+        if panel.terminals.count == 1, !panel.showsLog, let window = NSApp.keyWindow,
            window.firstResponder is TerminalView {
             returnKeyboardToPage(in: window)
         }
@@ -113,31 +133,34 @@ struct BottomPanel: View {
     }
 }
 
-/// One terminal's tab in the panel header.
+/// One tab in the panel header: the Kernel Log, or a terminal (with ×).
 private struct PanelTab: View {
     let title: String
+    let systemImage: String
     let selected: Bool
     let select: () -> Void
-    let close: () -> Void
+    let close: (() -> Void)?
     @State private var hovering = false
 
     var body: some View {
         HStack(spacing: 4) {
             Button(action: select) {
-                Label(title, systemImage: "terminal")
+                Label(title, systemImage: systemImage)
                     .labelStyle(.titleAndIcon)
                     .lineLimit(1)
                     .font(.callout.weight(selected ? .semibold : .regular))
             }
             .buttonStyle(.plain)
-            Button(action: close) {
-                Image(systemName: "xmark")
-                    .font(.caption2.weight(.semibold))
+            if let close {
+                Button(action: close) {
+                    Image(systemName: "xmark")
+                        .font(.caption2.weight(.semibold))
+                }
+                .buttonStyle(.borderless)
+                .opacity(selected || hovering ? 1 : 0)
+                .help("Close Terminal")
+                .accessibilityLabel("Close \(title)")
             }
-            .buttonStyle(.borderless)
-            .opacity(selected || hovering ? 1 : 0)
-            .help("Close Terminal")
-            .accessibilityLabel("Close \(title)")
         }
         .padding(.horizontal, 8)
         .padding(.vertical, 3)
@@ -146,6 +169,110 @@ private struct PanelTab: View {
                 .fill(selected ? Color.primary.opacity(0.1) : .clear)
         )
         .onHover { hovering = $0 }
+    }
+}
+
+/// The Kernel Log tab: the open notebook kernel's stdout, stderr and the
+/// server's lines about its process, followed while the tab is on show.
+private struct KernelLogView: View {
+    let kernelID: String?
+    let server: ServerEndpoint?
+    /// On show: only then does it ask the server.
+    let active: Bool
+    @State private var log = KernelLog()
+    @State private var error: String?
+    /// The kernel `log` is for.
+    @State private var lastKernel: String?
+
+    var body: some View {
+        Group {
+            if kernelID == nil || server == nil {
+                note("No kernel is running for this notebook.")
+            } else if log.status == .unsupported {
+                note("This server doesn't keep kernel logs. A newer Ganymede server does.")
+            } else if log.status == .noProcess {
+                note("This kernel runs on a gateway or inside the server, so this server has no log for it.")
+            } else if log.lines.isEmpty {
+                note(error ?? "No log lines yet.")
+            } else {
+                lines
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .task(id: "\(kernelID ?? "")\n\(server?.base.absoluteString ?? "")\n\(active)") {
+            await follow()
+        }
+    }
+
+    private var lines: some View {
+        ScrollViewReader { reader in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 1) {
+                    ForEach(log.lines) { line in
+                        Text(line.text)
+                            .foregroundStyle(color(of: line))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .id(line.seq)
+                    }
+                }
+                .font(.system(.callout, design: .monospaced))
+                .textSelection(.enabled)
+                .padding(8)
+            }
+            .onChange(of: log.after) { last in reader.scrollTo(last, anchor: .bottom) }
+            .onAppear { reader.scrollTo(log.after, anchor: .bottom) }
+        }
+    }
+
+    private func note(_ text: String) -> some View {
+        Text(text)
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .padding()
+    }
+
+    private func color(of line: KernelLog.Line) -> Color {
+        switch line.source {
+        case "stderr": return .red
+        case "host": return .secondary
+        default: return .primary
+        }
+    }
+
+    /// Reads new lines every second while on show. A new kernel starts a
+    /// new log.
+    private func follow() async {
+        guard let kernelID, let server else { return }
+        if lastKernel != kernelID {
+            log = KernelLog()
+            error = nil
+            lastKernel = kernelID
+        }
+        while active, !Task.isCancelled {
+            var more = false
+            do {
+                let request = KernelLog.request(kernel: kernelID, after: log.after, on: server)
+                let (data, response) = try await URLSession.shared.data(for: request)
+                let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+                if code == 404 {
+                    log.markUnsupported()
+                    return
+                }
+                guard (200..<300).contains(code), let page = KernelLog.Page(json: data) else {
+                    throw URLError(.badServerResponse)
+                }
+                error = nil
+                more = log.append(page)
+                if log.status == .noProcess { return }
+            } catch is CancellationError {
+                return
+            } catch {
+                self.error = "Couldn't read the kernel log: \(error.localizedDescription)"
+            }
+            if !more {
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            }
+        }
     }
 }
 

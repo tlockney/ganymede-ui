@@ -54,7 +54,9 @@ describe('native', () => {
       cellType: 'code',
       kernels: [{ name: 'cdp', displayName: 'TypeScript' }],
       backend: { label: 'Ganymede', detail: 'local server' },
-      running: [{ id: 's1', path: 'Io.ipynb', kernel: 'TypeScript', state: 'idle' }],
+      running: [
+        { id: 's1', path: 'Io.ipynb', kernel: 'TypeScript', state: 'idle', kernelId: 'k1' },
+      ],
       recents: ['Io.ipynb'],
       search: null,
       outline: [{ level: 1, text: 'Io', cell: 0 }],
@@ -91,9 +93,9 @@ describe('native', () => {
       { id: 's3', path: 'Ganymede.ipynb', name: '', type: 'notebook', kernel: null },
     ] as unknown as Session.IModel[];
     expect(runningSessions(sessions, specs)).toEqual([
-      { id: 's1', path: 'Io.ipynb', kernel: 'TypeScript', state: 'busy' },
-      { id: 's2', path: 'moons/Europa.ipynb', kernel: 'gone', state: null },
-      { id: 's3', path: 'Ganymede.ipynb', kernel: null, state: null },
+      { id: 's1', path: 'Io.ipynb', kernel: 'TypeScript', state: 'busy', kernelId: 'k1' },
+      { id: 's2', path: 'moons/Europa.ipynb', kernel: 'gone', state: null, kernelId: 'k2' },
+      { id: 's3', path: 'Ganymede.ipynb', kernel: null, state: null, kernelId: null },
     ]);
   });
 

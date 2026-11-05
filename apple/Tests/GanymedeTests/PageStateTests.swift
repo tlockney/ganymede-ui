@@ -32,7 +32,7 @@ final class PageStateTests: XCTestCase {
             "kernelDisplayName": "TypeScript", "kernelMissing": false, "trusted": true,
             "cellType": "code", "kernels": [Any](), "backend": NSNull(),
             "running": [
-                ["id": "s1", "path": "moons/Io.ipynb", "kernel": "TypeScript", "state": "busy"],
+                ["id": "s1", "path": "moons/Io.ipynb", "kernel": "TypeScript", "state": "busy", "kernelId": "k1"],
                 ["id": "s2", "path": "Europa.ipynb", "kernel": NSNull(), "state": NSNull()],
             ],
         ]
@@ -44,6 +44,8 @@ final class PageStateTests: XCTestCase {
         XCTAssertEqual(state?.isRunning("Europa.ipynb"), true)
         XCTAssertEqual(state?.isRunning("Callisto.ipynb"), false)
         XCTAssertEqual(state?.otherSessions.map(\.id), ["s2"])
+        XCTAssertEqual(state?.kernelID, "k1", "the open notebook's")
+        XCTAssertNil(state?.sessions.last?.kernelID, "absent from an older page")
     }
 
     func testReadsTheOutline() {
