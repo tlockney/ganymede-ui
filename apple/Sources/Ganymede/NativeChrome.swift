@@ -483,9 +483,8 @@ struct DownloadCommand: View {
     }
 }
 
-/// The Cell menu. Keys the page already handles (⇧↩, A, B, M, DD, …) are
-/// not menu shortcuts: a menu key equivalent would also fire while typing.
 /// View › Command Palette… (⇧⌘P): the page's palette of every command (#211).
+/// The menu key is fixed: rebinding the palette on the page doesn't change it.
 struct CommandPaletteCommand: View {
     @FocusedObject private var page: PageModel?
 
@@ -496,6 +495,8 @@ struct CommandPaletteCommand: View {
     }
 }
 
+/// The Cell menu. Keys the page already handles (⇧↩, A, B, M, DD, …) are
+/// not menu shortcuts: a menu key equivalent would also fire while typing.
 struct CellMenu: View {
     @FocusedObject private var page: PageModel?
 
