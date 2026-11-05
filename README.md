@@ -96,9 +96,7 @@ storage).
 
 Open a notebook from the sidebar, which also lists running kernels. The
 toolbar runs, interrupts and restarts the kernel, switches kernels, trusts
-the notebook, downloads it, and saves (⌘S). In a narrow window, the
-toolbar buttons that don't fit move into a "…" menu at its end, listed by
-name (unreleased: only from a build of `main`). Keyboard shortcuts follow
+the notebook, downloads it, and saves (⌘S). Keyboard shortcuts follow
 JupyterLab's; press `H` in command mode (or the keyboard button) for the
 full list. Every shortcut can be rebound there, and changes stay in this
 browser. [docs/shortcuts.md](docs/shortcuts.md) lists the defaults.
@@ -107,6 +105,8 @@ browser. [docs/shortcuts.md](docs/shortcuts.md) lists the defaults.
 > **Unreleased.** Available only from a build of `main` (HEAD), not in
 > the latest release.
 
+In a narrow window, toolbar buttons that don't fit move into a "…" menu
+at the toolbar's end, listed by name. Run always stays.
 `⇧⌘P` (`Ctrl+Shift+P`), or the toolbar's command button, opens a command
 palette: type to find any command, kernel or recent notebook, and press
 `↩` to run it.
