@@ -10,6 +10,11 @@ struct GanymedeApp: App {
     #endif
     @StateObject private var model = AppModel.shared
 
+    init() {
+        // First, so a crash while launching is reported too (#318).
+        CrashReports.shared.startIfChosen()
+    }
+
     // Separate bodies, since a `#if` inside a scene builder that starts
     // with a postfix member chain does not parse.
     #if os(macOS)
@@ -90,6 +95,7 @@ struct GanymedeApp: App {
         WindowGroup {
             ContentView()
                 .environmentObject(model)
+                .crashReportsPrompt()
         }
         // Holding ⌘ lists them, and the iPadOS menu bar shows them (#208).
         .commands { IPadCommands() }
@@ -214,6 +220,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             try? await Task.sleep(nanoseconds: 1_000_000_000)
             WorkspaceTabs.launching = false
             AppModel.shared.openRequests.finishLaunching()
+            // Asked once, after the windows are up (#318).
+            CrashReportsPrompt.askIfNeeded()
         }
     }
 

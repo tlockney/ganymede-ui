@@ -84,7 +84,8 @@ jobs:
     timeout-minutes: 60
     env:
       # The tlockney/ganymede tag or commit whose ganymede-ffi the app links.
-      GANYMEDE_REF: v0.5.0
+      # main after ganymede#390 (ganymede-ffi panic callback, #318); v0.6.0 once released.
+      GANYMEDE_REF: 3f7a976cc0b25516581cdff455c01d926aeeba86
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

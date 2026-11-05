@@ -32,7 +32,7 @@ struct SettingsWindow: View {
     }
 }
 
-/// General: which app opens notebooks.
+/// General: which app opens notebooks, and crash reports (#318).
 private struct GeneralSettings: View {
     var body: some View {
         Form {
@@ -44,6 +44,7 @@ private struct GeneralSettings: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            CrashReportsSettings()
         }
         .formStyle(.grouped)
         .padding()
