@@ -217,6 +217,28 @@ struct PageState: Decodable, Equatable {
     var hasKernel: Bool { status != nil && status != "none" }
 }
 
+/// How many views want the kernels' memory from a page (#241): the
+/// Running list and the kernel popover. The page is told `watch-memory on`
+/// when the first starts and `off` when the last stops.
+struct MemoryWatch: Equatable {
+    private(set) var watchers = 0
+
+    /// A view starts or stops watching; the `watch-memory` argument to
+    /// send, or nil when the page needn't hear of it.
+    mutating func change(watching: Bool) -> String? {
+        if watching {
+            watchers += 1
+            return watchers == 1 ? "on" : nil
+        }
+        guard watchers > 0 else { return nil }
+        watchers -= 1
+        return watchers == 0 ? "off" : nil
+    }
+
+    /// What a page loaded again needs to hear: nothing when nobody watches.
+    var onReload: String? { watchers > 0 ? "on" : nil }
+}
+
 /// The page's commands, as `window.ganymede.command(id, arg)` runs them
 /// (`PAGE_COMMANDS` and the shortcuts table's ids in `src/`).
 enum PageCommand {

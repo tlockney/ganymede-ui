@@ -608,14 +608,27 @@ final class PageModel: ObservableObject {
     /// page is still loading (#209).
     private var pending: [String] = []
 
+    /// Views that want the kernels' memory (#241).
+    private var memoryWatch = MemoryWatch()
+
     func update(_ state: PageState) {
         if state != self.state { self.state = state }
         // Ready once it is connected: before that, `open` and
         // `new-notebook` have no backend to act on.
         if !ready, state.backend != nil {
             ready = true
+            // A page loaded again starts without being asked.
+            if let arg = memoryWatch.onReload, !pending.contains(PageCommand.script("watch-memory", arg: arg)) {
+                pending.append(PageCommand.script("watch-memory", arg: arg))
+            }
             flush()
         }
+    }
+
+    /// The Running list or kernel popover shows (or goes): the page reads
+    /// each kernel's memory while any of them shows (#241).
+    func watchMemory(_ watching: Bool) {
+        if let arg = memoryWatch.change(watching: watching) { run("watch-memory", arg: arg) }
     }
 
     /// Runs one of the page's commands (`PageCommand`), once the page is

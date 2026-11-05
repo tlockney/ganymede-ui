@@ -111,7 +111,7 @@ struct ContentView: View {
             workspace
         }
         .toolbar {
-            NotebookToolbar(page: pageModel, document: document, folder: sidebarRoot)
+            NotebookToolbar(page: pageModel, document: document, folder: sidebarRoot, panel: panel)
             ToolbarItem {
                 Button {
                     panel.toggle(startingOn: .local(folder: sidebarRoot))
