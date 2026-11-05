@@ -32,13 +32,14 @@ export function plainText(markdown: string): string {
   const last = () => 0xe000 + kept.length;
   return (
     markdown
-      // One pass: a backslash inside a code span is code, not an escape.
+      // One pass, left to right, as CommonMark reads them: a backslash
+      // inside a code span or an autolink is text, not an escape.
+      // Autolinks (URI or email) keep their address as the text.
       .replace(
-        /\\([\\`*_{}[\]()#+\-.!~<>])|(`+)(.+?)\2/g,
-        (_, c?: string, _ticks?: string, code?: string) => keep(c ?? code ?? ''),
+        /\\([\\`*_{}[\]()#+\-.!~<>])|(`+)(.+?)\2|<([A-Za-z][A-Za-z0-9+.-]{1,31}:[^\s<>]*|[^\s<>@\\]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*)>/g,
+        (_, c?: string, _ticks?: string, code?: string, link?: string) =>
+          keep(c ?? code ?? link ?? ''),
       )
-      // Autolinks keep their address as the text.
-      .replace(/<([A-Za-z][A-Za-z0-9+.-]{1,31}:[^\s<>]*)>/g, (_, url: string) => keep(url))
       .replace(/!?\[([^\]]*)\]\([^)]*\)/g, '$1')
       .replace(/!?\[([^\]]*)\]\[[^\]]*\]/g, '$1')
       // Tags only: `x < 5 and y > 3` stays.

@@ -78,6 +78,8 @@ describe('plainText', () => {
 
   it('keeps an autolink’s address', () => {
     expect(plainText('See <https://jupyter.org/a_b_c>')).toBe('See https://jupyter.org/a_b_c');
+    expect(plainText('See <https://a.org/x\\_y>')).toBe('See https://a.org/x\\_y');
+    expect(plainText('Mail <io@jupiter.org>')).toBe('Mail io@jupiter.org');
   });
 
   it('drops tags only, not comparisons', () => {
