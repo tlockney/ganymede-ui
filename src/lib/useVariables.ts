@@ -67,7 +67,13 @@ export function useVariables(
 
   // On showing, on a new kernel, and when a run ends (the kernel goes idle).
   useEffect(() => {
-    if (!active) return;
+    if (!active) {
+      // Nothing is read while hidden, so the kernel may change unseen:
+      // shown again, it says it is reading rather than keep old rows.
+      generation.current++;
+      setState(s => (s.kind === 'loading' ? s : { kind: 'loading' }));
+      return;
+    }
     if (!kernel) {
       generation.current++;
       setState({ kind: 'no-kernel' });
@@ -113,6 +119,13 @@ export function useVariables(
     toggle,
     refresh: load,
   };
+}
+
+/** The node at `path` in `nodes`, or undefined. Pure. */
+export function nodeAt(nodes: VariableNode[], path: string[]): VariableNode | undefined {
+  const node = nodes.find(n => n.name === path[0]);
+  if (!node || path.length === 1) return node;
+  return nodeAt(node.children ?? [], path.slice(1));
 }
 
 /** `nodes` with the node at `path` given `children`. Pure. */

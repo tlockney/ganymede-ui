@@ -39,6 +39,8 @@ import {
   postState,
   fileMove,
   pageSearch,
+  pageVariables,
+  variablePath,
   runningSessions,
   searchRequest,
   type RunningSession,
@@ -61,6 +63,7 @@ import { paletteEntries } from './lib/palette';
 import { CommandPalette } from './components/CommandPalette';
 import { VariablesPanel } from './components/VariablesPanel';
 import { useKernelMemory } from './lib/kernel-usage';
+import { nodeAt, useVariables } from './lib/useVariables';
 import { useFileDrop } from './lib/file-drop';
 import { copySample } from './lib/sample';
 
@@ -169,6 +172,8 @@ export function App() {
   const [variablesOpen, setVariablesOpen] = useState(false);
   /** The app's Running list shows (#241): the page asks for each kernel's memory for it. */
   const [watchMemory, setWatchMemory] = useState(false);
+  /** The app's inspector shows its Variables view (#249): the page reads them for it. */
+  const [appVariables, setAppVariables] = useState(false);
   const otherSheetShown = useRef(false);
   const closeShortcuts = useCallback(() => setShortcutsOpen(false), []);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -386,6 +391,19 @@ export function App() {
         if (arg !== 'on' && arg !== 'off') return false;
         setWatchMemory(arg === 'on');
         return true;
+      case 'inspect-variables':
+        if (arg !== 'on' && arg !== 'off') return false;
+        setAppVariables(arg === 'on');
+        return true;
+      case 'toggle-variable': {
+        const path = variablePath(arg);
+        const vars = appVariablesRef.current;
+        const node =
+          path && vars.state.kind === 'ready' ? nodeAt(vars.state.variables, path) : undefined;
+        if (!node) return false;
+        await vars.toggle(node);
+        return true;
+      }
       case 'connect':
         setSheetOpen(true);
         return true;
@@ -472,6 +490,13 @@ export function App() {
   const runningKey = JSON.stringify(running);
   const shown = !!openPath && controller?.path === openPath ? controller : undefined;
   const showVariables = variablesOpen && !!shown;
+  // The app's inspector's Variables view (#249), for the notebook shown.
+  const inspected = useVariables(shown?.kernel, shown?.status, appVariables);
+  const appVariablesRef = useRef(inspected);
+  appVariablesRef.current = inspected;
+  const variablesKey = appVariables
+    ? JSON.stringify(pageVariables(inspected.state, inspected.expanded))
+    : 'null';
   // The app's sidebar's search and Recents (#240): the page's sidebar has
   // its own, so these run only with `chrome=native`.
   const [nativeSearch, setNativeSearch] = useState<SearchRequest>({ query: '' });
@@ -520,8 +545,9 @@ export function App() {
       recents: JSON.parse(recentsKeyed) as string[],
       search: JSON.parse(searchKey) as PageState['search'],
       outline: shown?.outline ?? [],
+      variables: JSON.parse(variablesKey) as PageState['variables'],
     });
-  }, [openPath, dirty, shown, specs, backend, runningKey, recentsKeyed, searchKey]);
+  }, [openPath, dirty, shown, specs, backend, runningKey, recentsKeyed, searchKey, variablesKey]);
 
   // ⌘S / Ctrl+S saves, as in any document app; ⇧⌘P opens the command
   // palette (#211).

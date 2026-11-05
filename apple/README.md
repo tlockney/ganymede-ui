@@ -125,6 +125,18 @@ built from the same sources (see
   > **Unreleased.** Available only from a build of `main` (HEAD), not in
   > the latest release.
 
+- The inspector on the window's right, shown with View > Show Inspector
+  (⌥⌘0) or the toolbar button, has two tabs: Outline, the open
+  notebook's headings, and Variables, what its cells defined (name, type
+  and a short value; objects expand a level at a time), read again after
+  each run from a kernel that speaks the debugger protocol. Drag its
+  left edge to resize it. The window keeps whether it shows, its tab and
+  its width.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release.
+
 - Other files in the sidebar (not notebooks) open in a text editor
   window: the system text view with syntax highlighting for Python,
   JavaScript, TypeScript, JSON, Markdown, shell, YAML and TOML, line

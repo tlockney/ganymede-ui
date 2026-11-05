@@ -27,6 +27,7 @@ struct GanymedeApp: App {
             SidebarCommands()
             CommandGroup(after: .sidebar) {
                 PanelCommands(model: model)
+                InspectorCommands()
                 CommandPaletteCommand()
             }
             CommandGroup(replacing: .newItem) {

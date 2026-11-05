@@ -60,6 +60,16 @@ final class KernelLogTests: XCTestCase {
         XCTAssertEqual(log.status, .noProcess)
     }
 
+    func testTellsAMissingRouteFromAnUnknownKernel() {
+        var log = KernelLog()
+        log.markNotFound(body: Data(#"{"message": "Kernel does not exist: k1", "reason": null}"#.utf8))
+        XCTAssertEqual(log.status, .unknownKernel)
+        log.markNotFound(body: Data("<html>Not Found</html>".utf8))
+        XCTAssertEqual(log.status, .unsupported)
+        log.markNotFound(body: Data())
+        XCTAssertEqual(log.status, .unsupported)
+    }
+
     func testAsksForTheLinesAfterTheLastOneWithTheToken() throws {
         let server = ServerEndpoint(base: URL(string: "http://127.0.0.1:8888/base")!, token: "abc")
         let request = KernelLog.request(kernel: "k1", after: 7, on: server)

@@ -89,6 +89,39 @@ final class PageStateTests: XCTestCase {
         XCTAssertEqual(PageState(body: body)?.headings, [])
     }
 
+    func testReadsTheVariables() throws {
+        var body: [String: Any] = [
+            "path": "Io.ipynb", "dirty": false, "status": "idle", "kernel": "cdp",
+            "kernelDisplayName": "TypeScript", "kernelMissing": false, "trusted": true,
+            "cellType": "code", "kernels": [Any](), "backend": NSNull(),
+            "variables": [
+                "state": "ready", "message": NSNull(),
+                "rows": [
+                    ["name": "a", "type": "object", "value": "{…}", "path": ["a"], "depth": 0,
+                     "expandable": true, "expanded": true],
+                    ["name": "x", "type": "number", "value": "1", "path": ["a", "x"], "depth": 1,
+                     "expandable": false, "expanded": false],
+                ],
+            ],
+        ]
+        let variables = try XCTUnwrap(PageState(body: body)?.variables)
+        XCTAssertEqual(variables.state, "ready")
+        XCTAssertNil(variables.message)
+        XCTAssertEqual(variables.rows.map(\.name), ["a", "x"])
+        XCTAssertEqual(variables.rows[1].depth, 1)
+        XCTAssertNotEqual(variables.rows[0].id, variables.rows[1].id)
+        // The `toggle-variable` argument is the row's path as JSON.
+        let path = PageState.variablePath(variables.rows[1])
+        XCTAssertEqual(try JSONSerialization.jsonObject(with: Data(path.utf8)) as? [String], ["a", "x"])
+        // Null while the inspector doesn't show them, and absent from an
+        // older page.
+        body["variables"] = NSNull()
+        XCTAssertNotNil(PageState(body: body))
+        XCTAssertNil(PageState(body: body)?.variables)
+        body["variables"] = nil
+        XCTAssertNil(PageState(body: body)?.variables)
+    }
+
     func testReadsTheSearchAndRecents() throws {
         let body: [String: Any] = [
             "path": NSNull(), "dirty": false, "status": NSNull(), "kernel": NSNull(),

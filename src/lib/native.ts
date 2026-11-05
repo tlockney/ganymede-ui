@@ -1,6 +1,7 @@
 import type { KernelSpec, Session } from '@jupyterlab/services';
 import type { SearchState } from './search';
 import type { OutlineItem } from './outline';
+import type { VariableNode, VariablesState } from './useVariables';
 /**
  * The Mac app's document window (#132): the page tells it which notebook is
  * open and whether it has unsaved edits, through the `document` script
@@ -38,6 +39,10 @@ export type NativeHooks = {
  * `watch-memory` takes `on` or `off`: whether the app's Running list shows,
  * so the page asks the server for each kernel's memory and posts it in
  * `RunningSession.memory` (#241).
+ * `inspect-variables` takes `on` or `off`: whether the app's inspector
+ * shows the Variables view, so the page reads the variables and posts them
+ * as `PageState.variables` (#249). `toggle-variable` expands or collapses
+ * a row: its `path`, as JSON.
  */
 export const PAGE_COMMANDS = {
   open: 'arg',
@@ -67,6 +72,8 @@ export const PAGE_COMMANDS = {
   'file-moved': 'arg',
   'go-to-cell': 'arg',
   'watch-memory': 'arg',
+  'inspect-variables': 'arg',
+  'toggle-variable': 'arg',
 } as const;
 
 /** What the app's sidebar searches for (#240): the `search` command's argument. */
@@ -146,7 +153,66 @@ export type PageState = {
   search: PageSearch | null;
   /** The open notebook's headings, for the app's Outline (#212); empty with none. */
   outline: OutlineItem[];
+  /** The kernel's variables while the app's inspector shows them (#249), or null. */
+  variables: PageVariables | null;
 };
+
+/** The Variables view's rows, flattened in order, for the app's inspector (#249). */
+export type PageVariables = {
+  state: VariablesState['kind'];
+  /** What went wrong, with `state` `error`. */
+  message: string | null;
+  rows: PageVariable[];
+};
+
+export type PageVariable = {
+  name: string;
+  type: string;
+  value: string;
+  /** Its names from the top: the `toggle-variable` command's argument. */
+  path: string[];
+  depth: number;
+  /** It has members to show. */
+  expandable: boolean;
+  expanded: boolean;
+};
+
+/** `PageState.variables` from the Variables hook's state. Pure. */
+export function pageVariables(
+  state: VariablesState,
+  expanded: (node: VariableNode) => boolean,
+): PageVariables {
+  const rows: PageVariable[] = [];
+  const add = (nodes: VariableNode[], depth: number) => {
+    for (const node of nodes) {
+      const open = !!node.variablesReference && expanded(node);
+      rows.push({
+        name: node.name,
+        type: node.type,
+        value: node.value,
+        path: node.path,
+        depth,
+        expandable: !!node.variablesReference,
+        expanded: open,
+      });
+      if (open && node.children) add(node.children, depth + 1);
+    }
+  };
+  if (state.kind === 'ready') add(state.variables, 0);
+  return { state: state.kind, message: state.kind === 'error' ? state.message : null, rows };
+}
+
+/** The `toggle-variable` command's argument: a row's path, or null when it isn't one. */
+export function variablePath(arg: string | undefined): string[] | null {
+  if (!arg) return null;
+  try {
+    const value: unknown = JSON.parse(arg);
+    if (!Array.isArray(value) || !value.length) return null;
+    return value.every(v => typeof v === 'string') ? (value as string[]) : null;
+  } catch {
+    return null;
+  }
+}
 
 /** A sidebar search's results, as the page's sidebar shows them (#215, #240). */
 export type PageSearch = {
