@@ -410,7 +410,7 @@ final class AppModel: ObservableObject {
         return folder
     }
 
-    /// File > Open…: notebooks to open, each in its own window.
+    /// File > Open…: notebooks to open, each in a new tab.
     func chooseNotebooks() -> [URL] {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = false

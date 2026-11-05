@@ -21,6 +21,9 @@ struct ContentView: View {
     @StateObject private var pageModel = PageModel()
     /// This window, for the Finder's open requests (#228).
     @State private var windowID = UUID()
+    /// File › New Tab or New Window, when this window is the one they
+    /// opened (#247): its folder, and whether it stands alone.
+    @State private var request: WorkspaceTabs.Request?
     /// The bottom panel's terminals (#248), and whether it shows and how
     /// tall it is, kept with the window across launches.
     @StateObject private var panel = PanelController()
@@ -29,9 +32,13 @@ struct ContentView: View {
 
     init(target: Binding<WindowTarget?>) {
         _target = target
-        let loaded = target.wrappedValue ?? .folder(AppModel.shared.root)
+        // Read on every init, but `@State` keeps only the first: the one
+        // made as this window opens.
+        let request = target.wrappedValue == nil ? WorkspaceTabs.pending : nil
+        let loaded = target.wrappedValue ?? .folder(request?.folder ?? AppModel.shared.root)
         _loaded = State(initialValue: loaded)
         _sidebarRoot = State(initialValue: loaded.folder)
+        _request = State(initialValue: request)
     }
     #endif
     #if os(iOS)
@@ -84,7 +91,7 @@ struct ContentView: View {
         .navigationTitle((target ?? loaded).title)
         .focusedSceneValue(\.windowFolder, sidebarRoot)
         // Notebooks opened from the Finder (#228): the first window to see
-        // them takes them. Each opens in its own window (or brings forward
+        // them takes them. Each opens in a new tab (or brings forward
         // the one showing it), except that the window the app opened on
         // nothing at launch shows the first itself. Later, so the change
         // to `pending` is not made while views update.
@@ -93,6 +100,10 @@ struct ContentView: View {
             DispatchQueue.main.async(execute: takeOpenRequests)
         }
         .onAppear {
+            if let request {
+                WorkspaceTabs.take(request)
+                if target == nil { target = .folder(request.folder) }
+            }
             model.openRequests.register(windowID, blank: target == nil)
             model.openRequests.openWindow = { [openWindow] in openWindow(value: $0) }
         }
@@ -100,7 +111,11 @@ struct ContentView: View {
             model.openRequests.register(windowID, blank: target == nil)
         }
         .onDisappear { model.openRequests.unregister(windowID) }
-        .background(WindowReader { document.attach(to: $0) })
+        // Notebook windows are tabs too (#247).
+        .background(WindowReader { window in
+            document.attach(to: window)
+            WorkspaceTabs.join(window, alone: request?.alone ?? false)
+        })
         .focusedSceneObject(document)
         .focusedSceneObject(pageModel)
         .focusedSceneObject(panel)

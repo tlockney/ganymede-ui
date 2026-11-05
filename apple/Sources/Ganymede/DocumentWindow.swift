@@ -204,6 +204,18 @@ struct WindowReader: NSViewRepresentable {
     }
 }
 
+/// Puts the view's window among the app's tabs (#247).
+struct WorkspaceTab: ViewModifier {
+    func body(content: Content) -> some View {
+        content.background(WindowReader { WorkspaceTabs.join($0) })
+    }
+}
+
+extension View {
+    func workspaceTab() -> some View {
+        modifier(WorkspaceTab())
+    }
+}
 /// File > Save (⌘S), for the front notebook or text file window.
 struct SaveCommand: View {
     @FocusedObject private var document: PageDocument?

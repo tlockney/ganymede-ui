@@ -16,7 +16,7 @@ struct GanymedeApp: App {
     var body: some Scene {
         // One window per notebook or folder (`WindowTarget`); none shows
         // the last folder. Opening one that is already open brings it front.
-        WindowGroup(for: WindowTarget.self) { $target in
+        WindowGroup(id: WorkspaceTabs.sceneID, for: WindowTarget.self) { $target in
             ContentView(target: $target)
                 .environmentObject(model)
         }
@@ -62,15 +62,18 @@ struct GanymedeApp: App {
                 }
             }
         }
+        // Terminals and text files open as tabs of the front window (#247).
         WindowGroup("Terminal", for: TerminalRequest.self) { $request in
             TerminalWindow(target: request?.target ?? .local(folder: nil))
                 .environmentObject(model)
+                .workspaceTab()
         }
         .handlesExternalEvents(matching: [])
         // Text files opened from a notebook window's sidebar (#122).
         WindowGroup("Editor", for: EditorRequest.self) { $request in
             if let request {
                 EditorWindow(request: request)
+                    .workspaceTab()
             }
         }
         .handlesExternalEvents(matching: [])
@@ -99,7 +102,7 @@ struct GanymedeApp: App {
 }
 
 #if os(macOS)
-/// File > Open… and Open Folder…, each into its own window.
+/// File > Open… and Open Folder…, each into a new tab of the front window.
 struct OpenCommands: View {
     @Environment(\.openWindow) private var openWindow
     @ObservedObject var model: AppModel
@@ -188,6 +191,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppModel.shared.openRequests.finishLaunching()
+        // Windows the system restores have come back by now (#247).
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            WorkspaceTabs.launching = false
+        }
     }
 
     /// Asks to save notebooks and text files with unsaved edits first.

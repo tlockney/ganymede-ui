@@ -1,5 +1,6 @@
 #if os(macOS)
 import AppKit
+import SwiftTerm
 import SwiftUI
 
 /// A notebook window's bottom panel (#248): terminals as tabs under the
@@ -96,9 +97,11 @@ struct BottomPanel: View {
     private func close(_ id: PanelTerminal.ID) {
         titles[id] = nil
         // The last terminal's view goes away rather than giving up the
-        // keyboard, so hand it to the notebook here. Otherwise the next
-        // selected terminal takes it.
-        if panel.terminals.count == 1, let window = NSApp.keyWindow {
+        // keyboard, so hand it to the notebook here, if a terminal had it
+        // (the click on × came from this, the key window). Otherwise the
+        // next selected terminal takes it.
+        if panel.terminals.count == 1, let window = NSApp.keyWindow,
+           window.firstResponder is TerminalView {
             returnKeyboardToPage(in: window)
         }
         panel.close(id)
@@ -191,7 +194,7 @@ private struct ResizeEdge: View {
 
 /// View › Show/Hide Terminal Panel (⌃`), for the front notebook window.
 /// As a menu shortcut it comes before the terminal, so programs in a panel
-/// terminal don't get ⌃` (NUL); terminal windows of their own still do.
+/// terminal don't get ⌃` (NUL); terminals in a tab of their own still do.
 struct PanelCommands: View {
     @FocusedObject private var panel: PanelController?
     @FocusedValue(\.windowFolder) private var folder

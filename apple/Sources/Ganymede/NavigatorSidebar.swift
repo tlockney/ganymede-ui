@@ -183,7 +183,7 @@ private struct SearchNavigator: View {
         .contextMenu {
             Button("Open") { open(match.entry) }
             if match.entry.isNotebook || match.entry.isDirectory {
-                Button("Open in New Window") { openWindow(value: WindowTarget(opening: match.entry.url)) }
+                Button("Open in New Tab") { openWindow(value: WindowTarget(opening: match.entry.url)) }
             }
             Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([match.entry.url]) }
         }
@@ -288,7 +288,7 @@ private struct RecentsNavigator: View {
                 .buttonStyle(.plain)
                 .contextMenu {
                     Button("Open") { page.run("open", arg: FolderEntry.serverPath(url)) }
-                    Button("Open in New Window") { openWindow(value: WindowTarget(opening: url)) }
+                    Button("Open in New Tab") { openWindow(value: WindowTarget(opening: url)) }
                     Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
                 }
             }

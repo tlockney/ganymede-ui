@@ -492,12 +492,11 @@ selection, whether the panel shows and its height, and `BottomPanel` draws
 a `TerminalWindow` per terminal as a tab. Hidden terminals stay in the
 view tree, so their sessions keep running; only the one on show has the
 keyboard. File > New Terminal adds one to the panel, and File > New
-Terminal Window opens one in a window of its own. A
+Terminal Tab opens one as a tab of the window (#247). A
 `JupyterTerminalTransport` creates a terminal through `/api/terminals` on
 the app's own server, or on a remote's server, and speaks terminado's
-websocket protocol to it. Closing the tab or window deletes the terminal.
-For
-a remote with SSH, `ProcessTerminalTransport` runs `/usr/bin/ssh` in a
+websocket protocol to it. Closing the terminal's tab deletes it. For a
+remote with SSH, `ProcessTerminalTransport` runs `/usr/bin/ssh` in a
 pseudo-terminal the app spawns (SwiftTerm's `LocalProcess`), so OpenSSH
 does everything it does in Terminal.app: ssh-config aliases, the agent,
 ProxyJump, and asking to trust a new host key. iOS can't run a process,

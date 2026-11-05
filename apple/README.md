@@ -18,9 +18,9 @@ built from the same sources (see
   iPad it serves the notebook folder. The web view loads the URL; the
   token becomes a login cookie.
 - On the Mac, double-clicking an `.ipynb` file in the Finder (or Open
-  With > Ganymede) opens it in its own window; opening it again brings
-  that window to the front. File > Open… (⌘O) opens notebooks, File >
-  Open Folder… (⇧⌘O) a folder, each in a new window; a new window (⌥⌘N)
+  With > Ganymede) opens it in a new tab (see tabs below); opening it
+  again brings that tab to the front. File > Open… (⌘O) opens notebooks,
+  File > Open Folder… (⇧⌘O) a folder, each in a new tab; a new window (⌥⌘N)
   shows the last folder opened, your home folder at first.
 - A notebook window behaves like a document window. Its title bar has the
   file's icon (drag it, or ⌘-click it for the folders above) and a dot
@@ -41,7 +41,7 @@ built from the same sources (see
 - The window's sidebar, toolbar and menus are the app's own (macOS
   only; the page shows just the notebook). The sidebar has five tabs
   (⌘1 to ⌘5). Files lists the window's folder as a tree; right-click an
-  item to open it in a new window, show it in the Finder, make a notebook
+  item to open it in a new tab, show it in the Finder, make a notebook
   or folder there, or move it to the Trash. A dot marks notebooks whose
   kernel is running. Search finds file and folder names under the
   window's folder and, with "Search notebook contents" ticked, the text
@@ -51,13 +51,26 @@ built from the same sources (see
   empty for now. The toolbar saves, runs cells, interrupts and restarts the
   kernel, inserts cells, sets the cell type, picks the kernel and trusts
   the notebook. File › New Notebook (⌘N) makes one in the window's
-  folder, New Window (⌥⌘N) opens another window, and Rename… renames the
+  folder, New Tab (⌘T) opens another tab, New Window (⌥⌘N) a window of its own, and Rename… renames the
   open notebook (saving it first; its kernel keeps running). The Cell menu runs, inserts, moves and deletes cells and opens
   Find; the Kernel menu interrupts (⌘.), restarts, changes and trusts.
 
   > [!NOTE]
   > **Unreleased.** Available only from a build of `main` (HEAD), not in
   > the latest release, which uses the page's own sidebar and toolbar.
+
+- Notebook, text file and terminal windows open as tabs of the front
+  window, with the system's window tabs: drag a tab out to make it a
+  window, or choose Window › Merge All Windows to bring windows back
+  together. Each tab keeps its own toolbar. Right-click a notebook or
+  folder in the sidebar and choose Open in New Tab. Notebooks opened from
+  the Finder or File › Open… open as tabs too. Ganymede uses tabs whatever
+  System Settings › Desktop & Dock › "Prefer tabs when opening
+  documents" says; windows restored at launch come back as they were.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release, where each opens in a window of its own.
 
 - Downloads from the page (links with a `download` attribute, files an
   output offers) ask where to save, starting in Downloads.
@@ -84,13 +97,13 @@ built from the same sources (see
   folder, or the folder it shows) if it has none; drag its top edge to
   resize it. Hiding the panel keeps its shells running; closing a tab
   ends that one. Since `` ⌃` `` toggles the panel, programs in a panel
-  terminal don't receive it (a terminal window of its own still does).
+  terminal don't receive it (a terminal in a tab of its own still does).
   File > New Terminal (`` ⌃⇧` ``) adds a shell to the panel, and
   File > New Terminal On, or the panel's + menu, one on a remote's
   server, if it has terminals (Ganymede with terminals, or
   `jupyter server`), or over SSH with `/usr/bin/ssh`, so `~/.ssh/config`,
-  the SSH agent and known_hosts apply. File > New Terminal Window opens a
-  shell in a window of its own.
+  the SSH agent and known_hosts apply. File > New Terminal Tab opens a
+  shell in a tab of its own.
 
   > [!NOTE]
   > **Unreleased.** Available only from a build of `main` (HEAD), not in
