@@ -331,6 +331,12 @@ export function App() {
         setNativeSearch(request);
         return true;
       }
+      case 'go-to-cell': {
+        // A heading in the app's Outline (#212): the cell's index.
+        const index = Number(arg);
+        if (!c || arg === undefined || arg === '' || !Number.isInteger(index)) return false;
+        return c.goToCell(index);
+      }
       case 'clear-recents':
         if (!backend) return false;
         clearRecents(recentsKey(backend.config));
@@ -475,6 +481,7 @@ export function App() {
       running: JSON.parse(runningKey) as RunningSession[],
       recents: JSON.parse(recentsKeyed) as string[],
       search: JSON.parse(searchKey) as PageState['search'],
+      outline: shown?.outline ?? [],
     });
   }, [openPath, dirty, shown, specs, backend, runningKey, recentsKeyed, searchKey]);
 
@@ -543,6 +550,11 @@ export function App() {
             // Closes once the notebook opens, so a failure leaves the sidebar up.
             onNew={dir => void newNotebook(dir).then(opened => opened && afterPick())}
             onDirChange={setFolder}
+            outline={shown?.outline}
+            onOutline={item => {
+              shown?.goToCell(item.cell);
+              if (sidebarFloats) setSidebarOpen(false);
+            }}
             onClose={sidebarFloats ? () => setSidebarOpen(false) : undefined}
             onConnect={() => setSheetOpen(true)}
             onSettings={() => setSettingsOpen(true)}

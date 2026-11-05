@@ -57,6 +57,7 @@ describe('native', () => {
       running: [{ id: 's1', path: 'Io.ipynb', kernel: 'TypeScript', state: 'idle' }],
       recents: ['Io.ipynb'],
       search: null,
+      outline: [{ level: 1, text: 'Io', cell: 0 }],
     };
     postState(state);
     const postMessage = vi.fn();
