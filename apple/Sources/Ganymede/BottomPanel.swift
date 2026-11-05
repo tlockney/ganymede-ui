@@ -183,6 +183,9 @@ private struct KernelLogView: View {
     @State private var error: String?
     /// The kernel `log` is for.
     @State private var lastKernel: String?
+    /// The end of the log is in view: new lines scroll it along, as a
+    /// terminal does. Scrolled up, it stays put.
+    @State private var atEnd = true
 
     var body: some View {
         Group {
@@ -190,6 +193,8 @@ private struct KernelLogView: View {
                 note("No kernel is running for this notebook.")
             } else if log.status == .unsupported {
                 note("This server doesn't keep kernel logs. A newer Ganymede server does.")
+            } else if log.status == .unknownKernel {
+                note("The server no longer has this kernel's log.")
             } else if log.status == .noProcess {
                 note("This kernel runs on a gateway or inside the server, so this server has no log for it.")
             } else if log.lines.isEmpty {
@@ -214,15 +219,42 @@ private struct KernelLogView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .id(line.seq)
                     }
+                    SwiftUI.Color.clear
+                        .frame(height: 1)
+                        .id(Self.end)
+                        .onAppear { atEnd = true }
+                        .onDisappear { atEnd = false }
                 }
                 .font(.system(.callout, design: .monospaced))
                 .textSelection(.enabled)
                 .padding(8)
             }
-            .onChange(of: log.after) { last in reader.scrollTo(last, anchor: .bottom) }
-            .onAppear { reader.scrollTo(log.after, anchor: .bottom) }
+            // A server that stops answering shouldn't look like a quiet
+            // kernel. An inset rather than a bar above the scroll view, so
+            // the view keeps its size and a log at its end stays following,
+            // and the first lines start below the bar instead of under it.
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if let error {
+                    VStack(spacing: 0) {
+                        Label(error, systemImage: "exclamationmark.triangle")
+                            .font(.callout)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(.bar)
+                        Divider()
+                    }
+                }
+            }
+            .onChange(of: log.after) { _ in
+                if atEnd { reader.scrollTo(Self.end, anchor: .bottom) }
+            }
+            .onAppear { reader.scrollTo(Self.end, anchor: .bottom) }
         }
     }
+
+    private static let end = "end"
 
     private func note(_ text: String) -> some View {
         Text(text)
@@ -257,7 +289,7 @@ private struct KernelLogView: View {
                 if Task.isCancelled { return }
                 let code = (response as? HTTPURLResponse)?.statusCode ?? 0
                 if code == 404 {
-                    log.markUnsupported()
+                    log.markNotFound(body: data)
                     return
                 }
                 guard (200..<300).contains(code), let page = KernelLog.Page(json: data) else {
