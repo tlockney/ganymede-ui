@@ -48,6 +48,27 @@ final class PageStateTests: XCTestCase {
         XCTAssertNil(state?.sessions.last?.kernelID, "absent from an older page")
     }
 
+    func testReadsTheKernelsMemory() {
+        let body: [String: Any] = [
+            "path": "Io.ipynb", "dirty": false, "status": "idle", "kernel": "cdp",
+            "kernelDisplayName": "TypeScript", "kernelMissing": false, "trusted": true,
+            "cellType": "code", "kernels": [Any](), "backend": NSNull(),
+            "running": [
+                ["id": "s1", "path": "Io.ipynb", "kernel": "TypeScript", "state": "idle",
+                 "kernelId": "k1", "memory": 61_865_984],
+                ["id": "s2", "path": "Europa.ipynb", "kernel": "TypeScript", "state": "idle",
+                 "kernelId": "k2", "memory": NSNull()],
+                // A page from before #241 sends none.
+                ["id": "s3", "path": "Callisto.ipynb", "kernel": NSNull(), "state": NSNull()],
+            ],
+        ]
+        let sessions = PageState(body: body)?.sessions ?? []
+        XCTAssertEqual(sessions.map(\.memory), [61_865_984, nil, nil])
+        XCTAssertNotNil(sessions[0].memoryLabel)
+        XCTAssertTrue(sessions[0].memoryLabel?.contains("MB") ?? false, sessions[0].memoryLabel ?? "")
+        XCTAssertNil(sessions[1].memoryLabel)
+    }
+
     func testReadsTheOutline() {
         var body: [String: Any] = [
             "path": "Io.ipynb", "dirty": false, "status": "idle", "kernel": "cdp",

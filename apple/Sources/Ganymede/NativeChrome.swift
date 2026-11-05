@@ -265,25 +265,7 @@ struct RunningList: View {
         List {
             Section("Kernels") {
                 ForEach(page.state.sessions) { session in
-                    Button {
-                        page.run("open", arg: session.path)
-                    } label: {
-                        HStack {
-                            Label(session.title, systemImage: "bolt.fill")
-                            Spacer()
-                            if let kernel = session.kernel {
-                                Text(kernel).foregroundStyle(.secondary).font(.caption)
-                            }
-                        }
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .help(session.path + (session.state.map { " · " + PageState.statusLabel($0) } ?? ""))
-                    .contextMenu {
-                        Button("Open") { page.run("open", arg: session.path) }
-                        Divider()
-                        Button("Shut Down Kernel") { page.run("shutdown-kernel", arg: session.id) }
-                    }
+                    KernelRow(session: session, page: page)
                 }
                 if page.state.sessions.isEmpty {
                     Text("No kernels running").foregroundStyle(.secondary)
@@ -315,6 +297,56 @@ struct RunningList: View {
             }
         }
         .listStyle(.sidebar)
+        // The page asks the server for each kernel's memory only while
+        // the list shows (#241).
+        .onAppear { page.run("watch-memory", arg: "on") }
+        .onDisappear { page.run("watch-memory", arg: "off") }
+        // A page loaded again starts without being asked.
+        .onChange(of: page.ready) { ready in
+            if ready { page.run("watch-memory", arg: "on") }
+        }
+    }
+}
+
+/// A running kernel in the Running list: its notebook, kernel and memory.
+private struct KernelRow: View {
+    let session: PageState.Session
+    @ObservedObject var page: PageModel
+
+    var body: some View {
+        Button {
+            page.run("open", arg: session.path)
+        } label: {
+            HStack {
+                Label(session.title, systemImage: "bolt.fill")
+                Spacer()
+                if let kernel = session.kernel {
+                    Text(kernel).foregroundStyle(.secondary).font(.caption)
+                }
+                if let memory = session.memoryLabel {
+                    Text(memory)
+                        .foregroundStyle(.secondary)
+                        .font(.caption.monospacedDigit())
+                        .help("Kernel memory")
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(helpText)
+        .contextMenu {
+            Button("Open") { page.run("open", arg: session.path) }
+            Divider()
+            Button("Shut Down Kernel") { page.run("shutdown-kernel", arg: session.id) }
+        }
+    }
+
+    /// The path, the kernel's state and its memory.
+    private var helpText: String {
+        var parts = [session.path]
+        if let state = session.state { parts.append(PageState.statusLabel(state)) }
+        if let memory = session.memoryLabel { parts.append(memory) }
+        return parts.joined(separator: " · ")
     }
 }
 

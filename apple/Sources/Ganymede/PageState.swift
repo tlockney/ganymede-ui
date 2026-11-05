@@ -25,10 +25,19 @@ struct PageState: Decodable, Equatable {
         var state: String?
         /// The kernel's id; absent from a page older than #248.
         var kernelID: String?
+        /// The kernel's memory in bytes, while the Running list asks the
+        /// page for it (`watch-memory`, #241); nil when the server can't say.
+        var memory: Double?
 
         enum CodingKeys: String, CodingKey {
-            case id, path, kernel, state
+            case id, path, kernel, state, memory
             case kernelID = "kernelId"
+        }
+
+        /// The memory as Activity Monitor shows it ("61.9 MB"), or nil.
+        var memoryLabel: String? {
+            guard let memory, memory.isFinite, memory >= 0 else { return nil }
+            return ByteCountFormatter.string(fromByteCount: Int64(memory), countStyle: .memory)
         }
 
         /// The notebook's name without `.ipynb`.

@@ -47,7 +47,8 @@ built from the same sources (see
   tab and its expanded folders across launches. Search finds file and folder names under the
   window's folder and, with "Search notebook contents" ticked, the text
   of its notebooks, showing the matching line. Running lists running
-  kernels and the terminals open in any window; click a terminal to bring
+  kernels, each with its memory when the server reports it (a Ganymede
+  server does), and the terminals open in any window; click a terminal to bring
   it to the front, or right-click a kernel or terminal to shut it down
   (or choose Kernel › Shut Down Other Kernels). The foot of the sidebar
   shows where kernels run and how many kernels and terminals there are.
