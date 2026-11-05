@@ -101,6 +101,10 @@ final class WindowTargetTests: XCTestCase {
             WindowTarget(page: URL(string: "http://127.0.0.1:8123/?dir=")!),
             .folder(URL(fileURLWithPath: "/", isDirectory: true))
         )
+        // Not the app's page: a file a link in an output opened, or an
+        // error page. The window keeps what it shows.
+        XCTAssertNil(WindowTarget(page: URL(string: "http://127.0.0.1:8123/files/report.html")!))
+        XCTAssertNil(WindowTarget(page: URL(string: "http://127.0.0.1:8123/api/contents?dir=Users")!))
         // A folder window's page reads back as the same folder.
         let target = WindowTarget.folder(URL(fileURLWithPath: "/Users/me/Lunes & co", isDirectory: true))
         XCTAssertEqual(WindowTarget(page: target.pageURL(server: server, kernels: "server")), target)
