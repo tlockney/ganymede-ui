@@ -28,14 +28,15 @@ final class KernelHost: NSObject {
     /// UI messages that arrived before the kernel page said it was ready.
     private var pending: [Any] = []
 
-    override init() {
+    /// `device` is the bridge cells reach; tests pass one with a fake presenter.
+    init(device: DeviceBridge = DeviceBridge()) {
         let config = WKWebViewConfiguration()
         if #available(macOS 14.0, iOS 17.0, *) {
             // Not on screen, but cells must keep running at full speed.
             config.preferences.inactiveSchedulingPolicy = .none
         }
         webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 1, height: 1), configuration: config)
-        device = DeviceBridge()
+        self.device = device
         super.init()
         config.userContentController.add(WeakHandler(self), name: Self.hostHandler)
         // ganymede-device's `device` handler, for cells: here and nowhere
@@ -131,6 +132,12 @@ extension KernelHost: WKNavigationDelegate {
     /// The kernel page is going away (a reset, a reload): its device calls
     /// can no longer be answered, and the new page's call ids start over.
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
+        device.dropAll()
+    }
+
+    /// Again at commit: the old page ran until now, and a call it made
+    /// after the navigation started would otherwise outlive it.
+    func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         device.dropAll()
     }
 

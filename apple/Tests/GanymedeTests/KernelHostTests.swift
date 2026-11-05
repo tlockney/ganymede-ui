@@ -1,6 +1,21 @@
 #if os(macOS)
+import DeviceBridge
 import WebKit
 import XCTest
+
+/// Shows nothing and never answers; counts what it was asked to close.
+@MainActor
+private final class SilentPresenter: DialogPresenter {
+    var shown = 0
+    var closed = 0
+    func present(_ dialog: Dialog, on host: DialogHost?, done: @escaping (DialogResult) -> Void) throws -> Close {
+        shown += 1
+        return { [weak self] gone in
+            self?.closed += 1
+            gone()
+        }
+    }
+}
 
 /// KernelHost between two real web views on a real server: stand-in
 /// pages for the UI and kernel.html check that messages cross both ways,
@@ -109,6 +124,43 @@ final class KernelHostTests: XCTestCase {
                 + "ui.alert,ui.confirm,ui.prompt,ui.actionSheet,ui.pickDate")
         let inUI = try await eval(ui, "typeof webkit.messageHandlers.device") as? String
         XCTAssertEqual(inUI, "undefined")
+    }
+
+    /// A dialog a cell left open goes when the kernel page does.
+    @MainActor
+    func testResetDropsAnOpenDialog() async throws {
+        let server = try ServerHost(config: [
+            "root_dir": dir.path,
+            "static_dir": dir.appendingPathComponent("web").path,
+            "cookie_secret_file": dir.appendingPathComponent("cookie_secret").path,
+            "port": 0,
+        ])
+        defer { server.stop() }
+
+        let presenter = SilentPresenter()
+        let host = KernelHost(device: DeviceBridge(presenter: presenter))
+        let ui = WKWebView(
+            frame: CGRect(x: 0, y: 0, width: 400, height: 300), configuration: WKWebViewConfiguration())
+        host.attach(to: ui)
+        host.uiWillLoad(server.url)
+        ui.load(URLRequest(url: server.url))
+        try await waitFor(ui, "document.readyState === 'complete' && !!window.ganymedeKernelRelay")
+        _ = try await eval(ui, "webkit.messageHandlers.kernelRelay.postMessage({ kernel: 'k1', op: 'start' }); true")
+        try await waitFor(host.webView, "document.readyState === 'complete' && !!window.ganymedeKernelHost")
+
+        // Never answered: only a drop ends it.
+        _ = try await eval(host.webView, """
+            webkit.messageHandlers.device.postMessage({ id: 1, method: 'ui.alert', params: { message: 'x' } });
+            true
+            """)
+        let deadline = Date().addingTimeInterval(20)
+        while presenter.shown == 0, Date() < deadline { try await Task.sleep(nanoseconds: 50_000_000) }
+        XCTAssertEqual(presenter.shown, 1)
+        XCTAssertEqual(presenter.closed, 0)
+
+        host.reset()
+        while presenter.closed == 0, Date() < deadline { try await Task.sleep(nanoseconds: 50_000_000) }
+        XCTAssertEqual(presenter.closed, 1, "the reset closed the dialog")
     }
 }
 #endif
