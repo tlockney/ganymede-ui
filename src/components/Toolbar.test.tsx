@@ -29,6 +29,8 @@ function controller(over: Partial<NotebookController> = {}): NotebookController 
     rename: vi.fn(async () => true),
     discard: vi.fn(() => () => {}),
     moved: vi.fn(async () => {}),
+    outline: [],
+    goToCell: vi.fn(() => true),
     ...over,
   };
 }
@@ -296,6 +298,30 @@ describe('Toolbar overflow (#201)', () => {
   }
 
   afterEach(() => vi.restoreAllMocks());
+
+  it('does not reopen the menu after the window widens and narrows', async () => {
+    layout(393);
+    const c = controller({ dirty: true });
+    const bar = (status: NotebookController['status']) => (
+      <Toolbar
+        controller={{ ...c, status }}
+        sidebarOpen={false}
+        onToggleSidebar={() => {}}
+        specs={SPECS}
+      />
+    );
+    const { rerender } = render(bar('idle'));
+    await userEvent.click(screen.getByTitle('More'));
+    vi.restoreAllMocks();
+    layout(1280);
+    rerender(bar('busy'));
+    expect(screen.queryByTitle('More')).not.toBeInTheDocument();
+    vi.restoreAllMocks();
+    layout(393);
+    rerender(bar('idle'));
+    rerender(bar('busy'));
+    expect(screen.queryByRole('menu', { name: 'More' })).not.toBeInTheDocument();
+  });
 
   const shown = () =>
     [...document.querySelectorAll<HTMLElement>('.toolbar-trailing .tb-item')].map(
