@@ -524,6 +524,7 @@ export function App() {
         {!native && (
           <Sidebar
             backend={backend}
+            visible={sidebarOpen}
             connecting={connecting}
             openPath={openPath}
             root={sidebarRoot}

@@ -9,6 +9,7 @@ import { clearRecents, recentsKey, useRecents } from '../lib/recents';
 import { useFileDrop } from '../lib/file-drop';
 import { ContextMenu, type MenuItem } from './ContextMenu';
 import { RecentList, SearchField, SearchResults } from './SidebarSearch';
+import { formatMemory, useKernelMemory } from '../lib/kernel-usage';
 import {
   BrowserIcon,
   ChevronLeftIcon,
@@ -42,6 +43,8 @@ type Props = {
   actions?: FileActions;
   /** Hides the sidebar where it covers the notebook (a phone); no close button without it. */
   onClose?(): void;
+  /** Whether the sidebar shows; kernel memory is asked for only then. */
+  visible?: boolean;
 };
 
 /** How long a touch is held to open the file menu. */
@@ -60,6 +63,7 @@ export function Sidebar({
   onSettings,
   actions,
   onClose,
+  visible = true,
 }: Props) {
   const services = backend?.services;
   const [dir, setDir] = useState(root);
@@ -220,6 +224,16 @@ export function Sidebar({
 
   useSignals(services?.sessions.runningChanged);
   const running = services ? [...services.sessions.running()] : [];
+  // Each kernel's memory, from a server with the metrics endpoint (#241).
+  const memory = useKernelMemory(
+    // Not for a backend whose kernels all run in the page: the server
+    // has none of them.
+    backend?.config.kind === 'ganymede' && backend.config.kernels !== 'page'
+      ? services?.serverSettings
+      : undefined,
+    running.flatMap(s => (s.kernel ? [s.kernel.id] : [])),
+    visible,
+  );
 
   return (
     <aside className={`sidebar ${drop.active ? 'drop-active' : ''}`} {...drop.handlers}>
@@ -381,7 +395,15 @@ export function Sidebar({
                         .pop()
                         ?.replace(/\.ipynb$/, '')}
                     </span>
-                    <span className="item-meta">{s.kernel?.name}</span>
+                    <span className="item-meta">
+                      {s.kernel?.name}
+                      {s.kernel && memory.has(s.kernel.id) && (
+                        <span className="kernel-memory" title="Kernel memory">
+                          {' · '}
+                          {formatMemory(memory.get(s.kernel.id)!)}
+                        </span>
+                      )}
+                    </span>
                   </button>
                   <button
                     className="icon-button hover-only"
