@@ -1,3 +1,4 @@
+import { renderToStaticMarkup } from 'react-dom/server';
 import { StrictMode } from 'react';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -90,6 +91,15 @@ describe('App', () => {
       url: '',
     });
     expect(sessionStorage.getItem('ganymede-ui:token')).toBe('abc');
+  });
+
+  it('says it is connecting, not Connect…, in its first frame', () => {
+    // The Mac app's page. Effects run after the first paint, so before the
+    // connection started it showed a bare Connect… screen, then the welcome.
+    history.replaceState(null, '', '/?kernels=server&chrome=native');
+    const first = renderToStaticMarkup(<App />);
+    expect(first).toContain('Connecting…');
+    expect(first).not.toContain('Connect…<');
   });
 
   it('keeps the token from the page URL under StrictMode', async () => {

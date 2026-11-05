@@ -1,4 +1,5 @@
 #if os(macOS)
+import AppKit
 import Combine
 import XCTest
 
@@ -74,15 +75,39 @@ final class OpenRequestsTests: XCTestCase {
         XCTAssertTrue(requests.pending.isEmpty)
     }
 
-    func testANotebookWindowTakesThemWhenThereIsOne() {
+    func testAfterLaunchTheyOpenAtOnceEvenWithNotebookWindows() {
         let requests = OpenRequests()
         requests.finishLaunching()
         var opened: [WindowTarget] = []
         requests.openWindow = { opened.append($0) }
         requests.register(UUID(), blank: false)
+        requests.register(UUID(), blank: true)
         requests.add([a])
-        XCTAssertTrue(opened.isEmpty)
+        XCTAssertEqual(opened, [.file(a)])
+        XCTAssertTrue(requests.pending.isEmpty)
+    }
+
+    func testAfterLaunchWithNoWindowYetTheyWait() {
+        let requests = OpenRequests()
+        requests.finishLaunching()
+        requests.add([a])
         XCTAssertEqual(requests.pending, [.file(a)])
+    }
+
+    func testFilesFromAnOpenDocumentsEvent() {
+        let event = NSAppleEventDescriptor(
+            eventClass: AEEventClass(kCoreEventClass), eventID: AEEventID(kAEOpenDocuments),
+            targetDescriptor: nil, returnID: AEReturnID(kAutoGenerateReturnID),
+            transactionID: AETransactionID(kAnyTransactionID)
+        )
+        let list = NSAppleEventDescriptor.list()
+        list.insert(NSAppleEventDescriptor(fileURL: a), at: 1)
+        list.insert(NSAppleEventDescriptor(fileURL: b), at: 2)
+        event.setParam(list, forKeyword: keyDirectObject)
+        XCTAssertEqual(OpenRequests.fileURLs(in: event), [a, b])
+
+        event.setParam(NSAppleEventDescriptor(fileURL: a), forKeyword: keyDirectObject)
+        XCTAssertEqual(OpenRequests.fileURLs(in: event), [a])
     }
 
     func testOnePublishPerBatch() {

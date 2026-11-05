@@ -1,5 +1,7 @@
 #if os(macOS)
+import AppKit
 import Combine
+import os
 #endif
 import Foundation
 #if canImport(UniformTypeIdentifiers)
@@ -114,8 +116,8 @@ final class OpenRequests: ObservableObject {
     private var atLaunch = false
     /// The notebook windows, by id: whether each shows nothing yet.
     private var windows: [UUID: Bool] = [:]
-    /// Opens a notebook window, for requests that come while none is open
-    /// (only a terminal, editor or Settings window). Set by the windows.
+    /// Opens a notebook window, for requests that come after launch. Set by
+    /// the notebook windows.
     var openWindow: ((WindowTarget) -> Void)?
 
     /// Adds the file URLs among `urls`, each once.
@@ -127,8 +129,10 @@ final class OpenRequests: ObservableObject {
         }
         guard added != pending else { return }
         if launching { atLaunch = true }
-        // No notebook window to take them: open one for each.
-        if !launching, windows.isEmpty, let openWindow {
+        // Once launched, each opens in a window (a new tab, or the window
+        // already showing it) at once, without waiting for a window to
+        // notice the queue: nothing is left pending if none does.
+        if !launching, let openWindow {
             added.forEach(openWindow)
             return
         }
@@ -137,6 +141,13 @@ final class OpenRequests: ObservableObject {
 
     func finishLaunching() {
         launching = false
+    }
+
+    /// The file URLs an Open Documents Apple Event names: a list, or one.
+    nonisolated static func fileURLs(in event: NSAppleEventDescriptor) -> [URL] {
+        guard let files = event.paramDescriptor(forKeyword: keyDirectObject) else { return [] }
+        guard files.numberOfItems > 0 else { return files.fileURLValue.map { [$0] } ?? [] }
+        return (1...files.numberOfItems).compactMap { files.atIndex($0)?.fileURLValue }
     }
 
     /// A notebook window, and whether it shows nothing yet.
@@ -161,6 +172,14 @@ final class OpenRequests: ObservableObject {
         guard blank, atLaunch, let first = pending.first else { return (nil, pending) }
         return (first, Array(pending.dropFirst()))
     }
+}
+#endif
+
+#if os(macOS)
+/// What the app was asked to open, in the unified log (Console, category
+/// "open"), for checking Finder opens on a Mac.
+enum OpenLog {
+    static let log = Logger(subsystem: "com.ganymede-server.Ganymede", category: "open")
 }
 #endif
 

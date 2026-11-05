@@ -587,7 +587,10 @@ export function App() {
             ) : (
               <EmptyState
                 backend={backend}
-                connecting={connecting}
+                // Also before the first connection starts, and while the page
+                // asks whether this server has us signed in: otherwise the
+                // first frames show Connect…, then the welcome.
+                connecting={connecting || probing || (!!config && !backend && !error)}
                 onNew={() => void newNotebook(folder)}
                 onConnect={() => setSheetOpen(true)}
                 folder={folder}

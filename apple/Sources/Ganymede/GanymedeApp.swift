@@ -177,15 +177,27 @@ enum DefaultApp {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
         AppModel.shared.adoptLoginShellPath()
+        // Files opened from the Finder (double-click, Open With, the Dock)
+        // come as an Open Documents Apple Event, and the app takes it
+        // itself. With SwiftUI's lifecycle, AppKit's handler sends it to
+        // SwiftUI's own delegate, which did not pass it on to this one's
+        // `application(_:open:)`: the app came forward and the notebook
+        // never opened (#228, #266). Installed here, before launch
+        // finishes, this replaces AppKit's handler, and also gets the
+        // files the app was launched to open.
+        NSAppleEventManager.shared().setEventHandler(
+            self,
+            andSelector: #selector(openDocuments(_:withReply:)),
+            forEventClass: AEEventClass(kCoreEventClass),
+            andEventID: AEEventID(kAEOpenDocuments)
+        )
     }
 
-    /// Files opened from the Finder (double-click, Open With, the Dock),
-    /// for the notebook windows to open (#228). SwiftUI's own routing
-    /// (`onOpenURL` with `handlesExternalEvents`) made a window for the
-    /// file that then refused it, so the notebook never opened. When the
-    /// app is launched to open files, this comes before
-    /// `applicationDidFinishLaunching`.
-    func application(_ application: NSApplication, open urls: [URL]) {
+    /// The Open Documents event's files, for the notebook windows to open
+    /// (`OpenRequests`).
+    @objc private func openDocuments(_ event: NSAppleEventDescriptor, withReply reply: NSAppleEventDescriptor) {
+        let urls = OpenRequests.fileURLs(in: event)
+        OpenLog.log.info("open documents: \(urls.map(\.path).joined(separator: ", "), privacy: .public)")
         AppModel.shared.openRequests.add(urls)
     }
 
