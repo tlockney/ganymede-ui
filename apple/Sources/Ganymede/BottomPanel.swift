@@ -210,47 +210,50 @@ private struct KernelLogView: View {
     }
 
     private var lines: some View {
-        VStack(spacing: 0) {
-            // A server that stops answering shouldn't look like a quiet kernel.
-            if let error {
-                Label(error, systemImage: "exclamationmark.triangle")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(.bar)
-                Divider()
-            }
-            ScrollViewReader { reader in
-                ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 1) {
-                        ForEach(log.lines) { line in
-                            Text(line.text)
-                                .foregroundStyle(color(of: line))
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .id(line.seq)
-                        }
-                        SwiftUI.Color.clear
-                            .frame(height: 1)
-                            .id(Self.end)
-                            .onAppear { atEnd = true }
-                            .onDisappear { atEnd = false }
+        ScrollViewReader { reader in
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 1) {
+                    ForEach(log.lines) { line in
+                        Text(line.text)
+                            .foregroundStyle(color(of: line))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .id(line.seq)
                     }
-                    .font(.system(.callout, design: .monospaced))
-                    .textSelection(.enabled)
-                    .padding(8)
+                    SwiftUI.Color.clear
+                        .frame(height: 1)
+                        .id(Self.end)
+                        .onAppear { atEnd = true }
+                        .onDisappear { atEnd = false }
                 }
-                .onChange(of: log.after) { _ in
-                    if atEnd { reader.scrollTo(Self.end, anchor: .bottom) }
+                .font(.system(.callout, design: .monospaced))
+                .textSelection(.enabled)
+                .padding(8)
+            }
+            .onChange(of: log.after) { _ in
+                if atEnd { reader.scrollTo(Self.end, anchor: .bottom) }
+            }
+            .onAppear { reader.scrollTo(Self.end, anchor: .bottom) }
+        }
+        // A server that stops answering shouldn't look like a quiet kernel.
+        // Over the lines rather than above them, so the scroll view keeps
+        // its size and a log at its end stays following.
+        .overlay(alignment: .top) {
+            if let error {
+                VStack(spacing: 0) {
+                    Label(error, systemImage: "exclamationmark.triangle")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.bar)
+                    Divider()
                 }
-                .onAppear { reader.scrollTo(Self.end, anchor: .bottom) }
             }
         }
     }
 
     private static let end = "end"
-
 
     private func note(_ text: String) -> some View {
         Text(text)
