@@ -69,6 +69,19 @@ final class PageStateTests: XCTestCase {
         XCTAssertNil(sessions[1].memoryLabel)
     }
 
+    func testTellsThePageToWatchMemoryOnlyAtTheEdges() {
+        var watch = MemoryWatch()
+        XCTAssertNil(watch.onReload, "nobody watches")
+        XCTAssertEqual(watch.change(watching: true), "on", "the Running list shows")
+        XCTAssertNil(watch.change(watching: true), "the popover too: already on")
+        XCTAssertEqual(watch.onReload, "on")
+        XCTAssertNil(watch.change(watching: false), "the popover closes: the list still shows")
+        XCTAssertEqual(watch.change(watching: false), "off")
+        XCTAssertNil(watch.change(watching: false), "an extra stop changes nothing")
+        XCTAssertEqual(watch.watchers, 0)
+        XCTAssertEqual(watch.change(watching: true), "on")
+    }
+
     func testReadsTheOutline() {
         var body: [String: Any] = [
             "path": "Io.ipynb", "dirty": false, "status": "idle", "kernel": "cdp",

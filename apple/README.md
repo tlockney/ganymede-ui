@@ -55,8 +55,9 @@ built from the same sources (see
   Recents lists the notebooks opened lately. Outline lists the open
   notebook's headings; click one to go to its cell. The toolbar saves,
   runs cells, interrupts and restarts the
-  kernel, inserts cells, sets the cell type, picks the kernel and trusts
-  the notebook. File › New Notebook (⌘N) makes one in the window's
+  kernel, inserts cells, sets the cell type and trusts the notebook. Its
+  kernel button opens a popover with the kernel's state and memory,
+  Interrupt, Restart, Kernel Log and the kernels to change to. File › New Notebook (⌘N) makes one in the window's
   folder, New Tab (⌘T) opens another tab, New Window (⌥⌘N) a window of its own, and Rename… renames the
   open notebook (saving it first; its kernel keeps running). The Cell menu runs, inserts, moves and deletes cells and opens
   Find; the Kernel menu interrupts (⌘.), restarts, changes and trusts. View › Command Palette… (⇧⌘P) finds and runs the notebook, cell and kernel commands by name.

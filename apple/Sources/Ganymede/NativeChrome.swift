@@ -299,12 +299,8 @@ struct RunningList: View {
         .listStyle(.sidebar)
         // The page asks the server for each kernel's memory only while
         // the list shows (#241).
-        .onAppear { page.run("watch-memory", arg: "on") }
-        .onDisappear { page.run("watch-memory", arg: "off") }
-        // A page loaded again starts without being asked.
-        .onChange(of: page.ready) { ready in
-            if ready { page.run("watch-memory", arg: "on") }
-        }
+        .onAppear { page.watchMemory(true) }
+        .onDisappear { page.watchMemory(false) }
     }
 }
 
@@ -389,6 +385,8 @@ struct NotebookToolbar: ToolbarContent {
     @ObservedObject var document: PageDocument
     /// Where New Notebook puts it: the window's folder.
     let folder: URL
+    /// The window's bottom panel, for the kernel popover's Kernel Log.
+    var panel: PanelController?
 
     var body: some ToolbarContent {
         ToolbarItem(placement: .navigation) {
@@ -445,7 +443,7 @@ struct NotebookToolbar: ToolbarContent {
             .disabled(!page.state.hasNotebook)
         }
         ToolbarItem {
-            KernelPicker(page: page)
+            KernelPicker(page: page, panel: panel)
         }
         ToolbarItem {
             Button { confirmTrust(page) } label: { Label("Trust", systemImage: "checkmark.shield") }
@@ -462,28 +460,72 @@ struct NotebookToolbar: ToolbarContent {
     }
 }
 
-/// Which kernel the notebook uses.
+/// The notebook's kernel (#241): its name in the toolbar, and a popover
+/// with its state and memory, Interrupt, Restart, the Kernel Log and the
+/// kernels to change to.
 struct KernelPicker: View {
     @ObservedObject var page: PageModel
+    var panel: PanelController?
+    @State private var shown = false
 
     var body: some View {
-        Menu {
-            ForEach(page.state.kernels, id: \.name) { kernel in
-                Button {
-                    page.run("change-kernel", arg: kernel.name)
-                } label: {
-                    if kernel.name == page.state.kernel {
-                        Label(kernel.displayName, systemImage: "checkmark")
-                    } else {
-                        Text(kernel.displayName)
-                    }
-                }
-            }
+        Button {
+            shown.toggle()
         } label: {
             Label(page.state.kernelDisplayName ?? "Kernel", systemImage: "cpu")
         }
-        .help("Change the kernel")
-        .disabled(!page.state.hasNotebook || page.state.kernels.isEmpty)
+        .help("The notebook's kernel")
+        .disabled(!page.state.hasNotebook)
+        .popover(isPresented: $shown, arrowEdge: .bottom) {
+            KernelPopover(page: page, panel: panel) { shown = false }
+        }
+    }
+}
+
+private struct KernelPopover: View {
+    @ObservedObject var page: PageModel
+    let panel: PanelController?
+    let dismiss: () -> Void
+
+    var body: some View {
+        let state = page.state
+        let session = state.sessions.first { $0.path == state.path }
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(state.kernelDisplayName ?? "No kernel").font(.headline)
+                Text(PageState.statusLabel(state.status)).foregroundStyle(.secondary)
+            }
+            if let memory = session?.memoryLabel {
+                LabeledContent("Memory", value: memory)
+            }
+            HStack {
+                Button("Interrupt") { page.run("interrupt"); dismiss() }
+                    .disabled(!state.isBusy)
+                Button("Restart") { page.run("restart"); dismiss() }
+                    .disabled(!state.hasKernel)
+                Button("Kernel Log") { panel?.showLog(); dismiss() }
+                    .disabled(panel == nil || state.kernelID == nil)
+            }
+            if !state.kernels.isEmpty {
+                Divider()
+                Picker("Kernel", selection: Binding(
+                    get: { state.kernel ?? "" },
+                    set: { name in
+                        page.run("change-kernel", arg: name)
+                        dismiss()
+                    }
+                )) {
+                    ForEach(state.kernels, id: \.name) { kernel in
+                        Text(kernel.displayName).tag(kernel.name)
+                    }
+                }
+            }
+        }
+        .padding()
+        .frame(minWidth: 260)
+        // The kernels' memory is read only while this shows.
+        .onAppear { page.watchMemory(true) }
+        .onDisappear { page.watchMemory(false) }
     }
 }
 
