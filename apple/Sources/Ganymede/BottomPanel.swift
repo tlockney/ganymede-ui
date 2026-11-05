@@ -253,6 +253,8 @@ private struct KernelLogView: View {
             do {
                 let request = KernelLog.request(kernel: kernelID, after: log.after, on: server)
                 let (data, response) = try await URLSession.shared.data(for: request)
+                // A newer task (another kernel) owns the log now.
+                if Task.isCancelled { return }
                 let code = (response as? HTTPURLResponse)?.statusCode ?? 0
                 if code == 404 {
                     log.markUnsupported()
@@ -264,9 +266,9 @@ private struct KernelLogView: View {
                 error = nil
                 more = log.append(page)
                 if log.status == .noProcess { return }
-            } catch is CancellationError {
-                return
             } catch {
+                // A cancelled load throws URLError(.cancelled).
+                if Task.isCancelled { return }
                 self.error = "Couldn't read the kernel log: \(error.localizedDescription)"
             }
             if !more {
