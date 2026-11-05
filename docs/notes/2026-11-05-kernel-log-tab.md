@@ -20,3 +20,16 @@
   keeps the panel while the log is on show.
 - Not done in #248: moving a terminal between the panel and a main-area
   tab, which needs the transport to outlive its view (#247).
+
+### Follow-up (review of #298)
+
+- Ganymede answers 404 both for a missing route and for a kernel it no
+  longer knows. The second has a JSON `message`, so the tab now says
+  "The server no longer has this kernel's log" for it instead of
+  "doesn't keep kernel logs".
+- The log scrolls with new lines only while its end is in view (a
+  one-point marker after the last line, tracked with onAppear and
+  onDisappear, since macOS 13 has no scroll position API). Scrolled up
+  to read a traceback, it stays put.
+- A read error shows as a bar above the lines once there are lines, so
+  a server that stops answering doesn't look like a quiet kernel.
