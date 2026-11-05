@@ -23,3 +23,10 @@ was also in front of the notebook that was opened.
   differ from the notebook's folder.
 - Unit tests cover the saved form and `front`; the restoring itself
   needs a Mac.
+- From review: a window writes `window.target` when it appears too
+  (`onChange` misses the value it opened with), and gets its saved
+  sidebar folder back whether SwiftUI restored its value or not.
+  `pageReported` ignores the URL KVO for the app's own load of `loaded`,
+  so a late restored value is adopted even when the server was already
+  up. A window opened as launch ended comes forward once it has its
+  `NSWindow`, and `front` is cleared after.

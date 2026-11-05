@@ -153,6 +153,8 @@ final class OpenRequestsTests: XCTestCase {
         _ = requests.take(blank: false)
         requests.finishLaunching()
         XCTAssertEqual(requests.front, .file(a))
+        requests.broughtForward()
+        XCTAssertNil(requests.front)
     }
 
     func testNothingIsBroughtForwardAfterAPlainLaunch() {

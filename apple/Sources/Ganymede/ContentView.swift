@@ -119,33 +119,45 @@ struct ContentView: View {
             } else if target == nil, let saved = WindowTarget(saved: savedTarget) {
                 // A window the system restored, without its value.
                 show(saved)
-                if !savedSidebar.isEmpty {
-                    sidebarRoot = URL(fileURLWithPath: savedSidebar, isDirectory: true)
-                }
+            }
+            // A restored window (its value restored or not) gets its
+            // sidebar's folder back too.
+            if request == nil, WindowTarget(saved: savedTarget) == target {
+                restoreSidebar()
             }
             savedSidebar = sidebarRoot.path
+            savedTarget = WindowTarget.saved(target)
             model.openRequests.register(windowID, blank: target == nil)
             model.openRequests.openWindow = { [openWindow] in openWindow(value: $0) }
         }
         .onChange(of: target) { target in
             model.openRequests.register(windowID, blank: target == nil)
-            savedTarget = WindowTarget.saved(target)
             // Restored after the view was made, before the page said
             // anything: show it, not what the page was loaded for.
-            if let target, !pageReported, target != loaded { show(target) }
+            if let target, !pageReported, target != loaded {
+                let restored = WindowTarget(saved: savedTarget) == target
+                show(target)
+                if restored { restoreSidebar() }
+            }
+            savedTarget = WindowTarget.saved(target)
         }
         .onChange(of: sidebarRoot) { savedSidebar = $0.path }
         // Brought forward after launch: restored windows can come back in
         // front of a notebook opened from the Finder (#268).
         .onReceive(model.openRequests.$front) { front in
-            guard let front, front == target else { return }
-            document.window?.makeKeyAndOrderFront(nil)
+            guard let front, front == target, let window = document.window else { return }
+            bringForward(window)
         }
         .onDisappear { model.openRequests.unregister(windowID) }
         // Notebook windows are tabs too (#247).
         .background(WindowReader { window in
             document.attach(to: window)
             WorkspaceTabs.join(window, alone: request?.alone ?? false)
+            // A window opened as launch ended may get its NSWindow only
+            // after `front` was published.
+            if let front = model.openRequests.front, front == target {
+                DispatchQueue.main.async { bringForward(window) }
+            }
         })
         .focusedSceneObject(document)
         .focusedSceneObject(pageModel)
@@ -282,6 +294,17 @@ struct ContentView: View {
         sidebarRoot = shown.folder
     }
 
+    /// The sidebar's folder as this window last had it, if it was saved.
+    private func restoreSidebar() {
+        guard !savedSidebar.isEmpty else { return }
+        sidebarRoot = URL(fileURLWithPath: savedSidebar, isDirectory: true)
+    }
+
+    private func bringForward(_ window: NSWindow) {
+        window.makeKeyAndOrderFront(nil)
+        model.openRequests.broughtForward()
+    }
+
     private var page: URL? { model.page(for: loaded) }
 
     /// The notebook, with the bottom panel under it (#248). The panel stays
@@ -309,8 +332,13 @@ struct ContentView: View {
     /// stays as it is.
     private func follow(_ url: URL?) {
         guard let url else { return }
-        pageReported = true
-        guard let shown = WindowTarget(page: url), shown != target else { return }
+        let shown = WindowTarget(page: url)
+        // Not the app's own load of `loaded`, which this KVO also reports:
+        // only the page moving elsewhere.
+        if shown?.url.standardizedFileURL.path != loaded.url.standardizedFileURL.path {
+            pageReported = true
+        }
+        guard let shown, shown != target else { return }
         // A window opened on nothing stays blank on the folder it loaded,
         // so it can still take the Finder's files at launch (#228).
         if target == nil, case .folder = shown, shown.url.path == loaded.url.path { return }
