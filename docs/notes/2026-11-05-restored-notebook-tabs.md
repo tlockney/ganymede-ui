@@ -19,5 +19,7 @@ was also in front of the notebook that was opened.
   launch, and its window comes forward, over restored windows.
 - The `open documents:` log line hashes the paths
   (`.private(mask: .hash)`), as #267's review asked.
+- The sidebar's folder is kept too (`window.sidebar`), since it can
+  differ from the notebook's folder.
 - Unit tests cover the saved form and `front`; the restoring itself
   needs a Mac.

@@ -31,6 +31,9 @@ struct ContentView: View {
     /// restores comes back on it (#268). SwiftUI's own restoring of
     /// `target` brought notebook windows back on the folder.
     @SceneStorage("window.target") private var savedTarget = ""
+    /// The sidebar's folder, kept likewise: it can differ from the
+    /// notebook's own folder.
+    @SceneStorage("window.sidebar") private var savedSidebar = ""
     /// Whether the page has said what it shows; until then a restored
     /// `target` that comes late still replaces what the page was loaded for.
     @State private var pageReported = false
@@ -113,7 +116,11 @@ struct ContentView: View {
             } else if target == nil, let saved = WindowTarget(saved: savedTarget) {
                 // A window the system restored, without its value.
                 show(saved)
+                if !savedSidebar.isEmpty {
+                    sidebarRoot = URL(fileURLWithPath: savedSidebar, isDirectory: true)
+                }
             }
+            savedSidebar = sidebarRoot.path
             model.openRequests.register(windowID, blank: target == nil)
             model.openRequests.openWindow = { [openWindow] in openWindow(value: $0) }
         }
@@ -124,6 +131,7 @@ struct ContentView: View {
             // anything: show it, not what the page was loaded for.
             if let target, !pageReported, target != loaded { show(target) }
         }
+        .onChange(of: sidebarRoot) { savedSidebar = $0.path }
         // Brought forward after launch: restored windows can come back in
         // front of a notebook opened from the Finder (#268).
         .onReceive(model.openRequests.$front) { front in
