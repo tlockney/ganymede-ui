@@ -14,7 +14,7 @@ the TypeScript package, the app's Swift side, and the
 [design and phases](https://github.com/tlockney/ganymede-device/blob/main/docs/plan.md).
 It is early: today it has device details, the clipboard (text and
 images), haptics, opening URLs, dialogs, share, Quick Look, file and
-photo pickers, and sounds.
+photo pickers, saving files, and sounds.
 
 ## Where `device` exists
 
@@ -160,6 +160,8 @@ const [file] = await device.files.pick({ types: ['audio/*'] });
 if (file) {
   await using player = await device.sound.player(file);
   await player.play();
+  // Leaving the block closes the player, which stops it: wait for the end.
+  await new Promise(done => setTimeout(done, player.duration * 1000));
 }
 ```
 
