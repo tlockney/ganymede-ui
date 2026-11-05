@@ -50,7 +50,8 @@ function start(id: string): void {
   );
   void kernel.closed.then(() => {
     // Swift stops this kernel's sounds and closes its players. A restart
-    // needs nothing: the new Worker's hello does it (ganymede-device#37).
+    // closes the kernel too, so this runs then as well, before the new
+    // Worker's hello would do it (ganymede-device#37).
     device.host?.release();
     if (kernels.get(id) !== kernel) return;
     kernels.delete(id);

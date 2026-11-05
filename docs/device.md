@@ -13,7 +13,8 @@ The API comes from
 the TypeScript package, the app's Swift side, and the
 [design and phases](https://github.com/tlockney/ganymede-device/blob/main/docs/plan.md).
 It is early: today it has device details, the clipboard (text and
-images), haptics, opening URLs and dialogs.
+images), haptics, opening URLs, dialogs, share, Quick Look, file and
+photo pickers, saving files, and sounds.
 
 ## Where `device` exists
 
@@ -156,7 +157,12 @@ kernel has at most 32 open.
 
 ```ts
 const [file] = await device.files.pick({ types: ['audio/*'] });
-await using player = await device.sound.player(file);
+if (file) {
+  await using player = await device.sound.player(file);
+  await player.play();
+  // Leaving the block closes the player, which stops it: wait for the end.
+  await new Promise(done => setTimeout(done, player.duration * 1000));
+}
 ```
 
 Next come methods behind a system permission, such as location and
