@@ -43,7 +43,6 @@ struct ContentView: View {
     #endif
     #if os(iOS)
     @Environment(\.scenePhase) private var phase
-    @Environment(\.openWindow) private var openWindow
     @State private var picking = false
     @State private var settings = false
     /// Settings' Keyboard Shortcuts was tapped: show the page's sheet when
@@ -61,6 +60,18 @@ struct ContentView: View {
     @StateObject private var phonePage = WebViewStore()
     /// The iPhone's screens over the folder list: the notebook, or none.
     @State private var phonePath: [PhoneScreen] = []
+    /// The iPad's bottom panel (#251): terminals on remotes. The iPhone
+    /// has none; its sidebar lists this one's (empty) terminals.
+    @StateObject private var panel = PanelController()
+    @SceneStorage("panel.height") private var panelHeight = PanelController.defaultHeight
+    /// Text files over the notebook in the iPad's detail area (#251).
+    @StateObject private var openFiles = IPadOpenFiles()
+    /// The iPad's detail area fills the screen: no sidebar or panel.
+    @State private var mainFills = false
+    /// The bottom panel fills the detail area, the notebook hidden.
+    @State private var panelFills = false
+    /// Whether the iPad's window is taller than wide.
+    @State private var portrait = false
     #endif
 
     var body: some View {
@@ -135,9 +146,10 @@ struct ContentView: View {
                 // running while the list shows and the list can open
                 // notebooks in it.
                 NavigationStack(path: $phonePath) {
-                    IPadSidebar(folder: model.root, page: pageModel, openFile: openEditor) {
-                        phonePath = [.notebook]
-                    }
+                    IPadSidebar(
+                        folder: model.root, page: pageModel, openFile: openEditor,
+                        opened: { phonePath = [.notebook] }, panel: panel
+                    )
                     .toolbar {
                         ToolbarItemGroup(placement: .navigationBarLeading) { appButtons }
                     }
@@ -168,19 +180,36 @@ struct ContentView: View {
                 // notebook (#208).
                 GeometryReader { window in
                     NavigationSplitView(columnVisibility: $columns) {
-                        IPadSidebar(folder: model.root, page: pageModel, openFile: openEditor) {
-                            // In portrait the sidebar covers the notebook:
-                            // it gets out of the way once one is opened.
-                            if window.size.width < window.size.height { columns = .detailOnly }
-                        }
+                        IPadSidebar(
+                            folder: model.root, page: pageModel, openFile: openEditor,
+                            opened: {
+                                openFiles.showNotebook()
+                                panelFills = false
+                                // In portrait the sidebar covers the notebook:
+                                // it gets out of the way once one is opened.
+                                if portrait { columns = .detailOnly }
+                            },
+                            tabbed: true, panel: panel,
+                            showTerminal: { id in
+                                panel.selection = id
+                                panel.isShown = true
+                                mainFills = false
+                                if portrait { columns = .detailOnly }
+                            }
+                        )
                     } detail: {
-                        NavigationStack { notebook }
+                        iPadWorkspace
                     }
+                    .onAppear { portrait = window.size.width < window.size.height }
                     // Back in landscape, the sidebar shows again by default.
-                    .onChange(of: window.size.width > window.size.height) { landscape in
-                        if landscape { columns = .automatic }
+                    .onChange(of: window.size.width < window.size.height) { tall in
+                        portrait = tall
+                        if !tall, !mainFills { columns = .automatic }
                     }
                 }
+                .focusedSceneValue(\.iPadPanel, IPadPanelToggle(shown: panelShown, toggle: togglePanel))
+                .onAppear { panel.resize(to: panelHeight, available: .infinity) }
+                .onChange(of: panel.height) { panelHeight = $0 }
             } else {
                 NavigationStack { notebook }
             }
@@ -286,6 +315,50 @@ struct ContentView: View {
     /// The iPhone's screens over its folder list (#209).
     enum PhoneScreen: Hashable { case notebook }
 
+    /// The iPad's detail area (#251): the notebook, with text files opened
+    /// from the sidebar pushed over it, and the bottom panel under it.
+    /// The notebook and the panel's terminals stay in the view tree while
+    /// covered, hidden or filled over, so the page and shells keep running.
+    private var iPadWorkspace: some View {
+        GeometryReader { area in
+            VStack(spacing: 0) {
+                NavigationStack(path: $openFiles.stack) {
+                    notebook
+                        .navigationDestination(for: String.self) { path in
+                            // Close asks to save; the sidebar's notebooks go
+                            // back to the notebook, saving on the way.
+                            EditorWindow(document: openFiles.document(for: path)) {
+                                openFiles.close(path)
+                            }
+                            .navigationBarBackButtonHidden(true)
+                        }
+                }
+                .frame(maxHeight: notebookHidden ? 0 : .infinity)
+                .opacity(notebookHidden ? 0 : 1)
+                .allowsHitTesting(!notebookHidden)
+                .accessibilityHidden(notebookHidden)
+                IPadPanel(panel: panel, available: area.size.height, filling: $panelFills)
+                    .frame(height: panelShown ? nil : 0, alignment: .top)
+                    .clipped()
+                    .opacity(panelShown ? 1 : 0)
+                    .allowsHitTesting(panelShown)
+                    .accessibilityHidden(!panelShown)
+            }
+        }
+    }
+
+    /// Whether the iPad's bottom panel is on screen.
+    private var panelShown: Bool { panel.isShown && !mainFills }
+
+    /// Whether the panel fills the detail area over the notebook.
+    private var notebookHidden: Bool { panelFills && panelShown }
+
+    /// The detail area fills the screen, or goes back to how it was.
+    private func toggleMainFill() {
+        mainFills.toggle()
+        columns = mainFills || portrait ? .detailOnly : .automatic
+    }
+
     /// The page with its navigation bar: one title, the notebook's, and the
     /// app's own buttons beside the notebook's (on the iPhone, on the list).
     private var notebook: some View {
@@ -323,12 +396,23 @@ struct ContentView: View {
     @ViewBuilder
     private var appButtons: some View {
         TerminalMenu(model: model) { request in
-            // A scene of its own beside the notebook on iPad,
-            // full screen where there is one scene (iPhone).
-            if UIApplication.shared.supportsMultipleScenes {
-                openWindow(value: request)
-            } else {
+            // In the bottom panel on iPad (#251), full screen on iPhone.
+            if isPhone {
                 terminal = request
+            } else {
+                panel.add(request.target)
+                mainFills = false
+            }
+        }
+        if !isPhone {
+            Button(action: togglePanel) {
+                Label(panelShown ? "Hide Terminal Panel" : "Show Terminal Panel", systemImage: "rectangle.bottomthird.inset.filled")
+            }
+            Button(action: toggleMainFill) {
+                Label(
+                    mainFills ? "Restore" : "Fill the Screen",
+                    systemImage: mainFills ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right"
+                )
             }
         }
         Button {
@@ -358,14 +442,27 @@ struct ContentView: View {
         return model.root.lastPathComponent
     }
 
-    /// A text file from the sidebar: beside the notebook on iPad, full
-    /// screen on iPhone.
-    private func openEditor(_ path: String) {
-        let request = EditorRequest(path: path)
-        if UIApplication.shared.supportsMultipleScenes {
-            openWindow(value: request)
+    /// Shows or hides the iPad's bottom panel. Shown, it leaves a filled
+    /// screen, so it can be seen.
+    private func togglePanel() {
+        if panelShown {
+            panel.isShown = false
+            panelFills = false
         } else {
-            editing = request
+            panel.isShown = true
+            mainFills = false
+        }
+    }
+
+    /// A text file from the sidebar: over the notebook in the iPad's
+    /// detail area (#251), full screen on iPhone.
+    private func openEditor(_ path: String) {
+        if isPhone {
+            editing = EditorRequest(path: path)
+        } else {
+            openFiles.open(path)
+            panelFills = false
+            if portrait { columns = .detailOnly }
         }
     }
     #endif

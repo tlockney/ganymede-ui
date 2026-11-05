@@ -2,39 +2,9 @@
 import AppKit
 import SwiftUI
 
-/// The Mac window's sidebar (#246): a strip of navigator tabs, each using
-/// the sidebar's full height, as Xcode's navigators do.
-enum NavigatorTab: String, CaseIterable, Identifiable {
-    case files, search, running, outline, recents
-
-    var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .files: "Files"
-        case .search: "Search"
-        case .running: "Running"
-        case .outline: "Outline"
-        case .recents: "Recents"
-        }
-    }
-
-    var symbol: String {
-        switch self {
-        case .files: "folder"
-        case .search: "magnifyingglass"
-        case .running: "bolt"
-        case .outline: "list.bullet.indent"
-        case .recents: "clock"
-        }
-    }
-
-    /// ⌘1 to ⌘5, as Xcode's navigators.
-    var shortcut: KeyEquivalent {
-        KeyEquivalent(Character(String((Self.allCases.firstIndex(of: self) ?? 0) + 1)))
-    }
-}
-
+/// The Mac window's sidebar (#246): a strip of navigator tabs
+/// (`NavigatorTab`), each using the sidebar's full height, as Xcode's
+/// navigators do.
 struct NavigatorSidebar: View {
     let folder: URL
     @ObservedObject var page: PageModel

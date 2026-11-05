@@ -314,6 +314,7 @@ targets:
       - path: Sources/Ganymede/Terminal/SSHKey.swift
       - path: Sources/Ganymede/Editor/TextFile.swift
       - path: Sources/Ganymede/Editor/CodeEditing.swift
+      - path: Sources/Ganymede/FileStack.swift
       - path: Sources/Ganymede/Terminal/ProcessTerminalTransport.swift
       - path: Sources/QuickLook/Preview/PreviewResources.swift
       - path: Sources/QuickLook/Thumbnail/NotebookSummary.swift
@@ -349,6 +350,7 @@ targets:
       - path: Sources/Ganymede/Terminal/SSHKey.swift
       - path: Sources/Ganymede/Editor/TextFile.swift
       - path: Sources/Ganymede/Editor/CodeEditing.swift
+      - path: Sources/Ganymede/FileStack.swift
     dependencies:
       - framework: build/GanymedeFFI.xcframework
         embed: false

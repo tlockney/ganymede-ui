@@ -37,54 +37,39 @@ struct IPadSidebar: View {
     /// The search field's text, and whether it reads notebooks too (#240).
     @State private var query = ""
     @State private var searchContents = false
+    /// The iPad's sidebar: one navigator tab at a time, as the Mac's
+    /// (#251). The iPhone's list shows everything at once.
+    var tabbed = false
+    /// The bottom panel, whose terminals the Running tab lists (#251).
+    @ObservedObject var panel: PanelController
+    /// The Running tab's terminal was tapped.
+    var showTerminal: (PanelTerminal.ID) -> Void = { _ in }
+    /// The selected navigator tab, kept per scene.
+    @SceneStorage("navigator.tab") private var tab: NavigatorTab = .files
 
     var body: some View {
         List {
-            if query.trimmingCharacters(in: .whitespaces).isEmpty {
-                recentsSection
-                Section(folder.lastPathComponent) {
-                    IPadFolderContents(folder: folder, root: folder, actions: actions, generation: generation)
-                }
+            if tabbed {
+                navigator
             } else {
-                searchResults
-            }
-            // Kernels keep running when their notebook is closed or another
-            // is opened; here they can be found and shut down (#225).
-            if !page.state.sessions.isEmpty {
-                Section("Running") {
-                    ForEach(page.state.sessions) { session in
-                        Button {
-                            page.run("open", arg: session.path)
-                            opened()
-                        } label: {
-                            HStack {
-                                Label(session.title, systemImage: "bolt.fill")
-                                Spacer()
-                                if let kernel = session.kernel {
-                                    Text(kernel).foregroundStyle(.secondary).font(.caption)
-                                }
-                            }
-                            .contentShape(Rectangle())
-                        }
-                        // A swipe only reveals the button: shutting down loses the
-                        // kernel's state.
-                        .swipeActions(allowsFullSwipe: false) {
-                            Button("Shut Down") { page.run("shutdown-kernel", arg: session.id) }
-                                .tint(.red)
-                        }
-                        .contextMenu {
-                            Button { page.run("shutdown-kernel", arg: session.id) } label: {
-                                Label("Shut Down Kernel", systemImage: "power")
-                            }
-                        }
-                    }
+                if query.trimmingCharacters(in: .whitespaces).isEmpty {
+                    recentsSection
+                    filesSection
+                } else {
+                    searchResults
                 }
+                runningSection
             }
         }
         .listStyle(.sidebar)
-        .navigationTitle("Notebooks")
-        // The page searches (`src/lib/search.ts`), after typing pauses.
-        .searchable(text: $query, prompt: "Find files")
+        .navigationTitle(tabbed ? tab.title : "Notebooks")
+        // The iPad's navigator tabs, as on the Mac (#251).
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if tabbed { tabStrip }
+        }
+        // The page searches (`src/lib/search.ts`), after typing pauses. The
+        // iPad's Search tab has a field of its own.
+        .modifier(SidebarSearch(enabled: !tabbed, query: $query))
         .onChange(of: query) { _ in search() }
         .onChange(of: searchContents) { _ in search() }
         // A reloaded page has no search, and a keystroke before the page
@@ -124,6 +109,128 @@ struct IPadSidebar: View {
         .alert("Couldn't do that", isPresented: failureShown, presenting: failure) { _ in
             Button("OK", role: .cancel) {}
         } message: { Text($0) }
+    }
+
+    // MARK: Navigator tabs (#251)
+
+    /// The tabs over the iPad's sidebar, as the Mac's: ⌘1 to ⌘5 with a
+    /// keyboard.
+    private var tabStrip: some View {
+        HStack(spacing: 0) {
+            ForEach(NavigatorTab.allCases) { item in
+                Button {
+                    tab = item
+                } label: {
+                    Image(systemName: item.symbol)
+                        .symbolVariant(tab == item ? .fill : .none)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(tab == item ? Color.accentColor : Color.secondary)
+                .accessibilityLabel(item.title)
+                .accessibilityAddTraits(tab == item ? .isSelected : [])
+                .keyboardShortcut(item.shortcut, modifiers: .command)
+                .hoverEffect()
+                .overlay(alignment: .top) {
+                    if item == .running, runningCount > 0 {
+                        Text("\(runningCount)")
+                            .font(.system(size: 10, weight: .semibold))
+                            .padding(.horizontal, 4)
+                            .background(Capsule().fill(Color.accentColor))
+                            .foregroundStyle(.white)
+                            .offset(x: 12, y: 4)
+                            .accessibilityHidden(true)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, 8)
+        .background(.bar)
+        .overlay(alignment: .bottom) { Divider() }
+    }
+
+    /// Kernels and the panel's terminals.
+    private var runningCount: Int {
+        page.state.sessions.count + panel.terminals.count
+    }
+
+    /// The selected tab's list.
+    @ViewBuilder
+    private var navigator: some View {
+        switch tab {
+        case .files:
+            filesSection
+        case .search:
+            Section {
+                TextField("Find files", text: $query)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .submitLabel(.search)
+            }
+            if !query.trimmingCharacters(in: .whitespaces).isEmpty {
+                searchResults
+            } else {
+                Section { Toggle("Search notebook contents", isOn: $searchContents) }
+            }
+        case .running:
+            runningSection
+            IPadPanelTerminalRows(panel: panel, show: showTerminal)
+            if runningCount == 0 {
+                Text("No kernels or terminals running").foregroundStyle(.secondary)
+            }
+        case .outline:
+            // The open notebook's headings come with #212, as on the Mac.
+            Text("No outline yet").foregroundStyle(.secondary)
+        case .recents:
+            recentsSection
+            if (page.state.recents ?? []).isEmpty {
+                Text("Notebooks you open show here").foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    /// The folder as a tree.
+    private var filesSection: some View {
+        Section(folder.lastPathComponent) {
+            IPadFolderContents(folder: folder, root: folder, actions: actions, generation: generation)
+        }
+    }
+
+    /// Kernels keep running when their notebook is closed or another is
+    /// opened; here they can be found and shut down (#225).
+    @ViewBuilder
+    private var runningSection: some View {
+        if !page.state.sessions.isEmpty {
+            Section(tabbed ? "Kernels" : "Running") {
+                ForEach(page.state.sessions) { session in
+                    Button {
+                        page.run("open", arg: session.path)
+                        opened()
+                    } label: {
+                        HStack {
+                            Label(session.title, systemImage: "bolt.fill")
+                            Spacer()
+                            if let kernel = session.kernel {
+                                Text(kernel).foregroundStyle(.secondary).font(.caption)
+                            }
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    // A swipe only reveals the button: shutting down loses the
+                    // kernel's state.
+                    .swipeActions(allowsFullSwipe: false) {
+                        Button("Shut Down") { page.run("shutdown-kernel", arg: session.id) }
+                            .tint(.red)
+                    }
+                    .contextMenu {
+                        Button { page.run("shutdown-kernel", arg: session.id) } label: {
+                            Label("Shut Down Kernel", systemImage: "power")
+                        }
+                    }
+                }
+            }
+        }
     }
 
     // MARK: Search and Recents (#240)
@@ -342,6 +449,56 @@ struct IPadSidebar: View {
     }
 }
 
+/// The iPhone's search field, in the navigation bar; the iPad's sidebar
+/// has a Search tab instead.
+private struct SidebarSearch: ViewModifier {
+    let enabled: Bool
+    @Binding var query: String
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content.searchable(text: $query, prompt: "Find files")
+        } else {
+            content
+        }
+    }
+}
+
+/// The bottom panel's terminals, in the Running tab (#251).
+private struct IPadPanelTerminalRows: View {
+    @EnvironmentObject private var model: AppModel
+    @ObservedObject var panel: PanelController
+    let show: (PanelTerminal.ID) -> Void
+
+    var body: some View {
+        if !panel.terminals.isEmpty {
+            Section("Terminals") {
+                ForEach(panel.terminals) { terminal in
+                    Button {
+                        show(terminal.id)
+                    } label: {
+                        Label(model.title(for: terminal.target), systemImage: "terminal")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                    }
+                    .listRowBackground(
+                        terminal.id == panel.selection && panel.isShown ? Color.accentColor.opacity(0.18) : nil
+                    )
+                    .swipeActions(allowsFullSwipe: false) {
+                        Button("Close") { panel.close(terminal.id) }
+                            .tint(.red)
+                    }
+                    .contextMenu {
+                        Button(role: .destructive) { panel.close(terminal.id) } label: {
+                            Label("Close Terminal", systemImage: "xmark")
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 /// What a sidebar row can do, handed down the tree.
 struct IPadFolderActions {
     var openPath: String?
@@ -518,6 +675,7 @@ struct IPadCommands: Commands {
     var body: some Commands {
         // Show/Hide Sidebar (⌃⌘S).
         SidebarCommands()
+        CommandGroup(after: .sidebar) { IPadPanelButton() }
         CommandGroup(replacing: .newItem) { IPadNewNotebook() }
         CommandGroup(replacing: .saveItem) { IPadPageButton("Save", "save", key: "s") }
         CommandMenu("Cell") {
@@ -532,6 +690,35 @@ struct IPadCommands: Commands {
             IPadPageButton("Restart", "restart")
             IPadPageButton("Shut Down Other Kernels", "shutdown-others") { !$0.otherSessions.isEmpty }
         }
+    }
+}
+
+/// The front scene's bottom panel (#251): whether it shows, and how to
+/// show or hide it.
+struct IPadPanelToggle {
+    var shown: Bool
+    var toggle: () -> Void
+}
+
+private struct IPadPanelKey: FocusedValueKey {
+    typealias Value = IPadPanelToggle
+}
+
+extension FocusedValues {
+    var iPadPanel: IPadPanelToggle? {
+        get { self[IPadPanelKey.self] }
+        set { self[IPadPanelKey.self] = newValue }
+    }
+}
+
+/// View › Show/Hide Terminal Panel (⌃`), as on the Mac.
+private struct IPadPanelButton: View {
+    @FocusedValue(\.iPadPanel) private var panel
+
+    var body: some View {
+        Button(panel?.shown == true ? "Hide Terminal Panel" : "Show Terminal Panel") { panel?.toggle() }
+            .keyboardShortcut("`", modifiers: [.control])
+            .disabled(panel == nil)
     }
 }
 
