@@ -49,6 +49,9 @@ struct KernelLog: Equatable {
         /// The server has no log route (404): `jupyter_server`, or a
         /// Ganymede older than the route.
         case unsupported
+        /// The server doesn't know the kernel (404 with a JSON error): it
+        /// was shut down long ago, or the server restarted.
+        case unknownKernel
     }
 
     /// Lines kept, as many as the server keeps.
@@ -75,8 +78,11 @@ struct KernelLog: Equatable {
         return !new.isEmpty && after < page.lastSeq
     }
 
-    mutating func markUnsupported() {
-        status = .unsupported
+    /// A 404: Ganymede answers an unknown kernel with a JSON `message`;
+    /// a server without the route answers with no JSON body.
+    mutating func markNotFound(body: Data) {
+        let object = try? JSONSerialization.jsonObject(with: body) as? [String: Any]
+        status = object?["message"] is String ? .unknownKernel : .unsupported
     }
 
     /// The request for the lines after `after` of `kernel`'s log.
