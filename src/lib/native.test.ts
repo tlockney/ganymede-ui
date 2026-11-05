@@ -6,8 +6,11 @@ import {
   nativeChrome,
   openFile,
   postDocument,
+  fileMove,
+  pageSearch,
   postState,
   runningSessions,
+  searchRequest,
 } from './native';
 
 afterEach(() => vi.unstubAllGlobals());
@@ -52,6 +55,8 @@ describe('native', () => {
       kernels: [{ name: 'cdp', displayName: 'TypeScript' }],
       backend: { label: 'Ganymede', detail: 'local server' },
       running: [{ id: 's1', path: 'Io.ipynb', kernel: 'TypeScript', state: 'idle' }],
+      recents: ['Io.ipynb'],
+      search: null,
     };
     postState(state);
     const postMessage = vi.fn();
@@ -95,5 +100,64 @@ describe('native', () => {
     expect(nativeChrome('?chrome=native&open=a.ipynb')).toBe(true);
     expect(nativeChrome('?chrome=web')).toBe(false);
     expect(nativeChrome('')).toBe(false);
+  });
+
+  it('reads the app’s search requests (#240)', () => {
+    expect(searchRequest(JSON.stringify({ query: 'io', dir: '/moons/', contents: true }))).toEqual({
+      query: 'io',
+      dir: 'moons',
+      contents: true,
+    });
+    expect(searchRequest(JSON.stringify({ query: '' }))).toEqual({
+      query: '',
+      dir: '',
+      contents: false,
+    });
+    expect(searchRequest('io')).toBeNull();
+    expect(searchRequest(JSON.stringify({ dir: 'x' }))).toBeNull();
+    expect(searchRequest(undefined)).toBeNull();
+  });
+
+  it('turns search results into page state (#240)', () => {
+    const item = { path: 'moons/Io.ipynb', name: 'Io.ipynb', type: 'notebook' };
+    expect(
+      pageSearch('  ', { matches: [{ item }], searching: false, truncated: false }),
+    ).toBeNull();
+    expect(
+      pageSearch('io', {
+        matches: [{ item }, { item, snippet: 'io = 1' }],
+        searching: true,
+        truncated: true,
+      }),
+    ).toEqual({
+      query: 'io',
+      matches: [
+        { ...item, snippet: null },
+        { ...item, snippet: 'io = 1' },
+      ],
+      searching: true,
+      truncated: true,
+      error: null,
+      opensFiles: false,
+    });
+    expect(
+      pageSearch('io', { matches: [], searching: false, truncated: false }, true)?.opensFiles,
+    ).toBe(true);
+  });
+
+  it('reads the files the app moved or deleted itself (#240)', () => {
+    expect(fileMove(JSON.stringify({ from: 'Io.ipynb', to: 'moons/Io.ipynb' }))).toEqual({
+      from: 'Io.ipynb',
+      to: 'moons/Io.ipynb',
+    });
+    expect(fileMove(JSON.stringify({ from: 'moons', to: null }))).toEqual({
+      from: 'moons',
+      to: null,
+    });
+    expect(fileMove(JSON.stringify({ from: '', to: null }))).toBeNull();
+    expect(fileMove(JSON.stringify({ from: 'a' }))).toBeNull();
+    expect(fileMove(JSON.stringify({ from: 'a', to: '' }))).toBeNull();
+    expect(fileMove('a')).toBeNull();
+    expect(fileMove(undefined)).toBeNull();
   });
 });

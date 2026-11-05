@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   type Backend,
   type BackendConfig,
@@ -37,12 +37,19 @@ import {
   openFile,
   postDocument,
   postState,
+  fileMove,
+  pageSearch,
   runningSessions,
+  searchRequest,
   type RunningSession,
+  type PageState,
+  type SearchRequest,
 } from './lib/native';
 import { agentCall } from './lib/native-agent';
 import { useSignals } from './lib/useSignal';
 import { fileActions } from './lib/file-actions';
+import { useFileSearch } from './lib/search';
+import { clearRecents, forgetRecent, moveRecent, recentsKey, useRecents } from './lib/recents';
 import { useFileDrop } from './lib/file-drop';
 import { copySample } from './lib/sample';
 
@@ -74,6 +81,11 @@ function stripLaunchParams(): void {
   LAUNCH_PARAMS.forEach(p => params.delete(p));
   const rest = params.toString();
   history.replaceState(null, '', window.location.pathname + (rest ? `?${rest}` : ''));
+}
+
+/** The Apple app's own server: the one this page came from. */
+function isAppServer(config: BackendConfig): boolean {
+  return config.kind === 'ganymede' && config.url === '';
 }
 
 /** Whether two configs reach the same notebooks, whatever the token. */
@@ -312,6 +324,29 @@ export function App() {
         );
         return done.every(d => d.status === 'fulfilled');
       }
+      case 'search': {
+        // The app's sidebar searches through the page (#240).
+        const request = searchRequest(arg);
+        if (!request) return false;
+        setNativeSearch(request);
+        return true;
+      }
+      case 'clear-recents':
+        if (!backend) return false;
+        clearRecents(recentsKey(backend.config));
+        return true;
+      case 'file-moved': {
+        // The app's sidebar renames and deletes with the file system, which
+        // the contents manager doesn't hear of (#240).
+        // Its sidebar lists the app's own files, so only that server's
+        // Recents follow: a remote one may hold the same path.
+        const move = fileMove(arg);
+        if (!backend || !move || !isAppServer(backend.config)) return false;
+        const key = recentsKey(backend.config);
+        if (move.to === null) forgetRecent(key, move.from);
+        else moveRecent(key, move.from, move.to);
+        return true;
+      }
       case 'show-shortcuts':
         setShortcutsOpen(true);
         return true;
@@ -381,8 +416,7 @@ export function App() {
   );
   // The Apple apps edit other files in their own editor, on their own
   // server: the one this page came from.
-  const editsFiles =
-    canOpenFiles() && backend?.config.kind === 'ganymede' && backend.config.url === '';
+  const editsFiles = canOpenFiles() && !!backend && isAppServer(backend.config);
 
   const dirty = !!openPath && controller?.path === openPath && controller.dirty;
   useEffect(() => postDocument({ path: openPath ?? null, dirty }), [openPath, dirty]);
@@ -394,6 +428,33 @@ export function App() {
   const running = runningSessions(backend?.services.sessions.running() ?? [], specs);
   const runningKey = JSON.stringify(running);
   const shown = !!openPath && controller?.path === openPath ? controller : undefined;
+  // The app's sidebar's search and Recents (#240): the page's sidebar has
+  // its own, so these run only with `chrome=native`.
+  const [nativeSearch, setNativeSearch] = useState<SearchRequest>({ query: '' });
+  const found = useFileSearch(
+    native ? backend?.services.contents : undefined,
+    nativeSearch.dir ?? '',
+    nativeSearch.query,
+    !!nativeSearch.contents,
+  );
+  // The hook's state belongs to the last request until its effect has
+  // seen this one: until then this is searching, not the old matches
+  // under the new query.
+  const [settled, setSettled] = useState(nativeSearch);
+  useEffect(() => setSettled(nativeSearch), [nativeSearch]);
+  const searchKey = useMemo(
+    () =>
+      JSON.stringify(
+        pageSearch(
+          nativeSearch.query,
+          settled === nativeSearch ? found : { matches: [], searching: true, truncated: false },
+          editsFiles,
+        ),
+      ),
+    [nativeSearch, settled, found, editsFiles],
+  );
+  const recents = useRecents(native ? backend : undefined, openPath);
+  const recentsKeyed = JSON.stringify(recents);
   useEffect(() => {
     const kernel = shown?.kernelName ?? null;
     postState({
@@ -412,8 +473,10 @@ export function App() {
       ),
       backend: backend ? { label: backend.label, detail: backend.detail } : null,
       running: JSON.parse(runningKey) as RunningSession[],
+      recents: JSON.parse(recentsKeyed) as string[],
+      search: JSON.parse(searchKey) as PageState['search'],
     });
-  }, [openPath, dirty, shown, specs, backend, runningKey]);
+  }, [openPath, dirty, shown, specs, backend, runningKey, recentsKeyed, searchKey]);
 
   // ⌘S / Ctrl+S saves, as in any document app.
   useEffect(() => {

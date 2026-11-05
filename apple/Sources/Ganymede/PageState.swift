@@ -31,6 +31,63 @@ struct PageState: Decodable, Equatable {
         }
     }
 
+    /// The app's sidebar search and what it found (#240).
+    struct Search: Decodable, Equatable {
+        struct Match: Decodable, Equatable, Identifiable {
+            var path: String
+            var name: String
+            var type: String
+            /// The line that matched, for a content match.
+            var snippet: String?
+
+            var id: String { path + "\n" + (snippet ?? "") }
+            var isNotebook: Bool { type == "notebook" }
+            var isDirectory: Bool { type == "directory" }
+            /// The name without `.ipynb`.
+            var title: String { isNotebook && name.hasSuffix(".ipynb") ? String(name.dropLast(6)) : name }
+            /// The folder it is in, for the row's second line; "" at the root.
+            var folder: String {
+                guard let slash = path.lastIndex(of: "/") else { return "" }
+                return String(path[..<slash])
+            }
+        }
+
+        var query: String
+        var matches: [Match]
+        var searching: Bool
+        /// A limit stopped the search short.
+        var truncated: Bool
+        var error: String?
+        /// Whether a file that isn't a notebook opens in the app's editor:
+        /// only from the app's own server.
+        var opensFiles: Bool?
+
+        /// Whether tapping `match` opens it.
+        func opens(_ match: Match) -> Bool {
+            match.isNotebook || (!match.isDirectory && opensFiles == true)
+        }
+    }
+
+    /// The `file-moved` command's argument: a file or folder the app
+    /// renamed (`to`) or deleted (`to` nil) itself, for the page's Recents.
+    static func fileMoved(from: String, to: String?) -> String {
+        let move: [String: Any] = ["from": from, "to": to ?? NSNull()]
+        guard let data = try? JSONSerialization.data(withJSONObject: move, options: [.sortedKeys]) else {
+            return "{}"
+        }
+        return String(decoding: data, as: UTF8.self)
+    }
+
+    /// The `search` command's argument: what to look for, in which folder
+    /// (a server path, "" for the root), and whether to read notebooks.
+    static func searchRequest(_ query: String, in folder: String = "", contents: Bool = false) -> String {
+        let request: [String: Any] = ["query": query, "dir": folder, "contents": contents]
+        guard let data = try? JSONSerialization.data(withJSONObject: request, options: [.sortedKeys]) else {
+            return "{}"
+        }
+        return String(decoding: data, as: UTF8.self)
+    }
+
     /// The open notebook's server path; nil when none is open.
     var path: String?
     var dirty = false
@@ -46,6 +103,10 @@ struct PageState: Decodable, Equatable {
     var backend: Backend?
     /// Running sessions; absent from a page older than #225.
     var running: [Session]?
+    /// The notebooks opened last, newest first; absent before #240.
+    var recents: [String]?
+    /// The sidebar search, while there is one (#240).
+    var search: Search?
 
     init() {}
 

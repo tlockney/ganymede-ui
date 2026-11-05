@@ -121,15 +121,16 @@ test.describe('on a phone', () => {
     const row = page
       .locator('.sidebar .folder-list')
       .getByRole('button', { name: 'Untitled', exact: true });
+    // Measure once the sidebar has slid in (#198): mid-slide, a box can
+    // come out a fraction of a pixel short.
+    await page
+      .locator('.sidebar')
+      .evaluate(el => Promise.all(el.getAnimations().map(a => a.finished)));
     // The "…" button is there on touch, 36px wide.
     const more = page.getByRole('button', { name: 'Actions for Untitled' });
     await expect(more).toBeVisible();
     expect((await more.boundingBox())!.width).toBeGreaterThanOrEqual(36);
 
-    // Measure once the sidebar has slid in (#198).
-    await page
-      .locator('.sidebar')
-      .evaluate(el => Promise.all(el.getAnimations().map(a => a.finished)));
     const box = (await row.boundingBox())!;
     const cdp = await page.context().newCDPSession(page);
     const point = { x: box.x + 30, y: box.y + box.height / 2 };

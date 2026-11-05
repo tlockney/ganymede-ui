@@ -107,7 +107,8 @@ search what the notebooks there say. It looks up to six folder levels
 down and reads up to 200 notebooks, and says when it stopped early.
 Above the folder, Recents lists the last eight notebooks you opened from
 this browser, on each backend. The iPad and iPhone apps draw their own
-sidebar, which doesn't have search or Recents yet (#240).
+sidebar, with the same search and Recents, though a folder in its results
+doesn't open yet.
 
 > [!NOTE]
 > **Unreleased.** Available only from a build of `main` (HEAD), not in
