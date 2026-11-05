@@ -189,6 +189,8 @@ export type RunningSession = {
   kernel: string | null;
   /** The kernel's execution state as the server last reported it, or null. */
   state: string | null;
+  /** The kernel's id, for its log (#248), or null with no kernel. */
+  kernelId: string | null;
 };
 
 /** `PageState.running` from the backend's sessions. */
@@ -203,6 +205,7 @@ export function runningSessions(
       path: s.path,
       kernel: name ? (specs?.kernelspecs[name]?.display_name ?? name) : null,
       state: (s.kernel as { execution_state?: string } | null)?.execution_state ?? null,
+      kernelId: s.kernel?.id ?? null,
     };
   });
 }

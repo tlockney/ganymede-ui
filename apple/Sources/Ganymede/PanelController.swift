@@ -21,11 +21,25 @@ final class PanelController: ObservableObject {
     @Published private(set) var height = PanelController.defaultHeight
     @Published private(set) var terminals: [PanelTerminal] = []
     @Published var selection: PanelTerminal.ID?
+    /// The Kernel Log tab is on show, over the selected terminal.
+    @Published var showsLog = false
 
     /// Shows the panel; with no terminal in it yet, starts one on `target`.
     func show(startingOn target: TerminalTarget) {
         isShown = true
-        if terminals.isEmpty { add(target) }
+        if terminals.isEmpty && !showsLog { add(target) }
+    }
+
+    /// Shows the panel with the Kernel Log tab.
+    func showLog() {
+        showsLog = true
+        isShown = true
+    }
+
+    /// Shows `id`'s terminal, over the Kernel Log.
+    func select(_ id: PanelTerminal.ID) {
+        selection = id
+        showsLog = false
     }
 
     /// ⌃`: hides the panel, or shows it as `show(startingOn:)` does.
@@ -42,20 +56,20 @@ final class PanelController: ObservableObject {
     func add(_ target: TerminalTarget) -> PanelTerminal {
         let terminal = PanelTerminal(target: target)
         terminals.append(terminal)
-        selection = terminal.id
+        select(terminal.id)
         isShown = true
         return terminal
     }
 
     /// Ends a terminal. The neighbour to its right (else left) is selected;
-    /// the panel hides when the last one closes.
+    /// the panel hides when the last one closes, unless the log is on show.
     func close(_ id: PanelTerminal.ID) {
         guard let index = terminals.firstIndex(where: { $0.id == id }) else { return }
         terminals.remove(at: index)
         if selection == id {
             selection = terminals.isEmpty ? nil : terminals[min(index, terminals.count - 1)].id
         }
-        if terminals.isEmpty { isShown = false }
+        if terminals.isEmpty && !showsLog { isShown = false }
     }
 
     /// Sets the height, kept between `minHeight` and what leaves the

@@ -115,6 +115,15 @@ built from the same sources (see
   > **Unreleased.** Available only from a build of `main` (HEAD), not in
   > the latest release, where every terminal opens in its own window.
 
+- The panel's first tab, Kernel Log, follows the open notebook kernel's
+  stdout and stderr (outside its cell output) and the server's lines
+  about its process, such as why it died. It needs a Ganymede server
+  with the kernel log route; a kernel on a gateway has no log there.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release.
+
 - Other files in the sidebar (not notebooks) open in a text editor
   window: the system text view with syntax highlighting for Python,
   JavaScript, TypeScript, JSON, Markdown, shell, YAML and TOML, line

@@ -69,7 +69,7 @@ packages:
   # The `device` bridge for notebook cells, on the kernel web view only (#99).
   GanymedeDevice:
     url: https://github.com/tlockney/ganymede-device
-    revision: 515b1ebb40c982308a7885a570c530b7b4f81904
+    revision: 570975962b1f55f7e791263090f58515164cca3c
 settings:
   base:
     SWIFT_VERSION: '5.0'
@@ -313,6 +313,7 @@ targets:
       - path: Sources/Ganymede/DocumentMessage.swift
       - path: Sources/Ganymede/PageState.swift
       - path: Sources/Ganymede/KernelSpecs.swift
+      - path: Sources/Ganymede/KernelLog.swift
       - path: Sources/Ganymede/FolderEntry.swift
       - path: Sources/Ganymede/WorkspaceTabs.swift
       - path: Sources/Ganymede/FileSearch.swift
@@ -351,6 +352,7 @@ targets:
       - path: Sources/Ganymede/DocumentMessage.swift
       - path: Sources/Ganymede/PageState.swift
       - path: Sources/Ganymede/KernelSpecs.swift
+      - path: Sources/Ganymede/KernelLog.swift
       - path: Sources/Ganymede/FolderEntry.swift
       - path: Sources/Ganymede/WorkspaceTabs.swift
       - path: Sources/Ganymede/FileSearch.swift

@@ -23,6 +23,13 @@ struct PageState: Decodable, Equatable {
         var kernel: String?
         /// The kernel's execution state as the server last reported it.
         var state: String?
+        /// The kernel's id; absent from a page older than #248.
+        var kernelID: String?
+
+        enum CodingKeys: String, CodingKey {
+            case id, path, kernel, state
+            case kernelID = "kernelId"
+        }
 
         /// The notebook's name without `.ipynb`.
         var title: String {
@@ -125,6 +132,8 @@ struct PageState: Decodable, Equatable {
     var headings: [Heading] { outline ?? [] }
     /// Whether a kernel runs for the notebook at `path`.
     func isRunning(_ path: String) -> Bool { sessions.contains { $0.path == path } }
+    /// The open notebook's kernel id, for its log (#248).
+    var kernelID: String? { sessions.first { $0.path == path }?.kernelID }
     /// Sessions other than the open notebook's.
     var otherSessions: [Session] { sessions.filter { $0.path != path } }
 
