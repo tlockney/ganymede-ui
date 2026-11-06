@@ -284,7 +284,7 @@ xcodebuild test -project apple/Ganymede.xcodeproj -scheme Ganymede-iOS \
 
 ## Download
 
-Each
+Since 0.3.0, each
 [ganymede-ui release](https://github.com/tlockney/ganymede-ui/releases)
 attaches `Ganymede-macOS-<version>.zip`: a universal app signed with a
 Developer ID, notarized, and stapled. Unzip it, move `Ganymede.app` to
