@@ -12,6 +12,7 @@ import {
   postState,
   runningSessions,
   searchRequest,
+  showAppSettings,
   variablePath,
 } from './native';
 import { nodeAt, type VariableNode } from './useVariables';
@@ -25,6 +26,14 @@ describe('native', () => {
     vi.stubGlobal('webkit', { messageHandlers: { document: { postMessage } } });
     postDocument({ path: 'moons/Io.ipynb', dirty: true });
     expect(postMessage).toHaveBeenCalledWith({ path: 'moons/Io.ipynb', dirty: true });
+  });
+
+  it('asks the app for its Settings at a tab, and says when there is no app (#332)', () => {
+    expect(showAppSettings('agent')).toBe(false);
+    const postMessage = vi.fn();
+    vi.stubGlobal('webkit', { messageHandlers: { settings: { postMessage } } });
+    expect(showAppSettings('kernels')).toBe(true);
+    expect(postMessage).toHaveBeenCalledWith('kernels');
   });
 
   it('opens files in the app’s editor only when the app has one', () => {

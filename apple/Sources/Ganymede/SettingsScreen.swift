@@ -1,48 +1,56 @@
+import SwiftUI
 #if os(iOS)
 import GameController
-import SwiftUI
 
-/// The iPad and iPhone app's one Settings screen (#210): where kernels
-/// run, the remotes and the SSH key, the agent, and, with a hardware
-/// keyboard, the keyboard shortcuts. The page's own Settings and Connect
-/// sheets are for the browser.
+/// The iPad and iPhone app's one Settings screen (#210, #332): where
+/// kernels run, the remotes and the SSH key, the agent, and, with a
+/// hardware keyboard, the keyboard shortcuts. The page's own Settings and
+/// Connect sheets are for the browser; in the app they open this screen.
+/// Pushes `.agent` or `.shortcuts` (the navigation stack's path).
 struct SettingsScreen: View {
     @ObservedObject var page: PageModel
-    /// Opens the page's shortcuts sheet once this one has gone; nil while
-    /// no notebook is on screen to show it in.
-    var showShortcuts: (() -> Void)?
     let done: () -> Void
+    @EnvironmentObject private var model: AppModel
     @State private var hardwareKeyboard = GCKeyboard.coalesced != nil
 
     var body: some View {
         RemotesView {
             Section {
-                NavigationLink {
-                    AgentSettingsView(page: page)
-                } label: {
+                NavigationLink(value: SettingsTab.agent) {
                     Label("Agent", systemImage: "sparkles")
                 }
             }
             CrashReportsSettings()
             if hardwareKeyboard {
                 Section {
-                    // The page's sheet: it rebinds keys, which only the
-                    // page can.
-                    Button {
-                        showShortcuts?()
-                    } label: {
+                    NavigationLink(value: SettingsTab.shortcuts) {
                         Label("Keyboard Shortcuts", systemImage: "keyboard")
                     }
-                    .disabled(showShortcuts == nil)
                 } footer: {
-                    Text(showShortcuts != nil
-                        ? "Lists the notebook's shortcuts, and changes them."
-                        : "Open a notebook to see its shortcuts.")
+                    Text("Lists the notebook's shortcuts, and changes them.")
                 }
             }
         }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
+        .navigationDestination(for: SettingsTab.self) { tab in
+            switch tab {
+            case .agent:
+                AgentSettingsView(page: page)
+            case .shortcuts:
+                Group {
+                    if let server = model.serverURL {
+                        ShortcutsPane(server: server)
+                    } else {
+                        Text("Waiting for the server…").foregroundStyle(.secondary)
+                    }
+                }
+                .navigationTitle("Keyboard Shortcuts")
+                .navigationBarTitleDisplayMode(.inline)
+            default:
+                EmptyView()
+            }
+        }
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
                 Button("Done", action: done)
@@ -56,9 +64,11 @@ struct SettingsScreen: View {
         }
     }
 }
+#endif
 
 /// The optional agent: on or off, the provider, model and key, and a
-/// test. The page keeps the settings and runs the test (`native-agent.ts`);
+/// test. In the iPad and iPhone's Settings screen and the Mac's Settings
+/// window (#332). The page keeps the settings and runs the test (`native-agent.ts`);
 /// the key goes to the Keychain, where the page reads it.
 struct AgentSettingsView: View {
     @ObservedObject var page: PageModel
@@ -101,7 +111,9 @@ struct AgentSettingsView: View {
             }
         }
         .navigationTitle("Agent")
+        #if os(iOS)
         .navigationBarTitleDisplayMode(.inline)
+        #endif
         .task(id: page.ready) { await load() }
         // Saved a moment after the last change, not on each keystroke.
         // Saves run in order on the page, so the last one wins.
@@ -139,26 +151,26 @@ struct AgentSettingsView: View {
                         ForEach(panel.providers) { Text($0.name).tag($0.id) }
                     }
                     TextField("Model", text: binding(\.model))
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
+                        .plainTextInput()
                     if !models.isEmpty {
                         Picker("Choose a Model", selection: binding(\.model)) {
                             if !models.contains(panel.model) { Text(panel.model).tag(panel.model) }
                             ForEach(models, id: \.self) { Text($0).tag($0) }
                         }
+                        #if os(iOS)
                         .pickerStyle(.navigationLink)
+                        #else
+                        .pickerStyle(.menu)
+                        #endif
                     }
                     if panel.provider == "local" {
                         TextField("Server URL", text: binding(\.baseUrl))
-                            .keyboardType(.URL)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
+                            .plainTextInput(url: true)
                     }
                 }
                 Section {
                     SecureField(panel.current?.needsKey ?? true ? "API Key" : "API Key (optional)", text: $key)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
+                        .plainTextInput()
                         .onSubmit(saveKey)
                 } header: {
                     Text("API Key")
@@ -188,6 +200,7 @@ struct AgentSettingsView: View {
                 }
             }
         }
+        .formStyle(.grouped)
         .task(id: panel.enabled ? panel.provider : nil) { await loadModels(panel) }
     }
 
@@ -292,4 +305,17 @@ struct AgentSettingsView: View {
         result = (answer?["ok"] as? Bool ?? false, answer?["message"] as? String ?? "No answer.")
     }
 }
-#endif
+
+private extension View {
+    /// A field for names, keys and URLs: no capitals or corrections.
+    func plainTextInput(url: Bool = false) -> some View {
+        #if os(iOS)
+        return self
+            .keyboardType(url ? .URL : .default)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+        #else
+        return autocorrectionDisabled()
+        #endif
+    }
+}

@@ -1,8 +1,8 @@
 import SwiftUI
 
-/// Settings: the remotes, and where kernels run. Kernels run on this
-/// device (the Mac's kernelspecs, or TypeScript kernels on iOS) or on one
-/// remote's server, which the in-process server proxies (`gateway_url`).
+/// Settings: the remotes, and on the iPad and iPhone where kernels run
+/// first (`KernelLocationSection`); the Mac's Settings has a Kernels tab
+/// for that (#332).
 struct RemotesView<Extra: View>: View {
     @EnvironmentObject private var model: AppModel
     /// Sections after these: the iPad and iPhone's Settings screen (#210).
@@ -18,18 +18,9 @@ struct RemotesView<Extra: View>: View {
 
     var body: some View {
         Form {
-            Section {
-                Picker("Run kernels on", selection: kernels) {
-                    Text("This device").tag(UUID?.none)
-                    ForEach(model.remotes.filter(\.hasServer)) { remote in
-                        Text(remote.title).tag(UUID?.some(remote.id))
-                    }
-                }
-            } header: {
-                Text("Kernels")
-            } footer: {
-                Text(kernelsFooter)
-            }
+            #if os(iOS)
+            KernelLocationSection()
+            #endif
             Section {
                 ForEach(model.remotes) { remote in
                     row(remote)
@@ -62,10 +53,6 @@ struct RemotesView<Extra: View>: View {
                 ? "Kernels run on this remote. They will move to this device, and running kernels are shut down."
                 : "Its token is removed from the keychain.")
         }
-    }
-
-    private var kernels: Binding<UUID?> {
-        Binding(get: { model.kernelRemoteID }, set: { model.useForKernels($0) })
     }
 
     private func row(_ remote: Remote) -> some View {
@@ -107,17 +94,44 @@ struct RemotesView<Extra: View>: View {
         }
         return parts.joined(separator: " · ")
     }
+}
 
-    private var kernelsFooter: String {
-        #if os(iOS)
-        return "On this device, notebooks run TypeScript kernels. On a remote, notebooks stay here and "
-            + "their kernels run on its server, such as `ganymede serve --ip 0.0.0.0` on your Mac. "
-            + "Running kernels are shut down when this changes."
-        #else
-        return "On this device, notebooks use the kernels installed on this Mac. On a remote, notebooks "
-            + "stay here and their kernels run on its server. Running kernels are shut down when this changes."
-        #endif
+/// Where kernels run: on this device (the Mac's kernelspecs, or TypeScript
+/// kernels on iOS) or on one remote's server, which the in-process server
+/// proxies (`gateway_url`).
+struct KernelLocationSection: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        Section {
+            Picker("Run kernels on", selection: kernels) {
+                Text(Self.thisDevice).tag(UUID?.none)
+                ForEach(model.remotes.filter(\.hasServer)) { remote in
+                    Text(remote.title).tag(UUID?.some(remote.id))
+                }
+            }
+        } header: {
+            Text("Where Kernels Run")
+        } footer: {
+            Text(Self.footer)
+        }
     }
+
+    private var kernels: Binding<UUID?> {
+        Binding(get: { model.kernelRemoteID }, set: { model.useForKernels($0) })
+    }
+
+    #if os(iOS)
+    private static let thisDevice = "This device"
+    private static let footer = "On this device, notebooks run TypeScript kernels. On a remote, notebooks stay here and "
+        + "their kernels run on its server, such as `ganymede serve --ip 0.0.0.0` on your Mac. "
+        + "Add remotes below. Running kernels are shut down when this changes."
+    #else
+    private static let thisDevice = "This Mac"
+    private static let footer = "On this Mac, notebooks use the kernels installed here, and TypeScript kernels "
+        + "that run in the notebook window. On a remote, notebooks stay here and their kernels run on its "
+        + "server; add one in Remotes. Running kernels are shut down when this changes."
+    #endif
 }
 
 /// Adds or edits one remote.

@@ -271,6 +271,26 @@ describe('App', () => {
     vi.unstubAllGlobals();
   });
 
+  it('opens the app’s Settings at a tab instead of its own sheets (#332)', async () => {
+    const asked: unknown[] = [];
+    vi.stubGlobal('webkit', {
+      messageHandlers: { settings: { postMessage: (m: unknown) => asked.push(m) } },
+    });
+    const fake = fakeServices({ '': [] });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    history.replaceState(null, '', '/?kernels=server');
+    render(<App />);
+    await waitFor(() => expect(window.ganymede).toBeDefined());
+    const run = window.ganymede!.command;
+    expect(await run('show-shortcuts')).toBe(true);
+    expect(await run('show-settings')).toBe(true);
+    expect(await run('connect')).toBe(true);
+    act(() => void window.dispatchEvent(new Event('ganymede:show-shortcuts')));
+    expect(asked).toEqual(['shortcuts', 'agent', 'kernels', 'shortcuts']);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
+
   it('opens the command palette with Ctrl+Shift+P, the toolbar and the app, and runs a command (#211)', async () => {
     const runAll = vi.fn(async () => {});
     mocks.controller = {

@@ -862,6 +862,31 @@ button {
   padding: 0 6px;
 }
 
+/* The Apple apps' Settings › Shortcuts (#332): the list is the whole page,
+ * on the window's own background, and the page scrolls. */
+:root.shortcuts-only body {
+  background: transparent;
+  overflow-y: auto;
+}
+
+:root.shortcuts-only #root {
+  height: auto;
+  overflow: visible;
+}
+
+.shortcuts-page {
+  padding: 4px 20px 20px;
+}
+
+.shortcuts-page .shortcuts-list {
+  max-height: none;
+  overflow: visible;
+}
+
+.shortcuts-page .sheet-buttons {
+  justify-content: flex-start;
+}
+
 .shortcuts-list h3 {
   margin: 14px 0 4px;
   font-size: 11px;

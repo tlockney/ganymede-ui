@@ -695,6 +695,9 @@ struct KernelMenu: View {
             if let page { confirmTrust(page) }
         }
         .disabled(page?.state.hasNotebook != true || page?.state.trusted != false)
+        Divider()
+        // Where kernels run is a setting of the app, not the notebook (#332).
+        Button("Where Kernels Run…") { SettingsOpener.show(.kernels) }
     }
 }
 #endif

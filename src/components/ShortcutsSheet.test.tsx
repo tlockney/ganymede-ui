@@ -28,6 +28,16 @@ describe('ShortcutsSheet', () => {
     expect(screen.getByText('Delete cells').nextSibling).toHaveTextContent('D D');
   });
 
+  it('fills the page with no title or Done when embedded in the app’s Settings (#332)', () => {
+    const onClose = vi.fn();
+    render(<ShortcutsSheet embedded onClose={onClose} />);
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Done' })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Command mode' })).toBeInTheDocument();
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it('says how to reach command mode', () => {
     render(<ShortcutsSheet onClose={vi.fn()} />);
     expect(screen.getByText(/press Esc/)).toBeInTheDocument();

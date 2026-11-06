@@ -17,6 +17,11 @@ import {
 
 type Props = {
   onClose(): void;
+  /**
+   * Drawn as a whole page, with no title or Done: the Apple apps show it
+   * in their Settings' Shortcuts tab (#332).
+   */
+  embedded?: boolean;
 };
 
 /**
@@ -24,21 +29,21 @@ type Props = {
  * rebound: + records a keystroke to add, × removes a binding, Reset puts
  * the defaults back.
  */
-export function ShortcutsSheet({ onClose }: Props) {
+export function ShortcutsSheet({ onClose, embedded = false }: Props) {
   const done = useRef<HTMLButtonElement>(null);
   const overrides = useSyncExternalStore(subscribe, customizations);
   const [recording, setRecording] = useState<string>();
   const [problem, setProblem] = useState<{ id: string; text: string }>();
 
   useEffect(() => {
-    done.current?.focus();
-  }, []);
+    if (!embedded) done.current?.focus();
+  }, [embedded]);
 
   useEffect(() => {
     // Capture phase, ahead of the notebook's bindings and the app's ⌘S.
     const onKey = (e: KeyboardEvent) => {
       if (!recording) {
-        if (e.key === 'Escape') {
+        if (e.key === 'Escape' && !embedded) {
           e.preventDefault();
           e.stopPropagation();
           onClose();
@@ -70,7 +75,7 @@ export function ShortcutsSheet({ onClose }: Props) {
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [recording, onClose]);
+  }, [recording, onClose, embedded]);
 
   const record = (id: string) => {
     setProblem(undefined);
@@ -131,25 +136,39 @@ export function ShortcutsSheet({ onClose }: Props) {
     );
   };
 
+  const list = (
+    <div className="shortcuts-list">
+      {GROUPS.map(group => (
+        <section key={group}>
+          <h3>{group}</h3>
+          {GROUP_NOTES[group] && <p className="shortcut-group-note">{GROUP_NOTES[group]}</p>}
+          <dl>{SHORTCUTS.filter(s => s.group === group).map(row)}</dl>
+        </section>
+      ))}
+    </div>
+  );
+  const resetAll = Object.keys(overrides).length > 0 && (
+    <button type="button" className="push-button reset-all" onClick={() => resetKeys()}>
+      Reset All
+    </button>
+  );
+
+  if (embedded) {
+    return (
+      <div className="shortcuts-page" aria-label="Keyboard Shortcuts">
+        {list}
+        {resetAll && <div className="sheet-buttons">{resetAll}</div>}
+      </div>
+    );
+  }
+
   return (
     <div className="sheet-backdrop" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="sheet shortcuts-sheet" role="dialog" aria-labelledby="shortcuts-title">
         <h2 id="shortcuts-title">Keyboard Shortcuts</h2>
-        <div className="shortcuts-list">
-          {GROUPS.map(group => (
-            <section key={group}>
-              <h3>{group}</h3>
-              {GROUP_NOTES[group] && <p className="shortcut-group-note">{GROUP_NOTES[group]}</p>}
-              <dl>{SHORTCUTS.filter(s => s.group === group).map(row)}</dl>
-            </section>
-          ))}
-        </div>
+        {list}
         <div className="sheet-buttons">
-          {Object.keys(overrides).length > 0 && (
-            <button type="button" className="push-button reset-all" onClick={() => resetKeys()}>
-              Reset All
-            </button>
-          )}
+          {resetAll}
           <button ref={done} type="button" className="push-button primary" onClick={onClose}>
             Done
           </button>
