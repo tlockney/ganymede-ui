@@ -60,7 +60,7 @@ jobs:
     timeout-minutes: 30
     env:
       # What this job installs, in one place.
-      GANYMEDE_VERSION: 0.6.0
+      GANYMEDE_VERSION: 0.7.0
       CDP_KERNEL_VERSION: 0.8.0
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -109,8 +109,8 @@ jobs:
     timeout-minutes: 60
     env:
       # The tlockney/ganymede tag or commit whose ganymede-ffi the app links.
-      # v0.6.0 includes ganymede#390 (ganymede-ffi panic callback, #318).
-      GANYMEDE_REF: v0.6.0
+      # v0.7.0, the latest Ganymede release (includes ganymede#390, the ffi panic callback, #318).
+      GANYMEDE_REF: v0.7.0
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
