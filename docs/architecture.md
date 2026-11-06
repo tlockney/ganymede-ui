@@ -197,11 +197,6 @@ which are queued behind it. JupyterLab marks every cell sent to the
 kernel as running, and a kernel runs them in order, so the first one
 still marked is the one running.
 
-> [!NOTE]
-> **Unreleased.** The notice's next steps and the running and queued
-> cells are available only from a build of `main` (HEAD), not in the
-> latest release.
-
 `NotebookSaver` (`saver.ts`) does the saving, as JupyterLab's document
 context does: one save at a time, a check of the file's `last_modified`
 before writing (a conflict when it is newer by more than 500 ms), and the
@@ -311,11 +306,6 @@ settings button, or a `ganymede:show-settings` window event).
   models and run Test, and writes the key to the Keychain item the page
   reads. The page's Settings sheet stays for the browser and the Mac.
 
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release, where the iPad and iPhone apps open the page's
-  > Settings sheet.
-
 - `models.ts` builds pi-ai's models for the chosen provider: Anthropic,
   OpenAI, Google, or a local OpenAI-compatible server (Ollama, LM Studio).
   The app loads it with a dynamic `import()` only when the agent is on.
@@ -408,10 +398,6 @@ own process and shows this web app in a `WKWebView`:
   the list shows, so going back doesn't reload the page and the list can
   run the page's commands.
 
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release.
-
 - `WebView.swift` handles what a browser would: links to other hosts open
   in the default browser, downloads ask where to save (the share sheet on
   iOS), and Help > Keyboard Shortcuts on the Mac sends
@@ -439,10 +425,6 @@ spec, routes later kernel and session calls by id, and opens a page
 kernel's websocket on the page's fake server. Changing a notebook's
 kernel to one on the other side starts its session again on the new side,
 then ends it on the old one, under the same session id.
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
 
 Settings keep a list of remotes (`Remote.swift`): each has a name, an
 optional Jupyter or Ganymede server (its token in the keychain), and
@@ -507,10 +489,6 @@ and shell on one session channel, signed in with the app's ed25519 key
 remote (`HostKeyStore`). On iPad a terminal is its own scene
 (`WindowGroup(for: TerminalRequest.self)`); SwiftTerm's key row gives Esc,
 Ctrl, Tab and arrows on the software keyboard.
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release, where each Mac terminal opens in a window of its own.
 
 `Editor/` is the text editor (#122). In the apps the page registers no
 editor of its own: its sidebar enables files that aren't notebooks when

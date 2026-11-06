@@ -90,20 +90,12 @@ Markdown, a table and a plot, copied into the folder the sidebar shows
 Show Again" hides it in this browser (`ganymede-ui:onboarding` in local
 storage).
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
-
 Open a notebook from the sidebar, which also lists running kernels. The
 toolbar runs, interrupts and restarts the kernel, switches kernels, trusts
 the notebook, downloads it, and saves (⌘S). Keyboard shortcuts follow
 JupyterLab's; press `H` in command mode (or the keyboard button) for the
 full list. Every shortcut can be rebound there, and changes stay in this
 browser. [docs/shortcuts.md](docs/shortcuts.md) lists the defaults.
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
 
 In a narrow window, toolbar buttons that don't fit move into a "…" menu
 at the toolbar's end, listed by name. Run always stays.
@@ -119,9 +111,8 @@ Jupyter debugger protocol (cdp-kernel's Node and Deno kernels, ipykernel);
 others say they can't list variables.
 
 > [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release, nor in a Ganymede before the metrics endpoint
-> (tlockney/ganymede#361).
+> Memory needs a Ganymede with the metrics endpoint
+> (tlockney/ganymede#361), which is 0.6.0 or later.
 
 Each running kernel shows its memory beside its name, from the server's
 jupyter-resource-usage endpoint, updated every few seconds while the
@@ -137,18 +128,10 @@ this browser, on each backend. The iPad and iPhone apps draw their own
 sidebar, with the same search and Recents, though a folder in its results
 doesn't open yet.
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
-
 Below the folder, Outline lists the open notebook's Markdown headings,
 indented by level; click one to select its cell and scroll to it. It
 updates as you edit. The Mac app shows the same list in its sidebar's
 Outline tab.
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
 
 A notebook with unsaved edits saves itself every two minutes, when the
 page is hidden, and when you open another file, and the browser asks before a tab with unsaved edits
@@ -157,10 +140,6 @@ save asks before overwriting it, and autosave stops until you save. A
 failed save or kernel action shows its error above the notebook.
 
 ### Running cells and errors
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
 
 The cell the kernel is running says so under its input, with how long it
 has run and an Interrupt button; cells waiting behind it say they are
@@ -191,10 +170,6 @@ picker when the notebook's kernel isn't installed here.
   backend, are kept in local storage (`ganymede-ui:recents`) until you
   clear them from the sidebar.
 
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release.
-
 Ganymede's [security page](https://ganymede-server.com/docs/security)
 covers tokens, cookies and cross-origin access on the server side.
 
@@ -218,10 +193,6 @@ covers tokens, cookies and cross-origin access on the server side.
   is sent. Ganymede's [privacy page](https://ganymede-server.com/docs/privacy)
   has the rules for every part.
 
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release.
-
 ## Known gaps
 
 It is a prototype. What it doesn't do yet, or does roughly:
@@ -240,12 +211,6 @@ It is a prototype. What it doesn't do yet, or does roughly:
   dragged in from Finder or Files is copied into the sidebar's folder,
   and opened when dropped on the notebook; other files can't be uploaded
   yet. No command palette or menus (the Mac app has a menu bar).
-
-  > [!NOTE]
-  > **Unreleased.** The sidebar's file menu, renaming from the title and
-  > dropping notebooks in are available only from a build of `main`
-  > (HEAD), not in the latest release, which has no file operations
-  > beyond New Notebook.
 
 - **Widgets** need a running kernel; saved widget state isn't restored
   without one.

@@ -62,10 +62,6 @@ built from the same sources (see
   open notebook (saving it first; its kernel keeps running). The Cell menu runs, inserts, moves and deletes cells and opens
   Find; the Kernel menu interrupts (⌘.), restarts, changes and trusts. View › Command Palette… (⇧⌘P) finds and runs the notebook, cell and kernel commands by name.
 
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release, which uses the page's own sidebar and toolbar.
-
 - Notebook, text file and terminal windows open as tabs of the front
   window, with the system's window tabs: drag a tab out to make it a
   window, or choose Window › Merge All Windows to bring windows back
@@ -75,10 +71,6 @@ built from the same sources (see
   the Finder or File › Open… open as tabs too. Ganymede uses tabs whatever
   System Settings › Desktop & Dock › "Prefer tabs when opening
   documents" says; windows restored at launch come back as they were.
-
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release, where each opens in a window of its own.
 
 - Downloads from the page (links with a `download` attribute, files an
   output offers) ask where to save, starting in Downloads.
@@ -93,10 +85,6 @@ built from the same sources (see
   list of remotes: Jupyter or Ganymede servers, SSH hosts, or both. Kernels run on this Mac or, as on iPadOS, on one
   remote's server. Tokens are kept in the keychain. Kernels shows
   where kernels run and the kernels installed there.
-
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release, which opens Remotes alone in Settings.
 
 - Ganymede > Agent Settings… (⌥⌘,) opens the page's agent settings. The
   agent's API keys are kept in the keychain too.
@@ -114,18 +102,10 @@ built from the same sources (see
   the SSH agent and known_hosts apply. File > New Terminal Tab opens a
   shell in a tab of its own.
 
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release, where every terminal opens in its own window.
-
 - The panel's first tab, Kernel Log, follows the open notebook kernel's
   stdout and stderr (outside its cell output) and the server's lines
   about its process, such as why it died. It needs a Ganymede server
   with the kernel log route; a kernel on a gateway has no log there.
-
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release.
 
 - The inspector on the window's right, shown with View > Show Inspector
   (⌥⌘0) or the toolbar button, has two tabs: Outline, the open
@@ -135,10 +115,6 @@ built from the same sources (see
   left edge to resize it. The window keeps whether it shows, its tab and
   its width.
 
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release.
-
 - Any of the notebook, the bottom panel and the inspector can fill the
   window: the arrows button in the panel's or inspector's header, or
   View > Fill Window (⇧⌘↩), which fills it with the panel when a panel
@@ -146,10 +122,6 @@ built from the same sources (see
   areas fold into thin strips at the window's edges; clicking one, the
   same button, ⇧⌘↩, or showing the sidebar, panel or inspector brings the
   layout back.
-
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release.
 
 - Other files in the sidebar (not notebooks) open in a text editor
   window: the system text view with syntax highlighting for Python,
@@ -188,30 +160,17 @@ On iPadOS and iOS (`Ganymede-iOS` target, iOS 16 or later):
   a keyboard, hold ⌘ to see the commands: New Notebook ⌘N, Save ⌘S, Run
   All ⇧⌘↩, Interrupt ⌘., Find ⌘F.
 
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release, which uses the page's own sidebar and toolbar.
-
 - On the iPhone the first screen lists the notebook folder, with the same
   long-press actions and Running section as the iPad's sidebar, and the
   terminal, Settings and folder buttons. Tapping a notebook opens it;
   swipe from the left edge or tap Back to return to the list. The
   notebook's run controls and its ⋯ menu are in the bottom toolbar.
 
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release, which uses the page's own sidebar and toolbar.
-
 - Settings (the gear button, ⌘, with a keyboard, or Settings in the ⋯
   menu) is one screen: where kernels run, the remotes, the SSH key, the
   optional agent (on or off, provider, model, API key and a test), and,
   with a keyboard attached, the notebook's keyboard shortcuts. The API
   key goes to the Keychain.
-
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release, which has a Remotes screen and the page's agent
-  > settings sheet.
 
 - The terminal button opens a shell on a remote, over SSH or on its
   server's terminals. On iPad it opens in the bottom panel (see below);
@@ -238,21 +197,12 @@ On iPadOS and iOS (`Ganymede-iOS` target, iOS 16 or later):
   until it is tapped again. The Agent, Outline and Variables inspector
   comes with the Mac's (#249).
 
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release, where text files and terminals open in windows
-  > of their own beside the notebook.
-
 - Downloads open the share sheet, where Save to Files keeps them.
 - iOS may close the server's socket while the app is in the background;
   back in the foreground the app restarts the server if it stopped
   answering, on the same port.
 
 ## Crash reports
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
 
 Off until you say yes. On first launch the app asks once whether to send
 crash reports ("Don't Send" is the default); Settings > General on the
@@ -272,10 +222,6 @@ TestFlight-only runs. ganymede-ffi's static library keeps its line
 tables, so Rust frames show files and lines too.
 
 ## TestFlight
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
 
 Each ganymede-ui release uploads the iPad and iPhone app to TestFlight for
 internal testers, and a `testflight_only` run of the Release workflow

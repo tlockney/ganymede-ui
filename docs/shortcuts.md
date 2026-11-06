@@ -12,10 +12,6 @@ and the toolbar's cell type picker changes a cell's type with the mouse.
 
 ## Command palette
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
-
 `⇧⌘P` (`Ctrl+Shift+P` on Windows and Linux) opens the command palette:
 every command in the tables below that works outside a cell editor, plus
 New Notebook, Save, Rename…, Download, Trust, Run All, Interrupt,
@@ -29,10 +25,6 @@ palette in the Shortcuts sheet. In the Mac app the menu's `⇧⌘P` stays as
 it is when you rebind it.
 
 ## On a touch screen
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
 
 While you edit a cell with the on-screen keyboard (an iPhone, or an iPad
 without a keyboard attached), a bar above the keyboard has Run (run and
