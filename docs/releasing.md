@@ -101,10 +101,6 @@ the binary and the reason in the printed log.
 
 ## The iPad and iPhone app (TestFlight)
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
-
 The `ios` job in `release.yml` builds the `Ganymede-iOS` scheme the same
 way as the `macos` job, then runs `apple/scripts/release-ios.sh`, which:
 

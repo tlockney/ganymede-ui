@@ -30,11 +30,6 @@ that means:
 - **Not on a remote kernel, not in a Mac process kernel, and not in a
   browser.** All are planned; see [Methods](#methods).
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release. In ganymede-ui 0.3.0, `device` exists only on the
-> iPad and iPhone with no kernel server set.
-
 Everywhere else, `device` is `undefined`, so check for it before using
 it. `device.has()` says whether this app answers a method:
 
@@ -97,11 +92,6 @@ For editor types, add this line once to a cell or a project file:
 
 <!-- device-table:end -->
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release, which has only `info`, `has` and the text
-> clipboard.
-
 `writeImage` takes PNG, JPEG, GIF, HEIC or TIFF bytes (a `Uint8Array`,
 `ArrayBuffer` or `Blob`). Haptics are there only on an iPhone: iPads and
 Macs have no Taptic Engine, so `device.has('haptics.impact')` is false
@@ -124,10 +114,6 @@ await device.info();
 ```
 
 `platform` is `"ipados"` on an iPad and `"ios"` on an iPhone.
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
 
 `info()` also reads the device's state when it is called: the hardware
 `model` (such as `"iPad13,4"`), `isPad`, `screen` (`width` and `height`
