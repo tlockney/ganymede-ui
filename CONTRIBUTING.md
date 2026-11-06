@@ -18,7 +18,9 @@ npm run build   # production build
 ```
 
 `npm run check` type-checks the app, its tests and the end-to-end tests,
-checks the dev log, and runs ESLint and Prettier's check
+checks the dev log, checks that docs say a feature is unreleased only
+with the standard note (CLAUDE.md, `scripts/check-unreleased.mjs`), and
+runs ESLint and Prettier's check
 (`npm run lint`, `npm run format:check`; `npm run format` rewrites).
 `npm test` runs the app's unit tests (Vitest, jsdom, next to the code as
 `*.test.ts(x)`) and the client package's tests; `npm run test:coverage`
