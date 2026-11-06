@@ -357,7 +357,8 @@ struct ContentView: View {
         }
         .focusedSceneObject(pageModel)
         .modifier(KeychainAlert(model: model))
-        .sheet(isPresented: $settings) {
+        // Opened again from the root, not where the last visit ended.
+        .sheet(isPresented: $settings, onDismiss: { settingsPath = [] }) {
             NavigationStack(path: $settingsPath) {
                 SettingsScreen(page: pageModel) { settings = false }
             }
