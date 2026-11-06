@@ -75,7 +75,7 @@ built from the same sources (see
 - Downloads from the page (links with a `download` attribute, files an
   output offers) ask where to save, starting in Downloads.
 - Quitting shuts every kernel down.
-- The kernel menu also lists "TypeScript (cdp-kernel, in app)" (unreleased): cdp-kernel
+- The kernel menu also lists "TypeScript (cdp-kernel, in app)": cdp-kernel
   running in the app's hidden kernel web view, as on the iPad. Its cells get
   ganymede-device's `device` (see [docs/device.md](../docs/device.md));
   process kernels can't reach the app.
@@ -129,8 +129,9 @@ built from the same sources (see
   numbers, auto-indent, and paired brackets and quotes. ⌘S saves.
   When the file changes on disk the editor reloads it, or, with unsaved
   edits, asks which version to keep.
-- Not sandboxed: the App Sandbox does not allow launching kernels. It is
-  meant to be signed with a Developer ID and notarized.
+- Not sandboxed: the App Sandbox does not allow launching kernels.
+  Releases are signed with a Developer ID and notarized instead (see
+  [Download](#download)).
 
 On iPadOS and iOS (`Ganymede-iOS` target, iOS 16 or later):
 
@@ -283,7 +284,7 @@ xcodebuild test -project apple/Ganymede.xcodeproj -scheme Ganymede-iOS \
 
 ## Download
 
-From the release after 0.2.0, each
+Each
 [ganymede-ui release](https://github.com/tlockney/ganymede-ui/releases)
 attaches `Ganymede-macOS-<version>.zip`: a universal app signed with a
 Developer ID, notarized, and stapled. Unzip it, move `Ganymede.app` to

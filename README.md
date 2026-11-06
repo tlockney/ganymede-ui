@@ -38,9 +38,10 @@ _No server required: notebooks in the browser's storage, and the TypeScript kern
 
 There is no Python in the browser: no Pyodide, unlike JupyterLite. Python
 runs only on a server, through an installed ipykernel. Compared with
-JupyterLab, the app is the notebook alone (a file list, the running
-kernels, no terminals, consoles or extensions); compared with JupyterLite,
-it also runs against a real server.
+JupyterLab, the web app is the notebook alone (a file list, the running
+kernels, no terminals, consoles or extensions; the Mac and iPad apps add
+terminals and a text editor); compared with JupyterLite, it also runs
+against a real server.
 
 ## Download the Mac app
 
@@ -179,9 +180,9 @@ covers tokens, cookies and cross-origin access on the server side.
   storage if you tick "Remember the key on this device". Either way,
   script on the page's origin can read it. In the Mac and iPad apps the
   key goes in the Keychain instead. Only pages from the app's server, in
-  the window itself and not in output frames, can ask for it; until
-  ganymede sandboxes `/files` (ganymede#298), an HTML file opened from
-  the notebook folder counts as one. The key is sent only to the provider you picked, straight from
+  the window itself and not in output frames, can ask for it; an HTML
+  file opened from the notebook folder doesn't count, since Ganymede
+  0.6.0 sandboxes `/files` (ganymede#298). The key is sent only to the provider you picked, straight from
   the page.
 - **Error reports:** off by default. In a browser, Settings > "Send
   error reports" (kept in local storage, `ganymede-ui:crash-reports`); in
@@ -210,12 +211,12 @@ It is a prototype. What it doesn't do yet, or does roughly:
   folder) and the toolbar's title (rename the open notebook). A notebook
   dragged in from Finder or Files is copied into the sidebar's folder,
   and opened when dropped on the notebook; other files can't be uploaded
-  yet. No command palette or menus (the Mac app has a menu bar).
+  yet.
 
 - **Widgets** need a running kernel; saved widget state isn't restored
   without one.
-- **The Mac app** is a CI build, ad-hoc signed and not notarized; the iPad
-  app is built from source with Xcode.
+- **The iPad and iPhone app** is on TestFlight for internal testers
+  only, not the App Store.
 
 [Issues](https://github.com/tlockney/ganymede-ui/issues) has the full list.
 
