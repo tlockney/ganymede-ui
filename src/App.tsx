@@ -188,6 +188,10 @@ export function App() {
   const openSettings = useCallback(() => {
     if (!showAppSettings('agent')) setSettingsOpen(true);
   }, []);
+  // The app picks where kernels run in Settings › Kernels.
+  const openConnect = useCallback(() => {
+    if (!showAppSettings('kernels')) setSheetOpen(true);
+  }, []);
 
   useEffect(stripLaunchParams, []);
 
@@ -415,8 +419,7 @@ export function App() {
         return true;
       }
       case 'connect':
-        // The app picks where kernels run in Settings › Kernels.
-        if (!showAppSettings('kernels')) setSheetOpen(true);
+        openConnect();
         return true;
     }
     if (!c) return false;
@@ -636,7 +639,7 @@ export function App() {
               if (sidebarFloats) setSidebarOpen(false);
             }}
             onClose={sidebarFloats ? () => setSidebarOpen(false) : undefined}
-            onConnect={() => setSheetOpen(true)}
+            onConnect={openConnect}
             onSettings={openSettings}
             actions={
               backend &&
@@ -691,7 +694,7 @@ export function App() {
                 // first frames show Connect…, then the welcome.
                 connecting={connecting || probing || (!!config && !backend && !error)}
                 onNew={() => void newNotebook(folder)}
-                onConnect={() => setSheetOpen(true)}
+                onConnect={openConnect}
                 folder={folder}
                 onShowFolder={native || sidebarOpen ? undefined : () => setSidebarOpen(true)}
                 onOpenSample={
