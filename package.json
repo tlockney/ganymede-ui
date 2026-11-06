@@ -12,7 +12,7 @@
     "build": "tsc -p . && vite build",
     "build:quicklook": "vite build --mode quicklook",
     "preview": "vite preview",
-    "check": "tsc -p . && tsc -p e2e && tsc -p packages/agent && node scripts/check-notes.mjs && node scripts/device-table.mjs && npm run lint && npm run format:check",
+    "check": "tsc -p . && tsc -p e2e && tsc -p packages/agent && node scripts/check-notes.mjs && node scripts/check-unreleased.mjs && node scripts/device-table.mjs && npm run lint && npm run format:check",
     "lint": "eslint . --max-warnings 0",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
