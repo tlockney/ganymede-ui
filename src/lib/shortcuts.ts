@@ -153,6 +153,16 @@ function load(): Overrides {
 let overrides: Overrides = load();
 const listeners = new Set<() => void>();
 
+// Another page of this origin changed them: the Apple apps' Settings
+// window (#332), or another browser tab.
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', e => {
+    if (e.key !== KEY && e.key !== null) return;
+    overrides = load();
+    listeners.forEach(l => l());
+  });
+}
+
 function update(next: Overrides) {
   overrides = next;
   try {

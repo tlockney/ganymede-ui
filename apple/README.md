@@ -79,14 +79,23 @@ built from the same sources (see
   running in the app's hidden kernel web view, as on the iPad. Its cells get
   ganymede-device's `device` (see [docs/device.md](../docs/device.md));
   process kernels can't reach the app.
-- Settings (⌘,) has tabs. General makes Ganymede the default app for
-  notebooks. Agent and Shortcuts open the page's agent settings and
-  shortcut list in the front notebook window. Remotes keeps a
-  list of remotes: Jupyter or Ganymede servers, SSH hosts, or both. Kernels run on this Mac or, as on iPadOS, on one
-  remote's server. Tokens are kept in the keychain. Kernels shows
-  where kernels run and the kernels installed there.
+- Settings (⌘,) is one window with tabs. General makes Ganymede the
+  default app for notebooks and turns crash reports on or off. Kernels
+  picks where kernels run, this Mac or, as on iPadOS, one remote's
+  server, and lists the kernels installed there. Remotes keeps a list of
+  remotes: Jupyter or Ganymede servers, SSH hosts, or both; tokens are
+  kept in the keychain. Agent turns the optional agent on and picks its
+  provider, model and API key, with a test. Shortcuts lists the
+  notebook's keyboard shortcuts and rebinds them.
 
-- Ganymede > Agent Settings… (⌥⌘,) opens the page's agent settings. The
+  > [!NOTE]
+  > **Unreleased.** In the latest release, Agent and Shortcuts only open
+  > the page's own sheets in the front notebook window, and the picker
+  > for where kernels run is in Remotes.
+
+- Ganymede > Agent Settings… (⌥⌘,), Help > Keyboard Shortcuts and
+  Kernel > Where Kernels Run… open those Settings tabs, as do the command
+  palette's Settings…, Keyboard Shortcuts and Connect to a Server…. The
   agent's API keys are kept in the keychain too.
 - Terminals open in the notebook window's bottom panel, as tabs under
   the notebook. View > Show Terminal Panel (`` ⌃` ``) or the toolbar button
@@ -169,8 +178,9 @@ On iPadOS and iOS (`Ganymede-iOS` target, iOS 16 or later):
 - Settings (the gear button, ⌘, with a keyboard, or Settings in the ⋯
   menu) is one screen: where kernels run, the remotes, the SSH key, the
   optional agent (on or off, provider, model, API key and a test), and,
-  with a keyboard attached, the notebook's keyboard shortcuts. The API
-  key goes to the Keychain.
+  with a keyboard attached, the notebook's keyboard shortcuts, listed and
+  rebound in place. The API key goes to the Keychain. The page's own
+  Settings, Keyboard Shortcuts and Connect open this screen.
 
 - The terminal button opens a shell on a remote, over SSH or on its
   server's terminals. On iPad it opens in the bottom panel (see below);

@@ -24,6 +24,7 @@ struct GanymedeApp: App {
         WindowGroup(id: WorkspaceTabs.sceneID, for: WindowTarget.self) { $target in
             ContentView(target: $target)
                 .environmentObject(model)
+                .settingsOpener()
         }
         // Files opened from the Finder go through the app delegate (#228).
         .handlesExternalEvents(matching: [])
@@ -56,17 +57,16 @@ struct GanymedeApp: App {
                 TerminalCommands(model: model)
             }
             CommandGroup(after: .appSettings) {
-                // The page's agent settings (#166), also under Settings ›
-                // Agent; ⌘, is the app's own Settings window (#206).
+                // Tabs of the one Settings window (#206, #332).
                 Button("Agent Settings…") {
-                    NotebookWindows.show(.showAgentSettings)
+                    SettingsOpener.show(.agent)
                 }
                 .keyboardShortcut(",", modifiers: [.command, .option])
                 DefaultAppCommand()
             }
             CommandGroup(replacing: .help) {
                 Button("Keyboard Shortcuts") {
-                    NotebookWindows.show(.showShortcuts)
+                    SettingsOpener.show(.shortcuts)
                 }
             }
         }
@@ -74,6 +74,7 @@ struct GanymedeApp: App {
         WindowGroup("Terminal", for: TerminalRequest.self) { $request in
             TerminalWindow(target: request?.target ?? .local(folder: nil))
                 .environmentObject(model)
+                .settingsOpener()
                 .workspaceTab()
         }
         .handlesExternalEvents(matching: [])
@@ -81,6 +82,7 @@ struct GanymedeApp: App {
         WindowGroup("Editor", for: EditorRequest.self) { $request in
             if let request {
                 EditorWindow(request: request)
+                    .settingsOpener()
                     .workspaceTab()
             }
         }
@@ -186,6 +188,8 @@ enum DefaultApp {
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationWillFinishLaunching(_ notification: Notification) {
         AppModel.shared.adoptLoginShellPath()
+        // A page's Settings, Keyboard Shortcuts or Connect (#332).
+        SettingsOpener.listen()
         // Files opened from the Finder (double-click, Open With, the Dock)
         // come as an Open Documents Apple Event, and the app takes it
         // itself. With SwiftUI's lifecycle, AppKit's handler sends it to

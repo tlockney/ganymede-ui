@@ -3,6 +3,12 @@
 The app binds JupyterLab's notebook shortcuts plus a few of its own. To
 see them in the app, press `H` in command mode, click the keyboard button
 in the toolbar, or choose Help › Keyboard Shortcuts in the Mac app.
+In the Mac, iPad and iPhone apps they are in Settings › Shortcuts, where
+`H` and Help › Keyboard Shortcuts take you.
+
+> [!NOTE]
+> **Unreleased.** In the latest release the apps show the page's own
+> shortcuts sheet instead.
 
 Command mode is when a cell is selected but not being edited (press `Esc`
 to get there); edit mode is when the cursor is in a cell (press `Enter`).

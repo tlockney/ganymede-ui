@@ -43,6 +43,7 @@ import {
   variablePath,
   runningSessions,
   searchRequest,
+  showAppSettings,
   type RunningSession,
   type PageState,
   type SearchRequest,
@@ -179,6 +180,18 @@ export function App() {
   const closeShortcuts = useCallback(() => setShortcutsOpen(false), []);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
+  // In the Apple apps these are tabs of the app's one Settings (#332); the
+  // page's sheets are for the browser.
+  const openShortcuts = useCallback(() => {
+    if (!showAppSettings('shortcuts')) setShortcutsOpen(true);
+  }, []);
+  const openSettings = useCallback(() => {
+    if (!showAppSettings('agent')) setSettingsOpen(true);
+  }, []);
+  // The app picks where kernels run in Settings › Kernels.
+  const openConnect = useCallback(() => {
+    if (!showAppSettings('kernels')) setSheetOpen(true);
+  }, []);
 
   useEffect(stripLaunchParams, []);
 
@@ -377,10 +390,10 @@ export function App() {
         return true;
       }
       case 'show-shortcuts':
-        setShortcutsOpen(true);
+        openShortcuts();
         return true;
       case 'show-settings':
-        setSettingsOpen(true);
+        openSettings();
         return true;
       case 'command-palette':
         if (!otherSheetShown.current) setPaletteOpen(true);
@@ -406,7 +419,7 @@ export function App() {
         return true;
       }
       case 'connect':
-        setSheetOpen(true);
+        openConnect();
         return true;
     }
     if (!c) return false;
@@ -582,17 +595,15 @@ export function App() {
 
   // From the notebook's H, and the Apple apps' Help menu.
   useEffect(() => {
-    const show = () => setShortcutsOpen(true);
-    window.addEventListener(SHOW_SHORTCUTS_EVENT, show);
-    return () => window.removeEventListener(SHOW_SHORTCUTS_EVENT, show);
-  }, []);
+    window.addEventListener(SHOW_SHORTCUTS_EVENT, openShortcuts);
+    return () => window.removeEventListener(SHOW_SHORTCUTS_EVENT, openShortcuts);
+  }, [openShortcuts]);
 
   // From the sidebar, and later the Apple apps' Settings menu (#166).
   useEffect(() => {
-    const show = () => setSettingsOpen(true);
-    window.addEventListener(SHOW_SETTINGS_EVENT, show);
-    return () => window.removeEventListener(SHOW_SETTINGS_EVENT, show);
-  }, []);
+    window.addEventListener(SHOW_SETTINGS_EVENT, openSettings);
+    return () => window.removeEventListener(SHOW_SETTINGS_EVENT, openSettings);
+  }, [openSettings]);
 
   return (
     <>
@@ -628,8 +639,8 @@ export function App() {
               if (sidebarFloats) setSidebarOpen(false);
             }}
             onClose={sidebarFloats ? () => setSidebarOpen(false) : undefined}
-            onConnect={() => setSheetOpen(true)}
-            onSettings={() => setSettingsOpen(true)}
+            onConnect={openConnect}
+            onSettings={openSettings}
             actions={
               backend &&
               fileActions({
@@ -656,7 +667,7 @@ export function App() {
               controller={controller}
               sidebarOpen={sidebarOpen}
               onToggleSidebar={() => setSidebarOpen(o => !o)}
-              onShowShortcuts={() => setShortcutsOpen(true)}
+              onShowShortcuts={openShortcuts}
               onShowPalette={() => setPaletteOpen(true)}
               onToggleVariables={() => setVariablesOpen(o => !o)}
               variablesOpen={variablesOpen}
@@ -683,7 +694,7 @@ export function App() {
                 // first frames show Connect…, then the welcome.
                 connecting={connecting || probing || (!!config && !backend && !error)}
                 onNew={() => void newNotebook(folder)}
-                onConnect={() => setSheetOpen(true)}
+                onConnect={openConnect}
                 folder={folder}
                 onShowFolder={native || sidebarOpen ? undefined : () => setSidebarOpen(true)}
                 onOpenSample={

@@ -305,6 +305,23 @@ export function postDocument(message: DocumentMessage): void {
   handler('document')?.postMessage(message);
 }
 
+/**
+ * The tabs of the Apple apps' Settings (#332): the app keeps the agent's
+ * settings, the keyboard shortcuts and where kernels run in one place.
+ */
+export type SettingsTab = 'general' | 'kernels' | 'remotes' | 'agent' | 'shortcuts';
+
+/**
+ * Asks the app to show its Settings at `tab`; false in a browser, which
+ * has no `settings` handler, so the page shows its own sheet instead.
+ */
+export function showAppSettings(tab: SettingsTab): boolean {
+  const h = handler('settings');
+  if (!h) return false;
+  h.postMessage(tab);
+  return true;
+}
+
 /** Tells the app what it shows: see `PageState`. */
 export function postState(state: PageState): void {
   handler('state')?.postMessage(state);

@@ -400,8 +400,17 @@ own process and shows this web app in a `WKWebView`:
 
 - `WebView.swift` handles what a browser would: links to other hosts open
   in the default browser, downloads ask where to save (the share sheet on
-  iOS), and Help > Keyboard Shortcuts on the Mac sends
-  `ganymede:show-shortcuts` to the page.
+  iOS). The page's Settings, Keyboard Shortcuts and Connect post a
+  `settings` message naming a tab (`showAppSettings` in `native.ts`),
+  and the app shows its own Settings there. The Shortcuts tab loads the
+  page alone with `view=shortcuts` from the app's server, the notebook
+  windows' origin, so a rebinding reaches them through local storage.
+
+  > [!NOTE]
+  > **Unreleased.** In the latest release, Help > Keyboard Shortcuts on
+  > the Mac sends `ganymede:show-shortcuts` to the page, which shows its
+  > own sheet.
+
 - `apple/scripts/bootstrap.sh` builds the XCFramework from a ganymede
   checkout and this repo's `dist/` into `apple/build/`, then generates the
   Xcode project. CI builds and tests both targets on macOS runners against
@@ -409,10 +418,10 @@ own process and shows this web app in a `WKWebView`:
 
 Where kernels run:
 
-| Run kernels on (⌘, or the server button) | Mac                                                     | iPad and iPhone                                     |
-| ---------------------------------------- | ------------------------------------------------------- | --------------------------------------------------- |
-| This device                              | Kernelspecs installed on the Mac                        | cdp-kernel in the kernel web view (`?kernels=page`) |
-| A remote with a server                   | That server, through Ganymede's gateway (`gateway_url`) | Same                                                |
+| Run kernels on (Settings › Kernels) | Mac                                                     | iPad and iPhone                                     |
+| ----------------------------------- | ------------------------------------------------------- | --------------------------------------------------- |
+| This device                         | Kernelspecs installed on the Mac                        | cdp-kernel in the kernel web view (`?kernels=page`) |
+| A remote with a server              | That server, through Ganymede's gateway (`gateway_url`) | Same                                                |
 
 Both apps also list the page's own kernels beside the server's
 (`?kernels=both`, `src/lib/mixed.ts`) whenever the server has kernels:

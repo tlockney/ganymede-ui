@@ -26,6 +26,22 @@ describe('shortcuts', () => {
     }
   });
 
+  it('takes a change another page made, such as the app’s Settings (#332)', () => {
+    const listener = vi.fn();
+    const stop = subscribe(listener);
+    try {
+      localStorage.setItem('ganymede-ui:shortcuts', JSON.stringify({ delete: [['X']] }));
+      window.dispatchEvent(new StorageEvent('storage', { key: 'ganymede-ui:shortcuts' }));
+      expect(keysFor('delete')).toEqual([['X']]);
+      expect(listener).toHaveBeenCalled();
+      window.dispatchEvent(new StorageEvent('storage', { key: 'other' }));
+      expect(listener).toHaveBeenCalledTimes(1);
+    } finally {
+      stop();
+      resetKeys();
+    }
+  });
+
   it('looks up keys by command', () => {
     expect(keysFor('delete')).toEqual([['D', 'D']]);
     expect(keysFor('no-such-command')).toEqual([]);

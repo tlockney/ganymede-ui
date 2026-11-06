@@ -124,37 +124,21 @@ struct ParkedPage: UIViewRepresentable {
 }
 #endif
 
-extension Notification.Name {
-    /// Posted by Help > Keyboard Shortcuts.
-    static let showShortcuts = Notification.Name("GanymedeShowShortcuts")
-    /// Posted by Ganymede > Agent Settings.
-    static let showAgentSettings = Notification.Name("GanymedeShowAgentSettings")
-    /// The iPad and iPhone app's Settings screen (#210), for the scene
-    /// whose page is the object.
-    static let showAppSettings = Notification.Name("GanymedeShowAppSettings")
-}
-
 #if os(macOS)
-/// The windows that show a notebook page, for the commands that open one
-/// of the page's sheets from elsewhere: a menu while a Terminal or Editor
-/// window is in front, or the Settings window (#206).
+/// The windows that show a notebook page, for the Settings window's
+/// Agent tab (#332), which asks a page for the agent's settings.
 @MainActor
 enum NotebookWindows {
-    /// Every notebook page's web view.
-    static let views = NSHashTable<WKWebView>.weakObjects()
+    /// Every notebook page's model.
+    static let pages = NSHashTable<PageModel>.weakObjects()
 
-    /// The frontmost window showing a notebook page, if any.
-    static var front: NSWindow? {
-        let windows = Set(views.allObjects.compactMap { $0.window }.map(ObjectIdentifier.init))
-        return NSApp.orderedWindows.first { windows.contains(ObjectIdentifier($0)) }
-    }
-
-    /// Brings the front notebook window forward and shows one of its
-    /// page's sheets there (`.showShortcuts`, `.showAgentSettings`).
-    static func show(_ name: Notification.Name) {
-        guard let window = front else { return }
-        window.makeKeyAndOrderFront(nil)
-        NotificationCenter.default.post(name: name, object: window)
+    /// The page of the frontmost window showing a notebook page, if any.
+    static var frontPage: PageModel? {
+        let shown = pages.allObjects.filter { $0.webView?.window != nil }
+        for window in NSApp.orderedWindows {
+            if let page = shown.first(where: { $0.webView?.window === window }) { return page }
+        }
+        return nil
     }
 }
 #endif
@@ -163,8 +147,6 @@ enum NotebookWindows {
 final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
     private var loaded: URL?
     private weak var webView: WKWebView?
-    private var shortcuts: NSObjectProtocol?
-    private var agentSettings: NSObjectProtocol?
     private let agentKeys = AgentKeys(secrets: KeychainStore())
     private var urlObservation: NSKeyValueObservation?
     var onNavigate: ((URL?) -> Void)?
@@ -174,7 +156,12 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     var park: (() -> Void)?
     #endif
     var page: PageModel? {
-        didSet { page?.webView = webView }
+        didSet {
+            page?.webView = webView
+            #if os(macOS)
+            if let page { NotebookWindows.pages.add(page) }
+            #endif
+        }
     }
     #if os(macOS)
     var document: PageDocument? {
@@ -214,39 +201,17 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         view.configuration.userContentController.addScriptMessageHandler(
             AgentKeysHandler(self), contentWorld: .page, name: "agentKeys"
         )
+        // The page's Settings, Keyboard Shortcuts and Connect open the
+        // app's Settings at a tab (#332).
+        view.configuration.userContentController.add(SettingsHandler(self), name: "settings")
         #if os(macOS)
         view.configuration.userContentController.add(DocumentHandler(self), name: "document")
-        // Help > Keyboard Shortcuts, Ganymede > Agent Settings and the
-        // Settings window's tabs (#206) name the window to show them in:
-        // the front notebook window (`NotebookWindows.front`).
-        shortcuts = NotificationCenter.default.addObserver(
-            forName: .showShortcuts, object: nil, queue: .main
-        ) { [weak view] note in
-            guard let view, let window = view.window, note.object as? NSWindow === window else { return }
-            view.evaluateJavaScript("window.dispatchEvent(new Event('ganymede:show-shortcuts'))")
-        }
-        agentSettings = NotificationCenter.default.addObserver(
-            forName: .showAgentSettings, object: nil, queue: .main
-        ) { [weak view] note in
-            guard let view, let window = view.window, note.object as? NSWindow === window else { return }
-            view.evaluateJavaScript("window.dispatchEvent(new Event('ganymede:show-settings'))")
-        }
-        NotebookWindows.views.add(view)
         #endif
         if #available(macOS 13.3, iOS 16.4, *) {
             // Safari's Web Inspector can attach (Develop menu).
             view.isInspectable = true
         }
         return view
-    }
-
-    deinit {
-        if let shortcuts {
-            NotificationCenter.default.removeObserver(shortcuts)
-        }
-        if let agentSettings {
-            NotificationCenter.default.removeObserver(agentSettings)
-        }
     }
 
     /// The next `load` loads even the same URL: the server restarted.
@@ -689,6 +654,29 @@ extension WebViewCoordinator {
         if message.frameInfo.isMainFrame, let state = PageState(body: message.body) {
             page?.update(state)
         }
+    }
+}
+
+extension WebViewCoordinator {
+    /// The page's `settings` message: a `SettingsTab` to show. Only the
+    /// page itself may send it, not an output's frame.
+    func received(settings message: WKScriptMessage) {
+        guard message.frameInfo.isMainFrame, let tab = SettingsTab(message: message.body) else { return }
+        NotificationCenter.default.post(name: .showAppSettings, object: page, userInfo: ["tab": tab])
+    }
+}
+
+/// The `settings` handler; weak, since the content controller keeps its
+/// handlers.
+private final class SettingsHandler: NSObject, WKScriptMessageHandler {
+    weak var coordinator: WebViewCoordinator?
+
+    init(_ coordinator: WebViewCoordinator) {
+        self.coordinator = coordinator
+    }
+
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        coordinator?.received(settings: message)
     }
 }
 

@@ -2,33 +2,96 @@
 import AppKit
 import SwiftUI
 
-/// The app's one Settings window (⌘,), in tabs (#206). Remotes are the
-/// app's own; the agent's settings and the keyboard shortcuts are the
-/// page's, so their tabs open them in the front notebook window.
+/// The app's one Settings window (⌘,, #206, #332): everything the app
+/// lets you set, at one fixed size. The page's own Settings, Keyboard
+/// Shortcuts and Connect sheets are for the browser; in the app they open
+/// a tab here (`SettingsTab`, `SettingsOpener`).
 struct SettingsWindow: View {
+    @AppStorage(SettingsTab.defaultsKey) private var tab = SettingsTab.general
+
     var body: some View {
-        TabView {
+        TabView(selection: $tab) {
             GeneralSettings()
                 .tabItem { Label("General", systemImage: "gearshape") }
-            RemotesView()
-                .padding()
-                .tabItem { Label("Remotes", systemImage: "server.rack") }
+                .tag(SettingsTab.general)
             KernelSettings()
                 .tabItem { Label("Kernels", systemImage: "cpu") }
-            PageSettings(
-                text: "The agent's model, API keys and tools are set in the notebook window.",
-                button: "Open Agent Settings…",
-                notification: .showAgentSettings
-            )
-            .tabItem { Label("Agent", systemImage: "sparkles") }
-            PageSettings(
-                text: "The notebook's keyboard shortcuts are listed in the notebook window.",
-                button: "Show Keyboard Shortcuts",
-                notification: .showShortcuts
-            )
-            .tabItem { Label("Shortcuts", systemImage: "keyboard") }
+                .tag(SettingsTab.kernels)
+            RemotesView()
+                .tabItem { Label("Remotes", systemImage: "server.rack") }
+                .tag(SettingsTab.remotes)
+            AgentSettingsTab()
+                .tabItem { Label("Agent", systemImage: "sparkles") }
+                .tag(SettingsTab.agent)
+            ShortcutsSettingsTab()
+                .tabItem { Label("Shortcuts", systemImage: "keyboard") }
+                .tag(SettingsTab.shortcuts)
         }
-        .frame(width: 480)
+        // A grouped Form has no height of its own: without one, the window
+        // shrank to each tab's first row.
+        .frame(width: 640, height: 540)
+        .settingsOpener()
+    }
+}
+
+/// Opens the Settings window at a tab: from the menus, and when a page
+/// asks (`.showAppSettings`). From macOS 14 only SwiftUI's `openSettings`
+/// does that, and only a view can read it: each window's view keeps it
+/// here (`settingsOpener()`).
+@MainActor
+enum SettingsOpener {
+    fileprivate static var open: (() -> Void)?
+    private static var observer: NSObjectProtocol?
+
+    static func show(_ tab: SettingsTab) {
+        UserDefaults.standard.set(tab.rawValue, forKey: SettingsTab.defaultsKey)
+        NSApp.activate(ignoringOtherApps: true)
+        if let open {
+            open()
+        } else {
+            // macOS 13, where this action still opens the Settings scene.
+            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        }
+    }
+
+    /// Listens for the pages' asks, once: as the app launches.
+    static func listen() {
+        guard observer == nil else { return }
+        observer = NotificationCenter.default.addObserver(
+            forName: .showAppSettings, object: nil, queue: .main
+        ) { note in
+            guard let tab = note.userInfo?["tab"] as? SettingsTab else { return }
+            Task { @MainActor in show(tab) }
+        }
+    }
+}
+
+extension View {
+    /// Keeps this window's `openSettings` for `SettingsOpener`.
+    func settingsOpener() -> some View {
+        modifier(SettingsOpenerModifier())
+    }
+}
+
+private struct SettingsOpenerModifier: ViewModifier {
+    func body(content: Content) -> some View {
+        if #available(macOS 14.0, *) {
+            content.background(OpenSettingsReader())
+        } else {
+            content
+        }
+    }
+}
+
+@available(macOS 14.0, *)
+private struct OpenSettingsReader: View {
+    @Environment(\.openSettings) private var openSettings
+
+    var body: some View {
+        Color.clear
+            .onAppear {
+                SettingsOpener.open = { openSettings() }
+            }
     }
 }
 
@@ -51,7 +114,7 @@ private struct GeneralSettings: View {
     }
 }
 
-/// Kernels: where they run, and the kernels installed there (#206).
+/// Kernels: where they run, and the kernels installed there (#206, #332).
 private struct KernelSettings: View {
     @EnvironmentObject private var model: AppModel
     @State private var specs: KernelSpecs?
@@ -59,12 +122,7 @@ private struct KernelSettings: View {
 
     var body: some View {
         Form {
-            Section {
-                LabeledContent("Kernels run on", value: model.kernelRemote?.title ?? "This Mac")
-                Text("Choose where in the Remotes tab.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            KernelLocationSection()
             Section {
                 if let specs {
                     ForEach(specs.specs) { spec in
@@ -130,30 +188,47 @@ private struct KernelSettings: View {
     }
 }
 
-/// A tab for settings the page keeps: a button brings the front notebook
-/// window forward and opens them there. With no notebook window open, the
-/// button is off.
-private struct PageSettings: View {
-    let text: String
-    let button: String
-    let notification: Notification.Name
-    @State private var hasNotebook = NotebookWindows.front != nil
+/// Agent: the agent's settings, as on the iPad and iPhone (#332). The
+/// page keeps them, so they are read and saved through the front notebook
+/// window's page; every window's page shares them.
+private struct AgentSettingsTab: View {
+    @State private var page = NotebookWindows.frontPage
 
     var body: some View {
-        VStack(spacing: 12) {
-            Text(text).foregroundStyle(.secondary).multilineTextAlignment(.center)
-            Button(button) { NotebookWindows.show(notification) }
-                .disabled(!hasNotebook)
+        Group {
+            if let page {
+                AgentSettingsView(page: page)
+                    .id(ObjectIdentifier(page))
+            } else {
+                Text("Open a notebook window to change the agent’s settings.")
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didBecomeKeyNotification)) { _ in
-            hasNotebook = NotebookWindows.front != nil
+            if page?.webView?.window == nil { page = NotebookWindows.frontPage }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.willCloseNotification)) { _ in
-            // The closing window is still listed; check once it has gone.
-            DispatchQueue.main.async { hasNotebook = NotebookWindows.front != nil }
+            // The closing window still has its page; look once it has gone.
+            DispatchQueue.main.async {
+                if page?.webView?.window == nil { page = NotebookWindows.frontPage }
+            }
         }
-        .padding(24)
-        .frame(maxWidth: .infinity)
+    }
+}
+
+/// Shortcuts: the page's list, where each can be rebound (#332).
+private struct ShortcutsSettingsTab: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        if let server = model.serverURL {
+            ShortcutsPane(server: server)
+        } else {
+            Text(model.error.map { "Ganymede could not start: \($0)" } ?? "Waiting for the server…")
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
     }
 }
 #endif
