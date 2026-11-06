@@ -16,6 +16,27 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # Which of the slow jobs below a pull request needs: scripts/ci-changes.sh
+  # skips e2e and macos-app when the PR can't affect them (docs, a release
+  # PR's version bump, or only the other job's files) (#344). A job skipped
+  # by its `if` reports success, so the required checks pass. If this job
+  # fails, its outputs are empty and both jobs run. Any other event runs
+  # everything.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      e2e: ${{ steps.changes.outputs.e2e }}
+      macos: ${{ steps.changes.outputs.macos }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          # The merge commit and its first parent, the base.
+          fetch-depth: 2
+      - id: changes
+        run: scripts/ci-changes.sh | tee -a "$GITHUB_OUTPUT"
+
   build:
     runs-on: ubuntu-latest
     steps:
@@ -33,6 +54,8 @@ jobs:
   # no Python) running cdp-kernel's TypeScript kernel, and against the
   # in-browser kernel, driven by Playwright (e2e/, `npm run e2e`).
   e2e:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.e2e != 'false' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -80,6 +103,8 @@ jobs:
   # tlockney/ganymede, bundles this repo's build, and runs the XCTest
   # suite (the server started, serving the page, stopped).
   macos-app:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.macos != 'false' }}
     runs-on: macos-latest
     timeout-minutes: 60
     env:
