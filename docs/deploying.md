@@ -16,11 +16,17 @@ Ganymede serves the app itself, so the page and the API share an origin
 and no cross-origin setup is needed.
 
 ```sh
-curl -fLO https://github.com/tlockney/ganymede-ui/releases/download/v0.1.0/ganymede-ui-0.1.0.zip
-unzip ganymede-ui-0.1.0.zip
 cd ~/notebooks                                  # the folder to serve
-ganymede serve --static-dir /path/to/ganymede-ui-0.1.0
+ganymede ui install                             # once: download and check a release
+ganymede ui                                     # serve it and open it in the browser
 ```
+
+`ganymede ui` (Ganymede 0.4.0 or later) is `ganymede serve` with the
+installed app as `--static-dir`; see
+[Ganymede's app page](https://ganymede-server.com/docs/app). By hand,
+download `ganymede-ui-X.Y.Z.zip` from a
+[release](https://github.com/tlockney/ganymede-ui/releases), unzip it,
+and run `ganymede serve --static-dir /path/to/ganymede-ui-X.Y.Z`.
 
 Or, from a checkout of this repository: `npm ci && npm run build`, then
 `ganymede serve --static-dir dist`.
@@ -30,10 +36,6 @@ The server trades the token for a login cookie and sets the `_xsrf` cookie
 that saving and starting kernels need; the app finds the cookie and
 connects without asking. Opening `http://127.0.0.1:8888/` later reconnects
 while the cookie lasts.
-
-Ganymede's `main` adds `ganymede ui install` and `ganymede ui`, which
-download a release, check it, and serve it as above; see
-[Ganymede's app page](https://ganymede-server.com/docs/app).
 
 ## On another origin
 
