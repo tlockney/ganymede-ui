@@ -406,11 +406,6 @@ own process and shows this web app in a `WKWebView`:
   page alone with `view=shortcuts` from the app's server, the notebook
   windows' origin, so a rebinding reaches them through local storage.
 
-  > [!NOTE]
-  > **Unreleased.** In the latest release, Help > Keyboard Shortcuts on
-  > the Mac sends `ganymede:show-shortcuts` to the page, which shows its
-  > own sheet.
-
 - `apple/scripts/bootstrap.sh` builds the XCFramework from a ganymede
   checkout and this repo's `dist/` into `apple/build/`, then generates the
   Xcode project. CI builds and tests both targets on macOS runners against

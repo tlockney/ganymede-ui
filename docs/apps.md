@@ -162,11 +162,6 @@ keychain. Agent turns the optional agent on and picks its provider, model
 and API key, with a test. Shortcuts lists the notebook's keyboard
 shortcuts and rebinds them.
 
-> [!NOTE]
-> **Unreleased.** In the latest release, Agent and Shortcuts only open
-> the page's own sheets in the front notebook window, and the picker for
-> where kernels run is in Remotes.
-
 Ganymede > Agent Settings… (⌥⌘,), Help > Keyboard Shortcuts and Kernel >
 Where Kernels Run… open those Settings tabs, as do the command palette's
 Settings…, Keyboard Shortcuts and Connect to a Server…. The agent's API
