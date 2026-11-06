@@ -49,7 +49,9 @@ Each
 [release](https://github.com/tlockney/ganymede-ui/releases) attaches
 `Ganymede-macOS-<version>.zip`, a signed and notarized app that runs the
 Ganymede server in its own process and can be the default app for
-`.ipynb` files. See [apple/README.md](apple/README.md).
+`.ipynb` files. The iPad and iPhone app is on TestFlight for internal
+testers. [docs/apps.md](docs/apps.md) is the apps' user guide;
+[apple/README.md](apple/README.md) has how to build them.
 
 ## Run
 
