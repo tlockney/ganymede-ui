@@ -46,6 +46,29 @@ export const ACTION_LABEL: Record<ProblemAction, string> = {
 export const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 /**
+ * The first hidden part of `path`: a folder or file name starting with
+ * “.”. The server answers 404 for anything under one, as for a missing
+ * file, so a notebook in `~/.work/` says “no such file” (#337).
+ */
+export function hiddenPart(path: string): string | undefined {
+  return path.split('/').find(p => p.startsWith('.') && p !== '.' && p !== '..');
+}
+
+/**
+ * Why a file the user opened can't be shown: the error's own message, or
+ * when the server says it isn't there and its path is hidden, that
+ * Ganymede doesn't open hidden files.
+ */
+export function openFailure(path: string, e: unknown, notFound: boolean): string {
+  const hidden = notFound ? hiddenPart(path) : undefined;
+  if (hidden === undefined) return messageOf(e);
+  const name = path.split('/').pop() ?? path;
+  const where =
+    hidden === name ? `${name} is a hidden file` : `${name} is in the hidden folder “${hidden}”`;
+  return `${where}, and Ganymede doesn’t open hidden files or folders. Move it out to open it here.`;
+}
+
+/**
  * Whether `e` means the request never got an answer: the server is down,
  * the network is, or (in a browser) the request was blocked. `fetch` says
  * so with a `TypeError` whose message differs by browser; the services

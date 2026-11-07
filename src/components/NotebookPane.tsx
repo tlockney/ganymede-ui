@@ -29,6 +29,7 @@ import {
   kernelDead,
   messageOf,
   missingKernel,
+  openFailure,
   saveFailed,
   unreachable,
 } from '../lib/problems';
@@ -37,7 +38,7 @@ import { ProblemNotice } from './ProblemNotice';
 import { useSignals } from '../lib/useSignal';
 import { hasUntrustedOutputs } from '../lib/trust';
 import { seedLanguage } from '../lib/language';
-import { handOff, handedOff, renameFile, renamedPath } from '../lib/rename';
+import { handOff, handedOff, notFound, renameFile, renamedPath } from '../lib/rename';
 import type { NotebookWidgets } from '../lib/widgets';
 import { type OutlineItem, outlineOf } from '../lib/outline';
 import { attachDevice, type DevicePromptState, promptClick } from '../lib/device-remote';
@@ -1006,7 +1007,11 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
     return (
       <div className="pane-message" role="alert">
         <h2>Couldn’t open {basename(path)}</h2>
-        <p>{offline ? unreachable(`open ${basename(path)}`).message : messageOf(error)}</p>
+        <p>
+          {offline
+            ? unreachable(`open ${basename(path)}`).message
+            : openFailure(path, error, notFound(error))}
+        </p>
         {offline && <p>Check that it is running and the network is up.</p>}
         {stale && <p>Ganymede’s files changed since this window opened. Reload to load them.</p>}
         <p>

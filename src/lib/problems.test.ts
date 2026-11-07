@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { ServerConnection } from '@jupyterlab/services';
 import {
+  hiddenPart,
+  openFailure,
   changedOnDisk,
   connectionLost,
   failed,
@@ -10,6 +12,24 @@ import {
   missingKernel,
   saveFailed,
 } from './problems';
+
+describe('hidden paths (#337)', () => {
+  it('finds the first part starting with a dot', () => {
+    expect(hiddenPart('Users/me/.work/nb/a.ipynb')).toBe('.work');
+    expect(hiddenPart('a/.b/.c/d.ipynb')).toBe('.b');
+    expect(hiddenPart('a/.d.ipynb')).toBe('.d.ipynb');
+    expect(hiddenPart('a/b.ipynb')).toBeUndefined();
+    expect(hiddenPart('./a/../b.ipynb')).toBeUndefined();
+  });
+
+  it('explains a 404 under a hidden part, and keeps other messages', () => {
+    const e = new Error('no such file or directory: x');
+    expect(openFailure('a/.w/n.ipynb', e, true)).toMatch(/^n\.ipynb is in the hidden folder “\.w”/);
+    expect(openFailure('a/.n.ipynb', e, true)).toMatch(/^\.n\.ipynb is a hidden file/);
+    expect(openFailure('a/n.ipynb', e, true)).toBe('no such file or directory: x');
+    expect(openFailure('a/.w/n.ipynb', e, false)).toBe('no such file or directory: x');
+  });
+});
 
 describe('isStaleBundle', () => {
   it('is true for a chunk that failed to load', () => {

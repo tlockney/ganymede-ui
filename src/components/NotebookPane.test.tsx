@@ -137,6 +137,7 @@ const NOTEBOOK: nbformat.INotebookContent = {
 
 function setup(
   get = vi.fn(async () => ({ path: 'moons/Io.ipynb', content: structuredClone(NOTEBOOK) })),
+  path = 'moons/Io.ipynb',
 ) {
   const fake = fakeServices();
   fake.contents.get = get as never;
@@ -146,7 +147,7 @@ function setup(
   const utils = render(
     <NotebookPane
       backend={fakeBackend(fake.services)}
-      path="moons/Io.ipynb"
+      path={path}
       onController={onController}
       onRenamed={onRenamed}
     />,
@@ -439,6 +440,19 @@ describe('NotebookPane', () => {
       await waitFor(() => expect(latest()).toBeDefined());
       expect(get).toHaveBeenCalledTimes(2);
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('says a notebook in a hidden folder can’t be opened, not that it is missing', async () => {
+      // The server answers 404 for anything under a dot-folder (#337).
+      const get = vi
+        .fn()
+        .mockRejectedValue(new Error('no such file or directory: Users/me/.work/nb/Io.ipynb'));
+      setup(get, 'Users/me/.work/nb/Io.ipynb');
+      expect(await screen.findByText('Couldn’t open Io.ipynb')).toBeInTheDocument();
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Io.ipynb is in the hidden folder “.work”, and Ganymede doesn’t open hidden files or folders.',
+      );
+      expect(screen.getByRole('alert')).not.toHaveTextContent('no such file');
     });
 
     it('offers Reload, not Retry, when a chunk of the page failed to load', async () => {
