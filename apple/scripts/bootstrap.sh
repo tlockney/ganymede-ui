@@ -56,7 +56,10 @@ download_xcframework() {
   tmp=$(mktemp -d)
   trap 'rm -rf "$tmp"' EXIT
   echo "Downloading GanymedeFFI.xcframework for $ref"
-  curl -fsSL --retry 3 -o "$tmp/GanymedeFFI.xcframework.zip" "$url"
+  curl -fsSL --retry 3 -o "$tmp/GanymedeFFI.xcframework.zip" "$url" || {
+    echo "error: ganymede release '$ref' has no GanymedeFFI.xcframework.zip. Releases after v0.7.0 carry it; for a commit, set GANYMEDE_DIR to a checkout to build it." >&2
+    exit 1
+  }
   curl -fsSL --retry 3 -o "$tmp/GanymedeFFI.xcframework.zip.sha256" "$url.sha256"
   (cd "$tmp" && shasum -a 256 -c GanymedeFFI.xcframework.zip.sha256)
   ditto -x -k "$tmp/GanymedeFFI.xcframework.zip" "$tmp/unzipped"
