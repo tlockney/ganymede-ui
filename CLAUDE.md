@@ -38,6 +38,12 @@ so on the release branch remove each of those notes, and reword the text
 around a note if it read as unreleased. A note added to `main` after the
 branch was cut stays.
 
+Ganymede's docs and landing page describe the apps. When a change here
+alters what they say (a requirement, a feature they name), add a
+`**Unreleased in ganymede-ui.**` note there, as Ganymede's CLAUDE.md
+describes. The release script lists those notes and opens an issue in
+tlockney/ganymede to update them after the release.
+
 ## Independent review
 
 Every PR gets a review from a Claude session that didn't write it. A

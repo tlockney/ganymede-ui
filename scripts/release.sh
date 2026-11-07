@@ -53,6 +53,31 @@ if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]]; then
   exit 1
 fi
 
+# Ganymede's docs and landing page describe the apps. Text there that
+# changes with this release says "Unreleased in ganymede-ui." (ganymede's
+# CLAUDE.md, ganymede-ui#397); list it, read from Ganymede's main. "<" is
+# escaped so a marker in an HTML comment shows in the issue and PR body.
+ganymede_notes() {
+  local dir
+  dir=$(mktemp -d)
+  if GIT_TERMINAL_PROMPT=0 git clone --quiet --depth 1 --filter=blob:none --sparse \
+      https://github.com/tlockney/ganymede "$dir" 2> /dev/null &&
+    git -C "$dir" sparse-checkout set --no-cone /README.md '/docs/*.md' /site/index.html 2> /dev/null; then
+    (cd "$dir" && grep -n '\*\*Unreleased in ganymede-ui\.\*\*' README.md docs/*.md site/index.html 2> /dev/null || true) |
+      sed -E -e 's/</\&lt;/g' \
+        -e 's#^([^:]+):([0-9]+):[[:space:]]*#https://github.com/tlockney/ganymede/blob/main/\1\#L\2  #'
+  else
+    echo "warning: couldn't read tlockney/ganymede; check its \"Unreleased in ganymede-ui.\" notes by hand" >&2
+  fi
+  rm -rf "$dir"
+}
+ganymede=$(ganymede_notes)
+if [[ -n "$ganymede" ]]; then
+  echo "Ganymede docs to update once this release is out:"
+  echo "$ganymede"
+  echo
+fi
+
 current=$(node -p 'require("./package.json").version')
 # npm version rewrites package.json and package-lock.json; a dry run puts
 # them back when it exits. --allow-same-version lets the first release be
@@ -96,8 +121,22 @@ $unreleased
 \`\`\`"
 fi
 
+if [[ -n "$ganymede" ]]; then
+  ganymede_body="These \"Unreleased in ganymede-ui.\" notes in Ganymede's docs describe ganymede-ui v$version. Once it is released, update the text they mark and remove the notes:
+
+$ganymede"
+  unreleased_body="${unreleased_body:-}
+
+Once released, Ganymede's docs need updating (an issue in tlockney/ganymede tracks it):
+
+$ganymede"
+fi
+
 if ! command -v gh > /dev/null; then
   echo "Pushed $branch. Open an issue \"Release v$version\" and a PR from $branch that closes it."
+  if [[ -n "$ganymede" ]]; then
+    echo "Open an issue in tlockney/ganymede, \"Update docs for ganymede-ui v$version\", listing the notes above."
+  fi
   exit 0
 fi
 issue=$(gh issue create --title "Release v$version" \
@@ -106,3 +145,7 @@ gh pr create --base main --head "$branch" --title "Release v$version" \
   --body "Closes #${issue##*/}
 
 Bumps package.json to $version and updates CHANGELOG.md. Merging tags v$version, which publishes the release.${unreleased_body:-}"
+if [[ -n "$ganymede" ]]; then
+  gh issue create --repo tlockney/ganymede --title "Update docs for ganymede-ui v$version" \
+    --body "$ganymede_body"
+fi

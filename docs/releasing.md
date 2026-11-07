@@ -24,6 +24,14 @@ partway through.
    grep -rn 'Unreleased\.' README.md apple/README.md docs/*.md
    ```
 
+   Ganymede's docs and landing page describe the apps too. Text there
+   that changes with this release carries "Unreleased in ganymede-ui."
+   ([Ganymede's CLAUDE.md](https://github.com/tlockney/ganymede/blob/main/CLAUDE.md#documenting-unreleased-features)).
+   The script reads those notes from Ganymede's `main`, lists them in its
+   output and the pull request, and with `--execute` opens an issue in
+   tlockney/ganymede to update them once the release is out. If it can't
+   reach GitHub it warns; then check them by hand.
+
 2. Merging that pull request (with CI green; branch protection on `main`
    is what guarantees this, since `tag-release.yml` does not check CI
    itself) runs `tag-release.yml`. It sees a `package.json` version that
