@@ -3,7 +3,7 @@
  * Phase R; its docs/protocol.md, "Over a Jupyter comm"): a cell on a
  * server kernel calls `connectDevice(jupyter.comm)`, and this page answers
  * for the cells it runs, forwarding the calls to the app's `deviceRemote`
- * handler (DeviceBridge.registerRemote, registered by WebViewModel). Only
+ * handler (DeviceBridge.registerRemote, registered by KernelHost). Only
  * the remote subset, the methods that need no permission, gets through.
  *
  * Outside the app there is no handler, so nothing is registered and the

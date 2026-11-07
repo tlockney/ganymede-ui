@@ -74,6 +74,9 @@ package, which isn't out yet
   need no permission, where the person sees and confirms the action or
   nothing goes back to the kernel. Anything picked or read goes to the
   machine the kernel runs on.
+- Clipboard reads are the exception: iPadOS can show its paste prompt,
+  but on the Mac a server kernel, a remote server's included, can read
+  the clipboard with no dialog. Connect only to servers you trust.
 - Outside the app (JupyterLab, a browser) nothing answers, and
   `connectDevice` gives a `device` whose calls fail `unavailable` after
   five seconds. Another client on the same kernel never answers for the
