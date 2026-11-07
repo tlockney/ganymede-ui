@@ -4,7 +4,7 @@ import SwiftUI
 /// app's own server (#122). It reloads the file when it changes on disk
 /// and there are no edits, and asks what to do when there are.
 struct EditorWindow: View {
-    @StateObject private var document: EditorDocument
+    @State private var document: EditorDocument
     #if os(iOS)
     @Environment(\.scenePhase) private var phase
     /// Shown on iPhone, where the editor covers the notebook: closes it.
@@ -14,18 +14,18 @@ struct EditorWindow: View {
 
     #if os(macOS)
     init(request: EditorRequest) {
-        _document = StateObject(wrappedValue: EditorDocument(path: request.path) { AppModel.shared.localServer })
+        _document = State(initialValue: EditorDocument(path: request.path) { AppModel.shared.localServer })
     }
     #else
     init(request: EditorRequest, onClose: (() -> Void)? = nil) {
-        _document = StateObject(wrappedValue: EditorDocument(path: request.path) { AppModel.shared.localServer })
+        _document = State(initialValue: EditorDocument(path: request.path) { AppModel.shared.localServer })
         self.onClose = onClose
     }
 
     /// A document that outlives this view: the iPad's detail area keeps
     /// it while the notebook shows (#251).
     init(document: EditorDocument, onClose: (() -> Void)? = nil) {
-        _document = StateObject(wrappedValue: document)
+        _document = State(initialValue: document)
         self.onClose = onClose
     }
     #endif
@@ -43,7 +43,7 @@ struct EditorWindow: View {
                 }
             }
             if document.loaded {
-                CodeTextView(document: document)
+                CodeTextView(document: document, generation: document.generation)
             } else if let problem = document.problem {
                 VStack(spacing: 12) {
                     Text(problem)
@@ -87,7 +87,7 @@ struct EditorWindow: View {
         #if os(macOS)
         .frame(minWidth: 480, minHeight: 320)
         .background(WindowReader { document.attach(to: $0) })
-        .focusedSceneObject(document)
+        .focusedSceneValue(\.editorDocument, document)
         #else
         .navigationBarTitleDisplayMode(.inline)
         // iOS may end a scene in the background without asking, so the

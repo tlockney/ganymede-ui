@@ -7,13 +7,14 @@ import WebKit
 /// window's proxy icon and edited dot, File > Save, Open Recent, and the
 /// Save / Don't Save prompts when the window closes or the app quits.
 @MainActor
-final class PageDocument: ObservableObject {
-    @Published private(set) var file: URL?
-    @Published private(set) var dirty = false
+@Observable
+final class PageDocument {
+    private(set) var file: URL?
+    private(set) var dirty = false
     /// The page, which saves through `window.ganymede.save()`.
-    weak var webView: WKWebView?
-    private(set) weak var window: NSWindow?
-    private var closeGuard: CloseGuard?
+    @ObservationIgnored weak var webView: WKWebView?
+    @ObservationIgnored private(set) weak var window: NSWindow?
+    @ObservationIgnored private var closeGuard: CloseGuard?
 
     /// Every window's document, for the prompt on quit.
     private static let all = NSHashTable<PageDocument>.weakObjects()
@@ -219,8 +220,8 @@ extension View {
 }
 /// File > Save (⌘S), for the front notebook or text file window.
 struct SaveCommand: View {
-    @FocusedObject private var document: PageDocument?
-    @FocusedObject private var editor: EditorDocument?
+    @FocusedValue(\.pageDocument) private var document
+    @FocusedValue(\.editorDocument) private var editor
 
     var body: some View {
         Button("Save") {

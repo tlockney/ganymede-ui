@@ -1,5 +1,5 @@
-import Combine
 import Foundation
+import Observation
 
 /// A terminal in a window's bottom panel (#248).
 struct PanelTerminal: Identifiable, Hashable {
@@ -11,18 +11,19 @@ struct PanelTerminal: Identifiable, Hashable {
 /// terminals in it. Hiding the panel keeps its terminals running; closing a
 /// terminal's tab ends its session.
 @MainActor
-final class PanelController: ObservableObject {
+@Observable
+final class PanelController {
     static let minHeight: Double = 120
     static let defaultHeight: Double = 260
     /// Room the notebook keeps above the panel.
     static let notebookRoom: Double = 160
 
-    @Published var isShown = false
-    @Published private(set) var height = PanelController.defaultHeight
-    @Published private(set) var terminals: [PanelTerminal] = []
-    @Published var selection: PanelTerminal.ID?
+    var isShown = false
+    private(set) var height = PanelController.defaultHeight
+    private(set) var terminals: [PanelTerminal] = []
+    var selection: PanelTerminal.ID?
     /// The Kernel Log tab is on show, over the selected terminal.
-    @Published var showsLog = false
+    var showsLog = false
 
     /// Shows the panel; with no terminal in it yet, starts one on `target`.
     func show(startingOn target: TerminalTarget) {

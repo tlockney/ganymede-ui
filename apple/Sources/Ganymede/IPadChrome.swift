@@ -23,7 +23,7 @@ var isPhone: Bool { UIDevice.current.userInterfaceIdiom == .phone }
 /// server is rooted.
 struct IPadSidebar: View {
     let folder: URL
-    @ObservedObject var page: PageModel
+    var page: PageModel
     let openFile: (String) -> Void
     /// After a notebook is opened from the sidebar.
     var opened: () -> Void = {}
@@ -41,7 +41,7 @@ struct IPadSidebar: View {
     /// (#251). The iPhone's list shows everything at once.
     var tabbed = false
     /// The bottom panel, whose terminals the Running tab lists (#251).
-    @ObservedObject var panel: PanelController
+    var panel: PanelController
     /// The Running tab's terminal was tapped.
     var showTerminal: (PanelTerminal.ID) -> Void = { _ in }
     /// The selected navigator tab, kept per scene.
@@ -467,7 +467,7 @@ private struct SidebarSearch: ViewModifier {
 /// The bottom panel's terminals, in the Running tab (#251).
 private struct IPadPanelTerminalRows: View {
     @EnvironmentObject private var model: AppModel
-    @ObservedObject var panel: PanelController
+    var panel: PanelController
     let show: (PanelTerminal.ID) -> Void
 
     var body: some View {
@@ -594,7 +594,7 @@ private struct IPadFolderContents: View {
 /// The notebook's controls in the navigation bar: run and kernel controls
 /// on their own, the rest in a menu.
 struct IPadNotebookToolbar: ToolbarContent {
-    @ObservedObject var page: PageModel
+    var page: PageModel
     /// In the bottom toolbar, in thumb reach: the iPhone (#209).
     var bottom = false
     /// Asks for the notebook's new name (#209).
@@ -730,7 +730,7 @@ private struct IPadPanelButton: View {
 
 /// File › New Notebook (⌘N), in the notebook folder's top level.
 private struct IPadNewNotebook: View {
-    @FocusedObject private var page: PageModel?
+    @FocusedValue(\.pageModel) private var page
 
     var body: some View {
         Button("New Notebook") { page?.run("new-notebook", arg: "") }
@@ -747,7 +747,7 @@ private struct IPadPageButton: View {
     var modifiers: EventModifiers = .command
     /// When it can run; by default, while a notebook is open.
     var enabled: (PageState) -> Bool
-    @FocusedObject private var page: PageModel?
+    @FocusedValue(\.pageModel) private var page
 
     init(
         _ title: String, _ id: String, key: KeyEquivalent? = nil, modifiers: EventModifiers = .command,

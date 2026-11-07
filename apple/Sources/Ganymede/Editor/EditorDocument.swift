@@ -16,31 +16,32 @@ struct EditorRequest: Codable, Hashable, Identifiable {
 /// whether it has unsaved edits, and whether the file changed on disk
 /// since. Reads and writes go through `/api/contents`.
 @MainActor
-final class EditorDocument: ObservableObject {
+@Observable
+final class EditorDocument {
     let path: String
     /// The text the view shows after a load; the view owns the text in
     /// between and reports edits with `edited`.
-    private(set) var text = ""
+    @ObservationIgnored private(set) var text = ""
     /// Bumped whenever `text` is replaced from the server, so the view
     /// knows to take it.
-    @Published private(set) var generation = 0
-    @Published private(set) var loaded = false
-    @Published private(set) var dirty = false
+    private(set) var generation = 0
+    private(set) var loaded = false
+    private(set) var dirty = false
     /// Why the file could not be read or saved.
-    @Published private(set) var problem: String?
+    private(set) var problem: String?
     /// The file changed on disk while there were unsaved edits.
-    @Published private(set) var changedOnDisk = false
-    private var lastModified: String?
+    private(set) var changedOnDisk = false
+    @ObservationIgnored private var lastModified: String?
     /// A read or write is under way; another waits for the next try.
-    private var busy = false
+    @ObservationIgnored private var busy = false
     /// What `problem` came from, so Try Again repeats it.
-    private var failedSave = false
+    @ObservationIgnored private var failedSave = false
     /// Counts saves and loads, so a poll answered before one is ignored.
-    private var changes = 0
+    @ObservationIgnored private var changes = 0
     private let endpoint: @MainActor () -> ServerEndpoint?
     #if os(macOS)
-    private weak var window: NSWindow?
-    private var closeGuard: EditorCloseGuard?
+    @ObservationIgnored private weak var window: NSWindow?
+    @ObservationIgnored private var closeGuard: EditorCloseGuard?
     /// Every open editor, for the prompt on quit.
     private static let all = NSHashTable<EditorDocument>.weakObjects()
     #endif

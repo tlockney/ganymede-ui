@@ -9,6 +9,10 @@ import SwiftUI
 #if os(macOS)
 struct CodeTextView: NSViewRepresentable {
     let document: EditorDocument
+    /// `document.generation`, read here so the window's body depends on
+    /// it: a reload from disk with no edits changes nothing else, and the
+    /// view must take the new text (#357).
+    let generation: Int
 
     func makeCoordinator() -> CodeTextCoordinator { CodeTextCoordinator(document: document) }
 
@@ -151,6 +155,10 @@ final class CodeTextCoordinator: NSObject, NSTextViewDelegate {
 #else
 struct CodeTextView: UIViewRepresentable {
     let document: EditorDocument
+    /// `document.generation`, read here so the window's body depends on
+    /// it: a reload from disk with no edits changes nothing else, and the
+    /// view must take the new text (#357).
+    let generation: Int
 
     func makeCoordinator() -> CodeTextCoordinator { CodeTextCoordinator(document: document) }
 

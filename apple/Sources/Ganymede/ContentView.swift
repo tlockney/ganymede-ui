@@ -16,9 +16,9 @@ struct ContentView: View {
     @State private var sidebarRoot: URL
     @Environment(\.openWindow) private var openWindow
     /// The open notebook's file and unsaved edits, as the page reports them.
-    @StateObject private var document = PageDocument()
+    @State private var document = PageDocument()
     /// What the page shows, for the native toolbar and menus (#205).
-    @StateObject private var pageModel = PageModel()
+    @State private var pageModel = PageModel()
     /// This window, for the Finder's open requests (#228).
     @State private var windowID = UUID()
     /// File › New Tab or New Window, when this window is the one they
@@ -26,7 +26,7 @@ struct ContentView: View {
     @State private var request: WorkspaceTabs.Request?
     /// The bottom panel's terminals (#248), and whether it shows and how
     /// tall it is, kept with the window across launches.
-    @StateObject private var panel = PanelController()
+    @State private var panel = PanelController()
     /// What the window shows, kept with it so a window the system
     /// restores comes back on it (#268). SwiftUI's own restoring of
     /// `target` brought notebook windows back on the folder.
@@ -43,7 +43,7 @@ struct ContentView: View {
     @SceneStorage("sidebar.shown") private var sidebarShown = true
     /// The right inspector (#249), and whether it shows, on which tab and
     /// how wide, kept with the window across launches.
-    @StateObject private var inspector = InspectorController()
+    @State private var inspector = InspectorController()
     @SceneStorage("inspector.shown") private var inspectorShown = false
     @SceneStorage("inspector.tab") private var inspectorTab = InspectorTab.outline.rawValue
     @SceneStorage("inspector.width") private var inspectorWidth = InspectorController.defaultWidth
@@ -74,7 +74,7 @@ struct ContentView: View {
     /// A text file being edited full screen, where the app has one scene.
     @State private var editing: EditorRequest?
     /// What the page shows, for the native toolbar and menus (#205).
-    @StateObject private var pageModel = PageModel()
+    @State private var pageModel = PageModel()
     /// The iPad's sidebar and notebook columns (#208).
     @State private var columns = NavigationSplitViewVisibility.automatic
     /// The iPhone's page, kept while the folder list shows (#209).
@@ -83,7 +83,7 @@ struct ContentView: View {
     @State private var phonePath: [PhoneScreen] = []
     /// The iPad's bottom panel (#251): terminals on remotes. The iPhone
     /// has none; its sidebar lists this one's (empty) terminals.
-    @StateObject private var panel = PanelController()
+    @State private var panel = PanelController()
     @SceneStorage("panel.height") private var panelHeight = PanelController.defaultHeight
     /// Text files over the notebook in the iPad's detail area (#251).
     @State private var openFiles = IPadOpenFiles()
@@ -211,9 +211,9 @@ struct ContentView: View {
                 DispatchQueue.main.async { bringForward(window) }
             }
         })
-        .focusedSceneObject(document)
-        .focusedSceneObject(pageModel)
-        .focusedSceneObject(panel)
+        .focusedSceneValue(\.pageDocument, document)
+        .focusedSceneValue(\.pageModel, pageModel)
+        .focusedSceneValue(\.panelController, panel)
     }
 
     /// `macWindow` with the bottom panel and the keyboard kept in step.
@@ -261,7 +261,7 @@ struct ContentView: View {
         // In three parts: as one expression the type checker gave up
         // (#356).
         macPanelSync
-        .focusedSceneObject(inspector)
+        .focusedSceneValue(\.inspectorController, inspector)
         .focusedSceneValue(\.windowFill, WindowFill(filled: layout.filled) {
             // The area with the keyboard: a panel terminal, or the notebook.
             if layout.filled != nil {
@@ -375,7 +375,7 @@ struct ContentView: View {
                 NavigationStack { notebook }
             }
         }
-        .focusedSceneObject(pageModel)
+        .focusedSceneValue(\.pageModel, pageModel)
         .modifier(KeychainAlert(model: model))
         // Opened again from the root, not where the last visit ended.
         .sheet(isPresented: $settings, onDismiss: { settingsPath = [] }) {
