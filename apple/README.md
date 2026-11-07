@@ -61,7 +61,8 @@ replaces them.
 
 ## Build
 
-Needs macOS 13 or later, Xcode 16, Rust (rustup), Node 24, and
+Needs an Apple silicon Mac with macOS 26 or later, Xcode 26 or later
+(the apps target macOS 26 and iOS 26), Rust (rustup), Node 24, and
 [XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`),
 plus a checkout of [tlockney/ganymede](https://github.com/tlockney/ganymede).
 
@@ -111,16 +112,22 @@ xcodebuild test -project apple/Ganymede.xcodeproj -scheme Ganymede-iOS \
 
 ## Download
 
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release: the apps require macOS 26 or iOS 26, and the Mac
+> app runs on Apple silicon only. The latest release runs on macOS 13 and
+> iOS 16, and its Mac app is universal (Apple silicon and Intel).
+
 Since 0.3.0, each
 [ganymede-ui release](https://github.com/tlockney/ganymede-ui/releases)
-attaches `Ganymede-macOS-<version>.zip`: a universal app signed with a
+attaches `Ganymede-macOS-<version>.zip`: an Apple silicon app signed with a
 Developer ID, notarized, and stapled. Unzip it, move `Ganymede.app` to
 Applications, and open it; Gatekeeper opens it without a warning.
 `release.yml` builds it with `scripts/release-app.sh`
 ([docs/releasing.md](../docs/releasing.md)).
 
 Each run of the `macos-app` job on a push to `main` also uploads
-`Ganymede-macOS` (a zipped, universal Release build) under the run's
+`Ganymede-macOS` (a zipped Release build) under the run's
 Artifacts; pull requests build and test the Debug app only. It is ad-hoc
 signed, not notarized, so after unzipping it on another Mac clear the
 quarantine flag before the first launch:

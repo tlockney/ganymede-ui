@@ -178,10 +178,6 @@ const config: UserConfig = {
     // Source maps for Sentry (scripts/sentry-sourcemaps.sh), which uploads
     // and then deletes them: `hidden` leaves no reference in the bundles.
     sourcemap: process.env.SENTRY_SOURCEMAPS === '1' ? 'hidden' : false,
-    // Vite 7's default baseline. Vite 8's (safari16.4) is above the Apple
-    // apps' deployment targets, macOS 13.0 and iOS 16.0, whose WKWebView is
-    // Safari 16.0 (apple/project.yml). The CSS target follows this one.
-    target: ['chrome107', 'edge107', 'firefox104', 'safari16'],
     rolldownOptions: {
       // kernel.html is the Apple apps' hidden kernel web view (#99).
       input: { main: 'index.html', kernel: 'kernel.html' },

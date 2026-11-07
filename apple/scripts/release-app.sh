@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds the Mac app for a release: a universal Release archive signed with
+# Builds the Mac app for a release: an arm64 Release archive signed with
 # a Developer ID Application certificate, notarized by Apple, stapled, and
 # zipped as apple/build/Ganymede-macOS-$VERSION.zip. Run after
 # bootstrap.sh. release.yml runs it; it also runs on a Mac with the same
@@ -91,7 +91,8 @@ grep -q '^Timestamp=' <<< "$details" || fail "the signature has no secure timest
 if codesign -d --entitlements - --xml "$app" 2>/dev/null | grep -q get-task-allow; then
   fail "the app has the get-task-allow entitlement, which notarization rejects"
 fi
-lipo -archs "$app/Contents/MacOS/Ganymede"
+archs=$(lipo -archs "$app/Contents/MacOS/Ganymede")
+[[ "$archs" == arm64 ]] || fail "the app is built for $archs, not arm64 only"
 
 # Notarize. notarytool takes a zip; the ticket is then stapled to the app
 # so Gatekeeper accepts it offline, and the stapled app is zipped again.

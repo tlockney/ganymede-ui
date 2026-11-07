@@ -38,9 +38,9 @@ struct SettingsWindow: View {
 }
 
 /// Opens the Settings window at a tab: from the menus, and when a page
-/// asks (`.showAppSettings`). From macOS 14 only SwiftUI's `openSettings`
-/// does that, and only a view can read it: each window's view keeps it
-/// here (`settingsOpener()`).
+/// asks (`.showAppSettings`). Only SwiftUI's `openSettings` does that, and
+/// only a view can read it: each window's view keeps it here
+/// (`settingsOpener()`).
 @MainActor
 enum SettingsOpener {
     fileprivate static var open: (() -> Void)?
@@ -48,13 +48,8 @@ enum SettingsOpener {
 
     static func show(_ tab: SettingsTab) {
         UserDefaults.standard.set(tab.rawValue, forKey: SettingsTab.defaultsKey)
-        NSApp.activate(ignoringOtherApps: true)
-        if let open {
-            open()
-        } else {
-            // macOS 13, where this action still opens the Settings scene.
-            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-        }
+        NSApp.activate()
+        open?()
     }
 
     /// Listens for the pages' asks, once: as the app launches.
@@ -78,15 +73,10 @@ extension View {
 
 private struct SettingsOpenerModifier: ViewModifier {
     func body(content: Content) -> some View {
-        if #available(macOS 14.0, *) {
-            content.background(OpenSettingsReader())
-        } else {
-            content
-        }
+        content.background(OpenSettingsReader())
     }
 }
 
-@available(macOS 14.0, *)
 private struct OpenSettingsReader: View {
     @Environment(\.openSettings) private var openSettings
 

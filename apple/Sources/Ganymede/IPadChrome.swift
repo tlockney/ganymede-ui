@@ -70,11 +70,11 @@ struct IPadSidebar: View {
         // The page searches (`src/lib/search.ts`), after typing pauses. The
         // iPad's Search tab has a field of its own.
         .modifier(SidebarSearch(enabled: !tabbed, query: $query))
-        .onChange(of: query) { _ in search() }
-        .onChange(of: searchContents) { _ in search() }
+        .onChange(of: query) { search() }
+        .onChange(of: searchContents) { search() }
         // A reloaded page has no search, and a keystroke before the page
         // was ready went nowhere: ask again, or it says Searching… for good.
-        .onChange(of: page.state.search == nil && page.state.backend != nil) { lost in
+        .onChange(of: page.state.search == nil && page.state.backend != nil) { _, lost in
             if lost, !query.trimmingCharacters(in: .whitespaces).isEmpty { search() }
         }
         .toolbar {
@@ -88,8 +88,8 @@ struct IPadSidebar: View {
             }
         }
         .refreshable { generation += 1 }
-        .onChange(of: page.state.path) { _ in generation += 1 }
-        .onChange(of: phase) { phase in
+        .onChange(of: page.state.path) { generation += 1 }
+        .onChange(of: phase) { _, phase in
             if phase == .active { generation += 1 }
         }
         .alert("Rename", isPresented: renamingShown, presenting: renaming) { entry in

@@ -98,8 +98,9 @@ struct ContentView: View {
     @State private var newName = ""
     #endif
 
-    var body: some View {
-        #if os(macOS)
+    #if os(macOS)
+    /// The window: split view, toolbar, open requests, tabs.
+    private var macWindow: some View {
         // The app draws the sidebar, toolbar and menus; the page shows the
         // notebook (#206, #207).
         NavigationSplitView(columnVisibility: Binding(
@@ -173,7 +174,7 @@ struct ContentView: View {
             model.openRequests.register(windowID, blank: target == nil)
             model.openRequests.openWindow = { [openWindow] in openWindow(value: $0) }
         }
-        .onChange(of: target) { target in
+        .onChange(of: target) { _, target in
             model.openRequests.register(windowID, blank: target == nil)
             // Restored after the view was made, before the page said
             // anything: show it, not what the page was loaded for.
@@ -184,7 +185,7 @@ struct ContentView: View {
             }
             savedTarget = WindowTarget.saved(target)
         }
-        .onChange(of: sidebarRoot) { savedSidebar = $0.path }
+        .onChange(of: sidebarRoot) { _, new in savedSidebar = new.path }
         // Back from Terminal, where a kernelspec may have been installed
         // or removed: the page asks the server for its kernels again
         // (#350). A page still loading fetches them anyway.
@@ -213,22 +214,27 @@ struct ContentView: View {
         .focusedSceneObject(document)
         .focusedSceneObject(pageModel)
         .focusedSceneObject(panel)
+    }
+
+    /// `macWindow` with the bottom panel and the keyboard kept in step.
+    private var macPanelSync: some View {
+        macWindow
         .onAppear {
             panel.resize(to: panelHeight, available: .infinity)
             // Shells don't outlive the app: a panel that was showing comes
             // back with a new one, as ⌃` would start.
             if panelShown { panel.show(startingOn: .local(folder: sidebarRoot)) }
         }
-        .onChange(of: panel.isShown) { shown in
+        .onChange(of: panel.isShown) { _, shown in
             panelShown = shown
             layout.noteChange(of: .panel, shown: shown)
         }
-        .onChange(of: panel.height) { panelHeight = $0 }
+        .onChange(of: panel.height) { _, new in panelHeight = new }
         // The keyboard follows the fill: the notebook under a filled panel
         // or inspector is out of sight, so it mustn't keep the keys
         // (command mode would edit cells unseen). A panel terminal that
         // has them keeps them; restoring gives them back to the notebook.
-        .onChange(of: layout.filled) { filled in
+        .onChange(of: layout.filled) { _, filled in
             guard let window = document.window else { return }
             switch filled {
             case .panel?:
@@ -244,9 +250,17 @@ struct ContentView: View {
             }
         }
         // A dot on the tab while its kernel runs (#247).
-        .onChange(of: pageModel.state.isBusy) { busy in
+        .onChange(of: pageModel.state.isBusy) { _, busy in
             if let window = document.window { WorkspaceTabs.markBusy(window, busy) }
         }
+    }
+    #endif
+
+    var body: some View {
+        #if os(macOS)
+        // In three parts: as one expression the type checker gave up
+        // (#356).
+        macPanelSync
         .focusedSceneObject(inspector)
         .focusedSceneValue(\.windowFill, WindowFill(filled: layout.filled) {
             // The area with the keyboard: a panel terminal, or the notebook.
@@ -264,18 +278,18 @@ struct ContentView: View {
             inspector.resize(to: inspectorWidth, available: .infinity)
             if inspector.wantsVariables { pageModel.run("inspect-variables", arg: "on") }
         }
-        .onChange(of: inspector.isShown) { shown in
+        .onChange(of: inspector.isShown) { _, shown in
             inspectorShown = shown
             layout.noteChange(of: .inspector, shown: shown)
         }
-        .onChange(of: inspector.tab) { inspectorTab = $0.rawValue }
-        .onChange(of: inspector.width) { inspectorWidth = $0 }
+        .onChange(of: inspector.tab) { _, new in inspectorTab = new.rawValue }
+        .onChange(of: inspector.width) { _, new in inspectorWidth = new }
         // The page reads the variables only while the inspector shows them.
-        .onChange(of: inspector.wantsVariables) { wants in
+        .onChange(of: inspector.wantsVariables) { _, wants in
             pageModel.run("inspect-variables", arg: wants ? "on" : "off")
         }
         // A page loaded again forgets it was asked.
-        .onChange(of: pageModel.state.variables == nil) { none in
+        .onChange(of: pageModel.state.variables == nil) { _, none in
             if none, inspector.wantsVariables {
                 pageModel.run("inspect-variables", arg: "on")
             }
@@ -344,17 +358,17 @@ struct ContentView: View {
                     }
                     .onAppear { portrait = window.size.width < window.size.height }
                     // Back in landscape, the sidebar shows again by default.
-                    .onChange(of: window.size.width < window.size.height) { tall in
+                    .onChange(of: window.size.width < window.size.height) { _, tall in
                         portrait = tall
                         if !tall, !mainFills { columns = .automatic }
                     }
                 }
                 .focusedSceneValue(\.iPadPanel, IPadPanelToggle(shown: panelShown, toggle: togglePanel))
                 .onAppear { panel.resize(to: panelHeight, available: .infinity) }
-                .onChange(of: panel.height) { panelHeight = $0 }
+                .onChange(of: panel.height) { _, new in panelHeight = new }
                 // However the last terminal closed, the next one opens
                 // under the notebook, not filling the screen.
-                .onChange(of: panel.terminals.isEmpty) { empty in
+                .onChange(of: panel.terminals.isEmpty) { _, empty in
                     if empty { panelFills = false }
                 }
             } else {
@@ -402,7 +416,7 @@ struct ContentView: View {
                 model.open(folder: folder)
             }
         }
-        .onChange(of: phase) { phase in
+        .onChange(of: phase) { _, phase in
             // Files with edits but no screen of their own (a save on the
             // way back to the notebook failed): iOS may end the scene.
             if phase == .background { openFiles.saveHidden() }

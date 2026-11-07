@@ -32,10 +32,8 @@ final class KernelHost: NSObject {
     /// pass one with a fake presenter.
     init(device: DeviceBridge? = nil) {
         let config = WKWebViewConfiguration()
-        if #available(macOS 14.0, iOS 17.0, *) {
-            // Not on screen, but cells must keep running at full speed.
-            config.preferences.inactiveSchedulingPolicy = .none
-        }
+        // Not on screen, but cells must keep running at full speed.
+        config.preferences.inactiveSchedulingPolicy = .none
         webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 1, height: 1), configuration: config)
         self.device = device ?? DeviceBridge()
         super.init()
@@ -44,9 +42,7 @@ final class KernelHost: NSObject {
         // else, so nothing the UI page renders can call it.
         self.device.register(in: config.userContentController)
         webView.navigationDelegate = self
-        if #available(macOS 13.3, iOS 16.4, *) {
-            webView.isInspectable = true
-        }
+        webView.isInspectable = true
         #if os(macOS)
         webView.alphaValue = 0
         #else
