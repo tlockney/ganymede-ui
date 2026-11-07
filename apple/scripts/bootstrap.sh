@@ -30,7 +30,7 @@ for sdk in iphoneos iphonesimulator; do
   fi
 done
 
-rustup target add aarch64-apple-darwin x86_64-apple-darwin aarch64-apple-ios aarch64-apple-ios-sim
+rustup target add aarch64-apple-darwin aarch64-apple-ios aarch64-apple-ios-sim
 (cd "$ganymede" && scripts/build-xcframework.sh)
 rm -rf "$apple/build/GanymedeFFI.xcframework"
 cp -R "$ganymede/target/xcframework/GanymedeFFI.xcframework" "$apple/build/"
