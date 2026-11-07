@@ -3,15 +3,22 @@ import WebKit
 
 /// The hidden web view that cdp-kernel's in-page kernels run in
 /// (ganymede-ui#99): `kernel.html` from the same server, one browser kernel
-/// per kernel the UI page starts. Only this web view registers native
-/// bridges such as ganymede-device's `device` handler, so nothing the UI
-/// page renders, outputs and widgets included, can reach them.
+/// per kernel the UI page starts. Only this web view registers the full
+/// `device` handler (ganymede-device), so nothing the UI page renders,
+/// outputs and widgets included, can reach it; the UI page gets only the
+/// remote subset, below.
 ///
 /// Jupyter messages pass through here (`src/lib/kernel-relay.ts` has the
 /// web side): the UI page posts to `kernelRelay`, the kernel page to
 /// `kernelHost`, and each is delivered to the other page in order. Only
 /// main-frame messages are taken, since WebKit gives subframes, the UI's
 /// sandboxed output frames among them, the same message handlers.
+///
+/// Kernels that run elsewhere (server kernels) reach the bridge through the
+/// UI page instead (ganymede-device#26): the page answers their `device`
+/// comm and posts to the bridge's `deviceRemote` handler, which takes only
+/// the methods that need no permission, and only from the UI page's main
+/// frame at the server's origin.
 @MainActor
 final class KernelHost: NSObject {
     static let relayHandler = "kernelRelay"
@@ -56,6 +63,10 @@ final class KernelHost: NSObject {
     func attach(to ui: WKWebView) {
         self.ui = ui
         ui.configuration.userContentController.add(WeakHandler(self), name: Self.relayHandler)
+        device.registerRemote(in: ui.configuration.userContentController) { [weak self, weak ui] message in
+            guard let self, let ui, message.webView === ui else { return false }
+            return self.fromPage(message)
+        }
         ui.addSubview(webView)
     }
 
@@ -68,6 +79,10 @@ final class KernelHost: NSObject {
 
     /// The UI page navigated: its kernels are gone with it.
     func reset() {
+        // What the old UI page asked for server kernels has no one to
+        // answer it; the kernel page's calls end as it loads about:blank
+        // below (`dropPage()` in the navigation delegate).
+        device.dropRemote()
         guard loaded else { return }
         loaded = false
         ready = false
@@ -75,10 +90,22 @@ final class KernelHost: NSObject {
         webView.load(URLRequest(url: URL(string: "about:blank")!))
     }
 
+    /// The UI page's process died: no one answers what it asked for server
+    /// kernels. The kernel page keeps running until the page reloads.
+    func uiPageEnded() {
+        device.dropRemote()
+    }
+
+    /// The message comes from a page of ours: the main frame, at the UI
+    /// page's server.
+    private func fromPage(_ message: WKScriptMessage) -> Bool {
+        message.frameInfo.isMainFrame
+            && message.frameInfo.securityOrigin.host == pageURL?.host
+            && message.frameInfo.securityOrigin.port == pageURL?.port ?? 0
+    }
+
     fileprivate func received(_ message: WKScriptMessage) {
-        guard message.frameInfo.isMainFrame,
-              message.frameInfo.securityOrigin.host == pageURL?.host,
-              message.frameInfo.securityOrigin.port == pageURL?.port ?? 0 else { return }
+        guard fromPage(message) else { return }
         if message.name == Self.relayHandler, message.webView === ui {
             fromUI(message.body)
         } else if message.name == Self.hostHandler, message.webView === webView {
@@ -128,19 +155,20 @@ final class KernelHost: NSObject {
 extension KernelHost: WKNavigationDelegate {
     /// The kernel page is going away (a reset, a reload): its device calls
     /// can no longer be answered, and the new page's call ids start over.
+    /// The UI page's calls for server kernels stay.
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
-        device.dropAll()
+        device.dropPage()
     }
 
     /// Again at commit: the old page ran until now, and a call it made
     /// after the navigation started would otherwise outlive it.
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
-        device.dropAll()
+        device.dropPage()
     }
 
     /// The kernel page's process died, and its kernels with it.
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-        device.dropAll()
+        device.dropPage()
     }
 }
 
