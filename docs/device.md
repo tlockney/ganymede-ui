@@ -107,7 +107,8 @@ APIs, and only for the methods marked "yes" under "Browser" below. A
 browser lets a page use the clipboard, open a tab, share, pick or save
 a file only right after a click, so the page shows a prompt above the
 notebook, such as "Copy to clipboard", and runs the call when you click
-it. Dismiss turns it down: the call answers as a cancel does in the app
+it. The prompt names the notebook and kernel asking, such as "A cell in
+Io.ipynb (Python 3) asks to use this device.". Dismiss turns it down: the call answers as a cancel does in the app
 (`[]` for a picker, `false` for share and export) or fails `cancelled`.
 One prompt shows at a time. The `ui` dialogs aren't answered in a
 browser yet.

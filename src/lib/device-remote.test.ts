@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ISessionContext } from '@jupyterlab/apputils';
 import { Signal } from '@lumino/signaling';
-import { attachDevice, type DevicePromptState, promptClick } from './device-remote';
+import { askMessage, attachDevice, type DevicePromptState, promptClick } from './device-remote';
 
 // The wiring only: one answerer per kernel the session has, none outside
 // the app. ganymede-device tests answerDevice itself.
@@ -66,6 +66,34 @@ describe('attachDevice', () => {
 });
 
 describe('promptClick', () => {
+  it('names what asks, read when the prompt shows', () => {
+    let shown: DevicePromptState | undefined;
+    let name = 'Io.ipynb (Python 3)';
+    const click = promptClick(
+      update => {
+        shown = update(shown);
+      },
+      () => name,
+    );
+    const signal = new AbortController().signal;
+    void click(
+      { method: 'clipboard.writeText', label: 'Copy to clipboard', signal },
+      async () => null,
+    ).catch(() => {});
+    expect(shown?.asker).toBe('Io.ipynb (Python 3)');
+    shown!.dismiss();
+    name = 'Europa.ipynb (Python 3)';
+    void click(
+      { method: 'clipboard.writeText', label: 'Copy to clipboard', signal },
+      async () => null,
+    ).catch(() => {});
+    expect(shown?.asker).toBe('Europa.ipynb (Python 3)');
+    expect(askMessage(shown?.asker)).toBe(
+      'A cell in Europa.ipynb (Python 3) asks to use this device.',
+    );
+    expect(askMessage()).toBe('A cell asks to use this device.');
+  });
+
   it('shows a prompt, runs the call on accept, and takes it down', async () => {
     let shown: DevicePromptState | undefined;
     const show = (update: (c: DevicePromptState | undefined) => DevicePromptState | undefined) => {
@@ -79,6 +107,7 @@ describe('promptClick', () => {
       run,
     );
     expect(shown?.label).toBe('Paste from clipboard');
+    expect(shown?.asker).toBeUndefined();
     expect(run).not.toHaveBeenCalled();
     shown!.accept();
     expect(run).toHaveBeenCalledOnce();

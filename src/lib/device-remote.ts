@@ -38,23 +38,36 @@ export interface AttachDeviceOptions {
 export interface DevicePromptState {
   /** The button's label, such as "Copy to clipboard". */
   label: string;
+  /**
+   * What is asking, such as "Io.ipynb (Python 3)", so a person with
+   * several notebooks open knows which one it is (#389).
+   */
+  asker?: string;
   /** Runs the call; the button's click handler calls it. */
   accept(): void;
   dismiss(): void;
 }
 
+/** "A cell in Io.ipynb (Python 3) asks to use this device." */
+export function askMessage(asker?: string): string {
+  return asker ? `A cell in ${asker} asks to use this device.` : 'A cell asks to use this device.';
+}
+
 /**
  * A `Click` that shows each prompt through `show` (the pane's state
  * setter) and takes it down when answered, dismissed or cancelled.
+ * `asker` names what is asking, read when each prompt shows.
  */
 export function promptClick(
   show: (update: (current: DevicePromptState | undefined) => DevicePromptState | undefined) => void,
+  asker?: () => string | undefined,
 ): Click {
   return (request, run) =>
     new Promise((resolve, reject) => {
       const close = () => show(current => (current === prompt ? undefined : current));
       const prompt: DevicePromptState = {
         label: request.label,
+        asker: asker?.(),
         accept() {
           close();
           // In the click's handler, before any await: the browser's user

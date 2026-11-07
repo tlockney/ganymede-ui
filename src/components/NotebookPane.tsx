@@ -460,7 +460,13 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
           notebookWidgets,
           // `device` for cells on server kernels (ganymede-device#26): the
           // app's bridge, or in a browser web APIs behind a click.
-          attachDevice(session, { click: promptClick(setDevicePrompt) }),
+          attachDevice(session, {
+            click: promptClick(setDevicePrompt, () => {
+              const kernel = session.kernelDisplayName;
+              const file = basename(saver.path);
+              return kernel ? `${file} (${kernel})` : file;
+            }),
+          }),
           { dispose: () => saver.dispose(), isDisposed: false },
           {
             dispose: () => document.removeEventListener('keydown', onKey, true),
