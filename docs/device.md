@@ -35,7 +35,13 @@ Other kernels in the app can ask for part of it. In practice that means:
   > **Unreleased.** Available only from a build of `main` (HEAD), not in
   > the latest release, where server kernels can't reach the app.
 
-- **Not in a browser.** Planned; see [Methods](#methods).
+- **A server kernel, in a browser.** The notebook page answers the same
+  calls with the browser's own APIs, behind a click; see
+  [In a browser](#in-a-browser).
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release, where nothing answers in a browser.
 
 Everywhere else, `device` is `undefined`, so check for it before using
 it. `device.has()` says whether this app answers a method:
@@ -82,47 +88,62 @@ package, which isn't out yet
 - Clipboard reads are the exception: iPadOS can show its paste prompt,
   but on the Mac a server kernel, a remote server's included, can read
   the clipboard with no dialog. Connect only to servers you trust.
-- Outside the app (JupyterLab, a browser) nothing answers, and
-  `connectDevice` gives a `device` whose calls fail `unavailable` after
-  five seconds. Another client on the same kernel never answers for the
-  app.
+- In JupyterLab nothing answers, and `connectDevice` gives a `device`
+  whose calls fail `unavailable` after five seconds. Another client on
+  the same kernel never answers for the one that ran the cell.
 - An interrupt doesn't end a call by itself; pass the cell's signal:
   `device.ui.prompt('Name?', { signal: jupyter.signal })`.
 - If the app goes away (the iPad suspends it, the window closes), calls
   in flight fail `disconnected`, and the next call asks again.
 
+### In a browser
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+In a browser, the notebook page answers `connectDevice` itself, with web
+APIs, and only for the methods marked "yes" under "Browser" below. A
+browser lets a page use the clipboard, open a tab, share, pick or save
+a file only right after a click, so the page shows a prompt above the
+notebook, such as "Copy to clipboard", and runs the call when you click
+it. Dismiss turns it down: the call answers as a cancel does in the app
+(`[]` for a picker, `false` for share and export) or fails `cancelled`.
+One prompt shows at a time. The `ui` dialogs aren't answered in a
+browser yet.
+
 ## Methods
 
 > [!NOTE]
-> **Unreleased.** The "Remote kernel" column is available only from a
-> build of `main` (HEAD); in the latest release no method works from a
-> server kernel.
+> **Unreleased.** The "Remote kernel" and "Browser" columns are
+> available only from a build of `main` (HEAD); in the latest release no
+> method works from a server kernel or in a browser.
 
 <!-- device-table:start (generated: node scripts/device-table.mjs --write) -->
 
-| Method                                                                    | Returns                                                    | In the app | Remote kernel | Browser                |
-| ------------------------------------------------------------------------- | ---------------------------------------------------------- | ---------- | ------------- | ---------------------- |
-| `device.info()`                                                           | platform, version, methods, and the device's current state | yes        | yes           | planned                |
-| `device.clipboard.readText()`                                             | `string`, or `null`                                        | yes        | yes           | planned, after a click |
-| `device.clipboard.writeText(text)`                                        | nothing                                                    | yes        | yes           | planned, after a click |
-| `device.clipboard.readImage()`                                            | PNG bytes, or `null`                                       | yes        | yes           | planned, after a click |
-| `device.clipboard.writeImage(image)`                                      | nothing                                                    | yes        | yes           | planned, after a click |
-| `device.haptics.impact(style)`                                            | nothing                                                    | iPhone     | yes           | no                     |
-| `device.haptics.notification(type)`                                       | nothing                                                    | iPhone     | yes           | no                     |
-| `device.haptics.selection()`                                              | nothing                                                    | iPhone     | yes           | no                     |
-| `device.openURL(url, { inApp })`                                          | nothing                                                    | yes        | yes           | planned, after a click |
-| `device.ui.alert(message, { title })`                                     | nothing, once closed                                       | yes        | yes           | planned                |
-| `device.ui.confirm(message, { title, destructive, okLabel })`             | `boolean`                                                  | yes        | yes           | planned                |
-| `device.ui.prompt(message, { title, placeholder, defaultValue, secure })` | `string`, or `null`                                        | yes        | yes           | planned                |
-| `device.ui.actionSheet(title, options, { message, cancel, destructive })` | the option's index, or `null`                              | yes        | yes           | planned                |
-| `device.ui.pickDate({ mode, title, value, min, max })`                    | `Date`, or `null`                                          | yes        | yes           | planned                |
-| `device.share({ text, url, files })`                                      | `true` when sent, `false` when dismissed                   | yes        | yes           | planned, after a click |
-| `device.preview(files)`                                                   | nothing, once closed                                       | yes        | yes           | no                     |
-| `device.files.pick({ types, multiple })`                                  | `File[]`, `[]` when cancelled                              | yes        | yes           | planned, after a click |
-| `device.files.export(data, { name })`                                     | `true` when saved, `false` when cancelled                  | yes        | yes           | planned                |
-| `device.sound.play(data, { volume })`                                     | nothing, once it starts                                    | yes        | yes           | planned, after a click |
-| `device.sound.player(data)`                                               | a `SoundPlayer`                                            | yes        | no            | planned                |
-| `device.photos.pick({ limit })`                                           | `File[]`, `[]` when cancelled                              | yes        | yes           | planned, after a click |
+| Method                                                                    | Returns                                                    | In the app | Remote kernel | Browser       |
+| ------------------------------------------------------------------------- | ---------------------------------------------------------- | ---------- | ------------- | ------------- |
+| `device.info()`                                                           | platform, version, methods, and the device's current state | yes        | yes           | yes           |
+| `device.clipboard.readText()`                                             | `string`, or `null`                                        | yes        | yes           | after a click |
+| `device.clipboard.writeText(text)`                                        | nothing                                                    | yes        | yes           | after a click |
+| `device.clipboard.readImage()`                                            | PNG bytes, or `null`                                       | yes        | yes           | after a click |
+| `device.clipboard.writeImage(image)`                                      | nothing                                                    | yes        | yes           | after a click |
+| `device.haptics.impact(style)`                                            | nothing                                                    | iPhone     | yes           | no            |
+| `device.haptics.notification(type)`                                       | nothing                                                    | iPhone     | yes           | no            |
+| `device.haptics.selection()`                                              | nothing                                                    | iPhone     | yes           | no            |
+| `device.openURL(url, { inApp })`                                          | nothing                                                    | yes        | yes           | after a click |
+| `device.ui.alert(message, { title })`                                     | nothing, once closed                                       | yes        | yes           | planned       |
+| `device.ui.confirm(message, { title, destructive, okLabel })`             | `boolean`                                                  | yes        | yes           | planned       |
+| `device.ui.prompt(message, { title, placeholder, defaultValue, secure })` | `string`, or `null`                                        | yes        | yes           | planned       |
+| `device.ui.actionSheet(title, options, { message, cancel, destructive })` | the option's index, or `null`                              | yes        | yes           | planned       |
+| `device.ui.pickDate({ mode, title, value, min, max })`                    | `Date`, or `null`                                          | yes        | yes           | planned       |
+| `device.share({ text, url, files })`                                      | `true` when sent, `false` when dismissed                   | yes        | yes           | after a click |
+| `device.preview(files)`                                                   | nothing, once closed                                       | yes        | yes           | no            |
+| `device.files.pick({ types, multiple })`                                  | `File[]`, `[]` when cancelled                              | yes        | yes           | after a click |
+| `device.files.export(data, { name })`                                     | `true` when saved, `false` when cancelled                  | yes        | yes           | after a click |
+| `device.sound.play(data, { volume })`                                     | nothing, once it starts                                    | yes        | yes           | after a click |
+| `device.sound.player(data)`                                               | a `SoundPlayer`                                            | yes        | no            | no            |
+| `device.photos.pick({ limit })`                                           | `File[]`, `[]` when cancelled                              | yes        | yes           | after a click |
 
 - `device.info()`: A browser has no model or battery.
 - `device.clipboard.readText()`: iPadOS shows its paste prompt; a browser needs a click for the Clipboard API.
@@ -132,14 +153,15 @@ package, which isn't out yet
 - `device.haptics.impact(style)`: iPhone only: iPads and Macs have no Taptic Engine. A browser has no haptics API Safari supports.
 - `device.haptics.notification(type)`: iPhone only: iPads and Macs have no Taptic Engine.
 - `device.haptics.selection()`: iPhone only: iPads and Macs have no Taptic Engine.
-- `device.openURL(url, { inApp })`: http, https and mailto only. `inApp` works on iPhone and iPad, not the Mac; a browser opens a tab after a click.
+- `device.openURL(url, { inApp })`: http, https and mailto only. `inApp` works on iPhone and iPad, not the Mac; a browser opens a tab after a click, and ignores `inApp`.
 - `device.ui.alert(message, { title })`: A sheet on the Mac, an alert on iPhone and iPad; a browser will show it in the cell's output.
-- `device.share({ text, url, files })`: The share sheet; `NSSharingServicePicker` on the Mac. A browser will use the Web Share API, after a click.
+- `device.share({ text, url, files })`: The share sheet; `NSSharingServicePicker` on the Mac. A browser uses the Web Share API, after a click, and shares files only where it can.
 - `device.preview(files)`: Quick Look, which picks the viewer from each file name's extension. A browser has no Quick Look.
-- `device.files.pick({ types, multiple })`: The open panel on the Mac, the document picker on iPad and iPhone. Files are copied in; no access to where they came from is kept.
-- `device.files.export(data, { name })`: The save panel on the Mac, the document picker on iPad and iPhone. A browser will download the file.
-- `device.sound.player(data)`: Play, pause, stop, seek and volume; close it, or hold it with `await using`. Remote kernels: a handle wouldn't survive a disconnect.
-- `device.photos.pick({ limit })`: The system photo picker, which needs no photo library permission. A browser will show a file picker for images.
+- `device.files.pick({ types, multiple })`: The open panel on the Mac, the document picker on iPad and iPhone. Files are copied in; no access to where they came from is kept. A browser can't filter by a type identifier such as `public.json`, so with one it allows any file.
+- `device.files.export(data, { name })`: The save panel on the Mac, the document picker on iPad and iPhone. A browser downloads it after a click, and answers `true` then, since it can't tell whether it was saved.
+- `device.sound.play(data, { volume })`: A browser asks for a click only until the page has had one.
+- `device.sound.player(data)`: Play, pause, stop, seek and volume; close it, or hold it with `await using`. Remote kernels and browsers: a handle wouldn't survive a disconnect.
+- `device.photos.pick({ limit })`: The system photo picker, which needs no photo library permission. A browser shows a file picker for images, and keeps the first `limit` picked.
 
 <!-- device-table:end -->
 
@@ -153,7 +175,7 @@ on them. `impact` takes `light`, `medium` (the default), `heavy`,
 instead of switching to Safari, and a Mac ignores it.
 
 A browser lets a page use the clipboard only after a click, so there the
-page will show a prompt to click first. On iPadOS, reading the clipboard
+page shows a prompt to click first. On iPadOS, reading the clipboard
 can show the system's paste prompt (Settings › Ganymede › Paste from
 Other Apps sets whether it asks).
 
