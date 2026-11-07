@@ -43,7 +43,7 @@ struct EditorWindow: View {
                 }
             }
             if document.loaded {
-                CodeTextView(document: document)
+                CodeTextView(document: document, generation: document.generation)
             } else if let problem = document.problem {
                 VStack(spacing: 12) {
                     Text(problem)

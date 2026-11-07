@@ -4,10 +4,10 @@ import SwiftUI
 /// `@FocusedObject`s, which need `ObservableObject`.
 extension FocusedValues {
     @Entry var pageModel: PageModel?
+    #if os(macOS)
     @Entry var panelController: PanelController?
     @Entry var inspectorController: InspectorController?
     @Entry var editorDocument: EditorDocument?
-    #if os(macOS)
     @Entry var pageDocument: PageDocument?
     #endif
 }
