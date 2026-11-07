@@ -10,7 +10,7 @@ import GameController
 struct SettingsScreen: View {
     var page: PageModel
     let done: () -> Void
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @State private var hardwareKeyboard = GCKeyboard.coalesced != nil
 
     var body: some View {

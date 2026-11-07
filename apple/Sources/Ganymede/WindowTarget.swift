@@ -1,6 +1,6 @@
 #if os(macOS)
 import AppKit
-import Combine
+import Observation
 import os
 #endif
 import Foundation
@@ -118,29 +118,30 @@ enum WindowTarget: Codable, Hashable {
 /// delegate adds them; notebook windows register here and watch
 /// `pending`, and the first to see them takes them all.
 @MainActor
-final class OpenRequests: ObservableObject {
-    @Published private(set) var pending: [WindowTarget] = []
+@Observable
+final class OpenRequests {
+    private(set) var pending: [WindowTarget] = []
     /// Until shortly after the app has finished launching.
-    private var launching = true
+    @ObservationIgnored private var launching = true
     /// Whether `pending` came while the app launched: the window it opened
     /// on nothing then shows the first itself, instead of staying empty
     /// beside a window for it.
-    private var atLaunch = false
+    @ObservationIgnored private var atLaunch = false
     /// The first file asked for while the app launched, to bring forward
     /// once launch ends: windows the system restores can come back in
     /// front of it (#268).
-    private var firstAtLaunch: WindowTarget?
+    @ObservationIgnored private var firstAtLaunch: WindowTarget?
     /// The window to bring forward, set when launch ends.
-    @Published private(set) var front: WindowTarget?
+    private(set) var front: WindowTarget?
     /// The notebook windows, by id: whether each shows nothing yet.
-    private var windows: [UUID: Bool] = [:]
+    @ObservationIgnored private var windows: [UUID: Bool] = [:]
     /// Opens a notebook window, for requests that come after launch. Set by
     /// the notebook windows.
-    var openWindow: ((WindowTarget) -> Void)?
+    @ObservationIgnored var openWindow: ((WindowTarget) -> Void)?
     /// The same, from the app's menus, for when no notebook window has
     /// appeared: launched from the Finder to open a file, SwiftUI may make
     /// no window at all, leaving the app with no UI (#266).
-    var fallbackOpenWindow: ((WindowTarget) -> Void)?
+    @ObservationIgnored var fallbackOpenWindow: ((WindowTarget) -> Void)?
 
     func useFallback(_ open: @escaping (WindowTarget) -> Void) {
         fallbackOpenWindow = open

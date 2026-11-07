@@ -1,6 +1,6 @@
 #if os(macOS)
 import AppKit
-import Combine
+import Observation
 import XCTest
 
 /// Files the Finder asks the Mac app to open, and which window shows them
@@ -163,13 +163,29 @@ final class OpenRequestsTests: XCTestCase {
         XCTAssertNil(requests.front)
     }
 
-    func testOnePublishPerBatch() {
+    func testOneChangePerBatch() {
         let requests = OpenRequests()
-        var published = 0
-        let watch = requests.$pending.dropFirst().sink { _ in published += 1 }
+        let changes = Counter()
+        Self.watch(requests, counting: changes)
         requests.add([a, b])
-        watch.cancel()
-        XCTAssertEqual(published, 1)
+        XCTAssertEqual(changes.value, 1)
     }
+
+    /// Counts each change to `pending`, watching again after each one:
+    /// Observation tells only of the next change.
+    private static func watch(_ requests: OpenRequests, counting changes: Counter) {
+        withObservationTracking {
+            _ = requests.pending
+        } onChange: {
+            MainActor.assumeIsolated {
+                changes.value += 1
+                watch(requests, counting: changes)
+            }
+        }
+    }
+}
+
+private final class Counter {
+    var value = 0
 }
 #endif

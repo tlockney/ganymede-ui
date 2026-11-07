@@ -4,7 +4,7 @@ import SwiftUI
 /// first (`KernelLocationSection`); the Mac's Settings has a Kernels tab
 /// for that (#332).
 struct RemotesView<Extra: View>: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     /// Sections after these: the iPad and iPhone's Settings screen (#210).
     private let extra: Extra
     /// The remote being edited; a new one when it isn't in the list yet.
@@ -40,7 +40,7 @@ struct RemotesView<Extra: View>: View {
         .formStyle(.grouped)
         .sheet(item: $editing) { remote in
             RemoteEditor(remote: remote, isNew: model.remote(remote.id) == nil)
-                .environmentObject(model)
+                .environment(model)
         }
         .confirmationDialog(
             "Remove \(removing?.title ?? "remote")?",
@@ -100,7 +100,7 @@ struct RemotesView<Extra: View>: View {
 /// kernels on iOS) or on one remote's server, which the in-process server
 /// proxies (`gateway_url`).
 struct KernelLocationSection: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
 
     var body: some View {
         Section {
@@ -136,7 +136,7 @@ struct KernelLocationSection: View {
 
 /// Adds or edits one remote.
 struct RemoteEditor: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @State private var forgotHostKey = false
     @State private var remote: Remote
@@ -287,7 +287,7 @@ struct RemoteEditor: View {
 /// The app's SSH key: generate or import one, and copy its public key for
 /// the remote's ~/.ssh/authorized_keys.
 private struct SSHKeySection: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @State private var importing = false
     @State private var confirmingRemove = false
 
@@ -310,7 +310,7 @@ private struct SSHKeySection: View {
                 + "~/.ssh/authorized_keys on each SSH remote.")
         }
         .sheet(isPresented: $importing) {
-            SSHKeyImport().environmentObject(model)
+            SSHKeyImport().environment(model)
         }
         .confirmationDialog("Remove the SSH key?", isPresented: $confirmingRemove) {
             Button("Remove", role: .destructive) { model.removeSSHKey() }
@@ -322,7 +322,7 @@ private struct SSHKeySection: View {
 
 /// Paste an unencrypted OpenSSH ed25519 private key.
 private struct SSHKeyImport: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @Environment(\.dismiss) private var dismiss
     @State private var text = ""
     @State private var failure: String?

@@ -1,5 +1,6 @@
 import CryptoKit
 import Foundation
+import Observation
 #if os(macOS)
 import AppKit
 import UniformTypeIdentifiers
@@ -10,46 +11,47 @@ import UniformTypeIdentifiers
 /// (`WindowTarget`), so opening a file anywhere needs no restart and the
 /// page keeps one origin. On iOS it serves the chosen notebook folder.
 @MainActor
-final class AppModel: ObservableObject {
+@Observable
+final class AppModel {
     static let shared = AppModel()
 
     /// The page for the default window (iOS, and terminals' restarts).
-    @Published private(set) var url: URL?
+    private(set) var url: URL?
     /// The URL the server printed, with its token; windows build their
     /// page from it.
-    @Published private(set) var serverURL: URL?
-    @Published private(set) var error: String?
+    private(set) var serverURL: URL?
+    private(set) var error: String?
     /// The notebook folder: on macOS the last folder opened, which a window
     /// opened on nothing shows; on iOS the folder the server serves.
-    @Published private(set) var root: URL
+    private(set) var root: URL
     /// Other machines: servers for kernels and terminals, SSH for shells.
-    @Published private(set) var remotes: [Remote]
+    private(set) var remotes: [Remote]
     /// The remote kernels run on; nil for this device.
-    @Published private(set) var kernelRemoteID: UUID?
+    private(set) var kernelRemoteID: UUID?
     /// Set when a token or the remotes could not be saved; the page shows
     /// it in an alert.
-    @Published var keychainError: String?
+    var keychainError: String?
     private let store: RemoteStore
     /// Tokens the keychain refused to store, used until the app quits.
-    private var unsavedTokens: [UUID: String] = [:]
+    @ObservationIgnored private var unsavedTokens: [UUID: String] = [:]
     /// The app's SSH key, for SSH remotes on iOS (the Mac uses its own
     /// ssh and keys).
-    @Published private(set) var sshKey: Curve25519.Signing.PrivateKey?
+    private(set) var sshKey: Curve25519.Signing.PrivateKey?
     private let sshKeys = SSHKeyStore(secrets: KeychainStore())
     /// Host keys trusted on first use, per remote.
     let hostKeys = HostKeyStore(defaults: .standard)
 
-    private var server: ServerHost?
+    @ObservationIgnored private var server: ServerHost?
     /// Server starts and stops, run one after another. Both block (a start
     /// until the server listens, a stop until its kernels are shut down),
     /// so they run off the main actor and only their results come back.
-    private var queue: Task<Void, Never>?
-    private var queued = 0
+    @ObservationIgnored private var queue: Task<Void, Never>?
+    @ObservationIgnored private var queued = 0
     #if os(macOS)
     /// Files the Finder asked to open, for the notebook windows (#228).
     let openRequests = OpenRequests()
     /// The login shell's PATH, which kernels need before the server starts.
-    private var pathReady: Task<Void, Never>?
+    @ObservationIgnored private var pathReady: Task<Void, Never>?
     #endif
     private let defaults = UserDefaults.standard
     /// Where the server is started and stopped: at the QoS of its own
@@ -58,7 +60,7 @@ final class AppModel: ObservableObject {
     #if os(iOS)
     /// A folder from the picker, readable only while its security scope
     /// is held.
-    private var scoped: URL?
+    @ObservationIgnored private var scoped: URL?
     #endif
 
     private init() {

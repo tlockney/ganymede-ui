@@ -8,7 +8,7 @@ import SwiftUI
 /// tree while the panel is hidden or another tab is selected, so its shell
 /// keeps running; closing a tab ends it.
 struct BottomPanel: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     var panel: PanelController
     /// Where a new local terminal starts: the window's folder.
     let folder: URL
@@ -319,7 +319,7 @@ private struct KernelLogView: View {
 
 /// The panel's + menu: a terminal in the window's folder, or on a remote.
 private struct NewTerminalMenu: View {
-    @ObservedObject var model: AppModel
+    var model: AppModel
     let add: (TerminalTarget) -> Void
     let local: () -> Void
 
@@ -389,7 +389,7 @@ struct FillButton: View {
 struct PanelCommands: View {
     @FocusedValue(\.panelController) private var panel
     @FocusedValue(\.windowFolder) private var folder
-    @ObservedObject var model: AppModel
+    var model: AppModel
 
     var body: some View {
         Button(panel?.isShown == true ? "Hide Terminal Panel" : "Show Terminal Panel") {

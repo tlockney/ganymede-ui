@@ -2,7 +2,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 struct ContentView: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     #if os(macOS)
     /// The notebook or folder this window shows, following the page; nil
     /// for a window opened on nothing, until its page opens a notebook.
@@ -152,7 +152,7 @@ struct ContentView: View {
         // the one showing it), except that the window the app opened on
         // nothing at launch shows the first itself. Later, so the change
         // to `pending` is not made while views update.
-        .onReceive(model.openRequests.$pending) { pending in
+        .onChange(of: model.openRequests.pending, initial: true) { _, pending in
             guard !pending.isEmpty else { return }
             DispatchQueue.main.async(execute: takeOpenRequests)
         }
@@ -194,7 +194,7 @@ struct ContentView: View {
         }
         // Brought forward after launch: restored windows can come back in
         // front of a notebook opened from the Finder (#268).
-        .onReceive(model.openRequests.$front) { front in
+        .onChange(of: model.openRequests.front, initial: true) { _, front in
             guard let front, front == target, let window = document.window else { return }
             bringForward(window)
         }
@@ -382,7 +382,7 @@ struct ContentView: View {
             NavigationStack(path: $settingsPath) {
                 SettingsScreen(page: pageModel) { settings = false }
             }
-            .environmentObject(model)
+            .environment(model)
         }
         .onReceive(NotificationCenter.default.publisher(for: .showAppSettings)) { note in
             guard note.object as? PageModel === pageModel else { return }
@@ -404,7 +404,7 @@ struct ContentView: View {
                         }
                     }
             }
-            .environmentObject(model)
+            .environment(model)
         }
         .fullScreenCover(item: $editing) { request in
             NavigationStack {
@@ -796,7 +796,7 @@ struct ContentView: View {
 /// A keychain problem with the remotes' tokens, on the window or, on iOS,
 /// the whole app's screen (not only the notebook's, #209).
 private struct KeychainAlert: ViewModifier {
-    @ObservedObject var model: AppModel
+    var model: AppModel
 
     func body(content: Content) -> some View {
         content.alert(
