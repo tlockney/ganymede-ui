@@ -55,7 +55,8 @@ fi
 
 # Ganymede's docs and landing page describe the apps. Text there that
 # changes with this release says "Unreleased in ganymede-ui." (ganymede's
-# CLAUDE.md, ganymede-ui#397); list it, read from Ganymede's main.
+# CLAUDE.md, ganymede-ui#397); list it, read from Ganymede's main. "<" is
+# escaped so a marker in an HTML comment shows in the issue and PR body.
 ganymede_notes() {
   local dir
   dir=$(mktemp -d)
@@ -63,7 +64,8 @@ ganymede_notes() {
       https://github.com/tlockney/ganymede "$dir" 2> /dev/null &&
     git -C "$dir" sparse-checkout set --no-cone /README.md '/docs/*.md' /site/index.html 2> /dev/null; then
     (cd "$dir" && grep -n '\*\*Unreleased in ganymede-ui\.\*\*' README.md docs/*.md site/index.html 2> /dev/null || true) |
-      sed -E 's#^([^:]+):([0-9]+):[[:space:]]*#https://github.com/tlockney/ganymede/blob/main/\1\#L\2  #'
+      sed -E -e 's/</\&lt;/g' \
+        -e 's#^([^:]+):([0-9]+):[[:space:]]*#https://github.com/tlockney/ganymede/blob/main/\1\#L\2  #'
   else
     echo "warning: couldn't read tlockney/ganymede; check its \"Unreleased in ganymede-ui.\" notes by hand" >&2
   fi
