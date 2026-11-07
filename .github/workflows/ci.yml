@@ -27,8 +27,8 @@ jobs:
   # skips e2e and macos-app when the PR can't affect them (docs, a release
   # PR's version bump, or only the other job's files) (#344). A job skipped
   # by its `if` reports success, so the required checks pass. If this job
-  # fails, its outputs are empty and both jobs run. Any other event runs
-  # everything.
+  # fails, its outputs are empty and both jobs run. A push to main is
+  # checked the same way (#360); any other event runs everything.
   changes:
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -43,6 +43,9 @@ jobs:
           fetch-depth: 2
       - id: changes
         run: scripts/ci-changes.sh | tee -a "$GITHUB_OUTPUT"
+        env:
+          # A push's base: main before the push (the script fetches it).
+          BASE_SHA: ${{ github.event.before }}
 
   build:
     runs-on: ubuntu-latest
