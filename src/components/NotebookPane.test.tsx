@@ -2,6 +2,7 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import { useCallback, useState } from 'react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { reloadPage } from '../lib/reload';
 import type * as nbformat from '@jupyterlab/nbformat';
 import type { NotebookModel } from '@jupyterlab/notebook';
 import '../test/notebook-env';
@@ -711,6 +712,96 @@ describe('NotebookPane', () => {
     await waitFor(() => expect(latest()!.trusted).toBe(true));
     // Trusting is not an edit.
     expect(latest()!.dirty).toBe(false);
+  });
+
+  it('saves its edits before a reload the page starts (#375)', async () => {
+    const { fake, latest } = setup();
+    await waitFor(() => expect(latest()).toBeDefined());
+    act(() => modelOf().cells.get(0).sharedModel.setSource('print(2)'));
+    const reload = vi.fn();
+    const ask = vi.fn(() => false);
+    expect(await act(() => reloadPage(reload, ask))).toBe(true);
+    expect(fake.contents.save).toHaveBeenCalledWith('moons/Io.ipynb', expect.anything());
+    expect(ask).not.toHaveBeenCalled();
+    expect(reload).toHaveBeenCalledOnce();
+
+    // A save that fails asks before the reload.
+    act(() => modelOf().cells.get(0).sharedModel.setSource('print(3)'));
+    fake.contents.save.mockRejectedValueOnce(new Error('Disk full'));
+    expect(await act(() => reloadPage(reload, ask))).toBe(false);
+    expect(ask).toHaveBeenCalledOnce();
+    expect(reload).toHaveBeenCalledOnce();
+  });
+
+  describe('Reload after a chunk failed, with the last notebook still saving (#375)', () => {
+    /** As App: Io open with an edit, then Europa opened, whose chunk fails. */
+    async function switching() {
+      const fake = fakeServices();
+      fake.contents.get = vi.fn(async (path: string) => {
+        if (path === 'moons/Europa.ipynb') {
+          throw new TypeError('Importing a module script failed.');
+        }
+        return { path, content: structuredClone(NOTEBOOK), last_modified: '' };
+      }) as never;
+      const backend = fakeBackend(fake.services);
+      let open!: (path: string) => void;
+      function Parent() {
+        const [path, setPath] = useState('moons/Io.ipynb');
+        open = setPath;
+        const report = useCallback(() => {}, []);
+        return <NotebookPane key={path} backend={backend} path={path} onController={report} />;
+      }
+      render(<Parent />);
+      await waitFor(() => expect(fakes.notebooks).toHaveLength(1));
+      await waitFor(() => expect(fakes.sessions).toHaveLength(1));
+      act(() => modelOf().cells.get(0).sharedModel.setSource('print(2)'));
+      let finish!: (e?: Error) => void;
+      fake.contents.save.mockImplementationOnce(
+        (path: string) =>
+          new Promise((resolve, reject) => {
+            finish = e => (e ? reject(e) : resolve(entry({ name: path, path, type: 'notebook' })));
+          }),
+      );
+      act(() => open('moons/Europa.ipynb'));
+      await userEvent.click(await screen.findByRole('button', { name: 'Reload' }));
+      expect(fake.contents.save).toHaveBeenCalledWith('moons/Io.ipynb', expect.anything());
+      return finish;
+    }
+
+    let reload: ReturnType<typeof vi.fn>;
+    const location = window.location;
+    beforeEach(() => {
+      reload = vi.fn();
+      Object.defineProperty(window, 'location', {
+        configurable: true,
+        value: { ...location, reload },
+      });
+    });
+    afterEach(() => {
+      Object.defineProperty(window, 'location', { configurable: true, value: location });
+      vi.restoreAllMocks();
+    });
+
+    it('waits for that save, then reloads without asking', async () => {
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+      const finish = await switching();
+      expect(reload).not.toHaveBeenCalled();
+      await act(async () => finish());
+      await waitFor(() => expect(reload).toHaveBeenCalledOnce());
+      expect(confirm).not.toHaveBeenCalled();
+    });
+
+    it('says why that save failed, and stays on No', async () => {
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      const finish = await switching();
+      await act(async () => finish(new Error('Disk full')));
+      await waitFor(() => expect(confirm).toHaveBeenCalledOnce());
+      expect(confirm.mock.calls[0]![0]).toContain(
+        'Couldn’t save the latest edits to Io.ipynb: Disk full',
+      );
+      expect(reload).not.toHaveBeenCalled();
+    });
   });
 
   it('shows why a save failed, and stays dirty', async () => {
