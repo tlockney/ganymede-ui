@@ -22,12 +22,40 @@ describe('hidden paths (#337)', () => {
     expect(hiddenPart('./a/../b.ipynb')).toBeUndefined();
   });
 
-  it('explains a 404 under a hidden part, and keeps other messages', () => {
+  it('adds the hidden part to a 404, and keeps other messages', () => {
     const e = new Error('no such file or directory: x');
-    expect(openFailure('a/.w/n.ipynb', e, true)).toMatch(/^n\.ipynb is in the hidden folder “\.w”/);
-    expect(openFailure('a/.n.ipynb', e, true)).toMatch(/^\.n\.ipynb is a hidden file/);
+    expect(openFailure('a/.w/n.ipynb', e, true)).toBe(
+      'no such file or directory: x. If the file is there, the server may be refusing it because it is in the hidden folder “.w”: move it out to open it here.',
+    );
+    expect(openFailure('a/.n.ipynb', e, true)).toMatch(
+      /because it is a hidden file: rename it without the leading dot to open it here\.$/,
+    );
     expect(openFailure('a/n.ipynb', e, true)).toBe('no such file or directory: x');
+    // A folder named “hidden” is not the server saying so.
+    expect(
+      openFailure(
+        'a/.hidden-notes/n.ipynb',
+        new Error('no such file or directory: a/.hidden-notes/n.ipynb'),
+        true,
+      ),
+    ).toMatch(/hidden folder “\.hidden-notes”/);
     expect(openFailure('a/.w/n.ipynb', e, false)).toBe('no such file or directory: x');
+  });
+
+  it('shows a server message that already says the path is hidden', () => {
+    // Ganymede's server since ganymede#445: 404 with its own message.
+    const e = new ServerConnection.ResponseError(
+      new Response('', { status: 404 }),
+      'hidden path: a/.w/n.ipynb: Ganymede doesn’t open files or folders whose names start with a dot',
+    );
+    expect(openFailure('a/.w/n.ipynb', e, true)).toBe(e.message);
+    const missing = new ServerConnection.ResponseError(
+      new Response('', { status: 404 }),
+      'no such file or directory: a/.w/n.ipynb',
+    );
+    expect(openFailure('a/.w/n.ipynb', missing, true)).toMatch(
+      /^no such file or directory: a\/\.w\/n\.ipynb\. If the file is there/,
+    );
   });
 });
 
