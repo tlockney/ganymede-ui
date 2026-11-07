@@ -7,8 +7,9 @@
 .notebook-page {
   --jp-ui-font-family: var(--font-ui);
   --jp-content-font-family: var(--font-ui);
-  --jp-code-font-family: var(--font-mono);
-  --jp-code-font-size: 12.5px;
+  /* The code font setting (#354, src/lib/code-font.ts) sets these. */
+  --jp-code-font-family: var(--code-font, var(--font-mono));
+  --jp-code-font-size: var(--code-font-size, 12.5px);
   --jp-code-line-height: 1.55;
   --jp-content-font-size1: 14px;
   --jp-ui-font-size1: 13px;
@@ -36,6 +37,15 @@
 
   --cell-bg: #f5f5f7;
   --cell-border: rgba(0, 0, 0, 0.06);
+}
+
+/* The code font's ligatures and stylistic alternates (#354): cells, text
+ * outputs and code in Markdown, not the proportional text around them. */
+.notebook-page .cm-editor,
+.notebook-page .jp-RenderedText pre,
+.notebook-page .jp-RenderedMarkdown code,
+.notebook-page .jp-RenderedMarkdown pre {
+  font-feature-settings: var(--code-font-features, normal);
 }
 
 @media (prefers-color-scheme: dark) {

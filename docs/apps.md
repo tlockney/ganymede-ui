@@ -160,13 +160,29 @@ version to keep.
 ### Settings
 
 Settings (⌘,) is one window with tabs. General makes Ganymede the
-default app for notebooks and turns crash reports on or off. Kernels
+default app for notebooks and turns crash reports on or off. Appearance
+sets the code font (below). Kernels
 picks where kernels run, this Mac or, as on iPadOS, one remote's server,
 and lists the kernels installed there. Remotes keeps a list of remotes:
 Jupyter or Ganymede servers, SSH hosts, or both; tokens are kept in the
 keychain. Agent turns the optional agent on and picks its provider, model
 and API key, with a test. Shortcuts lists the notebook's keyboard
 shortcuts and rebinds them.
+
+#### Code font
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+Settings > Appearance sets the code font: notebook cells and text
+outputs, the text editor and the terminal take it at once. Pick the
+system's monospace font or one of the bundled fonts (JetBrains Mono, Fira
+Code, Cascadia Code, the five Monaspace faces, Iosevka), the size, and,
+for fonts that have them, ligatures and the font's stylistic sets and
+character variants, each listed with the characters it changes. View >
+Bigger Code Font (⌘+), Smaller Code Font (⌘−) and Actual Code Font Size
+(⌘0) change the size from any window.
 
 Ganymede > Agent Settings… (⌥⌘,), Help > Keyboard Shortcuts and Kernel >
 Where Kernels Run… open those Settings tabs, as do the command palette's
@@ -233,6 +249,15 @@ the screen.
   with a keyboard attached, the notebook's keyboard shortcuts, listed and
   rebound in place. The API key goes to the Keychain. The page's own
   Settings, Keyboard Shortcuts and Connect open this screen.
+- **Code font**: Settings > Appearance, with the same fonts and choices
+  as on the Mac. With a keyboard, ⌘+, ⌘− and ⌘0 change the size. On a touch
+  screen a cell being edited stays at 16 points or more, so iOS doesn't
+  zoom the page.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release.
+
 - **Terminals**: the terminal button opens a shell on a remote, over SSH
   or on its server's terminals. SSH signs in with an ed25519 key the app
   generates or imports (Settings > SSH key; copy the public key into

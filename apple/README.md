@@ -126,9 +126,9 @@ Applications, and open it; Gatekeeper opens it without a warning.
 `release.yml` builds it with `scripts/release-app.sh`
 ([docs/releasing.md](../docs/releasing.md)).
 
-Each CI run of the `macos-app` job (every push to `main`, and pull
-requests that change the app or the web build) also uploads `Ganymede-macOS` (a
-zipped Release build) under the run's Artifacts. It is ad-hoc
+Each run of the `macos-app` job on a push to `main` also uploads
+`Ganymede-macOS` (a zipped Release build) under the run's
+Artifacts; pull requests build and test the Debug app only. It is ad-hoc
 signed, not notarized, so after unzipping it on another Mac clear the
 quarantine flag before the first launch:
 

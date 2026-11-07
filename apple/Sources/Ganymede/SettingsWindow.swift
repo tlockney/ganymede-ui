@@ -14,6 +14,9 @@ struct SettingsWindow: View {
             GeneralSettings()
                 .tabItem { Label("General", systemImage: "gearshape") }
                 .tag(SettingsTab.general)
+            AppearanceSettings()
+                .tabItem { Label("Appearance", systemImage: "textformat") }
+                .tag(SettingsTab.appearance)
             KernelSettings()
                 .tabItem { Label("Kernels", systemImage: "cpu") }
                 .tag(SettingsTab.kernels)
@@ -98,6 +101,17 @@ private struct GeneralSettings: View {
                     .foregroundStyle(.secondary)
             }
             CrashReportsSettings()
+        }
+        .formStyle(.grouped)
+        .padding()
+    }
+}
+
+/// Appearance: the code font (#354).
+private struct AppearanceSettings: View {
+    var body: some View {
+        Form {
+            CodeFontSettings()
         }
         .formStyle(.grouped)
         .padding()

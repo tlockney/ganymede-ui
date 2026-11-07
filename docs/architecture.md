@@ -270,8 +270,9 @@ Vite builds the app (`npm run build`, output in `dist/`). `vite.config.ts`
 adapts a few webpack habits of JupyterLab's packages: SVG imports as
 strings, `~pkg/` paths in stylesheets, and MathJax's CommonJS modules. It
 also dedupes React (JupyterLab's packages bring React 18 copies of their
-own) and pins the build target to Safari 16, the oldest web view the
-Apple apps run in.
+own). The build target is Vite's default, Baseline Widely Available
+(Chrome and Edge 111, Firefox 114, Safari 16.4): every web view the Apple
+apps run in (macOS 26, iOS 26) is newer.
 
 `vite-plugin-pwa` adds the manifest and a Workbox service worker that
 precaches the app, so it works offline and installs as an app. `/api/` is

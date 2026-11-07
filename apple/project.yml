@@ -333,6 +333,7 @@ targets:
       - path: Sources/Ganymede/PageState.swift
       - path: Sources/Ganymede/KernelSpecs.swift
       - path: Sources/Ganymede/SettingsTab.swift
+      - path: Sources/Ganymede/CodeFont.swift
       - path: Sources/Ganymede/ShortcutsPane.swift
       - path: Sources/Ganymede/KernelLog.swift
       - path: Sources/Ganymede/FolderEntry.swift
@@ -377,6 +378,7 @@ targets:
       - path: Sources/Ganymede/PageState.swift
       - path: Sources/Ganymede/KernelSpecs.swift
       - path: Sources/Ganymede/SettingsTab.swift
+      - path: Sources/Ganymede/CodeFont.swift
       - path: Sources/Ganymede/ShortcutsPane.swift
       - path: Sources/Ganymede/KernelLog.swift
       - path: Sources/Ganymede/FolderEntry.swift
