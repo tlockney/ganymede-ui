@@ -108,4 +108,26 @@ describe('kernel host page', () => {
     await Promise.resolve();
     expect(sent).toEqual([{ owner: aOwner, release: true }]);
   });
+
+  it("doesn't say closed for a kernel the UI shut down, so a restart under its id lives (#394)", async () => {
+    posted.length = 0;
+    deliver({ kernel: 'r', op: 'start' });
+    const old = mocks.kernels.at(-1)!;
+    const shutdown = { header: { msg_type: 'shutdown_request' }, content: { restart: false } };
+    deliver({ kernel: 'r', op: 'send', channel: 'control', msg: shutdown });
+    expect(old.send).toHaveBeenCalledOnce();
+    // The old kernel ends after the restart's start has gone by: the new
+    // one is under the id, and nothing says closed.
+    old.close();
+    await Promise.resolve();
+    await Promise.resolve();
+    deliver({ kernel: 'r', op: 'start' });
+    const next = mocks.kernels.at(-1)!;
+    expect(posted).toEqual([]);
+    // One that ends on its own still says so.
+    next.close();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(posted).toEqual([{ kernel: 'r', op: 'closed' }]);
+  });
 });
