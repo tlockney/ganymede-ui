@@ -109,8 +109,8 @@ jobs:
             playwright-report
           if-no-files-found: ignore
 
-  # The macOS app in apple/: builds ganymede-ffi as an XCFramework from
-  # tlockney/ganymede, bundles this repo's build, and runs the XCTest
+  # The macOS app in apple/: gets ganymede-ffi's XCFramework from a
+  # tlockney/ganymede release (or builds it), bundles this repo's build, and runs the XCTest
   # suite (the server started, serving the page, stopped).
   macos-app:
     needs: changes
@@ -119,6 +119,7 @@ jobs:
     timeout-minutes: 60
     env:
       # The tlockney/ganymede tag or commit whose ganymede-ffi the app links.
+      # A tag downloads the release's XCFramework; a commit builds it.
       # main after ganymede#455: an arm64-only macOS slice built for macOS 26
       # and iOS 26 (#356). Back to a tag at the next Ganymede release.
       GANYMEDE_REF: d3a337ebac633ebaf64690b74ce53279c2d554b1
@@ -126,17 +127,22 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # A release tag downloads that release's GanymedeFFI.xcframework.zip
+      # in bootstrap.sh; a commit builds it from a checkout (#359).
+      - if: ${{ !startsWith(env.GANYMEDE_REF, 'v') }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: tlockney/ganymede
           ref: ${{ env.GANYMEDE_REF }}
           path: .ganymede
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+      - if: ${{ !startsWith(env.GANYMEDE_REF, 'v') }}
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: stable
           targets: aarch64-apple-darwin, aarch64-apple-ios, aarch64-apple-ios-sim
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      - if: ${{ !startsWith(env.GANYMEDE_REF, 'v') }}
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: .ganymede
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -147,7 +153,7 @@ jobs:
       - run: brew install xcodegen
       - run: apple/scripts/bootstrap.sh
         env:
-          GANYMEDE_DIR: ${{ github.workspace }}/.ganymede
+          GANYMEDE_DIR: ${{ !startsWith(env.GANYMEDE_REF, 'v') && format('{0}/.ganymede', github.workspace) || '' }}
       - name: Build and test
         run: >
           xcodebuild test -project apple/Ganymede.xcodeproj -scheme Ganymede

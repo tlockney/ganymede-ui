@@ -62,20 +62,35 @@ replaces them.
 ## Build
 
 Needs an Apple silicon Mac with macOS 26 or later, Xcode 26 or later
-(the apps target macOS 26 and iOS 26), Rust (rustup), Node 24, and
-[XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`),
-plus a checkout of [tlockney/ganymede](https://github.com/tlockney/ganymede).
+(the apps target macOS 26 and iOS 26), Node 24, and
+[XcodeGen](https://github.com/yonaskolb/XcodeGen) (`brew install xcodegen`).
+The app links ganymede-ffi as `GanymedeFFI.xcframework`, which
+`bootstrap.sh` gets one of two ways:
 
-Xcode must be the active developer directory (`xcode-select -p`) and have
-the iOS platform installed (`xcodebuild -downloadPlatform iOS`);
-`bootstrap.sh` checks both before it builds.
+- `GANYMEDE_REF=vX.Y.Z` downloads it from that
+  [tlockney/ganymede](https://github.com/tlockney/ganymede) release
+  (`GanymedeFFI.xcframework.zip`) and checks it against the release's
+  `.sha256`; a mismatch or a missing asset fails. Releases after
+  ganymede v0.7.0 carry it.
+- `GANYMEDE_DIR=<checkout>` builds it from a checkout of
+  tlockney/ganymede with its `scripts/build-xcframework.sh`, for a commit
+  that isn't a release or a local change to ganymede. This needs Rust
+  (rustup), and Xcode as the active developer directory
+  (`xcode-select -p`) with the iOS platform installed
+  (`xcodebuild -downloadPlatform iOS`); `bootstrap.sh` checks both
+  before it builds. `GANYMEDE_DIR` wins when both are set.
 
 ```sh
+GANYMEDE_REF=vX.Y.Z apple/scripts/bootstrap.sh
+# or
 GANYMEDE_DIR=~/src/ganymede apple/scripts/bootstrap.sh
 open apple/Ganymede.xcodeproj
 ```
 
-`bootstrap.sh` builds the XCFramework and this repo's `dist/` into
+CI and release builds use `GANYMEDE_REF` from ci.yml's `macos-app` job:
+a release tag downloads, a commit SHA checks out and builds.
+
+`bootstrap.sh` puts the XCFramework and this repo's `dist/` into
 `apple/build/` and generates the Xcode project from `project.yml`. Pick
 your team under Signing & Capabilities, then Run: the `Ganymede` scheme
 for the Mac, `Ganymede-iOS` for an iPad, iPhone or simulator. With the
