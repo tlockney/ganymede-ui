@@ -40,7 +40,8 @@ import { seedLanguage } from '../lib/language';
 import { handOff, handedOff, renameFile, renamedPath } from '../lib/rename';
 import type { NotebookWidgets } from '../lib/widgets';
 import { type OutlineItem, outlineOf } from '../lib/outline';
-import { attachDevice } from '../lib/device-remote';
+import { attachDevice, type DevicePromptState, promptClick } from '../lib/device-remote';
+import { DevicePrompt } from './DevicePrompt';
 
 export type CellType = nbformat.CellType;
 
@@ -248,6 +249,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
   const [outline, setOutline] = useState<OutlineItem[]>([]);
   /** Why the last notebook action failed, and what to do next, until dismissed. */
   const [notice, setNoticeState] = useState<Notice>();
+  /** A server kernel's `device` call waiting on a click, in a browser. */
+  const [devicePrompt, setDevicePrompt] = useState<DevicePromptState>();
   const setNotice = (problem: Problem | undefined, retry?: () => void) =>
     setNoticeState(problem && { problem, retry });
   /**
@@ -450,8 +453,9 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
           cellControls,
           runStatus,
           notebookWidgets,
-          // `device` for cells on server kernels, in the app (ganymede-device#26).
-          attachDevice(session),
+          // `device` for cells on server kernels (ganymede-device#26): the
+          // app's bridge, or in a browser web APIs behind a click.
+          attachDevice(session, { click: promptClick(setDevicePrompt) }),
           { dispose: () => saver.dispose(), isDisposed: false },
           {
             dispose: () => document.removeEventListener('keydown', onKey, true),
@@ -1044,6 +1048,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
           onClose={() => setMenu(undefined)}
         />
       )}
+      {devicePrompt && <DevicePrompt prompt={devicePrompt} />}
       {notice && (
         <ProblemNotice
           problem={notice.problem}

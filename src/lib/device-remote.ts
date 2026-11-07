@@ -6,8 +6,9 @@
  * handler (DeviceBridge.registerRemote, registered by KernelHost). Only
  * the remote subset, the methods that need no permission, gets through.
  *
- * Outside the app there is no handler, so nothing is registered and the
- * kernel's announce goes unanswered, as in JupyterLab.
+ * In a browser there is no handler, so the page answers with web APIs
+ * instead (ganymede-device's `browserForward`). Most of those need a click,
+ * so it shows a prompt (`DevicePrompt`) and runs the call from the click.
  */
 import type { ISessionContext } from '@jupyterlab/apputils';
 import type { Kernel } from '@jupyterlab/services';
@@ -16,14 +17,58 @@ import {
   answerDevice,
   canAnswer,
   type DeviceAnswerer,
+  type Forward,
   type KernelConnectionLike,
 } from '@tlockney/ganymede-device/frontend';
+import { browserForward, type Click } from '@tlockney/ganymede-device/browser';
 
 export interface AttachDeviceOptions {
   /** Whether the page is in the app; `canAnswer()` by default. */
   available?: () => boolean;
-  /** Answers one kernel connection; `answerDevice` by default. */
-  answer?: (kernel: KernelConnectionLike) => DeviceAnswerer;
+  /**
+   * Shows a click-through prompt, for the browser fallback. Without one, a
+   * page outside the app answers only what needs no click.
+   */
+  click?: Click;
+  /** Answers one kernel connection; `answerDevice` by default. `forward` is the browser fallback's, outside the app. */
+  answer?: (kernel: KernelConnectionLike, forward?: Forward) => DeviceAnswerer;
+}
+
+/** A prompt the pane shows for a call that needs a click. */
+export interface DevicePromptState {
+  /** The button's label, such as "Copy to clipboard". */
+  label: string;
+  /** Runs the call; the button's click handler calls it. */
+  accept(): void;
+  dismiss(): void;
+}
+
+/**
+ * A `Click` that shows each prompt through `show` (the pane's state
+ * setter) and takes it down when answered, dismissed or cancelled.
+ */
+export function promptClick(
+  show: (update: (current: DevicePromptState | undefined) => DevicePromptState | undefined) => void,
+): Click {
+  return (request, run) =>
+    new Promise((resolve, reject) => {
+      const close = () => show(current => (current === prompt ? undefined : current));
+      const prompt: DevicePromptState = {
+        label: request.label,
+        accept() {
+          close();
+          // In the click's handler, before any await: the browser's user
+          // activation covers the call.
+          run().then(resolve, reject);
+        },
+        dismiss() {
+          close();
+          reject(new Error('dismissed'));
+        },
+      };
+      request.signal.addEventListener('abort', () => prompt.dismiss(), { once: true });
+      show(() => prompt);
+    });
 }
 
 /** Answers `connectDevice` from the session's kernel, following it as it changes. */
@@ -31,8 +76,11 @@ export function attachDevice(
   session: ISessionContext,
   options: AttachDeviceOptions = {},
 ): IDisposable {
-  const available = options.available ?? (() => canAnswer());
-  const answer = options.answer ?? ((kernel: KernelConnectionLike) => answerDevice(kernel));
+  const inApp = options.available ?? (() => canAnswer());
+  const answer =
+    options.answer ??
+    ((kernel: KernelConnectionLike, forward?: Forward) =>
+      answerDevice(kernel, forward ? { forward } : {}));
   let kernel: Kernel.IKernelConnection | null = null;
   let answerer: DeviceAnswerer | undefined;
   let disposed = false;
@@ -42,7 +90,9 @@ export function attachDevice(
     answerer?.dispose();
     answerer = undefined;
     kernel = next;
-    if (kernel && available()) answerer = answer(kernel);
+    // In the app, the bridge answers; in a browser, web APIs do.
+    if (kernel)
+      answerer = answer(kernel, inApp() ? undefined : browserForward({ click: options.click }));
   };
   update();
   session.kernelChanged.connect(update);

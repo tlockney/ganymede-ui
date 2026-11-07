@@ -1,14 +1,15 @@
 // `device` from a server kernel (ganymede-device#26): a cell on the real
 // cdp-node kernel behind `ganymede serve` calls connectDevice(jupyter.comm),
 // and the page answers it through a stand-in for the app's `deviceRemote`
-// handler. Checks the whole comm path: the announce, the session match,
-// the calls comm the page opens back, and comm messages read while the
-// cell awaits them (kernel subshells, cdp-kernel 0.8.0).
+// handler, or, with no handler, with web APIs behind a click
+// (ganymede-ui#384). Checks the whole comm path: the announce, the session
+// match, the calls comm the page opens back, and comm messages read while
+// the cell awaits them (kernel subshells, cdp-kernel 0.8.0).
 import { readdirSync, rmSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { expect, type Page, test } from '@playwright/test';
-import { GANYMEDE_URL, ROOT_DIR, TOKEN } from './env';
+import { APP_URL, GANYMEDE_URL, ROOT_DIR, TOKEN } from './env';
 import { openWithToken, outputs, waitForReady } from './helpers';
 
 const notebooks = () => new Set(readdirSync(ROOT_DIR).filter(f => f.endsWith('.ipynb')));
@@ -93,10 +94,24 @@ test('a server kernel reaches the app through the page', async ({ page }) => {
   expect(methods).toEqual(['hello', 'clipboard.readText']);
 });
 
-test('outside the app nothing answers, and calls fail unavailable', async ({ page }) => {
+test('in a browser the page answers with web APIs, after a click', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write'], { origin: APP_URL });
   await newNotebook(page);
-  await run(page, cell('await device.clipboard.readText().catch((e) => "failed " + e.code)'));
-  await expect(outputs(page).filter({ hasText: 'failed unavailable' })).toBeVisible({
+  await run(
+    page,
+    cell(
+      'await device.clipboard.writeText("from the browser"); ' +
+        '[await device.clipboard.readText(), (await device.files.pick()).length].join(" ")',
+    ),
+  );
+  const prompt = page.locator('.device-prompt');
+  await prompt.getByRole('button', { name: 'Copy to clipboard' }).click({ timeout: 60_000 });
+  await prompt.getByRole('button', { name: 'Paste from clipboard' }).click();
+  // Dismissed: the picker answers [] as on the device.
+  await expect(prompt.getByRole('button', { name: 'Choose a file' })).toBeVisible();
+  await prompt.getByRole('button', { name: 'Dismiss' }).click();
+  await expect(outputs(page).filter({ hasText: 'from the browser 0' })).toBeVisible({
     timeout: 60_000,
   });
+  await expect(prompt).toHaveCount(0);
 });
