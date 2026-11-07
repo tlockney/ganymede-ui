@@ -439,6 +439,28 @@ describe('NotebookPane', () => {
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
 
+    it('offers Reload, not Retry, when a chunk of the page failed to load', async () => {
+      // Retry would import the same chunk and fail again (#364).
+      const get = vi.fn().mockRejectedValue(new TypeError('Importing a module script failed.'));
+      const reload = vi.fn();
+      const location = window.location;
+      Object.defineProperty(window, 'location', {
+        configurable: true,
+        value: { ...location, reload },
+      });
+      try {
+        setup(get);
+        expect(await screen.findByText('Couldn’t open Io.ipynb')).toBeInTheDocument();
+        expect(screen.getByRole('alert')).toHaveTextContent('Reload to load them.');
+        expect(screen.queryByRole('button', { name: 'Retry' })).not.toBeInTheDocument();
+        await userEvent.click(screen.getByRole('button', { name: 'Reload' }));
+        expect(reload).toHaveBeenCalledOnce();
+        expect(get).toHaveBeenCalledOnce();
+      } finally {
+        Object.defineProperty(window, 'location', { configurable: true, value: location });
+      }
+    });
+
     it('says when a restart can’t reach the server, and Retry restarts', async () => {
       const { latest, session } = await running();
       const restart = vi

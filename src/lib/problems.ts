@@ -59,6 +59,22 @@ export function isUnreachable(e: unknown): boolean {
   );
 }
 
+/**
+ * Whether `e` is a failed dynamic `import()`: one of the page's own
+ * chunks didn't load, so the page is older than the files the server (or
+ * the service worker's cache) now has, as after an app update (#364). The
+ * module map remembers the failure, so only a reload recovers. Each
+ * engine words it differently.
+ */
+export function isStaleBundle(e: unknown): boolean {
+  return (
+    e instanceof Error &&
+    /importing a module script failed|failed to fetch dynamically imported module|error loading dynamically imported module|unable to preload css/i.test(
+      e.message,
+    )
+  );
+}
+
 /** The kernel stopped. `kernel` is its display name, if known. */
 export function kernelDead(kernel?: string): Problem {
   return {
