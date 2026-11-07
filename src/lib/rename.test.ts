@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { Contents } from '@jupyterlab/services';
-import { handOff, handedOff, renameFile, renamedPath } from './rename';
+import { handOff, handedOff, renameFile, renamedPath, shownHandoff } from './rename';
 
 describe('handOff', () => {
   it('leaves a save for every pane that opens the file until it is done', async () => {
@@ -13,6 +13,17 @@ describe('handOff', () => {
     expect(handedOff('moons/Europa.ipynb')).toBeUndefined();
     finish('Couldn’t save');
     expect(await first).toBe('Couldn’t save');
+    // A failure stays until it is shown, however late the file reopens.
+    await new Promise(r => setTimeout(r, 0));
+    expect(handedOff('moons/Io.ipynb')).toBe(first);
+    shownHandoff(first!);
+    expect(handedOff('moons/Io.ipynb')).toBeUndefined();
+  });
+
+  it('drops a save that went through once it is done', async () => {
+    handOff('moons/Io.ipynb', Promise.resolve(undefined));
+    expect(handedOff('moons/Io.ipynb')).toBeDefined();
+    await new Promise(r => setTimeout(r, 0));
     expect(handedOff('moons/Io.ipynb')).toBeUndefined();
   });
 
@@ -26,6 +37,7 @@ describe('handOff', () => {
     expect(settled).toBe(false);
     finish();
     expect(await handed).toBe('Couldn’t save');
+    shownHandoff(handedOff('Io.ipynb')!);
   });
 
   it('leaves one save at both paths when a pane closes mid-rename', async () => {

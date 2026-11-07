@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { UNSAVED_RELOAD, guardReload, reloadPage } from './reload';
-import { handOff } from './rename';
+import { handOff, handedOff } from './rename';
 
 const undo: (() => void)[] = [];
 afterEach(() => undo.splice(0).forEach(f => f()));
@@ -60,6 +60,22 @@ describe('reloadPage and a closed notebook’s last save (#375)', () => {
       `Couldn’t save the latest edits to Io.ipynb: Disk full\n\n${UNSAVED_RELOAD}`,
     );
     expect(reload).not.toHaveBeenCalled();
+    // Said once: neither the next reload nor the reopened pane says it again.
+    expect(handedOff('moons/Io.ipynb')).toBeUndefined();
+    expect(await reloadPage(reload, ask)).toBe(true);
+    expect(ask).toHaveBeenCalledOnce();
+  });
+
+  it('reports a save that failed before Reload was clicked', async () => {
+    handOff('moons/Io.ipynb', Promise.resolve('Couldn’t save the latest edits to Io.ipynb: Gone'));
+    await new Promise(r => setTimeout(r, 0));
+    const ask = vi.fn(() => true);
+    const reload = vi.fn();
+    expect(await reloadPage(reload, ask)).toBe(true);
+    expect(ask).toHaveBeenCalledWith(
+      `Couldn’t save the latest edits to Io.ipynb: Gone\n\n${UNSAVED_RELOAD}`,
+    );
+    expect(reload).toHaveBeenCalledOnce();
   });
 
   it('reloads without asking once the save is done', async () => {
@@ -68,6 +84,22 @@ describe('reloadPage and a closed notebook’s last save (#375)', () => {
     const ask = vi.fn(() => false);
     expect(await reloadPage(reload, ask)).toBe(true);
     expect(ask).not.toHaveBeenCalled();
+    expect(reload).toHaveBeenCalledOnce();
+  });
+});
+
+describe('reloadPage clicked twice', () => {
+  it('joins the run in progress instead of asking twice', async () => {
+    let finish!: (saved: boolean) => void;
+    undo.push(guardReload(() => new Promise(r => (finish = r))));
+    const reload = vi.fn();
+    const ask = vi.fn(() => true);
+    const first = reloadPage(reload, ask);
+    const second = reloadPage(reload, ask);
+    expect(second).toBe(first);
+    finish(false);
+    expect(await second).toBe(true);
+    expect(ask).toHaveBeenCalledOnce();
     expect(reload).toHaveBeenCalledOnce();
   });
 });

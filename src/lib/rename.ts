@@ -87,32 +87,41 @@ const handoffs = new Map<string, Promise<string | undefined>>();
 
 /**
  * Leave `work` for the next pane at `path`: a save, resolving with why it
- * failed (a notice), or undefined when it didn't. It is dropped once it is
- * done: a pane opening the file later has nothing to wait for.
+ * failed (a notice), or undefined when it didn't. A save that went through
+ * is dropped once it is done: a pane opening the file later has nothing to
+ * wait for. A failure stays until a pane or a reload shows it
+ * (`shownHandoff`), however long the file stays closed.
  */
 export function handOff(path: string, work: Promise<string | undefined>): void {
   const before = handoffs.get(path);
   const all = before ? Promise.all([before, work]).then(([a, b]) => b ?? a) : work;
   handoffs.set(path, all);
-  void all.then(() => {
-    if (handoffs.get(path) === all) handoffs.delete(path);
+  void all.then(failed => {
+    if (!failed && handoffs.get(path) === all) handoffs.delete(path);
   });
 }
 
 /**
- * Every last save a pane left that hasn't finished, each resolving with
- * why it failed or undefined: a reload the page starts waits for them
- * (#375), since the pane that made them is gone.
+ * Every last save a pane left, finished or not, that hasn't gone through
+ * or been shown, each resolving with why it failed or undefined: a reload
+ * the page starts waits for them and says why they failed (#375), since
+ * the pane that made them is gone.
  */
 export function pendingHandoffs(): Promise<string | undefined>[] {
   return [...new Set(handoffs.values())];
+}
+
+/** Forgets `handed` (from `handedOff` or `pendingHandoffs`) once its failure was shown. */
+export function shownHandoff(handed: Promise<string | undefined>): void {
+  for (const [path, p] of handoffs) if (p === handed) handoffs.delete(path);
 }
 
 /**
  * For a pane opening `path`: what the last one there left, to wait for
  * before loading the file, or undefined when nothing is pending. Left in
  * place, not taken: under StrictMode the pane's effect runs twice, and
- * the second run has to wait too.
+ * the second run has to wait too. The pane calls `shownHandoff` once it
+ * shows the failure.
  */
 export function handedOff(path: string): Promise<string | undefined> | undefined {
   return handoffs.get(path);

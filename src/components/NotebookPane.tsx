@@ -38,7 +38,7 @@ import { ProblemNotice } from './ProblemNotice';
 import { useSignals } from '../lib/useSignal';
 import { hasUntrustedOutputs } from '../lib/trust';
 import { seedLanguage } from '../lib/language';
-import { handOff, handedOff, notFound, renameFile, renamedPath } from '../lib/rename';
+import { handOff, handedOff, notFound, renameFile, renamedPath, shownHandoff } from '../lib/rename';
 import type { NotebookWidgets } from '../lib/widgets';
 import { type OutlineItem, outlineOf } from '../lib/outline';
 import { attachDevice, type DevicePromptState, promptClick } from '../lib/device-remote';
@@ -320,7 +320,10 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       const handed = handedOff(path);
       const lastSave = handed && (await handed);
       if (cancelled) return;
-      if (lastSave) setNotice({ kind: 'save-failed', message: lastSave, actions: [] });
+      if (lastSave) {
+        setNotice({ kind: 'save-failed', message: lastSave, actions: [] });
+        shownHandoff(handed);
+      }
       const [file, widgets] = await Promise.all([
         services.contents.get(path, { type: 'notebook', content: true }),
         // ipywidgets live in their own chunk; load them alongside the file so
