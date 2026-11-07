@@ -283,7 +283,7 @@ struct CodeFontSettings: View {
         } footer: {
             Text(footer)
         }
-        .onChange(of: setting) { value in
+        .onChange(of: setting) { _, value in
             CodeFont.setting = value
         }
         .onReceive(NotificationCenter.default.publisher(for: .codeFontChanged)) { _ in
