@@ -41,6 +41,7 @@ import { handOff, handedOff, renameFile, renamedPath } from '../lib/rename';
 import type { NotebookWidgets } from '../lib/widgets';
 import { type OutlineItem, outlineOf } from '../lib/outline';
 import { attachDevice } from '../lib/device-remote';
+import { guardReload, reloadPage } from '../lib/reload';
 
 export type CellType = nbformat.CellType;
 
@@ -681,10 +682,19 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       // Older browsers ask only when returnValue is set.
       e.returnValue = '';
     };
+    // A reload the page starts saves first: the Apple apps' web view
+    // doesn't ask on beforeunload (#375).
+    const unguard = guardReload(async () => {
+      if (!model.dirty) return true;
+      if (locked.current || gone.current) return false;
+      await saver.save({ ifDirty: true });
+      return !model.dirty;
+    });
     const timer = setInterval(autosave, AUTOSAVE_INTERVAL_MS);
     document.addEventListener('visibilitychange', onHidden);
     window.addEventListener('beforeunload', onUnload);
     return () => {
+      unguard();
       clearInterval(timer);
       document.removeEventListener('visibilitychange', onHidden);
       window.removeEventListener('beforeunload', onUnload);
@@ -1009,7 +1019,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
           <button
             type="button"
             className="pane-message-action"
-            onClick={() => (stale ? window.location.reload() : setAttempt(a => a + 1))}
+            onClick={() => (stale ? void reloadPage() : setAttempt(a => a + 1))}
           >
             {stale ? 'Reload' : 'Retry'}
           </button>

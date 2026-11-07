@@ -2,6 +2,7 @@ import { act, render, screen, waitFor } from '@testing-library/react';
 import { useCallback, useState } from 'react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { reloadPage } from '../lib/reload';
 import type * as nbformat from '@jupyterlab/nbformat';
 import type { NotebookModel } from '@jupyterlab/notebook';
 import '../test/notebook-env';
@@ -697,6 +698,25 @@ describe('NotebookPane', () => {
     await waitFor(() => expect(latest()!.trusted).toBe(true));
     // Trusting is not an edit.
     expect(latest()!.dirty).toBe(false);
+  });
+
+  it('saves its edits before a reload the page starts (#375)', async () => {
+    const { fake, latest } = setup();
+    await waitFor(() => expect(latest()).toBeDefined());
+    act(() => modelOf().cells.get(0).sharedModel.setSource('print(2)'));
+    const reload = vi.fn();
+    const ask = vi.fn(() => false);
+    expect(await act(() => reloadPage(reload, ask))).toBe(true);
+    expect(fake.contents.save).toHaveBeenCalledWith('moons/Io.ipynb', expect.anything());
+    expect(ask).not.toHaveBeenCalled();
+    expect(reload).toHaveBeenCalledOnce();
+
+    // A save that fails asks before the reload.
+    act(() => modelOf().cells.get(0).sharedModel.setSource('print(3)'));
+    fake.contents.save.mockRejectedValueOnce(new Error('Disk full'));
+    expect(await act(() => reloadPage(reload, ask))).toBe(false);
+    expect(ask).toHaveBeenCalledOnce();
+    expect(reload).toHaveBeenCalledOnce();
   });
 
   it('shows why a save failed, and stays dirty', async () => {
