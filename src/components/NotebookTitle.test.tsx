@@ -12,6 +12,13 @@ describe('NotebookTitle', () => {
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
+  it('says when saving is locked', () => {
+    const { rerender } = render(<NotebookTitle name="Io" dirty={false} locked />);
+    expect(screen.getByText('— Locked')).toBeInTheDocument();
+    rerender(<NotebookTitle name="Io" dirty locked />);
+    expect(screen.getByText('— Edited, locked')).toBeInTheDocument();
+  });
+
   it('edits in place and renames on Enter', async () => {
     const onRename = vi.fn(async () => true);
     render(<NotebookTitle name="Untitled" dirty onRename={onRename} />);

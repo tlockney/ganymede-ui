@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { SessionContext } from '@jupyterlab/apputils';
 import type * as nbformat from '@jupyterlab/nbformat';
 import { type Notebook, NotebookActions, NotebookModel } from '@jupyterlab/notebook';
@@ -13,9 +13,15 @@ import { CellMenu } from './CellMenu';
 import { KeyboardBar } from './KeyboardBar';
 import type { Cell } from '@jupyterlab/cells';
 import { downloadFile } from '../lib/download';
-import { AUTOSAVE_INTERVAL_MS, NotebookSaver, SaveConflict } from '../lib/saver';
+import {
+  AUTOSAVE_INTERVAL_MS,
+  DISK_CHECK_INTERVAL_MS,
+  NotebookSaver,
+  SaveConflict,
+} from '../lib/saver';
 import {
   type Problem,
+  changedOnDisk,
   connectionLost,
   failed,
   isStaleBundle,
@@ -23,7 +29,6 @@ import {
   kernelDead,
   messageOf,
   missingKernel,
-  saveConflict,
   saveFailed,
   unreachable,
 } from '../lib/problems';
@@ -54,9 +59,25 @@ export type NotebookController = {
    */
   missingKernel?: string;
   dirty: boolean;
+  /**
+   * The file changed on disk since it was opened or last saved here, so
+   * no save writes until {@link reload} or {@link unlock} (#367).
+   */
+  locked: boolean;
+  /**
+   * Load the file again from the server, keeping the kernel. Asks first
+   * when there are unsaved edits, which it drops; false when the user
+   * said no.
+   */
+  reload(): boolean;
+  /**
+   * Let saves write over the version on disk that locked it. A newer
+   * change locks it again.
+   */
+  unlock(): Promise<void>;
   /** False while code cells show outputs from a file nobody trusted. */
   trusted: boolean;
-  /** Saves the notebook; false when it wasn't (the pane says why). */
+  /** Saves the notebook; false when it wasn't (the pane says why, or it is locked). */
   save(): Promise<boolean>;
   /** Download the notebook as it is now, unsaved edits included, as .ipynb. */
   download(): void;
@@ -229,23 +250,39 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
   const setNotice = (problem: Problem | undefined, retry?: () => void) =>
     setNoticeState(problem && { problem, retry });
   /**
-   * Set, to its notice, when autosave met a file changed on disk; a save
-   * clears it.
+   * Set, to its notice, once the file changed on disk: no save writes
+   * until a reload or Unlock clears it (#367).
    */
-  const autosaveOff = useRef<Problem>(undefined);
+  const locked = useRef<Problem>(undefined);
+  const [isLocked, setLocked] = useState(false);
+  /** The file's time on disk when it locked, if known: what Unlock accepts. */
+  const lockedAt = useRef<string>(undefined);
+  /** Set by Reload: the teardown drops the edits instead of saving them. */
+  const reloading = useRef(false);
   /**
-   * Clear the notice if it is of one of these kinds. A save conflict
-   * outlasts the notices shown over it: autosave stays off until a save, so
-   * it comes back when they clear.
+   * Clear the notice if it is of one of these kinds. The lock outlasts
+   * the notices shown over it, so its notice comes back when they clear.
    */
   const clearNotice = (...kinds: Problem['kind'][]) =>
     setNoticeState(n =>
       n && kinds.includes(n.problem.kind)
-        ? autosaveOff.current && n.problem.kind !== 'save-conflict'
-          ? { problem: autosaveOff.current }
+        ? locked.current && n.problem.kind !== 'save-conflict'
+          ? { problem: locked.current }
           : undefined
         : n,
     );
+  /**
+   * Lock saving: the file changed on disk (#367). The notice offers Reload
+   * and Unlock.
+   */
+  const lock = useCallback((o: Open, at?: string) => {
+    if (locked.current) return;
+    lockedAt.current = at;
+    const problem = changedOnDisk(basename(o.saver.path), o.model.dirty);
+    locked.current = problem;
+    setLocked(true);
+    setNoticeState({ problem });
+  }, []);
   /** The latest controller, for the notice's buttons. */
   const controllerRef = useRef<NotebookController>(undefined);
   /** Whether the session has rejoined the file's running kernel, if any. */
@@ -265,6 +302,12 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
     let current: Open | undefined;
     setJoined(false);
     setError(undefined);
+    // A fresh copy of the file: nothing to lock against yet.
+    locked.current = undefined;
+    lockedAt.current = undefined;
+    reloading.current = false;
+    setLocked(false);
+    setNoticeState(n => (n?.problem.kind === 'save-conflict' ? undefined : n));
     (async () => {
       // The last pane here (before a rename, say) may still be saving to
       // the file: load what it saved, and say if it couldn't.
@@ -441,7 +484,9 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       // The pane that opens the file next waits for the save, and shows
       // why it failed (#224).
       const save = () => {
-        if (!done.model.dirty || autosaveOff.current || gone.current) return undefined;
+        if (!done.model.dirty || locked.current || reloading.current || gone.current) {
+          return undefined;
+        }
         const to = done.saver.path;
         return done.saver.save({ ifDirty: true }).then(
           () => undefined,
@@ -617,11 +662,10 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
     if (!open) return;
     const { model, saver } = open;
     const autosave = () => {
-      if (!model.dirty || autosaveOff.current || gone.current) return;
+      if (!model.dirty || locked.current || gone.current) return;
       saver.save({ ifDirty: true }).catch(e => {
         if (e instanceof SaveConflict) {
-          autosaveOff.current = saveConflict(basename(path));
-          setNotice(autosaveOff.current);
+          lock(open, e.lastModified);
         } else {
           setNotice(saveFailed(basename(path), e, true), autosave);
         }
@@ -642,7 +686,37 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       document.removeEventListener('visibilitychange', onHidden);
       window.removeEventListener('beforeunload', onUnload);
     };
-  }, [open, path]);
+  }, [open, path, lock]);
+
+  // Notice a change on disk without waiting for a save (#367): every few
+  // seconds while the page shows, and when it comes back. Another writer
+  // (an agent editing through the server, say) is caught before any edit
+  // here could replace its work.
+  useEffect(() => {
+    if (!open) return;
+    const { saver } = open;
+    let checking = false;
+    let stopped = false;
+    const check = () => {
+      if (checking || locked.current || gone.current || renaming.current) return;
+      if (document.visibilityState === 'hidden') return;
+      checking = true;
+      saver
+        .changedOnDisk()
+        .then(at => at && !stopped && lock(open, at))
+        .catch(() => {})
+        .finally(() => (checking = false));
+    };
+    const timer = setInterval(check, DISK_CHECK_INTERVAL_MS);
+    window.addEventListener('focus', check);
+    document.addEventListener('visibilitychange', check);
+    return () => {
+      stopped = true;
+      clearInterval(timer);
+      window.removeEventListener('focus', check);
+      document.removeEventListener('visibilitychange', check);
+    };
+  }, [open, lock]);
 
   useEffect(() => {
     if (!open) return;
@@ -728,30 +802,53 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         // Back to the notebook, so its shortcuts work after the picker.
         notebook.activate();
       },
+      locked: isLocked,
       save: async () => {
         // Deleted: a save would put it back.
         if (gone.current) return false;
+        // Changed on disk: say so again, with what unlocks it.
+        if (locked.current) {
+          locked.current = changedOnDisk(basename(saver.path), model.dirty);
+          setNotice(locked.current);
+          return false;
+        }
         try {
-          try {
-            await saver.save();
-          } catch (e) {
-            if (!(e instanceof SaveConflict)) throw e;
-            if (
-              !window.confirm(
-                `${fileName} changed on disk since it was opened or last saved.\n\nOverwrite it with this copy?`,
-              )
-            )
-              return false;
-            await saver.save({ overwrite: true });
-          }
+          await saver.save();
         } catch (e) {
+          if (e instanceof SaveConflict) {
+            lock(open, e.lastModified);
+            return false;
+          }
           setNotice(saveFailed(fileName, e), () => void controller.save());
           return false;
         }
-        autosaveOff.current = undefined;
         clearNotice('save-conflict', 'save-failed');
         return true;
       },
+      reload: () => {
+        if (
+          model.dirty &&
+          !window.confirm(
+            `Reload ${basename(saver.path)} from disk?\n\nYour unsaved edits here will be lost.`,
+          )
+        ) {
+          return false;
+        }
+        // The teardown lets the edits go; the load rejoins the kernel.
+        reloading.current = true;
+        setOpen(undefined);
+        setAttempt(a => a + 1);
+        return true;
+      },
+      unlock: report(`unlock ${fileName}`, async () => {
+        // Saves write over the version that locked it, and the checks go
+        // on: a newer change locks it again.
+        await saver.accept(lockedAt.current);
+        locked.current = undefined;
+        lockedAt.current = undefined;
+        setLocked(false);
+        clearNotice('save-conflict');
+      }),
       download: () => {
         // Widget state goes in, as on save; that is not an edit.
         const wasDirty = model.dirty;
@@ -883,6 +980,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
     intended,
     dirty,
     trusted,
+    isLocked,
+    lock,
     cellType,
     outline,
     backend,
@@ -952,6 +1051,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
             const c = controllerRef.current;
             if (action === 'restart') void c?.restart();
             else if (action === 'save') void c?.save();
+            else if (action === 'reload') c?.reload();
+            else if (action === 'unlock') void c?.unlock();
             else if (notice.retry) {
               clearNotice(notice.problem.kind);
               notice.retry();

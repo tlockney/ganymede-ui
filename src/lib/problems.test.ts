@@ -1,13 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import { ServerConnection } from '@jupyterlab/services';
 import {
+  changedOnDisk,
   connectionLost,
   failed,
   isStaleBundle,
   isUnreachable,
   kernelDead,
   missingKernel,
-  saveConflict,
   saveFailed,
 } from './problems';
 
@@ -86,12 +86,15 @@ describe('problems', () => {
     });
   });
 
-  it('offers Save when autosave stopped on a file changed on disk', () => {
-    expect(saveConflict('Io.ipynb')).toMatchObject({
+  it('offers Reload and Unlock when the file changed on disk', () => {
+    expect(changedOnDisk('Io.ipynb', false)).toMatchObject({
       kind: 'save-conflict',
-      message: expect.stringContaining('Autosave is off until you save it.'),
-      actions: ['save'],
+      message: 'Io.ipynb changed on disk. Saving is locked, so this copy doesn’t replace it.',
+      actions: ['reload', 'unlock'],
     });
+    // A reload drops unsaved edits: the hint says so.
+    expect(changedOnDisk('Io.ipynb', true).hint).toContain('unsaved edits here are dropped');
+    expect(changedOnDisk('Io.ipynb', false).hint).not.toContain('unsaved');
   });
 
   it('offers Retry for other failures only when asked', () => {

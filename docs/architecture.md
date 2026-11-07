@@ -204,6 +204,14 @@ dirty flag cleared only if no edit arrived during the round trip. The
 save sends the loaded `last_modified` too, which Ganymede checks again
 under its save lock (409). The pane autosaves a dirty notebook every 120
 seconds and when the page is hidden, and asks on `beforeunload`.
+`changedOnDisk` runs the same check in the save queue, so the pane's own
+write is never taken for another's; the pane calls it every 5 seconds
+while the page shows and on `focus` and `visibilitychange`. A change, or
+a save that meets one, locks the pane: no save writes until Reload (the
+load effect runs again; the teardown drops the edits and leaves the
+kernel, which the new session rejoins) or Unlock (`accept` takes the
+version on disk that locked it as the saver's base, so saves write over
+it and the checks go on: a newer change locks again).
 
 Inside JupyterLab, the editor, renderers and commands come from plugins.
 `jupyterlab.ts` builds them once and shares them across notebooks: the

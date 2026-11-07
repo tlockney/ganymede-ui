@@ -138,9 +138,23 @@ Outline tab.
 
 A notebook with unsaved edits saves itself every two minutes, when the
 page is hidden, and when you open another file, and the browser asks before a tab with unsaved edits
-closes. If the file changed on disk since it was opened or last saved, a
-save asks before overwriting it, and autosave stops until you save. A
-failed save or kernel action shows its error above the notebook.
+closes. A failed save or kernel action shows its error above the notebook.
+
+### When the file changes on disk
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, where a save asks before overwriting and autosave
+> stops until you save.
+
+The open notebook checks its file every few seconds and when the window
+comes back. If another writer changed it (a Claude session using the
+Ganymede Journal plugin, say), the notebook locks: nothing saves it, not
+autosave, ⌘S, or opening another file, and the title says "Locked". The
+notice above the notebook offers **Reload**, which loads the new version
+and keeps the kernel running (it asks first if you have unsaved edits,
+which it drops), and **Unlock**, which lets your copy save over the version that locked
+it. A newer change locks it again.
 
 ### Code font
 

@@ -91,7 +91,23 @@ test('saves an edit with the keyboard, and it survives a reload and is on disk',
   await expect(page.locator('.jp-CodeCell .cm-content').first()).toContainText(stamp);
 });
 
-test('asks before saving over a file that changed on disk', async ({ page }) => {
+/**
+ * Another writer saves the fixture (an agent through the server, say):
+ * `edit` changes it, and its mtime goes a few seconds past our copy's.
+ */
+function writeElsewhere(
+  edit: (nb: { metadata: Record<string, unknown>; cells: { source: string | string[] }[] }) => void,
+) {
+  const file = join(ROOT_DIR, FIXTURE);
+  const theirs = JSON.parse(readFileSync(file, 'utf8'));
+  edit(theirs);
+  writeFileSync(file, JSON.stringify(theirs, null, 1) + '\n');
+  const later = new Date(Date.now() + 5_000);
+  utimesSync(file, later, later);
+  return file;
+}
+
+test('locks saving over a file that changed on disk, until Unlock', async ({ page }) => {
   const stamp = `edited by e2e ${Date.now()}`;
   await openWithToken(page);
   await openNotebook(page, FIXTURE);
@@ -101,29 +117,42 @@ test('asks before saving over a file that changed on disk', async ({ page }) => 
   await page.keyboard.type(`\n// ${stamp}`);
   await expect(page.getByText('— Edited')).toBeVisible();
 
-  // Another writer saves the file, a few seconds newer than our copy.
-  const file = join(ROOT_DIR, FIXTURE);
-  const theirs = JSON.parse(readFileSync(file, 'utf8'));
-  theirs.metadata.edited_elsewhere = true;
-  writeFileSync(file, JSON.stringify(theirs, null, 1) + '\n');
-  const later = new Date(Date.now() + 5_000);
-  utimesSync(file, later, later);
+  const file = writeElsewhere(nb => void (nb.metadata.edited_elsewhere = true));
 
-  // Cancel: their copy stays, and ours stays unsaved.
-  const asked = page.waitForEvent('dialog');
+  // Locked: ⌘S writes nothing, and asks nothing (#367).
+  page.on('dialog', d => void d.dismiss());
   await page.keyboard.press('ControlOrMeta+s');
-  const dialog = await asked;
-  expect(dialog.message()).toContain('changed on disk');
-  await dialog.dismiss();
-  await expect(page.getByText('— Edited')).toBeVisible();
+  const notice = page.getByRole('alert');
+  await expect(notice).toContainText('changed on disk. Saving is locked');
+  await expect(page.getByText('— Edited, locked')).toBeVisible();
   expect(JSON.parse(readFileSync(file, 'utf8')).metadata.edited_elsewhere).toBe(true);
 
-  // Overwrite: ours wins.
-  page.once('dialog', d => void d.accept());
+  // Unlock, then save: ours wins.
+  await notice.getByRole('button', { name: 'Unlock' }).click();
+  await expect(page.getByText('— Edited')).toBeVisible();
   await page.keyboard.press('ControlOrMeta+s');
   await expect(page.getByText('— Edited')).toBeHidden({ timeout: 10_000 });
   const onDisk = JSON.parse(readFileSync(file, 'utf8'));
   expect([onDisk.cells[1].source].flat().join('')).toContain(`// ${stamp}`);
+});
+
+test('notices a change on disk without a save, and reloads it', async ({ page }) => {
+  const stamp = `written elsewhere ${Date.now()}`;
+  await openWithToken(page);
+  await openNotebook(page, FIXTURE);
+  await expect(page.locator('.jp-CodeCell .cm-content').first()).toBeVisible();
+
+  writeElsewhere(nb => void (nb.cells[1]!.source = `// ${stamp}`));
+
+  // The pane asks every few seconds; nothing here was edited or saved.
+  const notice = page.getByRole('alert');
+  await expect(notice).toContainText('changed on disk', { timeout: 15_000 });
+  await expect(page.getByText('— Locked')).toBeVisible();
+
+  await notice.getByRole('button', { name: 'Reload' }).click();
+  await expect(page.locator('.jp-CodeCell .cm-content').first()).toContainText(stamp);
+  await expect(page.getByText('— Locked')).toBeHidden();
+  await expect(notice).toBeHidden();
 });
 
 test('asks before the tab closes with unsaved edits', async ({ page }) => {
