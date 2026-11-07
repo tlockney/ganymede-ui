@@ -1,5 +1,5 @@
-import Combine
 import Foundation
+import Observation
 
 /// What the Mac window's right inspector shows (#249).
 enum InspectorTab: String, CaseIterable, Identifiable {
@@ -25,16 +25,17 @@ enum InspectorTab: String, CaseIterable, Identifiable {
 /// One window's right inspector (#249): whether it shows, which tab, and
 /// how wide it is. The window keeps all three across launches.
 @MainActor
-final class InspectorController: ObservableObject {
+@Observable
+final class InspectorController {
     static let minWidth: Double = 220
     static let defaultWidth: Double = 280
     static let maxWidth: Double = 520
     /// Room the notebook keeps beside the inspector.
     static let notebookRoom: Double = 360
 
-    @Published var isShown = false
-    @Published var tab = InspectorTab.outline
-    @Published private(set) var width = InspectorController.defaultWidth
+    var isShown = false
+    var tab = InspectorTab.outline
+    private(set) var width = InspectorController.defaultWidth
 
     /// ⌥⌘0: shows or hides it.
     func toggle() {

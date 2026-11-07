@@ -282,7 +282,7 @@ struct TerminalCommands: View {
     @FocusedValue(\.windowFolder) private var folder
     /// The front notebook window's bottom panel, where new terminals go
     /// (#248); a window of their own when no notebook window is in front.
-    @FocusedObject private var panel: PanelController?
+    @FocusedValue(\.panelController) private var panel
 
     var body: some View {
         Button("New Terminal") {

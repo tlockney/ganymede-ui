@@ -9,7 +9,7 @@ import SwiftUI
 /// keeps running; closing a tab ends it.
 struct BottomPanel: View {
     @EnvironmentObject private var model: AppModel
-    @ObservedObject var panel: PanelController
+    var panel: PanelController
     /// Where a new local terminal starts: the window's folder.
     let folder: URL
     /// The height of the area the notebook and panel share, for the limit
@@ -387,7 +387,7 @@ struct FillButton: View {
 /// As a menu shortcut it comes before the terminal, so programs in a panel
 /// terminal don't get ⌃` (NUL); terminals in a tab of their own still do.
 struct PanelCommands: View {
-    @FocusedObject private var panel: PanelController?
+    @FocusedValue(\.panelController) private var panel
     @FocusedValue(\.windowFolder) private var folder
     @ObservedObject var model: AppModel
 

@@ -8,7 +8,7 @@ import GameController
 /// Connect sheets are for the browser; in the app they open this screen.
 /// Pushes `.agent` or `.shortcuts` (the navigation stack's path).
 struct SettingsScreen: View {
-    @ObservedObject var page: PageModel
+    var page: PageModel
     let done: () -> Void
     @EnvironmentObject private var model: AppModel
     @State private var hardwareKeyboard = GCKeyboard.coalesced != nil
@@ -80,7 +80,7 @@ struct SettingsScreen: View {
 /// window (#332). The page keeps the settings and runs the test (`native-agent.ts`);
 /// the key goes to the Keychain, where the page reads it.
 struct AgentSettingsView: View {
-    @ObservedObject var page: PageModel
+    var page: PageModel
     var secrets: SecretStore = KeychainStore()
 
     @State private var panel: AgentPanel?

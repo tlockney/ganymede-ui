@@ -9,7 +9,7 @@ import UIKit
 /// iPad has no local shell, so its terminals are on remotes.
 struct IPadPanel: View {
     @EnvironmentObject private var model: AppModel
-    @ObservedObject var panel: PanelController
+    var panel: PanelController
     /// The height of the area the notebook and panel share.
     let available: Double
     /// Whether the panel is on screen: shown, and not under a filled

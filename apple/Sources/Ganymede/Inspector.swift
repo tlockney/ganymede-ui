@@ -6,8 +6,8 @@ import SwiftUI
 /// its kernel's Variables, picked with a segmented control, resized from
 /// its leading edge. The built-in agent's panel joins them later (#123).
 struct Inspector: View {
-    @ObservedObject var inspector: InspectorController
-    @ObservedObject var page: PageModel
+    @Bindable var inspector: InspectorController
+    var page: PageModel
     /// The width of the area the notebook and inspector share, for the
     /// limit on how wide the inspector gets.
     let available: Double
@@ -77,7 +77,7 @@ struct Inspector: View {
 /// inspector: name, type and a short value, objects expanding a level at
 /// a time.
 private struct VariablesInspector: View {
-    @ObservedObject var page: PageModel
+    var page: PageModel
 
     var body: some View {
         let variables = page.state.variables
@@ -233,7 +233,7 @@ struct FillCommands: View {
 
 /// View › Show/Hide Inspector (⌥⌘0), for the front notebook window.
 struct InspectorCommands: View {
-    @FocusedObject private var inspector: InspectorController?
+    @FocusedValue(\.inspectorController) private var inspector
 
     var body: some View {
         Button(inspector?.isShown == true ? "Hide Inspector" : "Show Inspector") {

@@ -12,7 +12,7 @@ import SwiftUI
 /// files in the app's editor.
 struct FolderSidebar: View {
     let folder: URL
-    @ObservedObject var page: PageModel
+    var page: PageModel
     let openFile: (String) -> Void
     @Environment(\.openWindow) private var openWindow
     /// Bumped to list the folders again after a change made here.
@@ -257,7 +257,7 @@ private struct FolderContents: View {
 /// Kernels that keep running when their notebook is closed or another is
 /// opened, to find and shut down (#225): the navigator's Running tab (#246).
 struct RunningList: View {
-    @ObservedObject var page: PageModel
+    var page: PageModel
     /// Terminals in any window (#246).
     var terminals = OpenTerminals.shared
 
@@ -307,7 +307,7 @@ struct RunningList: View {
 /// A running kernel in the Running list: its notebook, kernel and memory.
 private struct KernelRow: View {
     let session: PageState.Session
-    @ObservedObject var page: PageModel
+    var page: PageModel
 
     var body: some View {
         Button {
@@ -349,7 +349,7 @@ private struct KernelRow: View {
 /// The foot of the navigator sidebar (#246): where kernels run, and how
 /// many kernels and terminals there are.
 struct ServerLine: View {
-    @ObservedObject var page: PageModel
+    var page: PageModel
     var terminals = OpenTerminals.shared
 
     var body: some View {
@@ -380,9 +380,9 @@ struct ServerLine: View {
 /// into one AppKit family, and AppKit threw while syncing a new window's
 /// items into the others when a notebook opened from the Finder (#226).
 struct NotebookToolbar: ToolbarContent {
-    @ObservedObject var page: PageModel
+    var page: PageModel
     /// Saved as File > Save saves it, and enabled when that is.
-    @ObservedObject var document: PageDocument
+    var document: PageDocument
     /// Where New Notebook puts it: the window's folder.
     let folder: URL
     /// The window's bottom panel, for the kernel popover's Kernel Log.
@@ -464,7 +464,7 @@ struct NotebookToolbar: ToolbarContent {
 /// with its state and memory, Interrupt, Restart, the Kernel Log and the
 /// kernels to change to.
 struct KernelPicker: View {
-    @ObservedObject var page: PageModel
+    var page: PageModel
     var panel: PanelController?
     @State private var shown = false
 
@@ -483,7 +483,7 @@ struct KernelPicker: View {
 }
 
 private struct KernelPopover: View {
-    @ObservedObject var page: PageModel
+    var page: PageModel
     let panel: PanelController?
     let dismiss: () -> Void
 
@@ -548,7 +548,7 @@ func confirmTrust(_ page: PageModel) {
 /// File > New Notebook (⌘N) and New Window (⌥⌘N).
 struct NewCommands: View {
     @ObservedObject var model: AppModel
-    @FocusedObject private var page: PageModel?
+    @FocusedValue(\.pageModel) private var page
     @FocusedValue(\.windowFolder) private var folder
     @Environment(\.openWindow) private var openWindow
 
@@ -599,7 +599,7 @@ func askName(for current: String) -> String? {
 /// saves first and keeps the kernel. The name is shown without `.ipynb`,
 /// as the page's title shows it.
 struct RenameCommand: View {
-    @FocusedObject private var page: PageModel?
+    @FocusedValue(\.pageModel) private var page
 
     var body: some View {
         Button("Rename…") {
@@ -613,7 +613,7 @@ struct RenameCommand: View {
 
 /// File > Download Notebook…, beside Save.
 struct DownloadCommand: View {
-    @FocusedObject private var page: PageModel?
+    @FocusedValue(\.pageModel) private var page
 
     var body: some View {
         Button("Download Notebook…") { page?.run("download") }
@@ -624,7 +624,7 @@ struct DownloadCommand: View {
 /// View › Command Palette… (⇧⌘P): the page's palette of every command (#211).
 /// The menu key is fixed: rebinding the palette on the page doesn't change it.
 struct CommandPaletteCommand: View {
-    @FocusedObject private var page: PageModel?
+    @FocusedValue(\.pageModel) private var page
 
     var body: some View {
         Button("Command Palette…") { page?.run("command-palette") }
@@ -636,7 +636,7 @@ struct CommandPaletteCommand: View {
 /// The Cell menu. Keys the page already handles (⇧↩, A, B, M, DD, …) are
 /// not menu shortcuts: a menu key equivalent would also fire while typing.
 struct CellMenu: View {
-    @FocusedObject private var page: PageModel?
+    @FocusedValue(\.pageModel) private var page
 
     var body: some View {
         Group {
@@ -673,7 +673,7 @@ struct CellMenu: View {
 
 /// The Kernel menu.
 struct KernelMenu: View {
-    @FocusedObject private var page: PageModel?
+    @FocusedValue(\.pageModel) private var page
 
     var body: some View {
         Button("Interrupt") { page?.run("interrupt") }

@@ -80,8 +80,10 @@ final class WebViewStore {
         return coordinator
     }()
     private(set) lazy var webView: WKWebView = coordinator.makeWebView(keepRunning: true)
-    /// Holds the web view while no screen shows it.
-    let parking: UIView = {
+    /// Holds the web view while no screen shows it. Lazy, like the rest:
+    /// `@State` makes a store on every `ContentView` init and keeps only
+    /// the first (#357).
+    private(set) lazy var parking: UIView = {
         let view = UIView(frame: CGRect(x: 0, y: 0, width: 1, height: 1))
         view.alpha = 0
         view.isUserInteractionEnabled = false
@@ -579,20 +581,21 @@ private final class AgentKeysHandler: NSObject, WKScriptMessageHandlerWithReply 
 /// What a window's page shows, and the commands it runs: the native
 /// toolbar and menus read `state` and call `run` (#205).
 @MainActor
-final class PageModel: ObservableObject {
-    @Published private(set) var state = PageState()
-    weak var webView: WKWebView? {
+@Observable
+final class PageModel {
+    private(set) var state = PageState()
+    @ObservationIgnored weak var webView: WKWebView? {
         didSet { flush() }
     }
     /// Whether the page has posted its state with a backend, so its
     /// commands and calls are ready.
-    @Published private(set) var ready = false
+    private(set) var ready = false
     /// Commands run before then: the iPhone's list can be tapped while the
     /// page is still loading (#209).
-    private var pending: [String] = []
+    @ObservationIgnored private var pending: [String] = []
 
     /// Views that want the kernels' memory (#241).
-    private var memoryWatch = MemoryWatch()
+    @ObservationIgnored private var memoryWatch = MemoryWatch()
 
     func update(_ state: PageState) {
         if state != self.state { self.state = state }

@@ -7,7 +7,7 @@ import SwiftUI
 /// navigators do.
 struct NavigatorSidebar: View {
     let folder: URL
-    @ObservedObject var page: PageModel
+    var page: PageModel
     let openFile: (String) -> Void
     /// The selected tab, kept per window.
     @SceneStorage("navigator.tab") private var tab: NavigatorTab = .files
@@ -74,7 +74,7 @@ struct NavigatorSidebar: View {
 /// its notebooks (#246). Searching starts a moment after typing stops.
 private struct SearchNavigator: View {
     let folder: URL
-    @ObservedObject var page: PageModel
+    var page: PageModel
     let openFile: (String) -> Void
     @Environment(\.openWindow) private var openWindow
     @SceneStorage("navigator.query") private var query = ""
@@ -226,7 +226,7 @@ private struct SearchNavigator: View {
 /// The open notebook's Markdown headings (#212), indented by level;
 /// clicking one selects its cell and scrolls it to the top.
 struct OutlineNavigator: View {
-    @ObservedObject var page: PageModel
+    var page: PageModel
 
     var body: some View {
         let headings = page.state.headings
@@ -265,7 +265,7 @@ struct OutlineNavigator: View {
 
 /// File › Open Recent's notebooks: in this window, or a new one.
 private struct RecentsNavigator: View {
-    @ObservedObject var page: PageModel
+    var page: PageModel
     private let recents = Recents.shared
     @Environment(\.openWindow) private var openWindow
 
