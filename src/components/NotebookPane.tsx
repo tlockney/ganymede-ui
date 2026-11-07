@@ -692,8 +692,16 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
     const unguard = guardReload(async () => {
       if (!model.dirty) return true;
       if (locked.current || gone.current) return false;
-      await saver.save({ ifDirty: true });
-      return !model.dirty;
+      try {
+        await saver.save({ ifDirty: true });
+        return true;
+      } catch (e) {
+        // As autosave: lock on a change on disk, else say why, so a No
+        // to the question leaves the reason on the pane.
+        if (e instanceof SaveConflict) lock(open, e.lastModified);
+        else setNotice(saveFailed(basename(path), e, true), autosave);
+        return false;
+      }
     });
     const timer = setInterval(autosave, AUTOSAVE_INTERVAL_MS);
     document.addEventListener('visibilitychange', onHidden);

@@ -100,6 +100,15 @@ export function handOff(path: string, work: Promise<string | undefined>): void {
 }
 
 /**
+ * Every last save a pane left that hasn't finished, each resolving with
+ * why it failed or undefined: a reload the page starts waits for them
+ * (#375), since the pane that made them is gone.
+ */
+export function pendingHandoffs(): Promise<string | undefined>[] {
+  return [...new Set(handoffs.values())];
+}
+
+/**
  * For a pane opening `path`: what the last one there left, to wait for
  * before loading the file, or undefined when nothing is pending. Left in
  * place, not taken: under StrictMode the pane's effect runs twice, and
