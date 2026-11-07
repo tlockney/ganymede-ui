@@ -101,6 +101,9 @@ final class CrashReports: ObservableObject {
             SentrySDK.capture(message: "Rust panic: \(text)") { scope in
                 scope.setLevel(.error)
             }
+            // A panic across the FFI boundary aborts right after this
+            // returns; without the flush the event can be lost (#318).
+            SentrySDK.flush(timeout: 2)
         }
     }
 
