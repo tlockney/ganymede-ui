@@ -98,8 +98,9 @@ struct ContentView: View {
     @State private var newName = ""
     #endif
 
-    var body: some View {
-        #if os(macOS)
+    #if os(macOS)
+    /// The window: split view, toolbar, open requests, tabs.
+    private var macWindow: some View {
         // The app draws the sidebar, toolbar and menus; the page shows the
         // notebook (#206, #207).
         NavigationSplitView(columnVisibility: Binding(
@@ -213,6 +214,11 @@ struct ContentView: View {
         .focusedSceneObject(document)
         .focusedSceneObject(pageModel)
         .focusedSceneObject(panel)
+    }
+
+    /// `macWindow` with the bottom panel and the keyboard kept in step.
+    private var macPanelSync: some View {
+        macWindow
         .onAppear {
             panel.resize(to: panelHeight, available: .infinity)
             // Shells don't outlive the app: a panel that was showing comes
@@ -247,6 +253,14 @@ struct ContentView: View {
         .onChange(of: pageModel.state.isBusy) { _, busy in
             if let window = document.window { WorkspaceTabs.markBusy(window, busy) }
         }
+    }
+    #endif
+
+    var body: some View {
+        #if os(macOS)
+        // In three parts: as one expression the type checker gave up
+        // (#356).
+        macPanelSync
         .focusedSceneObject(inspector)
         .focusedSceneValue(\.windowFill, WindowFill(filled: layout.filled) {
             // The area with the keyboard: a panel terminal, or the notebook.
