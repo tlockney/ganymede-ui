@@ -1,10 +1,11 @@
-import Combine
+import Observation
 import Foundation
 
 /// Every terminal open in the app, in a window's bottom panel or in a tab
 /// of its own, for the navigator's Running tab (#246).
 @MainActor
-final class OpenTerminals: ObservableObject {
+@Observable
+final class OpenTerminals {
     static let shared = OpenTerminals()
 
     struct Entry: Identifiable {
@@ -20,7 +21,7 @@ final class OpenTerminals: ObservableObject {
     }
 
     /// In the order they opened.
-    @Published private(set) var entries: [Entry] = []
+    private(set) var entries: [Entry] = []
 
     /// Adds `entry`, or replaces the one with its id in place.
     func update(_ entry: Entry) {

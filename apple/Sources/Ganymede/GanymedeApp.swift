@@ -119,7 +119,7 @@ struct GanymedeApp: App {
 struct OpenCommands: View {
     @Environment(\.openWindow) private var openWindow
     @ObservedObject var model: AppModel
-    @ObservedObject private var recents = Recents.shared
+    private let recents = Recents.shared
 
     var body: some View {
         Button("Open…") {

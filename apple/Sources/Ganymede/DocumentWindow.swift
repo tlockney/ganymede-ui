@@ -164,9 +164,10 @@ private final class CloseGuard: NSObject, NSWindowDelegate {
 
 /// File > Open Recent: the notebooks opened lately, kept by AppKit.
 @MainActor
-final class Recents: ObservableObject {
+@Observable
+final class Recents {
     static let shared = Recents()
-    @Published private(set) var urls = NSDocumentController.shared.recentDocumentURLs
+    private(set) var urls = NSDocumentController.shared.recentDocumentURLs
 
     func note(_ url: URL) {
         NSDocumentController.shared.noteNewRecentDocumentURL(url)

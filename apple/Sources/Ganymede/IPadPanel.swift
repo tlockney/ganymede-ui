@@ -178,10 +178,11 @@ private struct IPadPanelTab: View {
 /// its screen until it is closed, so going back to the notebook keeps
 /// unsaved edits, which come back when the file is opened again.
 @MainActor
-final class IPadOpenFiles: ObservableObject {
+@Observable
+final class IPadOpenFiles {
     /// The detail area's stack of server paths: files over the notebook.
-    @Published var stack: [String] = []
-    private var documents: [String: EditorDocument] = [:]
+    var stack: [String] = []
+    @ObservationIgnored private var documents: [String: EditorDocument] = [:]
 
     func document(for path: String) -> EditorDocument {
         if let document = documents[path] { return document }

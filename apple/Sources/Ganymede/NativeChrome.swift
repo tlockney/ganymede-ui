@@ -259,7 +259,7 @@ private struct FolderContents: View {
 struct RunningList: View {
     @ObservedObject var page: PageModel
     /// Terminals in any window (#246).
-    @ObservedObject var terminals = OpenTerminals.shared
+    var terminals = OpenTerminals.shared
 
     var body: some View {
         List {
@@ -350,7 +350,7 @@ private struct KernelRow: View {
 /// many kernels and terminals there are.
 struct ServerLine: View {
     @ObservedObject var page: PageModel
-    @ObservedObject var terminals = OpenTerminals.shared
+    var terminals = OpenTerminals.shared
 
     var body: some View {
         HStack(spacing: 6) {

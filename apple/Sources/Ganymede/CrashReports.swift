@@ -21,7 +21,8 @@ import AppKit
 /// The page's own error reports (#319) follow the same choice: the web
 /// view gets `window.ganymedeCrashReports` before the page loads.
 @MainActor
-final class CrashReports: ObservableObject {
+@Observable
+final class CrashReports {
     static let shared = CrashReports()
 
     /// The ganymede-apple project's DSN. It only lets a client send events.
@@ -31,7 +32,7 @@ final class CrashReports: ObservableObject {
     private let defaults: UserDefaults
 
     /// The person's answer; nil until they gave one.
-    @Published private(set) var choice: Bool?
+    private(set) var choice: Bool?
 
     var enabled: Bool { choice == true }
 
@@ -222,7 +223,7 @@ enum CrashReportsPrompt {
 
 /// Settings' crash report section, on Mac and iOS.
 struct CrashReportsSettings: View {
-    @ObservedObject var reports: CrashReports = .shared
+    var reports: CrashReports = .shared
 
     var body: some View {
         Section {
@@ -255,7 +256,7 @@ struct CrashReportsSettings: View {
 #if os(iOS)
 /// Asks the question once on iPad and iPhone, "Don't Send" first.
 private struct CrashReportsPromptModifier: ViewModifier {
-    @ObservedObject var reports: CrashReports = .shared
+    var reports: CrashReports = .shared
     @Environment(\.openURL) private var openURL
 
     func body(content: Content) -> some View {

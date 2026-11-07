@@ -78,7 +78,7 @@ struct ContentView: View {
     /// The iPad's sidebar and notebook columns (#208).
     @State private var columns = NavigationSplitViewVisibility.automatic
     /// The iPhone's page, kept while the folder list shows (#209).
-    @StateObject private var phonePage = WebViewStore()
+    @State private var phonePage = WebViewStore()
     /// The iPhone's screens over the folder list: the notebook, or none.
     @State private var phonePath: [PhoneScreen] = []
     /// The iPad's bottom panel (#251): terminals on remotes. The iPhone
@@ -86,7 +86,7 @@ struct ContentView: View {
     @StateObject private var panel = PanelController()
     @SceneStorage("panel.height") private var panelHeight = PanelController.defaultHeight
     /// Text files over the notebook in the iPad's detail area (#251).
-    @StateObject private var openFiles = IPadOpenFiles()
+    @State private var openFiles = IPadOpenFiles()
     /// The iPad's detail area fills the screen: no sidebar or panel.
     @State private var mainFills = false
     /// The bottom panel fills the detail area, the notebook hidden.
