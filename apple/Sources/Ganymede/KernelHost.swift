@@ -3,9 +3,10 @@ import WebKit
 
 /// The hidden web view that cdp-kernel's in-page kernels run in
 /// (ganymede-ui#99): `kernel.html` from the same server, one browser kernel
-/// per kernel the UI page starts. Only this web view registers native
-/// bridges such as ganymede-device's `device` handler, so nothing the UI
-/// page renders, outputs and widgets included, can reach them.
+/// per kernel the UI page starts. Only this web view registers the full
+/// `device` handler (ganymede-device), so nothing the UI page renders,
+/// outputs and widgets included, can reach it; the UI page gets only the
+/// remote subset, below.
 ///
 /// Jupyter messages pass through here (`src/lib/kernel-relay.ts` has the
 /// web side): the UI page posts to `kernelRelay`, the kernel page to
