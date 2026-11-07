@@ -34,7 +34,8 @@ export type NativeHooks = {
  * name. `shutdown-kernel` takes a running session's id or its notebook's
  * path; `shutdown-others` shuts down every kernel but the open notebook's.
  * `search` takes a `SearchRequest` as JSON (an empty query ends it), and
- * `clear-recents` empties the Recents list (#240). `go-to-cell` takes a
+ * `clear-recents` empties the Recents list (#240). `refresh-kernels` asks
+ * the server for its kernelspecs again (#350). `go-to-cell` takes a
  * cell's index, as `PageState.outline` gives it (#212).
  * `watch-memory` takes `on` or `off`: whether the app's Running list shows,
  * so the page asks the server for each kernel's memory and posts it in
@@ -69,6 +70,7 @@ export const PAGE_COMMANDS = {
   connect: '',
   search: 'arg',
   'clear-recents': '',
+  'refresh-kernels': '',
   'file-moved': 'arg',
   'go-to-cell': 'arg',
   'watch-memory': 'arg',

@@ -119,6 +119,10 @@ private struct KernelSettings: View {
     @EnvironmentObject private var model: AppModel
     @State private var specs: KernelSpecs?
     @State private var error: String?
+    /// Bumped to list the kernels again: by Refresh, and when the app
+    /// comes back to the front, as a kernelspec may have been installed
+    /// or removed meanwhile (#350).
+    @State private var reload = 0
 
     var body: some View {
         Form {
@@ -151,7 +155,12 @@ private struct KernelSettings: View {
                     ProgressView().frame(maxWidth: .infinity)
                 }
             } header: {
-                Text("Installed")
+                HStack {
+                    Text("Installed")
+                    Spacer()
+                    Button("Refresh") { reload += 1 }
+                        .disabled(model.serverURL == nil)
+                }
             } footer: {
                 Text("Kernels are Jupyter kernelspecs. To add TypeScript, run `cdp-kernel install --runtime node`.")
             }
@@ -161,7 +170,10 @@ private struct KernelSettings: View {
         // Again when the server restarts, as it does when kernels move, or
         // fails to start. `serverURL` is cleared as a restart begins, so a
         // stopping server isn't asked.
-        .task(id: "\(model.serverURL?.absoluteString ?? "")\n\(model.error ?? "")") { await load() }
+        .task(id: "\(model.serverURL?.absoluteString ?? "")\n\(model.error ?? "")\n\(reload)") { await load() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            reload += 1
+        }
     }
 
     private func load() async {
