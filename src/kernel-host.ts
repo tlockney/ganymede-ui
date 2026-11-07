@@ -23,6 +23,12 @@ import {
 } from './lib/kernel-relay';
 
 const kernels = new Map<string, BrowserKernel>();
+/**
+ * Kernels the UI page asked to shut down. It knows they end, and a restart
+ * starts the next one under the same id, so their `closed` would reach the
+ * new kernel if it came after that `start` (#394).
+ */
+const shutDown = new WeakSet<BrowserKernel>();
 
 function post(message: FromKernel): void {
   messageHandler(HOST_HANDLER)?.postMessage(message);
@@ -55,7 +61,7 @@ function start(id: string): void {
     device.host?.release();
     if (kernels.get(id) !== kernel) return;
     kernels.delete(id);
-    post({ kernel: id, op: 'closed' });
+    if (!shutDown.has(kernel)) post({ kernel: id, op: 'closed' });
   });
 }
 
@@ -64,9 +70,12 @@ export function deliver(m: ToKernel): void {
   if (m.op === 'start') {
     start(m.kernel);
   } else if (m.op === 'send' && m.channel !== 'iopub') {
-    kernels
-      .get(m.kernel)
-      ?.send(m.channel as Parameters<BrowserKernel['send']>[0], decodeMessage(m.msg) as never);
+    const kernel = kernels.get(m.kernel);
+    if (!kernel) return;
+    const msg = decodeMessage(m.msg) as { header?: { msg_type?: string } };
+    if (m.channel === 'control' && msg.header?.msg_type === 'shutdown_request')
+      shutDown.add(kernel);
+    kernel.send(m.channel as Parameters<BrowserKernel['send']>[0], msg as never);
   }
 }
 
