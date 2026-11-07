@@ -6,7 +6,7 @@
 import { ServerConnection } from '@jupyterlab/services';
 
 /** The next steps a notice offers, besides Dismiss. */
-export type ProblemAction = 'restart' | 'retry' | 'pick-kernel' | 'save';
+export type ProblemAction = 'restart' | 'retry' | 'pick-kernel' | 'save' | 'reload' | 'unlock';
 
 export type ProblemKind =
   /** The kernel died: it crashed, ran out of memory, or was shut down. */
@@ -17,7 +17,7 @@ export type ProblemKind =
   | 'unreachable'
   /** The file names a kernel that isn't installed, or there is none at all. */
   | 'missing-kernel'
-  /** The file changed on disk, so autosave stopped. */
+  /** The file changed on disk, so saving is locked (#367). */
   | 'save-conflict'
   | 'save-failed'
   | 'rename-failed'
@@ -39,6 +39,8 @@ export const ACTION_LABEL: Record<ProblemAction, string> = {
   retry: 'Retry',
   'pick-kernel': 'Pick a Kernel',
   save: 'Save',
+  reload: 'Reload',
+  unlock: 'Unlock',
 };
 
 export const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -105,13 +107,19 @@ export function missingKernel(fileName: string, missing?: string): Problem {
   };
 }
 
-/** Autosave met a file that changed on disk, and stopped. */
-export function saveConflict(fileName: string): Problem {
+/**
+ * The file changed on disk since it was opened or last saved here, so
+ * saving is locked until the user reloads it or unlocks (#367). `dirty`:
+ * there are edits here that a reload drops.
+ */
+export function changedOnDisk(fileName: string, dirty: boolean): Problem {
   return {
     kind: 'save-conflict',
-    message: `${fileName} changed on disk since it was opened. Autosave is off until you save it.`,
-    hint: 'Save asks before replacing the other copy.',
-    actions: ['save'],
+    message: `${fileName} changed on disk. Saving is locked, so this copy doesn’t replace it.`,
+    hint: dirty
+      ? 'Reload to open the new version (your unsaved edits here are dropped), or Unlock to save this copy over it.'
+      : 'Reload to open the new version, or Unlock to save this copy over it.',
+    actions: ['reload', 'unlock'],
   };
 }
 

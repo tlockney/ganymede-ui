@@ -5,6 +5,12 @@ import type { Contents } from '@jupyterlab/services';
 export const AUTOSAVE_INTERVAL_MS = 120_000;
 
 /**
+ * How often an open notebook asks whether its file changed on disk (#367),
+ * as the Apple apps' editor does for other files.
+ */
+export const DISK_CHECK_INTERVAL_MS = 5_000;
+
+/**
  * How much newer than our copy the file may be before a save is a conflict:
  * Ganymede's window, and JupyterLab's, for servers that round mtimes.
  */
@@ -82,6 +88,29 @@ export class NotebookSaver {
       this.lastModified = moved.lastModified || this.lastModified;
     });
     this.queue = run.catch(() => {});
+    return run;
+  }
+
+  /**
+   * Whether the file changed on disk since it was loaded or last saved
+   * here (#367). Waits for any save or move in flight, so our own write
+   * isn't taken for someone else's. False when the file is gone or the
+   * server can't be reached: a save says why.
+   */
+  changedOnDisk(): Promise<boolean> {
+    const run = this.queue.then(() =>
+      this.checkDisk().then(
+        () => false,
+        (e: unknown) => {
+          if (e instanceof SaveConflict) return true;
+          throw e;
+        },
+      ),
+    );
+    this.queue = run.then(
+      () => {},
+      () => {},
+    );
     return run;
   }
 

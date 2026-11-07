@@ -164,6 +164,24 @@ describe('NotebookSaver', () => {
     expect(model.dirty).toBe(false);
   });
 
+  it('says whether the file changed on disk, after the save in flight', async () => {
+    const { saver, state, edit } = setup();
+    expect(await saver.changedOnDisk()).toBe(false);
+    // Our own save moves the mtime on; the check waits for it and isn't fooled.
+    edit('2');
+    const saving = saver.save();
+    expect(await saver.changedOnDisk()).toBe(false);
+    await saving;
+    state.disk = new Date(Date.parse(state.disk) + 60_000).toISOString();
+    expect(await saver.changedOnDisk()).toBe(true);
+  });
+
+  it('doesn’t call a file it can’t check changed', async () => {
+    const { contents, saver } = setup();
+    contents.get.mockRejectedValueOnce(new Error('Not found'));
+    expect(await saver.changedOnDisk()).toBe(false);
+  });
+
   it('allows a file within half a second of its copy, for rounded mtimes', async () => {
     const { contents, saver, state, edit } = setup();
     state.disk = '2026-10-20T10:00:00.400Z';

@@ -414,6 +414,7 @@ export function Toolbar({
             key={c?.path}
             name={c ? c.name.replace(/\.ipynb$/, '') : 'Ganymede'}
             dirty={!!c?.dirty}
+            locked={!!c?.locked}
             onRename={c?.rename}
           />
           {c && (

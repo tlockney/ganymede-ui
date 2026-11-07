@@ -189,6 +189,8 @@ afterEach(() => {
 });
 
 const modelOf = () => (fakes.notebooks[0] as { model: NotebookModel }).model;
+/** The model of the notebook built on a reload. */
+const modelOf2 = () => (fakes.notebooks[1] as { model: NotebookModel }).model;
 
 describe('NotebookPane', () => {
   it('loads the file and hands the toolbar a clean controller', async () => {
@@ -483,7 +485,7 @@ describe('NotebookPane', () => {
       expect(latest()).toBeDefined();
     });
 
-    it('shows the save conflict again once a kernel notice over it clears', async () => {
+    it('shows the lock again once a kernel notice over it clears', async () => {
       vi.useFakeTimers({ shouldAdvanceTime: true });
       const { fake, session } = await running(
         vi.fn(async () => ({
@@ -495,7 +497,7 @@ describe('NotebookPane', () => {
       fake.contents.get.mockResolvedValue({ last_modified: '2026-10-20T10:05:00Z' } as never);
       act(() => modelOf().cells.get(0).sharedModel.setSource('print(2)'));
       await act(() => vi.advanceTimersByTimeAsync(120_000));
-      expect(screen.getByRole('alert')).toHaveTextContent('Autosave is off until you save it');
+      expect(screen.getByRole('alert')).toHaveTextContent('Saving is locked');
 
       session.session!.kernel = kernel({
         status: 'dead',
@@ -512,9 +514,7 @@ describe('NotebookPane', () => {
         return null;
       });
       await userEvent.click(screen.getByRole('button', { name: 'Restart' }));
-      await waitFor(() =>
-        expect(screen.getByRole('alert')).toHaveTextContent('Autosave is off until you save it'),
-      );
+      await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Saving is locked'));
     });
 
     it('says the kernel died when a run fails under a dead kernel', async () => {
@@ -1092,31 +1092,138 @@ describe('NotebookPane', () => {
     );
   });
 
-  it('asks before saving over a file that changed on disk', async () => {
+  /** A pane on a file loaded at 10:00 that someone else then saved at 10:05. */
+  async function changedOnDisk() {
     const loaded = '2026-10-20T10:00:00Z';
-    const { fake, latest } = setup(
+    const t = setup(
       vi.fn(async () => ({
         path: 'moons/Io.ipynb',
         last_modified: loaded,
         content: structuredClone(NOTEBOOK),
       })),
     );
-    await waitFor(() => expect(latest()).toBeDefined());
-    // Now someone else saves it.
-    fake.contents.get.mockResolvedValue({ last_modified: '2026-10-20T10:05:00Z' } as never);
+    await waitFor(() => expect(t.latest()).toBeDefined());
+    const change = () =>
+      t.fake.contents.get.mockImplementation((async (_: string, o?: { content?: boolean }) =>
+        o?.content
+          ? {
+              path: 'moons/Io.ipynb',
+              last_modified: '2026-10-20T10:05:00Z',
+              content: structuredClone(NOTEBOOK),
+            }
+          : { last_modified: '2026-10-20T10:05:00Z' }) as never);
+    return { ...t, change };
+  }
+
+  it('locks saving when a save finds the file changed on disk, until Unlock', async () => {
+    const { fake, latest, change } = await changedOnDisk();
+    change();
     act(() => modelOf().cells.get(0).sharedModel.setSource('print(2)'));
     const confirm = vi.spyOn(window, 'confirm');
 
-    confirm.mockReturnValueOnce(false);
-    await act(() => latest()!.save());
-    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Io.ipynb changed on disk'));
+    expect(await act(() => latest()!.save())).toBe(false);
     expect(fake.contents.save).not.toHaveBeenCalled();
+    expect(latest()!.locked).toBe(true);
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Io.ipynb changed on disk. Saving is locked',
+    );
+    // Locked: a second save doesn't ask to overwrite, it says why not.
+    expect(await act(() => latest()!.save())).toBe(false);
+    expect(fake.contents.save).not.toHaveBeenCalled();
+    expect(confirm).not.toHaveBeenCalled();
     expect(latest()!.dirty).toBe(true);
 
-    confirm.mockReturnValueOnce(true);
-    await act(() => latest()!.save());
+    await userEvent.click(screen.getByRole('button', { name: 'Unlock' }));
+    expect(latest()!.locked).toBe(false);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(await act(() => latest()!.save())).toBe(true);
     expect(fake.contents.save).toHaveBeenCalledOnce();
+    // Over the newer file: without the loaded time, which would be a 409.
+    expect(fake.contents.save.mock.calls[0]![1]).not.toHaveProperty('last_modified');
     await waitFor(() => expect(latest()!.dirty).toBe(false));
+    confirm.mockRestore();
+  });
+
+  it('notices a change on disk without a save: every few seconds, and on focus', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const { fake, latest, change } = await changedOnDisk();
+    await act(() => vi.advanceTimersByTimeAsync(5_000));
+    expect(fake.contents.get).toHaveBeenLastCalledWith('moons/Io.ipynb', { content: false });
+    expect(latest()!.locked).toBe(false);
+
+    change();
+    await act(async () => void window.dispatchEvent(new Event('focus')));
+    await waitFor(() => expect(latest()!.locked).toBe(true));
+    // Clean: the notice doesn't speak of edits.
+    expect(screen.getByRole('alert')).not.toHaveTextContent('unsaved');
+    // Locked: no more asking.
+    const asked = fake.contents.get.mock.calls.length;
+    await act(() => vi.advanceTimersByTimeAsync(20_000));
+    expect(fake.contents.get).toHaveBeenCalledTimes(asked);
+  });
+
+  it('doesn’t take its own save for a change on disk', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const { fake, latest } = await changedOnDisk();
+    let disk = '2026-10-20T10:00:00Z';
+    fake.contents.get.mockImplementation((async () => ({ last_modified: disk })) as never);
+    fake.contents.save.mockImplementation((async (path: string) => {
+      disk = '2026-10-20T10:07:00Z';
+      return { path, last_modified: disk };
+    }) as never);
+    act(() => modelOf().cells.get(0).sharedModel.setSource('print(2)'));
+    expect(await act(() => latest()!.save())).toBe(true);
+    await act(() => vi.advanceTimersByTimeAsync(10_000));
+    expect(latest()!.locked).toBe(false);
+  });
+
+  it('autosaves nothing while locked', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const { fake, latest, change } = await changedOnDisk();
+    change();
+    act(() => modelOf().cells.get(0).sharedModel.setSource('print(2)'));
+
+    await act(() => vi.advanceTimersByTimeAsync(120_000));
+    expect(fake.contents.save).not.toHaveBeenCalled();
+    expect(latest()!.locked).toBe(true);
+    expect(screen.getByRole('alert')).toHaveTextContent('unsaved edits here are dropped');
+    // Picking a kernel doesn't hide it.
+    await act(() => latest()!.changeKernel('ts'));
+    expect(screen.getByRole('alert')).toHaveTextContent('Saving is locked');
+  });
+
+  it('reloads the file from disk, asking first when there are edits, and keeps the kernel', async () => {
+    const { fake, latest, change } = await changedOnDisk();
+    change();
+    act(() => modelOf().cells.get(0).sharedModel.setSource('print(2)'));
+    await act(async () => void window.dispatchEvent(new Event('focus')));
+    await waitFor(() => expect(latest()!.locked).toBe(true));
+    const confirm = vi.spyOn(window, 'confirm');
+
+    confirm.mockReturnValueOnce(false);
+    await userEvent.click(screen.getByRole('button', { name: 'Reload' }));
+    expect(confirm).toHaveBeenCalledWith(
+      expect.stringContaining('unsaved edits here will be lost'),
+    );
+    expect(fakes.notebooks).toHaveLength(1);
+
+    confirm.mockReturnValueOnce(true);
+    await userEvent.click(screen.getByRole('button', { name: 'Reload' }));
+    await waitFor(() => expect(fakes.notebooks).toHaveLength(2));
+    await waitFor(() => expect(latest()?.locked).toBe(false));
+    expect(latest()!.dirty).toBe(false);
+    // The edits were dropped, not saved over the new file.
+    expect(fake.contents.save).not.toHaveBeenCalled();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    // The old session let go of the kernel (left running); the new one rejoins it.
+    expect(fakes.sessions).toHaveLength(2);
+    expect((fakes.sessions[1] as { initialize: () => void }).initialize).toHaveBeenCalled();
+    // Saves go through again, against the reloaded file.
+    act(() => modelOf2().cells.get(0).sharedModel.setSource('print(3)'));
+    expect(await act(() => latest()!.save())).toBe(true);
+    expect(fake.contents.save.mock.calls[0]![1]).toMatchObject({
+      last_modified: '2026-10-20T10:05:00Z',
+    });
     confirm.mockRestore();
   });
 
@@ -1170,30 +1277,6 @@ describe('NotebookPane', () => {
     await hide();
     await waitFor(() => expect(fake.contents.save).toHaveBeenCalledOnce());
     visibility.mockRestore();
-  });
-
-  it('turns autosave off when the file changed on disk, until a save', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    const { fake, latest } = setup(
-      vi.fn(async () => ({
-        path: 'moons/Io.ipynb',
-        last_modified: '2026-10-20T10:00:00Z',
-        content: structuredClone(NOTEBOOK),
-      })),
-    );
-    await waitFor(() => expect(latest()).toBeDefined());
-    fake.contents.get.mockResolvedValue({ last_modified: '2026-10-20T10:05:00Z' } as never);
-    act(() => modelOf().cells.get(0).sharedModel.setSource('print(2)'));
-
-    await act(() => vi.advanceTimersByTimeAsync(120_000));
-    expect(fake.contents.save).not.toHaveBeenCalled();
-    expect(screen.getByRole('alert')).toHaveTextContent('Autosave is off until you save it');
-    await act(() => vi.advanceTimersByTimeAsync(120_000));
-    // Checked once, not every two minutes.
-    expect(fake.contents.get).toHaveBeenCalledTimes(2);
-    // Picking a kernel doesn't hide it.
-    await act(() => latest()!.changeKernel('ts'));
-    expect(screen.getByRole('alert')).toHaveTextContent('Autosave is off until you save it');
   });
 
   it('saves unsaved edits before letting the notebook go', async () => {
