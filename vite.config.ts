@@ -133,7 +133,8 @@ const config: UserConfig = {
             options: { cacheName: 'font-awesome' },
           },
           {
-            urlPattern: /\/fonts\/[\w-]+\.woff2$/,
+            // Versioned by `?v=<hash>` (catalog.json), so a rebuilt font gets a new URL.
+            urlPattern: /\/fonts\/[\w-]+\.woff2(\?v=\w+)?$/,
             handler: 'CacheFirst',
             options: { cacheName: 'code-fonts', expiration: { maxEntries: 20 } },
           },

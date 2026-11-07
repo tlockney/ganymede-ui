@@ -58,7 +58,7 @@ describe('applyCodeFont', () => {
   it('adds only the chosen font and sets the variables', () => {
     applyCodeFont({ font: 'jetbrains-mono', size: 14, ligatures: true, features: ['zero'] });
     const style = document.getElementById('ganymede-code-font')!;
-    expect(style.textContent).toContain('/fonts/jetbrains-mono.woff2');
+    expect(style.textContent).toMatch(/\/fonts\/jetbrains-mono\.woff2\?v=[0-9a-f]{12}"/);
     expect(style.textContent).not.toContain('fira-code');
     const root = document.documentElement.style;
     expect(root.getPropertyValue('--code-font')).toBe('"JetBrains Mono", var(--font-mono)');

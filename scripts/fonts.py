@@ -216,11 +216,18 @@ def lookup_inputs(gsub, index: int, seen: set) -> set[str]:
             records = []
             for attr in ("SubstLookupRecord",):
                 records += getattr(st, attr, None) or []
-            for rule_sets in ("ChainSubRuleSet", "ChainSubClassSet", "SubRuleSet", "SubClassSet"):
-                for rs in getattr(st, rule_sets, None) or []:
+            # Each rule set's list, as fontTools names it.
+            rule_lists = {
+                "ChainSubRuleSet": "ChainSubRule",
+                "ChainSubClassSet": "ChainSubClassRule",
+                "SubRuleSet": "SubRule",
+                "SubClassSet": "SubClassRule",
+            }
+            for set_attr, rule_attr in rule_lists.items():
+                for rs in getattr(st, set_attr, None) or []:
                     if rs is None:
                         continue
-                    for rule in getattr(rs, rule_sets.replace("Set", ""), None) or []:
+                    for rule in getattr(rs, rule_attr, None) or []:
                         records += rule.SubstLookupRecord or []
             for rec in records:
                 out |= lookup_inputs(gsub, rec.LookupListIndex, seen)
@@ -248,7 +255,19 @@ def label(font: TTFont, tag: str, font_id: str) -> str:
         for i in rec.Feature.LookupListIndex:
             glyphs |= lookup_inputs(gsub, i, set())
     cmap = {g: chr(c) for c, g in sorted(font.getBestCmap().items(), reverse=True)}
-    chars = sorted({cmap[g] for g in glyphs if g in cmap and cmap[g].isprintable() and not cmap[g].isspace()},
+
+    def text(glyph: str) -> str | None:
+        """A glyph's characters: its own, or for an unencoded glyph such
+        as `greater_equal.alt`, its named parts' (`>=`)."""
+        if glyph in cmap:
+            return cmap[glyph]
+        parts = glyph.split(".", 1)[0].split("_")
+        if all(p in cmap for p in parts):
+            return "".join(cmap[p] for p in parts)
+        return None
+
+    found = {text(g) for g in glyphs}
+    chars = sorted({c for c in found if c and c.isprintable() and not c.isspace()},
                    key=lambda c: (not c.isalnum(), c))
     if tag == "zero":
         return "Slashed zero"
@@ -272,7 +291,7 @@ def main() -> None:
         features: dict[str, str] = {}
         ligatures = False
         for i, (url, inner, style, weight, cut) in enumerate(spec["files"]):
-            font = TTFont(io.BytesIO(member(checked(url, hashes, update), inner)))
+            font = TTFont(io.BytesIO(member(checked(url, hashes, update), inner)), recalcTimestamp=False)
             if cut:
                 opts = subset.Options()
                 opts.layout_features = ["*"]
@@ -300,7 +319,10 @@ def main() -> None:
             suffix = ("-italic" if style == "italic" else "") + ("-bold" if weight == "700" else "")
             file = f"{spec['id']}{suffix}.woff2"
             font.save(OUT / file)
-            files.append({"file": file, "style": style, "weight": weight})
+            # The page asks for `file?v=<hash>`, so a changed font isn't
+            # served from a browser's cache under the old URL.
+            digest = hashlib.sha256((OUT / file).read_bytes()).hexdigest()[:12]
+            files.append({"file": file, "style": style, "weight": weight, "hash": digest})
         lic_url, lic_member = spec["license"]
         lic = member(checked(lic_url, hashes, update), lic_member)
         (OUT / "licenses" / f"{spec['id']}.txt").write_bytes(lic)
