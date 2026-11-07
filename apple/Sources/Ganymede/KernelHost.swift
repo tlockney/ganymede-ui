@@ -34,6 +34,9 @@ final class KernelHost: NSObject {
     private var ready = false
     /// UI messages that arrived before the kernel page said it was ready.
     private var pending: [Any] = []
+    /// Kernels the UI page started here and the kernel page hasn't
+    /// reported closed: what to report closed if its process dies (#293).
+    private var hosted: Set<String> = []
 
     /// `device` is the bridge cells reach (the system's when nil); tests
     /// pass one with a fake presenter.
@@ -87,7 +90,25 @@ final class KernelHost: NSObject {
         loaded = false
         ready = false
         pending = []
+        hosted = []
         webView.load(URLRequest(url: URL(string: "about:blank")!))
+    }
+
+    /// The kernel page's process died, and every kernel in it (#293). Each
+    /// is reported closed to the UI page, which shows it as dead with
+    /// Restart, and the next message from the UI page loads a new kernel
+    /// page, queued until that one is ready.
+    func kernelPageEnded() {
+        device.dropPage()
+        loaded = false
+        ready = false
+        pending = []
+        let gone = hosted.sorted()
+        hosted = []
+        guard let ui else { return }
+        for kernel in gone {
+            deliver(["kernel": kernel, "op": "closed"], to: ui, function: "ganymedeKernelRelay")
+        }
     }
 
     /// The UI page's process died: no one answers what it asked for server
@@ -114,6 +135,9 @@ final class KernelHost: NSObject {
     }
 
     private func fromUI(_ body: Any) {
+        if let m = body as? [String: Any], m["op"] as? String == "start", let kernel = m["kernel"] as? String {
+            hosted.insert(kernel)
+        }
         if !loaded, let url = kernelPageURL() {
             loaded = true
             webView.load(URLRequest(url: url))
@@ -133,6 +157,9 @@ final class KernelHost: NSObject {
             }
             pending = []
         } else if let ui {
+            if let m = body as? [String: Any], m["op"] as? String == "closed", let kernel = m["kernel"] as? String {
+                hosted.remove(kernel)
+            }
             deliver(body, to: ui, function: "ganymedeKernelRelay")
         }
     }
@@ -166,9 +193,10 @@ extension KernelHost: WKNavigationDelegate {
         device.dropPage()
     }
 
-    /// The kernel page's process died, and its kernels with it.
+    /// The kernel page's process died, and its kernels with it: iOS ends
+    /// it under memory pressure, more so with a Pyodide heap (#293).
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-        device.dropPage()
+        kernelPageEnded()
     }
 }
 
