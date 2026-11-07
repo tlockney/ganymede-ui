@@ -28,6 +28,11 @@ for (const colorScheme of ['light', 'dark'] as const) {
       'const moons: string[] = ["Io", "Europa", "Ganymede", "Callisto"];\n' +
         'moons.map((m: string) => m.toUpperCase()).join(" · ")',
     );
+    // Highlighted while typing, before the first run starts the kernel (#352).
+    await expect(page.locator('.jp-Cell .cm-content').first()).toHaveAttribute(
+      'data-language',
+      'typescript',
+    );
     await page.keyboard.press('Shift+Enter');
     await expect(outputs(page).filter({ hasText: 'GANYMEDE' })).toBeVisible({ timeout: 60_000 });
     // Where it ran: no DOM, a Worker's global scope.

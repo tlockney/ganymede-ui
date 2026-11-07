@@ -29,6 +29,7 @@ import {
 import { type RunStatus, attachRunStatus } from '../lib/run-status';
 import { ProblemNotice } from './ProblemNotice';
 import { hasUntrustedOutputs } from '../lib/trust';
+import { seedLanguage } from '../lib/language';
 import { handOff, handedOff, renameFile, renamedPath } from '../lib/rename';
 import type { NotebookWidgets } from '../lib/widgets';
 import { type OutlineItem, outlineOf } from '../lib/outline';
@@ -306,6 +307,14 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         type: 'notebook',
         kernelPreference: { shouldStart: false, autoStartDefault: false },
       });
+      // The cells' language until the kernel starts and reports its own, so
+      // they highlight while editing before the first run (#352).
+      const intendedName = intendedRef.current.name;
+      const fileLanguage = typeof wanted?.language === 'string' ? wanted.language : undefined;
+      seedLanguage(
+        model,
+        fileLanguage ?? (intendedName ? specs?.kernelspecs[intendedName]?.language : undefined),
+      );
       // Before the notebook gets its model, so saved widget outputs render
       // from the file's widget state.
       const notebookWidgets = widgets.attachWidgets(session, rendermime, model);
@@ -854,6 +863,9 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
             display_name: spec.display_name,
             language: spec.language,
           });
+          // Before the first run, the cells switch to the new kernel's
+          // language; a running kernel's info reply sets it otherwise.
+          if (!session.session?.kernel) seedLanguage(model, spec.language, true);
         }
       }),
     };
