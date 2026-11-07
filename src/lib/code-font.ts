@@ -21,7 +21,8 @@ export type CatalogFont = {
   name: string;
   family: string;
   source: string;
-  files: { file: string; style: string; weight: string }[];
+  /** `hash` versions the URL, so a rebuilt font isn't served from a cache. */
+  files: { file: string; style: string; weight: string; hash: string }[];
   ligatures: boolean;
   features: FontFeature[];
 };
@@ -110,7 +111,7 @@ export function fontFaces(setting: CodeFontSetting, base: string): string {
   return font.files
     .map(
       f =>
-        `@font-face{font-family:"${font.family}";src:url("${base}fonts/${f.file}") format("woff2");` +
+        `@font-face{font-family:"${font.family}";src:url("${base}fonts/${f.file}?v=${f.hash}") format("woff2");` +
         `font-style:${f.style};font-weight:${f.weight};font-display:swap}`,
     )
     .join('\n');

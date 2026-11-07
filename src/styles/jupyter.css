@@ -43,6 +43,8 @@
  * outputs and code in Markdown, not the proportional text around them. */
 .notebook-page .cm-editor,
 .notebook-page .jp-RenderedText pre,
+.notebook-page .jp-OutputArea-output pre,
+.notebook-page .jp-MarkdownOutput code,
 .notebook-page .jp-RenderedMarkdown code,
 .notebook-page .jp-RenderedMarkdown pre {
   font-feature-settings: var(--code-font-features, normal);
@@ -173,7 +175,8 @@
 }
 
 .notebook-page .jp-MarkdownOutput code {
-  font-family: var(--font-mono);
+  /* The code font setting's face (#354); its size stays relative. */
+  font-family: var(--jp-code-font-family);
   font-size: 0.88em;
   padding: 1px 5px;
   border-radius: 5px;
@@ -181,8 +184,9 @@
 }
 
 .notebook-page .jp-OutputArea-output pre {
-  font-family: var(--font-mono);
-  font-size: 12.5px;
+  /* The code font setting (#354), as cells use it. */
+  font-family: var(--jp-code-font-family);
+  font-size: var(--jp-code-font-size);
   line-height: 1.5;
 }
 

@@ -9,12 +9,14 @@
         {
           "file": "jetbrains-mono.woff2",
           "style": "normal",
-          "weight": "100 800"
+          "weight": "100 800",
+          "hash": "662235d7f998"
         },
         {
           "file": "jetbrains-mono-italic.woff2",
           "style": "italic",
-          "weight": "100 800"
+          "weight": "100 800",
+          "hash": "9fe9f16c694a"
         }
       ],
       "ligatures": true,
@@ -69,11 +71,11 @@
         },
         {
           "tag": "cv14",
-          "label": "$"
+          "label": "$ $> <$ <$>"
         },
         {
           "tag": "cv15",
-          "label": "&"
+          "label": "& && &&& &="
         },
         {
           "tag": "cv16",
@@ -130,7 +132,8 @@
         {
           "file": "fira-code.woff2",
           "style": "normal",
-          "weight": "300 700"
+          "weight": "300 700",
+          "hash": "512d15f2817f"
         }
       ],
       "ligatures": true,
@@ -197,7 +200,7 @@
         },
         {
           "tag": "cv16",
-          "label": "*"
+          "label": "* ** *** */ *> /*"
         },
         {
           "tag": "cv17",
@@ -205,7 +208,7 @@
         },
         {
           "tag": "cv18",
-          "label": "%"
+          "label": "% %%"
         },
         {
           "tag": "cv19",
@@ -249,11 +252,11 @@
         },
         {
           "tag": "cv29",
-          "label": "{ }"
+          "label": "#{ { }"
         },
         {
           "tag": "cv30",
-          "label": "|"
+          "label": "| || |||"
         },
         {
           "tag": "cv31",
@@ -273,15 +276,15 @@
         },
         {
           "tag": "ss03",
-          "label": "&"
+          "label": "& &&"
         },
         {
           "tag": "ss04",
-          "label": "$"
+          "label": "$ $> <$ <$>"
         },
         {
           "tag": "ss05",
-          "label": "@"
+          "label": "@ ~ ~@"
         },
         {
           "tag": "ss06",
@@ -318,7 +321,8 @@
         {
           "file": "cascadia-code.woff2",
           "style": "normal",
-          "weight": "200 700"
+          "weight": "200 700",
+          "hash": "438fbec7c0ae"
         }
       ],
       "ligatures": true,
@@ -350,7 +354,8 @@
         {
           "file": "monaspace-neon.woff2",
           "style": "normal",
-          "weight": "200 800"
+          "weight": "200 800",
+          "hash": "190353b13410"
         }
       ],
       "ligatures": true,
@@ -381,7 +386,7 @@
         },
         {
           "tag": "cv32",
-          "label": "cv32"
+          "label": "<= >="
         },
         {
           "tag": "cv60",
@@ -446,7 +451,8 @@
         {
           "file": "monaspace-argon.woff2",
           "style": "normal",
-          "weight": "200 800"
+          "weight": "200 800",
+          "hash": "f1ab661ac62f"
         }
       ],
       "ligatures": true,
@@ -477,7 +483,7 @@
         },
         {
           "tag": "cv32",
-          "label": "cv32"
+          "label": "<= >="
         },
         {
           "tag": "cv60",
@@ -542,7 +548,8 @@
         {
           "file": "monaspace-xenon.woff2",
           "style": "normal",
-          "weight": "200 800"
+          "weight": "200 800",
+          "hash": "00d6a1e9a539"
         }
       ],
       "ligatures": true,
@@ -569,7 +576,7 @@
         },
         {
           "tag": "cv32",
-          "label": "cv32"
+          "label": "<= >="
         },
         {
           "tag": "cv60",
@@ -634,7 +641,8 @@
         {
           "file": "monaspace-radon.woff2",
           "style": "normal",
-          "weight": "200 800"
+          "weight": "200 800",
+          "hash": "5d366c82eb9a"
         }
       ],
       "ligatures": true,
@@ -661,7 +669,7 @@
         },
         {
           "tag": "cv32",
-          "label": "cv32"
+          "label": "<= >="
         },
         {
           "tag": "cv60",
@@ -726,7 +734,8 @@
         {
           "file": "monaspace-krypton.woff2",
           "style": "normal",
-          "weight": "200 800"
+          "weight": "200 800",
+          "hash": "46cc64ce6b90"
         }
       ],
       "ligatures": true,
@@ -749,7 +758,7 @@
         },
         {
           "tag": "cv32",
-          "label": "cv32"
+          "label": "<= >="
         },
         {
           "tag": "cv60",
@@ -814,17 +823,20 @@
         {
           "file": "iosevka.woff2",
           "style": "normal",
-          "weight": "400"
+          "weight": "400",
+          "hash": "e473847ae196"
         },
         {
           "file": "iosevka-bold.woff2",
           "style": "normal",
-          "weight": "700"
+          "weight": "700",
+          "hash": "f848c69333b4"
         },
         {
           "file": "iosevka-italic.woff2",
           "style": "italic",
-          "weight": "400"
+          "weight": "400",
+          "hash": "c65f5ca62e1b"
         }
       ],
       "ligatures": true,
