@@ -547,7 +547,7 @@ func confirmTrust(_ page: PageModel) {
 
 /// File > New Notebook (⌘N) and New Window (⌥⌘N).
 struct NewCommands: View {
-    @ObservedObject var model: AppModel
+    var model: AppModel
     @FocusedValue(\.pageModel) private var page
     @FocusedValue(\.windowFolder) private var folder
     @Environment(\.openWindow) private var openWindow

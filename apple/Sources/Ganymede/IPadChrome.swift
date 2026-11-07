@@ -466,7 +466,7 @@ private struct SidebarSearch: ViewModifier {
 
 /// The bottom panel's terminals, in the Running tab (#251).
 private struct IPadPanelTerminalRows: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     var panel: PanelController
     let show: (PanelTerminal.ID) -> Void
 

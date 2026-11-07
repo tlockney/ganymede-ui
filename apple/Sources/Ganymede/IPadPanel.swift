@@ -8,7 +8,7 @@ import UIKit
 /// selected, so its session keeps running; closing a tab ends it. The
 /// iPad has no local shell, so its terminals are on remotes.
 struct IPadPanel: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     var panel: PanelController
     /// The height of the area the notebook and panel share.
     let available: Double

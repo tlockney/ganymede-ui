@@ -120,7 +120,7 @@ private struct AppearanceSettings: View {
 
 /// Kernels: where they run, and the kernels installed there (#206, #332).
 private struct KernelSettings: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     @State private var specs: KernelSpecs?
     @State private var error: String?
     /// Bumped to list the kernels again: by Refresh, and when the app
@@ -235,7 +235,7 @@ private struct AgentSettingsTab: View {
 
 /// Shortcuts: the page's list, where each can be rebound (#332).
 private struct ShortcutsSettingsTab: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
 
     var body: some View {
         if let server = model.serverURL {

@@ -23,7 +23,7 @@ extension FocusedValues {
 /// shell. When the session ends (on iOS, also when the system drops the
 /// connection in the background) it offers to reconnect.
 struct TerminalWindow: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     let target: TerminalTarget
     /// In a notebook window's bottom panel (#248): no window title or
     /// minimum window size of its own; the title goes to `onTitle`.
@@ -234,7 +234,7 @@ extension AppModel {
 #if os(iOS)
 /// The toolbar's terminal menu: each remote with SSH or a server.
 struct TerminalMenu: View {
-    @ObservedObject var model: AppModel
+    var model: AppModel
     let open: (TerminalRequest) -> Void
 
     var body: some View {
@@ -256,7 +256,7 @@ struct TerminalMenu: View {
 
 /// A terminal scene of its own on iPad.
 struct TerminalScene: View {
-    @EnvironmentObject private var model: AppModel
+    @Environment(AppModel.self) private var model
     let request: TerminalRequest?
 
     var body: some View {
@@ -278,7 +278,7 @@ struct TerminalScene: View {
 /// `GanymedeApp` declares.
 struct TerminalCommands: View {
     @Environment(\.openWindow) private var openWindow
-    @ObservedObject var model: AppModel
+    var model: AppModel
     @FocusedValue(\.windowFolder) private var folder
     /// The front notebook window's bottom panel, where new terminals go
     /// (#248); a window of their own when no notebook window is in front.

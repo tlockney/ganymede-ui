@@ -8,7 +8,7 @@ struct GanymedeApp: App {
     #if os(macOS)
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     #endif
-    @StateObject private var model = AppModel.shared
+    private let model = AppModel.shared
 
     init() {
         // First, so a crash while launching is reported too (#318).
@@ -23,7 +23,7 @@ struct GanymedeApp: App {
         // the last folder. Opening one that is already open brings it front.
         WindowGroup(id: WorkspaceTabs.sceneID, for: WindowTarget.self) { $target in
             ContentView(target: $target)
-                .environmentObject(model)
+                .environment(model)
                 .settingsOpener()
         }
         // Files opened from the Finder go through the app delegate (#228).
@@ -75,7 +75,7 @@ struct GanymedeApp: App {
         // Terminals and text files open as tabs of the front window (#247).
         WindowGroup("Terminal", for: TerminalRequest.self) { $request in
             TerminalWindow(target: request?.target ?? .local(folder: nil))
-                .environmentObject(model)
+                .environment(model)
                 .settingsOpener()
                 .workspaceTab()
         }
@@ -91,21 +91,21 @@ struct GanymedeApp: App {
         .handlesExternalEvents(matching: [])
         Settings {
             SettingsWindow()
-                .environmentObject(model)
+                .environment(model)
         }
     }
     #else
     var body: some Scene {
         WindowGroup {
             ContentView()
-                .environmentObject(model)
+                .environment(model)
                 .crashReportsPrompt()
         }
         // Holding ⌘ lists them, and the iPadOS menu bar shows them (#208).
         .commands { IPadCommands() }
         WindowGroup("Terminal", for: TerminalRequest.self) { $request in
             TerminalScene(request: request)
-                .environmentObject(model)
+                .environment(model)
         }
         WindowGroup("Editor", for: EditorRequest.self) { $request in
             EditorScene(request: request)
@@ -118,7 +118,7 @@ struct GanymedeApp: App {
 /// File > Open… and Open Folder…, each into a new tab of the front window.
 struct OpenCommands: View {
     @Environment(\.openWindow) private var openWindow
-    @ObservedObject var model: AppModel
+    var model: AppModel
     private let recents = Recents.shared
 
     var body: some View {
