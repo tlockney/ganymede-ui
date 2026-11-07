@@ -201,8 +201,8 @@ covers tokens, cookies and cross-origin access on the server side.
   key goes in the Keychain instead. Only pages from the app's server, in
   the window itself and not in output frames, can ask for it; an HTML
   file opened from the notebook folder doesn't count, since Ganymede
-  0.6.0 sandboxes `/files` (ganymede#298). The key is sent only to the provider you picked, straight from
-  the page.
+  sandboxes `/files`. The key is sent only to the provider you picked,
+  straight from the page.
 - **Error reports:** off by default. In a browser, Settings > "Send
   error reports" (kept in local storage, `ganymede-ui:crash-reports`); in
   the Mac and iPad apps, the app's own setting. When on, an unhandled

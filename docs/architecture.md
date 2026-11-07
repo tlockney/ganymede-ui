@@ -296,9 +296,9 @@ settings button, or a `ganymede:show-settings` window event).
   the same interface: it asks the app's `agentKeys` script message
   handler, which answers only the main frame on the origin of the page
   the app loaded, and only for the four providers (ganymede-ui#166).
-  Any page on that origin passes, including an HTML file served from
-  `/files` until ganymede sandboxes it (ganymede#298), as it could read
-  web storage before.
+  An HTML file opened from `/files` doesn't pass: Ganymede serves `/files`
+  with a sandbox CSP (since 0.6.0, ganymede#298), so the file runs on an
+  opaque origin.
   The Settings sheet then shows no "Remember" choice.
 - The iPad and iPhone apps edit the same settings on their own Settings
   screen (ganymede-ui#210): the app calls `window.ganymede.call`
