@@ -9,4 +9,6 @@ that doesn't. So a notebook that was really gone read as hidden.
 `openFailure` now shows a message that already says "hidden" as it is.
 For a plain "not found" under a hidden part, which a `jupyter_server`
 gives in both cases, it keeps the server's message and adds that the
-server may be refusing the file because of the hidden folder.
+server may be refusing the file because of the hidden folder (or, for a
+hidden file, that renaming it without the dot opens it). This also
+covers #391.

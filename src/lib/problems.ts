@@ -66,8 +66,11 @@ export function openFailure(path: string, e: unknown, notFound: boolean): string
   const hidden = notFound ? hiddenPart(path) : undefined;
   if (hidden === undefined || /hidden/i.test(message)) return message;
   const name = path.split('/').pop() ?? path;
-  const why = hidden === name ? 'it is a hidden file' : `it is in the hidden folder “${hidden}”`;
-  return `${message.replace(/[.\s]*$/, '')}. If the file is there, the server may be refusing it because ${why}: move it out to open it here.`;
+  const why =
+    hidden === name
+      ? 'it is a hidden file: rename it without the leading dot'
+      : `it is in the hidden folder “${hidden}”: move it out`;
+  return `${message.replace(/[.\s]*$/, '')}. If the file is there, the server may be refusing it because ${why} to open it here.`;
 }
 
 /**
