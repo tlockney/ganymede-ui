@@ -30,7 +30,8 @@ partway through.
    has a `CHANGELOG.md` section and no tag, tags the merge commit
    `vX.Y.Z`, and starts `release.yml` on the tag.
 3. `release.yml` checks that the tag matches `package.json`, runs CI
-   (`ci.yml`) on the tag, builds the app, packages `dist/` as
+   (`ci.yml`) on the tag without its `macos-app` job (the commit passed
+   it on `main`, and the release builds the app itself), builds the app, packages `dist/` as
    `ganymede-ui-X.Y.Z.tar.gz` and `ganymede-ui-X.Y.Z.zip` with a
    `SHA256SUMS` file, attests their build provenance, and publishes the
    GitHub Release with the changelog section as notes. A version with a

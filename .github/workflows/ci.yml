@@ -4,8 +4,15 @@ on:
   push:
     branches: [main]
   pull_request:
-  # release.yml runs these checks on the tag before it builds.
+  # release.yml runs these checks on the tag before it builds, without
+  # macos-app: the tagged commit passed it on main, and release.yml's own
+  # macos and ios jobs build the app (#361).
   workflow_call:
+    inputs:
+      skip_macos:
+        description: Skip the macos-app job
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -104,7 +111,7 @@ jobs:
   # suite (the server started, serving the page, stopped).
   macos-app:
     needs: changes
-    if: ${{ !cancelled() && needs.changes.outputs.macos != 'false' }}
+    if: ${{ !cancelled() && needs.changes.outputs.macos != 'false' && !inputs.skip_macos }}
     runs-on: macos-latest
     timeout-minutes: 60
     env:
@@ -142,26 +149,36 @@ jobs:
           xcodebuild test -project apple/Ganymede.xcodeproj -scheme Ganymede
           -destination platform=macOS -derivedDataPath apple/build/DerivedData
           -skipPackagePluginValidation -onlyUsePackageVersionsFromResolvedFile CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=
+      # The Release build to download, on main only (#361): pull requests
+      # get the Debug build above, which the next step checks.
       - name: Build the app for download
+        if: github.event_name != 'pull_request'
         run: |
           xcodebuild build -project apple/Ganymede.xcodeproj -scheme Ganymede \
             -configuration Release -destination 'generic/platform=macOS' \
             -derivedDataPath apple/build/DerivedData \
             -skipPackagePluginValidation -onlyUsePackageVersionsFromResolvedFile CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=
+      - name: Check the app bundle
+        env:
+          CONFIGURATION: ${{ github.event_name == 'pull_request' && 'Debug' || 'Release' }}
+        run: |
+          app=apple/build/DerivedData/Build/Products/$CONFIGURATION/Ganymede.app
           # Finder can open notebooks with it (#130).
           /usr/libexec/PlistBuddy -c 'Print :UTImportedTypeDeclarations:0:UTTypeIdentifier' \
-            apple/build/DerivedData/Build/Products/Release/Ganymede.app/Contents/Info.plist \
-            | grep -qx org.jupyter.ipynb
+            "$app/Contents/Info.plist" | grep -qx org.jupyter.ipynb
           # Quick Look preview and thumbnails, with the preview page (#135).
-          plugins=apple/build/DerivedData/Build/Products/Release/Ganymede.app/Contents/PlugIns
+          plugins=$app/Contents/PlugIns
           for ext in GanymedeQuickLook:com.apple.quicklook.preview GanymedeThumbnail:com.apple.quicklook.thumbnail; do
             /usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' \
               "$plugins/${ext%%:*}.appex/Contents/Info.plist" | grep -qx "${ext#*:}"
           done
           test -f "$plugins/GanymedeQuickLook.appex/Contents/Resources/quicklook/preview.html"
+      - if: github.event_name != 'pull_request'
+        run: |
           ditto -c -k --keepParent \
             apple/build/DerivedData/Build/Products/Release/Ganymede.app apple/build/Ganymede-macOS.zip
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      - if: github.event_name != 'pull_request'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Ganymede-macOS
           path: apple/build/Ganymede-macOS.zip
