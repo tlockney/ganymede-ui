@@ -15,7 +15,9 @@
  * otherwise run its HTML's scripts in the page. SVG renders as an `<img>`,
  * where scripts don't run and nothing else loads, so it shows untrusted
  * too: JupyterLab shows "Cannot display an untrusted SVG" instead, which
- * hides every SVG plot in a notebook made elsewhere (#133).
+ * hides every SVG plot in a notebook made elsewhere (#133). The image gets
+ * the page's text color for `currentColor`, so charts that draw their text
+ * and axes in it stay legible in dark mode (#366).
  */
 import {
   RenderedHTML,
@@ -191,17 +193,88 @@ export class SanitizedMarkdown extends RenderedMarkdown {
   }
 }
 
-/** SVG as an `<img>`, trusted or not. */
+/**
+ * The color an SVG's `currentColor` takes: the notebook's text color.
+ *
+ * In an `<img>` the SVG inherits nothing from the page, so `currentColor`
+ * is black, and charts that draw text and axes in it (Observable Plot, D3's
+ * axes) vanish on a dark background. A `color` presentation attribute on
+ * the root element gives them the page's text color, as an inline SVG
+ * would get; any `color` the SVG sets in its own styles still wins, since
+ * presentation attributes have the lowest priority.
+ */
+function textColor(): string {
+  return getComputedStyle(document.body).getPropertyValue('--jp-content-font-color1').trim();
+}
+
+/** `source` with `color` on its root `<svg>`, or unchanged if it has one or doesn't parse. */
+export function withTextColor(source: string, color: string): string {
+  if (!color) return source;
+  // As renderSVG does: a root without the SVG namespace parses as plain XML.
+  if (source.search('<svg[^>]+xmlns=[^>]+svg') < 0)
+    source = source.replace('<svg', '<svg xmlns="http://www.w3.org/2000/svg"');
+  const doc = new DOMParser().parseFromString(source, 'image/svg+xml');
+  const root = doc.documentElement;
+  if (doc.getElementsByTagName('parsererror').length > 0 || root.localName !== 'svg') return source;
+  if (root.hasAttribute('color')) return source;
+  root.setAttribute('color', color);
+  return new XMLSerializer().serializeToString(doc);
+}
+
+/** SVG renderers on screen, recolored when the theme changes. */
+const svgs = new Set<ImageSVG>();
+let themeObserver: MutationObserver | undefined;
+
+function watchTheme(svg: ImageSVG): void {
+  svgs.add(svg);
+  if (themeObserver) return;
+  // `useJupyterLabTheme` sets this once the new theme's variables are in place.
+  themeObserver = new MutationObserver(() => {
+    for (const s of svgs) void s.recolor();
+  });
+  themeObserver.observe(document.body, {
+    attributes: true,
+    attributeFilter: ['data-jp-theme-light'],
+  });
+}
+
+function unwatchTheme(svg: ImageSVG): void {
+  if (!svgs.delete(svg) || svgs.size > 0) return;
+  themeObserver?.disconnect();
+  themeObserver = undefined;
+}
+
+/** SVG as an `<img>`, trusted or not, its `currentColor` the page's text color. */
 export class ImageSVG extends RenderedSVG {
+  private _model?: IRenderMime.IMimeModel;
+
   override render(model: IRenderMime.IMimeModel): Promise<void> {
+    this._model = model;
+    watchTheme(this);
+    return this._draw();
+  }
+
+  /** Draws the SVG again in the current theme's text color. */
+  recolor(): Promise<void> {
+    return this._model ? this._draw() : Promise.resolve();
+  }
+
+  private _draw(): Promise<void> {
+    const model = this._model!;
     const metadata = model.metadata[this.mimeType] as { unconfined?: boolean } | undefined;
+    this.node.textContent = '';
     return renderSVG({
       host: this.node,
-      source: String(model.data[this.mimeType] ?? ''),
+      source: withTextColor(String(model.data[this.mimeType] ?? ''), textColor()),
       trusted: true,
       unconfined: metadata?.unconfined,
       translator: this.translator,
     });
+  }
+
+  override dispose(): void {
+    unwatchTheme(this);
+    super.dispose();
   }
 }
 
