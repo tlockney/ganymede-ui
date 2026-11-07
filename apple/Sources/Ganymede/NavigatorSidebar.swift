@@ -11,7 +11,7 @@ struct NavigatorSidebar: View {
     let openFile: (String) -> Void
     /// The selected tab, kept per window.
     @SceneStorage("navigator.tab") private var tab: NavigatorTab = .files
-    @ObservedObject private var terminals = OpenTerminals.shared
+    private var terminals = OpenTerminals.shared
 
     var body: some View {
         VStack(spacing: 0) {
@@ -266,7 +266,7 @@ struct OutlineNavigator: View {
 /// File › Open Recent's notebooks: in this window, or a new one.
 private struct RecentsNavigator: View {
     @ObservedObject var page: PageModel
-    @ObservedObject private var recents = Recents.shared
+    private var recents = Recents.shared
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {

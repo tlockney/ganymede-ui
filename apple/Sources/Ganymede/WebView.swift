@@ -73,7 +73,7 @@ struct WebView: UIViewRepresentable {
 /// while the notebook screen isn't showing, the web view waits in
 /// `parking`, a hidden view behind the list (`ParkedPage`).
 @MainActor
-final class WebViewStore: ObservableObject {
+final class WebViewStore {
     private(set) lazy var coordinator: WebViewCoordinator = {
         let coordinator = WebViewCoordinator()
         coordinator.park = { [weak self] in self?.park() }
