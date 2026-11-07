@@ -47,25 +47,30 @@ export const messageOf = (e: unknown) => (e instanceof Error ? e.message : Strin
 
 /**
  * The first hidden part of `path`: a folder or file name starting with
- * “.”. The server answers 404 for anything under one, as for a missing
- * file, so a notebook in `~/.work/` says “no such file” (#337).
+ * “.”. Servers don't open these, and a `jupyter_server` answers 404 for
+ * them as for a missing file (#337).
  */
 export function hiddenPart(path: string): string | undefined {
   return path.split('/').find(p => p.startsWith('.') && p !== '.' && p !== '..');
 }
 
 /**
- * Why a file the user opened can't be shown: the error's own message, or
- * when the server says it isn't there and its path is hidden, that
- * Ganymede doesn't open hidden files.
+ * Why a file the user opened can't be shown: the error's own message.
+ * Ganymede's server starts with “hidden path:” for a hidden file that exists and
+ * “no such file” for one that doesn't; other servers say “not found” for
+ * both, so a “not found” under a hidden part adds that the server may be
+ * refusing it (#390).
  */
 export function openFailure(path: string, e: unknown, notFound: boolean): string {
+  const message = messageOf(e);
   const hidden = notFound ? hiddenPart(path) : undefined;
-  if (hidden === undefined) return messageOf(e);
+  if (hidden === undefined || /^hidden path:/i.test(message)) return message;
   const name = path.split('/').pop() ?? path;
-  const where =
-    hidden === name ? `${name} is a hidden file` : `${name} is in the hidden folder “${hidden}”`;
-  return `${where}, and Ganymede doesn’t open hidden files or folders. Move it out to open it here.`;
+  const why =
+    hidden === name
+      ? 'it is a hidden file: rename it without the leading dot'
+      : `it is in the hidden folder “${hidden}”: move it out`;
+  return `${message.replace(/[.\s]*$/, '')}. If the file is there, the server may be refusing it because ${why} to open it here.`;
 }
 
 /**
