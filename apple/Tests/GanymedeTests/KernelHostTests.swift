@@ -168,8 +168,12 @@ final class KernelHostTests: XCTestCase {
         defer { server.stop() }
 
         let host = KernelHost()
-        let ui = WKWebView(
-            frame: CGRect(x: 0, y: 0, width: 400, height: 300), configuration: WKWebViewConfiguration())
+        // This test runs longer than the others, and WebKit suspends a web
+        // view in no window after a few seconds, dropping the scripts sent
+        // to it. The app's UI page is on screen.
+        let config = WKWebViewConfiguration()
+        config.preferences.inactiveSchedulingPolicy = .none
+        let ui = WKWebView(frame: CGRect(x: 0, y: 0, width: 400, height: 300), configuration: config)
         host.attach(to: ui)
         host.uiWillLoad(server.url)
         ui.load(URLRequest(url: server.url))
@@ -185,8 +189,7 @@ final class KernelHostTests: XCTestCase {
         _ = try await eval(host.webView, "window.old = true; true")
 
         // The process ends: its page is gone, and WebKit tells the
-        // navigation delegate. Leaving the old page loaded instead had
-        // WebKit drop a script on CI when the new kernel page loaded.
+        // navigation delegate.
         host.webView.load(URLRequest(url: URL(string: "about:blank")!))
         try await waitFor(host.webView, "location.href === 'about:blank' && document.readyState === 'complete'")
         host.webViewWebContentProcessDidTerminate(host.webView)
@@ -195,10 +198,8 @@ final class KernelHostTests: XCTestCase {
             ui, "JSON.stringify(window.got.filter(m => m.op === 'closed').map(m => m.kernel))") as? String
         XCTAssertEqual(closed, #"["k1","k2"]"#)
 
-        // The next start loads a new kernel page, which answers. The wait
-        // below shows the script ran; its reply can be lost as the kernel
-        // page's process changes.
-        _ = try? await eval(ui, """
+        // The next start loads a new kernel page, which answers.
+        _ = try await eval(ui, """
             const post = m => webkit.messageHandlers.kernelRelay.postMessage(m);
             post({ kernel: 'k3', op: 'start' });
             post({ kernel: 'k3', op: 'send', channel: 'shell', msg: { n: 3 } });
