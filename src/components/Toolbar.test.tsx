@@ -15,7 +15,7 @@ function controller(over: Partial<NotebookController> = {}): NotebookController 
     dirty: false,
     locked: false,
     reload: vi.fn(() => true),
-    unlock: vi.fn(),
+    unlock: vi.fn(async () => {}),
     trusted: true,
     save: vi.fn(async () => true),
     download: vi.fn(),

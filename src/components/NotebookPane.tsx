@@ -69,8 +69,11 @@ export type NotebookController = {
    * said no.
    */
   reload(): boolean;
-  /** Let saves write over the file that changed on disk. */
-  unlock(): void;
+  /**
+   * Let saves write over the version on disk that locked it. A newer
+   * change locks it again.
+   */
+  unlock(): Promise<void>;
   /** False while code cells show outputs from a file nobody trusted. */
   trusted: boolean;
   /** Saves the notebook; false when it wasn't (the pane says why, or it is locked). */
@@ -251,8 +254,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
    */
   const locked = useRef<Problem>(undefined);
   const [isLocked, setLocked] = useState(false);
-  /** Set by Unlock: saves write over the file, until one has. */
-  const unlocked = useRef(false);
+  /** The file's time on disk when it locked, if known: what Unlock accepts. */
+  const lockedAt = useRef<string>(undefined);
   /** Set by Reload: the teardown drops the edits instead of saving them. */
   const reloading = useRef(false);
   /**
@@ -271,8 +274,9 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
    * Lock saving: the file changed on disk (#367). The notice offers Reload
    * and Unlock.
    */
-  const lock = useCallback((o: Open) => {
+  const lock = useCallback((o: Open, at?: string) => {
     if (locked.current) return;
+    lockedAt.current = at;
     const problem = changedOnDisk(basename(o.saver.path), o.model.dirty);
     locked.current = problem;
     setLocked(true);
@@ -299,7 +303,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
     setError(undefined);
     // A fresh copy of the file: nothing to lock against yet.
     locked.current = undefined;
-    unlocked.current = false;
+    lockedAt.current = undefined;
     reloading.current = false;
     setLocked(false);
     setNoticeState(n => (n?.problem.kind === 'save-conflict' ? undefined : n));
@@ -658,16 +662,13 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
     const { model, saver } = open;
     const autosave = () => {
       if (!model.dirty || locked.current || gone.current) return;
-      saver.save({ ifDirty: true, overwrite: unlocked.current }).then(
-        () => (unlocked.current = false),
-        e => {
-          if (e instanceof SaveConflict) {
-            lock(open);
-          } else {
-            setNotice(saveFailed(basename(path), e, true), autosave);
-          }
-        },
-      );
+      saver.save({ ifDirty: true }).catch(e => {
+        if (e instanceof SaveConflict) {
+          lock(open, e.lastModified);
+        } else {
+          setNotice(saveFailed(basename(path), e, true), autosave);
+        }
+      });
     };
     const onHidden = () => document.visibilityState === 'hidden' && autosave();
     const onUnload = (e: BeforeUnloadEvent) => {
@@ -696,14 +697,12 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
     let checking = false;
     let stopped = false;
     const check = () => {
-      if (checking || locked.current || unlocked.current || gone.current || renaming.current) {
-        return;
-      }
+      if (checking || locked.current || gone.current || renaming.current) return;
       if (document.visibilityState === 'hidden') return;
       checking = true;
       saver
         .changedOnDisk()
-        .then(changed => changed && !stopped && !unlocked.current && lock(open))
+        .then(at => at && !stopped && lock(open, at))
         .catch(() => {})
         .finally(() => (checking = false));
     };
@@ -813,16 +812,15 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
           return false;
         }
         try {
-          await saver.save({ overwrite: unlocked.current });
+          await saver.save();
         } catch (e) {
           if (e instanceof SaveConflict) {
-            lock(open);
+            lock(open, e.lastModified);
             return false;
           }
           setNotice(saveFailed(fileName, e), () => void controller.save());
           return false;
         }
-        unlocked.current = false;
         clearNotice('save-conflict', 'save-failed');
         return true;
       },
@@ -841,12 +839,15 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         setAttempt(a => a + 1);
         return true;
       },
-      unlock: () => {
+      unlock: report(`unlock ${fileName}`, async () => {
+        // Saves write over the version that locked it, and the checks go
+        // on: a newer change locks it again.
+        await saver.accept(lockedAt.current);
         locked.current = undefined;
-        unlocked.current = true;
+        lockedAt.current = undefined;
         setLocked(false);
         clearNotice('save-conflict');
-      },
+      }),
       download: () => {
         // Widget state goes in, as on save; that is not an edit.
         const wasDirty = model.dirty;
@@ -1046,7 +1047,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
             if (action === 'restart') void c?.restart();
             else if (action === 'save') void c?.save();
             else if (action === 'reload') c?.reload();
-            else if (action === 'unlock') c?.unlock();
+            else if (action === 'unlock') void c?.unlock();
             else if (notice.retry) {
               clearNotice(notice.problem.kind);
               notice.retry();

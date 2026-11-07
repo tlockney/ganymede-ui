@@ -153,8 +153,8 @@ Ganymede Journal plugin, say), the notebook locks: nothing saves it, not
 autosave, ⌘S, or opening another file, and the title says "Locked". The
 notice above the notebook offers **Reload**, which loads the new version
 and keeps the kernel running (it asks first if you have unsaved edits,
-which it drops), and **Unlock**, which lets the next save write your copy
-over theirs.
+which it drops), and **Unlock**, which lets your copy save over the version that locked
+it. A newer change locks it again.
 
 ### Running cells and errors
 

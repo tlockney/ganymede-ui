@@ -166,20 +166,39 @@ describe('NotebookSaver', () => {
 
   it('says whether the file changed on disk, after the save in flight', async () => {
     const { saver, state, edit } = setup();
-    expect(await saver.changedOnDisk()).toBe(false);
+    expect(await saver.changedOnDisk()).toBeUndefined();
     // Our own save moves the mtime on; the check waits for it and isn't fooled.
     edit('2');
     const saving = saver.save();
-    expect(await saver.changedOnDisk()).toBe(false);
+    expect(await saver.changedOnDisk()).toBeUndefined();
     await saving;
     state.disk = new Date(Date.parse(state.disk) + 60_000).toISOString();
-    expect(await saver.changedOnDisk()).toBe(true);
+    expect(await saver.changedOnDisk()).toBe(state.disk);
+  });
+
+  it('accepts the version on disk as its base, and still stops at a newer one', async () => {
+    const { contents, saver, state, edit } = setup();
+    const theirs = '2026-10-20T10:05:00.000Z';
+    state.disk = theirs;
+    edit('2');
+    await expect(saver.save()).rejects.toBeInstanceOf(SaveConflict);
+    await saver.accept(theirs);
+    expect(await saver.changedOnDisk()).toBeUndefined();
+    state.disk = '2026-10-20T10:10:00.000Z';
+    expect(await saver.changedOnDisk()).toBe(state.disk);
+    // Without a time, it reads the file's.
+    await saver.accept();
+    await saver.save();
+    expect(contents.save).toHaveBeenCalledOnce();
+    expect(contents.save.mock.calls[0]![1]).toMatchObject({
+      last_modified: '2026-10-20T10:10:00.000Z',
+    });
   });
 
   it('doesn’t call a file it can’t check changed', async () => {
     const { contents, saver } = setup();
     contents.get.mockRejectedValueOnce(new Error('Not found'));
-    expect(await saver.changedOnDisk()).toBe(false);
+    expect(await saver.changedOnDisk()).toBeUndefined();
   });
 
   it('allows a file within half a second of its copy, for rounded mtimes', async () => {

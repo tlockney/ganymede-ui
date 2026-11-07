@@ -1103,15 +1103,11 @@ describe('NotebookPane', () => {
       })),
     );
     await waitFor(() => expect(t.latest()).toBeDefined());
-    const change = () =>
+    const change = (at = '2026-10-20T10:05:00Z') =>
       t.fake.contents.get.mockImplementation((async (_: string, o?: { content?: boolean }) =>
         o?.content
-          ? {
-              path: 'moons/Io.ipynb',
-              last_modified: '2026-10-20T10:05:00Z',
-              content: structuredClone(NOTEBOOK),
-            }
-          : { last_modified: '2026-10-20T10:05:00Z' }) as never);
+          ? { path: 'moons/Io.ipynb', last_modified: at, content: structuredClone(NOTEBOOK) }
+          : { last_modified: at }) as never);
     return { ...t, change };
   }
 
@@ -1138,10 +1134,40 @@ describe('NotebookPane', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     expect(await act(() => latest()!.save())).toBe(true);
     expect(fake.contents.save).toHaveBeenCalledOnce();
-    // Over the newer file: without the loaded time, which would be a 409.
-    expect(fake.contents.save.mock.calls[0]![1]).not.toHaveProperty('last_modified');
+    // Over the version that locked it, which is now the base.
+    expect(fake.contents.save.mock.calls[0]![1]).toMatchObject({
+      last_modified: '2026-10-20T10:05:00Z',
+    });
     await waitFor(() => expect(latest()!.dirty).toBe(false));
     confirm.mockRestore();
+  });
+
+  it('locks again on a change after Unlock, rather than writing over it', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const { fake, latest, change } = await changedOnDisk();
+    change();
+    await act(async () => void window.dispatchEvent(new Event('focus')));
+    await waitFor(() => expect(latest()!.locked).toBe(true));
+    // Unlocked while clean: nothing saves, and the checks go on.
+    await userEvent.click(screen.getByRole('button', { name: 'Unlock' }));
+    await waitFor(() => expect(latest()!.locked).toBe(false));
+
+    change('2026-10-20T10:10:00Z');
+    await act(() => vi.advanceTimersByTimeAsync(5_000));
+    await waitFor(() => expect(latest()!.locked).toBe(true));
+    act(() => modelOf().cells.get(0).sharedModel.setSource('print(2)'));
+    await act(() => vi.advanceTimersByTimeAsync(120_000));
+    expect(fake.contents.save).not.toHaveBeenCalled();
+  });
+
+  it('saves before letting the notebook go once unlocked', async () => {
+    const { fake, latest, change, unmount } = await changedOnDisk();
+    change();
+    act(() => modelOf().cells.get(0).sharedModel.setSource('print(2)'));
+    expect(await act(() => latest()!.save())).toBe(false);
+    await act(() => latest()!.unlock());
+    unmount();
+    await waitFor(() => expect(fake.contents.save).toHaveBeenCalledOnce());
   });
 
   it('notices a change on disk without a save: every few seconds, and on focus', async () => {

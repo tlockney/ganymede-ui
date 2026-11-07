@@ -16,9 +16,16 @@ export const DISK_CHECK_INTERVAL_MS = 5_000;
  */
 const CONFLICT_WINDOW_MS = 500;
 
-/** The file changed on disk since it was loaded or last saved here. */
+/**
+ * The file changed on disk since it was loaded or last saved here.
+ * `lastModified` is the file's time on disk, when the check read it (a
+ * server's 409 doesn't say).
+ */
 export class SaveConflict extends Error {
-  constructor(readonly path: string) {
+  constructor(
+    readonly path: string,
+    readonly lastModified?: string,
+  ) {
     super(`${path} changed on disk since it was opened or last saved`);
     this.name = 'SaveConflict';
   }
@@ -92,21 +99,40 @@ export class NotebookSaver {
   }
 
   /**
-   * Whether the file changed on disk since it was loaded or last saved
-   * here (#367). Waits for any save or move in flight, so our own write
-   * isn't taken for someone else's. False when the file is gone or the
-   * server can't be reached: a save says why.
+   * The file's newer `last_modified` if it changed on disk since it was
+   * loaded or last saved here (#367), else undefined. Waits for any save
+   * or move in flight, so our own write isn't taken for someone else's.
+   * Undefined when the file is gone or the server can't be reached: a
+   * save says why.
    */
-  changedOnDisk(): Promise<boolean> {
+  changedOnDisk(): Promise<string | undefined> {
     const run = this.queue.then(() =>
       this.checkDisk().then(
-        () => false,
+        () => undefined,
         (e: unknown) => {
-          if (e instanceof SaveConflict) return true;
+          if (e instanceof SaveConflict) return e.lastModified;
           throw e;
         },
       ),
     );
+    this.queue = run.then(
+      () => {},
+      () => {},
+    );
+    return run;
+  }
+
+  /**
+   * Take the file on disk as of `lastModified` for our copy's base, so
+   * saves write over that version but still stop at a newer one (Unlock,
+   * #367). Without it, the file's time is read now.
+   */
+  accept(lastModified?: string): Promise<void> {
+    const run = this.queue.then(async () => {
+      const { contents, path } = this.o;
+      this.lastModified =
+        lastModified ?? (await contents.get(path, { content: false })).last_modified;
+    });
     this.queue = run.then(
       () => {},
       () => {},
@@ -166,7 +192,7 @@ export class NotebookSaver {
       return;
     }
     if (Date.parse(disk.last_modified) - ours > CONFLICT_WINDOW_MS) {
-      throw new SaveConflict(path);
+      throw new SaveConflict(path, disk.last_modified);
     }
   }
 }

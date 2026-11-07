@@ -21,7 +21,14 @@ save can write.
   old overwrite `confirm`. The title says "Locked".
 - Reload asks first if there are edits, then reruns the load effect.
   The teardown skips its save and leaves the kernel; the new session
-  rejoins it by path. Unlock makes saves overwrite until one succeeds.
+  rejoins it by path.
+- Unlock (`NotebookSaver.accept`) takes the version on disk that locked
+  the pane as the saver's base, rather than turning the check off: saves,
+  including the one before another file opens, write over that version,
+  and the checks go on, so a newer change locks again. The review caught
+  the first version, which overwrote until a save succeeded: unlocking a
+  clean notebook stopped the checks, and a later agent write could be
+  overwritten silently.
 
 The reload goes through the contents API, not the server's yrs room:
 the UI doesn't use rooms yet (ganymede#183). Once it does, the server's
