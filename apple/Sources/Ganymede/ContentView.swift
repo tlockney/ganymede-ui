@@ -185,6 +185,12 @@ struct ContentView: View {
             savedTarget = WindowTarget.saved(target)
         }
         .onChange(of: sidebarRoot) { savedSidebar = $0.path }
+        // Back from Terminal, where a kernelspec may have been installed
+        // or removed: the page asks the server for its kernels again
+        // (#350). A page still loading fetches them anyway.
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            pageModel.refreshKernels()
+        }
         // Brought forward after launch: restored windows can come back in
         // front of a notebook opened from the Finder (#268).
         .onReceive(model.openRequests.$front) { front in

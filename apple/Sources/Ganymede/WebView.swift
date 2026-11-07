@@ -605,6 +605,13 @@ final class PageModel: ObservableObject {
         flush()
     }
 
+    /// Asks the page to list the server's kernels again (#350); nothing
+    /// while it is loading, as a new page lists them itself.
+    func refreshKernels() {
+        guard ready else { return }
+        run("refresh-kernels")
+    }
+
     /// The page is going away: commands wait for the next one's state.
     func reset() {
         ready = false

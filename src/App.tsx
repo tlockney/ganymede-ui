@@ -68,6 +68,7 @@ import { useKernelMemory } from './lib/kernel-usage';
 import { nodeAt, useVariables } from './lib/useVariables';
 import { useFileDrop } from './lib/file-drop';
 import { copySample } from './lib/sample';
+import { refreshKernelsOnReturn } from './lib/kernel-refresh';
 
 /**
  * A token in the page URL, as `ganymede serve` prints it, wins once, and so
@@ -373,6 +374,13 @@ export function App() {
         if (!c || arg === undefined || arg === '' || !Number.isInteger(index)) return false;
         return c.goToCell(index);
       }
+      case 'refresh-kernels':
+        // The app came to the front (#350): kernelspecs may have changed.
+        if (!backend) return false;
+        return backend.services.kernelspecs.refreshSpecs().then(
+          () => true,
+          () => false,
+        );
       case 'clear-recents':
         if (!backend) return false;
         clearRecents(recentsKey(backend.config));
@@ -489,8 +497,15 @@ export function App() {
 
   // Everything the app's toolbar and menus show (#205), and its Running
   // list (#225).
+  // The kernel list follows kernelspecs installed or removed while the
+  // page is open (#350): the manager's poll, a return to the page, or the
+  // app's `refresh-kernels`.
   const specs = backend?.services.kernelspecs.specs ?? undefined;
-  useSignals(backend?.services.sessions.runningChanged);
+  useSignals(backend?.services.sessions.runningChanged, backend?.services.kernelspecs.specsChanged);
+  useEffect(
+    () => (backend ? refreshKernelsOnReturn(backend.services.kernelspecs) : undefined),
+    [backend],
+  );
   const sessions = [...(backend?.services.sessions.running() ?? [])];
   // Each kernel's memory for the app's Running list (#241), as the page's
   // sidebar asks for it: not from a backend whose kernels all run in the page.

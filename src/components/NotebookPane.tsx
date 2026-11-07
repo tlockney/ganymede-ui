@@ -28,6 +28,7 @@ import {
 } from '../lib/problems';
 import { type RunStatus, attachRunStatus } from '../lib/run-status';
 import { ProblemNotice } from './ProblemNotice';
+import { useSignals } from '../lib/useSignal';
 import { hasUntrustedOutputs } from '../lib/trust';
 import { handOff, handedOff, renameFile, renamedPath } from '../lib/rename';
 import type { NotebookWidgets } from '../lib/widgets';
@@ -200,6 +201,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
   const onRenamedRef = useRef(onRenamed);
   onRenamedRef.current = onRenamed;
   const { services } = backend;
+  // The problem notice's kernel list follows installs and removals (#350).
+  useSignals(services.kernelspecs.specsChanged);
   const host = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState<Open>();
   /** Why the file couldn't be opened. */
