@@ -1,4 +1,5 @@
-import { existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { existsSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_CODE_FONT,
@@ -20,6 +21,17 @@ describe('catalog', () => {
       expect(existsSync(`public/fonts/licenses/${font.id}.txt`)).toBe(true);
       for (const f of font.files) expect(existsSync(`public/fonts/${f.file}`)).toBe(true);
       for (const f of font.features) expect(f.tag).toMatch(/^(ss\d\d|cv\d\d|zero)$/);
+    }
+  });
+
+  it('versions each file by its own hash, so a changed file gets a new URL', () => {
+    for (const font of FONTS) {
+      for (const f of font.files) {
+        const sha = createHash('sha256')
+          .update(readFileSync(`public/fonts/${f.file}`))
+          .digest('hex');
+        expect(f.hash, `${f.file}: re-run scripts/fonts.py`).toBe(sha.slice(0, 12));
+      }
     }
   });
 });
