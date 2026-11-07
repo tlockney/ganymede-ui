@@ -67,6 +67,10 @@ Needs an Apple silicon Mac with macOS 26 or later, Xcode 26 or later
 The app links ganymede-ffi as `GanymedeFFI.xcframework`, which
 `bootstrap.sh` gets one of two ways:
 
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, whose `bootstrap.sh` takes only `GANYMEDE_DIR`.
+
 - `GANYMEDE_REF=vX.Y.Z` downloads it from that
   [tlockney/ganymede](https://github.com/tlockney/ganymede) release
   (`GanymedeFFI.xcframework.zip`) and checks it against the release's
