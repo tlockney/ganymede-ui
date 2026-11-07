@@ -78,6 +78,24 @@ final class CodeTextCoordinator: NSObject, NSTextViewDelegate {
         self.ruler = ruler
         highlighter = makeHighlighter(for: textView, language: document.language)
         sync()
+        fontObserver = observeCodeFont { [weak self] in self?.applyFont() }
+    }
+
+    private var fontObserver: NSObjectProtocol?
+
+    /// The code font setting changed (#354): the text and line numbers take it.
+    private func applyFont() {
+        guard let textView else { return }
+        let font = Highlighting.font
+        textView.font = font
+        textView.typingAttributes[.font] = font
+        if let storage = textView.textStorage, storage.length > 0 {
+            storage.addAttribute(.font, value: font, range: NSRange(location: 0, length: storage.length))
+        }
+        if let ruler {
+            ruler.ruleThickness = LineNumbers.width(for: ruler.lineCount)
+            ruler.needsDisplay = true
+        }
     }
 
     /// Takes the document's text after a load.
@@ -180,6 +198,22 @@ final class CodeTextCoordinator: NSObject, UITextViewDelegate {
         self.textView = textView
         highlighter = makeHighlighter(for: textView, language: document.language)
         sync()
+        fontObserver = observeCodeFont { [weak self] in self?.applyFont() }
+    }
+
+    private var fontObserver: NSObjectProtocol?
+
+    /// The code font setting changed (#354): the text takes it.
+    private func applyFont() {
+        guard let textView else { return }
+        let font = Highlighting.font
+        textView.font = font
+        textView.typingAttributes[.font] = font
+        let storage = textView.textStorage
+        if storage.length > 0 {
+            storage.addAttribute(.font, value: font, range: NSRange(location: 0, length: storage.length))
+        }
+        textView.setNeedsDisplay()
     }
 
     /// Takes the document's text after a load.
@@ -245,4 +279,13 @@ private func makeHighlighter(for textView: Neon.TextView, language: TextLanguage
         locationTransformer: { _ in nil }
     )
     return try? TextViewHighlighter(textView: textView, configuration: configuration)
+}
+
+/// Calls `changed` on the main queue when the code font setting changes;
+/// keep the token for as long as the view lives.
+@MainActor
+func observeCodeFont(_ changed: @escaping @MainActor () -> Void) -> NSObjectProtocol {
+    NotificationCenter.default.addObserver(forName: .codeFontChanged, object: nil, queue: .main) { _ in
+        Task { @MainActor in changed() }
+    }
 }

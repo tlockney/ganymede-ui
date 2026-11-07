@@ -1,0 +1,911 @@
+{
+  "fonts": [
+    {
+      "id": "jetbrains-mono",
+      "name": "JetBrains Mono",
+      "family": "JetBrains Mono",
+      "source": "JetBrains Mono 2.304",
+      "files": [
+        {
+          "file": "jetbrains-mono.woff2",
+          "style": "normal",
+          "weight": "100 800"
+        },
+        {
+          "file": "jetbrains-mono-italic.woff2",
+          "style": "italic",
+          "weight": "100 800"
+        }
+      ],
+      "ligatures": true,
+      "features": [
+        {
+          "tag": "cv01",
+          "label": "l"
+        },
+        {
+          "tag": "cv02",
+          "label": "t"
+        },
+        {
+          "tag": "cv03",
+          "label": "g"
+        },
+        {
+          "tag": "cv04",
+          "label": "j"
+        },
+        {
+          "tag": "cv05",
+          "label": "l"
+        },
+        {
+          "tag": "cv06",
+          "label": "m"
+        },
+        {
+          "tag": "cv07",
+          "label": "W w"
+        },
+        {
+          "tag": "cv08",
+          "label": "K k"
+        },
+        {
+          "tag": "cv09",
+          "label": "f"
+        },
+        {
+          "tag": "cv10",
+          "label": "r"
+        },
+        {
+          "tag": "cv11",
+          "label": "y"
+        },
+        {
+          "tag": "cv12",
+          "label": "u"
+        },
+        {
+          "tag": "cv14",
+          "label": "$"
+        },
+        {
+          "tag": "cv15",
+          "label": "&"
+        },
+        {
+          "tag": "cv16",
+          "label": "Q"
+        },
+        {
+          "tag": "cv17",
+          "label": "f"
+        },
+        {
+          "tag": "cv18",
+          "label": "2 6 9"
+        },
+        {
+          "tag": "cv19",
+          "label": "8"
+        },
+        {
+          "tag": "cv20",
+          "label": "5"
+        },
+        {
+          "tag": "cv99",
+          "label": "С с"
+        },
+        {
+          "tag": "ss01",
+          "label": "Classic construction"
+        },
+        {
+          "tag": "ss02",
+          "label": "Closed construction"
+        },
+        {
+          "tag": "ss19",
+          "label": "Broken equals ligatures"
+        },
+        {
+          "tag": "ss20",
+          "label": "Rased bar f"
+        },
+        {
+          "tag": "zero",
+          "label": "Slashed zero"
+        }
+      ]
+    },
+    {
+      "id": "fira-code",
+      "name": "Fira Code",
+      "family": "Fira Code",
+      "source": "Fira Code 6.2",
+      "files": [
+        {
+          "file": "fira-code.woff2",
+          "style": "normal",
+          "weight": "300 700"
+        }
+      ],
+      "ligatures": true,
+      "features": [
+        {
+          "tag": "cv01",
+          "label": "a"
+        },
+        {
+          "tag": "cv02",
+          "label": "g"
+        },
+        {
+          "tag": "cv03",
+          "label": "i"
+        },
+        {
+          "tag": "cv04",
+          "label": "i"
+        },
+        {
+          "tag": "cv05",
+          "label": "i"
+        },
+        {
+          "tag": "cv06",
+          "label": "i"
+        },
+        {
+          "tag": "cv07",
+          "label": "l"
+        },
+        {
+          "tag": "cv08",
+          "label": "l"
+        },
+        {
+          "tag": "cv09",
+          "label": "l"
+        },
+        {
+          "tag": "cv10",
+          "label": "l"
+        },
+        {
+          "tag": "cv11",
+          "label": "0"
+        },
+        {
+          "tag": "cv12",
+          "label": "0"
+        },
+        {
+          "tag": "cv13",
+          "label": "0"
+        },
+        {
+          "tag": "cv14",
+          "label": "3"
+        },
+        {
+          "tag": "cv15",
+          "label": "*"
+        },
+        {
+          "tag": "cv16",
+          "label": "*"
+        },
+        {
+          "tag": "cv17",
+          "label": "~"
+        },
+        {
+          "tag": "cv18",
+          "label": "%"
+        },
+        {
+          "tag": "cv19",
+          "label": "<="
+        },
+        {
+          "tag": "cv20",
+          "label": "<="
+        },
+        {
+          "tag": "cv21",
+          "label": "=<"
+        },
+        {
+          "tag": "cv22",
+          "label": "=<"
+        },
+        {
+          "tag": "cv23",
+          "label": ">="
+        },
+        {
+          "tag": "cv24",
+          "label": "/="
+        },
+        {
+          "tag": "cv25",
+          "label": "- ."
+        },
+        {
+          "tag": "cv26",
+          "label": "- :"
+        },
+        {
+          "tag": "cv27",
+          "label": "[ ]"
+        },
+        {
+          "tag": "cv28",
+          "label": "."
+        },
+        {
+          "tag": "cv29",
+          "label": "{ }"
+        },
+        {
+          "tag": "cv30",
+          "label": "|"
+        },
+        {
+          "tag": "cv31",
+          "label": "( )"
+        },
+        {
+          "tag": "cv32",
+          "label": ". ="
+        },
+        {
+          "tag": "ss01",
+          "label": "r"
+        },
+        {
+          "tag": "ss02",
+          "label": "<= >="
+        },
+        {
+          "tag": "ss03",
+          "label": "&"
+        },
+        {
+          "tag": "ss04",
+          "label": "$"
+        },
+        {
+          "tag": "ss05",
+          "label": "@"
+        },
+        {
+          "tag": "ss06",
+          "label": "\\"
+        },
+        {
+          "tag": "ss07",
+          "label": "=~ !~"
+        },
+        {
+          "tag": "ss08",
+          "label": "== === != !=="
+        },
+        {
+          "tag": "ss09",
+          "label": ">>= <<= ||= |="
+        },
+        {
+          "tag": "ss10",
+          "label": "Fl Tl fi fj fl ft"
+        },
+        {
+          "tag": "zero",
+          "label": "Slashed zero"
+        }
+      ]
+    },
+    {
+      "id": "cascadia-code",
+      "name": "Cascadia Code",
+      "family": "Cascadia Code",
+      "source": "Cascadia Code, Google Fonts build",
+      "files": [
+        {
+          "file": "cascadia-code.woff2",
+          "style": "normal",
+          "weight": "200 700"
+        }
+      ],
+      "ligatures": true,
+      "features": [
+        {
+          "tag": "ss02",
+          "label": "Alternate operators"
+        },
+        {
+          "tag": "ss19",
+          "label": "Slashed zero (alternate)"
+        },
+        {
+          "tag": "ss20",
+          "label": "Control pictures"
+        },
+        {
+          "tag": "zero",
+          "label": "Slashed zero"
+        }
+      ]
+    },
+    {
+      "id": "monaspace-neon",
+      "name": "Monaspace Neon",
+      "family": "Monaspace Neon Var",
+      "source": "Monaspace 1.200",
+      "files": [
+        {
+          "file": "monaspace-neon.woff2",
+          "style": "normal",
+          "weight": "200 800"
+        }
+      ],
+      "ligatures": true,
+      "features": [
+        {
+          "tag": "cv01",
+          "label": "0"
+        },
+        {
+          "tag": "cv02",
+          "label": "1"
+        },
+        {
+          "tag": "cv10",
+          "label": "i l"
+        },
+        {
+          "tag": "cv11",
+          "label": "f j r t"
+        },
+        {
+          "tag": "cv30",
+          "label": "*"
+        },
+        {
+          "tag": "cv31",
+          "label": "*"
+        },
+        {
+          "tag": "cv32",
+          "label": "cv32"
+        },
+        {
+          "tag": "cv60",
+          "label": "< ="
+        },
+        {
+          "tag": "cv61",
+          "label": "[ ]"
+        },
+        {
+          "tag": "cv62",
+          "label": "@ _"
+        },
+        {
+          "tag": "ss01",
+          "label": "Equal Symbols"
+        },
+        {
+          "tag": "ss02",
+          "label": "Comparisons"
+        },
+        {
+          "tag": "ss03",
+          "label": "Arrows"
+        },
+        {
+          "tag": "ss04",
+          "label": "HTML Tags"
+        },
+        {
+          "tag": "ss05",
+          "label": "F# Shapes"
+        },
+        {
+          "tag": "ss06",
+          "label": "Markdown Strings"
+        },
+        {
+          "tag": "ss07",
+          "label": "Centered Colon"
+        },
+        {
+          "tag": "ss08",
+          "label": "Centered Period"
+        },
+        {
+          "tag": "ss09",
+          "label": "Double Arrows"
+        },
+        {
+          "tag": "ss10",
+          "label": "Other Tags"
+        }
+      ]
+    },
+    {
+      "id": "monaspace-argon",
+      "name": "Monaspace Argon",
+      "family": "Monaspace Argon Var",
+      "source": "Monaspace 1.200",
+      "files": [
+        {
+          "file": "monaspace-argon.woff2",
+          "style": "normal",
+          "weight": "200 800"
+        }
+      ],
+      "ligatures": true,
+      "features": [
+        {
+          "tag": "cv01",
+          "label": "0"
+        },
+        {
+          "tag": "cv02",
+          "label": "1"
+        },
+        {
+          "tag": "cv10",
+          "label": "i l"
+        },
+        {
+          "tag": "cv11",
+          "label": "f r"
+        },
+        {
+          "tag": "cv30",
+          "label": "*"
+        },
+        {
+          "tag": "cv31",
+          "label": "*"
+        },
+        {
+          "tag": "cv32",
+          "label": "cv32"
+        },
+        {
+          "tag": "cv60",
+          "label": "< ="
+        },
+        {
+          "tag": "cv61",
+          "label": "[ ]"
+        },
+        {
+          "tag": "cv62",
+          "label": "@ _"
+        },
+        {
+          "tag": "ss01",
+          "label": "Equal Symbols"
+        },
+        {
+          "tag": "ss02",
+          "label": "Comparisons"
+        },
+        {
+          "tag": "ss03",
+          "label": "Arrows"
+        },
+        {
+          "tag": "ss04",
+          "label": "HTML Tags"
+        },
+        {
+          "tag": "ss05",
+          "label": "F# Shapes"
+        },
+        {
+          "tag": "ss06",
+          "label": "Markdown Strings"
+        },
+        {
+          "tag": "ss07",
+          "label": "Centered Colon"
+        },
+        {
+          "tag": "ss08",
+          "label": "Centered Period"
+        },
+        {
+          "tag": "ss09",
+          "label": "Double Arrows"
+        },
+        {
+          "tag": "ss10",
+          "label": "Other Tags"
+        }
+      ]
+    },
+    {
+      "id": "monaspace-xenon",
+      "name": "Monaspace Xenon",
+      "family": "Monaspace Xenon Var",
+      "source": "Monaspace 1.200",
+      "files": [
+        {
+          "file": "monaspace-xenon.woff2",
+          "style": "normal",
+          "weight": "200 800"
+        }
+      ],
+      "ligatures": true,
+      "features": [
+        {
+          "tag": "cv01",
+          "label": "0"
+        },
+        {
+          "tag": "cv02",
+          "label": "1"
+        },
+        {
+          "tag": "cv10",
+          "label": "i l"
+        },
+        {
+          "tag": "cv30",
+          "label": "*"
+        },
+        {
+          "tag": "cv31",
+          "label": "*"
+        },
+        {
+          "tag": "cv32",
+          "label": "cv32"
+        },
+        {
+          "tag": "cv60",
+          "label": "< ="
+        },
+        {
+          "tag": "cv61",
+          "label": "[ ]"
+        },
+        {
+          "tag": "cv62",
+          "label": "@ _"
+        },
+        {
+          "tag": "ss01",
+          "label": "Equal Symbols"
+        },
+        {
+          "tag": "ss02",
+          "label": "Comparisons"
+        },
+        {
+          "tag": "ss03",
+          "label": "Arrows"
+        },
+        {
+          "tag": "ss04",
+          "label": "HTML Tags"
+        },
+        {
+          "tag": "ss05",
+          "label": "F# Shapes"
+        },
+        {
+          "tag": "ss06",
+          "label": "Markdown Strings"
+        },
+        {
+          "tag": "ss07",
+          "label": "Centered Colon"
+        },
+        {
+          "tag": "ss08",
+          "label": "Centered Period"
+        },
+        {
+          "tag": "ss09",
+          "label": "Double Arrows"
+        },
+        {
+          "tag": "ss10",
+          "label": "Other Tags"
+        }
+      ]
+    },
+    {
+      "id": "monaspace-radon",
+      "name": "Monaspace Radon",
+      "family": "Monaspace Radon Var",
+      "source": "Monaspace 1.200",
+      "files": [
+        {
+          "file": "monaspace-radon.woff2",
+          "style": "normal",
+          "weight": "200 800"
+        }
+      ],
+      "ligatures": true,
+      "features": [
+        {
+          "tag": "cv01",
+          "label": "0"
+        },
+        {
+          "tag": "cv02",
+          "label": "1"
+        },
+        {
+          "tag": "cv10",
+          "label": "i l"
+        },
+        {
+          "tag": "cv30",
+          "label": "*"
+        },
+        {
+          "tag": "cv31",
+          "label": "*"
+        },
+        {
+          "tag": "cv32",
+          "label": "cv32"
+        },
+        {
+          "tag": "cv60",
+          "label": "< ="
+        },
+        {
+          "tag": "cv61",
+          "label": "[ ]"
+        },
+        {
+          "tag": "cv62",
+          "label": "@ _"
+        },
+        {
+          "tag": "ss01",
+          "label": "Equal Symbols"
+        },
+        {
+          "tag": "ss02",
+          "label": "Comparisons"
+        },
+        {
+          "tag": "ss03",
+          "label": "Arrows"
+        },
+        {
+          "tag": "ss04",
+          "label": "HTML Tags"
+        },
+        {
+          "tag": "ss05",
+          "label": "F# Shapes"
+        },
+        {
+          "tag": "ss06",
+          "label": "Markdown Strings"
+        },
+        {
+          "tag": "ss07",
+          "label": "Centered Colon"
+        },
+        {
+          "tag": "ss08",
+          "label": "Centered Period"
+        },
+        {
+          "tag": "ss09",
+          "label": "Double Arrows"
+        },
+        {
+          "tag": "ss10",
+          "label": "Other Tags"
+        }
+      ]
+    },
+    {
+      "id": "monaspace-krypton",
+      "name": "Monaspace Krypton",
+      "family": "Monaspace Krypton Var",
+      "source": "Monaspace 1.200",
+      "files": [
+        {
+          "file": "monaspace-krypton.woff2",
+          "style": "normal",
+          "weight": "200 800"
+        }
+      ],
+      "ligatures": true,
+      "features": [
+        {
+          "tag": "cv01",
+          "label": "0"
+        },
+        {
+          "tag": "cv02",
+          "label": "1"
+        },
+        {
+          "tag": "cv30",
+          "label": "*"
+        },
+        {
+          "tag": "cv31",
+          "label": "*"
+        },
+        {
+          "tag": "cv32",
+          "label": "cv32"
+        },
+        {
+          "tag": "cv60",
+          "label": "< ="
+        },
+        {
+          "tag": "cv61",
+          "label": "[ ]"
+        },
+        {
+          "tag": "cv62",
+          "label": "@ _"
+        },
+        {
+          "tag": "ss01",
+          "label": "Equal Symbols"
+        },
+        {
+          "tag": "ss02",
+          "label": "Comparisons"
+        },
+        {
+          "tag": "ss03",
+          "label": "Arrows"
+        },
+        {
+          "tag": "ss04",
+          "label": "HTML Tags"
+        },
+        {
+          "tag": "ss05",
+          "label": "F# Shapes"
+        },
+        {
+          "tag": "ss06",
+          "label": "Markdown Strings"
+        },
+        {
+          "tag": "ss07",
+          "label": "Centered Colon"
+        },
+        {
+          "tag": "ss08",
+          "label": "Centered Period"
+        },
+        {
+          "tag": "ss09",
+          "label": "Double Arrows"
+        },
+        {
+          "tag": "ss10",
+          "label": "Other Tags"
+        }
+      ]
+    },
+    {
+      "id": "iosevka",
+      "name": "Iosevka",
+      "family": "Iosevka",
+      "source": "Iosevka (Fontsource 5.3.0), Latin subset",
+      "files": [
+        {
+          "file": "iosevka.woff2",
+          "style": "normal",
+          "weight": "400"
+        },
+        {
+          "file": "iosevka-bold.woff2",
+          "style": "normal",
+          "weight": "700"
+        },
+        {
+          "file": "iosevka-italic.woff2",
+          "style": "italic",
+          "weight": "400"
+        }
+      ],
+      "ligatures": true,
+      "features": [
+        {
+          "tag": "ss01",
+          "label": "Andale Mono style"
+        },
+        {
+          "tag": "ss02",
+          "label": "Anonymous Pro style"
+        },
+        {
+          "tag": "ss03",
+          "label": "Consolas style"
+        },
+        {
+          "tag": "ss04",
+          "label": "Menlo style"
+        },
+        {
+          "tag": "ss05",
+          "label": "Fira Mono style"
+        },
+        {
+          "tag": "ss06",
+          "label": "Liberation Mono style"
+        },
+        {
+          "tag": "ss07",
+          "label": "Monaco style"
+        },
+        {
+          "tag": "ss08",
+          "label": "Pragmata Pro style"
+        },
+        {
+          "tag": "ss09",
+          "label": "Source Code Pro style"
+        },
+        {
+          "tag": "ss10",
+          "label": "Envy Code R style"
+        },
+        {
+          "tag": "ss11",
+          "label": "X Window style"
+        },
+        {
+          "tag": "ss12",
+          "label": "Ubuntu Mono style"
+        },
+        {
+          "tag": "ss13",
+          "label": "Lucida style"
+        },
+        {
+          "tag": "ss14",
+          "label": "JetBrains Mono style"
+        },
+        {
+          "tag": "ss15",
+          "label": "IBM Plex Mono style"
+        },
+        {
+          "tag": "ss16",
+          "label": "PT Mono style"
+        },
+        {
+          "tag": "ss17",
+          "label": "Recursive Mono style"
+        },
+        {
+          "tag": "ss18",
+          "label": "Input Mono style"
+        },
+        {
+          "tag": "ss20",
+          "label": "Curly style"
+        }
+      ]
+    }
+  ]
+}

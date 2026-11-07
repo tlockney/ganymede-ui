@@ -170,6 +170,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     #endif
     /// Where the page's in-page kernels run (ganymede-ui#99).
     private let kernels = KernelHost()
+    private var codeFontObserver: NSObjectProtocol?
     #if os(iOS)
     /// Where each download is written before the share sheet offers it.
     private var destinations: [ObjectIdentifier: URL] = [:]
@@ -193,6 +194,17 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         }
         // The page's error reports follow the app's choice (#318, #319).
         view.configuration.userContentController.addUserScript(CrashReports.shared.pageScript)
+        // The code font (#354): before the page loads, and as it changes.
+        view.configuration.userContentController.addUserScript(CodeFont.pageScript)
+        codeFontObserver = observeCodeFont { [weak view] in
+            guard let view else { return }
+            let scripts = view.configuration.userContentController
+            // A reload must get the new setting too.
+            scripts.removeAllUserScripts()
+            scripts.addUserScript(CrashReports.shared.pageScript)
+            scripts.addUserScript(CodeFont.pageScript)
+            view.evaluateJavaScript(CodeFont.updateScript, completionHandler: nil)
+        }
         // The page's sidebar opens text files in the app's editor (#122).
         view.configuration.userContentController.add(OpenFileHandler(self), name: "openFile")
         // What the page shows, for native toolbars and menus (#205).

@@ -678,7 +678,10 @@ struct IPadCommands: Commands {
     var body: some Commands {
         // Show/Hide Sidebar (⌃⌘S).
         SidebarCommands()
-        CommandGroup(after: .sidebar) { IPadPanelButton() }
+        CommandGroup(after: .sidebar) {
+            IPadPanelButton()
+            CodeFontSizeCommands()
+        }
         CommandGroup(replacing: .newItem) { IPadNewNotebook() }
         CommandGroup(replacing: .saveItem) { IPadPageButton("Save", "save", key: "s") }
         CommandMenu("Cell") {

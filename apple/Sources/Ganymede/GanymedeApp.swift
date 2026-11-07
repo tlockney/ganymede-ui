@@ -36,6 +36,8 @@ struct GanymedeApp: App {
                 InspectorCommands()
                 FillCommands()
                 CommandPaletteCommand()
+                Divider()
+                CodeFontSizeCommands()
             }
             CommandGroup(replacing: .newItem) {
                 NewCommands(model: model)

@@ -14,11 +14,9 @@ import TreeSitterYAML
 #if os(macOS)
 import AppKit
 typealias PlatformColor = NSColor
-typealias PlatformFont = NSFont
 #else
 import UIKit
 typealias PlatformColor = UIColor
-typealias PlatformFont = UIFont
 #endif
 
 /// Syntax highlighting with Neon and tree-sitter (#122): each language's
@@ -107,12 +105,9 @@ enum Highlighting {
         return nil
     }
 
+    /// The code font setting's face and size (#354).
     static var font: PlatformFont {
-        #if os(macOS)
-        .monospacedSystemFont(ofSize: 13, weight: .regular)
-        #else
-        .monospacedSystemFont(ofSize: 14, weight: .regular)
-        #endif
+        CodeFont.font()
     }
 
     static var textColor: PlatformColor {

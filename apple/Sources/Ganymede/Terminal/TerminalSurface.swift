@@ -165,6 +165,14 @@ final class TerminalCoordinator: NSObject, TerminalViewDelegate {
     /// The last `TerminalSurface.focused` applied.
     var focused: Bool?
     private weak var view: TerminalView?
+    private var fontObserver: NSObjectProtocol?
+
+    /// SwiftTerm keeps its own default until the setting names a face or size.
+    private func applyFont(to view: TerminalView, initial: Bool) {
+        let setting = CodeFont.setting
+        if initial, setting == CodeFontSetting() { return }
+        view.font = CodeFont.font(setting: setting)
+    }
 
     init(transport: TerminalTransport) {
         self.transport = transport
@@ -173,6 +181,12 @@ final class TerminalCoordinator: NSObject, TerminalViewDelegate {
     func attach(_ view: TerminalView) {
         self.view = view
         view.terminalDelegate = self
+        // The code font setting (#354), now and as it changes.
+        applyFont(to: view, initial: true)
+        fontObserver = observeCodeFont { [weak self] in
+            guard let self, let view = self.view else { return }
+            self.applyFont(to: view, initial: false)
+        }
         transport.onOutput = { [weak view] bytes in
             view?.feed(byteArray: bytes)
         }

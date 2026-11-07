@@ -17,6 +17,8 @@ import {
   saveCrashReports,
   sendTestReport,
 } from '../lib/crash-reports';
+import { codeFontSetting, saveCodeFont } from '../lib/code-font';
+import { CodeFontSection } from './CodeFontSection';
 
 /** The agent's runtime: pi-ai and its providers, loaded only once the agent is on. */
 export type AgentModels = typeof import('@ganymede-ui/agent/models');
@@ -29,20 +31,25 @@ type Props = {
   loadModels?: () => Promise<AgentModels>;
   /** For tests: the error-report setting as the page loaded it. */
   reports?: CrashReportsSetting;
+  /** For tests: the code font setting as the page loaded it. */
+  codeFont?: ReturnType<typeof codeFontSetting>;
 };
 
 type Test = { state: 'running' } | { state: 'done'; ok: boolean; message: string };
 
 /**
  * App settings: the optional agent (ganymede-ui#123), off or a provider,
- * model and key; and, in a browser, error reports (#319).
+ * model and key; and, in a browser, the code font (#354) and error
+ * reports (#319).
  */
 export function SettingsSheet({
   onClose,
   store = pageCredentials,
   loadModels = loadAgentModels,
   reports = crashReportsSetting(),
+  codeFont: loadedFont = codeFontSetting(),
 }: Props) {
+  const [codeFont, setCodeFont] = useState(loadedFont.setting);
   const [sendReports, setSendReports] = useState(reports.enabled);
   const [testSent, setTestSent] = useState(false);
   const [settings, setSettings] = useState<AgentSettings>(() => loadAgentSettings());
@@ -173,6 +180,7 @@ export function SettingsSheet({
       if (next.enabled) await store.setKey(next.provider, key.trim(), remember);
       saveAgentSettings(next);
       if (reports.owner === 'page') saveCrashReports(sendReports);
+      if (loadedFont.owner === 'page') saveCodeFont(codeFont);
       onClose();
     } catch (err) {
       setError(`The key wasn't saved: ${err instanceof Error ? err.message : err}`);
@@ -319,6 +327,8 @@ export function SettingsSheet({
             )}
           </div>
         </section>
+
+        {loadedFont.owner === 'page' && <CodeFontSection value={codeFont} onChange={setCodeFont} />}
 
         {reports.owner === 'page' && (
           <section>
