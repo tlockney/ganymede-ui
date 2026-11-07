@@ -1,4 +1,4 @@
-import type { DevicePromptState } from '../lib/device-remote';
+import { askMessage, type DevicePromptState } from '../lib/device-remote';
 
 /**
  * A cell on a server kernel asked for something a browser allows only
@@ -9,7 +9,7 @@ export function DevicePrompt({ prompt }: { prompt: DevicePromptState }) {
   return (
     <div className="pane-notice device-prompt" role="alert">
       <div className="pane-notice-text">
-        <span className="pane-notice-message">A cell asks to use this device.</span>
+        <span className="pane-notice-message">{askMessage(prompt.asker)}</span>
       </div>
       <div className="pane-notice-actions">
         <button type="button" className="pane-notice-action" onClick={() => prompt.accept()}>
