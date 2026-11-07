@@ -18,6 +18,7 @@ import {
   type Problem,
   connectionLost,
   failed,
+  isStaleBundle,
   isUnreachable,
   kernelDead,
   messageOf,
@@ -893,18 +894,22 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
 
   if (error) {
     const offline = isUnreachable(error);
+    // A chunk of the page didn't load: Retry would fail the same way, and
+    // only a reload gets the current files (#364).
+    const stale = isStaleBundle(error);
     return (
       <div className="pane-message" role="alert">
         <h2>Couldn’t open {basename(path)}</h2>
         <p>{offline ? unreachable(`open ${basename(path)}`).message : messageOf(error)}</p>
         {offline && <p>Check that it is running and the network is up.</p>}
+        {stale && <p>Ganymede’s files changed since this window opened. Reload to load them.</p>}
         <p>
           <button
             type="button"
             className="pane-message-action"
-            onClick={() => setAttempt(a => a + 1)}
+            onClick={() => (stale ? window.location.reload() : setAttempt(a => a + 1))}
           >
-            Retry
+            {stale ? 'Reload' : 'Retry'}
           </button>
         </p>
       </div>

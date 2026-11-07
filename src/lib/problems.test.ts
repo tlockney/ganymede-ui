@@ -3,12 +3,33 @@ import { ServerConnection } from '@jupyterlab/services';
 import {
   connectionLost,
   failed,
+  isStaleBundle,
   isUnreachable,
   kernelDead,
   missingKernel,
   saveConflict,
   saveFailed,
 } from './problems';
+
+describe('isStaleBundle', () => {
+  it('is true for a chunk that failed to load', () => {
+    // Safari, Chrome and Firefox word it differently.
+    expect(isStaleBundle(new TypeError('Importing a module script failed.'))).toBe(true);
+    expect(
+      isStaleBundle(
+        new TypeError('Failed to fetch dynamically imported module: http://x/assets/a.js'),
+      ),
+    ).toBe(true);
+    expect(
+      isStaleBundle(new TypeError('error loading dynamically imported module: http://x/a.js')),
+    ).toBe(true);
+  });
+
+  it('is false for other errors', () => {
+    expect(isStaleBundle(new TypeError('Failed to fetch'))).toBe(false);
+    expect(isStaleBundle('Importing a module script failed.')).toBe(false);
+  });
+});
 
 describe('isUnreachable', () => {
   it('is true for a request that never got an answer', () => {
