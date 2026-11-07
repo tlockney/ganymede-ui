@@ -91,11 +91,16 @@ function fromBase64(text: string): ArrayBuffer {
 }
 
 const listeners = new Map<string, MessageListener>();
+const closers = new Map<string, () => void>();
 
 function installReceiver(): void {
   const w = window as { ganymedeKernelRelay?: { deliver(m: FromKernel): void } };
   w.ganymedeKernelRelay ??= {
     deliver(m) {
+      if (m.op === 'closed') {
+        closers.get(m.kernel)?.();
+        return;
+      }
       if (m.op !== 'message') return;
       listeners.get(m.kernel)?.(m.channel as Channel, decodeMessage(m.msg) as JupyterMessage);
     },
@@ -103,7 +108,14 @@ function installReceiver(): void {
 }
 
 /** The part of cdp-kernel's `BrowserKernel` that `CdpBrowserKernel` uses. */
-export type KernelChannels = Pick<BrowserKernel, 'send' | 'onMessage'>;
+export type KernelChannels = Pick<BrowserKernel, 'send' | 'onMessage'> & {
+  /**
+   * Calls `listener` if the kernel ends without being asked to, as when
+   * the Apple apps' kernel web view process dies (#293). Returns a
+   * function that stops listening.
+   */
+  onClosed?(listener: () => void): () => void;
+};
 
 /** A kernel in the app's kernel web view, with `id` naming it across the relay. */
 export function startRelayedKernel(id: string): KernelChannels {
@@ -124,6 +136,12 @@ export function startRelayedKernel(id: string): KernelChannels {
       listeners.set(id, listener);
       return () => {
         if (listeners.get(id) === listener) listeners.delete(id);
+      };
+    },
+    onClosed(listener) {
+      closers.set(id, listener);
+      return () => {
+        if (closers.get(id) === listener) closers.delete(id);
       };
     },
   };

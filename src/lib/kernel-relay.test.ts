@@ -54,6 +54,42 @@ describe('kernel relay', () => {
     expect(got).toEqual([['b', 'iopub', { n: 1 }]]);
   });
 
+  it('tells a kernel when it closed on its own (#293)', () => {
+    fakeRelay();
+    const a = startRelayedKernel('ca');
+    const b = startRelayedKernel('cb');
+    const closed: string[] = [];
+    a.onClosed!(() => closed.push('ca'));
+    const stopB = b.onClosed!(() => closed.push('cb'));
+    stopB();
+    deliver({ kernel: 'ca', op: 'closed' });
+    deliver({ kernel: 'cb', op: 'closed' });
+    expect(closed).toEqual(['ca']);
+  });
+
+  it('a relayed CdpBrowserKernel says it is dead when it closes on its own', async () => {
+    fakeRelay();
+    const { CdpBrowserKernel } = await import('./cdp-kernel');
+    const sent: { channel: string; header: { msg_type: string }; content: unknown }[] = [];
+    const kernel = new CdpBrowserKernel({
+      id: 'dk',
+      name: 'cdp-browser',
+      location: '',
+      sendMessage: (m: never) => sent.push(m),
+    } as never);
+    deliver({ kernel: 'dk', op: 'closed' });
+    expect(sent).toHaveLength(1);
+    expect(sent[0]).toMatchObject({
+      channel: 'iopub',
+      header: { msg_type: 'status' },
+      content: { execution_state: 'dead' },
+    });
+    // Once disposed, its own shutdown's close says nothing.
+    kernel.dispose();
+    deliver({ kernel: 'dk', op: 'closed' });
+    expect(sent).toHaveLength(1);
+  });
+
   it('carries binary buffers as base64', () => {
     const bytes = new Uint8Array([0, 1, 254, 255]);
     const encoded = encodeMessage({ content: {}, buffers: [bytes, bytes.buffer] }) as {
