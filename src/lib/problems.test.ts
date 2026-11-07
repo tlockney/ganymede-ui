@@ -22,12 +22,21 @@ describe('hidden paths (#337)', () => {
     expect(hiddenPart('./a/../b.ipynb')).toBeUndefined();
   });
 
-  it('explains a 404 under a hidden part, and keeps other messages', () => {
+  it('adds the hidden part to a 404, and keeps other messages', () => {
     const e = new Error('no such file or directory: x');
-    expect(openFailure('a/.w/n.ipynb', e, true)).toMatch(/^n\.ipynb is in the hidden folder “\.w”/);
-    expect(openFailure('a/.n.ipynb', e, true)).toMatch(/^\.n\.ipynb is a hidden file/);
+    expect(openFailure('a/.w/n.ipynb', e, true)).toBe(
+      'no such file or directory: x. If the file is there, the server may be refusing it because it is in the hidden folder “.w”: move it out to open it here.',
+    );
+    expect(openFailure('a/.n.ipynb', e, true)).toMatch(/because it is a hidden file:/);
     expect(openFailure('a/n.ipynb', e, true)).toBe('no such file or directory: x');
     expect(openFailure('a/.w/n.ipynb', e, false)).toBe('no such file or directory: x');
+  });
+
+  it('shows a server message that already says the path is hidden', () => {
+    const e = new Error(
+      'hidden path: a/.w/n.ipynb: Ganymede doesn’t open files or folders whose names start with a dot',
+    );
+    expect(openFailure('a/.w/n.ipynb', e, true)).toBe(e.message);
   });
 });
 

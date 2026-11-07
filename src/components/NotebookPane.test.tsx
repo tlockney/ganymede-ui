@@ -442,17 +442,17 @@ describe('NotebookPane', () => {
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
 
-    it('says a notebook in a hidden folder can’t be opened, not that it is missing', async () => {
-      // The server answers 404 for anything under a dot-folder (#337).
+    it('says a notebook in a hidden folder may be refused, keeping the server’s message', async () => {
+      // A jupyter_server answers 404 for anything under a dot-folder (#337, #390).
       const get = vi
         .fn()
         .mockRejectedValue(new Error('no such file or directory: Users/me/.work/nb/Io.ipynb'));
       setup(get, 'Users/me/.work/nb/Io.ipynb');
       expect(await screen.findByText('Couldn’t open Io.ipynb')).toBeInTheDocument();
+      expect(screen.getByRole('alert')).toHaveTextContent('no such file or directory');
       expect(screen.getByRole('alert')).toHaveTextContent(
-        'Io.ipynb is in the hidden folder “.work”, and Ganymede doesn’t open hidden files or folders.',
+        'the server may be refusing it because it is in the hidden folder “.work”',
       );
-      expect(screen.getByRole('alert')).not.toHaveTextContent('no such file');
     });
 
     it('offers Reload, not Retry, when a chunk of the page failed to load', async () => {
