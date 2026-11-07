@@ -31,6 +31,14 @@ describe('hidden paths (#337)', () => {
       /because it is a hidden file: rename it without the leading dot to open it here\.$/,
     );
     expect(openFailure('a/n.ipynb', e, true)).toBe('no such file or directory: x');
+    // A folder named “hidden” is not the server saying so.
+    expect(
+      openFailure(
+        'a/.hidden-notes/n.ipynb',
+        new Error('no such file or directory: a/.hidden-notes/n.ipynb'),
+        true,
+      ),
+    ).toMatch(/hidden folder “\.hidden-notes”/);
     expect(openFailure('a/.w/n.ipynb', e, false)).toBe('no such file or directory: x');
   });
 

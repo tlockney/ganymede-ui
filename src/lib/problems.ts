@@ -56,7 +56,7 @@ export function hiddenPart(path: string): string | undefined {
 
 /**
  * Why a file the user opened can't be shown: the error's own message.
- * Ganymede's server says “hidden path” for a hidden file that exists and
+ * Ganymede's server starts with “hidden path:” for a hidden file that exists and
  * “no such file” for one that doesn't; other servers say “not found” for
  * both, so a “not found” under a hidden part adds that the server may be
  * refusing it (#390).
@@ -64,7 +64,7 @@ export function hiddenPart(path: string): string | undefined {
 export function openFailure(path: string, e: unknown, notFound: boolean): string {
   const message = messageOf(e);
   const hidden = notFound ? hiddenPart(path) : undefined;
-  if (hidden === undefined || /hidden/i.test(message)) return message;
+  if (hidden === undefined || /^hidden path:/i.test(message)) return message;
   const name = path.split('/').pop() ?? path;
   const why =
     hidden === name
