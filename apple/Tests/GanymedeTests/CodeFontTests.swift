@@ -45,7 +45,7 @@ final class CodeFontTests: XCTestCase {
     func testFeatureSettingsTurnOffLigatures() {
         let setting = CodeFontSetting(font: "fira-code", size: nil, ligatures: false, features: ["ss01"])
         let tags = CodeFont.featureSettings(setting, ligatures: true).map {
-            $0[PlatformFontDescriptor.FeatureKey(rawValue: kCTFontFeatureOpenTypeTagKey as String)] as? String
+            $0[PlatformFontDescriptor.FeatureKey(rawValue: kCTFontOpenTypeFeatureTag as String)] as? String
         }
         XCTAssertEqual(tags, ["ss01", "calt", "liga", "dlig"])
         XCTAssertEqual(CodeFont.featureSettings(CodeFontSetting(), ligatures: false).count, 0)

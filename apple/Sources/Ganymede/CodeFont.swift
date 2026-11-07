@@ -184,8 +184,8 @@ enum CodeFont {
         }
         return tags.map { tag, value in
             [
-                PlatformFontDescriptor.FeatureKey(rawValue: kCTFontFeatureOpenTypeTagKey as String): tag,
-                PlatformFontDescriptor.FeatureKey(rawValue: kCTFontFeatureOpenTypeValueKey as String): value,
+                PlatformFontDescriptor.FeatureKey(rawValue: kCTFontOpenTypeFeatureTag as String): tag,
+                PlatformFontDescriptor.FeatureKey(rawValue: kCTFontOpenTypeFeatureValue as String): value,
             ]
         }
     }
