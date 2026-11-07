@@ -135,13 +135,16 @@ jobs:
           ref=$(yq -r '.jobs["macos-app"].env.GANYMEDE_REF' .github/workflows/ci.yml)
           [[ "$ref" =~ ^[0-9a-f]{40}$|^v[0-9] ]] || { echo "::error::GANYMEDE_REF in ci.yml: $ref"; exit 1; }
           echo "GANYMEDE_REF=$ref" >> "$GITHUB_ENV"
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # A release tag is downloaded by bootstrap.sh; a commit is built (#359).
+      - if: ${{ !startsWith(env.GANYMEDE_REF, 'v') }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: tlockney/ganymede
           ref: ${{ env.GANYMEDE_REF }}
           path: .ganymede
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+      - if: ${{ !startsWith(env.GANYMEDE_REF, 'v') }}
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: stable
           targets: aarch64-apple-darwin, aarch64-apple-ios, aarch64-apple-ios-sim
@@ -152,7 +155,7 @@ jobs:
       - run: brew install xcodegen
       - run: apple/scripts/bootstrap.sh
         env:
-          GANYMEDE_DIR: ${{ github.workspace }}/.ganymede
+          GANYMEDE_DIR: ${{ !startsWith(env.GANYMEDE_REF, 'v') && format('{0}/.ganymede', github.workspace) || '' }}
           SENTRY_SOURCEMAPS: '1'
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
       - name: Sign, notarize, and staple
@@ -193,13 +196,16 @@ jobs:
           ref=$(yq -r '.jobs["macos-app"].env.GANYMEDE_REF' .github/workflows/ci.yml)
           [[ "$ref" =~ ^[0-9a-f]{40}$|^v[0-9] ]] || { echo "::error::GANYMEDE_REF in ci.yml: $ref"; exit 1; }
           echo "GANYMEDE_REF=$ref" >> "$GITHUB_ENV"
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # A release tag is downloaded by bootstrap.sh; a commit is built (#359).
+      - if: ${{ !startsWith(env.GANYMEDE_REF, 'v') }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: tlockney/ganymede
           ref: ${{ env.GANYMEDE_REF }}
           path: .ganymede
           persist-credentials: false
-      - uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+      - if: ${{ !startsWith(env.GANYMEDE_REF, 'v') }}
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: stable
           targets: aarch64-apple-darwin, aarch64-apple-ios, aarch64-apple-ios-sim
@@ -210,7 +216,7 @@ jobs:
       - run: brew install xcodegen
       - run: apple/scripts/bootstrap.sh
         env:
-          GANYMEDE_DIR: ${{ github.workspace }}/.ganymede
+          GANYMEDE_DIR: ${{ !startsWith(env.GANYMEDE_REF, 'v') && format('{0}/.ganymede', github.workspace) || '' }}
           SENTRY_SOURCEMAPS: '1'
           SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
       - name: Sign and upload to TestFlight

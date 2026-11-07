@@ -421,10 +421,11 @@ own process and shows this web app in a `WKWebView`:
   page alone with `view=shortcuts` from the app's server, the notebook
   windows' origin, so a rebinding reaches them through local storage.
 
-- `apple/scripts/bootstrap.sh` builds the XCFramework from a ganymede
-  checkout and this repo's `dist/` into `apple/build/`, then generates the
-  Xcode project. CI builds and tests both targets on macOS runners against
-  the ganymede commit pinned in `GANYMEDE_REF` (`.github/workflows/ci.yml`).
+- `apple/scripts/bootstrap.sh` downloads the XCFramework from a ganymede
+  release (or builds it from a ganymede checkout) and builds this repo's
+  `dist/` into `apple/build/`, then generates the Xcode project. CI
+  builds and tests both targets on macOS runners against the ganymede tag
+  or commit pinned in `GANYMEDE_REF` (`.github/workflows/ci.yml`).
 
 Where kernels run:
 
