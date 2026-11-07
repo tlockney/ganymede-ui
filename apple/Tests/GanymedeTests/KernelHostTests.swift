@@ -184,15 +184,21 @@ final class KernelHostTests: XCTestCase {
         try await waitFor(ui, "window.got.length >= 1")
         _ = try await eval(host.webView, "window.old = true; true")
 
-        // As WebKit calls it when the WebContent process ends.
+        // The process ends: its page is gone, and WebKit tells the
+        // navigation delegate. Leaving the old page loaded instead had
+        // WebKit drop a script on CI when the new kernel page loaded.
+        host.webView.load(URLRequest(url: URL(string: "about:blank")!))
+        try await waitFor(host.webView, "location.href === 'about:blank' && document.readyState === 'complete'")
         host.webViewWebContentProcessDidTerminate(host.webView)
         try await waitFor(ui, "window.got.filter(m => m.op === 'closed').length === 2")
         let closed = try await eval(
             ui, "JSON.stringify(window.got.filter(m => m.op === 'closed').map(m => m.kernel))") as? String
         XCTAssertEqual(closed, #"["k1","k2"]"#)
 
-        // The next start loads a new kernel page, which answers.
-        _ = try await eval(ui, """
+        // The next start loads a new kernel page, which answers. The wait
+        // below shows the script ran; its reply can be lost as the kernel
+        // page's process changes.
+        _ = try? await eval(ui, """
             const post = m => webkit.messageHandlers.kernelRelay.postMessage(m);
             post({ kernel: 'k3', op: 'start' });
             post({ kernel: 'k3', op: 'send', channel: 'shell', msg: { n: 3 } });
