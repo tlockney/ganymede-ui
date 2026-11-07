@@ -199,8 +199,9 @@ final class KernelHostTests: XCTestCase {
             true
             """)
         try await waitFor(ui, "window.got.some(m => m.kernel === 'k3' && m.msg && m.msg.echo === 3)")
-        let fresh = try await eval(host.webView, "window.old === undefined") as? Bool
-        XCTAssertEqual(fresh, true, "a new kernel page was loaded")
+        // Polled, as after the reload below: a script sent while the new
+        // page is still loading can be dropped.
+        try await waitFor(host.webView, "document.readyState === 'complete' && window.old === undefined")
     }
 
     /// A dialog a cell left open goes when the kernel page does.
