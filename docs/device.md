@@ -27,8 +27,10 @@ that means:
   (cdp-kernel, in app)".
 - **Mac.** Pick "TypeScript (cdp-kernel, in app)" in the kernel menu. The
   Mac's own kernelspecs run as processes and can't reach the app.
-- **Not on a remote kernel, not in a Mac process kernel, and not in a
-  browser.** All are planned; see [Methods](#methods).
+- **A server kernel, in the app.** A kernel the app's server runs, or a
+  remote server's, gets the methods that need no permission, by asking
+  for them; see [From a server kernel](#from-a-server-kernel).
+- **Not in a browser.** Planned; see [Methods](#methods).
 
 Everywhere else, `device` is `undefined`, so check for it before using
 it. `device.has()` says whether this app answers a method:
@@ -45,33 +47,69 @@ For editor types, add this line once to a cell or a project file:
 /// <reference types="@tlockney/ganymede-device/globals" />
 ```
 
+## From a server kernel
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+A kernel that runs as a process, on the Mac or on a remote server, isn't
+in the app, so it has no `device` global. A cell asks the notebook page
+for one instead, over a Jupyter comm, and the app answers it for the
+notebook window that ran the cell:
+
+```ts
+import { connectDevice } from 'https://raw.githubusercontent.com/tlockney/ganymede-device/main/src/comm.ts';
+const device = await connectDevice(jupyter.comm);
+await device.clipboard.writeText('from the server');
+```
+
+That import works in cdp-kernel on Deno; Node needs the published
+package, which isn't out yet
+([ganymede-device#24](https://github.com/tlockney/ganymede-device/issues/24)).
+
+- It needs cdp-kernel 0.8.0 or later, which reads comm messages while a
+  cell runs.
+- Only the methods marked "yes" under "Remote kernel" below: those that
+  need no permission, where the person sees and confirms the action or
+  nothing goes back to the kernel. Anything picked or read goes to the
+  machine the kernel runs on.
+- Outside the app (JupyterLab, a browser) nothing answers, and
+  `connectDevice` gives a `device` whose calls fail `unavailable` after
+  five seconds. Another client on the same kernel never answers for the
+  app.
+- An interrupt doesn't end a call by itself; pass the cell's signal:
+  `device.ui.prompt('Name?', { signal: jupyter.signal })`.
+- If the app goes away (the iPad suspends it, the window closes), calls
+  in flight fail `disconnected`, and the next call asks again.
+
 ## Methods
 
 <!-- device-table:start (generated: node scripts/device-table.mjs --write) -->
 
 | Method                                                                    | Returns                                                    | In the app | Remote kernel | Browser                |
 | ------------------------------------------------------------------------- | ---------------------------------------------------------- | ---------- | ------------- | ---------------------- |
-| `device.info()`                                                           | platform, version, methods, and the device's current state | yes        | planned       | planned                |
-| `device.clipboard.readText()`                                             | `string`, or `null`                                        | yes        | planned       | planned, after a click |
-| `device.clipboard.writeText(text)`                                        | nothing                                                    | yes        | planned       | planned, after a click |
-| `device.clipboard.readImage()`                                            | PNG bytes, or `null`                                       | yes        | planned       | planned, after a click |
-| `device.clipboard.writeImage(image)`                                      | nothing                                                    | yes        | planned       | planned, after a click |
-| `device.haptics.impact(style)`                                            | nothing                                                    | iPhone     | planned       | no                     |
-| `device.haptics.notification(type)`                                       | nothing                                                    | iPhone     | planned       | no                     |
-| `device.haptics.selection()`                                              | nothing                                                    | iPhone     | planned       | no                     |
-| `device.openURL(url, { inApp })`                                          | nothing                                                    | yes        | planned       | planned, after a click |
-| `device.ui.alert(message, { title })`                                     | nothing, once closed                                       | yes        | planned       | planned                |
-| `device.ui.confirm(message, { title, destructive, okLabel })`             | `boolean`                                                  | yes        | planned       | planned                |
-| `device.ui.prompt(message, { title, placeholder, defaultValue, secure })` | `string`, or `null`                                        | yes        | planned       | planned                |
-| `device.ui.actionSheet(title, options, { message, cancel, destructive })` | the option's index, or `null`                              | yes        | planned       | planned                |
-| `device.ui.pickDate({ mode, title, value, min, max })`                    | `Date`, or `null`                                          | yes        | planned       | planned                |
-| `device.share({ text, url, files })`                                      | `true` when sent, `false` when dismissed                   | yes        | planned       | planned, after a click |
-| `device.preview(files)`                                                   | nothing, once closed                                       | yes        | planned       | no                     |
-| `device.files.pick({ types, multiple })`                                  | `File[]`, `[]` when cancelled                              | yes        | planned       | planned, after a click |
-| `device.files.export(data, { name })`                                     | `true` when saved, `false` when cancelled                  | yes        | planned       | planned                |
-| `device.sound.play(data, { volume })`                                     | nothing, once it starts                                    | yes        | planned       | planned, after a click |
+| `device.info()`                                                           | platform, version, methods, and the device's current state | yes        | yes           | planned                |
+| `device.clipboard.readText()`                                             | `string`, or `null`                                        | yes        | yes           | planned, after a click |
+| `device.clipboard.writeText(text)`                                        | nothing                                                    | yes        | yes           | planned, after a click |
+| `device.clipboard.readImage()`                                            | PNG bytes, or `null`                                       | yes        | yes           | planned, after a click |
+| `device.clipboard.writeImage(image)`                                      | nothing                                                    | yes        | yes           | planned, after a click |
+| `device.haptics.impact(style)`                                            | nothing                                                    | iPhone     | yes           | no                     |
+| `device.haptics.notification(type)`                                       | nothing                                                    | iPhone     | yes           | no                     |
+| `device.haptics.selection()`                                              | nothing                                                    | iPhone     | yes           | no                     |
+| `device.openURL(url, { inApp })`                                          | nothing                                                    | yes        | yes           | planned, after a click |
+| `device.ui.alert(message, { title })`                                     | nothing, once closed                                       | yes        | yes           | planned                |
+| `device.ui.confirm(message, { title, destructive, okLabel })`             | `boolean`                                                  | yes        | yes           | planned                |
+| `device.ui.prompt(message, { title, placeholder, defaultValue, secure })` | `string`, or `null`                                        | yes        | yes           | planned                |
+| `device.ui.actionSheet(title, options, { message, cancel, destructive })` | the option's index, or `null`                              | yes        | yes           | planned                |
+| `device.ui.pickDate({ mode, title, value, min, max })`                    | `Date`, or `null`                                          | yes        | yes           | planned                |
+| `device.share({ text, url, files })`                                      | `true` when sent, `false` when dismissed                   | yes        | yes           | planned, after a click |
+| `device.preview(files)`                                                   | nothing, once closed                                       | yes        | yes           | no                     |
+| `device.files.pick({ types, multiple })`                                  | `File[]`, `[]` when cancelled                              | yes        | yes           | planned, after a click |
+| `device.files.export(data, { name })`                                     | `true` when saved, `false` when cancelled                  | yes        | yes           | planned                |
+| `device.sound.play(data, { volume })`                                     | nothing, once it starts                                    | yes        | yes           | planned, after a click |
 | `device.sound.player(data)`                                               | a `SoundPlayer`                                            | yes        | no            | planned                |
-| `device.photos.pick({ limit })`                                           | `File[]`, `[]` when cancelled                              | yes        | planned       | planned, after a click |
+| `device.photos.pick({ limit })`                                           | `File[]`, `[]` when cancelled                              | yes        | yes           | planned, after a click |
 
 - `device.info()`: A browser has no model or battery.
 - `device.clipboard.readText()`: iPadOS shows its paste prompt; a browser needs a click for the Clipboard API.

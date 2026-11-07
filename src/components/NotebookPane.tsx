@@ -40,6 +40,7 @@ import { seedLanguage } from '../lib/language';
 import { handOff, handedOff, renameFile, renamedPath } from '../lib/rename';
 import type { NotebookWidgets } from '../lib/widgets';
 import { type OutlineItem, outlineOf } from '../lib/outline';
+import { attachDevice } from '../lib/device-remote';
 
 export type CellType = nbformat.CellType;
 
@@ -449,6 +450,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
           cellControls,
           runStatus,
           notebookWidgets,
+          // `device` for cells on server kernels, in the app (ganymede-device#26).
+          attachDevice(session),
           { dispose: () => saver.dispose(), isDisposed: false },
           {
             dispose: () => document.removeEventListener('keydown', onKey, true),

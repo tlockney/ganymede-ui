@@ -12,6 +12,12 @@ import WebKit
 /// `kernelHost`, and each is delivered to the other page in order. Only
 /// main-frame messages are taken, since WebKit gives subframes, the UI's
 /// sandboxed output frames among them, the same message handlers.
+///
+/// Kernels that run elsewhere (server kernels) reach the bridge through the
+/// UI page instead (ganymede-device#26): the page answers their `device`
+/// comm and posts to the bridge's `deviceRemote` handler, which takes only
+/// the methods that need no permission, and only from the UI page's main
+/// frame at the server's origin.
 @MainActor
 final class KernelHost: NSObject {
     static let relayHandler = "kernelRelay"
@@ -56,6 +62,10 @@ final class KernelHost: NSObject {
     func attach(to ui: WKWebView) {
         self.ui = ui
         ui.configuration.userContentController.add(WeakHandler(self), name: Self.relayHandler)
+        device.registerRemote(in: ui.configuration.userContentController) { [weak self, weak ui] message in
+            guard let self, let ui, message.webView === ui else { return false }
+            return self.fromPage(message)
+        }
         ui.addSubview(webView)
     }
 
@@ -68,6 +78,9 @@ final class KernelHost: NSObject {
 
     /// The UI page navigated: its kernels are gone with it.
     func reset() {
+        // What the old UI page asked for remote kernels has no one to
+        // answer it; the kernel page's calls end with it below.
+        device.dropAll()
         guard loaded else { return }
         loaded = false
         ready = false
@@ -75,10 +88,16 @@ final class KernelHost: NSObject {
         webView.load(URLRequest(url: URL(string: "about:blank")!))
     }
 
+    /// The message comes from a page of ours: the main frame, at the UI
+    /// page's server.
+    private func fromPage(_ message: WKScriptMessage) -> Bool {
+        message.frameInfo.isMainFrame
+            && message.frameInfo.securityOrigin.host == pageURL?.host
+            && message.frameInfo.securityOrigin.port == pageURL?.port ?? 0
+    }
+
     fileprivate func received(_ message: WKScriptMessage) {
-        guard message.frameInfo.isMainFrame,
-              message.frameInfo.securityOrigin.host == pageURL?.host,
-              message.frameInfo.securityOrigin.port == pageURL?.port ?? 0 else { return }
+        guard fromPage(message) else { return }
         if message.name == Self.relayHandler, message.webView === ui {
             fromUI(message.body)
         } else if message.name == Self.hostHandler, message.webView === webView {

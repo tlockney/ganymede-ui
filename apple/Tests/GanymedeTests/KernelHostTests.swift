@@ -40,7 +40,12 @@ final class KernelHostTests: XCTestCase {
           webkit.messageHandlers.kernelRelay.postMessage({ kernel: 'evil', op: 'start' });
           webkit.messageHandlers.kernelRelay.postMessage(
             { kernel: 'evil', op: 'send', channel: 'shell', msg: { n: -1 } });
+          webkit.messageHandlers.deviceRemote.postMessage({ owner: 1, method: 'hello', params: {} })
+            .then(r => parent.postMessage({ frameRemote: r }, '*'));
         </script>"></iframe>
+        <script>
+          window.addEventListener('message', e => { if (e.data && e.data.frameRemote) window.frameRemote = e.data.frameRemote; });
+        </script>
         """.write(to: web.appendingPathComponent("index.html"), atomically: true, encoding: .utf8)
         // The kernels: answer each message with an echo on iopub.
         try """
@@ -125,6 +130,28 @@ final class KernelHostTests: XCTestCase {
                 + "files.pick,files.export,photos.pick,sound.play,sound.player,sound.control,sound.close")
         let inUI = try await eval(ui, "typeof webkit.messageHandlers.device") as? String
         XCTAssertEqual(inUI, "undefined")
+
+        // The UI page has the remote handler, for server kernels'
+        // `device` comm (ganymede-device#26): the remote subset only, and
+        // not from a frame.
+        let remoteHello = try await ui.callAsyncJavaScript(
+            "const r = await webkit.messageHandlers.deviceRemote.postMessage({ owner: 1, method: 'hello', params: {} });"
+                + " return r.result.capabilities.join(',')",
+            contentWorld: .page) as? String
+        XCTAssertEqual(
+            remoteHello,
+            "clipboard.readText,clipboard.writeText,clipboard.readImage,clipboard.writeImage,info,openURL,"
+                + "ui.alert,ui.confirm,ui.prompt,ui.actionSheet,ui.pickDate,share,preview,"
+                + "files.pick,files.export,photos.pick,sound.play")
+        let refused = try await ui.callAsyncJavaScript(
+            "const r = await webkit.messageHandlers.deviceRemote.postMessage("
+                + "{ id: 1, owner: 1, method: 'sound.player', params: { data: { base64: 'AQI=' } } });"
+                + " return r.error.code",
+            contentWorld: .page) as? String
+        XCTAssertEqual(refused, "unavailable")
+        try await waitFor(ui, "!!window.frameRemote")
+        let frameCode = try await eval(ui, "window.frameRemote.error && window.frameRemote.error.code") as? String
+        XCTAssertEqual(frameCode, "unavailable", "a frame in the UI page can't reach the bridge")
     }
 
     /// A dialog a cell left open goes when the kernel page does.
