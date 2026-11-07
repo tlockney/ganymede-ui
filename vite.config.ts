@@ -124,12 +124,18 @@ const config: UserConfig = {
         // use instead of precaching 170 kB for everyone.
         // The agent (packages/agent) is off by default: cache its chunks
         // on first use too, not for everyone (ganymede-ui#165).
-        globIgnores: ['**/fa-*.woff2', '**/agent-*.js'],
+        // The code fonts (public/fonts, #354): each page uses one, if any.
+        globIgnores: ['**/fa-*.woff2', '**/agent-*.js', 'fonts/**'],
         runtimeCaching: [
           {
             urlPattern: /\/assets\/fa-[\w-]+\.woff2$/,
             handler: 'CacheFirst',
             options: { cacheName: 'font-awesome' },
+          },
+          {
+            urlPattern: /\/fonts\/[\w-]+\.woff2$/,
+            handler: 'CacheFirst',
+            options: { cacheName: 'code-fonts', expiration: { maxEntries: 20 } },
           },
           {
             urlPattern: /\/assets\/agent-[\w.-]+\.js$/,

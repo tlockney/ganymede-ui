@@ -16,6 +16,9 @@ struct SettingsScreen: View {
     var body: some View {
         RemotesView {
             Section {
+                NavigationLink(value: SettingsTab.appearance) {
+                    Label("Appearance", systemImage: "textformat")
+                }
                 NavigationLink(value: SettingsTab.agent) {
                     Label("Agent", systemImage: "sparkles")
                 }
@@ -35,6 +38,12 @@ struct SettingsScreen: View {
         .navigationBarTitleDisplayMode(.inline)
         .navigationDestination(for: SettingsTab.self) { tab in
             switch tab {
+            case .appearance:
+                Form {
+                    CodeFontSettings()
+                }
+                .navigationTitle("Appearance")
+                .navigationBarTitleDisplayMode(.inline)
             case .agent:
                 AgentSettingsView(page: page)
             case .shortcuts:

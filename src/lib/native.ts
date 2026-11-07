@@ -311,7 +311,7 @@ export function postDocument(message: DocumentMessage): void {
  * The tabs of the Apple apps' Settings (#332): the app keeps the agent's
  * settings, the keyboard shortcuts and where kernels run in one place.
  */
-export type SettingsTab = 'general' | 'kernels' | 'remotes' | 'agent' | 'shortcuts';
+export type SettingsTab = 'general' | 'appearance' | 'kernels' | 'remotes' | 'agent' | 'shortcuts';
 
 /**
  * Asks the app to show its Settings at `tab`; false in a browser, which

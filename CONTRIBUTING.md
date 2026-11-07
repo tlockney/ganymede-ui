@@ -40,6 +40,11 @@ bump, or only the other job's files (`apple/` for e2e, `e2e/` for the
 app). Pushes to `main` and releases run every job.
 `node scripts/render-icons.mjs` regenerates the PNG icons from
 `public/icons/icon.svg`.
+`python3 scripts/fonts.py` rebuilds the bundled code fonts in
+`public/fonts/` and their `catalog.json` from the upstream releases
+(`pip install fonttools brotli`); each download must match its hash in
+`scripts/fonts.sha256.json`, and `--update-hashes` records new ones when
+a font is updated on purpose.
 
 Releases are cut with `scripts/release.sh <patch|minor|major|X.Y.Z>`, a
 dry run by default; `--execute` opens the release pull request. Merging it

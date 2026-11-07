@@ -373,6 +373,7 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: .showAppSettings)) { note in
             guard note.object as? PageModel === pageModel else { return }
             switch note.userInfo?["tab"] as? SettingsTab {
+            case .appearance: settingsPath = [.appearance]
             case .agent: settingsPath = [.agent]
             case .shortcuts: settingsPath = [.shortcuts]
             default: settingsPath = []

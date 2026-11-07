@@ -142,6 +142,23 @@ closes. If the file changed on disk since it was opened or last saved, a
 save asks before overwriting it, and autosave stops until you save. A
 failed save or kernel action shows its error above the notebook.
 
+### Code font
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+Settings > Code font picks the font of code cells, text outputs and code
+in Markdown: the system's monospace font or one of the bundled fonts
+(JetBrains Mono, Fira Code, Cascadia Code, Monaspace Neon, Argon, Xenon,
+Radon and Krypton, Iosevka), all under the SIL Open Font License. Set the
+size, turn ligatures off, and turn on the font's stylistic sets and
+character variants under Alternates, each listed with the characters it
+changes; the preview shows the result before you save. The page fetches
+only the font you pick. The choice stays in this browser
+(`ganymede-ui:code-font` in local storage); the Mac and iPad apps keep
+their own, in their Settings.
+
 ### Running cells and errors
 
 The cell the kernel is running says so under its input, with how long it

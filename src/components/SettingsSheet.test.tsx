@@ -253,3 +253,50 @@ describe('SettingsSheet', () => {
     expect(JSON.stringify({ ...localStorage, ...sessionStorage })).not.toContain('sk-ant');
   });
 });
+
+describe('SettingsSheet code font', () => {
+  it('saves the browser’s code font', async () => {
+    const onClose = vi.fn();
+    render(
+      <SettingsSheet
+        onClose={onClose}
+        store={new BrowserCredentialStore(sessionStorage, localStorage)}
+        loadModels={vi.fn()}
+        codeFont={{
+          setting: { font: 'system', size: null, ligatures: true, features: [] },
+          owner: 'page',
+        }}
+      />,
+    );
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Font' }), 'fira-code');
+    await userEvent.click(screen.getByRole('checkbox', { name: 'Ligatures' }));
+    await userEvent.click(screen.getByText(/^Alternates/));
+    await userEvent.click(screen.getByRole('checkbox', { name: 'ss01 r' }));
+    expect(screen.getByTestId('code-font-preview').style.fontFeatureSettings).toBe(
+      '"ss01" 1, "calt" 0, "liga" 0, "dlig" 0',
+    );
+    await userEvent.click(save());
+    expect(JSON.parse(localStorage.getItem('ganymede-ui:code-font')!)).toEqual({
+      font: 'fira-code',
+      size: null,
+      ligatures: false,
+      features: ['ss01'],
+    });
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('leaves the code font to the app', () => {
+    render(
+      <SettingsSheet
+        onClose={vi.fn()}
+        store={new BrowserCredentialStore(sessionStorage, localStorage)}
+        loadModels={vi.fn()}
+        codeFont={{
+          setting: { font: 'system', size: null, ligatures: true, features: [] },
+          owner: 'app',
+        }}
+      />,
+    );
+    expect(screen.queryByRole('combobox', { name: 'Font' })).not.toBeInTheDocument();
+  });
+});

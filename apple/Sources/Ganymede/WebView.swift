@@ -170,10 +170,22 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     #endif
     /// Where the page's in-page kernels run (ganymede-ui#99).
     private let kernels = KernelHost()
+    private var codeFontObserver: CodeFontObserver?
     #if os(iOS)
     /// Where each download is written before the share sheet offers it.
     private var destinations: [ObjectIdentifier: URL] = [:]
     #endif
+
+    /// Every user script the page gets, replacing any already there: add
+    /// a new one here, since a code font change reinstalls them all.
+    private static func installPageScripts(on view: WKWebView) {
+        let scripts = view.configuration.userContentController
+        scripts.removeAllUserScripts()
+        // The page's error reports follow the app's choice (#318, #319).
+        scripts.addUserScript(CrashReports.shared.pageScript)
+        // The code font (#354), before the page loads.
+        scripts.addUserScript(CodeFont.pageScript)
+    }
 
     /// `keepRunning`: the page runs at full speed while it isn't visible
     /// (the iPhone's page while its list shows, #209).
@@ -191,8 +203,14 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
             let url = change.newValue ?? nil
             Task { @MainActor in self?.onNavigate?(url) }
         }
-        // The page's error reports follow the app's choice (#318, #319).
-        view.configuration.userContentController.addUserScript(CrashReports.shared.pageScript)
+        Self.installPageScripts(on: view)
+        // The code font (#354) as it changes: a reload must get the new
+        // setting too, so the scripts are installed again.
+        codeFontObserver = observeCodeFont { [weak view] in
+            guard let view else { return }
+            Self.installPageScripts(on: view)
+            view.evaluateJavaScript(CodeFont.updateScript, completionHandler: nil)
+        }
         // The page's sidebar opens text files in the app's editor (#122).
         view.configuration.userContentController.add(OpenFileHandler(self), name: "openFile")
         // What the page shows, for native toolbars and menus (#205).
