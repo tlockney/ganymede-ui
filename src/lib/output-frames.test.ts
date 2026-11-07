@@ -9,7 +9,7 @@ import type { IRenderMime } from '@jupyterlab/rendermime-interfaces';
 // does once loaded is left to the end-to-end suite.
 
 const { createRendermime } = await import('./jupyterlab');
-const { FRAME_CSP, javascriptBody } = await import('./output-frames');
+const { FRAME_CSP, javascriptBody, withTextColor } = await import('./output-frames');
 
 const contents = {
   getDownloadUrl: async (path: string) => `/files/${path}`,
@@ -84,6 +84,40 @@ describe('output frames', () => {
     expect(
       rendermime.preferredMimeType({ 'image/svg+xml': svg, 'text/plain': '<Figure>' }, 'ensure'),
     ).toBe('image/svg+xml');
+  });
+
+  it("gives an SVG image's currentColor the theme's text color (#366)", async () => {
+    document.body.style.setProperty('--jp-content-font-color1', 'rgba(255, 255, 255, 1)');
+    try {
+      const svg =
+        '<svg xmlns="http://www.w3.org/2000/svg" fill="currentColor"><text>Year</text></svg>';
+      const node = await render('image/svg+xml', svg, true);
+      const src = decodeURIComponent(node.querySelector('img')!.src.split(',')[1]!);
+      expect(src).toContain('color="rgba(255, 255, 255, 1)"');
+      expect(src).toContain('<text>Year</text>');
+
+      // Recolored when the theme changes, still one image.
+      document.body.style.setProperty('--jp-content-font-color1', 'rgba(0, 0, 0, 1)');
+      document.body.dataset.jpThemeLight = 'true';
+      await new Promise(resolve => setTimeout(resolve, 0));
+      const imgs = node.querySelectorAll('img');
+      expect(imgs).toHaveLength(1);
+      expect(decodeURIComponent(imgs[0]!.src.split(',')[1]!)).toContain('color="rgba(0, 0, 0, 1)"');
+    } finally {
+      document.body.style.removeProperty('--jp-content-font-color1');
+      delete document.body.dataset.jpThemeLight;
+    }
+  });
+
+  it("keeps an SVG's own color, and source that doesn't parse", () => {
+    const own = '<svg xmlns="http://www.w3.org/2000/svg" color="red"><circle r="4"/></svg>';
+    expect(withTextColor(own, 'white')).toBe(own);
+    expect(withTextColor('<svg><circle r="4"></svg>', 'white')).not.toContain('color=');
+    // A root without the namespace, as some kernels send.
+    const bare = withTextColor('<svg width="10"><circle r="4"/></svg>', 'white');
+    expect(bare).toContain('color="white"');
+    expect(bare).toContain('xmlns="http://www.w3.org/2000/svg"');
+    expect(withTextColor(own, '')).toBe(own);
   });
 
   it('sanitizes Markdown outputs even when trusted', async () => {
