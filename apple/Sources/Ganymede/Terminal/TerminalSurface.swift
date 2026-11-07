@@ -165,7 +165,7 @@ final class TerminalCoordinator: NSObject, TerminalViewDelegate {
     /// The last `TerminalSurface.focused` applied.
     var focused: Bool?
     private weak var view: TerminalView?
-    private var fontObserver: NSObjectProtocol?
+    private var fontObserver: CodeFontObserver?
 
     /// SwiftTerm keeps its own default until the setting names a face or size.
     private func applyFont(to view: TerminalView, initial: Bool) {

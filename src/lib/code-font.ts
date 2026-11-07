@@ -158,9 +158,11 @@ export function codeFontSetting(
 
 /** Saves the browser's setting and applies it. */
 export function saveCodeFont(
-  setting: CodeFontSetting,
+  value: CodeFontSetting,
   storage: Pick<Storage, 'setItem'> | undefined = safeStorage(),
 ): void {
+  // Clamped as a reload would: a number field lets any value be typed.
+  const setting = parseCodeFont(value);
   try {
     storage?.setItem(KEY, JSON.stringify(setting));
   } catch {

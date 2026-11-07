@@ -102,6 +102,9 @@ enum CodeFont {
             if let data = try? JSONEncoder().encode(value) {
                 UserDefaults.standard.set(data, forKey: defaultsKey)
             }
+            cacheLock.lock()
+            cache = [:]
+            cacheLock.unlock()
             NotificationCenter.default.post(name: .codeFontChanged, object: nil)
         }
     }
@@ -146,9 +149,25 @@ enum CodeFont {
         CTFontManagerRegisterFontURLs(urls as CFArray, .process, false, nil)
     }
 
-    /// The font for the editor and terminal, at the setting's size or
-    /// `size` when it has none.
-    static func font(defaultSize size: Double = defaultSize, setting: CodeFontSetting = setting) -> PlatformFont {
+    /// The current setting's fonts by default size: the line-number gutter
+    /// asks for the editor's font once per line it draws. Cleared when the
+    /// setting changes.
+    private static var cache: [Double: PlatformFont] = [:]
+    private static let cacheLock = NSLock()
+
+    /// The font for the editor and terminal at the current setting, at its
+    /// size or `size` when it has none.
+    static func font(defaultSize size: Double = defaultSize) -> PlatformFont {
+        cacheLock.lock()
+        defer { cacheLock.unlock() }
+        if let font = cache[size] { return font }
+        let font = font(defaultSize: size, setting: setting)
+        cache[size] = font
+        return font
+    }
+
+    /// The font for `setting`, at its size or `size` when it has none.
+    static func font(defaultSize size: Double = defaultSize, setting: CodeFontSetting) -> PlatformFont {
         let points = CGFloat(setting.size ?? size)
         let fallback = PlatformFont.monospacedSystemFont(ofSize: points, weight: .regular)
         guard let entry = entry(setting.font) else { return fallback }

@@ -96,6 +96,8 @@ describe('codeFontSetting', () => {
       font: 'cascadia-code',
       size: 13,
     });
+    saveCodeFont({ ...DEFAULT_CODE_FONT, size: 100 });
+    expect(document.documentElement.style.getPropertyValue('--code-font-size')).toBe('32px');
     applyCodeFont(DEFAULT_CODE_FONT);
     localStorage.clear();
   });

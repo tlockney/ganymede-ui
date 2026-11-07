@@ -81,7 +81,7 @@ final class CodeTextCoordinator: NSObject, NSTextViewDelegate {
         fontObserver = observeCodeFont { [weak self] in self?.applyFont() }
     }
 
-    private var fontObserver: NSObjectProtocol?
+    private var fontObserver: CodeFontObserver?
 
     /// The code font setting changed (#354): the text and line numbers take it.
     private func applyFont() {
@@ -201,7 +201,7 @@ final class CodeTextCoordinator: NSObject, UITextViewDelegate {
         fontObserver = observeCodeFont { [weak self] in self?.applyFont() }
     }
 
-    private var fontObserver: NSObjectProtocol?
+    private var fontObserver: CodeFontObserver?
 
     /// The code font setting changed (#354): the text takes it.
     private func applyFont() {
@@ -281,11 +281,25 @@ private func makeHighlighter(for textView: Neon.TextView, language: TextLanguage
     return try? TextViewHighlighter(textView: textView, configuration: configuration)
 }
 
-/// Calls `changed` on the main queue when the code font setting changes;
-/// keep the token for as long as the view lives.
+/// Calls `changed` on the main queue when the code font setting changes,
+/// until the returned observer is released.
 @MainActor
-func observeCodeFont(_ changed: @escaping @MainActor () -> Void) -> NSObjectProtocol {
-    NotificationCenter.default.addObserver(forName: .codeFontChanged, object: nil, queue: .main) { _ in
+func observeCodeFont(_ changed: @escaping @MainActor () -> Void) -> CodeFontObserver {
+    CodeFontObserver(NotificationCenter.default.addObserver(forName: .codeFontChanged, object: nil, queue: .main) { _ in
         Task { @MainActor in changed() }
+    })
+}
+
+/// A `.codeFontChanged` observer that unregisters itself when released:
+/// block observers otherwise stay registered after their view has gone.
+final class CodeFontObserver {
+    private let token: NSObjectProtocol
+
+    init(_ token: NSObjectProtocol) {
+        self.token = token
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(token)
     }
 }
