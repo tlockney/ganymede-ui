@@ -34,10 +34,11 @@ against a real `ganymede serve` it starts on a copy of
 `GANYMEDE_BIN`) and cdp-kernel's `cdp-node` kernelspec, and no Python.
 It also writes light and dark screenshots to `test-results/screenshots/`,
 the source of the images in `screenshots/`. CI runs all of the above.
-On a pull request, and on a push to `main`, `scripts/ci-changes.sh` skips the e2e and macOS app
-jobs when the PR can't affect them: docs, Markdown, a release's version
-bump, or only the other job's files (`apple/` for e2e, `e2e/` for the
-app). Releases run every job.
+On a pull request, and on a push to `main`, `scripts/ci-changes.sh`
+skips the e2e and macOS app jobs when the change can't affect them:
+docs, Markdown, a release's version bump, or only the other job's files
+(`apple/` for e2e, `e2e/` for the app). A release runs build and e2e on
+the tag; its own macos and ios jobs build the app.
 `node scripts/render-icons.mjs` regenerates the PNG icons from
 `public/icons/icon.svg`.
 `python3 scripts/fonts.py` rebuilds the bundled code fonts in

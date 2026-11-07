@@ -33,7 +33,7 @@ esac
 
 e2e=false
 macos=false
-files=$(git diff --name-only "$base" HEAD) || everything
+files=$(git diff --no-renames --name-only "$base" HEAD) || everything
 
 # package.json and package-lock.json count as release metadata when only
 # their "version" lines change (a release PR's bump).

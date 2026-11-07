@@ -60,9 +60,9 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-  # build and e2e on the tag. macos-app is skipped: the tagged commit
-  # passed it on main (branch protection), and the macos and ios jobs
-  # below build the app again (#361).
+  # build and e2e on the tag. macos-app is skipped: the last change to
+  # the app before the tag passed it on main (branch protection), and
+  # the macos and ios jobs below build the app again (#361).
   ci:
     needs: version
     uses: ./.github/workflows/ci.yml
