@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ISessionContext } from '@jupyterlab/apputils';
 import { Signal } from '@lumino/signaling';
-import { attachDevice } from './device-remote';
+import { attachDevice, type DevicePromptState, promptClick } from './device-remote';
 
 // The wiring only: one answerer per kernel the session has, none outside
 // the app. ganymede-device tests answerDevice itself.
@@ -46,11 +46,65 @@ describe('attachDevice', () => {
     expect(answered).toHaveLength(2);
   });
 
-  it('answers nothing outside the app', () => {
+  it('outside the app, answers with the browser fallback', () => {
     const { session, setKernel } = fakeSession();
-    const answer = vi.fn();
+    const answer = vi.fn((_kernel: unknown, _forward?: unknown) => ({
+      dispose: vi.fn(),
+      pending: 0,
+    }));
     attachDevice(session, { available: () => false, answer });
     setKernel({ id: 1 });
-    expect(answer).not.toHaveBeenCalled();
+    expect(answer).toHaveBeenCalledOnce();
+    expect(typeof answer.mock.calls[0][1]).toBe('function');
+    const inApp = vi.fn((_kernel: unknown, _forward?: unknown) => ({
+      dispose: vi.fn(),
+      pending: 0,
+    }));
+    attachDevice(session, { available: () => true, answer: inApp });
+    expect(inApp.mock.calls[0][1]).toBeUndefined();
+  });
+});
+
+describe('promptClick', () => {
+  it('shows a prompt, runs the call on accept, and takes it down', async () => {
+    let shown: DevicePromptState | undefined;
+    const show = (update: (c: DevicePromptState | undefined) => DevicePromptState | undefined) => {
+      shown = update(shown);
+    };
+    const click = promptClick(show);
+    const run = vi.fn(async () => 'pasted');
+    const signal = new AbortController().signal;
+    const pending = click(
+      { method: 'clipboard.readText', label: 'Paste from clipboard', signal },
+      run,
+    );
+    expect(shown?.label).toBe('Paste from clipboard');
+    expect(run).not.toHaveBeenCalled();
+    shown!.accept();
+    expect(run).toHaveBeenCalledOnce();
+    expect(shown).toBeUndefined();
+    await expect(pending).resolves.toBe('pasted');
+  });
+
+  it('rejects on dismiss and on a cancel, taking the prompt down', async () => {
+    let shown: DevicePromptState | undefined;
+    const click = promptClick(update => (shown = update(shown)));
+    const dismissed = click(
+      { method: 'share', label: 'Share', signal: new AbortController().signal },
+      vi.fn(),
+    );
+    shown!.dismiss();
+    await expect(dismissed).rejects.toThrow('dismissed');
+    expect(shown).toBeUndefined();
+
+    const controller = new AbortController();
+    const cancelled = click(
+      { method: 'share', label: 'Share', signal: controller.signal },
+      vi.fn(),
+    );
+    expect(shown?.label).toBe('Share');
+    controller.abort();
+    await expect(cancelled).rejects.toThrow();
+    expect(shown).toBeUndefined();
   });
 });
