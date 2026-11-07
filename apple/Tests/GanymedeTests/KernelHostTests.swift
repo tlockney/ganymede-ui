@@ -154,6 +154,55 @@ final class KernelHostTests: XCTestCase {
         XCTAssertEqual(frameCode, "unavailable", "a frame in the UI page can't reach the bridge")
     }
 
+    /// When the kernel page's process dies, each kernel it ran is reported
+    /// closed to the UI page, and the next start loads a new kernel page
+    /// (#293).
+    @MainActor
+    func testAKernelPageThatDiesReportsItsKernelsClosed() async throws {
+        let server = try ServerHost(config: [
+            "root_dir": dir.path,
+            "static_dir": dir.appendingPathComponent("web").path,
+            "cookie_secret_file": dir.appendingPathComponent("cookie_secret").path,
+            "port": 0,
+        ])
+        defer { server.stop() }
+
+        let host = KernelHost()
+        let ui = WKWebView(
+            frame: CGRect(x: 0, y: 0, width: 400, height: 300), configuration: WKWebViewConfiguration())
+        host.attach(to: ui)
+        host.uiWillLoad(server.url)
+        ui.load(URLRequest(url: server.url))
+        try await waitFor(ui, "document.readyState === 'complete' && !!window.ganymedeKernelRelay")
+        _ = try await eval(ui, """
+            const post = m => webkit.messageHandlers.kernelRelay.postMessage(m);
+            post({ kernel: 'k1', op: 'start' });
+            post({ kernel: 'k2', op: 'start' });
+            post({ kernel: 'k1', op: 'send', channel: 'shell', msg: { n: 1 } });
+            true
+            """)
+        try await waitFor(ui, "window.got.length >= 1")
+        _ = try await eval(host.webView, "window.old = true; true")
+
+        // As WebKit calls it when the WebContent process ends.
+        host.webViewWebContentProcessDidTerminate(host.webView)
+        try await waitFor(ui, "window.got.filter(m => m.op === 'closed').length === 2")
+        let closed = try await eval(
+            ui, "JSON.stringify(window.got.filter(m => m.op === 'closed').map(m => m.kernel))") as? String
+        XCTAssertEqual(closed, #"["k1","k2"]"#)
+
+        // The next start loads a new kernel page, which answers.
+        _ = try await eval(ui, """
+            const post = m => webkit.messageHandlers.kernelRelay.postMessage(m);
+            post({ kernel: 'k3', op: 'start' });
+            post({ kernel: 'k3', op: 'send', channel: 'shell', msg: { n: 3 } });
+            true
+            """)
+        try await waitFor(ui, "window.got.some(m => m.kernel === 'k3' && m.msg && m.msg.echo === 3)")
+        let fresh = try await eval(host.webView, "window.old === undefined") as? Bool
+        XCTAssertEqual(fresh, true, "a new kernel page was loaded")
+    }
+
     /// A dialog a cell left open goes when the kernel page does.
     @MainActor
     func testResetDropsAnOpenDialog() async throws {

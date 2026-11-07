@@ -31,6 +31,7 @@ export class CdpBrowserKernel implements IKernel {
   readonly disposed = new Signal<this, void>(this);
   private _kernel: KernelChannels;
   private _stop: () => void;
+  private _stopClosed: () => void;
   private _isDisposed = false;
   private _lastSession = '';
 
@@ -53,6 +54,14 @@ export class CdpBrowserKernel implements IKernel {
       const header = { ...msg.header, session };
       options.sendMessage({ ...msg, header, channel } as unknown as KernelMessage.IMessage);
     });
+    // A kernel that ends on its own (its web view's process died, #293)
+    // says it is dead, as a server's kernel does: the notebook then shows
+    // it with Restart, which starts a new one.
+    this._stopClosed =
+      this._kernel.onClosed?.(() => {
+        if (this._isDisposed) return;
+        options.sendMessage(deadStatus(this._lastSession));
+      }) ?? (() => {});
   }
 
   async handleMessage(msg: KernelMessage.IMessage): Promise<void> {
@@ -74,11 +83,30 @@ export class CdpBrowserKernel implements IKernel {
     if (this._isDisposed) return;
     this._isDisposed = true;
     this._stop();
+    this._stopClosed();
     // Ends the kernel and terminates its Worker.
     this._kernel.send('control', controlRequest('shutdown_request', { restart: false }));
     this.disposed.emit();
     Signal.clearData(this);
   }
+}
+
+/** An iopub `status` message saying the kernel is dead. */
+export function deadStatus(session: string): KernelMessage.IMessage {
+  return {
+    channel: 'iopub',
+    header: {
+      msg_id: crypto.randomUUID(),
+      msg_type: 'status',
+      session,
+      username: '',
+      date: new Date().toISOString(),
+      version: '5.3',
+    },
+    parent_header: {},
+    metadata: {},
+    content: { execution_state: 'dead' },
+  } as unknown as KernelMessage.IMessage;
 }
 
 function controlRequest(msgType: string, content: Record<string, unknown>) {
