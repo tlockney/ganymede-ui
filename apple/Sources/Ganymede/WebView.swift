@@ -179,7 +179,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// (the iPhone's page while its list shows, #209).
     func makeWebView(keepRunning: Bool = false) -> WKWebView {
         let config = WKWebViewConfiguration()
-        if keepRunning, #available(macOS 14.0, iOS 17.0, *) {
+        if keepRunning {
             config.preferences.inactiveSchedulingPolicy = .none
         }
         let view = WKWebView(frame: .zero, configuration: config)
@@ -207,10 +207,8 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         #if os(macOS)
         view.configuration.userContentController.add(DocumentHandler(self), name: "document")
         #endif
-        if #available(macOS 13.3, iOS 16.4, *) {
-            // Safari's Web Inspector can attach (Develop menu).
-            view.isInspectable = true
-        }
+        // Safari's Web Inspector can attach (Develop menu).
+        view.isInspectable = true
         return view
     }
 

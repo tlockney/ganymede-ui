@@ -63,7 +63,7 @@ The `macos` job in `release.yml` checks out tlockney/ganymede at the
 
 1. imports the Developer ID Application certificate into a temporary
    keychain;
-2. archives the universal Release build with that identity, hardened
+2. archives the arm64 Release build with that identity, hardened
    runtime, a secure timestamp, and the version from `package.json` as
    `CFBundleShortVersionString` (the run number is the build number);
 3. checks the signature, team, runtime flag, and that the app has no

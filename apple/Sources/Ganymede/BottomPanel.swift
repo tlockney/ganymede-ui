@@ -254,7 +254,7 @@ private struct KernelLogView: View {
                     }
                 }
             }
-            .onChange(of: log.after) { _ in
+            .onChange(of: log.after) {
                 if atEnd { reader.scrollTo(Self.end, anchor: .bottom) }
             }
             .onAppear { reader.scrollTo(Self.end, anchor: .bottom) }

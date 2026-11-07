@@ -7,12 +7,18 @@ guide; [apple/README.md](../apple/README.md) covers how the app is built.
 
 ## Install
 
-- **Mac** (macOS 13 or later): each
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release: the apps require macOS 26 or iOS 26, and the Mac
+> app runs on Apple silicon only. The latest release runs on macOS 13 and
+> iOS 16, and its Mac app is universal (Apple silicon and Intel).
+
+- **Mac** (macOS 26 or later, Apple silicon): each
   [release](https://github.com/tlockney/ganymede-ui/releases) since 0.3.0
-  attaches `Ganymede-macOS-<version>.zip`, a universal app signed with a
+  attaches `Ganymede-macOS-<version>.zip`, an app signed with a
   Developer ID and notarized. Unzip it, move `Ganymede.app` to
   Applications, and open it.
-- **iPad and iPhone** (iOS 16 or later): on TestFlight, for the team's
+- **iPad and iPhone** (iOS 26 or later): on TestFlight, for the team's
   internal testers only. Members of the internal testing group install it
   with the TestFlight app. A TestFlight build expires after 90 days; the
   next upload replaces it.

@@ -77,11 +77,11 @@ struct TerminalWindow: View {
         }
         .modifier(OwnWindow(enabled: !inPanel, title: title.isEmpty ? defaultTitle : title))
         .onAppear(perform: connect)
-        .onChange(of: model.url) { _ in connect() }
+        .onChange(of: model.url) { connect() }
         #if os(macOS)
         .background(WindowReader { window.window = $0 })
         .onAppear(perform: register)
-        .onChange(of: title) { _ in register() }
+        .onChange(of: title) { register() }
         .onDisappear { OpenTerminals.shared.remove(entry) }
         #endif
     }

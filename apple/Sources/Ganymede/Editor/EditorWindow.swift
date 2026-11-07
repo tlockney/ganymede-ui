@@ -92,7 +92,7 @@ struct EditorWindow: View {
         .navigationBarTitleDisplayMode(.inline)
         // iOS may end a scene in the background without asking, so the
         // edits are saved on the way there.
-        .onChange(of: phase) { phase in
+        .onChange(of: phase) { _, phase in
             if phase == .background { Task { await document.save() } }
         }
         .confirmationDialog(

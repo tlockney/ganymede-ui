@@ -34,7 +34,7 @@ struct FolderSidebar: View {
         }
         // A notebook made or saved by the page shows up, and so do changes
         // made outside the app when it comes back to the front.
-        .onChange(of: page.state.path) { _ in generation += 1 }
+        .onChange(of: page.state.path) { generation += 1 }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             generation += 1
         }

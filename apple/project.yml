@@ -4,8 +4,8 @@ name: Ganymede
 options:
   bundleIdPrefix: com.ganymede-server
   deploymentTarget:
-    macOS: '13.0'
-    iOS: '16.0'
+    macOS: '26.0'
+    iOS: '26.0'
   createIntermediateGroups: true
 packages:
   # The terminal view (MIT), on macOS and iOS. libghostty may replace it
@@ -78,6 +78,8 @@ packages:
 settings:
   base:
     SWIFT_VERSION: '5.0'
+    # Apple silicon only (#356): Intel Macs stop at macOS 26.
+    ARCHS[sdk=macosx*]: arm64
     MARKETING_VERSION: '0.1.0'
     CURRENT_PROJECT_VERSION: '1'
     CODE_SIGN_STYLE: Automatic
