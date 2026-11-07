@@ -10,8 +10,10 @@ takes only the methods that need no permission.
   session kernel, only in the app (when `deviceRemote` exists), and
   follows kernel changes.
 - `KernelHost` registers the remote handler on the UI web view with the
-  relay's main-frame and origin check, and its `reset()` drops dialogs
-  the old page asked for.
+  relay's main-frame and origin check. The kernel page's reload or crash
+  drops only its own dialogs and sounds (`dropPage()`,
+  ganymede-device#55), and the UI page's reset or crash only the server
+  kernels' (`dropRemote()`).
 - The e2e test found two problems in the first version of
   `answerDevice`, both fixed in ganymede-device#52: the calls comm's
   open went on the main shell, behind the cell waiting for it, because
@@ -20,6 +22,9 @@ takes only the methods that need no permission.
   the subshell reply included, until it settles. It needs cdp-kernel
   0.8.0 (kernel subshells); Ganymede 0.7.0 passes the subshell messages
   through unchanged.
+
+On the Mac, clipboard reads from a server kernel show no prompt; the
+docs say so.
 
 Not yet: a dialog doesn't say which server asked, and there is no
 per-server mute (`answerDevice`'s `accept` is the hook for it). Not

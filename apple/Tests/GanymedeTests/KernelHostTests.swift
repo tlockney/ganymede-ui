@@ -190,5 +190,46 @@ final class KernelHostTests: XCTestCase {
         while presenter.closed == 0, Date() < deadline { try await Task.sleep(nanoseconds: 50_000_000) }
         XCTAssertEqual(presenter.closed, 1, "the reset closed the dialog")
     }
+    /// A server kernel's dialog belongs to the UI page: a kernel page
+    /// reload leaves it open, and only the UI page's reset closes it.
+    @MainActor
+    func testKernelPageReloadLeavesARemoteDialog() async throws {
+        let server = try ServerHost(config: [
+            "root_dir": dir.path,
+            "static_dir": dir.appendingPathComponent("web").path,
+            "cookie_secret_file": dir.appendingPathComponent("cookie_secret").path,
+            "port": 0,
+        ])
+        defer { server.stop() }
+
+        let presenter = SilentPresenter()
+        let host = KernelHost(device: DeviceBridge(presenter: presenter))
+        let ui = WKWebView(
+            frame: CGRect(x: 0, y: 0, width: 400, height: 300), configuration: WKWebViewConfiguration())
+        host.attach(to: ui)
+        host.uiWillLoad(server.url)
+        ui.load(URLRequest(url: server.url))
+        try await waitFor(ui, "document.readyState === 'complete' && !!window.ganymedeKernelRelay")
+        _ = try await eval(ui, "webkit.messageHandlers.kernelRelay.postMessage({ kernel: 'k1', op: 'start' }); true")
+        try await waitFor(host.webView, "document.readyState === 'complete' && !!window.ganymedeKernelHost")
+
+        _ = try await eval(ui, """
+            webkit.messageHandlers.deviceRemote.postMessage({ id: 1, owner: 1, method: 'ui.alert', params: { message: 'x' } });
+            true
+            """)
+        let deadline = Date().addingTimeInterval(20)
+        while presenter.shown == 0, Date() < deadline { try await Task.sleep(nanoseconds: 50_000_000) }
+        XCTAssertEqual(presenter.shown, 1)
+
+        _ = try await eval(host.webView, "window.reloaded = true; true")
+        host.webView.reload()
+        try await waitFor(host.webView, "document.readyState === 'complete' && !window.reloaded && !!window.ganymedeKernelHost")
+        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertEqual(presenter.closed, 0, "the kernel page's reload left the remote dialog open")
+
+        host.reset()
+        while presenter.closed == 0, Date() < deadline { try await Task.sleep(nanoseconds: 50_000_000) }
+        XCTAssertEqual(presenter.closed, 1, "the UI page's reset closed it")
+    }
 }
 #endif

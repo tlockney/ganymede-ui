@@ -250,6 +250,12 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         page?.reset()
     }
 
+    /// The UI page's process died: its dialogs and sounds for server
+    /// kernels have no one to answer.
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        kernels.uiPageEnded()
+    }
+
     /// Links to other hosts open in the default browser.
     func webView(
         _ webView: WKWebView,

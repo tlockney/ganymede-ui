@@ -18,18 +18,23 @@ photo pickers, saving files, and sounds.
 
 ## Where `device` exists
 
-`device` exists only in a kernel that the app runs itself: cdp-kernel's
-TypeScript kernel, which the app runs in a hidden web view. In practice
-that means:
+The `device` global exists only in a kernel that the app runs itself:
+cdp-kernel's TypeScript kernel, which the app runs in a hidden web view.
+Other kernels in the app can ask for part of it. In practice that means:
 
 - **iPad and iPhone.** With no kernel server set, it is the only kernel.
   With one set, it is listed beside the server's kernels as "TypeScript
   (cdp-kernel, in app)".
 - **Mac.** Pick "TypeScript (cdp-kernel, in app)" in the kernel menu. The
-  Mac's own kernelspecs run as processes and can't reach the app.
+  Mac's own kernelspecs run as processes, so they have no global `device`.
 - **A server kernel, in the app.** A kernel the app's server runs, or a
   remote server's, gets the methods that need no permission, by asking
   for them; see [From a server kernel](#from-a-server-kernel).
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release, where server kernels can't reach the app.
+
 - **Not in a browser.** Planned; see [Methods](#methods).
 
 Everywhere else, `device` is `undefined`, so check for it before using
@@ -87,6 +92,11 @@ package, which isn't out yet
   in flight fail `disconnected`, and the next call asks again.
 
 ## Methods
+
+> [!NOTE]
+> **Unreleased.** The "Remote kernel" column is available only from a
+> build of `main` (HEAD); in the latest release no method works from a
+> server kernel.
 
 <!-- device-table:start (generated: node scripts/device-table.mjs --write) -->
 

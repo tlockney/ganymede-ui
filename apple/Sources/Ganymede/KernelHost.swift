@@ -79,14 +79,21 @@ final class KernelHost: NSObject {
 
     /// The UI page navigated: its kernels are gone with it.
     func reset() {
-        // What the old UI page asked for remote kernels has no one to
-        // answer it; the kernel page's calls end with it below.
-        device.dropAll()
+        // What the old UI page asked for server kernels has no one to
+        // answer it; the kernel page's calls end as it loads about:blank
+        // below (`dropPage()` in the navigation delegate).
+        device.dropRemote()
         guard loaded else { return }
         loaded = false
         ready = false
         pending = []
         webView.load(URLRequest(url: URL(string: "about:blank")!))
+    }
+
+    /// The UI page's process died: no one answers what it asked for server
+    /// kernels. The kernel page keeps running until the page reloads.
+    func uiPageEnded() {
+        device.dropRemote()
     }
 
     /// The message comes from a page of ours: the main frame, at the UI
@@ -148,19 +155,20 @@ final class KernelHost: NSObject {
 extension KernelHost: WKNavigationDelegate {
     /// The kernel page is going away (a reset, a reload): its device calls
     /// can no longer be answered, and the new page's call ids start over.
+    /// The UI page's calls for server kernels stay.
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
-        device.dropAll()
+        device.dropPage()
     }
 
     /// Again at commit: the old page ran until now, and a call it made
     /// after the navigation started would otherwise outlive it.
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
-        device.dropAll()
+        device.dropPage()
     }
 
     /// The kernel page's process died, and its kernels with it.
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-        device.dropAll()
+        device.dropPage()
     }
 }
 
