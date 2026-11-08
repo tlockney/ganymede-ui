@@ -10,6 +10,15 @@ export function DevicePrompt({ prompt }: { prompt: DevicePromptState }) {
     <div className="pane-notice device-prompt" role="alert">
       <div className="pane-notice-text">
         <span className="pane-notice-message">{askMessage(prompt.asker)}</span>
+        {prompt.preview !== undefined && (
+          <span className="pane-notice-hint device-prompt-preview">
+            {prompt.preview === ''
+              ? '(empty text)'
+              : prompt.preview.trim() === ''
+                ? '(blank text)'
+                : `“${prompt.preview}”`}
+          </span>
+        )}
       </div>
       <div className="pane-notice-actions">
         <button type="button" className="pane-notice-action" onClick={() => prompt.accept()}>

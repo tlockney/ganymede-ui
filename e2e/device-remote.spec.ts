@@ -105,7 +105,11 @@ test('in a browser the page answers with web APIs, after a click', async ({ page
     ),
   );
   const prompt = page.locator('.device-prompt');
-  await prompt.getByRole('button', { name: 'Copy to clipboard' }).click({ timeout: 60_000 });
+  // The prompt previews the text it would copy (#389).
+  await expect(prompt.locator('.device-prompt-preview')).toHaveText('“from the browser”', {
+    timeout: 60_000,
+  });
+  await prompt.getByRole('button', { name: 'Copy to clipboard' }).click();
   await prompt.getByRole('button', { name: 'Paste from clipboard' }).click();
   // Dismissed: the picker answers [] as on the device.
   await expect(prompt.getByRole('button', { name: 'Choose a file' })).toBeVisible();

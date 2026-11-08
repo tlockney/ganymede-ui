@@ -43,6 +43,11 @@ export interface DevicePromptState {
    * several notebooks open knows which one it is (#389).
    */
   asker?: string;
+  /**
+   * What the call carries, shortened for display: the text a clipboard
+   * write would copy, or what a share would send (#389).
+   */
+  preview?: string;
   /** Runs the call; the button's click handler calls it. */
   accept(): void;
   dismiss(): void;
@@ -51,6 +56,36 @@ export interface DevicePromptState {
 /** "A cell in Io.ipynb (Python 3) asks to use this device." */
 export function askMessage(asker?: string): string {
   return asker ? `A cell in ${asker} asks to use this device.` : 'A cell asks to use this device.';
+}
+
+/** Longest preview a prompt shows, in characters. */
+export const PREVIEW_LENGTH = 80;
+
+// Control and format characters: they don't show, and the bidi ones
+// reorder what follows them. The zero-width joiner stays, so joined
+// emoji keep their shape.
+const HIDDEN = /(?!\u200d)[\p{Cc}\p{Cf}]/gu;
+
+/**
+ * `detail` on one line, at most `max` characters, ending in "…" when
+ * shortened. `undefined` for no detail; an empty text previews as "", and
+ * a text of only spaces as " ". Control and format characters (bidi
+ * overrides, zero-width and tag characters) are left out, so the preview
+ * can't read differently from what is copied.
+ */
+export function previewText(detail: string | undefined, max = PREVIEW_LENGTH): string | undefined {
+  if (detail === undefined) return undefined;
+  // Whitespace becomes spaces before the hidden characters go, and runs
+  // of spaces fold after, so a removed character leaves no double space.
+  const line = detail.replace(/\s/g, ' ').replace(HIDDEN, '').replace(/ +/g, ' ').trim();
+  if (line === '' && detail !== '') return ' ';
+  const chars = Array.from(line);
+  return chars.length > max
+    ? `${chars
+        .slice(0, max - 1)
+        .join('')
+        .trimEnd()}…`
+    : line;
 }
 
 /**
@@ -68,6 +103,7 @@ export function promptClick(
       const prompt: DevicePromptState = {
         label: request.label,
         asker: asker?.(),
+        preview: previewText(request.detail),
         accept() {
           close();
           // In the click's handler, before any await: the browser's user
