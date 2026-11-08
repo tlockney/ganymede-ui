@@ -210,7 +210,7 @@ keys are kept in the keychain too.
   Mac; the page shows just the notebook. The sidebar hides in portrait
   and comes back with a swipe from the edge. It has the Mac's navigator
   tabs (⌘1 to ⌘5 with a keyboard): Files, Search, Running (kernels and
-  the panel's terminals), Outline (empty for now) and Recents.
+  the panel's terminals), Outline and Recents.
 - Files lists the notebook folder as a tree; long-press an item to
   rename, duplicate or delete it, or make a notebook or folder in it. A
   dot marks notebooks whose kernel is running. Search finds files by name
@@ -229,6 +229,13 @@ keys are kept in the keychain too.
   back, and hide it with its chevron, the toolbar's panel button or
   `` ⌃` ``; hidden, its shells keep running. The toolbar's Fill the
   Screen hides the sidebar and panel until it is tapped again.
+- Outline lists the open notebook's headings, indented by level; tap one
+  to go to its cell. In portrait the sidebar then gets out of the way.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release. In 0.5.0 the Outline tab is empty.
+
 - The Mac's inspector (Outline and Variables) isn't on the iPad yet
   ([#249](https://github.com/tlockney/ganymede-ui/issues/249)).
 
@@ -239,7 +246,12 @@ actions and Running section as the iPad's sidebar, and the terminal,
 Settings and folder buttons. Tapping a notebook opens it; swipe from the
 left edge or tap Back to return to the list. The notebook's run controls
 and its ⋯ menu are in the bottom toolbar. Terminals and text files cover
-the screen.
+the screen. The bottom toolbar's Outline menu lists the notebook's
+headings; pick one to go to its cell.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
 
 ### On both
 
