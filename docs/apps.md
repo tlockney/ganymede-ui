@@ -235,6 +235,7 @@ keys are kept in the keychain too.
   > [!NOTE]
   > **Unreleased.** Available only from a build of `main` (HEAD), not in
   > the latest release. In 0.5.0 the Outline tab is empty.
+
 - The Mac's inspector (Outline and Variables) isn't on the iPad yet
   ([#249](https://github.com/tlockney/ganymede-ui/issues/249)).
 
