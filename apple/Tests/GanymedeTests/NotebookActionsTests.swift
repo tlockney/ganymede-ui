@@ -107,6 +107,51 @@ final class NotebookActionsTests: XCTestCase {
         XCTAssertNil(NotebookActions.apiPath(for: URL(fileURLWithPath: "/Users/me/y.ipynb"), root: folder))
     }
 
+    /// As the windows map paths: symlinks stay as written on the Mac, so
+    /// an action and a window share one room (/tmp is a link to /private/tmp).
+    func testAPIPathsMatchTheWindows() {
+        let mac = URL(fileURLWithPath: "/", isDirectory: true)
+        let file = URL(fileURLWithPath: "/tmp/a.ipynb")
+        XCTAssertEqual(NotebookActions.apiPath(for: file, root: mac), "tmp/a.ipynb")
+        XCTAssertEqual(NotebookActions.apiPath(for: file, root: mac), FolderEntry.serverPath(file))
+    }
+
+    func testQueryValuesEscapePlusAndAmpersand() async throws {
+        fake.on("GET /api/contents/a+b&c.ipynb", Self.notebook([Self.code("a", "1")]))
+        fake.on("GET /api/sessions", [Any]())
+        fake.on("POST /api/sessions", status: 201, ["id": "s1", "kernel": ["id": "k1"]])
+        fake.on("POST /api/fileid/index", ["id": "f1"])
+        fake.on("POST /api/kernels/k1/execute", ["finished": true, "cells": [Self.code("a", "1", count: 1)]])
+        _ = try await actions.notebookRunAll(path: "a+b&c.ipynb", restart: false, timeout: 5)
+        let index = try XCTUnwrap(fake.calls("POST /api/fileid/index").first?.url)
+        XCTAssertEqual(URLComponents(url: index, resolvingAgainstBaseURL: false)?.percentEncodedQuery, "path=a%2Bb%26c.ipynb")
+    }
+
+    /// nbformat before 4.5 has no cell ids: an error, not an empty run.
+    func testCellsWithoutIDsAreAnError() async throws {
+        fake.on("GET /api/contents/dir/nb.ipynb", ["type": "notebook", "content": [
+            "cells": [["cell_type": "code", "source": "1", "metadata": [:], "outputs": [], "execution_count": NSNull()]],
+            "metadata": [:], "nbformat": 4, "nbformat_minor": 4,
+        ]])
+        do {
+            _ = try await actions.notebookRunAll(path: "dir/nb.ipynb", restart: true, timeout: 5)
+            XCTFail("no ids")
+        } catch {
+            XCTAssertEqual(error as? NotebookActionError, .noCellIDs("dir/nb.ipynb"))
+        }
+        XCTAssertTrue(fake.calls("POST /api/sessions").isEmpty, "nothing started")
+    }
+
+    func testNewNotebookReportsOtherFailures() async throws {
+        fake.on("GET /api/contents/dir/Report.ipynb", status: 403, ["message": "forbidden"])
+        do {
+            _ = try await actions.notebookNew(dir: "dir", name: "Report", template: nil)
+            XCTFail("forbidden")
+        } catch {
+            XCTAssertEqual(error as? NotebookActionError, .server(status: 403, message: "forbidden"))
+        }
+    }
+
     // MARK: Outputs
 
     func testOutputsBecomeTextImagesAndJSON() throws {

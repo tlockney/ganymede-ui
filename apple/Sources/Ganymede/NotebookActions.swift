@@ -59,14 +59,18 @@ struct NotebookActions: Sendable {
 
     /// The notebook at `path` as saved (MCP `notebook_read`). The room saves
     /// a second after its last edit, so this can lag an open window by that.
-    func notebookRead(path: String) async throws -> Notebook {
+    func notebookRead(path: String, requireIDs: Bool = true) async throws -> Notebook {
         let body = try await json(request(Self.contents(path), query: [
             URLQueryItem(name: "content", value: "1"), URLQueryItem(name: "type", value: "notebook"),
         ]))
         guard let model = body as? [String: Any], model["type"] as? String == "notebook",
               let content = model["content"] as? [String: Any]
         else { throw NotebookActionError.notANotebook(path) }
-        return Notebook(path: path, json: content)
+        let notebook = Notebook(path: path, json: content)
+        // Before nbformat 4.5 cells have no ids, which every operation
+        // here names them by; the server adds them once a room opens it.
+        if requireIDs && notebook.cellsWithoutIDs > 0 { throw NotebookActionError.noCellIDs(path) }
+        return notebook
     }
 
     /// A new notebook in `dir`, empty or a copy of `template`; named `name`
@@ -82,11 +86,12 @@ struct NotebookActions: Sendable {
             let file = name.hasSuffix(".ipynb") ? name : name + ".ipynb"
             let path = dir.isEmpty ? file : "\(dir)/\(file)"
             // Never over an existing file.
-            let (status, _) = try await call(request(Self.contents(path), query: [URLQueryItem(name: "content", value: "0")]))
-            if status != 404 { throw NotebookActionError.exists(path) }
+            let (status, body) = try await call(request(Self.contents(path), query: [URLQueryItem(name: "content", value: "0")]))
+            if (200..<300).contains(status) { throw NotebookActionError.exists(path) }
+            if status != 404 { throw NotebookActionError.server(status: status, message: Self.message(body)) }
             var content: [String: Any] = ["cells": [], "metadata": [:], "nbformat": 4, "nbformat_minor": 5]
             if let template {
-                content = try await notebookRead(path: template).json
+                content = try await notebookRead(path: template, requireIDs: false).json
             }
             created = try await json(request(Self.contents(path), method: "PUT", body: [
                 "type": "notebook", "format": "json", "content": content,
@@ -256,7 +261,11 @@ struct NotebookActions: Sendable {
     ) throws -> URLRequest {
         var request = server.request(path, method: method)
         if !query.isEmpty, let url = request.url, var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) {
-            parts.queryItems = query
+            // Encoded by hand: URLComponents leaves `+` and `&` alone in
+            // query values, which the server reads as a space and a separator.
+            parts.percentEncodedQuery = query.map { item in
+                "\(Self.encode(item.name))=\(Self.encode(item.value ?? ""))"
+            }.joined(separator: "&")
             request.url = parts.url
         }
         if let body {
@@ -305,12 +314,23 @@ struct NotebookActions: Sendable {
 
     /// The server's API path for a file: its path under `root`, the folder
     /// the server serves (`/` on the Mac); nil outside it.
+    /// The same mapping as the windows' (`FolderEntry.serverPath`), so an
+    /// action and a window share the file's room and kernel.
     static func apiPath(for url: URL, root: URL) -> String? {
+        if root.standardizedFileURL.path == "/" { return FolderEntry.serverPath(url) }
         let file = url.standardizedFileURL.resolvingSymlinksInPath().path
         let base = root.standardizedFileURL.resolvingSymlinksInPath().path
-        if base == "/" { return String(file.drop { $0 == "/" }) }
-        guard file == base || file.hasPrefix(base + "/") else { return nil }
-        return String(file.dropFirst(base.count).drop { $0 == "/" })
+        guard file == base || file.hasPrefix(base.hasSuffix("/") ? base : base + "/") else { return nil }
+        return FolderEntry.serverPath(url, root: root)
+    }
+
+    /// ASCII letters, digits and `-._~/`; the rest percent-encoded as UTF-8.
+    private static let queryValue = CharacterSet(
+        charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._~/"
+    )
+
+    static func encode(_ value: String) -> String {
+        value.addingPercentEncoding(withAllowedCharacters: queryValue) ?? value
     }
 
     /// MurmurHash2, as `jupyter-server-documents` hashes a cell's source
@@ -350,6 +370,7 @@ enum NotebookActionError: LocalizedError, Equatable {
     case exists(String)
     case badName(String)
     case noCell(String)
+    case noCellIDs(String)
     case noKernel(String)
     case changed(String)
     case cellFailed(cell: String, name: String, value: String)
@@ -367,6 +388,8 @@ enum NotebookActionError: LocalizedError, Equatable {
         case .exists(let path): "\(path) already exists."
         case .badName(let name): "“\(name)” can’t be a notebook name."
         case .noCell(let cell): "No cell has the id or tag “\(cell)”."
+        case .noCellIDs(let path):
+            "\(path)’s cells have no ids (nbformat before 4.5); open it in Ganymede once and save it to add them."
         case .noKernel(let path): "No kernel is running for \(path)."
         case .changed(let cell): "Cell \(cell) changed while it was about to run; run it again."
         case .cellFailed(let cell, let name, let value):
@@ -383,6 +406,8 @@ enum NotebookActionError: LocalizedError, Equatable {
 struct Notebook {
     var path: String
     var cells: [NotebookCell]
+    /// Cells left out of `cells` for having no id (nbformat before 4.5).
+    var cellsWithoutIDs: Int
     /// The kernelspec in its metadata, if any.
     var kernelName: String?
     /// The nbformat JSON, for a copy.
@@ -391,7 +416,9 @@ struct Notebook {
     init(path: String, json: [String: Any]) {
         self.path = path
         self.json = json
-        cells = (json["cells"] as? [[String: Any]] ?? []).compactMap(NotebookCell.init(json:))
+        let all = json["cells"] as? [[String: Any]] ?? []
+        cells = all.compactMap(NotebookCell.init(json:))
+        cellsWithoutIDs = all.count - cells.count
         kernelName = ((json["metadata"] as? [String: Any])?["kernelspec"] as? [String: Any])?["name"] as? String
     }
 

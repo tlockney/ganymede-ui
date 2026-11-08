@@ -256,11 +256,14 @@ final class AppModel {
     /// The app's own server once it listens, started if it isn't, for
     /// Shortcuts (#302), which can run before any window has started it.
     func readyServer(timeout: Duration = .seconds(30)) async throws -> ServerEndpoint {
-        startIfNeeded()
+        // A failed start is tried again: nothing else would, until a
+        // window restarts the server.
+        if error != nil && queued == 0 { start() } else { startIfNeeded() }
         let clock = ContinuousClock()
         let deadline = clock.now.advanced(by: timeout)
         while clock.now < deadline {
-            if let localServer { return localServer }
+            // Not while a restart is queued: it stops the server it replaces.
+            if queued == 0, let localServer { return localServer }
             if queued == 0, let error { throw ServerHost.StartError(message: error) }
             try await Task.sleep(for: .milliseconds(100))
         }

@@ -56,11 +56,21 @@ enum NotebookFinder {
     /// How many folder entries to look at under the notebook folder.
     static let limit = 5000
 
+    /// The last walk, reused for a few seconds: Shortcuts asks again on
+    /// every keystroke of a search.
+    @MainActor private static var cached: (at: ContinuousClock.Instant, root: URL, found: [URL])?
+
     @MainActor
     static func all() async -> [NotebookEntity] {
         let recents = Recents.shared.urls.filter { $0.pathExtension == "ipynb" }
         let root = AppModel.shared.root
-        let found = await Task.detached(priority: .userInitiated) { notebooks(under: root) }.value
+        let found: [URL]
+        if let cached, cached.root == root, ContinuousClock.now - cached.at < .seconds(10) {
+            found = cached.found
+        } else {
+            found = await Task.detached(priority: .userInitiated) { notebooks(under: root) }.value
+            cached = (ContinuousClock.now, root, found)
+        }
         var seen = Set<String>()
         return (recents + found).map(NotebookEntity.init(url:)).filter { seen.insert($0.id).inserted }
     }
@@ -98,7 +108,8 @@ struct CellOutputEntity: TransientAppEntity {
 
     init() {}
 
-    init(_ output: CellOutput, cell: String) {
+    /// `index` is the output's place in its cell, which names its image.
+    init(_ output: CellOutput, cell: String, index: Int = 0) {
         self.init()
         self.cell = cell
         kind = output.kind.rawValue
@@ -106,7 +117,7 @@ struct CellOutputEntity: TransientAppEntity {
         json = output.json
         if let picture = output.image {
             let type = UTType(mimeType: picture.type)
-            let name = "\(cell).\(type?.preferredFilenameExtension ?? "png")"
+            let name = "\(cell)-\(index + 1).\(type?.preferredFilenameExtension ?? "png")"
             image = IntentFile(data: picture.data, filename: name, type: type)
         }
     }
@@ -117,7 +128,9 @@ struct CellOutputEntity: TransientAppEntity {
 
     /// Every output of `cells`, in order.
     static func of(_ cells: [NotebookCell]) -> [CellOutputEntity] {
-        cells.flatMap { cell in cell.outputs.map { CellOutputEntity($0, cell: cell.id) } }
+        cells.flatMap { cell in
+            cell.outputs.enumerated().map { CellOutputEntity($1, cell: cell.id, index: $0) }
+        }
     }
 }
 
