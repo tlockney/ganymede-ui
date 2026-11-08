@@ -1,7 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ISessionContext } from '@jupyterlab/apputils';
 import { Signal } from '@lumino/signaling';
-import { askMessage, attachDevice, type DevicePromptState, promptClick } from './device-remote';
+import {
+  askMessage,
+  attachDevice,
+  type DevicePromptState,
+  PREVIEW_LENGTH,
+  previewText,
+  promptClick,
+} from './device-remote';
 
 // The wiring only: one answerer per kernel the session has, none outside
 // the app. ganymede-device tests answerDevice itself.
@@ -92,6 +99,35 @@ describe('promptClick', () => {
       'A cell in Europa.ipynb (Python 3) asks to use this device.',
     );
     expect(askMessage()).toBe('A cell asks to use this device.');
+  });
+
+  it('previews what a call carries, shortened to one line (#389)', () => {
+    let shown: DevicePromptState | undefined;
+    const click = promptClick(update => {
+      shown = update(shown);
+    });
+    const signal = new AbortController().signal;
+    void click(
+      { method: 'clipboard.writeText', label: 'Copy to clipboard', signal, detail: 'a\n  b' },
+      async () => null,
+    ).catch(() => {});
+    expect(shown?.preview).toBe('a b');
+    shown!.dismiss();
+    void click(
+      { method: 'clipboard.readText', label: 'Paste from clipboard', signal },
+      async () => null,
+    ).catch(() => {});
+    expect(shown?.preview).toBeUndefined();
+
+    expect(previewText(undefined)).toBeUndefined();
+    expect(previewText('')).toBe('');
+    expect(previewText('x'.repeat(PREVIEW_LENGTH))).toBe('x'.repeat(PREVIEW_LENGTH));
+    const long = previewText('x'.repeat(PREVIEW_LENGTH + 1))!;
+    expect(Array.from(long)).toHaveLength(PREVIEW_LENGTH);
+    expect(long.endsWith('…')).toBe(true);
+    // Counted in characters, so an emoji isn't cut in half.
+    const emoji = previewText('😀'.repeat(10), 5)!;
+    expect(emoji).toBe('😀😀😀😀…');
   });
 
   it('shows a prompt, runs the call on accept, and takes it down', async () => {

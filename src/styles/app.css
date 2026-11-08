@@ -1171,6 +1171,12 @@ button {
   font-size: 12px;
 }
 
+/* What a device call would copy or share (#389): one line, already
+   shortened, but a long word still mustn't widen the pane. */
+.device-prompt-preview {
+  overflow-wrap: anywhere;
+}
+
 .pane-notice-actions {
   display: flex;
   flex: none;
