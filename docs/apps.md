@@ -165,15 +165,15 @@ version to keep.
 
 The Shortcuts app, Spotlight and Siri get these Ganymede actions:
 
-| Action | What it does |
-|---|---|
-| Open Notebook | Opens a notebook in a window. |
-| New Notebook | Creates a notebook in a folder, empty or a copy of a template notebook, and returns it. |
-| Run Notebook | Runs every code cell in order, after restarting the kernel unless turned off, and returns the outputs. |
-| Run Cell | Runs the cell with an id, or every cell with a tag, and returns its outputs. |
-| Get Notebook Outputs | Returns the saved outputs of a notebook or one cell, without running anything. |
-| Control Notebook Kernel | Starts, interrupts, restarts or shuts down a notebook's kernel. |
-| List Notebooks | Returns the notebooks in a folder. |
+| Action                  | What it does                                                                                           |
+| ----------------------- | ------------------------------------------------------------------------------------------------------ |
+| Open Notebook           | Opens a notebook in a window.                                                                          |
+| New Notebook            | Creates a notebook in a folder, empty or a copy of a template notebook, and returns it.                |
+| Run Notebook            | Runs every code cell in order, after restarting the kernel unless turned off, and returns the outputs. |
+| Run Cell                | Runs the cell with an id, or every cell with a tag, and returns its outputs.                           |
+| Get Notebook Outputs    | Returns the saved outputs of a notebook or one cell, without running anything.                         |
+| Control Notebook Kernel | Starts, interrupts, restarts or shuts down a notebook's kernel.                                        |
+| List Notebooks          | Returns the notebooks in a folder.                                                                     |
 
 Each output is a Cell Output with its cell id, kind (stream, result,
 display or error), text, image and JSON, so the next action can take any
