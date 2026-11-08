@@ -591,8 +591,6 @@ private struct IPadFolderContents: View {
 
 // MARK: - Toolbar
 
-/// The notebook's controls in the navigation bar: run and kernel controls
-/// on their own, the rest in a menu.
 /// The open notebook's Markdown headings (#212), indented by level; a tap
 /// selects the heading's cell and scrolls it to the top, as the Mac's
 /// Outline tab does (#288). Rows for the iPad sidebar's list.
@@ -652,6 +650,8 @@ struct PhoneOutlineMenu: View {
     }
 }
 
+/// The notebook's controls in the navigation bar: run and kernel controls
+/// on their own, the rest in a menu.
 struct IPadNotebookToolbar: ToolbarContent {
     var page: PageModel
     /// In the bottom toolbar, in thumb reach: the iPhone (#209).
