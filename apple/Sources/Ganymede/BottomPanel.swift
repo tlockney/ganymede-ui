@@ -190,8 +190,10 @@ private struct KernelLogView: View {
     @State private var error: String?
     /// The kernel `log` is for.
     @State private var lastKernel: String?
-    /// The end of the log is in view: new lines scroll it along, as a
-    /// terminal does. Scrolled up, it stays put.
+    /// Where the log is scrolled to; it opens at its end.
+    @State private var position = ScrollPosition(edge: .bottom)
+    /// The end of the log was in view after the last scroll: new lines
+    /// scroll it along, as a terminal does. Scrolled up, it stays put.
     @State private var atEnd = true
 
     var body: some View {
@@ -217,51 +219,62 @@ private struct KernelLogView: View {
     }
 
     private var lines: some View {
-        ScrollViewReader { reader in
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 1) {
-                    ForEach(log.lines) { line in
-                        Text(line.text)
-                            .foregroundStyle(color(of: line))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .id(line.seq)
-                    }
-                    SwiftUI.Color.clear
-                        .frame(height: 1)
-                        .id(Self.end)
-                        .onAppear { atEnd = true }
-                        .onDisappear { atEnd = false }
-                }
-                .font(.system(.callout, design: .monospaced))
-                .textSelection(.enabled)
-                .padding(8)
-            }
-            // A server that stops answering shouldn't look like a quiet
-            // kernel. An inset rather than a bar above the scroll view, so
-            // the view keeps its size and a log at its end stays following,
-            // and the first lines start below the bar instead of under it.
-            .safeAreaInset(edge: .top, spacing: 0) {
-                if let error {
-                    VStack(spacing: 0) {
-                        Label(error, systemImage: "exclamationmark.triangle")
-                            .font(.callout)
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(.bar)
-                        Divider()
-                    }
+        ScrollView {
+            LazyVStack(alignment: .leading, spacing: 1) {
+                ForEach(log.lines) { line in
+                    Text(line.text)
+                        .foregroundStyle(color(of: line))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .id(line.seq)
                 }
             }
-            .onChange(of: log.after) {
-                if atEnd { reader.scrollTo(Self.end, anchor: .bottom) }
+            .font(.system(.callout, design: .monospaced))
+            .textSelection(.enabled)
+            .padding(8)
+        }
+        .scrollPosition($position)
+        // Whether the end is in view is decided by scrolling only. New
+        // lines grow the content before `log.after` changes, and the error
+        // bar's inset shrinks the view: neither moves the offset, so
+        // neither stops the log following.
+        .onScrollGeometryChange(for: ScrollSpot.self) { geometry in
+            ScrollSpot(
+                offset: geometry.contentOffset.y,
+                atEnd: geometry.visibleRect.maxY >= geometry.contentSize.height - Self.endSlack
+            )
+        } action: { old, new in
+            if new.offset != old.offset { atEnd = new.atEnd }
+        }
+        // A server that stops answering shouldn't look like a quiet
+        // kernel. An inset rather than a bar above the scroll view, so
+        // the first lines start below the bar instead of under it.
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if let error {
+                VStack(spacing: 0) {
+                    Label(error, systemImage: "exclamationmark.triangle")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(.bar)
+                    Divider()
+                }
             }
-            .onAppear { reader.scrollTo(Self.end, anchor: .bottom) }
+        }
+        .onChange(of: log.after) {
+            if atEnd { position.scrollTo(edge: .bottom) }
         }
     }
 
-    private static let end = "end"
+    /// How far from the bottom, in points, still counts as at the end.
+    private static let endSlack: CGFloat = 16
+
+    /// The scroll offset, and whether the end is in view there.
+    private struct ScrollSpot: Equatable {
+        var offset: CGFloat
+        var atEnd: Bool
+    }
 
     private func note(_ text: String) -> some View {
         Text(text)
@@ -286,6 +299,8 @@ private struct KernelLogView: View {
             log = KernelLog()
             error = nil
             lastKernel = kernelID
+            atEnd = true
+            position = ScrollPosition(edge: .bottom)
         }
         while active, !Task.isCancelled {
             var more = false
