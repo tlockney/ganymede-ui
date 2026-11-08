@@ -180,8 +180,8 @@ struct IPadSidebar: View {
                 Text("No kernels or terminals running").foregroundStyle(.secondary)
             }
         case .outline:
-            // The open notebook's headings come with #212, as on the Mac.
-            Text("No outline yet").foregroundStyle(.secondary)
+            // The open notebook's headings, as on the Mac (#288).
+            IPadOutlineRows(page: page, picked: opened)
         case .recents:
             recentsSection
             if (page.state.recents ?? []).isEmpty {
@@ -593,6 +593,65 @@ private struct IPadFolderContents: View {
 
 /// The notebook's controls in the navigation bar: run and kernel controls
 /// on their own, the rest in a menu.
+/// The open notebook's Markdown headings (#212), indented by level; a tap
+/// selects the heading's cell and scrolls it to the top, as the Mac's
+/// Outline tab does (#288). Rows for the iPad sidebar's list.
+struct IPadOutlineRows: View {
+    var page: PageModel
+    /// After a heading is tapped: the notebook comes into view.
+    var picked: () -> Void = {}
+
+    var body: some View {
+        let headings = page.state.headings
+        // Indent from the outline's top level, not from `#`.
+        let top = headings.map(\.level).min() ?? 1
+        if headings.isEmpty {
+            Text(page.state.hasNotebook ? "No headings in this notebook" : "No notebook open")
+                .foregroundStyle(.secondary)
+        } else {
+            ForEach(Array(headings.enumerated()), id: \.offset) { _, heading in
+                Button {
+                    page.run("go-to-cell", arg: String(heading.cell))
+                    picked()
+                } label: {
+                    Text(heading.text)
+                        .fontWeight(heading.level == top ? .semibold : .regular)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                        .padding(.leading, CGFloat(max(0, heading.level - top)) * 16)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                }
+                .foregroundStyle(.primary)
+            }
+        }
+    }
+}
+
+/// The iPhone's way to the outline (#288): a menu of the notebook's
+/// headings in the bottom toolbar, indented by level.
+struct PhoneOutlineMenu: View {
+    var page: PageModel
+
+    var body: some View {
+        let headings = page.state.headings
+        let top = headings.map(\.level).min() ?? 1
+        Menu {
+            ForEach(Array(headings.enumerated()), id: \.offset) { _, heading in
+                Button {
+                    page.run("go-to-cell", arg: String(heading.cell))
+                } label: {
+                    // Menus take no padding: indent with figure spaces.
+                    Text(String(repeating: "\u{2007}\u{2007}", count: max(0, heading.level - top)) + heading.text)
+                }
+            }
+        } label: {
+            Label("Outline", systemImage: "list.bullet.indent")
+        }
+        .disabled(headings.isEmpty)
+    }
+}
+
 struct IPadNotebookToolbar: ToolbarContent {
     var page: PageModel
     /// In the bottom toolbar, in thumb reach: the iPhone (#209).
@@ -608,6 +667,10 @@ struct IPadNotebookToolbar: ToolbarContent {
                 .disabled(!page.state.hasNotebook)
             Button { page.run("interrupt") } label: { Label("Interrupt", systemImage: "stop.fill") }
                 .disabled(!page.state.isBusy)
+            // The iPad has the sidebar's Outline tab.
+            if bottom {
+                PhoneOutlineMenu(page: page)
+            }
             Menu {
                 Button { page.run("insert-code") } label: { Label("Insert Code Cell", systemImage: "plus.rectangle") }
                 Button { page.run("insert-markdown") } label: { Label("Insert Markdown Cell", systemImage: "text.badge.plus") }
