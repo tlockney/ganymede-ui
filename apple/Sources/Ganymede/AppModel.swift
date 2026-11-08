@@ -247,6 +247,29 @@ final class AppModel {
         server.flatMap { ServerEndpoint(serverURL: $0.url) }
     }
 
+    /// The folder the app's server serves, which its API paths are under:
+    /// `/` on macOS, the notebook folder on iOS.
+    var serverRootFolder: URL {
+        URL(fileURLWithPath: Self.serverRoot(root), isDirectory: true)
+    }
+
+    /// The app's own server once it listens, started if it isn't, for
+    /// Shortcuts (#302), which can run before any window has started it.
+    func readyServer(timeout: Duration = .seconds(30)) async throws -> ServerEndpoint {
+        // A failed start is tried again: nothing else would, until a
+        // window restarts the server.
+        if error != nil && queued == 0 { start() } else { startIfNeeded() }
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: timeout)
+        while clock.now < deadline {
+            // Not while a restart is queued: it stops the server it replaces.
+            if queued == 0, let localServer { return localServer }
+            if queued == 0, let error { throw ServerHost.StartError(message: error) }
+            try await Task.sleep(for: .milliseconds(100))
+        }
+        throw ServerHost.StartError(message: "Ganymede’s server didn’t start in time.")
+    }
+
     /// The remote kernels run on, if one is chosen.
     var kernelRemote: Remote? {
         remotes.first { $0.id == kernelRemoteID && $0.hasServer }

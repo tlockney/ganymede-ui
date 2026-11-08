@@ -120,9 +120,11 @@ jobs:
     env:
       # The tlockney/ganymede tag or commit whose ganymede-ffi the app links.
       # A tag downloads the release's XCFramework; a commit builds it.
-      # main after ganymede#455: an arm64-only macOS slice built for macOS 26
-      # and iOS 26 (#356). Back to a tag at the next Ganymede release.
-      GANYMEDE_REF: d3a337ebac633ebaf64690b74ce53279c2d554b1
+      # main after ganymede#567: the execute endpoint's `wait`, which the
+      # Shortcuts actions run cells with (#302), on top of ganymede#455's
+      # arm64-only slices for macOS 26 and iOS 26 (#356). Back to a tag at
+      # the next Ganymede release.
+      GANYMEDE_REF: 5694a387c961067e22c0c8db0ef0fd5eea01b3b7
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

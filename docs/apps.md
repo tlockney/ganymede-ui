@@ -157,6 +157,36 @@ auto-indent, and paired brackets and quotes. ⌘S saves. When the file
 changes on disk the editor reloads it, or, with unsaved edits, asks which
 version to keep.
 
+### Shortcuts
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+The Shortcuts app, Spotlight and Siri get these Ganymede actions:
+
+| Action                  | What it does                                                                                           |
+| ----------------------- | ------------------------------------------------------------------------------------------------------ |
+| Open Notebook           | Opens a notebook in a window.                                                                          |
+| New Notebook            | Creates a notebook in a folder, empty or a copy of a template notebook, and returns it.                |
+| Run Notebook            | Runs every code cell in order, after restarting the kernel unless turned off, and returns the outputs. |
+| Run Cell                | Runs the cell with an id, or every cell with a tag, and returns its outputs.                           |
+| Get Notebook Outputs    | Returns the saved outputs of a notebook or one cell, without running anything.                         |
+| Control Notebook Kernel | Starts, interrupts, restarts or shuts down a notebook's kernel.                                        |
+| List Notebooks          | Returns the notebooks in a folder.                                                                     |
+
+Each output is a Cell Output with its cell id, kind (stream, result,
+display or error), text, image and JSON, so the next action can take any
+of them; used as text, it is its text. A cell that fails, a missing file
+or a run that outlasts its time limit stops the shortcut with the error.
+
+The actions use the app's own server, and start it if no window has.
+Runs go through the server, as an agent's do: a window showing the
+notebook sees the outputs arrive, and they are saved with it. They use
+the notebook's kernel from its kernelspec, on this Mac or the remote
+kernels run on, never the in-app TypeScript kernel, which only a window
+reaches. The actions are on the Mac only for now.
+
 ### Settings
 
 Settings (⌘,) is one window with tabs. General makes Ganymede the
