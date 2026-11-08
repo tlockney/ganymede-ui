@@ -131,6 +131,9 @@ describe('promptClick', () => {
     // Spaces only isn't empty; a right-to-left override can't flip the preview.
     expect(previewText('  \n ')).toBe(' ');
     expect(previewText('pay \u202Eevil\u202C now\u0007')).toBe('pay evil now');
+    // Invisible format characters go, and a removed one leaves no double space.
+    expect(previewText('pay\u{E0041}\u{E0042}x \u200B\u2060y')).toBe('payx y');
+    expect(previewText('a \u0007 b')).toBe('a b');
     // A joined emoji keeps its zero-width joiner.
     expect(previewText('👩\u200D💻')).toBe('👩\u200D💻');
   });

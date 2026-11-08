@@ -61,19 +61,23 @@ export function askMessage(asker?: string): string {
 /** Longest preview a prompt shows, in characters. */
 export const PREVIEW_LENGTH = 80;
 
-// C0 and C1 controls, and the bidi marks, embeddings, overrides and
-// isolates that reorder what follows them.
-const HIDDEN = /[\p{Cc}\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu;
+// Control and format characters: they don't show, and the bidi ones
+// reorder what follows them. The zero-width joiner stays, so joined
+// emoji keep their shape.
+const HIDDEN = /(?!\u200d)[\p{Cc}\p{Cf}]/gu;
 
 /**
  * `detail` on one line, at most `max` characters, ending in "…" when
  * shortened. `undefined` for no detail; an empty text previews as "", and
- * a text of only spaces as " ". Control characters and bidi overrides are
- * left out, so the preview can't read differently from what is copied.
+ * a text of only spaces as " ". Control and format characters (bidi
+ * overrides, zero-width and tag characters) are left out, so the preview
+ * can't read differently from what is copied.
  */
 export function previewText(detail: string | undefined, max = PREVIEW_LENGTH): string | undefined {
   if (detail === undefined) return undefined;
-  const line = detail.replace(/\s+/g, ' ').replace(HIDDEN, '').trim();
+  // Whitespace becomes spaces before the hidden characters go, and runs
+  // of spaces fold after, so a removed character leaves no double space.
+  const line = detail.replace(/\s/g, ' ').replace(HIDDEN, '').replace(/ +/g, ' ').trim();
   if (line === '' && detail !== '') return ' ';
   const chars = Array.from(line);
   return chars.length > max
