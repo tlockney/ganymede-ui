@@ -61,13 +61,20 @@ export function askMessage(asker?: string): string {
 /** Longest preview a prompt shows, in characters. */
 export const PREVIEW_LENGTH = 80;
 
+// C0 and C1 controls, and the bidi marks, embeddings, overrides and
+// isolates that reorder what follows them.
+const HIDDEN = /[\p{Cc}\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu;
+
 /**
  * `detail` on one line, at most `max` characters, ending in "…" when
- * shortened. `undefined` for no detail; an empty text previews as "".
+ * shortened. `undefined` for no detail; an empty text previews as "", and
+ * a text of only spaces as " ". Control characters and bidi overrides are
+ * left out, so the preview can't read differently from what is copied.
  */
 export function previewText(detail: string | undefined, max = PREVIEW_LENGTH): string | undefined {
   if (detail === undefined) return undefined;
-  const line = detail.replace(/\s+/g, ' ').trim();
+  const line = detail.replace(/\s+/g, ' ').replace(HIDDEN, '').trim();
+  if (line === '' && detail !== '') return ' ';
   const chars = Array.from(line);
   return chars.length > max
     ? `${chars

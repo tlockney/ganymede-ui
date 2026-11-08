@@ -12,7 +12,11 @@ export function DevicePrompt({ prompt }: { prompt: DevicePromptState }) {
         <span className="pane-notice-message">{askMessage(prompt.asker)}</span>
         {prompt.preview !== undefined && (
           <span className="pane-notice-hint device-prompt-preview">
-            {prompt.preview === '' ? '(empty text)' : `“${prompt.preview}”`}
+            {prompt.preview === ''
+              ? '(empty text)'
+              : prompt.preview.trim() === ''
+                ? '(blank text)'
+                : `“${prompt.preview}”`}
           </span>
         )}
       </div>

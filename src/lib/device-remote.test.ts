@@ -128,6 +128,11 @@ describe('promptClick', () => {
     // Counted in characters, so an emoji isn't cut in half.
     const emoji = previewText('😀'.repeat(10), 5)!;
     expect(emoji).toBe('😀😀😀😀…');
+    // Spaces only isn't empty; a right-to-left override can't flip the preview.
+    expect(previewText('  \n ')).toBe(' ');
+    expect(previewText('pay \u202Eevil\u202C now\u0007')).toBe('pay evil now');
+    // A joined emoji keeps its zero-width joiner.
+    expect(previewText('👩\u200D💻')).toBe('👩\u200D💻');
   });
 
   it('shows a prompt, runs the call on accept, and takes it down', async () => {
