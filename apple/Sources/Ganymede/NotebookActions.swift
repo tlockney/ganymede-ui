@@ -68,7 +68,8 @@ struct NotebookActions: Sendable {
         else { throw NotebookActionError.notANotebook(path) }
         let notebook = Notebook(path: path, json: content)
         // Before nbformat 4.5 cells have no ids, which every operation
-        // here names them by; the server adds them once a room opens it.
+        // here names them by. A room gives them ids in memory only: it
+        // saves a 4.4 notebook without them.
         if requireIDs && notebook.cellsWithoutIDs > 0 { throw NotebookActionError.noCellIDs(path) }
         return notebook
     }
@@ -389,7 +390,7 @@ enum NotebookActionError: LocalizedError, Equatable {
         case .badName(let name): "“\(name)” can’t be a notebook name."
         case .noCell(let cell): "No cell has the id or tag “\(cell)”."
         case .noCellIDs(let path):
-            "\(path)’s cells have no ids (nbformat before 4.5); open it in Ganymede once and save it to add them."
+            "\(path)’s cells have no ids (nbformat before 4.5). Upgrade it to nbformat 4.5, for example with `jupyter nbconvert --to notebook --inplace`."
         case .noKernel(let path): "No kernel is running for \(path)."
         case .changed(let cell): "Cell \(cell) changed while it was about to run; run it again."
         case .cellFailed(let cell, let name, let value):
