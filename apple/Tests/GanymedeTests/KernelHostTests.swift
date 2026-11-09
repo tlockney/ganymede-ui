@@ -137,7 +137,7 @@ final class KernelHostTests: XCTestCase {
                 + "contacts.add,contacts.all,contacts.delete,contacts.get,contacts.search,"
                 + "location.current,location.geocode,location.reverseGeocode,photos.save,"
                 + "reminders.add,reminders.calendars,reminders.complete,reminders.delete,reminders.list,reminders.uncomplete,"
-                + "location.watch")
+                + "events.watch,location.watch")
         let inUI = try await eval(ui, "typeof webkit.messageHandlers.device") as? String
         XCTAssertEqual(inUI, "undefined")
 
