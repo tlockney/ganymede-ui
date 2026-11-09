@@ -47,4 +47,22 @@ final class ShareNotebooksTests: XCTestCase {
         XCTAssertEqual(input.url, URL(string: "https://a.test"))
         XCTAssertEqual(input.files.map(\.name), ["a.txt", "b.png"])
     }
+
+    func testFilesTogetherStayWithin16MiB() {
+        let half = Data(count: DeviceBridge.maxBinaryBytes / 2)
+        let input = ShareInput.input([
+            .file(name: "1", type: "", data: half), .file(name: "2", type: "", data: half),
+            .file(name: "3", type: "", data: Data([1])),
+        ])
+        XCTAssertEqual(input.files.map(\.name), ["1", "2"])
+    }
+
+    func testReadsAFileOnlyWithinTheBudget() throws {
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let file = folder.appendingPathComponent("photo.png")
+        try Data(count: 10).write(to: file)
+        XCTAssertEqual(ShareInput.file(at: file, budget: 10), .file(name: "photo.png", type: "image/png", data: Data(count: 10)))
+        XCTAssertNil(ShareInput.file(at: file, budget: 9))
+        XCTAssertNil(ShareInput.file(at: folder.appendingPathComponent("missing"), budget: 10))
+    }
 }

@@ -304,6 +304,9 @@ targets:
               NSExtensionActivationSupportsWebURLWithMaxCount: 1
               NSExtensionActivationSupportsFileWithMaxCount: 10
               NSExtensionActivationSupportsImageWithMaxCount: 10
+        NSLocationWhenInUseUsageDescription: A notebook asked for your location.
+        NSContactsUsageDescription: A notebook asked to use your contacts.
+        NSRemindersFullAccessUsageDescription: A notebook asked to use your reminders.
     entitlements:
       path: build/GanymedeShare.entitlements
       properties:
@@ -556,7 +559,8 @@ schemes:
     build:
       targets:
         Ganymede: all
-        GanymedeShare: all
+        # Not archived: the release scripts sign the app alone (#449).
+        GanymedeShare: [running, testing, analyzing]
         GanymedeTests: [test]
     test:
       targets: [GanymedeTests]
@@ -564,7 +568,7 @@ schemes:
     build:
       targets:
         Ganymede-iOS: all
-        GanymedeShare-iOS: all
+        GanymedeShare-iOS: [running, testing, analyzing]
         GanymedeTests-iOS: [test]
     test:
       targets: [GanymedeTests-iOS]

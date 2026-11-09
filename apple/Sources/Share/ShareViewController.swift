@@ -31,6 +31,7 @@ final class ShareModel: ObservableObject {
     let notebooks: [ShareNotebook]
     private let store: ShareNotebooks?
     private let providers: [NSItemProvider]
+    /// The items to hand back, or nil to cancel.
     private let finish: ([NSExtensionItem]?) -> Void
 
     init(providers: [NSItemProvider], finish: @escaping ([NSExtensionItem]?) -> Void) {
@@ -41,6 +42,8 @@ final class ShareModel: ObservableObject {
     }
 
     func run(_ notebook: ShareNotebook) async {
+        // A second tap while the first run starts.
+        guard phase == .choosing else { return }
         phase = .running(notebook.name)
         guard let store, let engine = ScriptRunner.bundledEngine() else {
             phase = .done(ScriptResult(error: "the runner isn't in this build"))
@@ -56,9 +59,11 @@ final class ShareModel: ObservableObject {
         }
     }
 
+    /// Hands back the output, or the return value as text as Shortcuts'
+    /// action does, or nothing; a failed run hands back nothing too.
     func done() {
-        guard case let .done(result) = phase, let output = result.output else { return finish(nil) }
-        finish([Self.item(output)])
+        guard case let .done(result) = phase, result.error == nil else { return finish(nil) }
+        finish([Self.item(result.output ?? RunOutput(text: result.value))])
     }
 
     func cancel() { finish(nil) }
