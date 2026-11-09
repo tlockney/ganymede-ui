@@ -11,7 +11,7 @@ A cell can build its output with a UI framework, in two ways:
   Its saved output loads the framework again each time the notebook
   opens, so these cells pin exact versions.
 
-To have a component talk back to the kernel, use a widget.
+To have a component talk back to the kernel, use a widget (see **06 Widgets**).
 
 ## React, rendered in the kernel
 

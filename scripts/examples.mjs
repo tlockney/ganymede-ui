@@ -160,6 +160,12 @@ export function notebookName(stem, cells) {
 const PAGE = `<!doctype html><meta charset="utf-8"><script type="module">
 import { startBrowserKernel } from "/kernel.js";
 let kernel;
+const base64 = (b) => {
+  const bytes = b instanceof ArrayBuffer ? new Uint8Array(b) : new Uint8Array(b.buffer, b.byteOffset, b.byteLength);
+  let text = "";
+  for (const byte of bytes) text += String.fromCharCode(byte);
+  return btoa(text);
+};
 const header = (msg_type) => ({ msg_id: crypto.randomUUID(), msg_type, session: "examples", username: "", date: new Date().toISOString(), version: "5.3" });
 window.start = () => { kernel = startBrowserKernel({ createWorker: () => new Worker("/worker.js", { type: "module" }) }); };
 window.stop = () => kernel?.send("control", { header: header("shutdown_request"), parent_header: {}, metadata: {}, content: { restart: false } });
@@ -180,7 +186,7 @@ window.run = (code, timeoutMs) => new Promise((done) => {
     if (channel === "shell") replied = true;
     if (channel === "iopub") {
       if (m.header.msg_type === "status") { idle = m.content.execution_state === "idle"; }
-      else seen.push({ msg_type: m.header.msg_type, content: m.content, buffers: (m.buffers ?? []).length });
+      else seen.push({ msg_type: m.header.msg_type, content: m.content, buffers: (m.buffers ?? []).map(base64) });
     }
     if (replied && idle) finish();
   });
@@ -212,34 +218,41 @@ const WIDGET_STATE = 'application/vnd.jupyter.widget-state+json';
  * before a kernel runs.
  */
 export function widgetCollector() {
+  /** By comm id: the state, and its binary values as base64 by path. */
   const models = new Map();
+  const binary = (data, buffers = []) =>
+    (data?.buffer_paths ?? []).map((path, i) => ({ path, data: buffers[i], encoding: 'base64' }));
+  const merge = (list, more) => [
+    ...list.filter(b => !more.some(m => m.path.join('/') === b.path.join('/'))),
+    ...more,
+  ];
   return {
-    message(msgType, content) {
+    message(msgType, content, buffers) {
       if (msgType === 'comm_open' && content.target_name === 'jupyter.widget') {
-        const state = content.data?.state ?? {};
-        models.set(content.comm_id, state);
+        models.set(content.comm_id, {
+          state: content.data?.state ?? {},
+          buffers: binary(content.data, buffers),
+        });
       } else if (msgType === 'comm_msg' && content.data?.method === 'update') {
-        const state = models.get(content.comm_id);
-        if (state) Object.assign(state, content.data.state);
+        const model = models.get(content.comm_id);
+        if (!model) return;
+        Object.assign(model.state, content.data.state);
+        model.buffers = merge(model.buffers, binary(content.data, buffers));
       }
     },
     metadata() {
       if (!models.size) return undefined;
       const state = {};
-      for (const [id, s] of models) {
-        // anywidget models (jupyter.widget) carry their view as code; leave
-        // them out, as nothing in the app draws them.
-        if (s._model_module === 'anywidget') continue;
+      for (const [id, { state: s, buffers }] of models) {
         state[id] = {
           model_name: s._model_name,
           model_module: s._model_module,
           model_module_version: s._model_module_version,
           state: s,
+          ...(buffers.length ? { buffers } : {}),
         };
       }
-      return Object.keys(state).length
-        ? { [WIDGET_STATE]: { version_major: 2, version_minor: 0, state } }
-        : undefined;
+      return { [WIDGET_STATE]: { version_major: 2, version_minor: 0, state } };
     },
   };
 }
@@ -260,7 +273,7 @@ export function toOutputs(messages, displays, widgetMessage = () => {}) {
       outputs.push(o);
     }
   };
-  for (const { msg_type, content } of messages) {
+  for (const { msg_type, content, buffers } of messages) {
     switch (msg_type) {
       case 'stream':
         add({ output_type: 'stream', name: content.name, text: content.text });
@@ -304,7 +317,7 @@ export function toOutputs(messages, displays, widgetMessage = () => {}) {
         break;
       case 'comm_open':
       case 'comm_msg':
-        widgetMessage(msg_type, content);
+        widgetMessage(msg_type, content, buffers);
         break;
       case 'timeout':
         throw new Error('The cell did not finish in time.');
