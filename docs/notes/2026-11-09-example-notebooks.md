@@ -27,3 +27,11 @@ each code cell `trusted`, so the server signs them on save and the
 browser's storage keeps the flag; outputs render without Trust Notebook.
 The device notebook is saved without outputs, since its answers depend
 on the device.
+
+The browser's storage hands a notebook to the page with its multiline
+strings still split into lines, where the server joins them. Rendered
+that way an SVG or HTML output came out joined by commas, and Graphviz's
+SVG, which starts with an XML prolog, didn't draw at all. This hit any
+notebook dropped into browser storage from elsewhere, not only these.
+The notebook view now joins them as the Quick Look preview already did
+(`rejoinLines`, moved to `rejoin-lines.ts`).

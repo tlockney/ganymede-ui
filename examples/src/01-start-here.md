@@ -15,7 +15,7 @@ anything. Select a code cell and press **Shift-Enter** to run it, or use
 | 03 Charts and Diagrams | SVG by hand, d3, Vega-Lite and Graphviz |
 | 04 DuckDB | SQL in the notebook with DuckDB compiled to WebAssembly |
 | 05 Generative Art | Seeded randomness, canvas and SVG, animation |
-| 07 UI Frameworks | React and Preact components as output |
+| 07 UI Frameworks | React, Preact and Lit components as output |
 | 08 Device | The `device` API: clipboard, haptics, dialogs, share and files |
 
 ## Cells keep their state
