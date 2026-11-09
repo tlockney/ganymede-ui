@@ -32,7 +32,8 @@ so runs share no cookies and a stopped run's download stops. Top-level
 cell did, as in a kernel. A small scanner finds them, skipping strings,
 template literals, comments and anything in brackets; a regex literal
 with a quote or backtick can still confuse it. Unlike a kernel, a `const`
-can then be reassigned. The console keeps
+can then be reassigned, and a top-level `class` declared again in a
+later cell still throws. The console keeps
 JavaScriptCore's other methods; fetch sends header values as strings,
 takes a `Headers`-like object, and rejects when its signal aborts
 mid-call (the host request isn't cancelled). Base64 uses Uint8Array's
