@@ -78,6 +78,17 @@ enum WorkspaceTabs {
         }
     }
 
+    /// File › Close (⌘W, #407): closes `window`, which is the active tab
+    /// of its window when it has tabs, never the other tabs. Its delegate
+    /// still asks to save unsaved edits first.
+    static func close(_ window: NSWindow?) {
+        window?.performClose(nil)
+    }
+
+    /// Closing the last tab leaves the app running, as Mac document apps
+    /// do (#407): the Dock icon or File › New Tab opens a window again.
+    static let quitsAfterLastTab = false
+
     /// Marks `window`'s tab with a dot while its notebook's kernel is busy
     /// (#247), so a run in a background tab shows. Nothing while idle.
     static func markBusy(_ window: NSWindow, _ busy: Bool) {

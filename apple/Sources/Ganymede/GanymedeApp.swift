@@ -43,6 +43,7 @@ struct GanymedeApp: App {
                 NewCommands(model: model)
             }
             CommandGroup(replacing: .saveItem) {
+                CloseCommand()
                 SaveCommand()
                 RenameCommand()
                 DownloadCommand()
@@ -247,7 +248,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        true
+        WorkspaceTabs.quitsAfterLastTab
     }
 }
 #endif

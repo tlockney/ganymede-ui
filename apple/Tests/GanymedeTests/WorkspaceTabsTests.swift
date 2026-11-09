@@ -74,5 +74,28 @@ final class WorkspaceTabsTests: XCTestCase {
         WorkspaceTabs.join(w)
         XCTAssertEqual(w.tabbingMode, .disallowed)
     }
+
+    /// ⌘W closes the active tab only, and closing the last one leaves the
+    /// app running (#407).
+    func testCloseClosesOnlyTheActiveTab() {
+        func tab() -> NSWindow {
+            let w = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 200, height: 100), styleMask: [.titled, .closable], backing: .buffered, defer: false)
+            w.isReleasedWhenClosed = false
+            w.tabbingIdentifier = WorkspaceTabs.identifier
+            return w
+        }
+        let first = tab()
+        let second = tab()
+        first.orderFront(nil)
+        first.addTabbedWindow(second, ordered: .above)
+        XCTAssertEqual(first.tabbedWindows?.count, 2)
+        WorkspaceTabs.close(second)
+        XCTAssertFalse(second.isVisible)
+        XCTAssertTrue(first.isVisible, "the other tab stays open")
+        XCTAssertEqual(first.tabbedWindows?.count ?? 1, 1)
+        WorkspaceTabs.close(first)
+        XCTAssertFalse(first.isVisible)
+        XCTAssertFalse(WorkspaceTabs.quitsAfterLastTab)
+    }
 }
 #endif
