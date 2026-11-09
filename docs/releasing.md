@@ -138,15 +138,21 @@ mkdir sparkle && tar -xf Sparkle-2.10.1.tar.xz -C sparkle
 sparkle/bin/generate_keys            # keeps the key in the login keychain, prints the public key
 sparkle/bin/generate_keys -x sparkle-private-key   # exports it
 gh secret set SPARKLE_ED_PRIVATE_KEY --env release --repo tlockney/ganymede-ui < sparkle-private-key
-rm sparkle-private-key
+# then store sparkle-private-key in a password manager, and delete it here
 ```
 
 The release derives the public key from the secret
 (`apple/scripts/sparkle-key.swift`) and prints it in the log. Keep the
 key: installed apps accept only updates signed with the key they were
 built with, so a new key means everyone installs the next release by
-hand. The keychain copy is the backup; `generate_keys -f <file>`
+hand. The GitHub secret can't be read back, so keep the exported file
+in a password manager as well as the keychain; `generate_keys -f <file>`
 imports it on another Mac.
+
+Sparkle orders updates by `sparkle:version`, the release run number, not
+by version. The feed is whichever release GitHub marks latest, so release
+only from `main`: a release of an older tag published afterwards would
+become the feed and offer newer installs a downgrade.
 
 ## The iPad and iPhone app (TestFlight)
 
