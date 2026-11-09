@@ -272,6 +272,87 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.ganymede-server.Ganymede.Thumbnail
         ENABLE_HARDENED_RUNTIME: YES
+  # The share extension (#435, a spike): runs a notebook offered to the
+  # share sheet on what was shared. Built, not embedded in the apps yet:
+  # embedding needs the App Group registered for the team, and the App
+  # Store profile release-ios.sh uses covers the app alone.
+  GanymedeShare:
+    type: app-extension
+    platform: macOS
+    sources: &shareSources
+      - path: Sources/Share
+      - path: Sources/Ganymede/Runner/ScriptRunner.swift
+      - path: build/runner
+        type: folder
+        buildPhase: resources
+    dependencies: &shareDependencies
+      - package: GanymedeDevice
+        product: DeviceBridge
+    info:
+      path: build/Info-Share.plist
+      properties:
+        CFBundleDisplayName: Run a Notebook
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSHumanReadableCopyright: MIT License
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsText: true
+              NSExtensionActivationSupportsWebURLWithMaxCount: 1
+              NSExtensionActivationSupportsFileWithMaxCount: 10
+              NSExtensionActivationSupportsImageWithMaxCount: 10
+    entitlements:
+      path: build/GanymedeShare.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.application-groups:
+          - group.com.ganymede-server.Ganymede
+        # fetch, and the namespaces the extension's bridge has.
+        com.apple.security.network.client: true
+        com.apple.security.personal-information.location: true
+        com.apple.security.personal-information.addressbook: true
+        com.apple.security.personal-information.calendars: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.ganymede-server.Ganymede.Share
+        ENABLE_HARDENED_RUNTIME: YES
+  GanymedeShare-iOS:
+    type: app-extension
+    platform: iOS
+    sources: *shareSources
+    dependencies: *shareDependencies
+    info:
+      path: build/Info-Share-iOS.plist
+      properties:
+        CFBundleDisplayName: Run a Notebook
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSHumanReadableCopyright: MIT License
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.share-services
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).ShareViewController
+          NSExtensionAttributes:
+            NSExtensionActivationRule:
+              NSExtensionActivationSupportsText: true
+              NSExtensionActivationSupportsWebURLWithMaxCount: 1
+              NSExtensionActivationSupportsFileWithMaxCount: 10
+              NSExtensionActivationSupportsImageWithMaxCount: 10
+        NSLocationWhenInUseUsageDescription: A notebook asked for your location.
+        NSContactsUsageDescription: A notebook asked to use your contacts.
+        NSRemindersFullAccessUsageDescription: A notebook asked to use your reminders.
+    entitlements:
+      path: build/GanymedeShare-iOS.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.ganymede-server.Ganymede
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.ganymede-server.Ganymede.Share
+        PRODUCT_NAME: GanymedeShare
+        TARGETED_DEVICE_FAMILY: '1,2'
   # iPad and iPhone, from the same sources. iOS cannot launch kernel
   # processes, so until an on-device kernel exists it edits notebooks
   # without running them.
@@ -405,6 +486,8 @@ targets:
       - path: Sources/QuickLook/Thumbnail/ThumbnailProvider.swift
       - path: Sources/Ganymede/Runner/ScriptRunner.swift
       - path: Sources/Ganymede/Runner/ScriptIntents.swift
+      - path: Sources/Share/ShareNotebooks.swift
+      - path: Sources/Share/ShareInput.swift
       - path: build/runner
         type: folder
         buildPhase: resources
@@ -455,6 +538,8 @@ targets:
       - path: Sources/Ganymede/HelpLinks.swift
       - path: Sources/Ganymede/Runner/ScriptRunner.swift
       - path: Sources/Ganymede/Runner/ScriptIntents.swift
+      - path: Sources/Share/ShareNotebooks.swift
+      - path: Sources/Share/ShareInput.swift
       - path: build/runner
         type: folder
         buildPhase: resources
@@ -471,6 +556,7 @@ schemes:
     build:
       targets:
         Ganymede: all
+        GanymedeShare: all
         GanymedeTests: [test]
     test:
       targets: [GanymedeTests]
@@ -478,6 +564,7 @@ schemes:
     build:
       targets:
         Ganymede-iOS: all
+        GanymedeShare-iOS: all
         GanymedeTests-iOS: [test]
     test:
       targets: [GanymedeTests-iOS]
