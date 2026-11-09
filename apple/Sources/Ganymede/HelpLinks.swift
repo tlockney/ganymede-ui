@@ -30,13 +30,19 @@ enum HelpLink: CaseIterable {
         case .apps: Self.site.appending(path: "docs/ganymede-ui/apps")
         }
     }
+
+    /// The privacy page, for the crash reports question.
+    static let privacy = site.appending(path: "docs/privacy")
 }
 
-/// The links as menu items, for a Help menu.
+/// The links as menu items, for a Help menu. Buttons rather than `Link`,
+/// which the iPadOS menu bar may not show as an item.
 struct HelpLinkCommands: View {
+    @Environment(\.openURL) private var openURL
+
     var body: some View {
         ForEach(HelpLink.allCases, id: \.self) { link in
-            Link(link.title, destination: link.url)
+            Button(link.title) { openURL(link.url) }
         }
     }
 }

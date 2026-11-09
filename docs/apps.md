@@ -306,7 +306,7 @@ headings; pick one to go to its cell.
   > **Unreleased.** Available only from a build of `main` (HEAD), not in
   > the latest release.
 
-- **Help**: Settings > Help, and with a keyboard the iPad's Help menu,
+- **Help**: Settings > Help, and the iPad menu bar's Help menu,
   open ganymede-server.com, its docs and this page in Safari.
 
   > [!NOTE]
