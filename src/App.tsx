@@ -8,6 +8,7 @@ import {
   saveConfig,
   signedInHere,
 } from './lib/backends';
+import { reportMoved } from './lib/kernel-relay';
 import { useColorScheme } from './lib/useColorScheme';
 import { TOUCH_QUERY, useMedia, useNarrow } from './lib/useNarrow';
 import { useJupyterLabTheme } from './lib/theme';
@@ -394,7 +395,11 @@ export function App() {
         if (!backend || !move || !isAppServer(backend.config)) return false;
         const key = recentsKey(backend.config);
         if (move.to === null) forgetRecent(key, move.from);
-        else moveRecent(key, move.from, move.to);
+        else {
+          moveRecent(key, move.from, move.to);
+          // Kept device permissions follow too (#383).
+          reportMoved(move.from, move.to);
+        }
         return true;
       }
       case 'show-shortcuts':

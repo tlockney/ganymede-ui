@@ -1,9 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
+  declareDevice,
+  declaredDevice,
   decodeMessage,
   encodeMessage,
   type FromKernel,
   relayAvailable,
+  reportMoved,
+  reportNotebook,
   startRelayedKernel,
 } from './kernel-relay';
 
@@ -100,5 +104,30 @@ describe('kernel relay', () => {
     expect([...new Uint8Array(decoded.buffers[0]!)]).toEqual([0, 1, 254, 255]);
     const plain = { content: {}, buffers: [] };
     expect(encodeMessage(plain)).toBe(plain);
+  });
+
+  it("tells the app each kernel's notebook, renames and declarations (#383)", () => {
+    reportNotebook('k', 'a.ipynb');
+    declareDevice('a.ipynb', { ganymede: { device: ['location'] } });
+    const posted = fakeRelay();
+    reportNotebook('k', 'a.ipynb');
+    reportMoved('a.ipynb', 'b.ipynb');
+    reportMoved('b.ipynb', 'b.ipynb');
+    declareDevice('b.ipynb', { ganymede: { device: ['location', 'contacts', 'location'] } });
+    declareDevice('c.ipynb', {});
+    expect(posted).toEqual([
+      { kernel: 'k', op: 'notebook', path: 'a.ipynb' },
+      { op: 'moved', from: 'a.ipynb', to: 'b.ipynb' },
+      { op: 'declared', path: 'b.ipynb', capabilities: ['location', 'contacts'] },
+    ]);
+  });
+
+  it('reads only strings from metadata.ganymede.device', () => {
+    expect(declaredDevice(undefined)).toEqual([]);
+    expect(declaredDevice({ ganymede: { device: 'location' } })).toEqual([]);
+    expect(declaredDevice({ ganymede: { device: ['location', 3, '', null, 'camera'] } })).toEqual([
+      'location',
+      'camera',
+    ]);
   });
 });

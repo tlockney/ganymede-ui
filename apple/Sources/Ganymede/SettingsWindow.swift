@@ -29,6 +29,10 @@ struct SettingsWindow: View {
             ShortcutsSettingsTab()
                 .tabItem { Label("Shortcuts", systemImage: "keyboard") }
                 .tag(SettingsTab.shortcuts)
+            // What notebooks may use on this Mac (#383).
+            DeviceSettings()
+                .tabItem { Label("Device", systemImage: "hand.raised") }
+                .tag(SettingsTab.device)
         }
         // A grouped Form has no height of its own: without one, the window
         // shrank to each tab's first row.

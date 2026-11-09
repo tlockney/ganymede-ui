@@ -74,7 +74,7 @@ packages:
   # The `device` bridge for notebook cells, on the kernel web view only (#99).
   GanymedeDevice:
     url: https://github.com/tlockney/ganymede-device
-    revision: fd0f4d7d33e37ddd4159e6635936baeb8de0199d
+    revision: 77c4eb0b101239e1390f1cd43dd4a8b40efa5d4d
 settings:
   base:
     SWIFT_VERSION: '5.0'

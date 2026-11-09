@@ -5,7 +5,7 @@ import Foundation
 /// name (`settings` message, `showAppSettings` in `native.ts`) where it
 /// would otherwise show a sheet of its own.
 enum SettingsTab: String, CaseIterable, Identifiable {
-    case general, appearance, kernels, remotes, agent, shortcuts
+    case general, appearance, kernels, remotes, agent, shortcuts, device
 
     var id: String { rawValue }
 

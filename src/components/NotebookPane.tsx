@@ -42,6 +42,7 @@ import { handOff, handedOff, notFound, renameFile, renamedPath, shownHandoff } f
 import type { NotebookWidgets } from '../lib/widgets';
 import { type OutlineItem, outlineOf } from '../lib/outline';
 import { attachDevice, type DevicePromptState, promptClick } from '../lib/device-remote';
+import { declareDevice } from '../lib/kernel-relay';
 import { guardReload, reloadPage } from '../lib/reload';
 import { DevicePrompt } from './DevicePrompt';
 
@@ -333,6 +334,9 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       ]);
       if (cancelled) return;
       const content = file.content as nbformat.INotebookContent;
+      // In the Apple apps, ask now for the device permissions the notebook
+      // says it uses, not mid-run (#383).
+      declareDevice(path, content.metadata);
 
       const rendermime = createRendermime(path, services.contents);
       // As JupyterLab's model factory does by default: undo per cell.

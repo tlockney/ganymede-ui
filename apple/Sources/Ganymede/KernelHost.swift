@@ -37,16 +37,36 @@ final class KernelHost: NSObject {
     /// Kernels the UI page started here and the kernel page hasn't
     /// reported closed: what to report closed if its process dies (#293).
     private var hosted: Set<String> = []
+    /// The permission ledger's prompt (#383); the bridge holds it weakly.
+    let prompter: AppLedgerPrompter
+    /// What notebook paths from the UI page are under: the app server's
+    /// root folder, so the ledger keeps each notebook by its absolute path,
+    /// which stays the same across launches. Paths are used as given
+    /// without one.
+    var notebookRoot: URL?
+    /// The notebook each kernel runs (by the UI page's kernel id), as an
+    /// absolute path, and each kernel's `device` owner in the kernel page.
+    /// The bridge needs both to know whose call is whose.
+    private var notebooks: [String: String] = [:]
+    private var owners: [String: Int] = [:]
 
     /// `device` is the bridge cells reach (the system's when nil); tests
-    /// pass one with a fake presenter.
-    init(device: DeviceBridge? = nil) {
+    /// pass one with a fake presenter, and `prompts`, a presenter for the
+    /// ledger's prompts.
+    init(device: DeviceBridge? = nil, prompts: DialogPresenter? = nil) {
         let config = WKWebViewConfiguration()
         // Not on screen, but cells must keep running at full speed.
         config.preferences.inactiveSchedulingPolicy = .none
         webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 1, height: 1), configuration: config)
+        // Every window's bridge keeps its answers in one store, which
+        // Settings reads too (ganymede-device#86).
         self.device = device ?? DeviceBridge()
+        prompter = AppLedgerPrompter(presenter: prompts ?? SystemDialogPresenter(), host: { nil })
         super.init()
+        prompter.host = { [weak self] in self?.ui }
+        if self.device.ledgerPrompter == nil {
+            self.device.ledgerPrompter = prompter
+        }
         config.userContentController.add(WeakHandler(self), name: Self.hostHandler)
         // ganymede-device's `device` handler, for cells: here and nowhere
         // else, so nothing the UI page renders can call it.
@@ -86,6 +106,8 @@ final class KernelHost: NSObject {
         // answer it; the kernel page's calls end as it loads about:blank
         // below (`dropPage()` in the navigation delegate).
         device.dropRemote()
+        notebooks = [:]
+        owners = [:]
         guard loaded else { return }
         loaded = false
         ready = false
@@ -100,6 +122,7 @@ final class KernelHost: NSObject {
     /// page, queued until that one is ready.
     func kernelPageEnded() {
         device.dropPage()
+        owners = [:]
         loaded = false
         ready = false
         pending = []
@@ -135,6 +158,7 @@ final class KernelHost: NSObject {
     }
 
     private func fromUI(_ body: Any) {
+        if forApp(body) { return }
         if let m = body as? [String: Any], m["op"] as? String == "start", let kernel = m["kernel"] as? String {
             hosted.insert(kernel)
         }
@@ -150,6 +174,13 @@ final class KernelHost: NSObject {
     }
 
     private func fromKernels(_ body: Any) {
+        if let m = body as? [String: Any], m["op"] as? String == "owner" {
+            if let kernel = m["kernel"] as? String, let owner = m["owner"] as? Int {
+                owners[kernel] = owner
+                tellBridge(kernel)
+            }
+            return
+        }
         if (body as? [String: Any])?["op"] as? String == "ready" {
             ready = true
             for message in pending {
@@ -159,8 +190,78 @@ final class KernelHost: NSObject {
         } else if let ui {
             if let m = body as? [String: Any], m["op"] as? String == "closed", let kernel = m["kernel"] as? String {
                 hosted.remove(kernel)
+                owners[kernel] = nil
             }
             deliver(body, to: ui, function: "ganymedeKernelRelay")
+        }
+    }
+
+    /// The UI page's messages for the permission ledger (#383), which go
+    /// no further: a kernel's notebook, a rename, a notebook's declared
+    /// capabilities. True when `body` was one.
+    private func forApp(_ body: Any) -> Bool {
+        guard let m = body as? [String: Any] else { return false }
+        switch m["op"] as? String {
+        case "notebook":
+            if let kernel = m["kernel"] as? String {
+                notebooks[kernel] = (m["path"] as? String).map(resolve)
+                tellBridge(kernel)
+            }
+        case "moved":
+            if let from = m["from"] as? String, let to = m["to"] as? String {
+                moved(from: resolve(from), to: resolve(to))
+            }
+        case "declared":
+            if let path = m["path"] as? String, let declared = m["capabilities"] as? [String] {
+                askAtOpen(declared, notebook: resolve(path))
+            }
+        default:
+            return false
+        }
+        return true
+    }
+
+    /// A server path from the UI page as the ledger keeps it.
+    private func resolve(_ path: String) -> String {
+        guard let notebookRoot else { return path }
+        let relative = path.hasPrefix("/") ? String(path.dropFirst()) : path
+        return notebookRoot.appendingPathComponent(relative).standardizedFileURL.path
+    }
+
+    /// Once a kernel's notebook and owner are both known, the bridge
+    /// learns which notebook its calls come from.
+    private func tellBridge(_ kernel: String) {
+        guard let owner = owners[kernel] else { return }
+        device.setNotebook(notebooks[kernel], for: owner)
+    }
+
+    /// A file or folder moved: every notebook at or under `old` follows,
+    /// with its kept answers and its kernels.
+    private func moved(from old: String, to new: String) {
+        guard old != new else { return }
+        let rename: (String) -> String? = { path in
+            if path == old { return new }
+            if path.hasPrefix(old + "/") { return new + path.dropFirst(old.count) }
+            return nil
+        }
+        let paths = Set(device.ledger.grants.map(\.notebook)).union(notebooks.values)
+        for path in paths.sorted() {
+            if let to = rename(path) { device.notebookMoved(from: path, to: to) }
+        }
+        notebooks = notebooks.mapValues { rename($0) ?? $0 }
+    }
+
+    /// Asks, one at a time, about each declared capability this app has
+    /// and nothing has decided.
+    private func askAtOpen(_ declared: [String], notebook: String) {
+        for capability in device.undecided(declared, notebook: notebook) {
+            prompter.askAtOpen(capability, notebook: notebook) { [weak self] answer in
+                guard let self, let answer, answer != .once,
+                      // Answered meanwhile, by a call's prompt.
+                      self.device.ledger.answer(notebook: notebook, capability: capability) == nil
+                else { return }
+                self.device.ledger.record(answer, notebook: notebook, capability: capability)
+            }
         }
     }
 
@@ -185,12 +286,14 @@ extension KernelHost: WKNavigationDelegate {
     /// The UI page's calls for server kernels stay.
     func webView(_ webView: WKWebView, didStartProvisionalNavigation navigation: WKNavigation!) {
         device.dropPage()
+        owners = [:]
     }
 
     /// Again at commit: the old page ran until now, and a call it made
     /// after the navigation started would otherwise outlive it.
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         device.dropPage()
+        owners = [:]
     }
 
     /// The kernel page's process died, and its kernels with it: iOS ends

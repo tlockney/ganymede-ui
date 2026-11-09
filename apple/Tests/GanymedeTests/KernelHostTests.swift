@@ -296,5 +296,81 @@ final class KernelHostTests: XCTestCase {
         while presenter.closed == 0, Date() < deadline { try await Task.sleep(nanoseconds: 50_000_000) }
         XCTAssertEqual(presenter.closed, 1, "the UI page's reset closed it")
     }
+    /// The bridge learns each kernel's notebook from the UI page's
+    /// session and the kernel page's owner, whichever comes first; a
+    /// rename carries kept answers along, folders included; a notebook's
+    /// declarations ask at open for what is undecided (#383).
+    @MainActor
+    func testTellsTheLedgerWhichNotebookEachKernelRuns() async throws {
+        let server = try ServerHost(config: [
+            "root_dir": dir.path,
+            "static_dir": dir.appendingPathComponent("web").path,
+            "cookie_secret_file": dir.appendingPathComponent("cookie_secret").path,
+            "port": 0,
+        ])
+        defer { server.stop() }
+
+        let store = MemoryLedgerStore()
+        let ledger = PermissionLedger(store: store)
+        let device = DeviceBridge(presenter: SilentPresenter(), ledger: ledger)
+        device.addPermission("location", AlwaysGranted())
+        let prompts = RecordingPresenter()
+        let host = KernelHost(device: device, prompts: prompts)
+        host.notebookRoot = URL(fileURLWithPath: "/root", isDirectory: true)
+        let ui = WKWebView(
+            frame: CGRect(x: 0, y: 0, width: 400, height: 300), configuration: WKWebViewConfiguration())
+        host.attach(to: ui)
+        host.uiWillLoad(server.url)
+        ui.load(URLRequest(url: server.url))
+        try await waitFor(ui, "document.readyState === 'complete' && !!window.ganymedeKernelRelay")
+        _ = try await eval(ui, """
+            const post = m => webkit.messageHandlers.kernelRelay.postMessage(m);
+            post({ kernel: 'k1', op: 'start' });
+            post({ kernel: 'k1', op: 'notebook', path: 'trips/Trip.ipynb' });
+            true
+            """)
+        try await waitFor(host.webView, "document.readyState === 'complete' && !!window.ganymedeKernelHost")
+        _ = try await eval(host.webView, """
+            webkit.messageHandlers.kernelHost.postMessage({ kernel: 'k1', op: 'owner', owner: 7 }); true
+            """)
+        let deadline = Date().addingTimeInterval(20)
+        while ledger.notebook(for: 7) == nil, Date() < deadline { try await Task.sleep(nanoseconds: 50_000_000) }
+        XCTAssertEqual(ledger.notebook(for: 7), "/root/trips/Trip.ipynb")
+        let forwarded = try await eval(ui, "window.got.some(m => m.op === 'owner')") as? Bool
+        XCTAssertEqual(forwarded, false, "the owner goes to Swift only")
+
+        // A folder rename moves the kernel and its kept answers.
+        ledger.record(.always, notebook: "/root/trips/Trip.ipynb", capability: "location")
+        _ = try await eval(ui, """
+            webkit.messageHandlers.kernelRelay.postMessage({ op: 'moved', from: 'trips', to: 'travel' }); true
+            """)
+        while ledger.notebook(for: 7) != "/root/travel/Trip.ipynb", Date() < deadline {
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        XCTAssertEqual(ledger.notebook(for: 7), "/root/travel/Trip.ipynb")
+        XCTAssertEqual(ledger.answer(notebook: "/root/travel/Trip.ipynb", capability: "location"), .always)
+        XCTAssertNil(ledger.answer(notebook: "/root/trips/Trip.ipynb", capability: "location"))
+
+        // Declared at open: only what this app has and nothing decided.
+        _ = try await eval(ui, """
+            webkit.messageHandlers.kernelRelay.postMessage(
+              { op: 'declared', path: 'New.ipynb', capabilities: ['location', 'bluetooth'] });
+            webkit.messageHandlers.kernelRelay.postMessage(
+              { op: 'declared', path: 'travel/Trip.ipynb', capabilities: ['location'] });
+            true
+            """)
+        while prompts.shown.isEmpty, Date() < deadline { try await Task.sleep(nanoseconds: 50_000_000) }
+        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertEqual(prompts.shown.count, 1, "bluetooth isn't in this app; Trip already has an answer")
+        prompts.answer(.option(1))
+        XCTAssertEqual(ledger.answer(notebook: "/root/New.ipynb", capability: "location"), .deny)
+    }
+}
+
+/// A system permission that is already granted.
+@MainActor
+private final class AlwaysGranted: Permission {
+    var status: PermissionStatus { .authorized }
+    func request(_ done: @escaping @MainActor (PermissionStatus) -> Void) { done(.authorized) }
 }
 #endif
