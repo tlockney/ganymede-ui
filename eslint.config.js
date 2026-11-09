@@ -11,6 +11,7 @@ export default tseslint.config(
       '.claude',
       'dist',
       'dist-quicklook',
+      'dist-runner',
       'packages/*/dist',
       'packages/*/dist-spike',
       'coverage',

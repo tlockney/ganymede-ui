@@ -1,6 +1,7 @@
 .claude
 dist
 dist-quicklook
+dist-runner
 dev-dist
 packages/*/dist
 packages/*/dist-spike
