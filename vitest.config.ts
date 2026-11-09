@@ -14,6 +14,10 @@ export default defineConfig({
     setupFiles: ['src/test/setup.ts'],
     restoreMocks: true,
     unstubGlobals: true,
+    // @jupyter/web-components 0.17 declares "type": "module" but imports
+    // its own files without extensions, which Node refuses to load.
+    // Inlined, Vite resolves them, as it does in the build.
+    server: { deps: { inline: ['@jupyter/web-components'] } },
     // JupyterLab's theme variables are imported with `?inline`; process
     // them so the theme test sees the real stylesheets.
     css: { include: [/theme-(light|dark)-extension/] },
