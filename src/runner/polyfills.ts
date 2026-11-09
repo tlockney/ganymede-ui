@@ -19,7 +19,16 @@ type Global = typeof globalThis & RunnerHost & Record<string, unknown>;
 
 const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
 
+type NativeBase64 = {
+  fromBase64?: (text: string) => Uint8Array;
+  prototype: { toBase64?: () => string };
+};
+const native = Uint8Array as unknown as NativeBase64;
+
 export function encodeBase64(bytes: Uint8Array): string {
+  // JavaScriptCore has Uint8Array's own base64 (Safari 18.2+); the loop is for older engines.
+  if (typeof native.prototype.toBase64 === 'function')
+    return (bytes as unknown as { toBase64: () => string }).toBase64();
   let out = '';
   for (let i = 0; i < bytes.length; i += 3) {
     const n = (bytes[i] << 16) | ((bytes[i + 1] ?? 0) << 8) | (bytes[i + 2] ?? 0);
@@ -33,6 +42,13 @@ export function encodeBase64(bytes: Uint8Array): string {
 }
 
 export function decodeBase64(text: string): Uint8Array {
+  if (native.fromBase64) {
+    try {
+      return native.fromBase64(text);
+    } catch {
+      // Not strict base64: the loop below skips what it can't read.
+    }
+  }
   const clean = text.replace(/[^A-Za-z0-9+/]/g, '');
   const out = new Uint8Array(Math.floor((clean.length * 3) / 4));
   let o = 0;
@@ -210,8 +226,11 @@ export function installPolyfills(g: Global = globalThis as Global): void {
             )
             .join(' '),
         );
+    // Only these five go to the host; JavaScriptCore's others (table, time, ...) stay.
+    const base = (typeof g.console === 'object' && g.console) || {};
     Object.defineProperty(g, 'console', {
       value: {
+        ...base,
         log: log('log'),
         info: log('info'),
         warn: log('warn'),
@@ -328,7 +347,8 @@ export function makeFetch(host: (request: string) => Promise<string>) {
     input: string | { url: string },
     init: {
       method?: string;
-      headers?: Record<string, string>;
+      headers?:
+        Record<string, unknown> | { forEach(f: (value: string, name: string) => void): void };
       body?: string | Uint8Array | ArrayBuffer;
       signal?: SimpleAbortSignal;
     } = {},
@@ -341,22 +361,35 @@ export function makeFetch(host: (request: string) => Promise<string>) {
         : typeof init.body === 'string'
           ? encodeBase64(utf8Encode(init.body))
           : encodeBase64(init.body instanceof ArrayBuffer ? new Uint8Array(init.body) : init.body);
-    const reply = JSON.parse(
-      await host(
-        JSON.stringify({ url, method: init.method ?? 'GET', headers: init.headers ?? {}, body }),
-      ),
-    ) as FetchReply & { error?: string };
+    const headers: Record<string, string> = {};
+    const given = init.headers;
+    if (given && typeof (given as { forEach?: unknown }).forEach === 'function')
+      (given as { forEach(f: (value: string, name: string) => void): void }).forEach(
+        (value, name) => (headers[name] = String(value)),
+      );
+    else for (const [name, value] of Object.entries(given ?? {})) headers[name] = String(value);
+    const sent = host(JSON.stringify({ url, method: init.method ?? 'GET', headers, body }));
+    // The host can't cancel a request yet, but an abort still rejects the call.
+    const signal = init.signal;
+    const text = signal
+      ? await new Promise<string>((resolve, reject) => {
+          const abort = () => reject(signal.reason);
+          signal.addEventListener('abort', abort, { once: true });
+          sent.then(resolve, reject).finally(() => signal.removeEventListener('abort', abort));
+        })
+      : await sent;
+    const reply = JSON.parse(text) as FetchReply & { error?: string };
     if (reply.error) throw new TypeError(`fetch failed: ${reply.error}`);
     const bytes = decodeBase64(reply.body);
-    const headers = new Map(Object.entries(reply.headers).map(([k, v]) => [k.toLowerCase(), v]));
+    const received = new Map(Object.entries(reply.headers).map(([k, v]) => [k.toLowerCase(), v]));
     return {
       ok: reply.status >= 200 && reply.status < 300,
       status: reply.status,
       statusText: reply.statusText,
       url: reply.url,
       headers: {
-        get: (name: string) => headers.get(name.toLowerCase()) ?? null,
-        has: (name: string) => headers.has(name.toLowerCase()),
+        get: (name: string) => received.get(name.toLowerCase()) ?? null,
+        has: (name: string) => received.has(name.toLowerCase()),
       },
       text: async () => utf8Decode(bytes),
       json: async () => JSON.parse(utf8Decode(bytes)) as unknown,

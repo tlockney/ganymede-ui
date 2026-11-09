@@ -61,7 +61,7 @@ final class ScriptRunnerTests: XCTestCase {
     }
 
     func testFetchTakesOnlyHTTP() async {
-        let reply = await ScriptRunner.fetch(#"{"url": "file:///etc/hosts"}"#)
+        let reply = await ScriptRunner.fetch(#"{"url": "file:///etc/hosts"}"#, session: URLSession(configuration: .ephemeral))
         XCTAssertTrue(reply.contains("http or https"))
     }
 

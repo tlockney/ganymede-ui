@@ -38,7 +38,9 @@ export function program(job: RunJob): string {
     // Checked before stripping, which drops an import nothing uses; type-only ones are fine.
     if (/^\s*(import|export)\s+(?!type\s)/m.test(source))
       throw new SyntaxError(`cell ${n + 1}: import and export aren't supported in a run`);
-    return toJavaScript(source, job.language);
+    // A cell may declare a name another cell declared, as in a notebook's
+    // kernel: top-level `let` and `const` (at the start of a line) become `var`.
+    return toJavaScript(source, job.language).replace(/^(?:let|const)(?=\s)/gm, 'var');
   });
   return parts.join('\n;\n');
 }
