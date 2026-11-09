@@ -2,7 +2,7 @@
 // JavaScriptCore, is apple/Tests/GanymedeTests/ScriptRunnerTests.swift.
 import { describe, expect, it, vi } from 'vitest';
 import { decodeBase64, encodeBase64, installPolyfills, makeFetch } from './polyfills';
-import { program, run, toJavaScript } from './engine';
+import { program, run, toJavaScript, topLevelVar } from './engine';
 
 describe('base64', () => {
   it('round-trips every length and byte', () => {
@@ -24,7 +24,25 @@ describe('toJavaScript', () => {
 
 describe('program', () => {
   it('joins cells in order', () => {
-    expect(program({ sources: ['let a = 1', 'a += 1'] })).toBe('let a = 1\n;\na += 1');
+    expect(program({ sources: ['let a = 1', 'a += 1'] })).toBe('var a = 1\n;\na += 1');
+  });
+
+  it('lets a later cell declare a name again', async () => {
+    expect(
+      await run({ sources: ['const a = 1', 'const a = 2\nlet b = a', 'let b = 3\nreturn a + b'] }),
+    ).toEqual({ ok: true, value: '5' });
+  });
+
+  it('leaves text, nested blocks and loops alone', () => {
+    expect(topLevelVar('const s = `a\nlet me ${`x\nconst y`} know`\nlet t = 1')).toBe(
+      'var s = `a\nlet me ${`x\nconst y`} know`\nvar t = 1',
+    );
+    expect(topLevelVar('if (x) {\n  let a = 1\n}\nfor (let i = 0; i < 1; i++) {}')).toBe(
+      'if (x) {\n  let a = 1\n}\nfor (let i = 0; i < 1; i++) {}',
+    );
+    expect(topLevelVar("'let x' // let y\n/* const z */ x.let = 1; outlet = 2")).toBe(
+      "'let x' // let y\n/* const z */ x.let = 1; outlet = 2",
+    );
   });
 
   it('rejects imports, naming the cell', () => {
@@ -76,6 +94,13 @@ describe('installPolyfills', () => {
     expect(fired).toHaveBeenCalledOnce();
   });
 
+  it('keeps the console methods it does not route', () => {
+    const table = () => 'table';
+    const g: Record<string, unknown> = { __ganymedeLog: () => {}, console: { log() {}, table } };
+    installPolyfills(g as never);
+    expect((g.console as { table: unknown }).table).toBe(table);
+  });
+
   it('routes console to the host', () => {
     const lines: string[] = [];
     const g: Record<string, unknown> = {
@@ -90,6 +115,27 @@ describe('installPolyfills', () => {
 });
 
 describe('fetch', () => {
+  it('sends header values as strings, from a plain object or a Headers', async () => {
+    const sent: Record<string, unknown>[] = [];
+    const fetch = makeFetch(async request => {
+      sent.push(JSON.parse(request) as Record<string, unknown>);
+      return JSON.stringify({ status: 200, statusText: 'OK', url: 'u', headers: {}, body: '' });
+    });
+    await fetch('https://x.test/', { headers: { 'X-Retry': 1 } });
+    await fetch('https://x.test/', { headers: new Map([['x-a', 'b']]) });
+    await fetch('https://x.test/', { headers: [['x-c', 'd']] });
+    expect(sent.map(r => r.headers)).toEqual([{ 'X-Retry': '1' }, { 'x-a': 'b' }, { 'x-c': 'd' }]);
+  });
+
+  it('rejects when its signal aborts during the call', async () => {
+    installPolyfills({} as never);
+    const fetch = makeFetch(() => new Promise<string>(() => {}));
+    const controller = new AbortController();
+    const call = fetch('https://x.test/', { signal: controller.signal as never });
+    controller.abort(new Error('stop'));
+    await expect(call).rejects.toThrow('stop');
+  });
+
   it('sends the request as JSON and reads the base64 body', async () => {
     let sent: Record<string, unknown> = {};
     const fetch = makeFetch(async request => {

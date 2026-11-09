@@ -96,8 +96,12 @@ final class ScriptRunner {
         // Set once `run` returns: a script still holding a timer or a
         // fetch can't start new ones, and late callbacks don't call in.
         var stopped = false
+        // The run's own session: no cookies or cache shared with the app
+        // or another run, and cancelling it ends a download in flight.
+        let session = URLSession(configuration: .ephemeral)
         defer {
             stopped = true
+            session.invalidateAndCancel()
             timers.values.forEach { $0.invalidate() }
             device.release()
             bridge.setNotebook(nil, for: device.owner)
@@ -136,7 +140,7 @@ final class ScriptRunner {
                 nonisolated(unsafe) let resolve = resolve
                 Task { @MainActor in
                     guard !stopped else { return }
-                    let reply = await Self.fetch(request)
+                    let reply = await Self.fetch(request, session: session)
                     guard !stopped else { return }
                     resolve?.call(withArguments: [reply])
                 }
@@ -187,14 +191,10 @@ final class ScriptRunner {
         return result
     }
 
-    /// Scripts' own session: no cookies, cache or credentials shared with
-    /// the app's requests to its servers.
-    private static let session = URLSession(configuration: .ephemeral)
-
     /// One `fetch`: the request as JSON text in, the response as JSON text
     /// out, body as base64. Only http and https. The 16 MiB cap applies
     /// after the download (#437 notes it).
-    static func fetch(_ request: String) async -> String {
+    nonisolated static func fetch(_ request: String, session: URLSession) async -> String {
         func reply(_ object: [String: Any]) -> String {
             String(data: (try? JSONSerialization.data(withJSONObject: object)) ?? Data(), encoding: .utf8) ?? "{}"
         }
