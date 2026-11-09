@@ -95,9 +95,9 @@ final class KernelHost: NSObject {
 
     /// The bridge cells get by default: every namespace ganymede-device
     /// has, with the permissioned ones (ganymede-device#57, #422) turned
-    /// on. Each asks the app's ledger, then the system, on first use; one
-    /// the device lacks (motion and the camera on a Mac) stays out of
-    /// `hello`.
+    /// on, and host events (`device.on`). Each permissioned one asks the
+    /// app's ledger, then the system, on first use; one the device lacks
+    /// (motion and the camera on a Mac) stays out of `hello`.
     private static func systemBridge() -> DeviceBridge {
         let bridge = DeviceBridge()
         // The notification center throws outside an app bundle, such as
@@ -111,6 +111,7 @@ final class KernelHost: NSObject {
         bridge.addCameraCapture()
         bridge.addContacts()
         bridge.addReminders()
+        bridge.addHostEvents()
         return bridge
     }
 

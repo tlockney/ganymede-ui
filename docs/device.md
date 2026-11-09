@@ -149,6 +149,7 @@ browser yet.
 | `device.reminders.complete(id)`                                           | `true`, or `false` when there was none                     | yes          | reminders     | no            | no            |
 | `device.reminders.uncomplete(id)`                                         | `true`, or `false` when there was none                     | yes          | reminders     | no            | no            |
 | `device.reminders.delete(id)`                                             | `true`, or `false` when there was none                     | yes          | reminders     | no            | no            |
+| `device.on(event, handler)`                                               | a function that removes the handler                        | yes          | none          | no            | no            |
 
 - `device.info()`: A browser has no model or battery.
 - `device.clipboard.readText()`: iPadOS shows its paste prompt; a browser needs a click for the Clipboard API.
@@ -182,6 +183,7 @@ browser yet.
 - `device.contacts.add(contact)`: To the default account; groups and accounts aren't wrapped.
 - `device.camera.capture()`: The system camera screen. A Mac has none in the app; a browser would need its own camera view.
 - `device.reminders.add(reminder)`: No recurrence or alarms.
+- `device.on(event, handler)`: Appearance, foreground, background, battery and locale changes; an interrupt doesn't remove a handler.
 
 <!-- device-table:end -->
 
@@ -266,6 +268,26 @@ work only in kernels in the app:
 - `device.contacts`: search, read, add and delete contacts.
 - `device.reminders`: your reminder lists; list, add, complete and
   delete reminders.
+
+### Host events
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+`device.on(event, handler)` calls `handler` when the app changes:
+`appearance` (`"light"` or `"dark"`), `foreground`, `background`,
+`battery` (`{ level, charging }`) and `locale`. It needs no permission
+and works only in kernels in the app. On a Mac, `background` means the
+app lost focus to another app, and `foreground` that it got it back. It
+returns a function that removes the handler; a `signal` option removes it
+too, but an interrupt doesn't.
+
+```ts
+const off = device.on('appearance', mode => console.log('now', mode));
+// later
+off();
+```
 
 The table above has each method. The
 [phases](https://github.com/tlockney/ganymede-device/blob/main/docs/plan.md#phases)
