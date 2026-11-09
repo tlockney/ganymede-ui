@@ -93,11 +93,8 @@ final class WorkspaceTabsTests: XCTestCase {
         XCTAssertFalse(second.isVisible)
         XCTAssertTrue(first.isVisible, "the other tab stays open")
         XCTAssertEqual(first.tabbedWindows?.count ?? 1, 1)
-        XCTAssertTrue(WorkspaceTabs.anyOpen(in: [first, second], except: second))
-        XCTAssertFalse(WorkspaceTabs.anyOpen(in: [first, second], except: first), "first is the last tab")
         WorkspaceTabs.close(first)
         XCTAssertFalse(first.isVisible)
-        XCTAssertFalse(WorkspaceTabs.anyOpen(in: [first, second]))
         XCTAssertFalse(WorkspaceTabs.quitsAfterLastTab)
     }
 
@@ -106,6 +103,7 @@ final class WorkspaceTabsTests: XCTestCase {
     func testOpenStartOpensANewWindowOnTheFolder() {
         var opened: [String] = []
         WorkspaceTabs.useOpener { opened.append($0) }
+        defer { WorkspaceTabs.useOpener(nil) }
         let folder = URL(fileURLWithPath: "/tmp/moons")
         WorkspaceTabs.openStart(folder: folder)
         XCTAssertEqual(opened, [WorkspaceTabs.sceneID])
@@ -113,12 +111,49 @@ final class WorkspaceTabsTests: XCTestCase {
         WorkspaceTabs.take(WorkspaceTabs.pending!)
     }
 
+    /// The last notebook window to close asks for a start window on its
+    /// own folder (#416); one closing while another is open asks nothing.
+    func testTheLastWindowAsksForAStartWindowOnItsFolder() {
+        let windows = OpenWindows()
+        let projA = URL(fileURLWithPath: "/tmp/projA")
+        let notebook = window()
+        let other = window()
+        windows.note(notebook, folder: projA, start: false)
+        windows.add(other)
+        XCTAssertEqual(windows.closing(other), .none, "the notebook is still open")
+        XCTAssertEqual(windows.closing(notebook), .some(projA))
+        XCTAssertFalse(windows.any)
+    }
+
+    /// Closing the start screen when it is the last window opens no other,
+    /// so the app can be left with none (#416).
+    func testClosingTheStartScreenOpensNoOther() {
+        let windows = OpenWindows()
+        let start = window()
+        windows.note(start, folder: URL(fileURLWithPath: "/tmp"), start: true)
+        XCTAssertEqual(windows.closing(start), .none)
+        XCTAssertFalse(windows.any)
+    }
+
+    /// Hidden windows still count (#416): AppKit reports none visible
+    /// while the app is hidden, which made a start window open beside them.
+    func testAWindowThatIsNotVisibleStillCounts() {
+        let windows = OpenWindows()
+        let hidden = window()
+        let closing = window()
+        XCTAssertFalse(hidden.isVisible)
+        windows.add(hidden)
+        windows.note(closing, folder: nil, start: false)
+        XCTAssertEqual(windows.closing(closing), .none)
+        XCTAssertTrue(windows.any)
+    }
+
+    /// The Settings window and others that never joined don't count.
     func testOnlyTheAppsOwnWindowsCount() {
+        let windows = OpenWindows()
         let settings = window()
-        settings.orderFront(nil)
-        defer { settings.orderOut(nil) }
-        XCTAssertTrue(settings.isVisible)
-        XCTAssertFalse(WorkspaceTabs.anyOpen(in: [settings]))
+        XCTAssertEqual(windows.closing(settings), .none)
+        XCTAssertFalse(windows.any)
     }
 }
 #endif

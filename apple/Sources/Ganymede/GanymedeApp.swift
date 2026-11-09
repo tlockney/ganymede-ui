@@ -242,16 +242,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// The last notebook, text file or terminal tab closed: a new window
-    /// shows the start screen, so the app is never left with none (#407).
+    /// on its folder shows the start screen (#407). Closing the start
+    /// screen itself leaves the app with no window (#416); the Dock icon
+    /// or File › New Tab opens one.
     @objc private func windowWillClose(_ notification: Notification) {
-        guard !quitting, let window = notification.object as? NSWindow,
-              window.tabbingIdentifier == WorkspaceTabs.identifier,
-              !WorkspaceTabs.anyOpen(in: NSApp.windows, except: window)
+        guard let window = notification.object as? NSWindow,
+              case .some(let folder) = WorkspaceTabs.windows.closing(window),
+              !quitting
         else { return }
         // Once it has gone, and if no other window opened meanwhile.
         DispatchQueue.main.async { [self] in
-            guard !quitting, !WorkspaceTabs.anyOpen(in: NSApp.windows) else { return }
-            WorkspaceTabs.openStart(folder: AppModel.shared.root)
+            guard !quitting, !WorkspaceTabs.anyOpen else { return }
+            WorkspaceTabs.openStart(folder: folder ?? AppModel.shared.root)
         }
     }
 
@@ -262,7 +264,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor in
             var quit = await PageDocument.confirmQuit()
             if quit { quit = await EditorDocument.confirmQuit() }
-            if !quit { quitting = false }
+            if !quit {
+                quitting = false
+                // Windows saved and closed during the prompts opened no
+                // start window; if none is left, open one now (#416).
+                if !WorkspaceTabs.anyOpen { WorkspaceTabs.openStart(folder: AppModel.shared.root) }
+            }
             sender.reply(toApplicationShouldTerminate: quit)
         }
         return .terminateLater
