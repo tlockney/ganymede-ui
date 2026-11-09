@@ -116,8 +116,10 @@ jobs:
           if-no-files-found: error
 
   # The Mac app, signed with the Developer ID certificate, notarized, and
-  # stapled: Ganymede-macOS-X.Y.Z.zip (apple/scripts/release-app.sh). The
-  # secrets may live in a `release` environment with a required reviewer.
+  # stapled: Ganymede-macOS-X.Y.Z.zip (apple/scripts/release-app.sh), and
+  # appcast.xml, the update feed the app reads from the latest release
+  # (#411). The secrets may live in a `release` environment with a
+  # required reviewer.
   macos:
     needs: [version, ci]
     if: ${{ !inputs.testflight_only }}
@@ -170,12 +172,14 @@ jobs:
           APPSTORE_API_KEY_P8: ${{ secrets.APPSTORE_API_KEY_P8 }}
           APPSTORE_API_KEY_ID: ${{ secrets.APPSTORE_API_KEY_ID }}
           APPSTORE_API_ISSUER_ID: ${{ secrets.APPSTORE_API_ISSUER_ID }}
+          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: Ganymede-macOS-${{ needs.version.outputs.version }}
           path: |
             apple/build/Ganymede-macOS-*.zip
             apple/build/SHA256SUMS-macOS
+            apple/build/appcast.xml
           if-no-files-found: error
 
   # The iPad and iPhone app, signed for App Store distribution and

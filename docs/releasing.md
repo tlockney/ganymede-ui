@@ -83,7 +83,9 @@ ref is a release tag, or checks out and builds the commit otherwise
 4. submits it to Apple's notary service with `notarytool` and waits
    (usually a few minutes, at most 45), printing the notary log;
 5. staples the ticket, checks it with `spctl`, and zips the app with
-   `ditto`.
+   `ditto`;
+6. signs the zip with the update key and writes `appcast.xml`, the
+   update feed, signed too (below).
 
 It reads these repository (or `release` environment) secrets:
 
@@ -95,6 +97,7 @@ It reads these repository (or `release` environment) secrets:
 | `APPSTORE_API_KEY_P8`        | An App Store Connect API key (`AuthKey_<id>.p8`), base64, for notary |
 | `APPSTORE_API_KEY_ID`        | That key's ID                                                        |
 | `APPSTORE_API_ISSUER_ID`     | The issuer ID shown above the API keys list                          |
+| `SPARKLE_ED_PRIVATE_KEY`     | The update signing key (below)                                       |
 
 The job declares the `release` environment. If that environment has a
 required reviewer, the job waits for approval; if it limits deployment
@@ -110,6 +113,40 @@ hardened runtime does not stop it starting kernel processes or shells
 (those binaries are not hardened by it), and WKWebView's JIT runs in
 WebKit's own processes, which Apple signs. A notarization failure names
 the binary and the reason in the printed log.
+
+### Updates
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+The Mac app updates itself with [Sparkle](https://sparkle-project.org)
+(#411). It reads
+`https://github.com/tlockney/ganymede-ui/releases/latest/download/appcast.xml`,
+so the feed is whatever the latest release (not a prerelease) attaches.
+`release-app.sh` builds the feed's URL and the public key into the
+app's Info.plist (`SUFeedURL`, `SUPublicEDKey`); builds without them
+never update. The app takes an update only if the zip and the feed are
+signed with the private key, and the feed lists the release's
+`CHANGELOG.md` section as its notes.
+
+The key is an EdDSA key made once, on a Mac, with Sparkle's tools:
+
+```sh
+curl -LO https://github.com/sparkle-project/Sparkle/releases/download/2.10.1/Sparkle-2.10.1.tar.xz
+mkdir sparkle && tar -xf Sparkle-2.10.1.tar.xz -C sparkle
+sparkle/bin/generate_keys            # keeps the key in the login keychain, prints the public key
+sparkle/bin/generate_keys -x sparkle-private-key   # exports it
+gh secret set SPARKLE_ED_PRIVATE_KEY --env release --repo tlockney/ganymede-ui < sparkle-private-key
+rm sparkle-private-key
+```
+
+The release derives the public key from the secret
+(`apple/scripts/sparkle-key.swift`) and prints it in the log. Keep the
+key: installed apps accept only updates signed with the key they were
+built with, so a new key means everyone installs the next release by
+hand. The keychain copy is the backup; `generate_keys -f <file>`
+imports it on another Mac.
 
 ## The iPad and iPhone app (TestFlight)
 

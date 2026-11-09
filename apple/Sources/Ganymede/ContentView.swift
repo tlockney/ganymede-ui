@@ -50,6 +50,8 @@ struct ContentView: View {
     /// The area filling the window, if any (#250). Not kept across
     /// launches: a window comes back with its usual layout.
     @State private var layout = WindowLayout()
+    /// A newer release, once a check found it (#411).
+    private let updater = AppUpdater.shared
 
     init(target: Binding<WindowTarget?>) {
         _target = target
@@ -141,6 +143,11 @@ struct ContentView: View {
                     Label(inspector.isShown ? "Hide Inspector" : "Show Inspector", systemImage: "sidebar.right")
                 }
                 .help(inspector.isShown ? "Hide the inspector (⌥⌘0)" : "Show the inspector (⌥⌘0)")
+            }
+            if let available = updater.available {
+                ToolbarItem {
+                    UpdateAvailableButton(available: available)
+                }
             }
         }
         .navigationSubtitle(pageModel.state.subtitle)

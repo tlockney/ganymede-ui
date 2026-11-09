@@ -13,12 +13,19 @@
 #   APPSTORE_API_KEY_P8         App Store Connect API key for notarytool, base64
 #   APPSTORE_API_KEY_ID
 #   APPSTORE_API_ISSUER_ID
+#   SPARKLE_ED_PRIVATE_KEY      the key updates are signed with (#411): the
+#                               base64 seed from Sparkle's generate_keys -x
+#   GITHUB_REPOSITORY           where releases are published (default
+#                               tlockney/ganymede-ui), for the update feed
+#
+# It also writes apple/build/appcast.xml, the update feed the app reads
+# from the latest release, signed with the same key.
 set -euo pipefail
 apple=$(cd "$(dirname "$0")/.." && pwd)
 build="$apple/build"
 
 missing=()
-for name in VERSION APPLE_TEAM_ID APPSTORE_API_KEY_P8 APPSTORE_API_KEY_ID APPSTORE_API_ISSUER_ID; do
+for name in VERSION APPLE_TEAM_ID APPSTORE_API_KEY_P8 APPSTORE_API_KEY_ID APPSTORE_API_ISSUER_ID SPARKLE_ED_PRIVATE_KEY; do
   [[ -n "${!name:-}" ]] || missing+=("$name")
 done
 if [[ -n "${MACOS_CERTIFICATE_P12:-}" && -z "${MACOS_CERTIFICATE_PASSWORD:-}" ]]; then
@@ -58,6 +65,14 @@ security find-identity -v -p codesigning | grep -q "$identity" || {
   exit 1
 }
 
+# Updates (#411): the app reads the feed attached to the latest release
+# and accepts only updates signed with this key.
+repo="${GITHUB_REPOSITORY:-tlockney/ganymede-ui}"
+feed_url="https://github.com/$repo/releases/latest/download/appcast.xml"
+sparkle_key() { xcrun swift "$apple/scripts/sparkle-key.swift" "$@"; }
+public_key=$(sparkle_key public-key)
+echo "update signing public key: $public_key"
+
 # Archive. Hardened runtime and the entitlements come from project.yml;
 # a secure timestamp is required for notarization.
 archive="$build/Ganymede.xcarchive"
@@ -68,9 +83,29 @@ xcodebuild archive -project "$apple/Ganymede.xcodeproj" -scheme Ganymede \
   -skipPackagePluginValidation -onlyUsePackageVersionsFromResolvedFile \
   CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="$identity" DEVELOPMENT_TEAM="$APPLE_TEAM_ID" \
   OTHER_CODE_SIGN_FLAGS="--timestamp" \
-  MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="${BUILD_NUMBER:-1}"
+  MARKETING_VERSION="$VERSION" CURRENT_PROJECT_VERSION="${BUILD_NUMBER:-1}" \
+  SPARKLE_FEED_URL="$feed_url" SPARKLE_PUBLIC_ED_KEY="$public_key"
 app="$work/Ganymede.app"
 ditto "$archive/Products/Applications/Ganymede.app" "$app"
+
+# Sparkle's helpers come signed by Sparkle, not with this identity and the
+# timestamp notarization requires: sign them, innermost first, then the
+# framework and the app again, keeping their entitlements (Sparkle's
+# documentation, "Code signing").
+sparkle="$app/Contents/Frameworks/Sparkle.framework"
+[[ -d "$sparkle" ]] || {
+  echo "::error::Sparkle.framework is not in the app" >&2
+  exit 1
+}
+sign() {
+  codesign --force --sign "$identity" --options runtime --timestamp \
+    --preserve-metadata=entitlements "$@"
+}
+for helper in "$sparkle"/Versions/B/XPCServices/*.xpc "$sparkle/Versions/B/Autoupdate" "$sparkle/Versions/B/Updater.app"; do
+  if [[ -e "$helper" ]]; then sign "$helper"; fi
+done
+sign "$sparkle"
+sign "$app"
 # Symbols for crash reports (#318).
 "$apple/scripts/sentry-dsyms.sh" "$archive"
 
@@ -82,6 +117,9 @@ fail() {
 plist="$app/Contents/Info.plist"
 shown=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")
 [[ "$shown" == "$VERSION" ]] || fail "CFBundleShortVersionString is $shown, not $VERSION"
+build_number=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$plist")
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$plist")" == "$feed_url" ]] || fail "SUFeedURL is not $feed_url"
+[[ "$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$plist")" == "$public_key" ]] || fail "SUPublicEDKey is not the signing key's"
 codesign --verify --deep --strict --verbose=2 "$app"
 details=$(codesign -dvv "$app" 2>&1)
 echo "$details"
@@ -116,3 +154,43 @@ zip="$build/Ganymede-macOS-$VERSION.zip"
 rm -f "$zip"
 ditto -c -k --keepParent "$app" "$zip"
 (cd "$build" && shasum -a 256 "$(basename "$zip")" | tee SHA256SUMS-macOS)
+
+# The update feed (#411): this release, its notes, and the zip's EdDSA
+# signature; then the feed itself is signed (SURequireSignedFeed).
+# sign_update comes with Sparkle's package, which the archive resolved.
+sign_update=$(find "$build/DerivedData/SourcePackages/artifacts" -path '*/bin/sign_update' -type f | head -n 1)
+[[ -n "$sign_update" && -x "$sign_update" ]] || fail "sign_update is not in Sparkle's package"
+signature=$(printf '%s' "$SPARKLE_ED_PRIVATE_KEY" | "$sign_update" --ed-key-file - -p "$zip")
+# The key built into the app accepts it.
+sparkle_key verify "$zip" "$signature"
+length=$(stat -f %z "$zip")
+# The version's CHANGELOG.md section, as release.yml takes it.
+notes=$(awk -v v="$VERSION" '/^## /{p = index($0, "## [" v "]") == 1; next} p' "$apple/../CHANGELOG.md" | sed 's/]]>/]]\&gt;/g')
+[[ -n "$notes" ]] || notes="See the [release notes](https://github.com/$repo/releases/tag/v$VERSION)."
+appcast="$build/appcast.xml"
+cat > "$appcast" <<EOF
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle">
+  <channel>
+    <title>Ganymede</title>
+    <link>https://github.com/$repo/releases</link>
+    <item>
+      <title>Ganymede $VERSION</title>
+      <pubDate>$(LC_ALL=C date -u '+%a, %d %b %Y %H:%M:%S +0000')</pubDate>
+      <link>https://github.com/$repo/releases/tag/v$VERSION</link>
+      <sparkle:version>$build_number</sparkle:version>
+      <sparkle:shortVersionString>$VERSION</sparkle:shortVersionString>
+      <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+      <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
+      <description sparkle:format="markdown"><![CDATA[
+$notes
+]]></description>
+      <enclosure url="https://github.com/$repo/releases/download/v$VERSION/$(basename "$zip")"
+        length="$length" type="application/octet-stream" sparkle:edSignature="$signature"/>
+    </item>
+  </channel>
+</rss>
+EOF
+printf '%s' "$SPARKLE_ED_PRIVATE_KEY" | "$sign_update" --ed-key-file - "$appcast"
+printf '%s' "$SPARKLE_ED_PRIVATE_KEY" | "$sign_update" --verify --ed-key-file - "$appcast"
+echo "update feed: $appcast"

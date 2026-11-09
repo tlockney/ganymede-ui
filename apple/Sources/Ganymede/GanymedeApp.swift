@@ -58,6 +58,10 @@ struct GanymedeApp: App {
                 Divider()
                 TerminalCommands(model: model)
             }
+            // Release builds only (#411).
+            CommandGroup(after: .appInfo) {
+                CheckForUpdatesCommand()
+            }
             CommandGroup(after: .appSettings) {
                 // Tabs of the one Settings window (#206, #332).
                 Button("Agent Settings…") {
@@ -217,6 +221,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Release builds look for a newer release once a day (#411).
+        AppUpdater.shared.start()
         // Windows the system restores have come back by now (#247). Files
         // the app was launched to open can come after this method (seen on
         // a Mac, #266), so they count as opened at launch until then too:
