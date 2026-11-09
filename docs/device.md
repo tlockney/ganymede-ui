@@ -31,17 +31,9 @@ Other kernels in the app can ask for part of it. In practice that means:
   remote server's, gets the methods that need no permission, by asking
   for them; see [From a server kernel](#from-a-server-kernel).
 
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release, where server kernels can't reach the app.
-
 - **A server kernel, in a browser.** The notebook page answers the same
   calls with the browser's own APIs, behind a click; see
   [In a browser](#in-a-browser).
-
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release, where nothing answers in a browser.
 
 Everywhere else, `device` is `undefined`, so check for it before using
 it. `device.has()` says whether this app answers a method:
@@ -59,10 +51,6 @@ For editor types, add this line once to a cell or a project file:
 ```
 
 ## From a server kernel
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
 
 A kernel that runs as a process, on the Mac or on a remote server, isn't
 in the app, so it has no `device` global. A cell asks the notebook page
@@ -98,10 +86,6 @@ package, which isn't out yet
 
 ### In a browser
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
-
 In a browser, the notebook page answers `connectDevice` itself, with web
 APIs, and only for the methods marked "yes" under "Browser" below. A
 browser lets a page use the clipboard, open a tab, share, pick or save
@@ -116,11 +100,6 @@ One prompt shows at a time. The `ui` dialogs aren't answered in a
 browser yet.
 
 ## Methods
-
-> [!NOTE]
-> **Unreleased.** The "Remote kernel" and "Browser" columns are
-> available only from a build of `main` (HEAD); in the latest release no
-> method works from a server kernel or in a browser.
 
 <!-- device-table:start (generated: node scripts/device-table.mjs --write) -->
 

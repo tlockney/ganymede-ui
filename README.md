@@ -142,11 +142,6 @@ closes. A failed save or kernel action shows its error above the notebook.
 
 ### When the file changes on disk
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release, where a save asks before overwriting and autosave
-> stops until you save.
-
 The open notebook checks its file every few seconds and when the window
 comes back. If another writer changed it (a Claude session using the
 Ganymede Journal plugin, say), the notebook locks: nothing saves it, not
@@ -157,10 +152,6 @@ which it drops), and **Unlock**, which lets your copy save over the version that
 it. A newer change locks it again.
 
 ### Code font
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
 
 Settings > Code font picks the font of code cells, text outputs and code
 in Markdown: the system's monospace font or one of the bundled fonts

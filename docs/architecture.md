@@ -282,12 +282,6 @@ own). The build target is Vite's default baseline (at Vite 8, Baseline
 Widely Available: Chrome and Edge 111, Firefox 114, Safari 16.4); every
 web view the Apple apps run in (macOS 26, iOS 26) is newer.
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release: the latest release pins the build target to Chrome
-> and Edge 107, Firefox 104 and Safari 16, for the macOS 13 and iOS 16
-> web view.
-
 `vite-plugin-pwa` adds the manifest and a Workbox service worker that
 precaches the app, so it works offline and installs as an app. `/api/` is
 never cached. The release is this `dist/` as a static site
