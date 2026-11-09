@@ -45,6 +45,13 @@ struct DeviceSettings: View {
         }
         .formStyle(.grouped)
         .onAppear { model.reload() }
+        // A prompt in a notebook window may keep an answer while this
+        // stays open; the ledger's store is UserDefaults.
+        .task {
+            for await _ in NotificationCenter.default.notifications(named: UserDefaults.didChangeNotification) {
+                model.reload()
+            }
+        }
     }
 
     private var footer: some View {

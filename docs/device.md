@@ -261,6 +261,13 @@ Each namespace with a permission also has `authorizationStatus()` and
 kernels in the app (TypeScript, in the page) reach these methods. A
 server kernel's `device` has only the methods that need no permission.
 
+Answers are kept per notebook on trust in the notebook page itself: it
+tells the app which notebook each kernel runs. A cell can't change that,
+since it runs apart from the page, but script in the page can, such as
+HTML or JavaScript output from a notebook you marked trusted. Such
+script could use another notebook's answers, so trust only notebooks
+whose output you would let use your device.
+
 ## Errors
 
 A call that fails rejects with a `DeviceError` whose `code` says why:

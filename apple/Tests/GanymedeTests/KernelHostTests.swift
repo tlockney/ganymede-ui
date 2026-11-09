@@ -357,11 +357,14 @@ final class KernelHostTests: XCTestCase {
               { op: 'declared', path: 'New.ipynb', capabilities: ['location', 'bluetooth'] });
             webkit.messageHandlers.kernelRelay.postMessage(
               { op: 'declared', path: 'travel/Trip.ipynb', capabilities: ['location'] });
+            // Opened again before the person answered.
+            webkit.messageHandlers.kernelRelay.postMessage(
+              { op: 'declared', path: 'New.ipynb', capabilities: ['location'] });
             true
             """)
         while prompts.shown.isEmpty, Date() < deadline { try await Task.sleep(nanoseconds: 50_000_000) }
         try await Task.sleep(nanoseconds: 200_000_000)
-        XCTAssertEqual(prompts.shown.count, 1, "bluetooth isn't in this app; Trip already has an answer")
+        XCTAssertEqual(prompts.shown.count, 1, "bluetooth isn't in this app; Trip already has an answer; New asks once")
         prompts.answer(.option(1))
         XCTAssertEqual(ledger.answer(notebook: "/root/New.ipynb", capability: "location"), .deny)
     }

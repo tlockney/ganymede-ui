@@ -49,6 +49,13 @@ final class KernelHost: NSObject {
     /// The bridge needs both to know whose call is whose.
     private var notebooks: [String: String] = [:]
     private var owners: [String: Int] = [:]
+    /// Open-time prompts queued or showing, so a notebook opened twice
+    /// asks once.
+    private struct OpenAsk: Hashable {
+        let notebook: String
+        let capability: String
+    }
+    private var openAsks: Set<OpenAsk> = []
 
     /// `device` is the bridge cells reach (the system's when nil); tests
     /// pass one with a fake presenter, and `prompts`, a presenter for the
@@ -255,7 +262,12 @@ final class KernelHost: NSObject {
     /// and nothing has decided.
     private func askAtOpen(_ declared: [String], notebook: String) {
         for capability in device.undecided(declared, notebook: notebook) {
+            // Opened again (another tab, a reload) before the person
+            // answered: the prompt already up or waiting covers it.
+            let key = OpenAsk(notebook: notebook, capability: capability)
+            guard openAsks.insert(key).inserted else { continue }
             prompter.askAtOpen(capability, notebook: notebook) { [weak self] answer in
+                self?.openAsks.remove(key)
                 guard let self, let answer, answer != .once,
                       // Answered meanwhile, by a call's prompt.
                       self.device.ledger.answer(notebook: notebook, capability: capability) == nil
