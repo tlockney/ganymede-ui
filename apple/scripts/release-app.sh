@@ -165,7 +165,7 @@ signature=$(printf '%s' "$SPARKLE_ED_PRIVATE_KEY" | "$sign_update" --ed-key-file
 sparkle_key verify "$zip" "$signature"
 length=$(stat -f %z "$zip")
 # The version's CHANGELOG.md section, as release.yml takes it.
-notes=$(awk -v v="$VERSION" '/^## /{p = index($0, "## [" v "]") == 1; next} p' "$apple/../CHANGELOG.md" | sed 's/]]>/]]\&gt;/g')
+notes=$(awk -v v="$VERSION" '/^## /{p = index($0, "## [" v "]") == 1; next} p' "$apple/../CHANGELOG.md" | sed 's/]]>/]]]]><![CDATA[>/g')
 [[ -n "$notes" ]] || notes="See the [release notes](https://github.com/$repo/releases/tag/v$VERSION)."
 appcast="$build/appcast.xml"
 cat > "$appcast" <<EOF
