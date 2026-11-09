@@ -14,7 +14,7 @@
  */
 import { DOMWidgetModel, DOMWidgetView } from '@jupyter-widgets/base';
 import type { JSONValue } from '@lumino/coreutils';
-import { ANYWIDGET_MODULE } from './anywidget-module';
+import { ANYWIDGET_MODULE, ownKeys } from './anywidget-module';
 import { forgetFrame, renderFrame } from './output-frames';
 
 /** Keys the frame doesn't get: the view's code goes in once, at the start. */
@@ -67,9 +67,9 @@ export const FRAME_SCRIPT = `
     var changed = function (changes) {
       Object.keys(changes).forEach(function (key) {
         state[key] = changes[key];
-        emit('change:' + key, [changes[key]]);
+        emit('change:' + key, [model, changes[key]]);
       });
-      emit('change', []);
+      emit('change', [model]);
     };
     var model = {
       get: function (key) { return state[key]; },
@@ -190,7 +190,7 @@ export class AnyView extends DOMWidgetView {
     switch (message.op) {
       case 'set':
         if (message.changes && typeof message.changes === 'object') {
-          this.model.set(message.changes, { fromView: this });
+          this.model.set(ownKeys(message.changes), { fromView: this });
         }
         break;
       case 'save':

@@ -39,6 +39,7 @@ test('a widget syncs with the kernel both ways, in a sandboxed frame', async ({ 
       model.on("change:count", update);
       update();
       el.append(b);
+      globalThis.model = model;
       model.on("msg:custom", (m, buffers) => {
         b.dataset.got = m.hello + ":" + new Uint8Array(buffers[0].buffer ?? buffers[0])[2];
       });
@@ -69,6 +70,21 @@ counter;`,
   const updated = frame.contentFrame().getByRole('button', { name: 'count is 7' });
   await expect(updated).toBeVisible();
   await expect(updated).toHaveAttribute('data-got', 'hi:3');
+
+  // The frame can't rewire the model to another, unsandboxed view.
+  await frame
+    .contentFrame()
+    .locator('body')
+    .evaluate(() => {
+      const m = (globalThis as unknown as { model: { set(c: object): void; save_changes(): void } })
+        .model;
+      m.set({ _view_module: '@jupyter-widgets/controls', _view_name: 'HTMLView', count: 8 });
+      m.save_changes();
+    });
+  await runCell(page, 'counter.get("_view_name") + ":" + counter.get("count")');
+  await expect(outputs(page).filter({ hasText: /^'?AnyView:8'?$/ })).toBeVisible({
+    timeout: 30_000,
+  });
 
   // Its code runs in the frame, not the page.
   expect(
