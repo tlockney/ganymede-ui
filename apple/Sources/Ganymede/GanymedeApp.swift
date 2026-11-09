@@ -71,6 +71,8 @@ struct GanymedeApp: App {
                 Button("Keyboard Shortcuts") {
                     SettingsOpener.show(.shortcuts)
                 }
+                Divider()
+                HelpLinkCommands()
             }
         }
         // Terminals and text files open as tabs of the front window (#247).

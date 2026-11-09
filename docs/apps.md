@@ -100,6 +100,12 @@ shown or hidden, its tab and its expanded folders across launches.
 - View > Command Palette… (⇧⌘P) finds and runs the notebook, cell and
   kernel commands by name. [Keyboard shortcuts](shortcuts.md) lists the
   rest.
+- Help > Ganymede Website, Ganymede Documentation and Apps Guide open
+  ganymede-server.com, its docs and this page in the browser.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release.
 
 ### Kernels
 
@@ -297,6 +303,13 @@ headings; pick one to go to its cell.
   as on the Mac. With a keyboard, ⌘+, ⌘− and ⌘0 change the size. On a touch
   screen a cell being edited stays at 16 points or more, so iOS doesn't
   zoom the page.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release.
+
+- **Help**: Settings > Help, and the iPad menu bar's Help menu,
+  open ganymede-server.com, its docs and this page in Safari.
 
   > [!NOTE]
   > **Unreleased.** Available only from a build of `main` (HEAD), not in

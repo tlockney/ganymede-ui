@@ -33,6 +33,14 @@ struct SettingsScreen: View {
                     Text("Lists the notebook's shortcuts, and changes them.")
                 }
             }
+            // The website and docs, in Safari (#409).
+            Section("Help") {
+                ForEach(HelpLink.allCases, id: \.self) { link in
+                    Link(destination: link.url) {
+                        Label(link.title, systemImage: link.systemImage)
+                    }
+                }
+            }
         }
         .navigationTitle("Settings")
         .navigationBarTitleDisplayMode(.inline)
