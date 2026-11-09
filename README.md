@@ -112,6 +112,7 @@ were saved with their outputs, marked trusted:
 | 03 Charts and Diagrams | SVG by hand, d3, Vega-Lite and Graphviz                              |
 | 04 DuckDB              | SQL with DuckDB compiled to WebAssembly, over CSV and Parquet by URL |
 | 05 Generative Art      | Seeded randomness, `OffscreenCanvas` and SVG, animation              |
+| 06 Widgets             | `jupyter.widget` (anywidget): controls that talk to the kernel       |
 | 07 UI Frameworks       | React, Preact and Lit components as output                           |
 | 08 Device              | The `device` API, each call checked with `device.has`                |
 
@@ -249,9 +250,10 @@ covers tokens, cookies and cross-origin access on the server side.
 It is a prototype. What it doesn't do yet, or does roughly:
 
 - **Widgets run in the app's page.** Trusted HTML and JavaScript outputs
-  render in sandboxed frames with no access to the app, but ipywidgets
-  render in the page itself, where they could read the token from
-  session storage while the tab is open. Relative
+  render in sandboxed frames with no access to the app, and so do
+  anywidget views (cdp-kernel's `jupyter.widget`), but ipywidgets'
+  controls render in the page itself, where they could read the token
+  from session storage while the tab is open. Relative
   links and images in trusted HTML outputs don't load, since the frame
   has no origin to resolve them against.
 - **Switching backends** leaves the old backend's kernels running with no
@@ -294,7 +296,14 @@ picture, and the Ganymede site shows it at
   and Tab completion and Shift+Tab tooltips from the kernel, find
   (⌘F), and the cell toolbar. Trust Notebook in the toolbar renders
   untrusted outputs and signs the file on Ganymede.
-  ipywidgets run through JupyterLab's widget manager (`src/lib/widgets.ts`).
+  ipywidgets run through JupyterLab's widget manager (`src/lib/widgets.ts`),
+  which also draws anywidget views, such as cdp-kernel's `jupyter.widget`,
+  each in a sandboxed frame (`src/lib/anywidget.ts`).
+
+  > [!NOTE]
+  > **Unreleased.** anywidget views are available only from a build of
+  > `main` (HEAD); the latest release shows them as text.
+
 - **Shell** (`src/components/`, `src/styles/app.css`). Unified toolbar,
   translucent source-list sidebar, sheets, segmented controls, system fonts
   and accent, light and dark from the system setting.

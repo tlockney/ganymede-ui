@@ -292,7 +292,7 @@ headings; pick one to go to its cell.
   the app goes to the background, since iOS may close the editor there.
 - **Example notebooks**: Open Example Notebooks, in the empty window (and
   the File menu with a keyboard), copies TypeScript notebooks that show
-  APIs, charts, DuckDB, generative art, UI frameworks and the `device`
+  APIs, charts, DuckDB, generative art, widgets, UI frameworks and the `device`
   API into a new `Examples` folder. The Mac has it in the File menu too.
 
   > [!NOTE]

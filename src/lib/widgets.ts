@@ -41,6 +41,7 @@ import {
   OutputView,
 } from '@jupyter-widgets/jupyterlab-manager/lib/output';
 import type { IDisposable } from '@lumino/disposable';
+import { ANYWIDGET_MODULE, ANYWIDGET_VERSION } from './anywidget-module';
 
 import '@jupyter-widgets/base/css/index.css';
 import '@jupyter-widgets/controls/css/widgets-base.css';
@@ -147,6 +148,13 @@ function register<T extends LabWidgetManager>(manager: T): T {
     name: '@jupyter-widgets/output',
     version: OUTPUT_WIDGET_VERSION,
     exports: { OutputModel, OutputView },
+  });
+  // anywidget, which cdp-kernel's `jupyter.widget` opens (#417): views run
+  // in sandboxed frames, so the module is small; fetched on first use.
+  manager.register({
+    name: ANYWIDGET_MODULE,
+    version: ANYWIDGET_VERSION,
+    exports: () => import('./anywidget') as unknown as Promise<ExportMap>,
   });
   return manager;
 }
