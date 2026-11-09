@@ -88,6 +88,11 @@ final class KernelHost: NSObject {
         #endif
     }
 
+    /// One scheduler for every window: the first one made becomes the
+    /// notification center's (weak) delegate, which shows notifications
+    /// while the app is in front, so it must outlive any one window.
+    private static let notifications = SystemNotificationScheduler()
+
     /// The bridge cells get by default: every namespace ganymede-device
     /// has, with the permissioned ones (ganymede-device#57, #422) turned
     /// on. Each asks the app's ledger, then the system, on first use; one
@@ -98,7 +103,7 @@ final class KernelHost: NSObject {
         // The notification center throws outside an app bundle, such as
         // the unit tests' runner.
         if Bundle.main.bundleURL.pathExtension == "app" {
-            bridge.addNotifications()
+            bridge.addNotifications(notifications)
         }
         bridge.addLocation()
         bridge.addMotion()
