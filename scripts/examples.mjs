@@ -115,10 +115,17 @@ const sourceText = s => (Array.isArray(s) ? s.join('') : s);
 export function rebuild(stem, cells, path) {
   const old = existsSync(path) ? JSON.parse(readFileSync(path, 'utf8')) : undefined;
   const nb = buildNotebook(stem, cells, [], old?.metadata?.widgets);
-  nb.cells.forEach((cell, i) => {
-    const was = old?.cells[i];
-    if (cell.cell_type !== 'code' || was?.cell_type !== 'code') return;
-    if (sourceText(was.source) !== sourceText(cell.source)) return;
+  // By source, not position, so adding or removing a cell keeps the rest.
+  const saved = new Map();
+  for (const was of old?.cells ?? []) {
+    if (was.cell_type !== 'code') continue;
+    const key = sourceText(was.source);
+    saved.set(key, [...(saved.get(key) ?? []), was]);
+  }
+  nb.cells.forEach(cell => {
+    if (cell.cell_type !== 'code') return;
+    const was = saved.get(sourceText(cell.source))?.shift();
+    if (!was) return;
     cell.execution_count = was.execution_count;
     cell.outputs = was.outputs;
   });
@@ -289,7 +296,10 @@ export function toOutputs(messages, displays, widgetMessage = () => {}) {
           output_type: 'error',
           ename: content.ename,
           evalue: content.evalue,
-          traceback: content.traceback,
+          // Not the build's own server: http://127.0.0.1:PORT/worker.js -> worker.js.
+          traceback: content.traceback.map(line =>
+            line.replace(/https?:\/\/(127\.0\.0\.1|localhost):\d+\//g, ''),
+          ),
         });
         break;
       case 'comm_open':

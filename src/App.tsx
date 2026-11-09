@@ -290,10 +290,13 @@ export function App() {
     [backend],
   );
 
+  const copyingExamples = useRef(false);
   const openExamples = useCallback(
     /** Copies the examples into a new folder in `dir` and opens the first (#414). */
     async (dir: string): Promise<boolean> => {
-      if (!backend) return false;
+      // One copy at a time: a double click shouldn't make two folders.
+      if (!backend || copyingExamples.current) return false;
+      copyingExamples.current = true;
       setNewError(undefined);
       try {
         const { copyExamples } = await import('./lib/examples');
@@ -305,6 +308,8 @@ export function App() {
       } catch (e) {
         setNewError(`Couldn’t copy the examples: ${e instanceof Error ? e.message : String(e)}`);
         return false;
+      } finally {
+        copyingExamples.current = false;
       }
     },
     [backend],

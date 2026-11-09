@@ -75,7 +75,13 @@ export async function copyExamples(
   // A new folder, then its name: both the server and the browser's storage
   // create one this way.
   const made = await contents.newUntitled({ type: 'directory', path: dir });
-  await contents.rename(made.path, folder);
+  try {
+    await contents.rename(made.path, folder);
+  } catch (err) {
+    // Someone took the name in between: don't leave an empty folder behind.
+    await contents.delete(made.path).catch(() => undefined);
+    throw err;
+  }
   for (const name of names) {
     await contents.save(`${folder}/${name}`, {
       type: 'notebook',

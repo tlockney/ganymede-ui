@@ -44,6 +44,23 @@ describe('the example notebooks', () => {
     }
   });
 
+  it('keep their outputs when a cell is added before them', () => {
+    const { stem, cells } = all[0];
+    const path = `examples/${notebookName(stem, cells)}`;
+    const added = [{ cell_type: 'markdown', source: 'New.' }, ...cells];
+    const nb = rebuild(stem, added, path);
+    const was = read(notebookName(stem, cells));
+    expect(nb.cells.slice(1).map((c: { outputs?: unknown }) => c.outputs)).toEqual(
+      was.cells.map((c: { outputs?: unknown }) => c.outputs),
+    );
+  });
+
+  it('show no build-server URLs in tracebacks', () => {
+    for (const name of exampleNames(NOTEBOOKS)) {
+      expect(NOTEBOOKS[name], name).not.toMatch(/127\.0\.0\.1|localhost:/);
+    }
+  });
+
   it('carry the outputs of every cell that runs', () => {
     for (const { stem, cells } of all) {
       const name = notebookName(stem, cells);
@@ -129,6 +146,9 @@ function contents(existing: string[] = []) {
       files.set(to, null);
       return { path: to };
     }),
+    delete: vi.fn(async (path: string) => {
+      files.delete(path);
+    }),
     save: vi.fn(async (path: string, model: Partial<Contents.IModel>) => {
       files.set(path, model.content);
       return { path };
@@ -154,5 +174,15 @@ describe('copyExamples', () => {
     const c = contents(['Examples', 'Examples 2']);
     const first = await copyExamples(c as unknown as Contents.IManager, '', null);
     expect(first).toBe('Examples 3/01 Start Here.ipynb');
+  });
+
+  it('removes its new folder when the name is taken meanwhile', async () => {
+    const c = contents();
+    c.rename.mockRejectedValueOnce(new Error('File already exists: Examples'));
+    await expect(copyExamples(c as unknown as Contents.IManager, '', null)).rejects.toThrow(
+      'already exists',
+    );
+    expect(c.delete).toHaveBeenCalledWith('Untitled Folder');
+    expect([...c.files.keys()]).toEqual([]);
   });
 });

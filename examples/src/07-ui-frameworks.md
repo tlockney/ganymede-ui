@@ -8,6 +8,8 @@ A cell can build its output with a UI framework, in two ways:
   the framework and mounts the component. The output is interactive. Ganymede
   runs it in a sandboxed frame, once the notebook is trusted, so it can't
   reach the app or the kernel; data goes in when the cell runs.
+  Its saved output loads the framework again each time the notebook
+  opens, so these cells pin exact versions.
 
 To have a component talk back to the kernel, use a widget.
 
@@ -17,8 +19,8 @@ To have a component talk back to the kernel, use a widget.
 kernel compiles it to `React.createElement` calls, so import `React`.
 
 ```ts
-import React from "npm:react@19";
-import { renderToStaticMarkup } from "npm:react-dom@19/server";
+import React from "npm:react@19.3.1";
+import { renderToStaticMarkup } from "npm:react-dom@19.3.1/server";
 
 type Moon = { name: string; radiusKm: number; orbitDays: number };
 const moons: Moon[] = [
@@ -61,8 +63,8 @@ passes the cell's data in.
 ```ts
 jupyter.html`<div id="root"></div>
 <script type="module">
-  import React, { useState } from "https://esm.sh/react@19";
-  import { createRoot } from "https://esm.sh/react-dom@19/client";
+  import React, { useState } from "https://esm.sh/react@19.3.1";
+  import { createRoot } from "https://esm.sh/react-dom@19.3.1/client";
   const h = React.createElement;
   const moons = ${JSON.stringify(moons)};
   const keys = { name: "Name", radiusKm: "Radius", orbitDays: "Orbit" };
@@ -90,9 +92,9 @@ build step. A counter with hooks:
 ```ts
 jupyter.html`<div id="app"></div>
 <script type="module">
-  import { h, render } from "https://esm.sh/preact@10";
-  import { useState } from "https://esm.sh/preact@10/hooks";
-  import htm from "https://esm.sh/htm@3";
+  import { h, render } from "https://esm.sh/preact@10.29.8";
+  import { useState } from "https://esm.sh/preact@10.29.8/hooks";
+  import htm from "https://esm.sh/htm@3.1.1";
   const html = htm.bind(h);
 
   function Counter({ start }) {
@@ -115,7 +117,7 @@ without a framework.
 ```ts
 jupyter.html`<moon-phase days="7.155"></moon-phase>
 <script type="module">
-  import { LitElement, html, css } from "https://esm.sh/lit@3";
+  import { LitElement, html, css } from "https://esm.sh/lit@3.3.3";
   class MoonPhase extends LitElement {
     static properties = { days: { type: Number }, t: { state: true } };
     static styles = css\`:host { font-family: system-ui; display: block } svg { display: block }\`;
