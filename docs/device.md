@@ -278,8 +278,10 @@ work only in kernels in the app:
 `device.on(event, handler)` calls `handler` when the app changes:
 `appearance` (`"light"` or `"dark"`), `foreground`, `background`,
 `battery` (`{ level, charging }`) and `locale`. It needs no permission
-and works only in kernels in the app. It returns a function that removes
-the handler; a `signal` option removes it too, but an interrupt doesn't.
+and works only in kernels in the app. On a Mac, `background` means the
+app lost focus to another app, and `foreground` that it got it back. It
+returns a function that removes the handler; a `signal` option removes it
+too, but an interrupt doesn't.
 
 ```ts
 const off = device.on('appearance', mode => console.log('now', mode));
