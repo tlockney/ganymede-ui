@@ -55,6 +55,7 @@ enum WorkspaceTabs {
     /// window exists; if AppKit hasn't already made it a tab of the front
     /// window, it is added as one, unless `alone`.
     static func join(_ window: NSWindow, alone: Bool = false) {
+        windows.add(window)
         guard window.tabbingIdentifier != identifier else { return }
         window.tabbingIdentifier = identifier
         if alone {
@@ -90,21 +91,26 @@ enum WorkspaceTabs {
     static let quitsAfterLastTab = false
 
     /// Opens a window by scene id, from the app's menus, which exist with
-    /// no window open. Set by `NewCommands`.
+    /// no window open. Set by `NewCommands`. By id, not by value as
+    /// `OpenRequests.useFallback` opens, so the window that is closing,
+    /// which may still show the same folder, is never brought back.
     private(set) static var openByID: ((String) -> Void)?
 
-    static func useOpener(_ open: @escaping (String) -> Void) {
+    static func useOpener(_ open: ((String) -> Void)?) {
         openByID = open
     }
 
-    /// Whether `windows` hold one of the app's notebook, text file or
-    /// terminal windows, minimized ones counting, other than `closing`.
-    /// The Settings window and others not ours don't count.
-    static func anyOpen(in windows: [NSWindow], except closing: NSWindow? = nil) -> Bool {
-        windows.contains {
-            $0 !== closing && $0.tabbingIdentifier == identifier && ($0.isVisible || $0.isMiniaturized)
-        }
+    /// The app's notebook, text file and terminal windows that are open.
+    static let windows = OpenWindows()
+
+    /// Notes what `window` shows: its folder, and whether that is the
+    /// start screen (#416).
+    static func note(_ window: NSWindow, folder: URL?, start: Bool) {
+        windows.note(window, folder: folder, start: start)
     }
+
+    /// Whether any of the app's windows is open.
+    static var anyOpen: Bool { windows.any }
 
     /// After the last tab closed (#407): a new window on `folder`, which
     /// shows the start screen (New Notebook) until a notebook is chosen.
@@ -140,6 +146,51 @@ enum WorkspaceTabs {
               main.tabbingIdentifier == identifier
         else { return nil }
         return main
+    }
+}
+
+/// The app's notebook, text file and terminal windows that are open,
+/// hidden, minimized or not: added as each joins, removed as it closes.
+/// AppKit's own window list can't say: `isVisible` is false for every
+/// window while the app is hidden (#416).
+@MainActor
+final class OpenWindows {
+    /// What one window shows.
+    private final class Place {
+        /// The folder a start window opens on; nil for the default folder.
+        var folder: URL?
+        /// Whether it shows the start screen: a folder, no notebook.
+        var start = false
+    }
+
+    private let places = NSMapTable<NSWindow, Place>.weakToStrongObjects()
+
+    func add(_ window: NSWindow) {
+        if places.object(forKey: window) == nil { places.setObject(Place(), forKey: window) }
+    }
+
+    func note(_ window: NSWindow, folder: URL?, start: Bool) {
+        add(window)
+        let place = places.object(forKey: window)
+        place?.folder = folder
+        place?.start = start
+    }
+
+    var any: Bool {
+        places.keyEnumerator().nextObject() != nil
+    }
+
+    /// `window` is closing. If it was the app's last window, the folder for
+    /// a start window to open on (an inner nil meaning the default
+    /// folder); `.none` if none should open: another window is still open,
+    /// the window isn't ours, or it showed the start screen already, so
+    /// closing it leaves the app with no window, as Mac document apps
+    /// allow (#416).
+    func closing(_ window: NSWindow) -> URL?? {
+        guard let place = places.object(forKey: window) else { return .none }
+        places.removeObject(forKey: window)
+        guard !any, !place.start else { return .none }
+        return .some(place.folder)
     }
 }
 

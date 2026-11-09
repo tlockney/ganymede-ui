@@ -56,7 +56,8 @@ On first launch the app asks once whether to send crash reports
   together. Each tab keeps its own toolbar, and a notebook's tab shows a
   dot while its kernel is running. File > Close (⌘W) closes the active
   tab; closing the last one leaves the app running and opens a new window
-  on the folder, with New Notebook. Ganymede uses tabs whatever System
+  on its folder, with New Notebook. Closing that window leaves the app
+  with no window; click its Dock icon or choose File > New Tab for one. Ganymede uses tabs whatever System
   Settings > Desktop & Dock > "Prefer tabs when opening documents" says;
   windows restored at launch come back as they were.
 - File > New Notebook (⌘N) makes a notebook in the window's folder, New
