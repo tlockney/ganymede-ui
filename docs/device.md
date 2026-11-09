@@ -109,9 +109,16 @@ browser yet.
 ## Methods
 
 > [!NOTE]
-> `device.secrets`, `device.widget` and `device.output` are in the device
-> package but not wired into the apps yet: there they answer
-> `unavailable`.
+> **Unreleased.** The `device.output`, `device.widget.update` and
+> `device.secrets` rows are available only from a build of `main` (HEAD),
+> not in the latest release.
+
+> [!NOTE]
+> The table's "In the app" column says what the device package supports.
+> The apps don't register `device.secrets` or `device.widget` yet, so
+> there they answer `unavailable` despite its "yes"; `device.output`
+> works only in a run with no window, such as Shortcuts' Run Script on
+> Device.
 
 <!-- device-table:start (generated: node scripts/device-table.mjs --write) -->
 
