@@ -103,29 +103,52 @@ browser yet.
 
 <!-- device-table:start (generated: node scripts/device-table.mjs --write) -->
 
-| Method                                                                    | Returns                                                    | In the app | Remote kernel | Browser       |
-| ------------------------------------------------------------------------- | ---------------------------------------------------------- | ---------- | ------------- | ------------- |
-| `device.info()`                                                           | platform, version, methods, and the device's current state | yes        | yes           | yes           |
-| `device.clipboard.readText()`                                             | `string`, or `null`                                        | yes        | yes           | after a click |
-| `device.clipboard.writeText(text)`                                        | nothing                                                    | yes        | yes           | after a click |
-| `device.clipboard.readImage()`                                            | PNG bytes, or `null`                                       | yes        | yes           | after a click |
-| `device.clipboard.writeImage(image)`                                      | nothing                                                    | yes        | yes           | after a click |
-| `device.haptics.impact(style)`                                            | nothing                                                    | iPhone     | yes           | no            |
-| `device.haptics.notification(type)`                                       | nothing                                                    | iPhone     | yes           | no            |
-| `device.haptics.selection()`                                              | nothing                                                    | iPhone     | yes           | no            |
-| `device.openURL(url, { inApp })`                                          | nothing                                                    | yes        | yes           | after a click |
-| `device.ui.alert(message, { title })`                                     | nothing, once closed                                       | yes        | yes           | planned       |
-| `device.ui.confirm(message, { title, destructive, okLabel })`             | `boolean`                                                  | yes        | yes           | planned       |
-| `device.ui.prompt(message, { title, placeholder, defaultValue, secure })` | `string`, or `null`                                        | yes        | yes           | planned       |
-| `device.ui.actionSheet(title, options, { message, cancel, destructive })` | the option's index, or `null`                              | yes        | yes           | planned       |
-| `device.ui.pickDate({ mode, title, value, min, max })`                    | `Date`, or `null`                                          | yes        | yes           | planned       |
-| `device.share({ text, url, files })`                                      | `true` when sent, `false` when dismissed                   | yes        | yes           | after a click |
-| `device.preview(files)`                                                   | nothing, once closed                                       | yes        | yes           | no            |
-| `device.files.pick({ types, multiple })`                                  | `File[]`, `[]` when cancelled                              | yes        | yes           | after a click |
-| `device.files.export(data, { name })`                                     | `true` when saved, `false` when cancelled                  | yes        | yes           | after a click |
-| `device.sound.play(data, { volume })`                                     | nothing, once it starts                                    | yes        | yes           | after a click |
-| `device.sound.player(data)`                                               | a `SoundPlayer`                                            | yes        | no            | no            |
-| `device.photos.pick({ limit })`                                           | `File[]`, `[]` when cancelled                              | yes        | yes           | after a click |
+| Method                                                                    | Returns                                                    | In the app   | Permission    | Remote kernel | Browser       |
+| ------------------------------------------------------------------------- | ---------------------------------------------------------- | ------------ | ------------- | ------------- | ------------- |
+| `device.info()`                                                           | platform, version, methods, and the device's current state | yes          | none          | yes           | yes           |
+| `device.clipboard.readText()`                                             | `string`, or `null`                                        | yes          | none          | yes           | after a click |
+| `device.clipboard.writeText(text)`                                        | nothing                                                    | yes          | none          | yes           | after a click |
+| `device.clipboard.readImage()`                                            | PNG bytes, or `null`                                       | yes          | none          | yes           | after a click |
+| `device.clipboard.writeImage(image)`                                      | nothing                                                    | yes          | none          | yes           | after a click |
+| `device.haptics.impact(style)`                                            | nothing                                                    | iPhone       | none          | yes           | no            |
+| `device.haptics.notification(type)`                                       | nothing                                                    | iPhone       | none          | yes           | no            |
+| `device.haptics.selection()`                                              | nothing                                                    | iPhone       | none          | yes           | no            |
+| `device.openURL(url, { inApp })`                                          | nothing                                                    | yes          | none          | yes           | after a click |
+| `device.ui.alert(message, { title })`                                     | nothing, once closed                                       | yes          | none          | yes           | planned       |
+| `device.ui.confirm(message, { title, destructive, okLabel })`             | `boolean`                                                  | yes          | none          | yes           | planned       |
+| `device.ui.prompt(message, { title, placeholder, defaultValue, secure })` | `string`, or `null`                                        | yes          | none          | yes           | planned       |
+| `device.ui.actionSheet(title, options, { message, cancel, destructive })` | the option's index, or `null`                              | yes          | none          | yes           | planned       |
+| `device.ui.pickDate({ mode, title, value, min, max })`                    | `Date`, or `null`                                          | yes          | none          | yes           | planned       |
+| `device.share({ text, url, files })`                                      | `true` when sent, `false` when dismissed                   | yes          | none          | yes           | after a click |
+| `device.preview(files)`                                                   | nothing, once closed                                       | yes          | none          | yes           | no            |
+| `device.files.pick({ types, multiple })`                                  | `File[]`, `[]` when cancelled                              | yes          | none          | yes           | after a click |
+| `device.files.export(data, { name })`                                     | `true` when saved, `false` when cancelled                  | yes          | none          | yes           | after a click |
+| `device.sound.play(data, { volume })`                                     | nothing, once it starts                                    | yes          | none          | yes           | after a click |
+| `device.sound.player(data)`                                               | a `SoundPlayer`                                            | yes          | none          | no            | no            |
+| `device.photos.pick({ limit })`                                           | `File[]`, `[]` when cancelled                              | yes          | none          | yes           | after a click |
+| `device.photos.save(image)`                                               | nothing                                                    | yes          | photos        | no            | no            |
+| `device.notifications.schedule(body, { delay, title })`                   | the notification's id                                      | yes          | notifications | no            | no            |
+| `device.notifications.pending()`                                          | this notebook's `PendingNotification[]`                    | yes          | none          | no            | no            |
+| `device.notifications.cancel(id)`                                         | nothing                                                    | yes          | none          | no            | no            |
+| `device.notifications.cancelAll()`                                        | nothing                                                    | yes          | none          | no            | no            |
+| `device.location.current({ accuracy })`                                   | a `LocationFix`                                            | yes          | location      | no            | no            |
+| `device.location.watch({ accuracy })`                                     | a stream of `LocationFix`                                  | yes          | location      | no            | no            |
+| `device.location.geocode(address)`                                        | `Place[]`                                                  | yes          | none          | no            | no            |
+| `device.location.reverseGeocode({ latitude, longitude })`                 | `Place[]`                                                  | yes          | none          | no            | no            |
+| `device.motion.watch({ interval })`                                       | a stream of `MotionSample`                                 | iPad, iPhone | motion        | no            | no            |
+| `device.motion.latest()`                                                  | the newest `MotionSample`                                  | iPad, iPhone | motion        | no            | no            |
+| `device.contacts.search(query)`                                           | `Contact[]`                                                | yes          | contacts      | no            | no            |
+| `device.contacts.get(id)`                                                 | a `Contact`, or `null`                                     | yes          | contacts      | no            | no            |
+| `device.contacts.all()`                                                   | `Contact[]`                                                | yes          | contacts      | no            | no            |
+| `device.contacts.add(contact)`                                            | the new contact's id                                       | yes          | contacts      | no            | no            |
+| `device.contacts.delete(id)`                                              | `true`, or `false` when there was none                     | yes          | contacts      | no            | no            |
+| `device.camera.capture()`                                                 | JPEG bytes, or `null` when cancelled                       | iPad, iPhone | camera        | no            | no            |
+| `device.reminders.calendars()`                                            | `ReminderCalendar[]`                                       | yes          | reminders     | no            | no            |
+| `device.reminders.list({ calendar, completed })`                          | `Reminder[]`                                               | yes          | reminders     | no            | no            |
+| `device.reminders.add(reminder)`                                          | the new reminder's id                                      | yes          | reminders     | no            | no            |
+| `device.reminders.complete(id)`                                           | `true`, or `false` when there was none                     | yes          | reminders     | no            | no            |
+| `device.reminders.uncomplete(id)`                                         | `true`, or `false` when there was none                     | yes          | reminders     | no            | no            |
+| `device.reminders.delete(id)`                                             | `true`, or `false` when there was none                     | yes          | reminders     | no            | no            |
 
 - `device.info()`: A browser has no model or battery.
 - `device.clipboard.readText()`: iPadOS shows its paste prompt; a browser needs a click for the Clipboard API.
@@ -144,6 +167,21 @@ browser yet.
 - `device.sound.play(data, { volume })`: A browser asks for a click only until the page has had one.
 - `device.sound.player(data)`: Play, pause, stop, seek and volume; close it, or hold it with `await using`. Remote kernels and browsers: a handle wouldn't survive a disconnect.
 - `device.photos.pick({ limit })`: The system photo picker, which needs no photo library permission. A browser shows a file picker for images, and keeps the first `limit` picked.
+- `device.photos.save(image)`: Add-only access: the app may add photos, never read the library.
+- `device.notifications.schedule(body, { delay, title })`: After `delay` seconds, even when the notebook is closed. iOS and iPadOS keep at most 64 per app.
+- `device.notifications.pending()`: Only the calling notebook's.
+- `device.notifications.cancel(id)`: Only the calling notebook's.
+- `device.notifications.cancelAll()`: Only the calling notebook's.
+- `device.location.current({ accuracy })`: While the app is in use only. With precise location off, within a few kilometres.
+- `device.location.watch({ accuracy })`: Until the loop ends or the cell is interrupted; keeps the newest 16.
+- `device.location.geocode(address)`: Needs the network, not the location permission.
+- `device.location.reverseGeocode({ latitude, longitude })`: Needs the network, not the location permission.
+- `device.motion.watch({ interval })`: Attitude, rotation rate, gravity and acceleration every `interval` seconds (0.01 to 1); keeps the newest 64. A Mac has no motion sensors.
+- `device.motion.latest()`: Starts the sensors and keeps them running while calls keep coming; they stop about 10 seconds after the last.
+- `device.contacts.search(query)`: By name, or by email or phone number when the query is one. With limited access, only the contacts shared with the app.
+- `device.contacts.add(contact)`: To the default account; groups and accounts aren't wrapped.
+- `device.camera.capture()`: The system camera screen. A Mac has none in the app; a browser would need its own camera view.
+- `device.reminders.add(reminder)`: No recurrence or alarms.
 
 <!-- device-table:end -->
 
@@ -206,10 +244,32 @@ if (file) {
 }
 ```
 
-Next come methods behind a system permission, such as location and
-notifications. The
+### Methods behind a permission
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+These need your permission ("Permissions and the ledger" below), and
+work only in kernels in the app:
+
+- `device.notifications`: schedule a notification after a delay, list
+  and cancel this notebook's pending ones.
+- `device.location`: the current position, a stream of positions, and
+  geocoding.
+- `device.motion` (iPad and iPhone): a stream of motion samples, or the
+  latest one.
+- `device.photos.save`: add an image to Photos. It can't read the
+  library.
+- `device.camera.capture` (iPad and iPhone): take a photo with the
+  system camera.
+- `device.contacts`: search, read, add and delete contacts.
+- `device.reminders`: your reminder lists; list, add, complete and
+  delete reminders.
+
+The table above has each method. The
 [phases](https://github.com/tlockney/ganymede-device/blob/main/docs/plan.md#phases)
-list them.
+list what comes next.
 
 ## Permissions and the ledger
 
@@ -217,8 +277,8 @@ list them.
 > **Unreleased.** Available only from a build of `main` (HEAD), not in
 > the latest release.
 
-Some methods need your permission, such as notifications now and
-location later. The first time a notebook calls one, the app asks you
+Some methods need your permission, such as notifications, location
+and contacts. The first time a notebook calls one, the app asks you
 before the system does: **Allow Once** lets that call through, **Always
 Allow** lets this notebook use it from now on, and **Don’t Allow** turns
 it down from now on. Cancel turns down just that call. The call then
