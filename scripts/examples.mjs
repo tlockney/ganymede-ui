@@ -313,7 +313,7 @@ export function toOutputs(messages, displays, widgetMessage = () => {}) {
 }
 
 async function runAll(selected) {
-  const { chromium } = await import('playwright');
+  const { chromium } = await import('@playwright/test');
   const server = await serve();
   const url = `http://127.0.0.1:${server.address().port}/`;
   const proxy = process.env.HTTPS_PROXY
