@@ -67,10 +67,6 @@ Needs an Apple silicon Mac with macOS 26 or later, Xcode 26 or later
 The app links ganymede-ffi as `GanymedeFFI.xcframework`, which
 `bootstrap.sh` gets one of two ways:
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release, whose `bootstrap.sh` takes only `GANYMEDE_DIR`.
-
 - `GANYMEDE_REF=vX.Y.Z` downloads it from that
   [tlockney/ganymede](https://github.com/tlockney/ganymede) release
   (`GanymedeFFI.xcframework.zip`) and checks it against the release's
@@ -130,12 +126,6 @@ xcodebuild test -project apple/Ganymede.xcodeproj -scheme Ganymede-iOS \
 ```
 
 ## Download
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release: the apps require macOS 26 or iOS 26, and the Mac
-> app runs on Apple silicon only. The latest release runs on macOS 13 and
-> iOS 16, and its Mac app is universal (Apple silicon and Intel).
 
 Since 0.3.0, each
 [ganymede-ui release](https://github.com/tlockney/ganymede-ui/releases)

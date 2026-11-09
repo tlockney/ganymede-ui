@@ -7,12 +7,6 @@ guide; [apple/README.md](../apple/README.md) covers how the app is built.
 
 ## Install
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release: the apps require macOS 26 or iOS 26, and the Mac
-> app runs on Apple silicon only. The latest release runs on macOS 13 and
-> iOS 16, and its Mac app is universal (Apple silicon and Intel).
-
 - **Mac** (macOS 26 or later, Apple silicon): each
   [release](https://github.com/tlockney/ganymede-ui/releases) since 0.3.0
   attaches `Ganymede-macOS-<version>.zip`, an app signed with a
@@ -104,10 +98,6 @@ shown or hidden, its tab and its expanded folders across launches.
 - Help > Ganymede Website, Ganymede Documentation and Apps Guide open
   ganymede-server.com, its docs and this page in the browser.
 
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release.
-
 ### Kernels
 
 - Kernels come from the kernelspecs installed on the Mac, as with
@@ -168,10 +158,6 @@ version to keep.
 
 ### Shortcuts
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
-
 The Shortcuts app, Spotlight and Siri get these Ganymede actions:
 
 | Action                  | What it does                                                                                           |
@@ -209,10 +195,6 @@ and API key, with a test. Shortcuts lists the notebook's keyboard
 shortcuts and rebinds them.
 
 #### Code font
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
 
 Settings > Appearance sets the code font: notebook cells and text
 outputs, the text editor and the terminal take it at once. Pick the
@@ -271,10 +253,6 @@ keys are kept in the keychain too.
 - Outline lists the open notebook's headings, indented by level; tap one
   to go to its cell. In portrait the sidebar then gets out of the way.
 
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release. In 0.5.0 the Outline tab is empty.
-
 - The Mac's inspector (Outline and Variables) isn't on the iPad yet
   ([#249](https://github.com/tlockney/ganymede-ui/issues/249)).
 
@@ -288,10 +266,6 @@ and its ⋯ menu are in the bottom toolbar. Terminals and text files cover
 the screen. The bottom toolbar's Outline menu lists the notebook's
 headings; pick one to go to its cell.
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
-
 ### On both
 
 - **Settings** (the gear button, ⌘, with a keyboard, or Settings in the ⋯
@@ -304,18 +278,8 @@ headings; pick one to go to its cell.
   as on the Mac. With a keyboard, ⌘+, ⌘− and ⌘0 change the size. On a touch
   screen a cell being edited stays at 16 points or more, so iOS doesn't
   zoom the page.
-
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release.
-
 - **Help**: Settings > Help, and the iPad menu bar's Help menu,
   open ganymede-server.com, its docs and this page in Safari.
-
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release.
-
 - **Terminals**: the terminal button opens a shell on a remote, over SSH
   or on its server's terminals. SSH signs in with an ed25519 key the app
   generates or imports (Settings > SSH key; copy the public key into
