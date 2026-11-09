@@ -759,6 +759,8 @@ struct IPadCommands: Commands {
             IPadPageButton("Restart", "restart")
             IPadPageButton("Shut Down Other Kernels", "shutdown-others") { !$0.otherSessions.isEmpty }
         }
+        // The iPadOS 26 menu bar's Help menu (#409).
+        CommandGroup(replacing: .help) { HelpLinkCommands() }
     }
 }
 
