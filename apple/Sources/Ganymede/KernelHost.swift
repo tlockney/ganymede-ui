@@ -61,7 +61,7 @@ final class KernelHost: NSObject {
         // Every window's bridge keeps its answers in one store, which
         // Settings reads too (ganymede-device#86).
         self.device = device ?? DeviceBridge()
-        prompter = AppLedgerPrompter(presenter: prompts ?? SystemDialogPresenter(), host: { nil })
+        prompter = AppLedgerPrompter(presenter: prompts, host: { nil })
         super.init()
         prompter.host = { [weak self] in self?.ui }
         if self.device.ledgerPrompter == nil {

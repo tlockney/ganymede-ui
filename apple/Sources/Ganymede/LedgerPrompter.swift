@@ -40,8 +40,10 @@ final class AppLedgerPrompter: LedgerPrompter {
     private var nextOpenID = -1
 
     /// `host`: the view whose window the prompt shows on.
-    init(presenter: DialogPresenter = SystemDialogPresenter(), host: @escaping () -> DialogHost?) {
-        self.presenter = presenter
+    /// `presenter`: the system's when nil. Made here, not as a default
+    /// argument: defaults are evaluated outside the main actor.
+    init(presenter: DialogPresenter? = nil, host: @escaping () -> DialogHost?) {
+        self.presenter = presenter ?? SystemDialogPresenter()
         self.host = host
     }
 
