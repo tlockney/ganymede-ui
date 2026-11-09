@@ -22,8 +22,8 @@ node scripts/examples.mjs --run 03    # those whose source name has "03"
 Each runs top to bottom on cdp-kernel's browser kernel, the one the apps
 run, in headless Chromium through Playwright, with network access. Set
 `CHROMIUM` to a Chromium binary if Playwright's own isn't installed. A
-cell that fails stops the script with an error, unless its fence says
-`error`.
+cell that fails, unless its fence says `error`, is saved with its error,
+the rest still run, and the script exits with an error.
 
 `node scripts/examples.mjs` without `--run` rebuilds the notebooks from
 the sources, keeping the outputs of the cells whose source is unchanged.

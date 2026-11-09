@@ -5,14 +5,11 @@
  * own chunk (`example-notebooks.ts`), on first use.
  */
 import type { Contents, KernelSpec } from '@jupyterlab/services';
-import { lookUp } from './rename';
-import { sampleKernel } from './sample';
+import { renameFile } from './rename';
+import { freePath, sampleKernel } from './sample';
 
 /** The folder's name; another copy gets a number (`Examples 2`). */
 export const EXAMPLES_FOLDER = 'Examples';
-
-/** How many numbered names to try before giving up. */
-const MAX_COPIES = 100;
 
 /** The example notebooks' file names, in order (`01 Start Here.ipynb`, ...). */
 export const exampleNames = (notebooks: Record<string, string>): string[] =>
@@ -48,16 +45,6 @@ export function prepare(text: string, kernelspec: ReturnType<typeof examplesKern
   return nb;
 }
 
-/** The first of `Examples`, `Examples 2`, ... that is free in `dir`. */
-async function freeFolder(contents: Contents.IManager, dir: string): Promise<string> {
-  for (let n = 1; n <= MAX_COPIES; n++) {
-    const name = n === 1 ? EXAMPLES_FOLDER : `${EXAMPLES_FOLDER} ${n}`;
-    const path = dir ? `${dir}/${name}` : name;
-    if (!(await lookUp(contents, path))) return path;
-  }
-  throw new Error(`There are already ${MAX_COPIES} copies of “${EXAMPLES_FOLDER}” here.`);
-}
-
 /**
  * Copies the examples into a new folder in `dir` and returns the first
  * notebook's path. An earlier copy, perhaps edited, is left as it is.
@@ -71,14 +58,15 @@ export async function copyExamples(
   const names = exampleNames(NOTEBOOKS);
   if (!names.length) throw new Error('This build has no example notebooks.');
   const kernelspec = examplesKernel(specs);
-  const folder = await freeFolder(contents, dir);
+  const folder = await freePath(contents, dir, EXAMPLES_FOLDER);
   // A new folder, then its name: both the server and the browser's storage
   // create one this way.
   const made = await contents.newUntitled({ type: 'directory', path: dir });
   try {
-    await contents.rename(made.path, folder);
+    // Refuses a name taken in between: browser storage's rename would replace it.
+    await renameFile(contents, made.path, folder);
   } catch (err) {
-    // Someone took the name in between: don't leave an empty folder behind.
+    // Don't leave an empty folder behind.
     await contents.delete(made.path).catch(() => undefined);
     throw err;
   }

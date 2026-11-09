@@ -145,15 +145,19 @@ export function sampleNotebook(kernelspec: Kernelspec = CDP_BROWSER) {
   };
 }
 
-/** The first of `name`, `name 2`, `name 3`… that is free in `dir`. */
+/**
+ * The first of `name`, `name 2`, `name 3`… that is free in `dir`, with the
+ * number before `.ipynb` when there is one (a folder has none).
+ */
 export async function freePath(
   contents: Contents.IManager,
   dir: string,
   name: string = SAMPLE_NAME,
 ): Promise<string> {
-  const stem = name.replace(/\.ipynb$/, '');
+  const ext = name.endsWith('.ipynb') ? '.ipynb' : '';
+  const stem = name.slice(0, name.length - ext.length);
   for (let n = 1; n <= MAX_COPIES; n++) {
-    const file = n === 1 ? name : `${stem} ${n}.ipynb`;
+    const file = n === 1 ? name : `${stem} ${n}${ext}`;
     const path = dir ? `${dir}/${file}` : file;
     if (!(await lookUp(contents, path))) return path;
   }
