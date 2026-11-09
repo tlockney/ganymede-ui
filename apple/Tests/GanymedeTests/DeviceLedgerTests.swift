@@ -154,8 +154,27 @@ final class DeviceLedgerTests: XCTestCase {
         XCTAssertEqual(folderStore.saved.map(\.id), ["F2"])
         XCTAssertEqual(grants.notebooks[0].folders.count, 0)
 
+        // Another window keeps a folder after the last reload: Revoke All
+        // takes it too.
+        folderStore.saved.append(
+            FolderGrant(id: "F3", notebook: "/d/New.ipynb", name: "Late", writable: false, bookmark: Data()))
         grants.revokeAll()
         XCTAssertTrue(folderStore.saved.isEmpty)
         XCTAssertTrue(grants.notebooks.isEmpty)
     }
+
+    #if os(macOS)
+    func testAFolderRowSaysWhereTheFolderIs() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let bookmark = try dir.bookmarkData()
+        let folder = FolderGrant(id: "F1", notebook: "/b/Trip.ipynb", name: dir.lastPathComponent, writable: false, bookmark: bookmark)
+        let detail = DeviceGrants.detail(folder)
+        XCTAssertTrue(detail.hasPrefix("Folder, read only · "), detail)
+        XCTAssertTrue(detail.hasSuffix(dir.lastPathComponent), detail)
+        let unknown = FolderGrant(id: "F2", notebook: "/b/Trip.ipynb", name: "Gone", writable: true, bookmark: Data([1, 2, 3]))
+        XCTAssertEqual(DeviceGrants.detail(unknown), "Folder, read and write")
+    }
+    #endif
 }

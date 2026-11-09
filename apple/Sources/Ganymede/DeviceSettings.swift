@@ -38,7 +38,7 @@ struct DeviceSettings: View {
                                     .accessibilityLabel("Revoke folder \(folder.name) for \(notebook.name)")
                             } label: {
                                 Label(folder.name, systemImage: "folder")
-                                Text(folder.writable ? "Folder, read and write" : "Folder, read only")
+                                Text(DeviceGrants.detail(folder))
                             }
                         }
                     } header: {
@@ -114,13 +114,42 @@ final class DeviceGrants {
         reload()
     }
 
+    /// Everything kept now, not only what was listed: another window may
+    /// have kept an answer or a folder since the last reload.
     func revokeAll() {
-        for notebook in notebooks {
-            ledger.revoke(notebook: notebook.path)
-            folders.revoke(notebook: notebook.path)
+        for path in Set(ledger.grants.map(\.notebook)) {
+            ledger.revoke(notebook: path)
+        }
+        for path in Set(folders.grants.map(\.notebook)) {
+            folders.revoke(notebook: path)
         }
         reload()
     }
+
+    /// A folder row's second line: its access and, on the Mac, where it
+    /// is, so two folders of one name can be told apart.
+    static func detail(_ folder: FolderGrant) -> String {
+        let access = folder.writable ? "Folder, read and write" : "Folder, read only"
+        #if os(macOS)
+        if let path = location(folder) { return "\(access) · \(path)" }
+        #endif
+        return access
+    }
+
+    #if os(macOS)
+    /// Where `folder` is now, with `~` for the home folder, or nil when
+    /// its bookmark doesn't resolve without UI or mounting a volume.
+    static func location(_ folder: FolderGrant) -> String? {
+        var stale = false
+        let quiet: URL.BookmarkResolutionOptions = [.withoutUI, .withoutMounting]
+        let url = (try? URL(
+            resolvingBookmarkData: folder.bookmark, options: quiet.union(.withSecurityScope),
+            relativeTo: nil, bookmarkDataIsStale: &stale))
+            ?? (try? URL(resolvingBookmarkData: folder.bookmark, options: quiet, relativeTo: nil, bookmarkDataIsStale: &stale))
+        guard let path = url?.path else { return nil }
+        return (path as NSString).abbreviatingWithTildeInPath
+    }
+    #endif
 
     /// A capability's name in a list: “Location”.
     static func name(_ capability: String) -> String {

@@ -28,6 +28,9 @@ final class KernelHost: NSObject {
     /// ganymede-device's `device` handler. Kept so that a new kernel page
     /// starts with no dialog, picker or sound left from the old one.
     private let device: DeviceBridge
+    /// The folders notebooks picked, in the store the bridge and Settings
+    /// share: a rename moves them even for a notebook with no kept answer.
+    private let folders: FolderGrants
     private weak var ui: WKWebView?
     private var pageURL: URL?
     private var loaded = false
@@ -58,16 +61,18 @@ final class KernelHost: NSObject {
     private var openAsks: Set<OpenAsk> = []
 
     /// `device` is the bridge cells reach (the system's when nil); tests
-    /// pass one with a fake presenter, and `prompts`, a presenter for the
-    /// ledger's prompts.
-    init(device: DeviceBridge? = nil, prompts: DialogPresenter? = nil) {
+    /// pass one with a fake presenter, `prompts`, a presenter for the
+    /// ledger's prompts, and `folders`, the grants that bridge was given.
+    init(device: DeviceBridge? = nil, prompts: DialogPresenter? = nil, folders: FolderGrants? = nil) {
         let config = WKWebViewConfiguration()
         // Not on screen, but cells must keep running at full speed.
         config.preferences.inactiveSchedulingPolicy = .none
         webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 1, height: 1), configuration: config)
         // Every window's bridge keeps its answers in one store, which
         // Settings reads too (ganymede-device#86).
-        self.device = device ?? Self.systemBridge()
+        let folders = folders ?? FolderGrants()
+        self.folders = folders
+        self.device = device ?? Self.systemBridge(folders: folders)
         prompter = AppLedgerPrompter(presenter: prompts, host: { nil })
         super.init()
         prompter.host = { [weak self] in self?.ui }
@@ -99,7 +104,7 @@ final class KernelHost: NSObject {
     /// (`device.folders`). Each permissioned one asks the
     /// app's ledger, then the system, on first use; one the device lacks
     /// (motion and the camera on a Mac) stays out of `hello`.
-    private static func systemBridge() -> DeviceBridge {
+    private static func systemBridge(folders: FolderGrants) -> DeviceBridge {
         let bridge = DeviceBridge()
         // The notification center throws outside an app bundle, such as
         // the unit tests' runner.
@@ -113,7 +118,7 @@ final class KernelHost: NSObject {
         bridge.addContacts()
         bridge.addReminders()
         bridge.addBluetooth()
-        bridge.addFolders()
+        bridge.addFolders(folders)
         bridge.addHostEvents()
         return bridge
     }
@@ -273,7 +278,7 @@ final class KernelHost: NSObject {
     }
 
     /// A file or folder moved: every notebook at or under `old` follows,
-    /// with its kept answers and its kernels.
+    /// with its kept answers, its folders and its kernels.
     private func moved(from old: String, to new: String) {
         guard old != new else { return }
         let rename: (String) -> String? = { path in
@@ -281,7 +286,9 @@ final class KernelHost: NSObject {
             if path.hasPrefix(old + "/") { return new + path.dropFirst(old.count) }
             return nil
         }
-        let paths = Set(device.ledger.grants.map(\.notebook)).union(notebooks.values)
+        let paths = Set(device.ledger.grants.map(\.notebook))
+            .union(folders.grants.map(\.notebook))
+            .union(notebooks.values)
         for path in paths.sorted() {
             if let to = rename(path) { device.notebookMoved(from: path, to: to) }
         }

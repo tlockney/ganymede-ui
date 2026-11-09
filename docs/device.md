@@ -255,6 +255,11 @@ if (file) {
 }
 ```
 
+The table above has each method, and the sections below the ones that
+need more than a call. The
+[phases](https://github.com/tlockney/ganymede-device/blob/main/docs/plan.md#phases)
+list what comes next.
+
 ### Methods behind a permission
 
 > [!NOTE]
@@ -323,10 +328,6 @@ if (folder) {
   await folder.write('notes/today.txt', 'Written from a notebook');
 }
 ```
-
-The table above has each method. The
-[phases](https://github.com/tlockney/ganymede-device/blob/main/docs/plan.md#phases)
-list what comes next.
 
 ## Permissions and the ledger
 
