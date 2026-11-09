@@ -322,6 +322,20 @@ headings; pick one to go to its cell.
   > **Unreleased.** Available only from a build of `main` (HEAD), not in
   > the latest release.
 
+- **Run Script on Device** (Shortcuts, Mac too; experimental, off until
+  Settings › Device › Run Scripts from Shortcuts): runs a `.ts` or `.js`
+  file, or an `.ipynb` notebook's code cells, on this device with no
+  window and no kernel, on JavaScriptCore. The action's text, link and
+  files are `device.input`; it returns the text or link the script hands
+  to `device.output()`, or else its top-level `return` value. It can't
+  show a prompt, so a `device` call that needs a permission works only if
+  that notebook was allowed with Always. No imports, and 30 seconds by
+  default (60 at most).
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release.
+
 - **Downloads** open the share sheet, where Save to Files keeps them.
 - In the background iOS may stop the app's server; back in the
   foreground the app restarts it if it stopped answering.
