@@ -348,7 +348,9 @@ export function makeFetch(host: (request: string) => Promise<string>) {
     init: {
       method?: string;
       headers?:
-        Record<string, unknown> | { forEach(f: (value: string, name: string) => void): void };
+        | Record<string, unknown>
+        | [string, unknown][]
+        | { forEach(f: (value: string, name: string) => void): void };
       body?: string | Uint8Array | ArrayBuffer;
       signal?: SimpleAbortSignal;
     } = {},
@@ -363,7 +365,9 @@ export function makeFetch(host: (request: string) => Promise<string>) {
           : encodeBase64(init.body instanceof ArrayBuffer ? new Uint8Array(init.body) : init.body);
     const headers: Record<string, string> = {};
     const given = init.headers;
-    if (given && typeof (given as { forEach?: unknown }).forEach === 'function')
+    if (Array.isArray(given))
+      for (const [name, value] of given as [string, unknown][]) headers[name] = String(value);
+    else if (given && typeof (given as { forEach?: unknown }).forEach === 'function')
       (given as { forEach(f: (value: string, name: string) => void): void }).forEach(
         (value, name) => (headers[name] = String(value)),
       );

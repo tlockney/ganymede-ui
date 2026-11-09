@@ -28,8 +28,11 @@ that never yields, and has no public heap cap.
 
 Each run has its own ephemeral URLSession, cancelled when the run ends,
 so runs share no cookies and a stopped run's download stops. Top-level
-`let` and `const` (at the start of a line) become `var`, so a cell can
-declare a name an earlier cell did, as in a kernel. The console keeps
+`let` and `const` become `var`, so a cell can declare a name an earlier
+cell did, as in a kernel. A small scanner finds them, skipping strings,
+template literals, comments and anything in brackets; a regex literal
+with a quote or backtick can still confuse it. Unlike a kernel, a `const`
+can then be reassigned. The console keeps
 JavaScriptCore's other methods; fetch sends header values as strings,
 takes a `Headers`-like object, and rejects when its signal aborts
 mid-call (the host request isn't cancelled). Base64 uses Uint8Array's

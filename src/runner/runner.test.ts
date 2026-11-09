@@ -2,7 +2,7 @@
 // JavaScriptCore, is apple/Tests/GanymedeTests/ScriptRunnerTests.swift.
 import { describe, expect, it, vi } from 'vitest';
 import { decodeBase64, encodeBase64, installPolyfills, makeFetch } from './polyfills';
-import { program, run, toJavaScript } from './engine';
+import { program, run, toJavaScript, topLevelVar } from './engine';
 
 describe('base64', () => {
   it('round-trips every length and byte', () => {
@@ -31,6 +31,18 @@ describe('program', () => {
     expect(
       await run({ sources: ['const a = 1', 'const a = 2\nlet b = a', 'let b = 3\nreturn a + b'] }),
     ).toEqual({ ok: true, value: '5' });
+  });
+
+  it('leaves text, nested blocks and loops alone', () => {
+    expect(topLevelVar('const s = `a\nlet me ${`x\nconst y`} know`\nlet t = 1')).toBe(
+      'var s = `a\nlet me ${`x\nconst y`} know`\nvar t = 1',
+    );
+    expect(topLevelVar('if (x) {\n  let a = 1\n}\nfor (let i = 0; i < 1; i++) {}')).toBe(
+      'if (x) {\n  let a = 1\n}\nfor (let i = 0; i < 1; i++) {}',
+    );
+    expect(topLevelVar("'let x' // let y\n/* const z */ x.let = 1; outlet = 2")).toBe(
+      "'let x' // let y\n/* const z */ x.let = 1; outlet = 2",
+    );
   });
 
   it('rejects imports, naming the cell', () => {
@@ -111,7 +123,8 @@ describe('fetch', () => {
     });
     await fetch('https://x.test/', { headers: { 'X-Retry': 1 } });
     await fetch('https://x.test/', { headers: new Map([['x-a', 'b']]) });
-    expect(sent.map(r => r.headers)).toEqual([{ 'X-Retry': '1' }, { 'x-a': 'b' }]);
+    await fetch('https://x.test/', { headers: [['x-c', 'd']] });
+    expect(sent.map(r => r.headers)).toEqual([{ 'X-Retry': '1' }, { 'x-a': 'b' }, { 'x-c': 'd' }]);
   });
 
   it('rejects when its signal aborts during the call', async () => {

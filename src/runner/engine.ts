@@ -32,6 +32,85 @@ export function toJavaScript(source: string, language = 'typescript'): string {
   return transform(source, { transforms: ['typescript'], disableESTransforms: true }).code;
 }
 
+/**
+ * `js` with its top-level `let` and `const` declarations as `var`, so a
+ * cell may declare a name an earlier cell declared. A small scanner, not
+ * a parser: it skips strings, template literals (and their `${}`),
+ * comments, and anything inside brackets, so nested blocks and text are
+ * left alone. A regex literal holding a quote or backtick can confuse it.
+ */
+export function topLevelVar(js: string): string {
+  let out = '';
+  let depth = 0;
+  // Each open template literal, with the bracket depth its `${` started at.
+  const templates: number[] = [];
+  let i = 0;
+  const isWord = (c: string | undefined) => c !== undefined && /[\w$]/.test(c);
+  while (i < js.length) {
+    const c = js[i];
+    if (templates.length && depth === templates[templates.length - 1]) {
+      // Inside a template literal's text.
+      if (c === '\\') {
+        out += js.slice(i, i + 2);
+        i += 2;
+      } else if (c === '`') {
+        templates.pop();
+        out += c;
+        i++;
+      } else if (c === '$' && js[i + 1] === '{') {
+        depth++;
+        out += '${';
+        i += 2;
+      } else {
+        out += c;
+        i++;
+      }
+      continue;
+    }
+    if (c === '"' || c === "'") {
+      let j = i + 1;
+      while (j < js.length && js[j] !== c && js[j] !== '\n') j += js[j] === '\\' ? 2 : 1;
+      out += js.slice(i, j + 1);
+      i = j + 1;
+    } else if (c === '`') {
+      templates.push(depth);
+      out += c;
+      i++;
+    } else if (c === '/' && js[i + 1] === '/') {
+      const j = js.indexOf('\n', i);
+      const end = j < 0 ? js.length : j;
+      out += js.slice(i, end);
+      i = end;
+    } else if (c === '/' && js[i + 1] === '*') {
+      const j = js.indexOf('*/', i + 2);
+      const end = j < 0 ? js.length : j + 2;
+      out += js.slice(i, end);
+      i = end;
+    } else if (c === '{' || c === '(' || c === '[') {
+      depth++;
+      out += c;
+      i++;
+    } else if (c === '}' || c === ')' || c === ']') {
+      depth--;
+      out += c;
+      i++;
+    } else if (depth === 0 && !isWord(js[i - 1]) && js[i - 1] !== '.') {
+      const m = /^(let|const)(?=\s)/.exec(js.slice(i, i + 6));
+      if (m) {
+        out += 'var';
+        i += m[1].length;
+      } else {
+        out += c;
+        i++;
+      }
+    } else {
+      out += c;
+      i++;
+    }
+  }
+  return out;
+}
+
 /** The body of the async function a job runs as. Imports aren't supported: there is nothing to load them from. */
 export function program(job: RunJob): string {
   const parts = job.sources.map((source, n) => {
@@ -40,7 +119,7 @@ export function program(job: RunJob): string {
       throw new SyntaxError(`cell ${n + 1}: import and export aren't supported in a run`);
     // A cell may declare a name another cell declared, as in a notebook's
     // kernel: top-level `let` and `const` (at the start of a line) become `var`.
-    return toJavaScript(source, job.language).replace(/^(?:let|const)(?=\s)/gm, 'var');
+    return topLevelVar(toJavaScript(source, job.language));
   });
   return parts.join('\n;\n');
 }
