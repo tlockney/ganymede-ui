@@ -6,10 +6,11 @@ Items 8 and 12 of the project read of 2026-11-09
 - **cdp-kernel 0.9.0** in `package.json`, which is the kernel the app
   runs in the page and so what the apps ship, and in CI's
   `CDP_KERNEL_VERSION`, the kernelspec the e2e job installs. Ganymede
-  moved in tlockney/ganymede#622. The app's side needed no change: the
-  browser target is the same code as in 0.8.0. What a person will
-  notice is in the kernel: a cell can redeclare a name an earlier cell
-  declared another way (`let df` after `const df`).
+  moved in tlockney/ganymede#622. The app's side needed no change. What
+  0.9.0 changes for a person is in
+  [cdp-kernel's changelog](https://github.com/tlockney/cdp-kernel/blob/main/CHANGELOG.md):
+  mainly that, on the Node kernel, a cell can redeclare a name an
+  earlier cell declared another way (`let df` after `const df`).
 - **`vite-plugin-pwa` is `2.0.0`**, not `^2.0.0`. It was the one
   dependency with a range; the lockfile already had 2.0.0.
 - **`@tlockney/ganymede-device` names its commit** in `package.json`
