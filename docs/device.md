@@ -1,8 +1,8 @@
 # Device API
 
-TypeScript cells in the iPad and iPhone app can use native features of
-the device through a global named `device`. A cell calls a method, and
-the app answers it from Swift:
+TypeScript cells in the Mac, iPad and iPhone apps can use native
+features of the device through a global named `device`. A cell calls a
+method, and the app answers it from Swift:
 
 ```ts
 await device?.clipboard.writeText('hello from a cell');
@@ -15,6 +15,13 @@ the TypeScript package, the app's Swift side, and the
 It is early: today it has device details, the clipboard (text and
 images), haptics, opening URLs, dialogs, share, Quick Look, file and
 photo pickers, saving files, and sounds.
+
+> [!IMPORTANT]
+> **macOS and iOS only, for now.** Only Ganymede's Mac, iPad and iPhone
+> apps answer `device`. There is no Windows, Linux or Android app. In
+> any browser, the notebook page answers a few methods that need no
+> permission with web APIs ([In a browser](#in-a-browser)); everything
+> else needs one of the apps.
 
 ## Where `device` exists
 
