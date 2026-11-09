@@ -71,6 +71,11 @@ packages:
   Sentry:
     url: https://github.com/getsentry/sentry-cocoa
     exactVersion: 9.31.0
+  # Updates for the Mac app (#411, MIT): finds, downloads, checks and
+  # installs new releases (AppUpdater.swift). Mac target only.
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    exactVersion: 2.10.1
   # The `device` bridge for notebook cells, on the kernel web view only (#99).
   GanymedeDevice:
     url: https://github.com/tlockney/ganymede-device
@@ -102,6 +107,7 @@ targets:
       - package: GanymedeDevice
         product: DeviceBridge
       - package: Sentry
+      - package: Sparkle
       - package: Neon
       - package: SwiftTreeSitter
       - package: TreeSitterBash
@@ -129,6 +135,15 @@ targets:
         # Missing Compliance (#322): only standard TLS and SSH, no custom
         # algorithms.
         ITSAppUsesNonExemptEncryption: false
+        # Updates (#411). release-app.sh sets the feed and the public key
+        # its updates are signed with; other builds leave them empty and
+        # don't update themselves. Checks run daily without asking first;
+        # installing asks unless the person turns that on in Settings.
+        SUFeedURL: $(SPARKLE_FEED_URL)
+        SUPublicEDKey: $(SPARKLE_PUBLIC_ED_KEY)
+        SUEnableAutomaticChecks: true
+        SURequireSignedFeed: true
+        SUVerifyUpdateBeforeExtraction: true
         # The web view loads the server on 127.0.0.1 over plain HTTP.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
@@ -169,6 +184,9 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.ganymede-server.Ganymede
         ENABLE_HARDENED_RUNTIME: YES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # Empty except in release builds (release-app.sh, #411).
+        SPARKLE_FEED_URL: ''
+        SPARKLE_PUBLIC_ED_KEY: ''
   # Quick Look's preview of a notebook (#135): ganymede-ui's notebook view
   # from `npm run build:quicklook`, read-only, no server or kernel.
   GanymedeQuickLook:
@@ -347,6 +365,7 @@ targets:
       - path: Sources/Ganymede/NotebookActions.swift
       - path: Sources/Ganymede/HelpLinks.swift
       - path: Sources/Ganymede/Terminal/ProcessTerminalTransport.swift
+      - path: Sources/Ganymede/UpdateFeed.swift
       - path: Sources/QuickLook/Preview/PreviewResources.swift
       - path: Sources/QuickLook/Thumbnail/NotebookSummary.swift
       - path: Sources/QuickLook/Thumbnail/ThumbnailProvider.swift

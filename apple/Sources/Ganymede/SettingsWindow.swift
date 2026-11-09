@@ -88,7 +88,8 @@ private struct OpenSettingsReader: View {
     }
 }
 
-/// General: which app opens notebooks, and crash reports (#318).
+/// General: which app opens notebooks, updates (#411), and crash reports
+/// (#318).
 private struct GeneralSettings: View {
     var body: some View {
         Form {
@@ -100,6 +101,7 @@ private struct GeneralSettings: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
+            UpdateSettings()
             CrashReportsSettings()
         }
         .formStyle(.grouped)

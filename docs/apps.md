@@ -185,7 +185,8 @@ reaches. The actions are on the Mac only for now.
 ### Settings
 
 Settings (⌘,) is one window with tabs. General makes Ganymede the
-default app for notebooks and turns crash reports on or off. Appearance
+default app for notebooks, sets how it updates ([Updates](#updates)) and
+turns crash reports on or off. Appearance
 sets the code font (below). Kernels
 picks where kernels run, this Mac or, as on iPadOS, one remote's server,
 and lists the kernels installed there. Remotes keeps a list of remotes:
@@ -193,6 +194,28 @@ Jupyter or Ganymede servers, SSH hosts, or both; tokens are kept in the
 keychain. Agent turns the optional agent on and picks its provider, model
 and API key, with a test. Shortcuts lists the notebook's keyboard
 shortcuts and rebinds them.
+
+#### Updates
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+Release builds check GitHub for a newer release once a day. When one is
+found, the Dock icon gets a badge and an **Update Available** button
+appears in the window's toolbar. The button opens the release notes with
+Install Update, Skip This Version and Remind Me Later. Installing downloads the release, checks its signature,
+replaces the app and opens it again. Ganymede > Check for Updates…
+checks now.
+
+Settings > General turns the daily check off, or makes updates download
+and install on their own (they install when you quit). The first release
+with updates has to be installed by hand; later ones install themselves.
+Builds made from source, and CI's ad-hoc builds, don't update
+themselves. The check downloads the release feed from GitHub (its release
+asset host serves the file) and sends nothing about you or your
+notebooks; the download carries your IP address and the app's version,
+as any download does.
 
 #### Code font
 

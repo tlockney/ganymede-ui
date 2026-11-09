@@ -59,6 +59,10 @@ struct GanymedeApp: App {
                 Divider()
                 TerminalCommands(model: model)
             }
+            // Release builds only (#411).
+            CommandGroup(after: .appInfo) {
+                CheckForUpdatesCommand()
+            }
             CommandGroup(after: .appSettings) {
                 // Tabs of the one Settings window (#206, #332).
                 Button("Agent Settings…") {
@@ -223,6 +227,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var quitting = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Release builds look for a newer release once a day (#411).
+        AppUpdater.shared.start()
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(windowWillClose(_:)),
