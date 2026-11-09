@@ -67,7 +67,7 @@ final class KernelHost: NSObject {
         webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 1, height: 1), configuration: config)
         // Every window's bridge keeps its answers in one store, which
         // Settings reads too (ganymede-device#86).
-        self.device = device ?? DeviceBridge()
+        self.device = device ?? Self.systemBridge()
         prompter = AppLedgerPrompter(presenter: prompts, host: { nil })
         super.init()
         prompter.host = { [weak self] in self?.ui }
@@ -86,6 +86,32 @@ final class KernelHost: NSObject {
         webView.alpha = 0
         webView.isUserInteractionEnabled = false
         #endif
+    }
+
+    /// One scheduler for every window: the first one made becomes the
+    /// notification center's (weak) delegate, which shows notifications
+    /// while the app is in front, so it must outlive any one window.
+    private static let notifications = SystemNotificationScheduler()
+
+    /// The bridge cells get by default: every namespace ganymede-device
+    /// has, with the permissioned ones (ganymede-device#57, #422) turned
+    /// on. Each asks the app's ledger, then the system, on first use; one
+    /// the device lacks (motion and the camera on a Mac) stays out of
+    /// `hello`.
+    private static func systemBridge() -> DeviceBridge {
+        let bridge = DeviceBridge()
+        // The notification center throws outside an app bundle, such as
+        // the unit tests' runner.
+        if Bundle.main.bundleURL.pathExtension == "app" {
+            bridge.addNotifications(notifications)
+        }
+        bridge.addLocation()
+        bridge.addMotion()
+        bridge.addPhotoSaving()
+        bridge.addCameraCapture()
+        bridge.addContacts()
+        bridge.addReminders()
+        return bridge
     }
 
     /// Takes `ui`'s kernel messages, and keeps this web view in its view

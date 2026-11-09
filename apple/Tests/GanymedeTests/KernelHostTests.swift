@@ -122,12 +122,22 @@ final class KernelHostTests: XCTestCase {
             "const r = await webkit.messageHandlers.device.postMessage({ id: 1, method: 'hello', params: {} });"
                 + " return r.result.capabilities.join(',')",
             contentWorld: .page) as? String
-        // A Mac has no haptics, so it lists only what every bridge answers.
+        // A Mac has no haptics, motion sensors or camera in the app. The
+        // permissioned namespaces (#422) follow what every bridge answers;
+        // notifications need an app bundle, which the test runner isn't.
         XCTAssertEqual(
             hello,
             "clipboard.readText,clipboard.writeText,clipboard.readImage,clipboard.writeImage,info,openURL,"
                 + "ui.alert,ui.confirm,ui.prompt,ui.actionSheet,ui.pickDate,share,preview,"
-                + "files.pick,files.export,photos.pick,sound.play,sound.player,sound.control,sound.close")
+                + "files.pick,files.export,photos.pick,sound.play,sound.player,sound.control,sound.close,"
+                + "contacts.authorizationStatus,contacts.requestAuthorization,"
+                + "location.authorizationStatus,location.requestAuthorization,"
+                + "photos.authorizationStatus,photos.requestAuthorization,"
+                + "reminders.authorizationStatus,reminders.requestAuthorization,"
+                + "contacts.add,contacts.all,contacts.delete,contacts.get,contacts.search,"
+                + "location.current,location.geocode,location.reverseGeocode,photos.save,"
+                + "reminders.add,reminders.calendars,reminders.complete,reminders.delete,reminders.list,reminders.uncomplete,"
+                + "location.watch")
         let inUI = try await eval(ui, "typeof webkit.messageHandlers.device") as? String
         XCTAssertEqual(inUI, "undefined")
 

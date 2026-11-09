@@ -79,7 +79,7 @@ packages:
   # The `device` bridge for notebook cells, on the kernel web view only (#99).
   GanymedeDevice:
     url: https://github.com/tlockney/ganymede-device
-    revision: 52351e12cb2fa3fe51465aa5977f5c9960705eb1
+    revision: 1d2eb0821757b5b1e8b3bc404f683dec5dad394d
 settings:
   base:
     SWIFT_VERSION: '5.0'
@@ -144,6 +144,12 @@ targets:
         SUEnableAutomaticChecks: true
         SURequireSignedFeed: true
         SUVerifyUpdateBeforeExtraction: true
+        # The device API's permissioned namespaces (#422): the system
+        # shows these after the app's own prompt for the notebook.
+        NSLocationWhenInUseUsageDescription: A notebook asked for your location.
+        NSPhotoLibraryAddUsageDescription: A notebook asked to save an image to your photo library.
+        NSContactsUsageDescription: A notebook asked to use your contacts.
+        NSRemindersFullAccessUsageDescription: A notebook asked to use your reminders.
         # The web view loads the server on 127.0.0.1 over plain HTTP.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
@@ -179,6 +185,13 @@ targets:
         # Kernels are child processes from installed kernelspecs, which
         # the App Sandbox does not allow; distribution is Developer ID.
         com.apple.security.app-sandbox: false
+        # The hardened runtime's resource access, for the device API's
+        # permissioned namespaces (#422). Without one, the system refuses
+        # that permission without asking. A Mac has no camera in the app.
+        com.apple.security.personal-information.location: true
+        com.apple.security.personal-information.photos-library: true
+        com.apple.security.personal-information.addressbook: true
+        com.apple.security.personal-information.calendars: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.ganymede-server.Ganymede
@@ -318,6 +331,13 @@ targets:
         # there are edited in place.
         UIFileSharingEnabled: true
         LSSupportsOpeningDocumentsInPlace: true
+        # The device API's permissioned namespaces (#422): the system
+        # shows these after the app's own prompt for the notebook.
+        NSLocationWhenInUseUsageDescription: A notebook asked for your location.
+        NSPhotoLibraryAddUsageDescription: A notebook asked to save an image to your photo library.
+        NSContactsUsageDescription: A notebook asked to use your contacts.
+        NSRemindersFullAccessUsageDescription: A notebook asked to use your reminders.
+        NSCameraUsageDescription: A notebook asked to take a photo.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
     settings:
