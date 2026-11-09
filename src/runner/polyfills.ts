@@ -192,7 +192,9 @@ export function installPolyfills(g: Global = globalThis as Global): void {
     if (g[name] === undefined)
       Object.defineProperty(g, name, { value, configurable: true, writable: true });
   };
-  if (g.console === undefined || typeof g.console.log !== 'function') {
+  // JavaScriptCore has a console of its own, but it writes only to Web
+  // Inspector: with the host's log, replace it.
+  if (g.__ganymedeLog || g.console === undefined || typeof g.console.log !== 'function') {
     const log =
       (level: string) =>
       (...args: unknown[]) =>

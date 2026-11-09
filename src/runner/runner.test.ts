@@ -71,6 +71,8 @@ describe('installPolyfills', () => {
     const lines: string[] = [];
     const g: Record<string, unknown> = {
       __ganymedeLog: (level: string, text: string) => lines.push(`${level}: ${text}`),
+      // JavaScriptCore's own, which only Web Inspector sees.
+      console: { log: () => {} },
     };
     installPolyfills(g as never);
     (g.console as Console).log('n', 2, { a: 1 });
