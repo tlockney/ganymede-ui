@@ -1,9 +1,8 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
-// Unit tests for the app in src/ (the client package runs its own with
-// node --test). Separate from vite.config.ts so the PWA and build plugins
-// stay out of the test run.
+// Unit tests for the app in src/ and the agent package. Separate from
+// vite.config.ts so the PWA and build plugins stay out of the test run.
 export default defineConfig({
   plugins: [react()],
   // One React, as in vite.config.ts.

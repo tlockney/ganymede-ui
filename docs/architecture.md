@@ -55,7 +55,6 @@ Jupyter server that speaks the same REST and websocket API.
 | Shell                            | [`src/App.tsx`](../src/App.tsx), [`src/components/`](../src/components/), [`src/styles/`](../src/styles/)                                                                   |
 | Build and PWA                    | [`vite.config.ts`](../vite.config.ts)                                                                                                                                       |
 | Agent (optional, off by default) | [`packages/agent/`](../packages/agent/), [`src/components/SettingsSheet.tsx`](../src/components/SettingsSheet.tsx)                                                          |
-| Protocol package (not used yet)  | [`packages/client/`](../packages/client/)                                                                                                                                   |
 | Mac and iPad app                 | [`apple/`](../apple/README.md)                                                                                                                                              |
 
 ## Backends
@@ -323,14 +322,6 @@ settings button, or a `ganymede:show-settings` window event).
   everyone.
 - `index.ts` and `tools.ts` are the spike's harness and notebook tools
   (ganymede-ui#124); the agent panel that uses them comes next.
-
-## Protocol package
-
-[`packages/client`](../packages/client/) is Jupyter protocol code with no
-UI framework: the v1 websocket framing, a connection layer, ANSI and
-stream handling, and renderer and widget seams. It was Ganymede's
-`frontend/` package. The app does not use it; it talks to servers through
-`@jupyterlab/services`.
 
 ## Mac and iPad app
 

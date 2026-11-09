@@ -314,12 +314,6 @@ picture, and the Ganymede site shows it at
   translucent source-list sidebar, sheets, segmented controls, system fonts
   and accent, light and dark from the system setting.
   `src/styles/jupyter.css` restyles JupyterLab through its CSS variables.
-- **Client package** ([`packages/client`](packages/client/)). Jupyter
-  protocol plumbing with no UI framework: the v1 websocket framing, a
-  connection layer, ANSI and stream handling, and renderer and widget seams.
-  It was Ganymede's `frontend/` package and moved here with its history. The
-  app doesn't use it yet; it's the base for the in-page transport to a
-  Worker kernel.
 - **PWA** (`vite.config.ts`). Workbox precache, manifest with
   `window-controls-overlay`, Apple touch icon. `/api/` is never cached.
   The Workbox worker also carries JupyterLite's service-worker relay

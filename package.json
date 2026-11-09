@@ -17,7 +17,7 @@
     "lint": "eslint . --max-warnings 0",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "test": "vitest run && npm test -w packages/client",
+    "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "e2e": "playwright test"
   },
