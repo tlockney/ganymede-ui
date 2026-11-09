@@ -154,7 +154,7 @@ xcodebuild -exportArchive -archivePath "$archive" -exportPath "$export_dir" \
   -exportOptionsPlist "$work/ExportOptions.plist" -allowProvisioningUpdates "${auth[@]}"
 
 if ((upload)); then
-  echo "Uploaded $VERSION ($BUILD_NUMBER). App Store Connect processes it for TestFlight in a few minutes."
+  echo "Uploaded $VERSION (${BUILD_NUMBER:-1}). App Store Connect processes it for TestFlight in a few minutes."
 else
   ipa="$build/Ganymede-iOS-$VERSION.ipa"
   mv "$export_dir/Ganymede.ipa" "$ipa"

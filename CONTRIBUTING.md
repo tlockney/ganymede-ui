@@ -67,9 +67,8 @@ The app is a client of Ganymede's REST and websocket API, which matches
 
 ## What's next
 
-Besides the README's known gaps: file operations (rename, delete,
-upload), a command palette and menus, and cdp-kernel running natively
-inside the iPad app instead of in its web view.
+Besides the README's known gaps: cdp-kernel running natively inside the
+iPad app instead of in its web view.
 
 Report security problems privately, as [SECURITY.md](SECURITY.md) says,
 not in a public issue.

@@ -188,7 +188,6 @@ struct PageState: Decodable, Equatable {
     }
 
     var hasNotebook: Bool { path != nil }
-    var isCode: Bool { cellType == "code" }
 
     /// The window's subtitle: the kernel and what it is doing, as the
     /// page's own toolbar showed it.
