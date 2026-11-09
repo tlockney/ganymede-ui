@@ -329,8 +329,10 @@ headings; pick one to go to its cell.
   files are `device.input`; it returns the text or link the script hands
   to `device.output()`, or else its top-level `return` value. It can't
   show a prompt, so a `device` call that needs a permission works only if
-  that notebook was allowed with Always. No imports, and 30 seconds by
-  default (60 at most).
+  that notebook was allowed with Always; a file Shortcuts passes as a copy,
+  with no location, gets no permissions. No imports. The time limit (30
+  seconds by default, 60 at most) stops waiting for the script, but a loop
+  that never yields isn't stopped and holds up the app until it ends.
 
   > [!NOTE]
   > **Unreleased.** Available only from a build of `main` (HEAD), not in
