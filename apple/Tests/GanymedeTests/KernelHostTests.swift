@@ -137,9 +137,10 @@ final class KernelHostTests: XCTestCase {
                 + "reminders.authorizationStatus,reminders.requestAuthorization,"
                 + "bluetooth.connect,bluetooth.known,bluetooth.read,bluetooth.rssi,bluetooth.services,bluetooth.write,"
                 + "contacts.add,contacts.all,contacts.delete,contacts.get,contacts.search,"
+                + "folders.entries,folders.list,folders.read,folders.remove,folders.write,"
                 + "location.current,location.geocode,location.reverseGeocode,photos.save,"
                 + "reminders.add,reminders.calendars,reminders.complete,reminders.delete,reminders.list,reminders.uncomplete,"
-                + "bluetooth.notify,bluetooth.scan,events.watch,location.watch")
+                + "bluetooth.notify,bluetooth.scan,events.watch,location.watch,folders.pick")
         let inUI = try await eval(ui, "typeof webkit.messageHandlers.device") as? String
         XCTAssertEqual(inUI, "undefined")
 

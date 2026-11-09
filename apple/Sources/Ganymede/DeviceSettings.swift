@@ -2,9 +2,11 @@ import DeviceBridge
 import SwiftUI
 
 /// Settings › Device (#383): the answers kept in ganymede-device's
-/// permission ledger, by notebook, each with Revoke. A revoked notebook
-/// asks again on its next call. Every window's bridge reads the same
-/// store, so a revoke here applies to open notebooks too.
+/// permission ledger, and the folders each notebook was given
+/// (`device.folders`), by notebook, each with Revoke. A revoked notebook
+/// asks again on its next call, and a revoked folder must be picked
+/// again. Every window's bridge reads the same stores, so a revoke here
+/// applies to open notebooks too.
 struct DeviceSettings: View {
     /// A ledger of its own on the shared store (ganymede-device#86).
     @State private var model = DeviceGrants()
@@ -13,7 +15,7 @@ struct DeviceSettings: View {
         Form {
             if model.notebooks.isEmpty {
                 Section {
-                    Text("No notebook has been allowed or denied anything yet.")
+                    Text("No notebook has been allowed or denied anything, or given a folder, yet.")
                         .foregroundStyle(.secondary)
                 } footer: {
                     footer
@@ -28,6 +30,15 @@ struct DeviceSettings: View {
                             } label: {
                                 Text(DeviceGrants.name(grant.capability))
                                 Text(grant.answer == .always ? "Allowed" : "Denied")
+                            }
+                        }
+                        ForEach(notebook.folders, id: \.id) { folder in
+                            LabeledContent {
+                                Button("Revoke") { model.revokeFolder(folder.id) }
+                                    .accessibilityLabel("Revoke folder \(folder.name) for \(notebook.name)")
+                            } label: {
+                                Label(folder.name, systemImage: "folder")
+                                Text(folder.writable ? "Folder, read and write" : "Folder, read only")
                             }
                         }
                     } header: {
@@ -55,7 +66,7 @@ struct DeviceSettings: View {
     }
 
     private var footer: some View {
-        Text("When a notebook first uses something that needs your permission, such as notifications, Ganymede asks whether to allow it once, always, or never. “Always” and “never” are kept here until you revoke them.")
+        Text("When a notebook first uses something that needs your permission, such as notifications, Ganymede asks whether to allow it once, always, or never. “Always” and “never” are kept here until you revoke them, as are the folders you picked for a notebook.")
     }
 }
 
@@ -66,23 +77,36 @@ final class DeviceGrants {
     struct Notebook {
         let path: String
         let grants: [LedgerGrant]
+        /// Folders it was given, in the order they were picked.
+        let folders: [FolderGrant]
         var name: String { URL(fileURLWithPath: path).lastPathComponent }
     }
 
     @ObservationIgnored private let ledger: PermissionLedger
+    @ObservationIgnored private let folders: FolderGrants
     private(set) var notebooks: [Notebook] = []
 
-    init(ledger: PermissionLedger? = nil) {
+    init(ledger: PermissionLedger? = nil, folders: FolderGrants? = nil) {
         self.ledger = ledger ?? PermissionLedger()
+        self.folders = folders ?? FolderGrants()
         reload()
     }
 
-    /// Reads the store again: a window may have kept an answer since.
+    /// Reads the stores again: a window may have kept an answer, or a
+    /// folder, since.
     func reload() {
         let byPath = Dictionary(grouping: ledger.grants, by: \.notebook)
-        notebooks = byPath.keys.sorted().map { path in
-            Notebook(path: path, grants: byPath[path]!.sorted { $0.capability < $1.capability })
+        let foldersByPath = Dictionary(grouping: folders.grants, by: \.notebook)
+        notebooks = Set(byPath.keys).union(foldersByPath.keys).sorted().map { path in
+            Notebook(
+                path: path, grants: (byPath[path] ?? []).sorted { $0.capability < $1.capability },
+                folders: foldersByPath[path] ?? [])
         }
+    }
+
+    func revokeFolder(_ id: String) {
+        folders.revoke(id)
+        reload()
     }
 
     func revoke(_ notebook: String, _ capability: String) {
@@ -91,7 +115,10 @@ final class DeviceGrants {
     }
 
     func revokeAll() {
-        for notebook in notebooks { ledger.revoke(notebook: notebook.path) }
+        for notebook in notebooks {
+            ledger.revoke(notebook: notebook.path)
+            folders.revoke(notebook: notebook.path)
+        }
         reload()
     }
 

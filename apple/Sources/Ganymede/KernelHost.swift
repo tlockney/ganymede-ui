@@ -95,7 +95,8 @@ final class KernelHost: NSObject {
 
     /// The bridge cells get by default: every namespace ganymede-device
     /// has, with the permissioned ones (ganymede-device#57, #422) turned
-    /// on, and host events (`device.on`). Each permissioned one asks the
+    /// on, host events (`device.on`), and folders the person picks
+    /// (`device.folders`). Each permissioned one asks the
     /// app's ledger, then the system, on first use; one the device lacks
     /// (motion and the camera on a Mac) stays out of `hello`.
     private static func systemBridge() -> DeviceBridge {
@@ -112,6 +113,7 @@ final class KernelHost: NSObject {
         bridge.addContacts()
         bridge.addReminders()
         bridge.addBluetooth()
+        bridge.addFolders()
         bridge.addHostEvents()
         return bridge
     }

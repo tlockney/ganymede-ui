@@ -152,6 +152,8 @@ browser yet.
 | `device.bluetooth.scan({ services, allowDuplicates })`                    | a stream of `Advertisement`s                               | yes          | bluetooth     | no            | no            |
 | `device.bluetooth.known(ids)`                                             | `KnownPeripheral[]`                                        | yes          | bluetooth     | no            | no            |
 | `device.bluetooth.connect(id, { timeout })`                               | a `Peripheral`                                             | yes          | bluetooth     | no            | no            |
+| `device.folders.pick({ write })`                                          | a `Folder`, or `null` when cancelled                       | yes          | none          | no            | no            |
+| `device.folders.list()`                                                   | `Folder[]`                                                 | yes          | none          | no            | no            |
 | `device.on(event, handler)`                                               | a function that removes the handler                        | yes          | none          | no            | no            |
 
 - `device.info()`: A browser has no model or battery.
@@ -188,6 +190,8 @@ browser yet.
 - `device.reminders.add(reminder)`: No recurrence or alarms.
 - `device.bluetooth.scan({ services, allowDuplicates })`: Bluetooth LE only. A browser would need Web Bluetooth, which Safari doesn't have.
 - `device.bluetooth.connect(id, { timeout })`: Services, read, write, notify and RSSI; close it, or hold it with `await using`. At most 8 per kernel.
+- `device.folders.pick({ write })`: The system folder picker, which is the consent; the folder stays the notebook's until revoked in Settings. A browser would need the File System Access API, which Safari doesn't have.
+- `device.folders.list()`: A `Folder` lists, reads, writes and removes inside the folder only; reads up to 16 MiB.
 - `device.on(event, handler)`: Appearance, foreground, background, battery and locale changes; an interrupt doesn't remove a handler.
 
 <!-- device-table:end -->
@@ -294,6 +298,29 @@ too, but an interrupt doesn't.
 const off = device.on('appearance', mode => console.log('now', mode));
 // later
 off();
+```
+
+### Folders
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+`device.folders.pick({ write })` shows the system folder picker and
+keeps the folder you pick for this notebook, across kernel and app
+restarts; `device.folders.list()` gives them back. A `Folder` lists,
+reads, writes and removes inside that folder only: a path that leads
+outside it, through `..` or a symlink, is refused. Writing and removing
+need `write: true` at the pick. The picker is your consent, so there is
+no permission prompt; Settings › Device lists each notebook's folders
+with Revoke. It works only in kernels in the app.
+
+```ts
+const folder = await device.folders.pick({ write: true });
+if (folder) {
+  for (const entry of await folder.entries()) console.log(entry.kind, entry.name);
+  await folder.write('notes/today.txt', 'Written from a notebook');
+}
 ```
 
 The table above has each method. The
