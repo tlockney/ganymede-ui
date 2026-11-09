@@ -149,6 +149,9 @@ browser yet.
 | `device.reminders.complete(id)`                                           | `true`, or `false` when there was none                     | yes          | reminders     | no            | no            |
 | `device.reminders.uncomplete(id)`                                         | `true`, or `false` when there was none                     | yes          | reminders     | no            | no            |
 | `device.reminders.delete(id)`                                             | `true`, or `false` when there was none                     | yes          | reminders     | no            | no            |
+| `device.bluetooth.scan({ services, allowDuplicates })`                    | a stream of `Advertisement`s                               | yes          | bluetooth     | no            | no            |
+| `device.bluetooth.known(ids)`                                             | `KnownPeripheral[]`                                        | yes          | bluetooth     | no            | no            |
+| `device.bluetooth.connect(id, { timeout })`                               | a `Peripheral`                                             | yes          | bluetooth     | no            | no            |
 | `device.on(event, handler)`                                               | a function that removes the handler                        | yes          | none          | no            | no            |
 
 - `device.info()`: A browser has no model or battery.
@@ -183,6 +186,8 @@ browser yet.
 - `device.contacts.add(contact)`: To the default account; groups and accounts aren't wrapped.
 - `device.camera.capture()`: The system camera screen. A Mac has none in the app; a browser would need its own camera view.
 - `device.reminders.add(reminder)`: No recurrence or alarms.
+- `device.bluetooth.scan({ services, allowDuplicates })`: Bluetooth LE only. A browser would need Web Bluetooth, which Safari doesn't have.
+- `device.bluetooth.connect(id, { timeout })`: Services, read, write, notify and RSSI; close it, or hold it with `await using`. At most 8 per kernel.
 - `device.on(event, handler)`: Appearance, foreground, background, battery and locale changes; an interrupt doesn't remove a handler.
 
 <!-- device-table:end -->
@@ -268,6 +273,8 @@ work only in kernels in the app:
 - `device.contacts`: search, read, add and delete contacts.
 - `device.reminders`: your reminder lists; list, add, complete and
   delete reminders.
+- `device.bluetooth`: scan for Bluetooth LE peripherals, connect to
+  one, and read, write and subscribe to its characteristics.
 
 ### Host events
 
