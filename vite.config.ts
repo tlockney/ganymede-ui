@@ -252,4 +252,31 @@ function quickLook(base: UserConfig): UserConfig {
   };
 }
 
-export default defineConfig(({ mode }) => (mode === 'quicklook' ? quickLook(config) : config));
+/**
+ * `vite build --mode runner`: the script runner's engine (src/runner, a
+ * spike for #69) as one IIFE file in dist-runner/engine.js, which the
+ * apps evaluate in a JavaScriptCore context with no web view.
+ */
+function runner(): UserConfig {
+  return {
+    publicDir: false,
+    build: {
+      outDir: 'dist-runner',
+      emptyOutDir: true,
+      sourcemap: false,
+      minify: true,
+      // JavaScriptCore on macOS 26 and iOS 26.
+      target: 'safari26',
+      lib: {
+        entry: 'src/runner/engine.ts',
+        formats: ['iife'],
+        name: 'GanymedeRunner',
+        fileName: () => 'engine.js',
+      },
+    },
+  };
+}
+
+export default defineConfig(({ mode }) =>
+  mode === 'quicklook' ? quickLook(config) : mode === 'runner' ? runner() : config,
+);

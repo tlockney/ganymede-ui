@@ -98,6 +98,11 @@ targets:
       - path: build/web
         type: folder
         buildPhase: resources
+      # The headless script runner's engine (#69, a spike; nothing runs
+      # it yet), from `npm run build:runner`.
+      - path: build/runner
+        type: folder
+        buildPhase: resources
       # The app icon, in macOS's grid (#281; scripts/mac-icon.py).
       - path: Resources/macOS
     dependencies:
@@ -278,6 +283,11 @@ targets:
       - path: build/web
         type: folder
         buildPhase: resources
+      # The headless script runner's engine (#69, a spike; nothing runs
+      # it yet), from `npm run build:runner`.
+      - path: build/runner
+        type: folder
+        buildPhase: resources
       # The app icon and the privacy manifest App Store Connect checks (#188).
       - path: Resources/iOS
     dependencies:
@@ -393,6 +403,10 @@ targets:
       - path: Sources/QuickLook/Preview/PreviewResources.swift
       - path: Sources/QuickLook/Thumbnail/NotebookSummary.swift
       - path: Sources/QuickLook/Thumbnail/ThumbnailProvider.swift
+      - path: Sources/Ganymede/Runner/ScriptRunner.swift
+      - path: build/runner
+        type: folder
+        buildPhase: resources
     dependencies:
       - framework: build/GanymedeFFI.xcframework
         embed: false
@@ -438,6 +452,10 @@ targets:
       - path: Sources/Ganymede/CrashScrub.swift
       - path: Sources/Ganymede/NotebookActions.swift
       - path: Sources/Ganymede/HelpLinks.swift
+      - path: Sources/Ganymede/Runner/ScriptRunner.swift
+      - path: build/runner
+        type: folder
+        buildPhase: resources
     dependencies:
       - framework: build/GanymedeFFI.xcframework
         embed: false

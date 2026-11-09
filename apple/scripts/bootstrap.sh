@@ -9,6 +9,7 @@
 #                              SHA-256 (#359); GANYMEDE_DIR wins if both
 #   web/                     this repo's `npm run build`
 #   quicklook/               its `npm run build:quicklook` (#135)
+#   runner/                  its `npm run build:runner` (#69, a spike)
 # Needs macOS with Xcode, Node, and XcodeGen.
 #   GANYMEDE_DIR=~/src/ganymede apple/scripts/bootstrap.sh
 #   GANYMEDE_REF=v0.8.0 apple/scripts/bootstrap.sh
@@ -78,6 +79,9 @@ cp -R "$repo/dist" "$apple/build/web"
 (cd "$repo" && npm run build:quicklook)
 rm -rf "$apple/build/quicklook"
 cp -R "$repo/dist-quicklook" "$apple/build/quicklook"
+(cd "$repo" && npm run build:runner)
+rm -rf "$apple/build/runner"
+cp -R "$repo/dist-runner" "$apple/build/runner"
 
 (cd "$apple" && xcodegen generate)
 # The packages' exact commits (#122): builds use only these
