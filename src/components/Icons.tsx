@@ -43,11 +43,6 @@ export const RestartIcon = (p: P) => (
     <path d="M14.5 2.8v3.6h-3.6" />
   </svg>
 );
-export const PlusIcon = (p: P) => (
-  <svg {...base(p)}>
-    <path d="M10 4.5v11M4.5 10h11" />
-  </svg>
-);
 export const TextIcon = (p: P) => (
   <svg {...base(p)}>
     <path d="M4 5.5h12M4 9.5h12M4 13.5h7" />
@@ -109,12 +104,6 @@ export const BrowserIcon = (p: P) => (
   <svg {...base(p)}>
     <rect x="2.5" y="3.5" width="15" height="13" rx="2.5" />
     <path d="M2.5 7.5h15M5 5.5h.01M7 5.5h.01" />
-  </svg>
-);
-export const GearIcon = (p: P) => (
-  <svg {...base(p)}>
-    <circle cx="10" cy="10" r="2.5" />
-    <path d="M10 2.5v2M10 15.5v2M2.5 10h2M15.5 10h2M4.7 4.7l1.4 1.4M13.9 13.9l1.4 1.4M4.7 15.3l1.4-1.4M13.9 6.1l1.4-1.4" />
   </svg>
 );
 export const PowerIcon = (p: P) => (
