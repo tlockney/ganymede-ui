@@ -111,6 +111,7 @@ final class KernelHost: NSObject {
         bridge.addCameraCapture()
         bridge.addContacts()
         bridge.addReminders()
+        bridge.addBluetooth()
         bridge.addHostEvents()
         return bridge
     }

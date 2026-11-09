@@ -130,14 +130,16 @@ final class KernelHostTests: XCTestCase {
             "clipboard.readText,clipboard.writeText,clipboard.readImage,clipboard.writeImage,info,openURL,"
                 + "ui.alert,ui.confirm,ui.prompt,ui.actionSheet,ui.pickDate,share,preview,"
                 + "files.pick,files.export,photos.pick,sound.play,sound.player,sound.control,sound.close,"
+                + "bluetooth.authorizationStatus,bluetooth.requestAuthorization,"
                 + "contacts.authorizationStatus,contacts.requestAuthorization,"
                 + "location.authorizationStatus,location.requestAuthorization,"
                 + "photos.authorizationStatus,photos.requestAuthorization,"
                 + "reminders.authorizationStatus,reminders.requestAuthorization,"
+                + "bluetooth.connect,bluetooth.known,bluetooth.read,bluetooth.rssi,bluetooth.services,bluetooth.write,"
                 + "contacts.add,contacts.all,contacts.delete,contacts.get,contacts.search,"
                 + "location.current,location.geocode,location.reverseGeocode,photos.save,"
                 + "reminders.add,reminders.calendars,reminders.complete,reminders.delete,reminders.list,reminders.uncomplete,"
-                + "events.watch,location.watch")
+                + "bluetooth.notify,bluetooth.scan,events.watch,location.watch")
         let inUI = try await eval(ui, "typeof webkit.messageHandlers.device") as? String
         XCTAssertEqual(inUI, "undefined")
 
@@ -364,7 +366,7 @@ final class KernelHostTests: XCTestCase {
         // Declared at open: only what this app has and nothing decided.
         _ = try await eval(ui, """
             webkit.messageHandlers.kernelRelay.postMessage(
-              { op: 'declared', path: 'New.ipynb', capabilities: ['location', 'bluetooth'] });
+              { op: 'declared', path: 'New.ipynb', capabilities: ['location', 'motion'] });
             webkit.messageHandlers.kernelRelay.postMessage(
               { op: 'declared', path: 'travel/Trip.ipynb', capabilities: ['location'] });
             // Opened again before the person answered.
@@ -374,7 +376,7 @@ final class KernelHostTests: XCTestCase {
             """)
         while prompts.shown.isEmpty, Date() < deadline { try await Task.sleep(nanoseconds: 50_000_000) }
         try await Task.sleep(nanoseconds: 200_000_000)
-        XCTAssertEqual(prompts.shown.count, 1, "bluetooth isn't in this app; Trip already has an answer; New asks once")
+        XCTAssertEqual(prompts.shown.count, 1, "a Mac has no motion; Trip already has an answer; New asks once")
         prompts.answer(.option(1))
         XCTAssertEqual(ledger.answer(notebook: "/root/New.ipynb", capability: "location"), .deny)
     }

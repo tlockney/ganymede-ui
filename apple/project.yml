@@ -79,7 +79,7 @@ packages:
   # The `device` bridge for notebook cells, on the kernel web view only (#99).
   GanymedeDevice:
     url: https://github.com/tlockney/ganymede-device
-    revision: 7192d326c906a0563398f68dfa1c465a8df596dc
+    revision: b55b788ba9384cbb00ff7d64d6c9836d2c7194e3
 settings:
   base:
     SWIFT_VERSION: '5.0'
@@ -150,6 +150,7 @@ targets:
         NSPhotoLibraryAddUsageDescription: A notebook asked to save an image to your photo library.
         NSContactsUsageDescription: A notebook asked to use your contacts.
         NSRemindersFullAccessUsageDescription: A notebook asked to use your reminders.
+        NSBluetoothAlwaysUsageDescription: A notebook asked to use Bluetooth.
         # The web view loads the server on 127.0.0.1 over plain HTTP.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
@@ -337,6 +338,7 @@ targets:
         NSPhotoLibraryAddUsageDescription: A notebook asked to save an image to your photo library.
         NSContactsUsageDescription: A notebook asked to use your contacts.
         NSRemindersFullAccessUsageDescription: A notebook asked to use your reminders.
+        NSBluetoothAlwaysUsageDescription: A notebook asked to use Bluetooth.
         NSCameraUsageDescription: A notebook asked to take a photo.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
