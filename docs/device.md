@@ -108,6 +108,11 @@ browser yet.
 
 ## Methods
 
+> [!NOTE]
+> **Unreleased.** `device.secrets`, `device.widget` and `device.output`
+> are in the device package but not wired into the apps yet: there they
+> answer `unavailable`.
+
 <!-- device-table:start (generated: node scripts/device-table.mjs --write) -->
 
 | Method                                                                    | Returns                                                    | In the app   | Permission    | Remote kernel | Browser       |
@@ -161,6 +166,12 @@ browser yet.
 | `device.bluetooth.connect(id, { timeout })`                               | a `Peripheral`                                             | yes          | bluetooth     | no            | no            |
 | `device.folders.pick({ write })`                                          | a `Folder`, or `null` when cancelled                       | yes          | none          | no            | no            |
 | `device.folders.list()`                                                   | `Folder[]`                                                 | yes          | none          | no            | no            |
+| `device.output({ text, url, files })`                                     | nothing                                                    | no           | none          | no            | no            |
+| `device.widget.update(kind, content)`                                     | nothing                                                    | yes          | none          | no            | no            |
+| `device.secrets.get(name)`                                                | the value, or `null`                                       | yes          | secrets       | no            | no            |
+| `device.secrets.set(name, value)`                                         | nothing                                                    | yes          | secrets       | no            | no            |
+| `device.secrets.delete(name)`                                             | `true`, or `false` when there was none                     | yes          | secrets       | no            | no            |
+| `device.secrets.list()`                                                   | `string[]`, names only                                     | yes          | secrets       | no            | no            |
 | `device.on(event, handler)`                                               | a function that removes the handler                        | yes          | none          | no            | no            |
 
 - `device.info()`: A browser has no model or battery.
@@ -199,6 +210,10 @@ browser yet.
 - `device.bluetooth.connect(id, { timeout })`: Services, read, write, notify and RSSI; close it, or hold it with `await using`. At most 8 per kernel.
 - `device.folders.pick({ write })`: The system folder picker, which is the consent; the folder stays the notebook's until revoked in Settings. A browser would need the File System Access API, which Safari doesn't have.
 - `device.folders.list()`: A `Folder` lists, reads, writes and removes inside the folder only; reads up to 16 MiB.
+- `device.output({ text, url, files })`: Only in a run the share sheet, Shortcuts or a widget started, which also has `device.input`; a notebook has nothing to hand a result to.
+- `device.widget.update(kind, content)`: Stored in the app's App Group for its widgets; a widget can't run a script itself.
+- `device.secrets.get(name)`: The keychain, this device only. A notebook sees only its own secrets; the app's prompt is the only consent.
+- `device.secrets.set(name, value)`: Values up to 64 KiB; names 1 to 128 characters.
 - `device.on(event, handler)`: Appearance, foreground, background, battery and locale changes; an interrupt doesn't remove a handler.
 
 <!-- device-table:end -->
