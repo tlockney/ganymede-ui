@@ -137,9 +137,10 @@ final class KernelHostTests: XCTestCase {
                 + "reminders.authorizationStatus,reminders.requestAuthorization,"
                 + "bluetooth.connect,bluetooth.known,bluetooth.read,bluetooth.rssi,bluetooth.services,bluetooth.write,"
                 + "contacts.add,contacts.all,contacts.delete,contacts.get,contacts.search,"
+                + "folders.entries,folders.list,folders.read,folders.remove,folders.write,"
                 + "location.current,location.geocode,location.reverseGeocode,photos.save,"
                 + "reminders.add,reminders.calendars,reminders.complete,reminders.delete,reminders.list,reminders.uncomplete,"
-                + "bluetooth.notify,bluetooth.scan,events.watch,location.watch")
+                + "bluetooth.notify,bluetooth.scan,events.watch,location.watch,folders.pick")
         let inUI = try await eval(ui, "typeof webkit.messageHandlers.device") as? String
         XCTAssertEqual(inUI, "undefined")
 
@@ -326,8 +327,11 @@ final class KernelHostTests: XCTestCase {
         let ledger = PermissionLedger(store: store)
         let device = DeviceBridge(presenter: SilentPresenter(), ledger: ledger)
         device.addPermission("location", AlwaysGranted())
+        let folderStore = MemoryFolderStore()
+        let folders = FolderGrants(store: folderStore)
+        device.addFolders(folders)
         let prompts = RecordingPresenter()
-        let host = KernelHost(device: device, prompts: prompts)
+        let host = KernelHost(device: device, prompts: prompts, folders: folders)
         host.notebookRoot = URL(fileURLWithPath: "/root", isDirectory: true)
         let ui = WKWebView(
             frame: CGRect(x: 0, y: 0, width: 400, height: 300), configuration: WKWebViewConfiguration())
@@ -351,8 +355,12 @@ final class KernelHostTests: XCTestCase {
         let forwarded = try await eval(ui, "window.got.some(m => m.op === 'owner')") as? Bool
         XCTAssertEqual(forwarded, false, "the owner goes to Swift only")
 
-        // A folder rename moves the kernel and its kept answers.
+        // A folder rename moves the kernel and its kept answers, and the
+        // folders of a closed notebook with no answer kept.
         ledger.record(.always, notebook: "/root/trips/Trip.ipynb", capability: "location")
+        folderStore.saved = [
+            FolderGrant(id: "F1", notebook: "/root/trips/Closed.ipynb", name: "Data", writable: false, bookmark: Data())
+        ]
         _ = try await eval(ui, """
             webkit.messageHandlers.kernelRelay.postMessage({ op: 'moved', from: 'trips', to: 'travel' }); true
             """)
@@ -362,6 +370,7 @@ final class KernelHostTests: XCTestCase {
         XCTAssertEqual(ledger.notebook(for: 7), "/root/travel/Trip.ipynb")
         XCTAssertEqual(ledger.answer(notebook: "/root/travel/Trip.ipynb", capability: "location"), .always)
         XCTAssertNil(ledger.answer(notebook: "/root/trips/Trip.ipynb", capability: "location"))
+        XCTAssertEqual(folders.grants.map(\.notebook), ["/root/travel/Closed.ipynb"])
 
         // Declared at open: only what this app has and nothing decided.
         _ = try await eval(ui, """

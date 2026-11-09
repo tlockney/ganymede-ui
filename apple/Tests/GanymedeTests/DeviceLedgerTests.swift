@@ -9,6 +9,14 @@ final class MemoryLedgerStore: LedgerStore {
     func save(_ grants: [LedgerGrant]) { saved = grants }
 }
 
+/// Keeps folder grants in memory, as UserDefaults would.
+@MainActor
+final class MemoryFolderStore: FolderStore {
+    var saved: [FolderGrant] = []
+    func load() -> [FolderGrant] { saved }
+    func save(_ grants: [FolderGrant]) { saved = grants }
+}
+
 /// Records each dialog and holds its `done`, for a test to answer.
 @MainActor
 final class RecordingPresenter: DialogPresenter {
@@ -112,7 +120,7 @@ final class DeviceLedgerTests: XCTestCase {
         ledger.record(.deny, notebook: "/b/Trip.ipynb", capability: "contacts")
         ledger.record(.always, notebook: "/a/Alarm.ipynb", capability: "notifications")
 
-        let grants = DeviceGrants(ledger: PermissionLedger(store: store))
+        let grants = DeviceGrants(ledger: PermissionLedger(store: store), folders: FolderGrants(store: MemoryFolderStore()))
         XCTAssertEqual(grants.notebooks.map(\.path), ["/a/Alarm.ipynb", "/b/Trip.ipynb"])
         XCTAssertEqual(grants.notebooks[1].grants.map(\.capability), ["contacts", "location"])
         XCTAssertEqual(grants.notebooks[1].name, "Trip.ipynb")
@@ -128,4 +136,45 @@ final class DeviceLedgerTests: XCTestCase {
         XCTAssertTrue(grants.notebooks.isEmpty)
         XCTAssertTrue(ledger.grants.isEmpty)
     }
+
+    func testSettingsListsFoldersAndRevokesThem() {
+        let ledgerStore = MemoryLedgerStore()
+        let folderStore = MemoryFolderStore()
+        PermissionLedger(store: ledgerStore).record(.always, notebook: "/b/Trip.ipynb", capability: "location")
+        folderStore.saved = [
+            FolderGrant(id: "F1", notebook: "/b/Trip.ipynb", name: "Data", writable: true, bookmark: Data()),
+            FolderGrant(id: "F2", notebook: "/c/Photos.ipynb", name: "Shots", writable: false, bookmark: Data()),
+        ]
+        let grants = DeviceGrants(ledger: PermissionLedger(store: ledgerStore), folders: FolderGrants(store: folderStore))
+        XCTAssertEqual(grants.notebooks.map(\.path), ["/b/Trip.ipynb", "/c/Photos.ipynb"], "a notebook with only a folder is listed")
+        XCTAssertEqual(grants.notebooks[0].folders.map(\.name), ["Data"])
+        XCTAssertTrue(grants.notebooks[1].grants.isEmpty)
+
+        grants.revokeFolder("F1")
+        XCTAssertEqual(folderStore.saved.map(\.id), ["F2"])
+        XCTAssertEqual(grants.notebooks[0].folders.count, 0)
+
+        // Another window keeps a folder after the last reload: Revoke All
+        // takes it too.
+        folderStore.saved.append(
+            FolderGrant(id: "F3", notebook: "/d/New.ipynb", name: "Late", writable: false, bookmark: Data()))
+        grants.revokeAll()
+        XCTAssertTrue(folderStore.saved.isEmpty)
+        XCTAssertTrue(grants.notebooks.isEmpty)
+    }
+
+    #if os(macOS)
+    func testAFolderRowSaysWhereTheFolderIs() throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let bookmark = try dir.bookmarkData()
+        let folder = FolderGrant(id: "F1", notebook: "/b/Trip.ipynb", name: dir.lastPathComponent, writable: false, bookmark: bookmark)
+        let detail = DeviceGrants.detail(folder)
+        XCTAssertTrue(detail.hasPrefix("Folder, read only · "), detail)
+        XCTAssertTrue(detail.hasSuffix(dir.lastPathComponent), detail)
+        let unknown = FolderGrant(id: "F2", notebook: "/b/Trip.ipynb", name: "Gone", writable: true, bookmark: Data([1, 2, 3]))
+        XCTAssertEqual(DeviceGrants.detail(unknown), "Folder, read and write")
+    }
+    #endif
 }
