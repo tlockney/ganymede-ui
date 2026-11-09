@@ -22,7 +22,10 @@ final class AppUpdater: NSObject {
 
     /// The update a scheduled check found and the person hasn't looked at
     /// yet, as its version and stage; nil when there is none.
-    private(set) var available: Available?
+    /// The Dock icon gets a badge too, for windows without the button.
+    private(set) var available: Available? {
+        didSet { NSApp?.dockTile.badgeLabel = available == nil ? nil : "1" }
+    }
     /// Whether Check for Updates… can run now: not while a check is.
     private(set) var canCheck = false
     /// Sparkle's own settings, kept here so views see them change.
@@ -36,7 +39,7 @@ final class AppUpdater: NSObject {
     }
 
     @ObservationIgnored private var controller: SPUStandardUpdaterController?
-    @ObservationIgnored private var canCheckObservation: NSKeyValueObservation?
+    @ObservationIgnored private var observations: [NSKeyValueObservation] = []
 
     /// Whether this build updates itself: it has a feed and a key, and
     /// the updater started.
@@ -51,12 +54,22 @@ final class AppUpdater: NSObject {
         self.controller = controller
         isEnabled = true
         let updater = controller.updater
-        checksAutomatically = updater.automaticallyChecksForUpdates
-        downloadsAutomatically = updater.automaticallyDownloadsUpdates
-        canCheckObservation = updater.observe(\.canCheckForUpdates, options: [.initial, .new]) { [weak self] updater, _ in
-            let can = updater.canCheckForUpdates
-            Task { @MainActor in self?.canCheck = can }
-        }
+        // Sparkle changes these itself too: its update window has an
+        // "Automatically download and install" checkbox.
+        observations = [
+            updater.observe(\.canCheckForUpdates, options: [.initial, .new]) { [weak self] updater, _ in
+                let value = updater.canCheckForUpdates
+                Task { @MainActor in self?.canCheck = value }
+            },
+            updater.observe(\.automaticallyChecksForUpdates, options: [.initial, .new]) { [weak self] updater, _ in
+                let value = updater.automaticallyChecksForUpdates
+                Task { @MainActor in self?.checksAutomatically = value }
+            },
+            updater.observe(\.automaticallyDownloadsUpdates, options: [.initial, .new]) { [weak self] updater, _ in
+                let value = updater.automaticallyDownloadsUpdates
+                Task { @MainActor in self?.downloadsAutomatically = value }
+            },
+        ]
     }
 
     /// Check for Updates…, and the toolbar button: Sparkle's window, with
@@ -163,7 +176,9 @@ struct UpdateSettings: View {
                     Button("Check Now") { updater.checkForUpdates() }
                         .disabled(!updater.canCheck)
                 }
-                Text("Ganymede checks once a day. When an update is found, a button in the toolbar shows it; installing asks first unless updates install automatically.")
+                Text(updater.checksAutomatically
+                    ? "Ganymede checks once a day. When an update is found, a button in the toolbar and a badge on the Dock icon show it; installing asks first unless updates install automatically."
+                    : "Ganymede checks only when you click Check Now or choose Check for Updates….")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {

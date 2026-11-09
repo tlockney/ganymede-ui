@@ -209,9 +209,9 @@ shortcuts and rebinds them.
 > the latest release.
 
 Release builds check GitHub for a newer release once a day. When one is
-found, an **Update Available** button appears in the window's toolbar;
-it opens the release notes with Install Update, Skip This Version and
-Remind Me Later. Installing downloads the release, checks its signature,
+found, the Dock icon gets a badge and an **Update Available** button
+appears in the window's toolbar. The button opens the release notes with
+Install Update, Skip This Version and Remind Me Later. Installing downloads the release, checks its signature,
 replaces the app and opens it again. Ganymede > Check for Updates…
 checks now.
 

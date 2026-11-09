@@ -118,6 +118,7 @@ plist="$app/Contents/Info.plist"
 shown=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")
 [[ "$shown" == "$VERSION" ]] || fail "CFBundleShortVersionString is $shown, not $VERSION"
 build_number=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$plist")
+minimum_macos=$(/usr/libexec/PlistBuddy -c 'Print :LSMinimumSystemVersion' "$plist")
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :SUFeedURL' "$plist")" == "$feed_url" ]] || fail "SUFeedURL is not $feed_url"
 [[ "$(/usr/libexec/PlistBuddy -c 'Print :SUPublicEDKey' "$plist")" == "$public_key" ]] || fail "SUPublicEDKey is not the signing key's"
 codesign --verify --deep --strict --verbose=2 "$app"
@@ -180,7 +181,7 @@ cat > "$appcast" <<EOF
       <link>https://github.com/$repo/releases/tag/v$VERSION</link>
       <sparkle:version>$build_number</sparkle:version>
       <sparkle:shortVersionString>$VERSION</sparkle:shortVersionString>
-      <sparkle:minimumSystemVersion>26.0</sparkle:minimumSystemVersion>
+      <sparkle:minimumSystemVersion>$minimum_macos</sparkle:minimumSystemVersion>
       <sparkle:hardwareRequirements>arm64</sparkle:hardwareRequirements>
       <description sparkle:format="markdown"><![CDATA[
 $notes
