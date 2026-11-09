@@ -184,8 +184,12 @@ struct ContentView: View {
                 if restored { restoreSidebar() }
             }
             savedTarget = WindowTarget.saved(target)
+            if let window = document.window { noteWindow(window) }
         }
-        .onChange(of: sidebarRoot) { _, new in savedSidebar = new.path }
+        .onChange(of: sidebarRoot) { _, new in
+            savedSidebar = new.path
+            if let window = document.window { noteWindow(window) }
+        }
         // Back from Terminal, where a kernelspec may have been installed
         // or removed: the page asks the server for its kernels again
         // (#350). A page still loading fetches them anyway.
@@ -203,6 +207,7 @@ struct ContentView: View {
         .background(WindowReader { window in
             document.attach(to: window)
             WorkspaceTabs.join(window, alone: request?.alone ?? false)
+            noteWindow(window)
             // A page already running when the window arrives gets its dot.
             WorkspaceTabs.markBusy(window, pageModel.state.isBusy)
             // A window opened as launch ended may get its NSWindow only
@@ -447,6 +452,14 @@ struct ContentView: View {
     private func restoreSidebar() {
         guard !savedSidebar.isEmpty else { return }
         sidebarRoot = URL(fileURLWithPath: savedSidebar, isDirectory: true)
+    }
+
+    /// Its folder, and whether it shows the start screen (no notebook),
+    /// for the window that opens after the last one closes (#416).
+    private func noteWindow(_ window: NSWindow) {
+        var start = true
+        if case .file = target ?? loaded { start = false }
+        WorkspaceTabs.note(window, folder: sidebarRoot, start: start)
     }
 
     private func bringForward(_ window: NSWindow) {

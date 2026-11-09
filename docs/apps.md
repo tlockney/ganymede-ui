@@ -50,7 +50,8 @@ On first launch the app asks once whether to send crash reports
   together. Each tab keeps its own toolbar, and a notebook's tab shows a
   dot while its kernel is running. File > Close (⌘W) closes the active
   tab; closing the last one leaves the app running and opens a new window
-  on the folder, with New Notebook. Ganymede uses tabs whatever System
+  on its folder, with New Notebook. Closing that window leaves the app
+  with no window; click its Dock icon or choose File > New Tab for one. Ganymede uses tabs whatever System
   Settings > Desktop & Dock > "Prefer tabs when opening documents" says;
   windows restored at launch come back as they were.
 - File > New Notebook (⌘N) makes a notebook in the window's folder, New
@@ -94,6 +95,8 @@ shown or hidden, its tab and its expanded folders across launches.
 - View > Command Palette… (⇧⌘P) finds and runs the notebook, cell and
   kernel commands by name. [Keyboard shortcuts](shortcuts.md) lists the
   rest.
+- Help > Ganymede Website, Ganymede Documentation and Apps Guide open
+  ganymede-server.com, its docs and this page in the browser.
 
 ### Kernels
 
@@ -275,7 +278,8 @@ headings; pick one to go to its cell.
   as on the Mac. With a keyboard, ⌘+, ⌘− and ⌘0 change the size. On a touch
   screen a cell being edited stays at 16 points or more, so iOS doesn't
   zoom the page.
-
+- **Help**: Settings > Help, and the iPad menu bar's Help menu,
+  open ganymede-server.com, its docs and this page in Safari.
 - **Terminals**: the terminal button opens a shell on a remote, over SSH
   or on its server's terminals. SSH signs in with an ed25519 key the app
   generates or imports (Settings > SSH key; copy the public key into

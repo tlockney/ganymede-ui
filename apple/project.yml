@@ -345,6 +345,7 @@ targets:
       - path: Sources/Ganymede/FileStack.swift
       - path: Sources/Ganymede/CrashScrub.swift
       - path: Sources/Ganymede/NotebookActions.swift
+      - path: Sources/Ganymede/HelpLinks.swift
       - path: Sources/Ganymede/Terminal/ProcessTerminalTransport.swift
       - path: Sources/QuickLook/Preview/PreviewResources.swift
       - path: Sources/QuickLook/Thumbnail/NotebookSummary.swift
@@ -391,6 +392,7 @@ targets:
       - path: Sources/Ganymede/FileStack.swift
       - path: Sources/Ganymede/CrashScrub.swift
       - path: Sources/Ganymede/NotebookActions.swift
+      - path: Sources/Ganymede/HelpLinks.swift
     dependencies:
       - framework: build/GanymedeFFI.xcframework
         embed: false

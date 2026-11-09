@@ -191,7 +191,7 @@ enum CrashReportsPrompt {
         OS and device model. Never notebook content, file names, kernel \
         output or errors from your own code. Change this in Settings.
         """
-    static let privacy = URL(string: "https://ganymede-server.com/docs/privacy")!
+    static let privacy = HelpLink.privacy
 
     #if os(macOS)
     /// Asks with an alert, "Don't Send" the default button, unless the
