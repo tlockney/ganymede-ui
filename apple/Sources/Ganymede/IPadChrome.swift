@@ -791,13 +791,17 @@ private struct IPadPanelButton: View {
     }
 }
 
-/// File › New Notebook (⌘N), in the notebook folder's top level.
+/// File › New Notebook (⌘N) and Open Example Notebooks, in the notebook
+/// folder's top level.
 private struct IPadNewNotebook: View {
     @FocusedValue(\.pageModel) private var page
 
     var body: some View {
         Button("New Notebook") { page?.run("new-notebook", arg: "") }
             .keyboardShortcut("n")
+            .disabled(page == nil)
+        // A copy of the example notebooks in a new folder (#414).
+        Button("Open Example Notebooks") { page?.run("open-examples", arg: "") }
             .disabled(page == nil)
     }
 }

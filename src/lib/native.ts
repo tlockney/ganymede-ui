@@ -40,6 +40,8 @@ export type NativeHooks = {
  * `watch-memory` takes `on` or `off`: whether the app's Running list shows,
  * so the page asks the server for each kernel's memory and posts it in
  * `RunningSession.memory` (#241).
+ * `open-examples` copies the example notebooks into a new folder in the
+ * folder it takes, and opens the first (#414).
  * `inspect-variables` takes `on` or `off`: whether the app's inspector
  * shows the Variables view, so the page reads the variables and posts them
  * as `PageState.variables` (#249). `toggle-variable` expands or collapses
@@ -52,6 +54,7 @@ export const PAGE_COMMANDS = {
   'shutdown-kernel': 'arg',
   'shutdown-others': '',
   'new-notebook': 'arg',
+  'open-examples': 'arg',
   save: '',
   download: '',
   trust: '',

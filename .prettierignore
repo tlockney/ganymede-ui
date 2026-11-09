@@ -14,3 +14,6 @@ docs/notes/archive.md
 *.ipynb
 apple/build
 .ganymede
+# Notebook sources (#414): their cells are formatted by hand, in the
+# notebooks' own style.
+examples/src

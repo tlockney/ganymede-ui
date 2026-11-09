@@ -93,6 +93,32 @@ Markdown, a table and a plot, copied into the folder the sidebar shows
 Show Again" hides it in this browser (`ganymede-ui:onboarding` in local
 storage).
 
+### Example notebooks
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+**Open Example Notebooks**, under New Notebook in the empty window and in
+the command palette (and in the apps' File menu), copies a set of
+TypeScript notebooks into a new `Examples` folder in the folder the
+sidebar shows, and opens the first. They run on the in-page kernel and
+were saved with their outputs, marked trusted:
+
+| Notebook               | What it shows                                                        |
+| :--------------------- | :------------------------------------------------------------------- |
+| 01 Start Here          | Cells, state, and every kind of output                               |
+| 02 Web APIs            | `fetch` from public APIs, tables, progress that updates in place     |
+| 03 Charts and Diagrams | SVG by hand, d3, Vega-Lite and Graphviz                              |
+| 04 DuckDB              | SQL with DuckDB compiled to WebAssembly, over CSV and Parquet by URL |
+| 05 Generative Art      | Seeded randomness, `OffscreenCanvas` and SVG, animation              |
+| 07 UI Frameworks       | React, Preact and Lit components as output                           |
+| 08 Device              | The `device` API, each call checked with `device.has`                |
+
+They load packages from esm.sh and data from public sites, so they need
+a network connection. [examples/README.md](examples/README.md) says how
+they are built.
+
 Open a notebook from the sidebar, which also lists running kernels. The
 toolbar runs, interrupts and restarts the kernel, switches kernels, trusts
 the notebook, downloads it, and saves (⌘S). Keyboard shortcuts follow

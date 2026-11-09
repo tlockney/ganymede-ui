@@ -565,6 +565,12 @@ struct NewCommands: View {
             }
         }
         .keyboardShortcut("n")
+        // A copy of the example notebooks in a new folder, with the first
+        // open (#414).
+        Button("Open Example Notebooks") {
+            page?.run("open-examples", arg: FolderEntry.serverPath(folder ?? model.root))
+        }
+        .disabled(page == nil)
         // Always a new window, even when one already shows the folder.
         Button("New Tab") {
             WorkspaceTabs.open(folder: folder ?? model.root, alone: false) { openWindow(id: $0) }

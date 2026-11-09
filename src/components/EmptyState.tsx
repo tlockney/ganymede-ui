@@ -6,6 +6,8 @@ type Props = {
   backend?: Backend;
   connecting: boolean;
   onNew(): void;
+  /** Copies the example notebooks into the folder and opens the first (#414). */
+  onOpenExamples?(): void;
   onConnect(): void;
   /** The folder the sidebar shows, for the first-run welcome. */
   folder?: string;
@@ -19,6 +21,7 @@ export function EmptyState({
   backend,
   connecting,
   onNew,
+  onOpenExamples,
   onConnect,
   folder = '',
   onShowFolder,
@@ -38,6 +41,11 @@ export function EmptyState({
           <button className="push-button primary" onClick={onNew}>
             <NotebookIcon width={16} height={16} /> New Notebook
           </button>
+          {onOpenExamples && (
+            <button className="push-button examples-button" onClick={onOpenExamples}>
+              Open Example Notebooks
+            </button>
+          )}
           {onOpenSample && (
             <Onboarding
               backend={backend}

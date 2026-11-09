@@ -614,6 +614,11 @@ button {
   margin: 2px 0 16px;
 }
 
+/* Open Example Notebooks (#414), under New Notebook. */
+.empty-state .examples-button {
+  margin-top: 8px;
+}
+
 /* Said only if connecting takes a moment, so a quick start goes from the
    logo straight to the buttons. */
 .empty-state .connecting {
