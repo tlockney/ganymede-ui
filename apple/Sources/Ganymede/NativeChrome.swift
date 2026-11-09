@@ -557,6 +557,7 @@ struct NewCommands: View {
         // files opened at a cold launch get a window when SwiftUI made
         // none (#266).
         let _ = model.openRequests.useFallback { [openWindow] in openWindow(value: $0) }
+        let _ = WorkspaceTabs.useOpener { [openWindow] in openWindow(id: $0) }
         Button("New Notebook") {
             if let page {
                 page.run("new-notebook", arg: FolderEntry.serverPath(folder ?? model.root))

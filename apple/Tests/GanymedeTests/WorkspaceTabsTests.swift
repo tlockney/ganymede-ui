@@ -93,9 +93,32 @@ final class WorkspaceTabsTests: XCTestCase {
         XCTAssertFalse(second.isVisible)
         XCTAssertTrue(first.isVisible, "the other tab stays open")
         XCTAssertEqual(first.tabbedWindows?.count ?? 1, 1)
+        XCTAssertTrue(WorkspaceTabs.anyOpen(in: [first, second], except: second))
+        XCTAssertFalse(WorkspaceTabs.anyOpen(in: [first, second], except: first), "first is the last tab")
         WorkspaceTabs.close(first)
         XCTAssertFalse(first.isVisible)
+        XCTAssertFalse(WorkspaceTabs.anyOpen(in: [first, second]))
         XCTAssertFalse(WorkspaceTabs.quitsAfterLastTab)
+    }
+
+    /// Closing the last tab opens a window on the start screen (#407):
+    /// a new one, on the folder, never one already showing it.
+    func testOpenStartOpensANewWindowOnTheFolder() {
+        var opened: [String] = []
+        WorkspaceTabs.useOpener { opened.append($0) }
+        let folder = URL(fileURLWithPath: "/tmp/moons")
+        WorkspaceTabs.openStart(folder: folder)
+        XCTAssertEqual(opened, [WorkspaceTabs.sceneID])
+        XCTAssertEqual(WorkspaceTabs.pending?.folder, folder)
+        WorkspaceTabs.take(WorkspaceTabs.pending!)
+    }
+
+    func testOnlyTheAppsOwnWindowsCount() {
+        let settings = window()
+        settings.orderFront(nil)
+        defer { settings.orderOut(nil) }
+        XCTAssertTrue(settings.isVisible)
+        XCTAssertFalse(WorkspaceTabs.anyOpen(in: [settings]))
     }
 }
 #endif

@@ -86,8 +86,32 @@ enum WorkspaceTabs {
     }
 
     /// Closing the last tab leaves the app running, as Mac document apps
-    /// do (#407): the Dock icon or File › New Tab opens a window again.
+    /// do (#407), and a new window opens on the start screen instead.
     static let quitsAfterLastTab = false
+
+    /// Opens a window by scene id, from the app's menus, which exist with
+    /// no window open. Set by `NewCommands`.
+    private(set) static var openByID: ((String) -> Void)?
+
+    static func useOpener(_ open: @escaping (String) -> Void) {
+        openByID = open
+    }
+
+    /// Whether `windows` hold one of the app's notebook, text file or
+    /// terminal windows, minimized ones counting, other than `closing`.
+    /// The Settings window and others not ours don't count.
+    static func anyOpen(in windows: [NSWindow], except closing: NSWindow? = nil) -> Bool {
+        windows.contains {
+            $0 !== closing && $0.tabbingIdentifier == identifier && ($0.isVisible || $0.isMiniaturized)
+        }
+    }
+
+    /// After the last tab closed (#407): a new window on `folder`, which
+    /// shows the start screen (New Notebook) until a notebook is chosen.
+    static func openStart(folder: URL) {
+        guard let openByID else { return }
+        open(folder: folder, alone: true, with: openByID)
+    }
 
     /// Marks `window`'s tab with a dot while its notebook's kernel is busy
     /// (#247), so a run in a background tab shows. Nothing while idle.

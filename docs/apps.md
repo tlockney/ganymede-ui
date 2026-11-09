@@ -55,9 +55,10 @@ On first launch the app asks once whether to send crash reports
   window, or choose Window > Merge All Windows to bring windows back
   together. Each tab keeps its own toolbar, and a notebook's tab shows a
   dot while its kernel is running. File > Close (⌘W) closes the active
-  tab; closing the last one leaves the app running. Ganymede uses tabs
-  whatever System Settings > Desktop & Dock > "Prefer tabs when opening
-  documents" says; windows restored at launch come back as they were.
+  tab; closing the last one leaves the app running and opens a new window
+  on the folder, with New Notebook. Ganymede uses tabs whatever System
+  Settings > Desktop & Dock > "Prefer tabs when opening documents" says;
+  windows restored at launch come back as they were.
 - File > New Notebook (⌘N) makes a notebook in the window's folder, New
   Tab (⌘T) opens another tab, New Window (⌥⌘N) a window of its own, and
   Rename… renames the open notebook (saving it first; its kernel keeps
