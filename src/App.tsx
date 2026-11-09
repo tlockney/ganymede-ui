@@ -290,6 +290,31 @@ export function App() {
     [backend],
   );
 
+  const copyingExamples = useRef(false);
+  const openExamples = useCallback(
+    /** Copies the examples into a new folder in `dir` and opens the first (#414). */
+    async (dir: string): Promise<boolean> => {
+      // One copy at a time: a double click shouldn't make two folders.
+      if (!backend || copyingExamples.current) return false;
+      copyingExamples.current = true;
+      setNewError(undefined);
+      try {
+        const { copyExamples } = await import('./lib/examples');
+        const { contents, kernelspecs } = backend.services;
+        const path = await copyExamples(contents, dir, kernelspecs.specs);
+        // Not if the backend changed while the copy ran.
+        if (backendRef.current === backend) setOpenPath(path);
+        return true;
+      } catch (e) {
+        setNewError(`Couldn’t copy the examples: ${e instanceof Error ? e.message : String(e)}`);
+        return false;
+      } finally {
+        copyingExamples.current = false;
+      }
+    },
+    [backend],
+  );
+
   // A notebook dropped on the window from Finder or Files is copied into
   // the sidebar's folder and opened (#216).
   const drop = useFileDrop({
@@ -342,6 +367,8 @@ export function App() {
         if (!backend) return false;
         // A failure shows the page's notice (#195) and returns false.
         return newNotebook(clean(arg ?? ''));
+      case 'open-examples':
+        return openExamples(clean(arg ?? ''));
       case 'shutdown-kernel': {
         // By session id, or by the notebook's path as `open` takes it.
         const s = running.find(r => r.id === arg || (!!arg && r.path === clean(arg)));
@@ -709,6 +736,7 @@ export function App() {
                 // first frames show Connect…, then the welcome.
                 connecting={connecting || probing || (!!config && !backend && !error)}
                 onNew={() => void newNotebook(folder)}
+                onOpenExamples={() => void openExamples(folder)}
                 onConnect={openConnect}
                 folder={folder}
                 onShowFolder={native || sidebarOpen ? undefined : () => setSidebarOpen(true)}

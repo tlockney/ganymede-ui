@@ -85,6 +85,10 @@ export function paletteEntries(context: PaletteContext): PaletteEntry[] {
       arg: context.folder,
       disabled: !context.connected,
     }),
+    app('open-examples', 'Open Example Notebooks', 'File', {
+      arg: context.folder,
+      disabled: !context.connected,
+    }),
     app('save', 'Save', 'File', { disabled: !open }),
     app('rename', 'Rename Notebook…', 'File', {
       prompt: 'New name',

@@ -45,6 +45,8 @@ version_only() {
 while IFS= read -r f; do
   [ -n "$f" ] || continue
   case $f in
+    # The example notebooks' Markdown sources are code (#414).
+    examples/src/*) e2e=true; macos=true ;;
     *.md | docs/* | screenshots/* | LICENSE | cliff.toml | scripts/release.sh) ;;
     package.json | package-lock.json)
       if ! version_only "$f"; then e2e=true; macos=true; fi ;;

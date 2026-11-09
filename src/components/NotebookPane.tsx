@@ -37,6 +37,7 @@ import { type RunStatus, attachRunStatus } from '../lib/run-status';
 import { ProblemNotice } from './ProblemNotice';
 import { useSignals } from '../lib/useSignal';
 import { hasUntrustedOutputs } from '../lib/trust';
+import { rejoinLines } from '../lib/rejoin-lines';
 import { seedLanguage } from '../lib/language';
 import { handOff, handedOff, notFound, renameFile, renamedPath, shownHandoff } from '../lib/rename';
 import type { NotebookWidgets } from '../lib/widgets';
@@ -337,7 +338,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       const rendermime = createRendermime(path, services.contents);
       // As JupyterLab's model factory does by default: undo per cell.
       const model = new NotebookModel({ disableDocumentWideUndoRedo: true });
-      model.fromJSON(content);
+      // The browser's storage keeps a file's lines split (#414).
+      model.fromJSON(rejoinLines(content));
       model.dirty = false;
       const notebook = createNotebook(rendermime);
 
