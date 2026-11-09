@@ -22,6 +22,9 @@ struct SettingsScreen: View {
                 NavigationLink(value: SettingsTab.agent) {
                     Label("Agent", systemImage: "sparkles")
                 }
+                NavigationLink(value: SettingsTab.device) {
+                    Label("Device", systemImage: "hand.raised")
+                }
             }
             CrashReportsSettings()
             if hardwareKeyboard {
@@ -54,6 +57,11 @@ struct SettingsScreen: View {
                 .navigationBarTitleDisplayMode(.inline)
             case .agent:
                 AgentSettingsView(page: page)
+            case .device:
+                // What notebooks may use on this device (#383).
+                DeviceSettings()
+                    .navigationTitle("Device")
+                    .navigationBarTitleDisplayMode(.inline)
             case .shortcuts:
                 Group {
                     if let server = model.serverURL {

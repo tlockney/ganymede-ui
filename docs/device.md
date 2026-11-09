@@ -211,6 +211,42 @@ notifications. The
 [phases](https://github.com/tlockney/ganymede-device/blob/main/docs/plan.md#phases)
 list them.
 
+## Permissions and the ledger
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+Some methods need your permission, such as notifications now and
+location later. The first time a notebook calls one, the app asks you
+before the system does: **Allow Once** lets that call through, **Always
+Allow** lets this notebook use it from now on, and **Don’t Allow** turns
+it down from now on. Cancel turns down just that call. The call then
+rejects `denied`, so the cell can carry on without it. The system's own
+prompt comes after the app's, once per app.
+
+The app keeps "always" and "don’t allow" by notebook, by its full path,
+so a rename in the sidebar keeps them. Settings › Device lists them with
+**Revoke**; a revoked notebook asks again at its next call. A notebook
+can say what it uses in its metadata, and the app then asks when you
+open it rather than in the middle of a run:
+
+```json
+{ "metadata": { "ganymede": { "device": ["notifications"] } } }
+```
+
+Each namespace with a permission also has `authorizationStatus()` and
+`requestAuthorization()`, to check or ask before the first call. Only
+kernels in the app (TypeScript, in the page) reach these methods. A
+server kernel's `device` has only the methods that need no permission.
+
+Answers are kept per notebook on trust in the notebook page itself: it
+tells the app which notebook each kernel runs. A cell can't change that,
+since it runs apart from the page, but script in the page can, such as
+HTML or JavaScript output from a notebook you marked trusted. Such
+script could use another notebook's answers, so trust only notebooks
+whose output you would let use your device.
+
 ## Errors
 
 A call that fails rejects with a `DeviceError` whose `code` says why:

@@ -92,6 +92,25 @@ describe('kernel host page', () => {
     expect(mocks.options.at(-1)).toMatchObject({ capabilities: { device: true } });
   });
 
+  it("tells Swift each kernel's device owner, for the permission ledger (#383)", () => {
+    const got: unknown[] = [];
+    vi.stubGlobal('webkit', {
+      messageHandlers: {
+        kernelHost: { postMessage: (m: unknown) => got.push(m) },
+        device: { postMessage: async () => ({}) },
+      },
+    });
+    deliver({ kernel: 'o1', op: 'start' });
+    const owner = (mocks.options.at(-1)!.host as { owner: number }).owner;
+    expect(got).toEqual([{ kernel: 'o1', op: 'owner', owner }]);
+  });
+
+  it('says no owner without the device handler', () => {
+    const before = posted.length;
+    deliver({ kernel: 'plain', op: 'start' });
+    expect(posted.slice(before)).toEqual([]);
+  });
+
   it("releases a kernel's device handler when the kernel closes, and only that one", async () => {
     const sent: unknown[] = [];
     vi.stubGlobal('webkit', {

@@ -241,6 +241,8 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     func load(_ url: URL, in view: WKWebView) {
         guard url != loaded else { return }
         loaded = url
+        // The ledger keeps notebooks by absolute path (#383).
+        kernels.notebookRoot = AppModel.shared.serverRootFolder
         kernels.uiWillLoad(url)
         view.load(URLRequest(url: url))
     }

@@ -79,7 +79,7 @@ packages:
   # The `device` bridge for notebook cells, on the kernel web view only (#99).
   GanymedeDevice:
     url: https://github.com/tlockney/ganymede-device
-    revision: fd0f4d7d33e37ddd4159e6635936baeb8de0199d
+    revision: 52351e12cb2fa3fe51465aa5977f5c9960705eb1
 settings:
   base:
     SWIFT_VERSION: '5.0'
@@ -337,6 +337,8 @@ targets:
       - path: Tests/GanymedeTests
       - path: Sources/Ganymede/ServerHost.swift
       - path: Sources/Ganymede/KernelHost.swift
+      - path: Sources/Ganymede/LedgerPrompter.swift
+      - path: Sources/Ganymede/DeviceSettings.swift
       - path: Sources/Ganymede/Terminal/TerminalTransport.swift
       - path: Sources/Ganymede/Terminal/TerminalTarget.swift
       - path: Sources/Ganymede/PanelController.swift
@@ -385,6 +387,8 @@ targets:
       - path: Tests/GanymedeTests
       - path: Sources/Ganymede/ServerHost.swift
       - path: Sources/Ganymede/KernelHost.swift
+      - path: Sources/Ganymede/LedgerPrompter.swift
+      - path: Sources/Ganymede/DeviceSettings.swift
       - path: Sources/Ganymede/Terminal/TerminalTransport.swift
       - path: Sources/Ganymede/Terminal/TerminalTarget.swift
       - path: Sources/Ganymede/PanelController.swift

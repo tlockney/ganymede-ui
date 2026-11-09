@@ -51,6 +51,9 @@ function start(id: string): void {
     ...device,
   });
   kernels.set(id, kernel);
+  // Which `device` owner is this kernel, so Swift can tell the permission
+  // ledger which notebook its calls come from (#383).
+  if (device.host) post({ kernel: id, op: 'owner', owner: device.host.owner });
   kernel.onMessage((channel, msg) =>
     post({ kernel: id, op: 'message', channel, msg: encodeMessage(msg) }),
   );

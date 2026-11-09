@@ -29,9 +29,23 @@ export const HOST_HANDLER = 'kernelHost';
 export type ToKernel =
   { kernel: string; op: 'start' } | { kernel: string; op: 'send'; channel: string; msg: unknown };
 
-/** From the kernel page to this one; `ready` goes to Swift only. */
+/**
+ * From this page to Swift only, for ganymede-device's permission ledger
+ * (#383): which notebook each kernel runs, renames, and what a notebook
+ * declares it uses. Paths are the server's, as the contents API has them.
+ */
+export type ToApp =
+  | { kernel: string; op: 'notebook'; path: string | null }
+  | { op: 'moved'; from: string; to: string }
+  | { op: 'declared'; path: string; capabilities: string[] };
+
+/**
+ * From the kernel page to this one; `ready`, and `owner` (the kernel's
+ * `device` owner, for the ledger), go to Swift only.
+ */
 export type FromKernel =
   | { op: 'ready' }
+  | { kernel: string; op: 'owner'; owner: number }
   | { kernel: string; op: 'message'; channel: string; msg: unknown }
   | { kernel: string; op: 'closed' };
 
@@ -88,6 +102,38 @@ function fromBase64(text: string): ArrayBuffer {
   const bytes = new Uint8Array(raw.length);
   for (let i = 0; i < raw.length; i++) bytes[i] = raw.charCodeAt(i);
   return bytes.buffer;
+}
+
+function tellApp(message: ToApp): void {
+  messageHandler(RELAY_HANDLER)?.postMessage(message);
+}
+
+/** Kernel `kernel` runs the notebook at `path` (none: no notebook). */
+export function reportNotebook(kernel: string, path: string | null): void {
+  tellApp({ kernel, op: 'notebook', path });
+}
+
+/** A file or folder moved from `from` to `to`: kept permissions follow. */
+export function reportMoved(from: string, to: string): void {
+  if (from !== to) tellApp({ op: 'moved', from, to });
+}
+
+/**
+ * The notebook at `path` opened; `metadata` is its metadata. When it lists
+ * the device capabilities it uses (`ganymede.device`), the app asks for
+ * the ones not yet decided, now rather than mid-run.
+ */
+export function declareDevice(path: string, metadata: unknown): void {
+  const capabilities = declaredDevice(metadata);
+  if (capabilities.length > 0) tellApp({ op: 'declared', path, capabilities });
+}
+
+/** `metadata.ganymede.device`'s strings, or none. */
+export function declaredDevice(metadata: unknown): string[] {
+  const ganymede = (metadata as { ganymede?: unknown } | null | undefined)?.ganymede;
+  const device = (ganymede as { device?: unknown } | null | undefined)?.device;
+  if (!Array.isArray(device)) return [];
+  return [...new Set(device.filter((c): c is string => typeof c === 'string' && c !== ''))];
 }
 
 const listeners = new Map<string, MessageListener>();
