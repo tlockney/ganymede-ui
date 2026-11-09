@@ -319,6 +319,8 @@ targets:
       - path: Tests/GanymedeTests
       - path: Sources/Ganymede/ServerHost.swift
       - path: Sources/Ganymede/KernelHost.swift
+      - path: Sources/Ganymede/LedgerPrompter.swift
+      - path: Sources/Ganymede/DeviceSettings.swift
       - path: Sources/Ganymede/Terminal/TerminalTransport.swift
       - path: Sources/Ganymede/Terminal/TerminalTarget.swift
       - path: Sources/Ganymede/PanelController.swift
@@ -366,6 +368,8 @@ targets:
       - path: Tests/GanymedeTests
       - path: Sources/Ganymede/ServerHost.swift
       - path: Sources/Ganymede/KernelHost.swift
+      - path: Sources/Ganymede/LedgerPrompter.swift
+      - path: Sources/Ganymede/DeviceSettings.swift
       - path: Sources/Ganymede/Terminal/TerminalTransport.swift
       - path: Sources/Ganymede/Terminal/TerminalTarget.swift
       - path: Sources/Ganymede/PanelController.swift
