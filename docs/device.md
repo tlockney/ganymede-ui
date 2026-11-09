@@ -311,8 +311,9 @@ keeps the folder you pick for this notebook, across kernel and app
 restarts; `device.folders.list()` gives them back. A `Folder` lists,
 reads, writes and removes inside that folder only: a path that leads
 outside it, through `..` or a symlink, is refused. Writing and removing
-need `write: true` at the pick. The picker is your consent, so there is
-no permission prompt; Settings › Device lists each notebook's folders
+need `write: true` at the pick, and the picker then says the notebook
+may change and delete files there (on iPad and iPhone, an alert before
+it). The picker is your consent, so there is no permission prompt; Settings › Device lists each notebook's folders
 with Revoke. It works only in kernels in the app.
 
 ```ts
