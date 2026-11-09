@@ -118,7 +118,7 @@ export function program(job: RunJob): string {
     if (/^\s*(import|export)\s+(?!type\s)/m.test(source))
       throw new SyntaxError(`cell ${n + 1}: import and export aren't supported in a run`);
     // A cell may declare a name another cell declared, as in a notebook's
-    // kernel: top-level `let` and `const` (at the start of a line) become `var`.
+    // kernel: top-level `let` and `const` become `var`.
     return topLevelVar(toJavaScript(source, job.language));
   });
   return parts.join('\n;\n');
