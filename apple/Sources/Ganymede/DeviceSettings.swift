@@ -10,9 +10,16 @@ import SwiftUI
 struct DeviceSettings: View {
     /// A ledger of its own on the shared store (ganymede-device#86).
     @State private var model = DeviceGrants()
+    /// Shortcuts' "Run Script on Device" (#434), off by default.
+    @AppStorage(RunScriptIntent.enabledKey) private var shortcutRuns = false
 
     var body: some View {
         Form {
+            Section {
+                Toggle("Run Scripts from Shortcuts", isOn: $shortcutRuns)
+            } footer: {
+                Text("Experimental. Shortcuts' Run Script on Device action runs a script or notebook on this device with no window. It can't ask for permissions: it uses only what each notebook was allowed with Always.")
+            }
             if model.notebooks.isEmpty {
                 Section {
                     Text("No notebook has been allowed or denied anything, or given a folder, yet.")

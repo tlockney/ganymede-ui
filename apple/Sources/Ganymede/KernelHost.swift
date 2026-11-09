@@ -104,7 +104,7 @@ final class KernelHost: NSObject {
     /// (`device.folders`). Each permissioned one asks the
     /// app's ledger, then the system, on first use; one the device lacks
     /// (motion and the camera on a Mac) stays out of `hello`.
-    private static func systemBridge(folders: FolderGrants) -> DeviceBridge {
+    static func systemBridge(folders: FolderGrants) -> DeviceBridge {
         let bridge = DeviceBridge()
         // The notification center throws outside an app bundle, such as
         // the unit tests' runner.
