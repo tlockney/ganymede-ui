@@ -109,9 +109,9 @@ browser yet.
 ## Methods
 
 > [!NOTE]
-> **Unreleased.** `device.secrets`, `device.widget` and `device.output`
-> are in the device package but not wired into the apps yet: there they
-> answer `unavailable`.
+> `device.secrets`, `device.widget` and `device.output` are in the device
+> package but not wired into the apps yet: there they answer
+> `unavailable`.
 
 <!-- device-table:start (generated: node scripts/device-table.mjs --write) -->
 

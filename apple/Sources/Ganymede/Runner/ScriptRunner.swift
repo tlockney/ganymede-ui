@@ -93,7 +93,11 @@ final class ScriptRunner {
         bridge.setNotebook(notebook, for: device.owner)
         device.attachRun(input) { result.output = $0 }
         var timers: [Int: Timer] = [:]
+        // Set once `run` returns: a script still holding a timer or a
+        // fetch can't start new ones, and late callbacks don't call in.
+        var stopped = false
         defer {
+            stopped = true
             timers.values.forEach { $0.invalidate() }
             device.release()
             bridge.setNotebook(nil, for: device.owner)
@@ -105,13 +109,17 @@ final class ScriptRunner {
         let log: @convention(block) (String, String) -> Void = { level, text in
             MainActor.assumeIsolated { result.log.append("\(level): \(text)") }
         }
-        let setTimer: @convention(block) (Int, Double) -> Void = { id, ms in
+        // Weak: the block is stored in the context, so a strong capture
+        // would keep the context, and its VM, alive for good.
+        let setTimer: @convention(block) (Int, Double) -> Void = { [weak context] id, ms in
             MainActor.assumeIsolated {
                 timers[id]?.invalidate()
+                guard !stopped else { return }
                 timers[id] = Timer.scheduledTimer(withTimeInterval: ms / 1000, repeats: false) { _ in
                     MainActor.assumeIsolated {
                         timers[id] = nil
-                        context.objectForKeyedSubscript("__ganymedeFire")?.call(withArguments: [id])
+                        guard !stopped else { return }
+                        context?.objectForKeyedSubscript("__ganymedeFire")?.call(withArguments: [id])
                     }
                 }
             }
@@ -127,7 +135,9 @@ final class ScriptRunner {
             return JSValue(newPromiseIn: context) { resolve, _ in
                 nonisolated(unsafe) let resolve = resolve
                 Task { @MainActor in
+                    guard !stopped else { return }
                     let reply = await Self.fetch(request)
+                    guard !stopped else { return }
                     resolve?.call(withArguments: [reply])
                 }
             }
@@ -177,8 +187,13 @@ final class ScriptRunner {
         return result
     }
 
+    /// Scripts' own session: no cookies, cache or credentials shared with
+    /// the app's requests to its servers.
+    private static let session = URLSession(configuration: .ephemeral)
+
     /// One `fetch`: the request as JSON text in, the response as JSON text
-    /// out, body as base64. Only http and https.
+    /// out, body as base64. Only http and https. The 16 MiB cap applies
+    /// after the download (#437 notes it).
     static func fetch(_ request: String) async -> String {
         func reply(_ object: [String: Any]) -> String {
             String(data: (try? JSONSerialization.data(withJSONObject: object)) ?? Data(), encoding: .utf8) ?? "{}"
@@ -194,7 +209,7 @@ final class ScriptRunner {
         }
         if let body = fields["body"] as? String { call.httpBody = Data(base64Encoded: body) }
         do {
-            let (data, response) = try await URLSession.shared.data(for: call)
+            let (data, response) = try await session.data(for: call)
             guard data.count <= DeviceBridge.maxBinaryBytes else { return reply(["error": "the response is over 16 MiB"]) }
             let http = response as? HTTPURLResponse
             var headers: [String: String] = [:]

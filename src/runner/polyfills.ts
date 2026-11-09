@@ -259,7 +259,14 @@ export function installPolyfills(g: Global = globalThis as Global): void {
   define('btoa', (text: string) =>
     encodeBase64(Uint8Array.from(String(text), c => c.charCodeAt(0) & 255)),
   );
-  define('atob', (text: string) => String.fromCharCode(...decodeBase64(String(text))));
+  define('atob', (text: string) => {
+    // In slices: spreading a large array overflows the engine's argument limit.
+    const bytes = decodeBase64(String(text));
+    let out = '';
+    for (let i = 0; i < bytes.length; i += 8192)
+      out += String.fromCharCode(...bytes.subarray(i, i + 8192));
+    return out;
+  });
   define(
     'TextEncoder',
     class {

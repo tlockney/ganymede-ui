@@ -53,6 +53,15 @@ describe('run', () => {
 });
 
 describe('installPolyfills', () => {
+  it('decodes large base64 with atob', () => {
+    const g: Record<string, unknown> = {};
+    installPolyfills(g as never);
+    const bytes = Uint8Array.from({ length: 300_000 }, (_, i) => i & 255);
+    const text = (g.atob as (t: string) => string)(Buffer.from(bytes).toString('base64'));
+    expect(text.length).toBe(300_000);
+    expect(text.charCodeAt(257)).toBe(1);
+  });
+
   it("adds timers over the host's, and fires them by id", () => {
     const started: Array<[number, number]> = [];
     const g: Record<string, unknown> = {
