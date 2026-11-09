@@ -43,6 +43,7 @@ struct GanymedeApp: App {
                 NewCommands(model: model)
             }
             CommandGroup(replacing: .saveItem) {
+                CloseCommand()
                 SaveCommand()
                 RenameCommand()
                 DownloadCommand()
@@ -216,7 +217,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AppModel.shared.openRequests.add(urls)
     }
 
+    /// Set while the app quits, so windows closing then open no other.
+    private var quitting = false
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(windowWillClose(_:)),
+            name: NSWindow.willCloseNotification,
+            object: nil
+        )
         // Windows the system restores have come back by now (#247). Files
         // the app was launched to open can come after this method (seen on
         // a Mac, #266), so they count as opened at launch until then too:
@@ -231,12 +241,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    /// The last notebook, text file or terminal tab closed: a new window
+    /// shows the start screen, so the app is never left with none (#407).
+    @objc private func windowWillClose(_ notification: Notification) {
+        guard !quitting, let window = notification.object as? NSWindow,
+              window.tabbingIdentifier == WorkspaceTabs.identifier,
+              !WorkspaceTabs.anyOpen(in: NSApp.windows, except: window)
+        else { return }
+        // Once it has gone, and if no other window opened meanwhile.
+        DispatchQueue.main.async { [self] in
+            guard !quitting, !WorkspaceTabs.anyOpen(in: NSApp.windows) else { return }
+            WorkspaceTabs.openStart(folder: AppModel.shared.root)
+        }
+    }
+
     /// Asks to save notebooks and text files with unsaved edits first.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        quitting = true
         guard PageDocument.hasUnsaved || EditorDocument.hasUnsaved else { return .terminateNow }
         Task { @MainActor in
             var quit = await PageDocument.confirmQuit()
             if quit { quit = await EditorDocument.confirmQuit() }
+            if !quit { quitting = false }
             sender.reply(toApplicationShouldTerminate: quit)
         }
         return .terminateLater
@@ -247,7 +273,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        true
+        WorkspaceTabs.quitsAfterLastTab
     }
 }
 #endif

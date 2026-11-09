@@ -218,6 +218,18 @@ extension View {
         modifier(WorkspaceTab())
     }
 }
+
+/// File > Close (⌘W, #407): the front window's active tab. Replacing the
+/// `.saveItem` group drops the system's Close, so the app adds its own.
+struct CloseCommand: View {
+    var body: some View {
+        Button("Close") {
+            WorkspaceTabs.close(NSApp.keyWindow)
+        }
+        .keyboardShortcut("w")
+    }
+}
+
 /// File > Save (⌘S), for the front notebook or text file window.
 struct SaveCommand: View {
     @FocusedValue(\.pageDocument) private var document
