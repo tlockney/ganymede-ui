@@ -82,6 +82,10 @@ struct IPadSidebar: View {
                 Menu {
                     Button { newNotebook(in: folder) } label: { Label("New Notebook", systemImage: "doc.badge.plus") }
                     Button { newFolder(in: folder) } label: { Label("New Folder", systemImage: "folder.badge.plus") }
+                    // The iPhone has no File menu or welcome screen: the
+                    // examples are here (#414).
+                    Button { openExamples() } label: { Label("Open Example Notebooks", systemImage: "book") }
+                        .disabled(page.state.backend == nil)
                 } label: {
                     Label("New", systemImage: "plus")
                 }
@@ -380,6 +384,13 @@ struct IPadSidebar: View {
 
     private func newNotebook(in dir: URL) {
         page.run("new-notebook", arg: FolderEntry.serverPath(dir, root: folder))
+        opened()
+    }
+
+    /// Copies the example notebooks into a new folder at the top and opens
+    /// the first (#414).
+    private func openExamples() {
+        page.run("open-examples", arg: "")
         opened()
     }
 

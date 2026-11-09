@@ -313,8 +313,8 @@ headings; pick one to go to its cell.
 - **Text files** open in an editor with the same highlighting, line
   numbers, auto-indent and pairing as on the Mac. Edits are saved when
   the app goes to the background, since iOS may close the editor there.
-- **Example notebooks**: Open Example Notebooks, in the empty window (and
-  the File menu with a keyboard), copies TypeScript notebooks that show
+- **Example notebooks**: Open Example Notebooks, in the folder list's +
+  menu (and the File menu with a keyboard), copies TypeScript notebooks that show
   APIs, charts, DuckDB, generative art, widgets, UI frameworks and the `device`
   API into a new `Examples` folder. The Mac has it in the File menu too.
 
