@@ -5,7 +5,7 @@
  * own chunk (`example-notebooks.ts`), on first use.
  */
 import type { Contents, KernelSpec } from '@jupyterlab/services';
-import { renameFile } from './rename';
+import { lookUp, renameFile } from './rename';
 import { freePath, sampleKernel } from './sample';
 
 /** The folder's name; another copy gets a number (`Examples 2`). */
@@ -54,11 +54,20 @@ export async function copyExamples(
   dir: string,
   specs?: KernelSpec.ISpecModels | null,
 ): Promise<string> {
+  return copyInto(contents, dir, await freePath(contents, dir, EXAMPLES_FOLDER), specs);
+}
+
+/** Copies the examples into the new folder `folder` in `dir`; the first notebook's path. */
+async function copyInto(
+  contents: Contents.IManager,
+  dir: string,
+  folder: string,
+  specs?: KernelSpec.ISpecModels | null,
+): Promise<string> {
   const { NOTEBOOKS } = await import('./example-notebooks');
   const names = exampleNames(NOTEBOOKS);
   if (!names.length) throw new Error('This build has no example notebooks.');
   const kernelspec = examplesKernel(specs);
-  const folder = await freePath(contents, dir, EXAMPLES_FOLDER);
   // A new folder, then its name: both the server and the browser's storage
   // create one this way.
   const made = await contents.newUntitled({ type: 'directory', path: dir });
@@ -79,3 +88,32 @@ export async function copyExamples(
   }
   return `${folder}/${names[0]}`;
 }
+
+/**
+ * Copies the examples into `Examples` in `dir` unless a folder by that name
+ * is there, without opening any (#463): the iPhone and iPad add them to
+ * the app's own folder once. Returns the folder's path, or null when one
+ * was there. A partial copy (the app quit while saving) counts as there:
+ * the window is short, and a second folder beside it would be worse.
+ * Beside a file named `Examples`, the copy goes to `Examples 2` (the first
+ * name that isn't a file), and a folder there counts the same way.
+ */
+export async function addExamples(
+  contents: Contents.IManager,
+  dir: string,
+  specs?: KernelSpec.ISpecModels | null,
+): Promise<string | null> {
+  for (let n = 1; n <= MAX_EXAMPLE_NAMES; n++) {
+    const name = n === 1 ? EXAMPLES_FOLDER : `${EXAMPLES_FOLDER} ${n}`;
+    const target = dir ? `${dir}/${name}` : name;
+    const there = await lookUp(contents, target);
+    if (there?.type === 'directory') return null;
+    if (there) continue;
+    await copyInto(contents, dir, target, specs);
+    return target;
+  }
+  throw new Error(`There are already ${MAX_EXAMPLE_NAMES} files named “${EXAMPLES_FOLDER}” here.`);
+}
+
+/** How many names `addExamples` tries. */
+const MAX_EXAMPLE_NAMES = 20;

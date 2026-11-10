@@ -317,6 +317,10 @@ headings; pick one to go to its cell.
   menu (and the File menu with a keyboard), copies TypeScript notebooks that show
   APIs, charts, DuckDB, generative art, widgets, UI frameworks and the `device`
   API into a new `Examples` folder. The Mac has it in the File menu too.
+  The app's own folder (On My iPhone or On My iPad › Ganymede) gets a copy
+  on first launch, or the first launch after updating, so the examples are
+  in the sidebar from the start; not a folder you picked, and a deleted
+  `Examples` folder stays deleted.
 
   > [!NOTE]
   > **Unreleased.** Available only from a build of `main` (HEAD), not in

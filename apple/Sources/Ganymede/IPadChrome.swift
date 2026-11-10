@@ -92,6 +92,8 @@ struct IPadSidebar: View {
             }
         }
         .refreshable { generation += 1 }
+        // The examples show in the app's own folder from the start (#463).
+        .modifier(AddsExamples(page: page) { generation += 1 })
         .onChange(of: page.state.path) { generation += 1 }
         .onChange(of: phase) { _, phase in
             if phase == .active { generation += 1 }
@@ -457,6 +459,22 @@ struct IPadSidebar: View {
         } catch {
             failure = error.localizedDescription
         }
+    }
+}
+
+/// Adds the examples to the app's own folder once the page is ready
+/// (#463), and lists the folder again in every window once they are.
+/// A modifier of its own: the sidebar's chain is long for the type checker.
+private struct AddsExamples: ViewModifier {
+    var page: PageModel
+    let copied: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .task(id: page.ready) {
+                if page.ready { await AppModel.shared.addExamplesIfNeeded(page: page) }
+            }
+            .onChange(of: AppModel.shared.examplesCopied) { copied() }
     }
 }
 

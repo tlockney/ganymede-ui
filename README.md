@@ -108,7 +108,9 @@ storage).
 **Open Example Notebooks**, under New Notebook in the empty window and in
 the command palette (and in the apps' File menu), copies a set of
 TypeScript notebooks into a new `Examples` folder in the folder the
-sidebar shows, and opens the first. They run on the in-page kernel and
+sidebar shows, and opens the first. On iPhone and iPad the app's own
+folder gets a copy on first launch (or the first after updating), so they
+show without this step. They run on the in-page kernel and
 were saved with their outputs, marked trusted:
 
 | Notebook               | What it shows                                                        |
