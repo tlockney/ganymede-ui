@@ -25,4 +25,6 @@ that explicit.)
 
 Tests in `NotebookPane.test.tsx`: "waits for a kernel start before
 disposing the session when the pane goes (#461)" and "starts no kernel
-for a run that waited on the join when the pane goes (#461)".
+for a run that waited on the join when the pane goes (#461)", and "also
+waits for a kernel change made after the teardown began (#461)", which
+fails without the drain loop.

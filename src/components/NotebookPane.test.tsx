@@ -694,6 +694,35 @@ describe('NotebookPane', () => {
     expect(session.changeKernel).not.toHaveBeenCalled();
   });
 
+  it('also waits for a kernel change made after the teardown began (#461)', async () => {
+    let join!: () => void;
+    fakes.initialize = () => new Promise(r => (join = () => r(false)));
+    const { latest, unmount } = setup();
+    await waitFor(() => expect(latest()).toBeDefined());
+    const controller = latest()!;
+    const ctx = fakes.sessions[0] as {
+      session: unknown;
+      changeKernel: ReturnType<typeof vi.fn>;
+      dispose: ReturnType<typeof vi.fn>;
+    };
+    unmount();
+    // The teardown is waiting on the join.
+    await new Promise(r => setTimeout(r, 10));
+    let changed!: () => void;
+    ctx.changeKernel.mockImplementation(() => new Promise<null>(r => (changed = () => r(null))));
+    ctx.session = { kernel: { name: 'python3' } };
+    let changing!: Promise<unknown>;
+    act(() => void (changing = controller.changeKernel('ts')));
+    await act(async () => join());
+    await new Promise(r => setTimeout(r, 10));
+    expect(ctx.dispose).not.toHaveBeenCalled();
+    await act(async () => {
+      changed();
+      await changing;
+    });
+    await waitFor(() => expect(ctx.dispose).toHaveBeenCalled());
+  });
+
   it('starts the newly picked kernel after the running one is shut down', async () => {
     const { latest } = setup();
     await waitFor(() => expect(latest()?.status).toBe('none'));
