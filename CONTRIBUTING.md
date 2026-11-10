@@ -13,7 +13,7 @@ npm install
 npm run dev     # the app, proxying /api to GANYMEDE_URL (README.md, Run)
 npm run check   # type-check, check the dev log, lint, check formatting
 npm run format  # format with Prettier
-npm test        # unit tests: the app's and the client package's
+npm test        # unit tests
 npm run build   # production build
 ```
 
@@ -22,9 +22,8 @@ checks the dev log, checks that docs say a feature is unreleased only
 with the standard note (CLAUDE.md, `scripts/check-unreleased.mjs`), and
 runs ESLint and Prettier's check
 (`npm run lint`, `npm run format:check`; `npm run format` rewrites).
-`npm test` runs the app's unit tests (Vitest, jsdom, next to the code as
-`*.test.ts(x)`) and the client package's tests; `npm run test:coverage`
-prints a coverage summary. One of them checks that
+`npm test` runs the unit tests (Vitest, jsdom, next to the code as
+`*.test.ts(x)`); `npm run test:coverage` prints a coverage summary. One of them checks that
 [docs/shortcuts.md](docs/shortcuts.md) matches `src/lib/shortcuts.ts`;
 `UPDATE_DOCS=1 npx vitest run shortcuts-doc` rewrites its tables.
 
