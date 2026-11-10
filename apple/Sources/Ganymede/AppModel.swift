@@ -62,7 +62,7 @@ final class AppModel {
     /// is held.
     @ObservationIgnored private var scoped: URL?
     /// While the examples are being added to the app's folder (#463).
-    @ObservationIgnored private var addingExamples = false
+    @ObservationIgnored private var addingExamples: Task<Void, Never>?
     /// Bumped when they were, so every window's sidebar lists again.
     private(set) var examplesCopied = 0
     #endif
@@ -311,6 +311,15 @@ final class AppModel {
         defaults.set(folder.path, forKey: Keys.root)
         root = folder
         #else
+        // The examples' copy finishes first: the server restarts on the
+        // same port, so its remaining saves would land in `folder` (#463).
+        if let adding = addingExamples {
+            Task {
+                await adding.value
+                open(folder: folder)
+            }
+            return
+        }
         guard folder.startAccessingSecurityScopedResource() else {
             error = "Ganymede was not allowed to open \(folder.lastPathComponent)."
             return
@@ -475,21 +484,26 @@ final class AppModel {
     /// folder the person picked, and not again after they delete them.
     /// Every sidebar lists again when it copied them (`examplesCopied`).
     func addExamplesIfNeeded(page: PageModel) async {
-        guard scoped == nil, !addingExamples, !defaults.bool(forKey: Keys.examplesAdded) else {
+        guard scoped == nil, addingExamples == nil, !defaults.bool(forKey: Keys.examplesAdded) else {
             return
         }
-        // Two iPad windows get ready together: one copy.
-        addingExamples = true
-        defer { addingExamples = false }
-        do {
-            // The folder's path, or null when an `Examples` folder is there.
-            let added = try await page.call("add-examples", arg: "")
-            defaults.set(true, forKey: Keys.examplesAdded)
-            if added is String { examplesCopied += 1 }
-        } catch {
-            // Tried again when the page is next ready: after a reload, a
-            // server restart or the next launch.
+        // Two iPad windows get ready together: one copy. Open Folder waits
+        // for it too (`open(folder:)`).
+        let adding = Task {
+            do {
+                // The folder's path, or null when an `Examples` folder is there.
+                let added = try await page.call("add-examples", arg: "")
+                defaults.set(true, forKey: Keys.examplesAdded)
+                if added is String { examplesCopied += 1 }
+            } catch {
+                // Tried again when the page is next ready: after a reload, a
+                // server restart or the next launch.
+            }
+            // Before anyone waiting on it resumes.
+            addingExamples = nil
         }
+        addingExamples = adding
+        await adding.value
     }
     #endif
 

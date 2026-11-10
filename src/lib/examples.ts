@@ -95,17 +95,25 @@ async function copyInto(
  * the app's own folder once. Returns the folder's path, or null when one
  * was there. A partial copy (the app quit while saving) counts as there:
  * the window is short, and a second folder beside it would be worse.
- * Beside a file named `Examples`, the copy goes to `Examples 2`.
+ * Beside a file named `Examples`, the copy goes to `Examples 2` (the first
+ * name that isn't a file), and a folder there counts the same way.
  */
 export async function addExamples(
   contents: Contents.IManager,
   dir: string,
   specs?: KernelSpec.ISpecModels | null,
 ): Promise<string | null> {
-  const folder = dir ? `${dir}/${EXAMPLES_FOLDER}` : EXAMPLES_FOLDER;
-  const there = await lookUp(contents, folder);
-  if (there?.type === 'directory') return null;
-  const target = there ? await freePath(contents, dir, EXAMPLES_FOLDER) : folder;
-  await copyInto(contents, dir, target, specs);
-  return target;
+  for (let n = 1; n <= MAX_EXAMPLE_NAMES; n++) {
+    const name = n === 1 ? EXAMPLES_FOLDER : `${EXAMPLES_FOLDER} ${n}`;
+    const target = dir ? `${dir}/${name}` : name;
+    const there = await lookUp(contents, target);
+    if (there?.type === 'directory') return null;
+    if (there) continue;
+    await copyInto(contents, dir, target, specs);
+    return target;
+  }
+  throw new Error(`There are already ${MAX_EXAMPLE_NAMES} files named “${EXAMPLES_FOLDER}” here.`);
 }
+
+/** How many names `addExamples` tries. */
+const MAX_EXAMPLE_NAMES = 20;

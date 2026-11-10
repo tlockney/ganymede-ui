@@ -205,6 +205,16 @@ describe('addExamples', () => {
     expect(c.files.has('Examples 2/01 Start Here.ipynb')).toBe(true);
   });
 
+  it('leaves an earlier copy beside a file named Examples', async () => {
+    const c = contents(['Examples', 'Examples 2']);
+    c.get.mockImplementation(async (path: string) => {
+      if (!c.files.has(path)) throw new Error(`Could not find file with path ${path}`);
+      return { path, type: path === 'Examples' ? 'file' : 'directory' };
+    });
+    expect(await addExamples(c as unknown as Contents.IManager, '', null)).toBeNull();
+    expect(c.save).not.toHaveBeenCalled();
+  });
+
   it('leaves a folder that is already there and copies nothing', async () => {
     const c = contents(['work/Examples']);
     expect(await addExamples(c as unknown as Contents.IManager, 'work', null)).toBeNull();

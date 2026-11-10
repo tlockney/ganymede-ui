@@ -16,7 +16,9 @@ the person picked gets nothing, and two iPad windows getting ready together
 make one copy; a counter on `AppModel` makes every window's sidebar list
 it. Only a folder named `Examples` counts as there (beside a file of that
 name the copy is `Examples 2`), and a partial copy from a killed launch
-counts too.
+counts too. Open Folder waits for a copy under way, since the server
+restarts on the same port and the remaining saves would land in the new
+folder.
 
 A sidebar listing more than one folder (the app's folder beside a picked
 one) needs the iOS server to serve more than one root, since it is rooted
