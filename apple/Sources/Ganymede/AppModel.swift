@@ -63,6 +63,8 @@ final class AppModel {
     @ObservationIgnored private var scoped: URL?
     /// While the examples are being added to the app's folder (#463).
     @ObservationIgnored private var addingExamples = false
+    /// Bumped when they were, so every window's sidebar lists again.
+    private(set) var examplesCopied = 0
     #endif
 
     private init() {
@@ -468,12 +470,13 @@ final class AppModel {
 
     #if os(iOS)
     /// Adds the example notebooks to the app's own folder once, the first
-    /// time it is open with the page ready (#463): not to a folder the
-    /// person picked, and not again after they delete them. True when it
-    /// copied them, so the sidebar lists again.
-    func addExamplesIfNeeded(page: PageModel) async -> Bool {
+    /// time it is open with the page ready (#463): on a fresh install, and
+    /// on the first launch after an update that brings this. Not to a
+    /// folder the person picked, and not again after they delete them.
+    /// Every sidebar lists again when it copied them (`examplesCopied`).
+    func addExamplesIfNeeded(page: PageModel) async {
         guard scoped == nil, !addingExamples, !defaults.bool(forKey: Keys.examplesAdded) else {
-            return false
+            return
         }
         // Two iPad windows get ready together: one copy.
         addingExamples = true
@@ -482,10 +485,10 @@ final class AppModel {
             // The folder's path, or null when an `Examples` folder is there.
             let added = try await page.call("add-examples", arg: "")
             defaults.set(true, forKey: Keys.examplesAdded)
-            return added is String
+            if added is String { examplesCopied += 1 }
         } catch {
-            // Tried again on the next launch.
-            return false
+            // Tried again when the page is next ready: after a reload, a
+            // server restart or the next launch.
         }
     }
     #endif

@@ -134,7 +134,7 @@ function contents(existing: string[] = []) {
     files,
     get: vi.fn(async (path: string) => {
       if (!files.has(path)) throw new Error(`Could not find file with path ${path}`);
-      return { path };
+      return { path, type: files.get(path) === null ? 'directory' : 'notebook' };
     }),
     newUntitled: vi.fn(async ({ path }: { path: string }) => {
       const made = path ? `${path}/Untitled Folder` : 'Untitled Folder';
@@ -193,6 +193,16 @@ describe('addExamples', () => {
     const folder = await addExamples(c as unknown as Contents.IManager, '', null);
     expect(folder).toBe('Examples');
     expect(c.files.has('Examples/01 Start Here.ipynb')).toBe(true);
+  });
+
+  it('copies beside a file named Examples', async () => {
+    const c = contents(['Examples']);
+    c.get.mockImplementation(async (path: string) => {
+      if (!c.files.has(path)) throw new Error(`Could not find file with path ${path}`);
+      return { path, type: path === 'Examples' ? 'file' : 'directory' };
+    });
+    expect(await addExamples(c as unknown as Contents.IManager, '', null)).toBe('Examples 2');
+    expect(c.files.has('Examples 2/01 Start Here.ipynb')).toBe(true);
   });
 
   it('leaves a folder that is already there and copies nothing', async () => {

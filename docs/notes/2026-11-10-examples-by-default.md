@@ -9,8 +9,14 @@ sidebar asks the page's new `add-examples` call to copy the examples into
 `Examples` there. The call copies nothing when an `Examples` folder is
 already there, and answers the folder's path or null. An `examplesAdded`
 default records that it ran, so a deleted folder is not brought back; a
-failed call is tried again on the next launch. A folder the person picked
-gets nothing, and two iPad windows getting ready together make one copy.
+failed call is tried again when the page is next ready (a reload, a server
+restart or the next launch). It also runs once after an update from a
+version without it, since those people have no examples either. A folder
+the person picked gets nothing, and two iPad windows getting ready together
+make one copy; a counter on `AppModel` makes every window's sidebar list
+it. Only a folder named `Examples` counts as there (beside a file of that
+name the copy is `Examples 2`), and a partial copy from a killed launch
+counts too.
 
 A sidebar listing more than one folder (the app's folder beside a picked
 one) needs the iOS server to serve more than one root, since it is rooted

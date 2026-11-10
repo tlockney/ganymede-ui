@@ -94,8 +94,10 @@ struct IPadSidebar: View {
         .refreshable { generation += 1 }
         // The examples show in the app's own folder from the start (#463).
         .task(id: page.ready) {
-            if page.ready, await AppModel.shared.addExamplesIfNeeded(page: page) { generation += 1 }
+            if page.ready { await AppModel.shared.addExamplesIfNeeded(page: page) }
         }
+        // In every window, not only the one that copied them.
+        .onChange(of: AppModel.shared.examplesCopied) { generation += 1 }
         .onChange(of: page.state.path) { generation += 1 }
         .onChange(of: phase) { _, phase in
             if phase == .active { generation += 1 }
