@@ -61,6 +61,8 @@ final class AppModel {
     /// A folder from the picker, readable only while its security scope
     /// is held.
     @ObservationIgnored private var scoped: URL?
+    /// While the examples are being added to the app's folder (#463).
+    @ObservationIgnored private var addingExamples = false
     #endif
 
     private init() {
@@ -464,9 +466,34 @@ final class AppModel {
     }
     #endif
 
+    #if os(iOS)
+    /// Adds the example notebooks to the app's own folder once, the first
+    /// time it is open with the page ready (#463): not to a folder the
+    /// person picked, and not again after they delete them. True when it
+    /// copied them, so the sidebar lists again.
+    func addExamplesIfNeeded(page: PageModel) async -> Bool {
+        guard scoped == nil, !addingExamples, !defaults.bool(forKey: Keys.examplesAdded) else {
+            return false
+        }
+        // Two iPad windows get ready together: one copy.
+        addingExamples = true
+        defer { addingExamples = false }
+        do {
+            // The folder's path, or null when an `Examples` folder is there.
+            let added = try await page.call("add-examples", arg: "")
+            defaults.set(true, forKey: Keys.examplesAdded)
+            return added is String
+        } catch {
+            // Tried again on the next launch.
+            return false
+        }
+    }
+    #endif
+
     private enum Keys {
         static let root = "rootFolder"
         static let bookmark = "rootFolderBookmark"
         static let port = "serverPort"
+        static let examplesAdded = "examplesAdded"
     }
 }

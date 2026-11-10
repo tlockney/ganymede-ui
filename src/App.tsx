@@ -515,8 +515,21 @@ export function App() {
           return !c?.dirty || (await c.save());
         },
         command: (id, arg) => runCommand.current(id, arg),
-        // `test-crash-report`: the app's debug menu checks that reports arrive (#318, #319).
-        call: (id, arg) => (id === 'test-crash-report' ? sendTestReport() : agentCall(id, arg)),
+        call: (id, arg) => {
+          // `test-crash-report`: the app's debug menu checks that reports arrive (#318, #319).
+          if (id === 'test-crash-report') return sendTestReport();
+          // `add-examples`: the iPhone and iPad add the examples to their
+          // own folder on first launch (#463). The folder's path, or null.
+          if (id === 'add-examples') {
+            const b = backendRef.current;
+            if (!b) return Promise.reject(new Error('Not connected to a server.'));
+            const { contents, kernelspecs } = b.services;
+            return import('./lib/examples').then(({ addExamples }) =>
+              addExamples(contents, clean(arg ?? ''), kernelspecs.specs),
+            );
+          }
+          return agentCall(id, arg);
+        },
       }),
     [],
   );

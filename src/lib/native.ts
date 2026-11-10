@@ -23,7 +23,12 @@ export type DocumentMessage = { path: string | null; dirty: boolean };
 export type NativeHooks = {
   save(): Promise<boolean>;
   command(id: string, arg?: string): Promise<boolean>;
-  /** A call that answers with a value: the agent's settings for the app (#210, `native-agent.ts`). */
+  /**
+   * A call that answers with a value: the agent's settings for the app
+   * (#210, `native-agent.ts`), or `add-examples`, which copies the examples
+   * into `Examples` in the folder it takes unless one is there and answers
+   * its path or null (#463).
+   */
   call(id: string, arg?: string): Promise<unknown>;
 };
 

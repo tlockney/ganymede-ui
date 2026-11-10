@@ -5,7 +5,7 @@
  * own chunk (`example-notebooks.ts`), on first use.
  */
 import type { Contents, KernelSpec } from '@jupyterlab/services';
-import { renameFile } from './rename';
+import { lookUp, renameFile } from './rename';
 import { freePath, sampleKernel } from './sample';
 
 /** The folder's name; another copy gets a number (`Examples 2`). */
@@ -78,4 +78,21 @@ export async function copyExamples(
     });
   }
   return `${folder}/${names[0]}`;
+}
+
+/**
+ * Copies the examples into `Examples` in `dir` unless that is already
+ * there, without opening any (#463): the iPhone and iPad add them to the
+ * app's own folder on first launch. Returns the folder's path, or null
+ * when one was there.
+ */
+export async function addExamples(
+  contents: Contents.IManager,
+  dir: string,
+  specs?: KernelSpec.ISpecModels | null,
+): Promise<string | null> {
+  const folder = dir ? `${dir}/${EXAMPLES_FOLDER}` : EXAMPLES_FOLDER;
+  if (await lookUp(contents, folder)) return null;
+  const first = await copyExamples(contents, dir, specs);
+  return first.slice(0, first.lastIndexOf('/'));
 }
