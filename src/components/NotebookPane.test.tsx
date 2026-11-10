@@ -646,6 +646,31 @@ describe('NotebookPane', () => {
     expect(session.changeKernel).toHaveBeenCalledTimes(1);
   });
 
+  it('waits for a kernel start before disposing the session when the pane goes (#461)', async () => {
+    const { latest, unmount } = setup();
+    await waitFor(() => expect(latest()?.status).toBe('none'));
+    const session = fakes.sessions[0] as {
+      changeKernel: ReturnType<typeof vi.fn>;
+      dispose: ReturnType<typeof vi.fn>;
+    };
+    let started!: () => void;
+    session.changeKernel.mockImplementation(
+      () => new Promise<null>(r => (started = () => r(null))),
+    );
+    let running!: Promise<unknown>;
+    act(() => void (running = latest()!.run()));
+    await waitFor(() => expect(session.changeKernel).toHaveBeenCalled());
+    // Another notebook opens while the kernel starts.
+    unmount();
+    await new Promise(r => setTimeout(r, 10));
+    expect(session.dispose).not.toHaveBeenCalled();
+    await act(async () => {
+      started();
+      await running;
+    });
+    await waitFor(() => expect(session.dispose).toHaveBeenCalled());
+  });
+
   it('starts the newly picked kernel after the running one is shut down', async () => {
     const { latest } = setup();
     await waitFor(() => expect(latest()?.status).toBe('none'));
