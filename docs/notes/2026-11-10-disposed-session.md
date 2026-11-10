@@ -17,5 +17,12 @@ pending it disposes at once, as before. A started kernel then takes the
 file's path and stays listed under Running, like any kernel the pane
 leaves behind.
 
-Test: "waits for a kernel start before disposing the session when the
-pane goes (#461)" in `NotebookPane.test.tsx`.
+Teardown keeps waiting until no tracked call is left, not only for those
+under way when it began, and a run that was waiting for the session to
+join starts no kernel once the pane has gone. (Today such a run finds the
+notebook already disposed and starts nothing anyway; the check makes
+that explicit.)
+
+Tests in `NotebookPane.test.tsx`: "waits for a kernel start before
+disposing the session when the pane goes (#461)" and "starts no kernel
+for a run that waited on the join when the pane goes (#461)".

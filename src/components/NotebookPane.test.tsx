@@ -671,6 +671,29 @@ describe('NotebookPane', () => {
     await waitFor(() => expect(session.dispose).toHaveBeenCalled());
   });
 
+  it('starts no kernel for a run that waited on the join when the pane goes (#461)', async () => {
+    let join!: () => void;
+    fakes.initialize = () => new Promise(r => (join = () => r(false)));
+    const { latest, unmount } = setup();
+    await waitFor(() => expect(latest()).toBeDefined());
+    const session = fakes.sessions[0] as {
+      changeKernel: ReturnType<typeof vi.fn>;
+      dispose: ReturnType<typeof vi.fn>;
+    };
+    let running!: Promise<unknown>;
+    act(() => void (running = latest()!.run()));
+    unmount();
+    await new Promise(r => setTimeout(r, 10));
+    // Still joining: the session stays.
+    expect(session.dispose).not.toHaveBeenCalled();
+    await act(async () => {
+      join();
+      await running;
+    });
+    await waitFor(() => expect(session.dispose).toHaveBeenCalled());
+    expect(session.changeKernel).not.toHaveBeenCalled();
+  });
+
   it('starts the newly picked kernel after the running one is shut down', async () => {
     const { latest } = setup();
     await waitFor(() => expect(latest()?.status).toBe('none'));

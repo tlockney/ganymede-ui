@@ -438,6 +438,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       let starting: Promise<boolean> | undefined;
       const ensureKernel = async (all = false) => {
         await joining;
+        // The pane went while the session joined: start nothing for it.
+        if (cancelled) return false;
         if (session.session?.kernel || !needsKernel(all)) return true;
         starting ??= startKernel().finally(() => (starting = undefined));
         return starting;
@@ -521,8 +523,13 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
           // Leave the kernel running; the sidebar lists it under Running.
           // A start still under way finishes first, so its kernel takes the
           // file's path and the session doesn't throw "Disposed" (#461).
-          if (done.busy.size === 0) done.session.dispose();
-          else void Promise.allSettled(done.busy).then(() => done.session.dispose());
+          // Until none is left: a run waiting on `initialize` starts its
+          // kernel only once that settles.
+          const drain = (): void => {
+            if (done.busy.size === 0) done.session.dispose();
+            else void Promise.allSettled([...done.busy]).then(drain);
+          };
+          drain();
         });
       };
       // Opening another file keeps this one's edits: save them first, as
