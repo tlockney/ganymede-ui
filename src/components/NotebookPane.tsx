@@ -188,6 +188,13 @@ type Open = {
   runStatus: RunStatus;
   /** Settles once the session has rejoined the file's kernel, if any. */
   joining: Promise<unknown>;
+  /**
+   * `p`, a kernel start or change on `session`, kept until it settles: the
+   * session is disposed only after every such call has (#461).
+   */
+  track<T>(p: Promise<T>): Promise<T>;
+  /** The tracked calls still under way. */
+  busy: Set<Promise<unknown>>;
   disposables: IDisposable[];
 };
 
@@ -398,17 +405,28 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       };
       session.kernelChanged.connect(() => void syncLanguage());
 
+      // Kernel starts and changes under way. Disposing the session while
+      // one is pending makes JupyterLab's SessionContext throw "Disposed"
+      // from a promise nothing awaits (#461), so teardown waits for them.
+      const busy = new Set<Promise<unknown>>();
+      const track = <T,>(p: Promise<T>): Promise<T> => {
+        busy.add(p);
+        const settled = () => void busy.delete(p);
+        p.then(settled, settled);
+        return p;
+      };
+
       const fileName = basename(path);
       // Rejoin before anything decides there is no kernel: a run before
       // that would replace the kernel already running for this file.
-      const joining = session.initialize();
+      const joining = track(session.initialize());
       const startKernel = async () => {
         const { name, missing } = intendedRef.current;
         if (!name) {
           setNotice(missingKernel(fileName, missing));
           return false;
         }
-        await session.changeKernel({ name });
+        await track(session.changeKernel({ name }));
         return true;
       };
       // Markdown and raw cells render without a kernel.
@@ -420,6 +438,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       let starting: Promise<boolean> | undefined;
       const ensureKernel = async (all = false) => {
         await joining;
+        // The pane went while the session joined: start nothing for it.
+        if (cancelled) return false;
         if (session.session?.kernel || !needsKernel(all)) return true;
         starting ??= startKernel().finally(() => (starting = undefined));
         return starting;
@@ -459,6 +479,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         commands,
         runStatus,
         joining,
+        track,
+        busy,
         disposables: [
           editing,
           cellControls,
@@ -499,7 +521,15 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
           holderOf(done.notebook).remove();
           done.model.dispose();
           // Leave the kernel running; the sidebar lists it under Running.
-          done.session.dispose();
+          // A start still under way finishes first, so its kernel takes the
+          // file's path and the session doesn't throw "Disposed" (#461).
+          // Until none is left: a run waiting on `initialize` starts its
+          // kernel only once that settles.
+          const drain = (): void => {
+            if (done.busy.size === 0) done.session.dispose();
+            else void Promise.allSettled([...done.busy]).then(drain);
+          };
+          drain();
         });
       };
       // Opening another file keeps this one's edits: save them first, as
@@ -929,7 +959,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         // A dead kernel can't restart (it disposed its connection): start
         // a new one of the same kind in its place.
         if (kernel && (kernel.status === 'dead' || kernel.isDisposed)) {
-          await session.changeKernel({ name: kernel.name });
+          await open.track(session.changeKernel({ name: kernel.name }));
         } else {
           await kernel?.restart();
         }
@@ -992,7 +1022,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       },
       // With no kernel yet, this only picks the one the first run starts.
       changeKernel: report('change the kernel', async (name: string) => {
-        if (session.session) await session.changeKernel({ name });
+        if (session.session) await open.track(session.changeKernel({ name }));
         // Also with a kernel running: if it is shut down, the next run
         // starts this one, as the file's metadata now says.
         setIntended({ name });
