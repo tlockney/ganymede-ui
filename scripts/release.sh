@@ -55,6 +55,13 @@ if [[ "$branch" == release/v* ]]; then
     echo "error: on $branch; to resume, run with --execute from its \"Release $version\" commit" >&2
     exit 1
   fi
+  # Once the PR has merged, what is left is tag-release.yml's and
+  # release.yml's. A push would only put the merged branch back.
+  if git ls-remote --exit-code --tags origin "refs/tags/v$version" > /dev/null ||
+    [[ "$(gh pr view "$branch" --json state --jq .state 2> /dev/null)" == MERGED ]]; then
+    echo "error: v$version is tagged or the PR for $branch has merged; nothing is left to resume" >&2
+    exit 1
+  fi
   echo "Resuming the release of $version from $branch" >&2
   resume=true
 else

@@ -233,7 +233,9 @@ started; fix the cause and run it again. If it stops after the commit
 (the push, an issue or the pull request failed), run it again from the
 `release/vX.Y.Z` branch it left you on, with `--execute`: it skips the
 bump, pushes the branch, and opens whichever of the release issue, the
-pull request and the Ganymede docs issue doesn't exist yet.
+pull request and the Ganymede docs issue doesn't exist yet. Once the
+pull request has merged or the version is tagged, it stops: nothing is
+left for it to resume.
 
 If `tag-release.yml` pushed the tag but failed to start `release.yml`,
 rerun it: with the tag on the merge commit and no release run for it,

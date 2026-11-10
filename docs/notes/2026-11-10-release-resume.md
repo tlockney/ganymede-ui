@@ -20,6 +20,13 @@ commit fails the files are staged, and a plain `git checkout -- file`
 would restore the bump. A fresh run that finds the branch, here or on
 origin, stops before git-cliff runs and says to resume from it.
 
+A resume stops when the version is tagged on origin or the branch's
+pull request has merged (the review's finding). Without that it pushed
+the branch back after the merge deleted it, found no open pull request
+and no open release issue, and so opened a second issue and tried to
+open a second pull request. A pull request closed without merging
+doesn't stop it: the open issue is reused and a new pull request opens.
+
 `tag-release.yml` exited as soon as the tag existed, so a run that
 pushed the tag and then failed to start `release.yml` could not be
 finished by a rerun. As in Ganymede, it now starts the release when the
@@ -33,7 +40,10 @@ blocks every later run. With the new one: a dry run, a git-cliff
 failure, a failing commit hook and an already tagged version each leave
 the tree clean on `main` with no new branch; failures at the release
 issue, the pull request and the docs issue are each finished by a rerun,
-with one of each at the end; a further rerun opens nothing. The
+with one of each at the end; a further rerun opens nothing; a rerun
+after the pull request merged, or with the tag on origin, stops before
+the push and opens nothing; a rerun after the pull request was closed
+unmerged opens a new one on the same issue. The
 workflow's step, taken from the YAML and run with a stub `gh`: it tags
 and starts the release when there is no tag; starts it when the tag is
 on the commit and nothing has run (a lightweight or an annotated tag);
