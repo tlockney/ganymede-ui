@@ -462,8 +462,6 @@ struct IPadSidebar: View {
     }
 }
 
-/// The iPhone's search field, in the navigation bar; the iPad's sidebar
-/// has a Search tab instead.
 /// Adds the examples to the app's own folder once the page is ready
 /// (#463), and lists the folder again in every window once they are.
 /// A modifier of its own: the sidebar's chain is long for the type checker.
@@ -480,6 +478,8 @@ private struct AddsExamples: ViewModifier {
     }
 }
 
+/// The iPhone's search field, in the navigation bar; the iPad's sidebar
+/// has a Search tab instead.
 private struct SidebarSearch: ViewModifier {
     let enabled: Bool
     @Binding var query: String

@@ -522,7 +522,10 @@ export function App() {
           // own folder on first launch (#463). The folder's path, or null.
           if (id === 'add-examples') {
             const b = backendRef.current;
-            if (!b) return Promise.reject(new Error('Not connected to a server.'));
+            // Only the app's own server: not a remote the page connected to.
+            if (!b || !isAppServer(b.config)) {
+              return Promise.reject(new Error('Not connected to the app’s server.'));
+            }
             const { contents, kernelspecs } = b.services;
             return import('./lib/examples').then(({ addExamples }) =>
               addExamples(contents, clean(arg ?? ''), kernelspecs.specs),
