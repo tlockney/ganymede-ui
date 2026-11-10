@@ -8,12 +8,15 @@
 #   scripts/release.sh minor            # dry run: shows the bump and changelog
 #   scripts/release.sh minor --execute  # commits, pushes release/vX.Y.Z, opens the PR
 #
+# If --execute fails after committing, run it again from release/vX.Y.Z:
+# it pushes the branch and opens the issues and PR it hasn't opened yet.
+#
 # The level is patch, minor, major, or an explicit version (0.2.0-rc.1).
 # Uses git-cliff from PATH if installed, otherwise runs it with npx.
 set -euo pipefail
 
 if [[ $# -lt 1 || "$1" == -h || "$1" == --help ]]; then
-  sed -n '2,12s/^# \{0,1\}//p' "$0"
+  sed -n '2,15s/^# \{0,1\}//p' "$0"
   exit 2
 fi
 
@@ -41,16 +44,32 @@ if [[ -n "$(git status --porcelain)" ]]; then
   echo "error: the working tree has changes; commit or remove them first" >&2
   exit 1
 fi
-# git-cliff rebuilds CHANGELOG.md from history. A shallow clone can't reach
-# older releases' merges, and their entries would drop out (ganymede-ui#179).
-if [[ "$(git rev-parse --is-shallow-repository)" == true ]]; then
-  echo "Shallow clone: fetching the full history for the changelog" >&2
-  git fetch --quiet --unshallow --tags origin main
-fi
-git fetch --quiet --tags origin main
-if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]]; then
-  echo "error: release from an up-to-date main (HEAD is not origin/main)" >&2
-  exit 1
+
+# A rerun on the branch an earlier --execute made: its commit is done,
+# so only the steps after it (push, issues, PR) run again.
+branch=$(git branch --show-current)
+resume=false
+if [[ "$branch" == release/v* ]]; then
+  version=${branch#release/v}
+  if ! $execute || [[ "$(git log -1 --format=%s)" != "Release $version" ]]; then
+    echo "error: on $branch; to resume, run with --execute from its \"Release $version\" commit" >&2
+    exit 1
+  fi
+  echo "Resuming the release of $version from $branch" >&2
+  resume=true
+else
+  # git-cliff rebuilds CHANGELOG.md from history. A shallow clone can't
+  # reach older releases' merges, and their entries would drop out
+  # (ganymede-ui#179).
+  if [[ "$(git rev-parse --is-shallow-repository)" == true ]]; then
+    echo "Shallow clone: fetching the full history for the changelog" >&2
+    git fetch --quiet --unshallow --tags origin main
+  fi
+  git fetch --quiet --tags origin main
+  if [[ "$(git rev-parse HEAD)" != "$(git rev-parse origin/main)" ]]; then
+    echo "error: release from an up-to-date main (HEAD is not origin/main)" >&2
+    exit 1
+  fi
 fi
 
 # Ganymede's docs and landing page describe the apps. Text there that
@@ -78,32 +97,60 @@ if [[ -n "$ganymede" ]]; then
   echo
 fi
 
-current=$(node -p 'require("./package.json").version')
-# npm version rewrites package.json and package-lock.json; a dry run puts
-# them back when it exits. --allow-same-version lets the first release be
-# the version already in package.json.
-$execute || trap 'git checkout --quiet -- package.json package-lock.json' EXIT
-npm version "$level" --no-git-tag-version --allow-same-version > /dev/null
-version=$(node -p 'require("./package.json").version')
-if git rev-parse --quiet --verify "refs/tags/v$version" > /dev/null; then
-  echo "error: v$version is already tagged" >&2
-  exit 1
-fi
-echo "Version: $current -> $version"
+# Puts back what a run changed before it stopped: the files npm and
+# git-cliff rewrote, and the branch it was on.
+made_branch=false
+undo() {
+  git checkout --quiet HEAD -- package.json package-lock.json CHANGELOG.md
+  if $made_branch; then
+    git checkout --quiet - && git branch --quiet -D "$branch"
+  fi
+}
 
-if ! $execute; then
-  echo
-  "${cliff[@]}" --tag "v$version" --unreleased --strip header
-  echo
-  echo "Dry run. Rerun with --execute to commit, push, and open the PR."
-  exit 0
-fi
+# Bumps the version and commits it, with the changelog, on
+# release/vX.Y.Z. A dry run stops after the preview.
+bump() {
+  local current
+  current=$(node -p 'require("./package.json").version')
+  # A dry run undoes the bump when it exits. So does a run that stops
+  # before its commit, so that a rerun starts from the same place.
+  trap undo EXIT
+  # npm version rewrites package.json and package-lock.json.
+  # --allow-same-version lets the first release be the version already
+  # in package.json.
+  npm version "$level" --no-git-tag-version --allow-same-version > /dev/null
+  version=$(node -p 'require("./package.json").version')
+  branch="release/v$version"
+  if git rev-parse --quiet --verify "refs/tags/v$version" > /dev/null; then
+    echo "error: v$version is already tagged" >&2
+    exit 1
+  fi
+  echo "Version: $current -> $version"
 
-"${cliff[@]}" --tag "v$version" --output CHANGELOG.md
-branch="release/v$version"
-git switch --quiet -c "$branch"
-git add package.json package-lock.json CHANGELOG.md
-git commit --quiet -m "Release $version"
+  if ! $execute; then
+    echo
+    "${cliff[@]}" --tag "v$version" --unreleased --strip header
+    echo
+    echo "Dry run. Rerun with --execute to commit, push, and open the PR."
+    exit 0
+  fi
+
+  if git show-ref --quiet --verify "refs/heads/$branch" ||
+    git ls-remote --exit-code --heads origin "$branch" > /dev/null; then
+    echo "error: $branch exists from an earlier run (here or on origin); switch to it and rerun with --execute, or delete it" >&2
+    exit 1
+  fi
+  "${cliff[@]}" --tag "v$version" --output CHANGELOG.md
+  git switch --quiet -c "$branch"
+  made_branch=true
+  git add package.json package-lock.json CHANGELOG.md
+  git commit --quiet -m "Release $version"
+  trap - EXIT
+}
+
+if ! $resume; then
+  bump
+fi
 git push --quiet -u origin "$branch"
 
 # Docs for features not yet released say "Unreleased." (CLAUDE.md). The
@@ -122,6 +169,7 @@ $unreleased
 fi
 
 if [[ -n "$ganymede" ]]; then
+  ganymede_title="Update docs for ganymede-ui v$version"
   ganymede_body="These \"Unreleased in ganymede-ui.\" notes in Ganymede's docs describe ganymede-ui v$version. Once it is released, update the text they mark and remove the notes:
 
 $ganymede"
@@ -135,17 +183,40 @@ fi
 if ! command -v gh > /dev/null; then
   echo "Pushed $branch. Open an issue \"Release v$version\" and a PR from $branch that closes it."
   if [[ -n "$ganymede" ]]; then
-    echo "Open an issue in tlockney/ganymede, \"Update docs for ganymede-ui v$version\", listing the notes above."
+    echo "Open an issue in tlockney/ganymede, \"$ganymede_title\", listing the notes above."
   fi
   exit 0
 fi
-issue=$(gh issue create --title "Release v$version" \
-  --body "Publish v$version: the built app as archives and the CHANGELOG.md section as notes.")
-gh pr create --base main --head "$branch" --title "Release v$version" \
-  --body "Closes #${issue##*/}
+
+# The number of the issue with this title, if an earlier run got as far
+# as opening it. Arguments: the title, then flags for gh issue list.
+issue_titled() {
+  local title=$1
+  shift
+  gh issue list "$@" --search "\"$title\" in:title" --json number,title \
+    --jq ".[] | select(.title == \"$title\") | .number" | head -n 1
+}
+
+if [[ "$(gh pr view "$branch" --json state --jq .state 2> /dev/null)" == OPEN ]]; then
+  echo "The PR for $branch is already open: $(gh pr view "$branch" --json url --jq .url)"
+else
+  issue=$(issue_titled "Release v$version" --state open)
+  if [[ -z "$issue" ]]; then
+    issue=$(gh issue create --title "Release v$version" \
+      --body "Publish v$version: the built app as archives and the CHANGELOG.md section as notes.")
+  fi
+  gh pr create --base main --head "$branch" --title "Release v$version" \
+    --body "Closes #${issue##*/}
 
 Bumps package.json to $version and updates CHANGELOG.md. Merging tags v$version, which publishes the release.${unreleased_body:-}"
+fi
 if [[ -n "$ganymede" ]]; then
-  gh issue create --repo tlockney/ganymede --title "Update docs for ganymede-ui v$version" \
-    --body "$ganymede_body"
+  # Closed counts too: the docs may have been updated since.
+  docs_issue=$(issue_titled "$ganymede_title" --repo tlockney/ganymede --state all)
+  if [[ -n "$docs_issue" ]]; then
+    echo "The Ganymede docs issue exists: tlockney/ganymede#$docs_issue"
+  else
+    gh issue create --repo tlockney/ganymede --title "$ganymede_title" \
+      --body "$ganymede_body"
+  fi
 fi
