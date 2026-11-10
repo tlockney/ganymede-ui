@@ -37,6 +37,6 @@ updates:
       # (src/styles/fontawesome.css).
       - dependency-name: '@fortawesome/fontawesome-free'
         update-types: [version-update:semver-major]
-      # Must match the version @jupyterlab/ui-components uses; 0.17.1 broke
-      # the tests while JupyterLab 4.6 was on 0.16.7. Bump with JupyterLab.
+      # Must match the version @jupyterlab/ui-components uses: 0.17.1 from
+      # JupyterLab 4.6.5 on, 0.16.7 before. Bump with JupyterLab.
       - dependency-name: '@jupyter/web-components'

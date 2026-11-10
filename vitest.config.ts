@@ -13,6 +13,10 @@ export default defineConfig({
     setupFiles: ['src/test/setup.ts'],
     restoreMocks: true,
     unstubGlobals: true,
+    // @jupyter/web-components 0.17 is an ES module package whose icon
+    // component imports `./icon.styles` with no extension, which Node
+    // refuses to load. Inlined, Vite resolves it, as it does in the build.
+    server: { deps: { inline: ['@jupyter/web-components'] } },
     // JupyterLab's theme variables are imported with `?inline`; process
     // them so the theme test sees the real stylesheets.
     css: { include: [/theme-(light|dark)-extension/] },
