@@ -37,6 +37,7 @@ import { type RunStatus, attachRunStatus } from '../lib/run-status';
 import { ProblemNotice } from './ProblemNotice';
 import { useSignals } from '../lib/useSignal';
 import { hasUntrustedOutputs } from '../lib/trust';
+import { hostWants } from '../lib/host-grants';
 import { rejoinLines } from '../lib/rejoin-lines';
 import { seedLanguage } from '../lib/language';
 import { handOff, handedOff, notFound, renameFile, renamedPath, shownHandoff } from '../lib/rename';
@@ -90,6 +91,8 @@ export type NotebookController = {
   download(): void;
   /** Trust the notebook: render its outputs in full, and sign it on the server. */
   trust(): Promise<void>;
+  /** What the notebook asks of the host API (`metadata.ganymede.host.wants`). */
+  hostWants(): string[];
   run(): Promise<void>;
   runAll(): Promise<void>;
   insert(type: 'code' | 'markdown'): void;
@@ -968,6 +971,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         // Unsaved changes are signed on the next save: every cell is trusted.
         await trustNotebook(backend, path);
       }),
+      hostWants: () => hostWants(model.getMetadata('ganymede')),
       run: reportRun('run the cell', async () => {
         if (await open.ensureKernel()) await NotebookActions.runAndAdvance(notebook, session);
       }),

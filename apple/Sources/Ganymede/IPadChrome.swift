@@ -741,6 +741,10 @@ struct IPadNotebookToolbar: ToolbarContent {
                 Button { page.run("download") } label: { Label("Download", systemImage: "arrow.down.doc") }
                 Button { page.run("trust") } label: { Label("Trust Notebook", systemImage: "checkmark.shield") }
                     .disabled(page.state.trusted)
+                Button { page.run("notebook-access") } label: {
+                    Label("Notebook Access…", systemImage: "lock.shield")
+                }
+                .disabled(page.state.hostGrants != true)
                 Divider()
                 Button { page.run("show-shortcuts") } label: { Label("Keyboard Shortcuts", systemImage: "keyboard") }
                 Button {

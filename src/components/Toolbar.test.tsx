@@ -20,6 +20,7 @@ function controller(over: Partial<NotebookController> = {}): NotebookController 
     save: vi.fn(async () => true),
     download: vi.fn(),
     trust: vi.fn(async () => {}),
+    hostWants: vi.fn(() => []),
     run: vi.fn(async () => {}),
     runAll: vi.fn(async () => {}),
     insert: vi.fn(),

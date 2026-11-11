@@ -150,6 +150,8 @@ struct PageState: Decodable, Equatable {
     var kernelDisplayName: String?
     var kernelMissing = false
     var trusted = true
+    /// Whether Notebook Access works on this backend; absent before #479.
+    var hostGrants: Bool?
     /// The active cell's type: `code`, `markdown` or `raw`.
     var cellType: String?
     var kernels: [Kernel] = []
