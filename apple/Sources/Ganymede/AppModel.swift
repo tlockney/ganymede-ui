@@ -279,6 +279,11 @@ final class AppModel {
         remotes.first { $0.id == kernelRemoteID && $0.hasServer }
     }
 
+    /// Where kernels can run, and where they run now.
+    var kernelLocations: KernelLocations {
+        KernelLocations(remotes: remotes, selected: kernelRemoteID)
+    }
+
     func remote(_ id: UUID) -> Remote? {
         remotes.first { $0.id == id }
     }

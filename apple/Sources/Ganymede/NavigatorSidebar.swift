@@ -8,6 +8,8 @@ import SwiftUI
 struct NavigatorSidebar: View {
     let folder: URL
     var page: PageModel
+    /// The window's bottom panel, for terminals the foot's menu opens.
+    var panel: PanelController?
     let openFile: (String) -> Void
     /// The selected tab, kept per window.
     @SceneStorage("navigator.tab") private var tab: NavigatorTab = .files
@@ -61,7 +63,7 @@ struct NavigatorSidebar: View {
                 RecentsNavigator(page: page)
             }
             Divider()
-            ServerLine(page: page)
+            ServerLine(page: page, panel: panel)
         }
     }
 
