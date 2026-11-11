@@ -10,4 +10,5 @@ needs are already there; `--with-deps` mostly adds fonts. The job now
 downloads the browser alone, then runs `playwright install-deps
 chromium` as best effort: when apt fails it logs a warning and carries
 on with the image's libraries. Retrying apt wouldn't have helped: the
-outage lasted hours.
+outage lasted hours. apt's own DNS retries took about 10 minutes to give
+up, so the step is capped at 5 minutes.
