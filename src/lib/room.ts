@@ -13,7 +13,8 @@
  */
 import { YNotebook } from '@jupyter/ydoc';
 import { URLExt } from '@jupyterlab/coreutils';
-import { ServerConnection } from '@jupyterlab/services';
+import type * as nbformat from '@jupyterlab/nbformat';
+import { type Contents, ServerConnection } from '@jupyterlab/services';
 import * as decoding from 'lib0/decoding';
 import * as encoding from 'lib0/encoding';
 import type { INotebookModel } from '@jupyterlab/notebook';
@@ -296,4 +297,31 @@ export class RoomSaver implements Saver {
   }
 
   dispose(): void {}
+}
+
+/**
+ * Trust the code cells the server trusts (#183). A room doesn't share
+ * trust: its cells carry no `trusted` mark, since the server decides it
+ * when it saves (a cell is trusted when its outputs came from a run on the
+ * server, or the file was signed). So read the file as the contents API
+ * marks it, and trust each code cell, by id, that it marks trusted. Never
+ * takes trust away: a cell trusted here (this page ran it) stays so.
+ */
+export async function trustFromFile(
+  contents: Contents.IManager,
+  path: string,
+  model: INotebookModel,
+): Promise<void> {
+  const file = await contents.get(path, { type: 'notebook', content: true });
+  const cells = (file.content as nbformat.INotebookContent | null)?.cells ?? [];
+  const trusted = new Set(
+    cells
+      .filter(c => c.cell_type === 'code' && c.metadata?.trusted === true && c.id)
+      .map(c => c.id as string),
+  );
+  if (model.isDisposed) return;
+  for (let i = 0; i < model.cells.length; i++) {
+    const cell = model.cells.get(i);
+    if (cell.type === 'code' && !cell.trusted && trusted.has(cell.id)) cell.trusted = true;
+  }
 }

@@ -2,7 +2,7 @@ import '../test/notebook-env';
 import { describe, expect, it, vi } from 'vitest';
 import { NotebookModel } from '@jupyterlab/notebook';
 import { ServerConnection } from '@jupyterlab/services';
-import { NotebookRoom, RoomSaver } from './room';
+import { NotebookRoom, RoomSaver, trustFromFile } from './room';
 
 function settingsAnswering(status: number, body: unknown) {
   const fetch = vi.fn(
@@ -88,5 +88,49 @@ describe('RoomSaver', () => {
     const { saver } = roomSaver();
     await saver.move(async () => ({ path: 'moons/Io.ipynb' }));
     expect(saver.path).toBe('moons/Io.ipynb');
+  });
+});
+
+describe('trustFromFile', () => {
+  function modelWith(ids: string[]) {
+    const model = new NotebookModel();
+    model.sharedModel.insertCells(
+      0,
+      ids.map(id => ({ cell_type: 'code' as const, id, source: '', metadata: {} })),
+    );
+    return model;
+  }
+  const contents = (cells: { id: string; trusted?: boolean }[]) =>
+    ({
+      get: vi.fn(async () => ({
+        content: {
+          cells: cells.map(c => ({
+            cell_type: 'code',
+            id: c.id,
+            metadata: c.trusted === undefined ? {} : { trusted: c.trusted },
+          })),
+        },
+      })),
+    }) as never;
+
+  it('trusts the cells the server marks trusted, by id', async () => {
+    const model = modelWith(['a', 'b']);
+    await trustFromFile(
+      contents([
+        { id: 'a', trusted: true },
+        { id: 'b', trusted: false },
+      ]),
+      'Io.ipynb',
+      model,
+    );
+    expect(model.cells.get(0).trusted).toBe(true);
+    expect(model.cells.get(1).trusted).toBe(false);
+  });
+
+  it('never takes trust away', async () => {
+    const model = modelWith(['a']);
+    model.cells.get(0).trusted = true;
+    await trustFromFile(contents([{ id: 'a', trusted: false }]), 'Io.ipynb', model);
+    expect(model.cells.get(0).trusted).toBe(true);
   });
 });

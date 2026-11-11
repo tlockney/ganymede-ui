@@ -238,6 +238,16 @@ request fails (a server without rooms) or the first sync takes over 15
 seconds, the pane falls back to the contents API. The room is disposed
 after the model, since it owns the model's shared notebook.
 
+A room doesn't share trust: its cells carry no `trusted` mark, since the
+server decides trust when it saves. So on open the pane reads the file
+through the contents API, as the server marks it, and trusts each code
+cell it marks trusted, by id (`trustFromFile`); while some outputs are
+untrusted (an agent's run through the server, say), it reads again half
+a second after each save the room reports, since the server trusts
+outputs from its own runs. It never takes trust away. A new notebook's
+room has no cells, so the pane adds an empty code cell, as `fromJSON`
+does for a file.
+
 Inside JupyterLab, the editor, renderers and commands come from plugins.
 `jupyterlab.ts` builds them once and shares them across notebooks: the
 CodeMirror registries, a rendermime registry with JupyterLab's default

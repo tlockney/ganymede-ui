@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { SessionContext } from '@jupyterlab/apputils';
 import type * as nbformat from '@jupyterlab/nbformat';
 import { type Notebook, NotebookActions, NotebookModel } from '@jupyterlab/notebook';
+import type { NotebookChange } from '@jupyter/ydoc';
 import type { Contents, Kernel, KernelSpec } from '@jupyterlab/services';
 import type { IDisposable } from '@lumino/disposable';
 import type { CommandRegistry } from '@lumino/commands';
@@ -20,7 +21,7 @@ import {
   SaveConflict,
   type Saver,
 } from '../lib/saver';
-import { NotebookRoom, RoomSaver } from '../lib/room';
+import { NotebookRoom, RoomSaver, trustFromFile } from '../lib/room';
 import {
   type Problem,
   changedOnDisk,
@@ -245,6 +246,9 @@ function runFailed(
   return failed(what, e, { retry });
 }
 
+/** How long after a room's save to read which of its cells the server trusts. */
+const TRUST_CHECK_DELAY_MS = 500;
+
 /**
  * The kernel a first run starts for a file naming `wanted`: that one if it
  * is installed, else the default; or, for one that isn't installed, its
@@ -434,6 +438,20 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         // The browser's storage keeps a file's lines split (#414).
         model.fromJSON(rejoinLines(content));
         model.dirty = false;
+      } else {
+        // As `fromJSON` does for a file: a notebook has at least one cell.
+        if (model.cells.length === 0) {
+          model.sharedModel.insertCell(0, { cell_type: 'code', source: '' });
+        }
+        // The room doesn't carry trust; the file, as the server marks it, does.
+        await trustFromFile(services.contents, path, model).catch((e: unknown) =>
+          console.warn(`Couldn’t read which cells of ${path} are trusted:`, e),
+        );
+        if (cancelled) {
+          model.dispose();
+          room.dispose();
+          return;
+        }
       }
       const notebook = createNotebook(rendermime);
 
@@ -844,6 +862,33 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       window.removeEventListener('beforeunload', onUnload);
     };
   }, [open, path, lock]);
+
+  // In a room, outputs another client wrote (an agent running cells
+  // through the server) arrive untrusted here. The server trusts them when
+  // they came from a run on it, and says so in the file it saves: read
+  // which cells it trusts after each save while some outputs aren't (#183).
+  useEffect(() => {
+    if (!open?.room) return;
+    const { model } = open;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let reading = false;
+    const onChange = (_: unknown, change: NotebookChange) => {
+      const saved = change.stateChange?.some(c => c.name === 'dirty' && c.newValue === false);
+      if (!saved || reading || !hasUntrustedOutputs(model)) return;
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        reading = true;
+        void trustFromFile(services.contents, open.saver.path, model)
+          .catch(() => {})
+          .finally(() => (reading = false));
+      }, TRUST_CHECK_DELAY_MS);
+    };
+    model.sharedModel.changed.connect(onChange);
+    return () => {
+      clearTimeout(timer);
+      model.sharedModel.changed.disconnect(onChange);
+    };
+  }, [open, services]);
 
   // Notice a change on disk without waiting for a save (#367): every few
   // seconds while the page shows, and when it comes back. Another writer
