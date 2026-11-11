@@ -126,14 +126,10 @@ struct ShareSheetSettings: View {
         }
     }
 
-    /// As File › Open… takes: on a Mac where another app claims `.ipynb`,
-    /// its type isn't `org.jupyter.ipynb`.
+    /// As File › Open… takes (`DefaultApp.notebookType`): where another app
+    /// claims `.ipynb`, its type isn't `org.jupyter.ipynb`.
     private static var notebookTypes: [UTType] {
-        #if os(macOS)
-        [.jupyterNotebook, DefaultApp.notebookType]
-        #else
-        [.jupyterNotebook]
-        #endif
+        [.jupyterNotebook, UTType(filenameExtension: "ipynb") ?? .jupyterNotebook]
     }
 
     private func change(_ edit: (ShareNotebooks) throws -> Void) {
