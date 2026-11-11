@@ -205,9 +205,10 @@ It reads the team and API key secrets from the table above, and these:
 | `IOS_PROVISIONING_PROFILE` | An App Store provisioning profile for `com.ganymede-server.Ganymede`, base64 |
 | `IOS_SHARE_PROFILE`        | One for the share extension, `com.ganymede-server.Ganymede.Share`, base64    |
 
-Without `IOS_CERTIFICATE_P12` and the profiles, the script signs automatically through the API key
-(`-allowProvisioningUpdates`), which works only if the key has the Admin
-role, and lets Xcode create certificates and profiles on its own.
+Without `IOS_CERTIFICATE_P12` and the profiles, the script signs
+automatically through the API key (`-allowProvisioningUpdates`), which
+works only if the key has the Admin role, and lets Xcode create
+certificates and profiles on its own.
 
 Set up once, outside the repo:
 
