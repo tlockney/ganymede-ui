@@ -18,6 +18,8 @@
 #                               base64
 #   IOS_SHARE_PROFILE           App Store profile for the share extension,
 #                               com.ganymede-server.Ganymede.Share, base64 (#449)
+#   IOS_WIDGETS_PROFILE         App Store profile for the notebook widget,
+#                               com.ganymede-server.Ganymede.Widgets, base64 (#436)
 #   UPLOAD                      1 (default) uploads; 0 only exports the .ipa
 #
 # With the certificate and profile, signing is manual. Without them,
@@ -35,7 +37,7 @@ done
 manual=0
 if [[ -n "${IOS_CERTIFICATE_P12:-}${IOS_PROVISIONING_PROFILE:-}" ]]; then
   manual=1
-  for name in IOS_CERTIFICATE_P12 IOS_CERTIFICATE_PASSWORD IOS_PROVISIONING_PROFILE IOS_SHARE_PROFILE; do
+  for name in IOS_CERTIFICATE_P12 IOS_CERTIFICATE_PASSWORD IOS_PROVISIONING_PROFILE IOS_SHARE_PROFILE IOS_WIDGETS_PROFILE; do
     [[ -n "${!name:-}" ]] || missing+=("$name")
   done
 fi
@@ -66,6 +68,7 @@ auth=(-authenticationKeyPath "$key" -authenticationKeyID "$APPSTORE_API_KEY_ID"
   -authenticationKeyIssuerID "$APPSTORE_API_ISSUER_ID")
 bundle_id=com.ganymede-server.Ganymede
 share_id=$bundle_id.Share
+widgets_id=$bundle_id.Widgets
 app_group=group.com.ganymede-server.Ganymede
 
 if ((manual)); then
@@ -112,14 +115,18 @@ if ((manual)); then
   app_profile=$uuid
   install_profile IOS_SHARE_PROFILE "$share_id"
   share_profile=$uuid
+  install_profile IOS_WIDGETS_PROFILE "$widgets_id"
+  widgets_profile=$uuid
 
   signing=(CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="Apple Distribution"
-    GANYMEDE_IOS_PROFILE="$app_profile" GANYMEDE_IOS_SHARE_PROFILE="$share_profile")
+    GANYMEDE_IOS_PROFILE="$app_profile" GANYMEDE_IOS_SHARE_PROFILE="$share_profile"
+    GANYMEDE_IOS_WIDGETS_PROFILE="$widgets_profile")
   export_signing="<key>signingStyle</key><string>manual</string>
   <key>signingCertificate</key><string>Apple Distribution</string>
   <key>provisioningProfiles</key><dict>
     <key>$bundle_id</key><string>$app_profile</string>
     <key>$share_id</key><string>$share_profile</string>
+    <key>$widgets_id</key><string>$widgets_profile</string>
   </dict>"
 else
   echo "No IOS_CERTIFICATE_P12: signing automatically with the API key"
@@ -148,6 +155,8 @@ shown=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")
   fail "the app has no icon (CFBundleIcons), which App Store Connect rejects"
 [[ -d "$archive/Products/Applications/Ganymede.app/PlugIns/GanymedeShare.appex" ]] ||
   fail "the share extension isn't in the app (#449)"
+[[ -d "$archive/Products/Applications/Ganymede.app/PlugIns/GanymedeWidgets.appex" ]] ||
+  fail "the notebook widget isn't in the app (#436)"
 
 # Export re-signs for App Store distribution. With destination `upload`
 # it also sends the build to App Store Connect, which processes it for

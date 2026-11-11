@@ -183,8 +183,8 @@ jobs:
             "$app/Contents/Info.plist" | grep -qx org.jupyter.ipynb
           # Quick Look preview and thumbnails, with the preview page (#135).
           plugins=$app/Contents/PlugIns
-          # The share sheet's Run a Notebook (#449).
-          for ext in GanymedeQuickLook:com.apple.quicklook.preview GanymedeThumbnail:com.apple.quicklook.thumbnail GanymedeShare:com.apple.share-services; do
+          # The share sheet's Run a Notebook (#449) and the notebook widget (#436).
+          for ext in GanymedeQuickLook:com.apple.quicklook.preview GanymedeThumbnail:com.apple.quicklook.thumbnail GanymedeShare:com.apple.share-services GanymedeWidgets:com.apple.widgetkit-extension; do
             /usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' \
               "$plugins/${ext%%:*}.appex/Contents/Info.plist" | grep -qx "${ext#*:}"
           done
