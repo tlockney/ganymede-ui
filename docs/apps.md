@@ -412,7 +412,7 @@ headings; pick one to go to its cell.
   > **Unreleased.** Available only from a build of `main` (HEAD), not in
   > the latest release.
 
-- **Notebook widgets** (home screen, lock screen and desktop, Mac too;
+- **Notebook widgets** (home screen and desktop, Mac too;
   experimental, off until Settings › Device › Notebook Widgets): a cell
   publishes what a widget shows with
   `device.widget.update(kind, { title, rows, tint, sparkline })`, and

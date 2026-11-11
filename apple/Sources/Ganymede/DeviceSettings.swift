@@ -85,21 +85,6 @@ struct DeviceSettings: View {
 
 /// The share sheet's switch and the notebooks it offers (#449), kept in
 /// the App Group for the share extension.
-/// Notebook widgets (#436), off by default. Stored in the App Group, where
-/// the widget reads it too.
-struct WidgetSettings: View {
-    @AppStorage(AppGroup.widgetsKey, store: AppGroup.defaults()) private var enabled = false
-
-    var body: some View {
-        Section {
-            Toggle("Notebook Widgets", isOn: $enabled)
-                .onChange(of: enabled) { WidgetCenter.shared.reloadTimelines(ofKind: AppGroup.widgetKind) }
-        } footer: {
-            Text("Experimental. A notebook's cells can publish what a Ganymede widget shows with device.widget.update; edit the widget to pick one. Notebooks opened after you turn this on can publish.")
-        }
-    }
-}
-
 struct ShareSheetSettings: View {
     @AppStorage(AppGroup.shareSheetKey, store: AppGroup.defaults()) private var enabled = false
     @State private var notebooks = ShareNotebooks.shared()?.list() ?? []
@@ -256,6 +241,21 @@ final class DeviceGrants {
         case "microphone": "Microphone"
         case "bluetooth": "Bluetooth"
         default: capability
+        }
+    }
+}
+
+/// Notebook widgets (#436), off by default. Stored in the App Group, where
+/// the widget reads it too.
+struct WidgetSettings: View {
+    @AppStorage(AppGroup.widgetsKey, store: AppGroup.defaults()) private var enabled = false
+
+    var body: some View {
+        Section {
+            Toggle("Notebook Widgets", isOn: $enabled)
+                .onChange(of: enabled) { WidgetCenter.shared.reloadTimelines(ofKind: AppGroup.widgetKind) }
+        } footer: {
+            Text("Experimental. A notebook's cells can publish what a Ganymede widget shows with device.widget.update; edit the widget to pick one. Notebooks opened after you turn this on can publish.")
         }
     }
 }
