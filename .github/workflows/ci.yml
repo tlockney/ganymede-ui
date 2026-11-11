@@ -74,7 +74,7 @@ jobs:
     env:
       # What this job installs, in one place.
       GANYMEDE_VERSION: 0.7.0
-      CDP_KERNEL_VERSION: 0.9.0
+      CDP_KERNEL_VERSION: 0.10.0
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -123,11 +123,11 @@ jobs:
     env:
       # The tlockney/ganymede tag or commit whose ganymede-ffi the app links.
       # A tag downloads the release's XCFramework; a commit builds it.
-      # main after ganymede#644: kernel registration, which the in-app
-      # kernel uses (ganymede#266), on top of ganymede#567's execute
-      # endpoint `wait` (#302) and ganymede#455's arm64-only slices (#356).
-      # Back to a tag at the next Ganymede release.
-      GANYMEDE_REF: 5a4a5d7e096e308477fa9ca66cd08e794664da7c
+      # main after ganymede#669, for the 0.7.0 release (#480): kernel
+      # registration (ganymede#644), which the in-app kernel uses, and the
+      # host API through notebooks.run and grants (ganymede#665, #669).
+      # Back to a tag at ganymede v0.8.0.
+      GANYMEDE_REF: 19cd1442540c9c7b3db12e3c296bbfab7e8caad2
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

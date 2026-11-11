@@ -132,7 +132,11 @@ private struct LinkRunSettings: View {
                             .accessibilityLabel("Revoke \((entry.path as NSString).lastPathComponent)")
                     } label: {
                         Text((entry.path as NSString).lastPathComponent)
-                        Text(entry.destination.map { "\(entry.path)\nOutput to \($0)" } ?? entry.path)
+                        Text(
+                            [entry.path, entry.destination.map { "Output to \($0)" }, entry.withParameters ? "With any parameters" : nil]
+                                .compactMap { $0 }
+                                .joined(separator: "\n")
+                        )
                     }
                 }
             }

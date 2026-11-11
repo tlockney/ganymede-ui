@@ -41,6 +41,8 @@ export type PaletteContext = {
   recents: string[];
   /** Whether the open notebook is trusted. */
   trusted: boolean;
+  /** Whether the backend keeps host API grants (a Ganymede server). */
+  hostGrants?: boolean;
   /** Whether a backend is connected. */
   connected: boolean;
 };
@@ -97,6 +99,9 @@ export function paletteEntries(context: PaletteContext): PaletteEntry[] {
     }),
     app('download', 'Download Notebook', 'File', { disabled: !open }),
     app('trust', 'Trust Notebook', 'File', { disabled: !open || context.trusted }),
+    app('notebook-access', 'Notebook Access…', 'File', {
+      disabled: !open || !context.hostGrants,
+    }),
     app('run-all', 'Run All Cells', 'Cell', { disabled: !open }),
     app('insert-code', 'Insert Code Cell', 'Cell', { disabled: !open }),
     app('insert-markdown', 'Insert Markdown Cell', 'Cell', { disabled: !open }),
