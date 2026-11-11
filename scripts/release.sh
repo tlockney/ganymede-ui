@@ -158,7 +158,11 @@ shared_level() {
   case "$level" in
     minor | major)
       level=$minor.0
-      if [[ "$level" == "$current" || "$(printf '%s\n%s\n' "$current" "$level" | sort -V | tail -n 1)" != "$level" ]]; then
+      # Newer: the final of a prerelease (0.10.0-rc.1 -> 0.10.0), or a
+      # higher X.Y.Z. sort -V alone puts 0.10.0-rc.1 after 0.10.0.
+      local base=${current%%-*}
+      if ! [[ ( "$base" == "$level" && "$current" == *-* ) ||
+        ( "$base" != "$level" && "$(printf '%s\n%s\n' "$base" "$level" | sort -V | tail -n 1)" == "$level" ) ]]; then
         echo "error: Ganymede's latest release is $minor.x, not newer than $current: release Ganymede first, or release a patch" >&2
         exit 1
       fi
