@@ -5,11 +5,15 @@ import { App } from './App';
 import { ShortcutsSheet } from './components/ShortcutsSheet';
 import { startCodeFont } from './lib/code-font';
 import { startCrashReports } from './lib/crash-reports';
+import { untrackRequestStatuses } from './lib/kernel-status';
 
 import './styles/app.css';
 import './styles/jupyter.css';
 
 registerSW({ immediate: true });
+// Before any kernel connects: a debug or interrupt request's statuses
+// aren't the kernel's (#485).
+untrackRequestStatuses();
 // The code font (#354): the app's choice, or this browser's.
 startCodeFont();
 // Only when the user turned reports on (#319); otherwise the SDK isn't loaded.
