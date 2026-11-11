@@ -74,11 +74,25 @@ enum AppURLHandler {
             IntentServer.open(url)
             return [URLQueryItem(name: "path", value: url.path)]
 
-        case .run(let path, let cell, let restart, let timeout):
+        case .run(let path, let cell, let restart, let timeout, let params):
             let url = AppURL.fileURL(path, root: root, home: home)
             guard FileManager.default.fileExists(atPath: url.path) else { throw NotebookActionError.notFound(path) }
             let apiPath = try IntentServer.path(url)
-            try confirm(url, cell: cell, sendingTo: request.callback?.destination)
+            try confirm(url, cell: cell, params: params, sendingTo: request.callback?.destination)
+            if let params {
+                // A fresh kernel with the parameters (ganymede#652): the
+                // notebook's window, if open, is left alone.
+                let result = try await IntentServer.actions()
+                    .notebookRunWithParams(path: apiPath, params: params, timeout: timeout)
+                if result.status != "ok" {
+                    throw NotebookActionError.runFailed(result.error ?? "no message")
+                }
+                if request.callback == nil { showResults(of: url, result.results) }
+                return [
+                    URLQueryItem(name: "status", value: "ok"),
+                    URLQueryItem(name: "results", value: result.results),
+                ]
+            }
             // A link run with no caller to answer shows the notebook.
             if request.callback == nil { IntentServer.open(url) }
             let actions = try await IntentServer.actions()
@@ -98,7 +112,7 @@ enum AppURLHandler {
     /// Asks before a URL first runs a notebook, saying where its output
     /// goes; throws `cancelled` on no. Always allow covers that notebook
     /// with that destination only.
-    private static func confirm(_ url: URL, cell: String?, sendingTo destination: String?) throws {
+    private static func confirm(_ url: URL, cell: String?, params: String?, sendingTo destination: String?) throws {
         let permissions = URLRunPermissions.shared
         if permissions.allows(url, sendingTo: destination) { return }
         NSApp.activate()
@@ -106,6 +120,9 @@ enum AppURLHandler {
         alert.messageText = "Run “\(url.lastPathComponent)” from a link?"
         let what = cell.map { "the cell “\($0)” of" } ?? "every code cell of"
         var text = "A link asked Ganymede to run \(what) this notebook:\n\n\(url.path)\n\n"
+        if let params {
+            text += "With parameters \(params), in a new kernel.\n\n"
+        }
         if let destination {
             text += "Its output will be sent to \(destination).\n\n"
         }
@@ -118,6 +135,16 @@ enum AppURLHandler {
             ?? "Always allow links to run this notebook"
         guard alert.runModal() == .alertFirstButtonReturn else { throw AppURLError.cancelled }
         if alert.suppressionButton?.state == .on { permissions.allow(url, sendingTo: destination) }
+    }
+
+    /// A plain link's parameterized run has no window to show it: its
+    /// named results go in an alert.
+    private static func showResults(of url: URL, _ results: String) {
+        NSApp.activate()
+        let alert = NSAlert()
+        alert.messageText = "“\(url.lastPathComponent)” ran"
+        alert.informativeText = results == "{}" ? "It published no named results." : "Named results:\n\n\(results)"
+        alert.runModal()
     }
 
     private static func fail(_ error: Error, callback: AppURL.Callback?) {

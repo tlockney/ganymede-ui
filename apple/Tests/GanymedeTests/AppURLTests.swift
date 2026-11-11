@@ -33,7 +33,7 @@ final class AppURLTests: XCTestCase {
 
     func testRunDefaults() throws {
         let url = try parse("ganymede://run?path=/a.ipynb")
-        XCTAssertEqual(url.command, .run(path: "/a.ipynb", cell: nil, restart: true, timeout: 600))
+        XCTAssertEqual(url.command, .run(path: "/a.ipynb", cell: nil, restart: true, timeout: 600, params: nil))
         XCTAssertTrue(url.runsCode)
     }
 
@@ -87,11 +87,29 @@ final class AppURLTests: XCTestCase {
         XCTAssertEqual(error("ganymede://x-callback-url/open?path=/a&x-error=nothing"), .badValue("x-error", "nothing"))
     }
 
-    func testParametersAreNotYetSupported() {
-        XCTAssertEqual(error("ganymede://run?path=/a&p.day=1"), .parametersUnsupported)
-        XCTAssertEqual(error("ganymede://run?path=/a&params=%7B%7D"), .parametersUnsupported)
-        XCTAssertEqual(error("ganymede://run?path=/a&P.day=1"), .parametersUnsupported)
-        XCTAssertEqual(error("ganymede://run?path=/a&Params=%7B%7D"), .parametersUnsupported)
+    private func params(_ query: String) throws -> String? {
+        guard case .run(_, _, _, _, let params) = try parse("ganymede://run?path=/a&" + query).command else {
+            XCTFail("not a run")
+            return nil
+        }
+        return params
+    }
+
+    func testParameters() throws {
+        // JSON when it parses, else a string, as `ganymede execute -p`.
+        XCTAssertEqual(try params("p.day=mon&p.n=2&p.on=true&p.list=%5B1%2C2%5D"), #"{"day":"mon","list":[1,2],"n":2,"on":true}"#)
+        XCTAssertEqual(try params("p.q=%22quoted%22"), #"{"q":"quoted"}"#)
+        // params= first, each p. over it; names keep their case.
+        XCTAssertEqual(try params("params=%7B%22a%22%3A1%2C%22b%22%3A2%7D&p.b=3&P.Day=x"), #"{"Day":"x","a":1,"b":3}"#)
+        XCTAssertEqual(try params("Params=%7B%7D"), "{}")
+        XCTAssertNil(try params("timeout=5"))
+    }
+
+    func testBadParameters() {
+        XCTAssertEqual(error("ganymede://run?path=/a&params=%5B1%5D"), .badValue("params", "[1]"))
+        XCTAssertEqual(error("ganymede://run?path=/a&params=nope"), .badValue("params", "nope"))
+        XCTAssertEqual(error("ganymede://run?path=/a&p.=1"), .badValue("parameter name", "p."))
+        XCTAssertEqual(error("ganymede://run?path=/a&cell=x&p.a=1"), .cellWithParameters)
     }
 
     // MARK: Paths
