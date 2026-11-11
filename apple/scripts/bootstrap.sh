@@ -7,6 +7,8 @@
 #     GANYMEDE_REF=<tag>       downloads that release's
 #                              GanymedeFFI.xcframework.zip and checks its
 #                              SHA-256 (#359); GANYMEDE_DIR wins if both
+#     GANYMEDE_XCFRAMEWORK=<dir>  copies one built earlier, such as CI's
+#                              cache for a pinned commit; wins over both
 #   web/                     this repo's `npm run build`
 #   quicklook/               its `npm run build:quicklook` (#135)
 #   runner/                  its `npm run build:runner` (#69, a spike)
@@ -18,7 +20,8 @@ apple=$(cd "$(dirname "$0")/.." && pwd)
 repo=$(cd "$apple/.." && pwd)
 ganymede=${GANYMEDE_DIR:-}
 ref=${GANYMEDE_REF:-}
-if [ -z "$ganymede" ] && [ -z "$ref" ]; then
+prebuilt=${GANYMEDE_XCFRAMEWORK:-}
+if [ -z "$ganymede" ] && [ -z "$ref" ] && [ -z "$prebuilt" ]; then
   echo "error: set GANYMEDE_DIR to a checkout of tlockney/ganymede, or GANYMEDE_REF to its release tag" >&2
   exit 1
 fi
@@ -68,7 +71,18 @@ download_xcframework() {
   mv "$tmp/unzipped/GanymedeFFI.xcframework" "$apple/build/"
 }
 
-if [ -n "$ganymede" ]; then build_xcframework; else download_xcframework; fi
+copy_xcframework() {
+  if [ ! -f "$prebuilt/Info.plist" ]; then
+    echo "error: GANYMEDE_XCFRAMEWORK=$prebuilt is not an XCFramework" >&2
+    exit 1
+  fi
+  rm -rf "$apple/build/GanymedeFFI.xcframework"
+  cp -R "$prebuilt" "$apple/build/GanymedeFFI.xcframework"
+}
+
+if [ -n "$prebuilt" ]; then copy_xcframework
+elif [ -n "$ganymede" ]; then build_xcframework
+else download_xcframework; fi
 
 (cd "$repo" && { [ -d node_modules ] || npm ci; } && npm run build)
 # Release builds (SENTRY_SOURCEMAPS=1): the web UI's source maps go to
