@@ -9,8 +9,9 @@ name: Release
 # to TestFlight. Manual runs on a branch build, sign, notarize and package
 # without publishing a release (they do upload to TestFlight); with
 # `testflight_only`, they skip the web archives and the Mac app and only
-# upload the iPad and iPhone app. docs/releasing.md says what to do when
-# a run fails.
+# upload the iPad and iPhone app. Each upload gets "What to Test" notes
+# listing the commits since the previous TestFlight build.
+# docs/releasing.md says what to do when a run fails.
 
 on:
   push:
@@ -189,12 +190,15 @@ jobs:
   ios:
     needs: [version, ci]
     runs-on: macos-latest
-    timeout-minutes: 90
+    # The notes step waits up to 40 minutes for App Store Connect.
+    timeout-minutes: 130
     environment: release
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # The TestFlight notes list the commits since the last build or tag.
+          fetch-depth: 0
       - name: Read GANYMEDE_REF from ci.yml
         run: |
           ref=$(yq -r '.jobs["macos-app"].env.GANYMEDE_REF' .github/workflows/ci.yml)
@@ -236,6 +240,16 @@ jobs:
           IOS_CERTIFICATE_P12: ${{ secrets.IOS_CERTIFICATE_P12 }}
           IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
           IOS_PROVISIONING_PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE }}
+      # "What to Test": the commits since the previous TestFlight build
+      # (#466). The upload has already succeeded if this step fails.
+      - name: Set the TestFlight notes
+        run: node scripts/testflight-notes.mjs
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          BUILD_NUMBER: ${{ github.run_number }}
+          APPSTORE_API_KEY_P8: ${{ secrets.APPSTORE_API_KEY_P8 }}
+          APPSTORE_API_KEY_ID: ${{ secrets.APPSTORE_API_KEY_ID }}
+          APPSTORE_API_ISSUER_ID: ${{ secrets.APPSTORE_API_ISSUER_ID }}
 
   release:
     if: github.ref_type == 'tag'

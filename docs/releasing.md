@@ -174,6 +174,23 @@ and it appears under TestFlight for the internal testing group. External
 testing needs App Review, which would weigh rule 2.5.2 (apps that run
 code), so the builds stay internal.
 
+The job then runs `scripts/testflight-notes.mjs`, which waits for App
+Store Connect to finish processing the build (up to 40 minutes) and sets
+its "What to Test" notes through the App Store Connect API, with the same
+API key: one line per pull request (squash subjects, or a merge commit's
+PR title) since the previous TestFlight build,
+dependency bumps counted on one line, cut to App Store Connect's 4,000
+characters. The notes end with `Built from <commit>.`; the next run reads
+that line from the newest earlier build to know where to start, and
+without one starts at the last `v*` tag. To preview the notes for your
+checkout, run `node scripts/testflight-notes.mjs --print [<since>]`.
+
+If only that step fails, the build is on TestFlight without notes. Don't
+rerun the job (App Store Connect rejects the repeated build number); set
+the notes in App Store Connect, or run the script on a Mac or Linux
+checkout of the same commit with `VERSION`, `BUILD_NUMBER` (the run
+number) and the three `APPSTORE_API_*` values set.
+
 It reads the team and API key secrets from the table above, and these:
 
 | Secret                     | What it is                                                                   |
