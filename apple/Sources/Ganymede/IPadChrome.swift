@@ -730,6 +730,10 @@ struct IPadNotebookToolbar: ToolbarContent {
                 } label: {
                     Label(page.state.kernelDisplayName ?? "Kernel", systemImage: "cpu")
                 }
+                // Where every notebook's kernels run (#473).
+                if AppModel.shared.kernelLocations.hasRemotes {
+                    KernelLocationPicker(running: page.state.sessions.count)
+                }
                 Divider()
                 Button { page.run("save") } label: { Label("Save", systemImage: "square.and.arrow.down") }
                     .disabled(!page.state.dirty)

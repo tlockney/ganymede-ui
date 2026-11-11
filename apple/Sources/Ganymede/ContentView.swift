@@ -119,7 +119,7 @@ struct ContentView: View {
                 }
             }
         )) {
-            NavigatorSidebar(folder: sidebarRoot, page: pageModel) { path in
+            NavigatorSidebar(folder: sidebarRoot, page: pageModel, panel: panel) { path in
                 openWindow(value: EditorRequest(path: path))
             }
             .navigationSplitViewColumnWidth(min: 180, ideal: 240, max: 400)
