@@ -328,13 +328,13 @@ describe('client', () => {
     });
   });
 
-  it('fails when the answer does not carry the notes sent', async () => {
+  it('fails when the answer carries no notes', async () => {
     const { fetch } = fakeFetch({
       'GET /builds/b1/betaBuildLocalizations': { data: [] },
       'POST /betaBuildLocalizations': saved(null),
     });
     await expect(client({ ...opts, fetch }).setWhatToTest('b1', 'notes')).rejects.toThrow(
-      /differ from those sent/,
+      /kept no notes/,
     );
   });
 

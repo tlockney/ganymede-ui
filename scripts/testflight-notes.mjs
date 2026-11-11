@@ -219,8 +219,9 @@ export function client({
 
     /**
      * Sets the "What to Test" notes for LOCALE, creating the localization
-     * if needed. The API calls them `whatsNew` (#498). The written notes
-     * are read back from the answer, so a field the API dropped fails here.
+     * if needed. The API calls them `whatsNew` (#498). The answer must
+     * carry notes, so a field the API dropped fails here; the text isn't
+     * compared, since the API may normalize whitespace or line endings.
      */
     async setWhatToTest(buildId, whatsNew) {
       const { data } = await call('GET', `/builds/${buildId}/betaBuildLocalizations`);
@@ -236,10 +237,8 @@ export function client({
               relationships: { build: { data: { type: 'builds', id: buildId } } },
             },
           });
-      if (written?.data?.attributes?.whatsNew !== whatsNew) {
-        throw new Error(
-          `build ${buildId}: the notes App Store Connect kept differ from those sent`,
-        );
+      if (!written?.data?.attributes?.whatsNew) {
+        throw new Error(`build ${buildId}: App Store Connect kept no notes`);
       }
     },
   };
