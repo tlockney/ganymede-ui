@@ -125,6 +125,13 @@ export const ShieldIcon = (p: P) => (
     <path d="m7.5 10 1.75 1.75L12.75 8.25" />
   </svg>
 );
+/** A padlock: Notebook Access, when a notebook asks for more. */
+export const LockIcon = (p: P) => (
+  <svg {...base(p)}>
+    <rect x="4.5" y="9" width="11" height="8" rx="1.5" />
+    <path d="M7 9V6.5a3 3 0 0 1 6 0V9" />
+  </svg>
+);
 export const KeyboardIcon = (p: P) => (
   <svg {...base(p)}>
     <rect x="2.5" y="5" width="15" height="10" rx="2" />

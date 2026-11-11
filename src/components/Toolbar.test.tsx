@@ -221,6 +221,30 @@ describe('Toolbar', () => {
     expect(screen.getAllByTitle('Trust Notebook')).toHaveLength(1);
   });
 
+  it('offers Notebook Access only while the notebook asks for more', async () => {
+    const open = vi.fn();
+    const { rerender } = render(
+      <Toolbar
+        controller={controller()}
+        sidebarOpen
+        onToggleSidebar={vi.fn()}
+        onNotebookAccess={open}
+      />,
+    );
+    expect(screen.queryByTitle(/^Notebook Access/)).not.toBeInTheDocument();
+    rerender(
+      <Toolbar
+        controller={controller()}
+        sidebarOpen
+        onToggleSidebar={vi.fn()}
+        accessMissing={['notebooks.run']}
+        onNotebookAccess={open}
+      />,
+    );
+    await userEvent.click(button('Notebook Access: asks for notebooks.run'));
+    expect(open).toHaveBeenCalledOnce();
+  });
+
   it('trusts the notebook after confirmation', async () => {
     const c = controller({ trusted: false });
     const confirm = vi.fn(() => false);
