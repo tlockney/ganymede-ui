@@ -65,4 +65,24 @@ final class ShareNotebooksTests: XCTestCase {
         XCTAssertNil(ShareInput.file(at: file, budget: 9))
         XCTAssertNil(ShareInput.file(at: folder.appendingPathComponent("missing"), budget: 10))
     }
+
+    func testTheLedgerMovesToTheGroupOnce() throws {
+        let app = try XCTUnwrap(UserDefaults(suiteName: "app-\(UUID().uuidString)"))
+        let group = try XCTUnwrap(UserDefaults(suiteName: "group-\(UUID().uuidString)"))
+        let rows = [["notebook": "/n.ipynb", "capability": "location", "answer": "always"]]
+        app.set(rows, forKey: AppGroup.ledgerKey)
+
+        AppGroup.copyOnce(AppGroup.ledgerKey, from: app, to: group)
+        XCTAssertEqual(group.array(forKey: AppGroup.ledgerKey) as? [[String: String]], rows)
+
+        // A revoke in the group isn't undone by the app's old rows.
+        group.set([[String: String]](), forKey: AppGroup.ledgerKey)
+        AppGroup.copyOnce(AppGroup.ledgerKey, from: app, to: group)
+        XCTAssertEqual(group.array(forKey: AppGroup.ledgerKey)?.count, 0)
+    }
+
+    func testNoGroupInATestBundle() {
+        XCTAssertNil(AppGroup.id)
+        XCTAssertNil(AppGroup.ledgerStore())
+    }
 }

@@ -387,6 +387,22 @@ headings; pick one to go to its cell.
   > **Unreleased.** Available only from a build of `main` (HEAD), not in
   > the latest release.
 
+- **Run a Notebook** (the share sheet, Mac too; experimental, off until
+  Settings › Device › Run Notebooks from the Share Sheet): runs one of the
+  notebooks added under that switch on what you share, with no window:
+  the first text and link, and files up to 16 MiB together, as
+  `device.input`. It shows what the notebook hands to `device.output()`
+  (or its `return` value) and hands that back to the app you shared from.
+  It runs a copy taken when the notebook was added; add it again to
+  update it. As with Run Script on Device, it can't show a prompt, so a
+  permissioned call works only if the notebook was allowed with Always;
+  location, motion, contacts and reminders are the namespaces it has. The
+  time limit is 20 seconds.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release.
+
 - **Downloads** open the share sheet, where Save to Files keeps them.
 - In the background iOS may stop the app's server; back in the
   foreground the app restarts it if it stopped answering.

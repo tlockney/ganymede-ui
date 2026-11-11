@@ -7,8 +7,8 @@ import AppKit
 import UIKit
 #endif
 
-// The share extension (#435, ganymede-device phase 4.3; a spike, built
-// but not embedded in the apps yet): lists the notebooks offered to the
+// The share extension (#435, ganymede-device phase 4.3; a spike, off
+// until Settings › Device turns it on): lists the notebooks offered to the
 // share sheet, runs the chosen one in the headless runner (#433) with
 // what was shared as `device.input`, and hands `device.output` back to
 // the host app. Headless: no prompts, so a permissioned call needs a
@@ -28,6 +28,8 @@ final class ShareModel: ObservableObject {
     static let timeLimit: TimeInterval = 20
 
     @Published var phase = Phase.choosing
+    /// Settings › Device's switch, which the app keeps in the group.
+    let enabled: Bool
     let notebooks: [ShareNotebook]
     private let store: ShareNotebooks?
     private let providers: [NSItemProvider]
@@ -36,14 +38,15 @@ final class ShareModel: ObservableObject {
 
     init(providers: [NSItemProvider], finish: @escaping ([NSExtensionItem]?) -> Void) {
         store = ShareNotebooks.shared()
-        notebooks = store?.list() ?? []
+        enabled = AppGroup.defaults()?.bool(forKey: AppGroup.shareSheetKey) ?? false
+        notebooks = enabled ? store?.list() ?? [] : []
         self.providers = providers
         self.finish = finish
     }
 
     func run(_ notebook: ShareNotebook) async {
         // A second tap while the first run starts.
-        guard phase == .choosing else { return }
+        guard enabled, phase == .choosing else { return }
         phase = .running(notebook.name)
         guard let store, let engine = ScriptRunner.bundledEngine() else {
             phase = .done(ScriptResult(error: "the runner isn't in this build"))
@@ -88,8 +91,7 @@ final class ShareModel: ObservableObject {
     /// shared through the App Group, and the permissioned ones that need
     /// no window. No notifications, folders or host events.
     static let bridge: DeviceBridge = {
-        let store: LedgerStore? = AppGroup.defaults().map { UserDefaultsLedgerStore(defaults: $0) }
-        let bridge = DeviceBridge(ledger: PermissionLedger(store: store))
+        let bridge = DeviceBridge(ledger: PermissionLedger(store: AppGroup.ledgerStore()))
         bridge.addLocation()
         bridge.addMotion()
         bridge.addContacts()
@@ -106,8 +108,11 @@ struct ShareView: View {
             switch model.phase {
             case .choosing:
                 Text("Run a Notebook").font(.headline)
-                if model.notebooks.isEmpty {
-                    Text("No notebooks are offered to the share sheet yet.").foregroundStyle(.secondary)
+                if !model.enabled {
+                    Text("Running notebooks from the share sheet is off. Turn it on in Ganymede's Settings › Device.")
+                        .foregroundStyle(.secondary)
+                } else if model.notebooks.isEmpty {
+                    Text("No notebooks are offered yet. Add one in Ganymede's Settings › Device.").foregroundStyle(.secondary)
                 } else {
                     List(model.notebooks) { notebook in
                         Button(notebook.name) { Task { await model.run(notebook) } }

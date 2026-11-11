@@ -76,7 +76,8 @@ final class KernelHost: NSObject {
     /// app's ledger, then the system, on first use; one the device lacks
     /// (motion and the camera on a Mac) stays out of `hello`.
     static func systemBridge(folders: FolderGrants) -> DeviceBridge {
-        let bridge = DeviceBridge()
+        // The ledger is shared with the share extension (#449).
+        let bridge = DeviceBridge(ledger: PermissionLedger(store: AppGroup.ledgerStore()))
         // The notification center throws outside an app bundle, such as
         // the unit tests' runner.
         if Bundle.main.bundleURL.pathExtension == "app" {

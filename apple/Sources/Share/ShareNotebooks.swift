@@ -2,25 +2,9 @@ import Foundation
 
 // The notebooks the share sheet offers (#435, ganymede-device phase 4.3;
 // a spike). The app copies a notebook into the App Group's container when
-// the person offers it; the share extension, sandboxed, reads the copies
+// the person offers it in Settings › Device; the share extension, sandboxed, reads the copies
 // and runs one on what was shared. Each copy keeps the original's path,
 // which keys the permission ledger, so a kept "always" carries over.
-
-enum AppGroup {
-    /// Shared by the app and its extensions. Each build that embeds an
-    /// extension needs it registered for the team (follow-up in #435).
-    static let id = "group.com.ganymede-server.Ganymede"
-
-    /// The group's container, or nil when this build isn't entitled to it.
-    static func container() -> URL? {
-        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: id)
-    }
-
-    /// The group's defaults, or nil when this build isn't entitled to it.
-    static func defaults() -> UserDefaults? {
-        container() == nil ? nil : UserDefaults(suiteName: id)
-    }
-}
 
 /// A notebook the share sheet offers.
 struct ShareNotebook: Codable, Equatable, Identifiable {
