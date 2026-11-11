@@ -20,3 +20,8 @@ The script does every lookup and check before it writes, so a stop
 leaves the tree as it was, and it rejects arguments other than
 `--check`. A dry run of `scripts/release.sh` warns about a pin that
 would stop `--execute` and still prints the changelog preview.
+
+Before moving `GANYMEDE_REF`, the script also checks that the tag's
+release carries `GanymedeFFI.xcframework.zip`. Ganymede releases before
+v0.8.0 don't, and without it the app builds fall back to building
+ganymede-ffi from source, which the move is meant to avoid.
