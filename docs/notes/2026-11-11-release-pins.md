@@ -23,5 +23,6 @@ would stop `--execute` and still prints the changelog preview.
 
 Before moving `GANYMEDE_REF`, the script also checks that the tag's
 release carries `GanymedeFFI.xcframework.zip`. Ganymede releases before
-v0.8.0 don't, and without it the app builds fall back to building
-ganymede-ffi from source, which the move is meant to avoid.
+v0.8.0 don't, and with a tag pinned `apple/scripts/bootstrap.sh`
+downloads that asset and stops when it is missing, so the release
+builds would fail.
