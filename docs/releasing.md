@@ -22,6 +22,11 @@ cdp-kernel and for the ganymede-ui release `ganymede ui install`
 installs, so that default is the ganymede-ui release before this one
 until Ganymede's next release.
 
+When a pin moves, the release commit changes
+`.github/workflows/ci.yml`, so pushing it needs a credential that may
+change workflows (`gh auth login`'s token and SSH keys can; a
+fine-grained token needs Workflows: write).
+
 ## The normal path
 
 1. From an up-to-date `main`, `scripts/release.sh <level>` previews the

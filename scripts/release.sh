@@ -87,7 +87,7 @@ else
     if $execute; then
       exit 1
     fi
-    echo "warning: the pins above would stop --execute" >&2
+    echo "warning: release-pins.sh --check failed (above); --execute would stop here" >&2
   fi
 fi
 
@@ -119,8 +119,12 @@ fi
 # Puts back what a run changed before it stopped: the files npm and
 # git-cliff rewrote, and the branch it was on.
 made_branch=false
+pins_written=false
 undo() {
   git checkout --quiet HEAD -- package.json package-lock.json CHANGELOG.md .github/workflows/ci.yml
+  if $pins_written; then
+    echo "note: release-pins.sh ran npm install; run npm ci to match the lockfile again" >&2
+  fi
   if $made_branch; then
     git checkout --quiet - && git branch --quiet -D "$branch"
   fi
@@ -160,6 +164,7 @@ bump() {
     exit 1
   fi
   "${cliff[@]}" --tag "v$version" --output CHANGELOG.md
+  pins_written=true
   pins=$(scripts/release-pins.sh)
   echo "$pins"
   git switch --quiet -c "$branch"

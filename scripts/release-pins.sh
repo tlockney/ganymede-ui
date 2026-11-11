@@ -44,6 +44,11 @@ older() {
   fi
 }
 
+# GETs $1, failing with a message that names it.
+fetch() {
+  curl -fsSL "$1" || { echo "error: couldn't fetch $1" >&2; exit 1; }
+}
+
 # The value of the one `      NAME: value` line in ci.yml; fails unless
 # there is exactly one.
 ci_value() {
@@ -69,7 +74,7 @@ set_ci_value() {
 # cdp-kernel
 cdp_pin=$(node -p 'require("./package.json").dependencies["@tlockney/cdp-kernel"]')
 cdp_ci=$(ci_value CDP_KERNEL_VERSION)
-cdp_latest=$(curl -fsSL "$npm_url/@tlockney%2fcdp-kernel/latest" | jq -r .version)
+cdp_latest=$(fetch "$npm_url/@tlockney%2fcdp-kernel/latest" | jq -r .version)
 if [[ -z "$cdp_latest" || "$cdp_latest" == null || ! "$cdp_pin" =~ ^[0-9] ]]; then
   echo "error: couldn't read npm's latest cdp-kernel ($cdp_latest), or package.json's pin isn't a version ($cdp_pin)" >&2
   exit 1
@@ -84,10 +89,17 @@ done
 # ganymede
 version_pin=$(ci_value GANYMEDE_VERSION)
 ref_pin=$(ci_value GANYMEDE_REF)
-tag=$(curl -fsSL "$api/repos/tlockney/ganymede/releases/latest" | jq -r .tag_name)
+release=$(fetch "$api/repos/tlockney/ganymede/releases/latest")
+tag=$(jq -r .tag_name <<< "$release")
 latest=${tag#v}
 if [[ -z "$latest" || "$tag" == null ]]; then
   echo "error: couldn't read ganymede's latest release" >&2
+  exit 1
+fi
+# bootstrap.sh downloads this for a tag; a release still uploading, or one
+# whose upload failed, would fail the release PR's macos-app job.
+if ! jq -e '.assets | any(.name == "GanymedeFFI.xcframework.zip")' <<< "$release" > /dev/null; then
+  echo "error: ganymede $tag has no GanymedeFFI.xcframework.zip asset yet" >&2
   exit 1
 fi
 if older "$latest" "$version_pin"; then
@@ -101,7 +113,7 @@ if [[ "$ref_pin" == v* ]]; then
   fi
 elif [[ "$ref_pin" =~ ^[0-9a-f]{40}$ ]]; then
   # behind or identical: the tag contains the commit.
-  status=$(curl -fsSL "$api/repos/tlockney/ganymede/compare/$tag...$ref_pin" | jq -r .status)
+  status=$(fetch "$api/repos/tlockney/ganymede/compare/$tag...$ref_pin" | jq -r .status)
   if [[ "$status" != behind && "$status" != identical ]]; then
     echo "error: GANYMEDE_REF ${ref_pin:0:12} is not in ganymede $tag ($status); release Ganymede first" >&2
     exit 1
