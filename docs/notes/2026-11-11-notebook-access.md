@@ -8,8 +8,9 @@ defaults. Each of read, edit-own-cells and run is either the default or
 set for this notebook; Save sends only the keys set here, so `{}` puts
 the notebook back on the defaults.
 
-The sheet is the page's, in the browser and the apps alike: File >
-Notebook Access… on the Mac and the ⋯ menu on the iPad run the page's
+The sheet is the page's, in the browser and the apps alike: Kernel >
+Notebook Access… on the Mac (beside Trust Notebook…) and the ⋯ menu on
+the iPad run the page's
 `notebook-access` command. Paths are one per line, with `/` for every
 notebook, since the server's root is `""`.
 

@@ -396,7 +396,7 @@ headings; pick one to go to its cell.
   seconds by default, 60 at most) stops waiting for the script, but a loop
   that never yields isn't stopped and holds up the app until it ends.
 
-- **Notebook Access…** (File menu on the Mac, the ⋯ menu on the iPad
+- **Notebook Access…** (Kernel menu on the Mac, the ⋯ menu on the iPad
   and iPhone, and the Command Palette) sets what a notebook's cells may
   ask the server for through `jupyter.host()`: the notebooks they may
   read, whether they may edit their own cells, and the notebooks they
