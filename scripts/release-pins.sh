@@ -22,15 +22,27 @@ set -euo pipefail
 cd "$(git rev-parse --show-toplevel)"
 
 check=false
-[[ "${1:-}" == --check ]] && check=true
+case "${1:-}" in
+  "") ;;
+  --check) check=true ;;
+  *) echo "usage: scripts/release-pins.sh [--check]" >&2; exit 2 ;;
+esac
 npm_url=${GANYMEDE_NPM_URL:-https://registry.npmjs.org}
 api=${GANYMEDE_GITHUB_API:-https://api.github.com}
 ci=.github/workflows/ci.yml
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 
-# Whether $1 is an older version than $2.
-older() { [[ "$1" != "$2" && "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -n 1)" == "$1" ]]; }
+# Whether version $1 is older than $2. A prerelease is older than its own
+# release (0.11.0-rc.1 < 0.11.0), which sort -V alone gets backwards.
+older() {
+  local a=${1%%-*} b=${2%%-*}
+  if [[ "$a" == "$b" ]]; then
+    [[ "$1" != "$2" && "$1" == *-* && ( "$2" != *-* || "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -n 1)" == "$1" ) ]]
+  else
+    [[ "$(printf '%s\n%s\n' "$a" "$b" | sort -V | head -n 1)" == "$a" ]]
+  fi
+}
 
 # The value of the one `      NAME: value` line in ci.yml; fails unless
 # there is exactly one.
@@ -46,12 +58,13 @@ ci_value() {
 
 # Sets ci.yml's $1 to $2, keeping the line's indent.
 set_ci_value() {
-  $check && return
   NAME=$1 VALUE=$2 awk '
     match($0, "^ *" ENVIRON["NAME"] ": ") { print substr($0, 1, RLENGTH) ENVIRON["VALUE"]; next }
     { print }' "$ci" > "$tmp/ci.yml"
   cat "$tmp/ci.yml" > "$ci"
 }
+
+# Every lookup and check runs first, so a failure changes nothing.
 
 # cdp-kernel
 cdp_pin=$(node -p 'require("./package.json").dependencies["@tlockney/cdp-kernel"]')
@@ -67,15 +80,6 @@ for pin in "$cdp_pin" "$cdp_ci"; do
     exit 1
   fi
 done
-if [[ "$cdp_pin" == "$cdp_latest" && "$cdp_ci" == "$cdp_latest" ]]; then
-  echo "cdp-kernel $cdp_latest: latest"
-else
-  echo "cdp-kernel $cdp_pin (CI $cdp_ci) -> $cdp_latest"
-  if ! $check; then
-    npm install --quiet --save-exact --ignore-scripts --no-audit --no-fund "@tlockney/cdp-kernel@$cdp_latest" > /dev/null
-  fi
-  set_ci_value CDP_KERNEL_VERSION "$cdp_latest"
-fi
 
 # ganymede
 version_pin=$(ci_value GANYMEDE_VERSION)
@@ -106,20 +110,34 @@ else
   echo "error: GANYMEDE_REF in $ci is neither a v* tag nor a commit SHA: $ref_pin" >&2
   exit 1
 fi
+
+# Report, then write.
+if [[ "$cdp_pin" == "$cdp_latest" && "$cdp_ci" == "$cdp_latest" ]]; then
+  echo "cdp-kernel $cdp_latest: latest"
+else
+  echo "cdp-kernel $cdp_pin (CI $cdp_ci) -> $cdp_latest"
+  if ! $check; then
+    npm install --quiet --save-exact --ignore-scripts --no-audit --no-fund "@tlockney/cdp-kernel@$cdp_latest" > /dev/null
+    set_ci_value CDP_KERNEL_VERSION "$cdp_latest"
+  fi
+fi
 if [[ "$version_pin" == "$latest" && "$ref_pin" == "$tag" ]]; then
   echo "ganymede $latest: latest"
 else
   echo "ganymede $version_pin (GANYMEDE_REF ${ref_pin:0:12}) -> $latest ($tag)"
-  set_ci_value GANYMEDE_VERSION "$latest"
-  set_ci_value GANYMEDE_REF "$tag"
-  # A commit pin has comment lines saying why; a tag needs none. They sit
-  # between the "A tag downloads ..." line and GANYMEDE_REF.
-  if ! $check && [[ "$ref_pin" != v* ]]; then
-    awk '
-      /# A tag downloads the release.s XCFramework; a commit builds it\./ { print; skip = 1; next }
-      skip && /^ *GANYMEDE_REF: / { skip = 0 }
-      skip && /^ *#/ { next }
-      { skip = 0; print }' "$ci" > "$tmp/ci.yml"
-    cat "$tmp/ci.yml" > "$ci"
+  if ! $check; then
+    set_ci_value GANYMEDE_VERSION "$latest"
+    set_ci_value GANYMEDE_REF "$tag"
+    # A commit pin has comment lines saying why; a tag needs none. They sit
+    # between the "A tag downloads ..." line and GANYMEDE_REF. If that line
+    # is reworded, this keeps them; update the pattern with it.
+    if [[ "$ref_pin" != v* ]]; then
+      awk '
+        /# A tag downloads the release.s XCFramework; a commit builds it\./ { print; skip = 1; next }
+        skip && /^ *GANYMEDE_REF: / { skip = 0 }
+        skip && /^ *#/ { next }
+        { skip = 0; print }' "$ci" > "$tmp/ci.yml"
+      cat "$tmp/ci.yml" > "$ci"
+    fi
   fi
 fi

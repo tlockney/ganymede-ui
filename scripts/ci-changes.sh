@@ -47,7 +47,7 @@ while IFS= read -r f; do
   case $f in
     # The example notebooks' Markdown sources are code (#414).
     examples/src/*) e2e=true; macos=true ;;
-    *.md | docs/* | screenshots/* | LICENSE | cliff.toml | scripts/release.sh) ;;
+    *.md | docs/* | screenshots/* | LICENSE | cliff.toml | scripts/release.sh | scripts/release-pins.sh) ;;
     # Used only by release.yml; its unit tests run in every build job.
     scripts/testflight-notes.mjs | scripts/testflight-notes.test.mjs) ;;
     package.json | package-lock.json)

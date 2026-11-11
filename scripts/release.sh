@@ -81,8 +81,14 @@ else
     exit 1
   fi
   # This release takes the latest cdp-kernel and Ganymede releases. Checked
-  # before anything changes: a pin Ganymede hasn't released yet stops here.
-  scripts/release-pins.sh --check
+  # before anything changes: with --execute, a pin Ganymede hasn't released
+  # yet stops here. A dry run warns and goes on to the preview.
+  if ! scripts/release-pins.sh --check; then
+    if $execute; then
+      exit 1
+    fi
+    echo "warning: the pins above would stop --execute" >&2
+  fi
 fi
 
 # Ganymede's docs and landing page describe the apps. Text there that
