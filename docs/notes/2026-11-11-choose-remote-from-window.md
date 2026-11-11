@@ -26,3 +26,10 @@ CI here hit a race in `testRunsAKernelTheAppRegisters` (#470): right after
 `ended`, the server can restart the kernel on its own thread before the
 test reads `isLive`. The test now checks that the ended run can't deliver,
 which holds whether or not the restart has happened.
+
+Review: the Kernel menu has no running count when no notebook window is in
+front (Settings, an editor or a terminal), so it asks then too, without a
+number. The remote editor's toggle doesn't ask, like Settings › Kernels:
+both are in Settings, and their footers say running kernels are shut
+down. Turning the toggle off moves kernels before the save, so a changed
+URL or token on that remote doesn't restart the server twice.

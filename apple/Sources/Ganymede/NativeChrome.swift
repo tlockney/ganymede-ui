@@ -752,7 +752,7 @@ struct KernelMenu: View {
         Divider()
         // Where kernels run is a setting of the app, not the notebook
         // (#332), chosen here too (#473).
-        KernelLocationPicker(running: page?.state.sessions.count ?? 0)
+        KernelLocationPicker(running: page?.state.sessions.count)
         Button("Manage Remotes…") { SettingsOpener.show(.remotes) }
     }
 }

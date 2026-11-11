@@ -235,15 +235,18 @@ struct RemoteEditor: View {
         }
     }
 
-    /// Saves the remote, then moves kernels to it, or back to this
-    /// device, if the toggle changed where they run.
+    /// Saves the remote and moves kernels to it, or back to this device,
+    /// if the toggle changed where they run. Like Settings › Kernels, it
+    /// doesn't ask first: the footer says running kernels are shut down.
+    /// Kernels leave before the save, so a changed URL or token on the
+    /// remote they leave doesn't restart the server a second time.
     private func save() {
         let saved = edited
+        let wanted = runsKernels && !saved.serverURL.trimmingCharacters(in: .whitespaces).isEmpty
+        let current = model.kernelRemoteID == saved.id
+        if current && !wanted { model.useForKernels(nil) }
         model.save(saved, token: token)
-        let wanted = runsKernels && saved.hasServer
-        if wanted != (model.kernelRemoteID == saved.id) {
-            model.useForKernels(wanted ? saved.id : nil)
-        }
+        if wanted && !current { model.useForKernels(saved.id) }
     }
 
     private var serverFooter: String {
