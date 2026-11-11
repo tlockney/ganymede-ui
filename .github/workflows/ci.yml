@@ -129,20 +129,29 @@ jobs:
         with:
           persist-credentials: false
       # A release tag downloads that release's GanymedeFFI.xcframework.zip
-      # in bootstrap.sh; a commit builds it from a checkout (#359).
-      - if: ${{ !startsWith(env.GANYMEDE_REF, 'v') }}
+      # in bootstrap.sh; a commit builds it from a checkout (#359). The
+      # build for a commit is cached under its SHA, so only the first run
+      # after the pin moves builds it (#486). Pull requests restore main's
+      # cache but can't write one main reads.
+      - id: ffi
+        if: ${{ !startsWith(env.GANYMEDE_REF, 'v') }}
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .ffi-cache/GanymedeFFI.xcframework
+          key: ganymede-xcframework-${{ runner.arch }}-${{ env.GANYMEDE_REF }}
+      - if: ${{ !startsWith(env.GANYMEDE_REF, 'v') && steps.ffi.outputs.cache-hit != 'true' }}
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: tlockney/ganymede
           ref: ${{ env.GANYMEDE_REF }}
           path: .ganymede
           persist-credentials: false
-      - if: ${{ !startsWith(env.GANYMEDE_REF, 'v') }}
+      - if: ${{ !startsWith(env.GANYMEDE_REF, 'v') && steps.ffi.outputs.cache-hit != 'true' }}
         uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
         with:
           toolchain: stable
           targets: aarch64-apple-darwin, aarch64-apple-ios, aarch64-apple-ios-sim
-      - if: ${{ !startsWith(env.GANYMEDE_REF, 'v') }}
+      - if: ${{ !startsWith(env.GANYMEDE_REF, 'v') && steps.ffi.outputs.cache-hit != 'true' }}
         uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: .ganymede
@@ -154,7 +163,13 @@ jobs:
       - run: brew install xcodegen
       - run: apple/scripts/bootstrap.sh
         env:
-          GANYMEDE_DIR: ${{ !startsWith(env.GANYMEDE_REF, 'v') && format('{0}/.ganymede', github.workspace) || '' }}
+          GANYMEDE_DIR: ${{ !startsWith(env.GANYMEDE_REF, 'v') && steps.ffi.outputs.cache-hit != 'true' && format('{0}/.ganymede', github.workspace) || '' }}
+          GANYMEDE_XCFRAMEWORK: ${{ steps.ffi.outputs.cache-hit == 'true' && format('{0}/.ffi-cache/GanymedeFFI.xcframework', github.workspace) || '' }}
+      # What the cache step saves when the job ends.
+      - if: ${{ !startsWith(env.GANYMEDE_REF, 'v') && steps.ffi.outputs.cache-hit != 'true' }}
+        run: |
+          mkdir -p .ffi-cache
+          cp -R apple/build/GanymedeFFI.xcframework .ffi-cache/
       - name: Build and test
         run: >
           xcodebuild test -project apple/Ganymede.xcodeproj -scheme Ganymede

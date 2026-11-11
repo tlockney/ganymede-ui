@@ -82,6 +82,8 @@ The app links ganymede-ffi as `GanymedeFFI.xcframework`, which
   (`xcode-select -p`) with the iOS platform installed
   (`xcodebuild -downloadPlatform iOS`); `bootstrap.sh` checks both
   before it builds. `GANYMEDE_DIR` wins when both are set.
+- `GANYMEDE_XCFRAMEWORK=<dir>` copies an XCFramework built earlier. CI
+  uses it for its cached build of a pinned commit; it wins over both.
 
 ```sh
 GANYMEDE_REF=vX.Y.Z apple/scripts/bootstrap.sh
@@ -91,7 +93,9 @@ open apple/Ganymede.xcodeproj
 ```
 
 CI and release builds use `GANYMEDE_REF` from ci.yml's `macos-app` job:
-a release tag downloads, a commit SHA checks out and builds.
+a release tag downloads, a commit SHA checks out and builds. The build
+for a commit is cached under its SHA, so only the first run after the
+pin moves builds it; later runs and pull requests restore it.
 
 `bootstrap.sh` puts the XCFramework and this repo's `dist/` into
 `apple/build/` and generates the Xcode project from `project.yml`. Pick
