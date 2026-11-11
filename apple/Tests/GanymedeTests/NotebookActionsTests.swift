@@ -127,6 +127,49 @@ final class NotebookActionsTests: XCTestCase {
         XCTAssertEqual(URLComponents(url: index, resolvingAgainstBaseURL: false)?.percentEncodedQuery, "path=a%2Bb%26c.ipynb")
     }
 
+    // MARK: Runs with parameters
+
+    func testRunWithParamsPostsToTheRunEndpoint() async throws {
+        fake.on("POST /api/notebooks/run") { request in
+            let body = Self.body(request)
+            XCTAssertEqual(body["path"] as? String, "dir/nb.ipynb")
+            XCTAssertEqual((body["params"] as? [String: Any])?["day"] as? String, "mon")
+            XCTAssertEqual(body["timeout"] as? Int, 30)
+            return (200, ["path": "dir/nb.ipynb", "status": "ok", "results": ["total": 43, "a": [1]]])
+        }
+        let result = try await actions.notebookRunWithParams(path: "dir/nb.ipynb", params: #"{"day":"mon"}"#, timeout: 30)
+        XCTAssertEqual(result, .init(status: "ok", results: #"{"a":[1],"total":43}"#, error: nil))
+    }
+
+    func testRunWithParamsReportsAFailedRun() async throws {
+        fake.on("POST /api/notebooks/run", ["status": "error", "results": ["first": 1], "error": "cell 1 failed: E: x"])
+        let result = try await actions.notebookRunWithParams(path: "dir/nb.ipynb", params: "{}", timeout: 30)
+        XCTAssertEqual(result, .init(status: "error", results: #"{"first":1}"#, error: "cell 1 failed: E: x"))
+    }
+
+    func testRunWithParamsErrors() async {
+        func failure(_ params: String = "{}") async -> NotebookActionError? {
+            do {
+                _ = try await actions.notebookRunWithParams(path: "dir/nb.ipynb", params: params, timeout: 30)
+                return nil
+            } catch {
+                return error as? NotebookActionError
+            }
+        }
+        let bad = await failure("[1]")
+        XCTAssertEqual(bad, .badParams("[1]"))
+        XCTAssertTrue(fake.calls("POST /api/notebooks/run").isEmpty, "nothing sent for bad parameters")
+        // No route: a server from before ganymede#652.
+        let old = await failure()
+        XCTAssertEqual(old, .oldServer)
+        fake.on("POST /api/notebooks/run", status: 404, ["message": "cannot read dir/nb.ipynb as a notebook"])
+        let missing = await failure()
+        XCTAssertEqual(missing, .notFound("dir/nb.ipynb"))
+        fake.on("POST /api/notebooks/run", status: 400, ["message": "dir/nb.ipynb has no metadata.kernelspec.name"])
+        let refused = await failure()
+        XCTAssertEqual(refused, .server(status: 400, message: "dir/nb.ipynb has no metadata.kernelspec.name"))
+    }
+
     /// nbformat before 4.5 has no cell ids: an error, not an empty run.
     func testCellsWithoutIDsAreAnError() async throws {
         fake.on("GET /api/contents/dir/nb.ipynb", ["type": "notebook", "content": [

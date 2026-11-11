@@ -123,6 +123,56 @@ struct NotebookActions: Sendable {
         }
     }
 
+    /// What a run with parameters ended with: one line of `ganymede
+    /// execute --results`.
+    struct RunResult: Equatable, Sendable {
+        /// `ok` or `error`.
+        var status: String
+        /// The named results, as a JSON object's text, keys sorted.
+        var results: String
+        var error: String?
+    }
+
+    /// Runs every code cell of the notebook in a fresh kernel, with
+    /// `params` (a JSON object's text) in `GANYMEDE_PARAMS`, through the
+    /// server's `POST /api/notebooks/run` (ganymede#652). An open window and
+    /// its kernel are left alone and nothing is saved. A failing cell is a
+    /// result with status `error`, not a throw.
+    func notebookRunWithParams(path: String, params: String, timeout: Int) async throws -> RunResult {
+        guard let object = Self.paramsObject(params) else { throw NotebookActionError.badParams(params) }
+        var post = try request("api/notebooks/run", method: "POST", body: [
+            "path": path, "params": object, "timeout": max(1, timeout),
+        ])
+        post.timeoutInterval = TimeInterval(max(1, timeout) + 30)
+        let (status, body) = try await call(post)
+        let message = Self.message(body)
+        if status == 404 {
+            // The route itself is missing on a server from before ganymede#652.
+            if message.hasPrefix("cannot read") { throw NotebookActionError.notFound(path) }
+            throw NotebookActionError.oldServer
+        }
+        guard (200..<300).contains(status) else { throw NotebookActionError.server(status: status, message: message) }
+        guard let object = body as? [String: Any], let state = object["status"] as? String else {
+            throw NotebookActionError.badResponse("a run")
+        }
+        return RunResult(
+            status: state,
+            results: try Self.paramsText(object["results"] as? [String: Any] ?? [:]),
+            error: object["error"] as? String
+        )
+    }
+
+    /// A JSON object from its text, or nil.
+    static func paramsObject(_ text: String) -> [String: Any]? {
+        (try? JSONSerialization.jsonObject(with: Data(text.utf8))) as? [String: Any]
+    }
+
+    /// A JSON object's text, keys sorted.
+    static func paramsText(_ object: [String: Any]) throws -> String {
+        let data = try JSONSerialization.data(withJSONObject: object, options: [.sortedKeys, .fragmentsAllowed])
+        return String(decoding: data, as: UTF8.self)
+    }
+
     /// Starts, interrupts, restarts or shuts down the notebook's kernel
     /// (MCP `kernel_control`). Returns what was done.
     func kernelControl(path: String, action: KernelAction) async throws -> String {
@@ -377,6 +427,8 @@ enum NotebookActionError: LocalizedError, Equatable {
     case cellFailed(cell: String, name: String, value: String)
     case timedOut(Int)
     case oldServer
+    case badParams(String)
+    case runFailed(String)
     case server(status: Int, message: String)
     case badResponse(String)
 
@@ -396,9 +448,11 @@ enum NotebookActionError: LocalizedError, Equatable {
         case .cellFailed(let cell, let name, let value):
             value.isEmpty ? "Cell \(cell) failed: \(name)" : "Cell \(cell) failed: \(name): \(value)"
         case .timedOut(let seconds): "The cells didn’t finish in \(seconds) seconds; they are still running."
-        case .oldServer: "This Ganymede server can’t report when cells finish; it needs a newer version."
+        case .oldServer: "This Ganymede server is too old for this action; it needs a newer version."
         case .server(let status, let message): "The server answered \(status): \(message)"
         case .badResponse(let what): "The server sent an unexpected answer for \(what)."
+        case .badParams(let text): "The parameters must be a JSON object, like {\"day\": \"2026-11-10\"}; got \(text)."
+        case .runFailed(let message): "The notebook failed: \(message)"
         }
     }
 }
