@@ -193,11 +193,6 @@ nothing is saved. That kernel can be the in-app TypeScript kernel, whose
 cells read the parameters as `jupyter.params`, but only while a Ganymede
 window is open. The actions are on the Mac only for now.
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release, where the in-app TypeScript kernel gets no
-> parameters (`jupyter.params` is `{}`).
-
 ### Links
 
 The Mac app opens `ganymede://` links, so launchers, Markdown links,
@@ -414,10 +409,6 @@ headings; pick one to go to its cell.
   permissioned call works only if the notebook was allowed with Always;
   location, motion, contacts and reminders are the namespaces it has. The
   time limit is 20 seconds.
-
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release.
 
 - **Notebook Access…** (Kernel menu on the Mac, the ⋯ menu on the iPad
   and iPhone, and the Command Palette) sets what a notebook's cells may
