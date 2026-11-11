@@ -61,11 +61,13 @@
     "@sentry/browser": "11.9.0",
     "@tlockney/cdp-kernel": "0.10.0",
     "@tlockney/ganymede-device": "github:tlockney/ganymede-device#1c91ace6475140e492c1cc8585ff7d77637dcfb2",
+    "lib0": "0.2.119",
     "localforage": "1.10.0",
     "mock-socket": "9.3.1",
     "react": "19.3.1",
     "react-dom": "19.3.1",
-    "sucrase": "3.35.1"
+    "sucrase": "3.35.1",
+    "y-websocket": "3.1.0"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",

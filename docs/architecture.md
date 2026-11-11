@@ -218,6 +218,26 @@ session, so the kernel stays; scroll and active cell are put back), then
 takes the file's time as its base. An edit typed during the fetch, or a
 cell that starts running, makes it give up and lock instead (#508).
 
+On a Ganymede server the pane opens the notebook in its document room
+instead (#183, `room.ts`). `NotebookRoom.join` asks `PUT
+/api/collaboration/session/{path}` for the file id and the server's
+session id, connects a y-websocket (`y-websocket`'s `WebsocketProvider`)
+to `/api/collaboration/room/json:notebook:{id}`, and waits for the first
+sync. The notebook model is built on the room's `YNotebook`
+(`collaborationEnabled`), so edits flow both ways as they happen and the
+dirty flag is the room's shared `state.dirty`, which the server clears
+when it saves. `RoomSaver` stands in for `NotebookSaver`: a save sends
+`jupyter-collaboration`'s raw `save` message and waits for its answer
+(`failed` when a merge let the file win a cell), a move just follows the
+rename (the server moves the room's file id), and there is never a change
+on disk, so the pane skips its disk check and its 120-second autosave.
+The server's close codes come through `closed`: 4404 (file deleted)
+stops saves and says so; a 1003 `unknown_session` (the server restarted)
+fetches the new session id, and the provider reconnects. If the session
+request fails (a server without rooms) or the first sync takes over 15
+seconds, the pane falls back to the contents API. The room is disposed
+after the model, since it owns the model's shared notebook.
+
 Inside JupyterLab, the editor, renderers and commands come from plugins.
 `jupyterlab.ts` builds them once and shares them across notebooks: the
 CodeMirror registries, a rendermime registry with JupyterLab's default

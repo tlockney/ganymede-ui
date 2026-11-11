@@ -18,7 +18,9 @@ import {
   DISK_CHECK_INTERVAL_MS,
   NotebookSaver,
   SaveConflict,
+  type Saver,
 } from '../lib/saver';
+import { NotebookRoom, RoomSaver } from '../lib/room';
 import {
   type Problem,
   changedOnDisk,
@@ -30,6 +32,7 @@ import {
   messageOf,
   missingKernel,
   openFailure,
+  roomClosed,
   saveFailed,
   unreachable,
 } from '../lib/problems';
@@ -179,7 +182,9 @@ type Open = {
   model: NotebookModel;
   session: SessionContext;
   widgets: NotebookWidgets;
-  saver: NotebookSaver;
+  saver: Saver;
+  /** The notebook's document room, when it lives in one (#183). */
+  room?: NotebookRoom;
   /**
    * Before a run of the selected cells (or `all`): starts the kernel when
    * none is running and they include a code cell. False when there is none
@@ -269,6 +274,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
   const onRenamedRef = useRef(onRenamed);
   onRenamedRef.current = onRenamed;
   const { services } = backend;
+  /** Whether notebooks may live in the server's rooms (#183). */
+  const rooms = backend.config.kind === 'ganymede';
   // The problem notice's kernel list follows installs and removals (#350).
   useSignals(services.kernelspecs.specsChanged);
   const host = useRef<HTMLDivElement>(null);
@@ -375,25 +382,59 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         setNotice({ kind: 'save-failed', message: lastSave, actions: [] });
         shownHandoff(handed);
       }
-      const [file, widgets] = await Promise.all([
-        services.contents.get(path, { type: 'notebook', content: true }),
+      // On a Ganymede server, the notebook lives in its document room
+      // (#183): edits from a Claude session or another window show up live,
+      // and the server saves the file. Elsewhere, or if the server has no
+      // rooms, it loads and saves through the contents API.
+      const roomSettings = rooms ? services.serverSettings : undefined;
+      const [room, widgets] = await Promise.all([
+        roomSettings
+          ? NotebookRoom.join({
+              settings: roomSettings,
+              path,
+              onClosed: why => {
+                if (why.kind === 'deleted') gone.current = true;
+                setNotice(roomClosed(basename(path), why));
+              },
+            }).catch((e: unknown) => {
+              console.warn(`Couldn’t join the room for ${path}; using the contents API:`, e);
+              return undefined;
+            })
+          : undefined,
         // ipywidgets live in their own chunk; load them alongside the file so
         // the comm target is there before the kernel can open a widget.
         import('../lib/widgets'),
         services.kernelspecs.ready,
       ]);
+      if (cancelled) {
+        room?.dispose();
+        return;
+      }
+      const file = room
+        ? undefined
+        : await services.contents.get(path, { type: 'notebook', content: true });
       if (cancelled) return;
-      const content = file.content as nbformat.INotebookContent;
+      const content = room
+        ? (room.notebook.toJSON() as nbformat.INotebookContent)
+        : (file!.content as nbformat.INotebookContent);
       // In the Apple apps, ask now for the device permissions the notebook
       // says it uses, not mid-run (#383).
       declareDevice(path, content.metadata);
 
       const rendermime = createRendermime(path, services.contents);
       // As JupyterLab's model factory does by default: undo per cell.
-      const model = new NotebookModel({ disableDocumentWideUndoRedo: true });
-      // The browser's storage keeps a file's lines split (#414).
-      model.fromJSON(rejoinLines(content));
-      model.dirty = false;
+      const model = room
+        ? new NotebookModel({
+            sharedModel: room.notebook,
+            collaborationEnabled: true,
+            disableDocumentWideUndoRedo: true,
+          })
+        : new NotebookModel({ disableDocumentWideUndoRedo: true });
+      if (!room) {
+        // The browser's storage keeps a file's lines split (#414).
+        model.fromJSON(rejoinLines(content));
+        model.dirty = false;
+      }
       const notebook = createNotebook(rendermime);
 
       // One session per notebook, found by path. `initialize` rejoins the
@@ -494,13 +535,16 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
             ?.interrupt()
             .catch(e => setNotice(failed('interrupt the kernel', e))),
       });
-      const saver = new NotebookSaver({
-        contents: services.contents,
-        path,
-        model,
-        lastModified: file.last_modified,
-        beforeSave: () => notebookWidgets.saveState(model),
-      });
+      const beforeSave = () => notebookWidgets.saveState(model);
+      const saver: Saver = room
+        ? new RoomSaver({ room, path, model, beforeSave })
+        : new NotebookSaver({
+            contents: services.contents,
+            path,
+            model,
+            lastModified: file!.last_modified,
+            beforeSave,
+          });
       const onKey = (e: KeyboardEvent) => commands.processKeydownEvent(e);
       // Capture phase, as a Lumino application does, so a notebook shortcut
       // (Shift+Enter) wins over the editor's own binding for the key.
@@ -512,6 +556,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         session,
         widgets: notebookWidgets,
         saver,
+        room,
         ensureKernel,
         commands,
         runStatus,
@@ -557,6 +602,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
           done.notebook.dispose();
           holderOf(done.notebook).remove();
           done.model.dispose();
+          // After the model: the room's notebook is its shared model.
+          done.room?.dispose();
           // Leave the kernel running; the sidebar lists it under Running.
           // A start still under way finishes first, so its kernel takes the
           // file's path and the session doesn't throw "Disposed" (#461).
@@ -601,7 +648,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         teardown();
       }
     };
-  }, [services, path, attempt, memory, setIntended]);
+  }, [services, rooms, path, attempt, memory, setIntended]);
 
   // Put the Lumino widget in the page. The widget lives in a holder node
   // that moves in and out of the pane: when the pane goes, the holder is
@@ -786,7 +833,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         return false;
       }
     });
-    const timer = setInterval(autosave, AUTOSAVE_INTERVAL_MS);
+    // A room saves itself a second after the last edit.
+    const timer = saver.live ? undefined : setInterval(autosave, AUTOSAVE_INTERVAL_MS);
     document.addEventListener('visibilitychange', onHidden);
     window.addEventListener('beforeunload', onUnload);
     return () => {
@@ -806,8 +854,11 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
   // new version in place instead (#508): an agent journaling into the open
   // notebook would otherwise lock it every few seconds. The kernel stays;
   // the scroll position and active cell are kept.
+  //
+  // A notebook in a room (#183) needs none of this: the server takes in
+  // changes on disk and the pane sees them live.
   useEffect(() => {
-    if (!open) return;
+    if (!open || open.saver.live) return;
     const { saver, model, notebook } = open;
     let checking = false;
     let stopped = false;
