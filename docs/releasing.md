@@ -282,8 +282,8 @@ gh workflow run release.yml --ref vX.Y.Z --repo tlockney/ganymede-ui
 ### The tagged commit cannot be released
 
 If only the `verify` job failed because the pull request's CI was
-cancelled or failed on a re-run, re-run that CI on the pull request, then
-re-run the failed jobs of the release run. The tag stays.
+cancelled or failed on a re-run, re-run that CI on the pull request, wait for it to
+finish, then re-run the failed jobs of the release run. The tag stays.
 
 CI, the build, or the version check fails for a reason that needs a code
 change. If no GitHub Release exists for the tag, nobody can have
