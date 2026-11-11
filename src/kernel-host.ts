@@ -49,13 +49,32 @@ function current(id: string, kernel: BrowserKernel): boolean {
   return kernels.get(id)?.kernel === kernel;
 }
 
-function start(id: string, run: number): void {
+/**
+ * The run's parameters from a start's JSON text: an object, or none. The
+ * server sends only objects; anything else runs with none.
+ */
+export function parseParams(text: string | undefined): { [name: string]: unknown } | undefined {
+  if (!text) return undefined;
+  try {
+    const value: unknown = JSON.parse(text);
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as { [name: string]: unknown })
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function start(id: string, run: number, params?: string): void {
   // A restart reuses the id: the server stopped the old run first, but
   // a start without one replaces it all the same.
   stop(id);
   const device = deviceOptions();
   const kernel = startBrowserKernel({
     createWorker: () => new Worker(workerUrl, { type: 'module' }),
+    // `ganymede://run` with parameters and Run Notebook with Parameters
+    // start a kernel with them (ganymede-ui#303).
+    params: parseParams(params),
     ...device,
   });
   kernels.set(id, { kernel, run });
@@ -108,7 +127,7 @@ function stop(id: string): void {
 /** Called by Swift with each start, message and stop from the server. */
 export function deliver(m: ToKernel): void {
   if (m.op === 'start') {
-    start(m.kernel, m.run);
+    start(m.kernel, m.run, m.params);
   } else if (m.op === 'stop') {
     stop(m.kernel);
   } else if (m.op === 'send' && m.channel !== 'iopub') {

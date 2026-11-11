@@ -145,7 +145,9 @@ final class AppKernels: NSObject {
             runs[kernel] = Run(number: lastRun, server: server, serverRun: serverRun)
             notebooks[kernel] = Self.notebook(in: launch).map(resolve)
             tellBridge(kernel)
-            toPage(["kernel": kernel, "op": "start", "run": lastRun])
+            var start: [String: Any] = ["kernel": kernel, "op": "start", "run": lastRun]
+            start["params"] = Self.params(in: launch)
+            toPage(start)
         case .send(let kernel, let channel, let message):
             guard runs[kernel]?.server === server else { return }
             toPage(["kernel": kernel, "op": "send", "channel": channel, "json": message])
@@ -165,6 +167,18 @@ final class AppKernels: NSObject {
               let path = env["JPY_SESSION_NAME"] as? String, !path.isEmpty
         else { return nil }
         return path
+    }
+
+    /// `env.GANYMEDE_PARAMS` in a start's launch JSON: the run's
+    /// parameters, as a JSON object's text, for `jupyter.params`
+    /// (ganymede#652). The server sets it for every run it starts with
+    /// parameters; nil when absent or empty.
+    nonisolated static func params(in launch: String) -> String? {
+        guard let object = try? JSONSerialization.jsonObject(with: Data(launch.utf8)) as? [String: Any],
+              let env = object["env"] as? [String: Any],
+              let params = env["GANYMEDE_PARAMS"] as? String, !params.isEmpty
+        else { return nil }
+        return params
     }
 
     private func toPage(_ message: [String: Any]) {

@@ -24,7 +24,16 @@ export const HOST_HANDLER = 'kernelHost';
  * Messages are Jupyter JSON, binary buffers as base64 strings.
  */
 export type ToKernel =
-  | { kernel: string; op: 'start'; run: number }
+  | {
+      kernel: string;
+      op: 'start';
+      run: number;
+      /**
+       * The run's parameters (`GANYMEDE_PARAMS` in the server's launch),
+       * as a JSON object's text: what cells read as `jupyter.params`.
+       */
+      params?: string;
+    }
   | { kernel: string; op: 'send'; channel: string; json: string }
   | { kernel: string; op: 'stop' };
 
