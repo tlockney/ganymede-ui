@@ -73,8 +73,8 @@ The app links ganymede-ffi as `GanymedeFFI.xcframework`, which
 - `GANYMEDE_REF=vX.Y.Z` downloads it from that
   [tlockney/ganymede](https://github.com/tlockney/ganymede) release
   (`GanymedeFFI.xcframework.zip`) and checks it against the release's
-  `.sha256`; a mismatch or a missing asset fails. Releases after
-  ganymede v0.7.0 carry it.
+  `.sha256`; a mismatch or a missing asset fails. Releases from
+  ganymede v0.8.0 on carry it.
 - `GANYMEDE_DIR=<checkout>` builds it from a checkout of
   tlockney/ganymede with its `scripts/build-xcframework.sh`, for a commit
   that isn't a release or a local change to ganymede. This needs Rust
