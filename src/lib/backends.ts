@@ -1,5 +1,11 @@
 import { URLExt } from '@jupyterlab/coreutils';
-import { ContentsManager, ServerConnection, ServiceManager } from '@jupyterlab/services';
+import {
+  type Contents,
+  ContentsManager,
+  ServerConnection,
+  ServiceManager,
+} from '@jupyterlab/services';
+import { relayAvailable, reportMoved } from './kernel-relay';
 
 /**
  * Where notebooks, kernels and sessions come from.
@@ -19,9 +25,9 @@ export type BackendConfig =
       /**
        * `page` keeps notebooks on the server but runs kernels in this page,
        * as the browser backend does: for a server with no kernels of its
-       * own, such as the one inside the iPad app. `both` lists the
-       * server's kernels and the page's together, as the Mac app does so
-       * that cells can reach the app (#185).
+       * own. `both` lists the server's kernels and the page's together.
+       * The Apple apps use neither: their TypeScript kernel is one of
+       * their server's (ganymede#266).
        */
       kernels?: 'page' | 'both';
     }
@@ -37,6 +43,22 @@ export type Backend = {
 };
 
 export async function connect(config: BackendConfig): Promise<Backend> {
+  const backend = await connectTo(config);
+  // In the Apple apps, kept device permissions follow a rename made here
+  // (#383); the app's sidebar reports its own. Only on the app's own
+  // server: a remote one may hold the same path as a local notebook.
+  if (relayAvailable() && config.kind === 'ganymede' && config.url === '')
+    backend.services.contents.fileChanged.connect(reportRename);
+  return backend;
+}
+
+function reportRename(_: unknown, change: Contents.IChangedArgs): void {
+  const from = change.oldValue?.path;
+  const to = change.newValue?.path;
+  if (change.type === 'rename' && from && to) reportMoved(from, to);
+}
+
+async function connectTo(config: BackendConfig): Promise<Backend> {
   if (config.kind === 'ganymede') {
     const base = (config.url || window.location.origin).replace(/\/+$/, '') + '/';
     const serverSettings = ServerConnection.makeSettings({

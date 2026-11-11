@@ -110,7 +110,7 @@ the command palette (and in the apps' File menu), copies a set of
 TypeScript notebooks into a new `Examples` folder in the folder the
 sidebar shows, and opens the first. On iPhone and iPad the app's own
 folder gets a copy on first launch (or the first after updating), so they
-show without this step. They run on the in-page kernel and
+show without this step. They run on the TypeScript kernel and
 were saved with their outputs, marked trusted:
 
 | Notebook               | What it shows                                                        |
@@ -294,7 +294,7 @@ picture, and the Ganymede site shows it at
   `@tlockney/cdp-kernel/browser`), the default, and JupyterLite's JavaScript
   kernel (`@jupyterlite/javascript-kernel`). A `ganymede` connection with
   `kernels: 'page'` (the sheet's "Run kernels in this page", or
-  `?kernels=page` in the URL, which the iPad app uses) keeps notebooks on
+  `?kernels=page` in the URL) keeps notebooks on
   the server and runs these kernels in the page.
 - **Notebook** (`src/components/NotebookPane.tsx`). JupyterLab's
   `Notebook` widget with a `SessionContext`, which starts or rejoins the

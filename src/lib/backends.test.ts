@@ -155,6 +155,45 @@ describe('connect: ganymede', () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
+  it('in the Apple apps, tells the app of renames made here, for kept permissions (#383)', async () => {
+    fakeServer();
+    const posted: unknown[] = [];
+    vi.stubGlobal('webkit', {
+      messageHandlers: { kernelRelay: { postMessage: (m: unknown) => posted.push(m) } },
+    });
+    const backend = keep(await connect({ kind: 'ganymede', url: '', token: 'secret' }));
+    const contents = backend.services.contents as unknown as {
+      _fileChanged: { emit(change: unknown): void };
+    };
+    contents._fileChanged.emit({
+      type: 'rename',
+      oldValue: { path: 'a.ipynb' },
+      newValue: { path: 'b.ipynb' },
+    });
+    contents._fileChanged.emit({ type: 'save', oldValue: null, newValue: { path: 'b.ipynb' } });
+    expect(posted).toEqual([{ op: 'moved', from: 'a.ipynb', to: 'b.ipynb' }]);
+  });
+
+  it("doesn't report renames on a remote server, which may hold a local notebook's path", async () => {
+    fakeServer();
+    const posted: unknown[] = [];
+    vi.stubGlobal('webkit', {
+      messageHandlers: { kernelRelay: { postMessage: (m: unknown) => posted.push(m) } },
+    });
+    const backend = keep(
+      await connect({ kind: 'ganymede', url: 'http://remote.example:8888', token: 'secret' }),
+    );
+    const contents = backend.services.contents as unknown as {
+      _fileChanged: { emit(change: unknown): void };
+    };
+    contents._fileChanged.emit({
+      type: 'rename',
+      oldValue: { path: 'a.ipynb' },
+      newValue: { path: 'b.ipynb' },
+    });
+    expect(posted).toEqual([]);
+  });
+
   it('reports an unreachable server', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
     await expect(connect({ kind: 'ganymede', url: '', token: 'x' })).rejects.toThrow();

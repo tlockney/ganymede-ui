@@ -39,26 +39,34 @@ const { deliver, deviceOptions } = await import('./kernel-host');
 // The setup unstubs globals between tests.
 beforeEach(stubWebkit);
 
+const json = (msg: unknown) => JSON.stringify(msg);
+
 describe('kernel host page', () => {
-  it('says it is ready, then runs and relays one kernel per id', async () => {
+  it('says it is ready, then runs one kernel per id and tags what it sends with the run', async () => {
     expect(posted).toEqual([{ op: 'ready' }]);
-    deliver({ kernel: 'k1', op: 'start' });
+    deliver({ kernel: 'k1', op: 'start', run: 1 });
     const [kernel] = mocks.kernels;
-    deliver({ kernel: 'k1', op: 'send', channel: 'shell', msg: { buffers: ['AQI='] } });
-    deliver({ kernel: 'k1', op: 'send', channel: 'iopub', msg: {} });
-    deliver({ kernel: 'nope', op: 'send', channel: 'shell', msg: {} });
+    deliver({ kernel: 'k1', op: 'send', channel: 'shell', json: json({ buffers: ['AQI='] }) });
+    deliver({ kernel: 'k1', op: 'send', channel: 'iopub', json: json({}) });
+    deliver({ kernel: 'nope', op: 'send', channel: 'shell', json: json({}) });
     expect(kernel!.send).toHaveBeenCalledTimes(1);
     const [channel, msg] = kernel!.send.mock.calls[0]!;
     expect(channel).toBe('shell');
     expect([...new Uint8Array((msg as { buffers: ArrayBuffer[] }).buffers[0]!)]).toEqual([1, 2]);
 
-    kernel!.listener!('iopub', { header: {} });
+    kernel!.listener!('iopub', { header: {}, buffers: [new Uint8Array([1, 2])] });
     kernel!.close();
     await Promise.resolve();
     await Promise.resolve();
     expect(posted.slice(1)).toEqual([
-      { kernel: 'k1', op: 'message', channel: 'iopub', msg: { header: {} } },
-      { kernel: 'k1', op: 'closed' },
+      {
+        kernel: 'k1',
+        run: 1,
+        op: 'message',
+        channel: 'iopub',
+        json: json({ header: {}, buffers: ['AQI='] }),
+      },
+      { kernel: 'k1', run: 1, op: 'closed' },
     ]);
   });
 
@@ -88,7 +96,7 @@ describe('kernel host page', () => {
         device: { postMessage: async () => ({}) },
       },
     });
-    deliver({ kernel: 'dev', op: 'start' });
+    deliver({ kernel: 'dev', op: 'start', run: 2 });
     expect(mocks.options.at(-1)).toMatchObject({ capabilities: { device: true } });
   });
 
@@ -100,14 +108,14 @@ describe('kernel host page', () => {
         device: { postMessage: async () => ({}) },
       },
     });
-    deliver({ kernel: 'o1', op: 'start' });
+    deliver({ kernel: 'o1', op: 'start', run: 3 });
     const owner = (mocks.options.at(-1)!.host as { owner: number }).owner;
     expect(got).toEqual([{ kernel: 'o1', op: 'owner', owner }]);
   });
 
   it('says no owner without the device handler', () => {
     const before = posted.length;
-    deliver({ kernel: 'plain', op: 'start' });
+    deliver({ kernel: 'plain', op: 'start', run: 4 });
     expect(posted.slice(before)).toEqual([]);
   });
 
@@ -119,34 +127,66 @@ describe('kernel host page', () => {
         device: { postMessage: async (m: unknown) => (sent.push(m), {}) },
       },
     });
-    deliver({ kernel: 'a', op: 'start' });
+    deliver({ kernel: 'a', op: 'start', run: 5 });
     const a = mocks.kernels.at(-1)!;
     const aOwner = (mocks.options.at(-1)!.host as { owner: number }).owner;
-    deliver({ kernel: 'b', op: 'start' });
+    deliver({ kernel: 'b', op: 'start', run: 6 });
     a.close();
     await Promise.resolve();
     expect(sent).toEqual([{ owner: aOwner, release: true }]);
   });
 
-  it("doesn't say closed for a kernel the UI shut down, so a restart under its id lives (#394)", async () => {
+  it.each(['control', 'shell'])(
+    "doesn't say closed for a kernel shut down on %s (#394)",
+    async channel => {
+      posted.length = 0;
+      deliver({ kernel: 'r', op: 'start', run: 7 });
+      const old = mocks.kernels.at(-1)!;
+      const shutdown = { header: { msg_type: 'shutdown_request' }, content: { restart: false } };
+      deliver({ kernel: 'r', op: 'send', channel, json: json(shutdown) });
+      expect(old.send).toHaveBeenCalledOnce();
+      old.close();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(posted).toEqual([]);
+    },
+  );
+
+  it('stops a kernel: its Worker is asked to end, and nothing it sends after goes anywhere', async () => {
     posted.length = 0;
-    deliver({ kernel: 'r', op: 'start' });
+    deliver({ kernel: 's', op: 'start', run: 8 });
     const old = mocks.kernels.at(-1)!;
-    const shutdown = { header: { msg_type: 'shutdown_request' }, content: { restart: false } };
-    deliver({ kernel: 'r', op: 'send', channel: 'control', msg: shutdown });
+    deliver({ kernel: 's', op: 'stop' });
     expect(old.send).toHaveBeenCalledOnce();
-    // The old kernel ends after the restart's start has gone by: the new
-    // one is under the id, and nothing says closed.
+    const [channel, msg] = old.send.mock.calls[0]!;
+    expect(channel).toBe('control');
+    expect(msg).toMatchObject({ header: { msg_type: 'shutdown_request' } });
+    // A restart under the same id: the old run's late reply and end say
+    // nothing, and the new one runs.
+    deliver({ kernel: 's', op: 'start', run: 9 });
+    const next = mocks.kernels.at(-1)!;
+    old.listener!('control', { header: { msg_type: 'shutdown_reply' } });
     old.close();
     await Promise.resolve();
     await Promise.resolve();
-    deliver({ kernel: 'r', op: 'start' });
-    const next = mocks.kernels.at(-1)!;
     expect(posted).toEqual([]);
-    // One that ends on its own still says so.
-    next.close();
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(posted).toEqual([{ kernel: 'r', op: 'closed' }]);
+    deliver({ kernel: 's', op: 'send', channel: 'shell', json: json({ n: 1 }) });
+    expect(next.send).toHaveBeenCalledWith('shell', { n: 1 });
+    next.listener!('iopub', { n: 2 });
+    expect(posted).toEqual([
+      { kernel: 's', run: 9, op: 'message', channel: 'iopub', json: json({ n: 2 }) },
+    ]);
+  });
+
+  it('a start under a running id replaces that kernel', () => {
+    deliver({ kernel: 't', op: 'start', run: 10 });
+    const old = mocks.kernels.at(-1)!;
+    deliver({ kernel: 't', op: 'start', run: 11 });
+    expect(old.send).toHaveBeenCalledWith(
+      'control',
+      expect.objectContaining({
+        header: expect.objectContaining({ msg_type: 'shutdown_request' }),
+      }),
+    );
   });
 });

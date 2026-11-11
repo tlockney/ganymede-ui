@@ -170,7 +170,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         didSet { document?.webView = webView }
     }
     #endif
-    /// Where the page's in-page kernels run (ganymede-ui#99).
+    /// The page's side of the app's kernels and `device` (ganymede-ui#99).
     private let kernels = KernelHost()
     private var codeFontObserver: CodeFontObserver?
     #if os(iOS)
@@ -247,7 +247,8 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         view.load(URLRequest(url: url))
     }
 
-    /// A reload or another page: the old page's kernels go with it.
+    /// A reload or another page: the old page's remote `device` calls go
+    /// with it. Its kernels are the server's and keep running.
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         kernels.reset()
         // The new page takes commands once it has posted its state.

@@ -266,17 +266,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     /// Asks to save notebooks and text files with unsaved edits first.
+    /// Then stops the server off the main thread, so the app's own kernels
+    /// can answer their shutdown (ganymede#266).
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         quitting = true
-        guard PageDocument.hasUnsaved || EditorDocument.hasUnsaved else { return .terminateNow }
         Task { @MainActor in
-            var quit = await PageDocument.confirmQuit()
-            if quit { quit = await EditorDocument.confirmQuit() }
+            var quit = true
+            if PageDocument.hasUnsaved || EditorDocument.hasUnsaved {
+                quit = await PageDocument.confirmQuit()
+                if quit { quit = await EditorDocument.confirmQuit() }
+            }
             if !quit {
                 quitting = false
                 // Windows saved and closed during the prompts opened no
                 // start window; if none is left, open one now (#416).
                 if !WorkspaceTabs.anyOpen { WorkspaceTabs.openStart(folder: AppModel.shared.root) }
+            } else {
+                await AppModel.shared.stopServer()
             }
             sender.reply(toApplicationShouldTerminate: quit)
         }
