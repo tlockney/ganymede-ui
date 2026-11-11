@@ -54,11 +54,6 @@ itself, asking first ([Updates](docs/apps.md#updates)). The iPad and
 iPhone app is on TestFlight for internal testers. [docs/apps.md](docs/apps.md) is the apps' user guide;
 [apple/README.md](apple/README.md) has how to build them.
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release: updates. The latest release's app doesn't check for
-> them.
-
 ## Run
 
 You need Node.js 22.12 or later (CI uses 24). The server modes need
@@ -100,10 +95,6 @@ Show Again" hides it in this browser (`ganymede-ui:onboarding` in local
 storage).
 
 ### Example notebooks
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
 
 **Open Example Notebooks**, under New Notebook in the empty window and in
 the command palette (and in the apps' File menu), copies a set of
@@ -307,10 +298,6 @@ picture, and the Ganymede site shows it at
   ipywidgets run through JupyterLab's widget manager (`src/lib/widgets.ts`),
   which also draws anywidget views, such as cdp-kernel's `jupyter.widget`,
   each in a sandboxed frame (`src/lib/anywidget.ts`).
-
-  > [!NOTE]
-  > **Unreleased.** anywidget views are available only from a build of
-  > `main` (HEAD); the latest release shows them as text.
 
 - **Shell** (`src/components/`, `src/styles/app.css`). Unified toolbar,
   translucent source-list sidebar, sheets, segmented controls, system fonts

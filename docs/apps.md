@@ -115,10 +115,6 @@ shown or hidden, its tab and its expanded folders across launches.
   terminal on a remote. The choice is app-wide, and switching shuts down
   running kernels, so the Mac asks first while any run.
 
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release, which offers the choice only in Settings > Kernels.
-
 ### Terminals and the kernel log
 
 - Terminals open in the window's bottom panel, as tabs under the
@@ -181,10 +177,6 @@ The Shortcuts app, Spotlight and Siri get these Ganymede actions:
 | Control Notebook Kernel      | Starts, interrupts, restarts or shuts down a notebook's kernel.                                        |
 | List Notebooks               | Returns the notebooks in a folder.                                                                     |
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release: Run Notebook with Parameters.
-
 Each output is a Cell Output with its cell id, kind (stream, result,
 display or error), text, image and JSON, so the next action can take any
 of them; used as text, it is its text. A cell that fails, a missing file
@@ -200,10 +192,6 @@ notebook in a new kernel of its own, so a window shows nothing of it and
 nothing is saved. The actions are on the Mac only for now.
 
 ### Links
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
 
 The Mac app opens `ganymede://` links, so launchers, Markdown links,
 `open` in a terminal and other apps can open, create and run notebooks:
@@ -272,10 +260,6 @@ shortcuts and rebinds them.
 
 #### Updates
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
-
 Release builds check GitHub for a newer release once a day. When one is
 found, the Dock icon gets a badge and an **Update Available** button
 appears in the window's toolbar. The button opens the release notes with
@@ -304,8 +288,7 @@ Bigger Code Font (⌘+), Smaller Code Font (⌘−) and Actual Code Font Size
 (⌘0) change the size from any window.
 
 Ganymede > Agent Settings… (⌥⌘,), Help > Keyboard Shortcuts and Kernel >
-Manage Remotes… (Where Kernels Run… in the latest release) open those
-Settings tabs, as do the command palette's
+Manage Remotes… open those Settings tabs, as do the command palette's
 Settings…, Keyboard Shortcuts and Connect to a Server…. The agent's API
 keys are kept in the keychain too.
 
@@ -343,10 +326,6 @@ keys are kept in the keychain too.
   ⇧⌘↩, Interrupt ⌘., Find ⌘F.
 - Once a remote has a server, the ⋯ menu also picks where kernels run,
   as Settings does.
-
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release.
 
 - A text file opens over the notebook, one at a time; Close (which asks to
   save) or opening a notebook from the sidebar goes back to it, saving
@@ -405,10 +384,6 @@ headings; pick one to go to its cell.
   in the sidebar from the start; not a folder you picked, and a deleted
   `Examples` folder stays deleted.
 
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release.
-
 - **Run Script on Device** (Shortcuts, Mac too; experimental, off until
   Settings › Device › Run Scripts from Shortcuts): runs a `.ts` or `.js`
   file, or an `.ipynb` notebook's code cells, on this device with no
@@ -420,10 +395,6 @@ headings; pick one to go to its cell.
   with no location, gets no permissions. No imports. The time limit (30
   seconds by default, 60 at most) stops waiting for the script, but a loop
   that never yields isn't stopped and holds up the app until it ends.
-
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release.
 
 - **Downloads** open the share sheet, where Save to Files keeps them.
 - In the background iOS may stop the app's server; back in the
