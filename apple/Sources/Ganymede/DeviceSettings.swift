@@ -110,14 +110,30 @@ struct ShareSheetSettings: View {
         } footer: {
             Text("Experimental. Ganymede's Run a Notebook in the share sheet runs one of these notebooks on what you share, with no window. It uses a copy taken when you add the notebook: add it again to update it. It can't ask for permissions: it uses only what each notebook was allowed with Always.")
         }
-        .fileImporter(isPresented: $picking, allowedContentTypes: [.jupyterNotebook]) { result in
-            guard case let .success(url) = result else { return }
+        .fileImporter(isPresented: $picking, allowedContentTypes: Self.notebookTypes) { result in
+            let url: URL
+            switch result {
+            case let .success(picked): url = picked
+            case let .failure(error):
+                failure = "Couldn't pick the notebook: \(error.localizedDescription)"
+                return
+            }
             change { store in
                 let scoped = url.startAccessingSecurityScopedResource()
                 defer { if scoped { url.stopAccessingSecurityScopedResource() } }
                 try store.add(url)
             }
         }
+    }
+
+    /// As File › Open… takes: on a Mac where another app claims `.ipynb`,
+    /// its type isn't `org.jupyter.ipynb`.
+    private static var notebookTypes: [UTType] {
+        #if os(macOS)
+        [.jupyterNotebook, DefaultApp.notebookType]
+        #else
+        [.jupyterNotebook]
+        #endif
     }
 
     private func change(_ edit: (ShareNotebooks) throws -> Void) {

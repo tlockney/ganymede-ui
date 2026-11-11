@@ -67,8 +67,13 @@ final class ShareNotebooksTests: XCTestCase {
     }
 
     func testTheLedgerMovesToTheGroupOnce() throws {
-        let app = try XCTUnwrap(UserDefaults(suiteName: "app-\(UUID().uuidString)"))
-        let group = try XCTUnwrap(UserDefaults(suiteName: "group-\(UUID().uuidString)"))
+        let appSuite = "app-\(UUID().uuidString)", groupSuite = "group-\(UUID().uuidString)"
+        let app = try XCTUnwrap(UserDefaults(suiteName: appSuite))
+        let group = try XCTUnwrap(UserDefaults(suiteName: groupSuite))
+        defer {
+            app.removePersistentDomain(forName: appSuite)
+            group.removePersistentDomain(forName: groupSuite)
+        }
         let rows = [["notebook": "/n.ipynb", "capability": "location", "answer": "always"]]
         app.set(rows, forKey: AppGroup.ledgerKey)
 

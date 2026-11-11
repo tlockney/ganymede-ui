@@ -21,7 +21,10 @@ in its own defaults.
 The permission ledger moved to the group's defaults, so a notebook's
 kept "always" reaches the extension. On first use the app moves its
 old rows over and removes them from its own defaults; after that the
-group's rows win, so a revoke isn't undone by an old copy. Folder grants stay in the app: their bookmarks
+group's rows win, so a revoke isn't undone by an old copy. The move
+happens once per Mac, so a locally signed build with another team moves
+the answers into that team's group and the release build starts empty;
+a build with no team has no group and leaves them alone. Folder grants stay in the app: their bookmarks
 are scoped to the app and the extension couldn't open them.
 
 What's left (memory cap, loading large or image items, refreshing a

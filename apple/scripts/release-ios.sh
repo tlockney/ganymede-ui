@@ -100,7 +100,7 @@ if ((manual)); then
     fi
     # The app and its extensions share an App Group (#449).
     /usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.security.application-groups' "$plist" 2> /dev/null |
-      grep -qF "$app_group" ||
+      grep -qxE "[[:space:]]*${app_group//./\\.}" ||
       fail "$name doesn't include the App Group $app_group: turn it on for $id and regenerate the profile"
     expires=$(plutil -extract ExpirationDate raw "$plist")
     echo "$name: $uuid ($(plutil -extract Name raw "$plist")), expires $expires"
