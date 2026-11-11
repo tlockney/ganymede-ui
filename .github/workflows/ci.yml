@@ -96,10 +96,11 @@ jobs:
       - run: npm ci
       # Best effort for the system libraries: the runner image has
       # Chromium's (it ships Chrome), so an apt mirror outage shouldn't
-      # fail the job (#499). Bounded: apt takes ~10 minutes to give up.
+      # fail the job (#499). Bounded: apt takes ~10 minutes to give up,
+      # and `timeout` stops npx, not the apt-get it started.
       - run: |
           npx playwright install chromium
-          timeout 5m npx playwright install-deps chromium || echo "::warning::apt failed; using the runner image's libraries"
+          timeout 5m npx playwright install-deps chromium || { sudo pkill -x apt-get || true; echo "::warning::apt failed; using the runner image's libraries"; }
       - run: npm run build
       - run: npm run e2e
       - if: ${{ !cancelled() }}
