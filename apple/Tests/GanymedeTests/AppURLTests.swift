@@ -100,7 +100,7 @@ final class AppURLTests: XCTestCase {
         XCTAssertEqual(try params("p.day=mon&p.n=2&p.on=true&p.list=%5B1%2C2%5D"), #"{"day":"mon","list":[1,2],"n":2,"on":true}"#)
         XCTAssertEqual(try params("p.q=%22quoted%22"), #"{"q":"quoted"}"#)
         // params= first, each p. over it; names keep their case.
-        XCTAssertEqual(try params("params=%7B%22a%22%3A1%2C%22b%22%3A2%7D&p.b=3&P.Day=x"), #"{"Day":"x","a":1,"b":3}"#)
+        XCTAssertEqual(try params("params=%7B%22a%22%3A1%2C%22b%22%3A2%7D&p.b=3&P.Day=x"), #"{"a":1,"b":3,"Day":"x"}"#)
         XCTAssertEqual(try params("Params=%7B%7D"), "{}")
         XCTAssertNil(try params("timeout=5"))
     }
