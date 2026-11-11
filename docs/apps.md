@@ -182,11 +182,51 @@ the notebook's kernel from its kernelspec, on this Mac or the remote
 kernels run on, never the in-app TypeScript kernel, which only a window
 reaches. The actions are on the Mac only for now.
 
+### Links
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+The Mac app opens `ganymede://` links, so launchers, Markdown links,
+`open` in a terminal and other apps can open, create and run notebooks:
+
+| Link                                                     | What it does                                                                                                |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `ganymede://open?path=…`                                 | Opens a notebook or folder in a window.                                                                     |
+| `ganymede://new?dir=…[&name=…][&template=…]`             | Creates a notebook in a folder, empty or a copy of `template`, and opens it.                                |
+| `ganymede://run?path=…[&cell=…][&restart=0][&timeout=…]` | Runs every code cell, after restarting the kernel unless `restart=0`, or the cell with an id or tag `cell`. |
+
+Paths are absolute, start with `~/`, or are relative to the folder the
+app serves; encode them as URL query values (a space is `%20`).
+`timeout` is in seconds, 600 unless given, at most 3600.
+
+A link run opens the notebook, so its window shows the outputs arrive;
+an error shows in an alert. Any app or web page can open a link, so the
+first time a link runs a notebook, Ganymede asks. "Always allow links to
+run this notebook" skips the question from then on; Settings › General ›
+Links lists those notebooks, each with Revoke.
+
+For a reply, put the route under `x-callback-url/` and add
+[x-callback-url](https://x-callback-url.com) answers:
+
+```text
+ganymede://x-callback-url/run?path=~/reports/daily.ipynb&x-success=…&x-error=…&x-cancel=…
+```
+
+`x-success` gets `path` (the new notebook) for `new`, and `status=ok` and
+`output` (the cells' text output) for `run`, which then opens no window.
+`x-error` gets `errorCode` (1 for the notebook or server, 2 for a bad
+link, 3 cancelled) and `errorMessage`, and `x-cancel` is opened when
+you answer Cancel. In Shortcuts, the Open X-Callback URL action does
+this and gives the answer to the next action.
+
 ### Settings
 
 Settings (⌘,) is one window with tabs. General makes Ganymede the
-default app for notebooks, sets how it updates ([Updates](#updates)) and
-turns crash reports on or off. Appearance
+default app for notebooks, sets how it updates ([Updates](#updates)),
+turns crash reports on or off, and lists the notebooks links may run
+([Links](#links)). Appearance
 sets the code font (below). Kernels
 picks where kernels run, this Mac or, as on iPadOS, one remote's server,
 and lists the kernels installed there. Remotes keeps a list of remotes:
