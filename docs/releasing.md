@@ -22,6 +22,18 @@ cdp-kernel and for the ganymede-ui release `ganymede ui install`
 installs, so that default is the ganymede-ui release before this one
 until Ganymede's next release.
 
+## Version numbers
+
+Ganymede and ganymede-ui share their minor version, so the docs and the
+site show one number for a round: Ganymede 0.10.0 and the apps 0.10.0.
+A round that changes either one's minor releases both, Ganymede first,
+and `scripts/release.sh minor` here takes the X.Y.0 Ganymede just
+released (from 0.8.0 to 0.10.0 when Ganymede is at 0.10.0). It stops if
+Ganymede's latest minor is not newer than this repository's version:
+release Ganymede first, or release a patch. A fix to one ships as its own
+patch release (0.10.1) without a release of the other. An explicit
+version must have Ganymede's X.Y too. cdp-kernel keeps its own numbers.
+
 When a pin moves, the release commit changes
 `.github/workflows/ci.yml`, so pushing it needs a credential that may
 change workflows (`gh auth login`'s token and SSH keys can; a
@@ -35,9 +47,9 @@ fine-grained token needs Workflows: write).
    their latest releases (above, listed in the commit message and the
    pull request), regenerates `CHANGELOG.md`, commits them on
    `release/vX.Y.Z`, pushes, and opens an issue and a pull request. The
-   level is `patch`, `minor`, `major`, or an explicit version; the first
-   release can be the version already in `package.json`
-   (`scripts/release.sh 0.0.1`).
+   level is `patch`, `minor`, `major`, or an explicit version; `minor`
+   and `major` take Ganymede's latest X.Y.0 ([Version
+   numbers](#version-numbers)).
 
    Before merging it, remove the docs' "Unreleased" notes on that branch
    ([CLAUDE.md](https://github.com/tlockney/ganymede-ui/blob/main/CLAUDE.md#documenting-unreleased-features)): the
