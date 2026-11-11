@@ -269,6 +269,35 @@ struct RunNotebookIntent: AppIntent {
     }
 }
 
+struct RunNotebookWithParametersIntent: AppIntent {
+    static let title: LocalizedStringResource = "Run Notebook with Parameters"
+    static let description = IntentDescription(
+        "Runs a notebook in a new kernel with parameters and returns its named results as JSON. The notebook and its window are left as they are."
+    )
+
+    @Parameter(title: "Notebook")
+    var notebook: NotebookEntity
+    @Parameter(title: "Parameters", description: "A JSON object, like {\"day\": \"2026-11-10\"}.", default: "{}")
+    var params: String
+    @Parameter(title: "Time Limit (seconds)", default: 600, inclusiveRange: (1, 3600))
+    var timeout: Int
+
+    static var parameterSummary: some ParameterSummary {
+        Summary("Run \(\.$notebook) with \(\.$params)") {
+            \.$timeout
+        }
+    }
+
+    @MainActor
+    func perform() async throws -> some IntentResult & ReturnsValue<String> {
+        let actions = try await IntentServer.actions()
+        let path = try IntentServer.path(notebook.url)
+        let result = try await actions.notebookRunWithParams(path: path, params: params, timeout: timeout)
+        if result.status != "ok" { throw NotebookActionError.runFailed(result.error ?? "no message") }
+        return .result(value: result.results)
+    }
+}
+
 struct RunCellIntent: AppIntent {
     static let title: LocalizedStringResource = "Run Cell"
     static let description = IntentDescription(

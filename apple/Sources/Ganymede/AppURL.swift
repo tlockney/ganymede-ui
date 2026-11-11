@@ -9,6 +9,7 @@ import Observation
 ///     ganymede://open?path=…
 ///     ganymede://new?dir=…[&name=…][&template=…]
 ///     ganymede://run?path=…[&cell=id|tag][&restart=0][&timeout=600]
+///     ganymede://run?path=…&p.NAME=VALUE…|&params=<JSON object>[&timeout=600]
 ///     ganymede://x-callback-url/<route>?…&x-success=…&x-error=…&x-cancel=…
 ///
 /// Paths are file paths: absolute, `~/…`, or relative to the folder the
@@ -18,7 +19,9 @@ struct AppURL: Equatable {
         case open(path: String)
         case new(dir: String, name: String?, template: String?)
         /// `cell`: a cell id, or a tag; nil runs every code cell.
-        case run(path: String, cell: String?, restart: Bool, timeout: Int)
+        /// `params`: the run contract's parameters (ganymede#650), as a
+        /// JSON object's text; a run with them goes to a fresh kernel.
+        case run(path: String, cell: String?, restart: Bool, timeout: Int, params: String? = nil)
     }
 
     /// x-callback-url's answers (x-callback-url.com): URLs to open with
@@ -90,11 +93,8 @@ struct AppURL: Equatable {
         case "new":
             command = .new(dir: try required("dir"), name: value("name"), template: value("template"))
         case "run":
-            // The run contract's parameters (ganymede#650) need a run in a
-            // fresh kernel, which the server doesn't offer yet (ganymede#652).
-            if query.keys.map({ $0.lowercased() }).contains(where: { $0 == "params" || $0.hasPrefix("p.") }) {
-                throw AppURLError.parametersUnsupported
-            }
+            let params = try Self.params(parts.queryItems ?? [])
+            if params != nil, value("cell") != nil { throw AppURLError.cellWithParameters }
             var restart = true
             if let flag = value("restart") {
                 guard let parsed = Self.bool(flag) else { throw AppURLError.badValue("restart", flag) }
@@ -107,7 +107,9 @@ struct AppURL: Equatable {
                 }
                 timeout = seconds
             }
-            command = .run(path: try required("path"), cell: value("cell"), restart: restart, timeout: timeout)
+            command = .run(
+                path: try required("path"), cell: value("cell"), restart: restart, timeout: timeout, params: params
+            )
         case "":
             throw AppURLError.missing("route")
         default:
@@ -119,6 +121,27 @@ struct AppURL: Equatable {
     var runsCode: Bool {
         if case .run = command { return true }
         return false
+    }
+
+    /// The run contract's parameters in a query: `params=` (a JSON object),
+    /// then each `p.NAME=VALUE` over it, its value JSON if it parses and
+    /// else a string, as `ganymede execute -p` reads them. Nil when there
+    /// are none; else a JSON object's text, keys sorted.
+    static func params(_ items: [URLQueryItem]) throws -> String? {
+        var params: [String: Any]?
+        for item in items where item.name.lowercased() == "params" {
+            let text = item.value ?? ""
+            guard let object = NotebookActions.paramsObject(text) else { throw AppURLError.badValue("params", text) }
+            params = object
+        }
+        for item in items where item.name.lowercased().hasPrefix("p.") {
+            let name = String(item.name.dropFirst(2))
+            guard !name.isEmpty else { throw AppURLError.badValue("parameter name", item.name) }
+            let text = item.value ?? ""
+            let value = (try? JSONSerialization.jsonObject(with: Data(text.utf8), options: .fragmentsAllowed)) ?? text
+            params = (params ?? [:]).merging([name: value]) { $1 }
+        }
+        return try params.map { try NotebookActions.paramsText($0) }
     }
 
     private static func bool(_ text: String) -> Bool? {
@@ -198,7 +221,7 @@ enum AppURLError: LocalizedError, Equatable {
     case unknownRoute(String)
     case missing(String)
     case badValue(String, String)
-    case parametersUnsupported
+    case cellWithParameters
     case cancelled
 
     var errorDescription: String? {
@@ -207,7 +230,7 @@ enum AppURLError: LocalizedError, Equatable {
         case .unknownRoute(let route): "Ganymede has no “\(route)” URL; it has open, new and run."
         case .missing(let name): "The URL needs “\(name)”."
         case .badValue(let name, let value): "“\(value)” isn’t a valid \(name)."
-        case .parametersUnsupported: "This version of Ganymede can’t run a notebook with parameters from a URL."
+        case .cellWithParameters: "A run with parameters runs the whole notebook; leave out “cell”."
         case .cancelled: "The run was cancelled."
         }
     }
@@ -227,13 +250,17 @@ enum AppURLError: LocalizedError, Equatable {
 /// answers an x-callback URL is allowed only for that callback's scheme
 /// and host, so allowing a notebook for Shortcuts doesn't let a web page
 /// run it and read its output. Settings › General lists them with Revoke.
-/// A key is the path, then `separator` and the destination if any.
+/// Runs with parameters are allowed separately, since parameters can
+/// reach further than the notebook's own run (a path, a command).
+/// A key is the path, then `separator` and the destination if any, then
+/// `separator` and `withParams` for runs with parameters.
 @MainActor
 @Observable
 final class URLRunPermissions {
     static let shared = URLRunPermissions()
     static let defaultsKey = "urlRunAllowedNotebooks"
     static let separator: Character = "\u{1F}"
+    static let withParams = "+params"
 
     @ObservationIgnored private let defaults: UserDefaults
     private(set) var paths: [String]
@@ -243,12 +270,12 @@ final class URLRunPermissions {
         paths = defaults.stringArray(forKey: Self.defaultsKey) ?? []
     }
 
-    func allows(_ url: URL, sendingTo destination: String?) -> Bool {
-        paths.contains(Self.key(url, destination))
+    func allows(_ url: URL, sendingTo destination: String?, withParameters: Bool = false) -> Bool {
+        paths.contains(Self.key(url, destination, withParameters))
     }
 
-    func allow(_ url: URL, sendingTo destination: String?) {
-        let key = Self.key(url, destination)
+    func allow(_ url: URL, sendingTo destination: String?, withParameters: Bool = false) {
+        let key = Self.key(url, destination, withParameters)
         guard !paths.contains(key) else { return }
         paths.append(key)
         paths.sort { $0.localizedStandardCompare($1) == .orderedAscending }
@@ -270,14 +297,19 @@ final class URLRunPermissions {
     }
 
     /// One key per file, however the URL spelled its path, and destination.
-    private static func key(_ url: URL, _ destination: String?) -> String {
+    private static func key(_ url: URL, _ destination: String?, _ withParameters: Bool) -> String {
         let path = url.standardizedFileURL.resolvingSymlinksInPath().path
-        return destination.map { path + String(separator) + $0 } ?? path
+        return ([path, destination, withParameters ? withParams : nil] as [String?])
+            .compactMap { $0 }
+            .joined(separator: String(separator))
     }
 
-    /// A key's notebook path and destination, for Settings.
-    static func parts(_ key: String) -> (path: String, destination: String?) {
-        guard let cut = key.firstIndex(of: separator) else { return (key, nil) }
-        return (String(key[..<cut]), String(key[key.index(after: cut)...]))
+    /// A key's notebook path, destination, and whether it allows runs with
+    /// parameters, for Settings.
+    static func parts(_ key: String) -> (path: String, destination: String?, withParameters: Bool) {
+        var fields = key.split(separator: separator, omittingEmptySubsequences: false).map(String.init)
+        let withParameters = fields.count > 1 && fields.last == withParams
+        if withParameters { fields.removeLast() }
+        return (fields.first ?? key, fields.count > 1 ? fields[1] : nil, withParameters)
     }
 }

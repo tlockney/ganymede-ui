@@ -170,15 +170,20 @@ version to keep.
 
 The Shortcuts app, Spotlight and Siri get these Ganymede actions:
 
-| Action                  | What it does                                                                                           |
-| ----------------------- | ------------------------------------------------------------------------------------------------------ |
-| Open Notebook           | Opens a notebook in a window.                                                                          |
-| New Notebook            | Creates a notebook in a folder, empty or a copy of a template notebook, and returns it.                |
-| Run Notebook            | Runs every code cell in order, after restarting the kernel unless turned off, and returns the outputs. |
-| Run Cell                | Runs the cell with an id, or every cell with a tag, and returns its outputs.                           |
-| Get Notebook Outputs    | Returns the saved outputs of a notebook or one cell, without running anything.                         |
-| Control Notebook Kernel | Starts, interrupts, restarts or shuts down a notebook's kernel.                                        |
-| List Notebooks          | Returns the notebooks in a folder.                                                                     |
+| Action                       | What it does                                                                                           |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Open Notebook                | Opens a notebook in a window.                                                                          |
+| New Notebook                 | Creates a notebook in a folder, empty or a copy of a template notebook, and returns it.                |
+| Run Notebook                 | Runs every code cell in order, after restarting the kernel unless turned off, and returns the outputs. |
+| Run Cell                     | Runs the cell with an id, or every cell with a tag, and returns its outputs.                           |
+| Run Notebook with Parameters | Runs a notebook in a new kernel with parameters (a JSON object) and returns its named results as JSON. |
+| Get Notebook Outputs         | Returns the saved outputs of a notebook or one cell, without running anything.                         |
+| Control Notebook Kernel      | Starts, interrupts, restarts or shuts down a notebook's kernel.                                        |
+| List Notebooks               | Returns the notebooks in a folder.                                                                     |
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release: Run Notebook with Parameters.
 
 Each output is a Cell Output with its cell id, kind (stream, result,
 display or error), text, image and JSON, so the next action can take any
@@ -190,7 +195,9 @@ Runs go through the server, as an agent's do: a window showing the
 notebook sees the outputs arrive, and they are saved with it. They use
 the notebook's kernel from its kernelspec, on this Mac or the remote
 kernels run on, never the in-app TypeScript kernel, which only a window
-reaches. The actions are on the Mac only for now.
+reaches. Run Notebook with Parameters is the exception: it runs the
+notebook in a new kernel of its own, so a window shows nothing of it and
+nothing is saved. The actions are on the Mac only for now.
 
 ### Links
 
@@ -211,6 +218,18 @@ Paths are absolute, start with `~/`, or are relative to the folder the
 app serves; encode them as URL query values (a space is `%20`).
 `timeout` is in seconds, 600 unless given, at most 3600.
 
+`run` takes [parameters](https://github.com/tlockney/ganymede/blob/main/docs/reference.md#parameters-and-named-results)
+as `p.NAME=VALUE`, each value JSON if it parses and else a string, as
+`ganymede execute -p` reads them, or all at once as `params=` and a JSON
+object: `ganymede://run?path=~/reports/daily.ipynb&p.day=2026-11-10`.
+A run with parameters runs the whole notebook in a new kernel, so a
+window showing the notebook and its kernel are left as they are, and
+nothing is saved. Its named results come back instead of the outputs:
+in an alert for a plain link, or as `results` (a JSON object) in
+`x-success`. `cell` can't be combined with parameters. A run with
+parameters asks on its own, even for a notebook already allowed without
+them, and its "Always allow" covers any parameters.
+
 A link run opens the notebook, so its window shows the outputs arrive;
 an error shows in an alert. Any app or web page can open a link, so the
 first time a link runs a notebook, Ganymede asks, and says where the
@@ -230,7 +249,8 @@ ganymede://x-callback-url/run?path=~/reports/daily.ipynb&x-success=â€¦&x-error=â
 ```
 
 `x-success` gets `path` (the new notebook) for `new`, and `status=ok` and
-`output` (the cells' text output) for `run`, which then opens no window.
+`output` (the cells' text output) for `run`, or `results` for a run with
+parameters; `run` then opens no window.
 `x-error` gets `errorCode` (1 for the notebook or server, 2 for a bad
 link, 3 cancelled) and `errorMessage`, and `x-cancel` is opened when
 you answer Cancel. In Shortcuts, the Open X-Callback URL action does

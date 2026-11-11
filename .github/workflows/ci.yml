@@ -127,7 +127,7 @@ jobs:
       # kernel uses (ganymede#266), on top of ganymede#567's execute
       # endpoint `wait` (#302) and ganymede#455's arm64-only slices (#356).
       # Back to a tag at the next Ganymede release.
-      GANYMEDE_REF: 5a4a5d7e096e308477fa9ca66cd08e794664da7c
+      GANYMEDE_REF: 515c858d9b792ded096b2ad7cc5608cb7c5d4053
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
