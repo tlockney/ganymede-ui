@@ -84,6 +84,18 @@ final class ShareNotebooksTests: XCTestCase {
         XCTAssertNil(app.object(forKey: AppGroup.ledgerKey))
     }
 
+    func testABuildWithNoTeamHasNoGroup() {
+        let app = "com.ganymede-server.Ganymede"
+        XCTAssertNil(AppGroup.usable(app, bundleID: app))
+        XCTAssertNil(AppGroup.usable("", bundleID: app))
+        XCTAssertNil(AppGroup.usable(nil, bundleID: app))
+        XCTAssertEqual(AppGroup.usable("group.\(app)", bundleID: app), "group.\(app)")
+        #if os(macOS)
+        XCTAssertNil(AppGroup.usable(app, bundleID: "\(app).Share"))
+        XCTAssertEqual(AppGroup.usable("ABCDE12345.\(app)", bundleID: app), "ABCDE12345.\(app)")
+        #endif
+    }
+
     @MainActor
     func testNoGroupInATestBundle() {
         XCTAssertNil(AppGroup.id)

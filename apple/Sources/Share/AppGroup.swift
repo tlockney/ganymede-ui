@@ -9,9 +9,23 @@ import Foundation
 // build can use with no profile.
 
 enum AppGroup {
-    /// This bundle's group, or nil in a bundle without one (unit tests).
+    /// This bundle's group, or nil in a bundle without one (unit tests)
+    /// or in a build with no team.
     static var id: String? {
-        guard let id = Bundle.main.object(forInfoDictionaryKey: "GanymedeAppGroup") as? String, !id.isEmpty else { return nil }
+        usable(Bundle.main.object(forInfoDictionaryKey: "GanymedeAppGroup") as? String, bundleID: Bundle.main.bundleIdentifier)
+    }
+
+    /// `id` if it names a real group: not empty, and not the app's own
+    /// bundle ID, which a Mac build with no team (CI's, an unsigned local
+    /// one) gets from an empty team prefix. Defaults with that suite name
+    /// would be the app's own, and moving the ledger into them would
+    /// delete it.
+    static func usable(_ id: String?, bundleID: String?) -> String? {
+        guard let id, !id.isEmpty, id != bundleID else { return nil }
+        #if os(macOS)
+        // A team-prefixed group, as `<TeamID>.com.ganymede-server.Ganymede`.
+        guard !id.hasPrefix("com.") else { return nil }
+        #endif
         return id
     }
 
