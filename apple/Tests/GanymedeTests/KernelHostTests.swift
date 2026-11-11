@@ -166,14 +166,12 @@ final class KernelHostTests: XCTestCase {
         let ui = uiView()
         kernels.lend(ui)
         XCTAssertTrue(kernels.webView.superview === ui)
-
-        NSLog("KernelHostTests step: %d", 170)
+        ui.load(URLRequest(url: server.url))
+        try await waitFor(ui, "document.title === 'ui' && document.readyState === 'complete'")
         let (listed, specs) = try await request(server, "GET", "/api/kernelspecs")
         XCTAssertEqual(listed, 200)
         XCTAssertTrue(specs.contains(#""cdp-browser""#), specs)
         XCTAssertTrue(specs.contains("in app"), specs)
-
-        NSLog("KernelHostTests step: %d", 175)
         let (created, session) = try await request(
             server, "POST", "/api/sessions",
             #"{"path": "trips/Trip.ipynb", "type": "notebook", "name": "trips/Trip.ipynb", "kernel": {"name": "cdp-browser"}}"#)
@@ -183,46 +181,36 @@ final class KernelHostTests: XCTestCase {
         let idle = { () async throws -> Bool in
             try await self.request(server, "GET", "/api/kernels/\(id)").1.contains(#""execution_state":"idle""#)
         }
-        NSLog("KernelHostTests step: %d", 184)
         try await eventually("the kernel", idle)
         XCTAssertEqual(kernels.webView.url?.path, "/kernel.html")
-        NSLog("KernelHostTests step: %d", 186)
         try await eventually("the ledger's notebook") { ledger.notebook(for: 7) != nil }
         XCTAssertEqual(ledger.notebook(for: 7)?.hasSuffix("/trips/Trip.ipynb"), true, ledger.notebook(for: 7) ?? "")
 
         // The device bridge answers in the kernel web view, and is absent
         // from the notebook page.
-        NSLog("KernelHostTests step: %d", 191)
         let hello = try await kernels.webView.callAsyncJavaScript(
             "const r = await webkit.messageHandlers.device.postMessage({ id: 1, method: 'hello', params: {} });"
                 + " return r.result.capabilities.includes('info')",
             contentWorld: .page) as? Bool
         XCTAssertEqual(hello, true)
-        NSLog("KernelHostTests step: %d", 196)
         let inUI = try await eval(ui, "typeof webkit.messageHandlers.device") as? String
         XCTAssertEqual(inUI, "undefined")
 
         // The process ends: the server starts the kernel again, on a new
         // kernel page.
-        NSLog("KernelHostTests step: %d", 201)
         _ = try await eval(kernels.webView, "window.old = true; true")
         kernels.webView.load(URLRequest(url: URL(string: "about:blank")!))
-        NSLog("KernelHostTests step: %d", 203)
         try await waitFor(kernels.webView, "location.href === 'about:blank' && document.readyState === 'complete'")
         kernels.webViewWebContentProcessDidTerminate(kernels.webView)
-        NSLog("KernelHostTests step: %d", 205)
         try await waitFor(kernels.webView, """
             document.readyState === 'complete' && window.old === undefined && !!window.log
               && window.log.includes('start:\(id)')
             """)
-        NSLog("KernelHostTests step: %d", 209)
         try await eventually("the restarted kernel", idle)
 
         // A shutdown asks the kernel, then stops it.
-        NSLog("KernelHostTests step: %d", 212)
         let (deleted, _) = try await request(server, "DELETE", "/api/kernels/\(id)")
         XCTAssertEqual(deleted, 204)
-        NSLog("KernelHostTests step: %d", 214)
         try await waitFor(kernels.webView, "window.log.includes('stop:\(id)')")
         XCTAssertFalse(server.kernels.isLive(id))
     }
@@ -239,7 +227,7 @@ final class KernelHostTests: XCTestCase {
         host.attach(to: ui)
         host.uiWillLoad(server.url)
         ui.load(URLRequest(url: server.url))
-        try await waitFor(ui, "document.readyState === 'complete'")
+        try await waitFor(ui, "document.title === 'ui' && document.readyState === 'complete'")
 
         let remoteHello = try await ui.callAsyncJavaScript(
             "const r = await webkit.messageHandlers.deviceRemote.postMessage({ owner: 1, method: 'hello', params: {} });"
@@ -298,7 +286,7 @@ final class KernelHostTests: XCTestCase {
         host.attach(to: ui)
         host.uiWillLoad(server.url)
         ui.load(URLRequest(url: server.url))
-        try await waitFor(ui, "document.readyState === 'complete'")
+        try await waitFor(ui, "document.title === 'ui' && document.readyState === 'complete'")
 
         // A kernel the server started for trips/Trip.ipynb, whose page said
         // its owner.
