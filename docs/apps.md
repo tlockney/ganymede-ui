@@ -405,6 +405,19 @@ headings; pick one to go to its cell.
   > **Unreleased.** Available only from a build of `main` (HEAD), not in
   > the latest release.
 
+- **Notebook Access…** (File menu on the Mac, the ⋯ menu on the iPad
+  and iPhone, and the Command Palette) sets what a notebook's cells may
+  ask the server for through `jupyter.host()`: the notebooks they may
+  read, whether they may edit their own cells, and the notebooks they
+  may run. Each follows the server's default until you set it for this
+  notebook. A notebook that lists what it wants in its metadata
+  (`ganymede.host.wants`) shows that at the top; asking grants nothing.
+  It needs a Ganymede server with `/api/host/grants`.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release.
+
 - **Downloads** open the share sheet, where Save to Files keeps them.
 - In the background iOS may stop the app's server; back in the
   foreground the app restarts it if it stopped answering.

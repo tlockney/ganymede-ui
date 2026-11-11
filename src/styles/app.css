@@ -1015,14 +1015,46 @@ button {
   text-align: right;
 }
 
-.settings-sheet h3 {
+.settings-sheet h3,
+.host-access-sheet h3 {
   margin: 0;
   font-size: 13px;
   font-weight: 600;
 }
 
-.settings-sheet .form-rows {
+.settings-sheet .form-rows,
+.host-access-sheet .form-rows {
   margin-top: 10px;
+}
+
+.host-access-sheet section {
+  margin-top: 14px;
+}
+
+.host-access-sheet textarea {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 5px 7px;
+  border: 0.5px solid var(--separator);
+  border-radius: 6px;
+  background: var(--window-bg);
+  color: var(--text);
+  font: 12px var(--font-mono);
+  outline: none;
+  resize: vertical;
+  user-select: text;
+}
+
+.host-access-sheet textarea:focus {
+  box-shadow: 0 0 0 3.5px var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.host-wants {
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: var(--control-bg);
+  font-size: 12px;
 }
 
 .settings-sheet .hint {
