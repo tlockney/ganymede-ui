@@ -1,7 +1,8 @@
 name: Release
 
 # tag-release.yml pushes a `v*` tag and starts this workflow on it. It
-# checks that the tagged commit's pull request passed CI, builds the app,
+# checks that the tagged commit's pull request passed CI, then builds the
+# app while build and e2e run once more on the merged tree,
 # packages `dist/` as a tarball and a zip with SHA-256 checksums, and
 # publishes a GitHub Release whose notes are the version's CHANGELOG.md
 # section, with a build provenance attestation per archive. The `macos`
@@ -63,8 +64,8 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
   # On a tag: the tagged commit is the merge of a pull request into main
-  # whose last CI run passed (#491). That tree was tested before it
-  # merged, so CI doesn't run again and the app builds start at once.
+  # whose last completed CI run passed (#491). The app builds start once
+  # this passes, without waiting on CI; tag-ci below runs alongside them.
   verify:
     if: github.ref_type == 'tag'
     needs: version
@@ -73,6 +74,7 @@ jobs:
     permissions:
       contents: read
       actions: read
+      pull-requests: read
     steps:
       - name: The commit's pull request passed CI
         env:
@@ -84,8 +86,10 @@ jobs:
             --jq '[.[] | select(.merged_at != null and .base.ref == "main" and .merge_commit_sha == "'"$sha"'")][0] | "\(.number) \(.head.sha)"')
           [[ -n "$pr" && "$pr" != "null null" ]] || fail "${sha::12} is not the merge of a pull request into main"
           number=${pr% *} head=${pr#* }
-          conclusion=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$head&event=pull_request&per_page=1" \
-            --jq '.workflow_runs[0].conclusion // "none"')
+          # The newest completed run: a re-run still going after the merge
+          # doesn't count against the one that gated it.
+          conclusion=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$head&event=pull_request&per_page=20" \
+            --jq '[.workflow_runs[] | select(.status == "completed")][0].conclusion // "none"')
           [[ "$conclusion" == success ]] || fail "CI on #$number (${head::12}) is '$conclusion', not success"
           echo "${sha::12} is #$number, whose CI passed on ${head::12}"
 
@@ -94,6 +98,18 @@ jobs:
   # below build the app (#361).
   ci:
     if: github.ref_type != 'tag'
+    needs: version
+    uses: ./.github/workflows/ci.yml
+    with:
+      skip_macos: true
+    permissions:
+      contents: read
+
+  # On a tag: build and e2e on the merged tree, which the release PR's run
+  # and main's push run skip for a version and changelog change. It runs
+  # alongside the app builds, and `release` waits for it.
+  tag-ci:
+    if: github.ref_type == 'tag'
     needs: version
     uses: ./.github/workflows/ci.yml
     with:
@@ -281,9 +297,12 @@ jobs:
           APPSTORE_API_KEY_ID: ${{ secrets.APPSTORE_API_KEY_ID }}
           APPSTORE_API_ISSUER_ID: ${{ secrets.APPSTORE_API_ISSUER_ID }}
 
+  # The status checks are spelled out: an `if` without one gets an
+  # implicit success(), which the skipped `ci` job ahead of build and
+  # macos would make false, skipping the release with no failed job.
   release:
-    if: github.ref_type == 'tag'
-    needs: [version, build, macos]
+    needs: [version, build, macos, tag-ci]
+    if: ${{ !cancelled() && github.ref_type == 'tag' && needs.build.result == 'success' && needs.macos.result == 'success' && needs.tag-ci.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -296,7 +315,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # Only this workflow's own archives: the called CI run also uploads
+      # Only this workflow's own archives: the called CI run (tag-ci) also uploads
       # its ad-hoc signed Ganymede-macOS build and e2e screenshots, which
       # must not reach the release (#334).
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2

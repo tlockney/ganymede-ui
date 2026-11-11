@@ -10,5 +10,13 @@ request.
 
 The check looks at the PR's head, not main's push run of the merge
 commit, because main's run (with `macos-app`) is usually still going
-when the tag is pushed. The gap it leaves, a PR that passed on a stale
-base, is the one branch protection already leaves.
+when the tag is pushed. The release PR's run and main's push run skip
+e2e for a version and changelog change, so a `tag-ci` job still runs
+build and e2e on the tag, alongside the app builds instead of before
+them, and `release` waits for it. That keeps the check on the merged
+tree that the old tag run gave, against a main broken by two PRs that
+each passed on a stale base.
+
+`release` spells out its status checks: with a skipped `ci` job ahead of
+`build` and `macos`, an `if` without one is false and the release would
+be skipped with nothing failed.

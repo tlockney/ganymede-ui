@@ -38,8 +38,10 @@ partway through.
    has a `CHANGELOG.md` section and no tag, tags the merge commit
    `vX.Y.Z`, and starts `release.yml` on the tag.
 3. `release.yml` checks that the tag matches `package.json` and that the
-   tagged commit is the merge of a pull request into `main` whose last CI
-   run passed (it doesn't run CI again on the same tree), builds the app, packages `dist/` as
+   tagged commit is the merge of a pull request into `main` whose last
+   completed CI run passed. The app builds start then, while build and
+   e2e run once more on the tag; the release waits for them. It builds
+   the app, packages `dist/` as
    `ganymede-ui-X.Y.Z.tar.gz` and `ganymede-ui-X.Y.Z.zip` with a
    `SHA256SUMS` file, attests their build provenance, and publishes the
    GitHub Release with the changelog section as notes. A version with a
@@ -278,6 +280,10 @@ gh workflow run release.yml --ref vX.Y.Z --repo tlockney/ganymede-ui
 ```
 
 ### The tagged commit cannot be released
+
+If only the `verify` job failed because the pull request's CI was
+cancelled or failed on a re-run, re-run that CI on the pull request, then
+re-run the failed jobs of the release run. The tag stays.
 
 CI, the build, or the version check fails for a reason that needs a code
 change. If no GitHub Release exists for the tag, nobody can have

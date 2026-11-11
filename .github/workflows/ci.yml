@@ -4,9 +4,10 @@ on:
   push:
     branches: [main]
   pull_request:
-  # release.yml runs these checks on the tag before it builds, without
-  # macos-app: the last app change before the tag passed it on main, and
-  # release.yml's own macos and ios jobs build the app (#361).
+  # release.yml runs these checks on the tag alongside its app builds,
+  # and on manual branch runs before them, without macos-app: the release
+  # PR's CI passed it, and release.yml's own macos and ios jobs build the
+  # app (#361, #491).
   workflow_call:
     inputs:
       skip_macos:
