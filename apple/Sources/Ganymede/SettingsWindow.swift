@@ -125,13 +125,14 @@ private struct LinkRunSettings: View {
                 Text("No notebook may be run from a link without asking.")
                     .foregroundStyle(.secondary)
             } else {
-                ForEach(permissions.paths, id: \.self) { path in
+                ForEach(permissions.paths, id: \.self) { key in
+                    let entry = URLRunPermissions.parts(key)
                     LabeledContent {
-                        Button("Revoke") { permissions.revoke(path) }
-                            .accessibilityLabel("Revoke \((path as NSString).lastPathComponent)")
+                        Button("Revoke") { permissions.revoke(key) }
+                            .accessibilityLabel("Revoke \((entry.path as NSString).lastPathComponent)")
                     } label: {
-                        Text((path as NSString).lastPathComponent)
-                        Text(path)
+                        Text((entry.path as NSString).lastPathComponent)
+                        Text(entry.destination.map { "\(entry.path)\nOutput to \($0)" } ?? entry.path)
                     }
                 }
             }

@@ -203,9 +203,14 @@ app serves; encode them as URL query values (a space is `%20`).
 
 A link run opens the notebook, so its window shows the outputs arrive;
 an error shows in an alert. Any app or web page can open a link, so the
-first time a link runs a notebook, Ganymede asks. "Always allow links to
-run this notebook" skips the question from then on; Settings › General ›
-Links lists those notebooks, each with Revoke.
+first time a link runs a notebook, Ganymede asks, and says where the
+output will be sent when the link has an x-callback reply. "Always allow"
+skips the question from then on for that notebook and that destination
+(the reply's scheme and host) only, so a notebook allowed for Shortcuts
+still asks when a web page links to it with its own reply address.
+Settings › General › Links lists those notebooks, each with Revoke.
+`open` and `new` don't ask: they only show or create a notebook, though
+their reply tells the caller whether a file exists.
 
 For a reply, put the route under `x-callback-url/` and add
 [x-callback-url](https://x-callback-url.com) answers:

@@ -27,6 +27,16 @@ struct AppURL: Equatable {
         var success: URL?
         var error: URL?
         var cancel: URL?
+
+        /// Where a run's output or error goes, as `scheme://host` each,
+        /// for the person to see before it runs; nil when nowhere.
+        var destination: String? {
+            let places = Set([success, error].compactMap { url -> String? in
+                guard let url, let scheme = url.scheme?.lowercased() else { return nil }
+                return "\(scheme)://\(url.host?.lowercased() ?? "")"
+            })
+            return places.isEmpty ? nil : places.sorted().joined(separator: ", ")
+        }
     }
 
     static let scheme = "ganymede"
@@ -82,7 +92,7 @@ struct AppURL: Equatable {
         case "run":
             // The run contract's parameters (ganymede#650) need a run in a
             // fresh kernel, which the server doesn't offer yet (ganymede#652).
-            if query.keys.contains(where: { $0 == "params" || $0.hasPrefix("p.") }) {
+            if query.keys.map({ $0.lowercased() }).contains(where: { $0 == "params" || $0.hasPrefix("p.") }) {
                 throw AppURLError.parametersUnsupported
             }
             var restart = true
@@ -213,12 +223,17 @@ enum AppURLError: LocalizedError, Equatable {
 }
 
 /// Notebooks the person let `ganymede://run` run without asking ("Always
-/// allow"), by file path. Settings › General lists them with Revoke.
+/// allow"), by file path and where the run's output goes: a link that
+/// answers an x-callback URL is allowed only for that callback's scheme
+/// and host, so allowing a notebook for Shortcuts doesn't let a web page
+/// run it and read its output. Settings › General lists them with Revoke.
+/// A key is the path, then `separator` and the destination if any.
 @MainActor
 @Observable
 final class URLRunPermissions {
     static let shared = URLRunPermissions()
     static let defaultsKey = "urlRunAllowedNotebooks"
+    static let separator: Character = "\u{1F}"
 
     @ObservationIgnored private let defaults: UserDefaults
     private(set) var paths: [String]
@@ -228,12 +243,12 @@ final class URLRunPermissions {
         paths = defaults.stringArray(forKey: Self.defaultsKey) ?? []
     }
 
-    func allows(_ url: URL) -> Bool {
-        paths.contains(Self.key(url))
+    func allows(_ url: URL, sendingTo destination: String?) -> Bool {
+        paths.contains(Self.key(url, destination))
     }
 
-    func allow(_ url: URL) {
-        let key = Self.key(url)
+    func allow(_ url: URL, sendingTo destination: String?) {
+        let key = Self.key(url, destination)
         guard !paths.contains(key) else { return }
         paths.append(key)
         paths.sort { $0.localizedStandardCompare($1) == .orderedAscending }
@@ -254,8 +269,15 @@ final class URLRunPermissions {
         defaults.set(paths, forKey: Self.defaultsKey)
     }
 
-    /// One key per file, however the URL spelled its path.
-    private static func key(_ url: URL) -> String {
-        url.standardizedFileURL.resolvingSymlinksInPath().path
+    /// One key per file, however the URL spelled its path, and destination.
+    private static func key(_ url: URL, _ destination: String?) -> String {
+        let path = url.standardizedFileURL.resolvingSymlinksInPath().path
+        return destination.map { path + String(separator) + $0 } ?? path
+    }
+
+    /// A key's notebook path and destination, for Settings.
+    static func parts(_ key: String) -> (path: String, destination: String?) {
+        guard let cut = key.firstIndex(of: separator) else { return (key, nil) }
+        return (String(key[..<cut]), String(key[key.index(after: cut)...]))
     }
 }

@@ -57,6 +57,8 @@ enum AppURLHandler {
         case .open(let path):
             let url = AppURL.fileURL(path, root: root, home: home)
             guard FileManager.default.fileExists(atPath: url.path) else { throw NotebookActionError.notFound(path) }
+            // Under the server root, as `new` and `run` are (the Mac serves `/`).
+            _ = try IntentServer.path(url)
             IntentServer.open(url)
             return []
 
@@ -76,7 +78,7 @@ enum AppURLHandler {
             let url = AppURL.fileURL(path, root: root, home: home)
             guard FileManager.default.fileExists(atPath: url.path) else { throw NotebookActionError.notFound(path) }
             let apiPath = try IntentServer.path(url)
-            try confirm(url, cell: cell)
+            try confirm(url, cell: cell, sendingTo: request.callback?.destination)
             // A link run with no caller to answer shows the notebook.
             if request.callback == nil { IntentServer.open(url) }
             let actions = try await IntentServer.actions()
@@ -93,22 +95,29 @@ enum AppURLHandler {
         }
     }
 
-    /// Asks before a URL first runs a notebook; throws `cancelled` on no.
-    private static func confirm(_ url: URL, cell: String?) throws {
+    /// Asks before a URL first runs a notebook, saying where its output
+    /// goes; throws `cancelled` on no. Always allow covers that notebook
+    /// with that destination only.
+    private static func confirm(_ url: URL, cell: String?, sendingTo destination: String?) throws {
         let permissions = URLRunPermissions.shared
-        if permissions.allows(url) { return }
+        if permissions.allows(url, sendingTo: destination) { return }
         NSApp.activate()
         let alert = NSAlert()
         alert.messageText = "Run “\(url.lastPathComponent)” from a link?"
         let what = cell.map { "the cell “\($0)” of" } ?? "every code cell of"
-        alert.informativeText = "A link asked Ganymede to run \(what) this notebook:\n\n\(url.path)\n\n"
+        var text = "A link asked Ganymede to run \(what) this notebook:\n\n\(url.path)\n\n"
+        if let destination {
+            text += "Its output will be sent to \(destination).\n\n"
+        }
+        alert.informativeText = text
             + "Any app or web page can open a link. Run it only if you trust where the link came from."
         alert.addButton(withTitle: "Run")
         alert.addButton(withTitle: "Cancel")
         alert.showsSuppressionButton = true
-        alert.suppressionButton?.title = "Always allow links to run this notebook"
+        alert.suppressionButton?.title = destination.map { "Always allow links to run this notebook and send its output to \($0)" }
+            ?? "Always allow links to run this notebook"
         guard alert.runModal() == .alertFirstButtonReturn else { throw AppURLError.cancelled }
-        if alert.suppressionButton?.state == .on { permissions.allow(url) }
+        if alert.suppressionButton?.state == .on { permissions.allow(url, sendingTo: destination) }
     }
 
     private static func fail(_ error: Error, callback: AppURL.Callback?) {

@@ -12,7 +12,11 @@ into the notebook's room.
 
 `run` asks before it first runs a notebook, since any page can open a
 link; "Always allow" is kept per file path (symlinks resolved) in user
-defaults, listed in Settings › General with Revoke. A plain `run` opens
+defaults, listed in Settings › General with Revoke. The review found that
+an allowance by path alone let any page run an allowed notebook and read
+its output at an `https://` x-success, so a run with a reply is allowed
+per destination (scheme and host of x-success and x-error), and the
+prompt names it. A plain `run` opens
 the notebook so its window shows the outputs, since nothing else would;
 an x-callback `run` answers the caller instead and opens nothing.
 

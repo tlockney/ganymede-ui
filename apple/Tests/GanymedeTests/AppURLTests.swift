@@ -56,6 +56,14 @@ final class AppURLTests: XCTestCase {
         XCTAssertEqual(url.callback?.success, URL(string: "shortcuts://x-callback-url/done"))
         XCTAssertEqual(url.callback?.error, URL(string: "shortcuts://err"))
         XCTAssertEqual(url.callback?.cancel, URL(string: "shortcuts://cancel"))
+        XCTAssertEqual(url.callback?.destination, "shortcuts://err, shortcuts://x-callback-url")
+    }
+
+    func testDestination() throws {
+        XCTAssertNil(try parse("ganymede://run?path=/a").callback?.destination)
+        XCTAssertNil(AppURL.Callback(cancel: URL(string: "x://y")).destination)
+        let page = try parse("ganymede://x-callback-url/run?path=/a&x-success=HTTPS%3A%2F%2FEvil.example%2Fc%3Fq%3D1")
+        XCTAssertEqual(page.callback?.destination, "https://evil.example")
     }
 
     func testXCallbackWithoutAnswersStillCountsAsOne() throws {
@@ -82,6 +90,8 @@ final class AppURLTests: XCTestCase {
     func testParametersAreNotYetSupported() {
         XCTAssertEqual(error("ganymede://run?path=/a&p.day=1"), .parametersUnsupported)
         XCTAssertEqual(error("ganymede://run?path=/a&params=%7B%7D"), .parametersUnsupported)
+        XCTAssertEqual(error("ganymede://run?path=/a&P.day=1"), .parametersUnsupported)
+        XCTAssertEqual(error("ganymede://run?path=/a&Params=%7B%7D"), .parametersUnsupported)
     }
 
     // MARK: Paths
@@ -149,15 +159,23 @@ final class AppURLTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         let permissions = URLRunPermissions(defaults: defaults)
         let a = URL(fileURLWithPath: "/tmp/x/../a.ipynb")
-        XCTAssertFalse(permissions.allows(a))
-        permissions.allow(a)
-        permissions.allow(a)
-        XCTAssertTrue(permissions.allows(URL(fileURLWithPath: "/tmp/a.ipynb")))
+        XCTAssertFalse(permissions.allows(a, sendingTo: nil))
+        permissions.allow(a, sendingTo: nil)
+        permissions.allow(a, sendingTo: nil)
+        XCTAssertTrue(permissions.allows(URL(fileURLWithPath: "/tmp/a.ipynb"), sendingTo: nil))
         XCTAssertEqual(permissions.paths.count, 1)
+        // Allowed with no callback, or for Shortcuts: a page's callback still asks.
+        XCTAssertFalse(permissions.allows(a, sendingTo: "https://evil.example"))
+        permissions.allow(a, sendingTo: "shortcuts://x-callback-url")
+        XCTAssertTrue(permissions.allows(a, sendingTo: "shortcuts://x-callback-url"))
+        XCTAssertFalse(permissions.allows(a, sendingTo: "https://evil.example"))
+        XCTAssertEqual(permissions.paths.count, 2)
+        let parts = permissions.paths.map(URLRunPermissions.parts)
+        XCTAssertEqual(Set(parts.compactMap(\.destination)), ["shortcuts://x-callback-url"])
         // Kept across launches.
-        XCTAssertTrue(URLRunPermissions(defaults: defaults).allows(a))
-        permissions.revoke(permissions.paths[0])
-        XCTAssertFalse(permissions.allows(a))
-        XCTAssertFalse(URLRunPermissions(defaults: defaults).allows(a))
+        XCTAssertTrue(URLRunPermissions(defaults: defaults).allows(a, sendingTo: nil))
+        permissions.revokeAll()
+        XCTAssertFalse(permissions.allows(a, sendingTo: nil))
+        XCTAssertFalse(URLRunPermissions(defaults: defaults).allows(a, sendingTo: "shortcuts://x-callback-url"))
     }
 }
