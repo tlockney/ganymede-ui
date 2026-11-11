@@ -6,6 +6,13 @@ import { FIXTURE } from './env';
 import { openNotebook, openWithToken, outputs, waitForIdle } from './helpers';
 
 test('lists the variables after a run and expands an object', async ({ page }) => {
+  // The debug requests the view sends (#485): each read of the variables.
+  let debugRequests = 0;
+  page.on('websocket', ws =>
+    ws.on('framesent', frame => {
+      if (String(frame.payload).includes('"debug_request"')) debugRequests++;
+    }),
+  );
   await openWithToken(page);
   await openNotebook(page, FIXTURE);
   await page.getByTitle('Run All').click();
@@ -17,6 +24,13 @@ test('lists the variables after a run and expands an object', async ({ page }) =
   const moons = view.getByRole('row').filter({ hasText: /^▸?moons/ });
   await expect(moons).toBeVisible({ timeout: 30_000 });
   await expect(view.getByRole('row').filter({ hasText: /^▸?rows/ })).toBeVisible();
+
+  // Reading them doesn't make the kernel busy and idle again, which would
+  // read them again, without end (#485).
+  const read = debugRequests;
+  expect(read).toBeGreaterThan(0);
+  await page.waitForTimeout(3_000);
+  expect(debugRequests - read).toBeLessThanOrEqual(2);
 
   await view.getByRole('button', { name: 'Expand moons' }).click();
   // The array's first element, one level down.
