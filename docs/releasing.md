@@ -3,11 +3,37 @@
 How a release is cut, what it publishes, and what to do when it fails
 partway through.
 
+## Order across the repositories
+
+A round releases cdp-kernel, then Ganymede, then ganymede-ui, and each
+release picks up the ones before it in its own release commit. This
+repository's `scripts/release.sh` runs `scripts/release-pins.sh`, which
+moves `@tlockney/cdp-kernel` in `package.json` and the lockfile, and
+ci.yml's `CDP_KERNEL_VERSION`, `GANYMEDE_VERSION` and `GANYMEDE_REF`, to
+the latest cdp-kernel and Ganymede releases. With `GANYMEDE_REF` on a
+release tag, the release's `macos` and `ios` jobs download
+`GanymedeFFI.xcframework` instead of building it.
+
+If `GANYMEDE_REF` is a commit that Ganymede's latest release doesn't
+contain, the script stops before changing anything: release Ganymede
+first. `scripts/release-pins.sh --check` shows what a release would move
+without changing anything. Ganymede's own release does the same for
+cdp-kernel and for the ganymede-ui release `ganymede ui install`
+installs, so that default is the ganymede-ui release before this one
+until Ganymede's next release.
+
+When a pin moves, the release commit changes
+`.github/workflows/ci.yml`, so pushing it needs a credential that may
+change workflows (`gh auth login`'s token and SSH keys can; a
+fine-grained token needs Workflows: write).
+
 ## The normal path
 
 1. From an up-to-date `main`, `scripts/release.sh <level>` previews the
    version bump and the changelog. With `--execute` it bumps `package.json`
-   and `package-lock.json`, regenerates `CHANGELOG.md`, commits them on
+   and `package-lock.json`, moves the cdp-kernel and Ganymede pins to
+   their latest releases (above, listed in the commit message and the
+   pull request), regenerates `CHANGELOG.md`, commits them on
    `release/vX.Y.Z`, pushes, and opens an issue and a pull request. The
    level is `patch`, `minor`, `major`, or an explicit version; the first
    release can be the version already in `package.json`
