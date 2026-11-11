@@ -167,13 +167,13 @@ The Shortcuts app, Spotlight and Siri get these Ganymede actions:
 | Run Notebook                 | Runs every code cell in order, after restarting the kernel unless turned off, and returns the outputs. |
 | Run Cell                     | Runs the cell with an id, or every cell with a tag, and returns its outputs.                           |
 | Run Notebook with Parameters | Runs a notebook in a new kernel with parameters (a JSON object) and returns its named results as JSON. |
+| Get Notebook Outputs         | Returns the saved outputs of a notebook or one cell, without running anything.                         |
+| Control Notebook Kernel      | Starts, interrupts, restarts or shuts down a notebook's kernel.                                        |
+| List Notebooks               | Returns the notebooks in a folder.                                                                     |
 
 > [!NOTE]
 > **Unreleased.** Available only from a build of `main` (HEAD), not in
 > the latest release: Run Notebook with Parameters.
-> | Get Notebook Outputs | Returns the saved outputs of a notebook or one cell, without running anything. |
-> | Control Notebook Kernel | Starts, interrupts, restarts or shuts down a notebook's kernel. |
-> | List Notebooks | Returns the notebooks in a folder. |
 
 Each output is a Cell Output with its cell id, kind (stream, result,
 display or error), text, image and JSON, so the next action can take any
