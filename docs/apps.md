@@ -189,7 +189,9 @@ the notebook's kernel from its kernelspec, on this Mac or the remote
 kernels run on, never the in-app TypeScript kernel, which only a window
 reaches. Run Notebook with Parameters is the exception: it runs the
 notebook in a new kernel of its own, so a window shows nothing of it and
-nothing is saved. The actions are on the Mac only for now.
+nothing is saved. That kernel can be the in-app TypeScript kernel, whose
+cells read the parameters as `jupyter.params`, but only while a Ganymede
+window is open. The actions are on the Mac only for now.
 
 ### Links
 
