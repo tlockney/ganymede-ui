@@ -419,12 +419,6 @@ Where kernels run:
 | This device                         | Kernelspecs installed on the Mac                        | The app's own   |
 | A remote with a server              | That server, through Ganymede's gateway (`gateway_url`) | Same            |
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release, where the page runs the app's TypeScript kernel
-> itself (`?kernels=both`, or `page` on an iPad with no kernel server) and
-> Swift relays its messages between two web views.
-
 Both apps also run their own TypeScript kernel, as a kernel of their
 server: the page opens with `?kernels=server` and sees one server with
 one list of kernels, so the execute endpoint, kernel lifetime and the

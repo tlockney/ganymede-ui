@@ -121,10 +121,6 @@ the binary and the reason in the printed log.
 
 ### Updates
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
-
 The Mac app updates itself with [Sparkle](https://sparkle-project.org)
 (#411). It reads
 `https://github.com/tlockney/ganymede-ui/releases/latest/download/appcast.xml`,

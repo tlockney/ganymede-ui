@@ -109,11 +109,6 @@ browser yet.
 ## Methods
 
 > [!NOTE]
-> **Unreleased.** The `device.output`, `device.widget.update` and
-> `device.secrets` rows are available only from a build of `main` (HEAD),
-> not in the latest release.
-
-> [!NOTE]
 > The table's "In the app" column says what the device package supports.
 > The apps don't register `device.secrets` or `device.widget` yet, so
 > there they answer `unavailable` despite its "yes"; `device.output`
@@ -291,10 +286,6 @@ list what comes next.
 
 ### Methods behind a permission
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
-
 These need your permission ("Permissions and the ledger" below), and
 work only in kernels in the app:
 
@@ -316,10 +307,6 @@ work only in kernels in the app:
 
 ### Host events
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
-
 `device.on(event, handler)` calls `handler` when the app changes:
 `appearance` (`"light"` or `"dark"`), `foreground`, `background`,
 `battery` (`{ level, charging }`) and `locale`. It needs no permission
@@ -335,10 +322,6 @@ off();
 ```
 
 ### Folders
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
 
 `device.folders.pick({ write })` shows the system folder picker and
 keeps the folder you pick for this notebook, across kernel and app
@@ -359,10 +342,6 @@ if (folder) {
 ```
 
 ## Permissions and the ledger
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
 
 Some methods need your permission, such as notifications, location
 and contacts. The first time a notebook calls one, the app asks you

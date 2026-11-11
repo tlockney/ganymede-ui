@@ -33,11 +33,6 @@ it. The iPad and iPhone app is built from the same sources as the Mac's
   window's reload. Its cells get ganymede-device's `device` (see
   [docs/device.md](../docs/device.md)).
 
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release, where the page runs the kernel itself and Swift
-  > relays its messages to the hidden web view.
-
 - Not sandboxed on the Mac: the App Sandbox does not allow launching
   kernels. Releases are signed with a Developer ID and notarized instead
   (see [Download](#download)).
