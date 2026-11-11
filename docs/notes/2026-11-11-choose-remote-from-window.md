@@ -21,3 +21,8 @@ while kernels run. iOS doesn't ask, as its Settings picker doesn't.
 this device first, then only remotes with a server, and a chosen id that
 isn't one of those reads as this device. Browsing a remote's notebooks,
 quick connect and tailnet discovery are ideas in #474 (`later`).
+
+CI here hit a race in `testRunsAKernelTheAppRegisters` (#470): right after
+`ended`, the server can restart the kernel on its own thread before the
+test reads `isLive`. The test now checks that the ended run can't deliver,
+which holds whether or not the restart has happened.
