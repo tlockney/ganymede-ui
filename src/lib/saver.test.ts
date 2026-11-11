@@ -237,6 +237,53 @@ describe('NotebookSaver', () => {
     expect(contents.save).toHaveBeenCalledOnce();
   });
 
+  describe('pull (#508)', () => {
+    const NEWER = '2026-10-20T10:05:00.000000Z';
+    const file = { last_modified: NEWER, content: { ...NOTEBOOK } } as Contents.IModel;
+
+    it('takes the file in place when clean, and saves from its time', async () => {
+      const { model, contents, saver, edit } = setup();
+      contents.get.mockResolvedValueOnce(file as never);
+      const apply = vi.fn();
+      expect(await saver.pull(apply)).toBe(true);
+      expect(apply).toHaveBeenCalledWith(file);
+      expect(model.dirty).toBe(false);
+      edit('2');
+      contents.get.mockResolvedValueOnce({ last_modified: NEWER } as never);
+      await saver.save();
+      expect(contents.save.mock.calls[0]![1]).toMatchObject({ last_modified: NEWER });
+    });
+
+    it('leaves an edited model alone', async () => {
+      const { contents, saver, edit } = setup();
+      edit('2');
+      const apply = vi.fn();
+      expect(await saver.pull(apply)).toBe(false);
+      expect(apply).not.toHaveBeenCalled();
+      expect(contents.get).not.toHaveBeenCalled();
+    });
+
+    it('leaves the model alone when an edit comes in during the fetch', async () => {
+      const { contents, saver, edit } = setup();
+      const held = deferred<Contents.IModel>();
+      contents.get.mockReturnValueOnce(held.promise as never);
+      const apply = vi.fn();
+      const pulled = saver.pull(apply);
+      await vi.waitFor(() => expect(contents.get).toHaveBeenCalled());
+      edit('2');
+      held.resolve(file);
+      expect(await pulled).toBe(false);
+      expect(apply).not.toHaveBeenCalled();
+    });
+
+    it('leaves the model alone when the caller says not now', async () => {
+      const { saver } = setup();
+      const apply = vi.fn();
+      expect(await saver.pull(apply, () => false)).toBe(false);
+      expect(apply).not.toHaveBeenCalled();
+    });
+  });
+
   it('skips a clean notebook when asked to save only if dirty', async () => {
     const { contents, saver } = setup();
     await saver.save({ ifDirty: true });

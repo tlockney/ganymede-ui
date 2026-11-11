@@ -11,7 +11,7 @@ import { attachEditing, createCommands, createNotebook, createRendermime } from 
 import { attachCellControls } from '../lib/cell-controls';
 import { CellMenu } from './CellMenu';
 import { KeyboardBar } from './KeyboardBar';
-import type { Cell } from '@jupyterlab/cells';
+import type { Cell, ICodeCellModel } from '@jupyterlab/cells';
 import { downloadFile } from '../lib/download';
 import {
   AUTOSAVE_INTERVAL_MS,
@@ -791,18 +791,44 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
   // seconds while the page shows, and when it comes back. Another writer
   // (an agent editing through the server, say) is caught before any edit
   // here could replace its work.
+  //
+  // With nothing here to lose (no unsaved edit, no cell running), take the
+  // new version in place instead (#508): an agent journaling into the open
+  // notebook would otherwise lock it every few seconds. The kernel stays;
+  // the scroll position and active cell are kept.
   useEffect(() => {
     if (!open) return;
-    const { saver } = open;
+    const { saver, model, notebook } = open;
     let checking = false;
     let stopped = false;
+    const idle = () =>
+      !stopped &&
+      !renaming.current &&
+      !gone.current &&
+      !locked.current &&
+      !Array.from(model.cells).some(
+        cell => cell.type === 'code' && (cell as ICodeCellModel).executionState === 'running',
+      );
+    const apply = (file: Contents.IModel) => {
+      const scroller =
+        (notebook as unknown as { outerNode?: HTMLElement }).outerNode ?? notebook.node;
+      const top = scroller.scrollTop;
+      const active = notebook.activeCellIndex;
+      model.fromJSON(rejoinLines(file.content as nbformat.INotebookContent));
+      notebook.activeCellIndex = Math.min(active, model.cells.length - 1);
+      scroller.scrollTop = top;
+    };
     const check = () => {
       if (checking || locked.current || gone.current || renaming.current) return;
       if (document.visibilityState === 'hidden') return;
       checking = true;
       saver
         .changedOnDisk()
-        .then(at => at && !stopped && lock(open, at))
+        .then(async at => {
+          if (!at || stopped) return;
+          if (await saver.pull(apply, idle)) return;
+          if (!stopped) lock(open, at);
+        })
         .catch(() => {})
         .finally(() => (checking = false));
     };

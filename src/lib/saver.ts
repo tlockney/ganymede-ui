@@ -140,6 +140,37 @@ export class NotebookSaver {
     return run;
   }
 
+  /**
+   * Load the file's newer version into the model in place, when nothing
+   * here would be lost: no unsaved edit, and `canApply` agrees (#508). The
+   * model takes the file's content through `apply`, ends up not dirty, and
+   * saves go on from the file's new time. False, with the model untouched,
+   * when there is an edit here (also one typed during the fetch) or the
+   * file can't be read; the caller locks instead.
+   */
+  pull(apply: (content: Contents.IModel) => void, canApply = () => true): Promise<boolean> {
+    const run = this.queue.then(async () => {
+      const { contents, path, model } = this.o;
+      if (model.dirty || !canApply()) return false;
+      let file: Contents.IModel;
+      try {
+        file = await contents.get(path, { type: 'notebook', content: true });
+      } catch {
+        return false;
+      }
+      if (model.dirty || !canApply() || !file.content) return false;
+      apply(file);
+      model.dirty = false;
+      this.lastModified = file.last_modified || this.lastModified;
+      return true;
+    });
+    this.queue = run.then(
+      () => {},
+      () => {},
+    );
+    return run;
+  }
+
   /** The file it saves to: after a move, the new path. */
   get path(): string {
     return this.o.path;
