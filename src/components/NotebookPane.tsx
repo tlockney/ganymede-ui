@@ -46,6 +46,7 @@ import { attachDevice, type DevicePromptState, promptClick } from '../lib/device
 import { declareDevice } from '../lib/kernel-relay';
 import { guardReload, reloadPage } from '../lib/reload';
 import { DevicePrompt } from './DevicePrompt';
+import { type LastReading, diedOutOfMemory, useLastKernelReading } from '../lib/kernel-usage';
 
 export type CellType = nbformat.CellType;
 
@@ -211,6 +212,7 @@ type Notice = { problem: Problem; retry?: () => void };
 function runFailed(
   session: SessionContext,
   kernelspecs: KernelSpec.IManager,
+  memory: { readonly current: LastReading | undefined },
   e: unknown,
   what = 'run',
   retry = false,
@@ -218,7 +220,10 @@ function runFailed(
   const kernel = session.session?.kernel;
   if (kernel?.status === 'dead') {
     const spec = kernelspecs.specs?.kernelspecs[kernel.name];
-    return kernelDead(spec?.display_name ?? kernel.name);
+    return kernelDead(
+      spec?.display_name ?? kernel.name,
+      diedOutOfMemory(memory.current, kernel.id),
+    );
   }
   return failed(what, e, { retry });
 }
@@ -247,6 +252,16 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
   const [attempt, setAttempt] = useState(0);
   const [status, setStatus] = useState<KernelState>('connecting');
   const [kernelName, setKernelName] = useState<string>();
+  const [kernelId, setKernelId] = useState<string>();
+  // The kernel's memory while the notebook is shown, so a death can say
+  // it ran out (#241): not from a backend whose kernels run in the page.
+  const memory = useLastKernelReading(
+    backend.config.kind === 'ganymede' && backend.config.kernels !== 'page'
+      ? services.serverSettings
+      : undefined,
+    kernelId,
+    status !== 'dead',
+  );
   /** The kernel the first run starts, or the uninstalled one the file names. */
   const [intended, setIntendedState] = useState<{ name?: string; missing?: string }>({});
   const intendedRef = useRef(intended);
@@ -445,7 +460,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         return starting;
       };
       const commands = createCommands(notebook, session, ensureKernel, e =>
-        setNotice(runFailed(session, services.kernelspecs, e)),
+        setNotice(runFailed(session, services.kernelspecs, memory, e)),
       );
       const editing = attachEditing(notebook, session, rendermime, commands);
       const cellControls = attachCellControls(notebook, (cell, anchor) =>
@@ -564,7 +579,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         teardown();
       }
     };
-  }, [services, path, attempt]);
+  }, [services, path, attempt, memory]);
 
   // Put the Lumino widget in the page. The widget lives in a holder node
   // that moves in and out of the pane: when the pane goes, the holder is
@@ -615,7 +630,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         if (dead !== kernel) {
           dead = kernel;
           runStatus.clear();
-          setNotice(runFailed(session, services.kernelspecs, undefined));
+          setNotice(runFailed(session, services.kernelspecs, memory, undefined));
         }
       } else if (dead) {
         dead = undefined;
@@ -635,6 +650,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         clearNotice('connection-lost');
       }
       setKernelName(kernel?.name);
+      setKernelId(kernel?.id);
       setDirty(model.dirty);
       setTrusted(!hasUntrustedOutputs(model));
     };
@@ -651,7 +667,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       model.stateChanged.disconnect(update);
       model.contentChanged.disconnect(update);
     };
-  }, [open, joined, services]);
+  }, [open, joined, services, memory]);
 
   // The active cell's type for the toolbar. Changing a cell's type replaces
   // its widget, which makes the new one active.
@@ -813,7 +829,10 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         try {
           await action();
         } catch (e) {
-          setNotice(runFailed(session, services.kernelspecs, e, what, true), () => void run());
+          setNotice(
+            runFailed(session, services.kernelspecs, memory, e, what, true),
+            () => void run(),
+          );
         }
       };
       return run;
@@ -1057,6 +1076,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
     outline,
     backend,
     services,
+    memory,
     onController,
   ]);
 
@@ -1108,7 +1128,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
               }
             } catch (e) {
               setNotice(
-                runFailed(open.session, services.kernelspecs, e, 'run the cell', true),
+                runFailed(open.session, services.kernelspecs, memory, e, 'run the cell', true),
                 () => void run(),
               );
             }

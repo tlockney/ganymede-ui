@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { reloadPage } from '../lib/reload';
 import type * as nbformat from '@jupyterlab/nbformat';
 import type { NotebookModel } from '@jupyterlab/notebook';
+import { ServerConnection } from '@jupyterlab/services';
 import '../test/notebook-env';
 import { entry, fakeBackend, fakeServices } from '../test/fakes';
 import type { NotebookController } from './NotebookPane';
@@ -136,11 +137,15 @@ const NOTEBOOK: nbformat.INotebookContent = {
   ],
 };
 
+/** The server settings the next `setup` gives its services, if any. */
+let serverSettings: ServerConnection.ISettings | undefined;
+
 function setup(
   get = vi.fn(async () => ({ path: 'moons/Io.ipynb', content: structuredClone(NOTEBOOK) })),
   path = 'moons/Io.ipynb',
 ) {
   const fake = fakeServices();
+  if (serverSettings) Object.assign(fake.services, { serverSettings });
   fake.contents.get = get as never;
   const controllers: (NotebookController | undefined)[] = [];
   const onController = vi.fn((c: NotebookController | undefined) => controllers.push(c));
@@ -163,6 +168,7 @@ beforeEach(() => {
   fakes.widgets.length = 0;
   fakes.editing.length = 0;
   fakes.initialize = undefined;
+  serverSettings = undefined;
 });
 
 /** A notebook with HTML output, as read from a file nobody signed. */
@@ -337,6 +343,7 @@ describe('NotebookPane', () => {
 
   describe('problems (#213)', () => {
     type FakeKernel = {
+      id?: string;
       name: string;
       status: string;
       connectionStatus: string;
@@ -552,6 +559,86 @@ describe('NotebookPane', () => {
       });
       await userEvent.click(screen.getByRole('button', { name: 'Restart' }));
       await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Saving is locked'));
+    });
+
+    it('says the kernel ran out of memory when its last reading was near the limit', async () => {
+      const GB = 1024 ** 3;
+      let available = 8 * GB;
+      const asked: string[] = [];
+      serverSettings = ServerConnection.makeSettings({
+        baseUrl: 'http://server/',
+        fetch: ((input: RequestInfo) => {
+          asked.push(typeof input === 'string' ? input : input.url);
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                content: {
+                  kernel_memory: 15 * GB,
+                  host_virtual_memory: { total: 16 * GB, available },
+                },
+              }),
+            ),
+          );
+        }) as typeof fetch,
+      });
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      const { session } = await running();
+      session.session!.kernel = kernel({ id: 'k1' });
+      act(() => session.kernelChanged.emit(null));
+      await waitFor(() => expect(asked.some(u => u.includes('/get_usage/k1'))).toBe(true));
+      available = GB / 2;
+      const before = asked.length;
+      await act(() => vi.advanceTimersByTimeAsync(5000));
+      await waitFor(() => expect(asked.length).toBeGreaterThan(before));
+      session.session!.kernel = kernel({
+        id: 'k1',
+        status: 'dead',
+        connectionStatus: 'disconnected',
+        isDisposed: true,
+      });
+      act(() => session.statusChanged.emit('dead'));
+      await waitFor(() =>
+        expect(screen.getByRole('alert')).toHaveTextContent(
+          'The Python 3 kernel ran out of memory and stopped.',
+        ),
+      );
+    });
+
+    it('says only that the kernel stopped when its last reading was far from the limit', async () => {
+      const GB = 1024 ** 3;
+      const asked: string[] = [];
+      serverSettings = ServerConnection.makeSettings({
+        baseUrl: 'http://server/',
+        fetch: ((input: RequestInfo) => {
+          asked.push(typeof input === 'string' ? input : input.url);
+          return Promise.resolve(
+            new Response(
+              JSON.stringify({
+                content: {
+                  kernel_memory: GB,
+                  host_virtual_memory: { total: 16 * GB, available: 8 * GB },
+                },
+              }),
+            ),
+          );
+        }) as typeof fetch,
+      });
+      const { session } = await running();
+      session.session!.kernel = kernel({ id: 'k1' });
+      act(() => session.kernelChanged.emit(null));
+      await waitFor(() => expect(asked.length).toBeGreaterThan(0));
+      session.session!.kernel = kernel({
+        id: 'k1',
+        status: 'dead',
+        connectionStatus: 'disconnected',
+        isDisposed: true,
+      });
+      act(() => session.statusChanged.emit('dead'));
+      await waitFor(() =>
+        expect(screen.getByRole('alert')).toHaveTextContent(
+          'The Python 3 kernel stopped. It may have crashed or run out of memory.',
+        ),
+      );
     });
 
     it('says the kernel died when a run fails under a dead kernel', async () => {

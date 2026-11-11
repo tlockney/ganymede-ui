@@ -105,11 +105,17 @@ export function isStaleBundle(e: unknown): boolean {
   );
 }
 
-/** The kernel stopped. `kernel` is its display name, if known. */
-export function kernelDead(kernel?: string): Problem {
+/**
+ * The kernel stopped. `kernel` is its display name, if known;
+ * `outOfMemory` when its last memory reading was near the limit (#241).
+ */
+export function kernelDead(kernel?: string, outOfMemory = false): Problem {
+  const name = `The ${kernel ? `${kernel} ` : ''}kernel`;
   return {
     kind: 'kernel-dead',
-    message: `The ${kernel ? `${kernel} ` : ''}kernel stopped. It may have crashed or run out of memory.`,
+    message: outOfMemory
+      ? `${name} ran out of memory and stopped.`
+      : `${name} stopped. It may have crashed or run out of memory.`,
     hint: 'Restart it to keep working. Variables from before are gone; run the cells again.',
     actions: ['restart'],
   };

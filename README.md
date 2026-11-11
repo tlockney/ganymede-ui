@@ -208,6 +208,15 @@ what happened and offers the next step: Restart when the kernel died,
 Retry when the server couldn't be reached or a save failed, and a kernel
 picker when the notebook's kernel isn't installed here.
 
+When a Ganymede server reports memory use and the kernel's last reading,
+taken in the few seconds before it died, had the machine nearly out of
+memory (under 5% available) or the kernel holding over 90% of it, the
+notice says the kernel ran out of memory.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
 ## Where your data lives
 
 - **This browser:** notebooks are stored in the browser's IndexedDB for this
