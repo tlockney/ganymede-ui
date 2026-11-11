@@ -573,7 +573,7 @@ describe('NotebookPane', () => {
             new Response(
               JSON.stringify({
                 content: {
-                  kernel_memory: 15 * GB,
+                  kernel_memory: GB,
                   host_virtual_memory: { total: 16 * GB, available },
                 },
               }),
@@ -582,7 +582,7 @@ describe('NotebookPane', () => {
         }) as typeof fetch,
       });
       vi.useFakeTimers({ shouldAdvanceTime: true });
-      const { session } = await running();
+      const { latest, session } = await running();
       session.session!.kernel = kernel({ id: 'k1' });
       act(() => session.kernelChanged.emit(null));
       await waitFor(() => expect(asked.some(u => u.includes('/get_usage/k1'))).toBe(true));
@@ -590,6 +590,7 @@ describe('NotebookPane', () => {
       const before = asked.length;
       await act(() => vi.advanceTimersByTimeAsync(5000));
       await waitFor(() => expect(asked.length).toBeGreaterThan(before));
+      await act(() => vi.advanceTimersByTimeAsync(0));
       session.session!.kernel = kernel({
         id: 'k1',
         status: 'dead',
@@ -602,6 +603,16 @@ describe('NotebookPane', () => {
           'The Python 3 kernel ran out of memory and stopped.',
         ),
       );
+      // A run long after the death, when the reading is stale, says the same.
+      await act(() => vi.advanceTimersByTimeAsync(60_000));
+      const run = vi
+        .spyOn(NotebookActions, 'runAndAdvance')
+        .mockRejectedValueOnce(new Error('Kernel is dead'));
+      await act(() => latest()!.run());
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'The Python 3 kernel ran out of memory and stopped.',
+      );
+      run.mockRestore();
     });
 
     it('says only that the kernel stopped when its last reading was far from the limit', async () => {

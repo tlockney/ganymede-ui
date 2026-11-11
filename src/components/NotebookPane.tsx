@@ -208,6 +208,13 @@ function activeType(notebook: Notebook): CellType | undefined {
 /** A notice: what went wrong, and what Retry runs again, if it is offered. */
 type Notice = { problem: Problem; retry?: () => void };
 
+/**
+ * Whether each dead kernel ran out of memory, decided when it is first
+ * seen dead: polling stops then, so a later run would find the reading
+ * stale and word the notice differently (#241).
+ */
+const outOfMemory = new WeakMap<Kernel.IKernelConnection, boolean>();
+
 /** Why a run failed: the kernel died under it, or something else. */
 function runFailed(
   session: SessionContext,
@@ -220,10 +227,12 @@ function runFailed(
   const kernel = session.session?.kernel;
   if (kernel?.status === 'dead') {
     const spec = kernelspecs.specs?.kernelspecs[kernel.name];
-    return kernelDead(
-      spec?.display_name ?? kernel.name,
-      diedOutOfMemory(memory.current, kernel.id),
-    );
+    let oom = outOfMemory.get(kernel);
+    if (oom === undefined) {
+      oom = diedOutOfMemory(memory.current, kernel.id);
+      outOfMemory.set(kernel, oom);
+    }
+    return kernelDead(spec?.display_name ?? kernel.name, oom);
   }
   return failed(what, e, { retry });
 }
