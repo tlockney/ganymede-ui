@@ -11,12 +11,14 @@ final class PageStateTests: XCTestCase {
             "kernelDisplayName": "TypeScript",
             "kernelMissing": false,
             "trusted": true,
+            "hostGrants": true,
             "cellType": "markdown",
             "kernels": [["name": "cdp", "displayName": "TypeScript"]],
             "backend": ["label": "Ganymede", "detail": "local server"],
         ]
         let state = PageState(body: body)
         XCTAssertEqual(state?.path, "moons/Io.ipynb")
+        XCTAssertEqual(state?.hostGrants, true)
         XCTAssertEqual(state?.dirty, true)
         XCTAssertEqual(state?.isBusy, true)
         XCTAssertEqual(state?.hasKernel, true)

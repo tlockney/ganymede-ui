@@ -18,6 +18,8 @@ import { NotebookPane, type NotebookController } from './components/NotebookPane
 import { ConnectSheet } from './components/ConnectSheet';
 import { EmptyState } from './components/EmptyState';
 import { ShortcutsSheet } from './components/ShortcutsSheet';
+import { HostAccessSheet } from './components/HostAccessSheet';
+import { hostGrantsAvailable, loadHostGrants, saveHostGrant } from './lib/host-grants';
 import { SettingsSheet } from './components/SettingsSheet';
 import { SHOW_SETTINGS_EVENT } from '@ganymede-ui/agent/settings';
 import { SHOW_SHORTCUTS_EVENT, matches } from './lib/shortcuts';
@@ -182,6 +184,9 @@ export function App() {
   const closeShortcuts = useCallback(() => setShortcutsOpen(false), []);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
+  /** Notebook Access, for the notebook open when it was asked for. */
+  const [accessFor, setAccessFor] = useState<{ path: string; name: string; wants: string[] }>();
+  const closeAccess = useCallback(() => setAccessFor(undefined), []);
   // In the Apple apps these are tabs of the app's one Settings (#332); the
   // page's sheets are for the browser.
   const openShortcuts = useCallback(() => {
@@ -477,6 +482,10 @@ export function App() {
       case 'trust':
         await c.trust();
         return true;
+      case 'notebook-access':
+        if (!hostGrantsAvailable(backend)) return false;
+        setAccessFor({ path: c.path, name: c.name, wants: c.hostWants() });
+        return true;
       case 'run':
         await c.run();
         return true;
@@ -614,6 +623,7 @@ export function App() {
         (kernel ? (specs?.kernelspecs[kernel]?.display_name ?? kernel) : null),
       kernelMissing: !!shown?.missingKernel,
       trusted: shown?.trusted ?? true,
+      hostGrants: hostGrantsAvailable(backend),
       cellType: shown?.cellType ?? null,
       kernels: Object.values(specs?.kernelspecs ?? {}).flatMap(k =>
         k ? [{ name: k.name, displayName: k.display_name }] : [],
@@ -645,8 +655,9 @@ export function App() {
   }, [controller]);
 
   // Esc on a sheet opened from the sidebar closes the sheet, not the sidebar.
-  const sheetShown = sheetOpen || shortcutsOpen || settingsOpen || paletteOpen;
-  otherSheetShown.current = sheetOpen || shortcutsOpen || settingsOpen;
+  const accessOpen = !!accessFor;
+  const sheetShown = sheetOpen || shortcutsOpen || settingsOpen || accessOpen || paletteOpen;
+  otherSheetShown.current = sheetOpen || shortcutsOpen || settingsOpen || accessOpen;
   useEffect(() => {
     if (!sidebarFloats || sheetShown) return;
     const onKey = (e: KeyboardEvent) => {
@@ -825,6 +836,7 @@ export function App() {
             kernel: shown?.kernelName,
             recents: backend ? loadRecents(recentsKey(backend.config)) : [],
             trusted: shown?.trusted ?? true,
+            hostGrants: hostGrantsAvailable(backend),
             connected: !!backend,
           })}
           onRun={(entry, arg) => {
@@ -836,6 +848,16 @@ export function App() {
       )}
       {shortcutsOpen && <ShortcutsSheet onClose={closeShortcuts} />}
       {settingsOpen && <SettingsSheet onClose={closeSettings} />}
+      {accessFor && backend && (
+        <HostAccessSheet
+          key={accessFor.path}
+          name={accessFor.name}
+          wants={accessFor.wants}
+          load={() => loadHostGrants(backend, accessFor.path)}
+          save={grant => saveHostGrant(backend, accessFor.path, grant)}
+          onClose={closeAccess}
+        />
+      )}
     </>
   );
 }
