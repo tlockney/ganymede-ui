@@ -193,6 +193,11 @@ nothing is saved. That kernel can be the in-app TypeScript kernel, whose
 cells read the parameters as `jupyter.params`, but only while a Ganymede
 window is open. The actions are on the Mac only for now.
 
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, where the in-app TypeScript kernel gets no
+> parameters (`jupyter.params` is `{}`).
+
 ### Links
 
 The Mac app opens `ganymede://` links, so launchers, Markdown links,
