@@ -144,6 +144,8 @@ struct RemoteEditor: View {
     @State private var useSSH: Bool
     @State private var ssh: Remote.SSH
     @State private var port = ""
+    /// Run kernels on this remote's server once it is saved (#473).
+    @State private var runsKernels: Bool
     let isNew: Bool
 
     init(remote: Remote, isNew: Bool) {
@@ -151,6 +153,7 @@ struct RemoteEditor: View {
         _useSSH = State(initialValue: remote.ssh != nil)
         _ssh = State(initialValue: remote.ssh ?? Remote.SSH(host: ""))
         _port = State(initialValue: remote.ssh?.port.map(String.init) ?? "")
+        _runsKernels = State(initialValue: AppModel.shared.kernelRemoteID == remote.id)
         self.isNew = isNew
     }
 
@@ -169,10 +172,13 @@ struct RemoteEditor: View {
                         .textInputAutocapitalization(.never)
                         #endif
                     SecureField("Token", text: $token)
+                    if !remote.serverURL.trimmingCharacters(in: .whitespaces).isEmpty {
+                        Toggle("Run kernels on this remote", isOn: $runsKernels)
+                    }
                 } header: {
                     Text("Jupyter or Ganymede server")
                 } footer: {
-                    Text("Optional. Used for kernels and terminals.")
+                    Text(serverFooter)
                 }
                 Section {
                     Toggle("Connect with SSH", isOn: $useSSH)
@@ -214,7 +220,7 @@ struct RemoteEditor: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(isNew ? "Add" : "Save") {
-                        model.save(edited, token: token)
+                        save()
                         dismiss()
                     }
                     .disabled(!edited.isValid || useSSH && (!portIsValid || !userIsValid))
@@ -227,6 +233,30 @@ struct RemoteEditor: View {
         .onAppear {
             token = isNew ? "" : model.token(for: remote.id)
         }
+    }
+
+    /// Saves the remote and moves kernels to it, or back to this device,
+    /// if the toggle changed where they run. Like Settings › Kernels, it
+    /// doesn't ask first: the footer says running kernels are shut down.
+    /// Kernels leave before the save, so a changed URL or token on the
+    /// remote they leave doesn't restart the server a second time.
+    private func save() {
+        let saved = edited
+        let wanted = runsKernels && !saved.serverURL.trimmingCharacters(in: .whitespaces).isEmpty
+        let current = model.kernelRemoteID == saved.id
+        if current && !wanted { model.useForKernels(nil) }
+        model.save(saved, token: token)
+        if wanted && !current { model.useForKernels(saved.id) }
+    }
+
+    private var serverFooter: String {
+        #if os(macOS)
+        "Optional. Used for kernels and terminals. Choose where kernels run here, from the foot of a "
+            + "window's sidebar, or from the Kernel menu. Running kernels are shut down when it changes."
+        #else
+        "Optional. Used for kernels and terminals. Choose where kernels run here, above, or from a "
+            + "notebook's More menu. Running kernels are shut down when it changes."
+        #endif
     }
 
     private var hostPrompt: String {

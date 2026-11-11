@@ -51,6 +51,41 @@ struct Remote: Codable, Identifiable, Hashable {
     }
 }
 
+/// Where kernels can run, for the controls that switch it (#473): this
+/// device, then each remote with a server.
+struct KernelLocations: Equatable {
+    struct Choice: Identifiable, Equatable {
+        /// The remote's id; nil for this device.
+        var id: UUID?
+        var title: String
+    }
+
+    #if os(macOS)
+    static let thisDevice = "This Mac"
+    #else
+    static let thisDevice = "This Device"
+    #endif
+
+    var choices: [Choice]
+    /// The chosen remote; nil for this device, also when the chosen id
+    /// isn't a remote with a server.
+    var selected: UUID?
+
+    init(remotes: [Remote], selected: UUID?) {
+        choices = [Choice(id: nil, title: Self.thisDevice)]
+            + remotes.filter(\.hasServer).map { Choice(id: $0.id, title: $0.title) }
+        self.selected = choices.contains { $0.id == selected } ? selected : nil
+    }
+
+    /// The chosen location's name.
+    var title: String {
+        choices.first { $0.id == selected }?.title ?? Self.thisDevice
+    }
+
+    /// Whether there is anywhere but this device to choose.
+    var hasRemotes: Bool { choices.count > 1 }
+}
+
 /// Where tokens are kept: the keychain in the app, memory in tests.
 protocol SecretStore {
     func get(_ key: String) -> String?

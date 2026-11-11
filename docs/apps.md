@@ -107,7 +107,17 @@ shown or hidden, its tab and its expanded folders across launches.
   running inside the app, as on the iPad. Its cells get the
   [device API](device.md); kernels in their own process can't reach the
   app.
-- Kernels can run on a remote server instead: see [Settings](#settings).
+- Kernels can run on a remote server instead. Add the remote in
+  Settings > Remotes (its editor can switch kernels to it), then pick
+  where kernels run from the foot of the sidebar, the kernel button in
+  the toolbar, or Kernel > Run Kernels On. The sidebar's foot names where
+  they run now ("This Mac" or the remote), and its menu also opens a
+  terminal on a remote. The choice is app-wide, and switching shuts down
+  running kernels, so the Mac asks first while any run.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release, which offers the choice only in Settings > Kernels.
 
 ### Terminals and the kernel log
 
@@ -294,7 +304,8 @@ Bigger Code Font (⌘+), Smaller Code Font (⌘−) and Actual Code Font Size
 (⌘0) change the size from any window.
 
 Ganymede > Agent Settings… (⌥⌘,), Help > Keyboard Shortcuts and Kernel >
-Where Kernels Run… open those Settings tabs, as do the command palette's
+Manage Remotes… (Where Kernels Run… in the latest release) open those
+Settings tabs, as do the command palette's
 Settings…, Keyboard Shortcuts and Connect to a Server…. The agent's API
 keys are kept in the keychain too.
 
@@ -330,6 +341,13 @@ keys are kept in the keychain too.
   down other kernels, saves, renames, downloads and trusts. With a
   keyboard, hold ⌘ to see the commands: New Notebook ⌘N, Save ⌘S, Run All
   ⇧⌘↩, Interrupt ⌘., Find ⌘F.
+- Once a remote has a server, the ⋯ menu also picks where kernels run,
+  as Settings does.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release.
+
 - A text file opens over the notebook, one at a time; Close (which asks to
   save) or opening a notebook from the sidebar goes back to it, saving
   edits on the way.

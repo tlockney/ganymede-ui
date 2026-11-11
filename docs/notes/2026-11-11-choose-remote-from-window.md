@@ -1,0 +1,35 @@
+## 2026-11-11, choose a remote from the window (#473)
+
+A remote saved in Settings › Remotes showed nowhere in the notebook
+window: the only ways to use it were Settings › Kernels and the terminal
+panel's + menu, and the sidebar's foot said "Ganymede" (the page's backend
+label) wherever kernels ran. The foot now names the location itself
+("This Mac" or the remote's title, from `KernelLocations`) and is a menu:
+run kernels on this Mac or a remote with a server, open a terminal on a
+remote in the window's panel, manage remotes. The kernel popover in the
+toolbar and the Kernel menu carry the same picker
+(`KernelLocationPicker`), as does the iPad and iPhone ⋯ menu once a
+remote has a server, and the remote editor has "Run kernels on this
+remote".
+
+The choice stays app-wide (one server, one `gateway_url`), so switching
+still restarts the server and shuts down every kernel. Settings never
+asked first; a menu item is easier to hit by accident, so the Mac asks
+while kernels run. iOS doesn't ask, as its Settings picker doesn't.
+
+`KernelLocations` is plain Foundation so the tests cover the list:
+this device first, then only remotes with a server, and a chosen id that
+isn't one of those reads as this device. Browsing a remote's notebooks,
+quick connect and tailnet discovery are ideas in #474 (`later`).
+
+CI here hit a race in `testRunsAKernelTheAppRegisters` (#470): right after
+`ended`, the server can restart the kernel on its own thread before the
+test reads `isLive`. The test now checks that the ended run can't deliver,
+which holds whether or not the restart has happened.
+
+Review: the Kernel menu has no running count when no notebook window is in
+front (Settings, an editor or a terminal), so it asks then too, without a
+number. The remote editor's toggle doesn't ask, like Settings › Kernels:
+both are in Settings, and their footers say running kernels are shut
+down. Turning the toggle off moves kernels before the save, so a changed
+URL or token on that remote doesn't restart the server twice.

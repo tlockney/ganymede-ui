@@ -234,7 +234,10 @@ final class ServerHostTests: XCTestCase {
         // The system ends it: the server starts it again, under the same id.
         let first = try XCTUnwrap(app.run(of: id))
         host.kernels.ended(id, run: first, reason: "lost")
-        XCTAssertFalse(host.kernels.isLive(id))
+        // Not `isLive`: the server may already have restarted it on its
+        // own thread. The ended run takes nothing either way.
+        XCTAssertFalse(host.kernels.deliver(id, run: first, channel: "iopub", message: FakeAppKernel.status(id, "busy")),
+                       "the ended run takes nothing")
         eventually("the restart") { app.starts.count == 2 }
         try eventually("the restarted kernel", idle)
         // A late message from the first run doesn't reach the second.

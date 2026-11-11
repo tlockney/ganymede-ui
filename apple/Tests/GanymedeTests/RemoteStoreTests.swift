@@ -121,4 +121,35 @@ final class RemoteStoreTests: XCTestCase {
         XCTAssertFalse(Remote(ssh: .init(host: "h", port: 70000)).isValid)
         XCTAssertFalse(Remote(serverURL: "https://host", ssh: .init(host: "")).isValid)
     }
+
+    // MARK: - Where kernels can run (#473)
+
+    func testKernelLocationsListThisDeviceThenRemotesWithServers() {
+        let server = Remote(name: "lab", serverURL: "http://lab:8888")
+        let sshOnly = Remote(name: "box", ssh: .init(host: "box"))
+        let both = Remote(serverURL: "https://gpu.example:8888", ssh: .init(host: "gpu"))
+        let locations = KernelLocations(remotes: [server, sshOnly, both], selected: nil)
+        XCTAssertEqual(locations.choices.map(\.id), [nil, server.id, both.id])
+        XCTAssertEqual(locations.choices.map(\.title), [KernelLocations.thisDevice, "lab", "gpu.example"])
+        XCTAssertNil(locations.selected)
+        XCTAssertEqual(locations.title, KernelLocations.thisDevice)
+        XCTAssertTrue(locations.hasRemotes)
+    }
+
+    func testKernelLocationsNameTheChosenRemote() {
+        let server = Remote(name: "lab", serverURL: "http://lab:8888")
+        let locations = KernelLocations(remotes: [server], selected: server.id)
+        XCTAssertEqual(locations.selected, server.id)
+        XCTAssertEqual(locations.title, "lab")
+    }
+
+    func testKernelLocationsFallBackToThisDeviceForAnUnknownOrServerlessRemote() {
+        let sshOnly = Remote(name: "box", ssh: .init(host: "box"))
+        for selected in [sshOnly.id, UUID()] {
+            let locations = KernelLocations(remotes: [sshOnly], selected: selected)
+            XCTAssertNil(locations.selected)
+            XCTAssertEqual(locations.title, KernelLocations.thisDevice)
+            XCTAssertFalse(locations.hasRemotes)
+        }
+    }
 }
