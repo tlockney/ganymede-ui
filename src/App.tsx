@@ -591,6 +591,7 @@ export function App() {
   const shown = !!openPath && controller?.path === openPath ? controller : undefined;
   const shownPath = shown?.path;
   const wantsKey = JSON.stringify(shown?.hostWants() ?? []);
+  const accessPath = useRef<string | undefined>(undefined);
   useEffect(() => {
     const wants = JSON.parse(wantsKey) as string[];
     const none = (m: string[]) => (m.length ? [] : m);
@@ -598,6 +599,10 @@ export function App() {
       setAccessMissing(none);
       return;
     }
+    // Another notebook: drop the last one's list until this one's loads.
+    // A recheck of the same notebook keeps it, so the button doesn't flicker.
+    if (accessPath.current !== shownPath) setAccessMissing(none);
+    accessPath.current = shownPath;
     let cancelled = false;
     loadHostGrants(backend, shownPath).then(
       grants => !cancelled && setAccessMissing(missingWants(wants, grants)),
