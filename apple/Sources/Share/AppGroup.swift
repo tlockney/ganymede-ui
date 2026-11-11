@@ -44,10 +44,13 @@ enum AppGroup {
 
     static let ledgerKey = "ganymede.device.ledger"
 
-    /// Copies `key` into `group` unless it's there already, so a later
-    /// revoke in the group isn't undone by the old copy.
+    /// Moves `key` into `group` unless it's there already, so a later
+    /// revoke in the group isn't undone by the old copy. The app's rows
+    /// are removed, so a build without the group, or with another one,
+    /// starts empty rather than with answers since revoked.
     static func copyOnce(_ key: String, from app: UserDefaults, to group: UserDefaults) {
-        guard group.object(forKey: key) == nil, let rows = app.object(forKey: key) else { return }
-        group.set(rows, forKey: key)
+        guard let rows = app.object(forKey: key) else { return }
+        if group.object(forKey: key) == nil { group.set(rows, forKey: key) }
+        app.removeObject(forKey: key)
     }
 }

@@ -19,9 +19,9 @@ without it, such as the unit tests, has no group and keeps everything
 in its own defaults.
 
 The permission ledger moved to the group's defaults, so a notebook's
-kept "always" reaches the extension. On first use the app copies its
-old rows over once; after that the group's rows win, so a revoke isn't
-undone by the old copy. Folder grants stay in the app: their bookmarks
+kept "always" reaches the extension. On first use the app moves its
+old rows over and removes them from its own defaults; after that the
+group's rows win, so a revoke isn't undone by an old copy. Folder grants stay in the app: their bookmarks
 are scoped to the app and the extension couldn't open them.
 
 What's left (memory cap, loading large or image items, refreshing a

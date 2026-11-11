@@ -74,9 +74,11 @@ final class ShareNotebooksTests: XCTestCase {
 
         AppGroup.copyOnce(AppGroup.ledgerKey, from: app, to: group)
         XCTAssertEqual(group.array(forKey: AppGroup.ledgerKey) as? [[String: String]], rows)
+        XCTAssertNil(app.object(forKey: AppGroup.ledgerKey))
 
-        // A revoke in the group isn't undone by the app's old rows.
+        // A revoke in the group isn't undone by rows the app kept since.
         group.set([[String: String]](), forKey: AppGroup.ledgerKey)
+        app.set(rows, forKey: AppGroup.ledgerKey)
         AppGroup.copyOnce(AppGroup.ledgerKey, from: app, to: group)
         XCTAssertEqual(group.array(forKey: AppGroup.ledgerKey)?.count, 0)
     }
