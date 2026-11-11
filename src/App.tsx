@@ -19,7 +19,12 @@ import { ConnectSheet } from './components/ConnectSheet';
 import { EmptyState } from './components/EmptyState';
 import { ShortcutsSheet } from './components/ShortcutsSheet';
 import { HostAccessSheet } from './components/HostAccessSheet';
-import { hostGrantsAvailable, loadHostGrants, saveHostGrant } from './lib/host-grants';
+import {
+  hostGrantsAvailable,
+  loadHostGrants,
+  missingWants,
+  saveHostGrant,
+} from './lib/host-grants';
 import { SettingsSheet } from './components/SettingsSheet';
 import { SHOW_SETTINGS_EVENT } from '@ganymede-ui/agent/settings';
 import { SHOW_SHORTCUTS_EVENT, matches } from './lib/shortcuts';
@@ -186,7 +191,15 @@ export function App() {
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
   /** Notebook Access, for the notebook open when it was asked for. */
   const [accessFor, setAccessFor] = useState<{ path: string; name: string; wants: string[] }>();
-  const closeAccess = useCallback(() => setAccessFor(undefined), []);
+  const closeAccess = useCallback(() => {
+    setAccessFor(undefined);
+    setAccessChecked(n => n + 1);
+  }, []);
+  // What the open notebook asks for that its grant doesn't give: the
+  // toolbar shows Notebook Access while there is any. Checked again when
+  // the sheet closes.
+  const [accessMissing, setAccessMissing] = useState<string[]>([]);
+  const [accessChecked, setAccessChecked] = useState(0);
   // In the Apple apps these are tabs of the app's one Settings (#332); the
   // page's sheets are for the browser.
   const openShortcuts = useCallback(() => {
@@ -576,6 +589,25 @@ export function App() {
   const running = runningSessions(sessions, specs, memory);
   const runningKey = JSON.stringify(running);
   const shown = !!openPath && controller?.path === openPath ? controller : undefined;
+  const shownPath = shown?.path;
+  const wantsKey = JSON.stringify(shown?.hostWants() ?? []);
+  useEffect(() => {
+    const wants = JSON.parse(wantsKey) as string[];
+    const none = (m: string[]) => (m.length ? [] : m);
+    if (!shownPath || !backend || !hostGrantsAvailable(backend) || wants.length === 0) {
+      setAccessMissing(none);
+      return;
+    }
+    let cancelled = false;
+    loadHostGrants(backend, shownPath).then(
+      grants => !cancelled && setAccessMissing(missingWants(wants, grants)),
+      () => !cancelled && setAccessMissing(none),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [shownPath, backend, wantsKey, accessChecked]);
+  const accessKey = JSON.stringify(accessMissing);
   const showVariables = variablesOpen && !!shown;
   // The app's inspector's Variables view (#249), for the notebook shown.
   const inspected = useVariables(shown?.kernel, shown?.status, appVariables);
@@ -624,6 +656,7 @@ export function App() {
       kernelMissing: !!shown?.missingKernel,
       trusted: shown?.trusted ?? true,
       hostGrants: hostGrantsAvailable(backend),
+      accessWanted: JSON.parse(accessKey) as string[],
       cellType: shown?.cellType ?? null,
       kernels: Object.values(specs?.kernelspecs ?? {}).flatMap(k =>
         k ? [{ name: k.name, displayName: k.display_name }] : [],
@@ -635,7 +668,18 @@ export function App() {
       outline: shown?.outline ?? [],
       variables: JSON.parse(variablesKey) as PageState['variables'],
     });
-  }, [openPath, dirty, shown, specs, backend, runningKey, recentsKeyed, searchKey, variablesKey]);
+  }, [
+    openPath,
+    dirty,
+    shown,
+    specs,
+    backend,
+    runningKey,
+    recentsKeyed,
+    searchKey,
+    variablesKey,
+    accessKey,
+  ]);
 
   // ⌘S / Ctrl+S saves, as in any document app; ⇧⌘P opens the command
   // palette (#211).
@@ -746,6 +790,8 @@ export function App() {
               onToggleVariables={() => setVariablesOpen(o => !o)}
               variablesOpen={variablesOpen}
               specs={specs}
+              accessMissing={accessMissing}
+              onNotebookAccess={() => void runCommand.current('notebook-access')}
             />
           )}
           <div

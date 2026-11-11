@@ -494,6 +494,13 @@ struct NotebookToolbar: ToolbarContent {
                 .help("Trust this notebook's HTML and JavaScript outputs")
                 .disabled(!page.state.hasNotebook || page.state.trusted)
         }
+        // Only while the notebook asks for something its grant doesn't give.
+        if let wanted = page.state.accessWanted, !wanted.isEmpty {
+            ToolbarItem {
+                Button { page.run("notebook-access") } label: { Label("Access", systemImage: "lock.shield") }
+                    .help("Notebook Access: this notebook asks for \(wanted.joined(separator: ", "))")
+            }
+        }
     }
 
     private var cellType: Binding<String> {

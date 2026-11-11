@@ -421,6 +421,14 @@ headings; pick one to go to its cell.
   (`ganymede.host.wants`) shows that at the top; asking grants nothing.
   It needs a Ganymede server with `/api/host/grants`.
 
+  While a notebook asks for something its grant doesn't give, the
+  toolbar shows Notebook Access (a padlock), naming what it asks
+  for; the button goes once the grant covers it.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release.
+
 - **Downloads** open the share sheet, where Save to Files keeps them.
 - In the background iOS may stop the app's server; back in the
   foreground the app restarts it if it stopped answering.
