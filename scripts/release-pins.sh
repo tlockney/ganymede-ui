@@ -96,12 +96,6 @@ if [[ -z "$latest" || "$tag" == null ]]; then
   echo "error: couldn't read ganymede's latest release" >&2
   exit 1
 fi
-# bootstrap.sh downloads this for a tag; a release still uploading, or one
-# whose upload failed, would fail the release PR's macos-app job.
-if ! jq -e '.assets | any(.name == "GanymedeFFI.xcframework.zip")' <<< "$release" > /dev/null; then
-  echo "error: ganymede $tag has no GanymedeFFI.xcframework.zip asset yet" >&2
-  exit 1
-fi
 if older "$latest" "$version_pin"; then
   echo "error: ganymede's latest release $latest is older than GANYMEDE_VERSION $version_pin" >&2
   exit 1
@@ -120,6 +114,14 @@ elif [[ "$ref_pin" =~ ^[0-9a-f]{40}$ ]]; then
   fi
 else
   echo "error: GANYMEDE_REF in $ci is neither a v* tag nor a commit SHA: $ref_pin" >&2
+  exit 1
+fi
+# bootstrap.sh downloads this for a tag; a release still uploading, or one
+# whose upload failed (or from before v0.8.0), would fail the release PR's
+# macos-app job. Checked only when GANYMEDE_REF moves to the tag.
+if [[ "$ref_pin" != "$tag" ]] &&
+  ! jq -e '.assets | any(.name == "GanymedeFFI.xcframework.zip")' <<< "$release" > /dev/null; then
+  echo "error: ganymede $tag has no GanymedeFFI.xcframework.zip asset" >&2
   exit 1
 fi
 
