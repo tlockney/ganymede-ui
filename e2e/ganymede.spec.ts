@@ -136,21 +136,40 @@ test('locks saving over a file that changed on disk, until Unlock', async ({ pag
   expect([onDisk.cells[1].source].flat().join('')).toContain(`// ${stamp}`);
 });
 
-test('notices a change on disk without a save, and reloads it', async ({ page }) => {
+test('takes a change on disk in place when nothing here would be lost (#508)', async ({ page }) => {
   const stamp = `written elsewhere ${Date.now()}`;
   await openWithToken(page);
   await openNotebook(page, FIXTURE);
-  await expect(page.locator('.jp-CodeCell .cm-content').first()).toBeVisible();
+  const editor = page.locator('.jp-CodeCell .cm-content').first();
+  await expect(editor).toBeVisible();
 
   writeElsewhere(nb => void (nb.cells[1]!.source = `// ${stamp}`));
 
-  // The pane asks every few seconds; nothing here was edited or saved.
+  // The pane asks every few seconds; nothing here was edited, so no lock.
+  await expect(editor).toContainText(stamp, { timeout: 15_000 });
+  await expect(page.getByRole('alert')).toBeHidden();
+  await expect(page.getByText('— Locked')).toBeHidden();
+});
+
+test('notices a change on disk under unsaved edits, and reloads it', async ({ page }) => {
+  const stamp = `written elsewhere ${Date.now()}`;
+  await openWithToken(page);
+  await openNotebook(page, FIXTURE);
+  const editor = page.locator('.jp-CodeCell .cm-content').first();
+  await editor.click();
+  await page.keyboard.press('ControlOrMeta+End');
+  await page.keyboard.type('\n// ours');
+  await expect(page.getByText('— Edited')).toBeVisible();
+
+  writeElsewhere(nb => void (nb.cells[1]!.source = `// ${stamp}`));
+
   const notice = page.getByRole('alert');
   await expect(notice).toContainText('changed on disk', { timeout: 15_000 });
-  await expect(page.getByText('— Locked')).toBeVisible();
+  await expect(page.getByText('— Edited, locked')).toBeVisible();
 
+  page.on('dialog', d => void d.accept());
   await notice.getByRole('button', { name: 'Reload' }).click();
-  await expect(page.locator('.jp-CodeCell .cm-content').first()).toContainText(stamp);
+  await expect(editor).toContainText(stamp);
   await expect(page.getByText('— Locked')).toBeHidden();
   await expect(notice).toBeHidden();
 });

@@ -177,6 +177,16 @@ and keeps the kernel running (it asks first if you have unsaved edits,
 which it drops), and **Unlock**, which lets your copy save over the version that locked
 it. A newer change locks it again.
 
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, which locks on every change.
+
+When you have no unsaved edits and no cell is running, nothing here can be
+lost, so the notebook takes the new version in place instead of locking:
+the kernel keeps running and the scroll position stays. This keeps a
+Claude session journaling into an open notebook from locking it every few
+seconds.
+
 ### Code font
 
 Settings > Code font picks the font of code cells, text outputs and code

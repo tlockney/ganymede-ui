@@ -210,7 +210,13 @@ a save that meets one, locks the pane: no save writes until Reload (the
 load effect runs again; the teardown drops the edits and leaves the
 kernel, which the new session rejoins) or Unlock (`accept` takes the
 version on disk that locked it as the saver's base, so saves write over
-it and the checks go on: a newer change locks again).
+it and the checks go on: a newer change locks again). Before locking on
+a change the check found, the pane tries `pull`: in the same queue, with
+no unsaved edit and no code cell running, it fetches the file and loads
+it into the existing model with `fromJSON` (same notebook widget and
+session, so the kernel stays; scroll and active cell are put back), then
+takes the file's time as its base. An edit typed during the fetch, or a
+cell that starts running, makes it give up and lock instead (#508).
 
 Inside JupyterLab, the editor, renderers and commands come from plugins.
 `jupyterlab.ts` builds them once and shares them across notebooks: the

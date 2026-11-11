@@ -5,10 +5,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { reloadPage } from '../lib/reload';
 import type * as nbformat from '@jupyterlab/nbformat';
 import type { NotebookModel } from '@jupyterlab/notebook';
+import type { ICodeCellModel } from '@jupyterlab/cells';
 import { ServerConnection } from '@jupyterlab/services';
 import '../test/notebook-env';
 import { entry, fakeBackend, fakeServices } from '../test/fakes';
 import type { NotebookController } from './NotebookPane';
+import { declareDevice } from '../lib/kernel-relay';
 
 // No kernel and no real notebook widget: the pane's loading, dirty state and
 // saving are tested here with JupyterLab's real NotebookModel. Rendering,
@@ -96,6 +98,10 @@ vi.mock('../lib/widgets', () => ({
   }),
 }));
 
+vi.mock('../lib/kernel-relay', async importOriginal => ({
+  ...(await importOriginal<typeof import('../lib/kernel-relay')>()),
+  declareDevice: vi.fn(),
+}));
 vi.mock('../lib/backends', () => ({ trustNotebook: vi.fn(async () => {}) }));
 
 vi.mock('@jupyterlab/apputils', async importOriginal => {
@@ -1448,16 +1454,16 @@ describe('NotebookPane', () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     const { fake, latest, change } = await changedOnDisk();
     change();
+    act(() => modelOf().cells.get(0).sharedModel.setSource('print(2)'));
     await act(async () => void window.dispatchEvent(new Event('focus')));
     await waitFor(() => expect(latest()!.locked).toBe(true));
-    // Unlocked while clean: nothing saves, and the checks go on.
+    // Unlocked: saves write over that version, and the checks go on.
     await userEvent.click(screen.getByRole('button', { name: 'Unlock' }));
     await waitFor(() => expect(latest()!.locked).toBe(false));
 
     change('2026-10-20T10:10:00Z');
     await act(() => vi.advanceTimersByTimeAsync(5_000));
     await waitFor(() => expect(latest()!.locked).toBe(true));
-    act(() => modelOf().cells.get(0).sharedModel.setSource('print(2)'));
     await act(() => vi.advanceTimersByTimeAsync(120_000));
     expect(fake.contents.save).not.toHaveBeenCalled();
   });
@@ -1480,14 +1486,76 @@ describe('NotebookPane', () => {
     expect(latest()!.locked).toBe(false);
 
     change();
+    act(() => modelOf().cells.get(0).sharedModel.setSource('print(2)'));
     await act(async () => void window.dispatchEvent(new Event('focus')));
     await waitFor(() => expect(latest()!.locked).toBe(true));
-    // Clean: the notice doesn't speak of edits.
-    expect(screen.getByRole('alert')).not.toHaveTextContent('unsaved');
+    expect(screen.getByRole('alert')).toHaveTextContent('unsaved edits here are dropped');
     // Locked: no more asking.
     const asked = fake.contents.get.mock.calls.length;
     await act(() => vi.advanceTimersByTimeAsync(20_000));
     expect(fake.contents.get).toHaveBeenCalledTimes(asked);
+  });
+
+  it('takes a change on disk in place when nothing here would be lost (#508)', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const { fake, latest, change } = await changedOnDisk();
+    const changed = structuredClone(NOTEBOOK);
+    changed.cells[0]!.source = 'print("from the agent")';
+    changed.cells.push({ cell_type: 'markdown', id: 'm2', metadata: {}, source: '# Notes' });
+    // The new version names another kernel and asks for the clipboard.
+    changed.metadata.kernelspec = { name: 'julia', display_name: 'Julia 1.11' };
+    changed.metadata.ganymede = { device: ['clipboard'] };
+    change();
+    // Where the person was: the second cell, scrolled down.
+    act(() => modelOf().sharedModel.insertCell(1, { cell_type: 'markdown', source: 'x' }));
+    act(() => void (modelOf().dirty = false));
+    const notebook = fakes.notebooks[0] as unknown as {
+      activeCellIndex: number;
+      node: HTMLElement;
+    };
+    notebook.activeCellIndex = 1;
+    notebook.node.scrollTop = 40;
+    vi.mocked(declareDevice).mockClear();
+    fake.contents.get.mockImplementation((async (_: string, o?: { content?: boolean }) =>
+      o?.content
+        ? { path: 'moons/Io.ipynb', last_modified: '2026-10-20T10:05:00Z', content: changed }
+        : { last_modified: '2026-10-20T10:05:00Z' }) as never);
+    await act(() => vi.advanceTimersByTimeAsync(5_000));
+    await waitFor(() =>
+      expect(modelOf().cells.get(0).sharedModel.getSource()).toBe('print("from the agent")'),
+    );
+    expect(latest()!.locked).toBe(false);
+    expect(latest()!.dirty).toBe(false);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    // Same notebook and session: the kernel stays.
+    expect(fakes.notebooks).toHaveLength(1);
+    expect(fakes.sessions).toHaveLength(1);
+    // The person's place is kept.
+    expect(notebook.activeCellIndex).toBe(1);
+    expect(notebook.node.scrollTop).toBe(40);
+    // As on open: the kernel the new version names, and its device ask.
+    await waitFor(() => expect(latest()!.missingKernel).toBe('Julia 1.11'));
+    expect(declareDevice).toHaveBeenCalledWith(
+      'moons/Io.ipynb',
+      expect.objectContaining({ ganymede: { device: ['clipboard'] } }),
+    );
+    // Saves go on from the new version.
+    act(() => modelOf().cells.get(0).sharedModel.setSource('print(3)'));
+    expect(await act(() => latest()!.save())).toBe(true);
+    expect(fake.contents.save.mock.calls[0]![1]).toMatchObject({
+      last_modified: '2026-10-20T10:05:00Z',
+    });
+  });
+
+  it('locks instead while a cell runs', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const { latest, change } = await changedOnDisk();
+    const cell = modelOf().cells.get(0) as ICodeCellModel;
+    act(() => (cell.executionState = 'running'));
+    change();
+    await act(() => vi.advanceTimersByTimeAsync(5_000));
+    await waitFor(() => expect(latest()!.locked).toBe(true));
+    expect(cell.sharedModel.getSource()).toBe(NOTEBOOK.cells[0]!.source);
   });
 
   it('doesn’t take its own save for a change on disk', async () => {
