@@ -33,7 +33,7 @@ Jupyter server that speaks the same REST and websocket API.
   ganymede-ui uses only that package, not JupyterLite's application, to
   run kernels without a server: the rest of the app sees an ordinary
   `ServiceManager` and doesn't know the difference. This is how the
-  browser mode works, and how the iPad app runs code (see
+  browser mode works (see
   [In-page server and kernels](#in-page-server-and-kernels)).
 - **cdp-kernel** ([tlockney/cdp-kernel](https://github.com/tlockney/cdp-kernel))
   is a TypeScript and JavaScript kernel. Its browser build runs the kernel
@@ -73,7 +73,7 @@ Anything that can build one is a backend. `connect(config)` in
 - **`ganymede` with `kernels: 'page'`**: notebooks on the server, kernels
   in this page. It builds the in-page server below with a `ContentsManager`
   pointed at the server. This is for a server that has no kernels of its
-  own, such as the one inside the iPad app.
+  own.
 - **`browser`**: everything in the page. Notebooks are stored in IndexedDB,
   kernels run in Web Workers. Nothing is sent anywhere.
 
@@ -414,22 +414,23 @@ own process and shows this web app in a `WKWebView`:
 
 Where kernels run:
 
-| Run kernels on (Settings › Kernels) | Mac                                                     | iPad and iPhone                                     |
-| ----------------------------------- | ------------------------------------------------------- | --------------------------------------------------- |
-| This device                         | Kernelspecs installed on the Mac                        | cdp-kernel in the kernel web view (`?kernels=page`) |
-| A remote with a server              | That server, through Ganymede's gateway (`gateway_url`) | Same                                                |
+| Run kernels on (Settings › Kernels) | Mac                                                     | iPad and iPhone |
+| ----------------------------------- | ------------------------------------------------------- | --------------- |
+| This device                         | Kernelspecs installed on the Mac                        | The app's own   |
+| A remote with a server              | That server, through Ganymede's gateway (`gateway_url`) | Same            |
 
-Both apps also list the page's own kernels beside the server's
-(`?kernels=both`, `src/lib/mixed.ts`) whenever the server has kernels:
-always on the Mac, and on the iPad when a remote runs kernels. Those
-kernels run in the kernel web view below, the only place cells can reach
-the app's bridges, such as ganymede-device's `device` (#185). One service
-manager answers the UI: it merges the kernel specs (a page spec whose name
-the server has is dropped), starts each kernel on the side that owns its
-spec, routes later kernel and session calls by id, and opens a page
-kernel's websocket on the page's fake server. Changing a notebook's
-kernel to one on the other side starts its session again on the new side,
-then ends it on the old one, under the same session id.
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, where the page runs the app's TypeScript kernel
+> itself (`?kernels=both`, or `page` on an iPad with no kernel server) and
+> Swift relays its messages between two web views.
+
+Both apps also run their own TypeScript kernel, as a kernel of their
+server: the page opens with `?kernels=server` and sees one server with
+one list of kernels, so the execute endpoint, kernel lifetime and the
+kernel list cover the app's kernel as they do any other. The kernel runs
+in a hidden web view, the only place cells can reach the app's bridges,
+such as ganymede-device's `device` (#185).
 
 Settings keep a list of remotes (`Remote.swift`): each has a name, an
 optional Jupyter or Ganymede server (its token in the keychain), and
@@ -438,34 +439,54 @@ remote with a server can be chosen for kernels. The single kernel server
 setting of earlier versions moves to the first remote on launch.
 
 iOS does not let an app launch processes, so without a kernel server the
-iPad's in-process Ganymede serves notebooks only and the page runs its own
-kernel, the `kernels: 'page'` backend above. With a kernel server set,
-Ganymede forwards kernel requests to it, and the page lists those kernels
-beside its own (`kernels: 'both'`, above).
-Notebooks stay on the device either way. On the Mac, an app opened from
-the Finder takes `PATH` from the login shell (`LoginShell.swift`) so
-kernelspecs that run `node`, `deno` or `python3` start.
+iPad's in-process Ganymede has only the app's own kernel. With a kernel
+server set, Ganymede forwards kernel requests to it, and lists the app's
+kernel after that server's. Notebooks stay on the device either way. On
+the Mac, an app opened from the Finder takes `PATH` from the login shell
+(`LoginShell.swift`) so kernelspecs that run `node`, `deno` or `python3`
+start.
 
-In the apps, cdp-kernel's in-page kernels don't run in the UI's web view.
-`KernelHost.swift` keeps a second, hidden web view on `kernel.html`
-(`src/kernel-host.ts`), loaded from the same server when the first kernel
-starts, and relays Jupyter messages between the two pages: the UI posts
-to `webkit.messageHandlers.kernelRelay`, the kernel page to `kernelHost`,
-and Swift delivers each to the other page's `deliver` in order
-(`src/lib/kernel-relay.ts`; binary buffers travel as base64). Swift takes
-only main-frame messages from the server's origin, since WebKit gives
-subframes, the sandboxed output frames among them, the same handlers.
+`AppKernels.swift` registers the app's kernelspec, `cdp-browser`, with
+the embedded server through ganymede-ffi's `ganymede_kernel_register`
+(Ganymede's
+[in-app kernel design](https://github.com/tlockney/ganymede/blob/main/docs/in-app-kernel.md),
+ganymede#266) each time the server starts. The server then starts,
+messages, interrupts (over the control channel), restarts and stops the
+kernel like any other, through callbacks on its own threads; Swift takes
+each to the main thread and on to one hidden web view for the whole app,
+on `kernel.html` (`src/kernel-host.ts`), loaded from the server when the
+first kernel starts. That page runs each kernel with cdp-kernel's browser
+build, cells in a Worker, and posts what the kernel sends to
+`webkit.messageHandlers.kernelHost`; Swift hands it to the server with
+`ganymede_kernel_deliver`. Messages cross as Jupyter JSON strings, binary
+buffers as base64 (`src/lib/kernel-relay.ts`). Swift takes only main-frame
+messages from the server's origin. A restart keeps the kernel id, so each
+start gets a run number, which the page puts on everything it sends:
+a late message from the run before is dropped.
+
+The kernels belong to the server, not to a window: a window's reload
+leaves them running, and the hidden web view lives inside whichever
+notebook page is in a window, since WebKit suspends one in none. When
+the kernel page's process ends (iOS ends it under memory pressure, #293),
+Swift reports each kernel `lost` and the server starts it again without
+counting a crash; a kernel that ends on its own counts as one. The
+server's shutdown asks each kernel to shut down, then stops it, so quit
+stops the server off the main thread, which answers for the app's kernel.
+
 Native bridges for cells, such as
 [ganymede-device](https://github.com/tlockney/ganymede-device)'s `device`
-handler, belong on the kernel web view only, so nothing the UI renders
-can call them (#99). When the kernel page sees a `device` handler, it
-starts each kernel with ganymede-device's preload (which installs
+handler, belong on the kernel web view only, so nothing a notebook page
+renders can call them (#99). When the kernel page sees a `device` handler,
+it starts each kernel with ganymede-device's preload (which installs
 `globalThis.device` in the cells' Worker), its `webkitHost()` and
-`capabilities: { device: true }`. `KernelHost` registers ganymede-device's
+`capabilities: { device: true }`. `AppKernels` registers ganymede-device's
 Swift `DeviceBridge` on that web view, so cells in the app get `device`
-([Device API](device.md) lists its methods and is the user's guide).
-`CdpBrowserKernel` uses the
-relay whenever the page has a `kernelRelay` handler; a browser has none.
+([Device API](device.md) lists its methods and is the user's guide), and
+learns each kernel's notebook from the server's start (`JPY_SESSION_NAME`)
+for the permission ledger. Each window's `KernelHost.swift` keeps what is
+the page's: renames and a notebook's declared capabilities, for the
+ledger (`kernelRelay`), and the remote `device` subset for server kernels'
+comm.
 
 A native on-device kernel, cdp-kernel running in the app's process instead
 of the web view, is planned and not started.

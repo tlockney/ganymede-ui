@@ -163,9 +163,153 @@ final class ServerHostTests: XCTestCase {
         XCTAssertTrue(body.contains("kernelspecs"), body)
     }
 
+    /// `method path` with `body` and the server's token; the status and body.
+    private func request(_ host: ServerHost, _ method: String, _ path: String, _ body: String? = nil) throws -> (Int, String) {
+        var parts = URLComponents(url: host.url, resolvingAgainstBaseURL: false)!
+        let token = parts.queryItems?.first { $0.name == "token" }?.value ?? ""
+        parts.query = nil
+        parts.path = path
+        var request = URLRequest(url: parts.url!)
+        request.httpMethod = method
+        request.setValue("token \(token)", forHTTPHeaderField: "Authorization")
+        if let body {
+            request.httpBody = Data(body.utf8)
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
+        var result: Result<(Int, String), Error>?
+        let done = expectation(description: "\(method) \(path)")
+        URLSession.shared.dataTask(with: request) { data, response, error in
+            if let error {
+                result = .failure(error)
+            } else {
+                let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+                result = .success((status, String(decoding: data ?? Data(), as: UTF8.self)))
+            }
+            done.fulfill()
+        }.resume()
+        wait(for: [done], timeout: 10)
+        return try XCTUnwrap(result).get()
+    }
+
+    /// Polls `check` until it is true.
+    private func eventually(_ what: String, timeout: TimeInterval = 20, _ check: () throws -> Bool) rethrows {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if try check() { return }
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        XCTFail("timed out waiting for \(what)")
+    }
+
+    /// A kernel the app registers (ganymede#266): the server starts it with
+    /// the notebook's path, messages it, restarts it when the system ends
+    /// it, and stops it; nothing from a stopped run gets through.
+    func testRunsAKernelTheAppRegisters() throws {
+        let host = try ServerHost(config: config())
+        defer { host.stop() }
+        let app = FakeAppKernel()
+        try host.register(spec: ["name": "app-ts", "display_name": "TypeScript (in app)", "language": "typescript"]) {
+            event, kernels in app.handle(event, kernels)
+        }
+        XCTAssertThrowsError(try host.register(spec: ["name": "app-ts"]) { _, _ in }, "a name registers once")
+
+        let (listed, specs) = try request(host, "GET", "/api/kernelspecs")
+        XCTAssertEqual(listed, 200)
+        XCTAssertTrue(specs.contains(#""app-ts""#), specs)
+
+        let (created, session) = try request(
+            host, "POST", "/api/sessions",
+            #"{"path": "Trip.ipynb", "type": "notebook", "name": "Trip.ipynb", "kernel": {"name": "app-ts"}}"#)
+        XCTAssertEqual(created, 201, session)
+        let object = try JSONSerialization.jsonObject(with: Data(session.utf8)) as? [String: Any]
+        let id = try XCTUnwrap((object?["kernel"] as? [String: Any])?["id"] as? String)
+        let idle: () throws -> Bool = {
+            try self.request(host, "GET", "/api/kernels/\(id)").1.contains(#""execution_state":"idle""#)
+        }
+        try eventually("the kernel", idle)
+        XCTAssertEqual(app.starts.count, 1)
+        XCTAssertTrue(AppKernels.notebook(in: app.starts[0])?.hasSuffix("Trip.ipynb") == true, app.starts[0])
+        XCTAssertTrue(host.kernels.isLive(id))
+
+        // The system ends it: the server starts it again, under the same id.
+        host.kernels.ended(id, reason: "lost")
+        XCTAssertFalse(host.kernels.isLive(id))
+        eventually("the restart") { app.starts.count == 2 }
+        try eventually("the restarted kernel", idle)
+
+        let (deleted, _) = try request(host, "DELETE", "/api/kernels/\(id)")
+        XCTAssertEqual(deleted, 204)
+        XCTAssertEqual(app.stops, [id])
+        XCTAssertFalse(host.kernels.isLive(id))
+        XCTAssertFalse(host.kernels.deliver(id, channel: "iopub", message: FakeAppKernel.status(id, "idle")),
+                       "a stopped kernel takes nothing more")
+    }
+
     func testFailureThrowsTheServersMessage() {
         XCTAssertThrowsError(try ServerHost(config: config(["root_dir": "/no/such/dir"]))) { error in
             XCTAssertTrue(error.localizedDescription.contains("/no/such/dir"), "\(error)")
         }
+    }
+}
+
+/// Answers kernel_info and shutdown requests on a background queue, as the
+/// app's kernel page does through the main thread.
+private final class FakeAppKernel: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _starts: [String] = []
+    private var _stops: [String] = []
+    var starts: [String] { lock.withLock { _starts } }
+    var stops: [String] { lock.withLock { _stops } }
+    private let queue = DispatchQueue(label: "fake-app-kernel")
+
+    func handle(_ event: KernelEvent, _ kernels: RegisteredKernels) {
+        switch event {
+        case .start(_, let launch):
+            lock.withLock { _starts.append(launch) }
+        case .stop(let kernel):
+            lock.withLock { _stops.append(kernel) }
+        case .send(let kernel, let channel, let message):
+            guard let request = try? JSONSerialization.jsonObject(with: Data(message.utf8)) as? [String: Any],
+                  let header = request["header"] as? [String: Any],
+                  let type = header["msg_type"] as? String
+            else { return }
+            let reply: (String, [String: Any])
+            switch type {
+            case "kernel_info_request":
+                reply = ("kernel_info_reply", [
+                    "status": "ok", "protocol_version": "5.3", "implementation": "fake",
+                    "implementation_version": "1", "banner": "",
+                    "language_info": ["name": "typescript", "version": "5", "file_extension": ".ts"],
+                ])
+            case "shutdown_request":
+                reply = ("shutdown_reply", ["status": "ok", "restart": false])
+            default:
+                return
+            }
+            queue.async {
+                kernels.deliver(kernel, channel: "iopub", message: Self.status(kernel, "busy", parent: header))
+                kernels.deliver(kernel, channel: channel,
+                                message: Self.message(reply.0, reply.1, parent: header))
+                kernels.deliver(kernel, channel: "iopub", message: Self.status(kernel, "idle", parent: header))
+            }
+        }
+    }
+
+    static func status(_ kernel: String, _ state: String, parent: [String: Any] = [:]) -> String {
+        message("status", ["execution_state": state], parent: parent)
+    }
+
+    static func message(_ type: String, _ content: [String: Any], parent: [String: Any]) -> String {
+        let message: [String: Any] = [
+            "header": [
+                "msg_id": UUID().uuidString, "msg_type": type, "session": "fake", "username": "",
+                "date": "2026-11-10T00:00:00Z", "version": "5.3",
+            ],
+            "parent_header": parent,
+            "metadata": [String: Any](),
+            "content": content,
+        ]
+        let data = try! JSONSerialization.data(withJSONObject: message)
+        return String(decoding: data, as: UTF8.self)
     }
 }

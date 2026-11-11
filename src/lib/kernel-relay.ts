@@ -1,53 +1,52 @@
 /**
  * The Apple apps run cdp-kernel's browser kernels in a hidden web view of
- * their own (`kernel.html`, `src/kernel-host.ts`), not in this page
- * (#99). Only that web view will get the native `device` bridge, so no
- * output, widget or Markdown rendered here can reach it. Swift relays
- * Jupyter messages between the two pages:
+ * their own (`kernel.html`, `src/kernel-host.ts`) and register them with
+ * the app's server (ganymede#266), so this page reaches them through the
+ * server's API like any kernel. Only that web view gets the native
+ * `device` bridge, so no output, widget or Markdown rendered here can
+ * reach it. Swift carries the kernel page's messages to the server:
  *
- *   this page   → webkit.messageHandlers.kernelRelay → Swift
- *               → ganymedeKernelHost.deliver(m) in the kernel page
- *   kernel page → webkit.messageHandlers.kernelHost → Swift
- *               → ganymedeKernelRelay.deliver(m) here
+ *   server → Swift → ganymedeKernelHost.deliver(m) in the kernel page
+ *   kernel page → webkit.messageHandlers.kernelHost → Swift → server
  *
- * Swift accepts only main-frame messages, so sandboxed output frames,
- * which WebKit also gives message handlers, can't post into the relay.
- * Outside the apps there is no `kernelRelay` handler and kernels run in
- * this page, as before.
+ * This page still tells the app what the permission ledger needs
+ * (`kernelRelay`): renames and a notebook's declared capabilities. Swift
+ * accepts only main-frame messages, so sandboxed output frames, which
+ * WebKit also gives message handlers, can't post them.
  */
-import type {
-  BrowserKernel,
-  Channel,
-  JupyterMessage,
-  MessageListener,
-} from '@tlockney/cdp-kernel/browser';
-
 export const RELAY_HANDLER = 'kernelRelay';
 export const HOST_HANDLER = 'kernelHost';
 
-/** From this page to the kernel page. */
+/**
+ * From the server, through Swift, to the kernel page. Each start has a run
+ * number, which the kernel page puts on what it sends back: a restart
+ * reuses the kernel id, and Swift drops what an earlier run sends late.
+ * Messages are Jupyter JSON, binary buffers as base64 strings.
+ */
 export type ToKernel =
-  { kernel: string; op: 'start' } | { kernel: string; op: 'send'; channel: string; msg: unknown };
+  | { kernel: string; op: 'start'; run: number }
+  | { kernel: string; op: 'send'; channel: string; json: string }
+  | { kernel: string; op: 'stop' };
 
 /**
- * From this page to Swift only, for ganymede-device's permission ledger
- * (#383): which notebook each kernel runs, renames, and what a notebook
- * declares it uses. Paths are the server's, as the contents API has them.
+ * From this page to Swift, for ganymede-device's permission ledger (#383):
+ * renames, and what a notebook declares it uses. Paths are the server's,
+ * as the contents API has them.
  */
 export type ToApp =
-  | { kernel: string; op: 'notebook'; path: string | null }
   | { op: 'moved'; from: string; to: string }
   | { op: 'declared'; path: string; capabilities: string[] };
 
 /**
- * From the kernel page to this one; `ready`, and `owner` (the kernel's
- * `device` owner, for the ledger), go to Swift only.
+ * From the kernel page to Swift: `ready`; `owner`, the kernel's `device`
+ * owner, for the ledger; a message for the server; and `closed`, a kernel
+ * that ended without being stopped.
  */
 export type FromKernel =
   | { op: 'ready' }
   | { kernel: string; op: 'owner'; owner: number }
-  | { kernel: string; op: 'message'; channel: string; msg: unknown }
-  | { kernel: string; op: 'closed' };
+  | { kernel: string; run: number; op: 'message'; channel: string; json: string }
+  | { kernel: string; run: number; op: 'closed' };
 
 interface MessageHandler {
   postMessage(message: unknown): void;
@@ -59,14 +58,14 @@ export function messageHandler(name: string): MessageHandler | undefined {
   return webkit?.messageHandlers?.[name];
 }
 
-/** Whether this page is in an Apple app that runs kernels in its kernel web view. */
+/** Whether this page is in an Apple app, which keeps the permission ledger. */
 export function relayAvailable(): boolean {
   return messageHandler(RELAY_HANDLER) !== undefined;
 }
 
 /**
- * Messages cross to Swift as JSON-like values, which can't hold
- * `ArrayBuffer`s; binary buffers (widgets') travel as base64 strings.
+ * Messages cross to Swift as JSON, which can't hold `ArrayBuffer`s; binary
+ * buffers (widgets') travel as base64 strings, as the server takes them.
  */
 export function encodeMessage(msg: unknown): unknown {
   const buffers = (msg as { buffers?: unknown[] } | null)?.buffers;
@@ -108,11 +107,6 @@ function tellApp(message: ToApp): void {
   messageHandler(RELAY_HANDLER)?.postMessage(message);
 }
 
-/** Kernel `kernel` runs the notebook at `path` (none: no notebook). */
-export function reportNotebook(kernel: string, path: string | null): void {
-  tellApp({ kernel, op: 'notebook', path });
-}
-
 /** A file or folder moved from `from` to `to`: kept permissions follow. */
 export function reportMoved(from: string, to: string): void {
   if (from !== to) tellApp({ op: 'moved', from, to });
@@ -134,61 +128,4 @@ export function declaredDevice(metadata: unknown): string[] {
   const device = (ganymede as { device?: unknown } | null | undefined)?.device;
   if (!Array.isArray(device)) return [];
   return [...new Set(device.filter((c): c is string => typeof c === 'string' && c !== ''))];
-}
-
-const listeners = new Map<string, MessageListener>();
-const closers = new Map<string, () => void>();
-
-function installReceiver(): void {
-  const w = window as { ganymedeKernelRelay?: { deliver(m: FromKernel): void } };
-  w.ganymedeKernelRelay ??= {
-    deliver(m) {
-      if (m.op === 'closed') {
-        closers.get(m.kernel)?.();
-        return;
-      }
-      if (m.op !== 'message') return;
-      listeners.get(m.kernel)?.(m.channel as Channel, decodeMessage(m.msg) as JupyterMessage);
-    },
-  };
-}
-
-/** The part of cdp-kernel's `BrowserKernel` that `CdpBrowserKernel` uses. */
-export type KernelChannels = Pick<BrowserKernel, 'send' | 'onMessage'> & {
-  /**
-   * Calls `listener` if the kernel ends without being asked to, as when
-   * the Apple apps' kernel web view process dies (#293). Returns a
-   * function that stops listening.
-   */
-  onClosed?(listener: () => void): () => void;
-};
-
-/** A kernel in the app's kernel web view, with `id` naming it across the relay. */
-export function startRelayedKernel(id: string): KernelChannels {
-  installReceiver();
-  const relay = messageHandler(RELAY_HANDLER);
-  if (!relay) throw new Error('No kernel relay: not in the Ganymede app');
-  relay.postMessage({ kernel: id, op: 'start' } satisfies ToKernel);
-  return {
-    send(channel, msg) {
-      relay.postMessage({
-        kernel: id,
-        op: 'send',
-        channel,
-        msg: encodeMessage(msg),
-      } satisfies ToKernel);
-    },
-    onMessage(listener) {
-      listeners.set(id, listener);
-      return () => {
-        if (listeners.get(id) === listener) listeners.delete(id);
-      };
-    },
-    onClosed(listener) {
-      closers.set(id, listener);
-      return () => {
-        if (closers.get(id) === listener) closers.delete(id);
-      };
-    },
-  };
 }

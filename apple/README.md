@@ -26,10 +26,18 @@ it. The iPad and iPhone app is built from the same sources as the Mac's
   inspector are SwiftUI and AppKit (UIKit on iPadOS); the page shows just
   the notebook. [docs/architecture.md](../docs/architecture.md) has the
   split between the shell and the page.
-- The in-app TypeScript kernel is cdp-kernel in a Worker in a hidden
-  second web view, with Swift relaying its messages (`KernelHost.swift`;
-  the iPad app opens the page with `kernels=page`). Its cells get
-  ganymede-device's `device` (see [docs/device.md](../docs/device.md)).
+- The in-app TypeScript kernel is cdp-kernel in a Worker in a hidden web
+  view, registered with the app's server as one of its kernels
+  (`AppKernels.swift`, ganymede#266): the page reaches it through the
+  server's API like any other kernel, and it keeps running across a
+  window's reload. Its cells get ganymede-device's `device` (see
+  [docs/device.md](../docs/device.md)).
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release, where the page runs the kernel itself and Swift
+  > relays its messages to the hidden web view.
+
 - Not sandboxed on the Mac: the App Sandbox does not allow launching
   kernels. Releases are signed with a Developer ID and notarized instead
   (see [Download](#download)).

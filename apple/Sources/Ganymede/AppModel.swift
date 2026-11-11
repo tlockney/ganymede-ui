@@ -167,6 +167,13 @@ final class AppModel {
             switch result {
             case .success(let host):
                 server = host
+                // Before the page loads, so its first kernel list has it.
+                AppKernels.shared.notebookRoot = serverRootFolder
+                do {
+                    try AppKernels.shared.serve(host)
+                } catch {
+                    NSLog("Ganymede: the in-app kernel didn't register: %@", error.localizedDescription)
+                }
                 serverURL = host.url
                 url = pageURL(host.url)
                 if let port = host.url.port {
@@ -200,12 +207,11 @@ final class AppModel {
     }
 
     /// The page to open, saying where kernels run: the page remembers its
-    /// last connection, so it is told every time. The page always offers
-    /// its own kernels (cdp-kernel's TypeScript kernel, run in `KernelHost`),
-    /// since only those reach the app's bridges, such as ganymede-device's
-    /// `device` (#185). iOS can't launch kernel processes, so without a
-    /// kernel server they are the only ones; otherwise the server's are
-    /// listed beside them.
+    /// last connection, so it is told every time. All of them are the
+    /// server's: its own or a kernel server's, and the app's TypeScript
+    /// kernel, which the app registers with it (`AppKernels`, ganymede#266)
+    /// and which alone reaches the app's bridges, such as ganymede-device's
+    /// `device` (#185).
     private func pageURL(_ url: URL) -> URL {
         guard var parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return url }
         var items = [URLQueryItem(name: "kernels", value: kernels)]
@@ -218,14 +224,8 @@ final class AppModel {
         return parts.url ?? url
     }
 
-    /// The page's `kernels=`: where its kernels run.
-    private var kernels: String {
-        #if os(iOS)
-        kernelRemote == nil ? "page" : "both"
-        #else
-        "both"
-        #endif
-    }
+    /// The page's `kernels=`: where its kernels run, the server.
+    private var kernels: String { "server" }
 
     /// What the server serves: everything on macOS, where windows open
     /// files by absolute path; the notebook folder on iOS.
@@ -293,9 +293,26 @@ final class AppModel {
         unsavedTokens[id] ?? store.token(for: id)
     }
 
+    /// Stops the server off the main thread, shutting down every kernel:
+    /// the app's own kernels answer the shutdown through the main thread,
+    /// which a blocking stop would hold up for the server's shutdown grace.
+    func stopServer() async {
+        guard let old = server else { return }
+        server = nil
+        url = nil
+        serverURL = nil
+        await withCheckedContinuation { done in
+            Self.serverQueue.async {
+                old.stop()
+                done.resume()
+            }
+        }
+    }
+
     /// Stops the server as the app quits, shutting down every kernel.
     /// Blocks: the process ends right after. A start still under way is
-    /// not waited for; its server ends with the process.
+    /// not waited for; its server ends with the process. `stopServer`
+    /// usually ran first.
     func stopForQuit() {
         server?.stop()
         server = nil

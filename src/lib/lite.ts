@@ -1,12 +1,10 @@
 import {
-  type Contents,
   ContentsManager,
   Event,
   KernelManager,
   KernelSpecManager,
   ServerConnection,
   ServiceManager,
-  type Session,
   SessionManager,
   UserManager,
 } from '@jupyterlab/services';
@@ -22,7 +20,6 @@ import { Signal, Stream } from '@lumino/signaling';
 import localforage from 'localforage';
 import { WebSocket } from 'mock-socket';
 import { CDP_KERNEL_SPEC, CdpBrowserKernel } from './cdp-kernel';
-import { relayAvailable, reportMoved, reportNotebook } from './kernel-relay';
 import { ServiceWorkerBridge } from './lite-sw';
 
 /**
@@ -135,54 +132,22 @@ export async function createLiteParts(
     create: async options => new CdpBrowserKernel(options),
   });
 
-  // In the Apple apps, kept device permissions follow a rename (#383).
-  const onRename = (_: unknown, change: Contents.IChangedArgs) => {
-    const from = change.oldValue?.path;
-    const to = change.newValue?.path;
-    if (change.type === 'rename' && from && to) reportMoved(from, to);
-  };
-  if (relayAvailable()) contents.fileChanged.connect(onRename);
-
   let disposed = false;
   return {
     serverSettings,
     contents,
     kernelClient,
-    sessionClient: new NotebookSessionClient({ kernelClient, serverSettings }),
+    sessionClient: new LiteSessionClient({ kernelClient, serverSettings }),
     kernelSpecClient: new LiteKernelSpecClient({ kernelSpecs, serverSettings }),
     hasKernel: id => runningKernels(kernelClient).has(id),
     dispose() {
       if (disposed) return;
       disposed = true;
       // Synchronous underneath: each kernel is disposed on the spot.
-      contents.fileChanged.disconnect(onRename);
       void kernelClient.shutdownAll();
       bridge.dispose();
     },
   };
-}
-
-/**
- * Sessions as JupyterLite keeps them, and in the Apple apps each session's
- * notebook told to the app for its kernel, so ganymede-device's permission
- * ledger knows whose calls they are (#383). A session's path changes with
- * a rename and its kernel with a kernel change, both through `update`.
- */
-export class NotebookSessionClient extends LiteSessionClient {
-  async startNew(options: Session.ISessionOptions): Promise<Session.IModel> {
-    return report(await super.startNew(options));
-  }
-
-  async update(options: Parameters<LiteSessionClient['update']>[0]): Promise<Session.IModel> {
-    return report(await super.update(options));
-  }
-}
-
-function report(model: Session.IModel): Session.IModel {
-  if (model.kernel && relayAvailable()) {
-    reportNotebook(model.kernel.id, model.path);
-  }
-  return model;
 }
 
 /** LiteKernelClient's private map of running kernels, by id. */

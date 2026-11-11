@@ -4,20 +4,12 @@ import {
   declaredDevice,
   decodeMessage,
   encodeMessage,
-  type FromKernel,
   relayAvailable,
   reportMoved,
-  reportNotebook,
-  startRelayedKernel,
 } from './kernel-relay';
 
-// The UI page's half of the Apple apps' kernel relay, against a fake
+// What the notebook page tells the Apple apps, against a fake
 // `webkit.messageHandlers`; Swift's half is tested in apple/Tests.
-
-const deliver = (m: FromKernel) =>
-  (
-    window as unknown as { ganymedeKernelRelay: { deliver(m: FromKernel): void } }
-  ).ganymedeKernelRelay.deliver(m);
 
 function fakeRelay() {
   const posted: unknown[] = [];
@@ -36,64 +28,6 @@ describe('kernel relay', () => {
     expect(relayAvailable()).toBe(true);
   });
 
-  it('starts the kernel, sends to it, and routes its messages by kernel id', () => {
-    const posted = fakeRelay();
-    const a = startRelayedKernel('a');
-    const b = startRelayedKernel('b');
-    const got: [string, string, unknown][] = [];
-    a.onMessage((channel, msg) => got.push(['a', channel, msg]));
-    const stopB = b.onMessage((channel, msg) => got.push(['b', channel, msg]));
-    const msg = { header: { msg_type: 'execute_request' } } as never;
-    a.send('shell', msg);
-    expect(posted).toEqual([
-      { kernel: 'a', op: 'start' },
-      { kernel: 'b', op: 'start' },
-      { kernel: 'a', op: 'send', channel: 'shell', msg },
-    ]);
-
-    deliver({ kernel: 'b', op: 'message', channel: 'iopub', msg: { n: 1 } });
-    deliver({ kernel: 'a', op: 'closed' });
-    stopB();
-    deliver({ kernel: 'b', op: 'message', channel: 'iopub', msg: { n: 2 } });
-    expect(got).toEqual([['b', 'iopub', { n: 1 }]]);
-  });
-
-  it('tells a kernel when it closed on its own (#293)', () => {
-    fakeRelay();
-    const a = startRelayedKernel('ca');
-    const b = startRelayedKernel('cb');
-    const closed: string[] = [];
-    a.onClosed!(() => closed.push('ca'));
-    const stopB = b.onClosed!(() => closed.push('cb'));
-    stopB();
-    deliver({ kernel: 'ca', op: 'closed' });
-    deliver({ kernel: 'cb', op: 'closed' });
-    expect(closed).toEqual(['ca']);
-  });
-
-  it('a relayed CdpBrowserKernel says it is dead when it closes on its own', async () => {
-    fakeRelay();
-    const { CdpBrowserKernel } = await import('./cdp-kernel');
-    const sent: { channel: string; header: { msg_type: string }; content: unknown }[] = [];
-    const kernel = new CdpBrowserKernel({
-      id: 'dk',
-      name: 'cdp-browser',
-      location: '',
-      sendMessage: (m: never) => sent.push(m),
-    } as never);
-    deliver({ kernel: 'dk', op: 'closed' });
-    expect(sent).toHaveLength(1);
-    expect(sent[0]).toMatchObject({
-      channel: 'iopub',
-      header: { msg_type: 'status' },
-      content: { execution_state: 'dead' },
-    });
-    // Once disposed, its own shutdown's close says nothing.
-    kernel.dispose();
-    deliver({ kernel: 'dk', op: 'closed' });
-    expect(sent).toHaveLength(1);
-  });
-
   it('carries binary buffers as base64', () => {
     const bytes = new Uint8Array([0, 1, 254, 255]);
     const encoded = encodeMessage({ content: {}, buffers: [bytes, bytes.buffer] }) as {
@@ -106,17 +40,15 @@ describe('kernel relay', () => {
     expect(encodeMessage(plain)).toBe(plain);
   });
 
-  it("tells the app each kernel's notebook, renames and declarations (#383)", () => {
-    reportNotebook('k', 'a.ipynb');
+  it('tells the app of renames and declarations (#383)', () => {
+    reportMoved('x.ipynb', 'y.ipynb');
     declareDevice('a.ipynb', { ganymede: { device: ['location'] } });
     const posted = fakeRelay();
-    reportNotebook('k', 'a.ipynb');
     reportMoved('a.ipynb', 'b.ipynb');
     reportMoved('b.ipynb', 'b.ipynb');
     declareDevice('b.ipynb', { ganymede: { device: ['location', 'contacts', 'location'] } });
     declareDevice('c.ipynb', {});
     expect(posted).toEqual([
-      { kernel: 'k', op: 'notebook', path: 'a.ipynb' },
       { op: 'moved', from: 'a.ipynb', to: 'b.ipynb' },
       { op: 'declared', path: 'b.ipynb', capabilities: ['location', 'contacts'] },
     ]);
