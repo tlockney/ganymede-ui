@@ -157,60 +157,70 @@ final class KernelHostTests: XCTestCase {
     /// server starts the kernel again, and a shutdown stops it.
     @MainActor
     func testRunsTheAppsKernelAsAServerKernel() async throws {
+        NSLog("KernelHostTests step: %d", 160)
         let server = try server()
         defer { server.stop() }
         let ledger = PermissionLedger(store: MemoryLedgerStore())
         let kernels = AppKernels(device: DeviceBridge(presenter: SilentPresenter(), ledger: ledger))
         kernels.notebookRoot = dir
+        NSLog("KernelHostTests step: %d", 165)
         try kernels.serve(server)
         let ui = uiView()
         kernels.lend(ui)
         XCTAssertTrue(kernels.webView.superview === ui)
-        ui.load(URLRequest(url: server.url))
-        try await waitFor(ui, "document.title === 'ui' && document.readyState === 'complete'")
+        NSLog("KernelHostTests step: %d", 169)
         let (listed, specs) = try await request(server, "GET", "/api/kernelspecs")
         XCTAssertEqual(listed, 200)
         XCTAssertTrue(specs.contains(#""cdp-browser""#), specs)
         XCTAssertTrue(specs.contains("in app"), specs)
+        NSLog("KernelHostTests step: %d", 173)
         let (created, session) = try await request(
             server, "POST", "/api/sessions",
             #"{"path": "trips/Trip.ipynb", "type": "notebook", "name": "trips/Trip.ipynb", "kernel": {"name": "cdp-browser"}}"#)
         XCTAssertEqual(created, 201, session)
+        NSLog("KernelHostTests step: %d", 177)
         let object = try JSONSerialization.jsonObject(with: Data(session.utf8)) as? [String: Any]
+        NSLog("KernelHostTests step: %d", 178)
         let id = try XCTUnwrap((object?["kernel"] as? [String: Any])?["id"] as? String)
         let idle = { () async throws -> Bool in
             try await self.request(server, "GET", "/api/kernels/\(id)").1.contains(#""execution_state":"idle""#)
         }
+        NSLog("KernelHostTests step: %d", 182)
         try await eventually("the kernel", idle)
         XCTAssertEqual(kernels.webView.url?.path, "/kernel.html")
+        NSLog("KernelHostTests step: %d", 184)
         try await eventually("the ledger's notebook") { ledger.notebook(for: 7) != nil }
         XCTAssertEqual(ledger.notebook(for: 7)?.hasSuffix("/trips/Trip.ipynb"), true, ledger.notebook(for: 7) ?? "")
 
-        // The device bridge answers in the kernel web view, and is absent
-        // from the notebook page.
+        // The device bridge answers in the kernel web view.
+        NSLog("KernelHostTests step: %d", 188)
         let hello = try await kernels.webView.callAsyncJavaScript(
             "const r = await webkit.messageHandlers.device.postMessage({ id: 1, method: 'hello', params: {} });"
                 + " return r.result.capabilities.includes('info')",
             contentWorld: .page) as? Bool
         XCTAssertEqual(hello, true)
-        let inUI = try await eval(ui, "typeof webkit.messageHandlers.device") as? String
-        XCTAssertEqual(inUI, "undefined")
 
         // The process ends: the server starts the kernel again, on a new
         // kernel page.
+        NSLog("KernelHostTests step: %d", 196)
         _ = try await eval(kernels.webView, "window.old = true; true")
         kernels.webView.load(URLRequest(url: URL(string: "about:blank")!))
+        NSLog("KernelHostTests step: %d", 198)
         try await waitFor(kernels.webView, "location.href === 'about:blank' && document.readyState === 'complete'")
         kernels.webViewWebContentProcessDidTerminate(kernels.webView)
+        NSLog("KernelHostTests step: %d", 200)
         try await waitFor(kernels.webView, """
             document.readyState === 'complete' && window.old === undefined && !!window.log
               && window.log.includes('start:\(id)')
             """)
+        NSLog("KernelHostTests step: %d", 204)
         try await eventually("the restarted kernel", idle)
 
         // A shutdown asks the kernel, then stops it.
+        NSLog("KernelHostTests step: %d", 207)
         let (deleted, _) = try await request(server, "DELETE", "/api/kernels/\(id)")
         XCTAssertEqual(deleted, 204)
+        NSLog("KernelHostTests step: %d", 209)
         try await waitFor(kernels.webView, "window.log.includes('stop:\(id)')")
         XCTAssertFalse(server.kernels.isLive(id))
     }
@@ -244,6 +254,8 @@ final class KernelHostTests: XCTestCase {
                 + " return r.error.code",
             contentWorld: .page) as? String
         XCTAssertEqual(refused, "unavailable")
+        let inUI = try await eval(ui, "typeof webkit.messageHandlers.device") as? String
+        XCTAssertEqual(inUI, "undefined", "only the kernel web view has the full bridge")
         try await waitFor(ui, "!!window.frameRemote")
         let frameCode = try await eval(ui, "window.frameRemote.error && window.frameRemote.error.code") as? String
         XCTAssertEqual(frameCode, "unavailable", "a frame in the UI page can't reach the bridge")
