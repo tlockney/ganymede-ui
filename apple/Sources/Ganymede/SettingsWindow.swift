@@ -107,9 +107,40 @@ private struct GeneralSettings: View {
             }
             UpdateSettings()
             CrashReportsSettings()
+            LinkRunSettings()
         }
         .formStyle(.grouped)
         .padding()
+    }
+}
+
+/// The notebooks `ganymede://run` links may run without asking (#303),
+/// each with Revoke.
+private struct LinkRunSettings: View {
+    private let permissions = URLRunPermissions.shared
+
+    var body: some View {
+        Section {
+            if permissions.paths.isEmpty {
+                Text("No notebook may be run from a link without asking.")
+                    .foregroundStyle(.secondary)
+            } else {
+                ForEach(permissions.paths, id: \.self) { key in
+                    let entry = URLRunPermissions.parts(key)
+                    LabeledContent {
+                        Button("Revoke") { permissions.revoke(key) }
+                            .accessibilityLabel("Revoke \((entry.path as NSString).lastPathComponent)")
+                    } label: {
+                        Text((entry.path as NSString).lastPathComponent)
+                        Text(entry.destination.map { "\(entry.path)\nOutput to \($0)" } ?? entry.path)
+                    }
+                }
+            }
+        } header: {
+            Text("Links")
+        } footer: {
+            Text("A ganymede://run link asks before it first runs a notebook. These notebooks were allowed with Always; a revoked one asks again.")
+        }
     }
 }
 

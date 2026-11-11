@@ -213,6 +213,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             forEventClass: AEEventClass(kCoreEventClass),
             andEventID: AEEventID(kAEOpenDocuments)
         )
+        // `ganymede://` URLs (#303), the same way, so one the app was
+        // launched to open is not lost either.
+        NSAppleEventManager.shared().setEventHandler(
+            self,
+            andSelector: #selector(getURL(_:withReply:)),
+            forEventClass: AEEventClass(kInternetEventClass),
+            andEventID: AEEventID(kAEGetURL)
+        )
+    }
+
+    @objc private func getURL(_ event: NSAppleEventDescriptor, withReply reply: NSAppleEventDescriptor) {
+        guard let url = AppURLHandler.url(in: event) else { return }
+        AppURLHandler.handle(url)
     }
 
     /// The Open Documents event's files, for the notebook windows to open

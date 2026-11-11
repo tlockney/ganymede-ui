@@ -175,6 +175,11 @@ targets:
             LSHandlerRank: Alternate
             CFBundleTypeExtensions:
               - ipynb
+        # `ganymede://` URLs (#303; AppURL, AppURLHandler).
+        CFBundleURLTypes:
+          - CFBundleURLName: com.ganymede-server.Ganymede
+            CFBundleURLSchemes:
+              - ganymede
         UTImportedTypeDeclarations:
           - UTTypeIdentifier: org.jupyter.ipynb
             UTTypeDescription: Jupyter Notebook
@@ -482,6 +487,7 @@ targets:
       - path: Sources/Ganymede/FileStack.swift
       - path: Sources/Ganymede/CrashScrub.swift
       - path: Sources/Ganymede/NotebookActions.swift
+      - path: Sources/Ganymede/AppURL.swift
       - path: Sources/Ganymede/HelpLinks.swift
       - path: Sources/Ganymede/Terminal/ProcessTerminalTransport.swift
       - path: Sources/Ganymede/UpdateFeed.swift
@@ -540,6 +546,7 @@ targets:
       - path: Sources/Ganymede/FileStack.swift
       - path: Sources/Ganymede/CrashScrub.swift
       - path: Sources/Ganymede/NotebookActions.swift
+      - path: Sources/Ganymede/AppURL.swift
       - path: Sources/Ganymede/HelpLinks.swift
       - path: Sources/Ganymede/Runner/ScriptRunner.swift
       - path: Sources/Ganymede/Runner/ScriptIntents.swift
