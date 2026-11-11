@@ -241,6 +241,21 @@ function runFailed(
 }
 
 /**
+ * The kernel a first run starts for a file naming `wanted`: that one if it
+ * is installed, else the default; or, for one that isn't installed, its
+ * name, which is not swapped for another.
+ */
+function intendedKernel(
+  specs: KernelSpec.ISpecModels | null | undefined,
+  wanted: nbformat.IKernelspecMetadata | undefined,
+): { name?: string; missing?: string } {
+  const installed = !!wanted?.name && !!specs?.kernelspecs[wanted.name];
+  return wanted?.name && !installed
+    ? { missing: wanted.display_name || wanted.name }
+    : { name: installed ? wanted.name : (specs?.default ?? undefined) };
+}
+
+/**
  * One notebook file: loads it through the contents API, joins or starts its
  * session, and shows JupyterLab's `Notebook` widget for it. The file is
  * loaded and saved here (nbformat in, nbformat out) rather than by a
@@ -277,10 +292,10 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
   /** The kernel the first run starts, or the uninstalled one the file names. */
   const [intended, setIntendedState] = useState<{ name?: string; missing?: string }>({});
   const intendedRef = useRef(intended);
-  const setIntended = (next: { name?: string; missing?: string }) => {
+  const setIntended = useCallback((next: { name?: string; missing?: string }) => {
     intendedRef.current = next;
     setIntendedState(next);
-  };
+  }, []);
   const [dirty, setDirty] = useState(false);
   const [trusted, setTrusted] = useState(true);
   const [cellType, setCellType] = useState<CellType>('code');
@@ -389,12 +404,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       // here (a Python notebook with no Python) is not swapped for another.
       const specs = services.kernelspecs.specs;
       const wanted = content.metadata?.kernelspec;
-      const installed = !!wanted?.name && !!specs?.kernelspecs[wanted.name];
-      setIntended(
-        wanted?.name && !installed
-          ? { missing: wanted.display_name || wanted.name }
-          : { name: installed ? wanted!.name : (specs?.default ?? undefined) },
-      );
+      setIntended(intendedKernel(specs, wanted));
       const session = new SessionContext({
         sessionManager: services.sessions,
         specsManager: services.kernelspecs,
@@ -591,7 +601,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         teardown();
       }
     };
-  }, [services, path, attempt, memory]);
+  }, [services, path, attempt, memory, setIntended]);
 
   // Put the Lumino widget in the page. The widget lives in a holder node
   // that moves in and out of the pane: when the pane goes, the holder is
@@ -814,7 +824,14 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         (notebook as unknown as { outerNode?: HTMLElement }).outerNode ?? notebook.node;
       const top = scroller.scrollTop;
       const active = notebook.activeCellIndex;
-      model.fromJSON(rejoinLines(file.content as nbformat.INotebookContent));
+      const content = file.content as nbformat.INotebookContent;
+      model.fromJSON(rejoinLines(content));
+      // As a fresh open does: the kernel the new version names, and its
+      // declared device capabilities, which the app asks about if it has
+      // no answer yet. Grants are the person's answers, kept per notebook;
+      // the file's list only prompts, so a new version can't widen them.
+      setIntended(intendedKernel(services.kernelspecs.specs, content.metadata?.kernelspec));
+      declareDevice(saver.path, content.metadata);
       notebook.activeCellIndex = Math.min(active, model.cells.length - 1);
       scroller.scrollTop = top;
     };
@@ -841,7 +858,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       window.removeEventListener('focus', check);
       document.removeEventListener('visibilitychange', check);
     };
-  }, [open, lock]);
+  }, [open, lock, services, setIntended]);
 
   useEffect(() => {
     if (!open) return;
@@ -1117,6 +1134,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
     services,
     memory,
     onController,
+    setIntended,
   ]);
 
   useEffect(() => () => onController(undefined), [onController]);

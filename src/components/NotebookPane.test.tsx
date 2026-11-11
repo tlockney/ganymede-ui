@@ -10,6 +10,7 @@ import { ServerConnection } from '@jupyterlab/services';
 import '../test/notebook-env';
 import { entry, fakeBackend, fakeServices } from '../test/fakes';
 import type { NotebookController } from './NotebookPane';
+import { declareDevice } from '../lib/kernel-relay';
 
 // No kernel and no real notebook widget: the pane's loading, dirty state and
 // saving are tested here with JupyterLab's real NotebookModel. Rendering,
@@ -97,6 +98,10 @@ vi.mock('../lib/widgets', () => ({
   }),
 }));
 
+vi.mock('../lib/kernel-relay', async importOriginal => ({
+  ...(await importOriginal<typeof import('../lib/kernel-relay')>()),
+  declareDevice: vi.fn(),
+}));
 vi.mock('../lib/backends', () => ({ trustNotebook: vi.fn(async () => {}) }));
 
 vi.mock('@jupyterlab/apputils', async importOriginal => {
@@ -1496,7 +1501,21 @@ describe('NotebookPane', () => {
     const { fake, latest, change } = await changedOnDisk();
     const changed = structuredClone(NOTEBOOK);
     changed.cells[0]!.source = 'print("from the agent")';
+    changed.cells.push({ cell_type: 'markdown', id: 'm2', metadata: {}, source: '# Notes' });
+    // The new version names another kernel and asks for the clipboard.
+    changed.metadata.kernelspec = { name: 'julia', display_name: 'Julia 1.11' };
+    changed.metadata.ganymede = { device: ['clipboard'] };
     change();
+    // Where the person was: the second cell, scrolled down.
+    act(() => modelOf().sharedModel.insertCell(1, { cell_type: 'markdown', source: 'x' }));
+    act(() => void (modelOf().dirty = false));
+    const notebook = fakes.notebooks[0] as unknown as {
+      activeCellIndex: number;
+      node: HTMLElement;
+    };
+    notebook.activeCellIndex = 1;
+    notebook.node.scrollTop = 40;
+    vi.mocked(declareDevice).mockClear();
     fake.contents.get.mockImplementation((async (_: string, o?: { content?: boolean }) =>
       o?.content
         ? { path: 'moons/Io.ipynb', last_modified: '2026-10-20T10:05:00Z', content: changed }
@@ -1511,6 +1530,15 @@ describe('NotebookPane', () => {
     // Same notebook and session: the kernel stays.
     expect(fakes.notebooks).toHaveLength(1);
     expect(fakes.sessions).toHaveLength(1);
+    // The person's place is kept.
+    expect(notebook.activeCellIndex).toBe(1);
+    expect(notebook.node.scrollTop).toBe(40);
+    // As on open: the kernel the new version names, and its device ask.
+    await waitFor(() => expect(latest()!.missingKernel).toBe('Julia 1.11'));
+    expect(declareDevice).toHaveBeenCalledWith(
+      'moons/Io.ipynb',
+      expect.objectContaining({ ganymede: { device: ['clipboard'] } }),
+    );
     // Saves go on from the new version.
     act(() => modelOf().cells.get(0).sharedModel.setSource('print(3)'));
     expect(await act(() => latest()!.save())).toBe(true);
