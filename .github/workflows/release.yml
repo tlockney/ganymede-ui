@@ -191,7 +191,7 @@ jobs:
     needs: [version, ci]
     runs-on: macos-latest
     # The notes step waits up to 40 minutes for App Store Connect.
-    timeout-minutes: 120
+    timeout-minutes: 130
     environment: release
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

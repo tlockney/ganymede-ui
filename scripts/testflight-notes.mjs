@@ -47,20 +47,19 @@ export function formatNotes({ since, subjects, head }) {
   if (!changes.length) changes.push('- No changes to the code.');
 
   const fits = lines => [heading, ...lines, '', footer].join('\n').length <= MAX_LENGTH;
+  const more = shown => `- and ${changes.length - shown.length} more`;
   let shown = changes;
-  while (!fits(shown)) {
-    shown = shown.slice(0, -1);
-    const more = changes.length - shown.length;
-    if (fits([...shown, `- and ${more} more`])) {
-      shown = [...shown, `- and ${more} more`];
-      break;
-    }
+  if (!fits(shown)) {
+    do shown = shown.slice(0, -1);
+    while (shown.length && !fits([...shown, more(shown)]));
+    shown = [...shown, more(shown)];
   }
   return [heading, ...shown, '', footer].join('\n');
 }
 
-function git(...args) {
+function git(args, cwd) {
   return execFileSync('git', args, {
+    cwd,
     encoding: 'utf8',
     stdio: ['ignore', 'pipe', 'ignore'],
   }).trim();
@@ -76,9 +75,13 @@ function isAncestor(sha) {
   }
 }
 
-function lastTag() {
+/**
+ * The newest `v*` tag before HEAD. Described from HEAD^ so that on a
+ * release tag run the tag on HEAD itself doesn't count.
+ */
+export function lastTag(cwd) {
   try {
-    return git('describe', '--tags', '--abbrev=0', '--match', 'v*', 'HEAD');
+    return git(['describe', '--tags', '--abbrev=0', '--match', 'v*', 'HEAD^'], cwd);
   } catch {
     return null;
   }
@@ -87,7 +90,7 @@ function lastTag() {
 /** Commit subjects from `base` (exclusive) to HEAD, newest first; the last 30 without a base. */
 function subjectsSince(base) {
   const range = base ? [`${base}..HEAD`] : ['-30', 'HEAD'];
-  const out = git('log', '--no-merges', '--format=%s', ...range);
+  const out = git(['log', '--no-merges', '--format=%s', ...range]);
   return out ? out.split('\n') : [];
 }
 
@@ -109,7 +112,7 @@ export function token({ keyP8, keyId, issuerId, now = Date.now() }) {
 /** A client for the few App Store Connect calls this needs. */
 export function client({ keyP8, keyId, issuerId, fetch = globalThis.fetch }) {
   async function call(method, path, body) {
-    const res = await fetch(path.startsWith('http') ? path : `${API}${path}`, {
+    const res = await fetch(`${API}${path}`, {
       method,
       headers: {
         authorization: `Bearer ${token({ keyP8, keyId, issuerId })}`,
@@ -126,8 +129,9 @@ export function client({ keyP8, keyId, issuerId, fetch = globalThis.fetch }) {
     async appId() {
       const q = new URLSearchParams({ 'filter[bundleId]': BUNDLE_ID });
       const { data } = await call('GET', `/apps?${q}`);
-      if (!data.length) throw new Error(`no app with bundle ID ${BUNDLE_ID}`);
-      return data[0].id;
+      const app = data.find(a => a.attributes?.bundleId === BUNDLE_ID);
+      if (!app) throw new Error(`no app with bundle ID ${BUNDLE_ID}`);
+      return app.id;
     },
 
     /** The build with this version and build number, or null. */
@@ -197,7 +201,9 @@ export function previousPoint(
 ) {
   for (const b of builds) {
     if (b.id === current.id) continue;
-    if (current.attributes?.uploadedDate && b.uploaded > current.attributes.uploadedDate) continue;
+    // The dates carry local offsets, so compare them as times.
+    const now = Date.parse(current.attributes?.uploadedDate ?? '');
+    if (now && Date.parse(b.uploaded) > now) continue;
     const sha = builtFrom(b.notes);
     if (sha && ancestor(sha)) return { base: sha, since: `build ${b.number} (${sha.slice(0, 7)})` };
   }
@@ -209,7 +215,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 async function main() {
   const args = process.argv.slice(2);
-  const head = git('rev-parse', 'HEAD');
+  const head = git(['rev-parse', 'HEAD']);
   if (args[0] === '--print') {
     const since = args[1] ?? lastTag();
     console.log(formatNotes({ since, subjects: subjectsSince(since), head }));

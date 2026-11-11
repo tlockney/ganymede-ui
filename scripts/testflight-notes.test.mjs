@@ -1,11 +1,16 @@
 // @vitest-environment node
+import { execFileSync } from 'node:child_process';
 import { generateKeyPairSync, verify } from 'node:crypto';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   MAX_LENGTH,
   builtFrom,
   client,
   formatNotes,
+  lastTag,
   previousPoint,
   token,
 } from './testflight-notes.mjs';
@@ -56,6 +61,41 @@ describe('formatNotes', () => {
   });
 });
 
+describe('formatNotes cut', () => {
+  it('adds "and N more" even when it means dropping another line', () => {
+    // Without the short line the list fits, but not with "and 1 more" too.
+    const long = 'x'.repeat(MAX_LENGTH - 55);
+    const notes = formatNotes({ since: 'v0.6.0', subjects: [long, 'Short change (#1)'], head });
+    expect(notes.length).toBeLessThanOrEqual(MAX_LENGTH);
+    expect(notes).not.toContain('Short change');
+    expect(notes).toContain('- and 2 more');
+  });
+});
+
+describe('lastTag', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'testflight-notes-'));
+  const git = (...args) =>
+    execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.com', ...args], {
+      cwd: dir,
+      stdio: 'ignore',
+    });
+  git('init', '-q');
+  git('commit', '-q', '--allow-empty', '-m', 'one');
+  git('tag', 'v0.1.0');
+  git('commit', '-q', '--allow-empty', '-m', 'two');
+  git('tag', 'v0.2.0');
+
+  it('skips the tag on HEAD itself (a release tag run)', () => {
+    expect(lastTag(dir)).toBe('v0.1.0');
+  });
+
+  it('finds the newest tag behind an untagged HEAD', () => {
+    git('commit', '-q', '--allow-empty', '-m', 'three');
+    expect(lastTag(dir)).toBe('v0.2.0');
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
 describe('builtFrom', () => {
   it('finds no commit in notes without the marker', () => {
     expect(builtFrom('Try the new menu.')).toBeNull();
@@ -78,6 +118,27 @@ describe('previousPoint', () => {
       tag: () => 'v0.6.0',
     });
     expect(point).toEqual({ base: '3333333', since: 'build 17 (3333333)' });
+  });
+
+  it('compares upload dates as times, not strings', () => {
+    // 01:00-08:00 is 09:00Z, after the current build's 08:30Z, though it sorts first as a string.
+    const later = [
+      {
+        id: 'b9',
+        number: '30',
+        uploaded: '2026-11-10T01:00:00-08:00',
+        notes: 'Built from 4444444.',
+      },
+    ];
+    const point = previousPoint(
+      later,
+      { id: 'b3', attributes: { uploadedDate: '2026-11-10T08:30:00Z' } },
+      {
+        isAncestor: () => true,
+        tag: () => 'v0.6.0',
+      },
+    );
+    expect(point.base).toBe('v0.6.0');
   });
 
   it('falls back to the last tag, then to nothing', () => {
@@ -189,6 +250,18 @@ describe('client', () => {
     expect(await client({ ...opts, fetch }).recentBuilds('app')).toEqual([
       { id: 'b1', number: '17', uploaded: '2026-11-08T00:00:00Z', notes: 'Built from abcdef0.' },
     ]);
+  });
+
+  it('takes the app whose bundle ID matches exactly', async () => {
+    const { fetch } = fakeFetch({
+      'GET /apps': {
+        data: [
+          { id: 'a1', attributes: { bundleId: 'com.ganymede-server.Ganymede.Share' } },
+          { id: 'a2', attributes: { bundleId: 'com.ganymede-server.Ganymede' } },
+        ],
+      },
+    });
+    expect(await client({ ...opts, fetch }).appId()).toBe('a2');
   });
 
   it('reports a failed call with its status and body', async () => {
