@@ -190,6 +190,15 @@ final class AppURLTests: XCTestCase {
         XCTAssertEqual(permissions.paths.count, 2)
         let parts = permissions.paths.map(URLRunPermissions.parts)
         XCTAssertEqual(Set(parts.compactMap(\.destination)), ["shortcuts://x-callback-url"])
+        // Runs with parameters are allowed on their own.
+        XCTAssertFalse(permissions.allows(a, sendingTo: nil, withParameters: true))
+        XCTAssertFalse(permissions.allows(a, sendingTo: "shortcuts://x-callback-url", withParameters: true))
+        permissions.allow(a, sendingTo: "shortcuts://x-callback-url", withParameters: true)
+        XCTAssertTrue(permissions.allows(a, sendingTo: "shortcuts://x-callback-url", withParameters: true))
+        XCTAssertFalse(permissions.allows(a, sendingTo: nil, withParameters: true))
+        let withParams = permissions.paths.map(URLRunPermissions.parts).filter(\.withParameters)
+        XCTAssertEqual(withParams.count, 1)
+        XCTAssertEqual(withParams.first?.destination, "shortcuts://x-callback-url")
         // Kept across launches.
         XCTAssertTrue(URLRunPermissions(defaults: defaults).allows(a, sendingTo: nil))
         permissions.revokeAll()

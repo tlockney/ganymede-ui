@@ -127,7 +127,6 @@ final class NotebookActionsTests: XCTestCase {
         XCTAssertEqual(URLComponents(url: index, resolvingAgainstBaseURL: false)?.percentEncodedQuery, "path=a%2Bb%26c.ipynb")
     }
 
-    /// nbformat before 4.5 has no cell ids: an error, not an empty run.
     // MARK: Runs with parameters
 
     func testRunWithParamsPostsToTheRunEndpoint() async throws {
@@ -171,6 +170,7 @@ final class NotebookActionsTests: XCTestCase {
         XCTAssertEqual(refused, .server(status: 400, message: "dir/nb.ipynb has no metadata.kernelspec.name"))
     }
 
+    /// nbformat before 4.5 has no cell ids: an error, not an empty run.
     func testCellsWithoutIDsAreAnError() async throws {
         fake.on("GET /api/contents/dir/nb.ipynb", ["type": "notebook", "content": [
             "cells": [["cell_type": "code", "source": "1", "metadata": [:], "outputs": [], "execution_count": NSNull()]],

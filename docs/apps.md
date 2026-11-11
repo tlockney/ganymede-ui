@@ -167,9 +167,13 @@ The Shortcuts app, Spotlight and Siri get these Ganymede actions:
 | Run Notebook                 | Runs every code cell in order, after restarting the kernel unless turned off, and returns the outputs. |
 | Run Cell                     | Runs the cell with an id, or every cell with a tag, and returns its outputs.                           |
 | Run Notebook with Parameters | Runs a notebook in a new kernel with parameters (a JSON object) and returns its named results as JSON. |
-| Get Notebook Outputs         | Returns the saved outputs of a notebook or one cell, without running anything.                         |
-| Control Notebook Kernel      | Starts, interrupts, restarts or shuts down a notebook's kernel.                                        |
-| List Notebooks               | Returns the notebooks in a folder.                                                                     |
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release: Run Notebook with Parameters.
+> | Get Notebook Outputs | Returns the saved outputs of a notebook or one cell, without running anything. |
+> | Control Notebook Kernel | Starts, interrupts, restarts or shuts down a notebook's kernel. |
+> | List Notebooks | Returns the notebooks in a folder. |
 
 Each output is a Cell Output with its cell id, kind (stream, result,
 display or error), text, image and JSON, so the next action can take any
@@ -181,7 +185,9 @@ Runs go through the server, as an agent's do: a window showing the
 notebook sees the outputs arrive, and they are saved with it. They use
 the notebook's kernel from its kernelspec, on this Mac or the remote
 kernels run on, never the in-app TypeScript kernel, which only a window
-reaches. The actions are on the Mac only for now.
+reaches. Run Notebook with Parameters is the exception: it runs the
+notebook in a new kernel of its own, so a window shows nothing of it and
+nothing is saved. The actions are on the Mac only for now.
 
 ### Links
 
@@ -210,7 +216,9 @@ A run with parameters runs the whole notebook in a new kernel, so a
 window showing the notebook and its kernel are left as they are, and
 nothing is saved. Its named results come back instead of the outputs:
 in an alert for a plain link, or as `results` (a JSON object) in
-`x-success`. `cell` can't be combined with parameters.
+`x-success`. `cell` can't be combined with parameters. A run with
+parameters asks on its own, even for a notebook already allowed without
+them, and its "Always allow" covers any parameters.
 
 A link run opens the notebook, so its window shows the outputs arrive;
 an error shows in an alert. Any app or web page can open a link, so the

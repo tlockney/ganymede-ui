@@ -114,7 +114,7 @@ enum AppURLHandler {
     /// with that destination only.
     private static func confirm(_ url: URL, cell: String?, params: String?, sendingTo destination: String?) throws {
         let permissions = URLRunPermissions.shared
-        if permissions.allows(url, sendingTo: destination) { return }
+        if permissions.allows(url, sendingTo: destination, withParameters: params != nil) { return }
         NSApp.activate()
         let alert = NSAlert()
         alert.messageText = "Run “\(url.lastPathComponent)” from a link?"
@@ -131,10 +131,13 @@ enum AppURLHandler {
         alert.addButton(withTitle: "Run")
         alert.addButton(withTitle: "Cancel")
         alert.showsSuppressionButton = true
-        alert.suppressionButton?.title = destination.map { "Always allow links to run this notebook and send its output to \($0)" }
-            ?? "Always allow links to run this notebook"
+        let allowed = params == nil ? "run this notebook" : "run this notebook with any parameters"
+        alert.suppressionButton?.title = destination.map { "Always allow links to \(allowed) and send its output to \($0)" }
+            ?? "Always allow links to \(allowed)"
         guard alert.runModal() == .alertFirstButtonReturn else { throw AppURLError.cancelled }
-        if alert.suppressionButton?.state == .on { permissions.allow(url, sendingTo: destination) }
+        if alert.suppressionButton?.state == .on {
+            permissions.allow(url, sendingTo: destination, withParameters: params != nil)
+        }
     }
 
     /// A plain link's parameterized run has no window to show it: its

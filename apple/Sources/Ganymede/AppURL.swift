@@ -250,13 +250,17 @@ enum AppURLError: LocalizedError, Equatable {
 /// answers an x-callback URL is allowed only for that callback's scheme
 /// and host, so allowing a notebook for Shortcuts doesn't let a web page
 /// run it and read its output. Settings › General lists them with Revoke.
-/// A key is the path, then `separator` and the destination if any.
+/// Runs with parameters are allowed separately, since parameters can
+/// reach further than the notebook's own run (a path, a command).
+/// A key is the path, then `separator` and the destination if any, then
+/// `separator` and `withParams` for runs with parameters.
 @MainActor
 @Observable
 final class URLRunPermissions {
     static let shared = URLRunPermissions()
     static let defaultsKey = "urlRunAllowedNotebooks"
     static let separator: Character = "\u{1F}"
+    static let withParams = "+params"
 
     @ObservationIgnored private let defaults: UserDefaults
     private(set) var paths: [String]
@@ -266,12 +270,12 @@ final class URLRunPermissions {
         paths = defaults.stringArray(forKey: Self.defaultsKey) ?? []
     }
 
-    func allows(_ url: URL, sendingTo destination: String?) -> Bool {
-        paths.contains(Self.key(url, destination))
+    func allows(_ url: URL, sendingTo destination: String?, withParameters: Bool = false) -> Bool {
+        paths.contains(Self.key(url, destination, withParameters))
     }
 
-    func allow(_ url: URL, sendingTo destination: String?) {
-        let key = Self.key(url, destination)
+    func allow(_ url: URL, sendingTo destination: String?, withParameters: Bool = false) {
+        let key = Self.key(url, destination, withParameters)
         guard !paths.contains(key) else { return }
         paths.append(key)
         paths.sort { $0.localizedStandardCompare($1) == .orderedAscending }
@@ -293,14 +297,19 @@ final class URLRunPermissions {
     }
 
     /// One key per file, however the URL spelled its path, and destination.
-    private static func key(_ url: URL, _ destination: String?) -> String {
+    private static func key(_ url: URL, _ destination: String?, _ withParameters: Bool) -> String {
         let path = url.standardizedFileURL.resolvingSymlinksInPath().path
-        return destination.map { path + String(separator) + $0 } ?? path
+        return ([path, destination, withParameters ? withParams : nil] as [String?])
+            .compactMap { $0 }
+            .joined(separator: String(separator))
     }
 
-    /// A key's notebook path and destination, for Settings.
-    static func parts(_ key: String) -> (path: String, destination: String?) {
-        guard let cut = key.firstIndex(of: separator) else { return (key, nil) }
-        return (String(key[..<cut]), String(key[key.index(after: cut)...]))
+    /// A key's notebook path, destination, and whether it allows runs with
+    /// parameters, for Settings.
+    static func parts(_ key: String) -> (path: String, destination: String?, withParameters: Bool) {
+        var fields = key.split(separator: separator, omittingEmptySubsequences: false).map(String.init)
+        let withParameters = fields.count > 1 && fields.last == withParams
+        if withParameters { fields.removeLast() }
+        return (fields.first ?? key, fields.count > 1 ? fields[1] : nil, withParameters)
     }
 }
