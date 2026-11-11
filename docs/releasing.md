@@ -63,9 +63,11 @@ fine-grained token needs Workflows: write).
    itself) runs `tag-release.yml`. It sees a `package.json` version that
    has a `CHANGELOG.md` section and no tag, tags the merge commit
    `vX.Y.Z`, and starts `release.yml` on the tag.
-3. `release.yml` checks that the tag matches `package.json`, runs CI
-   (`ci.yml`) on the tag without its `macos-app` job (the commit passed
-   it on `main`, and the release builds the app itself), builds the app, packages `dist/` as
+3. `release.yml` checks that the tag matches `package.json` and that the
+   tagged commit is the merge of a pull request into `main` whose last
+   completed CI run passed. The app builds start then, while build and
+   e2e run once more on the tag; the release waits for them. It builds
+   the app, packages `dist/` as
    `ganymede-ui-X.Y.Z.tar.gz` and `ganymede-ui-X.Y.Z.zip` with a
    `SHA256SUMS` file, attests their build provenance, and publishes the
    GitHub Release with the changelog section as notes. A version with a
@@ -311,6 +313,10 @@ gh workflow run release.yml --ref vX.Y.Z --repo tlockney/ganymede-ui
 ```
 
 ### The tagged commit cannot be released
+
+If only the `verify` job failed because the pull request's CI was
+cancelled or failed on a re-run, re-run that CI on the pull request, wait for it to
+finish, then re-run the failed jobs of the release run. The tag stays.
 
 CI, the build, or the version check fails for a reason that needs a code
 change. If no GitHub Release exists for the tag, nobody can have

@@ -1,12 +1,14 @@
 name: Release
 
-# tag-release.yml pushes a `v*` tag and starts this workflow on it. It runs
-# CI on the tag, builds the app, packages `dist/` as a tarball and a zip
-# with SHA-256 checksums, and publishes a GitHub Release whose notes are
-# the version's CHANGELOG.md section, with a build provenance attestation
-# per archive. The `macos` job adds the Mac app, signed with the Developer
-# ID, notarized and stapled. The `ios` job uploads the iPad and iPhone app
-# to TestFlight. Manual runs on a branch build, sign, notarize and package
+# tag-release.yml pushes a `v*` tag and starts this workflow on it. It
+# checks that the tagged commit's pull request passed CI, then builds the
+# app while build and e2e run once more on the merged tree,
+# packages `dist/` as a tarball and a zip with SHA-256 checksums, and
+# publishes a GitHub Release whose notes are the version's CHANGELOG.md
+# section, with a build provenance attestation per archive. The `macos`
+# job adds the Mac app, signed with the Developer ID, notarized and
+# stapled. The `ios` job uploads the iPad and iPhone app to TestFlight.
+# Manual runs on a branch build, sign, notarize and package
 # without publishing a release (they do upload to TestFlight); with
 # `testflight_only`, they skip the web archives and the Mac app and only
 # upload the iPad and iPhone app. Each upload gets "What to Test" notes
@@ -61,10 +63,59 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
-  # build and e2e on the tag. macos-app is skipped: the last change to
-  # the app before the tag passed it on main (branch protection), and
-  # the macos and ios jobs below build the app again (#361).
+  # On a tag: the tagged commit is the merge of a pull request into main
+  # whose last completed CI run passed (#491). The app builds start once
+  # this passes, without waiting on CI; tag-ci below runs alongside them.
+  verify:
+    if: github.ref_type == 'tag'
+    needs: version
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      pull-requests: read
+    steps:
+      - name: The commit's pull request passed CI
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          fail() { echo "::error::$1"; exit 1; }
+          sha=$GITHUB_SHA
+          # GitHub links a merge commit to its pull request a little after
+          # the merge, and tag-release starts this run at once: retry.
+          for attempt in 1 2 3 4 5 6; do
+            pr=$(gh api "repos/$GITHUB_REPOSITORY/commits/$sha/pulls" \
+              --jq '[.[] | select(.merged_at != null and .base.ref == "main" and .merge_commit_sha == "'"$sha"'")][0] | "\(.number) \(.head.sha)"' || true)
+            [[ -n "$pr" && "$pr" != "null null" ]] && break
+            sleep 10
+          done
+          [[ -n "$pr" && "$pr" != "null null" ]] || fail "${sha::12} is not the merge of a pull request into main"
+          number=${pr% *} head=${pr#* }
+          # The newest completed run. A re-run of the gating run is in
+          # progress until it ends, so the check fails until then.
+          conclusion=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$head&event=pull_request&per_page=20" \
+            --jq '[.workflow_runs[] | select(.status == "completed")][0].conclusion // "no completed run"')
+          [[ "$conclusion" == success ]] || fail "CI on #$number (${head::12}) is '$conclusion', not success"
+          echo "${sha::12} is #$number, whose CI passed on ${head::12}"
+
+  # Manual runs on a branch, which may not have been through a pull
+  # request: build and e2e. macos-app is skipped: the macos and ios jobs
+  # below build the app (#361).
   ci:
+    if: github.ref_type != 'tag'
+    needs: version
+    uses: ./.github/workflows/ci.yml
+    with:
+      skip_macos: true
+    permissions:
+      contents: read
+
+  # On a tag: build and e2e on the merged tree, which the release PR's run
+  # and main's push run skip for a version and changelog change. It runs
+  # alongside the app builds, and `release` waits for it.
+  tag-ci:
+    if: github.ref_type == 'tag'
     needs: version
     uses: ./.github/workflows/ci.yml
     with:
@@ -73,8 +124,8 @@ jobs:
       contents: read
 
   build:
-    needs: [version, ci]
-    if: ${{ !inputs.testflight_only }}
+    needs: [version, verify, ci]
+    if: ${{ !cancelled() && needs.version.result == 'success' && (needs.verify.result == 'success' || needs.ci.result == 'success') && !inputs.testflight_only }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
@@ -122,8 +173,8 @@ jobs:
   # (#411). The secrets may live in a `release` environment with a
   # required reviewer.
   macos:
-    needs: [version, ci]
-    if: ${{ !inputs.testflight_only }}
+    needs: [version, verify, ci]
+    if: ${{ !cancelled() && needs.version.result == 'success' && (needs.verify.result == 'success' || needs.ci.result == 'success') && !inputs.testflight_only }}
     runs-on: macos-latest
     timeout-minutes: 90
     environment: release
@@ -188,7 +239,8 @@ jobs:
   # #188). Manual runs on a branch upload too. The GitHub Release does not
   # wait for it: a TestFlight failure doesn't hold the web and Mac release.
   ios:
-    needs: [version, ci]
+    needs: [version, verify, ci]
+    if: ${{ !cancelled() && needs.version.result == 'success' && (needs.verify.result == 'success' || needs.ci.result == 'success') }}
     runs-on: macos-latest
     # The notes step waits up to 40 minutes for App Store Connect.
     timeout-minutes: 130
@@ -252,9 +304,12 @@ jobs:
           APPSTORE_API_KEY_ID: ${{ secrets.APPSTORE_API_KEY_ID }}
           APPSTORE_API_ISSUER_ID: ${{ secrets.APPSTORE_API_ISSUER_ID }}
 
+  # The status checks are spelled out: an `if` without one gets an
+  # implicit success(), which the skipped `ci` job ahead of build and
+  # macos would make false, skipping the release with no failed job.
   release:
-    if: github.ref_type == 'tag'
-    needs: [version, build, macos]
+    needs: [version, build, macos, tag-ci]
+    if: ${{ !cancelled() && github.ref_type == 'tag' && needs.build.result == 'success' && needs.macos.result == 'success' && needs.tag-ci.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -267,7 +322,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # Only this workflow's own archives: the called CI run also uploads
+      # Only this workflow's own archives: the called CI run (tag-ci) also uploads
       # its ad-hoc signed Ganymede-macOS build and e2e screenshots, which
       # must not reach the release (#334).
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
