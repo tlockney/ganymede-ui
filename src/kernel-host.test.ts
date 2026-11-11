@@ -35,7 +35,7 @@ const stubWebkit = () =>
     messageHandlers: { kernelHost: { postMessage: (m: FromKernel) => posted.push(m) } },
   });
 stubWebkit();
-const { deliver, deviceOptions } = await import('./kernel-host');
+const { deliver, deviceOptions, parseParams } = await import('./kernel-host');
 // The setup unstubs globals between tests.
 beforeEach(stubWebkit);
 
@@ -68,6 +68,22 @@ describe('kernel host page', () => {
       },
       { kernel: 'k1', run: 1, op: 'closed' },
     ]);
+  });
+
+  it("passes a start's parameters to the kernel as jupyter.params", () => {
+    deliver({ kernel: 'p1', op: 'start', run: 7, params: '{"name":"Ada","n":2}' });
+    expect(mocks.options.at(-1)?.params).toEqual({ name: 'Ada', n: 2 });
+    deliver({ kernel: 'p2', op: 'start', run: 8 });
+    expect(mocks.options.at(-1)?.params).toBeUndefined();
+  });
+
+  it('reads only a JSON object as parameters', () => {
+    expect(parseParams('{}')).toEqual({});
+    expect(parseParams(undefined)).toBeUndefined();
+    expect(parseParams('')).toBeUndefined();
+    expect(parseParams('[1]')).toBeUndefined();
+    expect(parseParams('null')).toBeUndefined();
+    expect(parseParams('nope')).toBeUndefined();
   });
 
   it('gives kernels the device preload only when the app registered its handler', () => {

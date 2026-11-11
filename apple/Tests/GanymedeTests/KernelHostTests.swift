@@ -327,6 +327,13 @@ final class KernelHostTests: XCTestCase {
         XCTAssertEqual(ledger.answer(notebook: "/root/New.ipynb", capability: "location"), .deny)
     }
 
+    func testReadsTheParametersFromTheLaunch() {
+        XCTAssertEqual(AppKernels.params(in: #"{"env": {"GANYMEDE_PARAMS": "{\"a\":1}"}}"#), #"{"a":1}"#)
+        XCTAssertNil(AppKernels.params(in: #"{"env": {}}"#))
+        XCTAssertNil(AppKernels.params(in: #"{"env": {"GANYMEDE_PARAMS": ""}}"#))
+        XCTAssertNil(AppKernels.params(in: "not json"))
+    }
+
     func testReadsTheNotebookFromTheLaunch() {
         XCTAssertEqual(AppKernels.notebook(in: #"{"env": {"JPY_SESSION_NAME": "/a/b.ipynb"}}"#), "/a/b.ipynb")
         XCTAssertNil(AppKernels.notebook(in: #"{"env": {}}"#))
