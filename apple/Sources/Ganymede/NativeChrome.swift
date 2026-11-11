@@ -347,29 +347,73 @@ private struct KernelRow: View {
 }
 
 /// The foot of the navigator sidebar (#246): where kernels run, and how
-/// many kernels and terminals there are.
+/// many kernels and terminals there are. A menu (#473): run kernels on
+/// this Mac or a remote, open a terminal on a remote, manage remotes.
 struct ServerLine: View {
     var page: PageModel
+    /// The window's bottom panel, for terminals on remotes.
+    var panel: PanelController?
+    var model = AppModel.shared
     var terminals = OpenTerminals.shared
 
     var body: some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(page.state.backend == nil ? Color.secondary : Color.green)
-                .frame(width: 7, height: 7)
-                .accessibilityHidden(true)
-            Text(page.state.backend?.label ?? "Not connected")
-                .lineLimit(1)
-            Spacer(minLength: 4)
-            Text(OpenTerminals.summary(kernels: page.state.sessions.count, terminals: terminals.entries.count))
-                .foregroundStyle(.secondary)
-                .lineLimit(1)
+        let locations = model.kernelLocations
+        Menu {
+            KernelLocationPicker(model: model, running: page.state.sessions.count)
+                .pickerStyle(.inline)
+            let remotes = model.remotes.filter { $0.hasServer || $0.ssh != nil }
+            if let panel, !remotes.isEmpty {
+                Section("New Terminal On") {
+                    ForEach(remotes) { remote in
+                        if remote.ssh != nil {
+                            Button("\(remote.title) (SSH)") { panel.add(.ssh(remote.id)) }
+                        }
+                        if remote.hasServer {
+                            Button("\(remote.title) (Server)") { panel.add(.server(remote.id)) }
+                        }
+                    }
+                }
+            }
+            Divider()
+            Button(locations.hasRemotes ? "Manage Remotes…" : "Add a Remote…") {
+                SettingsOpener.show(.remotes)
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(page.state.backend == nil ? Color.secondary : Color.green)
+                    .frame(width: 7, height: 7)
+                    .accessibilityHidden(true)
+                Image(systemName: locations.selected == nil ? "laptopcomputer" : "server.rack")
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                Text(locations.title)
+                    .lineLimit(1)
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 8, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                Spacer(minLength: 4)
+                Text(OpenTerminals.summary(kernels: page.state.sessions.count, terminals: terminals.entries.count))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+            .font(.caption)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .contentShape(Rectangle())
         }
-        .font(.caption)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 6)
-        .help(page.state.backend?.detail ?? "")
-        .accessibilityElement(children: .combine)
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .help(helpText(locations))
+        .accessibilityLabel("Kernels run on \(locations.title)")
+    }
+
+    private func helpText(_ locations: KernelLocations) -> String {
+        var text = "Kernels run on \(locations.title)."
+        if page.state.backend == nil { text += " Not connected." }
+        return text + " Click to run them elsewhere or open a terminal on a remote."
     }
 }
 
@@ -506,8 +550,11 @@ private struct KernelPopover: View {
                 Button("Kernel Log") { panel?.showLog(); dismiss() }
                     .disabled(panel == nil || state.kernelID == nil)
             }
+            Divider()
+            // Where every notebook's kernels run (#473).
+            KernelLocationPicker(running: state.sessions.count, title: "Runs On")
+                .onChange(of: AppModel.shared.kernelRemoteID) { dismiss() }
             if !state.kernels.isEmpty {
-                Divider()
                 Picker("Kernel", selection: Binding(
                     get: { state.kernel ?? "" },
                     set: { name in
@@ -703,8 +750,10 @@ struct KernelMenu: View {
         }
         .disabled(page?.state.hasNotebook != true || page?.state.trusted != false)
         Divider()
-        // Where kernels run is a setting of the app, not the notebook (#332).
-        Button("Where Kernels Run…") { SettingsOpener.show(.kernels) }
+        // Where kernels run is a setting of the app, not the notebook
+        // (#332), chosen here too (#473).
+        KernelLocationPicker(running: page?.state.sessions.count)
+        Button("Manage Remotes…") { SettingsOpener.show(.remotes) }
     }
 }
 #endif
