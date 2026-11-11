@@ -65,4 +65,45 @@ final class ShareNotebooksTests: XCTestCase {
         XCTAssertNil(ShareInput.file(at: file, budget: 9))
         XCTAssertNil(ShareInput.file(at: folder.appendingPathComponent("missing"), budget: 10))
     }
+
+    func testTheLedgerMovesToTheGroupOnce() throws {
+        let appSuite = "app-\(UUID().uuidString)", groupSuite = "group-\(UUID().uuidString)"
+        let app = try XCTUnwrap(UserDefaults(suiteName: appSuite))
+        let group = try XCTUnwrap(UserDefaults(suiteName: groupSuite))
+        defer {
+            app.removePersistentDomain(forName: appSuite)
+            group.removePersistentDomain(forName: groupSuite)
+        }
+        let rows = [["notebook": "/n.ipynb", "capability": "location", "answer": "always"]]
+        app.set(rows, forKey: AppGroup.ledgerKey)
+
+        AppGroup.copyOnce(AppGroup.ledgerKey, from: app, to: group)
+        XCTAssertEqual(group.array(forKey: AppGroup.ledgerKey) as? [[String: String]], rows)
+        XCTAssertNil(app.object(forKey: AppGroup.ledgerKey))
+
+        // A revoke in the group isn't undone by rows the app kept since.
+        group.set([[String: String]](), forKey: AppGroup.ledgerKey)
+        app.set(rows, forKey: AppGroup.ledgerKey)
+        AppGroup.copyOnce(AppGroup.ledgerKey, from: app, to: group)
+        XCTAssertEqual(group.array(forKey: AppGroup.ledgerKey)?.count, 0)
+        XCTAssertNil(app.object(forKey: AppGroup.ledgerKey))
+    }
+
+    func testABuildWithNoTeamHasNoGroup() {
+        let app = "com.ganymede-server.Ganymede"
+        XCTAssertNil(AppGroup.usable(app, bundleID: app))
+        XCTAssertNil(AppGroup.usable("", bundleID: app))
+        XCTAssertNil(AppGroup.usable(nil, bundleID: app))
+        XCTAssertEqual(AppGroup.usable("group.\(app)", bundleID: app), "group.\(app)")
+        #if os(macOS)
+        XCTAssertNil(AppGroup.usable(app, bundleID: "\(app).Share"))
+        XCTAssertEqual(AppGroup.usable("ABCDE12345.\(app)", bundleID: app), "ABCDE12345.\(app)")
+        #endif
+    }
+
+    @MainActor
+    func testNoGroupInATestBundle() {
+        XCTAssertNil(AppGroup.id)
+        XCTAssertNil(AppGroup.ledgerStore())
+    }
 }

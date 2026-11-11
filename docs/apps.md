@@ -396,6 +396,22 @@ headings; pick one to go to its cell.
   seconds by default, 60 at most) stops waiting for the script, but a loop
   that never yields isn't stopped and holds up the app until it ends.
 
+- **Run a Notebook** (the share sheet, Mac too; experimental, off until
+  Settings › Device › Run Notebooks from the Share Sheet): runs one of the
+  notebooks added under that switch on what you share, with no window:
+  the first text and link, and files up to 16 MiB together, as
+  `device.input`. It shows what the notebook hands to `device.output()`
+  (or its `return` value) and hands that back to the app you shared from.
+  It runs a copy taken when the notebook was added; add it again to
+  update it. As with Run Script on Device, it can't show a prompt, so a
+  permissioned call works only if the notebook was allowed with Always;
+  location, motion, contacts and reminders are the namespaces it has. The
+  time limit is 20 seconds.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release.
+
 - **Notebook Access…** (Kernel menu on the Mac, the ⋯ menu on the iPad
   and iPhone, and the Command Palette) sets what a notebook's cells may
   ask the server for through `jupyter.host()`: the notebooks they may

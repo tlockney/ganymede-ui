@@ -16,6 +16,8 @@
 #   IOS_CERTIFICATE_PASSWORD    key, base64, and its password
 #   IOS_PROVISIONING_PROFILE    App Store profile for com.ganymede-server.Ganymede,
 #                               base64
+#   IOS_SHARE_PROFILE           App Store profile for the share extension,
+#                               com.ganymede-server.Ganymede.Share, base64 (#449)
 #   UPLOAD                      1 (default) uploads; 0 only exports the .ipa
 #
 # With the certificate and profile, signing is manual. Without them,
@@ -33,7 +35,7 @@ done
 manual=0
 if [[ -n "${IOS_CERTIFICATE_P12:-}${IOS_PROVISIONING_PROFILE:-}" ]]; then
   manual=1
-  for name in IOS_CERTIFICATE_P12 IOS_CERTIFICATE_PASSWORD IOS_PROVISIONING_PROFILE; do
+  for name in IOS_CERTIFICATE_P12 IOS_CERTIFICATE_PASSWORD IOS_PROVISIONING_PROFILE IOS_SHARE_PROFILE; do
     [[ -n "${!name:-}" ]] || missing+=("$name")
   done
 fi
@@ -45,10 +47,10 @@ fi
 work=$(mktemp -d)
 keychain="$work/signing.keychain-db"
 profiles="$HOME/Library/MobileDevice/Provisioning Profiles"
-installed=""
+installed=()
 cleanup() {
   [[ -f "$keychain" ]] && security delete-keychain "$keychain" || true
-  [[ -n "$installed" ]] && rm -f "$installed"
+  ((${#installed[@]})) && rm -f "${installed[@]}"
   rm -rf "$work"
 }
 trap cleanup EXIT
@@ -63,6 +65,8 @@ echo "$APPSTORE_API_KEY_P8" | base64 --decode > "$key"
 auth=(-authenticationKeyPath "$key" -authenticationKeyID "$APPSTORE_API_KEY_ID"
   -authenticationKeyIssuerID "$APPSTORE_API_ISSUER_ID")
 bundle_id=com.ganymede-server.Ganymede
+share_id=$bundle_id.Share
+app_group=group.com.ganymede-server.Ganymede
 
 if ((manual)); then
   # The certificate goes into a keychain of its own, as in release-app.sh.
@@ -80,27 +84,43 @@ if ((manual)); then
   security find-identity -v -p codesigning "$keychain" | grep -q "Apple Distribution" ||
     fail "IOS_CERTIFICATE_P12 holds no \"Apple Distribution\" identity"
 
-  # Xcode finds a profile by its UUID in this folder. Check what it is
-  # for, so a wrong profile fails here and not deep in xcodebuild.
-  echo "$IOS_PROVISIONING_PROFILE" | base64 --decode > "$work/profile.mobileprovision"
-  security cms -D -i "$work/profile.mobileprovision" > "$work/profile.plist"
-  uuid=$(plutil -extract UUID raw "$work/profile.plist")
-  app_id=$(plutil -extract Entitlements.application-identifier raw "$work/profile.plist")
-  [[ "$app_id" == "$APPLE_TEAM_ID.$bundle_id" ]] ||
-    fail "IOS_PROVISIONING_PROFILE is for $app_id, not $APPLE_TEAM_ID.$bundle_id"
-  if plutil -extract ProvisionedDevices raw "$work/profile.plist" > /dev/null 2>&1; then
-    fail "IOS_PROVISIONING_PROFILE lists devices: it is a development or ad hoc profile, not App Store"
-  fi
-  expires=$(plutil -extract ExpirationDate raw "$work/profile.plist")
-  echo "profile $uuid ($(plutil -extract Name raw "$work/profile.plist")), expires $expires"
-  mkdir -p "$profiles"
-  installed="$profiles/$uuid.mobileprovision"
-  cp "$work/profile.mobileprovision" "$installed"
+  # Xcode finds a profile by its UUID in this folder. Check what each
+  # is for, so a wrong profile fails here and not deep in xcodebuild.
+  # Sets `uuid`.
+  install_profile() {
+    local name=$1 id=$2 file="$work/$1.mobileprovision" plist="$work/$1.plist" app_id expires
+    echo "${!name}" | base64 --decode > "$file"
+    security cms -D -i "$file" > "$plist"
+    uuid=$(plutil -extract UUID raw "$plist")
+    app_id=$(plutil -extract Entitlements.application-identifier raw "$plist")
+    [[ "$app_id" == "$APPLE_TEAM_ID.$id" ]] ||
+      fail "$name is for $app_id, not $APPLE_TEAM_ID.$id"
+    if plutil -extract ProvisionedDevices raw "$plist" > /dev/null 2>&1; then
+      fail "$name lists devices: it is a development or ad hoc profile, not App Store"
+    fi
+    # The app and its extensions share an App Group (#449).
+    /usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.security.application-groups' "$plist" 2> /dev/null |
+      grep -qxE "[[:space:]]*${app_group//./\\.}" ||
+      fail "$name doesn't include the App Group $app_group: turn it on for $id and regenerate the profile"
+    expires=$(plutil -extract ExpirationDate raw "$plist")
+    echo "$name: $uuid ($(plutil -extract Name raw "$plist")), expires $expires"
+    mkdir -p "$profiles"
+    installed+=("$profiles/$uuid.mobileprovision")
+    cp "$file" "$profiles/$uuid.mobileprovision"
+  }
+  install_profile IOS_PROVISIONING_PROFILE "$bundle_id"
+  app_profile=$uuid
+  install_profile IOS_SHARE_PROFILE "$share_id"
+  share_profile=$uuid
 
-  signing=(CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="Apple Distribution" GANYMEDE_IOS_PROFILE="$uuid")
+  signing=(CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY="Apple Distribution"
+    GANYMEDE_IOS_PROFILE="$app_profile" GANYMEDE_IOS_SHARE_PROFILE="$share_profile")
   export_signing="<key>signingStyle</key><string>manual</string>
   <key>signingCertificate</key><string>Apple Distribution</string>
-  <key>provisioningProfiles</key><dict><key>$bundle_id</key><string>$uuid</string></dict>"
+  <key>provisioningProfiles</key><dict>
+    <key>$bundle_id</key><string>$app_profile</string>
+    <key>$share_id</key><string>$share_profile</string>
+  </dict>"
 else
   echo "No IOS_CERTIFICATE_P12: signing automatically with the API key"
   signing=(CODE_SIGN_STYLE=Automatic -allowProvisioningUpdates "${auth[@]}")
@@ -126,6 +146,8 @@ shown=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")
 # CFBundleIconName a Mac app has.
 /usr/libexec/PlistBuddy -c 'Print :CFBundleIcons:CFBundlePrimaryIcon:CFBundleIconName' "$plist" > /dev/null ||
   fail "the app has no icon (CFBundleIcons), which App Store Connect rejects"
+[[ -d "$archive/Products/Applications/Ganymede.app/PlugIns/GanymedeShare.appex" ]] ||
+  fail "the share extension isn't in the app (#449)"
 
 # Export re-signs for App Store distribution. With destination `upload`
 # it also sends the build to App Store Connect, which processes it for

@@ -1,5 +1,6 @@
 import DeviceBridge
 import SwiftUI
+import UniformTypeIdentifiers
 
 /// Settings › Device (#383): the answers kept in ganymede-device's
 /// permission ledger, and the folders each notebook was given
@@ -19,6 +20,9 @@ struct DeviceSettings: View {
                 Toggle("Run Scripts from Shortcuts", isOn: $shortcutRuns)
             } footer: {
                 Text("Experimental. Shortcuts' Run Script on Device action runs a script or notebook on this device with no window. It can't ask for permissions: it uses only what each notebook was allowed with Always.")
+            }
+            if AppGroup.defaults() != nil {
+                ShareSheetSettings()
             }
             if model.notebooks.isEmpty {
                 Section {
@@ -77,6 +81,69 @@ struct DeviceSettings: View {
     }
 }
 
+/// The share sheet's switch and the notebooks it offers (#449), kept in
+/// the App Group for the share extension.
+struct ShareSheetSettings: View {
+    @AppStorage(AppGroup.shareSheetKey, store: AppGroup.defaults()) private var enabled = false
+    @State private var notebooks = ShareNotebooks.shared()?.list() ?? []
+    @State private var picking = false
+    @State private var failure: String?
+
+    var body: some View {
+        Section {
+            Toggle("Run Notebooks from the Share Sheet", isOn: $enabled)
+            if enabled {
+                ForEach(notebooks) { notebook in
+                    LabeledContent {
+                        Button("Remove") { change { try $0.remove(notebook.id) } }
+                            .accessibilityLabel("Remove \(notebook.name) from the share sheet")
+                    } label: {
+                        Text(notebook.name)
+                        Text(notebook.path)
+                    }
+                }
+                Button("Add Notebook…") { picking = true }
+            }
+            if let failure {
+                Text(failure).foregroundStyle(.red)
+            }
+        } footer: {
+            Text("Experimental. Ganymede's Run a Notebook in the share sheet runs one of these notebooks on what you share, with no window. It uses a copy taken when you add the notebook: add it again to update it. It can't ask for permissions: it uses only what each notebook was allowed with Always.")
+        }
+        .fileImporter(isPresented: $picking, allowedContentTypes: Self.notebookTypes) { result in
+            let url: URL
+            switch result {
+            case let .success(picked): url = picked
+            case let .failure(error):
+                failure = "Couldn't pick the notebook: \(error.localizedDescription)"
+                return
+            }
+            change { store in
+                let scoped = url.startAccessingSecurityScopedResource()
+                defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+                try store.add(url)
+            }
+        }
+    }
+
+    /// As File › Open… takes (`DefaultApp.notebookType`): where another app
+    /// claims `.ipynb`, its type isn't `org.jupyter.ipynb`.
+    private static var notebookTypes: [UTType] {
+        [.jupyterNotebook, UTType(filenameExtension: "ipynb") ?? .jupyterNotebook]
+    }
+
+    private func change(_ edit: (ShareNotebooks) throws -> Void) {
+        guard let store = ShareNotebooks.shared() else { return }
+        do {
+            try edit(store)
+            failure = nil
+        } catch {
+            failure = "Couldn't change the share sheet's notebooks: \(error.localizedDescription)"
+        }
+        notebooks = store.list()
+    }
+}
+
 /// The kept answers, grouped by notebook, for `DeviceSettings`.
 @MainActor
 @Observable
@@ -94,7 +161,7 @@ final class DeviceGrants {
     private(set) var notebooks: [Notebook] = []
 
     init(ledger: PermissionLedger? = nil, folders: FolderGrants? = nil) {
-        self.ledger = ledger ?? PermissionLedger()
+        self.ledger = ledger ?? PermissionLedger(store: AppGroup.ledgerStore())
         self.folders = folders ?? FolderGrants()
         reload()
     }

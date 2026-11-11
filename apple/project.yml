@@ -94,6 +94,9 @@ targets:
     platform: macOS
     sources:
       - path: Sources/Ganymede
+      # The App Group and the share sheet's notebooks (#449).
+      - path: Sources/Share/AppGroup.swift
+      - path: Sources/Share/ShareNotebooks.swift
       # ganymede-ui's build, served by the in-process server.
       - path: build/web
         type: folder
@@ -127,10 +130,13 @@ targets:
       # embedded in Contents/PlugIns.
       - target: GanymedeQuickLook
       - target: GanymedeThumbnail
+      # The share sheet's Run a Notebook (#435, #449).
+      - target: GanymedeShare
     info:
       path: build/Info.plist
       properties:
         CFBundleDisplayName: Ganymede
+        GanymedeAppGroup: $(TeamIdentifierPrefix)com.ganymede-server.Ganymede
         # XcodeGen writes 1.0 and 1 otherwise; release-app.sh sets these.
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
@@ -196,6 +202,10 @@ targets:
         # Kernels are child processes from installed kernelspecs, which
         # the App Sandbox does not allow; distribution is Developer ID.
         com.apple.security.app-sandbox: false
+        # Shared with the share extension (#449): team-prefixed, which a
+        # Developer ID build can use without a provisioning profile.
+        com.apple.security.application-groups:
+          - $(TeamIdentifierPrefix)com.ganymede-server.Ganymede
         # The hardened runtime's resource access, for the device API's
         # permissioned namespaces (#422). Without one, the system refuses
         # that permission without asking. A Mac has no camera in the app.
@@ -277,10 +287,9 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.ganymede-server.Ganymede.Thumbnail
         ENABLE_HARDENED_RUNTIME: YES
-  # The share extension (#435, a spike): runs a notebook offered to the
-  # share sheet on what was shared. Built, not embedded in the apps yet:
-  # embedding needs the App Group registered for the team, and the App
-  # Store profile release-ios.sh uses covers the app alone.
+  # The share extension (#435, a spike, off until Settings › Device turns
+  # it on): runs a notebook offered to the share sheet on what was shared.
+  # Embedded in the apps; shares an App Group with them (#449).
   GanymedeShare:
     type: app-extension
     platform: macOS
@@ -296,6 +305,7 @@ targets:
     info:
       path: build/Info-Share.plist
       properties:
+        GanymedeAppGroup: $(TeamIdentifierPrefix)com.ganymede-server.Ganymede
         CFBundleDisplayName: Run a Notebook
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
@@ -317,7 +327,7 @@ targets:
       properties:
         com.apple.security.app-sandbox: true
         com.apple.security.application-groups:
-          - group.com.ganymede-server.Ganymede
+          - $(TeamIdentifierPrefix)com.ganymede-server.Ganymede
         # fetch, and the namespaces the extension's bridge has.
         com.apple.security.network.client: true
         com.apple.security.personal-information.location: true
@@ -335,6 +345,7 @@ targets:
     info:
       path: build/Info-Share-iOS.plist
       properties:
+        GanymedeAppGroup: group.com.ganymede-server.Ganymede
         CFBundleDisplayName: Run a Notebook
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
@@ -361,6 +372,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.ganymede-server.Ganymede.Share
         PRODUCT_NAME: GanymedeShare
         TARGETED_DEVICE_FAMILY: '1,2'
+        # release-ios.sh names its App Store profile here (#449).
+        PROVISIONING_PROFILE_SPECIFIER: $(GANYMEDE_IOS_SHARE_PROFILE)
   # iPad and iPhone, from the same sources. iOS cannot launch kernel
   # processes, so until an on-device kernel exists it edits notebooks
   # without running them.
@@ -369,6 +382,8 @@ targets:
     platform: iOS
     sources:
       - path: Sources/Ganymede
+      - path: Sources/Share/AppGroup.swift
+      - path: Sources/Share/ShareNotebooks.swift
       - path: build/web
         type: folder
         buildPhase: resources
@@ -392,6 +407,8 @@ targets:
       - package: GanymedeDevice
         product: DeviceBridge
       - package: Sentry
+      # The share sheet's Run a Notebook (#435, #449).
+      - target: GanymedeShare-iOS
       - package: Neon
       - package: SwiftTreeSitter
       - package: TreeSitterBash
@@ -405,6 +422,7 @@ targets:
     info:
       path: build/Info-iOS.plist
       properties:
+        GanymedeAppGroup: group.com.ganymede-server.Ganymede
         CFBundleDisplayName: Ganymede
         # XcodeGen writes 1.0 and 1 otherwise; release-app.sh sets these.
         CFBundleShortVersionString: $(MARKETING_VERSION)
@@ -441,6 +459,12 @@ targets:
         NSCameraUsageDescription: A notebook asked to take a photo.
         NSAppTransportSecurity:
           NSAllowsLocalNetworking: true
+    entitlements:
+      path: build/Ganymede-iOS.entitlements
+      properties:
+        # Shared with the share extension (#449), registered for the team.
+        com.apple.security.application-groups:
+          - group.com.ganymede-server.Ganymede
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.ganymede-server.Ganymede
@@ -498,6 +522,7 @@ targets:
       - path: Sources/Ganymede/Runner/ScriptIntents.swift
       - path: Sources/Share/ShareNotebooks.swift
       - path: Sources/Share/ShareInput.swift
+      - path: Sources/Share/AppGroup.swift
       - path: build/runner
         type: folder
         buildPhase: resources
@@ -552,6 +577,7 @@ targets:
       - path: Sources/Ganymede/Runner/ScriptIntents.swift
       - path: Sources/Share/ShareNotebooks.swift
       - path: Sources/Share/ShareInput.swift
+      - path: Sources/Share/AppGroup.swift
       - path: build/runner
         type: folder
         buildPhase: resources
@@ -568,8 +594,6 @@ schemes:
     build:
       targets:
         Ganymede: all
-        # Not archived: the release scripts sign the app alone (#449).
-        GanymedeShare: [running, testing, analyzing]
         GanymedeTests: [test]
     test:
       targets: [GanymedeTests]
@@ -577,7 +601,6 @@ schemes:
     build:
       targets:
         Ganymede-iOS: all
-        GanymedeShare-iOS: [running, testing, analyzing]
         GanymedeTests-iOS: [test]
     test:
       targets: [GanymedeTests-iOS]
