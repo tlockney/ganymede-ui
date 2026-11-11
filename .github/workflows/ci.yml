@@ -94,7 +94,12 @@ jobs:
           "$HOME/.local/bin/ganymede" --version
           "$HOME/.local/bin/ganymede" kernelspec list
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      # Best effort for the system libraries: the runner image has
+      # Chromium's (it ships Chrome), so an apt mirror outage shouldn't
+      # fail the job (#499).
+      - run: |
+          npx playwright install chromium
+          npx playwright install-deps chromium || echo "::warning::apt failed; using the runner image's libraries"
       - run: npm run build
       - run: npm run e2e
       - if: ${{ !cancelled() }}
