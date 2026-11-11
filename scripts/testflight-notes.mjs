@@ -20,7 +20,7 @@ import { pathToFileURL } from 'node:url';
 const API = 'https://api.appstoreconnect.apple.com/v1';
 const BUNDLE_ID = 'com.ganymede-server.Ganymede';
 const LOCALE = 'en-US';
-// App Store Connect's limit for whatToTest.
+// App Store Connect's limit for the notes (`whatsNew`).
 export const MAX_LENGTH = 4000;
 const MARKER = /^Built from ([0-9a-f]{7,40})\.$/m;
 
@@ -205,7 +205,7 @@ export function client({
       const notes = new Map(
         included
           .filter(r => r.type === 'betaBuildLocalizations')
-          .map(r => [r.id, r.attributes?.whatToTest ?? '']),
+          .map(r => [r.id, r.attributes?.whatsNew ?? '']),
       );
       return data.map(b => ({
         id: b.id,
@@ -217,22 +217,29 @@ export function client({
       }));
     },
 
-    /** Sets whatToTest for LOCALE, creating the localization if needed. */
-    async setWhatToTest(buildId, whatToTest) {
+    /**
+     * Sets the "What to Test" notes for LOCALE, creating the localization
+     * if needed. The API calls them `whatsNew` (#498). The written notes
+     * are read back from the answer, so a field the API dropped fails here.
+     */
+    async setWhatToTest(buildId, whatsNew) {
       const { data } = await call('GET', `/builds/${buildId}/betaBuildLocalizations`);
       const existing = data.find(l => l.attributes.locale === LOCALE);
-      if (existing) {
-        await call('PATCH', `/betaBuildLocalizations/${existing.id}`, {
-          data: { type: 'betaBuildLocalizations', id: existing.id, attributes: { whatToTest } },
-        });
-      } else {
-        await call('POST', '/betaBuildLocalizations', {
-          data: {
-            type: 'betaBuildLocalizations',
-            attributes: { locale: LOCALE, whatToTest },
-            relationships: { build: { data: { type: 'builds', id: buildId } } },
-          },
-        });
+      const written = existing
+        ? await call('PATCH', `/betaBuildLocalizations/${existing.id}`, {
+            data: { type: 'betaBuildLocalizations', id: existing.id, attributes: { whatsNew } },
+          })
+        : await call('POST', '/betaBuildLocalizations', {
+            data: {
+              type: 'betaBuildLocalizations',
+              attributes: { locale: LOCALE, whatsNew },
+              relationships: { build: { data: { type: 'builds', id: buildId } } },
+            },
+          });
+      if (written?.data?.attributes?.whatsNew !== whatsNew) {
+        throw new Error(
+          `build ${buildId}: the notes App Store Connect kept differ from those sent`,
+        );
       }
     },
   };
