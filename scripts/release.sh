@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Prepare a release: bump the version in package.json and package-lock.json,
-# regenerate CHANGELOG.md from the merged pull requests, and commit
-# "Release X.Y.Z" on a release/vX.Y.Z branch. With --execute it pushes the
+# regenerate CHANGELOG.md from the merged pull requests, move the
+# cdp-kernel and Ganymede pins to their latest releases
+# (scripts/release-pins.sh), and commit "Release X.Y.Z" on a
+# release/vX.Y.Z branch. With --execute it pushes the
 # branch and, with gh, opens an issue and a PR for it. Merging the PR tags
 # vX.Y.Z (tag-release.yml), which publishes the build (release.yml).
 #
@@ -13,10 +15,11 @@
 #
 # The level is patch, minor, major, or an explicit version (0.2.0-rc.1).
 # Uses git-cliff from PATH if installed, otherwise runs it with npx.
+# Needs curl and jq.
 set -euo pipefail
 
 if [[ $# -lt 1 || "$1" == -h || "$1" == --help ]]; then
-  sed -n '2,15s/^# \{0,1\}//p' "$0"
+  sed -n '2,18s/^# \{0,1\}//p' "$0"
   exit 2
 fi
 
@@ -77,6 +80,9 @@ else
     echo "error: release from an up-to-date main (HEAD is not origin/main)" >&2
     exit 1
   fi
+  # This release takes the latest cdp-kernel and Ganymede releases. Checked
+  # before anything changes: a pin Ganymede hasn't released yet stops here.
+  scripts/release-pins.sh --check
 fi
 
 # Ganymede's docs and landing page describe the apps. Text there that
@@ -108,7 +114,7 @@ fi
 # git-cliff rewrote, and the branch it was on.
 made_branch=false
 undo() {
-  git checkout --quiet HEAD -- package.json package-lock.json CHANGELOG.md
+  git checkout --quiet HEAD -- package.json package-lock.json CHANGELOG.md .github/workflows/ci.yml
   if $made_branch; then
     git checkout --quiet - && git branch --quiet -D "$branch"
   fi
@@ -148,10 +154,14 @@ bump() {
     exit 1
   fi
   "${cliff[@]}" --tag "v$version" --output CHANGELOG.md
+  pins=$(scripts/release-pins.sh)
+  echo "$pins"
   git switch --quiet -c "$branch"
   made_branch=true
-  git add package.json package-lock.json CHANGELOG.md
-  git commit --quiet -m "Release $version"
+  git add package.json package-lock.json CHANGELOG.md .github/workflows/ci.yml
+  # The pins go in the commit message, and from there into the PR.
+  git commit --quiet -m "Release $version" -m "Pins:
+$pins"
   trap - EXIT
 }
 
@@ -215,7 +225,9 @@ else
   gh pr create --base main --head "$branch" --title "Release v$version" \
     --body "Closes #${issue##*/}
 
-Bumps package.json to $version and updates CHANGELOG.md. Merging tags v$version, which publishes the release.${unreleased_body:-}"
+Bumps package.json to $version and updates CHANGELOG.md. Merging tags v$version, which publishes the release.
+
+$(git log -1 --format=%b)${unreleased_body:-}"
 fi
 if [[ -n "$ganymede" ]]; then
   # Closed counts too: the docs may have been updated since.
