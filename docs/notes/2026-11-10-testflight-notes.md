@@ -16,3 +16,9 @@ subjects since the previous TestFlight build.
 'ieee-p1363'`) and the calls use `fetch`, so no new dependencies.
 - The first build after this merges has no earlier build with the marker,
   so its notes start at v0.6.0.
+- One line per pull request: `git log --first-parent`, with a merge
+  commit's PR title (its body's first line) as cliff.toml does, so a PR
+  merged with a merge commit doesn't list its branch commits.
+- Each App Store Connect call times out after 30 seconds and retries a
+  network error, 429 or 5xx three times; the JWT lasts 10 minutes, under
+  Apple's 20-minute cap, to allow for clock skew.

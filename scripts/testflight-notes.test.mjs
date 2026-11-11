@@ -10,6 +10,7 @@ import {
   builtFrom,
   client,
   formatNotes,
+  parseLog,
   lastTag,
   previousPoint,
   token,
@@ -96,6 +97,21 @@ describe('lastTag', () => {
   });
 });
 
+describe('parseLog', () => {
+  it('gives a squash commit its subject and a merge commit its PR title', () => {
+    const out = [
+      'Wait for a kernel start (#462)\x1f\x1e',
+      'Merge pull request #413 from tlockney/release/v0.6.0\x1f\nRelease 0.6.0\n\nMore text\n\x1e',
+      'Merge branch main\x1f\x1e',
+    ].join('\n');
+    expect(parseLog(out)).toEqual([
+      'Wait for a kernel start (#462)',
+      'Release 0.6.0 (#413)',
+      'Merge branch main',
+    ]);
+  });
+});
+
 describe('builtFrom', () => {
   it('finds no commit in notes without the marker', () => {
     expect(builtFrom('Try the new menu.')).toBeNull();
@@ -169,7 +185,7 @@ describe('token', () => {
     expect(JSON.parse(Buffer.from(p, 'base64url').toString())).toEqual({
       iss: 'ISS',
       iat: 1000,
-      exp: 2200,
+      exp: 1600,
       aud: 'appstoreconnect-v1',
     });
     const ok = verify(
@@ -262,6 +278,42 @@ describe('client', () => {
       },
     });
     expect(await client({ ...opts, fetch }).appId()).toBe('a2');
+  });
+
+  it('retries a 5xx and a network error, then succeeds', async () => {
+    const waits = [];
+    let n = 0;
+    const fetch = async () => {
+      n++;
+      if (n === 1) throw new Error('socket hang up');
+      if (n === 2) return { ok: false, status: 503, text: async () => '' };
+      return {
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            data: [{ id: 'a', attributes: { bundleId: 'com.ganymede-server.Ganymede' } }],
+          }),
+      };
+    };
+    const asc = client({ ...opts, fetch, wait: async ms => waits.push(ms) });
+    expect(await asc.appId()).toBe('a');
+    expect(waits).toEqual([5_000, 10_000]);
+  });
+
+  it('gives up after the retries, and never retries a 4xx', async () => {
+    let n = 0;
+    const fetch = async () => (n++, { ok: false, status: 502, text: async () => 'bad gateway' });
+    await expect(client({ ...opts, fetch, wait: async () => {} }).appId()).rejects.toThrow(
+      /502 bad gateway/,
+    );
+    expect(n).toBe(4);
+    n = 0;
+    const forbidden = async () => (n++, { ok: false, status: 403, text: async () => '' });
+    await expect(
+      client({ ...opts, fetch: forbidden, wait: async () => {} }).appId(),
+    ).rejects.toThrow(/403/);
+    expect(n).toBe(1);
   });
 
   it('reports a failed call with its status and body', async () => {

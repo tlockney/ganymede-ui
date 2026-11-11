@@ -39,7 +39,7 @@ export function formatNotes({ since, subjects, head }) {
   let bumps = 0;
   for (const subject of subjects) {
     if (/^Bump /.test(subject)) bumps++;
-    else if (!/^Release \d/.test(subject)) changes.push(`- ${subject}`);
+    else if (!/^Release v?\d/.test(subject)) changes.push(`- ${subject}`);
   }
   if (bumps) changes.push(`- Dependency updates (${bumps})`);
   const heading = since ? `Changes since ${since}:` : 'Changes:';
@@ -87,14 +87,36 @@ export function lastTag(cwd) {
   }
 }
 
-/** Commit subjects from `base` (exclusive) to HEAD, newest first; the last 30 without a base. */
-function subjectsSince(base) {
-  const range = base ? [`${base}..HEAD`] : ['-30', 'HEAD'];
-  const out = git(['log', '--no-merges', '--format=%s', ...range]);
-  return out ? out.split('\n') : [];
+/**
+ * One subject per change on main's first-parent history, from `git log
+ * --format=%s%x1f%b%x1e` output: a squash commit's subject, or for a
+ * "Merge pull request #N from ..." commit its PR title (the body's first
+ * line) and number, as cliff.toml does.
+ */
+export function parseLog(out) {
+  return out
+    .split('\x1e')
+    .map(entry => entry.trim())
+    .filter(Boolean)
+    .map(entry => {
+      const [subject, body = ''] = entry.split('\x1f');
+      const merge = /^Merge pull request #(\d+) /.exec(subject);
+      const title = body.trim().split('\n')[0]?.trim();
+      return merge && title ? `${title} (#${merge[1]})` : subject;
+    });
 }
 
-/** An App Store Connect API token (ES256 JWT, 20 minutes, the limit). */
+/** Changes from `base` (exclusive) to HEAD, newest first; the last 30 without a base. */
+function subjectsSince(base) {
+  const range = base ? [`${base}..HEAD`] : ['-30', 'HEAD'];
+  return parseLog(git(['log', '--first-parent', '--format=%s%x1f%b%x1e', ...range]));
+}
+
+/**
+ * An App Store Connect API token (ES256 JWT). It lasts 10 minutes, half
+ * Apple's 20-minute limit, so a runner clock ahead of Apple's still
+ * passes; a fresh one is signed for every call.
+ */
 export function token({ keyP8, keyId, issuerId, now = Date.now() }) {
   const key = createPrivateKey(Buffer.from(keyP8, 'base64').toString('utf8'));
   const iat = Math.floor(now / 1000);
@@ -102,7 +124,7 @@ export function token({ keyP8, keyId, issuerId, now = Date.now() }) {
   const input = `${part({ alg: 'ES256', kid: keyId, typ: 'JWT' })}.${part({
     iss: issuerId,
     iat,
-    exp: iat + 1200,
+    exp: iat + 600,
     aud: 'appstoreconnect-v1',
   })}`;
   const sig = sign('sha256', Buffer.from(input), { key, dsaEncoding: 'ieee-p1363' });
@@ -110,19 +132,45 @@ export function token({ keyP8, keyId, issuerId, now = Date.now() }) {
 }
 
 /** A client for the few App Store Connect calls this needs. */
-export function client({ keyP8, keyId, issuerId, fetch = globalThis.fetch }) {
+export function client({
+  keyP8,
+  keyId,
+  issuerId,
+  fetch = globalThis.fetch,
+  retries = [5_000, 10_000, 20_000],
+  wait = ms => new Promise(r => setTimeout(r, ms)),
+}) {
+  // Each call times out after 30 seconds. A network error, a timeout, a
+  // 429 or a 5xx is retried up to 3 times, 5, 10 and 20 seconds apart, so
+  // one hiccup during the wait doesn't lose the notes.
   async function call(method, path, body) {
-    const res = await fetch(`${API}${path}`, {
-      method,
-      headers: {
-        authorization: `Bearer ${token({ keyP8, keyId, issuerId })}`,
-        ...(body ? { 'content-type': 'application/json' } : {}),
-      },
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    const text = await res.text();
-    if (!res.ok) throw new Error(`${method} ${path}: ${res.status} ${text}`);
-    return text ? JSON.parse(text) : null;
+    for (let attempt = 0; ; attempt++) {
+      let res;
+      try {
+        res = await fetch(`${API}${path}`, {
+          method,
+          headers: {
+            authorization: `Bearer ${token({ keyP8, keyId, issuerId })}`,
+            ...(body ? { 'content-type': 'application/json' } : {}),
+          },
+          body: body ? JSON.stringify(body) : undefined,
+          signal: AbortSignal.timeout(30_000),
+        });
+      } catch (err) {
+        if (attempt < retries.length) {
+          await wait(retries[attempt]);
+          continue;
+        }
+        throw new Error(`${method} ${path}: ${err.message}`, { cause: err });
+      }
+      const text = await res.text();
+      if ((res.status === 429 || res.status >= 500) && attempt < retries.length) {
+        await wait(retries[attempt]);
+        continue;
+      }
+      if (!res.ok) throw new Error(`${method} ${path}: ${res.status} ${text}`);
+      return text ? JSON.parse(text) : null;
+    }
   }
 
   return {
