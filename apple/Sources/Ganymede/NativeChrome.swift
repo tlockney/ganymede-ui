@@ -752,7 +752,7 @@ struct KernelMenu: View {
         // What its cells may ask the server for (host API grants); the
         // page's sheet.
         Button("Notebook Access…") { page?.run("notebook-access") }
-            .disabled(page?.state.hasNotebook != true)
+            .disabled(page?.state.hasNotebook != true || page?.state.hostGrants != true)
         Divider()
         // Where kernels run is a setting of the app, not the notebook
         // (#332), chosen here too (#473).

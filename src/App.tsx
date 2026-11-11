@@ -623,6 +623,7 @@ export function App() {
         (kernel ? (specs?.kernelspecs[kernel]?.display_name ?? kernel) : null),
       kernelMissing: !!shown?.missingKernel,
       trusted: shown?.trusted ?? true,
+      hostGrants: hostGrantsAvailable(backend),
       cellType: shown?.cellType ?? null,
       kernels: Object.values(specs?.kernelspecs ?? {}).flatMap(k =>
         k ? [{ name: k.name, displayName: k.display_name }] : [],

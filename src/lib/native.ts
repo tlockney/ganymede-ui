@@ -149,6 +149,8 @@ export type PageState = {
   /** True when the file's kernel isn't installed here. */
   kernelMissing: boolean;
   trusted: boolean;
+  /** Whether Notebook Access works here: a Ganymede server that runs the kernels. */
+  hostGrants: boolean;
   /** The active cell's type. */
   cellType: string | null;
   /** The kernels a notebook can switch to. */

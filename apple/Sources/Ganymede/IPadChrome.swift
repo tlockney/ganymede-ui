@@ -744,6 +744,7 @@ struct IPadNotebookToolbar: ToolbarContent {
                 Button { page.run("notebook-access") } label: {
                     Label("Notebook Access…", systemImage: "lock.shield")
                 }
+                .disabled(page.state.hostGrants != true)
                 Divider()
                 Button { page.run("show-shortcuts") } label: { Label("Keyboard Shortcuts", systemImage: "keyboard") }
                 Button {

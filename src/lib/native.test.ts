@@ -63,6 +63,7 @@ describe('native', () => {
       kernelDisplayName: 'TypeScript',
       kernelMissing: false,
       trusted: true,
+      hostGrants: true,
       cellType: 'code',
       kernels: [{ name: 'cdp', displayName: 'TypeScript' }],
       backend: { label: 'Ganymede', detail: 'local server' },
