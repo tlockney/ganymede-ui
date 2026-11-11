@@ -81,6 +81,7 @@ final class ShareNotebooksTests: XCTestCase {
         XCTAssertEqual(group.array(forKey: AppGroup.ledgerKey)?.count, 0)
     }
 
+    @MainActor
     func testNoGroupInATestBundle() {
         XCTAssertNil(AppGroup.id)
         XCTAssertNil(AppGroup.ledgerStore())

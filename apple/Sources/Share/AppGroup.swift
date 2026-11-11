@@ -35,6 +35,7 @@ enum AppGroup {
     /// group's defaults, holding a copy of the app's own answers from
     /// before the group (#449). Nil without a group, which leaves the
     /// ledger in the app's defaults.
+    @MainActor
     static func ledgerStore() -> LedgerStore? {
         guard let group = defaults() else { return nil }
         copyOnce(ledgerKey, from: .standard, to: group)
