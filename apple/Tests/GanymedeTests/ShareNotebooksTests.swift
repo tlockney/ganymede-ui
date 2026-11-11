@@ -81,6 +81,7 @@ final class ShareNotebooksTests: XCTestCase {
         app.set(rows, forKey: AppGroup.ledgerKey)
         AppGroup.copyOnce(AppGroup.ledgerKey, from: app, to: group)
         XCTAssertEqual(group.array(forKey: AppGroup.ledgerKey)?.count, 0)
+        XCTAssertNil(app.object(forKey: AppGroup.ledgerKey))
     }
 
     @MainActor
