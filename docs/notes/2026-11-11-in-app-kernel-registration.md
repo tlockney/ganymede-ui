@@ -25,7 +25,8 @@ What it took:
   reply from before a restart can't reach the new kernel.
 - **A lost page is not a crash.** When WebKit ends the kernel page's
   process, each kernel is reported `lost`, which the server restarts
-  without counting toward its limit. A kernel that ends on its own
-  (`closed` from the page) is reported as a crash.
+  without counting toward its limit. cdp-kernel ends a kernel only when
+  it answers a shutdown_request, which the server sends, so the page's
+  `closed` (reported as a crash) is a guard, not a path taken today.
 
 Follow-ups: #469.

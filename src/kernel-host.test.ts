@@ -136,18 +136,21 @@ describe('kernel host page', () => {
     expect(sent).toEqual([{ owner: aOwner, release: true }]);
   });
 
-  it("doesn't say closed for a kernel the server shut down (#394)", async () => {
-    posted.length = 0;
-    deliver({ kernel: 'r', op: 'start', run: 7 });
-    const old = mocks.kernels.at(-1)!;
-    const shutdown = { header: { msg_type: 'shutdown_request' }, content: { restart: false } };
-    deliver({ kernel: 'r', op: 'send', channel: 'control', json: json(shutdown) });
-    expect(old.send).toHaveBeenCalledOnce();
-    old.close();
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(posted).toEqual([]);
-  });
+  it.each(['control', 'shell'])(
+    "doesn't say closed for a kernel shut down on %s (#394)",
+    async channel => {
+      posted.length = 0;
+      deliver({ kernel: 'r', op: 'start', run: 7 });
+      const old = mocks.kernels.at(-1)!;
+      const shutdown = { header: { msg_type: 'shutdown_request' }, content: { restart: false } };
+      deliver({ kernel: 'r', op: 'send', channel, json: json(shutdown) });
+      expect(old.send).toHaveBeenCalledOnce();
+      old.close();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(posted).toEqual([]);
+    },
+  );
 
   it('stops a kernel: its Worker is asked to end, and nothing it sends after goes anywhere', async () => {
     posted.length = 0;

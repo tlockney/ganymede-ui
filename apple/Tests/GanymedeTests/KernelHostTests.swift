@@ -289,7 +289,7 @@ final class KernelHostTests: XCTestCase {
         // its owner.
         try kernels.serve(server)
         let registered = RegisteredKernels()
-        kernels.handle(.start(kernel: "k1", launch: #"{"env": {"JPY_SESSION_NAME": "trips/Trip.ipynb"}}"#), from: registered)
+        kernels.handle(.start(kernel: "k1", run: 1, launch: #"{"env": {"JPY_SESSION_NAME": "trips/Trip.ipynb"}}"#), from: registered)
         try await waitFor(kernels.webView, "document.readyState === 'complete' && !!window.ganymedeKernelHost")
         try await eventually("the kernel's notebook") { kernelLedger.notebook(for: 7) != nil }
         XCTAssertEqual(kernelLedger.notebook(for: 7), "/root/trips/Trip.ipynb")
@@ -332,6 +332,21 @@ final class KernelHostTests: XCTestCase {
         XCTAssertNil(AppKernels.notebook(in: #"{"env": {}}"#))
         XCTAssertNil(AppKernels.notebook(in: #"{"env": {"JPY_SESSION_NAME": ""}}"#))
         XCTAssertNil(AppKernels.notebook(in: "not json"))
+        // The server's root is canonical; the ledger's paths are joined to
+        // the root as the app gave it (iOS: /var is a link to /private/var).
+        let linkParent = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: linkParent) }
+        let real = linkParent.appendingPathComponent("real")
+        let link = linkParent.appendingPathComponent("link")
+        try? FileManager.default.createDirectory(at: real, withIntermediateDirectories: true)
+        try? FileManager.default.createSymbolicLink(at: link, withDestinationURL: real)
+        let canonical = AppKernels.canonicalPath(link)
+        XCTAssertEqual(canonical, AppKernels.canonicalPath(real))
+        XCTAssertNotEqual(canonical, link.path)
+        XCTAssertEqual(AppKernels.resolve(canonical + "/trips/A.ipynb", under: link), link.path + "/trips/A.ipynb")
+        XCTAssertEqual(AppKernels.resolve("trips/A.ipynb", under: link), link.path + "/trips/A.ipynb")
+        XCTAssertEqual(AppKernels.resolve("/elsewhere/A.ipynb", under: link), "/elsewhere/A.ipynb")
+        XCTAssertEqual(AppKernels.resolve("/x/A.ipynb", under: nil), "/x/A.ipynb")
         let page = AppKernels.kernelPageURL(URL(string: "http://127.0.0.1:8888/?token=t#x")!)
         XCTAssertEqual(page.absoluteString, "http://127.0.0.1:8888/kernel.html?token=t")
     }

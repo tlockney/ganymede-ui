@@ -72,8 +72,10 @@ final class ServerHost: @unchecked Sendable {
 /// What a registered kernel is asked to do, on one of the server's threads.
 enum KernelEvent: Sendable {
     /// Start kernel `kernel`; `launch` is `{"kernelspec", "cwd", "env"}`,
-    /// with the notebook's path in `env.JPY_SESSION_NAME`.
-    case start(kernel: String, launch: String)
+    /// with the notebook's path in `env.JPY_SESSION_NAME`. `run` names
+    /// this start: a restart reuses the id, so `deliver` and `ended` take
+    /// the run, and one that has stopped goes nowhere.
+    case start(kernel: String, run: Int, launch: String)
     /// A Jupyter message (JSON, buffers as base64) on `channel`.
     case send(kernel: String, channel: String, message: String)
     /// End the kernel now: nothing more may be delivered from this run.
@@ -92,8 +94,9 @@ final class RegisteredKernels: @unchecked Sendable {
 
     private let lock = NSLock()
     private var handle: OpaquePointer?
-    /// Started and not stopped or ended, by kernel id.
-    private var live: Set<String> = []
+    /// Started and not stopped or ended: each kernel's current run, by id.
+    private var live: [String: Int] = [:]
+    private var lastRun = 0
 
     fileprivate func open(_ handle: OpaquePointer) {
         lock.withLock { self.handle = handle }
@@ -102,41 +105,51 @@ final class RegisteredKernels: @unchecked Sendable {
     fileprivate func close() {
         lock.withLock {
             handle = nil
-            live = []
+            live = [:]
         }
     }
 
     /// Whether kernel `id` is running, as far as the server knows.
     func isLive(_ id: String) -> Bool {
-        lock.withLock { live.contains(id) }
+        lock.withLock { live[id] != nil }
     }
 
-    /// A message from kernel `id`. False when it isn't running (it was
-    /// stopped, or the server is gone) or the server couldn't read it.
+    /// A message from run `run` of kernel `id`. False when that run isn't
+    /// running (it was stopped or restarted, or the server is gone) or the
+    /// server couldn't read it.
+    ///
+    /// The lock is held while the server parses the message, which a
+    /// start or stop on the server's threads waits for: it is what keeps
+    /// the server from being freed under the call.
     @discardableResult
-    func deliver(_ id: String, channel: String, message: String) -> Bool {
+    func deliver(_ id: String, run: Int, channel: String, message: String) -> Bool {
         lock.withLock {
-            guard let handle, live.contains(id) else { return false }
+            guard let handle, live[id] == run else { return false }
             return ganymede_kernel_deliver(handle, id, channel, message) == 0
         }
     }
 
-    /// Kernel `id` ended without being asked to: `lost` when the system
-    /// ended it (the server restarts it without counting a crash), anything
-    /// else a crash. Once per run.
-    func ended(_ id: String, reason: String) {
+    /// Run `run` of kernel `id` ended without being asked to: `lost` when
+    /// the system ended it (the server restarts it without counting a
+    /// crash), anything else a crash. Once per run.
+    func ended(_ id: String, run: Int, reason: String) {
         lock.withLock {
-            guard let handle, live.remove(id) != nil else { return }
+            guard let handle, live[id] == run else { return }
+            live[id] = nil
             ganymede_kernel_ended(handle, id, reason)
         }
     }
 
-    fileprivate func started(_ id: String) {
-        lock.withLock { _ = live.insert(id) }
+    fileprivate func started(_ id: String) -> Int {
+        lock.withLock {
+            lastRun += 1
+            live[id] = lastRun
+            return lastRun
+        }
     }
 
     fileprivate func stopped(_ id: String) {
-        lock.withLock { _ = live.remove(id) }
+        lock.withLock { live[id] = nil }
     }
 
     fileprivate func register(spec: [String: Any], on handle: OpaquePointer, events: @escaping Events) throws {
@@ -149,8 +162,9 @@ final class RegisteredKernels: @unchecked Sendable {
                 guard let ctx, let id, let launch else { return 1 }
                 let callbacks = Unmanaged<Callbacks>.fromOpaque(ctx).takeUnretainedValue()
                 let kernel = String(cString: id)
-                callbacks.kernels.started(kernel)
-                callbacks.events(.start(kernel: kernel, launch: String(cString: launch)), callbacks.kernels)
+                let run = callbacks.kernels.started(kernel)
+                callbacks.events(
+                    .start(kernel: kernel, run: run, launch: String(cString: launch)), callbacks.kernels)
                 return 0
             },
             send: { ctx, id, channel, message in

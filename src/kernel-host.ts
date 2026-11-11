@@ -74,6 +74,9 @@ function start(id: string, run: number): void {
     if (!current(id, kernel) || shutDown.has(kernel)) return;
     kernels.delete(id);
     // It ended without the server asking: the server hears it died.
+    // cdp-kernel ends a kernel only on a shutdown_request, which the
+    // server sends and `deliver` marks, so this is a guard for a kernel
+    // that someday ends on its own, not a path taken today.
     post({ kernel: id, run, op: 'closed' });
   });
 }
@@ -112,8 +115,9 @@ export function deliver(m: ToKernel): void {
     const running = kernels.get(m.kernel);
     if (!running) return;
     const msg = decodeMessage(JSON.parse(m.json)) as { header?: { msg_type?: string } };
-    if (m.channel === 'control' && msg.header?.msg_type === 'shutdown_request')
-      shutDown.add(running.kernel);
+    // On either channel: the kernel ends once it answers, which is asked
+    // for, not a crash.
+    if (msg.header?.msg_type === 'shutdown_request') shutDown.add(running.kernel);
     running.kernel.send(m.channel as Parameters<BrowserKernel['send']>[0], msg as never);
   }
 }

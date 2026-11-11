@@ -232,16 +232,24 @@ final class ServerHostTests: XCTestCase {
         XCTAssertTrue(host.kernels.isLive(id))
 
         // The system ends it: the server starts it again, under the same id.
-        host.kernels.ended(id, reason: "lost")
+        let first = try XCTUnwrap(app.run(of: id))
+        host.kernels.ended(id, run: first, reason: "lost")
         XCTAssertFalse(host.kernels.isLive(id))
         eventually("the restart") { app.starts.count == 2 }
         try eventually("the restarted kernel", idle)
+        // A late message from the first run doesn't reach the second.
+        let second = try XCTUnwrap(app.run(of: id))
+        XCTAssertNotEqual(first, second)
+        XCTAssertFalse(host.kernels.deliver(id, run: first, channel: "iopub", message: FakeAppKernel.status(id, "busy")),
+                       "the first run takes nothing more")
+        host.kernels.ended(id, run: first, reason: "exited")
+        XCTAssertTrue(host.kernels.isLive(id), "the first run's end doesn't end the second")
 
         let (deleted, _) = try request(host, "DELETE", "/api/kernels/\(id)")
         XCTAssertEqual(deleted, 204)
         XCTAssertEqual(app.stops, [id])
         XCTAssertFalse(host.kernels.isLive(id))
-        XCTAssertFalse(host.kernels.deliver(id, channel: "iopub", message: FakeAppKernel.status(id, "idle")),
+        XCTAssertFalse(host.kernels.deliver(id, run: second, channel: "iopub", message: FakeAppKernel.status(id, "idle")),
                        "a stopped kernel takes nothing more")
     }
 
@@ -258,14 +266,19 @@ private final class FakeAppKernel: @unchecked Sendable {
     private let lock = NSLock()
     private var _starts: [String] = []
     private var _stops: [String] = []
+    private var runs: [String: Int] = [:]
     var starts: [String] { lock.withLock { _starts } }
+    func run(of kernel: String) -> Int? { lock.withLock { runs[kernel] } }
     var stops: [String] { lock.withLock { _stops } }
     private let queue = DispatchQueue(label: "fake-app-kernel")
 
     func handle(_ event: KernelEvent, _ kernels: RegisteredKernels) {
         switch event {
-        case .start(_, let launch):
-            lock.withLock { _starts.append(launch) }
+        case .start(let kernel, let run, let launch):
+            lock.withLock {
+                _starts.append(launch)
+                runs[kernel] = run
+            }
         case .stop(let kernel):
             lock.withLock { _stops.append(kernel) }
         case .send(let kernel, let channel, let message):
@@ -273,6 +286,7 @@ private final class FakeAppKernel: @unchecked Sendable {
                   let header = request["header"] as? [String: Any],
                   let type = header["msg_type"] as? String
             else { return }
+            guard let run = self.run(of: kernel) else { return }
             let reply: (String, [String: Any])
             switch type {
             case "kernel_info_request":
@@ -287,10 +301,10 @@ private final class FakeAppKernel: @unchecked Sendable {
                 return
             }
             queue.async {
-                kernels.deliver(kernel, channel: "iopub", message: Self.status(kernel, "busy", parent: header))
-                kernels.deliver(kernel, channel: channel,
+                kernels.deliver(kernel, run: run, channel: "iopub", message: Self.status(kernel, "busy", parent: header))
+                kernels.deliver(kernel, run: run, channel: channel,
                                 message: Self.message(reply.0, reply.1, parent: header))
-                kernels.deliver(kernel, channel: "iopub", message: Self.status(kernel, "idle", parent: header))
+                kernels.deliver(kernel, run: run, channel: "iopub", message: Self.status(kernel, "idle", parent: header))
             }
         }
     }

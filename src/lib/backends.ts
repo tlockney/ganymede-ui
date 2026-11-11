@@ -45,8 +45,10 @@ export type Backend = {
 export async function connect(config: BackendConfig): Promise<Backend> {
   const backend = await connectTo(config);
   // In the Apple apps, kept device permissions follow a rename made here
-  // (#383); the app's sidebar reports its own.
-  if (relayAvailable()) backend.services.contents.fileChanged.connect(reportRename);
+  // (#383); the app's sidebar reports its own. Only on the app's own
+  // server: a remote one may hold the same path as a local notebook.
+  if (relayAvailable() && config.kind === 'ganymede' && config.url === '')
+    backend.services.contents.fileChanged.connect(reportRename);
   return backend;
 }
 

@@ -51,8 +51,13 @@ final class AppKernels: NSObject {
     private var pending: [[String: Any]] = []
 
     private struct Run {
+        /// What the kernel page tags this run's messages with.
         let number: Int
         let server: RegisteredKernels
+        /// The server's own number for this run, given on its thread, so
+        /// a late message is refused there even before `.stop` reaches
+        /// the main thread.
+        let serverRun: Int
     }
     /// The run each running kernel is on, by kernel id.
     private var runs: [String: Run] = [:]
@@ -135,9 +140,9 @@ final class AppKernels: NSObject {
 
     func handle(_ event: KernelEvent, from server: RegisteredKernels) {
         switch event {
-        case .start(let kernel, let launch):
+        case .start(let kernel, let serverRun, let launch):
             lastRun += 1
-            runs[kernel] = Run(number: lastRun, server: server)
+            runs[kernel] = Run(number: lastRun, server: server, serverRun: serverRun)
             notebooks[kernel] = Self.notebook(in: launch).map(resolve)
             tellBridge(kernel)
             toPage(["kernel": kernel, "op": "start", "run": lastRun])
@@ -210,14 +215,15 @@ final class AppKernels: NSObject {
             guard let kernel = body["kernel"] as? String, let run = current(kernel, body),
                   let channel = body["channel"] as? String, let json = body["json"] as? String
             else { return }
-            run.server.deliver(kernel, channel: channel, message: json)
+            run.server.deliver(kernel, run: run.serverRun, channel: channel, message: json)
         case "closed":
-            // Ended on its own, such as a Worker that failed to load: a
-            // crash, which counts toward the restart limit.
+            // Ended without the server asking (cdp-kernel ends a kernel
+            // only on a shutdown_request, so not today): a crash, which
+            // counts toward the restart limit.
             guard let kernel = body["kernel"] as? String, let run = current(kernel, body) else { return }
             runs[kernel] = nil
             owners[kernel] = nil
-            run.server.ended(kernel, reason: "exited")
+            run.server.ended(kernel, run: run.serverRun, reason: "exited")
         default:
             break
         }
@@ -232,8 +238,9 @@ final class AppKernels: NSObject {
     /// The kernel page's process died, and every kernel in it: iOS ends it
     /// under memory pressure, more so with a Pyodide heap, and a suspended
     /// app's soon after (#293). The server restarts each without counting
-    /// a crash; the restart loads a new kernel page.
-    func kernelPageEnded() {
+    /// a crash (`reason` other than `lost` counts one); the restart loads a
+    /// new kernel page.
+    func kernelPageEnded(reason: String = "lost") {
         device.dropPage()
         let lost = runs
         runs = [:]
@@ -242,7 +249,7 @@ final class AppKernels: NSObject {
         ready = false
         pending = []
         for (kernel, run) in lost.sorted(by: { $0.key < $1.key }) {
-            run.server.ended(kernel, reason: "lost")
+            run.server.ended(kernel, run: run.serverRun, reason: reason)
         }
     }
 
@@ -276,8 +283,35 @@ final class AppKernels: NSObject {
 
     /// A notebook path from the server as the ledger keeps it.
     private func resolve(_ path: String) -> String {
-        guard !path.hasPrefix("/"), let notebookRoot else { return path }
-        return notebookRoot.appendingPathComponent(path).standardizedFileURL.path
+        Self.resolve(path, under: notebookRoot)
+    }
+
+    /// `path` under `root` as the ledger keeps it: joined to `root` when
+    /// relative, and moved back onto `root` when it is under `root`'s
+    /// canonical path. The server canonicalizes its root, and on iOS the
+    /// Documents folder's `/var` is a link to `/private/var`, while the
+    /// page's renames and declarations are joined to `root` as given.
+    nonisolated static func resolve(_ path: String, under root: URL?) -> String {
+        guard let root else { return path }
+        guard path.hasPrefix("/") else {
+            return root.appendingPathComponent(path).standardizedFileURL.path
+        }
+        let given = root.standardizedFileURL.path
+        let canonical = canonicalPath(root)
+        guard canonical != given else { return path }
+        if path == canonical { return given }
+        if path.hasPrefix(canonical + "/") { return given + path.dropFirst(canonical.count) }
+        return path
+    }
+
+    /// `url`'s path with every link resolved, as the server's root is.
+    /// Not `resolvingSymlinksInPath`, which drops a leading `/private`.
+    nonisolated static func canonicalPath(_ url: URL) -> String {
+        url.withUnsafeFileSystemRepresentation { path in
+            guard let path, let real = realpath(path, nil) else { return nil }
+            defer { free(real) }
+            return String(cString: real)
+        } ?? url.standardizedFileURL.path
     }
 
     /// Once a kernel's notebook and owner are both known, the bridge
@@ -306,6 +340,25 @@ extension AppKernels: WKNavigationDelegate {
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         kernelPageEnded()
+    }
+
+    /// The kernel page didn't load (the server stopped answering, say):
+    /// its kernels can't start, which the server counts as failed starts,
+    /// so the next start loads the page again and the restart limit ends
+    /// a server that never serves it. One navigation replacing another
+    /// (`unload`) is not a failure.
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        loadFailed(error)
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        loadFailed(error)
+    }
+
+    private func loadFailed(_ error: Error) {
+        let error = error as NSError
+        guard loaded, !ready, !(error.domain == NSURLErrorDomain && error.code == NSURLErrorCancelled) else { return }
+        kernelPageEnded(reason: "failed")
     }
 }
 
