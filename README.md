@@ -168,11 +168,6 @@ closes. A failed save or kernel action shows its error above the notebook.
 
 ### Live editing on a Ganymede server
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release, which loads and saves notebooks through the
-> contents API and locks on a change on disk, as below.
-
 On a Ganymede server, including the apps' own, an open notebook joins the
 server's [document room](https://ganymede-server.com/docs/rooms) for it. Edits
 another client makes show up as they happen: a Claude session journaling
@@ -199,10 +194,6 @@ over the version that locked it. A newer change locks it again.
 When you have no unsaved edits and no cell is running, nothing here can be
 lost, so the notebook takes the new version in place instead of locking:
 the kernel keeps running and the scroll position stays.
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD). The
-> latest release locks in this case too.
 
 ### Code font
 

@@ -218,11 +218,6 @@ session, so the kernel stays; scroll and active cell are put back), then
 takes the file's time as its base. An edit typed during the fetch, or a
 cell that starts running, makes it give up and lock instead (#508).
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release, which loads and saves every notebook through the
-> contents API as above.
-
 On a Ganymede server the pane opens the notebook in its document room
 instead (#183, `room.ts`). `NotebookRoom.join` asks `PUT
 /api/collaboration/session/{path}` for the file id and the server's
