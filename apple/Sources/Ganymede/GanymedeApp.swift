@@ -259,8 +259,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             AppModel.shared.openRequests.finishLaunching()
             // Asked once, after the windows are up (#318).
             CrashReportsPrompt.askIfNeeded()
-            // Files changed, moved or deleted while the app was away (#305).
-            SpotlightSettings.shared.sync()
+            // Files changed, moved or deleted while the app was away (#305),
+            // unless becoming active already checked.
+            SpotlightSettings.shared.syncIfStale()
         }
         NotificationCenter.default.addObserver(
             self,

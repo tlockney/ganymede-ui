@@ -18,10 +18,19 @@ actor SpotlightIndex {
     /// aren't indexed, and reading them would hold up the rest.
     static let maxSize = 5 * 1024 * 1024
 
+    /// Items indexed per call, so a big folder's first sync doesn't hold
+    /// every notebook's text at once.
+    static let batch = 50
+    /// Everything is indexed again this often, in case Spotlight dropped
+    /// entries itself (an index reset), which the app isn't told of.
+    static let fullInterval: TimeInterval = 7 * 24 * 60 * 60
+
     private struct Manifest: Codable {
         var code = false
         /// Path to the modification date it was indexed at.
         var files: [String: Date] = [:]
+        /// When everything was last indexed again.
+        var fullAt: Date?
     }
 
     private let index = CSSearchableIndex(name: "notebooks")
@@ -53,26 +62,45 @@ actor SpotlightIndex {
     }
 
     /// Makes the index hold exactly the notebooks in `urls` (those still
-    /// there and small enough), indexing only what changed since.
+    /// there and small enough), indexing only what changed since, or all
+    /// of them when the code setting changed or a week has passed.
     func sync(_ urls: [URL], code: Bool) async {
         guard enabled else { return }
         var wanted: [String: Date] = [:]
         for url in urls {
             if let date = Self.indexable(url) { wanted[url.standardizedFileURL.path] = date }
         }
-        let plan = SpotlightPlan.make(wanted: wanted, indexed: manifest.files, all: code != manifest.code)
-        manifest.code = code
-        await apply(plan, dates: wanted, code: code)
+        let stale = manifest.fullAt.map { Date().timeIntervalSince($0) > Self.fullInterval } ?? true
+        let all = stale || code != manifest.code
+        let plan = SpotlightPlan.make(wanted: wanted, indexed: manifest.files, all: all)
+        // The setting is recorded only once its entries are redone, so a
+        // failure is tried again next time.
+        if await apply(plan, dates: wanted, code: code), all {
+            manifest.code = code
+            manifest.fullAt = Date()
+            save()
+        }
+    }
+
+    /// Indexes `url`, leaving the other entries as they are: a notebook
+    /// just opened, which is now a recent.
+    func add(_ url: URL, code: Bool) async {
+        await update(url, code: code, onlyIfIndexed: false)
     }
 
     /// Indexes `url` again if it is in the index, as after a save.
     func refresh(_ url: URL, code: Bool) async {
+        await update(url, code: code, onlyIfIndexed: true)
+    }
+
+    private func update(_ url: URL, code: Bool, onlyIfIndexed: Bool) async {
         let path = url.standardizedFileURL.path
-        guard enabled, manifest.files[path] != nil else { return }
-        var wanted: [String: Date] = [:]
-        if let date = Self.indexable(url) { wanted[path] = date }
-        let plan = SpotlightPlan.make(wanted: wanted, indexed: [path: manifest.files[path]!], all: code != manifest.code)
-        await apply(plan, dates: wanted, code: code)
+        guard enabled, !onlyIfIndexed || manifest.files[path] != nil,
+              let date = Self.indexable(url)
+        else { return }
+        let indexed = manifest.files[path].map { [path: $0] } ?? [:]
+        let plan = SpotlightPlan.make(wanted: [path: date], indexed: indexed, all: code != manifest.code)
+        await apply(plan, dates: [path: date], code: code)
     }
 
     /// Takes `url` out of the index, as when a result's file has gone.
@@ -99,50 +127,63 @@ actor SpotlightIndex {
         }
     }
 
-    private func apply(_ plan: SpotlightPlan, dates: [String: Date], code: Bool) async {
+    /// Removes and indexes what `plan` says; true when all of it was
+    /// done. Stops if Spotlight was turned off or on meanwhile.
+    @discardableResult
+    private func apply(_ plan: SpotlightPlan, dates: [String: Date], code: Bool) async -> Bool {
         let started = generation
+        var done = true
+        defer { save() }
         if !plan.remove.isEmpty {
             do {
                 try await index.deleteSearchableItems(withIdentifiers: plan.remove)
-                guard generation == started else { return }
+                guard generation == started else { return false }
                 for path in plan.remove { manifest.files[path] = nil }
             } catch {
                 NSLog("Ganymede: Spotlight entries couldn't be removed: \(error.localizedDescription)")
+                done = false
             }
         }
-        var items: [CSSearchableItem] = []
-        var indexed: [String: Date] = [:]
-        for path in plan.index {
-            guard let date = dates[path] else { continue }
-            let url = URL(fileURLWithPath: path)
-            guard let data = try? Data(contentsOf: url),
-                  let text = try? NotebookIndexText(data: data, fileName: url.lastPathComponent, code: code)
-            else {
-                // Not a notebook (any more): nothing to find it by.
-                if manifest.files[path] != nil {
-                    try? await index.deleteSearchableItems(withIdentifiers: [path])
-                    guard generation == started else { return }
-                    manifest.files[path] = nil
+        var start = 0
+        while start < plan.index.count {
+            let paths = plan.index[start..<min(start + Self.batch, plan.index.count)]
+            start += Self.batch
+            var items: [CSSearchableItem] = []
+            var indexed: [String: Date] = [:]
+            var unreadable: [String] = []
+            for path in paths {
+                guard let date = dates[path] else { continue }
+                let url = URL(fileURLWithPath: path)
+                guard let data = try? Data(contentsOf: url),
+                      let text = try? NotebookIndexText(data: data, fileName: url.lastPathComponent, code: code)
+                else {
+                    // Not a notebook (any more): nothing to find it by.
+                    if manifest.files[path] != nil { unreadable.append(path) }
+                    continue
                 }
-                continue
+                items.append(Self.item(url, text: text, modified: date))
+                indexed[path] = date
             }
-            items.append(Self.item(url, text: text, modified: date))
-            indexed[path] = date
-        }
-        if !items.isEmpty {
+            if !unreadable.isEmpty {
+                try? await index.deleteSearchableItems(withIdentifiers: unreadable)
+                guard generation == started else { return false }
+                for path in unreadable { manifest.files[path] = nil }
+            }
+            guard !items.isEmpty else { continue }
             do {
                 try await index.indexSearchableItems(items)
                 guard generation == started else {
                     // Turned off meanwhile: take these back out.
                     try? await index.deleteSearchableItems(withIdentifiers: Array(indexed.keys))
-                    return
+                    return false
                 }
                 manifest.files.merge(indexed) { $1 }
             } catch {
                 NSLog("Ganymede: notebooks couldn't be added to Spotlight: \(error.localizedDescription)")
+                done = false
             }
         }
-        save()
+        return done
     }
 
     private func save() {
@@ -173,7 +214,11 @@ actor SpotlightIndex {
         attributes.contentURL = url
         attributes.path = url.path
         attributes.contentModificationDate = modified
-        return CSSearchableItem(uniqueIdentifier: url.path, domainIdentifier: domain, attributeSet: attributes)
+        // Spotlight drops items after about a month by default; these stay
+        // until the app removes them.
+        let item = CSSearchableItem(uniqueIdentifier: url.path, domainIdentifier: domain, attributeSet: attributes)
+        item.expirationDate = .distantFuture
+        return item
     }
 }
 
@@ -271,6 +316,14 @@ final class SpotlightSettings {
     }
 
     /// `url` was saved: its entry, if it has one, gets the new contents.
+    /// `url` was just opened, so it is a recent: indexed now, without a
+    /// walk of the folders (the next `sync()` drops recents that fell off).
+    func opened(_ url: URL) {
+        guard enabled else { return }
+        let code = code
+        Task.detached(priority: .utility) { await SpotlightIndex.shared.add(url, code: code) }
+    }
+
     func saved(_ url: URL) {
         guard enabled else { return }
         let code = code

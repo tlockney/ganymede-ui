@@ -35,6 +35,21 @@ final class NotebookIndexTests: XCTestCase {
         XCTAssertEqual(text.summary, "Io, Europa and Ganymede sit in a resonance.")
     }
 
+    func testHeadingsKeepAHashThatIsPartOfTheText() {
+        XCTAssertEqual(NotebookIndexText.headings(in: "# Intro to C#\n## Done ##\n### ###"), ["Intro to C#", "Done"])
+    }
+
+    func testAFenceClosesOnlyOnABareRun() {
+        let markdown = "```python\n# in code\n```python\n# still code\n````\n# Out"
+        XCTAssertEqual(NotebookIndexText.headings(in: markdown), ["Out"])
+    }
+
+    func testSummarySkipsFencedCode() throws {
+        let data = try notebook([markdown("# Title\n```\nlet x = 1\n```\nProse here.")])
+        let text = try NotebookIndexText(data: data, fileName: "a.ipynb", code: true)
+        XCTAssertEqual(text.summary, "Prose here.")
+    }
+
     func testCodeWhenAskedStillNoOutputs() throws {
         let data = try notebook([code("let period = 7.15")], metadata: ["language_info": ["name": "python"]])
         let text = try NotebookIndexText(data: data, fileName: "Moons.ipynb", code: true)

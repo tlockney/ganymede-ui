@@ -177,7 +177,7 @@ final class Recents {
         NSDocumentController.shared.noteNewRecentDocumentURL(url)
         urls = NSDocumentController.shared.recentDocumentURLs
         // Recents are in Spotlight (#305).
-        SpotlightSettings.shared.sync()
+        SpotlightSettings.shared.opened(url)
     }
 
     func clear() {

@@ -9,6 +9,9 @@ struct NotebookIndexText: Equatable {
     var text: String
     var headings: [String]
     var language: String?
+    /// A line for under the title: the first line of Markdown prose, not
+    /// a heading or fenced code.
+    var summary: String?
 
     struct NotANotebook: LocalizedError {
         var errorDescription: String? { "The file is not an nbformat 4 notebook." }
@@ -25,11 +28,17 @@ struct NotebookIndexText: Equatable {
         else { throw NotANotebook() }
         var parts: [String] = []
         var headings: [String] = []
+        var summary: String?
         for cell in cells {
             let source = Self.string(cell["source"])
             switch cell["cell_type"] as? String {
             case "markdown":
-                headings += Self.headings(in: source)
+                let lines = Self.lines(in: source)
+                headings += lines.compactMap(\.heading)
+                if summary == nil {
+                    summary = lines.first { $0.heading == nil && !$0.code && !$0.text.isEmpty }
+                        .map { String($0.text.prefix(300)) }
+                }
                 parts.append(source)
             case "code" where code:
                 parts.append(source)
@@ -43,22 +52,12 @@ struct NotebookIndexText: Equatable {
         language = (kernelspec?["language"] as? String ?? info?["name"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         title = headings.first ?? (fileName as NSString).deletingPathExtension
         self.headings = Array(headings.prefix(Self.maxHeadings))
+        self.summary = summary
         let joined = parts
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
             .joined(separator: "\n\n")
         text = String(joined.prefix(Self.maxText))
-    }
-
-    /// A line for under the title: the first Markdown line that isn't a
-    /// heading or a fence.
-    var summary: String? {
-        for raw in text.components(separatedBy: "\n") {
-            let line = raw.trimmingCharacters(in: .whitespaces)
-            if line.isEmpty || line.hasPrefix("#") || line.hasPrefix("```") || line.hasPrefix("~~~") { continue }
-            return String(line.prefix(300))
-        }
-        return nil
     }
 
     /// nbformat's multiline strings: one string, or an array of lines.
@@ -68,9 +67,19 @@ struct NotebookIndexText: Equatable {
         return ""
     }
 
-    /// ATX headings outside fenced code, without their `#`s.
-    static func headings(in markdown: String) -> [String] {
-        var found: [String] = []
+    /// A Markdown line: its text, whether it is in fenced code, and the
+    /// heading it makes, if any.
+    struct Line {
+        var text: String
+        var code: Bool
+        var heading: String?
+    }
+
+    /// `markdown`'s lines, with fenced code and ATX headings marked. A
+    /// fence closes only on a bare run of its character, at least as long
+    /// as the one that opened it, as CommonMark has it.
+    static func lines(in markdown: String) -> [Line] {
+        var found: [Line] = []
         var fence: (Character, Int)?
         for raw in markdown.components(separatedBy: "\n") {
             let line = raw.trimmingCharacters(in: .whitespaces)
@@ -78,23 +87,41 @@ struct NotebookIndexText: Equatable {
                 let run = line.prefix(while: { $0 == mark }).count
                 if run >= 3 {
                     if let open = fence {
-                        if open.0 == mark, run >= open.1 { fence = nil }
+                        if open.0 == mark, run >= open.1, line.dropFirst(run).allSatisfy({ $0 == " " }) {
+                            fence = nil
+                            continue
+                        }
                     } else {
                         fence = (mark, run)
+                        continue
                     }
-                    continue
                 }
             }
-            guard fence == nil else { continue }
-            let hashes = line.prefix(while: { $0 == "#" }).count
-            guard (1...6).contains(hashes), line.dropFirst(hashes).first == " " else { continue }
-            var heading = line.dropFirst(hashes).trimmingCharacters(in: .whitespaces)
-            // A closing sequence: `## Title ##`.
-            while heading.hasSuffix("#") { heading.removeLast() }
-            heading = heading.trimmingCharacters(in: .whitespaces)
-            if !heading.isEmpty { found.append(heading) }
+            if fence != nil {
+                found.append(Line(text: line, code: true))
+                continue
+            }
+            found.append(Line(text: line, code: false, heading: heading(line)))
         }
         return found
+    }
+
+    /// ATX headings outside fenced code, without their `#`s.
+    static func headings(in markdown: String) -> [String] {
+        lines(in: markdown).compactMap(\.heading)
+    }
+
+    /// The heading `line` makes, if it is one. A closing run of `#`s goes
+    /// only after a space: `# Intro to C#` keeps its `#`.
+    private static func heading(_ line: String) -> String? {
+        let hashes = line.prefix(while: { $0 == "#" }).count
+        guard (1...6).contains(hashes), line.dropFirst(hashes).first == " " else { return nil }
+        var heading = line.dropFirst(hashes).trimmingCharacters(in: .whitespaces)
+        if let range = heading.range(of: #"(^|\s)#+$"#, options: .regularExpression) {
+            heading.removeSubrange(range)
+        }
+        heading = heading.trimmingCharacters(in: .whitespaces)
+        return heading.isEmpty ? nil : heading
     }
 }
 
