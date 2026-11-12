@@ -696,6 +696,11 @@ struct IPadNotebookToolbar: ToolbarContent {
                 .disabled(!page.state.hasNotebook)
             Button { page.run("interrupt") } label: { Label("Interrupt", systemImage: "stop.fill") }
                 .disabled(!page.state.isBusy)
+            // Only while the notebook asks for something its grant doesn't give.
+            if let wanted = page.state.accessWanted, !wanted.isEmpty {
+                Button { page.run("notebook-access") } label: { Label("Notebook Access", systemImage: "lock.shield") }
+                    .accessibilityHint("Asks for \(wanted.joined(separator: ", "))")
+            }
             // The iPad has the sidebar's Outline tab.
             if bottom {
                 PhoneOutlineMenu(page: page)

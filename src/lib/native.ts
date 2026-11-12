@@ -151,6 +151,8 @@ export type PageState = {
   trusted: boolean;
   /** Whether Notebook Access works here: a Ganymede server that runs the kernels. */
   hostGrants: boolean;
+  /** What the notebook asks for that its grant doesn't give (`missingWants`). */
+  accessWanted: string[];
   /** The active cell's type. */
   cellType: string | null;
   /** The kernels a notebook can switch to. */

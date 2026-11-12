@@ -166,16 +166,34 @@ A notebook with unsaved edits saves itself every two minutes, when the
 page is hidden, and when you open another file, and the browser asks before a tab with unsaved edits
 closes. A failed save or kernel action shows its error above the notebook.
 
+### Live editing on a Ganymede server
+
+On a Ganymede server, including the apps' own, an open notebook joins the
+server's [document room](https://ganymede-server.com/docs/rooms) for it. Edits
+another client makes show up as they happen: a Claude session journaling
+with the Ganymede Journal plugin or `ganymede mcp`, nb-cli, or the same
+notebook in another window or in JupyterLab with the collaboration
+extensions. The server saves the file a second after the last edit, and
+takes in changes other programs make to it, merging them cell by cell, so
+the notebook never locks. ⌘S asks the server to save at once; if the file
+changed at the same time and its version of a cell won, the save says so.
+If the server deletes the file, the notebook says its edits are no longer
+saved.
+
 ### When the file changes on disk
 
-The open notebook checks its file every few seconds and when the window
-comes back. If another writer changed it (a Claude session using the
-Ganymede Journal plugin, say), the notebook locks: nothing saves it, not
-autosave, ⌘S, or opening another file, and the title says "Locked". The
-notice above the notebook offers **Reload**, which loads the new version
-and keeps the kernel running (it asks first if you have unsaved edits,
-which it drops), and **Unlock**, which lets your copy save over the version that locked
-it. A newer change locks it again.
+Elsewhere (the browser's own storage, or a server without rooms) the
+open notebook checks its file every few seconds and when the window
+comes back. If another writer changed it, the notebook locks: nothing
+saves it, not autosave, ⌘S, or opening another file, and the title says
+"Locked". The notice above the notebook offers **Reload**, which loads
+the new version and keeps the kernel running (it asks first if you have
+unsaved edits, which it drops), and **Unlock**, which lets your copy save
+over the version that locked it. A newer change locks it again.
+
+When you have no unsaved edits and no cell is running, nothing here can be
+lost, so the notebook takes the new version in place instead of locking:
+the kernel keeps running and the scroll position stays.
 
 ### Code font
 

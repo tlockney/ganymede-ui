@@ -2,11 +2,10 @@
 // (`kernels=both`, #185), so cells can run in the app's own kernel and reach
 // its bridges. A notebook starts on the server's cdp-node kernel, then moves
 // to the in-page TypeScript kernel and back, keeping one notebook open.
-import { readdirSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { readdirSync } from 'node:fs';
 import { expect, type Page, test } from '@playwright/test';
 import { GANYMEDE_URL, KERNEL, ROOT_DIR, TOKEN } from './env';
-import { outputs, waitForReady } from './helpers';
+import { outputs, removeFromServer, waitForReady } from './helpers';
 
 const notebooks = () => new Set(readdirSync(ROOT_DIR).filter(f => f.endsWith('.ipynb')));
 let before: Set<string>;
@@ -14,8 +13,8 @@ let before: Set<string>;
 test.beforeEach(() => {
   before = notebooks();
 });
-test.afterEach(() => {
-  for (const f of notebooks()) if (!before.has(f)) rmSync(join(ROOT_DIR, f), { force: true });
+test.afterEach(async () => {
+  await removeFromServer(...[...notebooks()].filter(f => !before.has(f)));
 });
 
 /** Waits until `name` is the notebook's kernel and it is idle. */

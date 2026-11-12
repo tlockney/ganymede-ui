@@ -145,8 +145,10 @@ const config: UserConfig = {
             options: { cacheName: 'agent', expiration: { maxEntries: 40 } },
           },
         ],
-        // The server API is never cached.
-        navigateFallbackDenylist: [/^\/api\//],
+        // The server API is never cached. kernel.html is the Apple apps'
+        // kernel page: with a query it misses the precache, and the
+        // fallback would load the notebook app in its place (#518).
+        navigateFallbackDenylist: [/^\/api\//, /^\/kernel\.html(\?|$)/],
         // JupyterLite's service-worker relay (kernel file access and
         // stdin, public/lite-service-worker.js) runs inside this worker:
         // one origin gets one worker at `/`, and a narrower scope wouldn't

@@ -3,15 +3,53 @@
 How a release is cut, what it publishes, and what to do when it fails
 partway through.
 
+## Order across the repositories
+
+A round releases cdp-kernel, then Ganymede, then ganymede-ui, and each
+release picks up the ones before it in its own release commit. This
+repository's `scripts/release.sh` runs `scripts/release-pins.sh`, which
+moves `@tlockney/cdp-kernel` in `package.json` and the lockfile, and
+ci.yml's `CDP_KERNEL_VERSION`, `GANYMEDE_VERSION` and `GANYMEDE_REF`, to
+the latest cdp-kernel and Ganymede releases. With `GANYMEDE_REF` on a
+release tag, the release's `macos` and `ios` jobs download
+`GanymedeFFI.xcframework` instead of building it.
+
+If `GANYMEDE_REF` is a commit that Ganymede's latest release doesn't
+contain, the script stops before changing anything: release Ganymede
+first. `scripts/release-pins.sh --check` shows what a release would move
+without changing anything. Ganymede's own release does the same for
+cdp-kernel and for the ganymede-ui release `ganymede ui install`
+installs, so that default is the ganymede-ui release before this one
+until Ganymede's next release.
+
+## Version numbers
+
+Ganymede and ganymede-ui share their minor version, so the docs and the
+site show one number for a round: Ganymede 0.10.0 and the apps 0.10.0.
+A round that changes either one's minor releases both, Ganymede first,
+and `scripts/release.sh minor` here takes the X.Y.0 Ganymede just
+released (from 0.8.0 to 0.10.0 when Ganymede is at 0.10.0). It stops if
+Ganymede's latest minor is not newer than this repository's version:
+release Ganymede first, or release a patch. A fix to one ships as its own
+patch release (0.10.1) without a release of the other. An explicit
+version must have Ganymede's X.Y too. cdp-kernel keeps its own numbers.
+
+When a pin moves, the release commit changes
+`.github/workflows/ci.yml`, so pushing it needs a credential that may
+change workflows (`gh auth login`'s token and SSH keys can; a
+fine-grained token needs Workflows: write).
+
 ## The normal path
 
 1. From an up-to-date `main`, `scripts/release.sh <level>` previews the
    version bump and the changelog. With `--execute` it bumps `package.json`
-   and `package-lock.json`, regenerates `CHANGELOG.md`, commits them on
+   and `package-lock.json`, moves the cdp-kernel and Ganymede pins to
+   their latest releases (above, listed in the commit message and the
+   pull request), regenerates `CHANGELOG.md`, commits them on
    `release/vX.Y.Z`, pushes, and opens an issue and a pull request. The
-   level is `patch`, `minor`, `major`, or an explicit version; the first
-   release can be the version already in `package.json`
-   (`scripts/release.sh 0.0.1`).
+   level is `patch`, `minor`, `major`, or an explicit version; `minor`
+   and `major` take Ganymede's latest X.Y.0 ([Version
+   numbers](#version-numbers)).
 
    Before merging it, remove the docs' "Unreleased" notes on that branch
    ([CLAUDE.md](https://github.com/tlockney/ganymede-ui/blob/main/CLAUDE.md#documenting-unreleased-features)): the
@@ -37,9 +75,11 @@ partway through.
    itself) runs `tag-release.yml`. It sees a `package.json` version that
    has a `CHANGELOG.md` section and no tag, tags the merge commit
    `vX.Y.Z`, and starts `release.yml` on the tag.
-3. `release.yml` checks that the tag matches `package.json`, runs CI
-   (`ci.yml`) on the tag without its `macos-app` job (the commit passed
-   it on `main`, and the release builds the app itself), builds the app, packages `dist/` as
+3. `release.yml` checks that the tag matches `package.json` and that the
+   tagged commit is the merge of a pull request into `main` whose last
+   completed CI run passed. The app builds start then, while build and
+   e2e run once more on the tag; the release waits for them. It builds
+   the app, packages `dist/` as
    `ganymede-ui-X.Y.Z.tar.gz` and `ganymede-ui-X.Y.Z.zip` with a
    `SHA256SUMS` file, attests their build provenance, and publishes the
    GitHub Release with the changelog section as notes. A version with a
@@ -179,11 +219,19 @@ The job then runs `scripts/testflight-notes.mjs`, which waits for App
 Store Connect to finish processing the build (up to 40 minutes) and sets
 its "What to Test" notes through the App Store Connect API, with the same
 API key: one line per pull request (squash subjects, or a merge commit's
-PR title) since the previous TestFlight build,
-dependency bumps counted on one line, cut to App Store Connect's 4,000
-characters. The notes end with `Built from <commit>.`; the next run reads
-that line from the newest earlier build to know where to start, and
-without one starts at the last `v*` tag. To preview the notes for your
+PR title) since the previous TestFlight build that changes the iPad and
+iPhone app, cut to App Store Connect's 4,000 characters. A pull request
+counts when it touches what ships in the app: `src/`, `public/`,
+`examples/`, `packages/`, the HTML entry points, `vite.config.ts`,
+`package.json` or its lockfile, or `apple/Sources/`, `apple/Resources/`,
+`apple/project.yml` or `apple/Package.resolved`, not counting tests or
+the macOS-only `apple/Resources/macOS/` and `apple/Sources/QuickLook/`.
+CI, scripts, docs, dependency bumps, release commits and pull requests
+whose title starts with "Mac" (not "Mac and ...") are left out; with
+nothing left the notes say "No changes to the app." The notes end with
+`Built from <commit>.`; the next run reads that line from the newest
+earlier build to know where to start, and without one starts at the
+last `v*` tag. To preview the notes for your
 checkout, run `node scripts/testflight-notes.mjs --print [<since>]`.
 
 If only that step fails, the build is on TestFlight without notes. Don't
@@ -288,6 +336,10 @@ gh workflow run release.yml --ref vX.Y.Z --repo tlockney/ganymede-ui
 ```
 
 ### The tagged commit cannot be released
+
+If only the `verify` job failed because the pull request's CI was
+cancelled or failed on a re-run, re-run that CI on the pull request, wait for it to
+finish, then re-run the failed jobs of the release run. The tag stays.
 
 CI, the build, or the version check fails for a reason that needs a code
 change. If no GitHub Release exists for the tag, nobody can have

@@ -10,6 +10,7 @@ import {
   isUnreachable,
   kernelDead,
   missingKernel,
+  roomClosed,
   saveFailed,
 } from './problems';
 
@@ -165,5 +166,14 @@ describe('problems', () => {
       message: 'Couldn’t reach the server to restart the kernel.',
       actions: ['retry'],
     });
+  });
+
+  it('says a room closed for good, and what was lost (#183)', () => {
+    expect(roomClosed('Io.ipynb', { kind: 'deleted' }).message).toBe(
+      'Io.ipynb was deleted. Edits here are no longer saved.',
+    );
+    expect(roomClosed('Io.ipynb', { kind: 'restarted' }).message).toBe(
+      'The server restarted, so Io.ipynb was opened again from disk. Edits made here since its last save weren’t kept.',
+    );
   });
 });

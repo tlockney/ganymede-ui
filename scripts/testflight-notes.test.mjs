@@ -7,26 +7,25 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   MAX_LENGTH,
+  appChanges,
   builtFrom,
   client,
   formatNotes,
   parseLog,
   lastTag,
   previousPoint,
+  shipsInApp,
   token,
 } from './testflight-notes.mjs';
 
 const head = 'c486bf8a1d067b157477e08d57e5d93dcee0806b';
 
 describe('formatNotes', () => {
-  it('lists the subjects, counts bumps, drops release commits, and ends with the commit', () => {
+  it('lists the subjects and ends with the commit', () => {
     const notes = formatNotes({
       since: 'build 17 (a1d067b)',
       subjects: [
         'iPhone/iPad: show the example notebooks (#464)',
-        'Bump the vite group with 2 updates (#405)',
-        'Release 0.6.0 (#413)',
-        'Bump the vitest group across 1 directory with 2 updates (#404)',
         'Wait for a kernel start (#462)',
       ],
       head,
@@ -36,7 +35,6 @@ describe('formatNotes', () => {
         'Changes since build 17 (a1d067b):',
         '- iPhone/iPad: show the example notebooks (#464)',
         '- Wait for a kernel start (#462)',
-        '- Dependency updates (2)',
         '',
         'Built from c486bf8a1d06.',
       ].join('\n'),
@@ -46,7 +44,7 @@ describe('formatNotes', () => {
 
   it('says so when nothing changed', () => {
     expect(formatNotes({ since: 'v0.6.0', subjects: [], head })).toContain(
-      '- No changes to the code.',
+      '- No changes to the app.',
     );
   });
 
@@ -59,6 +57,96 @@ describe('formatNotes', () => {
     expect(notes.length).toBeLessThanOrEqual(MAX_LENGTH);
     expect(notes).toMatch(/^- and \d+ more$/m);
     expect(builtFrom(notes)).toBe(head.slice(0, 12));
+  });
+});
+
+describe('shipsInApp', () => {
+  it('counts app sources, assets, examples, dependencies and the Swift app', () => {
+    for (const f of [
+      'src/kernel-host.ts',
+      'src/components/Toolbar.tsx',
+      'public/icons/run.svg',
+      'examples/src/01 Start Here.md',
+      'packages/agent/src/index.ts',
+      'index.html',
+      'vite.config.ts',
+      'package.json',
+      'package-lock.json',
+      'apple/Sources/Ganymede/AppKernels.swift',
+      'apple/Resources/Info.plist',
+      'apple/project.yml',
+      'apple/Package.resolved',
+    ]) {
+      expect(shipsInApp([f]), f).toBe(true);
+    }
+  });
+
+  it('leaves out tests, CI, scripts and docs', () => {
+    for (const f of [
+      'src/kernel-host.test.ts',
+      'src/test/setup.ts',
+      'apple/Tests/GanymedeTests/KernelHostTests.swift',
+      'apple/scripts/release-ios.sh',
+      'apple/Resources/macOS/AppIcon.icns',
+      'apple/Sources/QuickLook/Preview/PreviewViewController.swift',
+      'apple/README.md',
+      '.github/workflows/ci.yml',
+      'scripts/testflight-notes.mjs',
+      'docs/apps.md',
+      'docs/notes/2026-11-11-ffi-cache.md',
+      'e2e/app.spec.ts',
+      'CHANGELOG.md',
+    ]) {
+      expect(shipsInApp([f]), f).toBe(false);
+    }
+  });
+});
+
+describe('appChanges', () => {
+  it('keeps changes to the app and drops CI, tooling, bumps, releases and Mac-only changes', () => {
+    // The v0.7.0..v0.8.0 notes, with the files each change touched.
+    const changes = [
+      {
+        subject: "Pass a run's parameters to the in-app TypeScript kernel (#503)",
+        files: ['apple/Sources/Ganymede/AppKernels.swift', 'src/kernel-host.ts', 'docs/apps.md'],
+      },
+      {
+        subject: "CI: install Playwright's system libraries best effort (#500)",
+        files: ['.github/workflows/ci.yml', 'docs/notes/2026-11-11-playwright-apt-outage.md'],
+      },
+      {
+        subject: 'Release: pick up the latest cdp-kernel and Ganymede releases (#490)',
+        files: ['scripts/release.sh', 'scripts/release-pins.sh', 'docs/releasing.md'],
+      },
+      {
+        subject: 'Pin ganymede v0.8.0 (#497)',
+        files: ['.github/workflows/ci.yml', 'apple/README.md'],
+      },
+      {
+        subject: 'Send TestFlight notes as whatsNew (#501)',
+        files: ['scripts/testflight-notes.mjs', 'scripts/testflight-notes.test.mjs'],
+      },
+      { subject: 'Bump the vite group with 2 updates (#405)', files: ['package.json'] },
+      { subject: 'Release 0.8.0 (#507)', files: ['package.json', 'CHANGELOG.md'] },
+      {
+        subject: 'Mac: choose where kernels run from the window (#475)',
+        files: ['apple/Sources/Ganymede/MacWindow.swift'],
+      },
+      {
+        subject: 'Mac right inspector with Outline and Variables (#311)',
+        files: ['apple/Sources/Ganymede/Inspector.swift'],
+      },
+      {
+        subject: 'Mac and iPad: a shared change (#2)',
+        files: ['apple/Sources/Ganymede/Shared.swift'],
+      },
+      { subject: 'Unknown files are kept (#1)', files: null },
+    ];
+    expect(appChanges(changes)).toEqual([
+      "Pass a run's parameters to the in-app TypeScript kernel (#503)",
+      'Mac and iPad: a shared change (#2)',
+      'Unknown files are kept (#1)',
+    ]);
   });
 });
 
@@ -100,14 +188,14 @@ describe('lastTag', () => {
 describe('parseLog', () => {
   it('gives a squash commit its subject and a merge commit its PR title', () => {
     const out = [
-      'Wait for a kernel start (#462)\x1f\x1e',
-      'Merge pull request #413 from tlockney/release/v0.6.0\x1f\nRelease 0.6.0\n\nMore text\n\x1e',
-      'Merge branch main\x1f\x1e',
+      'aaa\x1fWait for a kernel start (#462)\x1f\x1e',
+      'bbb\x1fMerge pull request #413 from tlockney/release/v0.6.0\x1f\nRelease 0.6.0\n\nMore text\n\x1e',
+      'ccc\x1fMerge branch main\x1f\x1e',
     ].join('\n');
     expect(parseLog(out)).toEqual([
-      'Wait for a kernel start (#462)',
-      'Release 0.6.0 (#413)',
-      'Merge branch main',
+      { sha: 'aaa', subject: 'Wait for a kernel start (#462)' },
+      { sha: 'bbb', subject: 'Release 0.6.0 (#413)' },
+      { sha: 'ccc', subject: 'Merge branch main' },
     ]);
   });
 });
@@ -198,6 +286,84 @@ describe('token', () => {
   });
 });
 
+/** A betaBuildLocalizations resource, as App Store Connect answers one. */
+function localization(id, whatsNew, locale = 'en-US') {
+  return {
+    type: 'betaBuildLocalizations',
+    id,
+    attributes: { whatsNew, locale },
+    relationships: {
+      build: {
+        links: {
+          self: `https://api.appstoreconnect.apple.com/v1/betaBuildLocalizations/${id}/relationships/build`,
+          related: `https://api.appstoreconnect.apple.com/v1/betaBuildLocalizations/${id}/build`,
+        },
+      },
+    },
+    links: { self: `https://api.appstoreconnect.apple.com/v1/betaBuildLocalizations/${id}` },
+  };
+}
+
+/**
+ * Just the betaBuildLocalizations calls of App Store Connect, for build
+ * b1: an attribute the resource lacks gets the 409 the v0.7.0 release
+ * got (#498), and what is written is what `include` reads back.
+ */
+function appStoreConnect() {
+  const ATTRIBUTES = ['locale', 'whatsNew'];
+  const stored = new Map();
+  const answer = (status, body) => ({
+    ok: status < 300,
+    status,
+    text: async () => JSON.stringify(body),
+  });
+  const fetch = async (url, init) => {
+    const path = url.replace('https://api.appstoreconnect.apple.com/v1', '').split('?')[0];
+    const body = init.body ? JSON.parse(init.body) : undefined;
+    const unknown = Object.keys(body?.data?.attributes ?? {}).find(a => !ATTRIBUTES.includes(a));
+    if (unknown) {
+      return answer(409, {
+        errors: [
+          {
+            status: '409',
+            code: 'ENTITY_ERROR.ATTRIBUTE.UNKNOWN',
+            title: 'The provided entity includes an unknown attribute',
+            detail: `'${unknown}' is not an attribute on the resource 'betaBuildLocalizations'`,
+            source: { pointer: `/data/attributes/${unknown}` },
+          },
+        ],
+      });
+    }
+    if (init.method === 'GET' && path === '/builds/b1/betaBuildLocalizations') {
+      return answer(200, { data: [...stored.values()] });
+    }
+    if (init.method === 'POST' && path === '/betaBuildLocalizations') {
+      const { locale, whatsNew } = body.data.attributes;
+      stored.set('l1', localization('l1', whatsNew, locale));
+      return answer(201, { data: stored.get('l1') });
+    }
+    if (init.method === 'GET' && path === '/builds') {
+      return answer(200, {
+        data: [
+          {
+            type: 'builds',
+            id: 'b1',
+            attributes: { version: '17', uploadedDate: '2026-11-11T13:40:00-08:00' },
+            relationships: {
+              betaBuildLocalizations: {
+                data: [...stored.keys()].map(id => ({ type: 'betaBuildLocalizations', id })),
+              },
+            },
+          },
+        ],
+        included: [...stored.values()],
+      });
+    }
+    return answer(404, { errors: [{ status: '404' }] });
+  };
+  return { fetch };
+}
+
 function fakeFetch(routes) {
   const calls = [];
   const fetch = async (url, init) => {
@@ -212,24 +378,30 @@ function fakeFetch(routes) {
 describe('client', () => {
   const opts = { keyP8, keyId: 'KEY', issuerId: 'ISS' };
 
+  const saved = notes => ({ data: localization('l1', notes) });
+
   it('patches an existing en-US localization', async () => {
     const { fetch, calls } = fakeFetch({
       'GET /builds/b1/betaBuildLocalizations': {
         data: [{ id: 'l1', attributes: { locale: 'en-US' } }],
       },
+      'PATCH /betaBuildLocalizations/l1': saved('notes'),
     });
     await client({ ...opts, fetch }).setWhatToTest('b1', 'notes');
     expect(calls[1]).toEqual({
       method: 'PATCH',
       path: '/betaBuildLocalizations/l1',
       body: {
-        data: { type: 'betaBuildLocalizations', id: 'l1', attributes: { whatToTest: 'notes' } },
+        data: { type: 'betaBuildLocalizations', id: 'l1', attributes: { whatsNew: 'notes' } },
       },
     });
   });
 
   it('creates the localization when the build has none', async () => {
-    const { fetch, calls } = fakeFetch({ 'GET /builds/b1/betaBuildLocalizations': { data: [] } });
+    const { fetch, calls } = fakeFetch({
+      'GET /builds/b1/betaBuildLocalizations': { data: [] },
+      'POST /betaBuildLocalizations': saved('notes'),
+    });
     await client({ ...opts, fetch }).setWhatToTest('b1', 'notes');
     expect(calls[1]).toEqual({
       method: 'POST',
@@ -237,11 +409,35 @@ describe('client', () => {
       body: {
         data: {
           type: 'betaBuildLocalizations',
-          attributes: { locale: 'en-US', whatToTest: 'notes' },
+          attributes: { locale: 'en-US', whatsNew: 'notes' },
           relationships: { build: { data: { type: 'builds', id: 'b1' } } },
         },
       },
     });
+  });
+
+  it('fails when the answer carries no notes', async () => {
+    const { fetch } = fakeFetch({
+      'GET /builds/b1/betaBuildLocalizations': { data: [] },
+      'POST /betaBuildLocalizations': saved(null),
+    });
+    await expect(client({ ...opts, fetch }).setWhatToTest('b1', 'notes')).rejects.toThrow(
+      /kept no notes/,
+    );
+  });
+
+  it('writes and reads the notes under the names App Store Connect uses (#498)', async () => {
+    const { fetch } = appStoreConnect();
+    const asc = client({ ...opts, fetch, retries: [] });
+    await asc.setWhatToTest('b1', 'Built from abcdef0.');
+    expect(await asc.recentBuilds('app')).toEqual([
+      {
+        id: 'b1',
+        number: '17',
+        uploaded: '2026-11-11T13:40:00-08:00',
+        notes: 'Built from abcdef0.',
+      },
+    ]);
   });
 
   it('reads recent builds with their notes', async () => {
@@ -258,7 +454,7 @@ describe('client', () => {
           {
             type: 'betaBuildLocalizations',
             id: 'l1',
-            attributes: { whatToTest: 'Built from abcdef0.' },
+            attributes: { whatsNew: 'Built from abcdef0.' },
           },
         ],
       },

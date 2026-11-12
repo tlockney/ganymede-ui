@@ -181,6 +181,9 @@ final class KernelHostTests: XCTestCase {
         }
         try await eventually("the kernel", idle)
         XCTAssertEqual(kernels.webView.url?.path, "/kernel.html")
+        // No token: under the page's service worker, a query missed the
+        // precache and loaded the notebook app instead (#518).
+        XCTAssertNil(kernels.webView.url?.query)
         try await eventually("the ledger's notebook") { ledger.notebook(for: 7) != nil }
         XCTAssertEqual(ledger.notebook(for: 7)?.hasSuffix("/trips/Trip.ipynb"), true, ledger.notebook(for: 7) ?? "")
 
@@ -327,6 +330,13 @@ final class KernelHostTests: XCTestCase {
         XCTAssertEqual(ledger.answer(notebook: "/root/New.ipynb", capability: "location"), .deny)
     }
 
+    func testReadsTheParametersFromTheLaunch() {
+        XCTAssertEqual(AppKernels.params(in: #"{"env": {"GANYMEDE_PARAMS": "{\"a\":1}"}}"#), #"{"a":1}"#)
+        XCTAssertNil(AppKernels.params(in: #"{"env": {}}"#))
+        XCTAssertNil(AppKernels.params(in: #"{"env": {"GANYMEDE_PARAMS": ""}}"#))
+        XCTAssertNil(AppKernels.params(in: "not json"))
+    }
+
     func testReadsTheNotebookFromTheLaunch() {
         XCTAssertEqual(AppKernels.notebook(in: #"{"env": {"JPY_SESSION_NAME": "/a/b.ipynb"}}"#), "/a/b.ipynb")
         XCTAssertNil(AppKernels.notebook(in: #"{"env": {}}"#))
@@ -348,7 +358,7 @@ final class KernelHostTests: XCTestCase {
         XCTAssertEqual(AppKernels.resolve("/elsewhere/A.ipynb", under: link), "/elsewhere/A.ipynb")
         XCTAssertEqual(AppKernels.resolve("/x/A.ipynb", under: nil), "/x/A.ipynb")
         let page = AppKernels.kernelPageURL(URL(string: "http://127.0.0.1:8888/?token=t#x")!)
-        XCTAssertEqual(page.absoluteString, "http://127.0.0.1:8888/kernel.html?token=t")
+        XCTAssertEqual(page.absoluteString, "http://127.0.0.1:8888/kernel.html")
     }
 }
 

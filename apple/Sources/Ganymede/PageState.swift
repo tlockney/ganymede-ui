@@ -152,6 +152,10 @@ struct PageState: Decodable, Equatable {
     var trusted = true
     /// Whether Notebook Access works on this backend; absent before #479.
     var hostGrants: Bool?
+    /// What the notebook asks for that its grant doesn't give, such as
+    /// `notebooks.run`; the toolbar offers Notebook Access while there is
+    /// any. Absent before #504.
+    var accessWanted: [String]?
     /// The active cell's type: `code`, `markdown` or `raw`.
     var cellType: String?
     var kernels: [Kernel] = []

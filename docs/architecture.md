@@ -210,7 +210,65 @@ a save that meets one, locks the pane: no save writes until Reload (the
 load effect runs again; the teardown drops the edits and leaves the
 kernel, which the new session rejoins) or Unlock (`accept` takes the
 version on disk that locked it as the saver's base, so saves write over
-it and the checks go on: a newer change locks again).
+it and the checks go on: a newer change locks again). Before locking on
+a change the check found, the pane tries `pull`: in the same queue, with
+no unsaved edit and no code cell running, it fetches the file and loads
+it into the existing model with `fromJSON` (same notebook widget and
+session, so the kernel stays; scroll and active cell are put back), then
+takes the file's time as its base. An edit typed during the fetch, or a
+cell that starts running, makes it give up and lock instead (#508).
+
+On a Ganymede server the pane opens the notebook in its document room
+instead (#183, `room.ts`). `NotebookRoom.join` asks `PUT
+/api/collaboration/session/{path}` for the file id and the server's
+session id, connects a y-websocket (`y-websocket`'s `WebsocketProvider`)
+to `/api/collaboration/room/json:notebook:{id}`, and waits for the first
+sync. The notebook model is built on the room's `YNotebook`
+(`collaborationEnabled`), so edits flow both ways as they happen and the
+dirty flag is the room's shared `state.dirty`, which the server clears
+when it saves. `RoomSaver` stands in for `NotebookSaver`: a save sends
+`jupyter-collaboration`'s raw `save` message and waits for its answer
+(`failed` when a merge let the file win a cell; a dropped connection
+fails it at once, since the answer can't come on the next one), a move
+just follows the rename (the server moves the room's file id), and there
+is never a change on disk, so the pane skips its disk check and its
+120-second autosave.
+
+The server's closes: 4404 (file deleted) stops saves and says so. A 1003
+`unknown_session` means the server restarted and rebuilt the room from
+the file; this document's history can't merge into the new room (its
+item ids collide with different content), so the room stops and the pane
+opens the notebook again, as Reload does, with a notice if it had edits
+the server hadn't saved. A close during the join fails
+the join at once. If the join fails (a server without rooms, a refused
+room) or the first sync takes over 15 seconds, the pane falls back to the
+contents API. The room is disposed after the model, since it owns the
+model's shared notebook, and also when opening fails after the join. A
+save while the connection is down waits up to ten seconds for it to come
+back and sync, so edits made meanwhile reach the server first; the save
+made when switching files relies on this. A refused close stops saves,
+as a deleted file does.
+
+Trust: the server doesn't put `trusted` marks in the room; it decides
+trust when it saves. So on open the pane reads the file through the
+contents API, as the server marks it, and trusts each code cell it marks
+trusted, by id (`trustFromFile`). It sets that trust in this page only
+(`trustHere`): JupyterLab's own way writes into the shared document and
+would mark the notebook edited for everyone. Outputs another client
+writes into a cell this page has (an agent's run through the server, or
+a change on disk the server merged) take that cell's trust away here
+(`watchRemoteOutputs`); a cell another client inserts keeps its shared
+`metadata.trusted` mark, described below. While some outputs are untrusted, the pane reads
+the file again two seconds after the room's saves settle, since the
+server trusts outputs from its own runs, and drops a read that outputs
+changed during. The other way, a room does share trust:
+JupyterLab's cell model writes `metadata.trusted` into the shared cell
+when a cell is trusted (this page ran it, or Trust Notebook), and every
+client of the room reads it there. So a cell trusted in one window is
+trusted in the others, even one holding an unsigned file's outputs the
+server wouldn't trust. The server ignores the mark when it signs the
+file. A new notebook's room has no cells, so the pane adds an empty code
+cell, as `fromJSON` does for a file.
 
 Inside JupyterLab, the editor, renderers and commands come from plugins.
 `jupyterlab.ts` builds them once and shares them across notebooks: the

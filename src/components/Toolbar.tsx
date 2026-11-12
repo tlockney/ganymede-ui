@@ -10,6 +10,7 @@ import {
   ForwardIcon,
   CommandIcon,
   KeyboardIcon,
+  LockIcon,
   MoreIcon,
   PlayIcon,
   RestartIcon,
@@ -32,6 +33,10 @@ type Props = {
   onToggleVariables?(): void;
   variablesOpen?: boolean;
   specs?: KernelSpec.ISpecModels;
+  /** What the notebook asks for that its grant doesn't give (host API). */
+  accessMissing?: string[];
+  /** Opens Notebook Access; shown while `accessMissing` has anything. */
+  onNotebookAccess?(): void;
 };
 
 const TRUST_PROMPT =
@@ -78,6 +83,8 @@ export function Toolbar({
   onToggleVariables,
   variablesOpen = false,
   specs,
+  accessMissing = [],
+  onNotebookAccess,
 }: Props) {
   const disabled = !c;
   const kernelDisplay = c?.missingKernel
@@ -217,6 +224,19 @@ export function Toolbar({
         </button>
       ),
       menu: [{ label: 'Trust Notebook…', onSelect: trust }],
+    });
+  }
+  if (c && onNotebookAccess && accessMissing.length) {
+    const title = `Notebook Access: asks for ${accessMissing.join(', ')}`;
+    items.push({
+      key: 'access',
+      priority: 6,
+      node: (
+        <button className="tb-button" title={title} onClick={onNotebookAccess}>
+          <LockIcon />
+        </button>
+      ),
+      menu: [{ label: 'Notebook Access…', onSelect: onNotebookAccess }],
     });
   }
   if (specs && c) {
@@ -388,7 +408,16 @@ export function Toolbar({
     // `items` is new every render; its keys, the width and what changes
     // an item's width are what count.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [keys, width, c?.name, c?.status, kernelDisplay, c?.trusted, c?.cellType]);
+  }, [
+    keys,
+    width,
+    c?.name,
+    c?.status,
+    kernelDisplay,
+    c?.trusted,
+    c?.cellType,
+    accessMissing.length,
+  ]);
 
   const menu = items
     .filter(i => hidden.has(i.key) && i.menu.length)

@@ -92,3 +92,23 @@ export function describePaths(paths: string[]): string {
   if (paths.length === 0) return 'none';
   return paths.join(', ');
 }
+
+const READS = ['notebooks.list', 'notebooks.read', 'notebooks.search', 'notebooks.results'];
+const SELF_EDITS = ['self.add', 'self.edit', 'self.delete'];
+
+/**
+ * What the notebook asks for (`wants`) that its grant doesn't give, in
+ * the order it asks. Its own keys replace the server's defaults. A method
+ * the server doesn't have is left out: no grant could give it.
+ */
+export function missingWants(wants: string[], { grant, defaults }: HostGrants): string[] {
+  const read = grant.read ?? defaults.read;
+  const run = grant.run ?? defaults.run;
+  const editSelf = grant.edit_self ?? defaults.edit_self;
+  return wants.filter(w => {
+    if (READS.includes(w)) return read.length === 0;
+    if (w === 'notebooks.run') return run.length === 0;
+    if (SELF_EDITS.includes(w)) return !editSelf;
+    return false;
+  });
+}

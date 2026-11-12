@@ -1,0 +1,487 @@
+/**
+ * A notebook's document room on a Ganymede server (#183): the notebook held
+ * live in the server, which several clients (this pane, a Claude session
+ * through `ganymede mcp`, another window) edit at once.
+ *
+ * The protocol is `jupyter-collaboration`'s: `PUT
+ * /api/collaboration/session/{path}` gives the file's id and the server's
+ * session id; `/api/collaboration/room/json:notebook:{id}` is a y-websocket
+ * (sync and awareness) plus raw messages, of which only `save` is used. The
+ * server loads the file, autosaves a second after the last edit, and merges
+ * in changes other programs make to the file, so the pane neither polls the
+ * file nor locks on a change.
+ */
+import { type YCodeCell, YNotebook } from '@jupyter/ydoc';
+import type { ICodeCellModel } from '@jupyterlab/cells';
+import { URLExt } from '@jupyterlab/coreutils';
+import type * as nbformat from '@jupyterlab/nbformat';
+import { type Contents, ServerConnection } from '@jupyterlab/services';
+import * as decoding from 'lib0/decoding';
+import * as encoding from 'lib0/encoding';
+import type { INotebookModel } from '@jupyterlab/notebook';
+import { WebsocketProvider } from 'y-websocket';
+import type { SaveOptions, Saver } from './saver';
+
+/** `jupyter-collaboration`'s raw message type: a JSON string. */
+const MSG_RAW = 2;
+
+/** How long the first sync may take before the pane gives up on the room. */
+export const SYNC_TIMEOUT_MS = 15_000;
+
+/** How long a save may take to answer. */
+const SAVE_TIMEOUT_MS = 30_000;
+
+/**
+ * How long a save waits for a dropped connection to come back and sync,
+ * so edits made meanwhile reach the server before it saves.
+ */
+export const RECONNECT_WAIT_MS = 10_000;
+
+/** What a room's `save` answers. */
+export type SaveStatus = 'success' | 'failed' | 'skipped';
+
+/** Why a room closed for good. */
+export type RoomClosed =
+  /** The file was deleted (code 4404). */
+  | { kind: 'deleted' }
+  /**
+   * The server restarted (a 1003 `unknown_session` close). Its new room
+   * was rebuilt from the file, so this copy can't merge into it: open the
+   * notebook again.
+   */
+  | { kind: 'restarted' }
+  /** Anything else the server said reconnecting can't fix. */
+  | { kind: 'refused'; reason: string };
+
+export type RoomOptions = {
+  settings: ServerConnection.ISettings;
+  path: string;
+  /**
+   * Told once when the server closes the room for good, after the join
+   * has returned. A close during the join fails the join instead.
+   */
+  onClosed?: (why: RoomClosed) => void;
+  /** Tests pass a fake socket. */
+  WebSocket?: typeof WebSocket;
+};
+
+export class NotebookRoom {
+  readonly notebook: YNotebook;
+  private readonly provider: WebsocketProvider;
+  private nextSave = 1;
+  private readonly saves = new Map<
+    number,
+    { resolve: (status: SaveStatus) => void; reject: (e: Error) => void }
+  >();
+  private disposed = false;
+  /** Set once the join returned: closes from then on go to `onClosed`. */
+  private joined = false;
+  /** Why the room closed for good, if it did. */
+  private closedFor?: RoomClosed;
+  private readonly closedListeners = new Set<(why: RoomClosed) => void>();
+
+  private constructor(
+    private readonly o: RoomOptions,
+    roomUrl: string,
+    roomId: string,
+    sessionId: string,
+  ) {
+    // As JupyterLab's notebook model does by default: undo per cell.
+    this.notebook = new YNotebook({ disableDocumentWideUndoRedo: true });
+    const token = o.settings.token;
+    this.provider = new WebsocketProvider(roomUrl, roomId, this.notebook.ydoc, {
+      params: {
+        sessionId,
+        // Websockets carry no Authorization header: the token goes in the
+        // query, as JupyterLab's kernel sockets send it.
+        ...(token && o.settings.appendToken !== false ? { token } : {}),
+      },
+      awareness: this.notebook.awareness,
+      WebSocketPolyfill: (o.WebSocket ?? o.settings.WebSocket) as typeof WebSocket,
+      disableBc: true,
+    });
+    this.provider.messageHandlers[MSG_RAW] = (_enc, decoder) => {
+      this.onRaw(decoding.readVarString(decoder));
+    };
+    this.provider.on('connection-close', event => {
+      // A save sent on this connection can't be answered on the next one.
+      for (const { reject } of this.saves.values()) {
+        reject(new Error('The connection to the server dropped before the save was confirmed'));
+      }
+      this.saves.clear();
+      // The server restarted: its session id changed, and it asks clients
+      // to reload. Its room was rebuilt from the file, and this document's
+      // history can't merge into it (the same item ids, other content), so
+      // reconnecting would duplicate cells. Stop here; the pane reopens.
+      if (event?.code === 1003 && /unknown_session/.test(event.reason)) {
+        this.provider.disconnect();
+        this.close({ kind: 'restarted' });
+      }
+    });
+    this.provider.on('closed', ({ code, reason }) => {
+      this.close(code === 4404 ? { kind: 'deleted' } : { kind: 'refused', reason });
+    });
+  }
+
+  private close(why: RoomClosed) {
+    if (this.disposed || this.closedFor) return;
+    this.closedFor = why;
+    for (const listener of this.closedListeners) listener(why);
+    if (this.joined) this.o.onClosed?.(why);
+  }
+
+  /**
+   * Join the room for the notebook at `path` and wait for its first sync.
+   * Undefined when the server has no rooms (or no file there): the caller
+   * goes through the contents API instead. Throws if the room joined but
+   * didn't sync in time.
+   */
+  static async join(o: RoomOptions): Promise<NotebookRoom | undefined> {
+    const session = await requestSession(o.settings, o.path);
+    if (!session) return undefined;
+    const room = new NotebookRoom(
+      o,
+      URLExt.join(o.settings.wsUrl, 'api/collaboration/room'),
+      `${session.format}:${session.type}:${session.fileId}`,
+      session.sessionId,
+    );
+    try {
+      await room.synced(SYNC_TIMEOUT_MS);
+    } catch (e) {
+      room.dispose();
+      throw e;
+    }
+    room.joined = true;
+    return room;
+  }
+
+  /** Whether the socket is up now. */
+  get connected(): boolean {
+    return this.provider.wsconnected;
+  }
+
+  /**
+   * Ask the server to save the room now. Its autosave does this a second
+   * after the last edit; ⌘S and the pane's teardown want it at once.
+   */
+  async save(): Promise<SaveStatus> {
+    // While the connection is down, edits wait here; after it comes back,
+    // the sync sends them before the save goes (y-websocket answers the
+    // server's sync step 1, carrying them, before it counts as synced).
+    await this.synced(RECONNECT_WAIT_MS).catch(() => {});
+    const id = this.nextSave++;
+    const enc = encoding.createEncoder();
+    encoding.writeVarUint(enc, MSG_RAW);
+    encoding.writeVarString(enc, 'save');
+    encoding.writeVarUint(enc, id);
+    const ws = this.provider.ws;
+    if (this.disposed || !this.provider.synced || !ws || ws.readyState !== WebSocket.OPEN) {
+      throw new Error('Not connected to the notebook’s room');
+    }
+    return new Promise<SaveStatus>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        this.saves.delete(id);
+        reject(new Error('The server didn’t answer the save'));
+      }, SAVE_TIMEOUT_MS);
+      this.saves.set(id, {
+        resolve: status => {
+          clearTimeout(timer);
+          resolve(status);
+        },
+        reject: e => {
+          clearTimeout(timer);
+          reject(e);
+        },
+      });
+      ws.send(encoding.toUint8Array(enc));
+    });
+  }
+
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    for (const { resolve } of this.saves.values()) resolve('skipped');
+    this.saves.clear();
+    this.provider.destroy();
+    this.notebook.dispose();
+  }
+
+  /**
+   * The room is synced: the first time, or again after the connection
+   * dropped. Fails at once if the server closes the room for good.
+   */
+  private synced(timeout: number): Promise<void> {
+    if (this.provider.synced && this.provider.wsconnected) return Promise.resolve();
+    return new Promise((resolve, reject) => {
+      const done = () => {
+        clearTimeout(timer);
+        this.provider.off('sync', onSync);
+        this.closedListeners.delete(onClosed);
+      };
+      const timer = setTimeout(() => {
+        done();
+        reject(new Error('The notebook’s room didn’t sync in time'));
+      }, timeout);
+      const onSync = (synced: boolean) => {
+        if (!synced) return;
+        done();
+        resolve();
+      };
+      const onClosed = (why: RoomClosed) => {
+        done();
+        reject(new Error(`The server closed the notebook’s room (${why.kind})`));
+      };
+      if (this.closedFor) return onClosed(this.closedFor);
+      this.provider.on('sync', onSync);
+      this.closedListeners.add(onClosed);
+    });
+  }
+
+  private onRaw(text: string) {
+    let message: unknown;
+    try {
+      message = JSON.parse(text);
+    } catch {
+      return;
+    }
+    const m = message as { type?: unknown; responseTo?: unknown; status?: unknown };
+    if (m.type !== 'save' || typeof m.responseTo !== 'number') return;
+    const done = this.saves.get(m.responseTo);
+    if (!done) return;
+    this.saves.delete(m.responseTo);
+    done.resolve(m.status === 'success' || m.status === 'failed' ? m.status : 'skipped');
+  }
+}
+
+type Session = { format: string; type: string; fileId: string; sessionId: string };
+
+/** The room's session for `path`, or undefined when the server has no rooms. */
+async function requestSession(
+  settings: ServerConnection.ISettings,
+  path: string,
+): Promise<Session | undefined> {
+  const url = URLExt.join(settings.baseUrl, 'api/collaboration/session', URLExt.encodeParts(path));
+  let response: Response;
+  try {
+    response = await ServerConnection.makeRequest(
+      url,
+      { method: 'PUT', body: JSON.stringify({ format: 'json', type: 'notebook' }) },
+      settings,
+    );
+  } catch {
+    return undefined;
+  }
+  if (!response.ok) return undefined;
+  const body = (await response.json().catch(() => undefined)) as Partial<Session> | undefined;
+  if (!body?.fileId || !body.sessionId) return undefined;
+  return {
+    format: body.format ?? 'json',
+    type: body.type ?? 'notebook',
+    fileId: body.fileId,
+    sessionId: body.sessionId,
+  };
+}
+
+/**
+ * Saves a notebook that lives in a room, with the same calls as
+ * {@link NotebookSaver}, so the pane drives either. The server owns the
+ * file: it autosaves, and merges in changes other programs make, so there
+ * is never a change on disk to lock on, and a save just asks the room to
+ * write now.
+ */
+export class RoomSaver implements Saver {
+  readonly live = true;
+  private queue: Promise<void> = Promise.resolve();
+
+  constructor(
+    private readonly o: {
+      room: NotebookRoom;
+      path: string;
+      model: INotebookModel;
+      /** Runs just before each save: widget state goes into the model. */
+      beforeSave?: () => void;
+    },
+  ) {}
+
+  get path(): string {
+    return this.o.path;
+  }
+
+  /**
+   * Ask the room to save. Rejects when the server says the save failed:
+   * the file changed on disk too and won some part both changed, so the
+   * room's version of that part isn't in the file.
+   */
+  save(options: SaveOptions = {}): Promise<void> {
+    const run = this.queue.then(async () => {
+      const { room, model, beforeSave } = this.o;
+      if (options.ifDirty && !model.dirty) return;
+      beforeSave?.();
+      const status = await room.save();
+      if (status === 'failed') {
+        throw new Error(
+          'the file changed on disk at the same time; its version of the cells you both changed was kept',
+        );
+      }
+    });
+    this.queue = run.catch(() => {});
+    return run;
+  }
+
+  /** The room follows a rename through the contents API by itself. */
+  move(move: () => Promise<{ path: string }>): Promise<void> {
+    const run = this.queue.then(async () => {
+      this.o.path = (await move()).path;
+    });
+    this.queue = run.catch(() => {});
+    return run;
+  }
+
+  /** The room takes in changes on disk itself. */
+  changedOnDisk(): Promise<string | undefined> {
+    return Promise.resolve(undefined);
+  }
+
+  accept(): Promise<void> {
+    return Promise.resolve();
+  }
+
+  pull(): Promise<boolean> {
+    return Promise.resolve(false);
+  }
+
+  dispose(): void {}
+}
+
+/**
+ * Trust the code cells the server trusts (#183). A room doesn't share
+ * trust: its cells carry no `trusted` mark, since the server decides it
+ * when it saves (a cell is trusted when its outputs came from a run on the
+ * server, or the file was signed). So read the file as the contents API
+ * marks it, and trust here each code cell, by id, that it marks trusted.
+ * Never takes trust away: a cell trusted here (this page ran it) stays so;
+ * {@link watchRemoteOutputs} takes it away when another client changes
+ * the outputs. Skips the update when `stale()` says outputs changed during
+ * the read, since the file may predate them. Returns whether any cell
+ * changed.
+ */
+export async function trustFromFile(
+  contents: Contents.IManager,
+  path: string,
+  model: INotebookModel,
+  stale: () => boolean = () => false,
+): Promise<boolean> {
+  const file = await contents.get(path, { type: 'notebook', content: true });
+  const cells = (file.content as nbformat.INotebookContent | null)?.cells ?? [];
+  const trusted = new Set(
+    cells
+      .filter(c => c.cell_type === 'code' && c.metadata?.trusted === true && c.id)
+      .map(c => c.id as string),
+  );
+  if (model.isDisposed || stale()) return false;
+  let changed = false;
+  for (let i = 0; i < model.cells.length; i++) {
+    const cell = model.cells.get(i);
+    if (cell.type === 'code' && !cell.trusted && trusted.has(cell.id)) {
+      changed = trustHere(cell as ICodeCellModel, true) || changed;
+    }
+  }
+  return changed;
+}
+
+/** What {@link trustHere} reaches into: `CodeCellModel`'s own members. */
+type CodeCellInternals = {
+  _trusted: boolean;
+  onGenericChange: (...args: unknown[]) => void;
+  onOutputsChange: (...args: unknown[]) => void;
+  _connectStreamListener?: (output: unknown, index: number) => void;
+};
+
+/**
+ * Trust a code cell's outputs, or stop, in this page only (#183). Setting
+ * `cell.trusted` as JupyterLab does would edit the shared document: it
+ * writes `metadata.trusted` and rewrites every output (the trusted copy
+ * replaces each), which marks the notebook edited for every client and
+ * has the server save the file again. So set the flag and the outputs'
+ * trust with the cell's own listeners off, which keeps both here; the
+ * output area still renders again. Relies on `CodeCellModel` internals
+ * (JupyterLab is pinned; room.test.ts checks no update is sent). Returns
+ * whether the cell changed.
+ */
+export function trustHere(cell: ICodeCellModel, trusted: boolean): boolean {
+  if (cell.trusted === trusted) return false;
+  const internals = cell as unknown as CodeCellInternals;
+  const { outputs } = cell;
+  outputs.changed.disconnect(internals.onGenericChange, cell);
+  outputs.changed.disconnect(internals.onOutputsChange, cell);
+  try {
+    internals._trusted = trusted;
+    outputs.trusted = trusted;
+  } finally {
+    outputs.changed.connect(internals.onGenericChange, cell);
+    outputs.changed.connect(internals.onOutputsChange, cell);
+  }
+  // The trusted copies replaced the outputs: stream text appended to them
+  // later must still reach the shared document, as the cell's own 'set'
+  // handling arranges.
+  for (let i = 0; i < outputs.length; i++) {
+    if (outputs.get(i).type === 'stream')
+      internals._connectStreamListener?.call(cell, outputs.get(i), i);
+  }
+  return true;
+}
+
+/**
+ * Call `onChange` when another client changes a code cell's outputs (an
+ * agent running it through the server, or a write on disk the server
+ * merged in), after taking that cell's trust away here: outputs from
+ * elsewhere are untrusted until the file says the server trusts them.
+ * Covers cells this page already has. A cell another client inserts takes
+ * its trust from its shared `metadata.trusted`, as JupyterLab's cell model
+ * does: the room shares that mark (see docs/architecture.md).
+ * Returns a function that stops watching.
+ */
+export function watchRemoteOutputs(model: INotebookModel, onChange: () => void): () => void {
+  const ydoc = (model.sharedModel as YNotebook).ydoc;
+  type Transaction = { local: boolean; changed: Map<YType, Set<string | null>> };
+  type YType = { _item?: { parent: unknown } | null };
+  /** Transactions that changed outputs, to report once they're applied. */
+  const touchedBy = new WeakSet<Transaction>();
+  // Before the observers: JupyterLab's cell models build the new outputs
+  // there, with the cell's trust at that moment, and the output area
+  // renders them at once. Taking trust away after would let a script in
+  // them run once.
+  const before = (tr: Transaction) => {
+    if (tr.local || model.isDisposed) return;
+    // Every type the transaction changed, and the types holding them: a
+    // stream's text sits inside an output inside the outputs array.
+    const changed = new Set<unknown>();
+    for (const type of tr.changed.keys()) {
+      let t: unknown = type;
+      while (t && !changed.has(t)) {
+        changed.add(t);
+        t = (t as YType)._item?.parent;
+      }
+    }
+    for (let i = 0; i < model.cells.length; i++) {
+      const cell = model.cells.get(i);
+      if (cell.type !== 'code') continue;
+      const ymodel = (cell.sharedModel as YCodeCell).ymodel;
+      const touched =
+        changed.has(ymodel.get('outputs')) ||
+        tr.changed.get(ymodel as unknown as YType)?.has('outputs') === true;
+      if (!touched) continue;
+      touchedBy.add(tr);
+      trustHere(cell as ICodeCellModel, false);
+    }
+  };
+  const after = (tr: Transaction) => {
+    if (touchedBy.has(tr) && !model.isDisposed) onChange();
+  };
+  ydoc.on('beforeObserverCalls', before);
+  ydoc.on('afterTransaction', after);
+  return () => {
+    ydoc.off('beforeObserverCalls', before);
+    ydoc.off('afterTransaction', after);
+  };
+}

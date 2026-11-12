@@ -5,12 +5,12 @@
 // (ganymede-ui#384). Checks the whole comm path: the announce, the session
 // match, the calls comm the page opens back, and comm messages read while
 // the cell awaits them (kernel subshells, cdp-kernel 0.8.0).
-import { readdirSync, rmSync } from 'node:fs';
-import { join, resolve } from 'node:path';
+import { readdirSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { expect, type Page, test } from '@playwright/test';
 import { APP_URL, GANYMEDE_URL, ROOT_DIR, TOKEN } from './env';
-import { openWithToken, outputs, waitForReady } from './helpers';
+import { openWithToken, outputs, removeFromServer, waitForReady } from './helpers';
 
 const notebooks = () => new Set(readdirSync(ROOT_DIR).filter(f => f.endsWith('.ipynb')));
 let before: Set<string>;
@@ -26,7 +26,7 @@ test.afterEach(async () => {
   for (const s of sessions) {
     if (added.includes(s.path)) await fetch(api(`/api/sessions/${s.id}`), { method: 'DELETE' });
   }
-  for (const f of added) rmSync(join(ROOT_DIR, f), { force: true });
+  await removeFromServer(...added);
 });
 
 // The kernel imports the package's built remote module from this checkout.

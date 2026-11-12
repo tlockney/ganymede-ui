@@ -189,7 +189,9 @@ the notebook's kernel from its kernelspec, on this Mac or the remote
 kernels run on, never the in-app TypeScript kernel, which only a window
 reaches. Run Notebook with Parameters is the exception: it runs the
 notebook in a new kernel of its own, so a window shows nothing of it and
-nothing is saved. The actions are on the Mac only for now.
+nothing is saved. That kernel can be the in-app TypeScript kernel, whose
+cells read the parameters as `jupyter.params`, but only while a Ganymede
+window is open. The actions are on the Mac only for now.
 
 ### Links
 
@@ -408,10 +410,6 @@ headings; pick one to go to its cell.
   location, motion, contacts and reminders are the namespaces it has. The
   time limit is 20 seconds.
 
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release.
-
 - **Notebook widgets** (home screen and desktop, Mac too;
   experimental, off until Settings › Device › Notebook Widgets): a cell
   publishes what a widget shows with
@@ -433,6 +431,10 @@ headings; pick one to go to its cell.
   notebook. A notebook that lists what it wants in its metadata
   (`ganymede.host.wants`) shows that at the top; asking grants nothing.
   It needs a Ganymede server with `/api/host/grants`.
+
+  While a notebook asks for something its grant doesn't give, the
+  toolbar shows Notebook Access (a padlock), naming what it asks
+  for; the button goes once the grant covers it.
 
 - **Downloads** open the share sheet, where Save to Files keeps them.
 - In the background iOS may stop the app's server; back in the

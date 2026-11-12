@@ -49,11 +49,28 @@ export type SaveOptions = {
 };
 
 /**
+ * What the notebook pane saves through: {@link NotebookSaver} over the
+ * contents API, or a room's (`RoomSaver`, #183).
+ */
+export interface Saver {
+  /** True when the server holds the notebook live (a room). */
+  readonly live: boolean;
+  readonly path: string;
+  save(options?: SaveOptions): Promise<void>;
+  move(move: () => Promise<{ path: string; lastModified?: string }>): Promise<void>;
+  changedOnDisk(): Promise<string | undefined>;
+  accept(lastModified?: string): Promise<void>;
+  pull(apply: (content: Contents.IModel) => void, canApply?: () => boolean): Promise<boolean>;
+  dispose(): void;
+}
+
+/**
  * Saves one notebook model to its file, as JupyterLab's document context
  * does: one save at a time, a conflict when the file changed on disk, and
  * the dirty flag cleared only when no edit arrived during the round trip.
  */
-export class NotebookSaver {
+export class NotebookSaver implements Saver {
+  readonly live = false;
   private o: Options;
   private lastModified?: string;
   /** Bumped on every change to the model, to spot edits during a save. */
@@ -132,6 +149,37 @@ export class NotebookSaver {
       const { contents, path } = this.o;
       this.lastModified =
         lastModified ?? (await contents.get(path, { content: false })).last_modified;
+    });
+    this.queue = run.then(
+      () => {},
+      () => {},
+    );
+    return run;
+  }
+
+  /**
+   * Load the file's newer version into the model in place, when nothing
+   * here would be lost: no unsaved edit, and `canApply` agrees (#508). The
+   * model takes the file's content through `apply`, ends up not dirty, and
+   * saves go on from the file's new time. False, with the model untouched,
+   * when there is an edit here (also one typed during the fetch) or the
+   * file can't be read; the caller locks instead.
+   */
+  pull(apply: (content: Contents.IModel) => void, canApply = () => true): Promise<boolean> {
+    const run = this.queue.then(async () => {
+      const { contents, path, model } = this.o;
+      if (model.dirty || !canApply()) return false;
+      let file: Contents.IModel;
+      try {
+        file = await contents.get(path, { type: 'notebook', content: true });
+      } catch {
+        return false;
+      }
+      if (model.dirty || !canApply() || !file.content) return false;
+      apply(file);
+      model.dirty = false;
+      this.lastModified = file.last_modified || this.lastModified;
+      return true;
     });
     this.queue = run.then(
       () => {},

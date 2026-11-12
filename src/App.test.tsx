@@ -16,6 +16,7 @@ const mocks = vi.hoisted(() => ({
   /** What the pane hands the toolbar, when a test sets it. */
   controller: undefined as
     undefined | ({ dirty: boolean; save: () => Promise<boolean> } & Record<string, unknown>),
+  loadHostGrants: vi.fn(),
   /** The last pane's `onRenamed`. */
   onRenamed: undefined as undefined | ((from: string, to: string) => void),
 }));
@@ -24,6 +25,11 @@ vi.mock('./lib/backends', async importOriginal => ({
   ...(await importOriginal<object>()),
   connect: mocks.connect,
   signedInHere: mocks.signedInHere,
+}));
+
+vi.mock('./lib/host-grants', async importOriginal => ({
+  ...(await importOriginal<object>()),
+  loadHostGrants: mocks.loadHostGrants,
 }));
 
 vi.mock('./components/NotebookPane', async () => {
@@ -42,7 +48,14 @@ vi.mock('./components/NotebookPane', async () => {
       useEffect(() => {
         if (mocks.controller) {
           const name = path.split('/').pop();
-          onController({ name, status: 'idle', trusted: true, ...mocks.controller, path });
+          onController({
+            name,
+            status: 'idle',
+            trusted: true,
+            hostWants: () => [],
+            ...mocks.controller,
+            path,
+          });
         }
       }, [path, onController]);
       return <div data-testid="pane">{path}</div>;
@@ -189,6 +202,33 @@ describe('App', () => {
     expect(container.querySelector('header.toolbar')).toBeNull();
     // Kept for a reload.
     expect(new URLSearchParams(window.location.search).get('chrome')).toBe('native');
+  });
+
+  it('tells the app when a notebook asks for more than its grant', async () => {
+    const states: Record<string, unknown>[] = [];
+    vi.stubGlobal('webkit', {
+      messageHandlers: {
+        state: { postMessage: (m: Record<string, unknown>) => states.push(m) },
+      },
+    });
+    mocks.loadHostGrants.mockResolvedValue({
+      path: 'Io.ipynb',
+      grant: {},
+      defaults: { read: [''], edit_self: true, run: [] },
+    });
+    mocks.controller = {
+      dirty: false,
+      save: vi.fn(async () => true),
+      hostWants: () => ['notebooks.read', 'notebooks.run'],
+    };
+    const fake = fakeServices({ '': [{ name: 'Io.ipynb', type: 'notebook' }] });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    history.replaceState(null, '', '/?kernels=server&open=Io.ipynb');
+    render(<App />);
+    await waitFor(() =>
+      expect(states.at(-1)).toMatchObject({ path: 'Io.ipynb', accessWanted: ['notebooks.run'] }),
+    );
+    expect(mocks.loadHostGrants).toHaveBeenCalledWith(expect.anything(), 'Io.ipynb');
   });
 
   it('runs the app’s commands and tells it what to show', async () => {

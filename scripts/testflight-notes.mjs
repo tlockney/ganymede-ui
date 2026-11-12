@@ -1,6 +1,7 @@
 // Sets the "What to Test" notes of the TestFlight build release-ios.sh
-// just uploaded (release.yml's `ios` job, #466): the commit subjects
-// since the previous TestFlight build. Each build's notes end with the
+// just uploaded (release.yml's `ios` job, #466): the changes since the
+// previous TestFlight build that ship in the iPad and iPhone app
+// (#513). Each build's notes end with the
 // commit it was built from ("Built from <sha>."), so the next run reads
 // the previous build's notes to know where to start; without one it
 // starts at the last `v*` tag. Nothing else keeps state.
@@ -20,7 +21,7 @@ import { pathToFileURL } from 'node:url';
 const API = 'https://api.appstoreconnect.apple.com/v1';
 const BUNDLE_ID = 'com.ganymede-server.Ganymede';
 const LOCALE = 'en-US';
-// App Store Connect's limit for whatToTest.
+// App Store Connect's limit for the notes (`whatsNew`).
 export const MAX_LENGTH = 4000;
 const MARKER = /^Built from ([0-9a-f]{7,40})\.$/m;
 
@@ -30,21 +31,49 @@ export function builtFrom(notes) {
 }
 
 /**
- * The notes: a heading naming where the list starts, one line per commit
- * subject (dependency bumps and release commits counted on one line), and
- * the commit marker. The list is cut to fit MAX_LENGTH.
+ * Whether a change with these changed files ships in the iPad and iPhone
+ * app: the web app's sources and assets, the bundled example notebooks,
+ * the Swift app's sources, resources and project, and the dependencies.
+ * Tests, CI, scripts and docs don't (#513).
+ */
+export function shipsInApp(files) {
+  return files.some(
+    f =>
+      !/(^|\/)(test|tests|Tests|__tests__)\/|\.test\.[cm]?[jt]sx?$/.test(f) &&
+      // The macOS app's resources and its Quick Look extensions.
+      !/^apple\/(Resources\/macOS|Sources\/QuickLook)\//.test(f) &&
+      /^(src|public|examples|packages)\/|^(index|kernel|preview)\.html$|^vite\.config\.ts$|^package(-lock)?\.json$|^apple\/(Sources|Resources)\/|^apple\/(project\.yml|Package\.resolved)$/.test(
+        f,
+      ),
+  );
+}
+
+/**
+ * The subjects of the changes a tester can see: changes that ship in the
+ * app (shipsInApp), without dependency bumps, release commits, and
+ * changes to the Mac app only (titles starting "Mac"). `files` is null when the changed files
+ * are unknown, and the change is kept.
+ */
+export function appChanges(changes) {
+  return changes
+    .filter(({ subject, files }) => {
+      if (/^Bump /.test(subject) || /^Release v?\d/.test(subject)) return false;
+      // "Mac: ...", "Mac app ...", but not "Mac and iPad: ...".
+      if (/^Mac\b(?!\s*(and|&|\/|,))/.test(subject)) return false;
+      return files === null || shipsInApp(files);
+    })
+    .map(c => c.subject);
+}
+
+/**
+ * The notes: a heading naming where the list starts, one line per
+ * subject, and the commit marker. The list is cut to fit MAX_LENGTH.
  */
 export function formatNotes({ since, subjects, head }) {
-  const changes = [];
-  let bumps = 0;
-  for (const subject of subjects) {
-    if (/^Bump /.test(subject)) bumps++;
-    else if (!/^Release v?\d/.test(subject)) changes.push(`- ${subject}`);
-  }
-  if (bumps) changes.push(`- Dependency updates (${bumps})`);
+  const changes = subjects.map(s => `- ${s}`);
   const heading = since ? `Changes since ${since}:` : 'Changes:';
   const footer = `Built from ${head.slice(0, 12)}.`;
-  if (!changes.length) changes.push('- No changes to the code.');
+  if (!changes.length) changes.push('- No changes to the app.');
 
   const fits = lines => [heading, ...lines, '', footer].join('\n').length <= MAX_LENGTH;
   const more = shown => `- and ${changes.length - shown.length} more`;
@@ -88,10 +117,10 @@ export function lastTag(cwd) {
 }
 
 /**
- * One subject per change on main's first-parent history, from `git log
- * --format=%s%x1f%b%x1e` output: a squash commit's subject, or for a
- * "Merge pull request #N from ..." commit its PR title (the body's first
- * line) and number, as cliff.toml does.
+ * One change per entry on main's first-parent history, from `git log
+ * --format=%H%x1f%s%x1f%b%x1e` output: its commit and subject, a squash
+ * commit's subject, or for a "Merge pull request #N from ..." commit its
+ * PR title (the body's first line) and number, as cliff.toml does.
  */
 export function parseLog(out) {
   return out
@@ -99,17 +128,42 @@ export function parseLog(out) {
     .map(entry => entry.trim())
     .filter(Boolean)
     .map(entry => {
-      const [subject, body = ''] = entry.split('\x1f');
+      const [sha, subject, body = ''] = entry.split('\x1f');
       const merge = /^Merge pull request #(\d+) /.exec(subject);
       const title = body.trim().split('\n')[0]?.trim();
-      return merge && title ? `${title} (#${merge[1]})` : subject;
+      return { sha, subject: merge && title ? `${title} (#${merge[1]})` : subject };
     });
 }
 
+/**
+ * The files a first-parent change touched: a squash commit's, or
+ * everything a merge commit brought in. Null when git can't say (a root
+ * commit).
+ */
+function changedFiles(sha) {
+  try {
+    return git([
+      '-c',
+      'core.quotePath=false',
+      'diff',
+      '--no-renames',
+      '--name-only',
+      `${sha}^1`,
+      sha,
+    ])
+      .split('\n')
+      .filter(Boolean);
+  } catch {
+    return null;
+  }
+}
+
 /** Changes from `base` (exclusive) to HEAD, newest first; the last 30 without a base. */
-function subjectsSince(base) {
+function changesSince(base) {
   const range = base ? [`${base}..HEAD`] : ['-30', 'HEAD'];
-  return parseLog(git(['log', '--first-parent', '--format=%s%x1f%b%x1e', ...range]));
+  return parseLog(git(['log', '--first-parent', '--format=%H%x1f%s%x1f%b%x1e', ...range])).map(
+    c => ({ subject: c.subject, files: changedFiles(c.sha) }),
+  );
 }
 
 /**
@@ -205,7 +259,7 @@ export function client({
       const notes = new Map(
         included
           .filter(r => r.type === 'betaBuildLocalizations')
-          .map(r => [r.id, r.attributes?.whatToTest ?? '']),
+          .map(r => [r.id, r.attributes?.whatsNew ?? '']),
       );
       return data.map(b => ({
         id: b.id,
@@ -217,22 +271,28 @@ export function client({
       }));
     },
 
-    /** Sets whatToTest for LOCALE, creating the localization if needed. */
-    async setWhatToTest(buildId, whatToTest) {
+    /**
+     * Sets the "What to Test" notes for LOCALE, creating the localization
+     * if needed. The API calls them `whatsNew` (#498). The answer must
+     * carry notes, so a field the API dropped fails here; the text isn't
+     * compared, since the API may normalize whitespace or line endings.
+     */
+    async setWhatToTest(buildId, whatsNew) {
       const { data } = await call('GET', `/builds/${buildId}/betaBuildLocalizations`);
       const existing = data.find(l => l.attributes.locale === LOCALE);
-      if (existing) {
-        await call('PATCH', `/betaBuildLocalizations/${existing.id}`, {
-          data: { type: 'betaBuildLocalizations', id: existing.id, attributes: { whatToTest } },
-        });
-      } else {
-        await call('POST', '/betaBuildLocalizations', {
-          data: {
-            type: 'betaBuildLocalizations',
-            attributes: { locale: LOCALE, whatToTest },
-            relationships: { build: { data: { type: 'builds', id: buildId } } },
-          },
-        });
+      const written = existing
+        ? await call('PATCH', `/betaBuildLocalizations/${existing.id}`, {
+            data: { type: 'betaBuildLocalizations', id: existing.id, attributes: { whatsNew } },
+          })
+        : await call('POST', '/betaBuildLocalizations', {
+            data: {
+              type: 'betaBuildLocalizations',
+              attributes: { locale: LOCALE, whatsNew },
+              relationships: { build: { data: { type: 'builds', id: buildId } } },
+            },
+          });
+      if (!written?.data?.attributes?.whatsNew) {
+        throw new Error(`build ${buildId}: App Store Connect kept no notes`);
       }
     },
   };
@@ -266,7 +326,7 @@ async function main() {
   const head = git(['rev-parse', 'HEAD']);
   if (args[0] === '--print') {
     const since = args[1] ?? lastTag();
-    console.log(formatNotes({ since, subjects: subjectsSince(since), head }));
+    console.log(formatNotes({ since, subjects: appChanges(changesSince(since)), head }));
     return;
   }
 
@@ -302,7 +362,7 @@ async function main() {
   }
 
   const { base, since } = previousPoint(await asc.recentBuilds(appId), build);
-  const notes = formatNotes({ since, subjects: subjectsSince(base), head });
+  const notes = formatNotes({ since, subjects: appChanges(changesSince(base)), head });
   console.log(notes);
   await asc.setWhatToTest(build.id, notes);
   console.log(`Set What to Test on ${version} (${buildNumber}).`);

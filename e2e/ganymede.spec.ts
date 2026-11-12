@@ -4,7 +4,7 @@ import { copyFileSync, readFileSync, utimesSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
-import { FIXTURE, ROOT_DIR } from './env';
+import { FIXTURE, GANYMEDE_URL, ROOT_DIR, TOKEN } from './env';
 import { notebookName, openNotebook, openWithToken, outputs, sidebarItem } from './helpers';
 
 // Put the fixture back after each test, so the edit test leaves later ones
@@ -96,7 +96,10 @@ test('saves an edit with the keyboard, and it survives a reload and is on disk',
  * `edit` changes it, and its mtime goes a few seconds past our copy's.
  */
 function writeElsewhere(
-  edit: (nb: { metadata: Record<string, unknown>; cells: { source: string | string[] }[] }) => void,
+  edit: (nb: {
+    metadata: Record<string, unknown>;
+    cells: { cell_type: string; source: string | string[] }[];
+  }) => void,
 ) {
   const file = join(ROOT_DIR, FIXTURE);
   const theirs = JSON.parse(readFileSync(file, 'utf8'));
@@ -107,52 +110,62 @@ function writeElsewhere(
   return file;
 }
 
-test('locks saving over a file that changed on disk, until Unlock', async ({ page }) => {
+test('takes in a change on disk live, keeping edits here (#183)', async ({ page }) => {
   const stamp = `edited by e2e ${Date.now()}`;
+  const theirs = `written elsewhere ${Date.now()}`;
+  const joined = page.waitForEvent('websocket', ws =>
+    ws.url().includes('/api/collaboration/room/json:notebook:'),
+  );
   await openWithToken(page);
   await openNotebook(page, FIXTURE);
-  const editor = page.locator('.jp-CodeCell .cm-content').first();
-  await editor.click();
+  await joined;
+  const editors = page.locator('.jp-CodeCell .cm-content');
+  // Our edit to the first code cell, not yet saved by us.
+  await editors.first().click();
   await page.keyboard.press('ControlOrMeta+End');
   await page.keyboard.type(`\n// ${stamp}`);
-  await expect(page.getByText('— Edited')).toBeVisible();
 
-  const file = writeElsewhere(nb => void (nb.metadata.edited_elsewhere = true));
+  // Another writer (an agent, git) changes the second code cell on disk.
+  const file = writeElsewhere(nb => {
+    const code = nb.cells.filter(c => c.cell_type === 'code');
+    code[1]!.source = `// ${theirs}`;
+  });
 
-  // Locked: ⌘S writes nothing, and asks nothing (#367).
-  page.on('dialog', d => void d.dismiss());
-  await page.keyboard.press('ControlOrMeta+s');
-  const notice = page.getByRole('alert');
-  await expect(notice).toContainText('changed on disk. Saving is locked');
-  await expect(page.getByText('— Edited, locked')).toBeVisible();
-  expect(JSON.parse(readFileSync(file, 'utf8')).metadata.edited_elsewhere).toBe(true);
+  // The room merges it in: their cell shows here, ours stays, no notice.
+  await expect(editors.nth(1)).toContainText(theirs, { timeout: 15_000 });
+  await expect(editors.first()).toContainText(stamp);
+  await expect(page.getByRole('alert')).toBeHidden();
+  await expect(page.getByText('— Locked')).toBeHidden();
 
-  // Unlock, then save: ours wins.
-  await notice.getByRole('button', { name: 'Unlock' }).click();
-  await expect(page.getByText('— Edited')).toBeVisible();
-  await page.keyboard.press('ControlOrMeta+s');
-  await expect(page.getByText('— Edited')).toBeHidden({ timeout: 10_000 });
-  const onDisk = JSON.parse(readFileSync(file, 'utf8'));
-  expect([onDisk.cells[1].source].flat().join('')).toContain(`// ${stamp}`);
+  // And the server saves both to the file.
+  await expect.poll(() => readFileSync(file, 'utf8'), { timeout: 15_000 }).toContain(stamp);
+  expect(readFileSync(file, 'utf8')).toContain(theirs);
 });
 
-test('notices a change on disk without a save, and reloads it', async ({ page }) => {
-  const stamp = `written elsewhere ${Date.now()}`;
+test('shows an edit made through the server as it happens (#183)', async ({ page, request }) => {
+  const stamp = `added by an agent ${Date.now()}`;
+  const joined = page.waitForEvent('websocket', ws =>
+    ws.url().includes('/api/collaboration/room/json:notebook:'),
+  );
   await openWithToken(page);
   await openNotebook(page, FIXTURE);
+  await joined;
   await expect(page.locator('.jp-CodeCell .cm-content').first()).toBeVisible();
 
-  writeElsewhere(nb => void (nb.cells[1]!.source = `// ${stamp}`));
+  // A second client of the same room, as `ganymede mcp` is: here, the
+  // contents API's save, which the room takes in like any writer.
+  const url = `${GANYMEDE_URL}/api/contents/${encodeURIComponent(FIXTURE)}?token=${TOKEN}`;
+  const nb = (await (await request.get(url)).json()).content;
+  nb.cells.push({ cell_type: 'markdown', id: 'agent-cell', metadata: {}, source: stamp });
+  const saved = await request.put(url, {
+    data: { type: 'notebook', format: 'json', content: nb },
+  });
+  expect(saved.ok()).toBe(true);
 
-  // The pane asks every few seconds; nothing here was edited or saved.
-  const notice = page.getByRole('alert');
-  await expect(notice).toContainText('changed on disk', { timeout: 15_000 });
-  await expect(page.getByText('— Locked')).toBeVisible();
-
-  await notice.getByRole('button', { name: 'Reload' }).click();
-  await expect(page.locator('.jp-CodeCell .cm-content').first()).toContainText(stamp);
-  await expect(page.getByText('— Locked')).toBeHidden();
-  await expect(notice).toBeHidden();
+  await expect(page.locator('.jp-MarkdownCell', { hasText: stamp })).toBeVisible({
+    timeout: 15_000,
+  });
+  await expect(page.getByRole('alert')).toBeHidden();
 });
 
 test('asks before the tab closes with unsaved edits', async ({ page }) => {
