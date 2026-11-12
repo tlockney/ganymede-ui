@@ -439,7 +439,14 @@ final class AppModel {
         mcpImages = images
         defaults.set(mode.rawValue, forKey: AppMCP.modeKey)
         defaults.set(images, forKey: AppMCP.imagesKey)
-        mcpToken = mode == .off ? nil : (mcpToken ?? mcpKeychainToken())
+        if mode == .off {
+            // Off revokes the token: configs given out stop working, and
+            // turning MCP on again makes a new one.
+            mcpToken = nil
+            try? Keychain.set(AppMCP.tokenKey, "")
+        } else {
+            mcpToken = mcpToken ?? mcpKeychainToken()
+        }
         start()
     }
 

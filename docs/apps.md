@@ -291,7 +291,8 @@ last time, so the HTTP config keeps working after Ganymede restarts.
 Should that port be taken, Settings shows the new one. Reset Token makes a
 new token, after which HTTP agents need the new config. Changing these
 settings restarts Ganymede's server, which restarts its kernels; turning
-MCP off ends agents' sessions.
+MCP off ends agents' sessions and revokes the token, so turning it on
+again makes a new one.
 
 A notebook can be edited on one server at a time: if an agent's own
 `ganymede mcp` server has it open, Ganymede shows it read-only.
