@@ -224,12 +224,14 @@ iPhone app, cut to App Store Connect's 4,000 characters. A pull request
 counts when it touches what ships in the app: `src/`, `public/`,
 `examples/`, `packages/`, the HTML entry points, `vite.config.ts`,
 `package.json` or its lockfile, or `apple/Sources/`, `apple/Resources/`,
-`apple/project.yml` or `apple/Package.resolved`, not counting tests. CI,
-scripts, docs, dependency bumps, release commits and pull requests whose
-title starts with `Mac:` or `Mac app:` are left out; with nothing left the
-notes say "No changes to the app." The notes end with `Built from <commit>.`; the next run reads
-that line from the newest earlier build to know where to start, and
-without one starts at the last `v*` tag. To preview the notes for your
+`apple/project.yml` or `apple/Package.resolved`, not counting tests or
+the macOS-only `apple/Resources/macOS/` and `apple/Sources/QuickLook/`.
+CI, scripts, docs, dependency bumps, release commits and pull requests
+whose title starts with "Mac" (not "Mac and ...") are left out; with
+nothing left the notes say "No changes to the app." The notes end with
+`Built from <commit>.`; the next run reads that line from the newest
+earlier build to know where to start, and without one starts at the
+last `v*` tag. To preview the notes for your
 checkout, run `node scripts/testflight-notes.mjs --print [<since>]`.
 
 If only that step fails, the build is on TestFlight without notes. Don't

@@ -87,6 +87,8 @@ describe('shipsInApp', () => {
       'src/test/setup.ts',
       'apple/Tests/GanymedeTests/KernelHostTests.swift',
       'apple/scripts/release-ios.sh',
+      'apple/Resources/macOS/AppIcon.icns',
+      'apple/Sources/QuickLook/Preview/PreviewViewController.swift',
       'apple/README.md',
       '.github/workflows/ci.yml',
       'scripts/testflight-notes.mjs',
@@ -130,10 +132,19 @@ describe('appChanges', () => {
         subject: 'Mac: choose where kernels run from the window (#475)',
         files: ['apple/Sources/Ganymede/MacWindow.swift'],
       },
+      {
+        subject: 'Mac right inspector with Outline and Variables (#311)',
+        files: ['apple/Sources/Ganymede/Inspector.swift'],
+      },
+      {
+        subject: 'Mac and iPad: a shared change (#2)',
+        files: ['apple/Sources/Ganymede/Shared.swift'],
+      },
       { subject: 'Unknown files are kept (#1)', files: null },
     ];
     expect(appChanges(changes)).toEqual([
       "Pass a run's parameters to the in-app TypeScript kernel (#503)",
+      'Mac and iPad: a shared change (#2)',
       'Unknown files are kept (#1)',
     ]);
   });

@@ -1,6 +1,7 @@
 // Sets the "What to Test" notes of the TestFlight build release-ios.sh
 // just uploaded (release.yml's `ios` job, #466): the changes since the
-// previous TestFlight build that ship in the iPad and iPhone app (#513). Each build's notes end with the
+// previous TestFlight build that ship in the iPad and iPhone app
+// (#513). Each build's notes end with the
 // commit it was built from ("Built from <sha>."), so the next run reads
 // the previous build's notes to know where to start; without one it
 // starts at the last `v*` tag. Nothing else keeps state.
@@ -39,6 +40,8 @@ export function shipsInApp(files) {
   return files.some(
     f =>
       !/(^|\/)(test|tests|Tests|__tests__)\/|\.test\.[cm]?[jt]sx?$/.test(f) &&
+      // The macOS app's resources and its Quick Look extensions.
+      !/^apple\/(Resources\/macOS|Sources\/QuickLook)\//.test(f) &&
       /^(src|public|examples|packages)\/|^(index|kernel|preview)\.html$|^vite\.config\.ts$|^package(-lock)?\.json$|^apple\/(Sources|Resources)\/|^apple\/(project\.yml|Package\.resolved)$/.test(
         f,
       ),
@@ -48,14 +51,15 @@ export function shipsInApp(files) {
 /**
  * The subjects of the changes a tester can see: changes that ship in the
  * app (shipsInApp), without dependency bumps, release commits, and
- * changes to the Mac app only. `files` is null when the changed files
+ * changes to the Mac app only (titles starting "Mac"). `files` is null when the changed files
  * are unknown, and the change is kept.
  */
 export function appChanges(changes) {
   return changes
     .filter(({ subject, files }) => {
       if (/^Bump /.test(subject) || /^Release v?\d/.test(subject)) return false;
-      if (/^Mac( app)?:/.test(subject)) return false;
+      // "Mac: ...", "Mac app ...", but not "Mac and iPad: ...".
+      if (/^Mac\b(?!\s*(and|&|\/|,))/.test(subject)) return false;
       return files === null || shipsInApp(files);
     })
     .map(c => c.subject);
@@ -138,7 +142,15 @@ export function parseLog(out) {
  */
 function changedFiles(sha) {
   try {
-    return git(['diff', '--no-renames', '--name-only', `${sha}^1`, sha])
+    return git([
+      '-c',
+      'core.quotePath=false',
+      'diff',
+      '--no-renames',
+      '--name-only',
+      `${sha}^1`,
+      sha,
+    ])
       .split('\n')
       .filter(Boolean);
   } catch {

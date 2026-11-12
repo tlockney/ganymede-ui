@@ -12,7 +12,8 @@ name: Release
 # without publishing a release (they do upload to TestFlight); with
 # `testflight_only`, they skip the web archives and the Mac app and only
 # upload the iPad and iPhone app. Each upload gets "What to Test" notes
-# listing the changes to the app since the previous TestFlight build.
+# listing the changes to the app since the previous TestFlight
+# build.
 # docs/releasing.md says what to do when a run fails.
 
 on:
@@ -294,7 +295,8 @@ jobs:
           IOS_PROVISIONING_PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE }}
           IOS_SHARE_PROFILE: ${{ secrets.IOS_SHARE_PROFILE }}
       # "What to Test": the changes to the app since the previous
-      # TestFlight build (#466, #513). The upload has already succeeded if this step fails.
+      # TestFlight build (#466, #513). The upload has already succeeded
+      # if this step fails.
       - name: Set the TestFlight notes
         run: node scripts/testflight-notes.mjs
         env:
