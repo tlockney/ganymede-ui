@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Checks what the Mac app bundle must carry, whatever its configuration:
 # ci.yml runs it on the Debug build its tests ran, and release-app.sh on
-# the Release build before signing it (main-build.yml and release.yml,
-# #549).
+# the archived Release build before re-signing and notarizing it
+# (main-build.yml and release.yml, #549). PlistBuddy's own errors stay
+# on stderr, so a failure says whether the file or the key is missing.
 #
 #   apple/scripts/check-app-bundle.sh path/to/Ganymede.app
 set -euo pipefail
@@ -12,7 +13,7 @@ fail() {
   exit 1
 }
 [[ -d "$app" ]] || fail "no app bundle"
-plist() { /usr/libexec/PlistBuddy -c "Print :$2" "$1" 2>/dev/null || true; }
+plist() { /usr/libexec/PlistBuddy -c "Print :$2" "$1" || true; }
 
 # Finder can open notebooks with it (#130).
 [[ "$(plist "$app/Contents/Info.plist" UTImportedTypeDeclarations:0:UTTypeIdentifier)" == org.jupyter.ipynb ]] ||
