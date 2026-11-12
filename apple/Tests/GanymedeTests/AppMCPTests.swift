@@ -79,10 +79,17 @@ final class AppMCPTests: XCTestCase {
         ))
         let other = runtime.appendingPathComponent("jpserver-9.json")
         try Data(#"{"pid": 9, "url": "http://localhost:8888/"}"#.utf8).write(to: other)
+        // A pid no process can have is skipped, not a crash.
+        let odd = runtime.appendingPathComponent("jpserver-10.json")
+        try Data(#"{"pid": 99999999999, "ganymede_app": true}"#.utf8).write(to: odd)
         AppMCP.removeStaleServerInfo(in: runtime) { $0 == 8 }
         XCTAssertFalse(FileManager.default.fileExists(atPath: gone.path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: live.path))
         XCTAssertTrue(FileManager.default.fileExists(atPath: other.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: odd.path))
+        // Written by rename: no hidden temporary file is left.
+        let names = try FileManager.default.contentsOfDirectory(atPath: runtime.path)
+        XCTAssertFalse(names.contains { $0.hasPrefix(".") }, "\(names)")
     }
 
     func testGanymedeCommandIsFoundOnPath() throws {

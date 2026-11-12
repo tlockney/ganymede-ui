@@ -113,6 +113,9 @@ final class AppModel {
         #endif
         #if os(macOS)
         if mcpMode != .off { mcpToken = mcpKeychainToken() }
+        // A crashed run's server info file holds the MCP token; clear it
+        // whether or not MCP is on now.
+        AppMCP.removeStaleServerInfo(in: AppMCP.runtimeDirectory())
         #endif
     }
 
@@ -440,12 +443,18 @@ final class AppModel {
         defaults.set(mode.rawValue, forKey: AppMCP.modeKey)
         defaults.set(images, forKey: AppMCP.imagesKey)
         if mode == .off {
-            // Off revokes the token: configs given out stop working, and
-            // turning MCP on again makes a new one.
+            // Off revokes the token: configs given out stop working.
             mcpToken = nil
-            try? Keychain.set(AppMCP.tokenKey, "")
-        } else {
-            mcpToken = mcpToken ?? mcpKeychainToken()
+            do {
+                try Keychain.set(AppMCP.tokenKey, "")
+            } catch {
+                reportKeychain("Turning MCP off could not remove its token from the keychain; turning MCP "
+                    + "on again makes a new one all the same: " + error.localizedDescription)
+            }
+        } else if mcpToken == nil {
+            // On again after Off: a new token, never the revoked one, even
+            // if removing it failed.
+            mcpToken = storeMCPToken(AppMCP.newToken())
         }
         start()
     }
@@ -490,8 +499,8 @@ final class AppModel {
         } catch {
             // Unreadable, not missing: keep the saved token for next time,
             // and use one for this session only.
-            keychainError = "Ganymede uses a new MCP token until it quits, because it could not read the "
-                + "saved one from the keychain: " + error.localizedDescription
+            reportKeychain("Ganymede uses a new MCP token until it quits, because it could not read the "
+                + "saved one from the keychain: " + error.localizedDescription)
             return AppMCP.newToken()
         }
         return storeMCPToken(AppMCP.newToken())
@@ -503,10 +512,25 @@ final class AppModel {
         do {
             try Keychain.set(AppMCP.tokenKey, token)
         } catch {
-            keychainError = "Ganymede uses a new MCP token until it quits, but could not save it in the "
-                + "keychain, so agents will need a new config then: " + error.localizedDescription
+            // The old token may still be saved (the delete failed) and
+            // would come back at the next launch.
+            let old = (try? Keychain.read(AppMCP.tokenKey)) ?? nil
+            if let old, !old.isEmpty {
+                reportKeychain("Ganymede uses a new MCP token until it quits, but could not replace the "
+                    + "saved one in the keychain, which comes back when Ganymede restarts: Reset Token "
+                    + "again then. " + error.localizedDescription)
+            } else {
+                reportKeychain("Ganymede uses a new MCP token until it quits, but could not save it in the "
+                    + "keychain, so agents will need a new config then: " + error.localizedDescription)
+            }
         }
         return token
+    }
+
+    /// Shows `message` in the keychain alert, after any problem already
+    /// there, so one doesn't hide another.
+    private func reportKeychain(_ message: String) {
+        keychainError = keychainError.map { $0 + "\n\n" + message } ?? message
     }
     #endif
 

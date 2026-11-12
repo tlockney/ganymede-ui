@@ -53,7 +53,8 @@ enum AppMCP {
         ]
     }
 
-    /// A new token: 32 random hex digits, as `ganymede mcp` makes its own.
+    /// A new token: a random UUID's 32 hex digits (122 random bits), as
+    /// `ganymede mcp` makes its own.
     static func newToken() -> String {
         UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
     }
@@ -136,7 +137,7 @@ enum AppMCP {
             guard let data = try? Data(contentsOf: file),
                   let info = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   info[appMarker] as? Bool == true,
-                  let pid = info["pid"] as? Int, !isRunning(Int32(pid))
+                  let pid = (info["pid"] as? Int).flatMap({ Int32(exactly: $0) }), !isRunning(pid)
             else { continue }
             try? FileManager.default.removeItem(at: file)
         }
@@ -170,12 +171,20 @@ enum AppMCP {
                 at: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700]
             )
             let data = try JSONSerialization.data(withJSONObject: info, options: [.prettyPrinted, .sortedKeys])
-            // Created empty with its permissions first, so the token is
-            // never in a file others can read.
+            // Written whole to a hidden file created 0600, then renamed,
+            // so a reader never sees it empty or half written, and the
+            // token is never in a file others can read.
+            let temp = dir.appendingPathComponent(".jpserver-\(pid)-\(UUID().uuidString).json")
             guard FileManager.default.createFile(
-                atPath: file.path, contents: nil, attributes: [.posixPermissions: 0o600]
+                atPath: temp.path, contents: nil, attributes: [.posixPermissions: 0o600]
             ) else { return nil }
-            try data.write(to: file)
+            do {
+                try data.write(to: temp)
+                guard rename(temp.path, file.path) == 0 else { throw CocoaError(.fileWriteUnknown) }
+            } catch {
+                try? FileManager.default.removeItem(at: temp)
+                throw error
+            }
             return file
         } catch {
             return nil
