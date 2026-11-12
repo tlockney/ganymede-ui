@@ -105,6 +105,9 @@
     },
     "@jupyterlab/console": "4.6.6",
     "@jupyterlab/logconsole": "4.6.6",
-    "@jupyterlab/mainmenu": "4.6.6"
+    "@jupyterlab/mainmenu": "4.6.6",
+    "@jupyterlab/apputils": {
+      "sanitize-html": "2.18.2"
+    }
   }
 }
