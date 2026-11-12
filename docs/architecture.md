@@ -519,8 +519,10 @@ a late message from the run before is dropped.
 `kernel.html` comes from the service worker's precache, so after an app
 update the first kernel page can be the previous release's. Before it
 says it is ready, the page asks the worker to check for an update, and
-loads again (once per web view session) when a newer worker takes
-control; Swift holds the kernels' starts until then
+compares its release with the server's `release.json` (built with the
+page and left out of the precache); it loads again (once per web view
+session) when a newer worker takes control or the releases differ;
+Swift holds the kernels' starts until then
 (`src/lib/kernel-page-worker.ts`). After that the page stays on its
 release until the next session, since a reload would end the running
 kernels, but a newer worker still takes control of it at once and drops

@@ -1,5 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
-import { mayReload, readyWhenCurrent, RELOADED_KEY, workerIsCurrent } from './kernel-page-worker';
+import {
+  mayReload,
+  readyWhenCurrent,
+  releaseIsCurrent,
+  RELOADED_KEY,
+  workerIsCurrent,
+} from './kernel-page-worker';
 
 // A service worker container with a registration whose update finds
 // `found` (a new worker installing, or none).
@@ -101,13 +107,19 @@ describe('kernel page worker check', () => {
 
   it('says ready, or reloads once, by what the check finds', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const run = async (sw: object | undefined, current: boolean, canReload: boolean) => {
+    const run = async (
+      sw: object | undefined,
+      current: boolean,
+      canReload: boolean,
+      sameRelease = true,
+    ) => {
       const calls: string[] = [];
       await readyWhenCurrent(
         sw ? asContainer(sw) : undefined,
         { ready: () => calls.push('ready'), reload: () => calls.push('reload') },
         async () => current,
         () => canReload,
+        async () => sameRelease,
       );
       return calls;
     };
@@ -116,8 +128,36 @@ describe('kernel page worker check', () => {
     expect(await run(container('none', false).sw, false, true)).toEqual(['ready']);
     expect(await run(sw, true, true)).toEqual(['ready']);
     expect(await run(sw, false, true)).toEqual(['reload']);
+    // The worker found nothing newer, but the server serves another
+    // release: a worker took control before the check (#537).
+    expect(await run(sw, true, true, false)).toEqual(['reload']);
+    expect(await run(undefined, true, true, false)).toEqual(['ready']);
     expect(warn).not.toHaveBeenCalled();
     expect(await run(sw, false, false)).toEqual(['ready']);
+    expect(warn).toHaveBeenCalledOnce();
+    warn.mockRestore();
+  });
+
+  it("compares this page's release with the server's", async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const serving = (body: unknown, ok = true) =>
+      vi.fn(async () => ({ ok, json: async () => body }) as Response);
+    const load = serving({ release: 'ganymede-ui@0.10.1+abc' });
+    expect(await releaseIsCurrent('ganymede-ui@0.10.1+abc', load)).toBe(true);
+    expect(load).toHaveBeenCalledWith(
+      'release.json',
+      expect.objectContaining({ cache: 'no-store' }),
+    );
+    expect(await releaseIsCurrent('ganymede-ui@0.10.0+def', load)).toBe(false);
+    // Nothing to compare, or no answer: current.
+    expect(await releaseIsCurrent(undefined, load)).toBe(true);
+    expect(await releaseIsCurrent('a', serving({}, false))).toBe(true);
+    expect(await releaseIsCurrent('a', serving({}))).toBe(true);
+    expect(warn).not.toHaveBeenCalled();
+    const offline = vi.fn(async () => {
+      throw new Error('offline');
+    });
+    expect(await releaseIsCurrent('a', offline)).toBe(true);
     expect(warn).toHaveBeenCalledOnce();
     warn.mockRestore();
   });
