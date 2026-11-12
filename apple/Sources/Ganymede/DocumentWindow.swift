@@ -30,6 +30,9 @@ final class PageDocument {
     func update(_ message: DocumentMessage) {
         if let opened = message.file, opened != file {
             Recents.shared.note(opened)
+        } else if let saved = message.file, saved == file, dirty, !message.dirty {
+            // Saved: Spotlight gets its new contents (#305).
+            SpotlightSettings.shared.saved(saved)
         }
         file = message.file
         dirty = message.dirty
@@ -173,11 +176,14 @@ final class Recents {
     func note(_ url: URL) {
         NSDocumentController.shared.noteNewRecentDocumentURL(url)
         urls = NSDocumentController.shared.recentDocumentURLs
+        // Recents are in Spotlight (#305).
+        SpotlightSettings.shared.sync()
     }
 
     func clear() {
         NSDocumentController.shared.clearRecentDocuments(nil)
         urls = []
+        SpotlightSettings.shared.sync()
     }
 }
 

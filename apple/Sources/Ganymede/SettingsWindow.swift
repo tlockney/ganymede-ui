@@ -109,6 +109,7 @@ private struct GeneralSettings: View {
             CrashReportsSettings()
             LinkRunSettings()
             MCPSettings()
+            SpotlightSettingsSection()
         }
         .formStyle(.grouped)
         .padding()

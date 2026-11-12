@@ -259,6 +259,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             AppModel.shared.openRequests.finishLaunching()
             // Asked once, after the windows are up (#318).
             CrashReportsPrompt.askIfNeeded()
+            // Files changed, moved or deleted while the app was away (#305).
+            SpotlightSettings.shared.sync()
+        }
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(didBecomeActive(_:)),
+            name: NSApplication.didBecomeActiveNotification,
+            object: nil
+        )
+    }
+
+    /// Back in front: notebooks may have changed, moved or gone meanwhile,
+    /// so Spotlight's entries are checked again (#305).
+    @objc private func didBecomeActive(_ notification: Notification) {
+        SpotlightSettings.shared.syncIfStale()
+    }
+
+    /// A Spotlight result (#305): its notebook opens in a window.
+    func application(
+        _ application: NSApplication,
+        continue userActivity: NSUserActivity,
+        restorationHandler: @escaping ([any NSUserActivityRestoring]) -> Void
+    ) -> Bool {
+        SpotlightSettings.shared.open(userActivity) { url in
+            NSApp.activate()
+            AppModel.shared.openRequests.add([url])
         }
     }
 
