@@ -40,8 +40,9 @@ updates:
       # Must match the version @jupyterlab/ui-components uses: 0.17.1 from
       # JupyterLab 4.6.5 on, 0.16.7 before. Bump with JupyterLab.
       - dependency-name: '@jupyter/web-components'
-      # TypeScript 7 is the native compiler, with no compiler API;
-      # src/runner/engine.ts imports `typescript`. Moving to it is a port,
-      # not a bump (as in cdp-kernel, #458 there). 6.x still comes.
+      # TypeScript 7 is the native compiler: its package no longer exports
+      # bin/tsc or the JavaScript compiler API, which `npm run check` and
+      # typescript-eslint's parser use. Moving to it is a port, not a
+      # bump (as in cdp-kernel, #458 there). 6.x still comes.
       - dependency-name: typescript
         versions: ['>=7']
