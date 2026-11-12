@@ -203,12 +203,15 @@ final class AppModel {
                 serverURL = host.url
                 url = pageURL(host.url)
                 #if os(macOS)
-                writeServerInfo(host.url)
+                writeServerInfo(host.url, settings: settings)
                 #endif
                 if let port = host.url.port {
                     defaults.set(port, forKey: Keys.port)
                 }
             case .failure(let failure):
+                #if os(macOS)
+                removeServerInfo()
+                #endif
                 error = failure.localizedDescription
             }
         }
@@ -448,15 +451,20 @@ final class AppModel {
         start()
     }
 
-    /// Writes the server info file for the server at `serverURL` while MCP
-    /// is on.
-    private func writeServerInfo(_ serverURL: URL) {
+    /// Writes the server info file for the server at `serverURL` when it
+    /// was launched with MCP on (`settings`, not the current mode, which a
+    /// queued start may have changed since).
+    private func writeServerInfo(_ serverURL: URL, settings: [String: any Sendable]) {
         removeServerInfo()
-        guard mcpMode != .off, let token = mcpToken,
+        guard settings["mcp_enabled"] as? Bool == true, let token = settings["token"] as? String,
+              let root = settings["root_dir"] as? String,
               let endpoint = ServerEndpoint(serverURL: serverURL) else { return }
         let pid = ProcessInfo.processInfo.processIdentifier
-        let info = AppMCP.serverInfo(base: endpoint.base, token: token, root: Self.serverRoot(root), pid: pid)
-        serverInfoFile = AppMCP.writeServerInfo(info, in: AppMCP.runtimeDirectory(), pid: pid)
+        let dir = AppMCP.runtimeDirectory()
+        // A crashed run's file, with its token, would stay otherwise.
+        AppMCP.removeStaleServerInfo(in: dir)
+        let info = AppMCP.serverInfo(base: endpoint.base, token: token, root: root, pid: pid)
+        serverInfoFile = AppMCP.writeServerInfo(info, in: dir, pid: pid)
         if serverInfoFile == nil {
             NSLog("Ganymede: the server info file for `ganymede mcp` couldn't be written")
         }
@@ -470,7 +478,15 @@ final class AppModel {
 
     /// The token in the keychain, or a new one stored there.
     private func mcpKeychainToken() -> String {
-        if let token = Keychain.get(AppMCP.tokenKey), !token.isEmpty { return token }
+        do {
+            if let token = try Keychain.read(AppMCP.tokenKey), !token.isEmpty { return token }
+        } catch {
+            // Unreadable, not missing: keep the saved token for next time,
+            // and use one for this session only.
+            keychainError = "Ganymede uses a new MCP token until it quits, because it could not read the "
+                + "saved one from the keychain: " + error.localizedDescription
+            return AppMCP.newToken()
+        }
         return storeMCPToken(AppMCP.newToken())
     }
 

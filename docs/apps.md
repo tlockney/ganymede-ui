@@ -263,7 +263,9 @@ With MCP on, Settings shows what to give the agent, with Copy:
 
 - **Claude Code**: `claude mcp add --scope user ganymede -- ganymede mcp`.
 - **Claude Desktop**: an `mcpServers` entry for
-  `claude_desktop_config.json` that runs `ganymede mcp`.
+  `claude_desktop_config.json` that runs `ganymede mcp`, by its full path
+  when Ganymede finds it, since Claude Desktop doesn't use your shell's
+  PATH.
 - **Claude Code, without the ganymede command**: a
   `claude mcp add --transport http` command with the app's URL and
   token.
@@ -276,8 +278,14 @@ of its own when it doesn't. The agent keeps the server it found for the
 whole session, so start the agent after Ganymede to work in the app's
 windows. Relative paths start in the agent's folder from a `ganymede`
 build of `main` (ganymede#730); earlier versions start them at `/`.
+The app writes the file in `~/Library/Jupyter/runtime`, or where
+`JUPYTER_RUNTIME_DIR` or `JUPYTER_DATA_DIR` point in its own environment;
+a value set only in your shell's startup files doesn't reach the app, and
+then `ganymede mcp` won't find it.
 
-The server listens on this Mac only and needs the token. While MCP is on,
+The server listens on this Mac only and needs the token. The token opens
+all of Ganymede's server, as `ganymede serve`'s does: the mode limits what
+agents do over MCP, not what the token's holder can do. While MCP is on,
 the token is kept in the keychain and the port is the one the server had
 last time, so the HTTP config keeps working after Ganymede restarts.
 Should that port be taken, Settings shows the new one. Reset Token makes a

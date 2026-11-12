@@ -170,7 +170,7 @@ private struct MCPSettings: View {
                 MCPConfigRow(title: "Claude Code", text: AppMCP.claudeCodeCommand)
                 MCPConfigRow(
                     title: "Claude Desktop (claude_desktop_config.json)",
-                    text: AppMCP.desktopConfig
+                    text: AppMCP.desktopConfig(command: AppMCP.ganymedeCommand() ?? "ganymede")
                 )
                 if let server = model.serverURL.flatMap(ServerEndpoint.init(serverURL:)), let token = model.mcpToken {
                     MCPConfigRow(
@@ -188,7 +188,7 @@ private struct MCPSettings: View {
         } header: {
             Text("MCP")
         } footer: {
-            Text("Lets Claude Code, Claude Desktop and other agents read, edit and run the notebooks open here, and you see each change arrive. Agents set up with `ganymede mcp` use Ganymede while it runs, and a server of their own when it doesn’t. The server listens on this Mac only and needs the token. Changing this restarts Ganymede’s server and its kernels.")
+            Text("Lets Claude Code, Claude Desktop and other agents read, edit and run the notebooks open here, and you see each change arrive. Agents set up with `ganymede mcp` use Ganymede while it runs, and a server of their own when it doesn’t. The server listens on this Mac only and needs the token, which opens all of Ganymede’s server: the mode limits what agents do over MCP. Changing this restarts Ganymede’s server and its kernels.")
         }
     }
 }

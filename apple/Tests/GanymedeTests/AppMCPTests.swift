@@ -34,10 +34,10 @@ final class AppMCPTests: XCTestCase {
             #"claude mcp add --scope user --transport http ganymede http://127.0.0.1:52011/mcp --header "Authorization: token abc""#
         )
         let desktop = try XCTUnwrap(
-            JSONSerialization.jsonObject(with: Data(AppMCP.desktopConfig.utf8)) as? [String: Any]
+            JSONSerialization.jsonObject(with: Data(AppMCP.desktopConfig(command: "/opt/bin/ganymede").utf8)) as? [String: Any]
         )
         let entry = try XCTUnwrap((desktop["mcpServers"] as? [String: Any])?["ganymede"] as? [String: Any])
-        XCTAssertEqual(entry["command"] as? String, "ganymede")
+        XCTAssertEqual(entry["command"] as? String, "/opt/bin/ganymede")
         XCTAssertEqual(entry["args"] as? [String], ["mcp"])
     }
 
@@ -47,6 +47,9 @@ final class AppMCPTests: XCTestCase {
     func testServerInfoFile() throws {
         XCTAssertEqual(
             AppMCP.runtimeDirectory(environment: ["JUPYTER_RUNTIME_DIR": "/tmp/rt"]).path, "/tmp/rt"
+        )
+        XCTAssertEqual(
+            AppMCP.runtimeDirectory(environment: ["JUPYTER_DATA_DIR": "/tmp/data"]).path, "/tmp/data/runtime"
         )
         XCTAssertTrue(AppMCP.runtimeDirectory(environment: [:]).path.hasSuffix("/Library/Jupyter/runtime"))
         let base = try XCTUnwrap(URL(string: "http://127.0.0.1:52011/"))
@@ -62,6 +65,33 @@ final class AppMCPTests: XCTestCase {
         XCTAssertEqual(read["pid"] as? Int, 42)
         let mode = try FileManager.default.attributesOfItem(atPath: file.path)[.posixPermissions] as? Int
         XCTAssertEqual(mode, 0o600)
+    }
+
+    /// A crashed run's file goes; a live one, and other servers', stay.
+    func testStaleServerInfoIsRemoved() throws {
+        let runtime = dir.appendingPathComponent("runtime")
+        let base = try XCTUnwrap(URL(string: "http://127.0.0.1:52011/"))
+        let gone = try XCTUnwrap(AppMCP.writeServerInfo(
+            AppMCP.serverInfo(base: base, token: "a", root: "/", pid: 7), in: runtime, pid: 7
+        ))
+        let live = try XCTUnwrap(AppMCP.writeServerInfo(
+            AppMCP.serverInfo(base: base, token: "b", root: "/", pid: 8), in: runtime, pid: 8
+        ))
+        let other = runtime.appendingPathComponent("jpserver-9.json")
+        try Data(#"{"pid": 9, "url": "http://localhost:8888/"}"#.utf8).write(to: other)
+        AppMCP.removeStaleServerInfo(in: runtime) { $0 == 8 }
+        XCTAssertFalse(FileManager.default.fileExists(atPath: gone.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: live.path))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: other.path))
+    }
+
+    func testGanymedeCommandIsFoundOnPath() throws {
+        let bin = dir.appendingPathComponent("bin")
+        try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)
+        let tool = bin.appendingPathComponent("ganymede")
+        FileManager.default.createFile(atPath: tool.path, contents: Data(), attributes: [.posixPermissions: 0o755])
+        XCTAssertEqual(AppMCP.ganymedeCommand(path: "/nonexistent:\(bin.path)"), tool.path)
+        XCTAssertNil(AppMCP.ganymedeCommand(path: "/nonexistent"))
     }
     #endif
 

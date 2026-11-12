@@ -58,6 +58,18 @@ enum AppMCP {
         UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
     }
 
+    /// The `ganymede` command on `path` (the login shell's PATH, which the
+    /// app adopts), or nil.
+    static func ganymedeCommand(
+        path: String = ProcessInfo.processInfo.environment["PATH"] ?? ""
+    ) -> String? {
+        for dir in path.split(separator: ":") where !dir.isEmpty {
+            let candidate = URL(fileURLWithPath: String(dir)).appendingPathComponent("ganymede").path
+            if FileManager.default.isExecutableFile(atPath: candidate) { return candidate }
+        }
+        return nil
+    }
+
     /// `/mcp` on the server whose base is `base` (`http://127.0.0.1:PORT/`).
     static func endpoint(_ base: URL) -> URL {
         base.appendingPathComponent("mcp")
@@ -75,12 +87,12 @@ enum AppMCP {
     }
 
     /// Claude Desktop's `mcpServers` entry: `ganymede mcp`, as for Claude
-    /// Code. Needs the `ganymede` command on the PATH Claude Desktop gives
-    /// it.
-    static var desktopConfig: String {
+    /// Code. Claude Desktop starts it with launchd's PATH, which seldom
+    /// holds `ganymede`, so `command` is its absolute path when known.
+    static func desktopConfig(command: String = "ganymede") -> String {
         let entry: [String: Any] = [
             "mcpServers": [
-                "ganymede": ["command": "ganymede", "args": ["mcp"]],
+                "ganymede": ["command": command, "args": ["mcp"]],
             ],
         ]
         let data = (try? JSONSerialization.data(
@@ -94,15 +106,40 @@ enum AppMCP {
     #if os(macOS)
 
     /// Where Jupyter tools look for running servers: `JUPYTER_RUNTIME_DIR`,
-    /// else `~/Library/Jupyter/runtime`, as `ganymede` itself does on macOS.
+    /// else `runtime` in `JUPYTER_DATA_DIR`, else
+    /// `~/Library/Jupyter/runtime`, as `ganymede` itself does on macOS.
+    /// The app sees launchd's environment, not the shell's.
     static func runtimeDirectory(
         environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> URL {
         if let dir = environment["JUPYTER_RUNTIME_DIR"], !dir.isEmpty {
             return URL(fileURLWithPath: dir, isDirectory: true)
         }
+        if let data = environment["JUPYTER_DATA_DIR"], !data.isEmpty {
+            return URL(fileURLWithPath: data, isDirectory: true).appendingPathComponent("runtime", isDirectory: true)
+        }
         return FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Jupyter/runtime", isDirectory: true)
+    }
+
+    /// Marks the files the app writes, so a later run can tell its own
+    /// from other servers'.
+    static let appMarker = "ganymede_app"
+
+    /// Removes server info files the app wrote for processes that are gone
+    /// (a crash, a force quit).
+    static func removeStaleServerInfo(
+        in dir: URL, isRunning: (Int32) -> Bool = { kill($0, 0) == 0 || errno == EPERM }
+    ) {
+        let files = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
+        for file in files where file.lastPathComponent.hasPrefix("jpserver-") && file.pathExtension == "json" {
+            guard let data = try? Data(contentsOf: file),
+                  let info = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  info[appMarker] as? Bool == true,
+                  let pid = info["pid"] as? Int, !isRunning(Int32(pid))
+            else { continue }
+            try? FileManager.default.removeItem(at: file)
+        }
     }
 
     /// `jpserver-<pid>.json` for the server at `base`, in the format
@@ -120,6 +157,7 @@ enum AppMCP {
             "root_dir": root,
             "password": false,
             "pid": Int(pid),
+            appMarker: true,
         ]
     }
 
