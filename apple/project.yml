@@ -632,6 +632,10 @@ targets:
       - path: Sources/Ganymede/Terminal/SSHKey.swift
       - path: Sources/Ganymede/Editor/TextFile.swift
       - path: Sources/Ganymede/Editor/CodeEditing.swift
+      # The line-number gutter (#524), and the highlighting it takes its
+      # font from, with the packages that needs.
+      - path: Sources/Ganymede/Editor/LineNumbers.swift
+      - path: Sources/Ganymede/Editor/Highlighting.swift
       - path: Sources/Ganymede/FileStack.swift
       - path: Sources/Ganymede/CrashScrub.swift
       - path: Sources/Ganymede/NotebookActions.swift
@@ -651,6 +655,16 @@ targets:
         embed: false
       - package: GanymedeDevice
         product: DeviceBridge
+      - package: Neon
+      - package: SwiftTreeSitter
+      - package: TreeSitterBash
+      - package: TreeSitterJavaScript
+      - package: TreeSitterJSON
+      - package: TreeSitterMarkdown
+      - package: TreeSitterPython
+      - package: TreeSitterTOML
+      - package: TreeSitterTypeScript
+      - package: TreeSitterYAML
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES

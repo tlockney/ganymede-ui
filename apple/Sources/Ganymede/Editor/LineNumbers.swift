@@ -125,7 +125,7 @@ final class CodeUITextView: UITextView {
     /// `self` from a layout pass crashed (#517); the cause isn't known,
     /// so no layout outside a window touches the gutter, and nothing
     /// stores a reference to the text view.
-    private var gutter: LineNumberGutter?
+    private(set) var gutter: LineNumberGutter?
 
     var lineCount = 1 {
         didSet { if lineCount != oldValue { setNeedsLayout() } }
@@ -158,8 +158,8 @@ final class CodeUITextView: UITextView {
 
 /// Reads the text view it draws for from its superview, so nothing stores
 /// a reference to the text view (#517).
-private final class LineNumberGutter: UIView {
-    private var textView: CodeUITextView? { superview as? CodeUITextView }
+final class LineNumberGutter: UIView {
+    var textView: CodeUITextView? { superview as? CodeUITextView }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
