@@ -132,6 +132,8 @@ targets:
       - target: GanymedeThumbnail
       # The share sheet's Run a Notebook (#435, #449).
       - target: GanymedeShare
+      # The notebook widget (#436).
+      - target: GanymedeWidgets
     info:
       path: build/Info.plist
       properties:
@@ -374,6 +376,65 @@ targets:
         TARGETED_DEVICE_FAMILY: '1,2'
         # release-ios.sh names its App Store profile here (#449).
         PROVISIONING_PROFILE_SPECIFIER: $(GANYMEDE_IOS_SHARE_PROFILE)
+  # The notebook widget (#436, a spike, off until Settings › Device turns
+  # it on): shows what a notebook published with `device.widget.update`,
+  # read from the App Group. Embedded in the apps.
+  GanymedeWidgets:
+    type: app-extension
+    platform: macOS
+    sources: &widgetSources
+      - path: Sources/Widgets
+      - path: Sources/Share/AppGroup.swift
+    dependencies: &widgetDependencies
+      - package: GanymedeDevice
+        product: DeviceBridge
+    info:
+      path: build/Info-Widgets.plist
+      properties:
+        GanymedeAppGroup: $(TeamIdentifierPrefix)com.ganymede-server.Ganymede
+        CFBundleDisplayName: Ganymede
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSHumanReadableCopyright: MIT License
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: build/GanymedeWidgets.entitlements
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.application-groups:
+          - $(TeamIdentifierPrefix)com.ganymede-server.Ganymede
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.ganymede-server.Ganymede.Widgets
+        ENABLE_HARDENED_RUNTIME: YES
+  GanymedeWidgets-iOS:
+    type: app-extension
+    platform: iOS
+    sources: *widgetSources
+    dependencies: *widgetDependencies
+    info:
+      path: build/Info-Widgets-iOS.plist
+      properties:
+        GanymedeAppGroup: group.com.ganymede-server.Ganymede
+        CFBundleDisplayName: Ganymede
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        NSHumanReadableCopyright: MIT License
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    entitlements:
+      path: build/GanymedeWidgets-iOS.entitlements
+      properties:
+        com.apple.security.application-groups:
+          - group.com.ganymede-server.Ganymede
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.ganymede-server.Ganymede.Widgets
+        PRODUCT_NAME: GanymedeWidgets
+        TARGETED_DEVICE_FAMILY: '1,2'
+        # release-ios.sh names its App Store profile here (#436).
+        PROVISIONING_PROFILE_SPECIFIER: $(GANYMEDE_IOS_WIDGETS_PROFILE)
   # iPad and iPhone, from the same sources. iOS cannot launch kernel
   # processes, so until an on-device kernel exists it edits notebooks
   # without running them.
@@ -409,6 +470,8 @@ targets:
       - package: Sentry
       # The share sheet's Run a Notebook (#435, #449).
       - target: GanymedeShare-iOS
+      # The notebook widget (#436).
+      - target: GanymedeWidgets-iOS
       - package: Neon
       - package: SwiftTreeSitter
       - package: TreeSitterBash
@@ -523,6 +586,7 @@ targets:
       - path: Sources/Share/ShareNotebooks.swift
       - path: Sources/Share/ShareInput.swift
       - path: Sources/Share/AppGroup.swift
+      - path: Sources/Widgets/WidgetState.swift
       - path: build/runner
         type: folder
         buildPhase: resources
@@ -578,6 +642,7 @@ targets:
       - path: Sources/Share/ShareNotebooks.swift
       - path: Sources/Share/ShareInput.swift
       - path: Sources/Share/AppGroup.swift
+      - path: Sources/Widgets/WidgetState.swift
       - path: build/runner
         type: folder
         buildPhase: resources

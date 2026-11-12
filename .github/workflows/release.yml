@@ -294,6 +294,7 @@ jobs:
           IOS_CERTIFICATE_PASSWORD: ${{ secrets.IOS_CERTIFICATE_PASSWORD }}
           IOS_PROVISIONING_PROFILE: ${{ secrets.IOS_PROVISIONING_PROFILE }}
           IOS_SHARE_PROFILE: ${{ secrets.IOS_SHARE_PROFILE }}
+          IOS_WIDGETS_PROFILE: ${{ secrets.IOS_WIDGETS_PROFILE }}
       # "What to Test": the changes to the app since the previous
       # TestFlight build (#466, #513). The upload has already succeeded
       # if this step fails.

@@ -127,8 +127,8 @@ ref is a release tag, or checks out and builds the commit otherwise
 6. signs the zip with the update key and writes `appcast.xml`, the
    update feed, signed too (below).
 
-The Mac app and its share extension share the team-prefixed App Group
-`<team ID>.com.ganymede-server.Ganymede` (#449), which a Developer ID
+The Mac app, its share extension and its widget share the team-prefixed
+App Group `<team ID>.com.ganymede-server.Ganymede` (#449, #436), which a Developer ID
 build uses with no provisioning profile, so nothing about it needs
 setting up.
 
@@ -248,6 +248,7 @@ It reads the team and API key secrets from the table above, and these:
 | `IOS_CERTIFICATE_PASSWORD` | The .p12 password                                                            |
 | `IOS_PROVISIONING_PROFILE` | An App Store provisioning profile for `com.ganymede-server.Ganymede`, base64 |
 | `IOS_SHARE_PROFILE`        | One for the share extension, `com.ganymede-server.Ganymede.Share`, base64    |
+| `IOS_WIDGETS_PROFILE`      | One for the widget, `com.ganymede-server.Ganymede.Widgets`, base64           |
 
 Without `IOS_CERTIFICATE_P12` and the profiles, the script signs
 automatically through the API key (`-allowProvisioningUpdates`), which
@@ -257,16 +258,18 @@ certificates and profiles on its own.
 Set up once, outside the repo:
 
 1. Register the explicit App IDs `com.ganymede-server.Ganymede` and
-   `com.ganymede-server.Ganymede.Share` (the share extension) under
+   `com.ganymede-server.Ganymede.Share` (the share extension) and
+   `com.ganymede-server.Ganymede.Widgets` (the widget) under
    Certificates, Identifiers & Profiles, and the App Group
-   `group.com.ganymede-server.Ganymede`. Turn on App Groups for both App
-   IDs, with that group: the app and the extension share it (#449).
+   `group.com.ganymede-server.Ganymede`. Turn on App Groups for each App
+   ID, with that group: the app and its extensions share it (#449, #436).
 2. Create an Apple Distribution certificate, export it with its private
    key from Keychain Access as a .p12, and store it with `base64 -i
 cert.p12 | pbcopy` as `IOS_CERTIFICATE_P12`.
 3. Create an App Store Connect provisioning profile (Distribution) for
    each App ID with that certificate, and store them the same way as
-   `IOS_PROVISIONING_PROFILE` and `IOS_SHARE_PROFILE`. The job checks
+   `IOS_PROVISIONING_PROFILE`, `IOS_SHARE_PROFILE` and
+   `IOS_WIDGETS_PROFILE`. The job checks
    each one names its App ID and the App Group. Each lasts a year, as
    the certificate does; the job prints their expiry dates.
 4. Create the app in App Store Connect (iOS platform, that bundle ID) and

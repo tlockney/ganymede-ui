@@ -92,6 +92,12 @@ final class KernelHost: NSObject {
         bridge.addBluetooth()
         bridge.addFolders(folders)
         bridge.addHostEvents()
+        // Notebook widgets (#436), off until Settings › Device turns them
+        // on: what a run publishes goes to the App Group, where the
+        // widget reads it.
+        if let group = AppGroup.defaults(), group.bool(forKey: AppGroup.widgetsKey) {
+            bridge.addWidgets(PublishedWidgets(store: UserDefaultsWidgetStore(defaults: group, widgetKind: AppGroup.widgetKind)))
+        }
         return bridge
     }
 

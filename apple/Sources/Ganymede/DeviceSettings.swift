@@ -1,6 +1,7 @@
 import DeviceBridge
 import SwiftUI
 import UniformTypeIdentifiers
+import WidgetKit
 
 /// Settings › Device (#383): the answers kept in ganymede-device's
 /// permission ledger, and the folders each notebook was given
@@ -23,6 +24,7 @@ struct DeviceSettings: View {
             }
             if AppGroup.defaults() != nil {
                 ShareSheetSettings()
+                WidgetSettings()
             }
             if model.notebooks.isEmpty {
                 Section {
@@ -239,6 +241,21 @@ final class DeviceGrants {
         case "microphone": "Microphone"
         case "bluetooth": "Bluetooth"
         default: capability
+        }
+    }
+}
+
+/// Notebook widgets (#436), off by default. Stored in the App Group, where
+/// the widget reads it too.
+struct WidgetSettings: View {
+    @AppStorage(AppGroup.widgetsKey, store: AppGroup.defaults()) private var enabled = false
+
+    var body: some View {
+        Section {
+            Toggle("Notebook Widgets", isOn: $enabled)
+                .onChange(of: enabled) { WidgetCenter.shared.reloadTimelines(ofKind: AppGroup.widgetKind) }
+        } footer: {
+            Text("Experimental. A notebook's cells can publish what a Ganymede widget shows with device.widget.update; edit the widget to pick one. Notebooks opened after you turn this on can publish.")
         }
     }
 }

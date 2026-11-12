@@ -410,6 +410,19 @@ headings; pick one to go to its cell.
   location, motion, contacts and reminders are the namespaces it has. The
   time limit is 20 seconds.
 
+- **Notebook widgets** (home screen and desktop, Mac too;
+  experimental, off until Settings › Device › Notebook Widgets): a cell
+  publishes what a widget shows with
+  `device.widget.update(kind, { title, rows, tint, sparkline })`, and
+  the Ganymede widget, edited to pick that notebook and kind, shows the
+  last content published. A widget can't run the notebook itself, so it
+  changes only when a run publishes again. Notebooks opened after the
+  switch is turned on can publish.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release.
+
 - **Notebook Access…** (Kernel menu on the Mac, the ⋯ menu on the iPad
   and iPhone, and the Command Palette) sets what a notebook's cells may
   ask the server for through `jupyter.host()`: the notebooks they may

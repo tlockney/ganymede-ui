@@ -45,6 +45,13 @@ enum AppGroup {
     /// spike.
     static let shareSheetKey = "ganymede.runner.shareSheet"
 
+    /// Settings › Device › Notebook Widgets (#436), off by default: the
+    /// app turns on `device.widget.update`, and the widget shows content.
+    static let widgetsKey = "ganymede.runner.widgets"
+
+    /// The notebook widget's kind, which the app asks WidgetKit to reload.
+    static let widgetKind = "NotebookWidget"
+
     /// The permission ledger's store, shared with the extensions: the
     /// group's defaults, holding a copy of the app's own answers from
     /// before the group (#449). Nil without a group, which leaves the
