@@ -101,8 +101,8 @@ jobs:
           echo "${sha::12} is #$number, whose CI passed on ${head::12}"
 
   # Manual runs on a branch, which may not have been through a pull
-  # request: build and e2e. macos-app is skipped: the macos and ios jobs
-  # below build the app (#361).
+  # request: build and e2e. macos-app and ios-app are skipped: the macos
+  # and ios jobs below build the apps (#361).
   ci:
     if: github.ref_type != 'tag'
     needs: version

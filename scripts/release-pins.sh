@@ -118,7 +118,7 @@ else
 fi
 # bootstrap.sh downloads this for a tag; a release still uploading, or one
 # whose upload failed (or from before v0.8.0), would fail the release PR's
-# macos-app job. Checked only when GANYMEDE_REF moves to the tag.
+# macos-app and ios-app jobs. Checked only when GANYMEDE_REF moves to the tag.
 if [[ "$ref_pin" != "$tag" ]] &&
   ! jq -e '.assets | any(.name == "GanymedeFFI.xcframework.zip")' <<< "$release" > /dev/null; then
   echo "error: ganymede $tag has no GanymedeFFI.xcframework.zip asset" >&2
