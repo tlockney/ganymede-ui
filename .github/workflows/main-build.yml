@@ -157,8 +157,13 @@ jobs:
           if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" > /dev/null 2>&1; then
             gh api -X PATCH "repos/$GITHUB_REPOSITORY/git/refs/tags/$TAG" -f sha="$GITHUB_SHA" -F force=true > /dev/null ||
               echo "::warning::could not move $TAG to $GITHUB_SHA; the assets are still updated"
-          else
-            gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$TAG" -f sha="$GITHUB_SHA" > /dev/null
+          elif ! gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$TAG" -f sha="$GITHUB_SHA" > /dev/null; then
+            # The same rule can refuse creating it at this commit (the
+            # first run is on the commit that adds this workflow): start
+            # it at the first parent, and a later run moves it.
+            parent=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA" --jq '.parents[0].sha')
+            gh api -X POST "repos/$GITHUB_REPOSITORY/git/refs" -f ref="refs/tags/$TAG" -f sha="$parent" > /dev/null
+            echo "::warning::created $TAG at $parent, not $GITHUB_SHA; the assets are still this build"
           fi
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
             # The app before its checksum: a download in between fails
