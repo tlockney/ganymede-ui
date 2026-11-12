@@ -485,6 +485,12 @@ targets:
     info:
       path: build/Info-iOS.plist
       properties:
+        # Where the Shortcuts app calls back after `device.shortcuts.run`
+        # (ganymede-device#40).
+        CFBundleURLTypes:
+          - CFBundleURLName: com.ganymede-server.Ganymede
+            CFBundleURLSchemes:
+              - ganymede
         GanymedeAppGroup: group.com.ganymede-server.Ganymede
         CFBundleDisplayName: Ganymede
         # XcodeGen writes 1.0 and 1 otherwise; release-app.sh sets these.

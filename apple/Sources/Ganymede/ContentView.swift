@@ -405,6 +405,11 @@ struct ContentView: View {
         .onContinueUserActivity(CSSearchableItemActionType) { activity in
             _ = SpotlightSettings.shared.open(activity, with: openFromSpotlight)
         }
+        // A Shortcut a cell ran, calling back (ganymede-device#40); the
+        // app has no other `ganymede://` URLs here yet.
+        .onOpenURL { url in
+            KernelHost.shortcuts.handle(url)
+        }
         // Opened again from the root, not where the last visit ended.
         .sheet(isPresented: $settings, onDismiss: { settingsPath = [] }) {
             NavigationStack(path: $settingsPath) {

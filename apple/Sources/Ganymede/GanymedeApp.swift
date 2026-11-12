@@ -225,6 +225,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func getURL(_ event: NSAppleEventDescriptor, withReply reply: NSAppleEventDescriptor) {
         guard let url = AppURLHandler.url(in: event) else { return }
+        // A Shortcut a cell ran, calling back (ganymede-device#40).
+        if KernelHost.shortcuts.handle(url) { return }
         AppURLHandler.handle(url)
     }
 

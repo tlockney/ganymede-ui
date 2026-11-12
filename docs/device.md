@@ -341,6 +341,27 @@ if (folder) {
 }
 ```
 
+### Running a Shortcut
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+`device.shortcuts.run(name, { input })` runs one of your Shortcuts and
+resolves with its output as text, or `null` when it gives none. The
+Shortcuts app comes forward while it runs and hands the result back to
+Ganymede when it is done. The first call from a notebook asks, with
+"Always allow", since a Shortcut does whatever you set it up to do.
+`input` is passed to the Shortcut as text. Interrupting the cell rejects
+the call `cancelled`; the Shortcut may still finish. On iPad and iPhone
+the kernel stops about 30 seconds after Ganymede leaves the screen, so
+keep the Shortcut short. It works only in kernels in the app, not in a
+run Shortcuts or the share sheet started.
+
+```ts
+const summary = await device.shortcuts.run('Summarize Text', { input: 'Notes from today' });
+```
+
 ## Permissions and the ledger
 
 Some methods need your permission, such as notifications, location
