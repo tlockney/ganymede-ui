@@ -113,6 +113,9 @@ final class AppModel {
         #endif
         #if os(macOS)
         if mcpMode != .off { mcpToken = mcpKeychainToken() }
+        // A crashed run's server info file holds the MCP token; clear it
+        // whether or not MCP is on now.
+        AppMCP.removeStaleServerInfo(in: AppMCP.runtimeDirectory())
         #endif
     }
 
@@ -440,12 +443,20 @@ final class AppModel {
         defaults.set(mode.rawValue, forKey: AppMCP.modeKey)
         defaults.set(images, forKey: AppMCP.imagesKey)
         if mode == .off {
-            // Off revokes the token: configs given out stop working, and
-            // turning MCP on again makes a new one.
+            // Off revokes the token: configs given out stop working.
             mcpToken = nil
-            try? Keychain.set(AppMCP.tokenKey, "")
-        } else {
-            mcpToken = mcpToken ?? mcpKeychainToken()
+            do {
+                try Keychain.set(AppMCP.tokenKey, "")
+            } catch {
+                // The revoked token stays saved: never read it back.
+                defaults.set(true, forKey: AppMCP.revokedKey)
+                reportKeychain("Turning MCP off could not remove its token from the keychain; turning MCP "
+                    + "on again makes a new one all the same: " + error.localizedDescription)
+            }
+        } else if mcpToken == nil {
+            // On again after Off: a new token, never the revoked one, even
+            // if removing it failed.
+            mcpToken = storeMCPToken(AppMCP.newToken())
         }
         start()
     }
@@ -483,30 +494,43 @@ final class AppModel {
         serverInfoFile = nil
     }
 
-    /// The token in the keychain, or a new one stored there.
+    /// The token in the keychain, or a new one stored there. A token
+    /// marked revoked (its delete or replace failed) is never used again.
     private func mcpKeychainToken() -> String {
+        if defaults.bool(forKey: AppMCP.revokedKey) { return storeMCPToken(AppMCP.newToken()) }
         do {
             if let token = try Keychain.read(AppMCP.tokenKey), !token.isEmpty { return token }
         } catch {
             // Unreadable, not missing: keep the saved token for next time,
             // and use one for this session only.
-            keychainError = "Ganymede uses a new MCP token until it quits, because it could not read the "
-                + "saved one from the keychain: " + error.localizedDescription
+            reportKeychain("Ganymede uses a new MCP token until it quits, because it could not read the "
+                + "saved one from the keychain: " + error.localizedDescription)
             return AppMCP.newToken()
         }
         return storeMCPToken(AppMCP.newToken())
     }
 
     /// Stores `token`; if the keychain refuses, the app uses it until it
-    /// quits and says so.
+    /// quits and says so. Whatever is saved then is marked revoked, so a
+    /// token turned off or reset can't come back at the next launch, even
+    /// when the keychain can't be read to tell whether one is saved.
     private func storeMCPToken(_ token: String) -> String {
         do {
             try Keychain.set(AppMCP.tokenKey, token)
+            defaults.removeObject(forKey: AppMCP.revokedKey)
         } catch {
-            keychainError = "Ganymede uses a new MCP token until it quits, but could not save it in the "
-                + "keychain, so agents will need a new config then: " + error.localizedDescription
+            defaults.set(true, forKey: AppMCP.revokedKey)
+            reportKeychain("Ganymede uses a new MCP token until it quits, but could not save it in the "
+                + "keychain. Any token saved before stays there unused; Ganymede makes another at its "
+                + "next launch, so agents will need a new config then: " + error.localizedDescription)
         }
         return token
+    }
+
+    /// Shows `message` in the keychain alert, after any problem already
+    /// there, so one doesn't hide another.
+    private func reportKeychain(_ message: String) {
+        keychainError = keychainError.map { $0 + "\n\n" + message } ?? message
     }
     #endif
 

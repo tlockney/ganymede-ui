@@ -1,3 +1,4 @@
+import CoreSpotlight
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -389,6 +390,26 @@ struct ContentView: View {
         }
         .focusedSceneValue(\.pageModel, pageModel)
         .modifier(KeychainAlert(model: model))
+        // Spotlight (#305): the page's recents are indexed, a save updates
+        // its entry, and a result opens here.
+        .onChange(of: pageModel.state.recents, initial: true) { _, recents in
+            // nil until the page reports: syncing then would drop every
+            // entry, to index them all again a moment later.
+            guard recents != nil else { return }
+            SpotlightSettings.shared.sync(recents: recentFiles)
+        }
+        .onChange(of: pageModel.state.dirty) { was, now in
+            guard was, !now, let path = pageModel.state.path else { return }
+            SpotlightSettings.shared.saved(model.serverRootFolder.appendingPathComponent(path, isDirectory: false))
+        }
+        .onContinueUserActivity(CSSearchableItemActionType) { activity in
+            _ = SpotlightSettings.shared.open(activity, with: openFromSpotlight)
+        }
+        // A Shortcut a cell ran, calling back (ganymede-device#40); the
+        // app has no other `ganymede://` URLs here yet.
+        .onOpenURL { url in
+            KernelHost.shortcuts.handle(url)
+        }
         // Opened again from the root, not where the last visit ended.
         .sheet(isPresented: $settings, onDismiss: { settingsPath = [] }) {
             NavigationStack(path: $settingsPath) {
@@ -434,6 +455,7 @@ struct ContentView: View {
             if phase == .background { openFiles.saveHidden() }
             if phase == .active {
                 Task { await model.resume() }
+                SpotlightSettings.shared.syncIfStale()
             }
         }
         #endif
@@ -775,6 +797,27 @@ struct ContentView: View {
             if portrait { columns = .detailOnly }
         }
     }
+
+    /// A Spotlight result (#305): its notebook, when it is in the folder
+    /// the server serves, opens as one picked in the sidebar would.
+    private func openFromSpotlight(_ url: URL) {
+        guard let path = NotebookActions.apiPath(for: url, root: model.serverRootFolder) else { return }
+        pageModel.run("open", arg: path)
+        if isPhone {
+            phonePath = [.notebook]
+        } else if drawsNativeChrome {
+            openFiles.showNotebook()
+            panelFills = false
+            if portrait { columns = .detailOnly }
+        }
+    }
+
+    /// The page's recents, as files, for Spotlight (#305).
+    private var recentFiles: [URL] {
+        (pageModel.state.recents ?? []).map {
+            model.serverRootFolder.appendingPathComponent($0, isDirectory: false)
+        }
+    }
     #endif
 
     private var content: some View {
@@ -813,14 +856,15 @@ struct ContentView: View {
     }
 }
 
-/// A keychain problem with the remotes' tokens, on the window or, on iOS,
+/// A keychain problem (remotes' tokens, the SSH key, the MCP token), on
+/// the window or, on iOS,
 /// the whole app's screen (not only the notebook's, #209).
 private struct KeychainAlert: ViewModifier {
     var model: AppModel
 
     func body(content: Content) -> some View {
         content.alert(
-            "Remotes",
+            "Keychain",
             isPresented: Binding(
                 get: { model.keychainError != nil },
                 set: { if !$0 { model.keychainError = nil } }

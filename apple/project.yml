@@ -79,7 +79,7 @@ packages:
   # The `device` bridge for notebook cells, on the kernel web view only (#99).
   GanymedeDevice:
     url: https://github.com/tlockney/ganymede-device
-    revision: 1c91ace6475140e492c1cc8585ff7d77637dcfb2
+    revision: b7fefb02fe70ebf5cfa79609bc89867e0edd5390
 settings:
   base:
     SWIFT_VERSION: '5.0'
@@ -485,6 +485,12 @@ targets:
     info:
       path: build/Info-iOS.plist
       properties:
+        # Where the Shortcuts app calls back after `device.shortcuts.run`
+        # (ganymede-device#40).
+        CFBundleURLTypes:
+          - CFBundleURLName: com.ganymede-server.Ganymede
+            CFBundleURLSchemes:
+              - ganymede
         GanymedeAppGroup: group.com.ganymede-server.Ganymede
         CFBundleDisplayName: Ganymede
         # XcodeGen writes 1.0 and 1 otherwise; release-app.sh sets these.
@@ -579,6 +585,7 @@ targets:
       - path: Sources/Ganymede/HelpLinks.swift
       - path: Sources/Ganymede/Terminal/ProcessTerminalTransport.swift
       - path: Sources/Ganymede/UpdateFeed.swift
+      - path: Sources/Ganymede/NotebookIndex.swift
       - path: Sources/QuickLook/Preview/PreviewResources.swift
       - path: Sources/QuickLook/Thumbnail/NotebookSummary.swift
       - path: Sources/QuickLook/Thumbnail/ThumbnailProvider.swift
@@ -633,7 +640,10 @@ targets:
       - path: Sources/Ganymede/Terminal/SSHKey.swift
       - path: Sources/Ganymede/Editor/TextFile.swift
       - path: Sources/Ganymede/Editor/CodeEditing.swift
+      # The line-number gutter (#524).
+      - path: Sources/Ganymede/Editor/LineNumbers.swift
       - path: Sources/Ganymede/FileStack.swift
+      - path: Sources/Ganymede/NotebookIndex.swift
       - path: Sources/Ganymede/CrashScrub.swift
       - path: Sources/Ganymede/NotebookActions.swift
       - path: Sources/Ganymede/AppURL.swift

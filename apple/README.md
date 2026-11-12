@@ -142,6 +142,16 @@ Applications, and open it; Gatekeeper opens it without a warning.
 `release.yml` builds it with `scripts/release-app.sh`
 ([docs/releasing.md](../docs/releasing.md)).
 
+The latest build of `main` is always at
+[`main-build`](https://github.com/tlockney/ganymede-ui/releases/tag/main-build):
+[Ganymede-macOS.zip](https://github.com/tlockney/ganymede-ui/releases/download/main-build/Ganymede-macOS.zip),
+signed and notarized like a release. `main-build.yml` replaces it on
+each push to `main` that changes the app (#539). It is the same app as
+the release, with the same bundle ID, settings and data, so it replaces
+an installed release when moved to Applications. It doesn't update to
+newer main builds; the next release's update replaces it
+([docs/releasing.md](../docs/releasing.md#main-builds)).
+
 Each run of the `macos-app` job on a push to `main` also uploads
 `Ganymede-macOS` (a zipped Release build) under the run's
 Artifacts; pull requests build and test the Debug app only. It is ad-hoc

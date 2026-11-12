@@ -325,8 +325,9 @@ Settings > General turns the daily check off, or makes updates download
 and install on their own (they install when you quit). The first release
 with updates has to be installed by hand; later ones install themselves.
 Builds made from source, and CI's ad-hoc builds, don't update
-themselves. The check downloads the release feed from GitHub (its release
-asset host serves the file) and sends nothing about you or your
+themselves. The `main-build` download (a build of `main`) takes the
+next release's update and never newer main builds. The check downloads
+the release feed from GitHub (its release asset host serves the file) and sends nothing about you or your
 notebooks; the download carries your IP address and the app's version,
 as any download does.
 
@@ -491,6 +492,22 @@ headings; pick one to go to its cell.
 - **Downloads** open the share sheet, where Save to Files keeps them.
 - In the background iOS may stop the app's server; back in the
   foreground the app restarts it if it stopped answering.
+
+## Spotlight
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+On the Mac, iPad and iPhone, a Spotlight search finds notebooks by their
+title, headings and Markdown text, and choosing one opens it in
+Ganymede. The notebooks indexed are the ones opened lately, and on the
+Mac also those in folders added under Settings › General › Spotlight.
+Outputs are never indexed, and code only with **Include code**. Files
+over 5 MB are left out. A notebook's entry is updated when it is saved,
+and the index is checked when the app comes to the front, so moved and
+deleted notebooks leave it. Turning **Show notebooks in Spotlight** off
+removes every entry. The index stays on the device.
 
 ## Crash reports
 

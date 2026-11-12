@@ -69,6 +69,12 @@ final class KernelHost: NSObject {
     /// while the app is in front, so it must outlive any one window.
     private static let notifications = SystemNotificationScheduler()
 
+    /// The Shortcuts `device.shortcuts.run` started and waits on
+    /// (ganymede-device#40), one for every bridge: the Shortcuts app calls
+    /// back to a `ganymede://device-callback/shortcuts/...` URL, which the
+    /// app hands to `shortcuts.handle(_:)` before anything else sees it.
+    static let shortcuts = ShortcutCalls(callback: URL(string: "ganymede://device-callback/shortcuts")!)
+
     /// The bridge cells get by default: every namespace ganymede-device
     /// has, with the permissioned ones (ganymede-device#57, #422) turned
     /// on, host events (`device.on`), and folders the person picks
@@ -92,6 +98,7 @@ final class KernelHost: NSObject {
         bridge.addBluetooth()
         bridge.addFolders(folders)
         bridge.addHostEvents()
+        bridge.addShortcuts(shortcuts)
         // Notebook widgets (#436), off until Settings › Device turns them
         // on: what a run publishes goes to the App Group, where the
         // widget reads it.

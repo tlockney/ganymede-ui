@@ -1,6 +1,8 @@
 #!/bin/sh
 # Which expensive CI jobs a pull request needs (ci.yml, #344). Prints
 # `e2e=true|false` and `macos=true|false`, for $GITHUB_OUTPUT.
+# main-build.yml builds the Mac app on a push to main when `macos` is
+# true (#539).
 #
 # On a pull request, actions/checkout checks out the merge commit, so
 # HEAD^1 is the base and `git diff HEAD^1 HEAD` is what the PR changes.
