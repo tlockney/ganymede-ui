@@ -516,6 +516,14 @@ messages from the server's origin. A restart keeps the kernel id, so each
 start gets a run number, which the page puts on everything it sends:
 a late message from the run before is dropped.
 
+`kernel.html` comes from the service worker's precache, so after an app
+update the first kernel page can be the previous release's. Before it
+says it is ready, the page asks the worker to check for an update, and
+loads again (once per web view session) when a newer worker takes
+control; Swift holds the kernels' starts until then
+(`src/lib/kernel-page-worker.ts`). A newer worker that arrives later
+waits for the next session, since a reload would end the running kernels.
+
 The kernels belong to the server, not to a window: a window's reload
 leaves them running, and the hidden web view lives inside whichever
 notebook page is in a window, since WebKit suspends one in none. When

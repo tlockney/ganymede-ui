@@ -21,6 +21,7 @@ import {
   messageHandler,
   type ToKernel,
 } from './lib/kernel-relay';
+import { mayReload, workerIsCurrent } from './lib/kernel-page-worker';
 
 /** The running kernels, by id, each with the run Swift gave its start. */
 const kernels = new Map<string, { kernel: BrowserKernel; run: number }>();
@@ -142,4 +143,14 @@ export function deliver(m: ToKernel): void {
 }
 
 (window as { ganymedeKernelHost?: { deliver: typeof deliver } }).ganymedeKernelHost = { deliver };
-post({ op: 'ready' });
+// Ready at once outside a service worker (the dev server, tests); under
+// one, after checking it is the current release's (#521).
+const worker = navigator.serviceWorker;
+if (!worker?.controller) {
+  post({ op: 'ready' });
+} else {
+  void workerIsCurrent(worker).then(current => {
+    if (!current && mayReload()) location.reload();
+    else post({ op: 'ready' });
+  });
+}
