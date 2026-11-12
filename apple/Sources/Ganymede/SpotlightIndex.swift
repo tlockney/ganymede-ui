@@ -27,6 +27,12 @@ actor SpotlightIndex {
     private let index = CSSearchableIndex(name: "notebooks")
     private let manifestFile: URL?
     private var manifest: Manifest
+    /// Off: nothing is indexed, whatever sync was already on its way.
+    private var enabled = UserDefaults.standard.object(forKey: SpotlightKeys.enabled) as? Bool ?? true
+    /// Bumped when Spotlight is turned off or on: an `apply` that was
+    /// suspended across the change (actor reentrancy) stops, and takes
+    /// back what it had just indexed.
+    private var generation = 0
 
     init() {
         let support = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
@@ -49,6 +55,7 @@ actor SpotlightIndex {
     /// Makes the index hold exactly the notebooks in `urls` (those still
     /// there and small enough), indexing only what changed since.
     func sync(_ urls: [URL], code: Bool) async {
+        guard enabled else { return }
         var wanted: [String: Date] = [:]
         for url in urls {
             if let date = Self.indexable(url) { wanted[url.standardizedFileURL.path] = date }
@@ -61,7 +68,7 @@ actor SpotlightIndex {
     /// Indexes `url` again if it is in the index, as after a save.
     func refresh(_ url: URL, code: Bool) async {
         let path = url.standardizedFileURL.path
-        guard manifest.files[path] != nil else { return }
+        guard enabled, manifest.files[path] != nil else { return }
         var wanted: [String: Date] = [:]
         if let date = Self.indexable(url) { wanted[path] = date }
         let plan = SpotlightPlan.make(wanted: wanted, indexed: [path: manifest.files[path]!], all: code != manifest.code)
@@ -74,8 +81,15 @@ actor SpotlightIndex {
         await apply(SpotlightPlan(index: [], remove: [path]), dates: [:], code: manifest.code)
     }
 
-    /// Empties the index, as when Spotlight is turned off.
-    func removeAll() async {
+    /// Turns indexing on or off; off empties the index.
+    func setEnabled(_ on: Bool) async {
+        enabled = on
+        generation += 1
+        if !on { await removeAll() }
+    }
+
+    /// Empties the index.
+    private func removeAll() async {
         do {
             try await index.deleteSearchableItems(withDomainIdentifiers: [Self.domain])
             manifest.files = [:]
@@ -86,9 +100,11 @@ actor SpotlightIndex {
     }
 
     private func apply(_ plan: SpotlightPlan, dates: [String: Date], code: Bool) async {
+        let started = generation
         if !plan.remove.isEmpty {
             do {
                 try await index.deleteSearchableItems(withIdentifiers: plan.remove)
+                guard generation == started else { return }
                 for path in plan.remove { manifest.files[path] = nil }
             } catch {
                 NSLog("Ganymede: Spotlight entries couldn't be removed: \(error.localizedDescription)")
@@ -105,6 +121,7 @@ actor SpotlightIndex {
                 // Not a notebook (any more): nothing to find it by.
                 if manifest.files[path] != nil {
                     try? await index.deleteSearchableItems(withIdentifiers: [path])
+                    guard generation == started else { return }
                     manifest.files[path] = nil
                 }
                 continue
@@ -115,6 +132,11 @@ actor SpotlightIndex {
         if !items.isEmpty {
             do {
                 try await index.indexSearchableItems(items)
+                guard generation == started else {
+                    // Turned off meanwhile: take these back out.
+                    try? await index.deleteSearchableItems(withIdentifiers: Array(indexed.keys))
+                    return
+                }
                 manifest.files.merge(indexed) { $1 }
             } catch {
                 NSLog("Ganymede: notebooks couldn't be added to Spotlight: \(error.localizedDescription)")
@@ -165,11 +187,11 @@ final class SpotlightSettings {
     var enabled: Bool {
         didSet {
             defaults.set(enabled, forKey: SpotlightKeys.enabled)
-            if enabled {
-                sync()
-            } else {
-                walking?.cancel()
-                Task { await SpotlightIndex.shared.removeAll() }
+            let on = enabled
+            if !on { walking?.cancel() }
+            Task {
+                await SpotlightIndex.shared.setEnabled(on)
+                if on { sync() }
             }
         }
     }

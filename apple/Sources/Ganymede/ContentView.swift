@@ -392,7 +392,10 @@ struct ContentView: View {
         .modifier(KeychainAlert(model: model))
         // Spotlight (#305): the page's recents are indexed, a save updates
         // its entry, and a result opens here.
-        .onChange(of: pageModel.state.recents, initial: true) { _, _ in
+        .onChange(of: pageModel.state.recents, initial: true) { _, recents in
+            // nil until the page reports: syncing then would drop every
+            // entry, to index them all again a moment later.
+            guard recents != nil else { return }
             SpotlightSettings.shared.sync(recents: recentFiles)
         }
         .onChange(of: pageModel.state.dirty) { was, now in
