@@ -2,11 +2,11 @@
 // since its server has no kernels. The app opens the token URL with
 // `kernels=page`; the TypeScript cell runs in cdp-kernel's browser kernel
 // and the notebook saves to the server's folder.
-import { readdirSync, readFileSync, rmSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { GANYMEDE_URL, ROOT_DIR, TOKEN } from './env';
-import { outputs, waitForReady } from './helpers';
+import { outputs, removeFromServer, waitForReady } from './helpers';
 
 const notebooks = () => new Set(readdirSync(ROOT_DIR).filter(f => f.endsWith('.ipynb')));
 let before: Set<string>;
@@ -14,8 +14,8 @@ let before: Set<string>;
 test.beforeEach(() => {
   before = notebooks();
 });
-test.afterEach(() => {
-  for (const f of notebooks()) if (!before.has(f)) rmSync(join(ROOT_DIR, f), { force: true });
+test.afterEach(async () => {
+  await removeFromServer(...[...notebooks()].filter(f => !before.has(f)));
 });
 
 test('keeps notebooks on the server and runs kernels in the page', async ({ page }) => {

@@ -1,11 +1,8 @@
 // Open Example Notebooks (#414): the examples are copied into a new folder,
 // the first opens, and their saved outputs show as trusted, with no Trust
 // Notebook, in the browser's storage and on a server, which signs them.
-import { rmSync } from 'node:fs';
-import { join } from 'node:path';
 import { expect, type Page, test } from '@playwright/test';
-import { ROOT_DIR } from './env';
-import { openWithToken, outputs, sidebarItem, waitForReady } from './helpers';
+import { openWithToken, outputs, removeFromServer, sidebarItem, waitForReady } from './helpers';
 
 async function openExamples(page: Page) {
   await page.getByRole('button', { name: 'Open Example Notebooks' }).click();
@@ -58,7 +55,7 @@ test('the examples open, trusted, and run in this browser', async ({ page }) => 
 });
 
 // The server's folder is shared with the other specs: leave it as it was.
-test.afterAll(() => rmSync(join(ROOT_DIR, 'Examples'), { recursive: true, force: true }));
+test.afterAll(() => removeFromServer('Examples'));
 
 test('the examples are signed on a server, so they stay trusted', async ({ page }) => {
   await openWithToken(page);

@@ -173,6 +173,33 @@ export function changedOnDisk(fileName: string, dirty: boolean): Problem {
   };
 }
 
+/** The server closed `fileName`'s room for good (#183). */
+export function roomClosed(
+  fileName: string,
+  why: { kind: 'deleted' } | { kind: 'restarted' } | { kind: 'refused'; reason: string },
+): Problem {
+  if (why.kind === 'restarted') {
+    return {
+      kind: 'save-failed',
+      message: `The server restarted, so ${fileName} was opened again from disk. Edits made here since its last save weren’t kept.`,
+      actions: [],
+    };
+  }
+  return why.kind === 'deleted'
+    ? {
+        kind: 'save-failed',
+        message: `${fileName} was deleted. Edits here are no longer saved.`,
+        hint: 'Download a copy to keep them.',
+        actions: [],
+      }
+    : {
+        kind: 'save-failed',
+        message: `The server closed ${fileName}: ${why.reason || 'no reason given'}. Edits here are no longer saved.`,
+        hint: 'Reopen the notebook, or download a copy.',
+        actions: [],
+      };
+}
+
 /** A save (or autosave) of `fileName` failed with `e`. */
 export function saveFailed(fileName: string, e: unknown, auto = false): Problem {
   const verb = auto ? 'autosave' : 'save';

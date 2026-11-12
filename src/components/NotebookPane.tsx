@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { SessionContext } from '@jupyterlab/apputils';
 import type * as nbformat from '@jupyterlab/nbformat';
 import { type Notebook, NotebookActions, NotebookModel } from '@jupyterlab/notebook';
+import type { NotebookChange } from '@jupyter/ydoc';
 import type { Contents, Kernel, KernelSpec } from '@jupyterlab/services';
 import type { IDisposable } from '@lumino/disposable';
 import type { CommandRegistry } from '@lumino/commands';
@@ -18,7 +19,9 @@ import {
   DISK_CHECK_INTERVAL_MS,
   NotebookSaver,
   SaveConflict,
+  type Saver,
 } from '../lib/saver';
+import { NotebookRoom, RoomSaver, trustFromFile, watchRemoteOutputs } from '../lib/room';
 import {
   type Problem,
   changedOnDisk,
@@ -30,6 +33,7 @@ import {
   messageOf,
   missingKernel,
   openFailure,
+  roomClosed,
   saveFailed,
   unreachable,
 } from '../lib/problems';
@@ -179,7 +183,9 @@ type Open = {
   model: NotebookModel;
   session: SessionContext;
   widgets: NotebookWidgets;
-  saver: NotebookSaver;
+  saver: Saver;
+  /** The notebook's document room, when it lives in one (#183). */
+  room?: NotebookRoom;
   /**
    * Before a run of the selected cells (or `all`): starts the kernel when
    * none is running and they include a code cell. False when there is none
@@ -240,6 +246,9 @@ function runFailed(
   return failed(what, e, { retry });
 }
 
+/** How long after a room's last save in a burst to read which cells the server trusts. */
+const TRUST_CHECK_DELAY_MS = 2_000;
+
 /**
  * The kernel a first run starts for a file naming `wanted`: that one if it
  * is installed, else the default; or, for one that isn't installed, its
@@ -269,6 +278,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
   const onRenamedRef = useRef(onRenamed);
   onRenamedRef.current = onRenamed;
   const { services } = backend;
+  /** Whether notebooks may live in the server's rooms (#183). */
+  const rooms = backend.config.kind === 'ganymede';
   // The problem notice's kernel list follows installs and removals (#350).
   useSignals(services.kernelspecs.specsChanged);
   const host = useRef<HTMLDivElement>(null);
@@ -357,6 +368,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
   useEffect(() => {
     let cancelled = false;
     let current: Open | undefined;
+    /** The room joined for this open, until `current` holds it. */
+    let joinedRoom: NotebookRoom | undefined;
     setJoined(false);
     setError(undefined);
     // A fresh copy of the file: nothing to lock against yet.
@@ -375,25 +388,90 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         setNotice({ kind: 'save-failed', message: lastSave, actions: [] });
         shownHandoff(handed);
       }
-      const [file, widgets] = await Promise.all([
-        services.contents.get(path, { type: 'notebook', content: true }),
+      // On a Ganymede server, the notebook lives in its document room
+      // (#183): edits from a Claude session or another window show up live,
+      // and the server saves the file. Elsewhere, or if the server has no
+      // rooms, it loads and saves through the contents API.
+      const roomSettings = rooms ? services.serverSettings : undefined;
+      const [room, widgets] = await Promise.all([
+        roomSettings
+          ? NotebookRoom.join({
+              settings: roomSettings,
+              path,
+              onClosed: why => {
+                if (cancelled) return;
+                if (why.kind === 'restarted') {
+                  // The server's new room comes from the file: open it
+                  // again, as Reload does, rejoining the kernel if it ran
+                  // on. Edits the server never saved are gone with the old
+                  // room, so say so when there were any (the notice stays
+                  // through the reopen).
+                  if (joinedRoom?.notebook.getState('dirty') === true) {
+                    setNotice(roomClosed(basename(path), why));
+                  }
+                  reloading.current = true;
+                  setOpen(undefined);
+                  setAttempt(a => a + 1);
+                  return;
+                }
+                // Deleted or refused: nothing saves it any more.
+                gone.current = true;
+                setNotice(roomClosed(basename(path), why));
+              },
+            }).catch((e: unknown) => {
+              console.warn(`Couldn’t join the room for ${path}; using the contents API:`, e);
+              return undefined;
+            })
+          : undefined,
         // ipywidgets live in their own chunk; load them alongside the file so
         // the comm target is there before the kernel can open a widget.
         import('../lib/widgets'),
         services.kernelspecs.ready,
       ]);
+      joinedRoom = room;
+      if (cancelled) {
+        room?.dispose();
+        return;
+      }
+      const file = room
+        ? undefined
+        : await services.contents.get(path, { type: 'notebook', content: true });
       if (cancelled) return;
-      const content = file.content as nbformat.INotebookContent;
+      const content = room
+        ? (room.notebook.toJSON() as nbformat.INotebookContent)
+        : (file!.content as nbformat.INotebookContent);
       // In the Apple apps, ask now for the device permissions the notebook
       // says it uses, not mid-run (#383).
       declareDevice(path, content.metadata);
 
       const rendermime = createRendermime(path, services.contents);
       // As JupyterLab's model factory does by default: undo per cell.
-      const model = new NotebookModel({ disableDocumentWideUndoRedo: true });
-      // The browser's storage keeps a file's lines split (#414).
-      model.fromJSON(rejoinLines(content));
-      model.dirty = false;
+      const model = room
+        ? new NotebookModel({
+            sharedModel: room.notebook,
+            collaborationEnabled: true,
+            disableDocumentWideUndoRedo: true,
+          })
+        : new NotebookModel({ disableDocumentWideUndoRedo: true });
+      if (!room) {
+        // The browser's storage keeps a file's lines split (#414).
+        model.fromJSON(rejoinLines(content));
+        model.dirty = false;
+      } else {
+        // As `fromJSON` does for a file: a notebook has at least one cell.
+        if (model.cells.length === 0) {
+          model.sharedModel.insertCell(0, { cell_type: 'code', source: '' });
+        }
+        // The room doesn't carry trust; the file, as the server marks it, does.
+        await trustFromFile(services.contents, path, model).catch((e: unknown) =>
+          console.warn(`Couldn’t read which cells of ${path} are trusted:`, e),
+        );
+        if (cancelled) {
+          model.dispose();
+          room.dispose();
+          return;
+        }
+      }
       const notebook = createNotebook(rendermime);
 
       // One session per notebook, found by path. `initialize` rejoins the
@@ -494,13 +572,16 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
             ?.interrupt()
             .catch(e => setNotice(failed('interrupt the kernel', e))),
       });
-      const saver = new NotebookSaver({
-        contents: services.contents,
-        path,
-        model,
-        lastModified: file.last_modified,
-        beforeSave: () => notebookWidgets.saveState(model),
-      });
+      const beforeSave = () => notebookWidgets.saveState(model);
+      const saver: Saver = room
+        ? new RoomSaver({ room, path, model, beforeSave })
+        : new NotebookSaver({
+            contents: services.contents,
+            path,
+            model,
+            lastModified: file!.last_modified,
+            beforeSave,
+          });
       const onKey = (e: KeyboardEvent) => commands.processKeydownEvent(e);
       // Capture phase, as a Lumino application does, so a notebook shortcut
       // (Shift+Enter) wins over the editor's own binding for the key.
@@ -512,6 +593,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         session,
         widgets: notebookWidgets,
         saver,
+        room,
         ensureKernel,
         commands,
         runStatus,
@@ -539,16 +621,26 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
           },
         ],
       };
+      // A file deleted under an earlier open of this pane is back (Reload).
+      gone.current = false;
       setOpen(current);
       await joining;
       if (cancelled) return;
       setJoined(true);
       await syncLanguage();
-    })().catch(e => !cancelled && setError(e ?? new Error('Unknown error')));
+    })().catch(e => {
+      // Failed between the join and the open: the room has no pane to
+      // dispose it, and would go on reconnecting.
+      if (!current) joinedRoom?.dispose();
+      if (!cancelled) setError(e ?? new Error('Unknown error'));
+    });
     return () => {
       cancelled = true;
       const done = current;
-      if (!done) return;
+      if (!done) {
+        joinedRoom?.dispose();
+        return;
+      }
       const teardown = () => {
         done.disposables.forEach(d => d.dispose());
         // After React's commit: JupyterLab's React-based widgets unmount
@@ -557,6 +649,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
           done.notebook.dispose();
           holderOf(done.notebook).remove();
           done.model.dispose();
+          // After the model: the room's notebook is its shared model.
+          done.room?.dispose();
           // Leave the kernel running; the sidebar lists it under Running.
           // A start still under way finishes first, so its kernel takes the
           // file's path and the session doesn't throw "Disposed" (#461).
@@ -601,7 +695,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         teardown();
       }
     };
-  }, [services, path, attempt, memory, setIntended]);
+  }, [services, rooms, path, attempt, memory, setIntended]);
 
   // Put the Lumino widget in the page. The widget lives in a holder node
   // that moves in and out of the pane: when the pane goes, the holder is
@@ -786,7 +880,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         return false;
       }
     });
-    const timer = setInterval(autosave, AUTOSAVE_INTERVAL_MS);
+    // A room saves itself a second after the last edit.
+    const timer = saver.live ? undefined : setInterval(autosave, AUTOSAVE_INTERVAL_MS);
     document.addEventListener('visibilitychange', onHidden);
     window.addEventListener('beforeunload', onUnload);
     return () => {
@@ -797,6 +892,66 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
     };
   }, [open, path, lock]);
 
+  // In a room, outputs another client wrote (an agent running cells
+  // through the server, or a write on disk the server merged) are
+  // untrusted here, even in a cell this page trusted. The server trusts
+  // them when they came from a run on it, and says so in the file it
+  // saves: read which cells it trusts after each save while some outputs
+  // aren't (#183).
+  useEffect(() => {
+    if (!open?.room) return;
+    const { model } = open;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let reading = false;
+    /** A save came in during a read: read again once it's done. */
+    let pending = false;
+    /** Moves on each remote output change, so a read that spans one is dropped. */
+    let generation = 0;
+    // Once the saves settle, not on each one: while someone types the room
+    // saves about once a second, and each read is the whole notebook.
+    const schedule = () => {
+      clearTimeout(timer);
+      timer = setTimeout(read, TRUST_CHECK_DELAY_MS);
+    };
+    const read = () => {
+      if (!hasUntrustedOutputs(model)) return;
+      reading = true;
+      const at = generation;
+      void trustFromFile(services.contents, open.saver.path, model, () => generation !== at)
+        .then(changed => {
+          if (changed) setTrusted(!hasUntrustedOutputs(model));
+          // Outputs changed during the read: the file may predate them.
+          if (generation !== at) pending = true;
+        })
+        .catch(() => {})
+        .finally(() => {
+          reading = false;
+          if (pending) {
+            pending = false;
+            schedule();
+          }
+        });
+    };
+    const onChange = (_: unknown, change: NotebookChange) => {
+      const saved = change.stateChange?.some(c => c.name === 'dirty' && c.newValue === false);
+      if (!saved || !hasUntrustedOutputs(model)) return;
+      if (reading) pending = true;
+      else schedule();
+    };
+    model.sharedModel.changed.connect(onChange);
+    const unwatch = watchRemoteOutputs(model, () => {
+      generation++;
+      setTrusted(!hasUntrustedOutputs(model));
+      if (reading) pending = true;
+      else schedule();
+    });
+    return () => {
+      clearTimeout(timer);
+      unwatch();
+      model.sharedModel.changed.disconnect(onChange);
+    };
+  }, [open, services]);
+
   // Notice a change on disk without waiting for a save (#367): every few
   // seconds while the page shows, and when it comes back. Another writer
   // (an agent editing through the server, say) is caught before any edit
@@ -806,8 +961,11 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
   // new version in place instead (#508): an agent journaling into the open
   // notebook would otherwise lock it every few seconds. The kernel stays;
   // the scroll position and active cell are kept.
+  //
+  // A notebook in a room (#183) needs none of this: the server takes in
+  // changes on disk and the pane sees them live.
   useEffect(() => {
-    if (!open) return;
+    if (!open || open.saver.live) return;
     const { saver, model, notebook } = open;
     let checking = false;
     let stopped = false;

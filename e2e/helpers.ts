@@ -1,11 +1,37 @@
-import { mkdirSync } from 'node:fs';
-import { join } from 'node:path';
+import { mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
+import { join, relative } from 'node:path';
 import { expect, type Page, type TestInfo } from '@playwright/test';
-import { TOKEN } from './env';
+import { GANYMEDE_URL, ROOT_DIR, TOKEN } from './env';
 
 /** Selectors and steps the specs share. UI-level only: roles, visible text,
  * and JupyterLab's own `.jp-*` classes, so they survive changes to how the
  * notebook pane is built. */
+
+/**
+ * Delete files the test made in the server's folder through the contents
+ * API, so the server closes their rooms (#183). A file deleted behind its
+ * back keeps its room, and a later file at the same path joins it. Then
+ * remove whatever is left (folders) from disk.
+ */
+export async function removeFromServer(...names: string[]) {
+  const files = (path: string): string[] => {
+    try {
+      if (!statSync(path).isDirectory()) return [path];
+    } catch {
+      return [];
+    }
+    return readdirSync(path).flatMap(f => files(join(path, f)));
+  };
+  for (const name of names) {
+    for (const file of files(join(ROOT_DIR, name))) {
+      const parts = relative(ROOT_DIR, file).split(/[\\/]/).map(encodeURIComponent);
+      await fetch(`${GANYMEDE_URL}/api/contents/${parts.join('/')}?token=${TOKEN}`, {
+        method: 'DELETE',
+      }).catch(() => {});
+    }
+    rmSync(join(ROOT_DIR, name), { recursive: true, force: true });
+  }
+}
 
 export const notebookName = (file: string) => file.replace(/\.ipynb$/, '');
 

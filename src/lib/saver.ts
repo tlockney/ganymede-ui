@@ -49,11 +49,28 @@ export type SaveOptions = {
 };
 
 /**
+ * What the notebook pane saves through: {@link NotebookSaver} over the
+ * contents API, or a room's (`RoomSaver`, #183).
+ */
+export interface Saver {
+  /** True when the server holds the notebook live (a room). */
+  readonly live: boolean;
+  readonly path: string;
+  save(options?: SaveOptions): Promise<void>;
+  move(move: () => Promise<{ path: string; lastModified?: string }>): Promise<void>;
+  changedOnDisk(): Promise<string | undefined>;
+  accept(lastModified?: string): Promise<void>;
+  pull(apply: (content: Contents.IModel) => void, canApply?: () => boolean): Promise<boolean>;
+  dispose(): void;
+}
+
+/**
  * Saves one notebook model to its file, as JupyterLab's document context
  * does: one save at a time, a conflict when the file changed on disk, and
  * the dirty flag cleared only when no edit arrived during the round trip.
  */
-export class NotebookSaver {
+export class NotebookSaver implements Saver {
+  readonly live = false;
   private o: Options;
   private lastModified?: string;
   /** Bumped on every change to the model, to spot edits during a save. */
