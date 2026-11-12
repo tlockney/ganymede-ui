@@ -3,16 +3,22 @@ import { mayReload, readyWhenCurrent, RELOADED_KEY, workerIsCurrent } from './ke
 
 // A service worker container with a registration whose update finds
 // `found` (a new worker installing, or none).
-function container(found: 'installing' | 'activating' | 'none' | 'fails', controller = true) {
+function container(
+  found: 'installing' | 'waiting' | 'activating' | 'none' | 'fails',
+  controller = true,
+) {
   const target = new EventTarget();
   const current = controller ? {} : null;
+  // A new worker installing, which can fail and become redundant.
+  const installing = Object.assign(new EventTarget(), { state: 'installing' });
   const registration = {
     installing: null as object | null,
     waiting: null as object | null,
     active: current as object | null,
     update: vi.fn(async () => {
       if (found === 'fails') throw new Error('offline');
-      if (found === 'installing') registration.installing = {};
+      if (found === 'installing') registration.installing = installing;
+      if (found === 'waiting') registration.waiting = {};
       if (found === 'activating') registration.active = {};
     }),
   };
@@ -21,6 +27,10 @@ function container(found: 'installing' | 'activating' | 'none' | 'fails', contro
     getRegistration: async () => registration,
     addEventListener: target.addEventListener.bind(target),
     claim: () => target.dispatchEvent(new Event('controllerchange')),
+    failInstall: () => {
+      installing.state = 'redundant';
+      installing.dispatchEvent(new Event('statechange'));
+    },
   };
   return { sw, registration };
 }
@@ -36,8 +46,31 @@ describe('kernel page worker check', () => {
   });
 
   it('is current when the update finds nothing newer, or fails', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     expect(await workerIsCurrent(asContainer(container('none').sw))).toBe(true);
+    expect(warn).not.toHaveBeenCalled();
     expect(await workerIsCurrent(asContainer(container('fails').sw))).toBe(true);
+    expect(warn).toHaveBeenCalledOnce();
+    warn.mockRestore();
+  });
+
+  it('waits for a newer worker that is waiting', async () => {
+    const { sw } = container('waiting');
+    const result = workerIsCurrent(asContainer(sw));
+    await new Promise(r => setTimeout(r, 0));
+    sw.claim();
+    expect(await result).toBe(false);
+  });
+
+  it('stops waiting when the newer worker fails to install', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const { sw } = container('installing');
+    const result = workerIsCurrent(asContainer(sw), 1000, 60_000);
+    await new Promise(r => setTimeout(r, 0));
+    sw.failInstall();
+    expect(await result).toBe(true);
+    expect(warn).toHaveBeenCalledOnce();
+    warn.mockRestore();
   });
 
   it('is not current once a newer worker takes control', async () => {

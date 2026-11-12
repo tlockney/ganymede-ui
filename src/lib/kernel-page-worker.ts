@@ -40,6 +40,8 @@ export async function workerIsCurrent(
   const replaced = new Promise<'replaced'>(resolve =>
     sw.addEventListener('controllerchange', () => resolve('replaced'), { once: true }),
   );
+  let resolveFailed: (value: 'failed') => void = () => {};
+  const failed = new Promise<'failed'>(resolve => (resolveFailed = resolve));
   const checked = (async () => {
     const registration = await sw.getRegistration();
     if (!registration) return 'current' as const;
@@ -50,8 +52,16 @@ export async function workerIsCurrent(
     const active = registration.active;
     const newer =
       registration.installing || registration.waiting || (active && active !== controller);
+    // An install that fails (a precache fetch errors) never claims the
+    // page; stop waiting for it.
+    registration.installing?.addEventListener('statechange', event => {
+      if ((event.target as ServiceWorker | null)?.state === 'redundant') resolveFailed('failed');
+    });
     return newer ? ('newer' as const) : ('current' as const);
-  })().catch(() => 'current' as const);
+  })().catch(() => {
+    console.warn('kernel page: the service worker update check failed; starting kernels');
+    return 'current' as const;
+  });
   const first = await Promise.race([checked, replaced, wait(checkMs)]);
   if (first === 'replaced') return false;
   if (first === 'current') return true;
@@ -59,7 +69,12 @@ export async function workerIsCurrent(
     console.warn('kernel page: the service worker update check timed out; starting kernels');
     return true;
   }
-  if ((await Promise.race([replaced, wait(installMs)])) === 'replaced') return false;
+  const installed = await Promise.race([replaced, failed, wait(installMs)]);
+  if (installed === 'replaced') return false;
+  if (installed === 'failed') {
+    console.warn('kernel page: a newer service worker failed to install; starting kernels');
+    return true;
+  }
   console.warn(
     'kernel page: a newer service worker did not take control in time; starting kernels',
   );

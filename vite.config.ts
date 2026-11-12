@@ -26,10 +26,10 @@ process.env.VITE_RELEASE ??= release();
 // notebook app (#518, #521). kernel.html is the Apple apps' hidden kernel
 // web view (#99).
 const PAGES = { main: 'index.html', kernel: 'kernel.html' };
-const escape = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const OTHER_PAGES = Object.values(PAGES)
   .filter(page => page !== 'index.html')
-  .map(page => new RegExp(`^/${escape(page)}(\\?|$)`));
+  .map(page => new RegExp(`^/${escapeRegExp(page)}(\\?|$)`));
 
 // Where `npm run dev` proxies /api to. Start Ganymede with
 // `ganymede serve --port 8888 --token <token>`.

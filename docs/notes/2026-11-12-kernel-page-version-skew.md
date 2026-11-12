@@ -38,3 +38,8 @@ when either wait gives up or the tab already reloaded once, so a device
 run can tell which path ran. A newer worker that arrives after `ready`
 takes control of the old page at once and drops its precache; that
 predates this change and is #534.
+
+Second review: a newer worker whose install fails (it goes `redundant`)
+ends the wait at once, a failed update check warns too, and a waiting
+worker has a test. A worker that claims the page before the check runs
+isn't caught; comparing releases would close that (#537).
