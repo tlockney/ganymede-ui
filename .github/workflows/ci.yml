@@ -5,18 +5,25 @@ on:
     branches: [main]
   pull_request:
   # release.yml runs these checks on the tag alongside its app builds,
-  # and on manual branch runs before them, without macos-app: the last app
-  # change passed it on main, and release.yml's own macos and ios jobs
-  # build the app (#361, #491).
+  # and on manual branch runs before them, without macos-app and ios-app:
+  # the last app change passed them on main, and release.yml's own macos
+  # and ios jobs build the apps (#361, #491).
   workflow_call:
     inputs:
       skip_macos:
-        description: Skip the macos-app job
+        description: Skip the macos-app and ios-app jobs
         type: boolean
         default: false
 
 permissions:
   contents: read
+
+# The tlockney/ganymede tag or commit whose ganymede-ffi the apps link, for
+# macos-app and ios-app here and for release.yml and main-build.yml, which
+# read it from this file.
+env:
+  # A tag downloads the release's XCFramework; a commit builds it.
+  GANYMEDE_REF: v0.10.0
 
 # A new push to a pull request cancels its older run; runs on main finish.
 concurrency:
@@ -25,10 +32,10 @@ concurrency:
 
 jobs:
   # Which of the slow jobs below a pull request needs: scripts/ci-changes.sh
-  # skips e2e and macos-app when the PR can't affect them (docs, a release
+  # skips e2e, macos-app and ios-app when the PR can't affect them (docs, a release
   # PR's version bump, or only the other job's files) (#344). A job skipped
   # by its `if` reports success, so the required checks pass. If this job
-  # fails, its outputs are empty and both jobs run. A push to main is
+  # fails, its outputs are empty and every job runs. A push to main is
   # checked the same way (#360); any other event runs everything.
   changes:
     runs-on: ubuntu-latest
@@ -127,10 +134,6 @@ jobs:
     if: ${{ !cancelled() && needs.changes.outputs.macos != 'false' && !inputs.skip_macos }}
     runs-on: macos-latest
     timeout-minutes: 60
-    env:
-      # The tlockney/ganymede tag or commit whose ganymede-ffi the app links.
-      # A tag downloads the release's XCFramework; a commit builds it.
-      GANYMEDE_REF: v0.10.0
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -167,6 +170,12 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      # Swift package checkouts, by Package.resolved: resolving them takes
+      # about 2.5 minutes, which each app job would pay (#543).
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: apple/build/DerivedData/SourcePackages
+          key: swift-packages-${{ runner.os }}-${{ hashFiles('apple/Package.resolved') }}
       - run: brew install xcodegen
       - run: apple/scripts/bootstrap.sh
         env:
@@ -217,6 +226,67 @@ jobs:
           name: Ganymede-macOS
           path: apple/build/Ganymede-macOS.zip
           if-no-files-found: error
+
+  # The iPad and iPhone app's tests on an iPad simulator, on its own runner
+  # alongside macos-app (#543). Same setup; both jobs use the ffi cache, so
+  # when a new commit pin misses it, each builds the XCFramework once.
+  ios-app:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.macos != 'false' && !inputs.skip_macos }}
+    runs-on: macos-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # A release tag downloads that release's GanymedeFFI.xcframework.zip
+      # in bootstrap.sh; a commit builds it from a checkout (#359). The
+      # build for a commit is cached under its SHA, so only the first run
+      # after the pin moves builds it (#486). Pull requests restore main's
+      # cache but can't write one main reads.
+      - id: ffi
+        if: ${{ !startsWith(env.GANYMEDE_REF, 'v') }}
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: .ffi-cache/GanymedeFFI.xcframework
+          key: ganymede-xcframework-${{ runner.arch }}-${{ env.GANYMEDE_REF }}
+      - if: ${{ !startsWith(env.GANYMEDE_REF, 'v') && steps.ffi.outputs.cache-hit != 'true' }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: tlockney/ganymede
+          ref: ${{ env.GANYMEDE_REF }}
+          path: .ganymede
+          persist-credentials: false
+      - if: ${{ !startsWith(env.GANYMEDE_REF, 'v') && steps.ffi.outputs.cache-hit != 'true' }}
+        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+        with:
+          toolchain: stable
+          targets: aarch64-apple-darwin, aarch64-apple-ios, aarch64-apple-ios-sim
+      - if: ${{ !startsWith(env.GANYMEDE_REF, 'v') && steps.ffi.outputs.cache-hit != 'true' }}
+        uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: .ganymede
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # Swift package checkouts, by Package.resolved: resolving them takes
+      # about 2.5 minutes, which each app job would pay (#543).
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: apple/build/DerivedData/SourcePackages
+          key: swift-packages-${{ runner.os }}-${{ hashFiles('apple/Package.resolved') }}
+      - run: brew install xcodegen
+      - run: apple/scripts/bootstrap.sh
+        env:
+          GANYMEDE_DIR: ${{ !startsWith(env.GANYMEDE_REF, 'v') && steps.ffi.outputs.cache-hit != 'true' && format('{0}/.ganymede', github.workspace) || '' }}
+          GANYMEDE_XCFRAMEWORK: ${{ steps.ffi.outputs.cache-hit == 'true' && format('{0}/.ffi-cache/GanymedeFFI.xcframework', github.workspace) || '' }}
+      # What the cache step saves when the job ends.
+      - if: ${{ !startsWith(env.GANYMEDE_REF, 'v') && steps.ffi.outputs.cache-hit != 'true' }}
+        run: |
+          mkdir -p .ffi-cache
+          cp -R apple/build/GanymedeFFI.xcframework .ffi-cache/
       - name: Build and test for iPadOS (simulator)
         run: |
           # Simulator names change with each Xcode; take the first iPad.

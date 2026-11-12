@@ -7,8 +7,8 @@
 #               package-lock.json (the apps bundle it), and
 #               CDP_KERNEL_VERSION in ci.yml's e2e job
 #   ganymede    its latest GitHub release: GANYMEDE_VERSION in ci.yml's
-#               e2e job, and GANYMEDE_REF in its macos-app job, which
-#               release.yml reads too. A tag downloads that release's
+#               e2e job, and its workflow-level GANYMEDE_REF, which
+#               release.yml and main-build.yml read too. A tag downloads that release's
 #               GanymedeFFI.xcframework instead of building it. When
 #               GANYMEDE_REF is a commit, the tag must contain it: a commit
 #               the tag lacks means Ganymede needs a release first.
@@ -118,7 +118,7 @@ else
 fi
 # bootstrap.sh downloads this for a tag; a release still uploading, or one
 # whose upload failed (or from before v0.8.0), would fail the release PR's
-# macos-app job. Checked only when GANYMEDE_REF moves to the tag.
+# macos-app and ios-app jobs. Checked only when GANYMEDE_REF moves to the tag.
 if [[ "$ref_pin" != "$tag" ]] &&
   ! jq -e '.assets | any(.name == "GanymedeFFI.xcframework.zip")' <<< "$release" > /dev/null; then
   echo "error: ganymede $tag has no GanymedeFFI.xcframework.zip asset" >&2

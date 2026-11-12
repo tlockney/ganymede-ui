@@ -107,10 +107,10 @@ Each archive unpacks to `ganymede-ui-X.Y.Z/`, the built site with
 ## The Mac app
 
 The `macos` job in `release.yml` takes the `GANYMEDE_REF` that ci.yml's
-`macos-app` job tests with and runs `apple/scripts/bootstrap.sh`, which
-downloads that ganymede release's `GanymedeFFI.xcframework.zip` when the
-ref is a release tag, or checks out and builds the commit otherwise
-([apple/README.md](../apple/README.md#build)). It then runs
+`macos-app` and `ios-app` jobs test with and runs
+`apple/scripts/bootstrap.sh`, which downloads that ganymede release's
+`GanymedeFFI.xcframework.zip` when the ref is a release tag, or checks
+out and builds the commit otherwise ([apple/README.md](../apple/README.md#build)). It then runs
 `apple/scripts/release-app.sh`, which:
 
 1. imports the Developer ID Application certificate into a temporary
