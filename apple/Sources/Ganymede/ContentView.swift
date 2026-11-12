@@ -813,14 +813,15 @@ struct ContentView: View {
     }
 }
 
-/// A keychain problem with the remotes' tokens, on the window or, on iOS,
+/// A keychain problem (remotes' tokens, the SSH key, the MCP token), on
+/// the window or, on iOS,
 /// the whole app's screen (not only the notebook's, #209).
 private struct KeychainAlert: ViewModifier {
     var model: AppModel
 
     func body(content: Content) -> some View {
         content.alert(
-            "Remotes",
+            "Keychain",
             isPresented: Binding(
                 get: { model.keychainError != nil },
                 set: { if !$0 { model.keychainError = nil } }
