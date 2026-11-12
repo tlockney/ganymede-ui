@@ -28,3 +28,13 @@ Tests: `src/lib/kernel-page-worker.test.ts` covers no controller, an
 update that finds nothing or fails, a new worker claiming the page, the
 timeout, and the once-per-session guard. The reload itself needs an
 updated app on a device, so it is a by-hand check in #273 and #399.
+
+Review follow-ups: a newer worker that is already activating when the
+page's `update()` returns (the notebook page's update ran first) counts
+as newer, by comparing the registration's active worker with the page's
+controller. Once a newer worker is found, the page waits up to 20 s for
+it to install and take control rather than 3 s, and warns in the console
+when either wait gives up or the tab already reloaded once, so a device
+run can tell which path ran. A newer worker that arrives after `ready`
+takes control of the old page at once and drops its precache; that
+predates this change and is #534.

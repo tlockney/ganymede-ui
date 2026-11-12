@@ -6,43 +6,64 @@
  * update; when a newer worker takes over, the page loads again from it.
  *
  * Swift queues the kernels' starts until the page says it is ready, so a
- * reload before then loses nothing. After that, a new worker is left for
- * the next session: reloading would end the running kernels.
+ * reload before then loses nothing. After that the page stays on its
+ * release until the next session, since a reload would end the running
+ * kernels. A newer worker still takes control of it at once (`autoUpdate`
+ * claims open pages) and drops the old precache, so a later start in that
+ * page can miss its own release's files.
  */
 
 /** sessionStorage key: this tab already reloaded once for a new worker. */
 export const RELOADED_KEY = 'ganymede-kernel-page-reloaded';
 
+/** How long the update check may take before the page says it is ready. */
+export const CHECK_TIMEOUT_MS = 3000;
+/** How long to wait for a newer worker, once found, to finish installing. */
+export const INSTALL_TIMEOUT_MS = 20000;
+
+const wait = (ms: number) =>
+  new Promise<'timeout'>(resolve => setTimeout(() => resolve('timeout'), ms));
+
 /**
  * Whether the page can say it is ready (`true`), or should load again
- * from a newer service worker (`false`). Gives up after `timeoutMs`, and
- * on any error, so a kernel never waits on the worker for long.
+ * from a newer service worker (`false`). The update check gives up after
+ * `checkMs`; a newer worker it finds gets `installMs` to take control.
+ * Errors count as current, so a kernel never waits on the worker for long.
  */
 export async function workerIsCurrent(
   sw: ServiceWorkerContainer | undefined,
-  timeoutMs = 3000,
+  checkMs = CHECK_TIMEOUT_MS,
+  installMs = INSTALL_TIMEOUT_MS,
 ): Promise<boolean> {
   if (!sw?.controller) return true;
-  const replaced = new Promise<boolean>(resolve =>
-    sw.addEventListener('controllerchange', () => resolve(false), { once: true }),
+  const controller = sw.controller;
+  const replaced = new Promise<'replaced'>(resolve =>
+    sw.addEventListener('controllerchange', () => resolve('replaced'), { once: true }),
   );
   const checked = (async () => {
     const registration = await sw.getRegistration();
-    if (!registration) return true;
+    if (!registration) return 'current' as const;
     await registration.update();
-    // `autoUpdate` activates a new worker at once and claims this page;
-    // wait for that, or for the timeout.
-    return registration.installing || registration.waiting ? replaced : true;
-  })().catch(() => true);
-  let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<boolean>(resolve => {
-    timer = setTimeout(() => resolve(true), timeoutMs);
-  });
-  try {
-    return await Promise.race([checked, replaced, timeout]);
-  } finally {
-    clearTimeout(timer);
+    // A newer worker may be installing, waiting, or already activating
+    // (the notebook page's own update can run first): `autoUpdate`
+    // activates it and claims this page.
+    const active = registration.active;
+    const newer =
+      registration.installing || registration.waiting || (active && active !== controller);
+    return newer ? ('newer' as const) : ('current' as const);
+  })().catch(() => 'current' as const);
+  const first = await Promise.race([checked, replaced, wait(checkMs)]);
+  if (first === 'replaced') return false;
+  if (first === 'current') return true;
+  if (first === 'timeout') {
+    console.warn('kernel page: the service worker update check timed out; starting kernels');
+    return true;
   }
+  if ((await Promise.race([replaced, wait(installMs)])) === 'replaced') return false;
+  console.warn(
+    'kernel page: a newer service worker did not take control in time; starting kernels',
+  );
+  return true;
 }
 
 /** Whether this tab may reload for a new worker: at most once. */
@@ -57,4 +78,24 @@ export function mayReload(
   } catch {
     return false;
   }
+}
+
+/**
+ * Says ready at once with no worker in control (the dev server, tests);
+ * under one, after checking it is the current release's, reloading
+ * instead (once per session) when it isn't.
+ */
+export async function readyWhenCurrent(
+  sw: ServiceWorkerContainer | undefined,
+  on: { ready: () => void; reload: () => void },
+  check: typeof workerIsCurrent = workerIsCurrent,
+  canReload: () => boolean = mayReload,
+): Promise<void> {
+  if (!sw?.controller) return on.ready();
+  if (await check(sw)) return on.ready();
+  if (canReload()) return on.reload();
+  console.warn(
+    'kernel page: a newer service worker is in control, but this tab already reloaded once',
+  );
+  on.ready();
 }
