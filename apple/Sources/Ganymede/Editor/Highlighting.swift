@@ -13,10 +13,8 @@ import TreeSitterTypeScript
 import TreeSitterYAML
 #if os(macOS)
 import AppKit
-typealias PlatformColor = NSColor
 #else
 import UIKit
-typealias PlatformColor = UIColor
 #endif
 
 /// Syntax highlighting with Neon and tree-sitter (#122): each language's

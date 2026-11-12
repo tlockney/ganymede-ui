@@ -240,6 +240,7 @@ final class DeviceGrants {
         case "calendar": "Calendars"
         case "microphone": "Microphone"
         case "bluetooth": "Bluetooth"
+        case "shortcuts": "Shortcuts"
         default: capability
         }
     }

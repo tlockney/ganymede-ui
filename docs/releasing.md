@@ -146,7 +146,8 @@ It reads these repository (or `release` environment) secrets:
 
 The job declares the `release` environment. If that environment has a
 required reviewer, the job waits for approval; if it limits deployment
-branches to tags, a manual run on a branch fails there.
+branches to tags, a manual run on a branch fails there, and so does
+every main build (below), which uses the same environment.
 
 To try the signing without releasing, start `release.yml` by hand on a
 branch: `gh workflow run release.yml --ref <branch> --repo
@@ -194,6 +195,41 @@ Sparkle orders updates by `sparkle:version`, the release run number, not
 by version. The feed is whichever release GitHub marks latest, so release
 only from `main`: a release of an older tag published afterwards would
 become the feed and offer newer installs a downgrade.
+
+### Main builds
+
+`main-build.yml` builds the Mac app from `main` on each push that changes
+the app (`scripts/ci-changes.sh` prints `macos=true`), and on a manual
+run on `main` (#539). It runs `release-app.sh` with `MAIN_BUILD=1`, in
+the same `release` environment with the signing and notary secrets:
+signed, notarized and stapled, zipped as `Ganymede-macOS.zip`, and no
+`appcast.xml`. It signs no update, so it doesn't get
+`SPARKLE_ED_PRIVATE_KEY`: the public key comes from the latest release's
+app. The
+`publish` job attests the zip and replaces it and `SHA256SUMS-macOS` on
+the `main-build` prerelease, so
+`https://github.com/tlockney/ganymede-ui/releases/download/main-build/Ganymede-macOS.zip`
+is always the latest. A newer push cancels an older build, not its
+upload. The `main-build` tag moves to the commit when the workflow token
+may move it (not across commits that change workflow files); the notes
+name the commit either way.
+
+Updates stay with releases. The prerelease is never "latest" and has no
+feed, so `releases/latest/download/appcast.xml` never offers it. The main
+build keeps that feed, with `CFBundleVersion` set to the latest release's
+`sparkle:version` plus `.<run number>` (for example `45.12`): Sparkle
+compares build numbers part by part, so it doesn't offer the current
+release (45) to the main build and does offer the next one. The version
+it shows is `package.json`'s, the latest release's. Release tooling
+reads `releases/latest` and `v*` tags only, so it ignores `main-build`.
+
+A main build made after a release branch is cut can hold commits that
+release lacks; the release's update still replaces it. A failed main
+build changes nothing; the next push or a manual run on `main` (`gh
+workflow run main-build.yml --repo tlockney/ganymede-ui`) replaces it.
+Start a manual run rather than re-running an old one: a re-run builds
+the old commit, and `publish` skips it when a newer build is out. If the environment ever gets a required reviewer, each
+main build waits for approval too.
 
 ## The iPad and iPhone app (TestFlight)
 

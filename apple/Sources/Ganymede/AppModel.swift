@@ -40,6 +40,19 @@ final class AppModel {
     private let sshKeys = SSHKeyStore(secrets: KeychainStore())
     /// Host keys trusted on first use, per remote.
     let hostKeys = HostKeyStore(defaults: .standard)
+    #if os(macOS)
+    /// What agents outside the app may do through the server's `/mcp`
+    /// (#304).
+    private(set) var mcpMode: MCPMode
+    /// Whether `/mcp` sends images in outputs to the model.
+    private(set) var mcpImages: Bool
+    /// The server's token while MCP is on, kept in the keychain so the
+    /// config agents were given keeps working; nil while it is off.
+    private(set) var mcpToken: String?
+    /// The `jpserver-<pid>.json` written while MCP is on, so `ganymede mcp`
+    /// finds the app's server.
+    @ObservationIgnored private var serverInfoFile: URL?
+    #endif
 
     @ObservationIgnored private var server: ServerHost?
     /// Server starts and stops, run one after another. Both block (a start
@@ -76,6 +89,8 @@ final class AppModel {
         keychainError = saved.problem
         sshKey = sshKeys.load()
         #if os(macOS)
+        mcpMode = UserDefaults.standard.string(forKey: AppMCP.modeKey).flatMap(MCPMode.init(rawValue:)) ?? .off
+        mcpImages = UserDefaults.standard.bool(forKey: AppMCP.imagesKey)
         if let path = UserDefaults.standard.string(forKey: Keys.root),
            FileManager.default.fileExists(atPath: path) {
             root = URL(fileURLWithPath: path, isDirectory: true)
@@ -95,6 +110,12 @@ final class AppModel {
         } else {
             root = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         }
+        #endif
+        #if os(macOS)
+        if mcpMode != .off { mcpToken = mcpKeychainToken() }
+        // A crashed run's server info file holds the MCP token; clear it
+        // whether or not MCP is on now.
+        AppMCP.removeStaleServerInfo(in: AppMCP.runtimeDirectory())
         #endif
     }
 
@@ -119,6 +140,9 @@ final class AppModel {
         url = nil
         serverURL = nil
         error = nil
+        #if os(macOS)
+        removeServerInfo()
+        #endif
         guard let web = Bundle.main.url(forResource: "web", withExtension: nil) else {
             error = "The app bundle has no web folder; build it with apple/scripts/bootstrap.sh."
             return
@@ -132,6 +156,11 @@ final class AppModel {
             config["gateway_url"] = remote.serverURL
             config["gateway_token"] = token(for: remote.id)
         }
+        #if os(macOS)
+        if let mcpToken {
+            config.merge(AppMCP.serverConfig(mode: mcpMode, images: mcpImages, token: mcpToken)) { $1 }
+        }
+        #endif
         #if os(iOS)
         if let support = try? FileManager.default.url(
             for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true
@@ -176,10 +205,16 @@ final class AppModel {
                 }
                 serverURL = host.url
                 url = pageURL(host.url)
+                #if os(macOS)
+                writeServerInfo(host.url, settings: settings)
+                #endif
                 if let port = host.url.port {
                     defaults.set(port, forKey: Keys.port)
                 }
             case .failure(let failure):
+                #if os(macOS)
+                removeServerInfo()
+                #endif
                 error = failure.localizedDescription
             }
         }
@@ -302,6 +337,9 @@ final class AppModel {
     /// the app's own kernels answer the shutdown through the main thread,
     /// which a blocking stop would hold up for the server's shutdown grace.
     func stopServer() async {
+        #if os(macOS)
+        removeServerInfo()
+        #endif
         guard let old = server else { return }
         server = nil
         url = nil
@@ -319,6 +357,9 @@ final class AppModel {
     /// not waited for; its server ends with the process. `stopServer`
     /// usually ran first.
     func stopForQuit() {
+        #if os(macOS)
+        removeServerInfo()
+        #endif
         server?.stop()
         server = nil
         url = nil
@@ -390,6 +431,108 @@ final class AppModel {
         persist()
         if restart { start() }
     }
+
+    #if os(macOS)
+    /// Sets what agents may do through `/mcp`, and restarts the server
+    /// with it: turning MCP off ends agents' sessions, and kernels restart
+    /// as when they move to a remote.
+    func setMCP(_ mode: MCPMode, images: Bool) {
+        guard mode != mcpMode || images != mcpImages else { return }
+        mcpMode = mode
+        mcpImages = images
+        defaults.set(mode.rawValue, forKey: AppMCP.modeKey)
+        defaults.set(images, forKey: AppMCP.imagesKey)
+        if mode == .off {
+            // Off revokes the token: configs given out stop working.
+            mcpToken = nil
+            do {
+                try Keychain.set(AppMCP.tokenKey, "")
+            } catch {
+                // The revoked token stays saved: never read it back.
+                defaults.set(true, forKey: AppMCP.revokedKey)
+                reportKeychain("Turning MCP off could not remove its token from the keychain; turning MCP "
+                    + "on again makes a new one all the same: " + error.localizedDescription)
+            }
+        } else if mcpToken == nil {
+            // On again after Off: a new token, never the revoked one, even
+            // if removing it failed.
+            mcpToken = storeMCPToken(AppMCP.newToken())
+        }
+        start()
+    }
+
+    /// A new MCP token, for when the old one leaked: agents given the old
+    /// config must be given the new one.
+    func resetMCPToken() {
+        guard mcpMode != .off else { return }
+        mcpToken = storeMCPToken(AppMCP.newToken())
+        start()
+    }
+
+    /// Writes the server info file for the server at `serverURL` when it
+    /// was launched with MCP on (`settings`, not the current mode, which a
+    /// queued start may have changed since).
+    private func writeServerInfo(_ serverURL: URL, settings: [String: any Sendable]) {
+        removeServerInfo()
+        guard settings["mcp_enabled"] as? Bool == true, let token = settings["token"] as? String,
+              let root = settings["root_dir"] as? String,
+              let endpoint = ServerEndpoint(serverURL: serverURL) else { return }
+        let pid = ProcessInfo.processInfo.processIdentifier
+        let dir = AppMCP.runtimeDirectory()
+        // A crashed run's file, with its token, would stay otherwise.
+        AppMCP.removeStaleServerInfo(in: dir)
+        let info = AppMCP.serverInfo(base: endpoint.base, token: token, root: root, pid: pid)
+        serverInfoFile = AppMCP.writeServerInfo(info, in: dir, pid: pid)
+        if serverInfoFile == nil {
+            NSLog("Ganymede: the server info file for `ganymede mcp` couldn't be written")
+        }
+    }
+
+    private func removeServerInfo() {
+        guard let file = serverInfoFile else { return }
+        try? FileManager.default.removeItem(at: file)
+        serverInfoFile = nil
+    }
+
+    /// The token in the keychain, or a new one stored there. A token
+    /// marked revoked (its delete or replace failed) is never used again.
+    private func mcpKeychainToken() -> String {
+        if defaults.bool(forKey: AppMCP.revokedKey) { return storeMCPToken(AppMCP.newToken()) }
+        do {
+            if let token = try Keychain.read(AppMCP.tokenKey), !token.isEmpty { return token }
+        } catch {
+            // Unreadable, not missing: keep the saved token for next time,
+            // and use one for this session only.
+            reportKeychain("Ganymede uses a new MCP token until it quits, because it could not read the "
+                + "saved one from the keychain: " + error.localizedDescription)
+            return AppMCP.newToken()
+        }
+        return storeMCPToken(AppMCP.newToken())
+    }
+
+    /// Stores `token`; if the keychain refuses, the app uses it until it
+    /// quits and says so. Whatever is saved then is marked revoked, so a
+    /// token turned off or reset can't come back at the next launch, even
+    /// when the keychain can't be read to tell whether one is saved.
+    private func storeMCPToken(_ token: String) -> String {
+        do {
+            try Keychain.set(AppMCP.tokenKey, token)
+            defaults.removeObject(forKey: AppMCP.revokedKey)
+        } catch {
+            defaults.set(true, forKey: AppMCP.revokedKey)
+            reportKeychain("Ganymede uses a new MCP token until it quits, but could not save it in the "
+                + "keychain. Any token saved before stays there unused; Ganymede makes another at its "
+                + "next launch, so agents will need a new config then: " + error.localizedDescription)
+        }
+        return token
+    }
+
+    /// Shows `message` in the keychain alert, after any problem already
+    /// there, so one doesn't hide another.
+    private func reportKeychain(_ message: String) {
+        keychainError = keychainError.map { $0 + "\n\n" + message } ?? message
+    }
+    #endif
 
     /// The app's public key, for authorized_keys on SSH remotes.
     var sshPublicKey: String? {

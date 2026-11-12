@@ -108,15 +108,21 @@ struct GanymedeApp: App {
                 .environment(model)
                 .crashReportsPrompt()
         }
+        // URLs (the Shortcuts callback, ganymede-device#40) go to a main
+        // window, whose `onOpenURL` handles them, never a Terminal or
+        // Editor window.
+        .handlesExternalEvents(matching: ["*"])
         // Holding ⌘ lists them, and the iPadOS menu bar shows them (#208).
         .commands { IPadCommands() }
         WindowGroup("Terminal", for: TerminalRequest.self) { $request in
             TerminalScene(request: request)
                 .environment(model)
         }
+        .handlesExternalEvents(matching: [])
         WindowGroup("Editor", for: EditorRequest.self) { $request in
             EditorScene(request: request)
         }
+        .handlesExternalEvents(matching: [])
     }
     #endif
 }
@@ -225,6 +231,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func getURL(_ event: NSAppleEventDescriptor, withReply reply: NSAppleEventDescriptor) {
         guard let url = AppURLHandler.url(in: event) else { return }
+        // A Shortcut a cell ran, calling back (ganymede-device#40).
+        if KernelHost.shortcuts.handle(url) { return }
         AppURLHandler.handle(url)
     }
 
@@ -259,6 +267,33 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             AppModel.shared.openRequests.finishLaunching()
             // Asked once, after the windows are up (#318).
             CrashReportsPrompt.askIfNeeded()
+            // Files changed, moved or deleted while the app was away (#305),
+            // unless becoming active already checked.
+            SpotlightSettings.shared.syncIfStale()
+        }
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(didBecomeActive(_:)),
+            name: NSApplication.didBecomeActiveNotification,
+            object: nil
+        )
+    }
+
+    /// Back in front: notebooks may have changed, moved or gone meanwhile,
+    /// so Spotlight's entries are checked again (#305).
+    @objc private func didBecomeActive(_ notification: Notification) {
+        SpotlightSettings.shared.syncIfStale()
+    }
+
+    /// A Spotlight result (#305): its notebook opens in a window.
+    func application(
+        _ application: NSApplication,
+        continue userActivity: NSUserActivity,
+        restorationHandler: @escaping ([any NSUserActivityRestoring]) -> Void
+    ) -> Bool {
+        SpotlightSettings.shared.open(userActivity) { url in
+            NSApp.activate()
+            AppModel.shared.openRequests.add([url])
         }
     }
 

@@ -17,6 +17,13 @@ enum Keychain {
     }
 
     static func get(_ key: String) -> String? {
+        (try? read(key)) ?? nil
+    }
+
+    /// The item for `key`: nil when there is none, and a throw when the
+    /// keychain can't be read (locked, access denied), so a caller can
+    /// tell a missing item from one it couldn't see.
+    static func read(_ key: String) throws -> String? {
         let query: [String: Any] = [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -26,12 +33,9 @@ enum Keychain {
         ]
         var item: CFTypeRef?
         let status = SecItemCopyMatching(query as CFDictionary, &item)
-        if status != errSecSuccess && status != errSecItemNotFound {
-            log.error("Reading \(key, privacy: .public) failed: \(Failure(status: status).localizedDescription, privacy: .public)")
-        }
-        guard status == errSecSuccess, let data = item as? Data else {
-            return nil
-        }
+        if status == errSecItemNotFound { return nil }
+        guard status == errSecSuccess else { throw failed("Reading", key, status) }
+        guard let data = item as? Data else { return nil }
         return String(data: data, encoding: .utf8)
     }
 

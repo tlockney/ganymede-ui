@@ -21,6 +21,16 @@ function release(): string {
 }
 process.env.VITE_RELEASE ??= release();
 
+// The build's HTML pages. Every page but the app's own is left out of the
+// service worker's navigation fallback, which would answer it with the
+// notebook app (#518, #521). kernel.html is the Apple apps' hidden kernel
+// web view (#99).
+const PAGES = { main: 'index.html', kernel: 'kernel.html' };
+const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const OTHER_PAGES = Object.values(PAGES)
+  .filter(page => page !== 'index.html')
+  .map(page => new RegExp(`^/${escapeRegExp(page)}(\\?|$)`));
+
 // Where `npm run dev` proxies /api to. Start Ganymede with
 // `ganymede serve --port 8888 --token <token>`.
 const GANYMEDE = process.env.GANYMEDE_URL ?? 'http://127.0.0.1:8888';
@@ -70,6 +80,19 @@ const proxy: Record<string, ProxyOptions> = {
 const config: UserConfig = {
   plugins: [
     react(),
+    // The build's release, which the kernel page compares with its own
+    // before it says it is ready (#537). Not precached (no .json in
+    // globPatterns), so it always comes from the server.
+    {
+      name: 'release-file',
+      generateBundle() {
+        this.emitFile({
+          type: 'asset',
+          fileName: 'release.json',
+          source: JSON.stringify({ release: process.env.VITE_RELEASE }),
+        });
+      },
+    },
     {
       name: 'agent-module-graph',
       buildEnd() {
@@ -145,10 +168,10 @@ const config: UserConfig = {
             options: { cacheName: 'agent', expiration: { maxEntries: 40 } },
           },
         ],
-        // The server API is never cached. kernel.html is the Apple apps'
-        // kernel page: with a query it misses the precache, and the
-        // fallback would load the notebook app in its place (#518).
-        navigateFallbackDenylist: [/^\/api\//, /^\/kernel\.html(\?|$)/],
+        // The server API is never cached. The other pages (kernel.html):
+        // with a query they miss the precache, and the fallback would load
+        // the notebook app in their place (#518).
+        navigateFallbackDenylist: [/^\/api\//, ...OTHER_PAGES],
         // JupyterLite's service-worker relay (kernel file access and
         // stdin, public/lite-service-worker.js) runs inside this worker:
         // one origin gets one worker at `/`, and a narrower scope wouldn't
@@ -181,8 +204,7 @@ const config: UserConfig = {
     // and then deletes them: `hidden` leaves no reference in the bundles.
     sourcemap: process.env.SENTRY_SOURCEMAPS === '1' ? 'hidden' : false,
     rolldownOptions: {
-      // kernel.html is the Apple apps' hidden kernel web view (#99).
-      input: { main: 'index.html', kernel: 'kernel.html' },
+      input: PAGES,
       output: {
         // The agent's lazy chunks (Pi and its providers) get an `agent-`
         // prefix, which the PWA's precache leaves out.

@@ -246,12 +246,64 @@ link, 3 cancelled) and `errorMessage`, and `x-cancel` is opened when
 you answer Cancel. In Shortcuts, the Open X-Callback URL action does
 this and gives the answer to the next action.
 
+### Agents over MCP
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+Agents outside the app, such as Claude Code and Claude Desktop, can read,
+edit and run the notebooks open in Ganymede over
+[MCP](https://modelcontextprotocol.io), and each change shows in the
+window as it lands. Turn it on in Settings › General › MCP, which offers
+**Read only**, **Edit, don't run**, and **Edit and run**, plus whether
+images in outputs go to the model. It is off by default.
+
+With MCP on, Settings shows what to give the agent, with Copy:
+
+- **Claude Code**: `claude mcp add --scope user ganymede -- ganymede mcp`.
+- **Claude Desktop**: an `mcpServers` entry for
+  `claude_desktop_config.json` that runs `ganymede mcp`, by its full path
+  when Ganymede finds it, since Claude Desktop doesn't use your shell's
+  PATH.
+- **Claude Code, without the ganymede command**: a
+  `claude mcp add --transport http` command with the app's URL and
+  token.
+
+The first two need the [`ganymede` command](https://ganymede-server.com)
+on the agent's PATH. While MCP is on, the app writes a
+[server info file](https://ganymede-server.com/docs/reference#server-info-file),
+so `ganymede mcp` uses the app's server while Ganymede runs, and a server
+of its own when it doesn't. The agent keeps the server it found for the
+whole session, so start the agent after Ganymede to work in the app's
+windows. Relative paths start in the agent's folder from a `ganymede`
+build of `main` (ganymede#730); earlier versions start them at `/`.
+The app writes the file in `~/Library/Jupyter/runtime`, or where
+`JUPYTER_RUNTIME_DIR` or `JUPYTER_DATA_DIR` point in its own environment;
+a value set only in your shell's startup files doesn't reach the app, and
+then `ganymede mcp` won't find it.
+
+The server listens on this Mac only and needs the token. The token opens
+all of Ganymede's server, as `ganymede serve`'s does: the mode limits what
+agents do over MCP, not what the token's holder can do. While MCP is on,
+the token is kept in the keychain and the port is the one the server had
+last time, so the HTTP config keeps working after Ganymede restarts.
+Should that port be taken, Settings shows the new one. Reset Token makes a
+new token, after which HTTP agents need the new config. Changing these
+settings restarts Ganymede's server, which restarts its kernels; turning
+MCP off ends agents' sessions and revokes the token, so turning it on
+again makes a new one.
+
+A notebook can be edited on one server at a time: if an agent's own
+`ganymede mcp` server has it open, Ganymede shows it read-only.
+
 ### Settings
 
 Settings (⌘,) is one window with tabs. General makes Ganymede the
 default app for notebooks, sets how it updates ([Updates](#updates)),
-turns crash reports on or off, and lists the notebooks links may run
-([Links](#links)). Appearance
+turns crash reports on or off, lists the notebooks links may run
+([Links](#links)), and turns on MCP for agents
+([Agents over MCP](#agents-over-mcp)). Appearance
 sets the code font (below). Kernels
 picks where kernels run, this Mac or, as on iPadOS, one remote's server,
 and lists the kernels installed there. Remotes keeps a list of remotes:
@@ -273,8 +325,9 @@ Settings > General turns the daily check off, or makes updates download
 and install on their own (they install when you quit). The first release
 with updates has to be installed by hand; later ones install themselves.
 Builds made from source, and CI's ad-hoc builds, don't update
-themselves. The check downloads the release feed from GitHub (its release
-asset host serves the file) and sends nothing about you or your
+themselves. The `main-build` download (a build of `main`) takes the
+next release's update and never newer main builds. The check downloads
+the release feed from GitHub (its release asset host serves the file) and sends nothing about you or your
 notebooks; the download carries your IP address and the app's version,
 as any download does.
 
@@ -439,6 +492,22 @@ headings; pick one to go to its cell.
 - **Downloads** open the share sheet, where Save to Files keeps them.
 - In the background iOS may stop the app's server; back in the
   foreground the app restarts it if it stopped answering.
+
+## Spotlight
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+On the Mac, iPad and iPhone, a Spotlight search finds notebooks by their
+title, headings and Markdown text, and choosing one opens it in
+Ganymede. The notebooks indexed are the ones opened lately, and on the
+Mac also those in folders added under Settings › General › Spotlight.
+Outputs are never indexed, and code only with **Include code**. Files
+over 5 MB are left out. A notebook's entry is updated when it is saved,
+and the index is checked when the app comes to the front, so moved and
+deleted notebooks leave it. Turning **Show notebooks in Spotlight** off
+removes every entry. The index stays on the device.
 
 ## Crash reports
 

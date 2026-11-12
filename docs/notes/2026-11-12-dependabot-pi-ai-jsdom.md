@@ -19,6 +19,7 @@ canonical form browsers also return, since 1 is the default value. The
 settings test now expects that form; the string the app writes is
 unchanged.
 
-Dependabot now skips TypeScript 7 and later: the native compiler has no
-compiler API, which `src/runner/engine.ts` uses. cdp-kernel and
+Dependabot now skips TypeScript 7 and later: the native compiler's
+package no longer exports `bin/tsc` or the JavaScript compiler API,
+which `npm run check` and typescript-eslint's parser use. cdp-kernel and
 ganymede-device skip it for the same reason.

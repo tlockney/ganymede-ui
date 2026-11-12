@@ -64,7 +64,7 @@ final class CrashReports {
             #if DEBUG
             options.environment = "development"
             #else
-            options.environment = "production"
+            options.environment = CrashEnvironment.name(build: build)
             #endif
             options.sendDefaultPii = false
             // Crashes and errors only.

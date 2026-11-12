@@ -51,7 +51,10 @@ Each
 Ganymede server in its own process and can be the default app for
 `.ipynb` files. It checks for new releases and installs them over
 itself, asking first ([Updates](docs/apps.md#updates)). The iPad and
-iPhone app is on TestFlight for internal testers. [docs/apps.md](docs/apps.md) is the apps' user guide;
+iPhone app is on TestFlight for internal testers. The latest build of
+`main` is the
+[`main-build`](https://github.com/tlockney/ganymede-ui/releases/tag/main-build)
+prerelease, signed and notarized too ([apple/README.md](apple/README.md#download)). [docs/apps.md](docs/apps.md) is the apps' user guide;
 [apple/README.md](apple/README.md) has how to build them.
 
 ## Run

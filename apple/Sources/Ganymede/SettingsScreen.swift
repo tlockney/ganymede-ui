@@ -27,6 +27,7 @@ struct SettingsScreen: View {
                 }
             }
             CrashReportsSettings()
+            SpotlightSettingsSection()
             if hardwareKeyboard {
                 Section {
                     NavigationLink(value: SettingsTab.shortcuts) {
