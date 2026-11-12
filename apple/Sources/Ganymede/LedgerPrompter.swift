@@ -146,6 +146,8 @@ final class AppLedgerPrompter: LedgerPrompter {
         case "calendar": "your calendars"
         case "microphone": "the microphone"
         case "bluetooth": "Bluetooth"
+        // Consent to run any of them (ganymede-device#40): say so.
+        case "shortcuts": "your Shortcuts (it can run any of them)"
         default: capability
         }
     }

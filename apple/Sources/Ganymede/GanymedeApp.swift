@@ -108,15 +108,21 @@ struct GanymedeApp: App {
                 .environment(model)
                 .crashReportsPrompt()
         }
+        // URLs (the Shortcuts callback, ganymede-device#40) go to a main
+        // window, whose `onOpenURL` handles them, never a Terminal or
+        // Editor window.
+        .handlesExternalEvents(matching: ["*"])
         // Holding ⌘ lists them, and the iPadOS menu bar shows them (#208).
         .commands { IPadCommands() }
         WindowGroup("Terminal", for: TerminalRequest.self) { $request in
             TerminalScene(request: request)
                 .environment(model)
         }
+        .handlesExternalEvents(matching: [])
         WindowGroup("Editor", for: EditorRequest.self) { $request in
             EditorScene(request: request)
         }
+        .handlesExternalEvents(matching: [])
     }
     #endif
 }
