@@ -39,6 +39,10 @@ enum AppMCP {
     static let imagesKey = "mcpImages"
     /// The keychain item holding the token while MCP is on.
     static let tokenKey = "mcp.token"
+    /// UserDefaults flag: the saved token was revoked (Off or Reset Token)
+    /// but the keychain refused to delete or replace it, so it must not be
+    /// read back.
+    static let revokedKey = "mcpTokenRevoked"
 
     /// The `ganymede.toml` keys for `mode`, over the app's own server
     /// config; none when off, so the server serves no `/mcp`.

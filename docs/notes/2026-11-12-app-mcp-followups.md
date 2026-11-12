@@ -3,9 +3,11 @@
 A review of #525's last commit, after the merge, found that turning MCP
 off ignored a keychain error, so a revoked token could come back. Turning
 MCP on after Off now always makes a new token, so Off revokes even when
-the keychain refuses the delete, and the error is shown. Reset Token
-checks what is still saved after a failure, so its message says whether
-the old token returns at the next launch.
+the keychain refuses the delete, and the error is shown. When the
+keychain refuses to delete or replace a token, the app marks it revoked
+in UserDefaults and never reads it back, so a token turned off or reset
+can't return at the next launch. A first try re-read the keychain to
+pick the message, but a locked keychain refuses that read too.
 
 The server info file is written to a hidden 0600 file and renamed into
 place, as ganymede's `server_info.rs` does, so `ganymede mcp` never reads

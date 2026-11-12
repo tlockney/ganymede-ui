@@ -448,6 +448,8 @@ final class AppModel {
             do {
                 try Keychain.set(AppMCP.tokenKey, "")
             } catch {
+                // The revoked token stays saved: never read it back.
+                defaults.set(true, forKey: AppMCP.revokedKey)
                 reportKeychain("Turning MCP off could not remove its token from the keychain; turning MCP "
                     + "on again makes a new one all the same: " + error.localizedDescription)
             }
@@ -492,8 +494,10 @@ final class AppModel {
         serverInfoFile = nil
     }
 
-    /// The token in the keychain, or a new one stored there.
+    /// The token in the keychain, or a new one stored there. A token
+    /// marked revoked (its delete or replace failed) is never used again.
     private func mcpKeychainToken() -> String {
+        if defaults.bool(forKey: AppMCP.revokedKey) { return storeMCPToken(AppMCP.newToken()) }
         do {
             if let token = try Keychain.read(AppMCP.tokenKey), !token.isEmpty { return token }
         } catch {
@@ -507,22 +511,18 @@ final class AppModel {
     }
 
     /// Stores `token`; if the keychain refuses, the app uses it until it
-    /// quits and says so.
+    /// quits and says so. Whatever is saved then is marked revoked, so a
+    /// token turned off or reset can't come back at the next launch, even
+    /// when the keychain can't be read to tell whether one is saved.
     private func storeMCPToken(_ token: String) -> String {
         do {
             try Keychain.set(AppMCP.tokenKey, token)
+            defaults.removeObject(forKey: AppMCP.revokedKey)
         } catch {
-            // The old token may still be saved (the delete failed) and
-            // would come back at the next launch.
-            let old = (try? Keychain.read(AppMCP.tokenKey)) ?? nil
-            if let old, !old.isEmpty {
-                reportKeychain("Ganymede uses a new MCP token until it quits, but could not replace the "
-                    + "saved one in the keychain, which comes back when Ganymede restarts: Reset Token "
-                    + "again then. " + error.localizedDescription)
-            } else {
-                reportKeychain("Ganymede uses a new MCP token until it quits, but could not save it in the "
-                    + "keychain, so agents will need a new config then: " + error.localizedDescription)
-            }
+            defaults.set(true, forKey: AppMCP.revokedKey)
+            reportKeychain("Ganymede uses a new MCP token until it quits, but could not save it in the "
+                + "keychain. Any token saved before stays there unused; Ganymede makes another at its "
+                + "next launch, so agents will need a new config then: " + error.localizedDescription)
         }
         return token
     }
