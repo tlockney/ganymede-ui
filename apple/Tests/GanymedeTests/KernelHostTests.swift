@@ -355,7 +355,7 @@ final class KernelHostTests: XCTestCase {
         XCTAssertEqual(AppKernels.resolve("/elsewhere/A.ipynb", under: link), "/elsewhere/A.ipynb")
         XCTAssertEqual(AppKernels.resolve("/x/A.ipynb", under: nil), "/x/A.ipynb")
         let page = AppKernels.kernelPageURL(URL(string: "http://127.0.0.1:8888/?token=t#x")!)
-        XCTAssertEqual(page.absoluteString, "http://127.0.0.1:8888/kernel.html?token=t")
+        XCTAssertEqual(page.absoluteString, "http://127.0.0.1:8888/kernel.html")
     }
 }
 

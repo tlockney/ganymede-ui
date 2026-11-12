@@ -36,3 +36,25 @@ test('opens from the URL ganymede serve prints, runs a cell and saves', async ({
     .poll(() => readFileSync(join(ROOT_DIR, COPY), 'utf8'))
     .toContain('Ganymede is the largest moon in the solar system');
 });
+
+// The Apple apps load their hidden kernel page from the server, on the
+// origin the notebook page's service worker controls. With a query, the
+// precache missed it and the navigation fallback loaded the notebook app
+// in its place, so the in-app kernel never started (#518).
+test('serves the kernel page, not the app, under the service worker', async ({ page }) => {
+  await page.goto(`${GANYMEDE_URL}/?token=${TOKEN}`);
+  await expect
+    .poll(() => page.evaluate(() => navigator.serviceWorker.controller !== null), {
+      timeout: 60_000,
+    })
+    .toBe(true);
+  for (const path of ['/kernel.html', `/kernel.html?token=${TOKEN}`]) {
+    await page.goto(`${GANYMEDE_URL}${path}`);
+    await expect(page).toHaveTitle('Ganymede kernels');
+    await expect
+      .poll(() =>
+        page.evaluate(() => typeof (window as { ganymedeKernelHost?: unknown }).ganymedeKernelHost),
+      )
+      .toBe('object');
+  }
+});
