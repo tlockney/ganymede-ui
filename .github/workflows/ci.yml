@@ -156,22 +156,10 @@ jobs:
           xcodebuild test -project apple/Ganymede.xcodeproj -scheme Ganymede
           -destination platform=macOS -derivedDataPath apple/build/DerivedData
           -skipPackagePluginValidation -onlyUsePackageVersionsFromResolvedFile CODE_SIGN_IDENTITY=- CODE_SIGN_STYLE=Manual DEVELOPMENT_TEAM=
-      # The Debug build the tests ran. main-build.yml builds, signs and
-      # publishes the Release app on pushes to main (#540, #547).
+      # The Debug build the tests ran. release-app.sh runs the same check
+      # on the Release build main-build.yml and release.yml sign (#549).
       - name: Check the app bundle
-        run: |
-          app=apple/build/DerivedData/Build/Products/Debug/Ganymede.app
-          # Finder can open notebooks with it (#130).
-          /usr/libexec/PlistBuddy -c 'Print :UTImportedTypeDeclarations:0:UTTypeIdentifier' \
-            "$app/Contents/Info.plist" | grep -qx org.jupyter.ipynb
-          # Quick Look preview and thumbnails, with the preview page (#135).
-          plugins=$app/Contents/PlugIns
-          # The share sheet's Run a Notebook (#449) and the notebook widget (#436).
-          for ext in GanymedeQuickLook:com.apple.quicklook.preview GanymedeThumbnail:com.apple.quicklook.thumbnail GanymedeShare:com.apple.share-services GanymedeWidgets:com.apple.widgetkit-extension; do
-            /usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' \
-              "$plugins/${ext%%:*}.appex/Contents/Info.plist" | grep -qx "${ext#*:}"
-          done
-          test -f "$plugins/GanymedeQuickLook.appex/Contents/Resources/quicklook/preview.html"
+        run: apple/scripts/check-app-bundle.sh apple/build/DerivedData/Build/Products/Debug/Ganymede.app
 
   # The iPad and iPhone app's tests on an iPad simulator, on its own runner
   # alongside macos-app (#543). Same setup; both jobs use the ffi cache, so
