@@ -183,36 +183,13 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # The ganymede commit ci.yml's macos-app job builds and tests the app
-      # with, so the release links the same ganymede-ffi.
-      - name: Read GANYMEDE_REF from ci.yml
-        run: |
-          ref=$(yq -r '.env.GANYMEDE_REF' .github/workflows/ci.yml)
-          [[ "$ref" =~ ^[0-9a-f]{40}$|^v[0-9] ]] || { echo "::error::GANYMEDE_REF in ci.yml: $ref"; exit 1; }
-          echo "GANYMEDE_REF=$ref" >> "$GITHUB_ENV"
-      # A release tag is downloaded by bootstrap.sh; a commit is built (#359).
-      - if: ${{ !startsWith(env.GANYMEDE_REF, 'v') }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # GanymedeFFI.xcframework for GANYMEDE_REF, npm ci, xcodegen and
+      # bootstrap.sh with source maps for Sentry; no caches, since this
+      # build is signed (.github/actions/apple-setup, #547).
+      - uses: ./.github/actions/apple-setup
         with:
-          repository: tlockney/ganymede
-          ref: ${{ env.GANYMEDE_REF }}
-          path: .ganymede
-          persist-credentials: false
-      - if: ${{ !startsWith(env.GANYMEDE_REF, 'v') }}
-        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
-        with:
-          toolchain: stable
-          targets: aarch64-apple-darwin, aarch64-apple-ios, aarch64-apple-ios-sim
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 24
-      - run: npm ci
-      - run: brew install xcodegen
-      - run: apple/scripts/bootstrap.sh
-        env:
-          GANYMEDE_DIR: ${{ !startsWith(env.GANYMEDE_REF, 'v') && format('{0}/.ganymede', github.workspace) || '' }}
-          SENTRY_SOURCEMAPS: '1'
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          sentry-sourcemaps: 'true'
+          sentry-auth-token: ${{ secrets.SENTRY_AUTH_TOKEN }}
       - name: Sign, notarize, and staple
         run: apple/scripts/release-app.sh
         env:
@@ -252,34 +229,13 @@ jobs:
           persist-credentials: false
           # The TestFlight notes list the commits since the last build or tag.
           fetch-depth: 0
-      - name: Read GANYMEDE_REF from ci.yml
-        run: |
-          ref=$(yq -r '.env.GANYMEDE_REF' .github/workflows/ci.yml)
-          [[ "$ref" =~ ^[0-9a-f]{40}$|^v[0-9] ]] || { echo "::error::GANYMEDE_REF in ci.yml: $ref"; exit 1; }
-          echo "GANYMEDE_REF=$ref" >> "$GITHUB_ENV"
-      # A release tag is downloaded by bootstrap.sh; a commit is built (#359).
-      - if: ${{ !startsWith(env.GANYMEDE_REF, 'v') }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # GanymedeFFI.xcframework for GANYMEDE_REF, npm ci, xcodegen and
+      # bootstrap.sh with source maps for Sentry; no caches, since this
+      # build is signed (.github/actions/apple-setup, #547).
+      - uses: ./.github/actions/apple-setup
         with:
-          repository: tlockney/ganymede
-          ref: ${{ env.GANYMEDE_REF }}
-          path: .ganymede
-          persist-credentials: false
-      - if: ${{ !startsWith(env.GANYMEDE_REF, 'v') }}
-        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
-        with:
-          toolchain: stable
-          targets: aarch64-apple-darwin, aarch64-apple-ios, aarch64-apple-ios-sim
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 24
-      - run: npm ci
-      - run: brew install xcodegen
-      - run: apple/scripts/bootstrap.sh
-        env:
-          GANYMEDE_DIR: ${{ !startsWith(env.GANYMEDE_REF, 'v') && format('{0}/.ganymede', github.workspace) || '' }}
-          SENTRY_SOURCEMAPS: '1'
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          sentry-sourcemaps: 'true'
+          sentry-auth-token: ${{ secrets.SENTRY_AUTH_TOKEN }}
       - name: Sign and upload to TestFlight
         run: apple/scripts/release-ios.sh
         env:
@@ -325,9 +281,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # Only this workflow's own archives: the called CI run (tag-ci) also uploads
-      # its ad-hoc signed Ganymede-macOS build and e2e screenshots, which
-      # must not reach the release (#334).
+      # Only this workflow's own archives: the called CI run (tag-ci) also
+      # uploads e2e screenshots, which must not reach the release (#334).
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: ganymede-ui-${{ needs.version.outputs.version }}

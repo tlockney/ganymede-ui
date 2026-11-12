@@ -1,4 +1,4 @@
-name: docs
+name: Docs
 
 # The Ganymede site (tlockney/ganymede, pages.yml) renders this repo's
 # docs/*.md under ganymede-server.com/docs/ganymede-ui/, fetched from main
