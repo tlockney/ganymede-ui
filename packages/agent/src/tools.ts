@@ -9,7 +9,7 @@
 
 import type { Kernel, KernelMessage } from '@jupyterlab/services';
 import type { ISharedNotebook } from '@jupyter/ydoc';
-import { Type } from '@earendil-works/pi-ai';
+import { int, obj, oneOf, opt, str } from '@earendil-works/pi-schema';
 import {
   defineExtension,
   defineTool,
@@ -121,7 +121,7 @@ export function createNotebookExtension(target: NotebookTarget, approve: Approve
     name: 'notebook_read',
     description:
       'Read the open notebook: every cell with its index, type, source and text outputs.',
-    parameters: Type.Object({}),
+    parameters: obj({}),
     replay: 'safe',
     execute: async () => {
       const notebook = target.notebook();
@@ -135,11 +135,11 @@ export function createNotebookExtension(target: NotebookTarget, approve: Approve
     description:
       'Change the open notebook. "insert" adds a cell before `index` (use the cell count to append), ' +
       '"replace" sets the source of the cell at `index`, "delete" removes it.',
-    parameters: Type.Object({
-      op: Type.Union([Type.Literal('insert'), Type.Literal('replace'), Type.Literal('delete')]),
-      index: Type.Integer({ minimum: 0 }),
-      cell_type: Type.Optional(Type.Union([Type.Literal('code'), Type.Literal('markdown')])),
-      source: Type.Optional(Type.String()),
+    parameters: obj({
+      op: oneOf(['insert', 'replace', 'delete']),
+      index: int({ minimum: 0 }),
+      cell_type: opt(oneOf(['code', 'markdown'])),
+      source: opt(str()),
     }),
     execute: async args => {
       const notebook = target.notebook();
@@ -169,7 +169,7 @@ export function createNotebookExtension(target: NotebookTarget, approve: Approve
     description:
       "Run code in the open notebook's kernel and return what it printed. " +
       'State persists between calls, as in the notebook.',
-    parameters: Type.Object({ code: Type.String() }),
+    parameters: obj({ code: str() }),
     executionMode: 'sequential',
     execute: async args => {
       const kernel = target.kernel();
