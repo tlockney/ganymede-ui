@@ -1,6 +1,7 @@
 #!/bin/sh
 # Which expensive CI jobs a pull request needs (ci.yml, #344). Prints
-# `e2e=true|false` and `macos=true|false`, for $GITHUB_OUTPUT.
+# `e2e=true|false` and `macos=true|false`, for $GITHUB_OUTPUT. `macos`
+# gates both app jobs, macos-app and ios-app (#543).
 # main-build.yml builds the Mac app on a push to main when `macos` is
 # true (#539).
 #
