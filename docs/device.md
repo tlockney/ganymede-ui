@@ -170,6 +170,7 @@ browser yet.
 | `device.folders.list()`                                                   | `Folder[]`                                                 | yes          | none          | no            | no            |
 | `device.output({ text, url, files })`                                     | nothing                                                    | no           | none          | no            | no            |
 | `device.widget.update(kind, content)`                                     | nothing                                                    | yes          | none          | no            | no            |
+| `device.shortcuts.run(name, { input })`                                   | the Shortcut's text output, or `null`                      | yes          | shortcuts     | no            | no            |
 | `device.secrets.get(name)`                                                | the value, or `null`                                       | yes          | secrets       | no            | no            |
 | `device.secrets.set(name, value)`                                         | nothing                                                    | yes          | secrets       | no            | no            |
 | `device.secrets.delete(name)`                                             | `true`, or `false` when there was none                     | yes          | secrets       | no            | no            |
@@ -214,6 +215,7 @@ browser yet.
 - `device.folders.list()`: A `Folder` lists, reads, writes and removes inside the folder only; reads up to 16 MiB.
 - `device.output({ text, url, files })`: Only in a run the share sheet, Shortcuts or a widget started, which also has `device.input`; a notebook has nothing to hand a result to.
 - `device.widget.update(kind, content)`: Stored in the app's App Group for its widgets; a widget can't run a script itself.
+- `device.shortcuts.run(name, { input })`: Through the Shortcuts app, which comes forward while it runs. On iPad and iPhone the kernel stops about 30 seconds after the app leaves the screen, so keep the Shortcut short.
 - `device.secrets.get(name)`: The keychain, this device only. A notebook sees only its own secrets; the app's prompt is the only consent.
 - `device.secrets.set(name, value)`: Values up to 64 KiB; names 1 to 128 characters.
 - `device.on(event, handler)`: Appearance, foreground, background, battery and locale changes; an interrupt doesn't remove a handler.
