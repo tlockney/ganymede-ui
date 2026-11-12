@@ -17,9 +17,13 @@
 #                               base64 seed from Sparkle's generate_keys -x
 #   GITHUB_REPOSITORY           where releases are published (default
 #                               tlockney/ganymede-ui), for the update feed
+#   MAIN_BUILD                  1 for a build of main (main-build.yml, #539):
+#                               the zip is Ganymede-macOS.zip and no feed
+#                               is written
 #
 # It also writes apple/build/appcast.xml, the update feed the app reads
-# from the latest release, signed with the same key.
+# from the latest release, signed with the same key. A main build reads
+# the same feed but publishes none, so releases never offer it.
 set -euo pipefail
 apple=$(cd "$(dirname "$0")/.." && pwd)
 build="$apple/build"
@@ -151,10 +155,18 @@ xcrun stapler staple "$app"
 xcrun stapler validate "$app"
 spctl --assess --type execute --verbose=2 "$app"
 
-zip="$build/Ganymede-macOS-$VERSION.zip"
+if [[ "${MAIN_BUILD:-}" == 1 ]]; then
+  zip="$build/Ganymede-macOS.zip"
+else
+  zip="$build/Ganymede-macOS-$VERSION.zip"
+fi
 rm -f "$zip"
 ditto -c -k --keepParent "$app" "$zip"
 (cd "$build" && shasum -a 256 "$(basename "$zip")" | tee SHA256SUMS-macOS)
+if [[ "${MAIN_BUILD:-}" == 1 ]]; then
+  echo "main build: $zip (no update feed)"
+  exit 0
+fi
 
 # The update feed (#411): this release, its notes, and the zip's EdDSA
 # signature; then the feed itself is signed (SURequireSignedFeed).
