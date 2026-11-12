@@ -42,3 +42,13 @@ enum CrashScrub {
         return out
     }
 }
+
+/// The Sentry environment of a Release build: `main` for a build of
+/// `main` (main-build.yml, #539), whose build number is the latest
+/// release's plus `.<run>`; `production` for a release, whose build
+/// number is a whole number.
+enum CrashEnvironment {
+    static func name(build: String) -> String {
+        build.contains(".") ? "main" : "production"
+    }
+}
