@@ -181,6 +181,9 @@ final class KernelHostTests: XCTestCase {
         }
         try await eventually("the kernel", idle)
         XCTAssertEqual(kernels.webView.url?.path, "/kernel.html")
+        // No token: under the page's service worker, a query missed the
+        // precache and loaded the notebook app instead (#518).
+        XCTAssertNil(kernels.webView.url?.query)
         try await eventually("the ledger's notebook") { ledger.notebook(for: 7) != nil }
         XCTAssertEqual(ledger.notebook(for: 7)?.hasSuffix("/trips/Trip.ipynb"), true, ledger.notebook(for: 7) ?? "")
 

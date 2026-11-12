@@ -57,4 +57,59 @@ test('serves the kernel page, not the app, under the service worker', async ({ p
       )
       .toBe('object');
   }
+
+  // A kernel runs there, its Worker and chunks served through the worker.
+  const posted: { op: string; json?: string }[] = [];
+  await page.exposeFunction('toSwift', (m: { op: string; json?: string }) => posted.push(m));
+  await page.evaluate(() => {
+    (window as unknown as { webkit: unknown }).webkit = {
+      messageHandlers: {
+        kernelHost: {
+          postMessage: (m: unknown) =>
+            (window as unknown as { toSwift(m: unknown): void }).toSwift(
+              JSON.parse(JSON.stringify(m)),
+            ),
+        },
+      },
+    };
+  });
+  const msgId = crypto.randomUUID();
+  const execute = {
+    header: {
+      msg_id: msgId,
+      msg_type: 'execute_request',
+      session: 'e2e',
+      username: '',
+      date: new Date().toISOString(),
+      version: '5.3',
+    },
+    parent_header: {},
+    metadata: {},
+    content: { code: '"Io".toUpperCase()', silent: false, store_history: true },
+    buffers: [],
+  };
+  await page.evaluate(execute => {
+    const host = (window as unknown as { ganymedeKernelHost: { deliver(m: unknown): void } })
+      .ganymedeKernelHost;
+    host.deliver({ kernel: 'k1', op: 'start', run: 1 });
+    host.deliver({ kernel: 'k1', op: 'send', channel: 'shell', json: JSON.stringify(execute) });
+  }, execute);
+  await expect
+    .poll(
+      () =>
+        posted
+          .filter(m => m.json)
+          .map(
+            m =>
+              JSON.parse(m.json!) as {
+                parent_header: { msg_id?: string };
+                content: { data?: Record<string, string> };
+              },
+          )
+          .find(m => m.parent_header.msg_id === msgId && m.content.data)?.content.data?.[
+          'text/plain'
+        ],
+      { timeout: 60_000 },
+    )
+    .toContain('IO');
 });

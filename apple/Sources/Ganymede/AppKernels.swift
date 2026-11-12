@@ -43,7 +43,8 @@ final class AppKernels: NSObject {
     /// The notebook pages that can hold the kernel web view: WebKit
     /// suspends a web view in no window, so it lives in one of theirs.
     private var hosts: [WeakView] = []
-    /// The server the kernel page loads from, with its token.
+    /// The server the kernel page loads from. Its token stays off the
+    /// page's URL (`kernelPageURL`).
     private var serverURL: URL?
     private var loaded = false
     private var ready = false
