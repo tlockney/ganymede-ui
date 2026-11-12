@@ -91,6 +91,8 @@ enum AppMCP {
 
     // MARK: The server info file
 
+    #if os(macOS)
+
     /// Where Jupyter tools look for running servers: `JUPYTER_RUNTIME_DIR`,
     /// else `~/Library/Jupyter/runtime`, as `ganymede` itself does on macOS.
     static func runtimeDirectory(
@@ -141,4 +143,5 @@ enum AppMCP {
             return nil
         }
     }
+    #endif
 }

@@ -41,6 +41,7 @@ final class AppMCPTests: XCTestCase {
         XCTAssertEqual(entry["args"] as? [String], ["mcp"])
     }
 
+    #if os(macOS)
     /// The file `ganymede mcp` finds the app's server by: its URL, token
     /// and root, readable by this user only.
     func testServerInfoFile() throws {
@@ -62,6 +63,7 @@ final class AppMCPTests: XCTestCase {
         let mode = try FileManager.default.attributesOfItem(atPath: file.path)[.posixPermissions] as? Int
         XCTAssertEqual(mode, 0o600)
     }
+    #endif
 
     // MARK: A real server
 
