@@ -440,26 +440,45 @@ export function trustHere(cell: ICodeCellModel, trusted: boolean): boolean {
  */
 export function watchRemoteOutputs(model: INotebookModel, onChange: () => void): () => void {
   const ydoc = (model.sharedModel as YNotebook).ydoc;
-  const listener = (tr: {
-    local: boolean;
-    changed: Map<unknown, Set<string | null>>;
-    changedParentTypes: Map<unknown, unknown>;
-  }) => {
+  type Transaction = { local: boolean; changed: Map<YType, Set<string | null>> };
+  type YType = { _item?: { parent: unknown } | null };
+  /** Transactions that changed outputs, to report once they're applied. */
+  const touchedBy = new WeakSet<Transaction>();
+  // Before the observers: JupyterLab's cell models build the new outputs
+  // there, with the cell's trust at that moment, and the output area
+  // renders them at once. Taking trust away after would let a script in
+  // them run once.
+  const before = (tr: Transaction) => {
     if (tr.local || model.isDisposed) return;
-    let any = false;
+    // Every type the transaction changed, and the types holding them: a
+    // stream's text sits inside an output inside the outputs array.
+    const changed = new Set<unknown>();
+    for (const type of tr.changed.keys()) {
+      let t: unknown = type;
+      while (t && !changed.has(t)) {
+        changed.add(t);
+        t = (t as YType)._item?.parent;
+      }
+    }
     for (let i = 0; i < model.cells.length; i++) {
       const cell = model.cells.get(i);
       if (cell.type !== 'code') continue;
       const ymodel = (cell.sharedModel as YCodeCell).ymodel;
-      const youtputs = ymodel.get('outputs') as unknown;
       const touched =
-        tr.changedParentTypes.has(youtputs) || tr.changed.get(ymodel)?.has('outputs') === true;
+        changed.has(ymodel.get('outputs')) ||
+        tr.changed.get(ymodel as unknown as YType)?.has('outputs') === true;
       if (!touched) continue;
-      any = true;
+      touchedBy.add(tr);
       trustHere(cell as ICodeCellModel, false);
     }
-    if (any) onChange();
   };
-  ydoc.on('afterTransaction', listener);
-  return () => ydoc.off('afterTransaction', listener);
+  const after = (tr: Transaction) => {
+    if (touchedBy.has(tr) && !model.isDisposed) onChange();
+  };
+  ydoc.on('beforeObserverCalls', before);
+  ydoc.on('afterTransaction', after);
+  return () => {
+    ydoc.off('beforeObserverCalls', before);
+    ydoc.off('afterTransaction', after);
+  };
 }

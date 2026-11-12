@@ -333,6 +333,11 @@ describe('trust in a room', () => {
     trustHere(cell, true);
     const changed = vi.fn();
     const stop = watchRemoteOutputs(model, changed);
+    // What the output area would render, as each output arrives.
+    const shown: boolean[] = [];
+    cell.outputs.changed.connect((_, e) => {
+      for (const o of e.newValues) shown.push(o.trusted);
+    });
     // A second client, as the server relays it.
     const other = new Y.Doc();
     Y.applyUpdate(other, Y.encodeStateAsUpdate(ydoc));
@@ -349,6 +354,9 @@ describe('trust in a room', () => {
     expect(changed).toHaveBeenCalledOnce();
     expect(cell.trusted).toBe(false);
     expect(cell.outputs.get(0).trusted).toBe(false);
+    // Never shown trusted, not even for a moment.
+    expect(shown.length).toBeGreaterThan(0);
+    expect(shown).not.toContain(true);
     // Edits here don't count.
     cell.sharedModel.setSource('show(2)');
     expect(changed).toHaveBeenCalledOnce();
