@@ -436,6 +436,9 @@ export function trustHere(cell: ICodeCellModel, trusted: boolean): boolean {
  * agent running it through the server, or a write on disk the server
  * merged in), after taking that cell's trust away here: outputs from
  * elsewhere are untrusted until the file says the server trusts them.
+ * Covers cells this page already has. A cell another client inserts takes
+ * its trust from its shared `metadata.trusted`, as JupyterLab's cell model
+ * does: the room shares that mark (see docs/architecture.md).
  * Returns a function that stops watching.
  */
 export function watchRemoteOutputs(model: INotebookModel, onChange: () => void): () => void {

@@ -260,9 +260,10 @@ contents API, as the server marks it, and trusts each code cell it marks
 trusted, by id (`trustFromFile`). It sets that trust in this page only
 (`trustHere`): JupyterLab's own way writes into the shared document and
 would mark the notebook edited for everyone. Outputs another client
-writes into a cell (an agent's run through the server, or a change on
-disk the server merged) take that cell's trust away here
-(`watchRemoteOutputs`). While some outputs are untrusted, the pane reads
+writes into a cell this page has (an agent's run through the server, or
+a change on disk the server merged) take that cell's trust away here
+(`watchRemoteOutputs`); a cell another client inserts keeps its shared
+`metadata.trusted` mark, described below. While some outputs are untrusted, the pane reads
 the file again two seconds after the room's saves settle, since the
 server trusts outputs from its own runs, and drops a read that outputs
 changed during. The other way, a room does share trust:
