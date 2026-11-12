@@ -118,13 +118,16 @@ out and builds the commit otherwise ([apple/README.md](../apple/README.md#build)
 2. archives the arm64 Release build with that identity, hardened
    runtime, a secure timestamp, and the version from `package.json` as
    `CFBundleShortVersionString` (the run number is the build number);
-3. checks the signature, team, runtime flag, and that the app has no
+3. checks the bundle carries the `.ipynb` type, the four app extensions
+   and Quick Look's page (`check-app-bundle.sh`, which ci.yml also runs
+   on the Debug build);
+4. checks the signature, team, runtime flag, and that the app has no
    `get-task-allow` entitlement;
-4. submits it to Apple's notary service with `notarytool` and waits
+5. submits it to Apple's notary service with `notarytool` and waits
    (usually a few minutes, at most 45), printing the notary log;
-5. staples the ticket, checks it with `spctl`, and zips the app with
+6. staples the ticket, checks it with `spctl`, and zips the app with
    `ditto`;
-6. signs the zip with the update key and writes `appcast.xml`, the
+7. signs the zip with the update key and writes `appcast.xml`, the
    update feed, signed too (below).
 
 The Mac app, its share extension and its widget share the team-prefixed

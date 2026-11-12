@@ -105,6 +105,9 @@ xcodebuild archive -project "$apple/Ganymede.xcodeproj" -scheme Ganymede \
   SPARKLE_FEED_URL="$feed_url" SPARKLE_PUBLIC_ED_KEY="$public_key"
 app="$work/Ganymede.app"
 ditto "$archive/Products/Applications/Ganymede.app" "$app"
+# What the bundle must carry (file types, extensions, Quick Look's page),
+# as CI checks the Debug build (#549).
+"$apple/scripts/check-app-bundle.sh" "$app"
 
 # Sparkle's helpers come signed by Sparkle, not with this identity and the
 # timestamp notarization requires: sign them, innermost first, then the
