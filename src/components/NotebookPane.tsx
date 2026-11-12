@@ -246,8 +246,8 @@ function runFailed(
   return failed(what, e, { retry });
 }
 
-/** How long after a room's save to read which of its cells the server trusts. */
-const TRUST_CHECK_DELAY_MS = 500;
+/** How long after a room's last save in a burst to read which cells the server trusts. */
+const TRUST_CHECK_DELAY_MS = 2_000;
 
 /**
  * The kernel a first run starts for a file naming `wanted`: that one if it
@@ -368,6 +368,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
   useEffect(() => {
     let cancelled = false;
     let current: Open | undefined;
+    /** The room joined for this open, until `current` holds it. */
+    let joinedRoom: NotebookRoom | undefined;
     setJoined(false);
     setError(undefined);
     // A fresh copy of the file: nothing to lock against yet.
@@ -397,6 +399,17 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
               settings: roomSettings,
               path,
               onClosed: why => {
+                if (cancelled) return;
+                if (why.kind === 'restarted') {
+                  // The server's new room comes from the file: open it
+                  // again, as Reload does, rejoining the kernel if it ran
+                  // on. Edits that never reached the old room are gone
+                  // with it.
+                  reloading.current = true;
+                  setOpen(undefined);
+                  setAttempt(a => a + 1);
+                  return;
+                }
                 if (why.kind === 'deleted') gone.current = true;
                 setNotice(roomClosed(basename(path), why));
               },
@@ -410,6 +423,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         import('../lib/widgets'),
         services.kernelspecs.ready,
       ]);
+      joinedRoom = room;
       if (cancelled) {
         room?.dispose();
         return;
@@ -607,11 +621,19 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       if (cancelled) return;
       setJoined(true);
       await syncLanguage();
-    })().catch(e => !cancelled && setError(e ?? new Error('Unknown error')));
+    })().catch(e => {
+      // Failed between the join and the open: the room has no pane to
+      // dispose it, and would go on reconnecting.
+      if (!current) joinedRoom?.dispose();
+      if (!cancelled) setError(e ?? new Error('Unknown error'));
+    });
     return () => {
       cancelled = true;
       const done = current;
-      if (!done) return;
+      if (!done) {
+        joinedRoom?.dispose();
+        return;
+      }
       const teardown = () => {
         done.disposables.forEach(d => d.dispose());
         // After React's commit: JupyterLab's React-based widgets unmount
@@ -872,16 +894,32 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
     const { model } = open;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let reading = false;
+    /** A save came in during a read: read again once it's done. */
+    let pending = false;
+    // Once the saves settle, not on each one: while someone types the room
+    // saves about once a second, and each read is the whole notebook.
+    const schedule = () => {
+      clearTimeout(timer);
+      timer = setTimeout(read, TRUST_CHECK_DELAY_MS);
+    };
+    const read = () => {
+      if (!hasUntrustedOutputs(model)) return;
+      reading = true;
+      void trustFromFile(services.contents, open.saver.path, model)
+        .catch(() => {})
+        .finally(() => {
+          reading = false;
+          if (pending) {
+            pending = false;
+            schedule();
+          }
+        });
+    };
     const onChange = (_: unknown, change: NotebookChange) => {
       const saved = change.stateChange?.some(c => c.name === 'dirty' && c.newValue === false);
-      if (!saved || reading || !hasUntrustedOutputs(model)) return;
-      clearTimeout(timer);
-      timer = setTimeout(() => {
-        reading = true;
-        void trustFromFile(services.contents, open.saver.path, model)
-          .catch(() => {})
-          .finally(() => (reading = false));
-      }, TRUST_CHECK_DELAY_MS);
+      if (!saved || !hasUntrustedOutputs(model)) return;
+      if (reading) pending = true;
+      else schedule();
     };
     model.sharedModel.changed.connect(onChange);
     return () => {

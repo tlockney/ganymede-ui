@@ -2,6 +2,7 @@ import '../test/notebook-env';
 import { describe, expect, it, vi } from 'vitest';
 import { NotebookModel } from '@jupyterlab/notebook';
 import { ServerConnection } from '@jupyterlab/services';
+import * as encoding from 'lib0/encoding';
 import { NotebookRoom, RoomSaver, trustFromFile } from './room';
 
 function settingsAnswering(status: number, body: unknown) {
@@ -132,5 +133,130 @@ describe('trustFromFile', () => {
     model.cells.get(0).trusted = true;
     await trustFromFile(contents([{ id: 'a', trusted: false }]), 'Io.ipynb', model);
     expect(model.cells.get(0).trusted).toBe(true);
+  });
+});
+
+/** A websocket the test drives, standing in for the server's room. */
+class FakeSocket {
+  static all: FakeSocket[] = [];
+  static readonly OPEN = 1;
+  readonly OPEN = 1;
+  readyState = 0;
+  binaryType = '';
+  sent: Uint8Array[] = [];
+  onopen: (() => void) | null = null;
+  onmessage: ((e: { data: ArrayBuffer }) => void) | null = null;
+  onclose: ((e: { code: number; reason: string }) => void) | null = null;
+  onerror: ((e: unknown) => void) | null = null;
+  constructor(readonly url: string) {
+    FakeSocket.all.push(this);
+  }
+  send(data: Uint8Array) {
+    this.sent.push(data);
+  }
+  close() {
+    this.readyState = 3;
+  }
+  open() {
+    this.readyState = 1;
+    this.onopen?.();
+  }
+  /** The server's sync step 2 for an empty document: the join's first sync. */
+  sync() {
+    const enc = encoding.createEncoder();
+    encoding.writeVarUint(enc, 0); // sync
+    encoding.writeVarUint(enc, 1); // step 2
+    encoding.writeVarUint8Array(enc, new Uint8Array([0, 0])); // empty update
+    this.onmessage?.({ data: encoding.toUint8Array(enc).buffer as ArrayBuffer });
+  }
+  serverClose(code: number, reason = '') {
+    this.readyState = 3;
+    this.onclose?.({ code, reason });
+  }
+}
+
+describe('NotebookRoom connection', () => {
+  const session = { format: 'json', type: 'notebook', fileId: 'f1', sessionId: 's1' };
+  function joining(onClosed = vi.fn()) {
+    FakeSocket.all = [];
+    const { settings } = settingsAnswering(200, session);
+    const join = NotebookRoom.join({
+      settings,
+      path: 'Io.ipynb',
+      onClosed,
+      WebSocket: FakeSocket as unknown as typeof WebSocket,
+    });
+    return { join, onClosed };
+  }
+  const socket = () => vi.waitFor(() => FakeSocket.all.at(-1) ?? Promise.reject(new Error('none')));
+
+  it('joins the file’s room once it syncs', async () => {
+    const { join } = joining();
+    const ws = await socket();
+    expect(ws.url).toContain('/api/collaboration/room/json:notebook:f1?');
+    expect(ws.url).toContain('sessionId=s1');
+    expect(ws.url).toContain('token=t');
+    ws.open();
+    ws.sync();
+    const room = await join;
+    expect(room).toBeDefined();
+    room!.dispose();
+  });
+
+  it('fails the join at once when the server closes the room, and says nothing else', async () => {
+    const { join, onClosed } = joining();
+    const ws = await socket();
+    ws.open();
+    const started = Date.now();
+    ws.serverClose(4404, 'deleted');
+    await expect(join).rejects.toThrow('closed the notebook’s room');
+    expect(Date.now() - started).toBeLessThan(1_000);
+    expect(onClosed).not.toHaveBeenCalled();
+  });
+
+  it('stops and asks to reopen after a server restart, rather than reconnecting', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const { join, onClosed } = joining();
+      const ws = await socket();
+      ws.open();
+      ws.sync();
+      const room = (await join)!;
+      ws.serverClose(1003, JSON.stringify({ reason: 'unknown_session', reloadable: true }));
+      expect(onClosed).toHaveBeenCalledWith({ kind: 'restarted' });
+      // No new connection with this document's history.
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(FakeSocket.all).toHaveLength(1);
+      room.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('fails a save whose connection drops before the answer', async () => {
+    const { join } = joining();
+    const ws = await socket();
+    ws.open();
+    ws.sync();
+    const room = (await join)!;
+    const saving = room.save();
+    ws.serverClose(1006);
+    await expect(saving).rejects.toThrow('dropped before the save was confirmed');
+    room.dispose();
+  });
+
+  it('answers a save from the server’s reply', async () => {
+    const { join } = joining();
+    const ws = await socket();
+    ws.open();
+    ws.sync();
+    const room = (await join)!;
+    const saving = room.save();
+    const enc = encoding.createEncoder();
+    encoding.writeVarUint(enc, 2);
+    encoding.writeVarString(enc, JSON.stringify({ type: 'save', responseTo: 1, status: 'failed' }));
+    ws.onmessage?.({ data: encoding.toUint8Array(enc).buffer as ArrayBuffer });
+    expect(await saving).toBe('failed');
+    room.dispose();
   });
 });

@@ -37,13 +37,22 @@ export type SaveStatus = 'success' | 'failed' | 'skipped';
 export type RoomClosed =
   /** The file was deleted (code 4404). */
   | { kind: 'deleted' }
+  /**
+   * The server restarted (a 1003 `unknown_session` close). Its new room
+   * was rebuilt from the file, so this copy can't merge into it: open the
+   * notebook again.
+   */
+  | { kind: 'restarted' }
   /** Anything else the server said reconnecting can't fix. */
   | { kind: 'refused'; reason: string };
 
 export type RoomOptions = {
   settings: ServerConnection.ISettings;
   path: string;
-  /** Told once when the server closes the room for good. */
+  /**
+   * Told once when the server closes the room for good, after the join
+   * has returned. A close during the join fails the join instead.
+   */
   onClosed?: (why: RoomClosed) => void;
   /** Tests pass a fake socket. */
   WebSocket?: typeof WebSocket;
@@ -53,8 +62,16 @@ export class NotebookRoom {
   readonly notebook: YNotebook;
   private readonly provider: WebsocketProvider;
   private nextSave = 1;
-  private readonly saves = new Map<number, (status: SaveStatus) => void>();
+  private readonly saves = new Map<
+    number,
+    { resolve: (status: SaveStatus) => void; reject: (e: Error) => void }
+  >();
   private disposed = false;
+  /** Set once the join returned: closes from then on go to `onClosed`. */
+  private joined = false;
+  /** Why the room closed for good, if it did. */
+  private closedFor?: RoomClosed;
+  private readonly closedListeners = new Set<(why: RoomClosed) => void>();
 
   private constructor(
     private readonly o: RoomOptions,
@@ -80,16 +97,30 @@ export class NotebookRoom {
       this.onRaw(decoding.readVarString(decoder));
     };
     this.provider.on('connection-close', event => {
-      // The server restarted: its session id changed, and it says so with a
-      // reloadable close. Ask for the new one; the provider reconnects.
+      // A save sent on this connection can't be answered on the next one.
+      for (const { reject } of this.saves.values()) {
+        reject(new Error('The connection to the server dropped before the save was confirmed'));
+      }
+      this.saves.clear();
+      // The server restarted: its session id changed, and it asks clients
+      // to reload. Its room was rebuilt from the file, and this document's
+      // history can't merge into it (the same item ids, other content), so
+      // reconnecting would duplicate cells. Stop here; the pane reopens.
       if (event?.code === 1003 && /unknown_session/.test(event.reason)) {
-        void this.refreshSession();
+        this.provider.disconnect();
+        this.close({ kind: 'restarted' });
       }
     });
     this.provider.on('closed', ({ code, reason }) => {
-      if (this.disposed) return;
-      o.onClosed?.(code === 4404 ? { kind: 'deleted' } : { kind: 'refused', reason });
+      this.close(code === 4404 ? { kind: 'deleted' } : { kind: 'refused', reason });
     });
+  }
+
+  private close(why: RoomClosed) {
+    if (this.disposed || this.closedFor) return;
+    this.closedFor = why;
+    for (const listener of this.closedListeners) listener(why);
+    if (this.joined) this.o.onClosed?.(why);
   }
 
   /**
@@ -113,6 +144,7 @@ export class NotebookRoom {
       room.dispose();
       throw e;
     }
+    room.joined = true;
     return room;
   }
 
@@ -140,9 +172,15 @@ export class NotebookRoom {
         this.saves.delete(id);
         reject(new Error('The server didn’t answer the save'));
       }, SAVE_TIMEOUT_MS);
-      this.saves.set(id, status => {
-        clearTimeout(timer);
-        resolve(status);
+      this.saves.set(id, {
+        resolve: status => {
+          clearTimeout(timer);
+          resolve(status);
+        },
+        reject: e => {
+          clearTimeout(timer);
+          reject(e);
+        },
       });
       ws.send(encoding.toUint8Array(enc));
     });
@@ -151,26 +189,37 @@ export class NotebookRoom {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    for (const done of this.saves.values()) done('skipped');
+    for (const { resolve } of this.saves.values()) resolve('skipped');
     this.saves.clear();
     this.provider.destroy();
     this.notebook.dispose();
   }
 
+  /** The first sync; fails at once if the server closes the room for good. */
   private synced(timeout: number): Promise<void> {
     if (this.provider.synced) return Promise.resolve();
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
+      const done = () => {
+        clearTimeout(timer);
         this.provider.off('sync', onSync);
+        this.closedListeners.delete(onClosed);
+      };
+      const timer = setTimeout(() => {
+        done();
         reject(new Error('The notebook’s room didn’t sync in time'));
       }, timeout);
       const onSync = (synced: boolean) => {
         if (!synced) return;
-        clearTimeout(timer);
-        this.provider.off('sync', onSync);
+        done();
         resolve();
       };
+      const onClosed = (why: RoomClosed) => {
+        done();
+        reject(new Error(`The server closed the notebook’s room (${why.kind})`));
+      };
+      if (this.closedFor) return onClosed(this.closedFor);
       this.provider.on('sync', onSync);
+      this.closedListeners.add(onClosed);
     });
   }
 
@@ -186,16 +235,7 @@ export class NotebookRoom {
     const done = this.saves.get(m.responseTo);
     if (!done) return;
     this.saves.delete(m.responseTo);
-    done(m.status === 'success' || m.status === 'failed' ? m.status : 'skipped');
-  }
-
-  private async refreshSession() {
-    try {
-      const session = await requestSession(this.o.settings, this.o.path);
-      if (session && !this.disposed) this.provider.params.sessionId = session.sessionId;
-    } catch {
-      // Unreachable: the provider keeps trying with the old id.
-    }
+    done.resolve(m.status === 'success' || m.status === 'failed' ? m.status : 'skipped');
   }
 }
 

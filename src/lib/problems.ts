@@ -176,8 +176,15 @@ export function changedOnDisk(fileName: string, dirty: boolean): Problem {
 /** The server closed `fileName`'s room for good (#183). */
 export function roomClosed(
   fileName: string,
-  why: { kind: 'deleted' } | { kind: 'refused'; reason: string },
+  why: { kind: 'deleted' } | { kind: 'restarted' } | { kind: 'refused'; reason: string },
 ): Problem {
+  if (why.kind === 'restarted') {
+    return {
+      kind: 'save-failed',
+      message: `The server restarted. Reopen ${fileName} to go on editing it.`,
+      actions: [],
+    };
+  }
   return why.kind === 'deleted'
     ? {
         kind: 'save-failed',

@@ -49,11 +49,6 @@ export type SaveOptions = {
 };
 
 /**
- * Saves one notebook model to its file, as JupyterLab's document context
- * does: one save at a time, a conflict when the file changed on disk, and
- * the dirty flag cleared only when no edit arrived during the round trip.
- */
-/**
  * What the notebook pane saves through: {@link NotebookSaver} over the
  * contents API, or a room's (`RoomSaver`, #183).
  */
@@ -69,6 +64,11 @@ export interface Saver {
   dispose(): void;
 }
 
+/**
+ * Saves one notebook model to its file, as JupyterLab's document context
+ * does: one save at a time, a conflict when the file changed on disk, and
+ * the dirty flag cleared only when no edit arrived during the round trip.
+ */
 export class NotebookSaver implements Saver {
   readonly live = false;
   private o: Options;
