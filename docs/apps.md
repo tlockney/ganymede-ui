@@ -492,6 +492,22 @@ headings; pick one to go to its cell.
 - In the background iOS may stop the app's server; back in the
   foreground the app restarts it if it stopped answering.
 
+## Spotlight
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+On the Mac, iPad and iPhone, a Spotlight search finds notebooks by their
+title, headings and Markdown text, and choosing one opens it in
+Ganymede. The notebooks indexed are the ones opened lately, and on the
+Mac also those in folders added under Settings › General › Spotlight.
+Outputs are never indexed, and code only with **Include code**. Files
+over 5 MB are left out. A notebook's entry is updated when it is saved,
+and the index is checked when the app comes to the front, so moved and
+deleted notebooks leave it. Turning **Show notebooks in Spotlight** off
+removes every entry. The index stays on the device.
+
 ## Crash reports
 
 Off until you say yes. On first launch the app asks once whether to send
