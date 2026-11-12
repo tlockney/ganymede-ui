@@ -423,10 +423,6 @@ headings; pick one to go to its cell.
   toolbar shows Notebook Access (a padlock), naming what it asks
   for; the button goes once the grant covers it.
 
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release.
-
 - **Downloads** open the share sheet, where Save to Files keeps them.
 - In the background iOS may stop the app's server; back in the
   foreground the app restarts it if it stopped answering.
