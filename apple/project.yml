@@ -637,6 +637,7 @@ targets:
       # The line-number gutter (#524).
       - path: Sources/Ganymede/Editor/LineNumbers.swift
       - path: Sources/Ganymede/FileStack.swift
+      - path: Sources/Ganymede/NotebookIndex.swift
       - path: Sources/Ganymede/CrashScrub.swift
       - path: Sources/Ganymede/NotebookActions.swift
       - path: Sources/Ganymede/AppURL.swift
