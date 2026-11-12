@@ -10,5 +10,8 @@ so.
 `npm dedupe` in #527 hoisted chord's exact optional peer `ws` 8.21.0,
 moving every other user of `ws` back from 8.22.0, and moved `internmap`
 from 2.0.3 to 1.0.1. The lockfile is back to the one npm wrote for the
-bumps, with no downgrades; chord stays nested twice, which costs disk
-space only.
+bumps, with no downgrades from before #527. Against #527 it moves about
+20 transitive packages back one patch release that dedupe had raised
+(`@smithy/*`, `semver`, `postcss`, `d3-*`); `npm audit` reports the same
+advisories either way. chord stays nested twice, which costs disk space
+only.
