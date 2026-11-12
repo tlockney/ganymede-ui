@@ -7,6 +7,12 @@ job beside `macos-app`, so a pull request that touches the apps waits
 for the slower of the two instead of their sum. Each job repeats the
 setup (npm, XcodeGen, bootstrap), about 1.5 minutes of runner time.
 
+The first split run gained less than expected: `ios-app` took 11.7
+minutes, its test step 10.2 instead of 5.8, because it no longer
+reused the Swift package checkouts the Mac step had resolved (about
+2.5 minutes of fetching). Both jobs now cache
+`DerivedData/SourcePackages`, keyed on `apple/Package.resolved`.
+
 Both jobs are gated by the same `macos` output of `ci-changes.sh`.
 Filtering per platform would rarely skip anything, since almost all of
 `apple/` is shared, and could let one platform break unseen.

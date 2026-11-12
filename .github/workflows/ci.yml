@@ -170,6 +170,12 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      # Swift package checkouts, by Package.resolved: resolving them takes
+      # about 2.5 minutes, which each app job would pay (#543).
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: apple/build/DerivedData/SourcePackages
+          key: swift-packages-${{ runner.os }}-${{ hashFiles('apple/Package.resolved') }}
       - run: brew install xcodegen
       - run: apple/scripts/bootstrap.sh
         env:
@@ -265,6 +271,12 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      # Swift package checkouts, by Package.resolved: resolving them takes
+      # about 2.5 minutes, which each app job would pay (#543).
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: apple/build/DerivedData/SourcePackages
+          key: swift-packages-${{ runner.os }}-${{ hashFiles('apple/Package.resolved') }}
       - run: brew install xcodegen
       - run: apple/scripts/bootstrap.sh
         env:
