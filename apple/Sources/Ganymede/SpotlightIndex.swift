@@ -315,7 +315,6 @@ final class SpotlightSettings {
         }
     }
 
-    /// `url` was saved: its entry, if it has one, gets the new contents.
     /// `url` was just opened, so it is a recent: indexed now, without a
     /// walk of the folders (the next `sync()` drops recents that fell off).
     func opened(_ url: URL) {
@@ -324,6 +323,7 @@ final class SpotlightSettings {
         Task.detached(priority: .utility) { await SpotlightIndex.shared.add(url, code: code) }
     }
 
+    /// `url` was saved: its entry, if it has one, gets the new contents.
     func saved(_ url: URL) {
         guard enabled else { return }
         let code = code
