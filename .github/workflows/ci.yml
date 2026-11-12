@@ -102,17 +102,18 @@ jobs:
           "$HOME/.local/bin/ganymede" --version
           "$HOME/.local/bin/ganymede" kernelspec list
       - run: npm ci
+      # Chromium, keyed on the installed Playwright version, so the key
+      # changes only when the browser does.
+      - id: playwright
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}-chromium
       # Best effort for the system libraries: the runner image has
       # Chromium's (it ships Chrome), so an apt mirror outage shouldn't
       # fail the job (#499). Bounded: apt takes ~10 minutes to give up,
       # and `timeout` stops npx, not the apt-get it started.
-      # Chromium, by package-lock.json; after a lockfile change the last
-      # cache is restored and `playwright install` fetches only a new version.
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('package-lock.json') }}
-          restore-keys: playwright-${{ runner.os }}-${{ runner.arch }}-
       - run: |
           npx playwright install chromium
           timeout 5m npx playwright install-deps chromium || { sudo pkill -x apt-get || true; echo "::warning::apt failed; using the runner image's libraries"; }
