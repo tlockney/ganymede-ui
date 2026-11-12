@@ -238,9 +238,11 @@ enum CodeFont {
 #if os(macOS)
 typealias PlatformFont = NSFont
 typealias PlatformFontDescriptor = NSFontDescriptor
+typealias PlatformColor = NSColor
 #else
 typealias PlatformFont = UIFont
 typealias PlatformFontDescriptor = UIFontDescriptor
+typealias PlatformColor = UIColor
 #endif
 
 extension Notification.Name {
