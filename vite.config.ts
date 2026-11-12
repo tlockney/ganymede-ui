@@ -80,6 +80,19 @@ const proxy: Record<string, ProxyOptions> = {
 const config: UserConfig = {
   plugins: [
     react(),
+    // The build's release, which the kernel page compares with its own
+    // before it says it is ready (#537). Not precached (no .json in
+    // globPatterns), so it always comes from the server.
+    {
+      name: 'release-file',
+      generateBundle() {
+        this.emitFile({
+          type: 'asset',
+          fileName: 'release.json',
+          source: JSON.stringify({ release: process.env.VITE_RELEASE }),
+        });
+      },
+    },
     {
       name: 'agent-module-graph',
       buildEnd() {

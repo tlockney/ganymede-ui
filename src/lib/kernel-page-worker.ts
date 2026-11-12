@@ -4,6 +4,8 @@
  * be the previous release's, talking to the new release's Swift (#521).
  * Before the page says it is ready, it asks the worker to check for an
  * update; when a newer worker takes over, the page loads again from it.
+ * It also compares its release with the one the server serves, which
+ * catches a newer worker that took control before the check ran (#537).
  *
  * Swift queues the kernels' starts until the page says it is ready, so a
  * reload before then loses nothing. After that the page stays on its
@@ -13,7 +15,7 @@
  * page can miss its own release's files.
  */
 
-/** sessionStorage key: this tab already reloaded once for a new worker. */
+/** sessionStorage key: this tab already reloaded once for a newer release. */
 export const RELOADED_KEY = 'ganymede-kernel-page-reloaded';
 
 /** How long the update check may take before the page says it is ready. */
@@ -81,6 +83,34 @@ export async function workerIsCurrent(
   return true;
 }
 
+/**
+ * Whether the release the server serves (`release.json`, which the
+ * service worker doesn't cache) is this page's. A newer worker that took
+ * control before the page's check ran leaves no update to find (#537);
+ * the release tells. A page or server that names no release, and any
+ * error, count as current.
+ */
+export async function releaseIsCurrent(
+  own: string | undefined = import.meta.env.VITE_RELEASE,
+  load: typeof fetch = (...args) => fetch(...args),
+  timeoutMs = CHECK_TIMEOUT_MS,
+): Promise<boolean> {
+  if (!own) return true;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const response = await load('release.json', { cache: 'no-store', signal: controller.signal });
+    if (!response.ok) return true;
+    const { release } = (await response.json()) as { release?: unknown };
+    return typeof release !== 'string' || release === own;
+  } catch {
+    console.warn('kernel page: the release check failed; starting kernels');
+    return true;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /** Whether this tab may reload for a new worker: at most once. */
 export function mayReload(
   storage: () => Pick<Storage, 'getItem' | 'setItem'> | undefined = () => sessionStorage,
@@ -105,12 +135,13 @@ export async function readyWhenCurrent(
   on: { ready: () => void; reload: () => void },
   check: typeof workerIsCurrent = workerIsCurrent,
   canReload: () => boolean = mayReload,
+  sameRelease: () => Promise<boolean> = () => releaseIsCurrent(),
 ): Promise<void> {
   if (!sw?.controller) return on.ready();
-  if (await check(sw)) return on.ready();
+  if ((await check(sw)) && (await sameRelease())) return on.ready();
   if (canReload()) return on.reload();
   console.warn(
-    'kernel page: a newer service worker is in control, but this tab already reloaded once',
+    'kernel page: this page is not the current release, but this tab already reloaded once',
   );
   on.ready();
 }
