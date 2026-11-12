@@ -25,8 +25,22 @@ API, as it does for the browser backend.
 Two server behaviours mattered. The room's websocket takes the token in
 the query, like kernel sockets. After a server restart, the old session
 id is refused with a 1003 close whose reason says `unknown_session`;
-y-websocket would retry it forever, so the room asks for the new session
-id on that close.
+y-websocket would retry it forever. Reconnecting with a new session id
+would not do either: the restarted server rebuilt the room from the file,
+and this page's document can't merge into it (the same item ids with
+other content). So the room stops and the pane opens the notebook again,
+saying so if it had unsaved edits.
+
+Trust took the most care. Setting `cell.trusted` as JupyterLab does is a
+shared edit in a room (it writes `metadata.trusted` and rewrites the
+outputs), which marked a freshly opened signed notebook edited for every
+client and had the server save it again. `trustHere` sets trust with the
+cell's own listeners off instead, so it stays in this page; a unit test
+checks no update reaches the document, since this leans on
+`CodeCellModel` internals. And because trust set here outlives the
+outputs it was for, outputs another client writes into a cell
+(`watchRemoteOutputs`) take its trust away until the server's file says
+otherwise.
 
 The e2e tests that checked the lock against `ganymede serve` now check
 the live path instead: a change on disk merges into a notebook with

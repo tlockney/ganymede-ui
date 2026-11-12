@@ -248,15 +248,24 @@ the server hadn't saved. A close during the join fails
 the join at once. If the join fails (a server without rooms, a refused
 room) or the first sync takes over 15 seconds, the pane falls back to the
 contents API. The room is disposed after the model, since it owns the
-model's shared notebook, and also when opening fails after the join.
+model's shared notebook, and also when opening fails after the join. A
+save while the connection is down waits up to ten seconds for it to come
+back and sync, so edits made meanwhile reach the server first; the save
+made when switching files relies on this. A refused close stops saves,
+as a deleted file does.
 
 Trust: the server doesn't put `trusted` marks in the room; it decides
 trust when it saves. So on open the pane reads the file through the
 contents API, as the server marks it, and trusts each code cell it marks
-trusted, by id (`trustFromFile`). While some outputs are untrusted (an
-agent's run through the server, say), it reads again two seconds after
-the room's saves settle, since the server trusts outputs from its own
-runs. It never takes trust away. The other way, a room does share trust:
+trusted, by id (`trustFromFile`). It sets that trust in this page only
+(`trustHere`): JupyterLab's own way writes into the shared document and
+would mark the notebook edited for everyone. Outputs another client
+writes into a cell (an agent's run through the server, or a change on
+disk the server merged) take that cell's trust away here
+(`watchRemoteOutputs`). While some outputs are untrusted, the pane reads
+the file again two seconds after the room's saves settle, since the
+server trusts outputs from its own runs, and drops a read that outputs
+changed during. The other way, a room does share trust:
 JupyterLab's cell model writes `metadata.trusted` into the shared cell
 when a cell is trusted (this page ran it, or Trust Notebook), and every
 client of the room reads it there. So a cell trusted in one window is

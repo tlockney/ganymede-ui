@@ -3,7 +3,9 @@ import { describe, expect, it, vi } from 'vitest';
 import { NotebookModel } from '@jupyterlab/notebook';
 import { ServerConnection } from '@jupyterlab/services';
 import * as encoding from 'lib0/encoding';
-import { NotebookRoom, RoomSaver, trustFromFile } from './room';
+import type { ICodeCellModel } from '@jupyterlab/cells';
+import * as Y from 'yjs';
+import { NotebookRoom, RoomSaver, trustFromFile, trustHere, watchRemoteOutputs } from './room';
 
 function settingsAnswering(status: number, body: unknown) {
   const fetch = vi.fn(
@@ -240,6 +242,7 @@ describe('NotebookRoom connection', () => {
     ws.sync();
     const room = (await join)!;
     const saving = room.save();
+    await vi.waitFor(() => expect(ws.sent.some(isSave)).toBe(true));
     ws.serverClose(1006);
     await expect(saving).rejects.toThrow('dropped before the save was confirmed');
     room.dispose();
@@ -252,11 +255,116 @@ describe('NotebookRoom connection', () => {
     ws.sync();
     const room = (await join)!;
     const saving = room.save();
-    const enc = encoding.createEncoder();
-    encoding.writeVarUint(enc, 2);
-    encoding.writeVarString(enc, JSON.stringify({ type: 'save', responseTo: 1, status: 'failed' }));
-    ws.onmessage?.({ data: encoding.toUint8Array(enc).buffer as ArrayBuffer });
+    await vi.waitFor(() => expect(ws.sent.some(isSave)).toBe(true));
+    answerSave(ws, 1, 'failed');
     expect(await saving).toBe('failed');
     room.dispose();
+  });
+
+  it('holds a save while the connection is down, and sends it once synced again', async () => {
+    const { join } = joining();
+    const ws = await socket();
+    ws.open();
+    ws.sync();
+    const room = (await join)!;
+    ws.serverClose(1006);
+    const saving = room.save();
+    // y-websocket reconnects on its own.
+    const again = await vi.waitFor(() =>
+      FakeSocket.all.length === 2 ? FakeSocket.all[1]! : Promise.reject(new Error('not yet')),
+    );
+    again.open();
+    expect(again.sent.some(isSave)).toBe(false);
+    again.sync();
+    await vi.waitFor(() => expect(again.sent.some(isSave)).toBe(true));
+    answerSave(again, 1, 'success');
+    expect(await saving).toBe('success');
+    room.dispose();
+  });
+});
+
+/** Whether `data` is the raw `save` message. */
+function isSave(data: Uint8Array) {
+  return data[0] === 2 && new TextDecoder().decode(data).includes('save');
+}
+
+function answerSave(ws: FakeSocket, id: number, status: string) {
+  const enc = encoding.createEncoder();
+  encoding.writeVarUint(enc, 2);
+  encoding.writeVarString(enc, JSON.stringify({ type: 'save', responseTo: id, status }));
+  ws.onmessage?.({ data: encoding.toUint8Array(enc).buffer as ArrayBuffer });
+}
+
+describe('trust in a room', () => {
+  /** A collaborative model on a shared notebook, as the pane builds it. */
+  function shared() {
+    const model = new NotebookModel({ collaborationEnabled: true });
+    model.sharedModel.insertCells(0, [
+      {
+        cell_type: 'code',
+        id: 'a',
+        source: 'show()',
+        metadata: {},
+        outputs: [
+          { output_type: 'display_data', data: { 'text/html': '<b>Io</b>' }, metadata: {} },
+        ],
+      },
+    ]);
+    model.dirty = false;
+    const ydoc = (model.sharedModel as unknown as { ydoc: Y.Doc }).ydoc;
+    return { model, ydoc, cell: model.cells.get(0) as ICodeCellModel };
+  }
+
+  it('trusts a cell here without editing the shared notebook', () => {
+    const { model, ydoc, cell } = shared();
+    const updates = vi.fn();
+    ydoc.on('update', updates);
+    expect(trustHere(cell, true)).toBe(true);
+    expect(cell.trusted).toBe(true);
+    expect(cell.outputs.get(0).trusted).toBe(true);
+    expect(cell.sharedModel.getMetadata('trusted')).toBeUndefined();
+    expect(updates).not.toHaveBeenCalled();
+    expect(model.dirty).toBe(false);
+    expect(trustHere(cell, true)).toBe(false);
+  });
+
+  it('takes trust away when another client changes the outputs', () => {
+    const { model, ydoc, cell } = shared();
+    trustHere(cell, true);
+    const changed = vi.fn();
+    const stop = watchRemoteOutputs(model, changed);
+    // A second client, as the server relays it.
+    const other = new Y.Doc();
+    Y.applyUpdate(other, Y.encodeStateAsUpdate(ydoc));
+    const sendBack = (u: Uint8Array) => Y.applyUpdate(ydoc, u, 'remote');
+    other.on('update', sendBack);
+    const ycells = other.getArray<Y.Map<unknown>>('cells');
+    const youtputs = ycells.get(0).get('outputs') as Y.Array<unknown>;
+    other.transact(() => {
+      youtputs.delete(0, youtputs.length);
+      youtputs.push([
+        { output_type: 'display_data', data: { 'text/html': '<script></script>' }, metadata: {} },
+      ]);
+    });
+    expect(changed).toHaveBeenCalledOnce();
+    expect(cell.trusted).toBe(false);
+    expect(cell.outputs.get(0).trusted).toBe(false);
+    // Edits here don't count.
+    cell.sharedModel.setSource('show(2)');
+    expect(changed).toHaveBeenCalledOnce();
+    stop();
+  });
+
+  it('drops a read the outputs changed during', async () => {
+    const { model, cell } = shared();
+    const file = {
+      get: vi.fn(async () => ({
+        content: { cells: [{ cell_type: 'code', id: 'a', metadata: { trusted: true } }] },
+      })),
+    } as never;
+    expect(await trustFromFile(file, 'Io.ipynb', model, () => true)).toBe(false);
+    expect(cell.trusted).toBe(false);
+    expect(await trustFromFile(file, 'Io.ipynb', model)).toBe(true);
+    expect(cell.trusted).toBe(true);
   });
 });

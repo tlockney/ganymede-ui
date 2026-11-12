@@ -21,7 +21,7 @@ import {
   SaveConflict,
   type Saver,
 } from '../lib/saver';
-import { NotebookRoom, RoomSaver, trustFromFile } from '../lib/room';
+import { NotebookRoom, RoomSaver, trustFromFile, watchRemoteOutputs } from '../lib/room';
 import {
   type Problem,
   changedOnDisk,
@@ -414,7 +414,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
                   setAttempt(a => a + 1);
                   return;
                 }
-                if (why.kind === 'deleted') gone.current = true;
+                // Deleted or refused: nothing saves it any more.
+                gone.current = true;
                 setNotice(roomClosed(basename(path), why));
               },
             }).catch((e: unknown) => {
@@ -620,6 +621,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
           },
         ],
       };
+      // A file deleted under an earlier open of this pane is back (Reload).
+      gone.current = false;
       setOpen(current);
       await joining;
       if (cancelled) return;
@@ -890,9 +893,11 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
   }, [open, path, lock]);
 
   // In a room, outputs another client wrote (an agent running cells
-  // through the server) arrive untrusted here. The server trusts them when
-  // they came from a run on it, and says so in the file it saves: read
-  // which cells it trusts after each save while some outputs aren't (#183).
+  // through the server, or a write on disk the server merged) are
+  // untrusted here, even in a cell this page trusted. The server trusts
+  // them when they came from a run on it, and says so in the file it
+  // saves: read which cells it trusts after each save while some outputs
+  // aren't (#183).
   useEffect(() => {
     if (!open?.room) return;
     const { model } = open;
@@ -900,6 +905,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
     let reading = false;
     /** A save came in during a read: read again once it's done. */
     let pending = false;
+    /** Moves on each remote output change, so a read that spans one is dropped. */
+    let generation = 0;
     // Once the saves settle, not on each one: while someone types the room
     // saves about once a second, and each read is the whole notebook.
     const schedule = () => {
@@ -909,7 +916,13 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
     const read = () => {
       if (!hasUntrustedOutputs(model)) return;
       reading = true;
-      void trustFromFile(services.contents, open.saver.path, model)
+      const at = generation;
+      void trustFromFile(services.contents, open.saver.path, model, () => generation !== at)
+        .then(changed => {
+          if (changed) setTrusted(!hasUntrustedOutputs(model));
+          // Outputs changed during the read: the file may predate them.
+          if (generation !== at) pending = true;
+        })
         .catch(() => {})
         .finally(() => {
           reading = false;
@@ -926,8 +939,15 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       else schedule();
     };
     model.sharedModel.changed.connect(onChange);
+    const unwatch = watchRemoteOutputs(model, () => {
+      generation++;
+      setTrusted(!hasUntrustedOutputs(model));
+      if (reading) pending = true;
+      else schedule();
+    });
     return () => {
       clearTimeout(timer);
+      unwatch();
       model.sharedModel.changed.disconnect(onChange);
     };
   }, [open, services]);

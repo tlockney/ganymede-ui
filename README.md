@@ -200,6 +200,10 @@ When you have no unsaved edits and no cell is running, nothing here can be
 lost, so the notebook takes the new version in place instead of locking:
 the kernel keeps running and the scroll position stays.
 
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD). The
+> latest release locks in this case too.
+
 ### Code font
 
 Settings > Code font picks the font of code cells, text outputs and code

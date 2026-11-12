@@ -11,7 +11,8 @@
  * in changes other programs make to the file, so the pane neither polls the
  * file nor locks on a change.
  */
-import { YNotebook } from '@jupyter/ydoc';
+import { type YCodeCell, YNotebook } from '@jupyter/ydoc';
+import type { ICodeCellModel } from '@jupyterlab/cells';
 import { URLExt } from '@jupyterlab/coreutils';
 import type * as nbformat from '@jupyterlab/nbformat';
 import { type Contents, ServerConnection } from '@jupyterlab/services';
@@ -29,6 +30,12 @@ export const SYNC_TIMEOUT_MS = 15_000;
 
 /** How long a save may take to answer. */
 const SAVE_TIMEOUT_MS = 30_000;
+
+/**
+ * How long a save waits for a dropped connection to come back and sync,
+ * so edits made meanwhile reach the server before it saves.
+ */
+export const RECONNECT_WAIT_MS = 10_000;
 
 /** What a room's `save` answers. */
 export type SaveStatus = 'success' | 'failed' | 'skipped';
@@ -157,15 +164,19 @@ export class NotebookRoom {
    * Ask the server to save the room now. Its autosave does this a second
    * after the last edit; ⌘S and the pane's teardown want it at once.
    */
-  save(): Promise<SaveStatus> {
+  async save(): Promise<SaveStatus> {
+    // While the connection is down, edits wait here; after it comes back,
+    // the sync sends them before the save goes (y-websocket answers the
+    // server's sync step 1, carrying them, before it counts as synced).
+    await this.synced(RECONNECT_WAIT_MS).catch(() => {});
     const id = this.nextSave++;
     const enc = encoding.createEncoder();
     encoding.writeVarUint(enc, MSG_RAW);
     encoding.writeVarString(enc, 'save');
     encoding.writeVarUint(enc, id);
     const ws = this.provider.ws;
-    if (!ws || ws.readyState !== WebSocket.OPEN) {
-      return Promise.reject(new Error('Not connected to the notebook’s room'));
+    if (this.disposed || !this.provider.synced || !ws || ws.readyState !== WebSocket.OPEN) {
+      throw new Error('Not connected to the notebook’s room');
     }
     return new Promise<SaveStatus>((resolve, reject) => {
       const timer = setTimeout(() => {
@@ -195,9 +206,12 @@ export class NotebookRoom {
     this.notebook.dispose();
   }
 
-  /** The first sync; fails at once if the server closes the room for good. */
+  /**
+   * The room is synced: the first time, or again after the connection
+   * dropped. Fails at once if the server closes the room for good.
+   */
   private synced(timeout: number): Promise<void> {
-    if (this.provider.synced) return Promise.resolve();
+    if (this.provider.synced && this.provider.wsconnected) return Promise.resolve();
     return new Promise((resolve, reject) => {
       const done = () => {
         clearTimeout(timer);
@@ -344,14 +358,19 @@ export class RoomSaver implements Saver {
  * trust: its cells carry no `trusted` mark, since the server decides it
  * when it saves (a cell is trusted when its outputs came from a run on the
  * server, or the file was signed). So read the file as the contents API
- * marks it, and trust each code cell, by id, that it marks trusted. Never
- * takes trust away: a cell trusted here (this page ran it) stays so.
+ * marks it, and trust here each code cell, by id, that it marks trusted.
+ * Never takes trust away: a cell trusted here (this page ran it) stays so;
+ * {@link watchRemoteOutputs} takes it away when another client changes
+ * the outputs. Skips the update when `stale()` says outputs changed during
+ * the read, since the file may predate them. Returns whether any cell
+ * changed.
  */
 export async function trustFromFile(
   contents: Contents.IManager,
   path: string,
   model: INotebookModel,
-): Promise<void> {
+  stale: () => boolean = () => false,
+): Promise<boolean> {
   const file = await contents.get(path, { type: 'notebook', content: true });
   const cells = (file.content as nbformat.INotebookContent | null)?.cells ?? [];
   const trusted = new Set(
@@ -359,9 +378,88 @@ export async function trustFromFile(
       .filter(c => c.cell_type === 'code' && c.metadata?.trusted === true && c.id)
       .map(c => c.id as string),
   );
-  if (model.isDisposed) return;
+  if (model.isDisposed || stale()) return false;
+  let changed = false;
   for (let i = 0; i < model.cells.length; i++) {
     const cell = model.cells.get(i);
-    if (cell.type === 'code' && !cell.trusted && trusted.has(cell.id)) cell.trusted = true;
+    if (cell.type === 'code' && !cell.trusted && trusted.has(cell.id)) {
+      changed = trustHere(cell as ICodeCellModel, true) || changed;
+    }
   }
+  return changed;
+}
+
+/** What {@link trustHere} reaches into: `CodeCellModel`'s own members. */
+type CodeCellInternals = {
+  _trusted: boolean;
+  onGenericChange: (...args: unknown[]) => void;
+  onOutputsChange: (...args: unknown[]) => void;
+  _connectStreamListener?: (output: unknown, index: number) => void;
+};
+
+/**
+ * Trust a code cell's outputs, or stop, in this page only (#183). Setting
+ * `cell.trusted` as JupyterLab does would edit the shared document: it
+ * writes `metadata.trusted` and rewrites every output (the trusted copy
+ * replaces each), which marks the notebook edited for every client and
+ * has the server save the file again. So set the flag and the outputs'
+ * trust with the cell's own listeners off, which keeps both here; the
+ * output area still renders again. Relies on `CodeCellModel` internals
+ * (JupyterLab is pinned; room.test.ts checks no update is sent). Returns
+ * whether the cell changed.
+ */
+export function trustHere(cell: ICodeCellModel, trusted: boolean): boolean {
+  if (cell.trusted === trusted) return false;
+  const internals = cell as unknown as CodeCellInternals;
+  const { outputs } = cell;
+  outputs.changed.disconnect(internals.onGenericChange, cell);
+  outputs.changed.disconnect(internals.onOutputsChange, cell);
+  try {
+    internals._trusted = trusted;
+    outputs.trusted = trusted;
+  } finally {
+    outputs.changed.connect(internals.onGenericChange, cell);
+    outputs.changed.connect(internals.onOutputsChange, cell);
+  }
+  // The trusted copies replaced the outputs: stream text appended to them
+  // later must still reach the shared document, as the cell's own 'set'
+  // handling arranges.
+  for (let i = 0; i < outputs.length; i++) {
+    if (outputs.get(i).type === 'stream')
+      internals._connectStreamListener?.call(cell, outputs.get(i), i);
+  }
+  return true;
+}
+
+/**
+ * Call `onChange` when another client changes a code cell's outputs (an
+ * agent running it through the server, or a write on disk the server
+ * merged in), after taking that cell's trust away here: outputs from
+ * elsewhere are untrusted until the file says the server trusts them.
+ * Returns a function that stops watching.
+ */
+export function watchRemoteOutputs(model: INotebookModel, onChange: () => void): () => void {
+  const ydoc = (model.sharedModel as YNotebook).ydoc;
+  const listener = (tr: {
+    local: boolean;
+    changed: Map<unknown, Set<string | null>>;
+    changedParentTypes: Map<unknown, unknown>;
+  }) => {
+    if (tr.local || model.isDisposed) return;
+    let any = false;
+    for (let i = 0; i < model.cells.length; i++) {
+      const cell = model.cells.get(i);
+      if (cell.type !== 'code') continue;
+      const ymodel = (cell.sharedModel as YCodeCell).ymodel;
+      const youtputs = ymodel.get('outputs') as unknown;
+      const touched =
+        tr.changedParentTypes.has(youtputs) || tr.changed.get(ymodel)?.has('outputs') === true;
+      if (!touched) continue;
+      any = true;
+      trustHere(cell as ICodeCellModel, false);
+    }
+    if (any) onChange();
+  };
+  ydoc.on('afterTransaction', listener);
+  return () => ydoc.off('afterTransaction', listener);
 }
