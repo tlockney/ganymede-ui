@@ -43,7 +43,8 @@ final class AppKernels: NSObject {
     /// The notebook pages that can hold the kernel web view: WebKit
     /// suspends a web view in no window, so it lives in one of theirs.
     private var hosts: [WeakView] = []
-    /// The server the kernel page loads from, with its token.
+    /// The server the kernel page loads from. Its token stays off the
+    /// page's URL (`kernelPageURL`).
     private var serverURL: URL?
     private var loaded = false
     private var ready = false
@@ -199,11 +200,15 @@ final class AppKernels: NSObject {
             "window.ganymedeKernelHost?.deliver(m)", arguments: ["m": message], in: nil, in: .page)
     }
 
-    /// kernel.html on the server, with the token, which the server trades
-    /// for its login cookie as it does for the notebook page.
+    /// kernel.html on the server, with no query. The page makes no API
+    /// calls (its messages go through here), and the server serves static
+    /// files without the token. With the token, the notebook page's
+    /// service worker, which controls this origin too, found no precached
+    /// match and answered with the notebook app instead (#518).
     nonisolated static func kernelPageURL(_ server: URL) -> URL {
         guard var parts = URLComponents(url: server, resolvingAgainstBaseURL: false) else { return server }
         parts.path = "/kernel.html"
+        parts.query = nil
         parts.fragment = nil
         return parts.url ?? server
     }
