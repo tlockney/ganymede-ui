@@ -1,0 +1,93 @@
+name: Apple app setup
+description: >
+  Everything before xcodebuild for the apps in apple/: ganymede-ffi's
+  XCFramework for the GANYMEDE_REF in ci.yml (downloaded for a release
+  tag, built from a checkout for a commit), npm ci, xcodegen and
+  apple/scripts/bootstrap.sh. Used by ci.yml (macos-app, ios-app),
+  release.yml (macos, ios) and main-build.yml (#547). Runs after the
+  repo's own checkout.
+
+inputs:
+  caches:
+    description: >
+      Restore and save caches: the XCFramework built for a commit
+      (#486), Rust, npm and Swift packages. CI only: a signed build
+      (release.yml, main-build.yml) passes 'false', so no cache a pull
+      request could have written reaches an app that ships.
+    default: 'false'
+  sentry-sourcemaps:
+    description: >
+      'true' for signed builds: bootstrap.sh builds the web UI with source
+      maps and uploads them to Sentry (SENTRY_SOURCEMAPS=1), with
+      sentry-auth-token.
+    default: 'false'
+  sentry-auth-token:
+    description: The Sentry token for sentry-sourcemaps.
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    # The ganymede commit or tag ci.yml's app jobs test with, so every
+    # build links the same ganymede-ffi.
+    - name: Read GANYMEDE_REF from ci.yml
+      shell: bash
+      run: |
+        ref=$(yq -r '.env.GANYMEDE_REF' .github/workflows/ci.yml)
+        [[ "$ref" =~ ^[0-9a-f]{40}$|^v[0-9] ]] || { echo "::error::GANYMEDE_REF in ci.yml: $ref"; exit 1; }
+        echo "GANYMEDE_REF=$ref" >> "$GITHUB_ENV"
+    # A release tag is downloaded by bootstrap.sh; a commit is built from
+    # a checkout (#359). With caches, the build for a commit is cached
+    # under its SHA, so only the first run after the pin moves builds it
+    # (#486). Pull requests restore main's cache but can't write one
+    # main reads.
+    - id: ffi
+      if: ${{ inputs.caches == 'true' && !startsWith(env.GANYMEDE_REF, 'v') }}
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: .ffi-cache/GanymedeFFI.xcframework
+        key: ganymede-xcframework-${{ runner.arch }}-${{ env.GANYMEDE_REF }}
+    - if: ${{ !startsWith(env.GANYMEDE_REF, 'v') && steps.ffi.outputs.cache-hit != 'true' }}
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        repository: tlockney/ganymede
+        ref: ${{ env.GANYMEDE_REF }}
+        path: .ganymede
+        persist-credentials: false
+    - if: ${{ !startsWith(env.GANYMEDE_REF, 'v') && steps.ffi.outputs.cache-hit != 'true' }}
+      uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
+      with:
+        toolchain: stable
+        targets: aarch64-apple-darwin, aarch64-apple-ios, aarch64-apple-ios-sim
+    - if: ${{ inputs.caches == 'true' && !startsWith(env.GANYMEDE_REF, 'v') && steps.ffi.outputs.cache-hit != 'true' }}
+      uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+      with:
+        workspaces: .ganymede
+    - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      with:
+        node-version: 24
+        cache: ${{ inputs.caches == 'true' && 'npm' || '' }}
+    - shell: bash
+      run: npm ci
+    # Swift package checkouts, by Package.resolved: resolving them takes
+    # about 2.5 minutes, which each app job would pay (#543).
+    - if: ${{ inputs.caches == 'true' }}
+      uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: apple/build/DerivedData/SourcePackages
+        key: swift-packages-${{ runner.os }}-${{ hashFiles('apple/Package.resolved') }}
+    - shell: bash
+      run: brew install xcodegen
+    - shell: bash
+      run: apple/scripts/bootstrap.sh
+      env:
+        GANYMEDE_DIR: ${{ !startsWith(env.GANYMEDE_REF, 'v') && steps.ffi.outputs.cache-hit != 'true' && format('{0}/.ganymede', github.workspace) || '' }}
+        GANYMEDE_XCFRAMEWORK: ${{ steps.ffi.outputs.cache-hit == 'true' && format('{0}/.ffi-cache/GanymedeFFI.xcframework', github.workspace) || '' }}
+        SENTRY_SOURCEMAPS: ${{ inputs.sentry-sourcemaps == 'true' && '1' || '' }}
+        SENTRY_AUTH_TOKEN: ${{ inputs.sentry-auth-token }}
+    # What the ffi cache step saves when the job ends.
+    - if: ${{ inputs.caches == 'true' && !startsWith(env.GANYMEDE_REF, 'v') && steps.ffi.outputs.cache-hit != 'true' }}
+      shell: bash
+      run: |
+        mkdir -p .ffi-cache
+        cp -R apple/build/GanymedeFFI.xcframework .ffi-cache/

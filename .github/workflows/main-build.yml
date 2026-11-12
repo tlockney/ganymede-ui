@@ -72,35 +72,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      # As release.yml's macos job: the ganymede-ffi ci.yml tests with.
-      - name: Read GANYMEDE_REF from ci.yml
-        run: |
-          ref=$(yq -r '.env.GANYMEDE_REF' .github/workflows/ci.yml)
-          [[ "$ref" =~ ^[0-9a-f]{40}$|^v[0-9] ]] || { echo "::error::GANYMEDE_REF in ci.yml: $ref"; exit 1; }
-          echo "GANYMEDE_REF=$ref" >> "$GITHUB_ENV"
-      - if: ${{ !startsWith(env.GANYMEDE_REF, 'v') }}
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # GanymedeFFI.xcframework for GANYMEDE_REF, npm ci, xcodegen and
+      # bootstrap.sh with source maps for Sentry; no caches, since this
+      # build is signed (.github/actions/apple-setup, #547). Source maps
+      # by debug ID, as release.yml: no release name to clash.
+      - uses: ./.github/actions/apple-setup
         with:
-          repository: tlockney/ganymede
-          ref: ${{ env.GANYMEDE_REF }}
-          path: .ganymede
-          persist-credentials: false
-      - if: ${{ !startsWith(env.GANYMEDE_REF, 'v') }}
-        uses: dtolnay/rust-toolchain@683b588c487a69d01f6c6ddf40f036ff682cc2c8 # master
-        with:
-          toolchain: stable
-          targets: aarch64-apple-darwin, aarch64-apple-ios, aarch64-apple-ios-sim
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version: 24
-      - run: npm ci
-      - run: brew install xcodegen
-      # Source maps by debug ID, as release.yml: no release name to clash.
-      - run: apple/scripts/bootstrap.sh
-        env:
-          GANYMEDE_DIR: ${{ !startsWith(env.GANYMEDE_REF, 'v') && format('{0}/.ganymede', github.workspace) || '' }}
-          SENTRY_SOURCEMAPS: '1'
-          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          sentry-sourcemaps: 'true'
+          sentry-auth-token: ${{ secrets.SENTRY_AUTH_TOKEN }}
       # From the latest release: its build number, and the public key its
       # app accepts updates signed with. A main build signs no update, so
       # it never gets the private key.

@@ -152,16 +152,6 @@ an installed release when moved to Applications. It doesn't update to
 newer main builds; the next release's update replaces it
 ([docs/releasing.md](../docs/releasing.md#main-builds)).
 
-Each run of the `macos-app` job on a push to `main` also uploads
-`Ganymede-macOS` (a zipped Release build) under the run's
-Artifacts; pull requests build and test the Debug app only. It is ad-hoc
-signed, not notarized, so after unzipping it on another Mac clear the
-quarantine flag before the first launch:
-
-```sh
-xattr -dr com.apple.quarantine Ganymede.app
-```
-
 To sign and notarize a build yourself, run `scripts/release-app.sh` after
 `bootstrap.sh`, with the variables its header lists; with
 `MACOS_CERTIFICATE_P12` unset it signs with the Developer ID certificate
