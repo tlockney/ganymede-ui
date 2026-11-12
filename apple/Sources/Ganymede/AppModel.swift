@@ -40,6 +40,16 @@ final class AppModel {
     private let sshKeys = SSHKeyStore(secrets: KeychainStore())
     /// Host keys trusted on first use, per remote.
     let hostKeys = HostKeyStore(defaults: .standard)
+    #if os(macOS)
+    /// What agents outside the app may do through the server's `/mcp`
+    /// (#304).
+    private(set) var mcpMode: MCPMode
+    /// Whether `/mcp` sends images in outputs to the model.
+    private(set) var mcpImages: Bool
+    /// The server's token while MCP is on, kept in the keychain so the
+    /// config agents were given keeps working; nil while it is off.
+    private(set) var mcpToken: String?
+    #endif
 
     @ObservationIgnored private var server: ServerHost?
     /// Server starts and stops, run one after another. Both block (a start
@@ -76,6 +86,8 @@ final class AppModel {
         keychainError = saved.problem
         sshKey = sshKeys.load()
         #if os(macOS)
+        mcpMode = UserDefaults.standard.string(forKey: AppMCP.modeKey).flatMap(MCPMode.init(rawValue:)) ?? .off
+        mcpImages = UserDefaults.standard.bool(forKey: AppMCP.imagesKey)
         if let path = UserDefaults.standard.string(forKey: Keys.root),
            FileManager.default.fileExists(atPath: path) {
             root = URL(fileURLWithPath: path, isDirectory: true)
@@ -95,6 +107,9 @@ final class AppModel {
         } else {
             root = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         }
+        #endif
+        #if os(macOS)
+        if mcpMode != .off { mcpToken = mcpKeychainToken() }
         #endif
     }
 
@@ -132,6 +147,11 @@ final class AppModel {
             config["gateway_url"] = remote.serverURL
             config["gateway_token"] = token(for: remote.id)
         }
+        #if os(macOS)
+        if let mcpToken {
+            config.merge(AppMCP.serverConfig(mode: mcpMode, images: mcpImages, token: mcpToken)) { $1 }
+        }
+        #endif
         #if os(iOS)
         if let support = try? FileManager.default.url(
             for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true
@@ -390,6 +410,47 @@ final class AppModel {
         persist()
         if restart { start() }
     }
+
+    #if os(macOS)
+    /// Sets what agents may do through `/mcp`, and restarts the server
+    /// with it: turning MCP off ends agents' sessions, and kernels restart
+    /// as when they move to a remote.
+    func setMCP(_ mode: MCPMode, images: Bool) {
+        guard mode != mcpMode || images != mcpImages else { return }
+        mcpMode = mode
+        mcpImages = images
+        defaults.set(mode.rawValue, forKey: AppMCP.modeKey)
+        defaults.set(images, forKey: AppMCP.imagesKey)
+        mcpToken = mode == .off ? nil : (mcpToken ?? mcpKeychainToken())
+        start()
+    }
+
+    /// A new MCP token, for when the old one leaked: agents given the old
+    /// config must be given the new one.
+    func resetMCPToken() {
+        guard mcpMode != .off else { return }
+        mcpToken = storeMCPToken(AppMCP.newToken())
+        start()
+    }
+
+    /// The token in the keychain, or a new one stored there.
+    private func mcpKeychainToken() -> String {
+        if let token = Keychain.get(AppMCP.tokenKey), !token.isEmpty { return token }
+        return storeMCPToken(AppMCP.newToken())
+    }
+
+    /// Stores `token`; if the keychain refuses, the app uses it until it
+    /// quits and says so.
+    private func storeMCPToken(_ token: String) -> String {
+        do {
+            try Keychain.set(AppMCP.tokenKey, token)
+        } catch {
+            keychainError = "Ganymede uses a new MCP token until it quits, but could not save it in the "
+                + "keychain, so agents will need a new config then: " + error.localizedDescription
+        }
+        return token
+    }
+    #endif
 
     /// The app's public key, for authorized_keys on SSH remotes.
     var sshPublicKey: String? {

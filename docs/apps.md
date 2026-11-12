@@ -246,12 +246,48 @@ link, 3 cancelled) and `errorMessage`, and `x-cancel` is opened when
 you answer Cancel. In Shortcuts, the Open X-Callback URL action does
 this and gives the answer to the next action.
 
+### Agents over MCP
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+Agents outside the app, such as Claude Code and Claude Desktop, can read,
+edit and run the notebooks open in Ganymede over
+[MCP](https://modelcontextprotocol.io), and each change shows in the
+window as it lands. Turn it on in Settings › General › MCP, which offers
+**Read only**, **Edit, don't run**, and **Edit and run**, plus whether
+images in outputs go to the model. It is off by default.
+
+With MCP on, Settings shows what to give the agent, with Copy:
+
+- **Claude Code**: a `claude mcp add --transport http ganymede
+http://127.0.0.1:PORT/mcp --header "Authorization: token …"` command.
+- **Claude Desktop**: an `mcpServers` entry for
+  `claude_desktop_config.json` that runs `ganymede mcp --server … --token …`,
+  which needs the [`ganymede` command](https://ganymede-server.com) on
+  Claude Desktop's PATH.
+
+The server listens on this Mac only and needs the token. While MCP is on,
+the token is kept in the keychain and the port is the one the server had
+last time, so the config keeps working after Ganymede restarts. Should
+that port be taken, Settings shows the new one. Reset Token makes a new
+token, after which agents need the new config. Changing these settings
+restarts Ganymede's server, which restarts its kernels; turning MCP off
+ends agents' sessions.
+
+These are the same tools `ganymede mcp` serves on its own. Point the agent
+at the app, as the configs do, rather than at a separate `ganymede mcp`
+server: a notebook can be edited on one server at a time, and the other
+shows it read-only.
+
 ### Settings
 
 Settings (⌘,) is one window with tabs. General makes Ganymede the
 default app for notebooks, sets how it updates ([Updates](#updates)),
-turns crash reports on or off, and lists the notebooks links may run
-([Links](#links)). Appearance
+turns crash reports on or off, lists the notebooks links may run
+([Links](#links)), and turns on MCP for agents
+([Agents over MCP](#agents-over-mcp)). Appearance
 sets the code font (below). Kernels
 picks where kernels run, this Mac or, as on iPadOS, one remote's server,
 and lists the kernels installed there. Remotes keeps a list of remotes:
