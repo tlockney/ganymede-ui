@@ -49,6 +49,9 @@ final class AppModel {
     /// The server's token while MCP is on, kept in the keychain so the
     /// config agents were given keeps working; nil while it is off.
     private(set) var mcpToken: String?
+    /// The `jpserver-<pid>.json` written while MCP is on, so `ganymede mcp`
+    /// finds the app's server.
+    @ObservationIgnored private var serverInfoFile: URL?
     #endif
 
     @ObservationIgnored private var server: ServerHost?
@@ -134,6 +137,9 @@ final class AppModel {
         url = nil
         serverURL = nil
         error = nil
+        #if os(macOS)
+        removeServerInfo()
+        #endif
         guard let web = Bundle.main.url(forResource: "web", withExtension: nil) else {
             error = "The app bundle has no web folder; build it with apple/scripts/bootstrap.sh."
             return
@@ -196,6 +202,9 @@ final class AppModel {
                 }
                 serverURL = host.url
                 url = pageURL(host.url)
+                #if os(macOS)
+                writeServerInfo(host.url)
+                #endif
                 if let port = host.url.port {
                     defaults.set(port, forKey: Keys.port)
                 }
@@ -322,6 +331,9 @@ final class AppModel {
     /// the app's own kernels answer the shutdown through the main thread,
     /// which a blocking stop would hold up for the server's shutdown grace.
     func stopServer() async {
+        #if os(macOS)
+        removeServerInfo()
+        #endif
         guard let old = server else { return }
         server = nil
         url = nil
@@ -339,6 +351,9 @@ final class AppModel {
     /// not waited for; its server ends with the process. `stopServer`
     /// usually ran first.
     func stopForQuit() {
+        #if os(macOS)
+        removeServerInfo()
+        #endif
         server?.stop()
         server = nil
         url = nil
@@ -431,6 +446,26 @@ final class AppModel {
         guard mcpMode != .off else { return }
         mcpToken = storeMCPToken(AppMCP.newToken())
         start()
+    }
+
+    /// Writes the server info file for the server at `serverURL` while MCP
+    /// is on.
+    private func writeServerInfo(_ serverURL: URL) {
+        removeServerInfo()
+        guard mcpMode != .off, let token = mcpToken,
+              let endpoint = ServerEndpoint(serverURL: serverURL) else { return }
+        let pid = ProcessInfo.processInfo.processIdentifier
+        let info = AppMCP.serverInfo(base: endpoint.base, token: token, root: Self.serverRoot(root), pid: pid)
+        serverInfoFile = AppMCP.writeServerInfo(info, in: AppMCP.runtimeDirectory(), pid: pid)
+        if serverInfoFile == nil {
+            NSLog("Ganymede: the server info file for `ganymede mcp` couldn't be written")
+        }
+    }
+
+    private func removeServerInfo() {
+        guard let file = serverInfoFile else { return }
+        try? FileManager.default.removeItem(at: file)
+        serverInfoFile = nil
     }
 
     /// The token in the keychain, or a new one stored there.

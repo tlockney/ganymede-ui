@@ -261,25 +261,32 @@ images in outputs go to the model. It is off by default.
 
 With MCP on, Settings shows what to give the agent, with Copy:
 
-- **Claude Code**: a `claude mcp add --transport http ganymede
-http://127.0.0.1:PORT/mcp --header "Authorization: token …"` command.
+- **Claude Code**: `claude mcp add --scope user ganymede -- ganymede mcp`.
 - **Claude Desktop**: an `mcpServers` entry for
-  `claude_desktop_config.json` that runs `ganymede mcp --server … --token …`,
-  which needs the [`ganymede` command](https://ganymede-server.com) on
-  Claude Desktop's PATH.
+  `claude_desktop_config.json` that runs `ganymede mcp`.
+- **Claude Code, without the ganymede command**: a
+  `claude mcp add --transport http` command with the app's URL and
+  token.
+
+The first two need the [`ganymede` command](https://ganymede-server.com)
+on the agent's PATH. While MCP is on, the app writes a
+[server info file](https://ganymede-server.com/docs/reference#server-info-file),
+so `ganymede mcp` uses the app's server while Ganymede runs, and a server
+of its own when it doesn't. The agent keeps the server it found for the
+whole session, so start the agent after Ganymede to work in the app's
+windows. Relative paths start in the agent's folder from a `ganymede`
+build of `main` (ganymede#730); earlier versions start them at `/`.
 
 The server listens on this Mac only and needs the token. While MCP is on,
 the token is kept in the keychain and the port is the one the server had
-last time, so the config keeps working after Ganymede restarts. Should
-that port be taken, Settings shows the new one. Reset Token makes a new
-token, after which agents need the new config. Changing these settings
-restarts Ganymede's server, which restarts its kernels; turning MCP off
-ends agents' sessions.
+last time, so the HTTP config keeps working after Ganymede restarts.
+Should that port be taken, Settings shows the new one. Reset Token makes a
+new token, after which HTTP agents need the new config. Changing these
+settings restarts Ganymede's server, which restarts its kernels; turning
+MCP off ends agents' sessions.
 
-These are the same tools `ganymede mcp` serves on its own. Point the agent
-at the app, as the configs do, rather than at a separate `ganymede mcp`
-server: a notebook can be edited on one server at a time, and the other
-shows it read-only.
+A notebook can be edited on one server at a time: if an agent's own
+`ganymede mcp` server has it open, Ganymede shows it read-only.
 
 ### Settings
 

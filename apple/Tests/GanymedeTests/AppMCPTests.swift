@@ -27,17 +27,40 @@ final class AppMCPTests: XCTestCase {
     }
 
     func testConfigs() throws {
+        XCTAssertEqual(AppMCP.claudeCodeCommand, "claude mcp add --scope user ganymede -- ganymede mcp")
         let base = try XCTUnwrap(URL(string: "http://127.0.0.1:52011/"))
         XCTAssertEqual(
-            AppMCP.claudeCodeCommand(base: base, token: "abc"),
-            #"claude mcp add --transport http ganymede http://127.0.0.1:52011/mcp --header "Authorization: token abc""#
+            AppMCP.claudeCodeHTTPCommand(base: base, token: "abc"),
+            #"claude mcp add --scope user --transport http ganymede http://127.0.0.1:52011/mcp --header "Authorization: token abc""#
         )
         let desktop = try XCTUnwrap(
-            JSONSerialization.jsonObject(with: Data(AppMCP.desktopConfig(base: base, token: "abc").utf8)) as? [String: Any]
+            JSONSerialization.jsonObject(with: Data(AppMCP.desktopConfig.utf8)) as? [String: Any]
         )
         let entry = try XCTUnwrap((desktop["mcpServers"] as? [String: Any])?["ganymede"] as? [String: Any])
         XCTAssertEqual(entry["command"] as? String, "ganymede")
-        XCTAssertEqual(entry["args"] as? [String], ["mcp", "--server", "http://127.0.0.1:52011/", "--token", "abc"])
+        XCTAssertEqual(entry["args"] as? [String], ["mcp"])
+    }
+
+    /// The file `ganymede mcp` finds the app's server by: its URL, token
+    /// and root, readable by this user only.
+    func testServerInfoFile() throws {
+        XCTAssertEqual(
+            AppMCP.runtimeDirectory(environment: ["JUPYTER_RUNTIME_DIR": "/tmp/rt"]).path, "/tmp/rt"
+        )
+        XCTAssertTrue(AppMCP.runtimeDirectory(environment: [:]).path.hasSuffix("/Library/Jupyter/runtime"))
+        let base = try XCTUnwrap(URL(string: "http://127.0.0.1:52011/"))
+        let info = AppMCP.serverInfo(base: base, token: "abc", root: "/", pid: 42)
+        let runtime = dir.appendingPathComponent("runtime")
+        let file = try XCTUnwrap(AppMCP.writeServerInfo(info, in: runtime, pid: 42))
+        XCTAssertEqual(file.lastPathComponent, "jpserver-42.json")
+        let read = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any])
+        XCTAssertEqual(read["url"] as? String, "http://127.0.0.1:52011/")
+        XCTAssertEqual(read["token"] as? String, "abc")
+        XCTAssertEqual(read["root_dir"] as? String, "/")
+        XCTAssertEqual(read["port"] as? Int, 52011)
+        XCTAssertEqual(read["pid"] as? Int, 42)
+        let mode = try FileManager.default.attributesOfItem(atPath: file.path)[.posixPermissions] as? Int
+        XCTAssertEqual(mode, 0o600)
     }
 
     // MARK: A real server

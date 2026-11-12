@@ -167,14 +167,15 @@ private struct MCPSettings: View {
                     get: { model.mcpImages },
                     set: { model.setMCP(model.mcpMode, images: $0) }
                 ))
+                MCPConfigRow(title: "Claude Code", text: AppMCP.claudeCodeCommand)
+                MCPConfigRow(
+                    title: "Claude Desktop (claude_desktop_config.json)",
+                    text: AppMCP.desktopConfig
+                )
                 if let server = model.serverURL.flatMap(ServerEndpoint.init(serverURL:)), let token = model.mcpToken {
                     MCPConfigRow(
-                        title: "Claude Code",
-                        text: AppMCP.claudeCodeCommand(base: server.base, token: token)
-                    )
-                    MCPConfigRow(
-                        title: "Claude Desktop (claude_desktop_config.json)",
-                        text: AppMCP.desktopConfig(base: server.base, token: token)
+                        title: "Claude Code, without the ganymede command",
+                        text: AppMCP.claudeCodeHTTPCommand(base: server.base, token: token)
                     )
                     LabeledContent("Token") {
                         Button("Reset Token") { model.resetMCPToken() }
@@ -187,7 +188,7 @@ private struct MCPSettings: View {
         } header: {
             Text("MCP")
         } footer: {
-            Text("Lets Claude Code, Claude Desktop and other agents read, edit and run the notebooks open here, and you see each change arrive. The server listens on this Mac only and needs the token. Changing this restarts Ganymede’s server and its kernels.")
+            Text("Lets Claude Code, Claude Desktop and other agents read, edit and run the notebooks open here, and you see each change arrive. Agents set up with `ganymede mcp` use Ganymede while it runs, and a server of their own when it doesn’t. The server listens on this Mac only and needs the token. Changing this restarts Ganymede’s server and its kernels.")
         }
     }
 }
