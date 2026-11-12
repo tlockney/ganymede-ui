@@ -403,8 +403,12 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
                 if (why.kind === 'restarted') {
                   // The server's new room comes from the file: open it
                   // again, as Reload does, rejoining the kernel if it ran
-                  // on. Edits that never reached the old room are gone
-                  // with it.
+                  // on. Edits the server never saved are gone with the old
+                  // room, so say so when there were any (the notice stays
+                  // through the reopen).
+                  if (joinedRoom?.notebook.getState('dirty') === true) {
+                    setNotice(roomClosed(basename(path), why));
+                  }
                   reloading.current = true;
                   setOpen(undefined);
                   setAttempt(a => a + 1);

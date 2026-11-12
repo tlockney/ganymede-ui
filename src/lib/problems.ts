@@ -181,7 +181,7 @@ export function roomClosed(
   if (why.kind === 'restarted') {
     return {
       kind: 'save-failed',
-      message: `The server restarted. Reopen ${fileName} to go on editing it.`,
+      message: `The server restarted, so ${fileName} was opened again from disk. Edits made here since its last save weren’t kept.`,
       actions: [],
     };
   }

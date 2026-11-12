@@ -243,7 +243,8 @@ The server's closes: 4404 (file deleted) stops saves and says so. A 1003
 `unknown_session` means the server restarted and rebuilt the room from
 the file; this document's history can't merge into the new room (its
 item ids collide with different content), so the room stops and the pane
-opens the notebook again, as Reload does. A close during the join fails
+opens the notebook again, as Reload does, with a notice if it had edits
+the server hadn't saved. A close during the join fails
 the join at once. If the join fails (a server without rooms, a refused
 room) or the first sync takes over 15 seconds, the pane falls back to the
 contents API. The room is disposed after the model, since it owns the
