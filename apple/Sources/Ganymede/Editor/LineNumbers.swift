@@ -121,21 +121,34 @@ final class LineNumberRuler: NSRulerView {
 #else
 /// The iOS text view, with its line numbers in a gutter on the left.
 final class CodeUITextView: UITextView {
-    private let gutter = LineNumberGutter()
+    /// Made on the first layout in a window, not at init: UIKit can lay a
+    /// text view out while it is being torn down, and a weak store of
+    /// `self` from there crashed (#517). Optional, so a layout pass that
+    /// runs before Swift has set up this class's storage reads nil.
+    private var gutter: LineNumberGutter?
 
     var lineCount = 1 {
         didSet { if lineCount != oldValue { setNeedsLayout() } }
     }
 
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        if window != nil { setNeedsLayout() }
+    }
+
     override func layoutSubviews() {
         super.layoutSubviews()
-        if gutter.superview == nil {
-            gutter.textView = self
-            addSubview(gutter)
-        }
         let width = LineNumbers.width(for: lineCount)
         if textContainerInset.left != width {
             textContainerInset.left = width
+        }
+        // Off screen there is nothing to number; `didMoveToWindow` lays
+        // the view out again once it has a window.
+        guard window != nil else { return }
+        let gutter = gutter ?? LineNumberGutter()
+        if gutter.superview !== self {
+            addSubview(gutter)
+            self.gutter = gutter
         }
         // It scrolls with the text view's bounds, so it stays in view.
         gutter.frame = CGRect(x: bounds.minX, y: bounds.minY, width: width, height: bounds.height)
@@ -143,8 +156,10 @@ final class CodeUITextView: UITextView {
     }
 }
 
+/// Reads the text view it draws for from its superview, so nothing stores
+/// a reference to the text view (#517).
 private final class LineNumberGutter: UIView {
-    weak var textView: CodeUITextView?
+    private var textView: CodeUITextView? { superview as? CodeUITextView }
 
     override init(frame: CGRect) {
         super.init(frame: frame)
