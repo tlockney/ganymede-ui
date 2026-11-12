@@ -633,6 +633,8 @@ targets:
       - path: Sources/Ganymede/Terminal/SSHKey.swift
       - path: Sources/Ganymede/Editor/TextFile.swift
       - path: Sources/Ganymede/Editor/CodeEditing.swift
+      # The line-number gutter (#524).
+      - path: Sources/Ganymede/Editor/LineNumbers.swift
       - path: Sources/Ganymede/FileStack.swift
       - path: Sources/Ganymede/CrashScrub.swift
       - path: Sources/Ganymede/NotebookActions.swift
