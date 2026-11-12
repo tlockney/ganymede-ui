@@ -92,7 +92,7 @@ GANYMEDE_DIR=~/src/ganymede apple/scripts/bootstrap.sh
 open apple/Ganymede.xcodeproj
 ```
 
-CI and release builds use `GANYMEDE_REF` from ci.yml's `macos-app` job:
+CI and release builds use `GANYMEDE_REF` from the top of ci.yml:
 a release tag downloads, a commit SHA checks out and builds. The build
 for a commit is cached under its SHA, so only the first run after the
 pin moves builds it; later runs and pull requests restore it.

@@ -75,7 +75,7 @@ jobs:
       # As release.yml's macos job: the ganymede-ffi ci.yml tests with.
       - name: Read GANYMEDE_REF from ci.yml
         run: |
-          ref=$(yq -r '.jobs["macos-app"].env.GANYMEDE_REF' .github/workflows/ci.yml)
+          ref=$(yq -r '.env.GANYMEDE_REF' .github/workflows/ci.yml)
           [[ "$ref" =~ ^[0-9a-f]{40}$|^v[0-9] ]] || { echo "::error::GANYMEDE_REF in ci.yml: $ref"; exit 1; }
           echo "GANYMEDE_REF=$ref" >> "$GITHUB_ENV"
       - if: ${{ !startsWith(env.GANYMEDE_REF, 'v') }}

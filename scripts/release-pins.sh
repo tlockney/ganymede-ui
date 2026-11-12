@@ -7,8 +7,8 @@
 #               package-lock.json (the apps bundle it), and
 #               CDP_KERNEL_VERSION in ci.yml's e2e job
 #   ganymede    its latest GitHub release: GANYMEDE_VERSION in ci.yml's
-#               e2e job, and GANYMEDE_REF in its macos-app job, which
-#               release.yml reads too. A tag downloads that release's
+#               e2e job, and its workflow-level GANYMEDE_REF, which
+#               release.yml and main-build.yml read too. A tag downloads that release's
 #               GanymedeFFI.xcframework instead of building it. When
 #               GANYMEDE_REF is a commit, the tag must contain it: a commit
 #               the tag lacks means Ganymede needs a release first.
