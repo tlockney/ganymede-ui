@@ -38,7 +38,7 @@ enum LineNumbers {
     }
 
     static var font: PlatformFont {
-        .monospacedDigitSystemFont(ofSize: Highlighting.font.pointSize - 2, weight: .regular)
+        .monospacedDigitSystemFont(ofSize: CodeFont.font().pointSize - 2, weight: .regular)
     }
 
     static var color: PlatformColor {

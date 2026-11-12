@@ -2,9 +2,9 @@
 
 #520 fixed a crash in the iOS editor's gutter (#517) without a unit test,
 because the iOS test target (`GanymedeTests-iOS`) didn't compile the
-editor. It now compiles `LineNumbers.swift` and `Highlighting.swift`,
-which the gutter takes its font from, and links Neon and the
-tree-sitter packages `Highlighting.swift` imports. The gutter type and
+editor. It now compiles `LineNumbers.swift`, which takes its font
+straight from `CodeFont` (as `Highlighting.font` did) so the target
+needn't link Neon and the tree-sitter packages. The gutter type and
 its `textView` are internal rather than private so the tests can see
 them; the text view's `gutter` is `private(set)`.
 
@@ -15,9 +15,12 @@ compiles the same folder) makes the text view as the editor does
 - outside a window, a layout sets the inset but makes no gutter;
 - in a window, a layout makes one gutter, sized to the line count, whose
   `textView` is its superview;
+- moving into a window asks for the layout that makes the gutter;
+- a gutter taken down and laid out again is the same one, back in the
+  text view, which it finds again;
 - moving between windows keeps the same gutter, with one in the
   subviews;
-- a gutter outside a text view draws nothing.
+- a gutter outside a text view draws without crashing.
 
 These are the invariants #520 relies on. They don't reproduce #517's
 crash, whose cause isn't known, so the device check in #273 stays.
