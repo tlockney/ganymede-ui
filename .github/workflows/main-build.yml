@@ -78,20 +78,38 @@ jobs:
           node-version: 24
       - run: npm ci
       - run: brew install xcodegen
+      # Source maps by debug ID, as release.yml: no release name to clash.
       - run: apple/scripts/bootstrap.sh
         env:
           GANYMEDE_DIR: ${{ !startsWith(env.GANYMEDE_REF, 'v') && format('{0}/.ganymede', github.workspace) || '' }}
-      # Sparkle compares build numbers component by component: 45.12 is
-      # above release build 45 and below the next release's run number.
-      - name: Version and build number
+          SENTRY_SOURCEMAPS: '1'
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+      # From the latest release: its build number, and the public key its
+      # app accepts updates signed with. A main build signs no update, so
+      # it never gets the private key.
+      # Sparkle compares build numbers component by component: 24.12 is
+      # above release build 24 and below the next release's run number.
+      - name: Version, build number and update key
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           version=$(jq -r .version package.json)
-          base=$(curl -fsSL --retry 3 "https://github.com/$GITHUB_REPOSITORY/releases/latest/download/appcast.xml" |
+          latest="https://github.com/$GITHUB_REPOSITORY/releases/latest/download"
+          base=$(curl -fsSL --retry 3 "$latest/appcast.xml" |
             sed -n 's:.*<sparkle\:version>\([0-9][0-9]*\)</sparkle\:version>.*:\1:p' | head -n 1)
           [[ -n "$base" ]] || { echo "::error::no sparkle:version in the latest release's appcast.xml"; exit 1; }
-          echo "VERSION=$version" >> "$GITHUB_ENV"
-          echo "BUILD_NUMBER=$base.$GITHUB_RUN_NUMBER" >> "$GITHUB_ENV"
-          echo "Ganymede $version ($base.$GITHUB_RUN_NUMBER) from ${GITHUB_SHA::12}"
+          tag=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)
+          curl -fsSL --retry 3 -o "$RUNNER_TEMP/latest.zip" "$latest/Ganymede-macOS-${tag#v}.zip"
+          unzip -p "$RUNNER_TEMP/latest.zip" Ganymede.app/Contents/Info.plist > "$RUNNER_TEMP/Info.plist"
+          key=$(plutil -extract SUPublicEDKey raw "$RUNNER_TEMP/Info.plist")
+          [[ -n "$key" ]] || { echo "::error::$tag's app has no SUPublicEDKey"; exit 1; }
+          rm "$RUNNER_TEMP/latest.zip"
+          {
+            echo "VERSION=$version"
+            echo "BUILD_NUMBER=$base.$GITHUB_RUN_NUMBER"
+            echo "SPARKLE_PUBLIC_ED_KEY=$key"
+          } >> "$GITHUB_ENV"
+          echo "Ganymede $version ($base.$GITHUB_RUN_NUMBER) from ${GITHUB_SHA::12}; update key from $tag: $key"
       - name: Sign, notarize, and staple
         run: apple/scripts/release-app.sh
         env:
@@ -103,7 +121,6 @@ jobs:
           APPSTORE_API_KEY_P8: ${{ secrets.APPSTORE_API_KEY_P8 }}
           APPSTORE_API_KEY_ID: ${{ secrets.APPSTORE_API_KEY_ID }}
           APPSTORE_API_ISSUER_ID: ${{ secrets.APPSTORE_API_ISSUER_ID }}
-          SPARKLE_ED_PRIVATE_KEY: ${{ secrets.SPARKLE_ED_PRIVATE_KEY }}
       - name: Notes
         run: |
           cat > apple/build/notes.md <<EOF
@@ -148,10 +165,21 @@ jobs:
       - name: Check the checksum
         working-directory: dist
         run: sha256sum -c SHA256SUMS-macOS
-      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+      # A re-run of an older run must not replace a newer build.
+      - name: Skip if a newer build is published
+        id: newer
+        run: |
+          if current=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" --jq .object.sha 2> /dev/null) &&
+            [[ "$(gh api "repos/$GITHUB_REPOSITORY/compare/$GITHUB_SHA...$current" --jq .status)" == ahead ]]; then
+            echo "::notice::$TAG is at ${current::12}, newer than ${GITHUB_SHA::12}: not replacing it"
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+      - if: steps.newer.outputs.skip != 'true'
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-path: dist/Ganymede-macOS.zip
       - name: Update the main-build prerelease
+        if: steps.newer.outputs.skip != 'true'
         run: |
           # git/ref/ (singular) matches exactly; git/refs/ also matches prefixes.
           if gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" > /dev/null 2>&1; then

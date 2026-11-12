@@ -19,7 +19,9 @@
 #                               tlockney/ganymede-ui), for the update feed
 #   MAIN_BUILD                  1 for a build of main (main-build.yml, #539):
 #                               the zip is Ganymede-macOS.zip and no feed
-#                               is written
+#                               is written, so it signs no update and takes
+#   SPARKLE_PUBLIC_ED_KEY       the latest release's public key instead of
+#                               SPARKLE_ED_PRIVATE_KEY
 #
 # It also writes apple/build/appcast.xml, the update feed the app reads
 # from the latest release, signed with the same key. A main build reads
@@ -29,7 +31,10 @@ apple=$(cd "$(dirname "$0")/.." && pwd)
 build="$apple/build"
 
 missing=()
-for name in VERSION APPLE_TEAM_ID APPSTORE_API_KEY_P8 APPSTORE_API_KEY_ID APPSTORE_API_ISSUER_ID SPARKLE_ED_PRIVATE_KEY; do
+main_build=false
+[[ "${MAIN_BUILD:-}" == 1 ]] && main_build=true
+if $main_build; then update_key=SPARKLE_PUBLIC_ED_KEY; else update_key=SPARKLE_ED_PRIVATE_KEY; fi
+for name in VERSION APPLE_TEAM_ID APPSTORE_API_KEY_P8 APPSTORE_API_KEY_ID APPSTORE_API_ISSUER_ID "$update_key"; do
   [[ -n "${!name:-}" ]] || missing+=("$name")
 done
 if [[ -n "${MACOS_CERTIFICATE_P12:-}" && -z "${MACOS_CERTIFICATE_PASSWORD:-}" ]]; then
@@ -74,7 +79,11 @@ security find-identity -v -p codesigning | grep -q "$identity" || {
 repo="${GITHUB_REPOSITORY:-tlockney/ganymede-ui}"
 feed_url="https://github.com/$repo/releases/latest/download/appcast.xml"
 sparkle_key() { xcrun swift "$apple/scripts/sparkle-key.swift" "$@"; }
-public_key=$(sparkle_key public-key)
+if $main_build; then
+  public_key=$SPARKLE_PUBLIC_ED_KEY
+else
+  public_key=$(sparkle_key public-key)
+fi
 echo "update signing public key: $public_key"
 
 # Archive. Hardened runtime and the entitlements come from project.yml;
@@ -155,7 +164,7 @@ xcrun stapler staple "$app"
 xcrun stapler validate "$app"
 spctl --assess --type execute --verbose=2 "$app"
 
-if [[ "${MAIN_BUILD:-}" == 1 ]]; then
+if $main_build; then
   zip="$build/Ganymede-macOS.zip"
 else
   zip="$build/Ganymede-macOS-$VERSION.zip"
@@ -163,7 +172,7 @@ fi
 rm -f "$zip"
 ditto -c -k --keepParent "$app" "$zip"
 (cd "$build" && shasum -a 256 "$(basename "$zip")" | tee SHA256SUMS-macOS)
-if [[ "${MAIN_BUILD:-}" == 1 ]]; then
+if $main_build; then
   echo "main build: $zip (no update feed)"
   exit 0
 fi

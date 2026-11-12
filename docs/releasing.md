@@ -146,7 +146,8 @@ It reads these repository (or `release` environment) secrets:
 
 The job declares the `release` environment. If that environment has a
 required reviewer, the job waits for approval; if it limits deployment
-branches to tags, a manual run on a branch fails there.
+branches to tags, a manual run on a branch fails there, and so does
+every main build (below), which uses the same environment.
 
 To try the signing without releasing, start `release.yml` by hand on a
 branch: `gh workflow run release.yml --ref <branch> --repo
@@ -200,8 +201,11 @@ become the feed and offer newer installs a downgrade.
 `main-build.yml` builds the Mac app from `main` on each push that changes
 the app (`scripts/ci-changes.sh` prints `macos=true`), and on a manual
 run on `main` (#539). It runs `release-app.sh` with `MAIN_BUILD=1`, in
-the same `release` environment with the same secrets: signed, notarized
-and stapled, zipped as `Ganymede-macOS.zip`, and no `appcast.xml`. The
+the same `release` environment with the signing and notary secrets:
+signed, notarized and stapled, zipped as `Ganymede-macOS.zip`, and no
+`appcast.xml`. It signs no update, so it doesn't get
+`SPARKLE_ED_PRIVATE_KEY`: the public key comes from the latest release's
+app. The
 `publish` job attests the zip and replaces it and `SHA256SUMS-macOS` on
 the `main-build` prerelease, so
 `https://github.com/tlockney/ganymede-ui/releases/download/main-build/Ganymede-macOS.zip`
@@ -219,9 +223,12 @@ release (45) to the main build and does offer the next one. The version
 it shows is `package.json`'s, the latest release's. Release tooling
 reads `releases/latest` and `v*` tags only, so it ignores `main-build`.
 
-A failed main build changes nothing; the next push or a manual run on
-`main` (`gh workflow run main-build.yml --repo tlockney/ganymede-ui`)
-replaces it. If the environment ever gets a required reviewer, each
+A main build made after a release branch is cut can hold commits that
+release lacks; the release's update still replaces it. A failed main
+build changes nothing; the next push or a manual run on `main` (`gh
+workflow run main-build.yml --repo tlockney/ganymede-ui`) replaces it.
+Start a manual run rather than re-running an old one: a re-run builds
+the old commit, and `publish` skips it when a newer build is out. If the environment ever gets a required reviewer, each
 main build waits for approval too.
 
 ## The iPad and iPhone app (TestFlight)

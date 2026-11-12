@@ -325,7 +325,8 @@ Settings > General turns the daily check off, or makes updates download
 and install on their own (they install when you quit). The first release
 with updates has to be installed by hand; later ones install themselves.
 Builds made from source, and CI's ad-hoc builds, don't update
-themselves. The check downloads the release feed from GitHub (its release
+themselves. The `main-build` download (a build of `main`) takes the
+next release's update and never newer main builds. The check downloads the release feed from GitHub (its release
 asset host serves the file) and sends nothing about you or your
 notebooks; the download carries your IP address and the app's version,
 as any download does.
