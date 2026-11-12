@@ -108,6 +108,7 @@ private struct GeneralSettings: View {
             UpdateSettings()
             CrashReportsSettings()
             LinkRunSettings()
+            MCPSettings()
         }
         .formStyle(.grouped)
         .padding()
@@ -144,6 +145,74 @@ private struct LinkRunSettings: View {
             Text("Links")
         } footer: {
             Text("A ganymede://run link asks before it first runs a notebook. These notebooks were allowed with Always; a revoked one asks again.")
+        }
+    }
+}
+
+/// MCP for agents outside the app (#304): what they may do, and the
+/// config that connects them.
+private struct MCPSettings: View {
+    @Environment(AppModel.self) private var model
+
+    var body: some View {
+        Section {
+            Picker("Agents may", selection: Binding(
+                get: { model.mcpMode },
+                set: { model.setMCP($0, images: model.mcpImages) }
+            )) {
+                ForEach(MCPMode.allCases) { Text($0.title).tag($0) }
+            }
+            if model.mcpMode != .off {
+                Toggle("Send images in outputs to the model", isOn: Binding(
+                    get: { model.mcpImages },
+                    set: { model.setMCP(model.mcpMode, images: $0) }
+                ))
+                MCPConfigRow(title: "Claude Code", text: AppMCP.claudeCodeCommand)
+                MCPConfigRow(
+                    title: "Claude Desktop (claude_desktop_config.json)",
+                    text: AppMCP.desktopConfig(command: AppMCP.ganymedeCommand() ?? "ganymede")
+                )
+                if let server = model.serverURL.flatMap(ServerEndpoint.init(serverURL:)), let token = model.mcpToken {
+                    MCPConfigRow(
+                        title: "Claude Code, without the ganymede command",
+                        text: AppMCP.claudeCodeHTTPCommand(base: server.base, token: token)
+                    )
+                    LabeledContent("Token") {
+                        Button("Reset Token") { model.resetMCPToken() }
+                    }
+                } else {
+                    Text(model.error.map { "Ganymede could not start: \($0)" } ?? "Waiting for the server…")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        } header: {
+            Text("MCP")
+        } footer: {
+            Text("Lets Claude Code, Claude Desktop and other agents read, edit and run the notebooks open here, and you see each change arrive. Agents set up with `ganymede mcp` use Ganymede while it runs, and a server of their own when it doesn’t. The server listens on this Mac only and needs the token, which opens all of Ganymede’s server: the mode limits what agents do over MCP. Changing this restarts Ganymede’s server and its kernels.")
+        }
+    }
+}
+
+/// A config to copy, with Copy.
+private struct MCPConfigRow: View {
+    let title: String
+    let text: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack {
+                Text(title)
+                Spacer()
+                Button("Copy") {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(text, forType: .string)
+                }
+                .accessibilityLabel("Copy the \(title) config")
+            }
+            Text(text)
+                .font(.system(.caption, design: .monospaced))
+                .textSelection(.enabled)
+                .foregroundStyle(.secondary)
         }
     }
 }
