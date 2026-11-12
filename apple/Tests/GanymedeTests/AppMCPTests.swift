@@ -132,7 +132,8 @@ final class AppMCPTests: XCTestCase {
         XCTAssertNotNil(own)
         XCTAssertNotEqual(own, "secret")
         let (status, _, _) = try await post(host, ["jsonrpc": "2.0", "id": 1, "method": "ping"], token: own)
-        XCTAssertEqual(status, 404)
+        // Unrouted, the POST reaches the static files, which take GET only.
+        XCTAssertTrue([404, 405].contains(status), "\(status)")
     }
 
     func testTokenIsRequired() async throws {
