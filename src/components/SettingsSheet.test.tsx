@@ -273,7 +273,7 @@ describe('SettingsSheet code font', () => {
     await userEvent.click(screen.getByText(/^Alternates/));
     await userEvent.click(screen.getByRole('checkbox', { name: 'ss01 r' }));
     expect(screen.getByTestId('code-font-preview').style.fontFeatureSettings).toBe(
-      '"ss01" 1, "calt" 0, "liga" 0, "dlig" 0',
+      '"ss01", "calt" 0, "liga" 0, "dlig" 0',
     );
     await userEvent.click(save());
     expect(JSON.parse(localStorage.getItem('ganymede-ui:code-font')!)).toEqual({
