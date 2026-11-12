@@ -121,10 +121,10 @@ final class LineNumberRuler: NSRulerView {
 #else
 /// The iOS text view, with its line numbers in a gutter on the left.
 final class CodeUITextView: UITextView {
-    /// Made on the first layout in a window, not at init: UIKit can lay a
-    /// text view out while it is being torn down, and a weak store of
-    /// `self` from there crashed (#517). Optional, so a layout pass that
-    /// runs before Swift has set up this class's storage reads nil.
+    /// Made on the first layout in a window, not at init. A weak store of
+    /// `self` from a layout pass crashed (#517); the cause isn't known,
+    /// so no layout outside a window touches the gutter, and nothing
+    /// stores a reference to the text view.
     private var gutter: LineNumberGutter?
 
     var lineCount = 1 {

@@ -11,10 +11,9 @@ on its way out, rather than at the text view's own code.
 
 The gutter now holds no reference to the text view: it reads it from
 `superview`. The text view makes the gutter on its first layout in a
-window, keeps it in an optional (so a layout before Swift has set up the
-class's storage reads nil instead of a bad pointer), and skips the
-gutter when it has no window, which is the case while it is being torn
-down. `didMoveToWindow` asks for a layout, so the gutter still appears
+window and skips it when it has no window, which is the case while it
+is being torn down. Which of these mattered isn't known: two events
+with no breadcrumbs can't tell. `didMoveToWindow` asks for a layout, so the gutter still appears
 on screen.
 
 CI has no way to provoke the crash, so the check is by hand on an
