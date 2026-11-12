@@ -7,26 +7,25 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   MAX_LENGTH,
+  appChanges,
   builtFrom,
   client,
   formatNotes,
   parseLog,
   lastTag,
   previousPoint,
+  shipsInApp,
   token,
 } from './testflight-notes.mjs';
 
 const head = 'c486bf8a1d067b157477e08d57e5d93dcee0806b';
 
 describe('formatNotes', () => {
-  it('lists the subjects, counts bumps, drops release commits, and ends with the commit', () => {
+  it('lists the subjects and ends with the commit', () => {
     const notes = formatNotes({
       since: 'build 17 (a1d067b)',
       subjects: [
         'iPhone/iPad: show the example notebooks (#464)',
-        'Bump the vite group with 2 updates (#405)',
-        'Release 0.6.0 (#413)',
-        'Bump the vitest group across 1 directory with 2 updates (#404)',
         'Wait for a kernel start (#462)',
       ],
       head,
@@ -36,7 +35,6 @@ describe('formatNotes', () => {
         'Changes since build 17 (a1d067b):',
         '- iPhone/iPad: show the example notebooks (#464)',
         '- Wait for a kernel start (#462)',
-        '- Dependency updates (2)',
         '',
         'Built from c486bf8a1d06.',
       ].join('\n'),
@@ -46,7 +44,7 @@ describe('formatNotes', () => {
 
   it('says so when nothing changed', () => {
     expect(formatNotes({ since: 'v0.6.0', subjects: [], head })).toContain(
-      '- No changes to the code.',
+      '- No changes to the app.',
     );
   });
 
@@ -59,6 +57,96 @@ describe('formatNotes', () => {
     expect(notes.length).toBeLessThanOrEqual(MAX_LENGTH);
     expect(notes).toMatch(/^- and \d+ more$/m);
     expect(builtFrom(notes)).toBe(head.slice(0, 12));
+  });
+});
+
+describe('shipsInApp', () => {
+  it('counts app sources, assets, examples, dependencies and the Swift app', () => {
+    for (const f of [
+      'src/kernel-host.ts',
+      'src/components/Toolbar.tsx',
+      'public/icons/run.svg',
+      'examples/src/01 Start Here.md',
+      'packages/agent/src/index.ts',
+      'index.html',
+      'vite.config.ts',
+      'package.json',
+      'package-lock.json',
+      'apple/Sources/Ganymede/AppKernels.swift',
+      'apple/Resources/Info.plist',
+      'apple/project.yml',
+      'apple/Package.resolved',
+    ]) {
+      expect(shipsInApp([f]), f).toBe(true);
+    }
+  });
+
+  it('leaves out tests, CI, scripts and docs', () => {
+    for (const f of [
+      'src/kernel-host.test.ts',
+      'src/test/setup.ts',
+      'apple/Tests/GanymedeTests/KernelHostTests.swift',
+      'apple/scripts/release-ios.sh',
+      'apple/Resources/macOS/AppIcon.icns',
+      'apple/Sources/QuickLook/Preview/PreviewViewController.swift',
+      'apple/README.md',
+      '.github/workflows/ci.yml',
+      'scripts/testflight-notes.mjs',
+      'docs/apps.md',
+      'docs/notes/2026-11-11-ffi-cache.md',
+      'e2e/app.spec.ts',
+      'CHANGELOG.md',
+    ]) {
+      expect(shipsInApp([f]), f).toBe(false);
+    }
+  });
+});
+
+describe('appChanges', () => {
+  it('keeps changes to the app and drops CI, tooling, bumps, releases and Mac-only changes', () => {
+    // The v0.7.0..v0.8.0 notes, with the files each change touched.
+    const changes = [
+      {
+        subject: "Pass a run's parameters to the in-app TypeScript kernel (#503)",
+        files: ['apple/Sources/Ganymede/AppKernels.swift', 'src/kernel-host.ts', 'docs/apps.md'],
+      },
+      {
+        subject: "CI: install Playwright's system libraries best effort (#500)",
+        files: ['.github/workflows/ci.yml', 'docs/notes/2026-11-11-playwright-apt-outage.md'],
+      },
+      {
+        subject: 'Release: pick up the latest cdp-kernel and Ganymede releases (#490)',
+        files: ['scripts/release.sh', 'scripts/release-pins.sh', 'docs/releasing.md'],
+      },
+      {
+        subject: 'Pin ganymede v0.8.0 (#497)',
+        files: ['.github/workflows/ci.yml', 'apple/README.md'],
+      },
+      {
+        subject: 'Send TestFlight notes as whatsNew (#501)',
+        files: ['scripts/testflight-notes.mjs', 'scripts/testflight-notes.test.mjs'],
+      },
+      { subject: 'Bump the vite group with 2 updates (#405)', files: ['package.json'] },
+      { subject: 'Release 0.8.0 (#507)', files: ['package.json', 'CHANGELOG.md'] },
+      {
+        subject: 'Mac: choose where kernels run from the window (#475)',
+        files: ['apple/Sources/Ganymede/MacWindow.swift'],
+      },
+      {
+        subject: 'Mac right inspector with Outline and Variables (#311)',
+        files: ['apple/Sources/Ganymede/Inspector.swift'],
+      },
+      {
+        subject: 'Mac and iPad: a shared change (#2)',
+        files: ['apple/Sources/Ganymede/Shared.swift'],
+      },
+      { subject: 'Unknown files are kept (#1)', files: null },
+    ];
+    expect(appChanges(changes)).toEqual([
+      "Pass a run's parameters to the in-app TypeScript kernel (#503)",
+      'Mac and iPad: a shared change (#2)',
+      'Unknown files are kept (#1)',
+    ]);
   });
 });
 
@@ -100,14 +188,14 @@ describe('lastTag', () => {
 describe('parseLog', () => {
   it('gives a squash commit its subject and a merge commit its PR title', () => {
     const out = [
-      'Wait for a kernel start (#462)\x1f\x1e',
-      'Merge pull request #413 from tlockney/release/v0.6.0\x1f\nRelease 0.6.0\n\nMore text\n\x1e',
-      'Merge branch main\x1f\x1e',
+      'aaa\x1fWait for a kernel start (#462)\x1f\x1e',
+      'bbb\x1fMerge pull request #413 from tlockney/release/v0.6.0\x1f\nRelease 0.6.0\n\nMore text\n\x1e',
+      'ccc\x1fMerge branch main\x1f\x1e',
     ].join('\n');
     expect(parseLog(out)).toEqual([
-      'Wait for a kernel start (#462)',
-      'Release 0.6.0 (#413)',
-      'Merge branch main',
+      { sha: 'aaa', subject: 'Wait for a kernel start (#462)' },
+      { sha: 'bbb', subject: 'Release 0.6.0 (#413)' },
+      { sha: 'ccc', subject: 'Merge branch main' },
     ]);
   });
 });
