@@ -33,14 +33,31 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 2
+      # A re-run of an older run would cancel the newest build in the
+      # build job's group (when it queues, before its steps), then publish
+      # would skip it as stale: stop it here. Only a re-run: a first
+      # attempt may start after main moved on with a push that builds
+      # nothing. "Re-run failed jobs" doesn't re-run this job; docs say
+      # to start a manual run instead.
+      - name: Stop a re-run of an older commit
+        if: github.run_attempt != '1'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          head=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
+          if [[ "$head" != "$GITHUB_SHA" ]]; then
+            echo "::error::main is at ${head::12}, not ${GITHUB_SHA::12}: start a manual run on main instead"
+            exit 1
+          fi
       # A manual run counts as a change.
       - id: changes
         run: scripts/ci-changes.sh | tee -a "$GITHUB_OUTPUT"
         env:
           BASE_SHA: ${{ github.event.before }}
 
-  # A newer build cancels an older one; an upload is never cancelled (the
-  # publish job's group). Only pushes that build join this group, so a
+  # A newer build cancels an older one. An upload in progress is never
+  # cancelled (the publish job's group); a queued one gives way to a
+  # newer one. Only pushes that build join this group, so a
   # docs push doesn't cancel the app push before it.
   build:
     needs: changes

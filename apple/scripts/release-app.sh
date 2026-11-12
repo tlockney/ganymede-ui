@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # Builds the Mac app for a release: an arm64 Release archive signed with
 # a Developer ID Application certificate, notarized by Apple, stapled, and
-# zipped as apple/build/Ganymede-macOS-$VERSION.zip. Run after
+# zipped as apple/build/Ganymede-macOS-$VERSION.zip (Ganymede-macOS.zip
+# with MAIN_BUILD=1, below). Run after
 # bootstrap.sh. release.yml runs it; it also runs on a Mac with the same
 # variables set.
 #
 #   VERSION                     the app's version (CFBundleShortVersionString)
-#   BUILD_NUMBER                CFBundleVersion (default 1)
+#   BUILD_NUMBER                CFBundleVersion (default 1; required with
+#                               MAIN_BUILD=1)
 #   APPLE_TEAM_ID               the Developer ID team
 #   MACOS_CERTIFICATE_P12       the certificate and private key, base64; when
 #   MACOS_CERTIFICATE_PASSWORD  unset, the login keychain must hold it
@@ -23,7 +25,7 @@
 #   SPARKLE_PUBLIC_ED_KEY       the latest release's public key instead of
 #                               SPARKLE_ED_PRIVATE_KEY
 #
-# It also writes apple/build/appcast.xml, the update feed the app reads
+# Except with MAIN_BUILD=1, it also writes apple/build/appcast.xml, the update feed the app reads
 # from the latest release, signed with the same key. A main build reads
 # the same feed but publishes none, so releases never offer it.
 set -euo pipefail
@@ -34,7 +36,10 @@ missing=()
 main_build=false
 [[ "${MAIN_BUILD:-}" == 1 ]] && main_build=true
 if $main_build; then update_key=SPARKLE_PUBLIC_ED_KEY; else update_key=SPARKLE_ED_PRIVATE_KEY; fi
-for name in VERSION APPLE_TEAM_ID APPSTORE_API_KEY_P8 APPSTORE_API_KEY_ID APPSTORE_API_ISSUER_ID "$update_key"; do
+required=(VERSION APPLE_TEAM_ID APPSTORE_API_KEY_P8 APPSTORE_API_KEY_ID APPSTORE_API_ISSUER_ID "$update_key")
+# Below the latest release's, Sparkle would offer that release over it.
+$main_build && required+=(BUILD_NUMBER)
+for name in "${required[@]}"; do
   [[ -n "${!name:-}" ]] || missing+=("$name")
 done
 if [[ -n "${MACOS_CERTIFICATE_P12:-}" && -z "${MACOS_CERTIFICATE_PASSWORD:-}" ]]; then
