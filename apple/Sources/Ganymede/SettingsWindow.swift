@@ -124,7 +124,7 @@ private struct LinkRunSettings: View {
     var body: some View {
         Section {
             if permissions.paths.isEmpty {
-                Text("No notebook may be run from a link without asking.")
+                Text("No notebook may be run from a link or a Shortcuts action without asking.")
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(permissions.paths, id: \.self) { key in
@@ -135,7 +135,7 @@ private struct LinkRunSettings: View {
                     } label: {
                         Text((entry.path as NSString).lastPathComponent)
                         Text(
-                            [entry.path, entry.destination.map { "Output to \($0)" }, entry.withParameters ? "With any parameters" : nil]
+                            [entry.path, entry.destination.map { $0 == AppURL.shortcutsDestination ? "From \($0)" : "Output to \($0)" }, entry.withParameters ? "With any parameters" : nil]
                                 .compactMap { $0 }
                                 .joined(separator: "\n")
                         )
@@ -145,7 +145,7 @@ private struct LinkRunSettings: View {
         } header: {
             Text("Links")
         } footer: {
-            Text("A ganymede://run link asks before it first runs a notebook. These notebooks were allowed with Always; a revoked one asks again.")
+            Text("A ganymede://run link, or a Shortcuts action that runs a notebook, asks before it first runs one. These notebooks were allowed with Always; a revoked one asks again.")
         }
     }
 }
