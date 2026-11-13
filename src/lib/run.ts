@@ -1,5 +1,6 @@
 import { URLExt } from '@jupyterlab/coreutils';
 import { ServerConnection } from '@jupyterlab/services';
+import type { Backend } from './backends';
 
 /**
  * Run with Parameters (#582): Ganymede's `POST /api/notebooks/run`, the
@@ -96,4 +97,13 @@ export async function runWithParams(
     ...(answer.error ? { error: answer.error } : {}),
     ...(answer.copy ? { copy: answer.copy } : {}),
   };
+}
+
+/**
+ * Whether `backend` can run a notebook with parameters: a Ganymede server
+ * that runs the kernels. With `kernels` set, the notebook's kernel may be
+ * one in this page, which the server can't start for the run.
+ */
+export function runAvailable(backend: Backend | undefined): boolean {
+  return backend?.config.kind === 'ganymede' && !backend.config.kernels;
 }

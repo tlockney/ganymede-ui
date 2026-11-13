@@ -16,13 +16,17 @@ Ganymede's `POST /api/notebooks/run` (since 0.8.0; `save: "copy"` since 0.10.0).
   The run has no time limit of its own here (the server's is an hour),
   so the sheet can always be stopped: Stop and Esc abort the request,
   and the server shuts the run's kernel down when the client goes away.
-  Unmounting (the notebook closed) aborts it too.
+  Closing the notebook, or opening another, closes the sheet, which
+  aborts it too.
 - The server reads the notebook from its room, so unsaved edits run
   without a save while the pane is joined to the room; a pane that fell
   back to the contents API runs the saved file. Nothing in the window
   changes.
 - The run copy's path is shown, not opened: the Mac app opens notebooks
   as documents, and the page's `open` command would bypass that.
-- Gated on a server connection (`PageState.publish`), like the exports.
+- Gated on a Ganymede server that runs the kernels (`runAvailable`): not
+  on a connection with `kernels: page` or `both`, where the notebook's
+  kernel may be one in the page the server can't start. The Apple apps
+  use neither, so their menus follow `PageState.publish`.
   Page command `run-with-params`: Command Palette, the toolbar's More
   menu (the run group's overflow, in a narrow window), Mac Cell menu, iPad Cell and ⋯ menus.

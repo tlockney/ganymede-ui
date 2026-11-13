@@ -102,6 +102,6 @@ describe('filterEntries', () => {
 
   it('offers Run with Parameters only on a server that runs notebooks', () => {
     expect(find('Run with Parameters…')?.disabled).toBe(true);
-    expect(find('Run with Parameters…', { ...CONTEXT, publish: true })?.disabled).toBe(false);
+    expect(find('Run with Parameters…', { ...CONTEXT, runParams: true })?.disabled).toBe(false);
   });
 });

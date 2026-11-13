@@ -1,6 +1,7 @@
 import { ServerConnection } from '@jupyterlab/services';
 import { describe, expect, it, vi } from 'vitest';
-import { initialParams, parseParams, runWithParams } from './run';
+import type { Backend } from './backends';
+import { initialParams, parseParams, runAvailable, runWithParams } from './run';
 
 const settings = (fetch: typeof globalThis.fetch) =>
   ServerConnection.makeSettings({ baseUrl: 'http://h/', fetch });
@@ -71,6 +72,22 @@ describe('run with parameters', () => {
     fetch.mockResolvedValueOnce(json({ unexpected: true }));
     await expect(runWithParams(settings(fetch), 'Io.ipynb', {}, { save: false })).rejects.toThrow(
       'It needs Ganymede',
+    );
+  });
+});
+
+describe('runAvailable', () => {
+  const backend = (config: Backend['config']) => ({ config }) as Backend;
+
+  it('is a Ganymede server that runs the kernels', () => {
+    expect(runAvailable(backend({ kind: 'ganymede', url: '', token: '' }))).toBe(true);
+    expect(runAvailable(undefined)).toBe(false);
+    expect(runAvailable(backend({ kind: 'browser' }))).toBe(false);
+    expect(runAvailable(backend({ kind: 'ganymede', url: '', token: '', kernels: 'page' }))).toBe(
+      false,
+    );
+    expect(runAvailable(backend({ kind: 'ganymede', url: '', token: '', kernels: 'both' }))).toBe(
+      false,
     );
   });
 });

@@ -46,6 +46,8 @@ export type PaletteContext = {
   hostGrants?: boolean;
   /** Whether the backend publishes and exports notebooks (a server). */
   publish?: boolean;
+  /** Whether the server can run the notebook with parameters. */
+  runParams?: boolean;
   /** Whether a backend is connected. */
   connected: boolean;
 };
@@ -111,7 +113,7 @@ export function paletteEntries(context: PaletteContext): PaletteEntry[] {
     }),
     app('run-all', 'Run All Cells', 'Cell', { disabled: !open }),
     app('run-with-params', 'Run with Parameters…', 'Cell', {
-      disabled: !open || !context.publish,
+      disabled: !open || !context.runParams,
     }),
     app('clear-outputs', 'Clear All Outputs', 'Cell', { disabled: !open }),
     app('insert-code', 'Insert Code Cell', 'Cell', { disabled: !open }),

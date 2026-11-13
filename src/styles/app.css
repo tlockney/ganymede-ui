@@ -1985,7 +1985,7 @@ button {
   grid-column: 1;
 }
 
-.form-rows textarea {
+.run-sheet textarea {
   padding: 6px 8px;
   border: 0.5px solid var(--separator);
   border-radius: 6px;
@@ -1997,7 +1997,7 @@ button {
   user-select: text;
 }
 
-.form-rows textarea:focus {
+.run-sheet textarea:focus {
   box-shadow: 0 0 0 3.5px var(--accent-soft);
   border-color: var(--accent);
 }

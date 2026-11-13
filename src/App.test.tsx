@@ -336,10 +336,15 @@ describe('App', () => {
     // An absolute path, as the Mac app passes it, is cleaned as `?open=` is.
     expect(await run('open', '/Europa.ipynb')).toBe(true);
     await waitFor(() => expect(screen.getByTestId('pane')).toHaveTextContent(/^Europa\.ipynb$/));
+    // Closing the notebook closes its Run with Parameters sheet, which
+    // stops a run.
+    expect(await run('run-with-params')).toBe(true);
+    await screen.findByRole('dialog', { name: /with Parameters/ });
     // Closed without saving: the app moved it to the Trash.
     expect(await run('close')).toBe(true);
     expect(discard).toHaveBeenCalled();
     await waitFor(() => expect(screen.queryByTestId('pane')).not.toBeInTheDocument());
+    expect(screen.queryByRole('dialog', { name: /with Parameters/ })).not.toBeInTheDocument();
     expect(await run('close')).toBe(false);
     expect(await run('show-shortcuts')).toBe(true);
     expect(await screen.findByText('Keyboard Shortcuts')).toBeInTheDocument();

@@ -80,7 +80,7 @@ import { useFileDrop } from './lib/file-drop';
 import { copySample } from './lib/sample';
 import { refreshKernelsOnReturn } from './lib/kernel-refresh';
 import { RunSheet } from './components/RunSheet';
-import { runWithParams } from './lib/run';
+import { runAvailable, runWithParams } from './lib/run';
 import { EXPORT_FORMATS, type ExportFormat } from './lib/export';
 
 /**
@@ -201,6 +201,11 @@ export function App() {
   const closePublish = useCallback(() => setPublishFor(undefined), []);
   const [runFor, setRunFor] = useState<{ path: string; name: string; params: string }>();
   const closeRun = useCallback(() => setRunFor(undefined), []);
+  // Closing the notebook (or opening another) closes its sheet, which
+  // stops a run in progress.
+  useEffect(() => {
+    if (runFor && runFor.path !== openPath) setRunFor(undefined);
+  }, [runFor, openPath]);
   /** The parameters each notebook last ran with from the sheet, by path. */
   const lastParams = useRef(new Map<string, string>());
   const closeAccess = useCallback(() => {
@@ -518,7 +523,7 @@ export function App() {
         await c.exportAs(arg as ExportFormat);
         return true;
       case 'run-with-params':
-        if (!publishAvailable(backend)) return false;
+        if (!runAvailable(backend)) return false;
         setRunFor({
           path: c.path,
           name: c.name,
@@ -836,9 +841,7 @@ export function App() {
                 publishAvailable(backend) ? () => void runCommand.current('publish') : undefined
               }
               onRunWithParams={
-                publishAvailable(backend)
-                  ? () => void runCommand.current('run-with-params')
-                  : undefined
+                runAvailable(backend) ? () => void runCommand.current('run-with-params') : undefined
               }
               onExport={
                 publishAvailable(backend)
@@ -937,6 +940,7 @@ export function App() {
             trusted: shown?.trusted ?? true,
             hostGrants: hostGrantsAvailable(backend),
             publish: publishAvailable(backend),
+            runParams: runAvailable(backend),
             connected: !!backend,
           })}
           onRun={(entry, arg) => {
