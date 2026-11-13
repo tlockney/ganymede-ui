@@ -148,6 +148,7 @@ export function Toolbar({
       ),
       menu: [
         { label: 'Run All', disabled, onSelect: () => void c?.runAll() },
+        { label: 'Clear All Outputs', disabled, onSelect: () => c?.clearOutputs() },
         {
           label: 'Interrupt',
           disabled: disabled || c?.status !== 'busy',

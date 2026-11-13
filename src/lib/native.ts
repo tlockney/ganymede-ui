@@ -67,6 +67,7 @@ export const PAGE_COMMANDS = {
   trust: '',
   run: '',
   'run-all': '',
+  'clear-outputs': '',
   interrupt: '',
   restart: '',
   'insert-code': '',

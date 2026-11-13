@@ -24,6 +24,7 @@ function controller(over: Partial<NotebookController> = {}): NotebookController 
     hostWants: vi.fn(() => []),
     run: vi.fn(async () => {}),
     runAll: vi.fn(async () => {}),
+    clearOutputs: vi.fn(),
     insert: vi.fn(),
     interrupt: vi.fn(async () => {}),
     restart: vi.fn(async () => {}),
@@ -408,6 +409,9 @@ describe('Toolbar overflow (#201)', () => {
     await userEvent.click(screen.getByTitle('More'));
     await userEvent.click(screen.getByRole('menuitem', { name: 'Run All' }));
     expect(c.runAll).toHaveBeenCalled();
+    await userEvent.click(screen.getByTitle('More'));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Clear All Outputs' }));
+    expect(c.clearOutputs).toHaveBeenCalled();
     await userEvent.click(screen.getByTitle('More'));
     await userEvent.click(screen.getByRole('menuitem', { name: 'Save' }));
     expect(c.save).toHaveBeenCalled();

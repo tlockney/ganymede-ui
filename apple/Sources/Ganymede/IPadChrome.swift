@@ -713,6 +713,9 @@ struct IPadNotebookToolbar: ToolbarContent {
                     Text("Markdown").tag("markdown")
                     Text("Raw").tag("raw")
                 }
+                Button { page.run("clear-outputs") } label: {
+                    Label("Clear All Outputs", systemImage: "eraser")
+                }
                 Divider()
                 Button { page.run("restart") } label: { Label("Restart Kernel", systemImage: "arrow.clockwise") }
                     .disabled(!page.state.hasKernel)
@@ -796,6 +799,7 @@ struct IPadCommands: Commands {
         CommandMenu("Cell") {
             IPadPageButton("Run Cell", "run")
             IPadPageButton("Run All Cells", "run-all", key: .return, modifiers: [.command, .shift])
+            IPadPageButton("Clear All Outputs", "clear-outputs")
             IPadPageButton("Insert Cell Below", "insert-below")
             IPadPageButton("Insert Markdown Cell Below", "insert-markdown")
             IPadPageButton("Collapse All Code", "collapse-all-code")
