@@ -213,6 +213,55 @@ final class KernelHostTests: XCTestCase {
         XCTAssertFalse(server.kernels.isLive(id))
     }
 
+    /// Cells in the kernel page can't use the notebook pages' login
+    /// (#557): the page has its own website data store, so a `fetch` of
+    /// the contents API or a kernel's websocket from it is refused, while
+    /// the notebook page, logged in with the token, gets through.
+    @MainActor
+    func testTheKernelPageHasNoLoginCookie() async throws {
+        let server = try server()
+        defer { server.stop() }
+        let ledger = PermissionLedger(store: MemoryLedgerStore())
+        let kernels = AppKernels(device: DeviceBridge(presenter: SilentPresenter(), ledger: ledger))
+        kernels.notebookRoot = dir
+        try kernels.serve(server)
+        let ui = uiView()
+        kernels.lend(ui)
+        // The notebook page logs in with the token in its URL, as the
+        // app's pages do, and keeps the cookie.
+        ui.load(URLRequest(url: server.url))
+        try await waitFor(ui, "document.readyState === 'complete'")
+        let contents = "return (await fetch('/api/contents/')).status"
+        let fromUI = try await ui.callAsyncJavaScript(contents, contentWorld: .page) as? Int
+        XCTAssertEqual(fromUI, 200)
+
+        let (created, session) = try await request(
+            server, "POST", "/api/sessions",
+            #"{"path": "Trip.ipynb", "type": "notebook", "name": "Trip.ipynb", "kernel": {"name": "cdp-browser"}}"#)
+        XCTAssertEqual(created, 201, session)
+        let object = try JSONSerialization.jsonObject(with: Data(session.utf8)) as? [String: Any]
+        let id = try XCTUnwrap((object?["kernel"] as? [String: Any])?["id"] as? String)
+        try await eventually("the kernel") {
+            try await self.request(server, "GET", "/api/kernels/\(id)").1.contains(#""execution_state":"idle""#)
+        }
+        XCTAssertEqual(kernels.webView.url?.path, "/kernel.html")
+
+        // What a cell would try: the contents API and another kernel's channels.
+        let fromKernel = try await kernels.webView.callAsyncJavaScript(contents, contentWorld: .page) as? Int
+        XCTAssertEqual(fromKernel, 403)
+        let socket = try await kernels.webView.callAsyncJavaScript("""
+            return await new Promise(done => {
+              const ws = new WebSocket(`ws://${location.host}/api/kernels/\(id)/channels`);
+              ws.onopen = () => { ws.close(); done('open'); };
+              ws.onerror = () => done('refused');
+              ws.onclose = () => done('refused');
+            });
+            """, contentWorld: .page) as? String
+        XCTAssertEqual(socket, "refused")
+        let (deleted, _) = try await request(server, "DELETE", "/api/kernels/\(id)")
+        XCTAssertEqual(deleted, 204)
+    }
+
     /// The notebook page gets the remote subset of `device`, not from a
     /// frame, and only its own reset closes what it opened.
     @MainActor
