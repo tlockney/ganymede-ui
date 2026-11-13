@@ -173,49 +173,54 @@ describe('attachEditing', () => {
 });
 
 describe('recheckToolbarOverlap', () => {
-  it('re-checks the toolbar when the active Markdown cell changes size', () => {
+  it('re-checks the toolbar when the active Markdown cell changes size', async () => {
     const { recheckToolbarOverlap } = jupyterlab;
     const observed = new Set<Element>();
-    let resized = () => {};
-    const Real = globalThis.ResizeObserver;
-    globalThis.ResizeObserver = class {
-      constructor(callback: () => void) {
-        resized = callback;
-      }
-      observe(node: Element) {
-        observed.add(node);
-      }
-      unobserve(node: Element) {
-        observed.delete(node);
-      }
-      disconnect() {
-        observed.clear();
-      }
-    } as unknown as typeof ResizeObserver;
-    try {
-      const recheck = recheckToolbarOverlap(notebook);
-      // A code cell is active: nothing to watch.
-      expect(observed.size).toBe(0);
+    let resized: (entries: { contentRect: { width: number; height: number } }[]) => void = () => {};
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(callback: typeof resized) {
+          resized = callback;
+        }
+        observe(node: Element) {
+          observed.add(node);
+        }
+        unobserve(node: Element) {
+          observed.delete(node);
+        }
+        disconnect() {
+          observed.clear();
+        }
+      },
+    );
+    const sized = [{ contentRect: { width: 600, height: 40 } }];
+    const recheck = recheckToolbarOverlap(notebook);
+    // A code cell is active: nothing to watch.
+    expect(observed.size).toBe(0);
 
-      notebook.activeCellIndex = 1;
-      const markdown = notebook.activeCell!;
-      expect([...observed]).toEqual([markdown.inputArea!.node]);
-      const changed = vi.fn();
-      markdown.displayChanged.connect(changed);
-      resized();
-      expect(changed).toHaveBeenCalledTimes(1);
+    notebook.activeCellIndex = 1;
+    const markdown = notebook.activeCell!;
+    expect([...observed]).toEqual([markdown.inputArea!.node]);
+    const changed = vi.fn();
+    markdown.displayChanged.connect(changed);
+    resized(sized);
+    await vi.waitFor(() => expect(changed).toHaveBeenCalledTimes(1));
 
-      notebook.activeCellIndex = 0;
-      expect(observed.size).toBe(0);
-      resized();
-      expect(changed).toHaveBeenCalledTimes(1);
+    // Parked (hidden): no size, no check.
+    resized([{ contentRect: { width: 0, height: 0 } }]);
+    await new Promise(r => setTimeout(r, 20));
+    expect(changed).toHaveBeenCalledTimes(1);
 
-      notebook.activeCellIndex = 1;
-      recheck.dispose();
-      expect(observed.size).toBe(0);
-    } finally {
-      globalThis.ResizeObserver = Real;
-    }
+    notebook.activeCellIndex = 0;
+    expect(observed.size).toBe(0);
+    resized(sized);
+    await new Promise(r => setTimeout(r, 20));
+    expect(changed).toHaveBeenCalledTimes(1);
+
+    notebook.activeCellIndex = 1;
+    recheck.dispose();
+    expect(observed.size).toBe(0);
   });
 });
 

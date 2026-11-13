@@ -66,9 +66,8 @@ import {
 } from '@jupyterlab/ui-components';
 import { CommandRegistry } from '@lumino/commands';
 import type { JSONObject } from '@lumino/coreutils';
-import type { Message } from '@lumino/messaging';
+import { type Message, MessageLoop } from '@lumino/messaging';
 import { DisposableDelegate, DisposableSet, type IDisposable } from '@lumino/disposable';
-import type { Signal } from '@lumino/signaling';
 import { Widget } from '@lumino/widgets';
 import { installOutputFrames } from './output-frames';
 import { bindShortcuts, SHOW_SHORTCUTS_EVENT } from './shortcuts';
@@ -307,21 +306,27 @@ completion.setTimeout(1000);
  * runs idle callbacks sooner than Chromium: when a notebook opens, the check
  * on its first cell can run before the Markdown is there, find no first
  * line, and leave the toolbar over a long heading. The cell is rendered the
- * whole time, so nothing emits `displayChanged` afterwards. Emit it whenever
- * the active Markdown cell's input area changes size, as it does when the
- * Markdown renders, is edited by someone else, or rewraps.
+ * whole time, so nothing emits `displayChanged` afterwards. Send the cell a
+ * resize message, which emits it, whenever the active Markdown cell's input
+ * area changes size, as it does when the Markdown renders, is edited by
+ * someone else, or rewraps.
  */
 export function recheckToolbarOverlap(notebook: Notebook): IDisposable {
   let observed: Element | null = null;
-  const observer = new ResizeObserver(() => {
+  const isMarkdown = (cell: Cell | null): cell is Cell =>
+    !!cell && !cell.isDisposed && cell.model.type === 'markdown';
+  const observer = new ResizeObserver(entries => {
+    // A parked (hidden) notebook's cell has no size; the check would find
+    // no toolbar to measure and leave it showing (#553).
+    const { width, height } = entries[entries.length - 1]!.contentRect;
     const cell = notebook.activeCell;
-    if (cell?.model.type === 'markdown' && !cell.isDisposed) {
-      (cell.displayChanged as Signal<Cell, void>).emit();
-    }
+    if (width === 0 || height === 0 || !isMarkdown(cell)) return;
+    // Through the cell's own resize handling, which emits `displayChanged`.
+    MessageLoop.sendMessage(cell, Widget.ResizeMessage.UnknownSize);
   });
   const follow = () => {
     const cell = notebook.activeCell;
-    const node = cell?.model.type === 'markdown' ? (cell.inputArea?.node ?? null) : null;
+    const node = isMarkdown(cell) ? (cell.inputArea?.node ?? null) : null;
     if (node === observed) return;
     if (observed) observer.unobserve(observed);
     observed = node;
