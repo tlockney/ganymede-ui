@@ -682,6 +682,20 @@ struct DownloadCommand: View {
     }
 }
 
+/// File > Export As > Markdown… and Script… (#582), from the server: Markdown
+/// with images arrives as a zip.
+struct ExportCommand: View {
+    @FocusedValue(\.pageModel) private var page
+
+    var body: some View {
+        Menu("Export As") {
+            Button("Markdown…") { page?.run("export", arg: "markdown") }
+            Button("Script…") { page?.run("export", arg: "script") }
+        }
+        .disabled(page?.state.hasNotebook != true || page?.state.publish != true)
+    }
+}
+
 /// File > Publish as Web Page…, beside Download (#563): the page's sheet
 /// takes the options, and the page arrives through the save panel.
 struct PublishCommand: View {

@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import { useCallback, useState } from 'react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -334,6 +334,64 @@ describe('NotebookPane', () => {
     request.mockRestore();
     create.mockRestore();
     click.mockRestore();
+  });
+
+  it('exports from the server, saving unsaved edits first', async () => {
+    const { fake, latest } = setup();
+    await waitFor(() => expect(latest()).toBeDefined());
+    act(() => modelOf().cells.get(0).sharedModel.setSource('print(4)'));
+    await waitFor(() => expect(latest()!.dirty).toBe(true));
+    Object.assign(fake.contents, {
+      serverSettings: ServerConnection.makeSettings({ baseUrl: 'http://server/' }),
+    });
+    const order: string[] = [];
+    fake.contents.save.mockImplementation(async (path: string) => {
+      order.push('save');
+      return entry({ name: path, path, type: 'notebook' });
+    });
+    const request = vi.spyOn(ServerConnection, 'makeRequest').mockImplementation(async url => {
+      order.push(`get ${String(url)}`);
+      return new Response('print(4)\n', {
+        headers: { 'content-disposition': "attachment; filename*=utf-8''Io.py" },
+      });
+    });
+    const blobs: Blob[] = [];
+    const create = vi.spyOn(URL, 'createObjectURL').mockImplementation(b => {
+      blobs.push(b as Blob);
+      return 'blob:export';
+    });
+    const names: string[] = [];
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      names.push(this.download);
+    });
+    await act(() => latest()!.exportAs('script'));
+    expect(order).toEqual([
+      'save',
+      'get http://server/nbconvert/script/moons/Io.ipynb?download=true',
+    ]);
+    expect(names).toEqual(['Io.py']);
+    expect(await blobs[0]!.text()).toBe('print(4)\n');
+    request.mockRestore();
+    create.mockRestore();
+    click.mockRestore();
+  });
+
+  it('shows why an export failed', async () => {
+    const { fake, latest } = setup();
+    await waitFor(() => expect(latest()).toBeDefined());
+    Object.assign(fake.contents, {
+      serverSettings: ServerConnection.makeSettings({ baseUrl: 'http://server/' }),
+    });
+    const request = vi
+      .spyOn(ServerConnection, 'makeRequest')
+      .mockResolvedValue(
+        new Response(JSON.stringify({ message: 'nbconvert failed: bad' }), { status: 500 }),
+      );
+    await act(() => latest()!.exportAs('markdown'));
+    expect(screen.getByRole('alert')).toHaveTextContent('nbconvert failed: bad');
+    request.mockRestore();
   });
 
   it('publishes nothing when the save first fails', async () => {
@@ -1527,6 +1585,36 @@ describe('NotebookPane', () => {
     await expect(latest()!.publish({ code: 'folded', byline: '', copy: true })).rejects.toThrow(
       'changed on disk',
     );
+    expect(request).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent('Saving is locked');
+    request.mockRestore();
+  });
+
+  it('keeps the lock notice when the export’s save finds the file changed on disk', async () => {
+    const { fake, latest, change } = await changedOnDisk();
+    act(() => modelOf().cells.get(0).sharedModel.setSource('print(2)'));
+    change();
+    expect(latest()!.locked).toBe(false);
+    const request = vi.spyOn(ServerConnection, 'makeRequest');
+    await act(() => latest()!.exportAs('markdown'));
+    expect(fake.contents.save).not.toHaveBeenCalled();
+    expect(latest()!.locked).toBe(true);
+    expect(request).not.toHaveBeenCalled();
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent('Saving is locked');
+    expect(within(alert).getByRole('button', { name: 'Unlock' })).toBeVisible();
+    expect(alert).not.toHaveTextContent('Couldn’t export');
+    request.mockRestore();
+  });
+
+  it('exports nothing while saving is locked, and says so again', async () => {
+    const { latest, change } = await changedOnDisk();
+    change();
+    act(() => modelOf().cells.get(0).sharedModel.setSource('print(2)'));
+    await act(() => latest()!.save());
+    expect(latest()!.locked).toBe(true);
+    const request = vi.spyOn(ServerConnection, 'makeRequest');
+    await act(() => latest()!.exportAs('markdown'));
     expect(request).not.toHaveBeenCalled();
     expect(screen.getByRole('alert')).toHaveTextContent('Saving is locked');
     request.mockRestore();

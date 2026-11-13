@@ -25,6 +25,7 @@ function controller(over: Partial<NotebookController> = {}): NotebookController 
     run: vi.fn(async () => {}),
     runAll: vi.fn(async () => {}),
     clearOutputs: vi.fn(),
+    exportAs: vi.fn(async () => {}),
     insert: vi.fn(),
     interrupt: vi.fn(async () => {}),
     restart: vi.fn(async () => {}),
@@ -399,6 +400,31 @@ describe('Toolbar overflow (#201)', () => {
     await userEvent.click(screen.getByTitle('More'));
     await userEvent.click(screen.getByRole('menuitem', { name: 'Download Notebook' }));
     expect(c.download).toHaveBeenCalled();
+  });
+
+  it('lists the exports under Download in More, only where the app can export', async () => {
+    layout(320);
+    const c = controller();
+    const onExport = vi.fn();
+    const { rerender } = render(
+      <Toolbar controller={c} sidebarOpen={false} onToggleSidebar={() => {}} specs={SPECS} />,
+    );
+    await userEvent.click(screen.getByTitle('More'));
+    expect(screen.getByRole('menuitem', { name: 'Download Notebook' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Export as Script' })).toBeNull();
+    await userEvent.keyboard('{Escape}');
+    rerender(
+      <Toolbar
+        controller={c}
+        sidebarOpen={false}
+        onToggleSidebar={() => {}}
+        specs={SPECS}
+        onExport={onExport}
+      />,
+    );
+    await userEvent.click(screen.getByTitle('More'));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Export as Script' }));
+    expect(onExport).toHaveBeenCalledWith('script');
   });
 
   it('keeps Run and "…" on the narrowest phone', async () => {
