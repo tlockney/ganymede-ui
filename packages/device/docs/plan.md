@@ -1,0 +1,634 @@
+# A `device` API for TypeScript notebooks in the Mac and iPad apps
+
+Goal: give notebook code in the Mac and iPad apps something in the spirit of
+Juno's `juno` Python module: calls from a cell into the native app for
+files, clipboard, sharing, notifications, location, photos and similar. Not
+a copy of Juno's API; the same direction.
+
+Scope (Thomas, 2026-10-18): the **on-device kernel** is the target and
+gets the full API. A remote kernel (Ganymede on the Mac mini) driven
+from the app gets the **features that need no permission** through the
+same API (Thomas, 2026-10-18); see "Remote kernels". A browser frontend
+gets a few of those through web APIs where they fit; see "Browser
+fallback". Every feature's support in each case is documented in one
+matrix; see "Documentation".
+
+Platforms: macOS and iOS (iPadOS) only, for now. The native side is
+Swift in Ganymede's Apple apps; there is no Windows, Linux or Android
+host, and none is planned. The browser fallback is the only part that
+runs elsewhere.
+
+Sources: Juno's module docs (juno.sh/docs/python/juno/ and its 17
+module pages, read 2026-10-18) and the existing design in the
+[ts-on-ipados](https://github.com/tlockney/research/tree/main/ts-on-ipados)
+design note, §08 (a separate repo). The table under
+"What Juno has" maps each Juno module to ours.
+
+## The bridge: kernel straight to Swift
+
+Like Juno, the kernel runs inside the app, so `device` calls go straight
+from the kernel's runtime to the native host. No Jupyter comms, no
+frontend plugin, and Ganymede is not involved.
+
+The kernel-side `device` object talks to one small interface, and each
+on-device placement supplies it. Today (`src/device.ts`) it has one method:
+
+```ts
+interface DeviceTransport {
+  call(method: string, params: Record<string, unknown>, options?: { signal?: AbortSignal }): Promise<unknown>;
+}
+```
+
+Bounded streams (Phase 2) are built on `call` (`openStream` in
+src/stream.ts, protocol.md "Streams"), so a transport needs nothing more
+for them. Host events (Phase 3) need no transport method either: they
+are a stream ([phase-3.md](phase-3.md), part 3). Planned, added when a
+method needs it: binary arguments (see "Message format").
+
+| Kernel placement | Where it applies | Transport |
+| --- | --- | --- |
+| Worker kernel in a WKWebView (cdp-kernel#314) | Mac and iPad, first | Worker `postMessage` → page → `webkit.messageHandlers.device` (`WKScriptMessageHandlerWithReply`) → Swift |
+| Embedded engine (JSC prototype, then rusty_v8 jitless; ts-on-ipados tier 2) | iPad, later | A host function installed in the isolate (JSExport or a Rust op) → Swift |
+| Child process of the bundled Ganymede (cdp-kernel on Node/Deno) | Mac, only if the Mac app runs its local kernel that way | Unix socket the app passes in an env var; JSON lines plus length-prefixed binary |
+
+```
+cell code ── device.clipboard.readText() ──▶ device object (in the cell's realm)
+   │  DeviceTransport.call("clipboard.readText", {})
+   ▼
+placement-specific hop (Worker postMessage / host function / Unix socket)
+   ▼
+Swift DeviceBridge ──▶ UIPasteboard / CoreLocation / PhotosUI / UNUserNotificationCenter …
+```
+
+Why this route:
+
+- It matches Juno: the code asking and the person holding the device are
+  on the same machine, so there is no "which frontend answers" problem.
+- It works with no notebook UI attached, so share-sheet actions,
+  Shortcuts and widgets (ts-on-ipados tier 3) get the API for free.
+- Ganymede and the Jupyter protocol stay untouched.
+
+Availability: the host installs `device` only when it has a transport. On
+any other kernel `globalThis.device` is undefined. The module exports
+`unavailableDevice()`, which makes a `Device` whose calls reject with
+`unavailable`, for code that wants one either way. A
+`capabilities.device` entry in `kernel_info_reply` lets the UI show it.
+
+### Design rule: notebook outputs must not reach the bridge
+
+In the Worker placement, the kernel and the notebook's rendered outputs
+could share one WKWebView. An HTML output with a script could then call
+`webkit.messageHandlers.device` directly and skip the permission checks.
+Options, in order of preference:
+
+1. Run the Worker kernel in a **hidden kernel WKWebView** that renders no
+   outputs; Swift relays Jupyter messages between it and the UI WebView.
+   Only the kernel WebView registers the `device` handler. This also
+   keeps a busy UI from stalling the kernel.
+2. Register the handler in a separate `WKContentWorld` and render outputs
+   in sandboxed iframes.
+
+Phase 0 checks that option 1 is cheap enough.
+
+## Remote kernels: a subset over Jupyter comms
+
+Rule: **remote support never shapes the on-device design.** The API is
+designed for the on-device kernel first: `device` is a global with no
+import, installed before the first cell with no handshake wait;
+`device.info()` and `has()` answer from a cache filled at install; streams,
+long-lived handles, host events and headless runs are all available. The
+remote transport is a filtered view of that API. If a feature can't work
+well remotely, it is left out of the subset, not weakened for everyone.
+
+When the app is the frontend for a kernel on another machine (the iPad on
+Ganymede at the Mac mini), the same `device` API can work through a
+second transport. The kernel has no line to the device's Swift host, but
+the app's UI does, and Jupyter comms already connect the two.
+
+```
+cell on the Mac mini ── device.clipboard.readText()
+   │  CommTransport: jupyter.comm, target "ganymede.device.v1"
+   ▼
+Ganymede (passes comms through untouched)
+   │  websocket over the tailnet
+   ▼
+ganymede-ui in the app ── device-bridge plugin ── Swift DeviceBridge
+```
+
+How the kernel side finds it: if the host installed a transport, use it.
+Otherwise announce on a comm; if the app answers within ~5 s, use the
+comm transport, else every call rejects `unavailable`. Same message
+format as the on-device transports, carried in comm data. The kernel
+only announces; the app opens the comm the calls go over, since
+JupyterLab closes a kernel-opened comm whose target it doesn't know
+(docs/protocol.md, "Over a Jupyter comm").
+
+### What changes when the kernel is remote
+
+- **Which frontend answers.** A comm open goes to every connected client.
+  `hello` carries the Jupyter session of the cell's `execute_request`, and
+  only the app window with that session answers. A JupyterLab tab on the
+  same kernel stays silent.
+- **Data leaves the device.** A clipboard read or picked file lands on
+  the Mac mini. That is why remote stops at features that need no
+  permission: each one is either an action the person sees and confirms
+  (pickers, share, dialogs, the system paste prompt) or sends nothing
+  back (haptics, sound, clipboard write). No ledger entries for remote
+  hosts, and a remote host can never trigger a permission prompt.
+- **Dialogs from a remote host.** Code on the server can still open
+  dialogs and pickers on the iPad. The app shows which host asked, allows
+  one at a time, and the person can mute a host for the session.
+- **The link drops.** The iPad suspends the app and the websocket goes
+  away while the kernel keeps running. Pending calls reject
+  `disconnected`; streams end; native handles (sound players, BLE
+  connections) close. After reattach, the comm is reopened on the next
+  call. Long or stateful features are a poor fit for this.
+- **Latency.** Each call is a tailnet round trip plus the UI hop. Fine for
+  one-shot calls, poor for high-rate streams.
+- **No headless runs.** There is no remote equivalent of a share-sheet or
+  Shortcuts run; those stay on-device.
+- **Interrupt.** `interrupt_request` aborts the cell's signals in the
+  kernel, which sends `{ id, cancel }` over the comm; the app dismisses
+  any picker it showed.
+- **Getting the module.** A remote kernel is a plain Node or Deno
+  cdp-kernel. The package is published to npm/jsr and imported
+  (`import { device } from "npm:@tlockney/ganymede-device"`), or Ganymede passes a
+  preload when it launches kernels for the app.
+
+### The remote subset
+
+Decision (Thomas, 2026-10-18): remote kernels get only features that
+need no permission.
+
+| Feature | Remote | Why |
+| --- | --- | --- |
+| `info`, `has` | yes | small, read-only; reports the device, not the server |
+| clipboard write | yes | sends nothing back |
+| clipboard read (text, image) | yes | the system paste prompt is the consent |
+| `ui.*` dialogs and pickers | yes | user-initiated; the reason a remote notebook wants this most |
+| share, preview, openURL | yes | the person sees and confirms the action |
+| files pick/export, photos pick | yes | pickers are consent; bytes go to the server, which is the point |
+| haptics, `sound.play` | yes | fire-and-forget |
+| notifications | no | needs notification permission |
+| location, motion, camera, photos save | no | need permission |
+| contacts, reminders, Bluetooth | no | need permission |
+| secrets | no | Keychain items stay on the device |
+| `sound.player`, Shortcuts run, host events | no in v1 | handles and events don't survive disconnects; Shortcuts suit on-device scripts |
+
+Widening this later means revisiting the ledger (keyed by host) and
+prompt rate limits; neither is built for v1.
+
+## Browser fallback
+
+Decision (Thomas, 2026-10-18): expose a few features through web APIs
+where it makes sense. This covers a remote kernel driven from a browser
+instead of the app: ganymede-ui as a PWA, and later JupyterLab through a
+small labextension. The same `ganymede.device.v1` comm target, answered
+by a web implementation instead of Swift, and limited to the remote
+subset's no-permission rule.
+
+The catch is **user activation**. Clipboard, Web Share, file pickers,
+`window.open` and audio need a recent click, and a message from the
+kernel is not one. The web implementation therefore has the page show a
+prompt ("Copy to clipboard", "Choose a file", "Share"; ganymede-ui shows
+it above the notebook) and runs the call on that click. Calls that don't
+need activation run directly. The table below is the design; the browser
+column of `src/support.ts` says what is built.
+
+| Feature | Browser | Web API |
+| --- | --- | --- |
+| `info`, `has` | yes, partial | `navigator`, `screen`, `matchMedia("(prefers-color-scheme: dark)")`; no model or battery |
+| clipboard write / read | yes, via click | Clipboard API (`writeText`, `write`, `read`) |
+| share | yes, via click, where supported | Web Share API (`navigator.share`, `canShare` for files) |
+| files pick | yes, via click | `<input type=file>`; File System Access where present |
+| files export | yes, via click | Blob download link |
+| openURL | yes, via click | `window.open`; `inApp` ignored |
+| `ui.alert`, `confirm`, `prompt`, `actionSheet`, `pickDate` | planned | rendered inline in the output, not `window.alert` |
+| `sound.play` | yes, via click on first use | `HTMLAudioElement` |
+| preview | no | a browser has no Quick Look; an inline `jupyter.display` of the file is an option |
+| photos pick | yes, via click | `<input type=file accept="image/*">` |
+| haptics | no | `navigator.vibrate` isn't in Safari, and it's mostly a no-op elsewhere |
+| everything needing permission | no | same rule as remote |
+
+`has()` reports the browser's real support, so `share` with files is
+false in a browser without `canShare({ files })`.
+
+
+## What Juno has, and what we take from it
+
+Juno ships 15 `juno.*` modules, each a thin Pythonic wrapper over one iOS
+framework, plus two "use the standard library" answers (browser via
+`webbrowser`, camera via OpenCV). Mapping to our namespaces:
+
+| Juno | What it does | Ours | Phase |
+| --- | --- | --- | --- |
+| `device` | model, OS, `is_pad`, screen size/scale, battery, dark mode, locale; impact/notification/selection haptics | `device.info()`, `device.haptics.*` | 1 |
+| `clipboard` | text get/set; image get/set (PNG/JPEG bytes) | `device.clipboard.{readText,writeText,readImage,writeImage}` | 1 |
+| `dialogs` | alert, confirm (destructive), text input (secure option), action sheet, date / time / datetime pickers | `device.ui.*` | 1 |
+| `sharing` | share sheet with text / url / file (path or bytes); returns completed or dismissed | `device.share()` | 1 |
+| `preview` | QuickLook modal for files, bytes, images, figures; repeated calls append pages | `device.preview()` | 1 |
+| `sound` | fire-and-forget `play(path)`; `Player` with play/pause/stop/seek/volume | `device.sound.{play,player}` | 1 |
+| `photos` | `pick()` via PHPicker (no permission); `save()` to camera roll (add-only permission) | `device.photos.{pick,save}` | 1 / 2 |
+| browser (`webbrowser`) | in-app web view or Safari | `device.openURL(url, { inApp })` | 1 |
+| `notifications` | schedule after a delay, list pending, cancel one / all | `device.notifications.*` | 2 |
+| `location` | one-shot fix, continuous updates, forward and reverse geocoding | `device.location.*` | 2 |
+| `motion` | accelerometer, gravity, attitude, rotation rate; settable interval | `device.motion.watch()` | 2 |
+| camera (OpenCV) | live frames as arrays | `device.camera.capture()`; frame streams later | 2 |
+| `contacts` | search, get, get all, add, delete | `device.contacts.*` | 2 |
+| `reminders` | calendars, list (by completion), add, complete/uncomplete, delete | `device.reminders.*` | 2 |
+| `keychain` | get/set/delete by (service, account) | `device.secrets.*` | 3 |
+| `bluetooth` | BLE central: scan, connect, services, characteristic read / write / notify, RSSI, reconnect by id | `device.bluetooth.*` | 3 |
+| `objc` | raw Objective-C runtime access (rubicon) | none; see below | — |
+
+Ours only (Juno doesn't need them because the kernel's filesystem is the
+app's): `device.files.pick/export`, Shortcuts, host events, folder
+bookmarks.
+
+Not taking `objc` in v1. Raw runtime access is arbitrary native calls the
+permission ledger can't reason about, and Juno's own docs warn that
+callbacks from it hang or crash. Revisit later behind an explicit
+per-notebook opt-in.
+
+Design patterns worth copying from Juno:
+
+- **Same permission trio on every permissioned module**:
+  `authorizationStatus()`, `isAuthorized()`, `requestAuthorization()`,
+  with status strings (including iOS partial grants such as limited
+  contacts or write-only reminders). Calls that need permission request it
+  lazily and fail with `denied`.
+- **Stop interrupts every wait**: Juno turns its Stop button into
+  `KeyboardInterrupt` during prompts, pickers and streams. Ours: kernel
+  interrupt aborts the pending call's `AbortSignal` and the Swift side
+  dismisses the prompt or picker.
+- **Bounded streams with drop-oldest**: BLE advertisements (128) and
+  notifications (1024) never stall the radio; iterators expose a `dropped`
+  count. Same rule for our location, motion and BLE streams.
+- **Explicit lifetimes for native resources**: BLE connections and audio
+  players are context managers. Ours: handles implement
+  `Symbol.asyncDispose` so `await using conn = await p.connect()` works,
+  and the Swift side closes everything when the kernel page reloads or
+  navigates (`dropPage()`; `dropRemote()` for the page that answers
+  server kernels), and closes a kernel's players and sounds when
+  that kernel restarts or shuts down (each call names its kernel as
+  `owner`; docs/protocol.md).
+- **Plain records**: dataclasses with every field optional on input
+  (`Contact`, `Reminder`), so `add({ title: "Buy milk" })` works.
+- **Narrow, honest scope**: each module documents what it doesn't wrap
+  (no calendar triggers for notifications, no recurrence for reminders).
+  Start equally narrow.
+
+## API surface (TypeScript)
+
+A `device` global, installed like `jupyter` by the on-device host, plus an
+importable module for types. Everything is async; errors are typed.
+
+```ts
+/// <reference types="@tlockney/ganymede-device/globals" />
+
+const info = await device.info();
+// { platform: "ipados"|"macos", model, osVersion, isPad, screen: { width, height, scale },
+//   battery, darkMode, locale, appVersion, capabilities: [...] }
+if (!device.has("location.current")) { … }
+
+// Phase 1: no system permission needed
+await device.clipboard.writeText("hi");
+const text = await device.clipboard.readText();
+const png = await device.clipboard.readImage();            // Uint8Array | null
+await device.haptics.impact("light");                      // no-op + has()=false on Mac
+await device.openURL("https://deno.com", { inApp: true });
+await device.share({ text, url, files: [blob] });          // share sheet / NSSharingServicePicker
+await device.preview([figurePng, "report.pdf"]);           // QuickLook
+const files = await device.files.pick({ types: ["public.json"], multiple: true });
+await device.files.export(bytes, { name: "out.csv" });     // document picker / save panel
+const photos = await device.photos.pick({ limit: 3 });     // PHPicker: no library permission
+await device.sound.play("ding.m4a");
+await using p = await device.sound.player(bytes); await p.play();
+
+await device.ui.alert("Done");
+if (await device.ui.confirm("Delete?", { destructive: true })) { … }
+const name = await device.ui.prompt("Name?", { placeholder: "Alex", secure: false });
+const i = await device.ui.actionSheet("Quality", ["Low", "High"], { cancel: "Cancel" });
+const when = await device.ui.pickDate({ mode: "datetime", min, max });
+// pickers and prompts return null on cancel instead of throwing
+
+// Phase 2: system permission (TCC) behind it
+await device.location.requestAuthorization();
+const loc = await device.location.current({ accuracy: "city", signal });
+for await (const p of device.location.watch({ signal })) { … }   // bounded stream
+const [place] = await device.location.reverseGeocode(loc);
+const id = await device.notifications.schedule("Drink water", { title, delay: 60 });
+await device.notifications.cancel(id);
+for await (const m of device.motion.watch({ interval: 0.1, signal })) { m.attitude.roll }
+await device.photos.save(png);
+const shot = await device.camera.capture();
+const people = await device.contacts.search("alex");
+await device.reminders.add({ title: "Buy milk", due: new Date(…) });
+
+// Phase 3: app-level
+const token = await device.secrets.get("github");   // Keychain, scoped per notebook
+for await (const adv of device.bluetooth.scan({ services: [NUS], timeout: 10 })) { … }
+await using conn = await adv.peripheral.connect();
+await device.shortcuts.run("Log", { input: text }); // x-callback round trip
+device.on("appearance", (mode) => …);               // events from the host
+```
+
+Conventions:
+
+- Errors are `DeviceError` with `code`: `unavailable` (no transport, or
+  not on this platform), `denied`, `cancelled` (interrupt or abort),
+  `timeout`, `failed`, `disconnected` (BLE peer dropped mid-stream). A
+  person dismissing a picker or dialog returns `null`/`false`, as in Juno,
+  not an error.
+- Binary data travels as transferable `ArrayBuffer`s inside the kernel
+  (Worker postMessage), raw bytes (host function) or framed binary
+  (socket). The WebKit hop to Swift carries only JSON values, so there it
+  is base64 in a `{ base64 }` field (docs/protocol.md); see "Message
+  format".
+- Long-lived calls take an `AbortSignal`. When a call is aborted, or the
+  kernel is interrupted, restarted or shut down, cdp-kernel aborts it and
+  the page sends Swift `{ id, cancel: true }`. Ids are unique per page, so
+  no kernel generation id is needed.
+- `device.has(method)` and `device.info().capabilities` come from a
+  handshake at install time, so code can branch instead of catching. They
+  take method names (`location.current`), not namespaces.
+- Display helpers can reuse `jupyter.display`: e.g. a picked photo is a
+  `Blob` the cell can display directly.
+
+Platform differences are data, not separate APIs: Macs have no haptics
+(beyond trackpads), motion sensors or camera capture in v1, iPad has no
+menu bar items; all report it through `has()`.
+
+## Message format
+
+docs/protocol.md is the wire contract and wins where this section
+differs; this is the shape it follows on every transport, so the Swift
+side has one dispatcher:
+
+- Request: `{ id, method, params }`. No `gen`: see the `AbortSignal`
+  convention above.
+- Binary: over the WebKit hop, base64 in `{ base64 }` fields.
+  `WKScriptMessage.body` carries only property-list values (strings,
+  numbers, booleans, null, arrays, dictionaries), so an `ArrayBuffer`
+  doesn't cross it. Other transports may carry raw bytes. Checked when
+  the clipboard images landed (#22): the TypeScript encoder takes about
+  13 ms per MiB and the decoder about 6 to 10 ms per MiB in Node 22
+  (Safari 18.2 and later use the native `toBase64`/`fromBase64`), and
+  the text is a third larger, against about 1 ms per MiB for the
+  Worker's structured clone. With one value capped at 16 MiB that is a
+  few hundred milliseconds at worst, fine for clipboard images, picked
+  files and photos; a streaming method (camera frames, audio) should
+  get its own transport rather than base64 per message.
+- Reply: `{ id, result }` or `{ id, error: { code, message } }`.
+- Stream: the method answers `{ stream }`; the page pulls batches with
+  `stream.next` (`{ values, dropped, end? }`) and stops it with
+  `stream.close` or a cancel (protocol.md, "Streams"). Pulling keeps
+  every message a call, so the Worker's host channel, which only answers
+  requests, needs no push path.
+- Host events: `{ event, value }` with no `id`.
+- A `hello` at install returns platform, app version and capabilities.
+- Methods are named `namespace.method` (`location.current`); additive
+  changes only.
+
+## Where the code lives
+
+| Piece | Repo | Contents |
+| --- | --- | --- |
+| `@tlockney/ganymede-device` | tlockney/ganymede-device (`src/`) | The `device` object over a `DeviceTransport`, types, `DeviceError`, the Worker preload and the page's `webkitHost()`. Pure TS, no Node imports. |
+| cdp-kernel | tlockney/cdp-kernel | Generic only: a **preload** hook (code a host installs in the cell realm before the first cell; none exists today), `capabilities` in `kernel_info_reply` (review.md item 4), and a way for the Worker driver (`runtime/browser-worker.mjs`) to pass non-kernel messages to its owner page. |
+| Kernel host page | tlockney/ganymede-ui (`src/kernel-host.ts`, `kernel.html`) | The hidden kernel WebView's page: starts the Worker kernels, relays Jupyter messages to Swift, passes the preload and `webkitHost()`. |
+| Swift `DeviceBridge` | tlockney/ganymede-device (`Package.swift`, `swift/`) | The dispatcher, one handler type per capability, the permission ledger, macOS/iPadOS conditionals. A Swift package the apps in ganymede-ui `apple/` depend on. |
+| `device-bridge` plugin (remote only) | tlockney/ganymede-ui | Registers the `ganymede.device.v1` comm target, matches the session, enforces the remote subset. Forwards to Swift inside the app; uses the web implementation in a browser. |
+| Web implementation | `@tlockney/ganymede-device` (shared with the plugin) | The browser-fallback handlers and the inline click-through prompts. Reused by a later JupyterLab labextension. |
+| Support matrix | `@tlockney/ganymede-device` | One table of every method × (on-device, remote in app, browser), the source for both `has()` defaults and the docs. |
+
+For on-device kernels ganymede-ui needs nothing; it can show a badge from
+`capabilities.device`. Ganymede's only part in the remote case is passing
+comms and kernel metadata through verbatim, which docs/ipados.md already
+requires.
+
+Host shell: Swift + WKWebView on both platforms (SwiftUI multiplatform),
+running ganymede-ui. No Tauri, no Rust UI.
+
+## Permissions
+
+On-device, the code asking runs on the device: one person, one machine.
+Everything below applies to on-device kernels; remote kernels and browsers
+never reach a permissioned feature.
+
+1. **System (TCC)**: location, notifications, camera, contacts, reminders,
+   Bluetooth are prompted by iOS and macOS the normal way. Info.plist
+   usage strings name the feature, e.g. "A notebook asked for your
+   location."
+2. **App ledger** (from design-note §08), keyed by (notebook path,
+   capability):
+   - First use from a notebook shows an in-app prompt naming the
+     notebook. Choices: once, always for this notebook, deny.
+   - Notebooks may declare what they use in metadata
+     (`metadata.ganymede.device: ["location"]`) so the prompt can come at
+     open time instead of mid-cell.
+   - Pickers (files, photos, share) are their own consent: the person
+     chooses what to hand over, so no ledger prompt.
+   - A Settings screen lists and revokes grants.
+   - Headless runs (share sheet, Shortcuts) use grants already given;
+     they can't show a prompt, so an ungranted call fails `unavailable`.
+
+Files: picked files are copied in by value for v1. Persistent access
+(security-scoped bookmarks to a folder) is Phase 3 and maps to Deno-style
+`--allow-read` scopes.
+
+App Review: calling native APIs from user-authored code is what Juno,
+Pythonista and Scriptable do. Keep the API to user-initiated, documented
+features, and keep Info.plist strings honest.
+
+## Phases
+
+**Phase 0: prove the path (days).**
+A minimal Swift app (Mac first) with a hidden kernel WKWebView running the
+Worker kernel, and one method (`clipboard.readText`) end to end from a
+cell. Confirms the Worker → page → `WKScriptMessageHandlerWithReply` round
+trip, that interrupt cancels pending calls, and that an HTML output in the
+UI WebView cannot reach the handler.
+
+**Phase 1: no-permission APIs.**
+`info/has`, haptics, clipboard (text and image), openURL, share, preview,
+files pick/export, photos pick, sound, ui (alert, confirm, prompt, action
+sheet, date/time pickers).
+Ship the TS package, the cdp-kernel preload hook, the Swift package.
+Tests: TS unit tests against a fake transport; a Playwright test of the
+Worker transport with a stubbed `webkit.messageHandlers`; XCTest for
+Swift handlers.
+
+**Phase 2: permissioned APIs and the ledger.**
+The authorization trio; notifications (schedule, pending, cancel);
+location (current, watch, geocode); motion; photos save; camera;
+contacts; reminders. Ledger UI and metadata declarations. Bounded streams
+and AbortSignal.
+
+**Phase 3: system integration.** Spec: [phase-3.md](phase-3.md) (#68).
+Keychain secrets, Bluetooth LE (central role), Shortcuts run
+(x-callback), host events (appearance, app foreground/background), folder
+bookmarks. Bluetooth sits here because its handles outlive a call and
+need the disposal rules settled first.
+
+**Phase R: remote subset (any time after Phase 1).**
+`CommTransport`, the ganymede-ui `device-bridge` plugin, session
+matching, one-dialog-at-a-time and per-host mute, `disconnected` handling
+across iPad suspend, the features marked "yes" in the remote table. Then
+the browser fallback: the web implementation with click-through prompts in
+ganymede-ui as a PWA; a JupyterLab labextension after that. Tests: a
+cdp-kernel on Node behind Ganymede with a fake app frontend; a second,
+non-app client on the same kernel must not answer; Playwright for the web
+implementation in Chromium and WebKit.
+
+**Phase 4: embedded engine and headless runs (with ts-on-ipados tiers
+2-3).** Spec: [phase-4.md](phase-4.md) (#69).
+Host-function transport for the JSC/V8 kernel. Share-sheet extension,
+App Intents and widgets run scripts through the same transport, using
+grants from the ledger.
+
+## Documentation
+
+Three readers, three places; all generated from or checked against the
+support matrix so docs and behaviour can't drift.
+
+- **Support matrix page.** Every method with a column each for on-device,
+  remote in the app, and browser, plus a footnote per gap (why, and
+  whether it's planned). Generated from the matrix in the package; CI
+  fails if a method has no row.
+- **API reference.** TSDoc on every method, shown by the editor, and
+  generated into [reference.md](reference.md) (`scripts/reference.ts`,
+  #85). Each entry states what cancel returns; where it works and what
+  permission it needs on-device come from the support matrix.
+- **Guides.** "Your first device call", "Permissions and the ledger",
+  "Using `device` from a remote kernel" (what's there, what isn't, why),
+  "In a browser" (the click-through prompts), and "Headless runs".
+- A test per row: the conformance suite calls each method under each
+  transport and checks the result matches the matrix (`unavailable` where
+  the matrix says no).
+
+## Open questions
+
+1. On the Mac, does the local kernel run as a Worker in a WebView (same
+   as iPad) or as a Node/Deno child of the bundled Ganymede? Worker keeps
+   one code path; a child process gives full npm and the debugger. The
+   socket transport exists only if the answer includes the second.
+2. Motion: stream at a fixed rate (as above) or Juno's snapshot getters
+   (`motion.latest()`) backed by a cache on the native side? Snapshot is
+   simpler for polling loops. Settled 2026-11-09 (Thomas): both,
+   `motion.watch({ interval })` and `motion.latest()`, sharing one Core
+   Motion source (#63).
+3. Where the docs live: in the package's repo, or on Ganymede's docs
+   site next to the client docs?
+
+Settled 2026-10-18: remote kernels stop at features that need no
+permission; browsers get a web-API subset where it fits.
+
+Settled by 2026-11-01: the package lives in its own repo,
+`tlockney/ganymede-device`, as `@tlockney/ganymede-device`, with the
+Swift `DeviceBridge` beside it; and `device` is a global, installed by
+cdp-kernel's `preload` hook (cdp-kernel#384).
+
+## Where things stand (2026-11-09)
+
+The device API lives in its own repo, `tlockney/ganymede-device`: not
+Ganymede (the Rust core never sees a device call) and not cdp-kernel (a
+general kernel; it only gets generic hooks). Its two ends, the TS package
+and the Swift package, share the message format, the support matrix and
+the tests.
+
+Done:
+
+1. **cdp-kernel's generic hooks** (cdp-kernel#384, in 0.7.1): `preload`
+   modules in the Worker, a `host` channel from the Worker to its page,
+   and `capabilities` in `kernel_info_reply`.
+2. **Phase 0's TypeScript side**: `device` with `info`, `has` and the
+   text clipboard, the preload, `webkitHost()`, and a Playwright test
+   against a stubbed `webkit.messageHandlers.device`.
+3. **Phase 0's Swift side**: the `DeviceBridge` package here, registered
+   by ganymede-ui's Mac and iPad apps on their hidden kernel web view
+   (ganymede-ui `apple/`), which installs this package from git.
+4. **Phase 1's methods, on-device**: `info`, haptics, the text and image
+   clipboard, `openURL`, the `ui` dialogs, `share`, `preview`,
+   `files.pick`/`files.export`, `photos.pick` and `sound.play`/
+   `sound.player`, with binary values as base64 and the support matrix
+   in `src/support.ts` (#21, #22, #23, #25). Unit-tested on both ends;
+   not yet tried by hand in the apps. ganymede-ui installs it from
+   git, embeds the support table in its `docs/device.md`, and drops a
+   page's open handles when the kernel page navigates. The Mac app
+   isn't sandboxed, so its file panels need no entitlement.
+5. **Phase R's two ends**: `connectDevice(jupyter.comm)` in `/remote`
+   for the kernel, `answerDevice(kernel)` in `/frontend` for the
+   notebook page, and the bridge's `deviceRemote` handler, limited to the
+   remote subset (docs/protocol.md, "Over a Jupyter comm"). cdp-kernel
+   0.8.0 reads comm messages while a cell runs (kernel subshells,
+   cdp-kernel#417). ganymede-ui answers for its server kernels in the
+   app (ganymede-ui#378).
+6. **The browser fallback's web side**: `browserForward({ click })` in
+   `/browser` answers the remote subset with web APIs, through a
+   click-through prompt the page draws (docs/protocol.md, "In a
+   browser"). ganymede-ui's notebook page uses it outside the app
+   (ganymede-ui#384): its prompt names the asking notebook
+   (ganymede-ui#400) and previews what a copy or share sends
+   (ganymede-ui#406, #75). Not yet: the `ui.*` dialogs.
+7. **Phase 0's exit** (#19): tried on a Mac and an iPad, including
+   that an HTML output can't reach the bridge.
+8. **Phase 2's bounded streams** (#58): `openStream` over `call`, and
+   `DeviceBridge.addStream` with a drop-oldest queue per stream
+   (docs/protocol.md, "Streams"). `location.watch` and `motion.watch` stream.
+9. **Phase 2's permission core** (#59): the trio (`authorization()` in
+   src/permission.ts), and in Swift `addPermission`, `addMethod` and
+   `addStream(permission:)`, which ask lazily and reject `denied`
+   (docs/protocol.md, "Permissions").
+10. **Phase 2's ledger, Swift side** (#60): `DeviceBridge.ledger`, the
+   notebook per kernel, `ledgerPrompter`, declarations (docs/protocol.md,
+   "The ledger"). The app's prompt and Settings pane are ganymede-ui#383.
+11. **Phase 2's location** (#62): `device.location.current`, `watch` (a
+   stream), `geocode` and `reverseGeocode` over Core Location, when in
+   use only (docs/protocol.md, "Methods").
+12. **Phase 2's motion** (#63): `device.motion.watch` (a stream) and
+   `latest` (a snapshot) over one Core Motion source, iPad and iPhone
+   only; the permission is the ledger's alone (docs/protocol.md,
+   "Methods").
+13. **Phase 2's photo saving** (#64): `device.photos.save` with add-only
+   access, through PhotoKit (docs/protocol.md, "Methods").
+14. **Phase 2's camera** (#65): `device.camera.capture`, the system
+   camera screen on iPad and iPhone, as a dialog that asks for the
+   camera permission first (docs/protocol.md, "Dialogs").
+15. **Phase 2's contacts** (#66): `device.contacts.search`, `get`, `all`,
+   `add` and `delete` over the Contacts framework, Mac, iPad and iPhone,
+   contacts as plain records (docs/protocol.md, "Methods").
+16. **Phase 2's reminders** (#67): `device.reminders.calendars`, `list`,
+   `add`, `complete`, `uncomplete` and `delete` over EventKit, Mac, iPad
+   and iPhone (docs/protocol.md, "Methods").
+17. **Phase 3's native handles** (#96): one `Handles` registry for what
+   a call opens that outlives it, with streams' lifetime; `sound.player`
+   runs on it, and cells get `NativeHandle` (docs/protocol.md,
+   "Handles").
+18. **Phase 3's host events** (#98): `device.on(event, handler)` over
+   one `events.watch` stream (appearance, foreground, background,
+   battery, locale), which an interrupt leaves running (docs/protocol.md,
+   "Host events").
+19. **Phase 3's Bluetooth** (#100): `device.bluetooth` scan, known and
+   connect, and a connected `Peripheral` handle with services, read,
+   write, notify and RSSI over Core Bluetooth, Mac, iPad and iPhone
+   (docs/protocol.md, "Bluetooth").
+20. **Phase 3's folders** (#102): `device.folders.pick` and `list`, and a
+   `Folder` that lists, reads, writes and removes inside a folder the
+   person picked, kept per notebook as a bookmark (docs/protocol.md,
+   "Folders").
+21. **Phase 3's secrets** (#113): `device.secrets` get, set, delete and
+   list, strings kept per notebook in the keychain on this device, with
+   the ledger's prompt as the only consent (docs/protocol.md, "Secrets").
+22. **Shortcuts** (#40): `device.shortcuts.run(name, { input })`, an
+   x-callback round trip through the Shortcuts app, with the ledger's
+   prompt as the only consent; not in a headless run (docs/protocol.md,
+   "Shortcuts"). Open: whether a short Shortcut finishes before iOS
+   stops the backgrounded kernel, which needs a device run.
+
+Next:
+
+1. Try Phase 1's calls in the Mac and iPad apps, including that an
+   interrupt closes a dialog or picker (#21).
+2. Publish the TS package and tag the Swift package (#24).
+3. The `ui.*` dialogs in a browser (#26).
+4. Phase 2 (#57), Phase 3 (#68) and Phase 4 (#69).

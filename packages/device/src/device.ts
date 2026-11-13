@@ -1,0 +1,2976 @@
+// The `device` object cells use. It knows nothing about where it runs: every
+// call goes through a DeviceTransport, which each kernel placement supplies
+// (a Worker's host channel today; a host function in an embedded engine, or
+// a Jupyter comm for remote kernels, later). See docs/protocol.md.
+
+import { type Bytes, MAX_BINARY_BYTES, toBytes } from "./binary.ts";
+import { DeviceError } from "./errors.ts";
+import { type Authorization, authorization } from "./permission.ts";
+import { type DeviceStream, openStream } from "./stream.ts";
+
+/**
+ * Every method takes these. Aborting `signal`, or interrupting the kernel,
+ * cancels the call: it rejects with a `DeviceError` whose code is
+ * `cancelled` (`timeout` for `AbortSignal.timeout()`), and the host drops
+ * any dialog or prompt it showed for it.
+ *
+ * Where each method works is in `SUPPORT` (src/support.ts); the docs'
+ * table and the reference's Availability lines are generated from it.
+ */
+export interface CallOptions {
+  /** Cancels the call when aborted. In a cdp-kernel cell, `jupyter.signal` aborts when the cell is interrupted. */
+  signal?: AbortSignal;
+}
+
+/** Carries one request to the native host and back. */
+export interface DeviceTransport {
+  call(method: string, params: Record<string, unknown>, options?: CallOptions): Promise<unknown>;
+}
+
+/** What the host answers to `hello`, once, before the first cell, and the current state when it answers `info`. */
+export interface DeviceInfo {
+  /** `"macos"`, `"ipados"`, `"ios"` or `"browser"`. */
+  platform: string;
+  /** The app's version, such as `"0.5.0"`. */
+  appVersion: string;
+  /** The hardware model identifier, such as `"Mac14,2"` or `"iPad13,4"`. */
+  model?: string;
+  /** The operating system's version, such as `"26.1.0"`. */
+  osVersion?: string;
+  /** The methods this host answers, such as `"clipboard.readText"`. */
+  capabilities: string[];
+  /** True on an iPad. This and the properties after it are read when `info()` is called, on hosts that answer it. */
+  isPad?: boolean;
+  /** The main screen in points, and its points-to-pixels scale. */
+  screen?: { width: number; height: number; scale: number };
+  /** Absent on a device without a battery. `level` is 0 to 1, or null when unknown. */
+  battery?: { level: number | null; charging: boolean };
+  /** Whether the system appearance is dark. */
+  darkMode?: boolean;
+  /** The person's locale as a BCP 47 tag, such as `"en-US"`. */
+  locale?: string;
+}
+
+/** The strength of a `haptics.impact` tap. */
+export type ImpactStyle = "light" | "medium" | "heavy" | "soft" | "rigid";
+/** The pattern `haptics.notification` plays. */
+export type NotificationFeedback = "success" | "warning" | "error";
+
+/**
+ * Taptic feedback. iPhone only: iPads and Macs have no Taptic Engine, so
+ * there `device.has("haptics.impact")` is false and calls fail
+ * `unavailable`.
+ */
+export interface Haptics {
+  /**
+   * Plays a tap.
+   *
+   * @param style How strong a tap: `"light"`, `"medium"` (the default), `"heavy"`, `"soft"` or `"rigid"`.
+   * @param options The call's `signal`. Cancel rejects `cancelled`; the tap may already have played.
+   * @example
+   * ```ts
+   * if (device.has("haptics.impact")) await device.haptics.impact("heavy");
+   * ```
+   */
+  impact(style?: ImpactStyle, options?: CallOptions): Promise<void>;
+  /**
+   * Plays the system's success, warning or error pattern.
+   *
+   * @param type `"success"`, `"warning"` or `"error"`.
+   * @param options The call's `signal`. Cancel rejects `cancelled`.
+   * @example
+   * ```ts
+   * await device.haptics.notification("success");
+   * ```
+   */
+  notification(type: NotificationFeedback, options?: CallOptions): Promise<void>;
+  /**
+   * Plays the tick of a picker moving to a new value.
+   *
+   * @param options The call's `signal`. Cancel rejects `cancelled`.
+   * @example
+   * ```ts
+   * for (let i = 0; i < 3; i++) {
+   *   await device.haptics.selection();
+   *   await new Promise((done) => setTimeout(done, 200));
+   * }
+   * ```
+   */
+  selection(options?: CallOptions): Promise<void>;
+}
+
+/** Options for `device.openURL`. */
+export interface OpenURLOptions extends CallOptions {
+  /** On iPhone and iPad, show a web page in the app (Safari view) instead of switching to Safari. Ignored on the Mac. */
+  inApp?: boolean;
+}
+
+/** The system clipboard. iPadOS may show its paste prompt on a read. */
+export interface Clipboard {
+  /**
+   * Reads the clipboard's text.
+   *
+   * @param options The call's `signal`. Cancel rejects `cancelled`.
+   * @returns The text, or `null` when the clipboard holds none.
+   * @example
+   * ```ts
+   * const text = await device.clipboard.readText();
+   * if (text !== null) console.log(text.split(/\s+/).length, "words");
+   * ```
+   */
+  readText(options?: CallOptions): Promise<string | null>;
+  /**
+   * Replaces the clipboard's contents with `text`.
+   *
+   * @param text The text to copy.
+   * @param options The call's `signal`. Cancel rejects `cancelled`; the write may already have happened.
+   * @example
+   * ```ts
+   * await device.clipboard.writeText(JSON.stringify({ rows: 3 }, null, 2));
+   * ```
+   */
+  writeText(text: string, options?: CallOptions): Promise<void>;
+  /**
+   * Reads the clipboard's image as PNG bytes, whatever format was copied.
+   *
+   * @param options The call's `signal`. Cancel rejects `cancelled`.
+   * @returns PNG bytes, or `null` when the clipboard holds no image.
+   * @example
+   * ```ts
+   * const png = await device.clipboard.readImage();
+   * if (png) console.log(`${png.byteLength} bytes`);
+   * ```
+   */
+  readImage(options?: CallOptions): Promise<Uint8Array | null>;
+  /**
+   * Replaces the clipboard's contents with an image.
+   *
+   * @param image PNG, JPEG, GIF, HEIC or TIFF bytes, at most 16 MiB.
+   * @param options The call's `signal`. Cancel rejects `cancelled`; the write may already have happened.
+   * @throws {DeviceError} `failed` when the bytes aren't an image the device reads.
+   * @example
+   * ```ts
+   * const [photo] = await device.photos.pick();
+   * if (photo) await device.clipboard.writeImage(photo);
+   * ```
+   */
+  writeImage(image: Bytes, options?: CallOptions): Promise<void>;
+}
+
+/** Options for `device.ui.alert`. */
+export interface AlertOptions extends CallOptions {
+  /** A heading above the message. */
+  title?: string;
+}
+
+/** Options for `device.ui.confirm`. */
+export interface ConfirmOptions extends AlertOptions {
+  /** Shows the confirming button as destructive (red). */
+  destructive?: boolean;
+  /** The confirming button's label; "OK" by default. */
+  okLabel?: string;
+}
+
+/** Options for `device.ui.prompt`. */
+export interface PromptOptions extends AlertOptions {
+  /** Grey text shown while the field is empty. */
+  placeholder?: string;
+  /** Text the field starts with. */
+  defaultValue?: string;
+  /** Hides what is typed, as for a password. */
+  secure?: boolean;
+}
+
+/** Options for `device.ui.actionSheet`. */
+export interface ActionSheetOptions extends CallOptions {
+  /** A line under the title. */
+  message?: string;
+  /** The cancel button's label; "Cancel" by default. */
+  cancel?: string;
+  /** The index of an option to show as destructive (red). */
+  destructive?: number;
+}
+
+/** What `device.ui.pickDate` picks. */
+export type DateMode = "date" | "time" | "datetime";
+
+/** Options for `device.ui.pickDate`. */
+export interface PickDateOptions extends CallOptions {
+  /** What to pick; "datetime" by default. */
+  mode?: DateMode;
+  /** A heading above the picker. */
+  title?: string;
+  /** The date the picker starts at; now by default. */
+  value?: Date;
+  /** The earliest date that can be picked. */
+  min?: Date;
+  /** The latest date that can be picked. */
+  max?: Date;
+}
+
+/** A file a cell hands over: a `File`, or bytes with the name to show and save them under. */
+export type NamedBytes = File | { name: string; data: Bytes };
+
+/** What `device.share` shares: at least one of `text`, `url` and `files`. */
+export interface ShareOptions extends CallOptions {
+  /** Text to share, such as a message or a caption. */
+  text?: string;
+  /** A link to share: `http`, `https` or `mailto`. */
+  url?: string | URL;
+  /** Files to share, together at most 16 MiB; their names are what the receiving app sees. */
+  files?: NamedBytes[];
+}
+
+/** Options for `device.files.pick`. */
+export interface PickFilesOptions extends CallOptions {
+  /**
+   * What may be picked: MIME types (`"text/csv"`), wildcards (`"image/*"`)
+   * or extensions (`".parquet"`). Anything by default.
+   */
+  types?: string[];
+  /** Whether several files may be picked; one by default. */
+  multiple?: boolean;
+}
+
+/** Options for `device.files.export`. */
+export interface ExportFileOptions extends CallOptions {
+  /** The name the save panel suggests: a plain file name, without slashes. */
+  name: string;
+}
+
+/** Options for `device.photos.pick`. */
+export interface PickPhotosOptions extends CallOptions {
+  /** How many photos may be picked; 1 by default, 0 for no limit. */
+  limit?: number;
+}
+
+/**
+ * Files in and out through the system's own pickers, which are the
+ * person's consent, so no permission. A picked file is copied in by value:
+ * the notebook keeps no access to where it came from.
+ */
+export interface Files {
+  /**
+   * Shows the open panel on the Mac, or the document picker on iPad and
+   * iPhone, and reads the files the person picks. Together they are at
+   * most 16 MiB.
+   *
+   * @param options `types` limits what can be picked, `multiple` allows more than one, and `signal` cancels: it closes the picker and rejects `cancelled`.
+   * @returns The picked files, with their names and MIME types, or `[]` when the person cancels.
+   * @throws {DeviceError} `failed` when `types` or `multiple` has the wrong type, or the files together are over 16 MiB.
+   * @example
+   * ```ts
+   * const [file] = await device.files.pick({ types: [".csv", "text/csv"] });
+   * if (file) {
+   *   const rows = (await file.text()).trim().split("\n");
+   *   console.log(file.name, rows.length, "rows");
+   * }
+   * ```
+   */
+  pick(options?: PickFilesOptions): Promise<File[]>;
+  /**
+   * Asks where to save `data`, and saves it there: the save panel on the
+   * Mac, the document picker on iPad and iPhone.
+   *
+   * @param data The file's contents, at most 16 MiB.
+   * @param options `name` is the file name the panel suggests; `signal` cancels: it closes the panel and rejects `cancelled`.
+   * @returns `true` when saved, `false` when the person cancels.
+   * @throws {DeviceError} `failed` when `name` isn't a plain file name, or `data` is over 16 MiB.
+   * @example
+   * ```ts
+   * const csv = "city,temp\nOslo,4\nLima,19\n";
+   * const saved = await device.files.export(new TextEncoder().encode(csv), { name: "temps.csv" });
+   * console.log(saved ? "saved" : "cancelled");
+   * ```
+   */
+  export(data: Bytes, options: ExportFileOptions): Promise<boolean>;
+}
+
+/** Options for `device.notifications.schedule`. */
+export interface ScheduleNotificationOptions extends CallOptions {
+  /** Seconds from now, more than 0. */
+  delay: number;
+  /** Shown above the body. */
+  title?: string;
+}
+
+/** A notification this notebook scheduled that hasn't been delivered. */
+export interface PendingNotification {
+  /** What `schedule()` returned. */
+  id: string;
+  /** The title it was scheduled with. */
+  title?: string;
+  /** The text it shows. */
+  body: string;
+  /** When it is due, when the host knows. */
+  date?: Date;
+}
+
+/**
+ * Local notifications after a delay: the app posts them even when the
+ * notebook or the app is closed. Delay only, no calendar times or
+ * repeats. Each notification belongs to the notebook that scheduled it:
+ * `pending()`, `cancel()` and `cancelAll()` see only that notebook's.
+ *
+ * Needs the notifications permission, for `schedule()`: the first call
+ * asks (the app's prompt for this notebook, then the system's) and a
+ * refusal rejects `denied`. `authorizationStatus()`, `isAuthorized()` and
+ * `requestAuthorization()` read and ask for it.
+ */
+export interface Notifications extends Authorization {
+  /**
+   * Schedules a notification to show after a delay, even if the notebook
+   * or the app has closed by then. iOS and iPadOS keep at most 64 per
+   * app, dropping the soonest beyond that.
+   *
+   * @param body The text it shows.
+   * @param options `delay` in seconds (more than 0), an optional `title`, and the call's `signal`. Cancel rejects `cancelled`; it may already be scheduled.
+   * @returns Its id, for `cancel()`.
+   * @throws {DeviceError} `denied` when the notifications permission is refused; `failed` when `body` is empty, `delay` isn't a finite number above 0, or `title` isn't a string.
+   * @example
+   * ```ts
+   * const id = await device.notifications.schedule("The training run should be done.", {
+   *   title: "Check the notebook",
+   *   delay: 30 * 60,
+   * });
+   * ```
+   */
+  schedule(body: string, options: ScheduleNotificationOptions): Promise<string>;
+  /**
+   * Lists this notebook's notifications that haven't been delivered yet.
+   *
+   * @param options The call's `signal`. Cancel rejects `cancelled`.
+   * @returns This notebook's pending notifications; other notebooks' aren't listed.
+   * @example
+   * ```ts
+   * for (const n of await device.notifications.pending()) {
+   *   console.log(n.id, n.body, n.date?.toLocaleTimeString());
+   * }
+   * ```
+   */
+  pending(options?: CallOptions): Promise<PendingNotification[]>;
+  /**
+   * Takes one of this notebook's notifications off the schedule. An id
+   * that's gone, or another notebook's, changes nothing.
+   *
+   * @param id What `schedule()` returned.
+   * @param options The call's `signal`.
+   * @throws {DeviceError} `failed` when `id` is empty.
+   * @example
+   * ```ts
+   * const id = await device.notifications.schedule("Stretch", { delay: 3600 });
+   * await device.notifications.cancel(id);
+   * ```
+   */
+  cancel(id: string, options?: CallOptions): Promise<void>;
+  /**
+   * Takes all of this notebook's notifications off the schedule.
+   *
+   * @param options The call's `signal`.
+   * @example
+   * ```ts
+   * await device.notifications.cancelAll();
+   * ```
+   */
+  cancelAll(options?: CallOptions): Promise<void>;
+}
+
+/** How close a fix must be: within metres ("best"), a city block, or a city. */
+export type LocationAccuracy = "best" | "block" | "city";
+
+/** Options for `device.location.current` and `device.location.watch`. */
+export interface LocationOptions extends CallOptions {
+  /** How close a fix must be; "best" by default. Coarser fixes come sooner and use less power. */
+  accuracy?: LocationAccuracy;
+}
+
+/** Where the device is, as Core Location reports it. */
+export interface LocationFix {
+  /** Degrees north of the equator. */
+  latitude: number;
+  /** Degrees east of Greenwich. */
+  longitude: number;
+  /** The fix is within this many metres of the true position. */
+  accuracy: number;
+  /** Metres above sea level, when known. */
+  altitude?: number;
+  /** The altitude is within this many metres, when known. */
+  altitudeAccuracy?: number;
+  /** Metres per second, when moving and known. */
+  speed?: number;
+  /** Degrees clockwise from true north, when moving and known. */
+  course?: number;
+  /** When the fix was taken, in milliseconds since 1970, as `Date.now()`. */
+  timestamp: number;
+}
+
+/** A place a geocode found. Every part is there only when known. */
+export interface Place {
+  /** The place's name, such as a landmark or the street address. */
+  name?: string;
+  /** House number and street. */
+  street?: string;
+  /** City or town. */
+  city?: string;
+  /** State, province or the like. */
+  region?: string;
+  /** Postal or ZIP code. */
+  postalCode?: string;
+  /** Country name, in the device's language. */
+  country?: string;
+  /** ISO 3166-1 alpha-2, such as "US". */
+  countryCode?: string;
+  /** Degrees north of the equator. */
+  latitude?: number;
+  /** Degrees east of Greenwich. */
+  longitude?: number;
+}
+
+/**
+ * Where the device is, over Core Location, and addresses to places and
+ * back. While in use only: the app asks for location when in use, never
+ * always, so nothing runs once the app quits.
+ *
+ * `current()` and `watch()` need the location permission: the first call
+ * asks (the app's prompt for this notebook, then the system's) and a
+ * refusal rejects `denied`. With precise location turned off for the
+ * app, `authorizationStatus()` reads `reducedAccuracy` and fixes are
+ * within a few kilometres. Geocoding needs no permission but does need
+ * the network.
+ */
+export interface DeviceLocation extends Authorization {
+  /**
+   * One fix, at the accuracy asked for.
+   *
+   * @param options `accuracy`: `"best"` (the default), `"block"` or `"city"`; and the call's `signal`. Cancel stops the search and rejects `cancelled`.
+   * @returns The fix: latitude, longitude, its accuracy in metres, and altitude, speed and course when known.
+   * @throws {DeviceError} `denied` when the notebook or the system may not use location, or Location Services is off; `failed` when no fix can be had (no signal) or `accuracy` isn't one of the three.
+   * @example
+   * ```ts
+   * const fix = await device.location.current({ accuracy: "block" });
+   * console.log(fix.latitude, fix.longitude, `±${fix.accuracy} m`);
+   * ```
+   */
+  current(options?: LocationOptions): Promise<LocationFix>;
+  /**
+   * Fixes as the device moves, for `for await`, until the loop ends or
+   * the cell is interrupted. Keeps the newest 16 when the cell reads
+   * slower than they come (`dropped` counts the rest).
+   *
+   * @param options `accuracy`, as for `current()`; and the call's `signal`, which ends the stream.
+   * @returns A stream of fixes; `close()` or leaving the loop stops Core Location.
+   * @throws {DeviceError} `denied` when the notebook or the system may not use location, or Location Services is off; `failed` when `accuracy` isn't one of the three, or when Core Location stops sending fixes.
+   * @example
+   * ```ts
+   * for await (const fix of device.location.watch({ accuracy: "block" })) {
+   *   console.log(fix.latitude, fix.longitude);
+   *   if (fix.speed === 0) break;
+   * }
+   * ```
+   */
+  watch(options?: LocationOptions): DeviceStream<LocationFix>;
+  /**
+   * The places an address may be. Needs the network, not the permission.
+   *
+   * @param address A street address, city or landmark, as a person would type it.
+   * @param options The call's `signal`. Cancel rejects `cancelled`.
+   * @returns The places, best match first, or `[]` when none.
+   * @throws {DeviceError} `failed` when `address` is empty or the geocoder can't be reached.
+   * @example
+   * ```ts
+   * const [place] = await device.location.geocode("1 Infinite Loop, Cupertino");
+   * if (place) console.log(place.latitude, place.longitude);
+   * ```
+   */
+  geocode(address: string, options?: CallOptions): Promise<Place[]>;
+  /**
+   * What is at a position, such as a fix from `current()`. Needs the
+   * network, not the permission.
+   *
+   * @param position `latitude` (-90 to 90) and `longitude` (-180 to 180), in degrees.
+   * @param options The call's `signal`. Cancel rejects `cancelled`.
+   * @returns The places there, or `[]` when nothing.
+   * @throws {DeviceError} `failed` when the position is out of range or the geocoder can't be reached.
+   * @example
+   * ```ts
+   * const [here] = await device.location.reverseGeocode(await device.location.current());
+   * console.log(here?.city);
+   * ```
+   */
+  reverseGeocode(position: { latitude: number; longitude: number }, options?: CallOptions): Promise<Place[]>;
+}
+
+/** A direction or rate along the device's three axes. */
+export interface Vector3 {
+  /** Along the short side, to the right with the screen facing you. */
+  x: number;
+  /** Along the long side, toward the top. */
+  y: number;
+  /** Out of the screen, toward you. */
+  z: number;
+}
+
+/** Which way the device is turned, in radians. */
+export interface Attitude {
+  /** Around the long (y) axis. */
+  roll: number;
+  /** Around the short (x) axis. */
+  pitch: number;
+  /** Around the axis out of the screen (z). */
+  yaw: number;
+}
+
+/** One reading of Core Motion's device motion. */
+export interface MotionSample {
+  /** Which way the device is turned. */
+  attitude: Attitude;
+  /** Radians per second around each axis. */
+  rotationRate: Vector3;
+  /** Gravity's pull, in g (1 g is 9.81 m/s²). */
+  gravity: Vector3;
+  /** What the person adds to gravity, in g. */
+  userAcceleration: Vector3;
+  /** When it was read, in milliseconds since 1970, as `Date.now()`. */
+  timestamp: number;
+}
+
+/** Options for `device.motion.watch`. */
+export interface MotionWatchOptions extends CallOptions {
+  /** Seconds between samples, 0.01 to 1; 0.1 by default. */
+  interval?: number;
+}
+
+/**
+ * The device's motion sensors over Core Motion: attitude, rotation rate,
+ * gravity and the person's acceleration. iPad and iPhone only; a Mac has
+ * no motion sensors, so `has("motion.watch")` is false there.
+ *
+ * Two ways to read, sharing one source: `watch()` for a sample every
+ * `interval`, as when recording, and `latest()` for the newest sample, as
+ * in a polling loop. Both need the motion permission: the app asks for
+ * this notebook (the system has no prompt for these sensors) and a
+ * refusal rejects `denied`.
+ */
+export interface DeviceMotion extends Authorization {
+  /**
+   * Samples every `interval` seconds, for `for await`, until the loop
+   * ends or the cell is interrupted. Keeps the newest 64 when the cell
+   * reads slower than they come (`dropped` counts the rest).
+   *
+   * @param options `interval` in seconds, 0.01 to 1 (0.1 by default); and the call's `signal`, which ends the stream.
+   * @returns A stream of samples; `close()` or leaving the loop stops the sensors unless something else still reads them.
+   * @throws {DeviceError} `denied` when the notebook may not use motion; `failed` when `interval` is out of range, or Core Motion stops with an error.
+   * @example
+   * ```ts
+   * const samples = [];
+   * for await (const s of device.motion.watch({ interval: 0.05 })) {
+   *   samples.push(s.userAcceleration);
+   *   if (samples.length === 100) break;
+   * }
+   * ```
+   */
+  watch(options?: MotionWatchOptions): DeviceStream<MotionSample>;
+  /**
+   * The newest sample. The first call starts the sensors and waits for a
+   * reading; they keep running while calls keep coming, and stop about
+   * 10 seconds after the last.
+   *
+   * @param options The call's `signal`. Cancel rejects `cancelled`.
+   * @returns The newest sample.
+   * @throws {DeviceError} `denied` when the notebook may not use motion; `failed` when Core Motion stops with an error.
+   * @example
+   * ```ts
+   * const { attitude } = await device.motion.latest();
+   * console.log(`tilted ${((attitude.pitch * 180) / Math.PI).toFixed(0)}°`);
+   * ```
+   */
+  latest(options?: CallOptions): Promise<MotionSample>;
+}
+
+/**
+ * The photo library: the system photo picker to read photos, which needs
+ * no permission, and `save` to add one, which needs add-only access. The
+ * permission methods are about that add-only access: the first `save`
+ * asks (the app's prompt for this notebook, then the system's), and a
+ * refusal rejects `denied`. Granted, `authorizationStatus()` reads
+ * `writeOnly`: the app may add photos, never read the library.
+ */
+export interface Photos extends Authorization {
+  /**
+   * Shows the system photo picker and reads the photos the person picks.
+   * The picker shows the library without the app being let in, so no
+   * permission. Together the photos are at most 16 MiB.
+   *
+   * @param options `limit` is how many may be picked (1 by default, 0 for no limit); `signal` cancels: it closes the picker and rejects `cancelled`.
+   * @returns The picked photos as image `File`s in their stored format (often HEIC or JPEG), or `[]` when the person cancels.
+   * @throws {DeviceError} `failed` when `limit` isn't a whole number of 0 or more, or the photos together are over 16 MiB.
+   * @example
+   * ```ts
+   * const photos = await device.photos.pick({ limit: 3 });
+   * for (const photo of photos) console.log(photo.name, photo.type, photo.size);
+   * ```
+   */
+  pick(options?: PickPhotosOptions): Promise<File[]>;
+  /**
+   * Adds an image to the photo library, as a new photo.
+   *
+   * @param image PNG, JPEG, GIF, HEIC or TIFF bytes, or a `Blob` of them, at most 16 MiB.
+   * @param options The call's `signal`. Cancel rejects `cancelled`; the photo may already have been added.
+   * @throws {DeviceError} `denied` when the notebook or the system may not add photos; `failed` when the bytes aren't PNG, JPEG, GIF, HEIC or TIFF, or the library refuses them.
+   * @example
+   * ```ts
+   * const canvas = new OffscreenCanvas(256, 256);
+   * const g = canvas.getContext("2d")!;
+   * g.fillStyle = "teal";
+   * g.fillRect(0, 0, 256, 256);
+   * await device.photos.save(await canvas.convertToBlob({ type: "image/png" }));
+   * ```
+   */
+  save(image: Bytes, options?: CallOptions): Promise<void>;
+}
+
+/** A label and a value, such as a work email. */
+export interface LabeledValue {
+  /** `"home"`, `"work"`, `"mobile"`, `"main"`, `"iPhone"`, `"school"`, `"other"`, or the person's own label. */
+  label?: string;
+  /** The email address or phone number. */
+  value: string;
+}
+
+/** A contact's postal address; any part may be missing. */
+export interface PostalAddress {
+  /** `"home"`, `"work"`, `"other"`, or the person's own label. */
+  label?: string;
+  /** The street, with the house number; may span lines. */
+  street?: string;
+  /** The city or town. */
+  city?: string;
+  /** The state, province or region. */
+  state?: string;
+  /** The postal or ZIP code. */
+  postalCode?: string;
+  /** The country, as written. */
+  country?: string;
+}
+
+/**
+ * A contact as `device.contacts` reads it: a plain record. Fields the
+ * contact doesn't have are left out. Groups, photos and notes aren't
+ * included.
+ */
+export interface Contact {
+  /** The contacts store's identifier, for `get` and `delete`. */
+  id: string;
+  /** The first name. */
+  givenName?: string;
+  /** The middle name. */
+  middleName?: string;
+  /** The last name. */
+  familyName?: string;
+  /** The nickname. */
+  nickname?: string;
+  /** The company or organization. */
+  organization?: string;
+  /** The job title. */
+  jobTitle?: string;
+  /** Email addresses. */
+  emails?: LabeledValue[];
+  /** Phone numbers, as entered. */
+  phones?: LabeledValue[];
+  /** Postal addresses. */
+  addresses?: PostalAddress[];
+  /** `"YYYY-MM-DD"`, or `"--MM-DD"` when the year isn't known. */
+  birthday?: string;
+}
+
+/**
+ * The person's contacts, over the Contacts framework. Every method needs
+ * the contacts permission: the first call asks (the app's prompt for
+ * this notebook, then the system's), and a refusal rejects `denied`.
+ * With limited access (iPhone and iPad), `authorizationStatus()` reads
+ * `limited` and the methods see only the contacts the person shared with
+ * the app.
+ */
+export interface Contacts extends Authorization {
+  /**
+   * Contacts whose name matches `query`; or whose email matches, when
+   * `query` is a whole email address (a part of one, such as
+   * `"@example.com"`, matches nothing); or whose phone number matches,
+   * when it is a phone number.
+   *
+   * @param query A name or part of one, an email address, or a phone number.
+   * @param options The call's `signal`. Cancel rejects `cancelled`.
+   * @returns The matching contacts, or `[]`.
+   * @throws {DeviceError} `denied` when the notebook or the system may not read contacts; `failed` when `query` is empty or the store can't be read.
+   * @example
+   * ```ts
+   * for (const contact of await device.contacts.search("Ada")) {
+   *   console.log(contact.givenName, contact.familyName, contact.emails?.[0]?.value);
+   * }
+   * ```
+   */
+  search(query: string, options?: CallOptions): Promise<Contact[]>;
+  /**
+   * One contact, by the id `search`, `all` or `add` gave.
+   *
+   * @param id The contact's id.
+   * @param options The call's `signal`. Cancel rejects `cancelled`.
+   * @returns The contact, or `null` when there is none with that id (or it isn't shared with the app).
+   * @throws {DeviceError} `denied` when the notebook or the system may not read contacts; `failed` when `id` is empty or the store can't be read.
+   * @example
+   * ```ts
+   * const [ada] = await device.contacts.search("Ada");
+   * if (ada) console.log(await device.contacts.get(ada.id));
+   * ```
+   */
+  get(id: string, options?: CallOptions): Promise<Contact | null>;
+  /**
+   * Every contact the app may see, in the person's sort order.
+   *
+   * @param options The call's `signal`. Cancel rejects `cancelled`.
+   * @returns The contacts, or `[]`.
+   * @throws {DeviceError} `denied` when the notebook or the system may not read contacts; `failed` when the store can't be read.
+   * @example
+   * ```ts
+   * const all = await device.contacts.all();
+   * console.log(`${all.length} contacts`);
+   * ```
+   */
+  all(options?: CallOptions): Promise<Contact[]>;
+  /**
+   * Adds a contact to the default account. Every field is optional, but
+   * it needs a name, an organization, an email or a phone number.
+   *
+   * @param contact The contact, without an `id`.
+   * @param options The call's `signal`. Cancel rejects `cancelled`; a contact already saved stays.
+   * @returns The new contact's id.
+   * @throws {DeviceError} `denied` when the notebook or the system may not change contacts; `failed` when the contact is empty, a field has the wrong type, `birthday` isn't `YYYY-MM-DD` or `--MM-DD`, or the store refuses it.
+   * @example
+   * ```ts
+   * const id = await device.contacts.add({
+   *   givenName: "Ada",
+   *   familyName: "Lovelace",
+   *   emails: [{ label: "work", value: "ada@example.com" }],
+   *   birthday: "1815-12-10",
+   * });
+   * ```
+   */
+  add(contact: Omit<Contact, "id">, options?: CallOptions): Promise<string>;
+  /**
+   * Deletes a contact.
+   *
+   * @param id The contact's id.
+   * @param options The call's `signal`. Cancel rejects `cancelled`; a contact already deleted stays deleted.
+   * @returns `true`, or `false` when there was no contact with that id.
+   * @throws {DeviceError} `denied` when the notebook or the system may not change contacts; `failed` when `id` is empty or the store refuses.
+   * @example
+   * ```ts
+   * const id = await device.contacts.add({ givenName: "Test" });
+   * console.log(await device.contacts.delete(id)); // true
+   * ```
+   */
+  delete(id: string, options?: CallOptions): Promise<boolean>;
+}
+
+/** The camera, through the system camera screen. */
+export interface Camera extends Authorization {
+  /**
+   * Shows the system camera and waits for the person to take a photo.
+   * Needs the camera permission; the first call asks for it.
+   *
+   * @param options The call's `signal`, which closes the camera and rejects `cancelled`. An interrupt does the same.
+   * @returns The photo as JPEG bytes, or `null` when the person cancels.
+   * @throws {DeviceError} `denied` when the notebook or the system may not use the camera; `failed` when the photo can't be read or is over 16 MiB.
+   * @example
+   * ```ts
+   * const jpeg = await device.camera.capture();
+   * if (jpeg) await device.preview([{ name: "photo.jpg", data: jpeg }]);
+   * ```
+   */
+  capture(options?: CallOptions): Promise<Uint8Array | null>;
+}
+
+/** A reminder list, from `device.reminders.calendars()`. */
+export interface ReminderCalendar {
+  /** The list's id, for `list({ calendar })` and `add({ calendar })`. */
+  id: string;
+  /** The list's name, as the Reminders app shows it. */
+  title: string;
+  /** Whether `add` puts reminders here when it isn't given a list. */
+  isDefault: boolean;
+}
+
+/** A reminder as `device.reminders` reads it: a plain record. */
+export interface Reminder {
+  /** The store's identifier, for `complete`, `uncomplete` and `delete`. */
+  id: string;
+  /** What to do. */
+  title: string;
+  /** The id of the list it is in. */
+  calendar: string;
+  /** Whether it is done. */
+  completed: boolean;
+  /** Notes, when it has any. */
+  notes?: string;
+  /** `"YYYY-MM-DD"` for a due day, or an ISO 8601 date and time when it is due at a time. */
+  due?: string;
+  /** 1 (high) to 9 (low); left out for none. The Reminders app shows 1, 5 and 9 as high, medium and low. */
+  priority?: number;
+  /** When it was completed, as ISO 8601. */
+  completedAt?: string;
+}
+
+/** A reminder for `device.reminders.add`: a title, and the rest optional. */
+export interface NewReminder {
+  /** What to do. */
+  title: string;
+  /** Notes. */
+  notes?: string;
+  /** A due day (`"YYYY-MM-DD"`), or a day and time: an ISO 8601 string or a `Date`. */
+  due?: string | Date;
+  /** 0 (none, the default) or 1 (high) to 9 (low). */
+  priority?: number;
+  /** The id of the list to add it to; the default list when left out. */
+  calendar?: string;
+}
+
+/** Options for `device.reminders.list`. */
+export interface ListRemindersOptions extends CallOptions {
+  /** A list's id from `calendars()`; every list when left out. */
+  calendar?: string;
+  /** `true` for completed reminders only, `false` for incomplete ones only; both when left out. */
+  completed?: boolean;
+}
+
+/**
+ * The person's reminders, over EventKit. Every method needs the
+ * reminders permission: the first call asks (the app's prompt for this
+ * notebook, then the system's), and a refusal rejects `denied`. No
+ * recurrence, alarms or subtasks.
+ */
+export interface Reminders extends Authorization {
+  /**
+   * The reminder lists.
+   *
+   * @param options The call's `signal`. Cancel rejects `cancelled`.
+   * @returns The lists, the default one marked `isDefault`.
+   * @throws {DeviceError} `denied` when the notebook or the system may not read reminders.
+   * @example
+   * ```ts
+   * for (const list of await device.reminders.calendars()) console.log(list.title, list.isDefault);
+   * ```
+   */
+  calendars(options?: CallOptions): Promise<ReminderCalendar[]>;
+  /**
+   * Reminders, from one list or all of them.
+   *
+   * @param options `calendar`, a list's id; `completed`, to see only completed or only incomplete ones; and the call's `signal`.
+   * @returns The reminders, or `[]`.
+   * @throws {DeviceError} `denied` when the notebook or the system may not read reminders; `failed` when `calendar` isn't a reminder list.
+   * @example
+   * ```ts
+   * const open = await device.reminders.list({ completed: false });
+   * for (const r of open) console.log(r.title, r.due ?? "");
+   * ```
+   */
+  list(options?: ListRemindersOptions): Promise<Reminder[]>;
+  /**
+   * Adds a reminder.
+   *
+   * @param reminder A `title`, and optional `notes`, `due`, `priority` and `calendar`.
+   * @param options The call's `signal`. Cancel rejects `cancelled`; a reminder already saved stays.
+   * @returns The new reminder's id.
+   * @throws {DeviceError} `denied` when the notebook or the system may not add reminders; `failed` when the title is empty, `due` isn't a date, `priority` isn't 0 to 9, or `calendar` isn't a list that can be added to.
+   * @example
+   * ```ts
+   * const id = await device.reminders.add({ title: "Buy milk", due: "2026-11-10", priority: 1 });
+   * ```
+   */
+  add(reminder: NewReminder, options?: CallOptions): Promise<string>;
+  /**
+   * Marks a reminder done.
+   *
+   * @param id The reminder's id.
+   * @param options The call's `signal`. Cancel rejects `cancelled`.
+   * @returns `true`, or `false` when there is no reminder with that id.
+   * @throws {DeviceError} `denied` when the notebook or the system may not read reminders; `failed` when `id` is empty or the store refuses.
+   * @example
+   * ```ts
+   * const [first] = await device.reminders.list({ completed: false });
+   * if (first) await device.reminders.complete(first.id);
+   * ```
+   */
+  complete(id: string, options?: CallOptions): Promise<boolean>;
+  /**
+   * Marks a reminder not done.
+   *
+   * @param id The reminder's id.
+   * @param options The call's `signal`. Cancel rejects `cancelled`.
+   * @returns `true`, or `false` when there is no reminder with that id.
+   * @throws {DeviceError} `denied` when the notebook or the system may not read reminders; `failed` when `id` is empty or the store refuses.
+   * @example
+   * ```ts
+   * const [last] = await device.reminders.list({ completed: true });
+   * if (last) await device.reminders.uncomplete(last.id);
+   * ```
+   */
+  uncomplete(id: string, options?: CallOptions): Promise<boolean>;
+  /**
+   * Deletes a reminder.
+   *
+   * @param id The reminder's id.
+   * @param options The call's `signal`. Cancel rejects `cancelled`; a reminder already deleted stays deleted.
+   * @returns `true`, or `false` when there is no reminder with that id.
+   * @throws {DeviceError} `denied` when the notebook or the system may not read reminders; `failed` when `id` is empty or the store refuses.
+   * @example
+   * ```ts
+   * const id = await device.reminders.add({ title: "Test" });
+   * console.log(await device.reminders.delete(id)); // true
+   * ```
+   */
+  delete(id: string, options?: CallOptions): Promise<boolean>;
+}
+
+/** Options for `device.sound.play`. */
+export interface PlaySoundOptions extends CallOptions {
+  /** From 0 to 1; 1 by default. */
+  volume?: number;
+}
+
+/** Where a player is: whether it is playing, and its time and length in seconds. */
+export interface SoundState {
+  /** Whether it is playing now. */
+  playing: boolean;
+  /** Where it is, in seconds from the start. */
+  time: number;
+  /** The sound's length in seconds. */
+  duration: number;
+}
+
+/**
+ * Something on the device a call opened that outlives the call, such as a
+ * sound player. Close it when done, or hold it with `await using`. The app
+ * closes a kernel's handles when that kernel restarts or shuts down. A
+ * call on a closed handle rejects `failed`.
+ */
+export interface NativeHandle extends AsyncDisposable {
+  /** Whether it is closed: by `close()`, or by leaving its `await using` block. */
+  readonly closed: boolean;
+  /**
+   * Closes it and frees what it holds. Closing twice is fine.
+   *
+   * @example
+   * ```ts
+   * await handle.close();
+   * ```
+   */
+  close(): Promise<void>;
+}
+
+/**
+ * A loaded sound a cell controls, from `device.sound.player`: a
+ * `NativeHandle`. Close it when done, or hold it with `await using`. The
+ * app closes a kernel's players when that kernel restarts or shuts down; a
+ * kernel has at most 32 open. Each method answers the player's state after
+ * the change.
+ */
+export interface SoundPlayer extends NativeHandle {
+  /** The sound's length in seconds. */
+  readonly duration: number;
+  /**
+   * Plays from the current time.
+   *
+   * @param options The call's `signal`.
+   * @returns The player's state after the change.
+   * @throws {DeviceError} `failed` when the sound can't start, or the player is closed.
+   * @example
+   * ```ts
+   * const state = await player.play();
+   * console.log(state.playing, state.duration);
+   * ```
+   */
+  play(options?: CallOptions): Promise<SoundState>;
+  /**
+   * Pauses at the current time.
+   *
+   * @param options The call's `signal`.
+   * @returns The player's state after the change.
+   * @example
+   * ```ts
+   * const { time } = await player.pause();
+   * console.log(`paused at ${time.toFixed(1)} s`);
+   * ```
+   */
+  pause(options?: CallOptions): Promise<SoundState>;
+  /**
+   * Pauses and goes back to the start.
+   *
+   * @param options The call's `signal`.
+   * @returns The player's state after the change.
+   * @example
+   * ```ts
+   * await player.stop();
+   * ```
+   */
+  stop(options?: CallOptions): Promise<SoundState>;
+  /**
+   * Moves to a time, playing or not.
+   *
+   * @param seconds The time to move to, in seconds from the start: 0 or more.
+   * @param options The call's `signal`.
+   * @returns The player's state after the change.
+   * @throws {DeviceError} `failed` when `seconds` is negative or not a number.
+   * @example
+   * ```ts
+   * await player.seek(player.duration / 2);
+   * await player.play();
+   * ```
+   */
+  seek(seconds: number, options?: CallOptions): Promise<SoundState>;
+  /**
+   * Sets the volume.
+   *
+   * @param volume From 0 to 1.
+   * @param options The call's `signal`.
+   * @returns The player's state after the change.
+   * @throws {DeviceError} `failed` when `volume` is outside 0 to 1.
+   * @example
+   * ```ts
+   * await player.setVolume(0.25);
+   * ```
+   */
+  setVolume(volume: number, options?: CallOptions): Promise<SoundState>;
+  /**
+   * Reads the player's state, changing nothing.
+   *
+   * @param options The call's `signal`.
+   * @returns Whether it is playing, its time and its length.
+   * @example
+   * ```ts
+   * const { playing, time } = await player.state();
+   * ```
+   */
+  state(options?: CallOptions): Promise<SoundState>;
+  /**
+   * Stops the player and frees it; later calls fail `failed`. Closing
+   * twice is fine. Leaving an `await using` block closes it too.
+   *
+   * @example
+   * ```ts
+   * await player.close();
+   * ```
+   */
+  close(): Promise<void>;
+}
+
+/**
+ * Sound from bytes in any format the device reads (WAV, AIFF, MP3,
+ * AAC/M4A, CAF, FLAC), at most 16 MiB. No permission. On iPhone the
+ * ring/silent switch can silence it.
+ */
+export interface Sound {
+  /**
+   * Starts playing a sound, which plays to its end on its own.
+   *
+   * @param data The sound's bytes, at most 16 MiB.
+   * @param options `volume` from 0 to 1 (1 by default), and the call's `signal`. Cancel rejects `cancelled`; the sound may already be playing.
+   * @returns Once the sound has started.
+   * @throws {DeviceError} `failed` when `data` is empty, over 16 MiB, or not a sound the device reads.
+   * @example
+   * ```ts
+   * const [file] = await device.files.pick({ types: ["audio/*"] });
+   * if (file) await device.sound.play(file, { volume: 0.5 });
+   * ```
+   */
+  play(data: Bytes, options?: PlaySoundOptions): Promise<void>;
+  /**
+   * Loads a sound into a player, paused at the start, for a cell to play,
+   * pause, seek and close. A kernel has at most 32 open at once.
+   *
+   * @param data The sound's bytes, at most 16 MiB.
+   * @param options The call's `signal`.
+   * @returns A `SoundPlayer`.
+   * @throws {DeviceError} `failed` when `data` is empty, over 16 MiB, or not a sound the device reads, or the kernel has 32 players open.
+   * @example
+   * ```ts
+   * const [file] = await device.files.pick({ types: ["audio/*"] });
+   * if (file) {
+   *   await using player = await device.sound.player(file);
+   *   await player.play();
+   *   // Leaving the block closes the player, which stops it: wait for the end.
+   *   await new Promise((done) => setTimeout(done, player.duration * 1000));
+   * }
+   * ```
+   */
+  player(data: Bytes, options?: CallOptions): Promise<SoundPlayer>;
+}
+
+/**
+ * Dialogs the app shows over the notebook: sheets on the Mac, alerts on
+ * iPhone and iPad. One shows at a time; a second call waits for the first
+ * to close. Dismissing one is not an error: it returns `null` or `false`.
+ * An interrupt or an aborted `signal` closes it and rejects `cancelled`
+ * (`timeout` for `AbortSignal.timeout()`).
+ */
+export interface UI {
+  /**
+   * Shows a message with an OK button.
+   *
+   * @param message The message.
+   * @param options `title` is a heading above it; `signal` cancels: it closes the alert and rejects `cancelled`.
+   * @returns Once the person closes it.
+   * @example
+   * ```ts
+   * await device.ui.alert("The import finished: 1,204 rows.", { title: "Done" });
+   * ```
+   */
+  alert(message: string, options?: AlertOptions): Promise<void>;
+  /**
+   * Asks a yes-or-no question.
+   *
+   * @param message The question.
+   * @param options `title`, `okLabel` for the confirming button, `destructive` to show it red, and the call's `signal`.
+   * @returns `true` when the person confirms, `false` when they cancel or dismiss it.
+   * @example
+   * ```ts
+   * if (await device.ui.confirm("Delete the scratch files?", { destructive: true, okLabel: "Delete" })) {
+   *   console.log("deleting");
+   * }
+   * ```
+   */
+  confirm(message: string, options?: ConfirmOptions): Promise<boolean>;
+  /**
+   * Asks for a line of text.
+   *
+   * @param message The question.
+   * @param options `title`, `placeholder`, `defaultValue`, `secure` to hide what is typed, and the call's `signal`.
+   * @returns The text entered, or `null` when the person cancels.
+   * @example
+   * ```ts
+   * const name = await device.ui.prompt("Name the run", { defaultValue: "baseline" });
+   * if (name !== null) console.log(`saving ${name}`);
+   * ```
+   */
+  prompt(message: string, options?: PromptOptions): Promise<string | null>;
+  /**
+   * Asks the person to choose one of several options.
+   *
+   * @param title The sheet's heading.
+   * @param options The choices' labels, at least one.
+   * @param sheetOptions `message` under the title, `cancel` for the cancel button's label, `destructive` for the index of an option to show red, and the call's `signal`.
+   * @returns The index of the option chosen, or `null` when the person cancels.
+   * @throws {DeviceError} `failed` when `options` is empty.
+   * @example
+   * ```ts
+   * const formats = ["CSV", "JSON", "Parquet"];
+   * const i = await device.ui.actionSheet("Export as", formats);
+   * if (i !== null) console.log(`exporting ${formats[i]}`);
+   * ```
+   */
+  actionSheet(title: string, options: string[], sheetOptions?: ActionSheetOptions): Promise<number | null>;
+  /**
+   * Asks for a date, a time, or both.
+   *
+   * @param options `mode` (`"date"`, `"time"` or `"datetime"`, the default), `title`, `value` to start at, `min` and `max`, and the call's `signal`.
+   * @returns The date chosen, or `null` when the person cancels.
+   * @throws {DeviceError} `failed` when `value`, `min` or `max` isn't a valid `Date`.
+   * @example
+   * ```ts
+   * const start = await device.ui.pickDate({ mode: "date", title: "Report from", max: new Date() });
+   * if (start) console.log(start.toISOString().slice(0, 10));
+   * ```
+   */
+  pickDate(options?: PickDateOptions): Promise<Date | null>;
+}
+
+/** Options for `device.bluetooth.scan`. */
+export interface ScanOptions extends CallOptions {
+  /** Only peripherals that advertise one of these service UUIDs ("180D", or a full UUID). All by default. */
+  services?: string[];
+  /** Every advertisement, not only each peripheral's first; for RSSI over time. False by default. */
+  allowDuplicates?: boolean;
+}
+
+/** One advertisement a scan heard. */
+export interface Advertisement {
+  /** The peripheral's id on this device, for `connect()` and `known()`. Another device sees a different id. */
+  id: string;
+  /** Its advertised or cached name, or `null`. */
+  name: string | null;
+  /** Signal strength in dBm, such as -60; nearer is higher. */
+  rssi: number;
+  /** The service UUIDs it advertises. */
+  services: string[];
+  /** Its manufacturer data, the company id first, or `null`. */
+  manufacturerData: Uint8Array | null;
+  /** Service data by service UUID. */
+  serviceData: Record<string, Uint8Array>;
+}
+
+/** A peripheral the system knows, from `device.bluetooth.known`. */
+export interface KnownPeripheral {
+  /** Its id, for `connect()`. */
+  id: string;
+  /** Its cached name, or `null`. */
+  name: string | null;
+}
+
+/** Options for `device.bluetooth.connect`. */
+export interface ConnectOptions extends CallOptions {
+  /** Seconds to wait for the peripheral, 1 to 120; 15 by default. Then the call rejects `timeout`. */
+  timeout?: number;
+}
+
+/** A GATT characteristic and what it allows. */
+export interface BluetoothCharacteristic {
+  /** Its UUID, as Core Bluetooth writes it ("2A37", or the full form). */
+  uuid: string;
+  /** What it allows. */
+  properties: Array<"read" | "write" | "writeWithoutResponse" | "notify" | "indicate">;
+}
+
+/** A GATT service and its characteristics. */
+export interface BluetoothService {
+  /** Its UUID, as Core Bluetooth writes it ("180D", or the full form). */
+  uuid: string;
+  /** Its characteristics. */
+  characteristics: BluetoothCharacteristic[];
+}
+
+/** Options for `Peripheral.write`. */
+export interface WriteOptions extends CallOptions {
+  /** Wait for the peripheral to confirm; true by default. False sends and resolves at once. */
+  withResponse?: boolean;
+}
+
+/**
+ * A connected Bluetooth LE peripheral, from `device.bluetooth.connect`: a
+ * `NativeHandle`. Close it to disconnect, or hold it with `await using`.
+ * The app closes a kernel's peripherals when that kernel restarts or
+ * shuts down; a kernel has at most 8 connected. When the peripheral goes
+ * away, waiting calls and the next call reject `disconnected`, `notify`
+ * streams end with it, and the handle closes (`closed` reads true once a
+ * call has seen it). Services and characteristics are UUIDs:
+ * "180D", or the full form.
+ */
+export interface Peripheral extends NativeHandle {
+  /** Its id on this device. */
+  readonly id: string;
+  /** Its name when it connected, or `null`. */
+  readonly name: string | null;
+  /**
+   * Its services and their characteristics, discovered on the first call.
+   *
+   * @param options The call's `signal`. Cancel rejects `cancelled`.
+   * @returns Each service with its characteristics and what they allow.
+   * @throws {DeviceError} `disconnected` when it went away; `failed` when it is closed or discovery fails.
+   * @example
+   * ```ts
+   * for (const service of await peripheral.services()) console.log(service.uuid, service.characteristics.map((c) => c.uuid));
+   * ```
+   */
+  services(options?: CallOptions): Promise<BluetoothService[]>;
+  /**
+   * Reads a characteristic's value.
+   *
+   * @param service The service's UUID.
+   * @param characteristic The characteristic's UUID.
+   * @param options The call's `signal`. Cancel rejects `cancelled`.
+   * @returns The value's bytes.
+   * @throws {DeviceError} `disconnected` when it went away; `failed` when it is closed, there is no such characteristic, or it can't be read.
+   * @example
+   * ```ts
+   * const [level] = await peripheral.read("180F", "2A19");
+   * console.log(`battery ${level}%`);
+   * ```
+   */
+  read(service: string, characteristic: string, options?: CallOptions): Promise<Uint8Array>;
+  /**
+   * Writes a characteristic's value.
+   *
+   * @param service The service's UUID.
+   * @param characteristic The characteristic's UUID.
+   * @param data The bytes, at most what the link takes at once (512 with a response).
+   * @param options `withResponse` (true by default), and the call's `signal`. Cancel rejects `cancelled`; the write may already be sent.
+   * @returns Once the peripheral confirms it, or at once without a response.
+   * @throws {DeviceError} `disconnected` when it went away; `failed` when it is closed, there is no such characteristic, it can't be written that way, or `data` is too long.
+   * @example
+   * ```ts
+   * await peripheral.write("6E400001-B5A3-F393-E0A9-E50E24DCCA9E", "6E400002-B5A3-F393-E0A9-E50E24DCCA9E", new TextEncoder().encode("hi"));
+   * ```
+   */
+  write(service: string, characteristic: string, data: Bytes, options?: WriteOptions): Promise<void>;
+  /**
+   * A characteristic's values as it notifies or indicates them, for
+   * `for await`, until the loop ends, the cell is interrupted, or the
+   * peripheral closes. Keeps the newest 256 when the cell reads slower
+   * than they come.
+   *
+   * @param service The service's UUID.
+   * @param characteristic The characteristic's UUID.
+   * @param options The call's `signal`, which ends the stream.
+   * @returns A stream of values; leaving the loop unsubscribes.
+   * @throws {DeviceError} `disconnected` when it went away; `failed` when it is closed, or there is no such characteristic or it doesn't notify.
+   * @example
+   * ```ts
+   * for await (const value of peripheral.notify("180D", "2A37")) {
+   *   console.log(`heart rate ${value[1]}`);
+   * }
+   * ```
+   */
+  notify(service: string, characteristic: string, options?: CallOptions): DeviceStream<Uint8Array>;
+  /**
+   * Reads the signal strength now.
+   *
+   * @param options The call's `signal`. Cancel rejects `cancelled`.
+   * @returns dBm, such as -60.
+   * @throws {DeviceError} `disconnected` when it went away; `failed` when it is closed.
+   * @example
+   * ```ts
+   * console.log(await peripheral.rssi());
+   * ```
+   */
+  rssi(options?: CallOptions): Promise<number>;
+}
+
+/**
+ * A Bluetooth LE central, over Core Bluetooth: scan for peripherals,
+ * connect, and read, write and subscribe to their characteristics. On a
+ * Mac and an iPad or iPhone, in kernels in the app.
+ *
+ * `scan()`, `known()` and `connect()` need the bluetooth permission: the
+ * first call asks (the app's prompt for this notebook, then the
+ * system's) and a refusal rejects `denied`. They reject `unavailable`
+ * while Bluetooth is off.
+ */
+export interface Bluetooth extends Authorization {
+  /**
+   * Advertisements from nearby peripherals, for `for await`, until the
+   * loop ends or the cell is interrupted. Keeps the newest 128 when the
+   * cell reads slower than they come.
+   *
+   * @param options `services` to filter by, `allowDuplicates`, and the call's `signal`, which ends the stream.
+   * @returns A stream of advertisements; leaving the loop stops scanning.
+   * @throws {DeviceError} `denied` when the notebook or the system may not use Bluetooth; `unavailable` when Bluetooth is off; `failed` when a service isn't a UUID.
+   * @example
+   * ```ts
+   * for await (const ad of device.bluetooth.scan({ services: ["180D"] })) {
+   *   console.log(ad.name, ad.rssi);
+   *   break;
+   * }
+   * ```
+   */
+  scan(options?: ScanOptions): DeviceStream<Advertisement>;
+  /**
+   * Peripherals the system knows by id, such as one a past scan found, to
+   * connect again without scanning.
+   *
+   * @param ids Peripheral ids from `scan()` on this device, at most 64.
+   * @param options The call's `signal`. Cancel rejects `cancelled`.
+   * @returns The ones it knows; the others are left out.
+   * @throws {DeviceError} `denied` when the notebook or the system may not use Bluetooth; `unavailable` when Bluetooth is off; `failed` when an id isn't a UUID.
+   * @example
+   * ```ts
+   * const [strap] = await device.bluetooth.known(["6E400001-B5A3-F393-E0A9-E50E24DCCA9E"]);
+   * if (strap) {
+   *   await using peripheral = await device.bluetooth.connect(strap.id);
+   *   console.log(await peripheral.rssi());
+   * }
+   * ```
+   */
+  known(ids: string[], options?: CallOptions): Promise<KnownPeripheral[]>;
+  /**
+   * Connects to a peripheral.
+   *
+   * @param id Its id, from `scan()` or `known()`.
+   * @param options `timeout` in seconds (15 by default), and the call's `signal`. Cancel stops connecting and rejects `cancelled`.
+   * @returns The connected peripheral, a handle to close when done.
+   * @throws {DeviceError} `denied` when the notebook or the system may not use Bluetooth; `unavailable` when Bluetooth is off; `timeout` when it doesn't answer in time; `failed` when it is unknown, already connected, or the kernel has 8 connected.
+   * @example
+   * ```ts
+   * for await (const ad of device.bluetooth.scan({ services: ["180D"] })) {
+   *   await using strap = await device.bluetooth.connect(ad.id);
+   *   console.log(await strap.services());
+   *   break;
+   * }
+   * ```
+   */
+  connect(id: string, options?: ConnectOptions): Promise<Peripheral>;
+}
+
+/** A file a run was given, as plain bytes: engines without a web view have no `File`. */
+export interface RunFile {
+  /** The file's name. */
+  name: string;
+  /** Its MIME type, or `""`. */
+  type: string;
+  /** Its bytes. */
+  data: Uint8Array;
+}
+
+/** What a run started from the share sheet, Shortcuts or a widget was given. */
+export interface RunInput {
+  /** Shared or passed text. */
+  text?: string;
+  /** A shared link. */
+  url?: string;
+  /** Shared files, together at most 16 MiB. */
+  files: RunFile[];
+}
+
+/** What a run hands back: to the share sheet's host app, or as a Shortcut's result. */
+export interface RunOutput {
+  /** Text, such as a summary. */
+  text?: string;
+  /** A link. */
+  url?: string | URL;
+  /** Files, together at most 16 MiB. */
+  files?: NamedBytes[];
+}
+
+/** One row of a widget: text, or a number with an optional label and unit. */
+export type WidgetRow = { text: string } | { label?: string; value: number; unit?: string };
+
+/** The tints a widget may take. */
+export const WIDGET_TINTS = ["red", "orange", "yellow", "green", "mint", "teal", "cyan", "blue", "indigo", "purple", "pink", "brown", "gray"] as const;
+
+/** A widget's content: a small declarative layout. */
+export interface WidgetContent {
+  /** The heading, up to 64 characters. */
+  title?: string;
+  /** Up to six rows; text up to 128 characters, labels and units up to 32. */
+  rows?: WidgetRow[];
+  /** The accent colour. */
+  tint?: (typeof WIDGET_TINTS)[number];
+  /** Up to 64 finite numbers, drawn as a line. */
+  sparkline?: number[];
+}
+
+/**
+ * Widgets on the home screen, desktop or lock screen. A widget can't run
+ * a script itself, so it shows what a run last published: from a
+ * notebook or a headless run. No permission.
+ */
+export interface Widget {
+  /**
+   * Publishes `content` for this notebook's widget `kind`, in place of
+   * what it showed, and asks the system to redraw it.
+   *
+   * @param kind A name for the widget, 1 to 64 letters, digits, `.`, `_` or `-`; a widget configured for this notebook and kind shows it.
+   * @param content The layout: `title`, `rows`, `tint`, `sparkline`.
+   * @param options The call's `signal`. Cancel rejects `cancelled`; content already published stays.
+   * @throws {DeviceError} `failed` when `kind` or `content` isn't valid; `denied` when the app hasn't said which notebook runs.
+   * @example
+   * ```ts
+   * await device.widget.update("weather", {
+   *   title: "Oslo",
+   *   rows: [{ label: "Now", value: 4, unit: "°C" }, { text: "Rain at 15:00" }],
+   *   tint: "blue",
+   *   sparkline: [3, 4, 4, 5, 6, 5],
+   * });
+   * ```
+   */
+  update(kind: string, content: WidgetContent, options?: CallOptions): Promise<void>;
+}
+
+/**
+ * Strings this notebook saved, such as an API token, kept in the
+ * system keychain on this device and never synced. Each notebook sees
+ * only its own names; a renamed or moved notebook keeps them. There is
+ * no system permission: the first call asks the app's prompt for this
+ * notebook, and Settings lists and deletes each notebook's secrets.
+ */
+export interface Secrets extends Authorization {
+  /**
+   * Reads a secret.
+   *
+   * @param name The secret's name: 1 to 128 characters, no NUL.
+   * @param options The call's `signal`. Cancel rejects `cancelled`.
+   * @returns The value, or `null` when this notebook has no secret by that name.
+   * @throws {DeviceError} `denied` when the notebook may not use secrets; `unavailable` before the device's first unlock since it started; `failed` when the name isn't valid.
+   * @example
+   * ```ts
+   * const token = await device.secrets.get("github");
+   * if (!token) console.log("set it first: await device.secrets.set('github', '...')");
+   * ```
+   */
+  get(name: string, options?: CallOptions): Promise<string | null>;
+  /**
+   * Saves a secret, in place of one by the same name.
+   *
+   * @param name The secret's name: 1 to 128 characters, no NUL.
+   * @param value The value: a string up to 64 KiB as UTF-8.
+   * @param options The call's `signal`. Cancel rejects `cancelled`; a value already saved stays.
+   * @throws {DeviceError} `denied` when the notebook may not use secrets; `unavailable` before the device's first unlock since it started; `failed` when the name or value isn't valid.
+   * @example
+   * ```ts
+   * const token = await device.ui.prompt("GitHub token");
+   * if (token) await device.secrets.set("github", token);
+   * ```
+   */
+  set(name: string, value: string, options?: CallOptions): Promise<void>;
+  /**
+   * Deletes a secret.
+   *
+   * @param name The secret's name.
+   * @param options The call's `signal`. Cancel rejects `cancelled`; a secret already deleted stays deleted.
+   * @returns `true`, or `false` when there was no secret by that name.
+   * @throws {DeviceError} `denied` when the notebook may not use secrets; `unavailable` before the device's first unlock since it started; `failed` when the name isn't valid.
+   * @example
+   * ```ts
+   * console.log(await device.secrets.delete("github"));
+   * ```
+   */
+  delete(name: string, options?: CallOptions): Promise<boolean>;
+  /**
+   * The names of this notebook's secrets, never their values.
+   *
+   * @param options The call's `signal`. Cancel rejects `cancelled`.
+   * @returns The names, sorted, or `[]`.
+   * @throws {DeviceError} `denied` when the notebook may not use secrets; `unavailable` before the device's first unlock since it started.
+   * @example
+   * ```ts
+   * console.log(await device.secrets.list()); // ["github"]
+   * ```
+   */
+  list(options?: CallOptions): Promise<string[]>;
+}
+
+/** Options for `device.shortcuts.run`. */
+export interface RunShortcutOptions extends CallOptions {
+  /** Text to give the Shortcut as its input, up to 64 KiB as UTF-8. */
+  input?: string;
+}
+
+/**
+ * The person's Shortcuts, run from a cell. The Shortcuts app comes
+ * forward while one runs, and Ganymede comes back when it is done. iPad
+ * and iPhone stop the app's kernel about 30 seconds after the app leaves
+ * the screen, so keep these Shortcuts short. Every call needs the
+ * shortcuts permission, which is the app's prompt alone: a Shortcut can do
+ * whatever the person set it up to.
+ */
+export interface Shortcuts extends Authorization {
+  /**
+   * Runs a Shortcut by name and waits for it to finish.
+   *
+   * @param name The Shortcut's name as the Shortcuts app shows it.
+   * @param options `input`, text for the Shortcut, and the call's `signal`. Cancel (an interrupt) stops waiting and rejects `cancelled`; the Shortcut may still run to its end.
+   * @returns The Shortcut's output as text, or `null` when it gave none.
+   * @throws {DeviceError} `cancelled` when the Shortcut was cancelled; `failed` with the Shortcuts app's message when it failed or there is no Shortcut by that name, or when `name` or `input` isn't valid; `denied` when the notebook may not run Shortcuts; `unavailable` in a headless run.
+   * @example
+   * ```ts
+   * const reply = await device.shortcuts.run("Make Uppercase", { input: "hi" });
+   * console.log(reply); // "HI"
+   * ```
+   */
+  run(name: string, options?: RunShortcutOptions): Promise<string | null>;
+}
+
+/** Options for `device.folders.pick`. */
+export interface PickFolderOptions extends CallOptions {
+  /** Ask for writing too, not only reading. `false` by default. */
+  write?: boolean;
+}
+
+/** One item in a folder, from `Folder.entries()`. */
+export interface FolderEntry {
+  /** Its name in its directory. */
+  name: string;
+  /**
+   * `"link"` is a symlink. Reading it follows it while its target stays
+   * in the folder; `remove` takes away the link, not what it points to.
+   */
+  kind: "file" | "directory" | "link";
+  /** Bytes, for a file. */
+  size?: number;
+  /** When its contents last changed. */
+  modified?: Date;
+}
+
+/**
+ * A folder the person picked for this notebook, from
+ * `device.folders.pick()` or `list()`. It stays this notebook's until
+ * the person revokes it in Settings, across kernel and app restarts, so
+ * there is nothing to close.
+ *
+ * Each `path` is relative to the folder, with `/` between parts. An
+ * absolute path, a `..`, or a symlink that leads outside the folder
+ * rejects `denied`.
+ */
+export interface Folder {
+  /** Names the grant; `list()` gives the same id after a restart. */
+  readonly id: string;
+  /** The folder's name, as the picker showed it. */
+  readonly name: string;
+  /** Whether it was picked with `write: true`. */
+  readonly writable: boolean;
+  /**
+   * Lists a directory in the folder, sorted by name.
+   *
+   * @param path A directory in the folder; the folder itself when left out.
+   * @param options The call's `signal`. Cancel rejects `cancelled`.
+   * @returns Its files and directories, hidden ones included.
+   * @throws {DeviceError} `denied` when the path leaves the folder or the grant was revoked; `unavailable` when the folder can't be reached now (a disconnected drive, say); `failed` when there is no directory there.
+   * @example
+   * ```ts
+   * const [folder] = await device.folders.list();
+   * for (const entry of await folder.entries()) console.log(entry.kind, entry.name, entry.size);
+   * ```
+   */
+  entries(path?: string, options?: CallOptions): Promise<FolderEntry[]>;
+  /**
+   * Reads a file in the folder.
+   *
+   * @param path The file, relative to the folder.
+   * @param options The call's `signal`. Cancel rejects `cancelled`.
+   * @returns Its bytes.
+   * @throws {DeviceError} `denied` when the path leaves the folder or the grant was revoked; `unavailable` when the folder can't be reached now (a disconnected drive, say); `failed` when there is no file there or it is over 16 MiB.
+   * @example
+   * ```ts
+   * const [folder] = await device.folders.list();
+   * const csv = new TextDecoder().decode(await folder.read("data/temps.csv"));
+   * ```
+   */
+  read(path: string, options?: CallOptions): Promise<Uint8Array>;
+  /**
+   * Writes a file in the folder, replacing what is there and making the
+   * directories on the way.
+   *
+   * @param path The file, relative to the folder.
+   * @param data The bytes, at most 16 MiB, or a string written as UTF-8.
+   * @param options The call's `signal`. Cancel rejects `cancelled`; the write may already be done.
+   * @returns Once the file is written.
+   * @throws {DeviceError} `denied` when the folder was picked for reading only, the path leaves the folder, or the grant was revoked; `unavailable` when the folder can't be reached now (a disconnected drive, say); `failed` when the path is a directory or `data` is over 16 MiB.
+   * @example
+   * ```ts
+   * const folder = await device.folders.pick({ write: true });
+   * if (folder) await folder.write("notes/today.txt", "Written from a notebook");
+   * ```
+   */
+  write(path: string, data: Bytes | string, options?: CallOptions): Promise<void>;
+  /**
+   * Removes a file, a symlink (not what it points to), or an empty directory, in the folder.
+   *
+   * @param path What to remove, relative to the folder.
+   * @param options The call's `signal`. Cancel rejects `cancelled`; it may already be removed.
+   * @returns Once it is gone.
+   * @throws {DeviceError} `denied` when the folder was picked for reading only, the path leaves the folder or is the folder itself, or the grant was revoked; `unavailable` when the folder can't be reached now (a disconnected drive, say); `failed` when nothing is there or a directory isn't empty.
+   * @example
+   * ```ts
+   * const folder = await device.folders.pick({ write: true });
+   * if (folder) await folder.remove("notes/old.txt");
+   * ```
+   */
+  remove(path: string, options?: CallOptions): Promise<void>;
+}
+
+/**
+ * Folders the person picked, for lasting access from this notebook: the
+ * kernel has no file system of its own. The picker is the consent, so
+ * there is no permission prompt; Settings lists each notebook's folders
+ * and revokes them. Works in kernels in the app only.
+ */
+export interface Folders {
+  /**
+   * Shows the system folder picker and keeps what the person picks for
+   * this notebook. Picking a folder it already has replaces that grant,
+   * keeping its id.
+   *
+   * @param options `write` to ask for writing too, and the call's `signal`, which closes the picker and rejects `cancelled`.
+   * @returns The folder, or `null` when the person cancelled.
+   * @throws {DeviceError} `denied` when the app doesn't know which notebook this is; `failed` when access to the folder can't be kept.
+   * @example
+   * ```ts
+   * const folder = await device.folders.pick();
+   * if (folder) console.log(folder.name, (await folder.entries()).length);
+   * ```
+   */
+  pick(options?: PickFolderOptions): Promise<Folder | null>;
+  /**
+   * The folders this notebook was given, in the order they were picked.
+   *
+   * @param options The call's `signal`. Cancel rejects `cancelled`.
+   * @returns Its folders, or `[]`.
+   * @throws {DeviceError} `denied` when the app doesn't know which notebook this is.
+   * @example
+   * ```ts
+   * const folders = await device.folders.list();
+   * const data = folders.find((f) => f.name === "Data") ?? (await device.folders.pick());
+   * ```
+   */
+  list(options?: CallOptions): Promise<Folder[]>;
+}
+
+/** What each host event's handler gets, by event (`device.on`). */
+export interface HostEvents {
+  /** The system appearance changed. */
+  appearance: "light" | "dark";
+  /** The app came to the front. */
+  foreground: null;
+  /** The app left the front: another app is in front, or the device locked. */
+  background: null;
+  /** The battery's level (0 to 1, or `null` when unknown) or charging changed. Never on a Mac without a battery. */
+  battery: { level: number | null; charging: boolean };
+  /** The system language or region changed: the new locale, a BCP 47 tag such as `"fr-FR"`. */
+  locale: string;
+}
+
+/** A host event's name: a key of `HostEvents`. */
+export type HostEvent = keyof HostEvents;
+
+/** Options for `device.on`. */
+export interface OnOptions {
+  /** Removes the handler when aborted. An interrupt doesn't: `on` outlives its cell. */
+  signal?: AbortSignal;
+}
+
+/**
+ * The `device` global: native features of the Mac, iPad and iPhone apps.
+ * Undefined on kernels the app doesn't host, so check for it first.
+ */
+export interface Device {
+  /**
+   * Reads what the host is and the device's current state.
+   *
+   * @param options The call's `signal`. Cancel rejects `cancelled`.
+   * @returns The host's answer to `hello` as it was when the kernel started, with the current screen, battery, appearance and locale where the host reads them.
+   * @example
+   * ```ts
+   * const info = await device.info();
+   * console.log(info.platform, info.osVersion, info.battery?.level);
+   * ```
+   */
+  info(options?: CallOptions): Promise<DeviceInfo>;
+  /**
+   * Whether the host answers a method. Synchronous: it reads what the host
+   * said when the kernel started, so it can't be cancelled.
+   *
+   * @param method A method's name as `SUPPORT` lists it, such as `"clipboard.readText"` or `"openURL"`.
+   * @returns `true` when the host answers it; calling a method it doesn't fails `unavailable`.
+   * @example
+   * ```ts
+   * if (device.has("haptics.impact")) await device.haptics.impact();
+   * else console.log("no haptics on", (await device.info()).platform);
+   * ```
+   */
+  has(method: string): boolean;
+  /**
+   * Calls `handler` each time the device changes in the way `event`
+   * names, until it is removed: by calling the function `on` answers, by
+   * aborting `options.signal`, or by a kernel restart. Unlike other calls,
+   * an interrupt leaves it running, since it outlives the cell that added
+   * it. A handler that runs after its cell finished writes its output
+   * where the kernel sends output with no running cell, so keep handlers
+   * to updating state or a display by id. No permission; in the app only.
+   * When the host can't send events, the handler is removed and one line
+   * on stderr says why; `has("on")` tells beforehand.
+   *
+   * @param event What to watch: `appearance`, `foreground`, `background`, `battery` or `locale`.
+   * @param handler Called with the event's value (`HostEvents`). An error it throws goes to stderr and doesn't remove it.
+   * @param options The `signal` that removes the handler.
+   * @returns A function that removes the handler.
+   * @throws {DeviceError} `failed` when `event` isn't one of the five or `handler` isn't a function.
+   * @example
+   * ```ts
+   * const off = device.on("appearance", (mode) => console.log("now", mode));
+   * // Later, in any cell:
+   * off();
+   * ```
+   */
+  on<E extends HostEvent>(event: E, handler: (value: HostEvents[E]) => void, options?: OnOptions): () => void;
+  /** The system clipboard: see `Clipboard`. */
+  readonly clipboard: Clipboard;
+  /** Taptic feedback, on iPhone: see `Haptics`. */
+  readonly haptics: Haptics;
+  /**
+   * Opens a link: in the browser, or the mail app for `mailto`.
+   *
+   * @param url An `http`, `https` or `mailto` URL.
+   * @param options `inApp` shows a web page in the app on iPhone and iPad, and the call's `signal`. Cancel rejects `cancelled`; the URL may already have opened.
+   * @throws {DeviceError} `failed` for any other scheme.
+   * @example
+   * ```ts
+   * await device.openURL("https://ganymede-server.com/docs/", { inApp: true });
+   * ```
+   */
+  openURL(url: string | URL, options?: OpenURLOptions): Promise<void>;
+  /** Dialogs over the notebook: see `UI`. */
+  readonly ui: UI;
+  /**
+   * Shows the system share sheet (`NSSharingServicePicker` on the Mac).
+   * The sheet is its own consent, so no permission.
+   *
+   * @param options `text`, `url` and `files` to share (at least one; files together at most 16 MiB), and the call's `signal`, which closes the sheet and rejects `cancelled`.
+   * @returns `true` when the person picked where to send them (on iPhone and iPad once the share completes; on the Mac as soon as they pick a service), `false` when they dismissed it.
+   * @throws {DeviceError} `failed` when there is nothing to share, a file has no plain name, or the files are over 16 MiB.
+   * @example
+   * ```ts
+   * const csv = "city,temp\nOslo,4\nLima,19\n";
+   * await device.share({
+   *   text: "Today's temperatures",
+   *   files: [{ name: "temps.csv", data: new TextEncoder().encode(csv) }],
+   * });
+   * ```
+   */
+  share(options: ShareOptions): Promise<boolean>;
+  /**
+   * Shows files in Quick Look. Quick Look picks the viewer from each
+   * name's extension, so name a PNG `*.png`.
+   *
+   * @param files The files, together at most 16 MiB.
+   * @param options The call's `signal`, which closes Quick Look and rejects `cancelled`.
+   * @returns Once the person closes it.
+   * @throws {DeviceError} `failed` when `files` is empty, a file has no plain name, or the files are over 16 MiB.
+   * @example
+   * ```ts
+   * const png = await device.clipboard.readImage();
+   * if (png) await device.preview([{ name: "clipboard.png", data: png }]);
+   * ```
+   */
+  preview(files: NamedBytes[], options?: CallOptions): Promise<void>;
+  /** The system's file pickers: see `Files`. */
+  readonly files: Files;
+  /** The system photo picker: see `Photos`. */
+  readonly photos: Photos;
+  /** Sound playback: see `Sound`. */
+  readonly sound: Sound;
+  /** Local notifications after a delay: see `Notifications`. */
+  readonly notifications: Notifications;
+  /** Where the device is, and geocoding: see `DeviceLocation`. */
+  readonly location: DeviceLocation;
+  /** The motion sensors, on iPad and iPhone: see `DeviceMotion`. */
+  readonly motion: DeviceMotion;
+  /** The person's contacts: see `Contacts`. */
+  readonly contacts: Contacts;
+  /** The system camera: see `Camera`. */
+  readonly camera: Camera;
+  /** The person's reminders: see `Reminders`. */
+  readonly reminders: Reminders;
+  /** Bluetooth LE peripherals: see `Bluetooth`. */
+  readonly bluetooth: Bluetooth;
+  /** Folders the person picked for this notebook: see `Folders`. */
+  readonly folders: Folders;
+  /** Widgets that show what a run published: see `Widget`. */
+  readonly widget: Widget;
+  /**
+   * What this run was given, when the share sheet, Shortcuts or a widget
+   * started it; `null` in a notebook.
+   */
+  readonly input: RunInput | null;
+  /**
+   * Hands `result` back to whatever started this run: the share sheet's
+   * host app, or the Shortcut's next action. A later call replaces it.
+   * In a notebook there is nothing to hand it to.
+   *
+   * @param result `text`, `url` and `files` (together at most 16 MiB).
+   * @param options The call's `signal`. Cancel rejects `cancelled`.
+   * @throws {DeviceError} `unavailable` in a notebook; `failed` when `result` has nothing in it or a file has no plain name.
+   * @example
+   * ```ts
+   * const page = device.input?.url;
+   * if (page) await device.output({ text: `Summary of ${page}: ...` });
+   * ```
+   */
+  output(result: RunOutput, options?: CallOptions): Promise<void>;
+  /** Strings this notebook saved in the keychain: see `Secrets`. */
+  readonly secrets: Secrets;
+  /** The person's Shortcuts, on iPad, iPhone and Mac: see `Shortcuts`. */
+  readonly shortcuts: Shortcuts;
+}
+
+/** Asks the host who it is. Rejects when there is no host to ask. */
+export async function hello(transport: DeviceTransport): Promise<DeviceInfo> {
+  return helloInfo(await transport.call("hello", {}));
+}
+
+/** A `hello` reply checked and tidied: a platform and a list of method names. */
+export function helloInfo(info: unknown): DeviceInfo {
+  if (!isRecord(info) || typeof info.platform !== "string" || !Array.isArray(info.capabilities)) {
+    throw new DeviceError("failed", "the host's hello reply is malformed");
+  }
+  return {
+    ...info,
+    platform: info.platform,
+    appVersion: typeof info.appVersion === "string" ? info.appVersion : "",
+    capabilities: info.capabilities.filter((c): c is string => typeof c === "string"),
+  };
+}
+
+export interface CreateDeviceOptions {
+  /**
+   * The running cell's interrupt signal (cdp-kernel's `jupyter.signal`),
+   * read when a stream opens, so an interrupt stops the stream even while
+   * the cell isn't waiting on it.
+   */
+  cellSignal?: () => AbortSignal | undefined;
+  /** What the run was given (`input`), for `device.input`. */
+  input?: RunInput | null;
+}
+
+export function createDevice(transport: DeviceTransport, info: DeviceInfo, deviceOptions: CreateDeviceOptions = {}): Device {
+  const capabilities = new Set(info.capabilities);
+  function requireMethod(method: string): void {
+    if (!capabilities.has(method)) throw new DeviceError("unavailable", `${method} isn't available on ${info.platform}`);
+  }
+  async function call(method: string, params: Record<string, unknown>, options?: CallOptions): Promise<unknown> {
+    requireMethod(method);
+    try {
+      return await transport.call(method, params, options);
+    } catch (err) {
+      throw DeviceError.from(err);
+    }
+  }
+  /** A streaming method's values (src/stream.ts), for the namespaces that stream. */
+  function stream<T>(method: string, params: Record<string, unknown>, options: CallOptions, read: (value: unknown) => T): DeviceStream<T> {
+    requireMethod(method);
+    return openStream(transport, method, params, { ...options, cellSignal: readCellSignal() }, read);
+  }
+  /** A permissioned namespace's trio (src/permission.ts). */
+  function permission(namespace: string): Authorization {
+    return authorization(call, namespace);
+  }
+  function readCellSignal(): AbortSignal | undefined {
+    try {
+      return deviceOptions.cellSignal?.();
+    } catch {
+      return undefined;
+    }
+  }
+  /**
+   * A host handle's lifetime: `close()` sends `closeCall` once (by default
+   * `handle.close { handle }`), and `check()` rejects a call on a closed
+   * handle without a round trip.
+   */
+  function nativeHandle(
+    what: string,
+    id: number,
+    // Not through `call`: `hello` doesn't list `handle.close`, which every
+    // host with a handle answers.
+    closeCall: () => Promise<unknown> = () => transport.call("handle.close", { handle: id }).catch((err: unknown) => Promise.reject(DeviceError.from(err))),
+  ): { handle: NativeHandle; check(): void; closedByHost(): void } {
+    let closed = false;
+    async function close(): Promise<void> {
+      if (closed) return;
+      // Closed only once the host has it, so a failed close can be retried.
+      await closeCall();
+      closed = true;
+    }
+    return {
+      handle: {
+        get closed() {
+          return closed;
+        },
+        close,
+        [asyncDispose]: close,
+      },
+      check() {
+        if (closed) throw new DeviceError("failed", `this ${what} is closed`);
+      },
+      /** The host closed it (the peer went away): `closed` reads true. */
+      closedByHost() {
+        closed = true;
+      },
+    };
+  }
+  function soundPlayer(id: number, duration: number): SoundPlayer {
+    // `sound.close` is the wire's name for `handle.close` on a player.
+    const { handle, check } = nativeHandle("sound player", id, () => call("sound.close", { player: id }));
+    async function control(action: string, extra: Record<string, unknown>, options?: CallOptions): Promise<SoundState> {
+      check();
+      const state = await call("sound.control", { player: id, action, ...extra }, options);
+      if (!isRecord(state)) throw new DeviceError("failed", "the host's sound.control reply is malformed");
+      return { playing: state.playing === true, time: Number(state.time), duration: Number(state.duration) };
+    }
+    return {
+      get closed() {
+        return handle.closed;
+      },
+      close: () => handle.close(),
+      [asyncDispose]: () => handle.close(),
+      duration,
+      play: (options) => control("play", {}, options),
+      pause: (options) => control("pause", {}, options),
+      stop: (options) => control("stop", {}, options),
+      seek(seconds, options) {
+        if (typeof seconds !== "number" || !Number.isFinite(seconds) || seconds < 0) {
+          return Promise.reject(new DeviceError("failed", "seek takes a time in seconds, 0 or more"));
+        }
+        return control("seek", { time: seconds }, options);
+      },
+      setVolume(volume, options) {
+        try {
+          // Required here: an omitted volume would change nothing.
+          checkVolume(volume ?? NaN);
+        } catch (err) {
+          return Promise.reject(err);
+        }
+        return control("state", { volume }, options);
+      },
+      state: (options) => control("state", {}, options),
+    };
+  }
+  /** A folder from a `folders.pick` or `folders.list` reply. */
+  function folder(method: string, value: unknown): Folder {
+    if (!isRecord(value) || typeof value.id !== "string" || typeof value.name !== "string" || typeof value.writable !== "boolean") {
+      throw new DeviceError("failed", `the host's ${method} reply is malformed`);
+    }
+    const id = value.id;
+    function at(method: string, path: unknown, optional = false): Record<string, unknown> {
+      if (optional && path === undefined) return { folder: id };
+      if (typeof path !== "string" || (!optional && path === "")) throw new DeviceError("failed", `${method} needs a path in the folder`);
+      if (path.startsWith("/") || path.split("/").includes("..")) {
+        throw new DeviceError("denied", `${method}: "${path}" leaves the folder; paths are relative to it, without ..`);
+      }
+      return { folder: id, path };
+    }
+    return {
+      id,
+      name: value.name,
+      writable: value.writable,
+      async entries(path, options) {
+        const found = await call("folders.entries", at("folders.entries", path, true), options);
+        if (!Array.isArray(found)) throw new DeviceError("failed", "the host's folders.entries reply is malformed");
+        return found.map((item): FolderEntry => {
+          if (!isRecord(item) || typeof item.name !== "string" || (item.kind !== "file" && item.kind !== "directory" && item.kind !== "link")) {
+            throw new DeviceError("failed", "the host's folders.entries reply is malformed");
+          }
+          const modified = typeof item.modified === "string" ? new Date(item.modified) : undefined;
+          return {
+            name: item.name,
+            kind: item.kind,
+            ...(typeof item.size === "number" ? { size: item.size } : {}),
+            ...(modified && !Number.isNaN(modified.getTime()) ? { modified } : {}),
+          };
+        });
+      },
+      async read(path, options) {
+        return replyBytes("folders.read", await call("folders.read", at("folders.read", path), options));
+      },
+      async write(path, data, options) {
+        const params = at("folders.write", path);
+        requireMethod("folders.write");
+        const bytes = await toBytes(typeof data === "string" ? new TextEncoder().encode(data) : data);
+        await call("folders.write", { ...params, data: bytes }, options);
+      },
+      async remove(path, options) {
+        await call("folders.remove", at("folders.remove", path), options);
+      },
+    };
+  }
+  /** A connected peripheral (`bluetooth.connect`): a handle its calls name. */
+  function peripheral(handleID: number, id: string, name: string | null): Peripheral {
+    const { handle, check, closedByHost } = nativeHandle("peripheral", handleID);
+    /** A handle call; `disconnected` means the host closed the handle. */
+    async function handleCall(method: string, params: Record<string, unknown>, options?: CallOptions): Promise<unknown> {
+      try {
+        return await call(method, params, options);
+      } catch (err) {
+        if (err instanceof DeviceError && err.code === "disconnected") closedByHost();
+        throw err;
+      }
+    }
+    function where(method: string, service: unknown, characteristic: unknown): Record<string, unknown> {
+      check();
+      checkBluetoothUUID(method, service);
+      checkBluetoothUUID(method, characteristic);
+      return { peripheral: handleID, service, characteristic };
+    }
+    return {
+      get closed() {
+        return handle.closed;
+      },
+      close: () => handle.close(),
+      [asyncDispose]: () => handle.close(),
+      id,
+      name,
+      async services(options) {
+        check();
+        return bluetoothServices(await handleCall("bluetooth.services", { peripheral: handleID }, options));
+      },
+      async read(service, characteristic, options) {
+        const params = where("bluetooth.read", service, characteristic);
+        return replyBytes("bluetooth.read", await handleCall("bluetooth.read", params, options));
+      },
+      async write(service, characteristic, data, options = {}) {
+        const { withResponse, ...rest } = options;
+        const params = where("bluetooth.write", service, characteristic);
+        if (withResponse !== undefined && typeof withResponse !== "boolean") {
+          throw new DeviceError("failed", "bluetooth.write: withResponse must be true or false");
+        }
+        await handleCall("bluetooth.write", { ...params, data: await toBytes(data), ...defined({ withResponse }) }, rest);
+      },
+      notify(service, characteristic, options = {}) {
+        const params = where("bluetooth.notify", service, characteristic);
+        return stream("bluetooth.notify", params, options, (value) => replyBytes("bluetooth.notify", value));
+      },
+      async rssi(options) {
+        check();
+        const value = await handleCall("bluetooth.rssi", { peripheral: handleID }, options);
+        if (typeof value !== "number") throw new DeviceError("failed", "the host's bluetooth.rssi reply is malformed");
+        return value;
+      },
+    };
+  }
+  const hostEvents = hostEventHandlers();
+  /**
+   * `device.on`'s handlers, over one `events.watch` stream that the first
+   * handler opens and the last one's removal closes. The stream gets no
+   * cell signal, so an interrupt leaves it running.
+   */
+  function hostEventHandlers(): { on: Device["on"] } {
+    const handlers = new Map<string, Set<(value: never) => void>>();
+    let events: DeviceStream<{ event: string; value: unknown }> | null = null;
+    const count = () => [...handlers.values()].reduce((n, set) => n + set.size, 0);
+    function stop(): void {
+      const stream = events;
+      events = null;
+      void stream?.return();
+    }
+    function start(): void {
+      let stream: DeviceStream<{ event: string; value: unknown }>;
+      try {
+        requireMethod("events.watch");
+        stream = openStream(transport, "events.watch", {}, {}, readHostEvent);
+      } catch (err) {
+        fail(err);
+        return;
+      }
+      events = stream;
+      void (async () => {
+        try {
+          for await (const { event, value } of stream) {
+            for (const handler of [...(handlers.get(event) ?? [])]) {
+              try {
+                (handler as (value: unknown) => void)(value);
+              } catch (err) {
+                console.error(`device.on("${event}"): the handler threw: ${err instanceof Error ? err.message : String(err)}`);
+              }
+            }
+          }
+          // The host ended it (the kernel is going away): nothing more comes.
+          if (events === stream) {
+            events = null;
+            handlers.clear();
+          }
+        } catch (err) {
+          if (events === stream) fail(err);
+        }
+      })();
+    }
+    /** The stream can't run: its handlers would never be called. */
+    function fail(err: unknown): void {
+      events = null;
+      handlers.clear();
+      const error = DeviceError.from(err);
+      console.error(`device.on: no host events (${error.code}): ${error.message}`);
+    }
+    function on(event: string, handler: (value: never) => void, options: OnOptions = {}): () => void {
+      if (!HOST_EVENTS.includes(event as HostEvent)) {
+        throw new DeviceError("failed", `device.on: event must be one of ${HOST_EVENTS.join(", ")}`);
+      }
+      if (typeof handler !== "function") throw new DeviceError("failed", "device.on needs a handler function");
+      const { signal } = options;
+      if (signal?.aborted) return () => {};
+      // A function per call, so adding the same handler twice needs two removals.
+      const entry = (value: never) => handler(value);
+      let set = handlers.get(event);
+      if (!set) handlers.set(event, (set = new Set()));
+      set.add(entry);
+      if (!events) start();
+      let removed = false;
+      function off(): void {
+        if (removed) return;
+        removed = true;
+        signal?.removeEventListener("abort", off);
+        handlers.get(event)?.delete(entry);
+        if (count() === 0) stop();
+      }
+      signal?.addEventListener("abort", off, { once: true });
+      return off;
+    }
+    return { on: on as Device["on"] };
+  }
+
+  return {
+    async info(options) {
+      const snapshot = structuredClone(info);
+      if (!capabilities.has("info")) return snapshot;
+      const current = await call("info", {}, options);
+      // What `hello` said stays as it said it: the capabilities are what
+      // this device was built with.
+      return {
+        ...snapshot,
+        ...(isRecord(current) ? current : {}),
+        platform: snapshot.platform,
+        appVersion: snapshot.appVersion,
+        capabilities: snapshot.capabilities,
+      };
+    },
+    // `on` reads the `events.watch` stream.
+    has: (method) => capabilities.has(method === "on" ? "events.watch" : method),
+    on: hostEvents.on,
+    clipboard: {
+      async readText(options) {
+        const text = await call("clipboard.readText", {}, options);
+        return typeof text === "string" ? text : null;
+      },
+      async writeText(text, options) {
+        await call("clipboard.writeText", { text: String(text) }, options);
+      },
+      async readImage(options) {
+        const image = await call("clipboard.readImage", {}, options);
+        if (image instanceof Uint8Array) return image;
+        if (image instanceof ArrayBuffer) return new Uint8Array(image);
+        return null;
+      },
+      async writeImage(image, options) {
+        // Checked first, so a host without it fails `unavailable` before a Blob is read.
+        requireMethod("clipboard.writeImage");
+        await call("clipboard.writeImage", { image: await toBytes(image) }, options);
+      },
+    },
+    haptics: {
+      async impact(style = "medium", options) {
+        await call("haptics.impact", { style }, options);
+      },
+      async notification(type, options) {
+        await call("haptics.notification", { type }, options);
+      },
+      async selection(options) {
+        await call("haptics.selection", {}, options);
+      },
+    },
+    async openURL(url, options = {}) {
+      const { inApp = false, ...callOptions } = options;
+      await call("openURL", { url: String(url), inApp }, callOptions);
+    },
+    ui: {
+      async alert(message, options = {}) {
+        const { signal, title } = options;
+        await call("ui.alert", { message: String(message), ...defined({ title }) }, { signal });
+      },
+      async confirm(message, options = {}) {
+        const { signal, title, destructive = false, okLabel } = options;
+        const result = await call("ui.confirm", { message: String(message), destructive, ...defined({ title, okLabel }) }, { signal });
+        return result === true;
+      },
+      async prompt(message, options = {}) {
+        const { signal, title, placeholder, defaultValue, secure = false } = options;
+        const result = await call("ui.prompt", { message: String(message), secure, ...defined({ title, placeholder, defaultValue }) }, { signal });
+        return typeof result === "string" ? result : null;
+      },
+      async actionSheet(title, choices, options = {}) {
+        const { signal, message, cancel, destructive } = options;
+        if (!Array.isArray(choices) || choices.length === 0) throw new DeviceError("failed", "actionSheet needs at least one option");
+        const params = { title: String(title), options: choices.map(String), ...defined({ message, cancel, destructive }) };
+        const result = await call("ui.actionSheet", params, { signal });
+        return typeof result === "number" && Number.isInteger(result) && result >= 0 && result < choices.length ? result : null;
+      },
+      async pickDate(options = {}) {
+        const { signal, mode = "datetime", title, value, min, max } = options;
+        const params = { mode, ...defined({ title, value: iso(value), min: iso(min), max: iso(max) }) };
+        const result = await call("ui.pickDate", params, { signal });
+        if (typeof result !== "string") return null;
+        const date = new Date(result);
+        if (Number.isNaN(date.getTime())) throw new DeviceError("failed", `ui.pickDate answered a date it can't read: ${result}`);
+        return date;
+      },
+    },
+    async share(options) {
+      const { signal, text, url, files } = options ?? {};
+      if (text === undefined && url === undefined && (files === undefined || files.length === 0)) {
+        throw new DeviceError("failed", "share needs text, a url or files");
+      }
+      // Checked first, so a host without it fails `unavailable` before files are read.
+      requireMethod("share");
+      const params = {
+        ...defined({ text: text === undefined ? undefined : String(text), url: url === undefined ? undefined : String(url) }),
+        files: files === undefined ? [] : await namedFiles("share", files),
+      };
+      return (await call("share", params, { signal })) === true;
+    },
+    async preview(files, options = {}) {
+      if (!Array.isArray(files) || files.length === 0) throw new DeviceError("failed", "preview needs at least one file");
+      requireMethod("preview");
+      await call("preview", { files: await namedFiles("preview", files) }, options);
+    },
+    files: {
+      async pick(options = {}) {
+        const { signal, types, multiple = false } = options;
+        if (types !== undefined && (!Array.isArray(types) || types.some((t) => typeof t !== "string" || !t))) {
+          throw new DeviceError("failed", "files.pick: types must be an array of MIME types or extensions");
+        }
+        if (typeof multiple !== "boolean") throw new DeviceError("failed", "files.pick: multiple must be a boolean");
+        return pickedFiles("files.pick", await call("files.pick", { multiple, ...defined({ types }) }, { signal }));
+      },
+      async export(data, options) {
+        const { signal, name } = options ?? ({} as ExportFileOptions);
+        if (!isPlainName(name)) throw new DeviceError("failed", "files.export needs a plain file name (no slashes)");
+        requireMethod("files.export");
+        // toBytes refuses anything over MAX_BINARY_BYTES.
+        const bytes = await toBytes(data);
+        return (await call("files.export", { name, data: bytes }, { signal })) === true;
+      },
+    },
+    sound: {
+      async play(data, options = {}) {
+        const { signal, volume } = options;
+        checkVolume(volume);
+        requireMethod("sound.play");
+        await call("sound.play", { data: await audioBytes("sound.play", data), ...defined({ volume }) }, { signal });
+      },
+      async player(data, options = {}) {
+        requireMethod("sound.player");
+        const opened = await call("sound.player", { data: await audioBytes("sound.player", data) }, options);
+        if (!isRecord(opened) || typeof opened.player !== "number") throw new DeviceError("failed", "the host's sound.player reply is malformed");
+        return soundPlayer(opened.player, typeof opened.duration === "number" ? opened.duration : NaN);
+      },
+    },
+    notifications: {
+      ...permission("notifications"),
+      async schedule(body, options) {
+        const { signal, delay, title } = options ?? ({} as ScheduleNotificationOptions);
+        if (typeof body !== "string" || body === "") throw new DeviceError("failed", "notifications.schedule needs a body");
+        if (typeof delay !== "number" || !Number.isFinite(delay) || delay <= 0) {
+          throw new DeviceError("failed", "notifications.schedule needs a delay in seconds, more than 0");
+        }
+        if (title !== undefined && typeof title !== "string") throw new DeviceError("failed", "notifications.schedule: title must be a string");
+        const id = await call("notifications.schedule", { body, delay, ...defined({ title }) }, { signal });
+        if (typeof id !== "string") throw new DeviceError("failed", "the host's notifications.schedule reply is malformed");
+        return id;
+      },
+      async pending(options = {}) {
+        const result = await call("notifications.pending", {}, options);
+        if (!Array.isArray(result)) throw new DeviceError("failed", "the host's notifications.pending reply is malformed");
+        return result.map((item): PendingNotification => {
+          if (!isRecord(item) || typeof item.id !== "string" || typeof item.body !== "string") {
+            throw new DeviceError("failed", "the host's notifications.pending reply is malformed");
+          }
+          const date = typeof item.date === "string" ? new Date(item.date) : undefined;
+          return {
+            id: item.id,
+            body: item.body,
+            ...(typeof item.title === "string" ? { title: item.title } : {}),
+            ...(date && !Number.isNaN(date.getTime()) ? { date } : {}),
+          };
+        });
+      },
+      async cancel(id, options = {}) {
+        if (typeof id !== "string" || id === "") throw new DeviceError("failed", "notifications.cancel needs the id schedule returned");
+        await call("notifications.cancel", { id }, options);
+      },
+      async cancelAll(options = {}) {
+        await call("notifications.cancelAll", {}, options);
+      },
+    },
+    location: {
+      ...permission("location"),
+      async current(options = {}) {
+        const { signal, accuracy } = options;
+        checkAccuracy("location.current", accuracy);
+        return locationFix("location.current", await call("location.current", { ...defined({ accuracy }) }, { signal }));
+      },
+      watch(options = {}) {
+        const { accuracy, ...rest } = options;
+        checkAccuracy("location.watch", accuracy);
+        return stream("location.watch", { ...defined({ accuracy }) }, rest, (value) => locationFix("location.watch", value));
+      },
+      async geocode(address, options = {}) {
+        if (typeof address !== "string" || address.trim() === "") throw new DeviceError("failed", "location.geocode needs an address");
+        return places("location.geocode", await call("location.geocode", { address }, options));
+      },
+      async reverseGeocode(position, options = {}) {
+        const { latitude, longitude } = (position ?? {}) as { latitude?: unknown; longitude?: unknown };
+        if (!isLatitude(latitude) || !isLongitude(longitude)) {
+          throw new DeviceError("failed", "location.reverseGeocode needs a latitude (-90 to 90) and longitude (-180 to 180)");
+        }
+        return places("location.reverseGeocode", await call("location.reverseGeocode", { latitude, longitude }, options));
+      },
+    },
+    motion: {
+      ...permission("motion"),
+      watch(options = {}) {
+        const { interval, ...rest } = options;
+        if (interval !== undefined && !(typeof interval === "number" && interval >= 0.01 && interval <= 1)) {
+          throw new DeviceError("failed", "motion.watch: interval must be 0.01 to 1 seconds");
+        }
+        return stream("motion.watch", { ...defined({ interval }) }, rest, (value) => motionSample("motion.watch", value));
+      },
+      async latest(options = {}) {
+        return motionSample("motion.latest", await call("motion.latest", {}, options));
+      },
+    },
+    photos: {
+      ...permission("photos"),
+      async save(image, options) {
+        // Checked first, so a host without it fails `unavailable` before a Blob is read.
+        requireMethod("photos.save");
+        await call("photos.save", { image: await toBytes(image) }, options);
+      },
+      async pick(options = {}) {
+        const { signal, limit = 1 } = options;
+        if (!Number.isInteger(limit) || limit < 0) throw new DeviceError("failed", "photos.pick: limit must be a whole number, 0 for no limit");
+        return pickedFiles("photos.pick", await call("photos.pick", { limit }, { signal }));
+      },
+    },
+    contacts: {
+      ...permission("contacts"),
+      async search(query, options = {}) {
+        if (typeof query !== "string" || query.trim() === "") throw new DeviceError("failed", "contacts.search needs a query");
+        return contactList("contacts.search", await call("contacts.search", { query }, options));
+      },
+      async get(id, options = {}) {
+        checkContactID("contacts.get", id);
+        const found = await call("contacts.get", { id }, options);
+        return found === null ? null : contactRecord("contacts.get", found);
+      },
+      async all(options = {}) {
+        return contactList("contacts.all", await call("contacts.all", {}, options));
+      },
+      async add(contact, options = {}) {
+        if (!isRecord(contact)) throw new DeviceError("failed", "contacts.add needs a contact object");
+        const { id: _, ...fields } = contact as Contact;
+        const id = await call("contacts.add", { contact: fields }, options);
+        if (typeof id !== "string") throw new DeviceError("failed", "the host's contacts.add reply is malformed");
+        return id;
+      },
+      async delete(id, options = {}) {
+        checkContactID("contacts.delete", id);
+        const deleted = await call("contacts.delete", { id }, options);
+        if (typeof deleted !== "boolean") throw new DeviceError("failed", "the host's contacts.delete reply is malformed");
+        return deleted;
+      },
+    },
+    camera: {
+      ...permission("camera"),
+      async capture(options = {}) {
+        const photo = await call("camera.capture", {}, options);
+        if (photo instanceof Uint8Array) return photo;
+        if (photo instanceof ArrayBuffer) return new Uint8Array(photo);
+        if (photo === null) return null;
+        throw new DeviceError("failed", "the host's camera.capture reply is malformed");
+      },
+    },
+    reminders: {
+      ...permission("reminders"),
+      async calendars(options = {}) {
+        const lists = await call("reminders.calendars", {}, options);
+        if (!Array.isArray(lists)) throw new DeviceError("failed", "the host's reminders.calendars reply is malformed");
+        return lists.map((list) => {
+          if (!isRecord(list) || typeof list.id !== "string" || typeof list.title !== "string") {
+            throw new DeviceError("failed", "the host's reminders.calendars reply is malformed");
+          }
+          return { id: list.id, title: list.title, isDefault: list.isDefault === true };
+        });
+      },
+      async list(options = {}) {
+        const { signal, calendar, completed } = options;
+        if (calendar !== undefined && (typeof calendar !== "string" || calendar === "")) throw new DeviceError("failed", "reminders.list: calendar must be a list id from calendars()");
+        if (completed !== undefined && typeof completed !== "boolean") throw new DeviceError("failed", "reminders.list: completed must be true or false");
+        const found = await call("reminders.list", defined({ calendar, completed }), { signal });
+        if (!Array.isArray(found)) throw new DeviceError("failed", "the host's reminders.list reply is malformed");
+        return found.map((item) => reminderRecord("reminders.list", item));
+      },
+      async add(reminder, options = {}) {
+        if (!isRecord(reminder)) throw new DeviceError("failed", "reminders.add needs a reminder object");
+        if (reminder.due instanceof Date && Number.isNaN(reminder.due.getTime())) throw new DeviceError("failed", "reminders.add: due is an invalid Date");
+        const due = reminder.due instanceof Date ? reminder.due.toISOString() : reminder.due;
+        const id = await call("reminders.add", { reminder: { ...reminder, ...defined({ due }) } }, options);
+        if (typeof id !== "string") throw new DeviceError("failed", "the host's reminders.add reply is malformed");
+        return id;
+      },
+      async complete(id, options = {}) {
+        checkReminderID("reminders.complete", id);
+        return booleanReply("reminders.complete", await call("reminders.complete", { id }, options));
+      },
+      async uncomplete(id, options = {}) {
+        checkReminderID("reminders.uncomplete", id);
+        return booleanReply("reminders.uncomplete", await call("reminders.uncomplete", { id }, options));
+      },
+      async delete(id, options = {}) {
+        checkReminderID("reminders.delete", id);
+        return booleanReply("reminders.delete", await call("reminders.delete", { id }, options));
+      },
+    },
+    bluetooth: {
+      ...permission("bluetooth"),
+      scan(options = {}) {
+        const { services, allowDuplicates, ...rest } = options;
+        if (services !== undefined) {
+          if (!Array.isArray(services)) throw new DeviceError("failed", "bluetooth.scan: services must be a list of UUIDs");
+          for (const service of services) checkBluetoothUUID("bluetooth.scan", service);
+        }
+        if (allowDuplicates !== undefined && typeof allowDuplicates !== "boolean") {
+          throw new DeviceError("failed", "bluetooth.scan: allowDuplicates must be true or false");
+        }
+        return stream("bluetooth.scan", defined({ services, allowDuplicates }), rest, advertisement);
+      },
+      async known(ids, options) {
+        if (!Array.isArray(ids) || ids.length > 64 || !ids.every(isUUID)) {
+          throw new DeviceError("failed", "bluetooth.known needs a list of at most 64 peripheral ids");
+        }
+        const found = await call("bluetooth.known", { ids }, options);
+        if (!Array.isArray(found)) throw new DeviceError("failed", "the host's bluetooth.known reply is malformed");
+        return found.map((item): KnownPeripheral => {
+          if (!isRecord(item) || typeof item.id !== "string") throw new DeviceError("failed", "the host's bluetooth.known reply is malformed");
+          return { id: item.id, name: typeof item.name === "string" ? item.name : null };
+        });
+      },
+      async connect(id, options = {}) {
+        const { timeout, ...rest } = options;
+        if (!isUUID(id)) throw new DeviceError("failed", "bluetooth.connect needs a peripheral id (a UUID from scan or known)");
+        if (timeout !== undefined && !(typeof timeout === "number" && timeout >= 1 && timeout <= 120)) {
+          throw new DeviceError("failed", "bluetooth.connect: timeout must be 1 to 120 seconds");
+        }
+        const reply = await call("bluetooth.connect", defined({ id, timeout }), rest);
+        if (!isRecord(reply) || typeof reply.peripheral !== "number" || typeof reply.id !== "string") {
+          throw new DeviceError("failed", "the host's bluetooth.connect reply is malformed");
+        }
+        return peripheral(reply.peripheral, reply.id, typeof reply.name === "string" ? reply.name : null);
+      },
+    },
+    input: deviceOptions.input ?? null,
+    async output(result, options) {
+      if (!isRecord(result)) throw new DeviceError("failed", "output needs { text, url, files }");
+      const { text, url, files } = result as RunOutput;
+      if (text === undefined && url === undefined && (files === undefined || files.length === 0)) {
+        throw new DeviceError("failed", "output needs text, a url or files");
+      }
+      requireMethod("output");
+      const params = {
+        ...defined({ text: text === undefined ? undefined : String(text), url: url === undefined ? undefined : String(url) }),
+        files: files === undefined ? [] : await namedFiles("output", files),
+      };
+      await call("output", params, options);
+    },
+    widget: {
+      async update(kind, content, options) {
+        await call("widget.update", { kind: widgetKind(kind), content: widgetContent(content) }, options);
+      },
+    },
+    folders: {
+      async pick(options = {}) {
+        const { write, ...rest } = options;
+        if (write !== undefined && typeof write !== "boolean") throw new DeviceError("failed", "folders.pick: write must be true or false");
+        const picked = await call("folders.pick", defined({ write }), rest);
+        return picked === null ? null : folder("folders.pick", picked);
+      },
+      async list(options) {
+        const found = await call("folders.list", {}, options);
+        if (!Array.isArray(found)) throw new DeviceError("failed", "the host's folders.list reply is malformed");
+        return found.map((item) => folder("folders.list", item));
+      },
+    },
+    shortcuts: {
+      ...permission("shortcuts"),
+      async run(name, options = {}) {
+        const { input, ...rest } = options;
+        if (typeof name !== "string" || name.length === 0 || new TextEncoder().encode(name).length > MAX_SHORTCUT_NAME_BYTES) {
+          throw new DeviceError("failed", `shortcuts.run: name must be a Shortcut's name, 1 to ${MAX_SHORTCUT_NAME_BYTES} bytes`);
+        }
+        if (input !== undefined && (typeof input !== "string" || new TextEncoder().encode(input).length > MAX_SHORTCUT_INPUT_BYTES)) {
+          throw new DeviceError("failed", `shortcuts.run: input must be text, up to ${MAX_SHORTCUT_INPUT_BYTES} bytes`);
+        }
+        const output = await call("shortcuts.run", defined({ name, input }), rest);
+        if (output !== null && typeof output !== "string") throw new DeviceError("failed", "the host's shortcuts.run reply is malformed");
+        return output;
+      },
+    },
+    secrets: {
+      ...permission("secrets"),
+      async get(name, options) {
+        checkSecretName("secrets.get", name);
+        const value = await call("secrets.get", { name }, options);
+        if (value !== null && typeof value !== "string") throw new DeviceError("failed", "the host's secrets.get reply is malformed");
+        return value;
+      },
+      async set(name, value, options) {
+        checkSecretName("secrets.set", name);
+        if (typeof value !== "string") throw new DeviceError("failed", "secrets.set: the value must be a string");
+        if (new TextEncoder().encode(value).length > MAX_SECRET_BYTES) throw new DeviceError("failed", `secrets.set: the value is over ${MAX_SECRET_BYTES} bytes`);
+        await call("secrets.set", { name, value }, options);
+      },
+      async delete(name, options) {
+        checkSecretName("secrets.delete", name);
+        return booleanReply("secrets.delete", await call("secrets.delete", { name }, options));
+      },
+      async list(options) {
+        const names = await call("secrets.list", {}, options);
+        if (!Array.isArray(names) || !names.every((n) => typeof n === "string")) throw new DeviceError("failed", "the host's secrets.list reply is malformed");
+        return names;
+      },
+    },
+  };
+}
+
+/** The longest Shortcut name and input `shortcuts.run` sends, in UTF-8 bytes. */
+const MAX_SHORTCUT_NAME_BYTES = 256;
+const MAX_SHORTCUT_INPUT_BYTES = 64 * 1024;
+
+/** The longest secret value, in UTF-8 bytes. */
+const MAX_SECRET_BYTES = 64 * 1024;
+
+function checkSecretName(method: string, name: unknown): void {
+  // A lone surrogate would become U+FFFD in Swift, so two names could share one secret.
+  if (typeof name !== "string" || name.length < 1 || name.length > 128 || name.includes("\0") || /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(name)) {
+    throw new DeviceError("failed", `${method} needs a name of 1 to 128 characters, without NUL or a lone surrogate`);
+  }
+}
+
+/** A Bluetooth UUID: 16-bit ("180D"), 32-bit or 128-bit. */
+function checkBluetoothUUID(method: string, value: unknown): asserts value is string {
+  if (typeof value !== "string" || !(/^([0-9a-f]{4}|[0-9a-f]{8})$/i.test(value) || isUUID(value))) {
+    throw new DeviceError("failed", `${method}: "${String(value)}" isn't a Bluetooth UUID ("180D" or a full UUID)`);
+  }
+}
+
+function isUUID(value: unknown): value is string {
+  return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value);
+}
+
+/** Bytes from a reply: a Uint8Array, as the transport decodes `{ base64 }`. */
+function replyBytes(method: string, value: unknown): Uint8Array {
+  if (!(value instanceof Uint8Array)) throw new DeviceError("failed", `the host's ${method} reply is malformed`);
+  return value;
+}
+
+/** A host's advertisement, checked. */
+function advertisement(value: unknown): Advertisement {
+  if (!isRecord(value) || typeof value.id !== "string" || typeof value.rssi !== "number" || !Array.isArray(value.services)) {
+    throw new DeviceError("failed", "the host's bluetooth.scan value is malformed");
+  }
+  const serviceData: Record<string, Uint8Array> = {};
+  if (isRecord(value.serviceData)) {
+    for (const [uuid, data] of Object.entries(value.serviceData)) {
+      if (data instanceof Uint8Array) serviceData[uuid] = data;
+    }
+  }
+  return {
+    id: value.id,
+    name: typeof value.name === "string" ? value.name : null,
+    rssi: value.rssi,
+    services: value.services.filter((service): service is string => typeof service === "string"),
+    manufacturerData: value.manufacturerData instanceof Uint8Array ? value.manufacturerData : null,
+    serviceData,
+  };
+}
+
+/** A host's services, checked. */
+function bluetoothServices(value: unknown): BluetoothService[] {
+  const malformed = () => new DeviceError("failed", "the host's bluetooth.services reply is malformed");
+  if (!Array.isArray(value)) throw malformed();
+  return value.map((service): BluetoothService => {
+    if (!isRecord(service) || typeof service.uuid !== "string" || !Array.isArray(service.characteristics)) throw malformed();
+    return {
+      uuid: service.uuid,
+      characteristics: service.characteristics.map((item): BluetoothCharacteristic => {
+        if (!isRecord(item) || typeof item.uuid !== "string" || !Array.isArray(item.properties)) throw malformed();
+        return { uuid: item.uuid, properties: item.properties.filter((p): p is BluetoothCharacteristic["properties"][number] => typeof p === "string") };
+      }),
+    };
+  });
+}
+
+function checkReminderID(method: string, id: unknown): void {
+  if (typeof id !== "string" || id === "") throw new DeviceError("failed", `${method} needs a reminder id`);
+}
+
+function booleanReply(method: string, value: unknown): boolean {
+  if (typeof value !== "boolean") throw new DeviceError("failed", `the host's ${method} reply is malformed`);
+  return value;
+}
+
+/** A host's reminder, checked: id, title, list and completion, and the optional parts of the right types. */
+function reminderRecord(method: string, value: unknown): Reminder {
+  if (!isRecord(value) || typeof value.id !== "string" || typeof value.title !== "string" || typeof value.calendar !== "string" || typeof value.completed !== "boolean") {
+    throw new DeviceError("failed", `the host's ${method} reply is malformed`);
+  }
+  const reminder: Reminder = { id: value.id, title: value.title, calendar: value.calendar, completed: value.completed };
+  for (const key of ["notes", "due", "completedAt"] as const) {
+    if (typeof value[key] === "string") reminder[key] = value[key];
+  }
+  if (typeof value.priority === "number" && Number.isInteger(value.priority)) reminder.priority = value.priority;
+  return reminder;
+}
+
+function checkContactID(method: string, id: unknown): void {
+  if (typeof id !== "string" || id === "") throw new DeviceError("failed", `${method} needs a contact id`);
+}
+
+function contactList(method: string, value: unknown): Contact[] {
+  if (!Array.isArray(value)) throw new DeviceError("failed", `the host's ${method} reply is malformed`);
+  return value.map((item) => contactRecord(method, item));
+}
+
+/** A host's contact, checked: an id, and only the known fields of the right types. */
+function contactRecord(method: string, value: unknown): Contact {
+  if (!isRecord(value) || typeof value.id !== "string") throw new DeviceError("failed", `the host's ${method} reply is malformed`);
+  const contact: Contact = { id: value.id };
+  for (const key of ["givenName", "middleName", "familyName", "nickname", "organization", "jobTitle", "birthday"] as const) {
+    if (typeof value[key] === "string") contact[key] = value[key];
+  }
+  const labeled = (list: unknown): LabeledValue[] =>
+    (Array.isArray(list) ? list : []).filter((item): item is Record<string, unknown> => isRecord(item) && typeof item.value === "string").map((item) => ({
+      ...(typeof item.label === "string" ? { label: item.label } : {}),
+      value: item.value as string,
+    }));
+  const emails = labeled(value.emails);
+  if (emails.length) contact.emails = emails;
+  const phones = labeled(value.phones);
+  if (phones.length) contact.phones = phones;
+  if (Array.isArray(value.addresses)) {
+    const addresses = value.addresses.filter(isRecord).map((item) => {
+      const address: PostalAddress = {};
+      for (const key of ["label", "street", "city", "state", "postalCode", "country"] as const) {
+        if (typeof item[key] === "string") address[key] = item[key];
+      }
+      return address;
+    });
+    if (addresses.length) contact.addresses = addresses;
+  }
+  return contact;
+}
+
+const HOST_EVENTS: readonly HostEvent[] = ["appearance", "foreground", "background", "battery", "locale"];
+
+/** One `events.watch` value: `{ event, value }`. */
+function readHostEvent(item: unknown): { event: string; value: unknown } {
+  if (!isRecord(item) || typeof item.event !== "string") throw new DeviceError("failed", "the host's events.watch value is malformed");
+  return { event: item.event, value: item.value ?? null };
+}
+
+const ACCURACIES: readonly string[] = ["best", "block", "city"] satisfies LocationAccuracy[];
+
+function checkAccuracy(method: string, accuracy: unknown): void {
+  if (accuracy !== undefined && !ACCURACIES.includes(accuracy as string)) {
+    throw new DeviceError("failed", `${method}: accuracy must be "best", "block" or "city"`);
+  }
+}
+
+function isLatitude(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= -90 && value <= 90;
+}
+
+function isLongitude(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= -180 && value <= 180;
+}
+
+/** A finite number from a reply, or undefined. */
+function finite(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value) ? value : undefined;
+}
+
+/** A host's fix, checked; the optional parts only when they are numbers. */
+function locationFix(method: string, value: unknown): LocationFix {
+  if (!isRecord(value) || !isLatitude(value.latitude) || !isLongitude(value.longitude) || finite(value.accuracy) === undefined || finite(value.timestamp) === undefined) {
+    throw new DeviceError("failed", `the host's ${method} reply is malformed`);
+  }
+  const fix: LocationFix = { latitude: value.latitude, longitude: value.longitude, accuracy: value.accuracy as number, timestamp: value.timestamp as number };
+  for (const key of ["altitude", "altitudeAccuracy", "speed", "course"] as const) {
+    const part = finite(value[key]);
+    if (part !== undefined) fix[key] = part;
+  }
+  return fix;
+}
+
+/** A host's places, checked; each part only when it has the right type. */
+function places(method: string, value: unknown): Place[] {
+  if (!Array.isArray(value)) throw new DeviceError("failed", `the host's ${method} reply is malformed`);
+  return value.map((item): Place => {
+    if (!isRecord(item)) throw new DeviceError("failed", `the host's ${method} reply is malformed`);
+    const place: Place = {};
+    for (const key of ["name", "street", "city", "region", "postalCode", "country", "countryCode"] as const) {
+      if (typeof item[key] === "string" && item[key] !== "") place[key] = item[key] as string;
+    }
+    if (isLatitude(item.latitude) && isLongitude(item.longitude)) {
+      place.latitude = item.latitude;
+      place.longitude = item.longitude;
+    }
+    return place;
+  });
+}
+
+/** Three finite numbers under `keys`, or undefined. */
+function triple<K extends string>(value: unknown, keys: readonly [K, K, K]): Record<K, number> | undefined {
+  if (!isRecord(value)) return undefined;
+  const out = {} as Record<K, number>;
+  for (const key of keys) {
+    const n = value[key];
+    if (typeof n !== "number" || !Number.isFinite(n)) return undefined;
+    out[key] = n;
+  }
+  return out;
+}
+
+/** A host's motion sample, checked. */
+function motionSample(method: string, value: unknown): MotionSample {
+  const xyz = ["x", "y", "z"] as const;
+  const sample = isRecord(value)
+    ? {
+        attitude: triple(value.attitude, ["roll", "pitch", "yaw"] as const),
+        rotationRate: triple(value.rotationRate, xyz),
+        gravity: triple(value.gravity, xyz),
+        userAcceleration: triple(value.userAcceleration, xyz),
+        timestamp: value.timestamp,
+      }
+    : undefined;
+  if (
+    !sample ||
+    !sample.attitude ||
+    !sample.rotationRate ||
+    !sample.gravity ||
+    !sample.userAcceleration ||
+    typeof sample.timestamp !== "number" ||
+    !Number.isFinite(sample.timestamp)
+  ) {
+    throw new DeviceError("failed", `the host's ${method} reply is malformed`);
+  }
+  return sample as MotionSample;
+}
+
+/** Each file as `{ name, data }` bytes, checked for a name and a total within the binary limit. */
+async function namedFiles(method: string, files: NamedBytes[]): Promise<{ name: string; data: Uint8Array }[]> {
+  if (!Array.isArray(files)) throw new DeviceError("failed", `${method} takes an array of files`);
+  const out: { name: string; data: Uint8Array }[] = [];
+  let total = 0;
+  for (const file of files) {
+    const isFile = typeof File !== "undefined" && file instanceof File;
+    const name = isFile ? file.name : (file as { name?: unknown })?.name;
+    if (!isPlainName(name)) {
+      throw new DeviceError("failed", `${method}: each file needs a plain file name (no slashes)`);
+    }
+    // A Blob's (or File's) size is known before reading it.
+    const source = isFile ? file : (file as { data: Bytes }).data;
+    if (typeof Blob !== "undefined" && source instanceof Blob && total + source.size > MAX_BINARY_BYTES) {
+      throw new DeviceError("failed", `${method}: files together are limited to ${MAX_BINARY_BYTES} bytes`);
+    }
+    const data = await toBytes(source);
+    total += data.byteLength;
+    if (total > MAX_BINARY_BYTES) {
+      throw new DeviceError("failed", `${method}: files together are limited to ${MAX_BINARY_BYTES} bytes`);
+    }
+    out.push({ name, data });
+  }
+  return out;
+}
+
+// Symbol.asyncDispose where the engine has it; the registered symbol
+// TypeScript's `using` downlevel looks for otherwise.
+const asyncDispose: typeof Symbol.asyncDispose = Symbol.asyncDispose ?? (Symbol.for("Symbol.asyncDispose") as typeof Symbol.asyncDispose);
+
+function checkVolume(volume: unknown): void {
+  if (volume !== undefined && (typeof volume !== "number" || !(volume >= 0 && volume <= 1))) {
+    throw new DeviceError("failed", "volume must be a number from 0 to 1");
+  }
+}
+
+/** Sound bytes, checked against the binary limit before the host is asked. */
+async function audioBytes(method: string, data: Bytes): Promise<Uint8Array> {
+  const bytes = await toBytes(data);
+  if (bytes.byteLength === 0) throw new DeviceError("failed", `${method} needs some bytes`);
+  if (bytes.byteLength > MAX_BINARY_BYTES) throw new DeviceError("failed", `${method}: sounds are limited to ${MAX_BINARY_BYTES} bytes`);
+  return bytes;
+}
+
+/** A name a file can be saved under as it is: no slashes, NUL, `.` or `..`. */
+function isPlainName(name: unknown): name is string {
+  return typeof name === "string" && name.trim() !== "" && name !== "." && name !== ".." && !/[/\\\0]/.test(name);
+}
+
+/** The host's `[{ name, type, data }]` as `File`s; anything else is no files. */
+function pickedFiles(method: string, result: unknown): File[] {
+  if (!Array.isArray(result)) return [];
+  return result.map((item) => {
+    if (!isRecord(item) || typeof item.name !== "string" || !(item.data instanceof Uint8Array)) {
+      throw new DeviceError("failed", `${method} answered a file it can't read`);
+    }
+    const type = typeof item.type === "string" ? item.type : "";
+    return new File([item.data as Uint8Array<ArrayBuffer>], item.name, { type });
+  });
+}
+
+function widgetKind(kind: unknown): string {
+  if (typeof kind !== "string" || !/^[A-Za-z0-9._-]{1,64}$/.test(kind)) {
+    throw new DeviceError("failed", "widget.update: kind must be 1 to 64 letters, digits, '.', '_' or '-'");
+  }
+  return kind;
+}
+
+/** `content` checked and copied with only the parts a widget draws. */
+function widgetContent(content: unknown): WidgetContent {
+  const bad = (why: string) => new DeviceError("failed", `widget.update: ${why}`);
+  if (!isRecord(content)) throw bad("content must be an object");
+  const text = (value: unknown, max: number, what: string): string | undefined => {
+    if (value === undefined) return undefined;
+    if (typeof value !== "string" || value.length > max) throw bad(`${what} must be text up to ${max} characters`);
+    return value;
+  };
+  const out: WidgetContent = {};
+  const title = text(content.title, 64, "title");
+  if (title !== undefined) out.title = title;
+  if (content.rows !== undefined) {
+    if (!Array.isArray(content.rows) || content.rows.length > 6) throw bad("rows must be a list of at most 6");
+    out.rows = content.rows.map((row): WidgetRow => {
+      if (!isRecord(row)) throw bad("each row is { text } or { label, value, unit }");
+      if (row.value === undefined) {
+        const value = text(row.text, 128, "a row's text");
+        if (value === undefined) throw bad("each row is { text } or { label, value, unit }");
+        return { text: value };
+      }
+      if (typeof row.value !== "number" || !Number.isFinite(row.value)) throw bad("a row's value must be a finite number");
+      return { value: row.value, ...defined({ label: text(row.label, 32, "a row's label"), unit: text(row.unit, 32, "a row's unit") }) };
+    });
+  }
+  if (content.tint !== undefined) {
+    if (!(WIDGET_TINTS as readonly unknown[]).includes(content.tint)) throw bad(`tint must be one of ${WIDGET_TINTS.join(", ")}`);
+    out.tint = content.tint as WidgetContent["tint"];
+  }
+  if (content.sparkline !== undefined) {
+    const line = content.sparkline;
+    if (!Array.isArray(line) || line.length > 64 || !line.every((n) => typeof n === "number" && Number.isFinite(n))) {
+      throw bad("sparkline must be at most 64 finite numbers");
+    }
+    out.sparkline = [...line];
+  }
+  return out;
+}
+
+/** The host's `input` reply, checked; files as plain bytes. */
+export function runInput(value: unknown): RunInput {
+  if (!isRecord(value)) throw new DeviceError("failed", "the host's input reply is malformed");
+  const files = Array.isArray(value.files) ? value.files : [];
+  const input: RunInput = {
+    files: files.map((item) => {
+      if (!isRecord(item) || typeof item.name !== "string" || !(item.data instanceof Uint8Array)) {
+        throw new DeviceError("failed", "the host's input reply is malformed");
+      }
+      return { name: item.name, type: typeof item.type === "string" ? item.type : "", data: item.data };
+    }),
+  };
+  if (typeof value.text === "string") input.text = value.text;
+  if (typeof value.url === "string") input.url = value.url;
+  return input;
+}
+
+/** `fields` without its undefined values, so they aren't sent. */
+function defined(fields: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined));
+}
+
+/** A date as the ISO 8601 string the host reads, or undefined. */
+function iso(date: Date | undefined): string | undefined {
+  if (date === undefined) return undefined;
+  if (!(date instanceof Date) || Number.isNaN(date.getTime())) throw new DeviceError("failed", "pickDate takes Date values");
+  return date.toISOString();
+}
+
+/** A Device whose every call rejects `unavailable`: what `import` gives on a kernel with no host. */
+export function unavailableDevice(): Device {
+  const transport: DeviceTransport = { call: () => Promise.reject(new DeviceError("unavailable", "this kernel has no device host")) };
+  return createDevice(transport, { platform: "none", appVersion: "", capabilities: [] });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}

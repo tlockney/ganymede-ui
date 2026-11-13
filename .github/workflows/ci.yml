@@ -43,6 +43,8 @@ jobs:
     outputs:
       e2e: ${{ steps.changes.outputs.e2e }}
       macos: ${{ steps.changes.outputs.macos }}
+      device: ${{ steps.changes.outputs.device }}
+      device_swift: ${{ steps.changes.outputs.device_swift }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -70,6 +72,77 @@ jobs:
       - run: npm run check
       - run: npm test
       - run: npm run build
+
+  # The `device` package in packages/device (#560): its type check, unit
+  # tests and build, then its preload in a real Worker under cdp-kernel's
+  # browser target in headless Chromium. cdp-kernel is a checkout pinned to
+  # the release the package targets (its preload and host options,
+  # tlockney/cdp-kernel#384); bump it with the package. The browser test
+  # fails, not skips, when CDPK_DIR is set but unusable.
+  device:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.device != 'false' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          repository: tlockney/cdp-kernel
+          ref: v0.9.0
+          path: cdp-kernel
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            cdp-kernel/package-lock.json
+      - run: npm ci
+      - run: npm run check
+        working-directory: packages/device
+      - run: npm test
+        working-directory: packages/device
+      - run: npm run build
+        working-directory: packages/device
+      - run: npm ci
+        working-directory: cdp-kernel
+      # Chromium, keyed on the installed Playwright version.
+      - id: playwright
+        run: echo "version=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}-chromium
+      - run: |
+          npx playwright install chromium
+          timeout 5m npx playwright install-deps chromium || { sudo pkill -x apt-get || true; echo "::warning::apt failed; using the runner image's libraries"; }
+      - run: node --test test/browser.test.ts
+        working-directory: packages/device
+        env:
+          CDPK_DIR: ${{ github.workspace }}/cdp-kernel
+
+  # The device package's Swift DeviceBridge (#560): its unit tests on macOS
+  # and a build for iOS. The apps build it too, in macos-app and ios-app.
+  device-swift:
+    needs: changes
+    if: ${{ !cancelled() && needs.changes.outputs.device_swift != 'false' }}
+    runs-on: macos-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: packages/device
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: swift test
+      # SwiftPM names the scheme after the package.
+      - run: xcodebuild -list
+      - run: xcodebuild build -scheme GanymedeDevice -destination 'generic/platform=iOS' -quiet
 
   # The built app against a real `ganymede serve` (a pinned release binary,
   # no Python) running cdp-kernel's TypeScript kernel, and against the

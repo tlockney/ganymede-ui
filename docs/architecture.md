@@ -539,12 +539,12 @@ server's shutdown asks each kernel to shut down, then stops it, so quit
 stops the server off the main thread, which answers for the app's kernel.
 
 Native bridges for cells, such as
-[ganymede-device](https://github.com/tlockney/ganymede-device)'s `device`
+the device package's ([`packages/device`](../packages/device/)) `device`
 handler, belong on the kernel web view only, so nothing a notebook page
 renders can call them (#99). When the kernel page sees a `device` handler,
-it starts each kernel with ganymede-device's preload (which installs
+it starts each kernel with the device package's preload (which installs
 `globalThis.device` in the cells' Worker), its `webkitHost()` and
-`capabilities: { device: true }`. `AppKernels` registers ganymede-device's
+`capabilities: { device: true }`. `AppKernels` registers the device package's
 Swift `DeviceBridge` on that web view, so cells in the app get `device`
 ([Device API](device.md) lists its methods and is the user's guide), and
 learns each kernel's notebook from the server's start (`JPY_SESSION_NAME`)

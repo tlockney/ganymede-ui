@@ -1,14 +1,6 @@
 {
   "pins": [
     {
-      "identity": "ganymede-device",
-      "kind": "remoteSourceControl",
-      "location": "https://github.com/tlockney/ganymede-device",
-      "state": {
-        "revision": "b7fefb02fe70ebf5cfa79609bc89867e0edd5390"
-      }
-    },
-    {
       "identity": "h",
       "kind": "remoteSourceControl",
       "location": "https://github.com/rarestype/h",

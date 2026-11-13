@@ -8,10 +8,10 @@ method, and the app answers it from Swift:
 await device?.clipboard.writeText('hello from a cell');
 ```
 
-The API comes from
-[ganymede-device](https://github.com/tlockney/ganymede-device), which has
+The API comes from the device package,
+[`packages/device`](https://github.com/tlockney/ganymede-ui/tree/main/packages/device), which has
 the TypeScript package, the app's Swift side, and the
-[design and phases](https://github.com/tlockney/ganymede-device/blob/main/docs/plan.md).
+[design and phases](https://github.com/tlockney/ganymede-ui/blob/main/packages/device/docs/plan.md).
 It is early: today it has device details, the clipboard (text and
 images), haptics, opening URLs, dialogs, share, Quick Look, file and
 photo pickers, saving files, and sounds.
@@ -65,7 +65,7 @@ for one instead, over a Jupyter comm, and the app answers it for the
 notebook window that ran the cell:
 
 ```ts
-import { connectDevice } from 'https://raw.githubusercontent.com/tlockney/ganymede-device/main/src/comm.ts';
+import { connectDevice } from 'https://raw.githubusercontent.com/tlockney/ganymede-ui/main/packages/device/src/comm.ts';
 const device = await connectDevice(jupyter.comm);
 await device.clipboard.writeText('from the server');
 ```
@@ -283,7 +283,7 @@ if (file) {
 
 The table above has each method, and the sections below the ones that
 need more than a call. The
-[phases](https://github.com/tlockney/ganymede-device/blob/main/docs/plan.md#phases)
+[phases](https://github.com/tlockney/ganymede-ui/blob/main/packages/device/docs/plan.md#phases)
 list what comes next.
 
 ### Methods behind a permission

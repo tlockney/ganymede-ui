@@ -1,8 +1,8 @@
-// Keeps docs/device.md's method table in step with ganymede-device's
-// SUPPORT matrix (src/support.ts there): the table and its notes between
-// the device-table markers are what `supportTable()` renders, formatted
-// with Prettier. `npm run check` fails when they differ; run
-// `node scripts/device-table.mjs --write` after bumping ganymede-device.
+// Keeps docs/device.md's method table in step with the device package's
+// SUPPORT matrix (packages/device/src/support.ts): the table and its notes
+// between the device-table markers are what `supportTable()` renders,
+// formatted with Prettier. `npm run check` fails when they differ; run
+// `node scripts/device-table.mjs --write` after changing that matrix.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { supportTable } from '@tlockney/ganymede-device';
