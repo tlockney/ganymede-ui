@@ -78,6 +78,10 @@ export async function runWithParams(
     // Not JSON: a server without the route, or a proxy's page.
   }
   if (!res.ok) {
+    // Ganymede 0.8 and 0.9 run but keep no copies ("save must be false").
+    if (opts.save && res.status === 400 && /save must be false/.test(answer?.message ?? '')) {
+      throw new Error('Saving the executed notebook needs Ganymede 0.10 or later.');
+    }
     // jupyter_server answers an unknown route with a bare "Not Found".
     if (answer?.message && answer.message !== 'Not Found') throw new Error(answer.message);
     throw new Error(

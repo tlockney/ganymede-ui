@@ -161,6 +161,8 @@ export type PageState = {
    * (#582) work here: a server, which makes them from the file.
    */
   publish: boolean;
+  /** Whether Run with Parameters works here: a Ganymede server that runs the kernels. */
+  runParams: boolean;
   /** What the notebook asks for that its grant doesn't give (`missingWants`). */
   accessWanted: string[];
   /** The active cell's type. */

@@ -73,6 +73,13 @@ describe('run with parameters', () => {
     await expect(runWithParams(settings(fetch), 'Io.ipynb', {}, { save: false })).rejects.toThrow(
       'It needs Ganymede',
     );
+    // Ganymede 0.8 and 0.9 run, but keep no copies.
+    fetch.mockResolvedValueOnce(
+      json({ message: 'save must be false; this server keeps no copies of runs yet' }, 400),
+    );
+    await expect(runWithParams(settings(fetch), 'Io.ipynb', {}, { save: true })).rejects.toThrow(
+      'Saving the executed notebook needs Ganymede 0.10 or later.',
+    );
   });
 });
 

@@ -17,7 +17,8 @@ Ganymede's `POST /api/notebooks/run` (since 0.8.0; `save: "copy"` since 0.10.0).
   so the sheet can always be stopped: Stop and Esc abort the request,
   and the server shuts the run's kernel down when the client goes away.
   Closing the notebook, or opening another, closes the sheet, which
-  aborts it too.
+  aborts it too. A rename doesn't: the sheet and its remembered
+  parameters follow the new name.
 - The server reads the notebook from its room, so unsaved edits run
   without a save while the pane is joined to the room; a pane that fell
   back to the contents API runs the saved file. Nothing in the window
@@ -26,7 +27,9 @@ Ganymede's `POST /api/notebooks/run` (since 0.8.0; `save: "copy"` since 0.10.0).
   as documents, and the page's `open` command would bypass that.
 - Gated on a Ganymede server that runs the kernels (`runAvailable`): not
   on a connection with `kernels: page` or `both`, where the notebook's
-  kernel may be one in the page the server can't start. The Apple apps
-  use neither, so their menus follow `PageState.publish`.
+  kernel may be one in the page the server can't start. The page tells
+  the Apple apps' menus through `PageState.runParams`.
+- Ganymede 0.8 and 0.9 run but refuse `save` ("save must be false"); with
+  the box checked the sheet says saving needs 0.10 or later.
   Page command `run-with-params`: Command Palette, the toolbar's More
   menu (the run group's overflow, in a narrow window), Mac Cell menu, iPad Cell and ⋯ menus.

@@ -1967,12 +1967,12 @@ button {
   margin: 0;
 }
 
-.form-rows label.stacked-row {
+.run-sheet .form-rows label.stacked-row {
   grid-template-columns: 1fr;
   gap: 4px;
 }
 
-.form-rows label.stacked-row > span {
+.run-sheet .form-rows label.stacked-row > span {
   text-align: left;
 }
 

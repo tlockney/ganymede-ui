@@ -177,10 +177,16 @@ export function App() {
   }, [narrow]);
   const [openPath, setOpenPath] = useState<string>();
   // Not if another notebook was opened while it renamed.
-  const followRename = useCallback(
-    (from: string, to: string) => setOpenPath(p => (p === from ? to : p)),
-    [],
-  );
+  const followRename = useCallback((from: string, to: string) => {
+    setOpenPath(p => (p === from ? to : p));
+    // A run going on keeps going: its sheet and parameters follow the name.
+    setRunFor(r => (r?.path === from ? { ...r, path: to } : r));
+    const params = lastParams.current.get(from);
+    if (params !== undefined) {
+      lastParams.current.delete(from);
+      lastParams.current.set(to, params);
+    }
+  }, []);
   const [controller, setController] = useState<NotebookController>();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -700,6 +706,7 @@ export function App() {
       trusted: shown?.trusted ?? true,
       hostGrants: hostGrantsAvailable(backend),
       publish: publishAvailable(backend),
+      runParams: runAvailable(backend),
       accessWanted: JSON.parse(accessKey) as string[],
       cellType: shown?.cellType ?? null,
       kernels: Object.values(specs?.kernelspecs ?? {}).flatMap(k =>
@@ -979,7 +986,6 @@ export function App() {
       )}
       {runFor && backend && (
         <RunSheet
-          key={runFor.path}
           name={runFor.name}
           initialParams={runFor.params}
           run={(params, opts) => {

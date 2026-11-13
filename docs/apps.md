@@ -110,8 +110,9 @@ shown or hidden, its tab and its expanded folders across launches.
 
 > [!NOTE]
 > **Unreleased.** Clear All Outputs (Cell menu, Command Palette, the web
-> toolbar's run menu, the iPad's Cell and ⋯ menus) is available only from
-> a build of `main` (HEAD), not in the latest release.
+> toolbar's run menu, the iPad's Cell and ⋯ menus) and Run with
+> Parameters (Cell menu, the iPad's Cell and ⋯ menus) are available only
+> from a build of `main` (HEAD), not in the latest release.
 
 ### Kernels
 
@@ -566,8 +567,9 @@ runs the notebook as this window shows it, unsaved edits included, while
 the window is connected to it live; otherwise it runs the saved file. The field starts with the
 parameters you last ran it with here, or else those `ganymede execute
 -p` recorded in the notebook. **Save the executed notebook** keeps the run's outputs as a copy
-under `runs/`. Stop (or Esc) ends the run and its kernel. It needs a
-Ganymede server, 0.8 or later; a Jupyter server has no such run.
+under `runs/` (Ganymede 0.10 or later). Stop (or Esc) ends the run and
+its kernel. It needs a Ganymede server, 0.8 or later; a Jupyter server
+has no such run.
 
 ## Exporting a notebook
 

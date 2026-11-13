@@ -716,7 +716,7 @@ struct IPadNotebookToolbar: ToolbarContent {
                 Button { page.run("run-with-params") } label: {
                     Label("Run with Parameters…", systemImage: "slider.horizontal.3")
                 }
-                .disabled(page.state.publish != true)
+                .disabled(page.state.runParams != true)
                 Button { page.run("clear-outputs") } label: {
                     Label("Clear All Outputs", systemImage: "eraser")
                 }
@@ -810,7 +810,7 @@ struct IPadCommands: Commands {
         CommandMenu("Cell") {
             IPadPageButton("Run Cell", "run")
             IPadPageButton("Run All Cells", "run-all", key: .return, modifiers: [.command, .shift])
-            IPadPageButton("Run with Parameters…", "run-with-params") { $0.hasNotebook && $0.publish == true }
+            IPadPageButton("Run with Parameters…", "run-with-params") { $0.hasNotebook && $0.runParams == true }
             IPadPageButton("Clear All Outputs", "clear-outputs")
             IPadPageButton("Insert Cell Below", "insert-below")
             IPadPageButton("Insert Markdown Cell Below", "insert-markdown")

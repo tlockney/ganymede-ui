@@ -322,6 +322,10 @@ describe('App', () => {
     expect(within(again).getByRole('textbox', { name: /Parameters/ })).toHaveValue(
       '{\n  "day": "tue"\n}',
     );
+    // A rename while the sheet is up keeps it, and its parameters follow.
+    act(() => mocks.onRenamed!('Io.ipynb', 'Moon.ipynb'));
+    expect(screen.getByRole('dialog', { name: /with Parameters/ })).toBe(again);
+    act(() => mocks.onRenamed!('Moon.ipynb', 'Io.ipynb'));
     await userEvent.click(within(again).getByRole('button', { name: 'Cancel' }));
     expect(await run('cell-type', 'markdown')).toBe(true);
     expect(changeCellType).toHaveBeenCalledWith('markdown');
