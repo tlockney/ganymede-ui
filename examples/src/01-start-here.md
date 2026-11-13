@@ -12,8 +12,8 @@ anything. Select a code cell and press **Shift-Enter** to run it, or use
 | :--- | :--- |
 | 01 Start Here | Cells, state, and the kinds of output a cell can show |
 | 02 Web APIs | `fetch` from public APIs, tables, progress that updates in place |
-| 03 Charts and Diagrams | SVG by hand, d3, Vega-Lite and Graphviz |
-| 04 DuckDB | SQL in the notebook with DuckDB compiled to WebAssembly |
+| 03 Charts and Diagrams | `jupyter.chart` with Vega-Lite and Observable Plot, d3, Graphviz |
+| 04 DuckDB | SQL in the notebook with `jupyter.sql`, results as tables and charts |
 | 05 Generative Art | Seeded randomness, canvas and SVG, animation |
 | 06 Widgets | Sliders and buttons that talk to the kernel |
 | 07 UI Frameworks | React, Preact and Lit components as output |
@@ -46,19 +46,18 @@ console.log(`The largest moon is ${largest(moons).name}.`);
 
 ## Rich output
 
-The kernel's `jupyter` object turns text into Markdown, HTML or SVG output.
-`jupyter.md` takes a template string, so a table is a few lines built from
-the data.
+The kernel's `jupyter` object turns values into rich output. `jupyter.table`
+shows rows as a table: click a column's name to sort by it.
 
 ```ts
-const rows = moons.map(m => `| ${m.name} | ${m.radiusKm.toLocaleString("en-US")} | ${m.orbitDays} |`);
-jupyter.md`
-| Moon | Radius (km) | Orbit (days) |
-| :--- | ---: | ---: |
-${rows.join("\n")}
+jupyter.table(moons, { title: "Galilean moons" });
+```
 
-Kepler's third law: the square of the period grows with the cube of the orbit, $T^2 \propto a^3$.
-`;
+`jupyter.md` shows Markdown, math included.
+
+```ts
+jupyter.md`Kepler's third law: the square of the period grows with the cube of the orbit, $T^2 \propto a^3$.
+Callisto's period is ${(moons[3].orbitDays / moons[0].orbitDays).toFixed(1)} times Io's.`;
 ```
 
 `jupyter.svg` draws with no library at all.

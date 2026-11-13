@@ -1,9 +1,9 @@
 # Charts and Diagrams
 
 Cells run in a Web Worker, which has no DOM, so the charts here are drawn
-as SVG text and shown with `jupyter.svg`. That works with libraries that
-compute rather than touch the page: d3's scales and shapes, Vega's
-renderer, and Graphviz compiled to WebAssembly.
+as SVG in the kernel. `jupyter.chart` does that for Vega-Lite and
+Observable Plot; d3's scales and shapes and Graphviz compiled to
+WebAssembly build SVG text that `jupyter.svg` shows.
 
 ## Data
 
@@ -53,18 +53,12 @@ jupyter.svg`<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" f
 ## Vega-Lite
 
 [Vega-Lite](https://vega.github.io/vega-lite/) describes a chart as JSON:
-data, a mark, and encodings. Vega renders it to SVG without a page.
+data, a mark, and encodings. `jupyter.chart` renders it to one SVG, title
+and legend included, and loads Vega the first time a cell draws a chart.
 
 ```ts
-import * as vl from "npm:vega-lite@6";
-import * as vega from "npm:vega@6";
-
-async function vegaLite(spec: object) {
-  const view = new vega.View(vega.parse(vl.compile(spec as any).spec), { renderer: "none" });
-  return jupyter.svg`${await view.toSVG()}`;
-}
-
-await vegaLite({
+jupyter.chart({
+  title: "Seattle: days by weather, per month",
   width: 520,
   height: 220,
   data: { values: days },
@@ -81,11 +75,11 @@ await vegaLite({
 });
 ```
 
-The same helper takes any Vega-Lite spec. A scatter plot of wind against
-rain, one point per rainy day of 2015:
+Any Vega-Lite spec works. A scatter plot of wind against rain, one point
+per rainy day of 2015:
 
 ```ts
-await vegaLite({
+jupyter.chart({
   width: 420,
   height: 260,
   data: { values: year.filter(d => d.precipitation > 0) },
@@ -95,6 +89,27 @@ await vegaLite({
     y: { field: "precipitation", type: "quantitative", scale: { type: "sqrt" }, title: "Rain (mm)" },
     color: { field: "weather", type: "nominal" },
   },
+});
+```
+
+## Observable Plot
+
+[Observable Plot](https://observablehq.com/plot/) builds a chart from
+marks in code. Pass `jupyter.chart` the Plot module and the options you
+would give `Plot.plot`; it supplies the DOM Plot needs and draws the title
+and color legend into the SVG. Four years of daily highs, as a box per
+month:
+
+```ts
+import * as Plot from "npm:@observablehq/plot@0.6.17";
+
+jupyter.chart(Plot, {
+  title: "Seattle: daily high by month (°C)",
+  width: 640,
+  height: 280,
+  x: { tickFormat: (m: number) => "JFMAMJJASOND"[m] },
+  y: { grid: true, label: null },
+  marks: [Plot.boxY(days, { x: d => d.date.getUTCMonth(), y: "temp_max" })],
 });
 ```
 

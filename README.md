@@ -107,20 +107,25 @@ folder gets a copy on first launch (or the first after updating), so they
 show without this step. They run on the TypeScript kernel and
 were saved with their outputs, marked trusted:
 
-| Notebook               | What it shows                                                          |
-| :--------------------- | :--------------------------------------------------------------------- |
-| 01 Start Here          | Cells, state, and every kind of output                                 |
-| 02 Web APIs            | `fetch` from public APIs, tables, progress that updates in place       |
-| 03 Charts and Diagrams | SVG by hand, d3, Vega-Lite and Graphviz                                |
-| 04 DuckDB              | SQL with DuckDB (WebAssembly in the apps), over CSV and Parquet by URL |
-| 05 Generative Art      | Seeded randomness, `OffscreenCanvas` and SVG, animation                |
-| 06 Widgets             | `jupyter.widget` (anywidget): controls that talk to the kernel         |
-| 07 UI Frameworks       | React, Preact and Lit components as output                             |
-| 08 Device              | The `device` API, each call checked with `device.has`                  |
+| Notebook               | What it shows                                                        |
+| :--------------------- | :------------------------------------------------------------------- |
+| 01 Start Here          | Cells, state, and every kind of output                               |
+| 02 Web APIs            | `fetch` from public APIs, tables, progress that updates in place     |
+| 03 Charts and Diagrams | `jupyter.chart` with Vega-Lite and Observable Plot, d3, Graphviz     |
+| 04 DuckDB              | `jupyter.sql` over CSV and Parquet by URL, results as tables, charts |
+| 05 Generative Art      | Seeded randomness, `OffscreenCanvas` and SVG, animation              |
+| 06 Widgets             | `jupyter.widget` (anywidget): controls that talk to the kernel       |
+| 07 UI Frameworks       | React, Preact and Lit components as output                           |
+| 08 Device              | The `device` API, each call checked with `device.has`                |
 
 They load packages from esm.sh and data from public sites, so they need
 a network connection. [examples/README.md](examples/README.md) says how
 they are built.
+
+> [!NOTE]
+> **Unreleased.** The examples use `jupyter.table`, `jupyter.sql` and
+> `jupyter.chart` (cdp-kernel 0.11.0) only in a build of `main` (HEAD).
+> The latest release's examples draw charts and tables by hand.
 
 Open a notebook from the sidebar, which also lists running kernels. The
 toolbar runs, interrupts and restarts the kernel, switches kernels, trusts
