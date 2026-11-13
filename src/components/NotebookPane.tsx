@@ -10,6 +10,7 @@ import { Widget } from '@lumino/widgets';
 import { type Backend, trustNotebook } from '../lib/backends';
 import { attachEditing, createCommands, createNotebook, createRendermime } from '../lib/jupyterlab';
 import { attachCellControls } from '../lib/cell-controls';
+import { attachCodeCollapse } from '../lib/code-collapse';
 import { CellMenu } from './CellMenu';
 import { KeyboardBar } from './KeyboardBar';
 import type { Cell, ICodeCellModel } from '@jupyterlab/cells';
@@ -566,6 +567,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       const cellControls = attachCellControls(notebook, (cell, anchor) =>
         setMenu({ cell, anchor }),
       );
+      const codeCollapse = attachCodeCollapse(notebook);
       const runStatus = attachRunStatus(notebook, {
         interrupt: () =>
           void session.session?.kernel
@@ -603,6 +605,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         disposables: [
           editing,
           cellControls,
+          codeCollapse,
           runStatus,
           notebookWidgets,
           // `device` for cells on server kernels (#568): the

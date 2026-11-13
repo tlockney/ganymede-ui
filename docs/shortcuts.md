@@ -90,6 +90,10 @@ origin across launches, so changes there last.
 | Change to code          | `Y`        | `Y`                     |
 | Change to Markdown      | `M`        | `M`                     |
 | Change to raw           | `R`        | `R`                     |
+| Collapse code           | `⌘⌥[`      | `Ctrl+Alt+[`            |
+| Expand code             | `⌘⌥]`      | `Ctrl+Alt+]`            |
+| Collapse all code       | `⌘⌥⇧[`     | `Ctrl+Alt+Shift+[`      |
+| Expand all code         | `⌘⌥⇧]`     | `Ctrl+Alt+Shift+]`      |
 | Show keyboard shortcuts | `H`        | `H`                     |
 
 ### Edit mode
@@ -108,3 +112,7 @@ origin across launches, so changes there last.
 | Command palette | `⌘⇧P` | `Ctrl+Shift+P` |
 
 <!-- shortcuts:end -->
+
+> [!NOTE]
+> **Unreleased.** Collapse code, Expand code and their "all" pair are
+> available only from a build of `main` (HEAD), not in the latest release.

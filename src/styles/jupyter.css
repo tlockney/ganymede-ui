@@ -412,3 +412,84 @@
 .touch-ui .notebook-page .jp-cell-toolbar {
   display: none !important;
 }
+
+/* ---------- Code collapse (#564) ---------- */
+
+/* A disclosure button in each code cell's prompt column (src/lib/
+ * code-collapse.ts): on hover and on the active cell, and always while the
+ * code is collapsed, when the chevron points right. */
+.notebook-page .gn-code-toggle {
+  position: absolute;
+  top: 9px;
+  left: calc(var(--jp-cell-collapser-width) + 4px);
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  /* Hidden takes no taps: on a touch screen a tap left of an inactive
+   * cell's prompt selects the cell, not collapses it. */
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.12s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.notebook-page .gn-code-toggle svg {
+  transition: transform 0.15s ease;
+}
+
+.notebook-page .jp-Cell.jp-mod-active > .gn-code-toggle,
+.notebook-page .gn-code-toggle:focus-visible,
+.notebook-page .jp-Cell:has(.jp-InputPlaceholder) > .gn-code-toggle {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.notebook-page .jp-Cell:has(.jp-InputPlaceholder) > .gn-code-toggle svg {
+  transform: rotate(-90deg);
+}
+
+.notebook-page .gn-code-toggle:focus-visible {
+  background: var(--control-bg-hover);
+  color: var(--text);
+}
+
+/* Only with a pointer that hovers: a tap would leave it showing. */
+@media (hover: hover) {
+  .notebook-page .jp-Cell:hover > .gn-code-toggle {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .notebook-page .gn-code-toggle:hover {
+    background: var(--control-bg-hover);
+    color: var(--text);
+  }
+}
+
+/* The collapsed code: its first line, dimmed, as a row to click open. */
+.notebook-page .jp-InputPlaceholder .jp-Placeholder-content {
+  border-radius: 10px;
+  color: var(--text-2);
+  cursor: pointer;
+}
+
+/* JupyterLab stacks the prompt over the editor at 760px and under: the
+ * button starts the prompt's row, and the prompt moves over for it. */
+@media (width <= 760px) {
+  .notebook-page .gn-code-toggle {
+    top: 0;
+    width: 28px;
+    height: 28px;
+  }
+  .notebook-page .jp-CodeCell .jp-InputPrompt {
+    width: auto;
+    padding-left: 30px;
+  }
+}

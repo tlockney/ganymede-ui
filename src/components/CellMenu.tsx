@@ -1,7 +1,8 @@
 import { useEffect } from 'react';
 import type { Cell } from '@jupyterlab/cells';
 import type { Notebook } from '@jupyterlab/notebook';
-import { CELL_MENU, type CellMenuAction, applyCellAction } from '../lib/cell-controls';
+import { CELL_MENU, type CellMenuAction, applyCellAction, selectOnly } from '../lib/cell-controls';
+import { canCollapse, setCollapsed } from '../lib/code-collapse';
 import { ContextMenu, type MenuItem } from './ContextMenu';
 
 type Props = {
@@ -15,7 +16,7 @@ type Props = {
 };
 
 /**
- * One cell's menu (#200): Run, Cell Type, Move Up/Down, Duplicate, Delete,
+ * One cell's menu (#200): Run, Collapse Code (#564), Cell Type, Move Up/Down, Duplicate, Delete,
  * in the shared popup menu (#203), so it is sized for touch and a tap
  * outside it or Escape closes it.
  */
@@ -59,6 +60,19 @@ export function CellMenu({ notebook, cell, anchor, run, onClose }: Props) {
       label="Cell Actions"
       items={[
         item(first!),
+        // Collapsing code (#564), for touch: the button beside the cell is small.
+        ...(canCollapse(cell) || cell.inputHidden
+          ? [
+              {
+                label: cell.inputHidden ? 'Expand Code' : 'Collapse Code',
+                onSelect: () => {
+                  // Its cell, as the other items act on it (`applyCellAction`).
+                  if (selectOnly(notebook, cell)) setCollapsed(cell, !cell.inputHidden, notebook);
+                  if (!notebook.isDisposed) notebook.activate();
+                },
+              },
+            ]
+          : []),
         'separator',
         { heading: 'Cell Type' },
         ...types.map(item),

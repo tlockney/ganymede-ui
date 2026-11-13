@@ -220,6 +220,21 @@ storage); the Mac and iPad apps keep their own, in their Settings.
 > the latest release, which lists each stylistic set and character variant
 > under Alternates and has no Markdown font.
 
+### Collapsing code
+
+A code cell's chevron, left of its prompt (shown on hover and on the
+active cell), collapses its code to the first line; the chevron or that
+line expands it again. In command mode ⌘⌥[ and ⌘⌥] (Ctrl+Alt+[ and ]
+elsewhere) collapse and expand the selected cells, and ⇧ with them does
+every code cell; the command palette has all four, and on a phone the
+cell's … menu has Collapse Code. A collapsed cell is saved that way in the
+notebook (`metadata.jupyter.source_hidden`, as JupyterLab saves it).
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, where only the thin bar at a cell's left edge
+> collapses its code.
+
 ### Running cells and errors
 
 The cell the kernel is running says so under its input, with how long it
