@@ -59,7 +59,7 @@
     "@lumino/signaling": "2.1.6",
     "@lumino/widgets": "2.10.0",
     "@sentry/browser": "11.11.0",
-    "@tlockney/cdp-kernel": "0.10.0",
+    "@tlockney/cdp-kernel": "0.11.0",
     "@tlockney/ganymede-device": "0.0.0",
     "lib0": "0.2.119",
     "localforage": "1.10.0",
