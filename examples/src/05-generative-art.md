@@ -2,8 +2,7 @@
 
 Pictures from rules and randomness. A seeded random number generator makes
 every run of a cell draw the same picture; change the seed for another.
-Cells draw on an `OffscreenCanvas`, a canvas that needs no page, and show
-it as an image, or build SVG as text.
+Cells draw on a canvas and show it as an image, or build SVG as text.
 
 ## Seeded randomness
 
@@ -21,10 +20,22 @@ function rng(seed: number) {
   };
 }
 
+// In the apps, an OffscreenCanvas: a canvas that needs no page. Node and Bun
+// have none, and Deno's draws no 2D, so there @napi-rs/canvas draws instead.
+const offscreen = typeof OffscreenCanvas === "function" && new OffscreenCanvas(1, 1).getContext("2d") !== null;
+const napi = offscreen ? undefined : await import("npm:@napi-rs/canvas@1.1.0");
+
+/** A canvas to draw on, with a 2D context. */
+function makeCanvas(width: number, height: number): OffscreenCanvas {
+  return offscreen ? new OffscreenCanvas(width, height) : (napi!.createCanvas(width, height) as any);
+}
+
 /** The canvas as image output: PNG, or JPEG for a busy picture, which it keeps smaller. */
 async function show(canvas: OffscreenCanvas, type: "image/png" | "image/jpeg" = "image/png") {
-  const blob = await canvas.convertToBlob({ type, quality: 0.85 });
-  return jupyter.image(new Uint8Array(await blob.arrayBuffer()));
+  const bytes = offscreen
+    ? new Uint8Array(await (await canvas.convertToBlob({ type, quality: 0.85 })).arrayBuffer())
+    : await (canvas as any).encode(type === "image/png" ? "png" : "jpeg", 85);
+  return jupyter.image(bytes);
 }
 
 const random = rng(42);
@@ -69,7 +80,7 @@ import { createNoise2D } from "npm:simplex-noise@4";
 async function flowField(seed: number, { width = 720, height = 480, particles = 3000, steps = 120 } = {}) {
   const random = rng(seed);
   const noise = createNoise2D(random);
-  const canvas = new OffscreenCanvas(width, height);
+  const canvas = makeCanvas(width, height);
   const g = canvas.getContext("2d")!;
   g.fillStyle = "#0f1420";
   g.fillRect(0, 0, width, height);
@@ -126,7 +137,7 @@ cell to watch it draw, and interrupt the kernel to stop it early.
 ```ts
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 const size = 420;
-const canvas = new OffscreenCanvas(size, size);
+const canvas = makeCanvas(size, size);
 const g = canvas.getContext("2d")!;
 g.fillStyle = "#fbf8f1";
 g.fillRect(0, 0, size, size);

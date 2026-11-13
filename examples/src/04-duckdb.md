@@ -1,48 +1,77 @@
 # DuckDB
 
-[DuckDB](https://duckdb.org) is an analytical SQL database. Its
-WebAssembly build, `@duckdb/duckdb-wasm`, runs in the notebook with no
-server: it reads CSV, JSON and Parquet files over HTTP and keeps tables in
-memory.
+[DuckDB](https://duckdb.org) is an analytical SQL database. It runs in the
+notebook with no server: it reads CSV, JSON and Parquet files over HTTP
+and keeps tables in memory.
 
 ## Start the database
 
-DuckDB runs in a Worker of its own. Its script comes from the jsDelivr
-CDN; a small Blob script loads it, since a page can only start a Worker
-from its own origin.
+In the apps, cells run in a Web Worker, so DuckDB runs its WebAssembly
+build in a Worker of its own. Its script comes from the jsDelivr CDN; a
+small Blob script loads it, since a page can only start a Worker from its
+own origin. On Node, Deno and Bun, DuckDB's native build,
+`@duckdb/node-api`, runs in the kernel's process instead.
+
+Either way, `query` runs SQL and returns the result's columns and its rows
+as plain objects, and `close` frees the database.
 
 ```ts
-import * as duckdb from "npm:@duckdb/duckdb-wasm@1.29.0";
+type Result = { columns: { name: string; type: string }[]; rows: Record<string, unknown>[] };
+let query: (sql: string) => Promise<Result>;
+let close: () => Promise<void>;
 
-const bundle = await duckdb.selectBundle(duckdb.getJsDelivrBundles());
-const loader = URL.createObjectURL(new Blob([`importScripts("${bundle.mainWorker}");`], { type: "text/javascript" }));
-const db = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), new Worker(loader));
-await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
-URL.revokeObjectURL(loader);
-const conn = await db.connect();
-(await conn.query("select version() as version")).toArray()[0].toJSON();
+if (/^(Node\.js|Deno|Bun)\//.test(navigator.userAgent)) {
+  const { DuckDBInstance } = await import("npm:@duckdb/node-api@1.5.6-r.2");
+  const db = await DuckDBInstance.create(":memory:");
+  const conn = await db.connect();
+  query = async sql => {
+    const result = await conn.runAndReadAll(sql);
+    const types = result.columnTypes();
+    return {
+      columns: result.columnNames().map((name, i) => ({ name, type: String(types[i]) })),
+      rows: result.getRowObjectsJS(),
+    };
+  };
+  close = async () => { conn.closeSync(); db.closeSync(); };
+} else {
+  const duckdb = await import("npm:@duckdb/duckdb-wasm@1.29.0");
+  const bundle = await duckdb.selectBundle(duckdb.getJsDelivrBundles());
+  const loader = URL.createObjectURL(new Blob([`importScripts("${bundle.mainWorker}");`], { type: "text/javascript" }));
+  const db = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), new Worker(loader));
+  await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
+  URL.revokeObjectURL(loader);
+  const conn = await db.connect();
+  query = async sql => {
+    const table = await conn.query(sql);
+    return {
+      columns: table.schema.fields.map(f => ({ name: f.name, type: String(f.type) })),
+      rows: table.toArray().map(row => row.toJSON()),
+    };
+  };
+  close = async () => { await conn.close(); await db.terminate(); };
+}
+(await query("select version() as version")).rows[0];
 ```
 
 ## Show a result as a table
 
-A query returns an Apache Arrow table. This helper turns one into a
-Markdown table, and is the cell's result.
+This helper turns a result into a Markdown table, and is the cell's
+result.
 
 ```ts
-async function sql(query: string, limit = 20) {
-  const table = await conn.query(query);
-  const fields = table.schema.fields;
+async function sql(text: string, limit = 20) {
+  const { columns, rows } = await query(text);
   const show = (v: unknown, type: string) => {
     if (v === null || v === undefined) return "";
-    if (type.startsWith("Date") || type.startsWith("Timestamp")) return new Date(Number(v)).toISOString().slice(0, 10);
+    if (v instanceof Date || /^(date|timestamp)/i.test(type)) return new Date(v instanceof Date ? v : Number(v)).toISOString().slice(0, 10);
     const n = typeof v === "bigint" ? Number(v) : v;
     if (typeof n !== "number") return String(n);
     if (!Number.isInteger(n)) return n.toFixed(2);
     return Math.abs(n) >= 10_000 ? n.toLocaleString("en-US") : String(n);
   };
-  const rows = table.toArray().slice(0, limit).map(r => `| ${fields.map(f => show(r[f.name], String(f.type))).join(" | ")} |`);
-  const more = table.numRows > limit ? `\n\n${table.numRows - limit} more rows` : "";
-  return jupyter.md`| ${fields.map(f => f.name).join(" | ")} |\n| ${fields.map(() => "---").join(" | ")} |\n${rows.join("\n")}${more}`;
+  const lines = rows.slice(0, limit).map(r => `| ${columns.map(c => show(r[c.name], c.type)).join(" | ")} |`);
+  const more = rows.length > limit ? `\n\n${rows.length - limit} more rows` : "";
+  return jupyter.md`| ${columns.map(c => c.name).join(" | ")} |\n| ${columns.map(() => "---").join(" | ")} |\n${lines.join("\n")}${more}`;
 }
 
 await sql(`select 'Ganymede' as moon, 2634.1::double as radius_km, 1610 as discovered, date '1610-01-07' as first_seen`);
@@ -54,7 +83,7 @@ DuckDB reads a remote CSV as a table, guessing its columns' types. Here,
 four years of Seattle weather.
 
 ```ts
-await conn.query(`
+await query(`
   create table seattle as
   select * from read_csv_auto('https://raw.githubusercontent.com/vega/vega-datasets/v2.11.0/data/seattle-weather.csv')
 `);
@@ -90,7 +119,8 @@ await sql(`
 
 ## Data from a cell
 
-Data the notebook already has goes in as JSON. Here, the strongest
+Data the notebook already has goes in as JSON, read by DuckDB's
+`from_json` and spread into columns by `unnest`. Here, the strongest
 earthquakes of the past week, from the US Geological Survey.
 
 ```ts
@@ -100,8 +130,11 @@ const quakes = feed.features.map((f: any) => ({
   place: f.properties.place,
   depth_km: f.geometry.coordinates[2],
 }));
-await db.registerFileText("quakes.json", JSON.stringify(quakes));
-await conn.insertJSONFromPath("quakes.json", { name: "quakes" });
+const json = JSON.stringify(quakes).replaceAll("'", "''");
+await query(`
+  create table quakes as
+  select unnest(from_json('${json}', '[{"magnitude": "DOUBLE", "place": "VARCHAR", "depth_km": "DOUBLE"}]'), recursive := true)
+`);
 await sql(`
   select case when depth_km < 70 then 'shallow' when depth_km < 300 then 'intermediate' else 'deep' end as depth,
          count(*) as quakes,
@@ -118,10 +151,10 @@ A query's rows are plain objects too. Monthly rain as bars, straight from
 SQL into SVG:
 
 ```ts
-const months = (await conn.query(`
+const months = (await query(`
   select month(date) as m, round(avg(precipitation) * 30, 1) as rain
   from seattle group by m order by m
-`)).toArray().map(r => ({ m: Number(r.m), rain: r.rain as number }));
+`)).rows.map(r => ({ m: Number(r.m), rain: Number(r.rain) }));
 const max = Math.max(...months.map(d => d.rain));
 const names = "Jan Feb Mar Apr May Jun Jul Aug Sep Oct Nov Dec".split(" ");
 const bars = months.map((d, i) => {
@@ -135,10 +168,9 @@ jupyter.svg`<svg xmlns="http://www.w3.org/2000/svg" width="532" height="206" fon
 
 ## Clean up
 
-Closing the connection and terminating the database frees its memory.
-Restarting the kernel does the same.
+Closing the database frees its memory. Restarting the kernel does the
+same.
 
 ```ts
-await conn.close();
-await db.terminate();
+await close();
 ```

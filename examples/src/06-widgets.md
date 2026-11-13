@@ -121,19 +121,14 @@ orbit;
 
 ## Binary data
 
-State can hold bytes. Here the kernel draws a picture on an
-`OffscreenCanvas` and sets its PNG bytes; the view shows them as an image
-and asks for a new hue.
+State can hold bytes. Here the kernel draws a picture as SVG and sets its
+bytes; the view shows them as an image and asks for a new hue.
 
 ```ts
 async function swatch(hue: number) {
-  const canvas = new OffscreenCanvas(240, 80);
-  const g = canvas.getContext("2d")!;
-  for (let i = 0; i < 24; i++) {
-    g.fillStyle = `hsl(${hue + i * 4} 60% ${30 + i * 2}%)`;
-    g.fillRect(i * 10, 0, 10, 80);
-  }
-  return new Uint8Array(await (await canvas.convertToBlob({ type: "image/png" })).arrayBuffer());
+  const stripes = Array.from({ length: 24 }, (_, i) =>
+    `<rect x="${i * 10}" width="10" height="80" fill="hsl(${hue + i * 4} 60% ${30 + i * 2}%)"/>`);
+  return new TextEncoder().encode(`<svg xmlns="http://www.w3.org/2000/svg" width="240" height="80">${stripes.join("")}</svg>`);
 }
 
 const palette = jupyter.widget({
@@ -142,18 +137,18 @@ const palette = jupyter.widget({
       const img = document.createElement("img");
       const slider = Object.assign(document.createElement("input"), { type: "range", min: "0", max: "360" });
       const update = () => {
-        const png = model.get("png");
-        img.src = URL.createObjectURL(new Blob([png], { type: "image/png" }));
+        const svg = model.get("svg");
+        img.src = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
         slider.value = model.get("hue");
       };
       slider.onchange = () => { model.set("hue", slider.valueAsNumber); model.save_changes(); };
-      model.on("change:png", update);
+      model.on("change:svg", update);
       update();
       el.append(img, document.createElement("br"), slider);
     },
   };`,
-  state: { hue: 200, png: await swatch(200) },
+  state: { hue: 200, svg: await swatch(200) },
 });
-palette.on("change:hue", async hue => palette.set("png", await swatch(Number(hue))));
+palette.on("change:hue", async hue => palette.set("svg", await swatch(Number(hue))));
 palette;
 ```
