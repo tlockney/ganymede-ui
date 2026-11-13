@@ -48,10 +48,10 @@ test('the examples open, trusted, and run in this browser', async ({ page }) => 
   // draws, including Graphviz's, which starts with an XML prolog.
   await page.goto(`/?open=${encodeURIComponent('Examples/03 Charts and Diagrams.ipynb')}`);
   const svgs = page.locator('[data-mime-type="image/svg+xml"] img');
-  await expect(svgs).toHaveCount(5, { timeout: 60_000 });
+  await expect(svgs).toHaveCount(6, { timeout: 60_000 });
   await expect
     .poll(() => svgs.evaluateAll(imgs => imgs.map(i => (i as HTMLImageElement).naturalWidth > 0)))
-    .toEqual([true, true, true, true, true]);
+    .toEqual([true, true, true, true, true, true]);
 });
 
 // The server's folder is shared with the other specs: leave it as it was.
