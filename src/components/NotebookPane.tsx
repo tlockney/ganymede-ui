@@ -605,7 +605,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
           cellControls,
           runStatus,
           notebookWidgets,
-          // `device` for cells on server kernels (ganymede-device#26): the
+          // `device` for cells on server kernels (#568): the
           // app's bridge, or in a browser web APIs behind a click.
           attachDevice(session, {
             click: promptClick(setDevicePrompt, () => {
