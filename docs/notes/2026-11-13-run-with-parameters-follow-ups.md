@@ -9,4 +9,7 @@ Findings from the reviewer's look at #593 after it merged.
 - The remembered parameters are cleared when the page connects to
   another server: paths are the server's.
 - A failed run whose answer has no `error` reads "The run failed."
-- The app sends `file-moved` and `open` as separate tasks, so `file-moved` moves the open path too: a render between them would otherwise see the sheet on another path and close it. The test waits between the two.
+- The app sends `file-moved` and `open` as separate tasks, so
+  `file-moved` moves the open path too: a render between them would
+  otherwise see the sheet on another path and close it. The test waits
+  between the two.
