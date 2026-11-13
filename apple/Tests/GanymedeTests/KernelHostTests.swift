@@ -230,7 +230,8 @@ final class KernelHostTests: XCTestCase {
         // The notebook page logs in with the token in its URL, as the
         // app's pages do, and keeps the cookie.
         ui.load(URLRequest(url: server.url))
-        try await waitFor(ui, "document.readyState === 'complete'")
+        // Past the redirect that drops the token, not the first about:blank.
+        try await waitFor(ui, "location.protocol === 'http:' && location.search === '' && document.readyState === 'complete'")
         let contents = "return (await fetch('/api/contents/')).status"
         let fromUI = try await ui.callAsyncJavaScript(contents, contentWorld: .page) as? Int
         XCTAssertEqual(fromUI, 200)
