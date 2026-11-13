@@ -729,6 +729,8 @@ struct CellMenu: View {
             Button("Run Cell") { page?.run("run") }
             Button("Run All Cells") { page?.run("run-all") }
                 .keyboardShortcut(.return, modifiers: [.command, .shift])
+            Button("Run with Parameters…") { page?.run("run-with-params") }
+                .disabled(page?.state.runParams != true)
             Button("Clear All Outputs") { page?.run("clear-outputs") }
             Divider()
             Button("Insert Cell Above") { page?.run("insert-above") }

@@ -90,8 +90,8 @@ shown or hidden, its tab and its expanded folders across launches.
   inserts cells, sets the cell type and trusts the notebook. Its kernel
   button opens a popover with the kernel's state and memory, Interrupt,
   Restart, Kernel Log and the kernels to change to.
-- The Cell menu runs, inserts, moves and deletes cells, clears all
-  outputs, collapses and expands code, and opens Find; the Kernel menu interrupts (⌘.),
+- The Cell menu runs, runs with parameters, inserts, moves and deletes
+  cells, clears all outputs, collapses and expands code, and opens Find; the Kernel menu interrupts (⌘.),
   restarts, changes and trusts. A code cell's chevron, left of its
   prompt, collapses its code to the first line, as on the web page
   (README, "Collapsing code"); the iPad's Cell menu has Collapse All Code
@@ -110,8 +110,9 @@ shown or hidden, its tab and its expanded folders across launches.
 
 > [!NOTE]
 > **Unreleased.** Clear All Outputs (Cell menu, Command Palette, the web
-> toolbar's run menu, the iPad's Cell and ⋯ menus) is available only from
-> a build of `main` (HEAD), not in the latest release.
+> toolbar's run menu, the iPad's Cell and ⋯ menus) and Run with
+> Parameters (Cell menu, the iPad's Cell and ⋯ menus) are available only
+> from a build of `main` (HEAD), not in the latest release.
 
 ### Kernels
 
@@ -398,7 +399,8 @@ keys are kept in the keychain too.
   in the folder and below it (and, switched on, in what notebooks say).
   In Running, swipe or long-press a kernel to shut it down.
 - The navigation bar runs cells and interrupts the kernel, and its ⋯ menu
-  inserts cells, sets the cell type, clears all outputs, restarts or
+  inserts cells, sets the cell type, runs with parameters, clears all
+  outputs, restarts or
   changes the kernel, shuts down other kernels, saves, renames,
   downloads, exports and trusts. With a
   keyboard, hold ⌘ to see the commands: New Notebook ⌘N, Save ⌘S, Run All
@@ -557,6 +559,28 @@ sheet on the iPad and iPhone. It needs a Ganymede server newer than
 nothing is downloaded (unsaved edits are still saved). It isn't offered
 with no Ganymede server; on a connection to a Jupyter server, whose
 export replaces nothing, the sheet refuses its page the same way.
+
+## Running with parameters
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+**Run with Parameters…** (Cell menu on the Mac, the ⋯ menu on the iPad
+and iPhone, the Command Palette in the browser, and its toolbar's More
+menu in a narrow window) runs the notebook as a program, the way `ganymede execute -p
+--results` does ([Programs](https://ganymede-server.com/docs/programs)):
+top to bottom in a new kernel on the server, with the parameters you
+type (a JSON object, such as `{"day": "mon"}`) in `jupyter.params`. The
+sheet shows the results the notebook names with `jupyter.result`, or
+where it failed. The notebook in the window doesn't change. The server
+runs the notebook as this window shows it, unsaved edits included, while
+the window is connected to it live; otherwise it runs the saved file. The field starts with the
+parameters you last ran it with here, or else those `ganymede execute
+-p` recorded in the notebook. **Save the executed notebook** keeps the run's outputs as a copy
+under `runs/` (Ganymede 0.10 or later). Stop (or Esc) ends the run and
+its kernel. It needs a Ganymede server, 0.8 or later; a Jupyter server
+has no such run.
 
 ## Exporting a notebook
 

@@ -13,6 +13,7 @@ final class PageStateTests: XCTestCase {
             "trusted": true,
             "hostGrants": true,
             "publish": true,
+            "runParams": true,
             "accessWanted": ["notebooks.run"],
             "cellType": "markdown",
             "kernels": [["name": "cdp", "displayName": "TypeScript"]],
@@ -22,6 +23,7 @@ final class PageStateTests: XCTestCase {
         XCTAssertEqual(state?.path, "moons/Io.ipynb")
         XCTAssertEqual(state?.hostGrants, true)
         XCTAssertEqual(state?.publish, true)
+        XCTAssertEqual(state?.runParams, true)
         XCTAssertEqual(state?.accessWanted, ["notebooks.run"])
         XCTAssertEqual(state?.dirty, true)
         XCTAssertEqual(state?.isBusy, true)
