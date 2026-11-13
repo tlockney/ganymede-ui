@@ -1,4 +1,4 @@
-// `device` from a server kernel (ganymede-device#26): a cell on the real
+// `device` from a server kernel (#568): a cell on the real
 // cdp-node kernel behind `ganymede serve` calls connectDevice(jupyter.comm),
 // and the page answers it through a stand-in for the app's `deviceRemote`
 // handler, or, with no handler, with web APIs behind a click

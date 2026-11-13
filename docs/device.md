@@ -72,7 +72,7 @@ await device.clipboard.writeText('from the server');
 
 That import works in cdp-kernel on Deno; Node needs the published
 package, which isn't out yet
-([ganymede-device#24](https://github.com/tlockney/ganymede-device/issues/24)).
+([#567](https://github.com/tlockney/ganymede-ui/issues/567)).
 
 - It needs cdp-kernel 0.8.0 or later, which reads comm messages while a
   cell runs.
