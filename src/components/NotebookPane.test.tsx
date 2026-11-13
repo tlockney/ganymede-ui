@@ -286,6 +286,62 @@ describe('NotebookPane', () => {
     click.mockRestore();
   });
 
+  it('publishes as a web page from the server, saving unsaved edits first', async () => {
+    const { fake, latest } = setup();
+    await waitFor(() => expect(latest()).toBeDefined());
+    act(() => modelOf().cells.get(0).sharedModel.setSource('print(4)'));
+    await waitFor(() => expect(latest()!.dirty).toBe(true));
+
+    Object.assign(fake.contents, {
+      serverSettings: ServerConnection.makeSettings({ baseUrl: 'http://server/' }),
+    });
+    const order: string[] = [];
+    fake.contents.save.mockImplementation(async (path: string) => {
+      order.push('save');
+      return entry({ name: path, path, type: 'notebook' });
+    });
+    const request = vi.spyOn(ServerConnection, 'makeRequest').mockImplementation(async url => {
+      order.push(`get ${String(url)}`);
+      return new Response('<meta name="generator" content="Ganymede 0.11.0"><h1>Io</h1>', {
+        headers: { 'content-type': 'text/html; charset=utf-8' },
+      });
+    });
+    const blobs: Blob[] = [];
+    const create = vi.spyOn(URL, 'createObjectURL').mockImplementation(b => {
+      blobs.push(b as Blob);
+      return 'blob:page';
+    });
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      expect(this.download).toBe('Io.html');
+    });
+    await act(() => latest()!.publish({ code: 'hidden', byline: '', copy: false }));
+    expect(order).toEqual([
+      'save',
+      'get http://server/nbconvert/html/moons/Io.ipynb?code=hidden&copy=false',
+    ]);
+    expect(click).toHaveBeenCalledOnce();
+    expect(await blobs[0]!.text()).toContain('<h1>Io</h1>');
+    request.mockRestore();
+    create.mockRestore();
+    click.mockRestore();
+  });
+
+  it('publishes nothing when the save first fails', async () => {
+    const { fake, latest } = setup();
+    await waitFor(() => expect(latest()).toBeDefined());
+    act(() => modelOf().cells.get(0).sharedModel.setSource('print(5)'));
+    await waitFor(() => expect(latest()!.dirty).toBe(true));
+    fake.contents.save.mockRejectedValue(new Error('disk full'));
+    const request = vi.spyOn(ServerConnection, 'makeRequest');
+    await expect(latest()!.publish({ code: 'folded', byline: '', copy: true })).rejects.toThrow(
+      'couldn’t be saved',
+    );
+    expect(request).not.toHaveBeenCalled();
+    request.mockRestore();
+  });
+
   it('starts the kernel the file names on the first run', async () => {
     const { latest } = setup();
     await waitFor(() => expect(latest()).toBeDefined());

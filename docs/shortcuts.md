@@ -16,7 +16,7 @@ and the toolbar's cell type picker changes a cell's type with the mouse.
 
 `⇧⌘P` (`Ctrl+Shift+P` on Windows and Linux) opens the command palette:
 every command in the tables below that works outside a cell editor, plus
-New Notebook, Save, Rename…, Download, Trust, Run All, Interrupt,
+New Notebook, Save, Rename…, Download, Publish as Web Page…, Trust, Run All, Interrupt,
 Restart, a Change Kernel entry for each kernel, and the notebooks you
 opened recently. Type to filter, use `↑` and `↓` to pick, `↩` to run, and
 `Esc` to close. Rename… asks for the new name in the same field. The

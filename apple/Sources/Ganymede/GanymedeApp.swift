@@ -47,6 +47,7 @@ struct GanymedeApp: App {
                 SaveCommand()
                 RenameCommand()
                 DownloadCommand()
+                PublishCommand()
             }
             CommandMenu("Cell") {
                 CellMenu()

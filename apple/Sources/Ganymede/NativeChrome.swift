@@ -682,6 +682,17 @@ struct DownloadCommand: View {
     }
 }
 
+/// File > Publish as Web Page…, beside Download (#563): the page's sheet
+/// takes the options, and the page arrives through the save panel.
+struct PublishCommand: View {
+    @FocusedValue(\.pageModel) private var page
+
+    var body: some View {
+        Button("Publish as Web Page…") { page?.run("publish") }
+            .disabled(page?.state.hasNotebook != true || page?.state.publish != true)
+    }
+}
+
 /// View › Command Palette… (⇧⌘P): the page's palette of every command (#211).
 /// The menu key is fixed: rebinding the palette on the page doesn't change it.
 struct CommandPaletteCommand: View {

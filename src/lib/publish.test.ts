@@ -1,0 +1,86 @@
+import { ServerConnection } from '@jupyterlab/services';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { fakeBackend, fakeServices } from '../test/fakes';
+import {
+  defaultByline,
+  defaultOptions,
+  fetchPublished,
+  pageName,
+  publishAvailable,
+  publishUrl,
+} from './publish';
+
+describe('publish', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('spells out every option in the URL, and leaves out an empty byline', () => {
+    expect(
+      publishUrl('http://h/base/', 'a b/Io #1.ipynb', {
+        code: 'shown',
+        byline: ' 13 November 2026 ',
+        copy: true,
+      }),
+    ).toBe(
+      'http://h/base/nbconvert/html/a%20b/Io%20%231.ipynb?code=shown&copy=true&byline=13+November+2026',
+    );
+    expect(publishUrl('http://h/', 'Io.ipynb', { code: 'hidden', byline: '  ', copy: false })).toBe(
+      'http://h/nbconvert/html/Io.ipynb?code=hidden&copy=false',
+    );
+  });
+
+  it('defaults to the CLI’s: code folded, the date, the notebook copy', () => {
+    const day = new Date(2026, 10, 13);
+    expect(defaultByline(day)).toBe('13 November 2026');
+    expect(defaultOptions(day)).toEqual({ code: 'folded', byline: '13 November 2026', copy: true });
+  });
+
+  it('names the page after the notebook', () => {
+    expect(pageName('moons/Io.ipynb')).toBe('Io.html');
+    expect(pageName('notes.IPYNB')).toBe('notes.html');
+  });
+
+  it('publishes only from a Ganymede server, which redacts', () => {
+    const { services } = fakeServices();
+    expect(publishAvailable(fakeBackend(services))).toBe(true);
+    expect(
+      publishAvailable(
+        fakeBackend(services, { kind: 'ganymede', url: '', token: '', kernels: 'page' }),
+      ),
+    ).toBe(true);
+    expect(publishAvailable(fakeBackend(services, { kind: 'browser' }))).toBe(false);
+    expect(publishAvailable(undefined)).toBe(false);
+  });
+
+  it('says what the server answered, and refuses a page that isn’t HTML', async () => {
+    const { services, contents } = fakeServices();
+    Object.assign(contents, {
+      serverSettings: ServerConnection.makeSettings({ baseUrl: 'http://h/' }),
+    });
+    const backend = fakeBackend(services);
+    const opts = defaultOptions();
+    const request = vi.spyOn(ServerConnection, 'makeRequest');
+    request.mockResolvedValueOnce(
+      new Response(JSON.stringify({ message: 'code must be shown, folded or hidden' }), {
+        status: 400,
+      }),
+    );
+    await expect(fetchPublished(backend, 'Io.ipynb', opts)).rejects.toThrow(
+      'code must be shown, folded or hidden',
+    );
+    request.mockResolvedValueOnce(
+      new Response('{}', { headers: { 'content-type': 'text/plain' } }),
+    );
+    await expect(fetchPublished(backend, 'Io.ipynb', opts)).rejects.toThrow('newer Ganymede');
+    request.mockResolvedValueOnce(
+      new Response('<!doctype html><title>App</title>', {
+        headers: { 'content-type': 'text/html; charset=utf-8' },
+      }),
+    );
+    await expect(fetchPublished(backend, 'Io.ipynb', opts)).rejects.toThrow('newer Ganymede');
+    const page = '<!doctype html>\n<head>\n<meta name="generator" content="Ganymede 0.11.0">';
+    request.mockResolvedValueOnce(
+      new Response(page, { headers: { 'content-type': 'text/html; charset=utf-8' } }),
+    );
+    await expect(fetchPublished(backend, 'Io.ipynb', opts)).resolves.toBe(page);
+  });
+});

@@ -493,6 +493,34 @@ headings; pick one to go to its cell.
 - In the background iOS may stop the app's server; back in the
   foreground the app restarts it if it stopped answering.
 
+## Publishing a notebook
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+**Publish as Web Page…** (File menu on the Mac, the ⋯ menu on the iPad
+and iPhone, the toolbar and the Command Palette in the browser) saves
+the notebook as one self-contained `.html` page to read and share: the
+page `ganymede nb publish` writes, with prose, charts and tables, light
+and dark. It asks how code shows (folded under each result, shown or
+hidden), the line under the title (today's date unless you change it),
+and whether the page has a Download notebook button. The button is on
+unless the code is hidden, since the copy holds the code.
+
+The server makes the page from the saved file, so unsaved edits are
+saved first. It runs no notebook code and loads nothing from the
+network, and the server's folder, your home folder and the server's
+token are replaced (`.`, `~`, `[token]`) wherever they appear; the
+notebook copy behind the button gets the same replacements and leaves
+out the notebook's metadata and recorded parameters. Read the page
+before you share it: anything else a cell printed is in it.
+
+The page arrives as a download: a save panel on the Mac, the share
+sheet on the iPad and iPhone. It needs a Ganymede server (the app's own,
+or a remote one); a Jupyter server isn't offered, since its export
+replaces nothing.
+
 ## Spotlight
 
 > [!NOTE]

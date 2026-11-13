@@ -64,6 +64,7 @@ describe('native', () => {
       kernelMissing: false,
       trusted: true,
       hostGrants: true,
+      publish: true,
       accessWanted: [],
       cellType: 'code',
       kernels: [{ name: 'cdp', displayName: 'TypeScript' }],

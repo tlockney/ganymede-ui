@@ -19,6 +19,7 @@ function controller(over: Partial<NotebookController> = {}): NotebookController 
     trusted: true,
     save: vi.fn(async () => true),
     download: vi.fn(),
+    publish: vi.fn(async () => {}),
     trust: vi.fn(async () => {}),
     hostWants: vi.fn(() => []),
     run: vi.fn(async () => {}),
@@ -422,5 +423,27 @@ describe('Toolbar overflow (#201)', () => {
     expect(kept).toContain('save');
     expect(kept).not.toContain('download');
     expect(screen.getByTitle('More')).toBeInTheDocument();
+  });
+});
+
+describe('Toolbar publish', () => {
+  it('offers Publish as Web Page only when the app can publish', async () => {
+    const c = controller();
+    const onPublish = vi.fn();
+    const { rerender } = render(
+      <Toolbar controller={c} specs={SPECS} sidebarOpen onToggleSidebar={vi.fn()} />,
+    );
+    expect(screen.queryByTitle('Publish as Web Page')).toBeNull();
+    rerender(
+      <Toolbar
+        controller={c}
+        specs={SPECS}
+        sidebarOpen
+        onToggleSidebar={vi.fn()}
+        onPublish={onPublish}
+      />,
+    );
+    await userEvent.click(screen.getByTitle('Publish as Web Page'));
+    expect(onPublish).toHaveBeenCalledOnce();
   });
 });
