@@ -208,6 +208,14 @@ nothing is saved. That kernel can be the in-app TypeScript kernel, whose
 cells read the parameters as `jupyter.params`, but only while a Ganymede
 window is open. The actions are on the Mac only for now.
 
+Run Notebook, Run Notebook with Parameters and Run Cell ask the first
+time they run a notebook, as [links](#links) do, with "Always allow"
+kept per notebook and listed under Settings › General › Links. A run
+with parameters asks on its own.
+
+> [!NOTE]
+> **Unreleased.** The latest release runs these actions without asking.
+
 ### Links
 
 The Mac app opens `ganymede://` links, so launchers, Markdown links,
@@ -243,8 +251,16 @@ skips the question from then on for that notebook and that destination
 (the reply's scheme and host) only, so a notebook allowed for Shortcuts
 still asks when a web page links to it with its own reply address.
 Settings › General › Links lists those notebooks, each with Revoke.
-`open` and `new` don't ask: they only show or create a notebook, though
-their reply tells the caller whether a file exists.
+`run` asks before it looks for the file, so a link to a missing file
+and one you cancel get the same answer. `open` doesn't ask: it only
+shows a notebook, though its reply tells the caller whether a file
+exists. `new` asks, naming the folder and the template, unless it
+writes into a folder under Settings › General › Spotlight and copies a
+template from one.
+
+> [!NOTE]
+> **Unreleased.** The latest release creates `new` notebooks without
+> asking, and `run` answers "not found" before asking.
 
 For a reply, put the route under `x-callback-url/` and add
 [x-callback-url](https://x-callback-url.com) answers:

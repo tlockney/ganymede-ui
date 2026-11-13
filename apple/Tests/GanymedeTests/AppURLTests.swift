@@ -205,4 +205,32 @@ final class AppURLTests: XCTestCase {
         XCTAssertFalse(permissions.allows(a, sendingTo: nil))
         XCTAssertFalse(URLRunPermissions(defaults: defaults).allows(a, sendingTo: "shortcuts://x-callback-url"))
     }
+
+    // MARK: Asking first (#586)
+
+    func testNewAsksOutsideSettingsFolders() {
+        let notes = URL(fileURLWithPath: "/Users/a/Notes", isDirectory: true)
+        func file(_ path: String) -> URL { URL(fileURLWithPath: path) }
+        XCTAssertFalse(AppURL.newNeedsConfirmation(folder: notes, template: nil, trusted: [notes]))
+        XCTAssertFalse(AppURL.newNeedsConfirmation(folder: file("/Users/a/Notes/Daily"), template: file("/Users/a/Notes/t.ipynb"), trusted: [notes]))
+        XCTAssertTrue(AppURL.newNeedsConfirmation(folder: file("/Users/a/Desktop"), template: nil, trusted: [notes]))
+        XCTAssertTrue(AppURL.newNeedsConfirmation(folder: file("/Users/a/NotesOld"), template: nil, trusted: [notes]), "a sibling with the same prefix")
+        XCTAssertTrue(AppURL.newNeedsConfirmation(folder: file("/Users/a/Notes/../Desktop"), template: nil, trusted: [notes]))
+        XCTAssertTrue(AppURL.newNeedsConfirmation(folder: notes, template: file("/etc/secret.ipynb"), trusted: [notes]), "a template from outside")
+        XCTAssertTrue(AppURL.newNeedsConfirmation(folder: notes, template: nil, trusted: []))
+    }
+
+    @MainActor
+    func testShortcutsRunsAreKeptApartFromLinks() throws {
+        let suite = "AppURLTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let permissions = URLRunPermissions(defaults: defaults)
+        let a = URL(fileURLWithPath: "/tmp/a.ipynb")
+        permissions.allow(a, sendingTo: AppURL.shortcutsDestination)
+        XCTAssertTrue(permissions.allows(a, sendingTo: AppURL.shortcutsDestination))
+        XCTAssertFalse(permissions.allows(a, sendingTo: nil))
+        XCTAssertFalse(permissions.allows(a, sendingTo: "shortcuts://x-callback-url"))
+        XCTAssertFalse(permissions.allows(a, sendingTo: AppURL.shortcutsDestination, withParameters: true))
+    }
 }

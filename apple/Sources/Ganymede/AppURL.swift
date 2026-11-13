@@ -44,6 +44,27 @@ struct AppURL: Equatable {
 
     static let scheme = "ganymede"
 
+    /// Where a Shortcuts action's run sends its output, as
+    /// `URLRunPermissions` keeps it (#586). A link's destination is always
+    /// `scheme://host`, so the two never share a key.
+    static let shortcutsDestination = "Shortcuts actions"
+
+    /// Whether `url` is one of `folders` or inside one.
+    static func isInside(_ url: URL, anyOf folders: [URL]) -> Bool {
+        let path = url.standardizedFileURL.resolvingSymlinksInPath().path
+        return folders.contains { folder in
+            let base = folder.standardizedFileURL.resolvingSymlinksInPath().path
+            return path == base || path.hasPrefix(base.hasSuffix("/") ? base : base + "/")
+        }
+    }
+
+    /// Whether a `new` link must ask first (#586): unless it writes into
+    /// one of `trusted` (Settings' folders) and copies a template from
+    /// one, if any.
+    static func newNeedsConfirmation(folder: URL, template: URL?, trusted: [URL]) -> Bool {
+        !isInside(folder, anyOf: trusted) || template.map { !isInside($0, anyOf: trusted) } == true
+    }
+
     var command: Command
     /// Set for `x-callback-url/<route>`, even with none of its URLs.
     var callback: Callback?

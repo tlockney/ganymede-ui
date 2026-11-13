@@ -124,7 +124,7 @@ private struct LinkRunSettings: View {
     var body: some View {
         Section {
             if permissions.paths.isEmpty {
-                Text("No notebook may be run from a link without asking.")
+                Text("No notebook may be run from a link or a Shortcuts action without asking.")
                     .foregroundStyle(.secondary)
             } else {
                 ForEach(permissions.paths, id: \.self) { key in
@@ -145,7 +145,7 @@ private struct LinkRunSettings: View {
         } header: {
             Text("Links")
         } footer: {
-            Text("A ganymede://run link asks before it first runs a notebook. These notebooks were allowed with Always; a revoked one asks again.")
+            Text("A ganymede://run link, or a Shortcuts action that runs a notebook, asks before it first runs one. These notebooks were allowed with Always; a revoked one asks again.")
         }
     }
 }

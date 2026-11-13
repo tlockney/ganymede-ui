@@ -262,6 +262,7 @@ struct RunNotebookIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult & ReturnsValue<[CellOutputEntity]> {
+        try AppURLHandler.confirmRun(notebook.url, cell: nil, params: nil, sendingTo: AppURL.shortcutsDestination, from: .shortcut)
         let actions = try await IntentServer.actions()
         let path = try IntentServer.path(notebook.url)
         let cells = try await actions.notebookRunAll(path: path, restart: restart, timeout: timeout)
@@ -290,6 +291,7 @@ struct RunNotebookWithParametersIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult & ReturnsValue<String> {
+        try AppURLHandler.confirmRun(notebook.url, cell: nil, params: params, sendingTo: AppURL.shortcutsDestination, from: .shortcut)
         let actions = try await IntentServer.actions()
         let path = try IntentServer.path(notebook.url)
         let result = try await actions.notebookRunWithParams(path: path, params: params, timeout: timeout)
@@ -319,6 +321,7 @@ struct RunCellIntent: AppIntent {
 
     @MainActor
     func perform() async throws -> some IntentResult & ReturnsValue<[CellOutputEntity]> {
+        try AppURLHandler.confirmRun(notebook.url, cell: cell, params: nil, sendingTo: AppURL.shortcutsDestination, from: .shortcut)
         let actions = try await IntentServer.actions()
         let path = try IntentServer.path(notebook.url)
         let cells = try await actions.cellRun(path: path, cell: cell, timeout: timeout)
