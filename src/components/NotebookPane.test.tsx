@@ -1492,6 +1492,24 @@ describe('NotebookPane', () => {
     request.mockRestore();
   });
 
+  it('publishes nothing from a clean notebook locked by a change on disk', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const { latest, change } = await changedOnDisk();
+    const cell = modelOf().cells.get(0) as ICodeCellModel;
+    act(() => (cell.executionState = 'running'));
+    change();
+    await act(() => vi.advanceTimersByTimeAsync(5_000));
+    await waitFor(() => expect(latest()!.locked).toBe(true));
+    expect(modelOf().dirty).toBe(false);
+    const request = vi.spyOn(ServerConnection, 'makeRequest');
+    await expect(latest()!.publish({ code: 'folded', byline: '', copy: true })).rejects.toThrow(
+      'changed on disk',
+    );
+    expect(request).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toHaveTextContent('Saving is locked');
+    request.mockRestore();
+  });
+
   it('locks saving when a save finds the file changed on disk, until Unlock', async () => {
     const { fake, latest, change } = await changedOnDisk();
     change();

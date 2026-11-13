@@ -714,9 +714,10 @@ export function App() {
   }, [controller]);
 
   // Esc on a sheet opened from the sidebar closes the sheet, not the sidebar.
-  const accessOpen = !!accessFor || !!publishFor;
-  const sheetShown = sheetOpen || shortcutsOpen || settingsOpen || accessOpen || paletteOpen;
-  otherSheetShown.current = sheetOpen || shortcutsOpen || settingsOpen || accessOpen;
+  // Notebook Access or Publish.
+  const notebookSheetOpen = !!accessFor || !!publishFor;
+  const sheetShown = sheetOpen || shortcutsOpen || settingsOpen || notebookSheetOpen || paletteOpen;
+  otherSheetShown.current = sheetOpen || shortcutsOpen || settingsOpen || notebookSheetOpen;
   useEffect(() => {
     if (!sidebarFloats || sheetShown) return;
     const onKey = (e: KeyboardEvent) => {

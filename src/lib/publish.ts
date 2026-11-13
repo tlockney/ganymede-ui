@@ -67,32 +67,35 @@ export async function fetchPublished(
 ): Promise<string> {
   const settings = backend.services.contents.serverSettings;
   // The sheet can't be cancelled while it waits, so a server that never
-  // answers mustn't hold it open.
-  let res: Response;
+  // answers mustn't hold it open. `makeRequest` rewraps a fetch rejection
+  // as a NetworkError, so the signal says whether it was the timeout.
+  const signal = AbortSignal.timeout(PUBLISH_TIMEOUT_MS);
+  const timedOut = (e: unknown) =>
+    signal.aborted && (signal.reason as Error | undefined)?.name === 'TimeoutError'
+      ? new Error('The server didn’t answer in time.', { cause: e })
+      : e;
+  let page: string;
   try {
-    res = await ServerConnection.makeRequest(
+    const res = await ServerConnection.makeRequest(
       publishUrl(settings.baseUrl, path, opts),
-      { method: 'GET', signal: AbortSignal.timeout(PUBLISH_TIMEOUT_MS) },
+      { method: 'GET', signal },
       settings,
     );
+    if (!res.ok) {
+      let message = `The server answered ${res.status}.`;
+      try {
+        const body = (await res.json()) as { message?: string };
+        if (body.message) message = body.message;
+      } catch {
+        // Not JSON: keep the status.
+      }
+      throw new Error(message);
+    }
+    const type = res.headers.get('content-type') ?? '';
+    page = type.startsWith('text/html') ? await res.text() : '';
   } catch (e) {
-    if (e instanceof Error && e.name === 'TimeoutError') {
-      throw new Error('The server didn’t answer in time.', { cause: e });
-    }
-    throw e;
+    throw timedOut(e);
   }
-  if (!res.ok) {
-    let message = `The server answered ${res.status}.`;
-    try {
-      const body = (await res.json()) as { message?: string };
-      if (body.message) message = body.message;
-    } catch {
-      // Not JSON: keep the status.
-    }
-    throw new Error(message);
-  }
-  const type = res.headers.get('content-type') ?? '';
-  const page = type.startsWith('text/html') ? await res.text() : '';
   const head = page.slice(0, page.indexOf('</head>') + 1 || 2048);
   // Only Ganymede's page: not an app shell a static server answered with,
   // and not another exporter's, which redacts nothing.

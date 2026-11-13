@@ -14,7 +14,7 @@ import { CellMenu } from './CellMenu';
 import { KeyboardBar } from './KeyboardBar';
 import type { Cell, ICodeCellModel } from '@jupyterlab/cells';
 import { downloadFile } from '../lib/download';
-import { type PublishOptions, fetchPublished, pageName } from '../lib/publish';
+import { PUBLISH_TIMEOUT_MS, type PublishOptions, fetchPublished, pageName } from '../lib/publish';
 import {
   AUTOSAVE_INTERVAL_MS,
   DISK_CHECK_INTERVAL_MS,
@@ -1170,14 +1170,27 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       },
       publish: async opts => {
         // Locked: the file on disk isn't what this pane shows, and the
-        // server would make the page from the file.
+        // server would make the page from the file. Say so again, with
+        // what unlocks it.
         if (locked.current) {
+          locked.current = changedOnDisk(basename(saver.path), model.dirty);
+          setNotice(locked.current);
           throw new Error(
             `${basename(saver.path)} changed on disk. Reload it or unlock saving first.`,
           );
         }
-        if (model.dirty && !(await controller.save())) {
-          throw new Error('The notebook couldn’t be saved first.');
+        // The sheet can't be cancelled while it waits: a save that hangs
+        // gets the same time as the page.
+        if (model.dirty) {
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          const late = new Promise<'late'>(resolve => {
+            timer = setTimeout(() => resolve('late'), PUBLISH_TIMEOUT_MS);
+          });
+          const saved = await Promise.race([controller.save(), late]).finally(() =>
+            clearTimeout(timer),
+          );
+          if (saved === 'late') throw new Error('The server didn’t answer the save in time.');
+          if (!saved) throw new Error('The notebook couldn’t be saved first.');
         }
         const page = await fetchPublished(backend, saver.path, opts);
         downloadFile(pageName(saver.path), page, 'text/html');

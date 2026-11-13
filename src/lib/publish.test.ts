@@ -5,6 +5,7 @@ import {
   defaultByline,
   defaultOptions,
   fetchPublished,
+  PUBLISH_TIMEOUT_MS,
   pageName,
   publishAvailable,
   publishUrl,
@@ -119,16 +120,21 @@ describe('publish', () => {
 
   it('gives up on a server that doesn’t answer', async () => {
     const { services, contents } = fakeServices();
+    // Through makeRequest's own catch, which rewraps what fetch rejects with.
+    const fetch = vi.fn((_u: RequestInfo, init?: RequestInit) =>
+      Promise.reject(init!.signal!.reason as Error),
+    );
     Object.assign(contents, {
-      serverSettings: ServerConnection.makeSettings({ baseUrl: 'http://h/' }),
+      serverSettings: ServerConnection.makeSettings({ baseUrl: 'http://h/', fetch }),
     });
-    const request = vi.spyOn(ServerConnection, 'makeRequest').mockImplementation((_u, init) => {
-      expect(init?.signal).toBeInstanceOf(AbortSignal);
-      return Promise.reject(Object.assign(new Error('timed out'), { name: 'TimeoutError' }));
-    });
+    const timeout = vi
+      .spyOn(AbortSignal, 'timeout')
+      .mockReturnValue(AbortSignal.abort(new DOMException('signal timed out', 'TimeoutError')));
     await expect(
       fetchPublished(fakeBackend(services), 'Io.ipynb', defaultOptions()),
     ).rejects.toThrow('didn’t answer in time');
-    expect(request).toHaveBeenCalledOnce();
+    expect(timeout).toHaveBeenCalledWith(PUBLISH_TIMEOUT_MS);
+    expect(fetch).toHaveBeenCalledOnce();
+    timeout.mockRestore();
   });
 });
