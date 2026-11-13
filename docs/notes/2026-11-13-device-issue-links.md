@@ -5,5 +5,4 @@ Thomas transferred ganymede-device's ten open issues here (#566 to
 #569, #68 is #570, #69 is #571, #90 is #572, #108 is #573, #119 is #574,
 #120 is #575). Links in the device docs, `docs/device.md`, `KernelHost`,
 `NotebookPane` and the device-remote e2e test now use the new numbers.
-Old links
-redirect; bare `#N` inside `packages/device` stay ganymede-device's.
+Old links redirect; bare `#N` inside `packages/device` stay ganymede-device's.
