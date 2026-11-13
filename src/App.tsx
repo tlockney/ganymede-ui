@@ -479,8 +479,12 @@ export function App() {
           moveRecent(key, move.from, move.to);
           // Kept device permissions follow too (#383).
           reportMoved(move.from, move.to);
-          // The app opens the moved notebook next; a run keeps going.
-          followRun(move.from, move.to);
+          // The app opens the moved notebook next, in a later task: move
+          // the open path now, so no render between the two sees the
+          // run's sheet on another path and closes it. A run keeps going.
+          const { from, to } = move;
+          setOpenPath(p => (p && within(p, from) ? to + p.slice(from.length) : p));
+          followRun(from, to);
         }
         return true;
       }

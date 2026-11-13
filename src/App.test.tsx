@@ -681,6 +681,8 @@ describe('App', () => {
     const sheet = await screen.findByRole('dialog', { name: /with Parameters/ });
     const move = { from: 'Io.ipynb', to: 'moons/Europa.ipynb' };
     expect(await run('file-moved', JSON.stringify(move))).toBe(true);
+    // The app sends the two as separate tasks: a render can land between.
+    await act(() => new Promise(r => setTimeout(r, 100)));
     expect(await run('open', 'moons/Europa.ipynb')).toBe(true);
     await waitFor(() => expect(states.at(-1)?.path).toBe('moons/Europa.ipynb'));
     expect(screen.getByRole('dialog', { name: /with Parameters/ })).toBe(sheet);
