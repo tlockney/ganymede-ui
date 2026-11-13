@@ -43,13 +43,16 @@ describe('RunSheet', () => {
     const run = vi
       .fn<() => Promise<RunAnswer>>()
       .mockResolvedValueOnce({ status: 'error', results: {}, error: 'NameError: x' })
-      .mockRejectedValueOnce(new Error('It needs Ganymede.'));
+      .mockRejectedValueOnce(new Error('It needs Ganymede.'))
+      .mockResolvedValueOnce({ status: 'error', results: {} });
     render(<RunSheet name="Io.ipynb" initialParams="{}" run={run} onClose={vi.fn()} />);
     await userEvent.click(screen.getByRole('button', { name: 'Run' }));
     expect(await screen.findByText('The run failed: NameError: x')).toBeVisible();
     expect(screen.getByText('No named results.')).toBeVisible();
     await userEvent.click(screen.getByRole('button', { name: 'Run Again' }));
     expect(await screen.findByText('Not run: It needs Ganymede.')).toBeVisible();
+    await userEvent.click(screen.getByRole('button', { name: 'Run' }));
+    expect(await screen.findByText('The run failed.')).toBeVisible();
   });
 
   it('stops the run when cancelled', async () => {

@@ -61,7 +61,7 @@ import {
 import { agentCall } from './lib/native-agent';
 import { sendTestReport } from './lib/crash-reports';
 import { useSignals } from './lib/useSignal';
-import { fileActions } from './lib/file-actions';
+import { fileActions, within } from './lib/file-actions';
 import { useFileSearch } from './lib/search';
 import {
   clearRecents,
@@ -177,16 +177,24 @@ export function App() {
   }, [narrow]);
   const [openPath, setOpenPath] = useState<string>();
   // Not if another notebook was opened while it renamed.
-  const followRename = useCallback((from: string, to: string) => {
-    setOpenPath(p => (p === from ? to : p));
-    // A run going on keeps going: its sheet and parameters follow the name.
-    setRunFor(r => (r?.path === from ? { ...r, path: to } : r));
-    const params = lastParams.current.get(from);
-    if (params !== undefined) {
-      lastParams.current.delete(from);
-      lastParams.current.set(to, params);
+  // A run going on keeps going through a rename or move (of the notebook
+  // or a folder it's in): its sheet and parameters follow the name.
+  const followRun = useCallback((from: string, to: string) => {
+    const moved = (p: string) => to + p.slice(from.length);
+    setRunFor(r => (r && within(r.path, from) ? { ...r, path: moved(r.path) } : r));
+    for (const [p, params] of [...lastParams.current]) {
+      if (!within(p, from)) continue;
+      lastParams.current.delete(p);
+      lastParams.current.set(moved(p), params);
     }
   }, []);
+  const followRename = useCallback(
+    (from: string, to: string) => {
+      setOpenPath(p => (p === from ? to : p));
+      followRun(from, to);
+    },
+    [followRun],
+  );
   const [controller, setController] = useState<NotebookController>();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -214,6 +222,10 @@ export function App() {
   }, [runFor, openPath]);
   /** The parameters each notebook last ran with from the sheet, by path. */
   const lastParams = useRef(new Map<string, string>());
+  // Paths are the server's: another server's notebook starts afresh.
+  useEffect(() => {
+    lastParams.current.clear();
+  }, [backend]);
   const closeAccess = useCallback(() => {
     setAccessFor(undefined);
     setAccessChecked(n => n + 1);
@@ -467,6 +479,12 @@ export function App() {
           moveRecent(key, move.from, move.to);
           // Kept device permissions follow too (#383).
           reportMoved(move.from, move.to);
+          // The app opens the moved notebook next, in a later task: move
+          // the open path now, so no render between the two sees the
+          // run's sheet on another path and closes it. A run keeps going.
+          const { from, to } = move;
+          setOpenPath(p => (p && within(p, from) ? to + p.slice(from.length) : p));
+          followRun(from, to);
         }
         return true;
       }

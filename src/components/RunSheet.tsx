@@ -118,7 +118,11 @@ export function RunSheet({ name, initialParams, run, onClose }: Props) {
         {answer && (
           <div className="run-answer" role="status">
             <p className={answer.status === 'ok' ? undefined : 'sheet-error'}>
-              {answer.status === 'ok' ? 'The run finished.' : `The run failed: ${answer.error}`}
+              {answer.status === 'ok'
+                ? 'The run finished.'
+                : answer.error
+                  ? `The run failed: ${answer.error}`
+                  : 'The run failed.'}
             </p>
             {results.length > 0 ? (
               <dl className="run-results">

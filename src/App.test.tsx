@@ -675,8 +675,18 @@ describe('App', () => {
     // Renames and deletes made by the app itself (#240). Recents drops a
     // notebook that isn't there, so the move goes to one that is.
     expect(await run('file-moved', 'not json')).toBe(false);
+    // A Run with Parameters sheet follows the move, and the app's opening
+    // the moved notebook doesn't close it (a run keeps going).
+    expect(await run('run-with-params')).toBe(true);
+    const sheet = await screen.findByRole('dialog', { name: /with Parameters/ });
     const move = { from: 'Io.ipynb', to: 'moons/Europa.ipynb' };
     expect(await run('file-moved', JSON.stringify(move))).toBe(true);
+    // The app sends the two as separate tasks: a render can land between.
+    await act(() => new Promise(r => setTimeout(r, 100)));
+    expect(await run('open', 'moons/Europa.ipynb')).toBe(true);
+    await waitFor(() => expect(states.at(-1)?.path).toBe('moons/Europa.ipynb'));
+    expect(screen.getByRole('dialog', { name: /with Parameters/ })).toBe(sheet);
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Cancel' }));
     await waitFor(() => expect(states.at(-1)?.recents).toEqual(['moons/Europa.ipynb']));
     expect(await run('file-moved', JSON.stringify({ from: 'moons', to: null }))).toBe(true);
     await waitFor(() => expect(states.at(-1)?.recents).toEqual([]));
