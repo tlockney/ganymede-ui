@@ -62,6 +62,23 @@ final class DeviceLedgerTests: XCTestCase {
         XCTAssertEqual(title, "“Trip.ipynb” wants to use your location")
     }
 
+    func testAShortcutsPromptCanDenyEveryShortcut() throws {
+        let suite = "DeviceLedgerTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let ledger = PermissionLedger(store: UserDefaultsLedgerStore(defaults: defaults))
+        let presenter = RecordingPresenter()
+        let prompter = AppLedgerPrompter(presenter: presenter, ledger: ledger, host: { nil })
+        var got: [LedgerAnswer?] = []
+        prompter.askPermission(DeviceBridge.shortcutCapability("Log"), notebook: "/n/J.ipynb", id: 1) { got.append($0) }
+        XCTAssertEqual(presenter.options(0), ["Allow Once", "Always Allow", "Don’t Allow", "Don’t Allow Any Shortcuts"])
+        presenter.answer(.option(3))
+        XCTAssertEqual(got, [.deny])
+        XCTAssertEqual(ledger.answer(notebook: "/n/J.ipynb", capability: "shortcuts"), .deny)
+        prompter.askPermission("location", notebook: "/n/J.ipynb", id: 2) { _ in }
+        XCTAssertEqual(presenter.options(1).count, 3, "only Shortcuts get the fourth option")
+    }
+
     func testAShortcutsPromptAndRowNameTheShortcut() {
         let capability = DeviceBridge.shortcutCapability("Log Day")
         XCTAssertEqual(AppLedgerPrompter.title(capability, notebook: "/n/Journal.ipynb"), "“Journal.ipynb” wants to run the Shortcut “Log Day”")

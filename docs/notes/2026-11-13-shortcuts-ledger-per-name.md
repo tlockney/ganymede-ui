@@ -12,3 +12,9 @@ notebook run every Shortcut, with any input, after one prompt.
   ask again per Shortcut.
 - The prompt reads "“Journal.ipynb” wants to run the Shortcut “Log Day”",
   and Settings › Device lists each Shortcut on its own row with Revoke.
+- Since a call's prompt asks about one Shortcut, it has a fourth option,
+  "Don’t Allow Any Shortcuts", which keeps a deny for `shortcuts`.
+  `shortcuts.requestAuthorization` and the prompt at open for a declared
+  `shortcuts` would keep an "always" that grants nothing, so the first
+  answers without asking and the second skips it
+  (`DeviceBridge.narrowedNamespaces`).

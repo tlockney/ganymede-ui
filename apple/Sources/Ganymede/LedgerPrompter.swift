@@ -38,12 +38,16 @@ final class AppLedgerPrompter: LedgerPrompter {
     /// Ids for prompts at open, which no call waits on: negative, so they
     /// never meet the bridge's.
     private var nextOpenID = -1
+    /// Where "Don’t Allow Any Shortcuts" keeps its deny for `shortcuts`.
+    private let ledger: PermissionLedger
 
     /// `host`: the view whose window the prompt shows on.
     /// `presenter`: the system's when nil. Made here, not as a default
     /// argument: defaults are evaluated outside the main actor.
-    init(presenter: DialogPresenter? = nil, host: @escaping () -> DialogHost?) {
+    /// `ledger`: the app's, on the App Group store, when nil.
+    init(presenter: DialogPresenter? = nil, ledger: PermissionLedger? = nil, host: @escaping () -> DialogHost?) {
         self.presenter = presenter ?? SystemDialogPresenter()
+        self.ledger = ledger ?? PermissionLedger(store: AppGroup.ledgerStore())
         self.host = host
     }
 
@@ -51,16 +55,22 @@ final class AppLedgerPrompter: LedgerPrompter {
         _ capability: String, notebook: String, id: Int,
         answer: @escaping @MainActor (LedgerAnswer?) -> Void
     ) {
+        // One Shortcut is asked about at a time (ui#587), so the prompt
+        // offers to turn down every Shortcut too: a deny for `shortcuts`.
+        let shortcut = DeviceBridge.shortcutName(capability) != nil
         let dialog = Dialog.actionSheet(
             title: Self.title(capability, notebook: notebook),
             message: "“Always Allow” and “Don’t Allow” apply to this notebook until you change them in Settings › Device.",
-            options: ["Allow Once", "Always Allow", "Don’t Allow"],
+            options: ["Allow Once", "Always Allow", "Don’t Allow"] + (shortcut ? ["Don’t Allow Any Shortcuts"] : []),
             cancel: "Cancel", destructive: 2)
-        enqueue(Ask(id: id, dialog: dialog) { result in
+        enqueue(Ask(id: id, dialog: dialog) { [ledger] result in
             switch result {
             case .option(0): answer(.once)
             case .option(1): answer(.always)
             case .option(2): answer(.deny)
+            case .option(3) where shortcut:
+                ledger.record(.deny, notebook: notebook, capability: "shortcuts")
+                answer(.deny)
             default: answer(nil)
             }
         })

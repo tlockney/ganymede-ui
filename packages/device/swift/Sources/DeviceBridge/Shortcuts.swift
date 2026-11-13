@@ -94,11 +94,13 @@ extension DeviceBridge {
     /// Turns on `device.shortcuts.run`, under capability `shortcuts`, which
     /// has no system permission: the ledger's prompt is the only consent,
     /// since a Shortcut can do anything the person set it up to. The
-    /// ledger keys each call by `shortcuts:<name>` (`ledgerCapability`), so
-    /// "Always" for one Shortcut doesn't run another; a kept "deny" for
-    /// `shortcuts` refuses them all. `calls`
-    /// waits for the Shortcuts app's callbacks; the app passes it every
-    /// URL it is opened with.
+    /// ledger keys each call by `shortcuts:<name>` (`setLedgerCapability`,
+    /// `shortcutCapability`), so "Always" for one Shortcut doesn't run
+    /// another; a kept "deny" for `shortcuts` refuses them all.
+    /// `shortcuts.requestAuthorization` asks nothing, and a notebook's
+    /// declared `shortcuts` isn't asked at open: "Allow" there would grant
+    /// no call. `calls` waits for the Shortcuts app's callbacks; the app
+    /// passes it every URL it is opened with.
     public func addShortcuts(_ calls: ShortcutCalls) {
         addPermission("shortcuts", LedgerOnlyPermission())
         foregroundMethods.insert("shortcuts.run")

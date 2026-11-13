@@ -117,8 +117,18 @@ public final class DeviceBridge: NSObject, WKScriptMessageHandlerWithReply {
     /// Of a notebook's declared capabilities (`metadata.ganymede.device`),
     /// the ones this app has and the ledger has no answer for, so the app
     /// can ask when the notebook opens.
+    /// A namespace whose calls are keyed narrower (`setLedgerCapability`)
+    /// is left out: "Allow" for it would grant no call.
     public func undecided(_ declared: [String], notebook: String) -> [String] {
-        ledger.undecided(declared.filter { permissions[$0] != nil }, notebook: notebook)
+        let narrowed = narrowedNamespaces
+        return ledger.undecided(declared.filter { permissions[$0] != nil && !narrowed.contains($0) }, notebook: notebook)
+    }
+
+    /// Namespaces some method keys its ledger answers narrower than
+    /// (`setLedgerCapability`), such as `shortcuts`: only a kept "deny"
+    /// for the namespace itself means anything.
+    var narrowedNamespaces: Set<String> {
+        Set(ledgerCapabilities.keys.compactMap { methods[$0]?.permission })
     }
 
     /// Adds a streaming method (docs/protocol.md, "Streams"): `hello` lists
@@ -542,6 +552,13 @@ public final class DeviceBridge: NSObject, WKScriptMessageHandlerWithReply {
            permission.status == .denied || permission.status == .restricted {
             // The system already refused: answer that without the app's prompt.
             pending.answer(token, ["result": permission.status.rawValue])
+        } else if let namespace = requestedNamespace(method), let permission = permissions[namespace],
+                  narrowedNamespaces.contains(namespace) {
+            // Each call asks for itself, so there is nothing to ask for the
+            // whole namespace: answer what a call would meet, as
+            // `authorizationStatus` does, without a prompt.
+            let refused = ledger.notebook(for: owner).map { ledger.answer(notebook: $0, capability: namespace) == .deny } ?? true
+            pending.answer(token, ["result": (refused ? PermissionStatus.denied : permission.status).rawValue])
         } else if let namespace = requestedNamespace(method), let permission = permissions[namespace] {
             // The ledger first: a notebook it refuses gets `denied` without
             // the system prompt.

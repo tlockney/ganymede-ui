@@ -204,6 +204,24 @@ final class ShortcutsTests: XCTestCase {
         XCTAssertTrue(opener.opened.isEmpty)
     }
 
+    func testNoNamespacePromptForShortcuts() {
+        let prompter = Prompter()
+        bridge.ledgerPrompter = prompter
+        bridge.setNotebook("/n/B.ipynb", for: 2)
+        XCTAssertEqual(bridge.undecided(["shortcuts", "unknown"], notebook: "/n/B.ipynb"), [], "Allow at open would grant no call")
+        bridge.respond(to: ["id": 1, "owner": 2, "method": "shortcuts.requestAuthorization", "params": [:] as [String: Any]]) { [weak self] in
+            self?.replies[1] = $0
+        }
+        XCTAssertTrue(prompter.asked.isEmpty)
+        XCTAssertEqual(replies[1]?["result"] as? String, "authorized")
+        XCTAssertNil(bridge.ledger.answer(notebook: "/n/B.ipynb", capability: "shortcuts"))
+        bridge.ledger.record(.deny, notebook: "/n/B.ipynb", capability: "shortcuts")
+        bridge.respond(to: ["id": 2, "owner": 2, "method": "shortcuts.requestAuthorization", "params": [:] as [String: Any]]) { [weak self] in
+            self?.replies[2] = $0
+        }
+        XCTAssertEqual(replies[2]?["result"] as? String, "denied")
+    }
+
     func testTheCapabilityNamesTheShortcut() {
         XCTAssertEqual(DeviceBridge.shortcutCapability("Log: daily"), "shortcuts:Log: daily")
         XCTAssertEqual(DeviceBridge.shortcutName("shortcuts:Log: daily"), "Log: daily")
