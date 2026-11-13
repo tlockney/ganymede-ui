@@ -430,7 +430,10 @@
   background: transparent;
   color: var(--text-3);
   cursor: pointer;
+  /* Hidden takes no taps: on a touch screen a tap left of an inactive
+   * cell's prompt selects the cell, not collapses it. */
   opacity: 0;
+  pointer-events: none;
   transition: opacity 0.12s ease;
   -webkit-tap-highlight-color: transparent;
 }
@@ -443,6 +446,7 @@
 .notebook-page .gn-code-toggle:focus-visible,
 .notebook-page .jp-Cell:has(.jp-InputPlaceholder) > .gn-code-toggle {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .notebook-page .jp-Cell:has(.jp-InputPlaceholder) > .gn-code-toggle svg {
@@ -458,6 +462,7 @@
 @media (hover: hover) {
   .notebook-page .jp-Cell:hover > .gn-code-toggle {
     opacity: 1;
+    pointer-events: auto;
   }
   .notebook-page .gn-code-toggle:hover {
     background: var(--control-bg-hover);

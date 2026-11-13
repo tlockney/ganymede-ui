@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import type { Cell } from '@jupyterlab/cells';
 import type { Notebook } from '@jupyterlab/notebook';
-import { CELL_MENU, type CellMenuAction, applyCellAction } from '../lib/cell-controls';
+import { CELL_MENU, type CellMenuAction, applyCellAction, selectOnly } from '../lib/cell-controls';
 import { canCollapse, setCollapsed } from '../lib/code-collapse';
 import { ContextMenu, type MenuItem } from './ContextMenu';
 
@@ -61,12 +61,13 @@ export function CellMenu({ notebook, cell, anchor, run, onClose }: Props) {
       items={[
         item(first!),
         // Collapsing code (#564), for touch: the button beside the cell is small.
-        ...(canCollapse(cell)
+        ...(canCollapse(cell) || cell.inputHidden
           ? [
               {
                 label: cell.inputHidden ? 'Expand Code' : 'Collapse Code',
                 onSelect: () => {
-                  setCollapsed(cell, !cell.inputHidden);
+                  // Its cell, as the other items act on it (`applyCellAction`).
+                  if (selectOnly(notebook, cell)) setCollapsed(cell, !cell.inputHidden, notebook);
                   if (!notebook.isDisposed) notebook.activate();
                 },
               },

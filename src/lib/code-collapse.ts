@@ -5,7 +5,7 @@
  * `metadata.jupyter.source_hidden`. The bar is hard to find and can't be
  * tapped, so each code cell gets a disclosure button in its prompt column:
  * shown on hover and on the active cell, and always while the cell is
- * collapsed (app.css, "Code collapse"). The commands (`collapse-code` and
+ * collapsed (jupyter.css, "Code collapse"). The commands (`collapse-code` and
  * the rest, `createCommands`) and the cell menu do the same from the
  * keyboard, the palette, the apps' menus and touch.
  */
@@ -26,16 +26,42 @@ export function canCollapse(cell: Cell): boolean {
   return cell.model.type === 'code';
 }
 
-/** Collapse or expand one cell's code; the cell saves it in its metadata. */
-export function setCollapsed(cell: Cell, collapsed: boolean): void {
-  if (!canCollapse(cell) || cell.inputHidden === collapsed) return;
+/**
+ * Whether a cell gets the button: a code cell, or any cell left collapsed,
+ * such as a collapsed code cell changed to Markdown (JupyterLab keeps
+ * `source_hidden` on every type), which must still expand.
+ */
+function wantsToggle(cell: Cell): boolean {
+  return canCollapse(cell) || cell.inputHidden;
+}
+
+/**
+ * Collapse or expand one cell's code; the cell saves it in its metadata.
+ * Only a code cell collapses; any collapsed cell expands. Collapsing the
+ * cell being edited takes `notebook` back to command mode, since its
+ * editor is gone.
+ */
+export function setCollapsed(cell: Cell, collapsed: boolean, notebook?: Notebook): void {
+  if (cell.inputHidden === collapsed || (collapsed && !canCollapse(cell))) return;
+  if (collapsed && notebook?.mode === 'edit' && notebook.activeCell === cell) {
+    notebook.mode = 'command';
+  }
   cell.inputHidden = collapsed;
   refresh(cell);
+}
+
+/** Expand every collapsed cell in `cells`, whatever its type. */
+export function expandAll(cells: readonly Cell[]): void {
+  for (const cell of cells) setCollapsed(cell, false);
 }
 
 function refresh(cell: Cell): void {
   const toggle = cell.node.querySelector<HTMLButtonElement>(`:scope > .${TOGGLE}`);
   if (!toggle) return;
+  if (!wantsToggle(cell)) {
+    toggle.remove();
+    return;
+  }
   const collapsed = cell.inputHidden;
   toggle.setAttribute('aria-expanded', String(!collapsed));
   toggle.setAttribute('aria-label', collapsed ? 'Expand Code' : 'Collapse Code');
@@ -43,7 +69,7 @@ function refresh(cell: Cell): void {
 }
 
 function decorate(cell: Cell): void {
-  if (!canCollapse(cell) || cell.node.querySelector(`:scope > .${TOGGLE}`)) return;
+  if (!wantsToggle(cell) || cell.node.querySelector(`:scope > .${TOGGLE}`)) return;
   const toggle = document.createElement('button');
   toggle.type = 'button';
   toggle.className = TOGGLE;
@@ -84,7 +110,7 @@ export function attachCodeCollapse(notebook: Notebook): IDisposable {
     if (!cell) return;
     e.preventDefault();
     e.stopPropagation();
-    setCollapsed(cell, !cell.inputHidden);
+    setCollapsed(cell, !cell.inputHidden, notebook);
   };
   // A press on the button isn't the notebook's: no selecting or dragging
   // the cell, no focusing its editor.

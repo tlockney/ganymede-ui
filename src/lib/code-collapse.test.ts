@@ -116,6 +116,26 @@ describe('attachCodeCollapse', () => {
     setCollapsed(cell(1), true);
     expect(cell(1).inputHidden).toBe(false);
   });
+
+  it('still expands a collapsed code cell changed to Markdown', async () => {
+    notebook.activeCellIndex = 2;
+    const { NotebookActions } = await import('@jupyterlab/notebook');
+    NotebookActions.changeCellType(notebook, 'markdown');
+    await Promise.resolve();
+    expect(cell(2).model.type).toBe('markdown');
+    expect(cell(2).inputHidden).toBe(true);
+    toggle(2)!.click();
+    expect(cell(2).inputHidden).toBe(false);
+    // Expanded, a Markdown cell has nothing to collapse: no button.
+    expect(toggle(2)).toBeNull();
+  });
+
+  it('takes the notebook to command mode when it collapses the cell being edited', () => {
+    notebook.activeCellIndex = 0;
+    notebook.mode = 'edit';
+    toggle(0)!.click();
+    expect(notebook.mode).toBe('command');
+  });
 });
 
 describe('collapse commands', () => {
@@ -132,5 +152,16 @@ describe('collapse commands', () => {
     await commands.execute('expand-code');
     expect(cell(2).inputHidden).toBe(false);
     expect(cell(0).inputHidden).toBe(true);
+  });
+
+  it('collapse leaves edit mode; expand all covers a collapsed Markdown cell', async () => {
+    const commands = createCommands(notebook, {} as ISessionContext);
+    notebook.activeCellIndex = 0;
+    notebook.mode = 'edit';
+    await commands.execute('collapse-code');
+    expect(notebook.mode).toBe('command');
+    cell(1).inputHidden = true;
+    await commands.execute('expand-all-code');
+    expect(notebook.widgets.map(c => c.inputHidden)).toEqual([false, false, false]);
   });
 });

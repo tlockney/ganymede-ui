@@ -102,8 +102,13 @@ describe('CellMenu', () => {
     const c = cell as unknown as { inputHidden: boolean; node: HTMLElement };
     c.node = document.createElement('div');
     c.inputHidden = false;
+    const n = notebook as unknown as { activeCellIndex: number; deselectAll(): void };
+    n.deselectAll = vi.fn();
+    n.activeCellIndex = 0;
     await userEvent.click(screen.getByRole('menuitem', { name: 'Collapse Code' }));
     expect(c.inputHidden).toBe(true);
+    // Its own cell becomes the active one, as for the other items.
+    expect(n.activeCellIndex).toBe(1);
     expect(notebook.activate).toHaveBeenCalled();
   });
 

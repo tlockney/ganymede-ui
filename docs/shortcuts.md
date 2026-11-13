@@ -112,3 +112,7 @@ origin across launches, so changes there last.
 | Command palette | `⌘⇧P` | `Ctrl+Shift+P` |
 
 <!-- shortcuts:end -->
+
+> [!NOTE]
+> **Unreleased.** Collapse code, Expand code and their "all" pair are
+> available only from a build of `main` (HEAD), not in the latest release.

@@ -97,10 +97,10 @@ shown or hidden, its tab and its expanded folders across launches.
   (README, "Collapsing code"); the iPad's Cell menu has Collapse All Code
   and Expand All Code.
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release, where only the thin bar at a cell's left edge
-> collapses its code.
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release, where only the thin bar at a cell's left edge
+  > collapses its code.
 
 - View > Command Palette… (⇧⌘P) finds and runs the notebook, cell and
   kernel commands by name. [Keyboard shortcuts](shortcuts.md) lists the
