@@ -8,7 +8,7 @@ import WebKit
 ///
 /// What stays per page: the page's messages for the permission ledger
 /// (`kernelRelay`: renames, a notebook's declared capabilities), and the
-/// `device` calls of its server kernels' comm (ganymede-device#26): the
+/// `device` calls of its server kernels' comm (#568): the
 /// page answers that comm and posts to the bridge's `deviceRemote` handler,
 /// which takes only the methods that need no permission, and only from the
 /// page's main frame at the server's origin. Only main-frame messages are
@@ -76,7 +76,7 @@ final class KernelHost: NSObject {
     static let shortcuts = ShortcutCalls(callback: URL(string: "ganymede://device-callback/shortcuts")!)
 
     /// The bridge cells get by default: every namespace ganymede-device
-    /// has, with the permissioned ones (ganymede-device#57, #422) turned
+    /// has, with the permissioned ones (#569, #422) turned
     /// on, host events (`device.on`), and folders the person picks
     /// (`device.folders`). Each permissioned one asks the
     /// app's ledger, then the system, on first use; one the device lacks
