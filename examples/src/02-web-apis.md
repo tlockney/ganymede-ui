@@ -25,7 +25,8 @@ ${page.extract}
 ## Live data: this week's earthquakes
 
 The US Geological Survey publishes earthquakes as GeoJSON, updated every
-few minutes. Reshape the features into rows, then show the strongest.
+few minutes. Reshape the features into rows, then show them as a table,
+strongest first.
 
 ```ts
 const quakes = await getJson("https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/4.5_week.geojson");
@@ -38,12 +39,10 @@ const rows: Quake[] = quakes.features.map((f: any) => ({
   lat: f.geometry.coordinates[1],
   depthKm: f.geometry.coordinates[2],
 }));
-const strongest = [...rows].sort((a, b) => b.magnitude - a.magnitude).slice(0, 8);
-jupyter.md`**${rows.length}** earthquakes of magnitude 4.5 or more in the past week.
-
-| Magnitude | Where | When (UTC) | Depth (km) |
-| ---: | :--- | :--- | ---: |
-${strongest.map(q => `| ${q.magnitude.toFixed(1)} | ${q.place} | ${q.time.toISOString().slice(0, 16).replace("T", " ")} | ${q.depthKm.toFixed(0)} |`).join("\n")}`;
+jupyter.table([...rows].sort((a, b) => b.magnitude - a.magnitude), {
+  title: `${rows.length} earthquakes of magnitude 4.5 or more in the past week`,
+  columns: ["magnitude", "place", "time", "depthKm"],
+});
 ```
 
 And on a map, drawn as SVG: longitude and latitude straight to x and y, the
