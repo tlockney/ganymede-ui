@@ -228,7 +228,23 @@ public final class DeviceBridge: NSObject, WKScriptMessageHandlerWithReply {
             replyHandler(Self.error("unavailable", "device calls are taken from the kernel page only"), nil)
             return
         }
-        respond(to: message.body, from: message.webView) { replyHandler($0, nil) }
+        respondPage(to: message.body, from: message.webView) { replyHandler($0, nil) }
+    }
+
+    /// Answers a message from the kernel page, as `respond(to:from:reply:)`
+    /// does, once its `id` and `owner` are in the page's range, 0 to
+    /// 2^40 - 1. Negative ones are the remote handler's and engine
+    /// contexts' (ui#573), so a page can't cancel or release theirs.
+    public func respondPage(to body: Any, from host: DialogHost? = nil, reply: @escaping ([String: Any]) -> Void) {
+        if let call = body as? [String: Any] {
+            for key in ["id", "owner"] where call[key] != nil {
+                guard let n = Self.callID(call[key]), n >= 0, n < engineBase else {
+                    reply(Self.error("failed", "a kernel page message's \(key) must be an integer from 0 to 2^40 - 1"))
+                    return
+                }
+            }
+        }
+        respond(to: body, from: host, reply: reply)
     }
 
     /// Answers one message, now or, for a dialog, once the person closes
