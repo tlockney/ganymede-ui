@@ -19,6 +19,9 @@ export default tseslint.config(
       'dev-dist',
       'apple/build',
       '.ganymede',
+      // Imported from tlockney/ganymede-device in its own style (#560);
+      // checked by its own tsc and tests until it moves to this config.
+      'packages/device',
     ],
   },
   js.configs.recommended,

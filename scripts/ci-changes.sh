@@ -1,7 +1,10 @@
 #!/bin/sh
 # Which expensive CI jobs a pull request needs (ci.yml, #344). Prints
-# `e2e=true|false` and `macos=true|false`, for $GITHUB_OUTPUT. `macos`
-# gates both app jobs, macos-app and ios-app (#543).
+# `e2e=true|false`, `macos=true|false`, `device=true|false` and
+# `device_swift=true|false`, for $GITHUB_OUTPUT. `macos` gates both app
+# jobs, macos-app and ios-app (#543); `device` the device package's
+# tests and `device_swift` its Swift package tests (packages/device,
+# #560).
 # main-build.yml builds the Mac app on a push to main when `macos` is
 # true (#539).
 #
@@ -17,6 +20,8 @@ set -eu
 everything() {
   echo e2e=true
   echo macos=true
+  echo device=true
+  echo device_swift=true
   exit 0
 }
 
@@ -36,6 +41,8 @@ esac
 
 e2e=false
 macos=false
+device=false
+device_swift=false
 files=$(git diff --no-renames --name-only "$base" HEAD) || everything
 
 # package.json and package-lock.json count as release metadata when only
@@ -48,15 +55,26 @@ version_only() {
 while IFS= read -r f; do
   [ -n "$f" ] || continue
   case $f in
+    # The device package (#560). Its reference is generated from src/ and
+    # checked by its tests; its docs need nothing; its tests only its own
+    # jobs; its sources ship in the apps and the page.
+    packages/device/docs/reference.md) device=true ;;
+    packages/device/*.md | packages/device/docs/* | packages/device/LICENSE) ;;
+    packages/device/test/* | packages/device/scripts/reference.ts) device=true ;;
+    packages/device/swift/Tests/*) device_swift=true ;;
+    packages/device/Package.swift | packages/device/swift/*) device_swift=true; macos=true ;;
+    packages/device/*) device=true; e2e=true; macos=true ;;
     # The example notebooks' Markdown sources are code (#414).
     examples/src/*) e2e=true; macos=true ;;
-    *.md | docs/* | screenshots/* | LICENSE | cliff.toml | scripts/release.sh | scripts/release-pins.sh) ;;
+    *.md | docs/* | screenshots/* | LICENSE | cliff.toml | .cliffignore | scripts/release.sh | scripts/release-pins.sh) ;;
     # Used only by release.yml; its unit tests run in every build job.
     scripts/testflight-notes.mjs | scripts/testflight-notes.test.mjs) ;;
     package.json | package-lock.json)
-      if ! version_only "$f"; then e2e=true; macos=true; fi ;;
+      if ! version_only "$f"; then e2e=true; macos=true; device=true; fi ;;
     apple/*) macos=true ;;
     e2e/* | playwright.config.ts) e2e=true ;;
+    # CI itself can break any job.
+    .github/* | scripts/ci-changes.sh) e2e=true; macos=true; device=true; device_swift=true ;;
     *) e2e=true; macos=true ;;
   esac
 done <<EOF2
@@ -65,3 +83,5 @@ EOF2
 
 echo "e2e=$e2e"
 echo "macos=$macos"
+echo "device=$device"
+echo "device_swift=$device_swift"

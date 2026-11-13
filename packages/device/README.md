@@ -1,4 +1,10 @@
-# ganymede-device
+# The device package
+
+> [!NOTE]
+> This package was tlockney/ganymede-device until it moved here,
+> history and all (ganymede-ui#560). Bare issue and PR numbers (`#40`)
+> in its code and docs are ganymede-device's; newer ones say
+> `ganymede-ui#N`.
 
 The `device` API: native features for TypeScript notebooks in the Ganymede
 Mac and iPad apps, in the spirit of [Juno's `juno`
@@ -37,7 +43,7 @@ pickers, and sound, with bytes crossing the bridge as base64
 ([tlockney/cdp-kernel#384](https://github.com/tlockney/cdp-kernel/issues/384)),
 and is tested end to end in headless Chromium against a fake Swift
 bridge. The Swift `DeviceBridge` answers the same methods; the Mac and
-iPad apps in [tlockney/ganymede-ui](https://github.com/tlockney/ganymede-ui)
+iPad apps in this repository (`apple/`)
 register it on their hidden kernel web view.
 
 cdp-kernel running in the app's kernel web view gets `device` as a
@@ -69,7 +75,7 @@ there are still planned. The package isn't published yet (#24).
   the page shows.
 - `src/support.ts`: which methods work on-device, remotely and in a
   browser, today and planned; the source for docs and tests.
-  `npm run support-table` prints it as the Markdown that ganymede-ui's
+  `npm run support-table` prints it as the Markdown that the repository's
   `docs/device.md` embeds.
 - `src/globals.ts`: ambient types for cells.
 - `scripts/reference.ts`: generates `docs/reference.md` from the doc
@@ -108,12 +114,9 @@ saying why.
 
 ## Installing
 
-The package isn't published yet. Install it from git; npm runs its
-`prepare` script, which builds `dist/`:
-
-```sh
-npm install github:tlockney/ganymede-device
-```
+The package isn't published yet (ganymede-device#24). In this
+repository it is an npm workspace, `@tlockney/ganymede-device`, and
+`npm ci` at the root runs its `prepare` script, which builds `dist/`.
 
 Every export resolves to built JavaScript in `dist/` with a `.d.ts`
 beside it, so consumers need no TypeScript loader. `npm run build`
@@ -121,7 +124,8 @@ builds the same files locally.
 
 ## Using it in an app
 
-Add this repository as a Swift package and register the bridge on the
+The apps take `Package.swift` here as a local Swift package
+(`apple/project.yml`). Register the bridge on the
 web view that runs kernels, never on one that renders notebook outputs:
 
 ```swift
@@ -132,25 +136,28 @@ DeviceBridge().register(in: kernelWebView.configuration.userContentController)
 
 ## Development
 
+From this directory, after `npm ci` at the repository root:
+
 ```sh
-npm ci
 npm run check   # type check
 npm test        # unit tests; the browser test skips without CDPK_DIR
 # The browser test, as CI runs it, against cdp-kernel v0.9.0:
 git clone --branch v0.9.0 https://github.com/tlockney/cdp-kernel ../cdp-kernel
 (cd ../cdp-kernel && npm ci)
-npm i --no-save playwright@1.64.1 && npx playwright install --with-deps chromium
+npx playwright install --with-deps chromium
 CDPK_DIR=../cdp-kernel node --test test/browser.test.ts
 swift test      # the Swift bridge; macOS only
 ```
 
-On a pull request, and on a push to `main`, CI runs only the jobs its
-files can affect
-(`scripts/ci-changes.sh`): the `swift` job for `Package.swift` and
-`swift/`, `test` and `browser` for the TypeScript side, none for docs
-(except the generated `docs/reference.md`, which the `test` job checks).
+In CI (the repository's `.github/workflows/ci.yml`), the `device` job
+runs the type check, unit tests, build and browser test, and
+`device-swift` runs `swift test` and an iOS build. The root
+`scripts/ci-changes.sh` runs them only for changes they can affect;
+docs need neither (except the generated `docs/reference.md`, which the
+`device` job checks). A change to `src/` also runs the app jobs, since
+the apps bundle it.
 
 ## Next
 
 The plan's "Where things stand" has the list, and
-[#18](https://github.com/tlockney/ganymede-device/issues/18) tracks it.
+[ganymede-device#18](https://github.com/tlockney/ganymede-device/issues/18) tracks it.
