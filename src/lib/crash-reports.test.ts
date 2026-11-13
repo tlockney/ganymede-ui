@@ -164,6 +164,24 @@ describe('scrubEvent', () => {
     expect(scrubEvent(event([{ filename: 'https://cdn.example/x.js' }]), ORIGIN)).toBeNull();
   });
 
+  it('drops the requests a kernel restart cancels, which nothing awaits (#555)', () => {
+    const frames = [
+      { filename: `${ORIGIN}/assets/lib-abc.js`, function: 'restart' },
+      { filename: `${ORIGIN}/assets/lib-abc.js`, function: 'dispose' },
+    ];
+    const canceled = event(
+      frames,
+      'Canceled future for kernel_info_request message before replies were done',
+    );
+    canceled.exception!.values![0].type = 'Error';
+    expect(scrubEvent(canceled, ORIGIN)).toBeNull();
+    // The same words in another error type, or elsewhere in a message, are still sent.
+    expect(scrubEvent(event(frames, 'Canceled future for x'), ORIGIN)).not.toBeNull();
+    const other = event(frames, 'Kernel is dead: Canceled future for x');
+    other.exception!.values![0].type = 'Error';
+    expect(scrubEvent(other, ORIGIN)).not.toBeNull();
+  });
+
   it('drops errors with no stack and plain messages', () => {
     expect(scrubEvent(event([]), ORIGIN)).toBeNull();
     expect(scrubEvent({ message: 'hello' }, ORIGIN)).toBeNull();
