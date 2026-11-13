@@ -1,0 +1,105 @@
+name: Examples
+
+# Runs every example notebook on every kernel it should run on (#558):
+# cdp-kernel's browser kernel, the one the apps run, and its Node, Deno
+# and Bun kernels, the ones Ganymede starts outside the apps. Not part of
+# CI: the examples fetch from public APIs and CDNs, so a run depends on
+# them. It runs when a pull request or a push to main changes the
+# examples, their scripts or the kernel versions, and by hand from the
+# Actions tab.
+on:
+  pull_request:
+    paths:
+      - examples/**
+      - scripts/examples.mjs
+      - scripts/examples-kernels.mjs
+      - .github/workflows/examples.yml
+      # The Ganymede and cdp-kernel versions it runs (ci.yml's e2e pins,
+      # package-lock.json's browser kernel).
+      - .github/workflows/ci.yml
+      - package-lock.json
+  push:
+    branches: [main]
+    paths:
+      - examples/**
+      - scripts/examples.mjs
+      - scripts/examples-kernels.mjs
+      - .github/workflows/examples.yml
+      # The Ganymede and cdp-kernel versions it runs (ci.yml's e2e pins,
+      # package-lock.json's browser kernel).
+      - .github/workflows/ci.yml
+      - package-lock.json
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # The apps' kernel, in headless Chromium: `examples.mjs --run` fails on a
+  # cell whose result isn't the one its source asks for.
+  browser:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - id: playwright
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}-chromium
+      # As ci.yml's e2e job: the runner image has Chromium's libraries, so
+      # an apt outage shouldn't fail the job.
+      - run: |
+          npx playwright install chromium
+          timeout 5m npx playwright install-deps chromium || { sudo pkill -x apt-get || true; echo "::warning::apt failed; using the runner image's libraries"; }
+      - run: node scripts/examples.mjs --run
+
+  # Node, Deno and Bun, through a released `ganymede run`. Ganymede and
+  # cdp-kernel are ci.yml's e2e pins, which scripts/release-pins.sh moves.
+  kernels:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        runtime: [node, deno, bun]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+      - if: matrix.runtime == 'deno'
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2.0.5
+        with:
+          deno-version: v2.x
+      - if: matrix.runtime == 'bun'
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.4.x
+      - name: Install Ganymede and cdp-kernel
+        env:
+          RUNTIME: ${{ matrix.runtime }}
+        run: |
+          GANYMEDE_VERSION=$(yq '.jobs.e2e.env.GANYMEDE_VERSION' .github/workflows/ci.yml)
+          CDP_KERNEL_VERSION=$(yq '.jobs.e2e.env.CDP_KERNEL_VERSION' .github/workflows/ci.yml)
+          curl -fsSL "https://raw.githubusercontent.com/tlockney/ganymede/v$GANYMEDE_VERSION/site/install.sh" \
+            | sh -s -- --version "$GANYMEDE_VERSION" --no-kernel --bin-dir "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          npm install -g "@tlockney/cdp-kernel@$CDP_KERNEL_VERSION"
+          cdp-kernel install --runtime "$RUNTIME"
+          "$HOME/.local/bin/ganymede" kernelspec list
+      - run: node scripts/examples-kernels.mjs -k "cdp-${{ matrix.runtime }}"

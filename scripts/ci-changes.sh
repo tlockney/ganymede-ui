@@ -67,6 +67,8 @@ while IFS= read -r f; do
     # The example notebooks' Markdown sources are code (#414).
     examples/src/*) e2e=true; macos=true ;;
     *.md | docs/* | screenshots/* | LICENSE | cliff.toml | .cliffignore | scripts/release.sh | scripts/release-pins.sh) ;;
+    # Used only by examples.yml, which runs on its own (#558).
+    scripts/examples-kernels.mjs | .github/workflows/examples.yml) ;;
     # Used only by release.yml; its unit tests run in every build job.
     scripts/testflight-notes.mjs | scripts/testflight-notes.test.mjs) ;;
     package.json | package-lock.json)
