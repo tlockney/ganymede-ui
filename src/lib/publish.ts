@@ -77,7 +77,7 @@ export async function fetchPublished(
     );
   } catch (e) {
     if (e instanceof Error && e.name === 'TimeoutError') {
-      throw new Error('The server didn’t answer in time.');
+      throw new Error('The server didn’t answer in time.', { cause: e });
     }
     throw e;
   }
