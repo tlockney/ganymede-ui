@@ -747,6 +747,13 @@ struct IPadNotebookToolbar: ToolbarContent {
                     .disabled(!page.state.dirty)
                 Button(action: rename) { Label("Rename…", systemImage: "pencil") }
                 Button { page.run("download") } label: { Label("Download", systemImage: "arrow.down.doc") }
+                Menu {
+                    Button("Markdown") { page.run("export", arg: "markdown") }
+                    Button("Script") { page.run("export", arg: "script") }
+                } label: {
+                    Label("Export As", systemImage: "square.and.arrow.up.on.square")
+                }
+                .disabled(page.state.publish != true)
                 Button { page.run("publish") } label: {
                     Label("Publish as Web Page…", systemImage: "globe")
                 }

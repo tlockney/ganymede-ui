@@ -63,6 +63,7 @@ export const PAGE_COMMANDS = {
   save: '',
   download: '',
   publish: '',
+  export: 'arg',
   'notebook-access': '',
   trust: '',
   run: '',
@@ -154,7 +155,10 @@ export type PageState = {
   trusted: boolean;
   /** Whether Notebook Access works here: a Ganymede server that runs the kernels. */
   hostGrants: boolean;
-  /** Whether Publish as Web Page works here: a Ganymede server (#563). */
+  /**
+   * Whether Publish as Web Page (#563) and Export as Markdown or Script
+   * (#582) work here: a server, which makes them from the file.
+   */
   publish: boolean;
   /** What the notebook asks for that its grant doesn't give (`missingWants`). */
   accessWanted: string[];

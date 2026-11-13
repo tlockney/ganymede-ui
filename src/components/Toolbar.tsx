@@ -22,6 +22,7 @@ import {
   TextIcon,
   VariablesIcon,
 } from './Icons';
+import { EXPORT_FORMATS, EXPORT_LABELS, type ExportFormat } from '../lib/export';
 
 type Props = {
   controller?: NotebookController;
@@ -40,6 +41,8 @@ type Props = {
   onNotebookAccess?(): void;
   /** Opens Publish as Web Page (#563); no item without it. */
   onPublish?(): void;
+  /** Export as Markdown or a script; absent where the backend can't. */
+  onExport?(format: ExportFormat): void;
 };
 
 const TRUST_PROMPT =
@@ -89,6 +92,7 @@ export function Toolbar({
   accessMissing = [],
   onNotebookAccess,
   onPublish,
+  onExport,
 }: Props) {
   const disabled = !c;
   const kernelDisplay = c?.missingKernel
@@ -338,7 +342,16 @@ export function Toolbar({
           <DownloadIcon />
         </button>
       ),
-      menu: [{ label: 'Download Notebook', disabled, onSelect: () => c?.download() }],
+      menu: [
+        { label: 'Download Notebook', disabled, onSelect: () => c?.download() },
+        ...(onExport
+          ? EXPORT_FORMATS.map(f => ({
+              label: EXPORT_LABELS[f],
+              disabled,
+              onSelect: () => onExport(f),
+            }))
+          : []),
+      ],
     },
     ...(onPublish
       ? [

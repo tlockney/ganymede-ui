@@ -92,4 +92,11 @@ describe('filterEntries', () => {
     expect(labels('arkdow')).toEqual(expect.arrayContaining(['Change to Markdown']));
     expect(labels('zzz')).toEqual([]);
   });
+
+  it('offers the exports only where the server makes them', () => {
+    expect(find('Export as Markdown')?.disabled).toBe(true);
+    const entry = find('Export as Script', { ...CONTEXT, publish: true });
+    expect(entry?.disabled).toBe(false);
+    expect(entry?.arg).toBe('script');
+  });
 });

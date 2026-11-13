@@ -240,6 +240,7 @@ describe('App', () => {
     });
     const runAll = vi.fn(async () => {});
     const clearOutputs = vi.fn();
+    const exportAs = vi.fn(async () => {});
     const changeCellType = vi.fn();
     const command = vi.fn((id: string) => id === 'move-up');
     const discard = vi.fn();
@@ -254,6 +255,7 @@ describe('App', () => {
       save: vi.fn(async () => true),
       runAll,
       clearOutputs,
+      exportAs,
       changeCellType,
       command,
       kernelName: 'python3',
@@ -292,6 +294,9 @@ describe('App', () => {
     expect(runAll).toHaveBeenCalled();
     expect(await run('clear-outputs')).toBe(true);
     expect(clearOutputs).toHaveBeenCalledOnce();
+    expect(await run('export', 'markdown')).toBe(true);
+    expect(exportAs).toHaveBeenCalledWith('markdown');
+    expect(await run('export', 'pdf')).toBe(false);
     expect(await run('cell-type', 'markdown')).toBe(true);
     expect(changeCellType).toHaveBeenCalledWith('markdown');
     expect(await run('cell-type', 'heading')).toBe(false);

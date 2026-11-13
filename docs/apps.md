@@ -399,8 +399,8 @@ keys are kept in the keychain too.
   In Running, swipe or long-press a kernel to shut it down.
 - The navigation bar runs cells and interrupts the kernel, and its ⋯ menu
   inserts cells, sets the cell type, clears all outputs, restarts or
-  changes the kernel, shuts
-  down other kernels, saves, renames, downloads and trusts. With a
+  changes the kernel, shuts down other kernels, saves, renames,
+  downloads, exports and trusts. With a
   keyboard, hold ⌘ to see the commands: New Notebook ⌘N, Save ⌘S, Run All
   ⇧⌘↩, Interrupt ⌘., Find ⌘F.
 - Once a remote has a server, the ⋯ menu also picks where kernels run,
@@ -546,6 +546,22 @@ sheet on the iPad and iPhone. It needs a Ganymede server newer than
 nothing is downloaded (unsaved edits are still saved). It isn't offered
 with no Ganymede server; on a connection to a Jupyter server, whose
 export replaces nothing, the sheet refuses its page the same way.
+
+## Exporting a notebook
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+**Export As › Markdown** and **Script** (File menu on the Mac, the ⋯ menu
+on the iPad and iPhone, the Command Palette and the toolbar's More menu
+in the browser) save the notebook as a Markdown file or as its code in
+the kernel's language (`.ts`, `.py`, …), as JupyterLab's Save and Export
+Notebook As does. Markdown with images arrives as a zip of the text and
+the images. The server makes the file from the saved notebook, so
+unsaved edits are saved first. Unlike a published page, nothing is
+replaced: like Download Notebook, the file holds what the notebook does.
+Export needs a server connection, Ganymede or Jupyter.
 
 ## Spotlight
 

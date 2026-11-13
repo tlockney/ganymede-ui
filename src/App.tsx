@@ -504,6 +504,10 @@ export function App() {
         if (!publishAvailable(backend)) return false;
         setPublishFor({ path: c.path, name: c.name });
         return true;
+      case 'export':
+        if (!publishAvailable(backend) || (arg !== 'markdown' && arg !== 'script')) return false;
+        await c.exportAs(arg);
+        return true;
       case 'notebook-access':
         if (!hostGrantsAvailable(backend)) return false;
         setAccessFor({ path: c.path, name: c.name, wants: c.hostWants() });
@@ -813,6 +817,11 @@ export function App() {
               onNotebookAccess={() => void runCommand.current('notebook-access')}
               onPublish={
                 publishAvailable(backend) ? () => void runCommand.current('publish') : undefined
+              }
+              onExport={
+                publishAvailable(backend)
+                  ? format => void runCommand.current('export', format)
+                  : undefined
               }
             />
           )}
