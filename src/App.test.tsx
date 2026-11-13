@@ -348,7 +348,9 @@ describe('App', () => {
     expect(await run('close')).toBe(true);
     expect(discard).toHaveBeenCalled();
     await waitFor(() => expect(screen.queryByTestId('pane')).not.toBeInTheDocument());
-    expect(screen.queryByRole('dialog', { name: /with Parameters/ })).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: /with Parameters/ })).not.toBeInTheDocument(),
+    );
     expect(await run('close')).toBe(false);
     expect(await run('show-shortcuts')).toBe(true);
     expect(await screen.findByText('Keyboard Shortcuts')).toBeInTheDocument();
