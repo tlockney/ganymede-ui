@@ -116,4 +116,19 @@ describe('publish', () => {
       fetchPublished(backend, 'Io.ipynb', { code: 'folded', byline: '', copy: true }),
     ).rejects.toThrow('notebook copy');
   });
+
+  it('gives up on a server that doesn’t answer', async () => {
+    const { services, contents } = fakeServices();
+    Object.assign(contents, {
+      serverSettings: ServerConnection.makeSettings({ baseUrl: 'http://h/' }),
+    });
+    const request = vi.spyOn(ServerConnection, 'makeRequest').mockImplementation((_u, init) => {
+      expect(init?.signal).toBeInstanceOf(AbortSignal);
+      return Promise.reject(Object.assign(new Error('timed out'), { name: 'TimeoutError' }));
+    });
+    await expect(
+      fetchPublished(fakeBackend(services), 'Io.ipynb', defaultOptions()),
+    ).rejects.toThrow('didn’t answer in time');
+    expect(request).toHaveBeenCalledOnce();
+  });
 });

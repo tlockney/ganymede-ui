@@ -1169,6 +1169,13 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         downloadFile(basename(path), text, 'application/x-ipynb+json');
       },
       publish: async opts => {
+        // Locked: the file on disk isn't what this pane shows, and the
+        // server would make the page from the file.
+        if (locked.current) {
+          throw new Error(
+            `${basename(saver.path)} changed on disk. Reload it or unlock saving first.`,
+          );
+        }
         if (model.dirty && !(await controller.save())) {
           throw new Error('The notebook couldn’t be saved first.');
         }

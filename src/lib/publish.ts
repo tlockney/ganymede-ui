@@ -66,11 +66,21 @@ export async function fetchPublished(
   opts: PublishOptions,
 ): Promise<string> {
   const settings = backend.services.contents.serverSettings;
-  const res = await ServerConnection.makeRequest(
-    publishUrl(settings.baseUrl, path, opts),
-    { method: 'GET' },
-    settings,
-  );
+  // The sheet can't be cancelled while it waits, so a server that never
+  // answers mustn't hold it open.
+  let res: Response;
+  try {
+    res = await ServerConnection.makeRequest(
+      publishUrl(settings.baseUrl, path, opts),
+      { method: 'GET', signal: AbortSignal.timeout(PUBLISH_TIMEOUT_MS) },
+      settings,
+    );
+  } catch (e) {
+    if (e instanceof Error && e.name === 'TimeoutError') {
+      throw new Error('The server didn’t answer in time.');
+    }
+    throw e;
+  }
   if (!res.ok) {
     let message = `The server answered ${res.status}.`;
     try {
@@ -103,6 +113,9 @@ export async function fetchPublished(
   }
   return page;
 }
+
+/** How long the server gets to make the page. */
+export const PUBLISH_TIMEOUT_MS = 120_000;
 
 /** What Ganymede's page says made it, in its `<head>`. */
 const GENERATOR = '<meta name="generator" content="Ganymede ';

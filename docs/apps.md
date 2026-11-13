@@ -518,10 +518,10 @@ before you share it: anything else a cell printed is in it.
 
 The page arrives as a download: a save panel on the Mac, the share
 sheet on the iPad and iPhone. It needs a Ganymede server newer than
-0.10.0, the app's own or a remote one. An older Ganymede ignores the
-options, and a Jupyter server's export replaces nothing, so with either
-the sheet says so and nothing is downloaded (unsaved edits are still
-saved). The menu item is hidden only in the browser with no server.
+0.10.0. An older Ganymede ignores the options, so the sheet says so and
+nothing is downloaded (unsaved edits are still saved). It isn't offered
+with no Ganymede server; on a connection to a Jupyter server, whose
+export replaces nothing, the sheet refuses its page the same way.
 
 ## Spotlight
 

@@ -1478,6 +1478,20 @@ describe('NotebookPane', () => {
     return { ...t, change };
   }
 
+  it('publishes nothing while saving is locked', async () => {
+    const { latest, change } = await changedOnDisk();
+    change();
+    act(() => modelOf().cells.get(0).sharedModel.setSource('print(2)'));
+    await act(() => latest()!.save());
+    expect(latest()!.locked).toBe(true);
+    const request = vi.spyOn(ServerConnection, 'makeRequest');
+    await expect(latest()!.publish({ code: 'folded', byline: '', copy: true })).rejects.toThrow(
+      'changed on disk',
+    );
+    expect(request).not.toHaveBeenCalled();
+    request.mockRestore();
+  });
+
   it('locks saving when a save finds the file changed on disk, until Unlock', async () => {
     const { fake, latest, change } = await changedOnDisk();
     change();
