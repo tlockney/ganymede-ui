@@ -12,20 +12,21 @@ small Blob script loads it, since a page can only start a Worker from its
 own origin. On Node, Deno and Bun, DuckDB's native build,
 `@duckdb/node-api`, runs in the kernel's process instead.
 
-Either way, `query` runs SQL and returns the result's columns and its rows
-as plain objects, and `close` frees the database.
+Either way, `query` runs SQL, with values for its `?` parameters, and
+returns the result's columns and its rows as plain objects; `close` frees
+the database.
 
 ```ts
 type Result = { columns: { name: string; type: string }[]; rows: Record<string, unknown>[] };
-let query: (sql: string) => Promise<Result>;
+let query: (sql: string, params?: unknown[]) => Promise<Result>;
 let close: () => Promise<void>;
 
 if (/^(Node\.js|Deno|Bun)\//.test(navigator.userAgent)) {
   const { DuckDBInstance } = await import("npm:@duckdb/node-api@1.5.6-r.2");
   const db = await DuckDBInstance.create(":memory:");
   const conn = await db.connect();
-  query = async sql => {
-    const result = await conn.runAndReadAll(sql);
+  query = async (sql, params = []) => {
+    const result = await conn.runAndReadAll(sql, params as any[]);
     const types = result.columnTypes();
     return {
       columns: result.columnNames().map((name, i) => ({ name, type: String(types[i]) })),
@@ -41,8 +42,10 @@ if (/^(Node\.js|Deno|Bun)\//.test(navigator.userAgent)) {
   await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
   URL.revokeObjectURL(loader);
   const conn = await db.connect();
-  query = async sql => {
-    const table = await conn.query(sql);
+  query = async (sql, params = []) => {
+    const statement = await conn.prepare(sql);
+    const table = await statement.query(...params);
+    await statement.close();
     return {
       columns: table.schema.fields.map(f => ({ name: f.name, type: String(f.type) })),
       rows: table.toArray().map(row => row.toJSON()),
@@ -119,8 +122,9 @@ await sql(`
 
 ## Data from a cell
 
-Data the notebook already has goes in as JSON, read by DuckDB's
-`from_json` and spread into columns by `unnest`. Here, the strongest
+Data the notebook already has goes in as JSON, passed as a parameter
+rather than pasted into the SQL, read by DuckDB's `from_json` and spread
+into columns by `unnest`. Here, the strongest
 earthquakes of the past week, from the US Geological Survey.
 
 ```ts
@@ -130,11 +134,10 @@ const quakes = feed.features.map((f: any) => ({
   place: f.properties.place,
   depth_km: f.geometry.coordinates[2],
 }));
-const json = JSON.stringify(quakes).replaceAll("'", "''");
 await query(`
   create table quakes as
-  select unnest(from_json('${json}', '[{"magnitude": "DOUBLE", "place": "VARCHAR", "depth_km": "DOUBLE"}]'), recursive := true)
-`);
+  select unnest(from_json(?, '[{"magnitude": "DOUBLE", "place": "VARCHAR", "depth_km": "DOUBLE"}]'), recursive := true)
+`, [JSON.stringify(quakes)]);
 await sql(`
   select case when depth_km < 70 then 'shallow' when depth_km < 300 then 'intermediate' else 'deep' end as depth,
          count(*) as quakes,

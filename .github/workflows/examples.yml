@@ -5,7 +5,8 @@ name: Examples
 # and Bun kernels, the ones Ganymede starts outside the apps. Not part of
 # CI: the examples fetch from public APIs and CDNs, so a run depends on
 # them. It runs when a pull request or a push to main changes the
-# examples or their scripts, and by hand from the Actions tab.
+# examples, their scripts or the kernel versions, and by hand from the
+# Actions tab.
 on:
   pull_request:
     paths:
@@ -13,6 +14,10 @@ on:
       - scripts/examples.mjs
       - scripts/examples-kernels.mjs
       - .github/workflows/examples.yml
+      # The Ganymede and cdp-kernel versions it runs (ci.yml's e2e pins,
+      # package-lock.json's browser kernel).
+      - .github/workflows/ci.yml
+      - package-lock.json
   push:
     branches: [main]
     paths:
@@ -20,6 +25,10 @@ on:
       - scripts/examples.mjs
       - scripts/examples-kernels.mjs
       - .github/workflows/examples.yml
+      # The Ganymede and cdp-kernel versions it runs (ci.yml's e2e pins,
+      # package-lock.json's browser kernel).
+      - .github/workflows/ci.yml
+      - package-lock.json
   workflow_dispatch:
 
 permissions:

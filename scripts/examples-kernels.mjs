@@ -27,9 +27,16 @@ const KERNELS = ['cdp-node', 'cdp-deno', 'cdp-bun'];
 const args = process.argv.slice(2);
 const kernels = [];
 let filter;
+const usage = 'usage: node scripts/examples-kernels.mjs [-k KERNEL]... [FILTER]';
 for (let i = 0; i < args.length; i++) {
-  if (args[i] === '-k' || args[i] === '--kernel') kernels.push(args[++i]);
-  else filter = args[i];
+  if (args[i] === '-k' || args[i] === '--kernel') {
+    if (!args[i + 1]) throw new Error(usage);
+    kernels.push(args[++i]);
+  } else if (args[i].startsWith('-') || filter !== undefined) {
+    throw new Error(usage);
+  } else {
+    filter = args[i];
+  }
 }
 const ganymede = process.env.GANYMEDE || 'ganymede';
 
@@ -79,8 +86,9 @@ function check(code, results) {
   const bad = [];
   code.forEach((c, i) => {
     const r = results[i];
+    // An error cell must raise its error, not time out or lose its kernel.
+    if (c.error ? r?.status === 'error' : r?.status === 'ok') return;
     const errored = r?.status !== 'ok';
-    if (errored === c.error) return;
     const what = !r
       ? 'did not run'
       : errored
@@ -91,33 +99,30 @@ function check(code, results) {
   return bad;
 }
 
+const selected = sources().filter(s => !filter || s.stem.includes(filter));
+if (!selected.length) throw new Error(`No example matches "${filter}".`);
+
 let failed = 0;
 for (const kernel of kernels.length ? kernels : KERNELS) {
   console.log(kernel);
-  for (const { stem, cells } of sources().filter(s => !filter || s.stem.includes(filter))) {
+  for (const { stem, cells } of selected) {
     const code = cells.filter(c => c.cell_type === 'code' && c.run);
     if (!code.length) {
       console.log(`  - ${stem}: no cells to run`);
       continue;
     }
     // The examples fetch from public APIs, which sometimes refuse a
-    // shared CI address (429); a failed example gets one more run.
-    let bad = check(
-      code,
-      run(
-        kernel,
-        code.map(c => c.source),
-      ),
-    );
-    if (bad.length) {
+    // shared CI address (429): an example whose cells all finished but
+    // failed gets one more run. One that timed out or lost its kernel
+    // doesn't, so a hang can't double the job's time.
+    const sourcesOf = code.map(c => c.source);
+    const results = run(kernel, sourcesOf);
+    let bad = check(code, results);
+    const finished =
+      results.length === code.length && results.every(r => r?.status !== 'incomplete');
+    if (bad.length && finished) {
       console.log(`  … ${stem} failed; running it again`);
-      bad = check(
-        code,
-        run(
-          kernel,
-          code.map(c => c.source),
-        ),
-      );
+      bad = check(code, run(kernel, sourcesOf));
     }
     console.log(`  ${bad.length ? '✗' : '✓'} ${stem}${bad.length ? `\n${bad.join('\n')}` : ''}`);
     failed += bad.length ? 1 : 0;

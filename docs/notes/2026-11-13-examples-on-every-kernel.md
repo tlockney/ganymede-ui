@@ -10,20 +10,24 @@ has no 2D context).
 - DuckDB: the first cell picks the build by `navigator.userAgent`:
   `@duckdb/node-api` on Node, Deno and Bun, duckdb-wasm otherwise. Both
   sit behind `query(sql)` returning columns and plain-object rows, and
-  `close()`. The JSON cell loads its rows with `from_json` and `unnest`
-  in SQL instead of duckdb-wasm's `registerFileText`. Output on Node
+  `close()`; `query` binds `?` parameters on both. The JSON cell passes
+  its rows as a parameter to `from_json` and `unnest` instead of
+  duckdb-wasm's `registerFileText`. Output on Node
   matches the browser's.
 - Generative Art: `makeCanvas` and `show` use `OffscreenCanvas` when it
   draws 2D, else `@napi-rs/canvas`.
 - Widgets: the swatch is SVG bytes, so it needs no canvas.
 - `scripts/examples-kernels.mjs` runs each source's runnable cells on
   each kernel through `ganymede run --json`, expecting an error only in
-  `error` cells, and retries a failed example once, since Wikipedia
-  sometimes answers 429 to shared addresses.
+  `error` cells to raise one, and retries an example once when its cells
+  all finished but one failed, since Wikipedia sometimes answers 429 to
+  shared addresses. A timeout or dead kernel isn't retried, so a hang
+  can't push the job past its time limit.
 - `.github/workflows/examples.yml` runs it (matrix node, deno, bun, on
   ci.yml's e2e pins of ganymede and cdp-kernel) and `examples.mjs --run`
-  in Chromium, on PRs and pushes that touch the examples or their
-  scripts, and by hand. It is not a required check.
+  in Chromium, on PRs and pushes that touch the examples, their scripts,
+  ci.yml or package-lock.json (where the kernel versions are), and by
+  hand. It is not a required check.
   `scripts/ci-changes.sh` treats the new script and workflow as not
   affecting CI's slow jobs.
 
