@@ -12,6 +12,8 @@
  * in the page, before anything leaves it. Errors whose innermost frame
  * isn't the page's own code (a notebook's JavaScript output, an extension
  * evaluated at run time) are user code, not crashes, and are dropped.
+ * So is the `kernel_info_request` a kernel restart cancels in
+ * `@jupyterlab/services`, which nothing waits on (`isCanceledKernelInfo`).
  */
 import type { ErrorEvent, Event, StackFrame } from '@sentry/browser';
 
@@ -106,6 +108,18 @@ export function appFile(filename: string | undefined, origin: string): string | 
 }
 
 /**
+ * Whether the error is the `kernel_info_request` that `@jupyterlab/services`
+ * sends whenever a kernel's socket connects, canceled by a restart before
+ * the kernel replied (#555). The library chains on that request with no
+ * `catch` (7.6 and 7.7), so the rejection goes unhandled. The restart goes
+ * on and asks for the kernel's info again, so it isn't a crash. Other
+ * canceled requests are still sent: one our code doesn't catch is a bug.
+ */
+function isCanceledKernelInfo(type: string | undefined, value: string | undefined): boolean {
+  return type === 'Error' && !!value?.startsWith('Canceled future for kernel_info_request ');
+}
+
+/**
  * The event as it may leave the page, or null to drop it. Pure: `origin`
  * is the page's.
  */
@@ -119,6 +133,8 @@ export function scrubEvent<T extends Event>(event: T, origin: string): T | null 
   const top = exceptions[exceptions.length - 1];
   const frames = top.stacktrace?.frames ?? [];
   if (!frames.length || !appFile(frames[frames.length - 1].filename, origin)) return null;
+  // Only the outermost error: an app error caused by one is still sent.
+  if (isCanceledKernelInfo(top.type, top.value)) return null;
 
   const scrubFrame = (f: StackFrame): StackFrame => {
     const file = appFile(f.filename, origin);
