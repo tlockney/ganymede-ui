@@ -268,6 +268,7 @@ final class SpotlightSettings {
     }
 
     func remove(folder: URL) {
+        guard folders.contains(folder) else { return }
         folders.removeAll { $0 == folder }
         saveFolders()
     }
