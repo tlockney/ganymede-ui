@@ -72,6 +72,10 @@ final class AppKernels: NSObject {
     private var notebooks: [String: String] = [:]
     private var owners: [String: Int] = [:]
 
+    /// The kernel page's data store, apart from the notebook pages' default
+    /// one (#557). Fixed, so its cache outlives a launch.
+    static let kernelStore = UUID(uuidString: "6A1D3C2E-5B7F-4E81-9C0A-2F4D8B6E1A57")!
+
     /// `device` is the bridge cells reach (the system's when nil); tests
     /// pass one with a fake presenter, `prompts`, a presenter for the
     /// ledger's prompts, and `folders`, the grants that bridge was given.
@@ -79,6 +83,15 @@ final class AppKernels: NSObject {
         let config = WKWebViewConfiguration()
         // Not on screen, but cells must keep running at full speed.
         config.preferences.inactiveSchedulingPolicy = .none
+        // Its own store, so not the notebook pages' login cookie (#557):
+        // cells run on the server's origin, and with the cookie their
+        // `fetch` and `WebSocket` could read any file and drive any kernel,
+        // whatever the notebook's grant. The page makes no API calls
+        // (`kernelPageURL`), and the server serves static files without it.
+        // Persistent, so modules cells import stay in its disk cache across
+        // launches and offline; the server sets no cookie in it, since the
+        // page loads without the token.
+        config.websiteDataStore = WKWebsiteDataStore(forIdentifier: Self.kernelStore)
         webView = WKWebView(frame: CGRect(x: 0, y: 0, width: 1, height: 1), configuration: config)
         let folders = folders ?? FolderGrants()
         self.folders = folders
