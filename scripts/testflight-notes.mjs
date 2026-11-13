@@ -42,6 +42,8 @@ export function shipsInApp(files) {
       !/(^|\/)(test|tests|Tests|__tests__)\/|\.test\.[cm]?[jt]sx?$/.test(f) &&
       // The macOS app's resources and its Quick Look extensions.
       !/^apple\/(Resources\/macOS|Sources\/QuickLook)\//.test(f) &&
+      // A package's docs and build scripts (packages/device, #560).
+      !/^packages\/[^/]+\/(docs|scripts)\/|^packages\/.*\.md$/.test(f) &&
       /^(src|public|examples|packages)\/|^(index|kernel|preview)\.html$|^vite\.config\.ts$|^package(-lock)?\.json$|^apple\/(Sources|Resources)\/|^apple\/(project\.yml|Package\.resolved)$/.test(
         f,
       ),

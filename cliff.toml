@@ -42,6 +42,8 @@ commit_parsers = [
   { message = ".*", skip = true },
 ]
 filter_commits = false
+# .cliffignore lists commits to leave out by SHA: ganymede-device's history,
+# imported into packages/device (#560), whose "(#N)" are that repo's PRs.
 tag_pattern = "v[0-9].*"
 topo_order = false
 sort_commits = "newest"

@@ -1,0 +1,67 @@
+{
+  "name": "@tlockney/ganymede-device",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The `device` API: native features for TypeScript notebooks in the Ganymede Mac and iPad apps",
+  "license": "MIT",
+  "author": "Thomas Lockney <thomas@lockney.net>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tlockney/ganymede-ui.git",
+    "directory": "packages/device"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/mod.d.ts",
+      "default": "./dist/mod.js"
+    },
+    "./preload": {
+      "types": "./dist/preload.d.ts",
+      "default": "./dist/preload.js"
+    },
+    "./preload.js": "./dist/preload.js",
+    "./webkit": {
+      "types": "./dist/webkit.d.ts",
+      "default": "./dist/webkit.js"
+    },
+    "./remote": {
+      "types": "./dist/comm.d.ts",
+      "default": "./dist/remote.js"
+    },
+    "./frontend": {
+      "types": "./dist/frontend.d.ts",
+      "default": "./dist/frontend.js"
+    },
+    "./browser": {
+      "types": "./dist/browser.d.ts",
+      "default": "./dist/browser.js"
+    },
+    "./host": {
+      "types": "./dist/host.d.ts",
+      "default": "./dist/host.js"
+    },
+    "./globals": {
+      "types": "./dist/globals.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "prepare": "npm run build",
+    "check": "tsc -p tsconfig.json",
+    "test": "node --test test/*.test.ts",
+    "support-table": "node -e \"import('./src/support.ts').then((m) => console.log(m.supportTable()))\""
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "esbuild": "^0.28.2",
+    "typescript": "^6.0.3"
+  },
+  "files": [
+    "dist",
+    "src"
+  ]
+}

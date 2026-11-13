@@ -1,0 +1,88 @@
+// The page's side inside the Mac and iPad apps: a `host` handler for
+// cdp-kernel's startBrowserKernel that sends each request to the Swift
+// DeviceBridge through `window.webkit.messageHandlers.device`, a
+// WKScriptMessageHandlerWithReply. The wire format is in docs/protocol.md.
+
+import { decodeBinary, encodeBinary } from "./binary.ts";
+
+/** What startBrowserKernel's `host` option takes (cdp-kernel's HostHandler). */
+export type HostHandler = (request: { method: string; params: unknown }, signal: AbortSignal) => Promise<unknown>;
+
+/** The part of WebKit's message handler this uses: postMessage resolves with Swift's reply. */
+export interface MessageHandler {
+  postMessage(message: unknown): Promise<unknown>;
+}
+
+declare global {
+  // In a WKWebView with the handler registered (WKUserContentController).
+  var webkit: { messageHandlers: Record<string, MessageHandler | undefined> } | undefined;
+}
+
+export interface WebKitHostOptions {
+  /** The registered handler's name; "device" by default. */
+  name?: string;
+}
+
+/** The handler, or null outside a WKWebView that registered it. */
+export function findMessageHandler(name = "device"): MessageHandler | null {
+  return globalThis.webkit?.messageHandlers?.[name] ?? null;
+}
+
+// One counter for the page, not one per webkitHost(): the app makes a
+// handler per kernel, and every one posts to the same Swift handler, so a
+// cancel's id must name one call across all of them.
+let nextId = 0;
+// Each handler's `owner`, also unique per page: Swift keeps what a kernel
+// opened (sound players, playing sounds) under it, and drops it when that
+// kernel's Worker restarts or the handler is released.
+let nextOwner = 0;
+
+/**
+ * A host handler for one kernel. `release()` tells Swift the kernel is
+ * gone (shut down), so it stops that kernel's sounds and closes its
+ * players. A restart needs no call: the new Worker's `hello` does it.
+ */
+export type WebKitHost = HostHandler & { readonly owner: number; release(): void };
+
+/**
+ * A host handler backed by the Swift bridge. Swift replies `{ result }` or
+ * `{ error: { code, message } }`; an error becomes a thrown DeviceError
+ * shape, which cdp-kernel carries to the Worker by name, message and code.
+ * Aborting sends `{ id, cancel: true }` so Swift can dismiss what it showed.
+ * Bytes cross as `{ base64 }` both ways (docs/protocol.md, "Binary values").
+ */
+export function webkitHost(options: WebKitHostOptions = {}): WebKitHost {
+  const name = options.name ?? "device";
+  const owner = ++nextOwner;
+  const handler: HostHandler = async ({ method, params }, signal) => {
+    const handler = findMessageHandler(name);
+    if (!handler) throw deviceError("unavailable", "this page isn't in the app (no WebKit device handler)");
+    if (signal.aborted) throw deviceError("cancelled", `${method} was cancelled before it was sent`);
+    // Encoded before the call has an id, so a value over the limit never
+    // reaches Swift.
+    const encoded = await encodeBinary(params ?? {});
+    if (signal.aborted) throw deviceError("cancelled", `${method} was cancelled before it was sent`);
+    const id = ++nextId;
+    const onAbort = () => void handler.postMessage({ id, cancel: true }).catch(() => {});
+    signal.addEventListener("abort", onAbort, { once: true });
+    try {
+      const reply = await handler.postMessage({ id, owner, method, params: encoded });
+      if (isRecord(reply) && isRecord(reply.error)) {
+        throw deviceError(String(reply.error.code ?? "failed"), String(reply.error.message ?? `${method} failed`));
+      }
+      return isRecord(reply) ? decodeBinary(reply.result) : undefined;
+    } finally {
+      signal.removeEventListener("abort", onAbort);
+    }
+  };
+  const release = () => void findMessageHandler(name)?.postMessage({ owner, release: true }).catch(() => {});
+  return Object.assign(handler, { owner, release });
+}
+
+function deviceError(code: string, message: string): Error {
+  return Object.assign(new Error(message), { name: "DeviceError", code });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}

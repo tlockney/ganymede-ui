@@ -1,0 +1,855 @@
+@testable import DeviceBridge
+import UniformTypeIdentifiers
+import XCTest
+
+/// A date from what `Date.prototype.toISOString` writes.
+private func isoDate(_ text: String) -> Date? {
+    let formatter = ISO8601DateFormatter()
+    formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+    return formatter.date(from: text)
+}
+
+@MainActor
+private final class FakeClipboard: Clipboard {
+    var text: String?
+    func readText() -> String? { text }
+    func writeText(_ text: String) { self.text = text }
+    var image: Data?
+    func readImage() -> Data? { image }
+    func writeImage(_ data: Data) -> Bool {
+        // Stands in for the image decoder: PNG's signature, or not an image.
+        guard data.starts(with: [0x89, 0x50, 0x4E, 0x47]) else { return false }
+        image = data
+        return true
+    }
+}
+
+@MainActor
+private final class FakeHaptics: Haptics {
+    var isAvailable = true
+    var played: [String] = []
+    func impact(_ style: ImpactStyle) { played.append("impact \(style.rawValue)") }
+    func notification(_ type: NotificationFeedback) { played.append("notification \(type.rawValue)") }
+    func selection() { played.append("selection") }
+}
+
+@MainActor
+private final class FakeOpener: URLOpener {
+    var opened: [(URL, Bool)] = []
+    func open(_ url: URL, inApp: Bool) { opened.append((url, inApp)) }
+}
+
+@MainActor
+private struct FakeState: DeviceState {
+    func current() -> [String: Any] {
+        ["isPad": true, "darkMode": false, "locale": "en-US", "screen": ["width": 1180.0, "height": 820.0, "scale": 2.0]]
+    }
+}
+
+@MainActor
+private final class FakeSound: SoundPlayback {
+    let duration: TimeInterval = 3
+    var currentTime: TimeInterval = 0
+    var isPlaying = false
+    var volume: Float = 1
+    var onFinish: (() -> Void)?
+    var starts = true
+    func play() -> Bool {
+        isPlaying = starts
+        return starts
+    }
+    func pause() { isPlaying = false }
+}
+
+@MainActor
+private final class FakeSoundLoader: SoundLoader {
+    var loaded: [FakeSound] = []
+    var refuse = false
+    var silent = false
+    func load(_ data: Data) throws -> SoundPlayback {
+        if refuse { throw CocoaError(.fileReadCorruptFile) }
+        let sound = FakeSound()
+        sound.starts = !silent
+        loaded.append(sound)
+        return sound
+    }
+}
+
+/// Shows nothing: records each dialog, and the test answers it.
+@MainActor
+private final class FakePresenter: DialogPresenter {
+    var shown: [Dialog] = []
+    var hosts: [DialogHost?] = []
+    var closed = 0
+    var refuse = false
+    var fail = false
+    /// Holds each close's `gone` until `finishClosing()`, as an animation would.
+    var slowClose = false
+    private var closing: [() -> Void] = []
+    private var answers: [(DialogResult) -> Void] = []
+    func present(_ dialog: Dialog, on host: DialogHost?, done: @escaping (DialogResult) -> Void) throws -> Close {
+        if refuse { throw DialogUnavailable(description: "no window") }
+        if fail { throw DialogFailed(description: "disk full") }
+        shown.append(dialog)
+        hosts.append(host)
+        answers.append(done)
+        return { [weak self] gone in
+            guard let self else { return }
+            self.closed += 1
+            if self.slowClose { self.closing.append(gone) } else { gone() }
+        }
+    }
+    func finishClosing() {
+        let pending = closing
+        closing = []
+        pending.forEach { $0() }
+    }
+    /// Answers the newest dialog shown.
+    func answer(_ result: DialogResult) {
+        answers.last?(result)
+    }
+}
+
+/// A dialog call's replies, as WebKit would deliver them.
+@MainActor
+private final class Replies {
+    var all: [[String: Any]] = []
+    var last: [String: Any]? { all.last }
+    lazy var reply: ([String: Any]) -> Void = { [unowned self] in self.all.append($0) }
+}
+
+@MainActor
+final class DeviceBridgeTests: XCTestCase {
+    private func errorCode(_ reply: [String: Any]) -> String? {
+        (reply["error"] as? [String: Any])?["code"] as? String
+    }
+
+    func testHelloListsTheMethodsItAnswers() {
+        let bridge = DeviceBridge(clipboard: FakeClipboard(), appVersion: "1.2.3")
+        let result = bridge.handle(["id": 1, "method": "hello", "params": [:]])["result"] as? [String: Any]
+        XCTAssertEqual(result?["appVersion"] as? String, "1.2.3")
+        XCTAssertEqual(
+            result?["capabilities"] as? [String],
+            ["clipboard.readText", "clipboard.writeText", "clipboard.readImage", "clipboard.writeImage", "info", "openURL",
+             "ui.alert", "ui.confirm", "ui.prompt", "ui.actionSheet", "ui.pickDate", "share", "preview",
+             "files.pick", "files.export", "photos.pick", "sound.play", "sound.player", "sound.control", "sound.close"]
+                + (SystemHaptics().isAvailable
+                ? ["haptics.impact", "haptics.notification", "haptics.selection"] : [])
+        )
+        #if os(macOS)
+        XCTAssertEqual(result?["platform"] as? String, "macos")
+        #endif
+        XCTAssertNotNil(result?["osVersion"] as? String)
+    }
+
+    func testClipboardRoundTrip() {
+        let clipboard = FakeClipboard()
+        let bridge = DeviceBridge(clipboard: clipboard, appVersion: "")
+        XCTAssertTrue(bridge.handle(["id": 1, "method": "clipboard.readText"])["result"] is NSNull)
+        XCTAssertTrue(bridge.handle(["id": 2, "method": "clipboard.writeText", "params": ["text": "Io"]])["result"] is NSNull)
+        XCTAssertEqual(clipboard.text, "Io")
+        XCTAssertEqual(bridge.handle(["id": 3, "method": "clipboard.readText", "params": [:]])["result"] as? String, "Io")
+    }
+
+    func testClipboardImagesCrossAsBase64() {
+        let clipboard = FakeClipboard()
+        let bridge = DeviceBridge(clipboard: clipboard, appVersion: "")
+        XCTAssertTrue(bridge.handle(["id": 1, "method": "clipboard.readImage"])["result"] is NSNull)
+        let png = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0, 255])
+        let write = bridge.handle(["id": 2, "method": "clipboard.writeImage", "params": ["image": ["base64": png.base64EncodedString()]]])
+        XCTAssertTrue(write["result"] is NSNull, "\(write)")
+        XCTAssertEqual(clipboard.image, png)
+        let read = bridge.handle(["id": 3, "method": "clipboard.readImage"])["result"] as? [String: Any]
+        XCTAssertEqual(read?["base64"] as? String, png.base64EncodedString())
+    }
+
+    func testBadImagesFail() {
+        let clipboard = FakeClipboard()
+        let bridge = DeviceBridge(clipboard: clipboard, appVersion: "")
+        func write(_ image: Any) -> String? {
+            errorCode(bridge.handle(["id": 1, "method": "clipboard.writeImage", "params": ["image": image]]))
+        }
+        XCTAssertEqual(write("iVBORw=="), "failed", "a bare string isn't bytes")
+        XCTAssertEqual(write(["base64": "not base64!"]), "failed")
+        XCTAssertEqual(write(["base64": Data("text".utf8).base64EncodedString()]), "failed", "not an image")
+        let tooBig = String(repeating: "A", count: (DeviceBridge.maxBinaryBytes / 3 + 1) * 4)
+        XCTAssertEqual(write(["base64": tooBig]), "failed")
+        XCTAssertNil(clipboard.image)
+
+        clipboard.image = Data(count: DeviceBridge.maxBinaryBytes + 1)
+        XCTAssertEqual(errorCode(bridge.handle(["id": 2, "method": "clipboard.readImage"])), "failed")
+    }
+
+    func testErrorsCarryProtocolCodes() {
+        let bridge = DeviceBridge(clipboard: FakeClipboard(), appVersion: "")
+        XCTAssertEqual(errorCode(bridge.handle(["id": 1, "method": "camera.takePhoto"])), "unavailable")
+        XCTAssertEqual(errorCode(bridge.handle(["id": 2, "method": "clipboard.writeText", "params": ["text": 5]])), "failed")
+        XCTAssertEqual(errorCode(bridge.handle("nonsense")), "failed")
+        XCTAssertEqual(errorCode(bridge.handle(["id": 3])), "failed")
+    }
+
+    func testCancelIsAcknowledged() {
+        let bridge = DeviceBridge(clipboard: FakeClipboard(), appVersion: "")
+        XCTAssertNil(bridge.handle(["id": 1, "cancel": true])["error"])
+    }
+
+    func testHelloListsHapticsOnlyWhereThereAreSome() {
+        let haptics = FakeHaptics()
+        let bridge = DeviceBridge(clipboard: FakeClipboard(), haptics: haptics, appVersion: "")
+        XCTAssertTrue(bridge.capabilities.contains("haptics.impact"))
+        haptics.isAvailable = false
+        XCTAssertFalse(bridge.capabilities.contains("haptics.impact"))
+        XCTAssertEqual(errorCode(bridge.handle(["id": 1, "method": "haptics.selection"])), "unavailable")
+        XCTAssertEqual(haptics.played, [])
+    }
+
+    func testHapticsPlayWhatTheCellAsked() {
+        let haptics = FakeHaptics()
+        let bridge = DeviceBridge(clipboard: FakeClipboard(), haptics: haptics, appVersion: "")
+        XCTAssertTrue(bridge.handle(["id": 1, "method": "haptics.impact", "params": ["style": "heavy"]])["result"] is NSNull)
+        XCTAssertTrue(bridge.handle(["id": 2, "method": "haptics.impact", "params": [:]])["result"] is NSNull)
+        XCTAssertTrue(bridge.handle(["id": 3, "method": "haptics.notification", "params": ["type": "error"]])["result"] is NSNull)
+        XCTAssertTrue(bridge.handle(["id": 4, "method": "haptics.selection"])["result"] is NSNull)
+        XCTAssertEqual(haptics.played, ["impact heavy", "impact medium", "notification error", "selection"])
+        XCTAssertEqual(errorCode(bridge.handle(["id": 5, "method": "haptics.impact", "params": ["style": "loud"]])), "failed")
+        XCTAssertEqual(errorCode(bridge.handle(["id": 6, "method": "haptics.notification"])), "failed")
+    }
+
+    func testOpenURLTakesWebAndMailLinksOnly() {
+        let opener = FakeOpener()
+        let bridge = DeviceBridge(clipboard: FakeClipboard(), urlOpener: opener, appVersion: "")
+        let open = { (url: Any, inApp: Bool?) -> [String: Any] in
+            var params: [String: Any] = ["url": url]
+            params["inApp"] = inApp
+            return bridge.handle(["id": 1, "method": "openURL", "params": params])
+        }
+        XCTAssertTrue(open("https://deno.com", true)["result"] is NSNull)
+        XCTAssertTrue(open("HTTP://example.com", nil)["result"] is NSNull)
+        XCTAssertTrue(open("mailto:a@example.com", nil)["result"] is NSNull)
+        XCTAssertEqual(opener.opened.map { $0.0.absoluteString }, ["https://deno.com", "HTTP://example.com", "mailto:a@example.com"])
+        XCTAssertEqual(opener.opened.map { $0.1 }, [true, false, false])
+        for bad: Any in ["file:///etc/passwd", "shortcuts://run-shortcut?name=x", "not a url", 5] {
+            XCTAssertEqual(errorCode(open(bad, nil)), "failed", "\(bad)")
+        }
+        XCTAssertEqual(opener.opened.count, 3)
+    }
+
+    func testInfoReportsTheCurrentState() {
+        let bridge = DeviceBridge(clipboard: FakeClipboard(), state: FakeState(), appVersion: "")
+        let result = bridge.handle(["id": 1, "method": "info"])["result"] as? [String: Any]
+        XCTAssertEqual(result?["isPad"] as? Bool, true)
+        XCTAssertEqual(result?["locale"] as? String, "en-US")
+        XCTAssertEqual((result?["screen"] as? [String: Any])?["scale"] as? Double, 2.0)
+    }
+
+    func testSystemStateIsPlainValues() throws {
+        // What WebKit can carry: the reply must be a property list.
+        let state = SystemDeviceState().current()
+        XCTAssertNotNil(state["locale"] as? String)
+        XCTAssertNotNil(state["darkMode"] as? Bool)
+        XCTAssertNotNil(state["isPad"] as? Bool)
+        XCTAssertTrue(JSONSerialization.isValidJSONObject(state))
+    }
+
+    func testHelloNamesTheModel() {
+        let bridge = DeviceBridge(clipboard: FakeClipboard(), appVersion: "")
+        let result = bridge.handle(["id": 1, "method": "hello"])["result"] as? [String: Any]
+        XCTAssertFalse((result?["model"] as? String ?? "").isEmpty)
+    }
+
+    func testDialogsAnswerWithWhatThePersonChose() {
+        let presenter = FakePresenter()
+        let bridge = DeviceBridge(clipboard: FakeClipboard(), presenter: presenter, appVersion: "")
+        let replies = Replies()
+        func ask(_ id: Int, _ method: String, _ params: [String: Any]) {
+            bridge.respond(to: ["id": id, "method": method, "params": params], reply: replies.reply)
+        }
+
+        ask(1, "ui.alert", ["message": "Done"])
+        XCTAssertEqual(presenter.shown.last, .alert(title: nil, message: "Done"))
+        XCTAssertTrue(replies.all.isEmpty, "a dialog answers only once it closes")
+        presenter.answer(.ok)
+        XCTAssertTrue(replies.last?["result"] is NSNull)
+
+        ask(2, "ui.confirm", ["message": "Delete?", "destructive": true])
+        XCTAssertEqual(presenter.shown.last, .confirm(title: nil, message: "Delete?", destructive: true, okLabel: nil))
+        presenter.answer(.confirmed)
+        XCTAssertEqual(replies.last?["result"] as? Bool, true)
+        ask(3, "ui.confirm", ["message": "Delete?"])
+        presenter.answer(.dismissed)
+        XCTAssertEqual(replies.last?["result"] as? Bool, false)
+
+        ask(4, "ui.prompt", ["message": "Name?", "placeholder": "Alex", "secure": true])
+        XCTAssertEqual(presenter.shown.last, .prompt(title: nil, message: "Name?", placeholder: "Alex", defaultValue: nil, secure: true))
+        presenter.answer(.text("Io"))
+        XCTAssertEqual(replies.last?["result"] as? String, "Io")
+        ask(5, "ui.prompt", ["message": "Name?"])
+        presenter.answer(.dismissed)
+        XCTAssertTrue(replies.last?["result"] is NSNull)
+
+        ask(6, "ui.actionSheet", ["title": "Quality", "options": ["Low", "High"], "destructive": 1])
+        XCTAssertEqual(presenter.shown.last, .actionSheet(title: "Quality", message: nil, options: ["Low", "High"], cancel: nil, destructive: 1))
+        presenter.answer(.option(1))
+        XCTAssertEqual(replies.last?["result"] as? Int, 1)
+
+        let min = isoDate("2026-01-01T00:00:00.000Z")!
+        ask(7, "ui.pickDate", ["mode": "date", "min": "2026-01-01T00:00:00.000Z"])
+        XCTAssertEqual(presenter.shown.last, .pickDate(title: nil, mode: .date, value: nil, min: min, max: nil))
+        presenter.answer(.date(isoDate("2026-11-04T20:30:00.250Z")!))
+        XCTAssertEqual(replies.last?["result"] as? String, "2026-11-04T20:30:00.250Z")
+        XCTAssertEqual(replies.all.count, 7)
+        XCTAssertTrue(replies.all.allSatisfy { JSONSerialization.isValidJSONObject($0) })
+    }
+
+    func testOneDialogAtATime() {
+        let presenter = FakePresenter()
+        let bridge = DeviceBridge(clipboard: FakeClipboard(), presenter: presenter, appVersion: "")
+        let first = Replies()
+        let second = Replies()
+        bridge.respond(to: ["id": 1, "method": "ui.alert", "params": ["message": "one"]], reply: first.reply)
+        bridge.respond(to: ["id": 2, "method": "ui.alert", "params": ["message": "two"]], reply: second.reply)
+        XCTAssertEqual(presenter.shown.count, 1, "the second waits for the first")
+        presenter.answer(.ok)
+        XCTAssertEqual(first.all.count, 1)
+        XCTAssertEqual(presenter.shown.last, .alert(title: nil, message: "two"))
+        presenter.answer(.ok)
+        XCTAssertEqual(second.all.count, 1)
+        presenter.answer(.ok)
+        XCTAssertEqual(first.all.count + second.all.count, 2, "a second answer to a closed dialog is dropped")
+    }
+
+    func testCancelClosesTheDialogOrTakesItOffTheQueue() {
+        let presenter = FakePresenter()
+        let bridge = DeviceBridge(clipboard: FakeClipboard(), presenter: presenter, appVersion: "")
+        let shown = Replies()
+        let queued = Replies()
+        let next = Replies()
+        bridge.respond(to: ["id": 1, "method": "ui.prompt", "params": ["message": "a"]], reply: shown.reply)
+        bridge.respond(to: ["id": 2, "method": "ui.prompt", "params": ["message": "b"]], reply: queued.reply)
+        bridge.respond(to: ["id": 3, "method": "ui.prompt", "params": ["message": "c"]], reply: next.reply)
+
+        XCTAssertNil(bridge.handle(["id": 2, "cancel": true])["error"])
+        XCTAssertEqual(errorCode(queued.last ?? [:]), "cancelled")
+        XCTAssertEqual(presenter.closed, 0, "a queued dialog was never shown")
+
+        _ = bridge.handle(["id": 1, "cancel": true])
+        XCTAssertEqual(presenter.closed, 1)
+        XCTAssertEqual(errorCode(shown.last ?? [:]), "cancelled")
+        XCTAssertEqual(presenter.shown.map { $0 }, [
+            .prompt(title: nil, message: "a", placeholder: nil, defaultValue: nil, secure: false),
+            .prompt(title: nil, message: "c", placeholder: nil, defaultValue: nil, secure: false),
+        ], "the next waiting dialog shows")
+        _ = bridge.handle(["id": 99, "cancel": true])
+        XCTAssertTrue(next.all.isEmpty, "a cancel for another id leaves it alone")
+    }
+
+    func testTheNextDialogWaitsForTheCancelledOneToGo() {
+        let presenter = FakePresenter()
+        presenter.slowClose = true
+        let bridge = DeviceBridge(clipboard: FakeClipboard(), presenter: presenter, appVersion: "")
+        let first = Replies()
+        let second = Replies()
+        bridge.respond(to: ["id": 1, "method": "ui.alert", "params": ["message": "one"]], reply: first.reply)
+        bridge.respond(to: ["id": 2, "method": "ui.alert", "params": ["message": "two"]], reply: second.reply)
+        _ = bridge.handle(["id": 1, "cancel": true])
+        XCTAssertEqual(errorCode(first.last ?? [:]), "cancelled", "the cancel answers at once")
+        XCTAssertEqual(presenter.shown.count, 1, "the second waits while the first goes away")
+        _ = bridge.handle(["id": 1, "cancel": true])
+        XCTAssertEqual(presenter.closed, 1, "a second cancel doesn't close it again")
+        presenter.answer(.ok)
+        XCTAssertEqual(first.all.count, 1, "a late answer is dropped")
+        presenter.finishClosing()
+        XCTAssertEqual(presenter.shown.last, .alert(title: nil, message: "two"))
+        presenter.answer(.ok)
+        XCTAssertEqual(second.all.count, 1)
+    }
+
+    func testDropAllClosesEverything() {
+        let presenter = FakePresenter()
+        let bridge = DeviceBridge(clipboard: FakeClipboard(), presenter: presenter, appVersion: "")
+        let replies = Replies()
+        bridge.respond(to: ["id": 1, "method": "ui.alert", "params": ["message": "a"]], reply: replies.reply)
+        bridge.respond(to: ["id": 2, "method": "ui.alert", "params": ["message": "b"]], reply: replies.reply)
+        bridge.dropAll()
+        XCTAssertEqual(presenter.closed, 1)
+        XCTAssertEqual(replies.all.compactMap { errorCode($0) }, ["cancelled", "cancelled"])
+        XCTAssertEqual(presenter.shown.count, 1)
+        presenter.answer(.ok)
+        XCTAssertEqual(replies.all.count, 2)
+    }
+
+    func testADialogShowsOnThePageThatAsked() {
+        let presenter = FakePresenter()
+        let bridge = DeviceBridge(clipboard: FakeClipboard(), presenter: presenter, appVersion: "")
+        let page = DialogHost()
+        bridge.respond(to: ["id": 1, "method": "ui.alert", "params": ["message": "m"]], from: page) { _ in }
+        XCTAssertTrue(presenter.hosts.last! === page)
+    }
+
+    func testAnActionSheetsDestructiveIsAnIndex() throws {
+        let sheet = { (destructive: Any) in
+            try Dialog(method: "ui.actionSheet", params: ["title": "t", "options": ["a", "b"], "destructive": destructive])
+        }
+        XCTAssertEqual(try sheet(NSNumber(value: 1)), .actionSheet(title: "t", message: nil, options: ["a", "b"], cancel: nil, destructive: 1))
+        XCTAssertEqual(try sheet(NSNumber(value: true)), .actionSheet(title: "t", message: nil, options: ["a", "b"], cancel: nil, destructive: nil))
+    }
+
+    func testBadDialogsFail() {
+        let presenter = FakePresenter()
+        let bridge = DeviceBridge(clipboard: FakeClipboard(), presenter: presenter, appVersion: "")
+        let replies = Replies()
+        let bad: [[String: Any]] = [
+            ["id": 1, "method": "ui.alert", "params": [:]],
+            ["id": 2, "method": "ui.actionSheet", "params": ["title": "t", "options": []]],
+            ["id": 3, "method": "ui.pickDate", "params": ["mode": "week"]],
+            ["id": 4, "method": "ui.pickDate", "params": ["min": "yesterday"]],
+            ["method": "ui.alert", "params": ["message": "no id"]],
+            ["id": 1e300, "method": "ui.alert", "params": ["message": "id too big"]],
+            ["id": Double.infinity, "method": "ui.alert", "params": ["message": "id not finite"]],
+        ]
+        for call in bad {
+            bridge.respond(to: call, reply: replies.reply)
+            XCTAssertEqual(errorCode(replies.last ?? [:]), "failed", "\(call)")
+        }
+        XCTAssertTrue(presenter.shown.isEmpty)
+        XCTAssertEqual(errorCode(bridge.handle(["id": 5, "method": "ui.alert", "params": ["message": "m"]])), "failed")
+
+        presenter.refuse = true
+        bridge.respond(to: ["id": 6, "method": "ui.alert", "params": ["message": "m"]], reply: replies.reply)
+        XCTAssertEqual(errorCode(replies.last ?? [:]), "unavailable")
+        presenter.refuse = false
+        presenter.fail = true
+        bridge.respond(to: ["id": 8, "method": "ui.alert", "params": ["message": "m"]], reply: replies.reply)
+        XCTAssertEqual(errorCode(replies.last ?? [:]), "failed", "a write that fails isn't a missing device")
+        presenter.fail = false
+        bridge.respond(to: ["id": 7, "method": "ui.alert", "params": ["message": "m"]], reply: replies.reply)
+        XCTAssertEqual(presenter.shown.count, 1, "a refused dialog doesn't block the next")
+    }
+
+    func testShareAndPreviewShowAsSheets() {
+        let presenter = FakePresenter()
+        let bridge = DeviceBridge(clipboard: FakeClipboard(), presenter: presenter, appVersion: "")
+        let replies = Replies()
+        let png = Data([0x89, 0x50, 0x4E, 0x47])
+        let file: [String: Any] = ["name": "plot.png", "data": ["base64": png.base64EncodedString()]]
+        XCTAssertTrue(bridge.capabilities.contains("share") && bridge.capabilities.contains("preview"))
+
+        bridge.respond(
+            to: ["id": 1, "method": "share", "params": ["text": "hi", "url": "https://deno.com/", "files": [file]]],
+            reply: replies.reply
+        )
+        XCTAssertEqual(
+            presenter.shown.last,
+            .share(text: "hi", url: URL(string: "https://deno.com/"), files: [NamedFile(name: "plot.png", data: png)])
+        )
+        XCTAssertTrue(replies.all.isEmpty, "a sheet answers only once it closes")
+        presenter.answer(.shared)
+        XCTAssertEqual(replies.last?["result"] as? Bool, true)
+
+        bridge.respond(to: ["id": 2, "method": "share", "params": ["text": "hi", "files": []]], reply: replies.reply)
+        XCTAssertEqual(presenter.shown.last, .share(text: "hi", url: nil, files: []))
+        presenter.answer(.dismissed)
+        XCTAssertEqual(replies.last?["result"] as? Bool, false, "a dismissed share sheet is false, not an error")
+
+        bridge.respond(to: ["id": 3, "method": "preview", "params": ["files": [file, file]]], reply: replies.reply)
+        XCTAssertEqual(presenter.shown.last, .preview(files: Array(repeating: NamedFile(name: "plot.png", data: png), count: 2)))
+        presenter.answer(.dismissed)
+        XCTAssertTrue(replies.last?["result"] is NSNull)
+        XCTAssertEqual(replies.all.count, 3)
+    }
+
+    func testBadSharesAndPreviewsFail() {
+        let presenter = FakePresenter()
+        let bridge = DeviceBridge(clipboard: FakeClipboard(), presenter: presenter, appVersion: "")
+        let replies = Replies()
+        let data: [String: Any] = ["base64": "AQ=="]
+        let bad: [[String: Any]] = [
+            ["id": 1, "method": "share", "params": [:]],
+            ["id": 2, "method": "share", "params": ["url": "not a url"]],
+            ["id": 9, "method": "share", "params": ["url": "file:///etc/hosts"]],
+            ["id": 3, "method": "share", "params": ["files": [["name": "a/b", "data": data]]]],
+            ["id": 4, "method": "share", "params": ["files": [["name": "..", "data": data]]]],
+            ["id": 5, "method": "share", "params": ["files": [["name": "a", "data": ["base64": "!!"]]]]],
+            ["id": 6, "method": "preview", "params": ["files": []]],
+            ["id": 7, "method": "preview", "params": ["files": "x"]],
+        ]
+        for call in bad {
+            bridge.respond(to: call, reply: replies.reply)
+            XCTAssertEqual(errorCode(replies.last ?? [:]), "failed", "\(call)")
+        }
+        XCTAssertTrue(presenter.shown.isEmpty)
+        XCTAssertTrue(NamedFile.isPlainName("report 1.pdf"))
+        XCTAssertFalse(NamedFile.isPlainName(" "))
+        XCTAssertFalse(NamedFile.isPlainName("\n"), "as the page trims it")
+    }
+
+    func testPickersAnswerFilesAndExportSaves() {
+        let presenter = FakePresenter()
+        let bridge = DeviceBridge(clipboard: FakeClipboard(), presenter: presenter, appVersion: "")
+        let replies = Replies()
+        for method in ["files.pick", "files.export", "photos.pick"] {
+            XCTAssertTrue(bridge.capabilities.contains(method), method)
+        }
+
+        bridge.respond(
+            to: ["id": 1, "method": "files.pick", "params": ["types": ["text/csv", ".json", "image/*"], "multiple": true]],
+            reply: replies.reply
+        )
+        XCTAssertEqual(presenter.shown.last, .pickFiles(types: ["public.comma-separated-values-text", "public.json", "public.image"], multiple: true))
+        presenter.answer(.files([PickedFile(name: "a.csv", type: "text/csv", data: Data([1, 2]))]))
+        let picked = replies.last?["result"] as? [[String: Any]]
+        XCTAssertEqual(picked?.count, 1)
+        XCTAssertEqual(picked?.first?["name"] as? String, "a.csv")
+        XCTAssertEqual(picked?.first?["type"] as? String, "text/csv")
+        XCTAssertEqual((picked?.first?["data"] as? [String: Any])?["base64"] as? String, "AQI=")
+
+        bridge.respond(to: ["id": 2, "method": "files.pick", "params": [:]], reply: replies.reply)
+        XCTAssertEqual(presenter.shown.last, .pickFiles(types: [], multiple: false))
+        presenter.answer(.dismissed)
+        XCTAssertEqual((replies.last?["result"] as? [Any])?.count, 0, "a cancelled picker is [], not an error")
+
+        bridge.respond(to: ["id": 3, "method": "photos.pick", "params": [:]], reply: replies.reply)
+        XCTAssertEqual(presenter.shown.last, .pickPhotos(limit: 1))
+        presenter.answer(.failed("the picked files together are too large"))
+        XCTAssertEqual(errorCode(replies.last ?? [:]), "failed")
+
+        bridge.respond(to: ["id": 4, "method": "files.export", "params": ["name": "out.txt", "data": ["base64": "aGk="]]], reply: replies.reply)
+        XCTAssertEqual(presenter.shown.last, .exportFile(NamedFile(name: "out.txt", data: Data("hi".utf8))))
+        presenter.answer(.saved)
+        XCTAssertEqual(replies.last?["result"] as? Bool, true)
+
+        bridge.respond(to: ["id": 5, "method": "files.export", "params": ["name": "out.txt", "data": ["base64": "aGk="]]], reply: replies.reply)
+        presenter.answer(.dismissed)
+        XCTAssertEqual(replies.last?["result"] as? Bool, false)
+        XCTAssertEqual(replies.all.count, 5)
+    }
+
+    func testBadPickerCallsFail() {
+        let presenter = FakePresenter()
+        let bridge = DeviceBridge(clipboard: FakeClipboard(), presenter: presenter, appVersion: "")
+        let replies = Replies()
+        let bad: [[String: Any]] = [
+            ["id": 1, "method": "files.pick", "params": ["types": "text/csv"]],
+            ["id": 2, "method": "files.pick", "params": ["types": ["no/such-type-here"]]],
+            ["id": 3, "method": "files.export", "params": ["name": "a/b", "data": ["base64": "AQ=="]]],
+            ["id": 4, "method": "files.export", "params": ["name": "a"]],
+            ["id": 5, "method": "photos.pick", "params": ["limit": -1]],
+            ["id": 6, "method": "photos.pick", "params": ["limit": true]],
+        ]
+        for call in bad {
+            bridge.respond(to: call, reply: replies.reply)
+            XCTAssertEqual(errorCode(replies.last ?? [:]), "failed", "\(call)")
+        }
+        XCTAssertTrue(presenter.shown.isEmpty)
+        XCTAssertEqual(Dialog.contentType("csv")?.identifier, "public.comma-separated-values-text")
+        XCTAssertEqual(Dialog.contentType(".PNG")?.identifier, "public.png")
+        XCTAssertNotNil(Dialog.contentType(".parquet"), "an unknown extension still filters by extension")
+        XCTAssertEqual(Dialog.contentType("public.json")?.identifier, "public.json", "a type identifier is taken as one")
+        XCTAssertEqual(Dialog.contentType("com.adobe.pdf")?.identifier, "com.adobe.pdf")
+        XCTAssertEqual(Dialog.contentType("font/*"), .font)
+        XCTAssertEqual(Dialog.contentType("application/*"), .data)
+    }
+
+    /// Photo providers backed by files of `sizes` bytes.
+    private func photoProviders(_ sizes: [Int]) throws -> [NSItemProvider] {
+        try sizes.map { size in
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).png")
+            try Data(count: size).write(to: url)
+            addTeardownBlock { try? FileManager.default.removeItem(at: url) }
+            let provider = NSItemProvider()
+            provider.registerFileRepresentation(forTypeIdentifier: UTType.png.identifier, fileOptions: [], visibility: .all) { completion in
+                completion(url, false, nil)
+                return nil
+            }
+            return provider
+        }
+    }
+
+    func testPhotoLoaderStopsOncePastTheLimit() throws {
+        let loaded = expectation(description: "loaded")
+        var under: DialogResult?
+        PhotoLoader.load(try photoProviders([10, 10]), limit: 100) { result in
+            under = result
+            loaded.fulfill()
+        }
+        let refused = expectation(description: "refused")
+        var over: DialogResult?
+        PhotoLoader.load(try photoProviders([10, 10, 10]), limit: 15) { result in
+            over = result
+            refused.fulfill()
+        }
+        wait(for: [loaded, refused], timeout: 10)
+        guard case let .files(files) = under else { return XCTFail("expected files, got \(String(describing: under))") }
+        XCTAssertEqual(files.map(\.data.count), [10, 10])
+        guard case let .failed(message) = over else { return XCTFail("expected failed, got \(String(describing: over))") }
+        XCTAssertEqual(message, PickedFiles.tooLargeMessage)
+    }
+
+    func testSoundsPlayAndPlayersAnswerByID() {
+        let loader = FakeSoundLoader()
+        let bridge = DeviceBridge(clipboard: FakeClipboard(), presenter: FakePresenter(), sounds: loader, appVersion: "")
+        let audio: [String: Any] = ["base64": "AQI="]
+        for method in ["sound.play", "sound.player", "sound.control", "sound.close"] {
+            XCTAssertTrue(bridge.capabilities.contains(method), method)
+        }
+
+        XCTAssertTrue(bridge.handle(["method": "sound.play", "params": ["data": audio, "volume": 0.5]])["result"] is NSNull)
+        XCTAssertEqual(loader.loaded.last?.isPlaying, true)
+        XCTAssertEqual(loader.loaded.last?.volume, 0.5)
+        loader.silent = true
+        XCTAssertEqual(errorCode(bridge.handle(["method": "sound.play", "params": ["data": audio]])), "failed", "a sound that can't start")
+        loader.silent = false
+
+        let opened = bridge.handle(["method": "sound.player", "params": ["data": audio]])["result"] as? [String: Any]
+        let id = opened?["player"] as? Int
+        XCTAssertNotNil(id)
+        XCTAssertEqual(opened?["duration"] as? Double, 3)
+        let player = loader.loaded.last
+        XCTAssertEqual(player?.isPlaying, false, "a player opens paused")
+
+        func control(_ params: [String: Any]) -> [String: Any] {
+            bridge.handle(["method": "sound.control", "params": params.merging(["player": id ?? 0]) { $1 }])
+        }
+        XCTAssertEqual((control(["action": "play"])["result"] as? [String: Any])?["playing"] as? Bool, true)
+        XCTAssertEqual((control(["action": "seek", "time": 1.5])["result"] as? [String: Any])?["time"] as? Double, 1.5)
+        XCTAssertEqual((control(["action": "seek", "time": 9])["result"] as? [String: Any])?["time"] as? Double, 3, "seek stops at the end")
+        _ = control(["action": "stop"])
+        XCTAssertEqual(player?.isPlaying, false)
+        XCTAssertEqual(player?.currentTime, 0)
+        _ = control(["volume": 0.25])
+        XCTAssertEqual(player?.volume, 0.25)
+        XCTAssertEqual(errorCode(control(["action": "rewind"])), "failed")
+        XCTAssertEqual(errorCode(control(["action": "seek", "time": -1])), "failed")
+
+        XCTAssertTrue(bridge.handle(["method": "sound.close", "params": ["player": id ?? 0]])["result"] is NSNull)
+        XCTAssertEqual(errorCode(control(["action": "play"])), "failed", "a closed player is gone")
+
+        _ = bridge.handle(["method": "sound.player", "params": ["data": audio]])
+        loader.loaded.last?.play()
+        bridge.dropAll()
+        XCTAssertTrue(loader.loaded.allSatisfy { !$0.isPlaying }, "dropAll stops every sound")
+    }
+
+    func testCancellingAnOpenClosesThePlayer() {
+        let loader = FakeSoundLoader()
+        let bridge = DeviceBridge(clipboard: FakeClipboard(), presenter: FakePresenter(), sounds: loader, appVersion: "")
+        let audio: [String: Any] = ["base64": "AQI="]
+        let kept = (bridge.handle(["id": 1, "method": "sound.player", "params": ["data": audio]])["result"] as? [String: Any])?["player"] as? Int
+        let dropped = (bridge.handle(["id": 2, "method": "sound.player", "params": ["data": audio]])["result"] as? [String: Any])?["player"] as? Int
+        // The page cancelled call 2 after the answer left: it never learns the id.
+        XCTAssertTrue(bridge.handle(["id": 2, "cancel": true])["result"] is NSNull)
+        let state: [String: Any] = ["method": "sound.control", "params": ["player": dropped ?? 0]]
+        XCTAssertEqual(errorCode(bridge.handle(state)), "failed", "the cancelled call's player is closed")
+        XCTAssertNotNil(bridge.handle(["method": "sound.control", "params": ["player": kept ?? 0]])["result"], "the other stays open")
+        // A cancel for a call that opened nothing, or after its player closed, does nothing.
+        _ = bridge.handle(["method": "sound.close", "params": ["player": kept ?? 0]])
+        XCTAssertTrue(bridge.handle(["id": 1, "cancel": true])["result"] is NSNull)
+        XCTAssertTrue(bridge.handle(["id": 9, "cancel": true])["result"] is NSNull)
+    }
+
+    func testSoundControlChecksBeforeChanging() {
+        let loader = FakeSoundLoader()
+        let bridge = DeviceBridge(clipboard: FakeClipboard(), presenter: FakePresenter(), sounds: loader, appVersion: "")
+        let opened = bridge.handle(["method": "sound.player", "params": ["data": ["base64": "AQI="]]])["result"] as? [String: Any]
+        let id = opened?["player"] as? Int ?? 0
+        let player = loader.loaded.last
+        func control(_ params: [String: Any]) -> [String: Any] {
+            bridge.handle(["method": "sound.control", "params": params.merging(["player": id]) { $1 }])
+        }
+        XCTAssertEqual(errorCode(control(["action": "rewind", "volume": 0.5])), "failed")
+        XCTAssertEqual(errorCode(control(["action": "seek", "volume": 0.5])), "failed")
+        XCTAssertEqual(errorCode(control(["action": 3, "volume": 0.5])), "failed")
+        XCTAssertEqual(player?.volume, 1, "a refused call leaves the volume alone")
+        XCTAssertNotNil(control(["action": NSNull()])["result"], "a null action means state, as a null volume means none")
+        player?.starts = false
+        XCTAssertEqual(errorCode(control(["action": "play"])), "failed", "play that can't start fails")
+    }
+
+    func testInterruptedSoundsFreeTheirSlots() {
+        let loader = FakeSoundLoader()
+        let bridge = DeviceBridge(clipboard: FakeClipboard(), presenter: FakePresenter(), sounds: loader, appVersion: "")
+        let play: [String: Any] = ["method": "sound.play", "params": ["data": ["base64": "AQI="]]]
+        for _ in 0 ..< 32 {
+            XCTAssertTrue(bridge.handle(play)["result"] is NSNull)
+        }
+        XCTAssertEqual(errorCode(bridge.handle(play)), "failed", "at most 32 playing")
+        // An interruption pauses them; they never call onFinish.
+        for sound in loader.loaded { sound.pause() }
+        XCTAssertTrue(bridge.handle(play)["result"] is NSNull, "paused sounds no longer count")
+    }
+
+    func testSoundsBelongToTheirKernel() {
+        let loader = FakeSoundLoader()
+        let bridge = DeviceBridge(clipboard: FakeClipboard(), presenter: FakePresenter(), sounds: loader, appVersion: "")
+        let audio: [String: Any] = ["base64": "AQI="]
+        func open(_ owner: Int) -> Int {
+            let reply = bridge.handle(["owner": owner, "method": "sound.player", "params": ["data": audio]])
+            return (reply["result"] as? [String: Any])?["player"] as? Int ?? 0
+        }
+        func state(_ owner: Int, _ player: Int) -> [String: Any] {
+            bridge.handle(["owner": owner, "method": "sound.control", "params": ["player": player]])
+        }
+        let a = open(1)
+        let b = open(2)
+        XCTAssertEqual(errorCode(state(2, a)), "failed", "another kernel's player isn't there")
+        _ = bridge.handle(["owner": 2, "method": "sound.close", "params": ["player": a]])
+        XCTAssertNotNil(state(1, a)["result"], "nor can it close it")
+
+        // Limits count per kernel.
+        for _ in 1 ..< 32 { _ = open(1) }
+        XCTAssertEqual(errorCode(bridge.handle(["owner": 1, "method": "sound.player", "params": ["data": audio]])), "failed")
+        XCTAssertNotEqual(open(2), 0, "kernel 2 still has room")
+
+        // Kernel 1's Worker restarts: its new hello closes what the old one opened.
+        _ = bridge.handle(["owner": 1, "method": "sound.play", "params": ["data": audio]])
+        let kernel1Sound = loader.loaded.last
+        XCTAssertEqual(kernel1Sound?.isPlaying, true)
+        XCTAssertNotNil(bridge.handle(["owner": 1, "method": "hello"])["result"])
+        XCTAssertEqual(kernel1Sound?.isPlaying, false, "its sound stops")
+        XCTAssertEqual(errorCode(state(1, a)), "failed", "its players close")
+        XCTAssertNotNil(state(2, b)["result"], "kernel 2's stay")
+        XCTAssertNotEqual(open(1), 0, "and kernel 1 has its slots back")
+
+        // Kernel 2 shuts down: release closes its players.
+        XCTAssertTrue(bridge.handle(["owner": 2, "release": true])["result"] is NSNull)
+        XCTAssertEqual(errorCode(state(2, b)), "failed")
+    }
+
+    func testBadSoundsFail() {
+        let loader = FakeSoundLoader()
+        let bridge = DeviceBridge(clipboard: FakeClipboard(), presenter: FakePresenter(), sounds: loader, appVersion: "")
+        XCTAssertEqual(errorCode(bridge.handle(["method": "sound.play", "params": [:]])), "failed")
+        XCTAssertEqual(errorCode(bridge.handle(["method": "sound.play", "params": ["data": ["base64": "AQ=="], "volume": 2]])), "failed")
+        loader.refuse = true
+        XCTAssertEqual(errorCode(bridge.handle(["method": "sound.player", "params": ["data": ["base64": "AQ=="]]])), "failed")
+        loader.refuse = false
+        for _ in 0 ..< 32 {
+            _ = bridge.handle(["method": "sound.player", "params": ["data": ["base64": "AQ=="]]])
+        }
+        XCTAssertEqual(errorCode(bridge.handle(["method": "sound.player", "params": ["data": ["base64": "AQ=="]]])), "failed", "at most 32 open")
+        XCTAssertEqual(errorCode(bridge.handle(["method": "sound.close", "params": [:]])), "failed")
+    }
+
+    func testOtherMethodsStillAnswerThroughRespond() {
+        let replies = Replies()
+        let bridge = DeviceBridge(clipboard: FakeClipboard(), presenter: FakePresenter(), appVersion: "")
+        bridge.respond(to: ["id": 1, "method": "clipboard.writeText", "params": ["text": "x"]], reply: replies.reply)
+        XCTAssertTrue(replies.last?["result"] is NSNull)
+        bridge.respond(to: ["id": 2, "method": "ui.unknown"], reply: replies.reply)
+        XCTAssertEqual(errorCode(replies.last ?? [:]), "unavailable")
+    }
+
+    // MARK: Remote handler
+
+    func testRemoteHelloListsOnlyTheRemoteSubset() {
+        let bridge = DeviceBridge(clipboard: FakeClipboard(), presenter: FakePresenter(), appVersion: "1")
+        let replies = Replies()
+        bridge.respondRemote(to: ["owner": 1, "method": "hello", "params": [:]], reply: replies.reply)
+        let capabilities = (replies.last?["result"] as? [String: Any])?["capabilities"] as? [String] ?? []
+        XCTAssertTrue(capabilities.contains("clipboard.readText"))
+        XCTAssertTrue(capabilities.contains("ui.alert"))
+        XCTAssertFalse(capabilities.contains("sound.player"))
+        XCTAssertFalse(capabilities.contains("sound.control"))
+        XCTAssertTrue(capabilities.allSatisfy { DeviceBridge.remoteMethods.contains($0) })
+    }
+
+    func testRemoteCallsOutsideTheSubsetAreRefused() {
+        let loader = FakeSoundLoader()
+        let bridge = DeviceBridge(clipboard: FakeClipboard(), presenter: FakePresenter(), sounds: loader, appVersion: "")
+        let replies = Replies()
+        bridge.respondRemote(to: ["id": 1, "owner": 1, "method": "sound.player", "params": ["data": ["base64": "AQI="]]], reply: replies.reply)
+        XCTAssertEqual(errorCode(replies.last ?? [:]), "unavailable")
+        XCTAssertTrue(loader.loaded.isEmpty)
+        bridge.respondRemote(to: ["id": 2, "owner": 1, "method": "clipboard.writeText", "params": ["text": "x"]], reply: replies.reply)
+        XCTAssertTrue(replies.last?["result"] is NSNull)
+        bridge.respondRemote(to: ["id": -3, "owner": 1, "method": "info"], reply: replies.reply)
+        XCTAssertEqual(errorCode(replies.last ?? [:]), "failed", "ids are the page's, from 1")
+        bridge.respondRemote(to: ["id": 3, "owner": 1, "method": "ui.unknown"], reply: replies.reply)
+        XCTAssertEqual(errorCode(replies.last ?? [:]), "unavailable")
+        bridge.respondRemote(to: ["id": 4, "method": "info"], reply: replies.reply)
+        XCTAssertEqual(errorCode(replies.last ?? [:]), "failed", "a remote call names its owner")
+        bridge.respondRemote(to: ["release": true], reply: replies.reply)
+        XCTAssertEqual(errorCode(replies.last ?? [:]), "failed", "so does a release")
+    }
+
+    func testRemoteAndKernelPageIdsDontCollide() {
+        let presenter = FakePresenter()
+        let bridge = DeviceBridge(clipboard: FakeClipboard(), presenter: presenter, appVersion: "")
+        let kernelPage = Replies()
+        let remote = Replies()
+        bridge.respond(to: ["id": 1, "owner": 1, "method": "ui.alert", "params": ["message": "kernel"]], reply: kernelPage.reply)
+        bridge.respondRemote(to: ["id": 1, "owner": 1, "method": "ui.alert", "params": ["message": "remote"]], reply: remote.reply)
+        XCTAssertEqual(presenter.shown.count, 1, "one dialog at a time, across both handlers")
+
+        bridge.respondRemote(to: ["id": 1, "cancel": true], reply: { _ in })
+        XCTAssertEqual(errorCode(remote.last ?? [:]), "cancelled", "the remote cancel took its own call off the queue")
+        XCTAssertTrue(kernelPage.all.isEmpty, "and left the kernel page's dialog open")
+        XCTAssertEqual(presenter.closed, 0)
+
+        _ = bridge.handle(["id": 1, "cancel": true])
+        XCTAssertEqual(errorCode(kernelPage.last ?? [:]), "cancelled")
+    }
+
+    func testRemoteReleaseStopsOnlyItsOwnSounds() {
+        let loader = FakeSoundLoader()
+        let bridge = DeviceBridge(clipboard: FakeClipboard(), presenter: FakePresenter(), sounds: loader, appVersion: "")
+        let audio: [String: Any] = ["base64": "AQI="]
+        _ = bridge.handle(["owner": 1, "method": "sound.play", "params": ["data": audio]])
+        let kernelSound = loader.loaded.last
+        bridge.respondRemote(to: ["id": 1, "owner": 1, "method": "sound.play", "params": ["data": audio]], reply: { _ in })
+        let remoteSound = loader.loaded.last
+        bridge.respondRemote(to: ["owner": 1, "release": true], reply: { _ in })
+        XCTAssertEqual(remoteSound?.isPlaying, false)
+        XCTAssertEqual(kernelSound?.isPlaying, true)
+    }
+    func testDropPageLeavesTheRemoteHandlersCalls() {
+        let presenter = FakePresenter()
+        let loader = FakeSoundLoader()
+        let bridge = DeviceBridge(clipboard: FakeClipboard(), presenter: presenter, sounds: loader, appVersion: "")
+        let audio: [String: Any] = ["base64": "AQI="]
+        let kernelPage = Replies()
+        let remote = Replies()
+        bridge.respond(to: ["id": 1, "owner": 1, "method": "ui.alert", "params": ["message": "kernel"]], reply: kernelPage.reply)
+        bridge.respondRemote(to: ["id": 1, "owner": 1, "method": "ui.alert", "params": ["message": "remote"]], reply: remote.reply)
+        _ = bridge.handle(["owner": 1, "method": "sound.play", "params": ["data": audio]])
+        let kernelSound = loader.loaded.last
+        bridge.respondRemote(to: ["id": 2, "owner": 1, "method": "sound.play", "params": ["data": audio]], reply: { _ in })
+        let remoteSound = loader.loaded.last
+
+        bridge.dropPage()
+        XCTAssertEqual(errorCode(kernelPage.last ?? [:]), "cancelled")
+        XCTAssertEqual(presenter.closed, 1, "the kernel page's dialog closed")
+        XCTAssertTrue(remote.all.isEmpty, "the remote dialog still waits")
+        XCTAssertEqual(kernelSound?.isPlaying, false)
+        XCTAssertEqual(remoteSound?.isPlaying, true)
+
+        presenter.finishClosing()
+        XCTAssertEqual(presenter.shown.last, .alert(title: nil, message: "remote"))
+        presenter.answer(.ok)
+        XCTAssertNotNil(remote.last?["result"], "and is answered")
+    }
+
+    func testDropRemoteLeavesTheKernelPagesCalls() {
+        let presenter = FakePresenter()
+        let loader = FakeSoundLoader()
+        let bridge = DeviceBridge(clipboard: FakeClipboard(), presenter: presenter, sounds: loader, appVersion: "")
+        let audio: [String: Any] = ["base64": "AQI="]
+        let kernelPage = Replies()
+        let remote = Replies()
+        bridge.respondRemote(to: ["id": 1, "owner": 1, "method": "ui.alert", "params": ["message": "remote"]], reply: remote.reply)
+        bridge.respond(to: ["id": 1, "owner": 1, "method": "ui.alert", "params": ["message": "kernel"]], reply: kernelPage.reply)
+        _ = bridge.handle(["method": "sound.play", "params": ["data": audio]])
+        let kernelSound = loader.loaded.last
+        bridge.respondRemote(to: ["id": 2, "owner": 1, "method": "sound.play", "params": ["data": audio]], reply: { _ in })
+        let remoteSound = loader.loaded.last
+
+        bridge.dropRemote()
+        XCTAssertEqual(errorCode(remote.last ?? [:]), "cancelled")
+        XCTAssertTrue(kernelPage.all.isEmpty, "the kernel page's dialog still waits")
+        XCTAssertEqual(remoteSound?.isPlaying, false)
+        XCTAssertEqual(kernelSound?.isPlaying, true, "an owner-less sound is the kernel page's")
+
+        presenter.finishClosing()
+        XCTAssertEqual(presenter.shown.last, .alert(title: nil, message: "kernel"))
+    }
+}
