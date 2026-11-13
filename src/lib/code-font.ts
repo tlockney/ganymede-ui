@@ -51,7 +51,9 @@ export const MARKDOWN_FONTS: readonly { id: MarkdownFont; name: string; family: 
     name: 'Serif, as published notebooks',
     family: 'ui-serif, "Iowan Old Style", "Charter", "Source Serif Pro", Georgia, Cambria, serif',
   },
-  { id: 'mono', name: 'Monospace, the code font', family: 'var(--jp-code-font-family)' },
+  // `--code-font` is set on <html>, where this resolves: `--jp-code-font-family`
+  // is the code font only under `.notebook-page` (jupyter.css).
+  { id: 'mono', name: 'Monospace, the code font', family: 'var(--code-font, var(--font-mono))' },
 ];
 
 /** The system's monospace font, `--font-mono`: no ligatures or alternates. */
@@ -121,7 +123,7 @@ export function parseCodeFont(value: unknown): CodeFontSetting {
       : null;
   const styles = catalogFont(font)?.styles ?? [];
   let style = styles.find(s => s.id === v.style)?.id;
-  if (!style && v.style === undefined && Array.isArray(v.features)) {
+  if (!style && v.style == null && Array.isArray(v.features)) {
     const old = [...new Set(v.features)].sort().join(' ');
     style = styles.find(s => [...s.features].sort().join(' ') === old)?.id;
   }
@@ -188,6 +190,11 @@ export function applyCodeFont(
   root.setProperty('--code-font-features', featureSettings(setting));
   if (setting.markdown !== 'system') root.setProperty('--markdown-font', markdownFamily(setting));
   else root.removeProperty('--markdown-font');
+  // Monospace Markdown takes the code font's style and ligatures too.
+  root.setProperty(
+    '--markdown-font-features',
+    setting.markdown === 'mono' ? featureSettings(setting) : 'normal',
+  );
 }
 
 /** The setting: the app's when it set one, otherwise this browser's. */

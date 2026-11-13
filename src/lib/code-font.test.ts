@@ -71,6 +71,9 @@ describe('parseCodeFont', () => {
       parseCodeFont({ font: 'fira-code', features: ['ss05', 'ss03', 'cv01', 'ss01'] }).style,
     ).toBe('alternate-letters');
     expect(parseCodeFont({ font: 'fira-code', features: ['ss02'] }).style).toBe('standard');
+    expect(parseCodeFont({ font: 'jetbrains-mono', style: null, features: ['zero'] }).style).toBe(
+      'slashed-zero',
+    );
   });
 });
 
@@ -118,12 +121,30 @@ describe('applyCodeFont', () => {
     expect(root.getPropertyValue('--code-font-size')).toBe('14px');
     expect(root.getPropertyValue('--code-font-features')).toBe('"zero" 1');
     expect(root.getPropertyValue('--markdown-font')).toContain('Iowan Old Style');
+    expect(root.getPropertyValue('--markdown-font-features')).toBe('normal');
 
     applyCodeFont(DEFAULT_CODE_FONT);
     expect(style.textContent).toBe('');
     expect(root.getPropertyValue('--code-font')).toBe('');
     expect(root.getPropertyValue('--code-font-size')).toBe('');
     expect(root.getPropertyValue('--markdown-font')).toBe('');
+  });
+
+  it('gives Monospace Markdown the code font itself, with its style', () => {
+    const setting = {
+      ...DEFAULT_CODE_FONT,
+      font: 'jetbrains-mono',
+      style: 'slashed-zero',
+      markdown: 'mono' as const,
+    };
+    applyCodeFont(setting);
+    const root = document.documentElement.style;
+    // Resolved on <html>, where `--code-font` is the picked font; not
+    // `--jp-code-font-family`, which is the code font only in the notebook.
+    expect(root.getPropertyValue('--markdown-font')).toBe('var(--code-font, var(--font-mono))');
+    expect(root.getPropertyValue('--code-font')).toContain('JetBrains Mono');
+    expect(root.getPropertyValue('--markdown-font-features')).toBe('"zero" 1');
+    applyCodeFont(DEFAULT_CODE_FONT);
   });
 
   it('declares each file of a font', () => {

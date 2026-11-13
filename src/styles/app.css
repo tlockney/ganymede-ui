@@ -831,7 +831,7 @@ button {
   border-color: var(--accent);
 }
 
-/* The code font's preview and alternates (#354). */
+/* The code and Markdown fonts' previews (#354, #565). */
 .code-font-preview,
 .markdown-font-preview {
   margin: 0 0 0 66px;

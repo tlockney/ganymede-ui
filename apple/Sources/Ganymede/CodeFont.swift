@@ -64,6 +64,13 @@ struct CodeFontSetting: Codable, Equatable {
         }
     }
 
+    /// The code font alone, without the Markdown font, which only pages use.
+    var codeOnly: CodeFontSetting {
+        var value = self
+        value.markdown = "system"
+        return value
+    }
+
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
         try c.encode(font, forKey: .font)
@@ -116,6 +123,8 @@ struct CatalogFont: Decodable, Identifiable, Equatable {
 enum CodeFont {
     static let system = "system"
     static let standardStyle = "standard"
+    /// `.codeFontChanged`'s user-info key: true when only the Markdown font changed.
+    static let markdownOnlyKey = "markdownOnly"
     /// The Markdown fonts, as the page names them.
     static let markdownFonts: [MarkdownFont] = [
         MarkdownFont(id: "system", name: "System"),
@@ -173,14 +182,20 @@ enum CodeFont {
         }
         set {
             let value = normalized(newValue)
-            guard value != setting else { return }
+            let old = setting
+            guard value != old else { return }
             if let data = try? JSONEncoder().encode(value) {
                 UserDefaults.standard.set(data, forKey: defaultsKey)
             }
             cacheLock.lock()
             cache = [:]
             cacheLock.unlock()
-            NotificationCenter.default.post(name: .codeFontChanged, object: nil)
+            // Only the pages show Markdown: the editor and terminal skip a
+            // change to it alone (`observeCodeFont`).
+            NotificationCenter.default.post(
+                name: .codeFontChanged, object: nil,
+                userInfo: [markdownOnlyKey: old.codeOnly == value.codeOnly]
+            )
         }
     }
 

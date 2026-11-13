@@ -159,6 +159,7 @@
   padding: 2px 8px;
   /* The Markdown font setting (#565, src/lib/code-font.ts). */
   font-family: var(--markdown-font, var(--font-ui));
+  font-feature-settings: var(--markdown-font-features, normal);
   font-size: 15px;
   line-height: 1.6;
 }

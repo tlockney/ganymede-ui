@@ -274,8 +274,7 @@ describe('SettingsSheet code font', () => {
         }}
       />,
     );
-    const [code] = screen.getAllByRole('combobox', { name: 'Font' });
-    await userEvent.selectOptions(code!, 'fira-code');
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Font' }), 'fira-code');
     await userEvent.click(screen.getByRole('checkbox', { name: 'Ligatures' }));
     await userEvent.selectOptions(
       screen.getByRole('combobox', { name: 'Style' }),
@@ -284,8 +283,7 @@ describe('SettingsSheet code font', () => {
     expect(screen.getByTestId('code-font-preview').style.fontFeatureSettings).toBe(
       '"cv01", "ss01", "ss03", "ss05", "calt" 0, "liga" 0, "dlig" 0',
     );
-    const [, markdown] = screen.getAllByRole('combobox', { name: 'Font' });
-    await userEvent.selectOptions(markdown!, 'serif');
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Markdown font' }), 'serif');
     expect(screen.getByTestId('markdown-font-preview').style.fontFamily).toContain('ui-serif');
     await userEvent.click(save());
     expect(JSON.parse(localStorage.getItem('ganymede-ui:code-font')!)).toEqual({

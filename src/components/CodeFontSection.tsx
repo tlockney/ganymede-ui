@@ -125,6 +125,7 @@ export function CodeFontSection({ value, onChange }: Props) {
           <label>
             <span>Font</span>
             <select
+              aria-label="Markdown font"
               value={value.markdown}
               onChange={e => update({ markdown: e.target.value as MarkdownFont })}
             >
@@ -139,10 +140,8 @@ export function CodeFontSection({ value, onChange }: Props) {
             className="markdown-font-preview"
             data-testid="markdown-font-preview"
             style={{
-              fontFamily: markdownFamily(value).replace(
-                'var(--jp-code-font-family)',
-                familyList(value) ?? 'var(--font-mono)',
-              ),
+              fontFamily: markdownFamily(value),
+              fontFeatureSettings: value.markdown === 'mono' ? featureSettings(value) : 'normal',
             }}
           >
             {MARKDOWN_SAMPLE}
