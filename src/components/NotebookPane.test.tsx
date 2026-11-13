@@ -75,6 +75,11 @@ vi.mock('../lib/cell-controls', () => ({
   attachCellControls: vi.fn(() => ({ dispose: vi.fn(), isDisposed: false })),
 }));
 
+// The same for collapsing code (#564); code-collapse.test.ts covers it.
+vi.mock('../lib/code-collapse', () => ({
+  attachCodeCollapse: vi.fn(() => ({ dispose: vi.fn(), isDisposed: false })),
+}));
+
 // The running and queued lines need JupyterLab's cells; run-status.test.ts
 // covers them.
 const runStatus = vi.hoisted(() => ({

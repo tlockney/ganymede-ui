@@ -794,6 +794,8 @@ struct IPadCommands: Commands {
             IPadPageButton("Run All Cells", "run-all", key: .return, modifiers: [.command, .shift])
             IPadPageButton("Insert Cell Below", "insert-below")
             IPadPageButton("Insert Markdown Cell Below", "insert-markdown")
+            IPadPageButton("Collapse All Code", "collapse-all-code")
+            IPadPageButton("Expand All Code", "expand-all-code")
             IPadPageButton("Find…", "find", key: "f")
         }
         CommandMenu("Kernel") {

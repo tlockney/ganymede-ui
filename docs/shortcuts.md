@@ -90,6 +90,10 @@ origin across launches, so changes there last.
 | Change to code          | `Y`        | `Y`                     |
 | Change to Markdown      | `M`        | `M`                     |
 | Change to raw           | `R`        | `R`                     |
+| Collapse code           | `⌘⌥[`      | `Ctrl+Alt+[`            |
+| Expand code             | `⌘⌥]`      | `Ctrl+Alt+]`            |
+| Collapse all code       | `⌘⌥⇧[`     | `Ctrl+Alt+Shift+[`      |
+| Expand all code         | `⌘⌥⇧]`     | `Ctrl+Alt+Shift+]`      |
 | Show keyboard shortcuts | `H`        | `H`                     |
 
 ### Edit mode

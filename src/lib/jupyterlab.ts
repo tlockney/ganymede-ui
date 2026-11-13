@@ -242,6 +242,11 @@ export function createCommands(
   add('to-code', () => NotebookActions.changeCellType(notebook, 'code'));
   add('to-markdown', () => NotebookActions.changeCellType(notebook, 'markdown'));
   add('to-raw', () => NotebookActions.changeCellType(notebook, 'raw'));
+  // Collapsing code (#564): the selected cells, or every code cell.
+  add('collapse-code', () => NotebookActions.hideCode(notebook));
+  add('expand-code', () => NotebookActions.showCode(notebook));
+  add('collapse-all-code', () => NotebookActions.hideAllCode(notebook));
+  add('expand-all-code', () => NotebookActions.showAllCode(notebook));
   add('move-up', () => NotebookActions.moveUp(notebook));
   add('move-down', () => NotebookActions.moveDown(notebook));
   add('select-all', () => NotebookActions.selectAll(notebook));
@@ -275,6 +280,10 @@ export function createCommands(
       'to-code',
       'to-markdown',
       'to-raw',
+      'collapse-code',
+      'expand-code',
+      'collapse-all-code',
+      'expand-all-code',
       'move-up',
       'move-down',
       'select-all',

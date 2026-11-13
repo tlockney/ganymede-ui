@@ -90,8 +90,18 @@ shown or hidden, its tab and its expanded folders across launches.
   inserts cells, sets the cell type and trusts the notebook. Its kernel
   button opens a popover with the kernel's state and memory, Interrupt,
   Restart, Kernel Log and the kernels to change to.
-- The Cell menu runs, inserts, moves and deletes cells and opens Find; the
-  Kernel menu interrupts (⌘.), restarts, changes and trusts.
+- The Cell menu runs, inserts, moves and deletes cells, collapses and
+  expands code, and opens Find; the Kernel menu interrupts (⌘.),
+  restarts, changes and trusts. A code cell's chevron, left of its
+  prompt, collapses its code to the first line, as on the web page
+  (README, "Collapsing code"); the iPad's Cell menu has Collapse All Code
+  and Expand All Code.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, where only the thin bar at a cell's left edge
+> collapses its code.
+
 - View > Command Palette… (⇧⌘P) finds and runs the notebook, cell and
   kernel commands by name. [Keyboard shortcuts](shortcuts.md) lists the
   rest.

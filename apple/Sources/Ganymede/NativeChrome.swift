@@ -719,6 +719,12 @@ struct CellMenu: View {
             Button("Move Cell Down") { page?.run("move-down") }
             Button("Delete Cell") { page?.run("delete") }
             Divider()
+            // Collapsing code (#564); the page binds ⌘⌥[ and ⌘⌥] in command mode.
+            Button("Collapse Code") { page?.run("collapse-code") }
+            Button("Expand Code") { page?.run("expand-code") }
+            Button("Collapse All Code") { page?.run("collapse-all-code") }
+            Button("Expand All Code") { page?.run("expand-all-code") }
+            Divider()
             Button("Find in Notebook…") { page?.run("find") }
         }
         .disabled(page?.state.hasNotebook != true)
