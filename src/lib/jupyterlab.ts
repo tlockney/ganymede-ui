@@ -70,6 +70,7 @@ import { type Message, MessageLoop } from '@lumino/messaging';
 import { DisposableDelegate, DisposableSet, type IDisposable } from '@lumino/disposable';
 import { Widget } from '@lumino/widgets';
 import { installOutputFrames } from './output-frames';
+import { installTableOutput } from './table-output';
 import { bindShortcuts, SHOW_SHORTCUTS_EVENT } from './shortcuts';
 
 // JupyterLab's own stylesheets for the notebook and everything it pulls in
@@ -136,6 +137,8 @@ for (const extension of mimeExtensions) {
 }
 // HTML and JavaScript outputs in sandboxed frames, not the app's document.
 installOutputFrames(baseRendermime);
+// Tables from jupyter.table and jupyter.sql (ganymede#747).
+installTableOutput(baseRendermime);
 
 /**
  * A rendermime registry for one notebook: relative links and images in

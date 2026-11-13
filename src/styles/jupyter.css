@@ -409,3 +409,71 @@
 .touch-ui .notebook-page .jp-cell-toolbar {
   display: none !important;
 }
+
+/* Table output (ganymede#747): jupyter.table and jupyter.sql results. */
+.gm-table {
+  font-size: var(--jp-ui-font-size1);
+}
+.gm-table-scroll {
+  max-height: 32em;
+  overflow: auto;
+}
+.gm-table table {
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.gm-table caption {
+  text-align: left;
+  font-weight: 600;
+  padding-bottom: 4px;
+}
+.gm-table th {
+  position: sticky;
+  top: 0;
+  background: var(--jp-layout-color1);
+  border-bottom: 1px solid var(--jp-border-color1);
+  text-align: left;
+  vertical-align: bottom;
+  padding: 0;
+}
+.gm-table th button {
+  all: unset;
+  cursor: pointer;
+  display: block;
+  padding: 4px 10px;
+}
+.gm-table th button:focus-visible {
+  outline: 2px solid var(--jp-brand-color1);
+}
+.gm-table-name {
+  font-weight: 600;
+}
+.gm-table-type {
+  display: block;
+  font-weight: normal;
+  font-size: 0.85em;
+  color: var(--jp-content-font-color2);
+}
+.gm-table td {
+  padding: 2px 10px;
+  border-bottom: 1px solid var(--jp-border-color2);
+  white-space: pre;
+  vertical-align: top;
+}
+.gm-table .gm-num {
+  text-align: right;
+}
+.gm-table .gm-null {
+  color: var(--jp-content-font-color3);
+  font-style: italic;
+}
+.gm-table-footer {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding-top: 4px;
+  color: var(--jp-content-font-color2);
+}
+.gm-table-footer button {
+  min-width: 2em;
+}
