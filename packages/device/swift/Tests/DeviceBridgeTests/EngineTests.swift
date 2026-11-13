@@ -150,6 +150,34 @@ final class EngineTests: XCTestCase {
         XCTAssertNil(code(reply), "just below is a remote owner")
     }
 
+    func testAPageMessageCantNameAnotherRange() {
+        var reply: [String: Any]?
+        bridge.respondPage(to: ["owner": -(engineBase + 1), "release": true]) { reply = $0 }
+        XCTAssertEqual(code(reply), "failed", "an engine context's owner")
+        bridge.respondPage(to: ["owner": -1, "release": true]) { reply = $0 }
+        XCTAssertEqual(code(reply), "failed", "the remote handler's owner")
+        bridge.respondPage(to: ["id": -(engineBase + 1), "cancel": true]) { reply = $0 }
+        XCTAssertEqual(code(reply), "failed")
+        bridge.respondPage(to: ["owner": engineBase, "release": true]) { reply = $0 }
+        XCTAssertEqual(code(reply), "failed", "2^40 itself is out of range")
+        bridge.respondPage(to: ["owner": 1.5, "release": true]) { reply = $0 }
+        XCTAssertEqual(code(reply), "failed", "not an integer")
+        bridge.respondPage(to: ["owner": engineBase - 1, "release": true]) { reply = $0 }
+        XCTAssertNil(code(reply), "just below is a page owner")
+        bridge.respondPage(to: ["id": 0, "cancel": true]) { reply = $0 }
+        XCTAssertNil(code(reply))
+    }
+
+    func testAPageMessageCantReleaseAnEngineContext() {
+        let engine = bridge.engineDevice()
+        let open = send(engine, ["id": 1, "method": "ui.alert", "params": ["message": "hi"]])
+        var reply: [String: Any]?
+        bridge.respondPage(to: ["owner": engine.owner, "release": true]) { reply = $0 }
+        XCTAssertEqual(code(reply), "failed")
+        XCTAssertEqual(screen.closed, 0)
+        XCTAssertNil(open(), "the engine's dialog stays open")
+    }
+
     func testACancelAfterTheAnswerClosesTheHandleTheCallOpened() throws {
         let bridge = DeviceBridge(clipboard: Board(), presenter: screen, sounds: Quiet(), appVersion: "")
         let engine = bridge.engineDevice()

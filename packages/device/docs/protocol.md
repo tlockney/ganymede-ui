@@ -59,6 +59,11 @@ with no `owner` (a page from before owners) counts as owner 0, whose
 | `{ id, cancel: true }` (continued) | For a stream (below): a cancel of its opening call, or of the `stream.next` waiting on it, stops its source. | |
 | `{ owner, release: true }` | Kernel `owner` shut down. Stop its sounds, close its handles (such as players) and stop its streams. | Anything; ignored |
 
+`id` and `owner` are integers from 0 to 2^40 - 1. The handler answers
+any other value with `failed` and does nothing else: negative ids and
+owners belong to the remote handler and engine contexts, which the
+kernel page can't reach.
+
 Rules for the Swift handler:
 
 - Always reply with the object, never with WebKit's error string, so the
