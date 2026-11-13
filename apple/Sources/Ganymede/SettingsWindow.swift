@@ -135,7 +135,7 @@ private struct LinkRunSettings: View {
                     } label: {
                         Text((entry.path as NSString).lastPathComponent)
                         Text(
-                            [entry.path, entry.destination.map { "Output to \($0)" }, entry.withParameters ? "With any parameters" : nil]
+                            [entry.path, entry.destination.map { $0 == AppURL.shortcutsDestination ? "From \($0)" : "Output to \($0)" }, entry.withParameters ? "With any parameters" : nil]
                                 .compactMap { $0 }
                                 .joined(separator: "\n")
                         )
