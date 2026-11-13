@@ -53,6 +53,7 @@ vi.mock('./components/NotebookPane', async () => {
             status: 'idle',
             trusted: true,
             hostWants: () => [],
+            recordedParams: () => '{"day": "mon"}',
             ...mocks.controller,
             path,
           });
@@ -297,6 +298,35 @@ describe('App', () => {
     expect(await run('export', 'markdown')).toBe(true);
     expect(exportAs).toHaveBeenCalledWith('markdown');
     expect(await run('export', 'pdf')).toBe(false);
+    expect(await run('run-with-params')).toBe(true);
+    const sheet = await screen.findByRole('dialog', { name: /with Parameters/ });
+    expect(within(sheet).getByRole('textbox', { name: /Parameters/ })).toHaveValue(
+      '{"day": "mon"}',
+    );
+    // The sheet starts the next time with what it last ran.
+    Object.assign(fake.contents, {
+      serverSettings: ServerConnection.makeSettings({ baseUrl: 'http://h/' }),
+    });
+    const request = vi
+      .spyOn(ServerConnection, 'makeRequest')
+      .mockResolvedValue(new Response(JSON.stringify({ status: 'ok', results: {} })));
+    const params = within(sheet).getByRole('textbox', { name: /Parameters/ });
+    await userEvent.clear(params);
+    await userEvent.type(params, '{{"day": "tue"}');
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Run' }));
+    await within(sheet).findByText('The run finished.');
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Done' }));
+    request.mockRestore();
+    expect(await run('run-with-params')).toBe(true);
+    const again = await screen.findByRole('dialog', { name: /with Parameters/ });
+    expect(within(again).getByRole('textbox', { name: /Parameters/ })).toHaveValue(
+      '{\n  "day": "tue"\n}',
+    );
+    // A rename while the sheet is up keeps it, and its parameters follow.
+    act(() => mocks.onRenamed!('Io.ipynb', 'Moon.ipynb'));
+    expect(screen.getByRole('dialog', { name: /with Parameters/ })).toBe(again);
+    act(() => mocks.onRenamed!('Moon.ipynb', 'Io.ipynb'));
+    await userEvent.click(within(again).getByRole('button', { name: 'Cancel' }));
     expect(await run('cell-type', 'markdown')).toBe(true);
     expect(changeCellType).toHaveBeenCalledWith('markdown');
     expect(await run('cell-type', 'heading')).toBe(false);
@@ -310,10 +340,15 @@ describe('App', () => {
     // An absolute path, as the Mac app passes it, is cleaned as `?open=` is.
     expect(await run('open', '/Europa.ipynb')).toBe(true);
     await waitFor(() => expect(screen.getByTestId('pane')).toHaveTextContent(/^Europa\.ipynb$/));
+    // Closing the notebook closes its Run with Parameters sheet, which
+    // stops a run.
+    expect(await run('run-with-params')).toBe(true);
+    await screen.findByRole('dialog', { name: /with Parameters/ });
     // Closed without saving: the app moved it to the Trash.
     expect(await run('close')).toBe(true);
     expect(discard).toHaveBeenCalled();
     await waitFor(() => expect(screen.queryByTestId('pane')).not.toBeInTheDocument());
+    expect(screen.queryByRole('dialog', { name: /with Parameters/ })).not.toBeInTheDocument();
     expect(await run('close')).toBe(false);
     expect(await run('show-shortcuts')).toBe(true);
     expect(await screen.findByText('Keyboard Shortcuts')).toBeInTheDocument();

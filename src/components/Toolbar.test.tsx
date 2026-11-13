@@ -22,6 +22,7 @@ function controller(over: Partial<NotebookController> = {}): NotebookController 
     publish: vi.fn(async () => {}),
     trust: vi.fn(async () => {}),
     hostWants: vi.fn(() => []),
+    recordedParams: vi.fn(() => '{}'),
     run: vi.fn(async () => {}),
     runAll: vi.fn(async () => {}),
     clearOutputs: vi.fn(),
@@ -425,6 +426,30 @@ describe('Toolbar overflow (#201)', () => {
     await userEvent.click(screen.getByTitle('More'));
     await userEvent.click(screen.getByRole('menuitem', { name: 'Export as Script' }));
     expect(onExport).toHaveBeenCalledWith('script');
+  });
+
+  it('lists Run with Parameters in More, only where the app can run it', async () => {
+    layout(320);
+    const c = controller();
+    const onRunWithParams = vi.fn();
+    const { rerender } = render(
+      <Toolbar controller={c} sidebarOpen={false} onToggleSidebar={() => {}} specs={SPECS} />,
+    );
+    await userEvent.click(screen.getByTitle('More'));
+    expect(screen.queryByRole('menuitem', { name: 'Run with Parameters…' })).toBeNull();
+    await userEvent.keyboard('{Escape}');
+    rerender(
+      <Toolbar
+        controller={c}
+        sidebarOpen={false}
+        onToggleSidebar={() => {}}
+        specs={SPECS}
+        onRunWithParams={onRunWithParams}
+      />,
+    );
+    await userEvent.click(screen.getByTitle('More'));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Run with Parameters…' }));
+    expect(onRunWithParams).toHaveBeenCalledOnce();
   });
 
   it('keeps Run and "…" on the narrowest phone', async () => {
