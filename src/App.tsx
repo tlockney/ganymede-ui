@@ -81,6 +81,7 @@ import { copySample } from './lib/sample';
 import { refreshKernelsOnReturn } from './lib/kernel-refresh';
 import { RunSheet } from './components/RunSheet';
 import { runWithParams } from './lib/run';
+import { EXPORT_FORMATS, type ExportFormat } from './lib/export';
 
 /**
  * A token in the page URL, as `ganymede serve` prints it, wins once, and so
@@ -509,8 +510,10 @@ export function App() {
         setPublishFor({ path: c.path, name: c.name });
         return true;
       case 'export':
-        if (!publishAvailable(backend) || (arg !== 'markdown' && arg !== 'script')) return false;
-        await c.exportAs(arg);
+        if (!publishAvailable(backend) || !EXPORT_FORMATS.includes(arg as ExportFormat)) {
+          return false;
+        }
+        await c.exportAs(arg as ExportFormat);
         return true;
       case 'run-with-params':
         if (!publishAvailable(backend)) return false;

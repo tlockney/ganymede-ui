@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import { useCallback, useState } from 'react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -1587,6 +1587,23 @@ describe('NotebookPane', () => {
     );
     expect(request).not.toHaveBeenCalled();
     expect(screen.getByRole('alert')).toHaveTextContent('Saving is locked');
+    request.mockRestore();
+  });
+
+  it('keeps the lock notice when the export’s save finds the file changed on disk', async () => {
+    const { fake, latest, change } = await changedOnDisk();
+    act(() => modelOf().cells.get(0).sharedModel.setSource('print(2)'));
+    change();
+    expect(latest()!.locked).toBe(false);
+    const request = vi.spyOn(ServerConnection, 'makeRequest');
+    await act(() => latest()!.exportAs('markdown'));
+    expect(fake.contents.save).not.toHaveBeenCalled();
+    expect(latest()!.locked).toBe(true);
+    expect(request).not.toHaveBeenCalled();
+    const alert = screen.getByRole('alert');
+    expect(alert).toHaveTextContent('Saving is locked');
+    expect(within(alert).getByRole('button', { name: 'Unlock' })).toBeVisible();
+    expect(alert).not.toHaveTextContent('Couldn’t export');
     request.mockRestore();
   });
 

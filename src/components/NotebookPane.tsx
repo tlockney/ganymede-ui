@@ -290,6 +290,9 @@ function intendedKernel(
  * JupyterLab document context, so the same code saves to a Ganymede server
  * or to the browser's own storage.
  */
+/** The file changed on disk: saving is locked, and the pane says so. */
+class FileLocked extends Error {}
+
 export function NotebookPane({ backend, path, onController, onRenamed }: Props) {
   // A ref, not a dependency of the controller effect: a parent that
   // passes a new function each render would otherwise loop (the effect
@@ -1062,12 +1065,14 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
     // sheet can't be cancelled while it waits, so a save that hangs gets
     // the same time as the request.
     const saveForServer = async () => {
+      const lockedError = () =>
+        new FileLocked(
+          `${basename(saver.path)} changed on disk. Reload it or unlock saving first.`,
+        );
       if (locked.current) {
         locked.current = changedOnDisk(basename(saver.path), model.dirty);
         setNotice(locked.current);
-        throw new Error(
-          `${basename(saver.path)} changed on disk. Reload it or unlock saving first.`,
-        );
+        throw lockedError();
       }
       if (!model.dirty) return;
       let timer: ReturnType<typeof setTimeout> | undefined;
@@ -1078,10 +1083,14 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         clearTimeout(timer),
       );
       if (saved === 'late') throw new Error('The server didn’t answer the save in time.');
+      // The save found the file changed on disk: the lock notice is up.
+      if (!saved && locked.current) throw lockedError();
       if (!saved) throw new Error('The notebook couldn’t be saved first.');
     };
-    const reportExport = (format: ExportFormat) =>
-      report(`export ${fileName}`, async () => {
+    // An export's failure shows as the pane's notice, with Retry; a locked
+    // file leaves the lock notice (Reload, Unlock) up instead.
+    const reportExport = async (format: ExportFormat): Promise<void> => {
+      try {
         await saveForServer();
         const { name, data } = await fetchExport(
           backend.services.contents.serverSettings,
@@ -1089,7 +1098,14 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
           format,
         );
         downloadFile(name, data);
-      })();
+      } catch (e) {
+        if (e instanceof FileLocked) return;
+        setNotice(
+          failed(`export ${fileName}`, e, { retry: true }),
+          () => void reportExport(format),
+        );
+      }
+    };
     // A run's failure: when the kernel died under it, say that instead.
     // Retry runs it again, on the cells selected then.
     const reportRun = (what: string, action: () => Promise<void>) => {
@@ -1221,15 +1237,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         const page = await fetchPublished(backend, saver.path, opts);
         downloadFile(pageName(saver.path), page, 'text/html');
       },
-      exportAs: async format => {
-        // Locked: the lock notice says so, with what unlocks it.
-        if (locked.current) {
-          locked.current = changedOnDisk(basename(saver.path), model.dirty);
-          setNotice(locked.current);
-          return;
-        }
-        await reportExport(format);
-      },
+      exportAs: format => reportExport(format),
       trust: report(`trust ${fileName}`, async () => {
         // As NotebookActions.trust, without its dialog: trusting a cell
         // re-renders its outputs. The cells' `trusted` metadata is not an

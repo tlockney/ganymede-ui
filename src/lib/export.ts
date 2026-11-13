@@ -1,6 +1,6 @@
 import { URLExt } from '@jupyterlab/coreutils';
 import { ServerConnection } from '@jupyterlab/services';
-import { PUBLISH_TIMEOUT_MS } from './publish';
+import { serverGet } from './server-request';
 
 /**
  * Exporting a notebook as Markdown or a script (#582), as JupyterLab's
@@ -29,18 +29,22 @@ export function exportUrl(baseUrl: string, path: string, format: ExportFormat): 
  * (Ganymede) or `filename="…"` (jupyter_server); `fallback` without one.
  */
 export function attachmentName(header: string | null, fallback: string): string {
+  let raw: string | undefined;
   const star = header?.match(/filename\*\s*=\s*[^']*'[^']*'([^;]+)/i);
   if (star) {
     try {
-      return decodeURIComponent(star[1]!.trim());
+      raw = decodeURIComponent(star[1]!.trim());
     } catch {
       // Not percent-encoded as it says: try the plain one.
     }
   }
-  const plain = header?.match(/filename\s*=\s*"([^"]*)"|filename\s*=\s*([^;]+)/i);
-  const name = (plain?.[1] ?? plain?.[2])?.trim();
+  if (raw === undefined) {
+    const plain = header?.match(/filename\s*=\s*"([^"]*)"|filename\s*=\s*([^;]+)/i);
+    raw = plain?.[1] ?? plain?.[2];
+  }
   // Only a name, never a path.
-  return name ? (name.split(/[\\/]/).pop() ?? fallback) : fallback;
+  const name = raw?.split(/[\\/]/).pop()?.trim();
+  return name && name !== '.' && name !== '..' ? name : fallback;
 }
 
 /** The exported file: its name and contents, from the server. */
@@ -49,33 +53,11 @@ export async function fetchExport(
   path: string,
   format: ExportFormat,
 ): Promise<{ name: string; data: Blob }> {
-  // The menu waits on it, so a server that never answers mustn't hang it.
-  // makeRequest rewraps a fetch rejection, so the signal tells a timeout.
-  const signal = AbortSignal.timeout(PUBLISH_TIMEOUT_MS);
-  try {
-    const res = await ServerConnection.makeRequest(
-      exportUrl(settings.baseUrl, path, format),
-      { method: 'GET', signal },
-      settings,
-    );
-    if (!res.ok) {
-      let message = `The server answered ${res.status}.`;
-      try {
-        const body = (await res.json()) as { message?: string };
-        if (body.message) message = body.message;
-      } catch {
-        // Not JSON: keep the status.
-      }
-      throw new Error(message);
-    }
-    const base = (path.split('/').pop() ?? path).replace(/\.ipynb$/i, '');
-    const fallback = `${base}${format === 'markdown' ? '.md' : '.txt'}`;
-    const name = attachmentName(res.headers.get('content-disposition'), fallback);
-    return { name, data: await res.blob() };
-  } catch (e) {
-    if (signal.aborted && (signal.reason as Error | undefined)?.name === 'TimeoutError') {
-      throw new Error('The server didn’t answer in time.', { cause: e });
-    }
-    throw e;
-  }
+  const base = (path.split('/').pop() ?? path).replace(/\.ipynb$/i, '');
+  const fallback = `${base}${format === 'markdown' ? '.md' : '.txt'}`;
+  // The menu waits on it: the request times out.
+  return serverGet(settings, exportUrl(settings.baseUrl, path, format), async res => ({
+    name: attachmentName(res.headers.get('content-disposition'), fallback),
+    data: await res.blob(),
+  }));
 }

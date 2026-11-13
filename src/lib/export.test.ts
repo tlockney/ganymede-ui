@@ -1,6 +1,6 @@
 import { ServerConnection } from '@jupyterlab/services';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { PUBLISH_TIMEOUT_MS } from './publish';
+import { SERVER_TIMEOUT_MS } from './server-request';
 import { attachmentName, exportUrl, fetchExport } from './export';
 
 const settings = (fetch?: typeof globalThis.fetch) =>
@@ -24,6 +24,10 @@ describe('export', () => {
     expect(attachmentName('attachment; filename=Io.zip', 'x')).toBe('Io.zip');
     // A name only, never a path.
     expect(attachmentName('attachment; filename="../../etc/Io.md"', 'x')).toBe('Io.md');
+    expect(attachmentName("attachment; filename*=utf-8''..%2F..%2Fetc%2FIo.md", 'x')).toBe('Io.md');
+    // Nothing left of the name: the notebook's.
+    expect(attachmentName("attachment; filename*=utf-8''%20", 'Io.md')).toBe('Io.md');
+    expect(attachmentName("attachment; filename*=utf-8''..", 'Io.md')).toBe('Io.md');
     expect(attachmentName(null, 'Io.md')).toBe('Io.md');
     expect(attachmentName('inline', 'Io.md')).toBe('Io.md');
   });
@@ -76,6 +80,6 @@ describe('export', () => {
     await expect(
       fetchExport(settings(fetch as typeof globalThis.fetch), 'Io.ipynb', 'markdown'),
     ).rejects.toThrow('didn’t answer in time');
-    expect(timeout).toHaveBeenCalledWith(PUBLISH_TIMEOUT_MS);
+    expect(timeout).toHaveBeenCalledWith(SERVER_TIMEOUT_MS);
   });
 });
