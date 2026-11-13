@@ -348,7 +348,9 @@ describe('App', () => {
     expect(await run('close')).toBe(true);
     expect(discard).toHaveBeenCalled();
     await waitFor(() => expect(screen.queryByTestId('pane')).not.toBeInTheDocument());
-    expect(screen.queryByRole('dialog', { name: /with Parameters/ })).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: /with Parameters/ })).not.toBeInTheDocument(),
+    );
     expect(await run('close')).toBe(false);
     expect(await run('show-shortcuts')).toBe(true);
     expect(await screen.findByText('Keyboard Shortcuts')).toBeInTheDocument();
@@ -673,8 +675,16 @@ describe('App', () => {
     // Renames and deletes made by the app itself (#240). Recents drops a
     // notebook that isn't there, so the move goes to one that is.
     expect(await run('file-moved', 'not json')).toBe(false);
+    // A Run with Parameters sheet follows the move, and the app's opening
+    // the moved notebook doesn't close it (a run keeps going).
+    expect(await run('run-with-params')).toBe(true);
+    const sheet = await screen.findByRole('dialog', { name: /with Parameters/ });
     const move = { from: 'Io.ipynb', to: 'moons/Europa.ipynb' };
     expect(await run('file-moved', JSON.stringify(move))).toBe(true);
+    expect(await run('open', 'moons/Europa.ipynb')).toBe(true);
+    await waitFor(() => expect(states.at(-1)?.path).toBe('moons/Europa.ipynb'));
+    expect(screen.getByRole('dialog', { name: /with Parameters/ })).toBe(sheet);
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Cancel' }));
     await waitFor(() => expect(states.at(-1)?.recents).toEqual(['moons/Europa.ipynb']));
     expect(await run('file-moved', JSON.stringify({ from: 'moons', to: null }))).toBe(true);
     await waitFor(() => expect(states.at(-1)?.recents).toEqual([]));
