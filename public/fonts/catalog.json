@@ -121,6 +121,29 @@
           "tag": "zero",
           "label": "Slashed zero"
         }
+      ],
+      "styles": [
+        {
+          "id": "slashed-zero",
+          "name": "Slashed zero",
+          "features": [
+            "zero"
+          ]
+        },
+        {
+          "id": "classic",
+          "name": "Classic",
+          "features": [
+            "ss01"
+          ]
+        },
+        {
+          "id": "closed",
+          "name": "Closed",
+          "features": [
+            "ss02"
+          ]
+        }
       ]
     },
     {
@@ -310,6 +333,25 @@
           "tag": "zero",
           "label": "Slashed zero"
         }
+      ],
+      "styles": [
+        {
+          "id": "dotted-zero",
+          "name": "Dotted zero",
+          "features": [
+            "zero"
+          ]
+        },
+        {
+          "id": "alternate-letters",
+          "name": "Alternate a, r, & and @",
+          "features": [
+            "cv01",
+            "ss01",
+            "ss03",
+            "ss05"
+          ]
+        }
       ]
     },
     {
@@ -342,6 +384,15 @@
         {
           "tag": "zero",
           "label": "Slashed zero"
+        }
+      ],
+      "styles": [
+        {
+          "id": "slashed-zero",
+          "name": "Slashed zero",
+          "features": [
+            "zero"
+          ]
         }
       ]
     },
@@ -440,6 +491,19 @@
           "tag": "ss10",
           "label": "Other Tags"
         }
+      ],
+      "styles": [],
+      "ligatureFeatures": [
+        "ss01",
+        "ss02",
+        "ss03",
+        "ss04",
+        "ss05",
+        "ss06",
+        "ss07",
+        "ss08",
+        "ss09",
+        "ss10"
       ]
     },
     {
@@ -537,6 +601,19 @@
           "tag": "ss10",
           "label": "Other Tags"
         }
+      ],
+      "styles": [],
+      "ligatureFeatures": [
+        "ss01",
+        "ss02",
+        "ss03",
+        "ss04",
+        "ss05",
+        "ss06",
+        "ss07",
+        "ss08",
+        "ss09",
+        "ss10"
       ]
     },
     {
@@ -630,6 +707,19 @@
           "tag": "ss10",
           "label": "Other Tags"
         }
+      ],
+      "styles": [],
+      "ligatureFeatures": [
+        "ss01",
+        "ss02",
+        "ss03",
+        "ss04",
+        "ss05",
+        "ss06",
+        "ss07",
+        "ss08",
+        "ss09",
+        "ss10"
       ]
     },
     {
@@ -723,6 +813,19 @@
           "tag": "ss10",
           "label": "Other Tags"
         }
+      ],
+      "styles": [],
+      "ligatureFeatures": [
+        "ss01",
+        "ss02",
+        "ss03",
+        "ss04",
+        "ss05",
+        "ss06",
+        "ss07",
+        "ss08",
+        "ss09",
+        "ss10"
       ]
     },
     {
@@ -812,6 +915,19 @@
           "tag": "ss10",
           "label": "Other Tags"
         }
+      ],
+      "styles": [],
+      "ligatureFeatures": [
+        "ss01",
+        "ss02",
+        "ss03",
+        "ss04",
+        "ss05",
+        "ss06",
+        "ss07",
+        "ss08",
+        "ss09",
+        "ss10"
       ]
     },
     {
@@ -916,6 +1032,36 @@
         {
           "tag": "ss20",
           "label": "Curly style"
+        }
+      ],
+      "styles": [
+        {
+          "id": "menlo",
+          "name": "Menlo style",
+          "features": [
+            "ss04"
+          ]
+        },
+        {
+          "id": "pragmata-pro",
+          "name": "Pragmata Pro style",
+          "features": [
+            "ss08"
+          ]
+        },
+        {
+          "id": "source-code-pro",
+          "name": "Source Code Pro style",
+          "features": [
+            "ss09"
+          ]
+        },
+        {
+          "id": "jetbrains-mono",
+          "name": "JetBrains Mono style",
+          "features": [
+            "ss14"
+          ]
         }
       ]
     }

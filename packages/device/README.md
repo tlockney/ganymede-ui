@@ -114,7 +114,7 @@ saying why.
 
 ## Installing
 
-The package isn't published yet (ganymede-device#24). In this
+The package isn't published yet (ganymede-ui#567). In this
 repository it is an npm workspace, `@tlockney/ganymede-device`, and
 `npm ci` at the root runs its `prepare` script, which builds `dist/`.
 
@@ -160,4 +160,4 @@ the apps bundle it.
 ## Next
 
 The plan's "Where things stand" has the list, and
-[ganymede-device#18](https://github.com/tlockney/ganymede-device/issues/18) tracks it.
+[ganymede-ui#566](https://github.com/tlockney/ganymede-ui/issues/566) tracks it.

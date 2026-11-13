@@ -164,6 +164,41 @@ describe('scrubEvent', () => {
     expect(scrubEvent(event([{ filename: 'https://cdn.example/x.js' }]), ORIGIN)).toBeNull();
   });
 
+  it('drops the kernel_info_request a kernel restart cancels, which nothing awaits (#555)', () => {
+    const frames = [
+      { filename: `${ORIGIN}/assets/lib-abc.js`, function: 'restart' },
+      { filename: `${ORIGIN}/assets/lib-abc.js`, function: 'dispose' },
+    ];
+    const canceled = event(
+      frames,
+      'Canceled future for kernel_info_request message before replies were done',
+    );
+    canceled.exception!.values![0].type = 'Error';
+    expect(scrubEvent(canceled, ORIGIN)).toBeNull();
+    const sent = (value: string, type = 'Error') => {
+      const e = event(frames, value);
+      e.exception!.values![0].type = type;
+      return scrubEvent(e, ORIGIN);
+    };
+    // Another error type, the words mid-message, or another request are still sent.
+    expect(
+      sent('Canceled future for kernel_info_request message before replies were done', 'TypeError'),
+    ).not.toBeNull();
+    expect(sent('Kernel is dead: Canceled future for kernel_info_request x')).not.toBeNull();
+    expect(
+      sent('Canceled future for inspect_request message before replies were done'),
+    ).not.toBeNull();
+    // An app error caused by a canceled request is still sent: only the
+    // outermost error counts (Sentry lists the cause first).
+    const linked = event(frames, 'tooltip failed');
+    linked.exception!.values!.unshift({
+      type: 'Error',
+      value: 'Canceled future for kernel_info_request message before replies were done',
+      stacktrace: { frames },
+    });
+    expect(scrubEvent(linked, ORIGIN)).not.toBeNull();
+  });
+
   it('drops errors with no stack and plain messages', () => {
     expect(scrubEvent(event([]), ORIGIN)).toBeNull();
     expect(scrubEvent({ message: 'hello' }, ORIGIN)).toBeNull();

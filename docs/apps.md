@@ -90,13 +90,23 @@ shown or hidden, its tab and its expanded folders across launches.
   inserts cells, sets the cell type and trusts the notebook. Its kernel
   button opens a popover with the kernel's state and memory, Interrupt,
   Restart, Kernel Log and the kernels to change to.
-- The Cell menu runs, inserts, moves and deletes cells and opens Find; the
-  Kernel menu interrupts (⌘.), restarts, changes and trusts.
+- The Cell menu runs, inserts, moves and deletes cells, collapses and
+  expands code, and opens Find; the Kernel menu interrupts (⌘.),
+  restarts, changes and trusts. A code cell's chevron, left of its
+  prompt, collapses its code to the first line, as on the web page
+  (README, "Collapsing code"); the iPad's Cell menu has Collapse All Code
+  and Expand All Code.
 - View > Command Palette… (⇧⌘P) finds and runs the notebook, cell and
   kernel commands by name. [Keyboard shortcuts](shortcuts.md) lists the
   rest.
 - Help > Ganymede Website, Ganymede Documentation and Apps Guide open
   ganymede-server.com, its docs and this page in the browser.
+
+> [!NOTE]
+> **Unreleased.** Collapsing and expanding code from the Cell menu and
+> the chevron is available only from a build of `main` (HEAD), not in the
+> latest release, where only the thin bar at a cell's left edge collapses
+> a cell's code.
 
 ### Kernels
 
@@ -337,10 +347,18 @@ Settings > Appearance sets the code font: notebook cells and text
 outputs, the text editor and the terminal take it at once. Pick the
 system's monospace font or one of the bundled fonts (JetBrains Mono, Fira
 Code, Cascadia Code, the five Monaspace faces, Iosevka), the size, and,
-for fonts that have them, ligatures and the font's stylistic sets and
-character variants, each listed with the characters it changes. View >
-Bigger Code Font (⌘+), Smaller Code Font (⌘−) and Actual Code Font Size
-(⌘0) change the size from any window.
+for fonts that have them, ligatures and a style: Standard, or a few named
+sets of the font's alternates. View > Bigger Code Font (⌘+), Smaller Code
+Font (⌘−) and Actual Code Font Size (⌘0) change the size from any window.
+
+The Markdown Font beside it sets the font of text cells: System, Serif
+(the font of pages from `ganymede nb publish`), or Monospace (the code
+font).
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, which lists each stylistic set and character variant
+> under Alternates and has no Markdown font.
 
 Ganymede > Agent Settings… (⌥⌘,), Help > Keyboard Shortcuts and Kernel >
 Manage Remotes… open those Settings tabs, as do the command palette's

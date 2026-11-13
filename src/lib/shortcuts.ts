@@ -81,6 +81,21 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { id: 'to-code', label: 'Change to code', group: 'Command mode', keys: [['Y']] },
   { id: 'to-markdown', label: 'Change to Markdown', group: 'Command mode', keys: [['M']] },
   { id: 'to-raw', label: 'Change to raw', group: 'Command mode', keys: [['R']] },
+  // Fold and Unfold in VS Code and Xcode's editors (#564).
+  { id: 'collapse-code', label: 'Collapse code', group: 'Command mode', keys: [['Accel Alt [']] },
+  { id: 'expand-code', label: 'Expand code', group: 'Command mode', keys: [['Accel Alt ]']] },
+  {
+    id: 'collapse-all-code',
+    label: 'Collapse all code',
+    group: 'Command mode',
+    keys: [['Accel Alt Shift [']],
+  },
+  {
+    id: 'expand-all-code',
+    label: 'Expand all code',
+    group: 'Command mode',
+    keys: [['Accel Alt Shift ]']],
+  },
   { id: 'show-shortcuts', label: 'Show keyboard shortcuts', group: 'Command mode', keys: [['H']] },
 
   {

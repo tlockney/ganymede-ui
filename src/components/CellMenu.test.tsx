@@ -92,6 +92,28 @@ describe('CellMenu', () => {
     await userEvent.keyboard('{ArrowDown}');
     expect(screen.getByRole('menuitem', { name: 'Run' })).toHaveFocus();
     await userEvent.keyboard('{ArrowDown}');
+    expect(screen.getByRole('menuitem', { name: 'Collapse Code' })).toHaveFocus();
+    await userEvent.keyboard('{ArrowDown}');
     expect(screen.getByRole('menuitemradio', { name: /Code/ })).toHaveFocus();
+  });
+
+  it('collapses and expands a code cell’s code (#564), and only a code cell’s', async () => {
+    const { cell, notebook } = setup(1);
+    const c = cell as unknown as { inputHidden: boolean; node: HTMLElement };
+    c.node = document.createElement('div');
+    c.inputHidden = false;
+    const n = notebook as unknown as { activeCellIndex: number; deselectAll(): void };
+    n.deselectAll = vi.fn();
+    n.activeCellIndex = 0;
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Collapse Code' }));
+    expect(c.inputHidden).toBe(true);
+    // Its own cell becomes the active one, as for the other items.
+    expect(n.activeCellIndex).toBe(1);
+    expect(notebook.activate).toHaveBeenCalled();
+  });
+
+  it('has no Collapse Code for a Markdown cell', () => {
+    setup(1, 'markdown');
+    expect(screen.queryByRole('menuitem', { name: /Collapse Code|Expand Code/ })).toBeNull();
   });
 });

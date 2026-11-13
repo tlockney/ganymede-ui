@@ -204,12 +204,36 @@ Settings > Code font picks the font of code cells, text outputs and code
 in Markdown: the system's monospace font or one of the bundled fonts
 (JetBrains Mono, Fira Code, Cascadia Code, Monaspace Neon, Argon, Xenon,
 Radon and Krypton, Iosevka), all under the SIL Open Font License. Set the
-size, turn ligatures off, and turn on the font's stylistic sets and
-character variants under Alternates, each listed with the characters it
-changes; the preview shows the result before you save. The page fetches
-only the font you pick. The choice stays in this browser
-(`ganymede-ui:code-font` in local storage); the Mac and iPad apps keep
-their own, in their Settings.
+size, turn ligatures off, and pick one of the font's styles: Standard, or
+a few named sets of its alternates, such as JetBrains Mono's Slashed zero
+or Iosevka's Menlo style. The preview shows the result before you save.
+The page fetches only the font you pick.
+
+Settings > Markdown font sets the font of text cells: System, Serif (the
+font of pages from `ganymede nb publish`), or Monospace (the code font).
+
+Both choices stay in this browser (`ganymede-ui:code-font` in local
+storage); the Mac and iPad apps keep their own, in their Settings.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, which lists each stylistic set and character variant
+> under Alternates and has no Markdown font.
+
+### Collapsing code
+
+A code cell's chevron, left of its prompt (shown on hover and on the
+active cell), collapses its code to the first line; the chevron or that
+line expands it again. In command mode ⌘⌥[ and ⌘⌥] (Ctrl+Alt+[ and ]
+elsewhere) collapse and expand the selected cells, and ⇧ with them does
+every code cell; the command palette has all four, and on a phone the
+cell's … menu has Collapse Code. A collapsed cell is saved that way in the
+notebook (`metadata.jupyter.source_hidden`, as JupyterLab saves it).
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, where only the thin bar at a cell's left edge
+> collapses its code.
 
 ### Running cells and errors
 

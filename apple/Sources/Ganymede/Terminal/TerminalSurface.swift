@@ -170,7 +170,7 @@ final class TerminalCoordinator: NSObject, TerminalViewDelegate {
     /// SwiftTerm keeps its own default until the setting names a face or size.
     private func applyFont(to view: TerminalView, initial: Bool) {
         let setting = CodeFont.setting
-        if initial, setting == CodeFontSetting() { return }
+        if initial, setting.codeOnly == CodeFontSetting() { return }
         view.font = CodeFont.font(setting: setting)
     }
 
