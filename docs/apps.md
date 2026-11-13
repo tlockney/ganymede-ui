@@ -513,6 +513,17 @@ headings; pick one to go to its cell.
   toolbar shows Notebook Access (a padlock), naming what it asks
   for; the button goes once the grant covers it.
 
+  > [!NOTE]
+  > **Unreleased.** On the Mac, the default read grant is the folders
+  > under Settings › General › Spotlight, not the whole disk. The latest
+  > release lets every notebook read every notebook.
+
+  On the Mac, where the app's server serves the whole disk, the default
+  for reads is the folders under Settings › General › Spotlight: with
+  none there, a notebook may read only itself. Adding or removing a
+  folder restarts the server and its kernels. On the iPad and iPhone
+  the default is the notebook folder.
+
 - **Downloads** open the share sheet, where Save to Files keeps them.
 - In the background iOS may stop the app's server; back in the
   foreground the app restarts it if it stopped answering.
