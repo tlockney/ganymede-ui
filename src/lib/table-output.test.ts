@@ -109,6 +109,26 @@ describe('table output', () => {
     expect(column(t.node, 0)[0]).toBe('0');
   });
 
+  it('keeps NaN last when sorting descending', async () => {
+    const t = await render({
+      schema: { fields: [{ name: 'x', type: 'number' }] },
+      data: [[1], ['NaN'], [3], [null]],
+    });
+    const header = () => t.node.querySelector<HTMLButtonElement>('th button')!;
+    header().click();
+    header().click();
+    expect(column(t.node, 0)).toEqual(['3', '1', 'NaN', 'null']);
+    expect(document.activeElement).toBe(header());
+  });
+
+  it('drops a caption when an update has no title', async () => {
+    const t = await render(moons);
+    await t.renderModel(
+      new MimeModel({ data: { [TABLE_MIME]: { ...moons, ganymede: { rows: 4 } } as never } }),
+    );
+    expect(t.node.querySelector('caption')).toBeNull();
+  });
+
   it('survives a malformed bundle', async () => {
     const t = await render({ data: 'nope' });
     expect(t.node.querySelector('.gm-table-footer')!.textContent).toBe('No rows');
@@ -123,6 +143,10 @@ describe('table helpers', () => {
     expect(compareValues('b10', 'b9', 'string')).toBeGreaterThan(0);
     expect(compareValues(null, 'a', 'string')).toBe(1);
     expect(compareValues(false, true, 'boolean')).toBeLessThan(0);
+    expect(compareValues('NaN', 1, 'number', true)).toBeGreaterThan(0);
+    expect(compareValues(null, 1, 'number', true)).toBe(1);
+    expect(compareValues('9007199254740993', '9007199254740992', 'integer')).toBeGreaterThan(0);
+    expect(compareValues('9007199254740993', '9007199254740992', 'integer', true)).toBeLessThan(0);
   });
 
   it('reads rows as objects or arrays', () => {

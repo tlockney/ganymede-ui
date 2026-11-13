@@ -43,30 +43,56 @@ export function cellText(value: unknown): string {
   }
 }
 
-/** A number for sorting: numbers, and the strings large integers and NaN arrive as. */
+/** A number for sorting: numbers, and the strings large integers arrive as; NaN if neither. */
 function sortNumber(value: unknown): number {
   if (typeof value === 'number') return value;
-  if (typeof value === 'string') {
-    const n = Number(value);
-    return Number.isNaN(n) && value !== 'NaN' ? Number.NaN : n;
-  }
+  if (typeof value === 'string' && value.trim() !== '') return Number(value);
   return Number.NaN;
 }
 
-/** Compares two values of one column; nulls sort last in either direction. */
-export function compareValues(a: unknown, b: unknown, type: string | undefined): number {
-  const aNull = a === null || a === undefined;
-  const bNull = b === null || b === undefined;
-  if (aNull || bNull) return aNull === bNull ? 0 : aNull ? 1 : -1;
-  if (NUMERIC.has(type ?? '') || (typeof a === 'number' && typeof b === 'number')) {
-    const x = sortNumber(a);
-    const y = sortNumber(b);
-    if (Number.isNaN(x) || Number.isNaN(y))
-      return Number.isNaN(x) === Number.isNaN(y) ? 0 : Number.isNaN(x) ? 1 : -1;
-    return x - y;
+const INTEGER_TEXT = /^-?\d+$/;
+
+function isNumeric(a: unknown, b: unknown, type: string | undefined): boolean {
+  return NUMERIC.has(type ?? '') || (typeof a === 'number' && typeof b === 'number');
+}
+
+/** Whether a value sorts last in either direction: null, or not a number in a numeric column. */
+function sortsLast(value: unknown, type: string | undefined): boolean {
+  if (value === null || value === undefined) return true;
+  return NUMERIC.has(type ?? '') && Number.isNaN(sortNumber(value));
+}
+
+/**
+ * Compares two values of one column, ascending or descending. Nulls, and
+ * values that aren't numbers in a numeric column (such as `"NaN"`), sort
+ * last either way.
+ */
+export function compareValues(
+  a: unknown,
+  b: unknown,
+  type: string | undefined,
+  descending = false,
+): number {
+  const aLast = sortsLast(a, type) || (isNumeric(a, b, type) && Number.isNaN(sortNumber(a)));
+  const bLast = sortsLast(b, type) || (isNumeric(a, b, type) && Number.isNaN(sortNumber(b)));
+  if (aLast || bLast) return aLast === bLast ? 0 : aLast ? 1 : -1;
+  const sign = descending ? -1 : 1;
+  if (isNumeric(a, b, type)) {
+    // Integers past 2^53 arrive as strings; compare those exactly.
+    if (
+      typeof a === 'string' &&
+      typeof b === 'string' &&
+      INTEGER_TEXT.test(a) &&
+      INTEGER_TEXT.test(b)
+    ) {
+      const x = BigInt(a);
+      const y = BigInt(b);
+      return sign * (x < y ? -1 : x > y ? 1 : 0);
+    }
+    return sign * (sortNumber(a) - sortNumber(b));
   }
-  if (typeof a === 'boolean' && typeof b === 'boolean') return Number(a) - Number(b);
-  return cellText(a).localeCompare(cellText(b), undefined, { numeric: true });
+  if (typeof a === 'boolean' && typeof b === 'boolean') return sign * (Number(a) - Number(b));
+  return sign * cellText(a).localeCompare(cellText(b), undefined, { numeric: true });
 }
 
 /** The rows as arrays in field order: `data` may hold objects or arrays. */
@@ -128,7 +154,9 @@ export class RenderedTable extends Widget implements IRenderMime.IRenderer {
     this._total = typeof rows === 'number' && rows > this._rows.length ? rows : this._rows.length;
     this._page = 0;
     this._sort = null;
-    this._draw(typeof resource.ganymede?.title === 'string' ? resource.ganymede.title : undefined);
+    this._title =
+      typeof resource.ganymede?.title === 'string' ? resource.ganymede.title : undefined;
+    this._draw();
     return Promise.resolve();
   }
 
@@ -142,29 +170,29 @@ export class RenderedTable extends Widget implements IRenderMime.IRenderer {
     if (this._sort) {
       const { column: c, descending } = this._sort;
       const type = this._fields[c]?.type;
-      this._order.sort((i, j) => {
-        const a = this._rows[i]![c];
-        const b = this._rows[j]![c];
-        const aNull = a === null || a === undefined;
-        const bNull = b === null || b === undefined;
-        if (aNull || bNull) return compareValues(a, b, type);
-        return (descending ? -1 : 1) * compareValues(a, b, type) || i - j;
-      });
+      this._order.sort((i, j) =>
+        compareValues(this._rows[i]![c], this._rows[j]![c], type, descending),
+      );
     }
     this._page = 0;
-    this._draw();
+    this._draw(`sort-${column}`);
   }
 
   /** Shows page `page` (from 0), clamped to the pages there are. */
   showPage(page: number): void {
     const pages = Math.max(1, Math.ceil(this._rows.length / PAGE_SIZE));
+    const previous = page < this._page;
     this._page = Math.min(Math.max(0, page), pages - 1);
-    this._draw();
+    this._draw(previous ? 'previous' : 'next');
   }
 
-  private _draw(title?: string): void {
-    if (title !== undefined) this._title = title;
+  /**
+   * Draws the table. `focus` names the control to focus afterwards (the
+   * one just clicked), and the horizontal scroll is kept.
+   */
+  private _draw(focus?: string): void {
     const node = this.node;
+    const scrollLeft = node.querySelector('.gm-table-scroll')?.scrollLeft ?? 0;
     node.textContent = '';
     const scroller = document.createElement('div');
     scroller.className = 'gm-table-scroll';
@@ -196,6 +224,7 @@ export class RenderedTable extends Widget implements IRenderMime.IRenderer {
         button.append(type);
       }
       button.title = `Sort by ${field.name}`;
+      button.dataset.control = `sort-${i}`;
       button.addEventListener('click', () => this.sortBy(i));
       th.append(button);
       head.append(th);
@@ -228,6 +257,7 @@ export class RenderedTable extends Widget implements IRenderMime.IRenderer {
         b.textContent = text;
         b.setAttribute('aria-label', label);
         b.disabled = disabled;
+        b.dataset.control = label === 'Previous rows' ? 'previous' : 'next';
         b.addEventListener('click', () => this.showPage(page));
         return b;
       };
@@ -246,6 +276,14 @@ export class RenderedTable extends Widget implements IRenderMime.IRenderer {
     });
     footer.append(info);
     node.append(footer);
+    scroller.scrollLeft = scrollLeft;
+    if (focus) {
+      const target = node.querySelector<HTMLButtonElement>(`[data-control="${focus}"]`);
+      (target && !target.disabled
+        ? target
+        : node.querySelector<HTMLButtonElement>('.gm-table-footer button:not(:disabled)')
+      )?.focus();
+    }
   }
 }
 
