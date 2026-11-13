@@ -555,17 +555,19 @@ export replaces nothing, the sheet refuses its page the same way.
 > the latest release.
 
 **Run with Parameters…** (Cell menu on the Mac, the ⋯ menu on the iPad
-and iPhone, the Command Palette and the toolbar's run menu in the
-browser) runs the notebook as a program, the way `ganymede execute -p
+and iPhone, the Command Palette in the browser, and its toolbar's More
+menu in a narrow window) runs the notebook as a program, the way `ganymede execute -p
 --results` does ([Programs](https://ganymede-server.com/docs/programs)):
 top to bottom in a new kernel on the server, with the parameters you
 type (a JSON object, such as `{"day": "mon"}`) in `jupyter.params`. The
 sheet shows the results the notebook names with `jupyter.result`, or
-where it failed. The notebook in the window doesn't change, and unsaved
-edits run. The field starts with the parameters the notebook last ran
-with. **Save the executed notebook** keeps the run's outputs as a copy
+where it failed. The notebook in the window doesn't change. The server
+runs the notebook as this window shows it, unsaved edits included, while
+the window is connected to it live; otherwise it runs the saved file. The field starts with the
+parameters you last ran it with here, or else those `ganymede execute
+-p` recorded in the notebook. **Save the executed notebook** keeps the run's outputs as a copy
 under `runs/`. Stop (or Esc) ends the run and its kernel. It needs a
-Ganymede server; a Jupyter server has no such run.
+Ganymede server, 0.8 or later; a Jupyter server has no such run.
 
 ## Exporting a notebook
 

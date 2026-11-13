@@ -39,8 +39,9 @@ export function parseParams(text: string): Record<string, unknown> {
 }
 
 /**
- * What to start the parameters field with: the parameters the notebook
- * last ran with (`metadata.ganymede.params`), or `{}`.
+ * What to start the parameters field with when the sheet hasn't run this
+ * notebook yet: the parameters `ganymede execute -p` last recorded in it
+ * (`metadata.ganymede.params`), or `{}`.
  */
 export function initialParams(ganymedeMetadata: unknown): string {
   const params = (ganymedeMetadata as { params?: unknown } | undefined)?.params;
@@ -80,12 +81,14 @@ export async function runWithParams(
     if (answer?.message && answer.message !== 'Not Found') throw new Error(answer.message);
     throw new Error(
       res.status === 404 || res.status === 405
-        ? 'This server can’t run notebooks with parameters. It needs Ganymede.'
+        ? 'This server can’t run notebooks with parameters. It needs Ganymede 0.8 or later.'
         : `The server answered ${res.status}.`,
     );
   }
   if (answer?.status !== 'ok' && answer?.status !== 'error') {
-    throw new Error('This server can’t run notebooks with parameters. It needs Ganymede.');
+    throw new Error(
+      'This server can’t run notebooks with parameters. It needs Ganymede 0.8 or later.',
+    );
   }
   return {
     status: answer.status,

@@ -88,7 +88,7 @@ export function RunSheet({ name, initialParams, run, onClose }: Props) {
         <p className="hint">
           Runs the notebook top to bottom in a new kernel on the server, with these parameters in{' '}
           <code>jupyter.params</code>, and shows the results it names. This window’s cells and
-          outputs don’t change; unsaved edits run.
+          outputs don’t change.
         </p>
         <div className="form-rows">
           <label className="stacked-row">

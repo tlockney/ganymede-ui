@@ -303,7 +303,26 @@ describe('App', () => {
     expect(within(sheet).getByRole('textbox', { name: /Parameters/ })).toHaveValue(
       '{"day": "mon"}',
     );
-    await userEvent.click(within(sheet).getByRole('button', { name: 'Cancel' }));
+    // The sheet starts the next time with what it last ran.
+    Object.assign(fake.contents, {
+      serverSettings: ServerConnection.makeSettings({ baseUrl: 'http://h/' }),
+    });
+    const request = vi
+      .spyOn(ServerConnection, 'makeRequest')
+      .mockResolvedValue(new Response(JSON.stringify({ status: 'ok', results: {} })));
+    const params = within(sheet).getByRole('textbox', { name: /Parameters/ });
+    await userEvent.clear(params);
+    await userEvent.type(params, '{{"day": "tue"}');
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Run' }));
+    await within(sheet).findByText('The run finished.');
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Done' }));
+    request.mockRestore();
+    expect(await run('run-with-params')).toBe(true);
+    const again = await screen.findByRole('dialog', { name: /with Parameters/ });
+    expect(within(again).getByRole('textbox', { name: /Parameters/ })).toHaveValue(
+      '{\n  "day": "tue"\n}',
+    );
+    await userEvent.click(within(again).getByRole('button', { name: 'Cancel' }));
     expect(await run('cell-type', 'markdown')).toBe(true);
     expect(changeCellType).toHaveBeenCalledWith('markdown');
     expect(await run('cell-type', 'heading')).toBe(false);

@@ -16,7 +16,7 @@ describe('run with parameters', () => {
     expect(() => parseParams('null')).toThrow('must be a JSON object');
   });
 
-  it('starts from the parameters the notebook last ran with', () => {
+  it('starts from the parameters `ganymede execute` recorded', () => {
     expect(initialParams(undefined)).toBe('{}');
     expect(initialParams({ host: {} })).toBe('{}');
     expect(initialParams({ params: [1] })).toBe('{}');

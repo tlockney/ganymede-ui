@@ -201,6 +201,8 @@ export function App() {
   const closePublish = useCallback(() => setPublishFor(undefined), []);
   const [runFor, setRunFor] = useState<{ path: string; name: string; params: string }>();
   const closeRun = useCallback(() => setRunFor(undefined), []);
+  /** The parameters each notebook last ran with from the sheet, by path. */
+  const lastParams = useRef(new Map<string, string>());
   const closeAccess = useCallback(() => {
     setAccessFor(undefined);
     setAccessChecked(n => n + 1);
@@ -517,7 +519,11 @@ export function App() {
         return true;
       case 'run-with-params':
         if (!publishAvailable(backend)) return false;
-        setRunFor({ path: c.path, name: c.name, params: c.recordedParams() });
+        setRunFor({
+          path: c.path,
+          name: c.name,
+          params: lastParams.current.get(c.path) ?? c.recordedParams(),
+        });
         return true;
       case 'notebook-access':
         if (!hostGrantsAvailable(backend)) return false;
@@ -972,9 +978,15 @@ export function App() {
           key={runFor.path}
           name={runFor.name}
           initialParams={runFor.params}
-          run={(params, opts) =>
-            runWithParams(backend.services.contents.serverSettings, runFor.path, params, opts)
-          }
+          run={(params, opts) => {
+            lastParams.current.set(runFor.path, JSON.stringify(params, null, 2));
+            return runWithParams(
+              backend.services.contents.serverSettings,
+              runFor.path,
+              params,
+              opts,
+            );
+          }}
           onClose={closeRun}
         />
       )}
