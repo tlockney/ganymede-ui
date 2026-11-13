@@ -283,6 +283,9 @@ describe('SettingsSheet code font', () => {
     expect(screen.getByTestId('code-font-preview').style.fontFeatureSettings).toBe(
       '"cv01", "ss01", "ss03", "ss05", "calt" 0, "liga" 0, "dlig" 0',
     );
+    // Monospace previews the font picked here, before Save.
+    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Markdown font' }), 'mono');
+    expect(screen.getByTestId('markdown-font-preview').style.fontFamily).toContain('Fira Code');
     await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Markdown font' }), 'serif');
     expect(screen.getByTestId('markdown-font-preview').style.fontFamily).toContain('ui-serif');
     await userEvent.click(save());

@@ -140,7 +140,12 @@ export function CodeFontSection({ value, onChange }: Props) {
             className="markdown-font-preview"
             data-testid="markdown-font-preview"
             style={{
-              fontFamily: markdownFamily(value),
+              // Monospace follows the sheet's code font, not the saved one
+              // that `--code-font` holds until Save.
+              fontFamily:
+                value.markdown === 'mono'
+                  ? (familyList(value) ?? 'var(--font-mono)')
+                  : markdownFamily(value),
               fontFeatureSettings: value.markdown === 'mono' ? featureSettings(value) : 'normal',
             }}
           >
