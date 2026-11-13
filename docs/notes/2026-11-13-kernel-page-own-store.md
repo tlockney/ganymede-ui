@@ -10,12 +10,17 @@ Mac) through the contents API, whatever the notebook's host grant, and
 open any other kernel's channels. Cookie-only writes failed the XSRF
 check, but with MCP on the token sits in a file a cell could read.
 
-The kernel web view now gets `websiteDataStore = .nonPersistent()`, a
-store of its own with no cookie. The page makes no API calls (its
+The kernel web view now gets a website data store of its own,
+`WKWebsiteDataStore(forIdentifier:)` with a fixed id, which never holds
+the cookie: the server sets it only on a page loaded with the token, and
+the kernel page loads without one. The page makes no API calls (its
 messages go through `kernelHost`), and the server serves `kernel.html`
-and the static files without a token, so nothing it needs changes. Its
-store starts empty each launch, so the notebook page's service worker
-never controls it and its files come from the server.
+and the static files without a token, so nothing it needs changes. The
+notebook page's service worker lives in the default store, so it never
+controls the kernel page, which registers none. The store persists
+rather than being `.nonPersistent()`, so modules cells import from
+esm.sh stay in its disk cache across launches and load offline, as
+before (review of #562).
 
 `KernelHostTests.testTheKernelPageHasNoLoginCookie` logs a notebook
 page in with the token, checks that page reads the contents API, then
