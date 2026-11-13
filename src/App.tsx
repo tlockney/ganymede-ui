@@ -194,7 +194,7 @@ export function App() {
   /** Notebook Access, for the notebook open when it was asked for. */
   const [accessFor, setAccessFor] = useState<{ path: string; name: string; wants: string[] }>();
   /** Publish as Web Page, for the notebook open when it was asked for (#563). */
-  const [publishFor, setPublishFor] = useState<NotebookController>();
+  const [publishFor, setPublishFor] = useState<{ path: string; name: string }>();
   const closePublish = useCallback(() => setPublishFor(undefined), []);
   const closeAccess = useCallback(() => {
     setAccessFor(undefined);
@@ -502,7 +502,7 @@ export function App() {
         return true;
       case 'publish':
         if (!publishAvailable(backend)) return false;
-        setPublishFor(c);
+        setPublishFor({ path: c.path, name: c.name });
         return true;
       case 'notebook-access':
         if (!hostGrantsAvailable(backend)) return false;
@@ -927,7 +927,14 @@ export function App() {
         <PublishSheet
           key={publishFor.path}
           name={publishFor.name}
-          publish={opts => publishFor.publish(opts)}
+          publish={async opts => {
+            // The notebook it was opened for, not one opened since.
+            const c = controllerRef.current;
+            if (c?.path !== publishFor.path) {
+              throw new Error(`${publishFor.name} isn’t open any more.`);
+            }
+            await c.publish(opts);
+          }}
           onClose={closePublish}
         />
       )}

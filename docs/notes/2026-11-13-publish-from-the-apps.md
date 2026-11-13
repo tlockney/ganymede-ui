@@ -22,5 +22,13 @@ Choices:
   says the copy holds the hidden code.
 - One sheet in the page for every platform, as Notebook Access does; the
   Mac File menu and the iPad/iPhone ⋯ menu run its `publish` command.
-- A server older than #754 ignores the options and returns the default
-  page (folded, no byline, no copy).
+- A server older than #754 (0.10.0, which the apps embedded) ignores
+  the options and returns the default page, code folded. The review
+  caught that Hidden would then share the code. The page now names its
+  code mode (`<meta name="ganymede-code">`, ganymede#755), and the app
+  refuses a page whose mode isn't the one asked for, or that lacks the
+  copy it asked for. `GANYMEDE_REF` moves to #755's merge so the apps'
+  own server takes the options.
+- The sheet keeps the path it opened for and publishes only while that
+  notebook is still the one open; Cancel and Escape wait for a publish
+  in progress, so no save panel appears after the sheet closed.

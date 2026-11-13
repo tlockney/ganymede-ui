@@ -26,6 +26,10 @@ for a private window, so there use the toolbar button or rebind the
 palette in the Shortcuts sheet. In the Mac app the menu's `⇧⌘P` stays as
 it is when you rebind it.
 
+> [!NOTE]
+> **Unreleased.** Publish as Web Page… is available only from a build of
+> `main` (HEAD), not in the latest release.
+
 ## On a touch screen
 
 While you edit a cell with the on-screen keyboard (an iPhone, or an iPad

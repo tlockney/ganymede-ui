@@ -77,10 +77,43 @@ describe('publish', () => {
       }),
     );
     await expect(fetchPublished(backend, 'Io.ipynb', opts)).rejects.toThrow('newer Ganymede');
-    const page = '<!doctype html>\n<head>\n<meta name="generator" content="Ganymede 0.11.0">';
-    request.mockResolvedValueOnce(
-      new Response(page, { headers: { 'content-type': 'text/html; charset=utf-8' } }),
-    );
-    await expect(fetchPublished(backend, 'Io.ipynb', opts)).resolves.toBe(page);
+    const html = (body: string) =>
+      new Response(body, { headers: { 'content-type': 'text/html; charset=utf-8' } });
+    const generator = '<meta name="generator" content="Ganymede 0.11.0">';
+    const copy = '<script type="application/json" id="notebook">{}</script>';
+    const page = (code: string) =>
+      `<!doctype html>\n<head>\n${generator}\n<meta name="ganymede-code" content="${code}">\n</head><body>${copy}`;
+    request.mockResolvedValueOnce(html(page('folded')));
+    await expect(fetchPublished(backend, 'Io.ipynb', opts)).resolves.toBe(page('folded'));
+  });
+
+  it('refuses a page from a server that ignored the options', async () => {
+    const { services, contents } = fakeServices();
+    Object.assign(contents, {
+      serverSettings: ServerConnection.makeSettings({ baseUrl: 'http://h/' }),
+    });
+    const backend = fakeBackend(services);
+    const request = vi.spyOn(ServerConnection, 'makeRequest');
+    const html = (body: string) =>
+      new Response(body, { headers: { 'content-type': 'text/html; charset=utf-8' } });
+    // Ganymede 0.10.0: its page, code folded whatever was asked, no mode named.
+    const old = '<head><meta name="generator" content="Ganymede 0.10.0"></head><body>';
+    request.mockResolvedValueOnce(html(old));
+    await expect(
+      fetchPublished(backend, 'Io.ipynb', { code: 'hidden', byline: '', copy: false }),
+    ).rejects.toThrow('default options');
+    // A newer server that sent another mode than the one asked for.
+    const folded =
+      '<head><meta name="generator" content="Ganymede 0.11.0">' +
+      '<meta name="ganymede-code" content="folded"></head><body>';
+    request.mockResolvedValueOnce(html(folded));
+    await expect(
+      fetchPublished(backend, 'Io.ipynb', { code: 'hidden', byline: '', copy: false }),
+    ).rejects.toThrow('default options');
+    // The copy asked for and left out.
+    request.mockResolvedValueOnce(html(folded));
+    await expect(
+      fetchPublished(backend, 'Io.ipynb', { code: 'folded', byline: '', copy: true }),
+    ).rejects.toThrow('notebook copy');
   });
 });

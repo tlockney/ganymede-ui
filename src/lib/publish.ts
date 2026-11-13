@@ -83,10 +83,23 @@ export async function fetchPublished(
   }
   const type = res.headers.get('content-type') ?? '';
   const page = type.startsWith('text/html') ? await res.text() : '';
+  const head = page.slice(0, page.indexOf('</head>') + 1 || 2048);
   // Only Ganymede's page: not an app shell a static server answered with,
   // and not another exporter's, which redacts nothing.
-  if (!page.slice(0, 1024).includes(GENERATOR)) {
+  if (!head.includes(GENERATOR)) {
     throw new Error('This server can’t publish notebooks. It needs a newer Ganymede.');
+  }
+  // A server that ignored the options (Ganymede 0.10.0 and older) sends
+  // the default page: code folded, so asking for hidden code would share
+  // it. Only a page that names the mode asked for, and has the copy when
+  // it was asked for, goes out.
+  if (!head.includes(`<meta name="ganymede-code" content="${opts.code}">`)) {
+    throw new Error(
+      'This server publishes only with its default options. It needs a newer Ganymede.',
+    );
+  }
+  if (opts.copy && !page.includes('<script type="application/json" id="notebook">')) {
+    throw new Error('This server left out the notebook copy. It needs a newer Ganymede.');
   }
   return page;
 }

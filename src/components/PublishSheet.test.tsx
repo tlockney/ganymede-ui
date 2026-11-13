@@ -32,6 +32,19 @@ describe('PublishSheet', () => {
     expect(publish).toHaveBeenCalledWith({ code: 'hidden', byline: '', copy: true });
   });
 
+  it('can’t be cancelled while it publishes', async () => {
+    let finish!: () => void;
+    const publish = vi.fn(() => new Promise<void>(r => (finish = r)));
+    const onClose = vi.fn();
+    render(<PublishSheet name="Io.ipynb" publish={publish} onClose={onClose} />);
+    await userEvent.click(screen.getByRole('button', { name: 'Publish' }));
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeDisabled();
+    await userEvent.keyboard('{Escape}');
+    expect(onClose).not.toHaveBeenCalled();
+    finish();
+    await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
+  });
+
   it('stays open and says why when publishing fails', async () => {
     const onClose = vi.fn();
     const publish = vi.fn(async () => {

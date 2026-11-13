@@ -302,7 +302,10 @@ describe('NotebookPane', () => {
     });
     const request = vi.spyOn(ServerConnection, 'makeRequest').mockImplementation(async url => {
       order.push(`get ${String(url)}`);
-      return new Response('<meta name="generator" content="Ganymede 0.11.0"><h1>Io</h1>', {
+      const head =
+        '<meta name="generator" content="Ganymede 0.11.0">' +
+        '<meta name="ganymede-code" content="hidden">';
+      return new Response(`${head}</head><h1>Io</h1>`, {
         headers: { 'content-type': 'text/html; charset=utf-8' },
       });
     });

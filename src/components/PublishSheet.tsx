@@ -28,16 +28,18 @@ export function PublishSheet({ name, publish, onClose }: Props) {
 
   useEffect(() => first.current?.focus(), []);
 
+  // No cancel while publishing: the save and download would go on, and
+  // the save panel or share sheet would come after the sheet closed.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       e.preventDefault();
       e.stopPropagation();
-      onClose();
+      if (!busy) onClose();
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [onClose]);
+  }, [onClose, busy]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -112,7 +114,7 @@ export function PublishSheet({ name, publish, onClose }: Props) {
         {busy && <p role="status">Publishing…</p>}
         {error && <p className="sheet-error">{error}</p>}
         <div className="sheet-buttons">
-          <button type="button" className="push-button" onClick={onClose}>
+          <button type="button" className="push-button" onClick={onClose} disabled={busy}>
             Cancel
           </button>
           <button type="submit" className="push-button primary" disabled={busy}>
