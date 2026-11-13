@@ -10,8 +10,9 @@ which disposes every pending future, and the request's rejection goes
 unhandled. The restart itself goes on, reconnects and asks for the
 kernel's info again, so nothing is lost. 7.7.0-beta.1 has the same code.
 
-`scrubEvent` now drops errors of type `Error` whose message starts with
-`Canceled future for ` (`isCanceledFuture`). JupyterLab treats the same
-errors as expected in its own message handling. A request our code
-awaits handles its own rejection, so only the library's unawaited ones
-reach Sentry this way.
+`scrubEvent` now drops an event whose outermost error is an `Error`
+whose message starts with `Canceled future for kernel_info_request `.
+Other canceled requests are still sent, since our own code can miss a
+catch too (`tooltip:launch` awaits `requestInspect` without one). A
+disposed connection's `kernel_info_request` doesn't reach Sentry:
+`requestKernelInfo` returns quietly when the connection is disposed.
