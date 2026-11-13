@@ -337,10 +337,18 @@ Settings > Appearance sets the code font: notebook cells and text
 outputs, the text editor and the terminal take it at once. Pick the
 system's monospace font or one of the bundled fonts (JetBrains Mono, Fira
 Code, Cascadia Code, the five Monaspace faces, Iosevka), the size, and,
-for fonts that have them, ligatures and the font's stylistic sets and
-character variants, each listed with the characters it changes. View >
-Bigger Code Font (⌘+), Smaller Code Font (⌘−) and Actual Code Font Size
-(⌘0) change the size from any window.
+for fonts that have them, ligatures and a style: Standard, or a few named
+sets of the font's alternates. View > Bigger Code Font (⌘+), Smaller Code
+Font (⌘−) and Actual Code Font Size (⌘0) change the size from any window.
+
+The Markdown Font beside it sets the font of text cells: System, Serif
+(the font of pages from `ganymede nb publish`), or Monospace (the code
+font).
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, which lists each stylistic set and character variant
+> under Alternates and has no Markdown font.
 
 Ganymede > Agent Settings… (⌥⌘,), Help > Keyboard Shortcuts and Kernel >
 Manage Remotes… open those Settings tabs, as do the command palette's

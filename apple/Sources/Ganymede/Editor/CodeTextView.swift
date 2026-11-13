@@ -290,10 +290,13 @@ private func makeHighlighter(for textView: Neon.TextView, language: TextLanguage
 }
 
 /// Calls `changed` on the main queue when the code font setting changes,
-/// until the returned observer is released.
+/// until the returned observer is released. A change to the Markdown font
+/// alone reaches only observers with `markdown` (the pages).
 @MainActor
-func observeCodeFont(_ changed: @escaping @MainActor () -> Void) -> CodeFontObserver {
-    CodeFontObserver(NotificationCenter.default.addObserver(forName: .codeFontChanged, object: nil, queue: .main) { _ in
+func observeCodeFont(markdown: Bool = false, _ changed: @escaping @MainActor () -> Void) -> CodeFontObserver {
+    CodeFontObserver(NotificationCenter.default.addObserver(forName: .codeFontChanged, object: nil, queue: .main) { note in
+        let markdownOnly = note.userInfo?[CodeFont.markdownOnlyKey] as? Bool ?? false
+        if markdownOnly && !markdown { return }
         Task { @MainActor in changed() }
     })
 }

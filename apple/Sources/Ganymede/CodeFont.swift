@@ -8,8 +8,9 @@ import AppKit
 import UIKit
 #endif
 
-/// The code font (#354): face, size, ligatures and stylistic alternates
-/// for notebook cells and outputs, the file editor and the terminal.
+/// The code font (#354): face, size, ligatures and style (#565) for
+/// notebook cells and outputs, the file editor and the terminal; and the
+/// font of rendered Markdown in notebooks (#565).
 ///
 /// The fonts are the web build's (`public/fonts/`, `scripts/fonts.py`),
 /// listed in its `fonts/catalog.json`, which the page reads too. The app
@@ -23,8 +24,61 @@ struct CodeFontSetting: Codable, Equatable {
     /// Points; nil keeps each view's own size.
     var size: Double?
     var ligatures: Bool = true
-    /// OpenType feature tags turned on: `ss01`, `cv02`, `zero`.
-    var features: [String] = []
+    /// `CodeFont.standardStyle` or one of the font's `styles`.
+    var style: String = CodeFont.standardStyle
+    /// The rendered Markdown's font: `system`, `serif` or `mono`
+    /// (`MARKDOWN_FONTS` in `src/lib/code-font.ts`).
+    var markdown: String = "system"
+    /// What a setting saved before styles turned on; `normalized` turns it
+    /// into the style with just those. Never saved.
+    var legacyFeatures: [String]?
+
+    init(
+        font: String = CodeFont.system,
+        size: Double? = nil,
+        ligatures: Bool = true,
+        style: String = CodeFont.standardStyle,
+        markdown: String = "system"
+    ) {
+        self.font = font
+        self.size = size
+        self.ligatures = ligatures
+        self.style = style
+        self.markdown = markdown
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case font, size, ligatures, style, markdown, features
+    }
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        font = try c.decodeIfPresent(String.self, forKey: .font) ?? CodeFont.system
+        size = try c.decodeIfPresent(Double.self, forKey: .size)
+        ligatures = try c.decodeIfPresent(Bool.self, forKey: .ligatures) ?? true
+        markdown = try c.decodeIfPresent(String.self, forKey: .markdown) ?? "system"
+        if let style = try c.decodeIfPresent(String.self, forKey: .style) {
+            self.style = style
+        } else {
+            legacyFeatures = try c.decodeIfPresent([String].self, forKey: .features)
+        }
+    }
+
+    /// The code font alone, without the Markdown font, which only pages use.
+    var codeOnly: CodeFontSetting {
+        var value = self
+        value.markdown = "system"
+        return value
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(font, forKey: .font)
+        try c.encodeIfPresent(size, forKey: .size)
+        try c.encode(ligatures, forKey: .ligatures)
+        try c.encode(style, forKey: .style)
+        try c.encode(markdown, forKey: .markdown)
+    }
 }
 
 /// One bundled font, as `catalog.json` lists it.
@@ -33,6 +87,13 @@ struct CatalogFont: Decodable, Identifiable, Equatable {
         let tag: String
         let label: String
         var id: String { tag }
+    }
+
+    /// A named set of the font's features (#565).
+    struct Style: Decodable, Equatable, Identifiable {
+        let id: String
+        let name: String
+        let features: [String]
     }
 
     struct File: Decodable, Equatable {
@@ -48,10 +109,33 @@ struct CatalogFont: Decodable, Identifiable, Equatable {
     let files: [File]
     let ligatures: Bool
     let features: [Feature]
+    /// Besides its standard look.
+    let styles: [Style]
+    /// Features holding its ligatures, which the Ligatures switch turns
+    /// on (Monaspace's ss01-ss10); without them it turns `calt` off.
+    let ligatureFeatures: [String]?
+
+    func style(_ id: String) -> Style? {
+        styles.first { $0.id == id }
+    }
 }
 
 enum CodeFont {
     static let system = "system"
+    static let standardStyle = "standard"
+    /// `.codeFontChanged`'s user-info key: true when only the Markdown font changed.
+    static let markdownOnlyKey = "markdownOnly"
+    /// The Markdown fonts, as the page names them.
+    static let markdownFonts: [MarkdownFont] = [
+        MarkdownFont(id: "system", name: "System"),
+        MarkdownFont(id: "serif", name: "Serif, as Published Notebooks"),
+        MarkdownFont(id: "mono", name: "Monospace, the Code Font"),
+    ]
+
+    struct MarkdownFont: Identifiable {
+        let id: String
+        let name: String
+    }
     static let defaultsKey = "codeFont"
     static let minSize = 8.0
     static let maxSize = 32.0
@@ -98,25 +182,36 @@ enum CodeFont {
         }
         set {
             let value = normalized(newValue)
-            guard value != setting else { return }
+            let old = setting
+            guard value != old else { return }
             if let data = try? JSONEncoder().encode(value) {
                 UserDefaults.standard.set(data, forKey: defaultsKey)
             }
             cacheLock.lock()
             cache = [:]
             cacheLock.unlock()
-            NotificationCenter.default.post(name: .codeFontChanged, object: nil)
+            // Only the pages show Markdown: the editor and terminal skip a
+            // change to it alone (`observeCodeFont`).
+            NotificationCenter.default.post(
+                name: .codeFontChanged, object: nil,
+                userInfo: [markdownOnlyKey: old.codeOnly == value.codeOnly]
+            )
         }
     }
 
-    /// Drops an unknown font, features the font lacks, and clamps the size.
+    /// Drops an unknown font, style or Markdown font, and clamps the size.
+    /// A setting saved before styles gets the style with just its features.
     static func normalized(_ value: CodeFontSetting, catalog: [CatalogFont] = catalog) -> CodeFontSetting {
         var value = value
         let font = catalog.first { $0.id == value.font }
         if font == nil { value.font = system }
-        let known = Set(font?.features.map(\.tag) ?? [])
-        var seen = Set<String>()
-        value.features = value.features.filter { known.contains($0) && seen.insert($0).inserted }
+        if let old = value.legacyFeatures {
+            let wanted = Set(old)
+            value.style = font?.styles.first { Set($0.features) == wanted }?.id ?? standardStyle
+            value.legacyFeatures = nil
+        }
+        if font?.style(value.style) == nil { value.style = standardStyle }
+        if !markdownFonts.contains(where: { $0.id == value.markdown }) { value.markdown = "system" }
         value.size = value.size.map { min(maxSize, max(minSize, $0)) }
         return value
     }
@@ -172,7 +267,7 @@ enum CodeFont {
         let fallback = PlatformFont.monospacedSystemFont(ofSize: points, weight: .regular)
         guard let entry = entry(setting.font) else { return fallback }
         registerBundledFonts()
-        let features = featureSettings(setting, ligatures: entry.ligatures)
+        let features = featureSettings(setting, font: entry)
         var attributes: [PlatformFontDescriptor.AttributeName: Any] = [
             .family: entry.family,
             // Regular: the variable fonts' default instance is Light or
@@ -194,11 +289,14 @@ enum CodeFont {
     /// The `wght` axis's tag, as Core Text's variation dictionary keys it.
     private static let wghtAxis = 0x7767_6874
 
-    /// OpenType features as Core Text takes them: the alternates on, and
-    /// ligatures off if asked.
-    static func featureSettings(_ setting: CodeFontSetting, ligatures: Bool) -> [[PlatformFontDescriptor.FeatureKey: Any]] {
-        var tags = setting.features.map { ($0, 1) }
-        if !setting.ligatures && ligatures {
+    /// OpenType features as Core Text takes them: the style's on, and the
+    /// ligatures as `featureSettings` in `src/lib/code-font.ts` sets them.
+    static func featureSettings(_ setting: CodeFontSetting, font: CatalogFont) -> [[PlatformFontDescriptor.FeatureKey: Any]] {
+        var on = font.style(setting.style)?.features ?? []
+        if setting.ligatures, let sets = font.ligatureFeatures { on += sets }
+        var seen = Set<String>()
+        var tags = on.filter { seen.insert($0).inserted }.map { ($0, 1) }
+        if !setting.ligatures && font.ligatures && font.ligatureFeatures == nil {
             tags += [("calt", 0), ("liga", 0), ("dlig", 0)]
         }
         return tags.map { tag, value in
@@ -250,12 +348,13 @@ extension Notification.Name {
     static let codeFontChanged = Notification.Name("GanymedeCodeFontChanged")
 }
 
-/// The face, size, ligatures and alternates, with a preview: the Mac's
-/// Settings › Appearance and the iPad and iPhone's Settings screen.
+/// The face, size, ligatures and style, with a preview, and the Markdown
+/// font: the Mac's Settings › Appearance and the iPad and iPhone's
+/// Settings screen.
 struct CodeFontSettings: View {
     @State private var setting = CodeFont.setting
 
-    static let sample = "fn(x) => x != 0 && x <= 10 // 0O 1lI |> www ->"
+    static let sample = "fn(x) => x != 0 && @param <= 10 // 0O 1lI |> ->"
 
     private var entry: CatalogFont? { CodeFont.entry(setting.font) }
 
@@ -270,6 +369,14 @@ struct CodeFontSettings: View {
             Stepper(value: sizeBinding, in: CodeFont.minSize...CodeFont.maxSize, step: 1) {
                 LabeledContent("Size") {
                     Text(setting.size.map { "\(Self.points($0)) pt" } ?? "Default")
+                }
+            }
+            if let entry, !entry.styles.isEmpty {
+                Picker("Style", selection: $setting.style) {
+                    Text("Standard").tag(CodeFont.standardStyle)
+                    ForEach(entry.styles) { style in
+                        Text(style.name).tag(style.id)
+                    }
                 }
             }
             if entry?.ligatures == true {
@@ -293,21 +400,16 @@ struct CodeFontSettings: View {
             let current = CodeFont.setting
             if current != setting { setting = current }
         }
-        if let entry, !entry.features.isEmpty {
-            Section {
-                ForEach(entry.features) { feature in
-                    Toggle(isOn: featureBinding(feature.tag)) {
-                        HStack {
-                            Text(feature.tag).font(.system(.body, design: .monospaced)).foregroundStyle(.secondary)
-                            Text(feature.label)
-                        }
-                    }
+        Section {
+            Picker("Font", selection: $setting.markdown) {
+                ForEach(CodeFont.markdownFonts) { font in
+                    Text(font.name).tag(font.id)
                 }
-            } header: {
-                Text("Alternates")
-            } footer: {
-                Text("The font’s stylistic sets and character variants.")
             }
+        } header: {
+            Text("Markdown Font")
+        } footer: {
+            Text("Text cells in notebooks. Serif is the font of pages from ganymede nb publish.")
         }
     }
 
@@ -326,14 +428,14 @@ struct CodeFontSettings: View {
         size == size.rounded() ? String(Int(size)) : String(format: "%.1f", size)
     }
 
-    /// A new face starts without the last one's alternates.
+    /// A new face starts in its standard style.
     private var fontBinding: Binding<String> {
         Binding(
             get: { setting.font },
             set: { font in
                 guard font != setting.font else { return }
                 setting.font = font
-                setting.features = []
+                setting.style = CodeFont.standardStyle
             }
         )
     }
@@ -342,16 +444,6 @@ struct CodeFontSettings: View {
         Binding(
             get: { setting.size ?? CodeFont.defaultSize },
             set: { setting.size = $0 }
-        )
-    }
-
-    private func featureBinding(_ tag: String) -> Binding<Bool> {
-        Binding(
-            get: { setting.features.contains(tag) },
-            set: { on in
-                setting.features.removeAll { $0 == tag }
-                if on { setting.features.append(tag) }
-            }
         )
     }
 }

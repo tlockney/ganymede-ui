@@ -39,7 +39,7 @@
   --cell-border: rgba(0, 0, 0, 0.06);
 }
 
-/* The code font's ligatures and stylistic alternates (#354): cells, text
+/* The code font's ligatures and style (#354, #565): cells, text
  * outputs and code in Markdown, not the proportional text around them. */
 .notebook-page .cm-editor,
 .notebook-page .jp-RenderedText pre,
@@ -157,6 +157,9 @@
 /* Markdown reads like a document. */
 .notebook-page .jp-MarkdownOutput {
   padding: 2px 8px;
+  /* The Markdown font setting (#565, src/lib/code-font.ts). */
+  font-family: var(--markdown-font, var(--font-ui));
+  font-feature-settings: var(--markdown-font-features, normal);
   font-size: 15px;
   line-height: 1.6;
 }

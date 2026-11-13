@@ -21,6 +21,12 @@ describe('catalog', () => {
       expect(existsSync(`public/fonts/licenses/${font.id}.txt`)).toBe(true);
       for (const f of font.files) expect(existsSync(`public/fonts/${f.file}`)).toBe(true);
       for (const f of font.features) expect(f.tag).toMatch(/^(ss\d\d|cv\d\d|zero)$/);
+      const tags = new Set(font.features.map(f => f.tag));
+      for (const s of font.styles) {
+        expect(s.id).not.toBe('standard');
+        for (const t of s.features) expect(tags.has(t), `${font.id} ${s.id} ${t}`).toBe(true);
+      }
+      for (const t of font.ligatureFeatures ?? []) expect(tags.has(t)).toBe(true);
     }
   });
 
@@ -42,33 +48,71 @@ describe('parseCodeFont', () => {
     expect(parseCodeFont({ font: 'comic-sans', size: 'big' })).toEqual(DEFAULT_CODE_FONT);
   });
 
-  it("keeps the font's own features and clamps the size", () => {
+  it("keeps the font's own style and clamps the size", () => {
     expect(
-      parseCodeFont({
-        font: 'fira-code',
-        size: 99,
-        ligatures: false,
-        features: ['ss01', 'ss01', 'xx99', 3],
-      }),
-    ).toEqual({ font: 'fira-code', size: 32, ligatures: false, features: ['ss01'] });
+      parseCodeFont({ font: 'fira-code', size: 99, ligatures: false, style: 'dotted-zero' }),
+    ).toEqual({
+      font: 'fira-code',
+      size: 32,
+      ligatures: false,
+      style: 'dotted-zero',
+      markdown: 'system',
+    });
+    expect(parseCodeFont({ font: 'fira-code', style: 'classic' }).style).toBe('standard');
+    expect(parseCodeFont({ markdown: 'serif' }).markdown).toBe('serif');
+    expect(parseCodeFont({ markdown: 'comic' }).markdown).toBe('system');
+  });
+
+  it('turns a setting saved before styles into the style with its features', () => {
+    expect(parseCodeFont({ font: 'jetbrains-mono', features: ['zero'] }).style).toBe(
+      'slashed-zero',
+    );
+    expect(
+      parseCodeFont({ font: 'fira-code', features: ['ss05', 'ss03', 'cv01', 'ss01'] }).style,
+    ).toBe('alternate-letters');
+    expect(parseCodeFont({ font: 'fira-code', features: ['ss02'] }).style).toBe('standard');
+    expect(parseCodeFont({ font: 'jetbrains-mono', style: null, features: ['zero'] }).style).toBe(
+      'slashed-zero',
+    );
   });
 });
 
 describe('featureSettings', () => {
   it('is normal for the system font', () => {
-    expect(featureSettings({ ...DEFAULT_CODE_FONT, features: ['ss01'] })).toBe('normal');
+    expect(featureSettings({ ...DEFAULT_CODE_FONT, style: 'slashed-zero' })).toBe('normal');
   });
 
-  it('turns on alternates and turns off ligatures', () => {
+  it("turns on the style's features and turns off ligatures", () => {
     expect(
-      featureSettings({ font: 'fira-code', size: null, ligatures: false, features: ['ss01'] }),
-    ).toBe('"ss01" 1, "calt" 0, "liga" 0, "dlig" 0');
+      featureSettings({
+        ...DEFAULT_CODE_FONT,
+        font: 'fira-code',
+        ligatures: false,
+        style: 'alternate-letters',
+      }),
+    ).toBe('"cv01" 1, "ss01" 1, "ss03" 1, "ss05" 1, "calt" 0, "liga" 0, "dlig" 0');
+  });
+
+  it("turns on Monaspace's ligature sets, and leaves its texture healing", () => {
+    const on = featureSettings({ ...DEFAULT_CODE_FONT, font: 'monaspace-neon' });
+    expect(on).toContain('"ss01" 1');
+    expect(on).toContain('"ss10" 1');
+    expect(on).not.toContain('calt');
+    expect(
+      featureSettings({ ...DEFAULT_CODE_FONT, font: 'monaspace-neon', ligatures: false }),
+    ).toBe('normal');
   });
 });
 
 describe('applyCodeFont', () => {
   it('adds only the chosen font and sets the variables', () => {
-    applyCodeFont({ font: 'jetbrains-mono', size: 14, ligatures: true, features: ['zero'] });
+    applyCodeFont({
+      ...DEFAULT_CODE_FONT,
+      font: 'jetbrains-mono',
+      size: 14,
+      style: 'slashed-zero',
+      markdown: 'serif',
+    });
     const style = document.getElementById('ganymede-code-font')!;
     expect(style.textContent).toMatch(/\/fonts\/jetbrains-mono\.woff2\?v=[0-9a-f]{12}"/);
     expect(style.textContent).not.toContain('fira-code');
@@ -76,11 +120,31 @@ describe('applyCodeFont', () => {
     expect(root.getPropertyValue('--code-font')).toBe('"JetBrains Mono", var(--font-mono)');
     expect(root.getPropertyValue('--code-font-size')).toBe('14px');
     expect(root.getPropertyValue('--code-font-features')).toBe('"zero" 1');
+    expect(root.getPropertyValue('--markdown-font')).toContain('Iowan Old Style');
+    expect(root.getPropertyValue('--markdown-font-features')).toBe('normal');
 
     applyCodeFont(DEFAULT_CODE_FONT);
     expect(style.textContent).toBe('');
     expect(root.getPropertyValue('--code-font')).toBe('');
     expect(root.getPropertyValue('--code-font-size')).toBe('');
+    expect(root.getPropertyValue('--markdown-font')).toBe('');
+  });
+
+  it('gives Monospace Markdown the code font itself, with its style', () => {
+    const setting = {
+      ...DEFAULT_CODE_FONT,
+      font: 'jetbrains-mono',
+      style: 'slashed-zero',
+      markdown: 'mono' as const,
+    };
+    applyCodeFont(setting);
+    const root = document.documentElement.style;
+    // Resolved on <html>, where `--code-font` is the picked font; not
+    // `--jp-code-font-family`, which is the code font only in the notebook.
+    expect(root.getPropertyValue('--markdown-font')).toBe('var(--code-font, var(--font-mono))');
+    expect(root.getPropertyValue('--code-font')).toContain('JetBrains Mono');
+    expect(root.getPropertyValue('--markdown-font-features')).toBe('"zero" 1');
+    applyCodeFont(DEFAULT_CODE_FONT);
   });
 
   it('declares each file of a font', () => {

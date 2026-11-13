@@ -208,7 +208,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         Self.installPageScripts(on: view)
         // The code font (#354) as it changes: a reload must get the new
         // setting too, so the scripts are installed again.
-        codeFontObserver = observeCodeFont { [weak view] in
+        codeFontObserver = observeCodeFont(markdown: true) { [weak view] in
             guard let view else { return }
             Self.installPageScripts(on: view)
             view.evaluateJavaScript(CodeFont.updateScript, completionHandler: nil)
