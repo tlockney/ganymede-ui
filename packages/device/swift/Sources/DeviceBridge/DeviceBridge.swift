@@ -37,6 +37,9 @@ public final class DeviceBridge: NSObject, WKScriptMessageHandlerWithReply {
     /// Argument checks that run before a call asks for its permission
     /// (`addMethod`/`addStream` `check:`).
     private var checks: [String: ParamsCheck] = [:]
+    /// Methods whose ledger answer is narrower than their namespace
+    /// (`setLedgerCapability`): the capability the ledger keys each call by.
+    private var ledgerCapabilities: [String: @MainActor ([String: Any]) -> String] = [:]
     /// The namespace whose permission each streaming method needs.
     private var streamPermissions: [String: String] = [:]
     /// Dialogs a namespace adds (`addPermissionedDialog`, `addDialog`):
@@ -114,8 +117,18 @@ public final class DeviceBridge: NSObject, WKScriptMessageHandlerWithReply {
     /// Of a notebook's declared capabilities (`metadata.ganymede.device`),
     /// the ones this app has and the ledger has no answer for, so the app
     /// can ask when the notebook opens.
+    /// A namespace whose calls are keyed narrower (`setLedgerCapability`)
+    /// is left out: "Allow" for it would grant no call.
     public func undecided(_ declared: [String], notebook: String) -> [String] {
-        ledger.undecided(declared.filter { permissions[$0] != nil }, notebook: notebook)
+        let narrowed = narrowedNamespaces
+        return ledger.undecided(declared.filter { permissions[$0] != nil && !narrowed.contains($0) }, notebook: notebook)
+    }
+
+    /// Namespaces some method keys its ledger answers narrower than
+    /// (`setLedgerCapability`), such as `shortcuts`: only a kept "deny"
+    /// for the namespace itself means anything.
+    var narrowedNamespaces: Set<String> {
+        Set(ledgerCapabilities.keys.compactMap { methods[$0]?.permission })
     }
 
     /// Adds a streaming method (docs/protocol.md, "Streams"): `hello` lists
@@ -170,6 +183,14 @@ public final class DeviceBridge: NSObject, WKScriptMessageHandlerWithReply {
     ) {
         methods[method] = (permission, contextHandler)
         checks[method] = check
+    }
+
+    /// Keys `method`'s ledger answers by what `capability` makes of a
+    /// call's params, such as `shortcuts:<name>`, instead of by its
+    /// namespace, so "Always" for one call doesn't let others through. A
+    /// kept "deny" for the namespace still refuses every call.
+    func setLedgerCapability(_ method: String, _ capability: @escaping @MainActor ([String: Any]) -> String) {
+        ledgerCapabilities[method] = capability
     }
 
     /// Adds a dialog method that asks for `permission` first, such as
@@ -531,6 +552,13 @@ public final class DeviceBridge: NSObject, WKScriptMessageHandlerWithReply {
            permission.status == .denied || permission.status == .restricted {
             // The system already refused: answer that without the app's prompt.
             pending.answer(token, ["result": permission.status.rawValue])
+        } else if let namespace = requestedNamespace(method), let permission = permissions[namespace],
+                  narrowedNamespaces.contains(namespace) {
+            // Each call asks for itself, so there is nothing to ask for the
+            // whole namespace: answer what a call would meet, as
+            // `authorizationStatus` does, without a prompt.
+            let refused = ledger.notebook(for: owner).map { ledger.answer(notebook: $0, capability: namespace) == .deny } ?? true
+            pending.answer(token, ["result": (refused ? PermissionStatus.denied : permission.status).rawValue])
         } else if let namespace = requestedNamespace(method), let permission = permissions[namespace] {
             // The ledger first: a notebook it refuses gets `denied` without
             // the system prompt.
@@ -565,7 +593,8 @@ public final class DeviceBridge: NSObject, WKScriptMessageHandlerWithReply {
                 }
             }
         } else if let entry = methods[method] {
-            authorize(method, entry.permission, call: token, owner: owner) { [weak self] in
+            let capability = ledgerCapabilities[method]?(params)
+            authorize(method, entry.permission, capability: capability, call: token, owner: owner) { [weak self] in
                 self?.run(entry.handler, params, call: token, owner: owner)
             }
         } else {
@@ -578,8 +607,13 @@ public final class DeviceBridge: NSObject, WKScriptMessageHandlerWithReply {
 
     /// Runs `proceed` once `namespace`'s permission is granted, asking the
     /// system when it hasn't been asked; otherwise rejects `token`
-    /// `denied`. Nothing happens for a call cancelled meanwhile.
-    private func authorize(_ method: String, _ namespace: String?, call token: PendingCall, owner: Int, then proceed: @escaping @MainActor () -> Void) {
+    /// `denied`. `capability`, when given, is what the ledger keys this
+    /// call by instead of `namespace`. Nothing happens for a call
+    /// cancelled meanwhile.
+    private func authorize(
+        _ method: String, _ namespace: String?, capability: String? = nil, call token: PendingCall, owner: Int,
+        then proceed: @escaping @MainActor () -> Void
+    ) {
         guard let namespace else {
             proceed()
             return
@@ -593,7 +627,7 @@ public final class DeviceBridge: NSObject, WKScriptMessageHandlerWithReply {
             pending.answer(token, Self.error("denied", "\(method): \(namespace) permission is \(permission.status.rawValue)"))
             return
         }
-        checkLedger(method, namespace, call: token, owner: owner, refused: { [weak self] message in
+        checkLedger(method, capability ?? namespace, within: namespace, call: token, owner: owner, refused: { [weak self] message in
             self?.pending.answer(token, Self.error("denied", message))
         }, allowed: { [weak self] in
             self?.askSystem(method, namespace, permission, call: token, then: proceed)
@@ -603,13 +637,20 @@ public final class DeviceBridge: NSObject, WKScriptMessageHandlerWithReply {
     /// The app's ledger for the notebook kernel `owner` runs: a kept
     /// "always" goes ahead, a kept "deny" is refused, and otherwise the
     /// person is asked through `ledgerPrompter` (refused without one).
-    /// Nothing happens for a call cancelled meanwhile.
+    /// `namespace` is the capability asked about; `within`, when it is a
+    /// narrower one (`shortcuts:<name>` in `shortcuts`), is the namespace
+    /// whose kept "deny" refuses it too. Nothing happens for a call
+    /// cancelled meanwhile.
     private func checkLedger(
-        _ method: String, _ namespace: String, call token: PendingCall, owner: Int,
+        _ method: String, _ namespace: String, within outer: String? = nil, call token: PendingCall, owner: Int,
         refused: @escaping @MainActor (String) -> Void, allowed: @escaping @MainActor () -> Void
     ) {
         guard let notebook = ledger.notebook(for: owner) else {
             refused("\(method): the app hasn't said which notebook this kernel runs")
+            return
+        }
+        if let outer, outer != namespace, ledger.answer(notebook: notebook, capability: outer) == .deny {
+            refused("\(method): \(notebook) isn't allowed \(outer) (revoke it in Settings)")
             return
         }
         switch ledger.answer(notebook: notebook, capability: namespace) {

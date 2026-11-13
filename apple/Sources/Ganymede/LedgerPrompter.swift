@@ -38,12 +38,16 @@ final class AppLedgerPrompter: LedgerPrompter {
     /// Ids for prompts at open, which no call waits on: negative, so they
     /// never meet the bridge's.
     private var nextOpenID = -1
+    /// Where "Don’t Allow Any Shortcuts" keeps its deny for `shortcuts`.
+    private let ledger: PermissionLedger
 
     /// `host`: the view whose window the prompt shows on.
     /// `presenter`: the system's when nil. Made here, not as a default
     /// argument: defaults are evaluated outside the main actor.
-    init(presenter: DialogPresenter? = nil, host: @escaping () -> DialogHost?) {
+    /// `ledger`: the app's, on the App Group store, when nil.
+    init(presenter: DialogPresenter? = nil, ledger: PermissionLedger? = nil, host: @escaping () -> DialogHost?) {
         self.presenter = presenter ?? SystemDialogPresenter()
+        self.ledger = ledger ?? PermissionLedger(store: AppGroup.ledgerStore())
         self.host = host
     }
 
@@ -51,16 +55,22 @@ final class AppLedgerPrompter: LedgerPrompter {
         _ capability: String, notebook: String, id: Int,
         answer: @escaping @MainActor (LedgerAnswer?) -> Void
     ) {
+        // One Shortcut is asked about at a time (ui#587), so the prompt
+        // offers to turn down every Shortcut too: a deny for `shortcuts`.
+        let shortcut = DeviceBridge.shortcutName(capability) != nil
         let dialog = Dialog.actionSheet(
             title: Self.title(capability, notebook: notebook),
             message: "“Always Allow” and “Don’t Allow” apply to this notebook until you change them in Settings › Device.",
-            options: ["Allow Once", "Always Allow", "Don’t Allow"],
+            options: ["Allow Once", "Always Allow", "Don’t Allow"] + (shortcut ? ["Don’t Allow Any Shortcuts"] : []),
             cancel: "Cancel", destructive: 2)
-        enqueue(Ask(id: id, dialog: dialog) { result in
+        enqueue(Ask(id: id, dialog: dialog) { [ledger] result in
             switch result {
             case .option(0): answer(.once)
             case .option(1): answer(.always)
             case .option(2): answer(.deny)
+            case .option(3) where shortcut:
+                ledger.record(.deny, notebook: notebook, capability: "shortcuts")
+                answer(.deny)
             default: answer(nil)
             }
         })
@@ -127,10 +137,23 @@ final class AppLedgerPrompter: LedgerPrompter {
         }
     }
 
-    /// “Untitled.ipynb” wants to use your location.
+    /// “Untitled.ipynb” wants to use your location; “Log.ipynb” wants to
+    /// run the Shortcut “Daily”.
     static func title(_ capability: String, notebook: String) -> String {
         let name = URL(fileURLWithPath: notebook).lastPathComponent
+        if let shortcut = DeviceBridge.shortcutName(capability) {
+            return "“\(name)” wants to run the Shortcut “\(quotable(shortcut))”"
+        }
         return "“\(name)” wants to use \(describe(capability))"
+    }
+
+    /// A name the notebook chose, safe inside the title's quotes: on one
+    /// line, with its own curly quotes made straight, so it can't close
+    /// the quote and read as more of the sentence.
+    static func quotable(_ name: String) -> String {
+        name.components(separatedBy: .newlines).joined(separator: " ")
+            .replacingOccurrences(of: "“", with: "\"")
+            .replacingOccurrences(of: "”", with: "\"")
     }
 
     /// A capability (a `device` namespace) in words.
@@ -146,8 +169,10 @@ final class AppLedgerPrompter: LedgerPrompter {
         case "calendar": "your calendars"
         case "microphone": "the microphone"
         case "bluetooth": "Bluetooth"
-        // Consent to run any of them (ganymede-device#40): say so.
-        case "shortcuts": "your Shortcuts (it can run any of them)"
+        // Asked by `shortcuts.requestAuthorization` or a notebook's
+        // declared capabilities. Running one asks again for that Shortcut
+        // (ui#587), so this only matters as a deny.
+        case "shortcuts": "your Shortcuts"
         default: capability
         }
     }

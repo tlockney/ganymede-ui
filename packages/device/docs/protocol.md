@@ -496,7 +496,11 @@ are its own. Share one `ShortcutCalls` between the app's bridges.
   the screen, so a longer Shortcut's answer has no cell to reach.
 - Capability `shortcuts`, with no system permission: a Shortcut does
   whatever the person set it up to, so the ledger's prompt is the
-  consent. Names are 1 to 256 bytes and input text up to 64 KiB as
+  consent. The ledger keys each call by `shortcuts:<name>`
+  (`DeviceBridge.shortcutCapability(_:)`), and the prompt names the
+  Shortcut, so "Always" for one Shortcut doesn't run another. A kept
+  "deny" for `shortcuts` itself refuses every Shortcut; a kept "always"
+  for it lets none through. Names are 1 to 256 bytes and input text up to 64 KiB as
   UTF-8; anything else fails `failed` before the prompt.
 - Not in a headless run (it brings another app forward, as a dialog
   would) and not over remote kernels.

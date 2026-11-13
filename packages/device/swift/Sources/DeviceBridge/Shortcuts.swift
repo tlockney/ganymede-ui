@@ -93,12 +93,19 @@ extension DeviceBridge {
 
     /// Turns on `device.shortcuts.run`, under capability `shortcuts`, which
     /// has no system permission: the ledger's prompt is the only consent,
-    /// since a Shortcut can do anything the person set it up to. `calls`
-    /// waits for the Shortcuts app's callbacks; the app passes it every
-    /// URL it is opened with.
+    /// since a Shortcut can do anything the person set it up to. The
+    /// ledger keys each call by `shortcuts:<name>` (`setLedgerCapability`,
+    /// `shortcutCapability`), so "Always" for one Shortcut doesn't run
+    /// another; a kept "deny" for `shortcuts` refuses them all.
+    /// `shortcuts.requestAuthorization` asks nothing, and a notebook's
+    /// declared `shortcuts` isn't asked at open: "Allow" there would grant
+    /// no call. `calls` waits for the Shortcuts app's callbacks; the app
+    /// passes it every URL it is opened with.
     public func addShortcuts(_ calls: ShortcutCalls) {
         addPermission("shortcuts", LedgerOnlyPermission())
         foregroundMethods.insert("shortcuts.run")
+        // A bad name fails in the check, before the ledger reads this.
+        setLedgerCapability("shortcuts.run") { Self.shortcutCapability(($0["name"] as? String) ?? "") }
         addMethod("shortcuts.run", permission: "shortcuts", check: { _ = try Self.shortcutRequest($0) }, handler: { [weak self] params, reply in
             do {
                 let (name, input) = try Self.shortcutRequest(params)
@@ -116,6 +123,17 @@ extension DeviceBridge {
             }
         })
     }
+
+    /// The ledger capability for running the Shortcut `name`.
+    public static func shortcutCapability(_ name: String) -> String { shortcutPrefix + name }
+
+    /// The Shortcut a ledger capability is for, or nil when it isn't one
+    /// of `shortcutCapability`'s.
+    public static func shortcutName(_ capability: String) -> String? {
+        capability.hasPrefix(shortcutPrefix) ? String(capability.dropFirst(shortcutPrefix.count)) : nil
+    }
+
+    private static let shortcutPrefix = "shortcuts:"
 
     static func shortcutRequest(_ params: [String: Any]) throws -> (name: String, input: String?) {
         guard let name = params["name"] as? String, !name.isEmpty, name.utf8.count <= maxShortcutName else {

@@ -1,6 +1,24 @@
 @testable import DeviceBridge
 import XCTest
 
+/// The app's prompt: records each ask, and the test answers it.
+@MainActor
+private final class Prompter: LedgerPrompter {
+    var asked: [String] = []
+    private var answers: [@MainActor (LedgerAnswer?) -> Void] = []
+
+    func askPermission(_ capability: String, notebook: String, id: Int, answer: @escaping @MainActor (LedgerAnswer?) -> Void) {
+        asked.append(capability)
+        answers.append(answer)
+    }
+
+    func dismissPermission(_ id: Int) {}
+
+    func answer(_ answer: LedgerAnswer?) {
+        answers.removeFirst()(answer)
+    }
+}
+
 private final class Opener: URLOpener {
     var opened: [URL] = []
     /// What `open(_:completion:)` reports; nil holds the answer back.
@@ -27,7 +45,9 @@ final class ShortcutsTests: XCTestCase {
         bridge = DeviceBridge(urlOpener: opener, ledger: PermissionLedger(store: MemoryLedgerStore()), appVersion: "")
         bridge.addShortcuts(calls)
         bridge.setNotebook("/n/A.ipynb", for: 1)
-        bridge.ledger.record(.always, notebook: "/n/A.ipynb", capability: "shortcuts")
+        for name in ["Log it", "Ping", "A", "B", "Slow"] {
+            bridge.ledger.record(.always, notebook: "/n/A.ipynb", capability: DeviceBridge.shortcutCapability(name))
+        }
         replies = [:]
     }
 
@@ -138,6 +158,75 @@ final class ShortcutsTests: XCTestCase {
         }
         XCTAssertEqual(code(9), "denied", "no prompter and no kept answer")
         XCTAssertTrue(opener.opened.isEmpty)
+    }
+
+    func testAlwaysIsKeptPerShortcut() {
+        let prompter = Prompter()
+        bridge.ledgerPrompter = prompter
+        bridge.setNotebook("/n/B.ipynb", for: 2)
+        func call(_ id: Int, _ name: String) {
+            bridge.respond(to: ["id": id, "owner": 2, "method": "shortcuts.run", "params": ["name": name]]) { [weak self] in
+                self?.replies[id] = $0
+            }
+        }
+        call(1, "Log")
+        XCTAssertEqual(prompter.asked, ["shortcuts:Log"], "the prompt names the Shortcut")
+        prompter.answer(.always)
+        XCTAssertEqual(opener.opened.count, 1)
+        XCTAssertEqual(bridge.ledger.answer(notebook: "/n/B.ipynb", capability: "shortcuts:Log"), .always)
+        XCTAssertNil(bridge.ledger.answer(notebook: "/n/B.ipynb", capability: "shortcuts"))
+
+        call(2, "Log")
+        XCTAssertEqual(prompter.asked.count, 1, "the kept answer runs Log again")
+        XCTAssertEqual(opener.opened.count, 2)
+
+        call(3, "Delete Everything")
+        XCTAssertEqual(prompter.asked, ["shortcuts:Log", "shortcuts:Delete Everything"], "another Shortcut asks")
+        prompter.answer(.deny)
+        XCTAssertEqual(code(3), "denied")
+        XCTAssertEqual(opener.opened.count, 2)
+    }
+
+    func testAlwaysForAllShortcutsRunsNone() {
+        bridge.setNotebook("/n/B.ipynb", for: 2)
+        bridge.ledger.record(.always, notebook: "/n/B.ipynb", capability: "shortcuts")
+        bridge.respond(to: ["id": 1, "owner": 2, "method": "shortcuts.run", "params": ["name": "A"]]) { [weak self] in
+            self?.replies[1] = $0
+        }
+        XCTAssertEqual(code(1), "denied", "no prompter, and no answer kept for this Shortcut")
+        XCTAssertTrue(opener.opened.isEmpty)
+    }
+
+    func testDenyForShortcutsRefusesEveryShortcut() {
+        bridge.ledger.record(.deny, notebook: "/n/A.ipynb", capability: "shortcuts")
+        run(["name": "A"])
+        XCTAssertEqual(code(1), "denied", "a kept deny for shortcuts outranks Always for one")
+        XCTAssertTrue(opener.opened.isEmpty)
+    }
+
+    func testNoNamespacePromptForShortcuts() {
+        let prompter = Prompter()
+        bridge.ledgerPrompter = prompter
+        bridge.setNotebook("/n/B.ipynb", for: 2)
+        XCTAssertEqual(bridge.undecided(["shortcuts", "unknown"], notebook: "/n/B.ipynb"), [], "Allow at open would grant no call")
+        bridge.respond(to: ["id": 1, "owner": 2, "method": "shortcuts.requestAuthorization", "params": [:] as [String: Any]]) { [weak self] in
+            self?.replies[1] = $0
+        }
+        XCTAssertTrue(prompter.asked.isEmpty)
+        XCTAssertEqual(replies[1]?["result"] as? String, "authorized")
+        XCTAssertNil(bridge.ledger.answer(notebook: "/n/B.ipynb", capability: "shortcuts"))
+        bridge.ledger.record(.deny, notebook: "/n/B.ipynb", capability: "shortcuts")
+        bridge.respond(to: ["id": 2, "owner": 2, "method": "shortcuts.requestAuthorization", "params": [:] as [String: Any]]) { [weak self] in
+            self?.replies[2] = $0
+        }
+        XCTAssertEqual(replies[2]?["result"] as? String, "denied")
+    }
+
+    func testTheCapabilityNamesTheShortcut() {
+        XCTAssertEqual(DeviceBridge.shortcutCapability("Log: daily"), "shortcuts:Log: daily")
+        XCTAssertEqual(DeviceBridge.shortcutName("shortcuts:Log: daily"), "Log: daily")
+        XCTAssertNil(DeviceBridge.shortcutName("shortcuts"))
+        XCTAssertNil(DeviceBridge.shortcutName("location"))
     }
 
     func testNotInAHeadlessRun() {

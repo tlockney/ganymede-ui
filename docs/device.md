@@ -352,8 +352,10 @@ if (folder) {
 `device.shortcuts.run(name, { input })` runs one of your Shortcuts and
 resolves with its output as text, or `null` when it gives none. The
 Shortcuts app comes forward while it runs and hands the result back to
-Ganymede when it is done. The first call from a notebook asks, with
-"Always allow", since a Shortcut does whatever you set it up to do.
+Ganymede when it is done. The first call from a notebook for each
+Shortcut asks, naming it, with "Always allow" for that Shortcut only,
+since a Shortcut does whatever you set it up to do. Settings › Device
+lists each allowed Shortcut, with Revoke.
 `input` is passed to the Shortcut as text. Interrupting the cell rejects
 the call `cancelled`; the Shortcut may still finish. On iPad and iPhone
 the kernel stops about 30 seconds after Ganymede leaves the screen, so
@@ -372,7 +374,11 @@ before the system does: **Allow Once** lets that call through, **Always
 Allow** lets this notebook use it from now on, and **Don’t Allow** turns
 it down from now on. Cancel turns down just that call. The call then
 rejects `denied`, so the cell can carry on without it. The system's own
-prompt comes after the app's, once per app.
+prompt comes after the app's, once per app. Shortcuts are asked about
+one at a time: **Always Allow** covers that Shortcut only, and **Don’t
+Allow Any Shortcuts** turns them all down for the notebook. A notebook
+that declares `shortcuts` isn't asked at open, and
+`device.shortcuts.requestAuthorization()` asks nothing.
 
 The app keeps "always" and "don’t allow" by notebook, by its full path,
 so a rename in the sidebar keeps them. Settings › Device lists them with
