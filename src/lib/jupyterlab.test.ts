@@ -18,8 +18,8 @@ globalThis.requestIdleCallback ??= ((cb: () => void) =>
 Range.prototype.getClientRects ??= () => [] as unknown as DOMRectList;
 Range.prototype.getBoundingClientRect ??= () => new DOMRect();
 
-const { attachEditing, createCommands, createNotebook, createRendermime } =
-  await import('./jupyterlab');
+const jupyterlab = await import('./jupyterlab');
+const { attachEditing, createCommands, createNotebook, createRendermime } = jupyterlab;
 const { NotebookModel } = await import('@jupyterlab/notebook');
 const { Widget } = await import('@lumino/widgets');
 
@@ -169,6 +169,53 @@ describe('attachEditing', () => {
       'Insert cell below',
       'Delete cell',
     ]);
+  });
+});
+
+describe('recheckToolbarOverlap', () => {
+  it('re-checks the toolbar when the active Markdown cell changes size', () => {
+    const { recheckToolbarOverlap } = jupyterlab;
+    const observed = new Set<Element>();
+    let resized = () => {};
+    const Real = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = class {
+      constructor(callback: () => void) {
+        resized = callback;
+      }
+      observe(node: Element) {
+        observed.add(node);
+      }
+      unobserve(node: Element) {
+        observed.delete(node);
+      }
+      disconnect() {
+        observed.clear();
+      }
+    } as unknown as typeof ResizeObserver;
+    try {
+      const recheck = recheckToolbarOverlap(notebook);
+      // A code cell is active: nothing to watch.
+      expect(observed.size).toBe(0);
+
+      notebook.activeCellIndex = 1;
+      const markdown = notebook.activeCell!;
+      expect([...observed]).toEqual([markdown.inputArea!.node]);
+      const changed = vi.fn();
+      markdown.displayChanged.connect(changed);
+      resized();
+      expect(changed).toHaveBeenCalledTimes(1);
+
+      notebook.activeCellIndex = 0;
+      expect(observed.size).toBe(0);
+      resized();
+      expect(changed).toHaveBeenCalledTimes(1);
+
+      notebook.activeCellIndex = 1;
+      recheck.dispose();
+      expect(observed.size).toBe(0);
+    } finally {
+      globalThis.ResizeObserver = Real;
+    }
   });
 });
 

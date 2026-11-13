@@ -68,6 +68,7 @@ import { CommandRegistry } from '@lumino/commands';
 import type { JSONObject } from '@lumino/coreutils';
 import type { Message } from '@lumino/messaging';
 import { DisposableDelegate, DisposableSet, type IDisposable } from '@lumino/disposable';
+import type { Signal } from '@lumino/signaling';
 import { Widget } from '@lumino/widgets';
 import { installOutputFrames } from './output-frames';
 import { bindShortcuts, SHOW_SHORTCUTS_EVENT } from './shortcuts';
@@ -296,6 +297,44 @@ completion.registerProvider(new ContextCompleterProvider());
 // completer-extension's default `providerTimeout`.
 completion.setTimeout(1000);
 
+/**
+ * Check the cell toolbar against a Markdown cell's content again once the
+ * Markdown has rendered.
+ *
+ * The tracker hides the toolbar when the cell's first line runs under it,
+ * checking when the cell becomes active (in a `requestIdleCallback`) and on
+ * the cell's `displayChanged`. Markdown renders asynchronously, and WebKit
+ * runs idle callbacks sooner than Chromium: when a notebook opens, the check
+ * on its first cell can run before the Markdown is there, find no first
+ * line, and leave the toolbar over a long heading. The cell is rendered the
+ * whole time, so nothing emits `displayChanged` afterwards. Emit it whenever
+ * the active Markdown cell's input area changes size, as it does when the
+ * Markdown renders, is edited by someone else, or rewraps.
+ */
+export function recheckToolbarOverlap(notebook: Notebook): IDisposable {
+  let observed: Element | null = null;
+  const observer = new ResizeObserver(() => {
+    const cell = notebook.activeCell;
+    if (cell?.model.type === 'markdown' && !cell.isDisposed) {
+      (cell.displayChanged as Signal<Cell, void>).emit();
+    }
+  });
+  const follow = () => {
+    const cell = notebook.activeCell;
+    const node = cell?.model.type === 'markdown' ? (cell.inputArea?.node ?? null) : null;
+    if (node === observed) return;
+    if (observed) observer.unobserve(observed);
+    observed = node;
+    if (node) observer.observe(node);
+  };
+  follow();
+  notebook.activeCellChanged.connect(follow);
+  return new DisposableDelegate(() => {
+    notebook.activeCellChanged.disconnect(follow);
+    observer.disconnect();
+  });
+}
+
 type CellAction = (notebook: Notebook) => void;
 
 /** The buttons on the active cell: JupyterLab's default cell toolbar. */
@@ -501,6 +540,7 @@ export function attachEditing(
     return items;
   });
   disposables.add(cellToolbar);
+  disposables.add(recheckToolbarOverlap(notebook));
 
   const edit = `#${id}.jp-mod-editMode`;
   const searchBar = `#${id}-search`;
