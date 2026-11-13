@@ -1,6 +1,6 @@
 import { URLExt } from '@jupyterlab/coreutils';
-import { ServerConnection } from '@jupyterlab/services';
 import type { Backend } from './backends';
+import { SERVER_TIMEOUT_MS, serverGet } from './server-request';
 
 /**
  * Publishing a notebook as one self-contained web page (#563): the page
@@ -66,36 +66,10 @@ export async function fetchPublished(
   opts: PublishOptions,
 ): Promise<string> {
   const settings = backend.services.contents.serverSettings;
-  // The sheet can't be cancelled while it waits, so a server that never
-  // answers mustn't hold it open. `makeRequest` rewraps a fetch rejection
-  // as a NetworkError, so the signal says whether it was the timeout.
-  const signal = AbortSignal.timeout(PUBLISH_TIMEOUT_MS);
-  const timedOut = (e: unknown) =>
-    signal.aborted && (signal.reason as Error | undefined)?.name === 'TimeoutError'
-      ? new Error('The server didn’t answer in time.', { cause: e })
-      : e;
-  let page: string;
-  try {
-    const res = await ServerConnection.makeRequest(
-      publishUrl(settings.baseUrl, path, opts),
-      { method: 'GET', signal },
-      settings,
-    );
-    if (!res.ok) {
-      let message = `The server answered ${res.status}.`;
-      try {
-        const body = (await res.json()) as { message?: string };
-        if (body.message) message = body.message;
-      } catch {
-        // Not JSON: keep the status.
-      }
-      throw new Error(message);
-    }
-    const type = res.headers.get('content-type') ?? '';
-    page = type.startsWith('text/html') ? await res.text() : '';
-  } catch (e) {
-    throw timedOut(e);
-  }
+  // The sheet can't be cancelled while it waits: the request times out.
+  const page = await serverGet(settings, publishUrl(settings.baseUrl, path, opts), async res =>
+    (res.headers.get('content-type') ?? '').startsWith('text/html') ? res.text() : '',
+  );
   const head = page.slice(0, page.indexOf('</head>') + 1 || 2048);
   // Only Ganymede's page: not an app shell a static server answered with,
   // and not another exporter's, which redacts nothing.
@@ -118,7 +92,7 @@ export async function fetchPublished(
 }
 
 /** How long the server gets to make the page. */
-export const PUBLISH_TIMEOUT_MS = 120_000;
+export const PUBLISH_TIMEOUT_MS = SERVER_TIMEOUT_MS;
 
 /** What Ganymede's page says made it, in its `<head>`. */
 const GENERATOR = '<meta name="generator" content="Ganymede ';
