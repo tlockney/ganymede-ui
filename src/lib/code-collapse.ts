@@ -59,6 +59,9 @@ function refresh(cell: Cell): void {
   const toggle = cell.node.querySelector<HTMLButtonElement>(`:scope > .${TOGGLE}`);
   if (!toggle) return;
   if (!wantsToggle(cell)) {
+    // Removing the focused button would drop focus to the page, and the
+    // notebook's keys with it.
+    if (toggle.contains(document.activeElement)) cell.node.focus();
     toggle.remove();
     return;
   }
@@ -119,6 +122,12 @@ export function attachCodeCollapse(notebook: Notebook): IDisposable {
     e.preventDefault();
     e.stopPropagation();
     setCollapsed(cell, !cell.inputHidden, notebook);
+    // A clicked button keeps focus in Chrome and Firefox, where Enter would
+    // then press it again instead of editing the cell: hand focus back to
+    // the active cell, as the notebook's command-mode keys expect.
+    if (toggle.isConnected && toggle.contains(document.activeElement)) {
+      (notebook.activeCell ?? cell).node.focus();
+    }
   };
   // A press on the button isn't the notebook's: no selecting or dragging
   // the cell, no focusing its editor.

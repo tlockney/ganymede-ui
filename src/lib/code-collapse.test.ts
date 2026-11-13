@@ -124,10 +124,13 @@ describe('attachCodeCollapse', () => {
     await Promise.resolve();
     expect(cell(2).model.type).toBe('markdown');
     expect(cell(2).inputHidden).toBe(true);
+    toggle(2)!.focus();
     toggle(2)!.click();
     expect(cell(2).inputHidden).toBe(false);
-    // Expanded, a Markdown cell has nothing to collapse: no button.
+    // Expanded, a Markdown cell has nothing to collapse: no button. Focus
+    // stays in the notebook rather than dropping to the page.
     expect(toggle(2)).toBeNull();
+    expect(notebook.node.contains(document.activeElement)).toBe(true);
     // Collapsed again from elsewhere (undo, the agent), it gets one back.
     cell(2).model.setMetadata('jupyter', { source_hidden: true });
     expect(cell(2).inputHidden).toBe(true);
