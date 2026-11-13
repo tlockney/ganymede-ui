@@ -283,6 +283,9 @@ function intendedKernel(
     : { name: installed ? wanted.name : (specs?.default ?? undefined) };
 }
 
+/** The file changed on disk: saving is locked, and the pane says so. */
+class FileLocked extends Error {}
+
 /**
  * One notebook file: loads it through the contents API, joins or starts its
  * session, and shows JupyterLab's `Notebook` widget for it. The file is
@@ -290,9 +293,6 @@ function intendedKernel(
  * JupyterLab document context, so the same code saves to a Ganymede server
  * or to the browser's own storage.
  */
-/** The file changed on disk: saving is locked, and the pane says so. */
-class FileLocked extends Error {}
-
 export function NotebookPane({ backend, path, onController, onRenamed }: Props) {
   // A ref, not a dependency of the controller effect: a parent that
   // passes a new function each render would otherwise loop (the effect
