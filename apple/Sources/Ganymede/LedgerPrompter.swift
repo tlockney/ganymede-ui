@@ -127,9 +127,13 @@ final class AppLedgerPrompter: LedgerPrompter {
         }
     }
 
-    /// “Untitled.ipynb” wants to use your location.
+    /// “Untitled.ipynb” wants to use your location; “Log.ipynb” wants to
+    /// run the Shortcut “Daily”.
     static func title(_ capability: String, notebook: String) -> String {
         let name = URL(fileURLWithPath: notebook).lastPathComponent
+        if let shortcut = DeviceBridge.shortcutName(capability) {
+            return "“\(name)” wants to run the Shortcut “\(shortcut)”"
+        }
         return "“\(name)” wants to use \(describe(capability))"
     }
 
@@ -146,8 +150,10 @@ final class AppLedgerPrompter: LedgerPrompter {
         case "calendar": "your calendars"
         case "microphone": "the microphone"
         case "bluetooth": "Bluetooth"
-        // Consent to run any of them (ganymede-device#40): say so.
-        case "shortcuts": "your Shortcuts (it can run any of them)"
+        // Asked by `shortcuts.requestAuthorization` or a notebook's
+        // declared capabilities. Running one asks again for that Shortcut
+        // (ui#587), so this only matters as a deny.
+        case "shortcuts": "your Shortcuts"
         default: capability
         }
     }

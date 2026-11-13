@@ -229,7 +229,8 @@ final class DeviceGrants {
 
     /// A capability's name in a list: “Location”.
     static func name(_ capability: String) -> String {
-        switch capability {
+        if let shortcut = DeviceBridge.shortcutName(capability) { return "Shortcut “\(shortcut)”" }
+        return switch capability {
         case "notifications": "Notifications"
         case "location": "Location"
         case "motion": "Motion & Fitness"

@@ -62,6 +62,13 @@ final class DeviceLedgerTests: XCTestCase {
         XCTAssertEqual(title, "“Trip.ipynb” wants to use your location")
     }
 
+    func testAShortcutsPromptAndRowNameTheShortcut() {
+        let capability = DeviceBridge.shortcutCapability("Log Day")
+        XCTAssertEqual(AppLedgerPrompter.title(capability, notebook: "/n/Journal.ipynb"), "“Journal.ipynb” wants to run the Shortcut “Log Day”")
+        XCTAssertEqual(DeviceGrants.name(capability), "Shortcut “Log Day”")
+        XCTAssertEqual(DeviceGrants.name("shortcuts"), "Shortcuts")
+    }
+
     func testPromptsShowOneAtATimeInOrder() {
         let presenter = RecordingPresenter()
         let prompter = AppLedgerPrompter(presenter: presenter, host: { nil })
