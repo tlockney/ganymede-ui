@@ -107,6 +107,8 @@ export type NotebookController = {
   hostWants(): string[];
   run(): Promise<void>;
   runAll(): Promise<void>;
+  /** Clear every cell's outputs and execution counts: an edit, saved as one. */
+  clearOutputs(): void;
   insert(type: 'code' | 'markdown'): void;
   /** The active cell's type. */
   cellType: CellType;
@@ -1216,6 +1218,15 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       runAll: reportRun('run all cells', async () => {
         if (await open.ensureKernel(true)) await NotebookActions.runAll(notebook, session);
       }),
+      clearOutputs: () => {
+        // As NotebookActions.clearAllOutputs, which needs an active cell;
+        // like it, not a step for undo.
+        for (const cell of model.cells) {
+          if (cell.type !== 'code') continue;
+          const code = cell as ICodeCellModel;
+          code.sharedModel.transact(() => code.clearExecution(), false);
+        }
+      },
       insert: type => {
         NotebookActions.insertBelow(notebook);
         if (type !== 'code') NotebookActions.changeCellType(notebook, type);

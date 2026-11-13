@@ -32,6 +32,7 @@ describe('paletteEntries', () => {
         'Save',
         'Rename Notebook…',
         'Run All Cells',
+        'Clear All Outputs',
         'Restart Kernel',
         'Change Kernel to TypeScript',
         'Move cells up',

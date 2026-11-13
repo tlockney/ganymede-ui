@@ -90,8 +90,8 @@ shown or hidden, its tab and its expanded folders across launches.
   inserts cells, sets the cell type and trusts the notebook. Its kernel
   button opens a popover with the kernel's state and memory, Interrupt,
   Restart, Kernel Log and the kernels to change to.
-- The Cell menu runs, inserts, moves and deletes cells, collapses and
-  expands code, and opens Find; the Kernel menu interrupts (⌘.),
+- The Cell menu runs, inserts, moves and deletes cells, clears all
+  outputs, collapses and expands code, and opens Find; the Kernel menu interrupts (⌘.),
   restarts, changes and trusts. A code cell's chevron, left of its
   prompt, collapses its code to the first line, as on the web page
   (README, "Collapsing code"); the iPad's Cell menu has Collapse All Code
@@ -107,6 +107,11 @@ shown or hidden, its tab and its expanded folders across launches.
 > the chevron is available only from a build of `main` (HEAD), not in the
 > latest release, where only the thin bar at a cell's left edge collapses
 > a cell's code.
+
+> [!NOTE]
+> **Unreleased.** Clear All Outputs (Cell menu, Command Palette, the web
+> toolbar's run menu, the iPad's Cell and ⋯ menus) is available only from
+> a build of `main` (HEAD), not in the latest release.
 
 ### Kernels
 
@@ -393,7 +398,8 @@ keys are kept in the keychain too.
   in the folder and below it (and, switched on, in what notebooks say).
   In Running, swipe or long-press a kernel to shut it down.
 - The navigation bar runs cells and interrupts the kernel, and its ⋯ menu
-  inserts cells, sets the cell type, restarts or changes the kernel, shuts
+  inserts cells, sets the cell type, clears all outputs, restarts or
+  changes the kernel, shuts
   down other kernels, saves, renames, downloads and trusts. With a
   keyboard, hold ⌘ to see the commands: New Notebook ⌘N, Save ⌘S, Run All
   ⇧⌘↩, Interrupt ⌘., Find ⌘F.

@@ -514,6 +514,9 @@ export function App() {
       case 'run-all':
         await c.runAll();
         return true;
+      case 'clear-outputs':
+        c.clearOutputs();
+        return true;
       case 'interrupt':
         await c.interrupt();
         return true;

@@ -359,6 +359,23 @@ describe('NotebookPane', () => {
     expect(session.changeKernel).toHaveBeenCalledWith({ name: 'python3' });
   });
 
+  it('clears every output and execution count, as an edit', async () => {
+    const withOutput = structuredClone(NOTEBOOK);
+    Object.assign(withOutput.cells[0]!, {
+      execution_count: 3,
+      outputs: [{ output_type: 'stream', name: 'stdout', text: '1\n' }],
+    });
+    const { latest } = setup(vi.fn(async () => ({ path: 'moons/Io.ipynb', content: withOutput })));
+    await waitFor(() => expect(latest()).toBeDefined());
+    const cell = modelOf().cells.get(0) as ICodeCellModel;
+    expect(cell.outputs.length).toBe(1);
+    expect(modelOf().dirty).toBe(false);
+    act(() => latest()!.clearOutputs());
+    expect(cell.outputs.length).toBe(0);
+    expect(cell.executionCount).toBeNull();
+    expect(modelOf().dirty).toBe(true);
+  });
+
   it('only picks the kernel for the first run while none is running', async () => {
     const { latest } = setup();
     await waitFor(() => expect(latest()).toBeDefined());
