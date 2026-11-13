@@ -53,6 +53,7 @@ vi.mock('./components/NotebookPane', async () => {
             status: 'idle',
             trusted: true,
             hostWants: () => [],
+            recordedParams: () => '{"day": "mon"}',
             ...mocks.controller,
             path,
           });
@@ -297,6 +298,12 @@ describe('App', () => {
     expect(await run('export', 'markdown')).toBe(true);
     expect(exportAs).toHaveBeenCalledWith('markdown');
     expect(await run('export', 'pdf')).toBe(false);
+    expect(await run('run-with-params')).toBe(true);
+    const sheet = await screen.findByRole('dialog', { name: /with Parameters/ });
+    expect(within(sheet).getByRole('textbox', { name: /Parameters/ })).toHaveValue(
+      '{"day": "mon"}',
+    );
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Cancel' }));
     expect(await run('cell-type', 'markdown')).toBe(true);
     expect(changeCellType).toHaveBeenCalledWith('markdown');
     expect(await run('cell-type', 'heading')).toBe(false);

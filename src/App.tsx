@@ -79,6 +79,8 @@ import { nodeAt, useVariables } from './lib/useVariables';
 import { useFileDrop } from './lib/file-drop';
 import { copySample } from './lib/sample';
 import { refreshKernelsOnReturn } from './lib/kernel-refresh';
+import { RunSheet } from './components/RunSheet';
+import { runWithParams } from './lib/run';
 
 /**
  * A token in the page URL, as `ganymede serve` prints it, wins once, and so
@@ -196,6 +198,8 @@ export function App() {
   /** Publish as Web Page, for the notebook open when it was asked for (#563). */
   const [publishFor, setPublishFor] = useState<{ path: string; name: string }>();
   const closePublish = useCallback(() => setPublishFor(undefined), []);
+  const [runFor, setRunFor] = useState<{ path: string; name: string; params: string }>();
+  const closeRun = useCallback(() => setRunFor(undefined), []);
   const closeAccess = useCallback(() => {
     setAccessFor(undefined);
     setAccessChecked(n => n + 1);
@@ -508,6 +512,10 @@ export function App() {
         if (!publishAvailable(backend) || (arg !== 'markdown' && arg !== 'script')) return false;
         await c.exportAs(arg);
         return true;
+      case 'run-with-params':
+        if (!publishAvailable(backend)) return false;
+        setRunFor({ path: c.path, name: c.name, params: c.recordedParams() });
+        return true;
       case 'notebook-access':
         if (!hostGrantsAvailable(backend)) return false;
         setAccessFor({ path: c.path, name: c.name, wants: c.hostWants() });
@@ -722,7 +730,7 @@ export function App() {
 
   // Esc on a sheet opened from the sidebar closes the sheet, not the sidebar.
   // Notebook Access or Publish.
-  const notebookSheetOpen = !!accessFor || !!publishFor;
+  const notebookSheetOpen = !!accessFor || !!publishFor || !!runFor;
   const sheetShown = sheetOpen || shortcutsOpen || settingsOpen || notebookSheetOpen || paletteOpen;
   otherSheetShown.current = sheetOpen || shortcutsOpen || settingsOpen || notebookSheetOpen;
   useEffect(() => {
@@ -817,6 +825,11 @@ export function App() {
               onNotebookAccess={() => void runCommand.current('notebook-access')}
               onPublish={
                 publishAvailable(backend) ? () => void runCommand.current('publish') : undefined
+              }
+              onRunWithParams={
+                publishAvailable(backend)
+                  ? () => void runCommand.current('run-with-params')
+                  : undefined
               }
               onExport={
                 publishAvailable(backend)
@@ -949,6 +962,17 @@ export function App() {
             await c.publish(opts);
           }}
           onClose={closePublish}
+        />
+      )}
+      {runFor && backend && (
+        <RunSheet
+          key={runFor.path}
+          name={runFor.name}
+          initialParams={runFor.params}
+          run={(params, opts) =>
+            runWithParams(backend.services.contents.serverSettings, runFor.path, params, opts)
+          }
+          onClose={closeRun}
         />
       )}
     </>

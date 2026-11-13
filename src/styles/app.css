@@ -1961,3 +1961,81 @@ button {
 .publish-sheet > .hint {
   margin: 0;
 }
+
+/* Run with Parameters (#582). */
+.run-sheet > .hint {
+  margin: 0;
+}
+
+.form-rows label.stacked-row {
+  grid-template-columns: 1fr;
+  gap: 4px;
+}
+
+.form-rows label.stacked-row > span {
+  text-align: left;
+}
+
+/* No labels column in this sheet: the checkbox lines up with the field. */
+.run-sheet .form-rows label.check-row {
+  grid-template-columns: auto 1fr;
+}
+
+.run-sheet .form-rows label.check-row > input {
+  grid-column: 1;
+}
+
+.form-rows textarea {
+  padding: 6px 8px;
+  border: 0.5px solid var(--separator);
+  border-radius: 6px;
+  background: var(--window-bg);
+  color: var(--text);
+  font: 12px var(--font-mono);
+  outline: none;
+  resize: vertical;
+  user-select: text;
+}
+
+.form-rows textarea:focus {
+  box-shadow: 0 0 0 3.5px var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.run-answer {
+  margin-top: 12px;
+}
+
+.run-answer > p {
+  margin: 0 0 6px;
+}
+
+.run-results {
+  margin: 0;
+  max-height: 240px;
+  overflow: auto;
+}
+
+.run-results > div {
+  display: grid;
+  grid-template-columns: minmax(56px, auto) 1fr;
+  gap: 10px;
+  padding: 2px 0;
+}
+
+.run-results dt {
+  color: var(--text-2);
+  text-align: right;
+}
+
+.run-results dd {
+  margin: 0;
+}
+
+.run-results pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font: 12px var(--font-mono);
+  user-select: text;
+}

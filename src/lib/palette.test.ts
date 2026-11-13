@@ -99,4 +99,9 @@ describe('filterEntries', () => {
     expect(entry?.disabled).toBe(false);
     expect(entry?.arg).toBe('script');
   });
+
+  it('offers Run with Parameters only on a server that runs notebooks', () => {
+    expect(find('Run with Parameters…')?.disabled).toBe(true);
+    expect(find('Run with Parameters…', { ...CONTEXT, publish: true })?.disabled).toBe(false);
+  });
 });

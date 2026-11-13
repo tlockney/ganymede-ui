@@ -110,6 +110,9 @@ export function paletteEntries(context: PaletteContext): PaletteEntry[] {
       disabled: !open || !context.hostGrants,
     }),
     app('run-all', 'Run All Cells', 'Cell', { disabled: !open }),
+    app('run-with-params', 'Run with Parameters…', 'Cell', {
+      disabled: !open || !context.publish,
+    }),
     app('clear-outputs', 'Clear All Outputs', 'Cell', { disabled: !open }),
     app('insert-code', 'Insert Code Cell', 'Cell', { disabled: !open }),
     app('insert-markdown', 'Insert Markdown Cell', 'Cell', { disabled: !open }),

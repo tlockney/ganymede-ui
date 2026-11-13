@@ -22,6 +22,7 @@ function controller(over: Partial<NotebookController> = {}): NotebookController 
     publish: vi.fn(async () => {}),
     trust: vi.fn(async () => {}),
     hostWants: vi.fn(() => []),
+    recordedParams: vi.fn(() => '{}'),
     run: vi.fn(async () => {}),
     runAll: vi.fn(async () => {}),
     clearOutputs: vi.fn(),

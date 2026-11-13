@@ -69,6 +69,7 @@ export const PAGE_COMMANDS = {
   run: '',
   'run-all': '',
   'clear-outputs': '',
+  'run-with-params': '',
   interrupt: '',
   restart: '',
   'insert-code': '',
