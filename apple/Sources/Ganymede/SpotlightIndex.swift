@@ -268,6 +268,7 @@ final class SpotlightSettings {
     }
 
     func remove(folder: URL) {
+        guard folders.contains(folder) else { return }
         folders.removeAll { $0 == folder }
         saveFolders()
     }
@@ -275,6 +276,9 @@ final class SpotlightSettings {
     private func saveFolders() {
         defaults.set(folders.map(\.path), forKey: SpotlightKeys.folders)
         sync()
+        #if os(macOS)
+        AppModel.shared.hostFoldersChanged()
+        #endif
     }
 
     /// Indexes `recents` and the folders' notebooks, and drops the rest.
@@ -352,26 +356,28 @@ struct SpotlightSettingsSection: View {
             Toggle("Show notebooks in Spotlight", isOn: $settings.enabled)
             if settings.enabled {
                 Toggle("Include code", isOn: $settings.code)
-                #if os(macOS)
-                ForEach(settings.folders, id: \.self) { folder in
-                    LabeledContent {
-                        Button("Remove") { settings.remove(folder: folder) }
-                            .accessibilityLabel("Remove \(folder.lastPathComponent)")
-                    } label: {
-                        Text(folder.lastPathComponent)
-                        Text((folder.path as NSString).abbreviatingWithTildeInPath)
-                    }
-                }
-                LabeledContent("Folders") {
-                    Button("Add Folder…", action: addFolder)
-                }
-                #endif
             }
+            #if os(macOS)
+            // Listed with Spotlight off too: they are also what notebooks
+            // may read through the host API (#585).
+            ForEach(settings.folders, id: \.self) { folder in
+                LabeledContent {
+                    Button("Remove") { settings.remove(folder: folder) }
+                        .accessibilityLabel("Remove \(folder.lastPathComponent)")
+                } label: {
+                    Text(folder.lastPathComponent)
+                    Text((folder.path as NSString).abbreviatingWithTildeInPath)
+                }
+            }
+            LabeledContent("Folders") {
+                Button("Add Folder…", action: addFolder)
+            }
+            #endif
         } header: {
             Text("Spotlight")
         } footer: {
             #if os(macOS)
-            Text("Spotlight finds the notebooks opened lately, and those in the folders here, by their headings and text. Outputs are never indexed. The index stays on this Mac.")
+            Text("Spotlight finds the notebooks opened lately, and those in the folders here, by their headings and text. Outputs are never indexed. The index stays on this Mac. A notebook's code may read the notebooks in these folders, and itself, unless Notebook Access says otherwise; changing them restarts the server and its kernels.")
             #else
             Text("Spotlight finds the notebooks opened lately by their headings and text. Outputs are never indexed. The index stays on this device.")
             #endif

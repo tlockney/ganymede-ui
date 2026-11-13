@@ -160,6 +160,7 @@ final class AppModel {
         if let mcpToken {
             config.merge(AppMCP.serverConfig(mode: mcpMode, images: mcpImages, token: mcpToken)) { $1 }
         }
+        config["host"] = HostDefaults.serverConfig(folders: SpotlightSettings.shared.folders)
         #endif
         #if os(iOS)
         if let support = try? FileManager.default.url(
@@ -433,6 +434,12 @@ final class AppModel {
     }
 
     #if os(macOS)
+    /// The Settings folders changed: restarts the server, when it runs or
+    /// is starting, so the default read grant follows them.
+    func hostFoldersChanged() {
+        if server != nil || queued > 0 { start() }
+    }
+
     /// Sets what agents may do through `/mcp`, and restarts the server
     /// with it: turning MCP off ends agents' sessions, and kernels restart
     /// as when they move to a remote.
