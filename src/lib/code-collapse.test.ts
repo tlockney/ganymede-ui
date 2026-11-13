@@ -128,6 +128,10 @@ describe('attachCodeCollapse', () => {
     expect(cell(2).inputHidden).toBe(false);
     // Expanded, a Markdown cell has nothing to collapse: no button.
     expect(toggle(2)).toBeNull();
+    // Collapsed again from elsewhere (undo, the agent), it gets one back.
+    cell(2).model.setMetadata('jupyter', { source_hidden: true });
+    expect(cell(2).inputHidden).toBe(true);
+    expect(toggle(2)?.getAttribute('aria-expanded')).toBe('false');
   });
 
   it('takes the notebook to command mode when it collapses the cell being edited', () => {
@@ -154,12 +158,18 @@ describe('collapse commands', () => {
     expect(cell(0).inputHidden).toBe(true);
   });
 
-  it('collapse leaves edit mode; expand all covers a collapsed Markdown cell', async () => {
+  it('collapse leaves edit mode only for a code cell; expand all covers a collapsed Markdown cell', async () => {
     const commands = createCommands(notebook, {} as ISessionContext);
     notebook.activeCellIndex = 0;
     notebook.mode = 'edit';
     await commands.execute('collapse-code');
     expect(notebook.mode).toBe('command');
+    // Editing a Markdown cell, which doesn't collapse: still editing.
+    notebook.activeCellIndex = 1;
+    notebook.mode = 'edit';
+    await commands.execute('collapse-all-code');
+    expect(notebook.mode).toBe('edit');
+    expect(cell(1).inputHidden).toBe(false);
     cell(1).inputHidden = true;
     await commands.execute('expand-all-code');
     expect(notebook.widgets.map(c => c.inputHidden)).toEqual([false, false, false]);

@@ -69,7 +69,7 @@ import type { JSONObject } from '@lumino/coreutils';
 import { type Message, MessageLoop } from '@lumino/messaging';
 import { DisposableDelegate, DisposableSet, type IDisposable } from '@lumino/disposable';
 import { Widget } from '@lumino/widgets';
-import { expandAll } from './code-collapse';
+import { canCollapse, expandAll } from './code-collapse';
 import { installOutputFrames } from './output-frames';
 import { bindShortcuts, SHOW_SHORTCUTS_EVENT } from './shortcuts';
 
@@ -244,11 +244,12 @@ export function createCommands(
   add('to-markdown', () => NotebookActions.changeCellType(notebook, 'markdown'));
   add('to-raw', () => NotebookActions.changeCellType(notebook, 'raw'));
   // Collapsing code (#564): the selected cells, or every code cell.
-  // Collapsing takes the notebook to command mode, since the edited cell's
-  // editor may go; expanding covers any type, since a collapsed code cell
-  // changed to Markdown stays collapsed.
+  // Collapsing the edited code cell takes the notebook to command mode,
+  // since its editor goes; expanding covers any type, since a collapsed
+  // code cell changed to Markdown stays collapsed.
   const collapse = (action: (n: Notebook) => void) => () => {
-    notebook.mode = 'command';
+    const active = notebook.activeCell;
+    if (active && canCollapse(active)) notebook.mode = 'command';
     action(notebook);
   };
   add('collapse-code', collapse(NotebookActions.hideCode));

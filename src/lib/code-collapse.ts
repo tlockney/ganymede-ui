@@ -68,17 +68,25 @@ function refresh(cell: Cell): void {
   toggle.title = collapsed ? 'Expand Code' : 'Collapse Code';
 }
 
+/** Cells whose model this module already watches. */
+const watched = new WeakSet<Cell>();
+
+/** Add the button if the cell wants one and has none, and keep it current. */
 function decorate(cell: Cell): void {
-  if (!wantsToggle(cell) || cell.node.querySelector(`:scope > .${TOGGLE}`)) return;
-  const toggle = document.createElement('button');
-  toggle.type = 'button';
-  toggle.className = TOGGLE;
-  toggle.innerHTML = CHEVRON;
-  toggle.dataset.gnCollapse = '';
-  cell.node.append(toggle);
+  if (wantsToggle(cell) && !cell.node.querySelector(`:scope > .${TOGGLE}`)) {
+    const toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = TOGGLE;
+    toggle.innerHTML = CHEVRON;
+    toggle.dataset.gnCollapse = '';
+    cell.node.append(toggle);
+  }
   refresh(cell);
-  // Undo, another window or the agent can change `source_hidden`.
-  const onMetadata = () => refresh(cell);
+  if (watched.has(cell)) return;
+  watched.add(cell);
+  // Undo, another window or the agent can change `source_hidden`, also on
+  // a Markdown cell whose button has gone, which then needs it back.
+  const onMetadata = () => decorate(cell);
   const model = cell.model;
   model.metadataChanged.connect(onMetadata);
   cell.disposed.connect(() => model.metadataChanged.disconnect(onMetadata));
