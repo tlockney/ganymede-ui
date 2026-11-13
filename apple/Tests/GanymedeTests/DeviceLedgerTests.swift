@@ -67,6 +67,11 @@ final class DeviceLedgerTests: XCTestCase {
         XCTAssertEqual(AppLedgerPrompter.title(capability, notebook: "/n/Journal.ipynb"), "“Journal.ipynb” wants to run the Shortcut “Log Day”")
         XCTAssertEqual(DeviceGrants.name(capability), "Shortcut “Log Day”")
         XCTAssertEqual(DeviceGrants.name("shortcuts"), "Shortcuts")
+        let tricky = DeviceBridge.shortcutCapability("Log” and nothing else\nAllow")
+        XCTAssertEqual(
+            AppLedgerPrompter.title(tricky, notebook: "/n/J.ipynb"),
+            "“J.ipynb” wants to run the Shortcut “Log\" and nothing else Allow”"
+        )
     }
 
     func testPromptsShowOneAtATimeInOrder() {

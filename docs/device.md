@@ -352,8 +352,10 @@ if (folder) {
 `device.shortcuts.run(name, { input })` runs one of your Shortcuts and
 resolves with its output as text, or `null` when it gives none. The
 Shortcuts app comes forward while it runs and hands the result back to
-Ganymede when it is done. The first call from a notebook asks, with
-"Always allow", since a Shortcut does whatever you set it up to do.
+Ganymede when it is done. The first call from a notebook for each
+Shortcut asks, naming it, with "Always allow" for that Shortcut only,
+since a Shortcut does whatever you set it up to do. Settings › Device
+lists each allowed Shortcut, with Revoke.
 `input` is passed to the Shortcut as text. Interrupting the cell rejects
 the call `cancelled`; the Shortcut may still finish. On iPad and iPhone
 the kernel stops about 30 seconds after Ganymede leaves the screen, so

@@ -132,9 +132,18 @@ final class AppLedgerPrompter: LedgerPrompter {
     static func title(_ capability: String, notebook: String) -> String {
         let name = URL(fileURLWithPath: notebook).lastPathComponent
         if let shortcut = DeviceBridge.shortcutName(capability) {
-            return "“\(name)” wants to run the Shortcut “\(shortcut)”"
+            return "“\(name)” wants to run the Shortcut “\(quotable(shortcut))”"
         }
         return "“\(name)” wants to use \(describe(capability))"
+    }
+
+    /// A name the notebook chose, safe inside the title's quotes: on one
+    /// line, with its own curly quotes made straight, so it can't close
+    /// the quote and read as more of the sentence.
+    static func quotable(_ name: String) -> String {
+        name.components(separatedBy: .newlines).joined(separator: " ")
+            .replacingOccurrences(of: "“", with: "\"")
+            .replacingOccurrences(of: "”", with: "\"")
     }
 
     /// A capability (a `device` namespace) in words.
