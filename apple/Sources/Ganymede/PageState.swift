@@ -152,6 +152,9 @@ struct PageState: Decodable, Equatable {
     var trusted = true
     /// Whether Notebook Access works on this backend; absent before #479.
     var hostGrants: Bool?
+    /// Whether Publish as Web Page works on this backend (a Ganymede
+    /// server, which redacts the page); absent before #563.
+    var publish: Bool?
     /// What the notebook asks for that its grant doesn't give, such as
     /// `notebooks.run`; the toolbar offers Notebook Access while there is
     /// any. Absent before #504.

@@ -13,6 +13,7 @@ import {
   LockIcon,
   MoreIcon,
   PlayIcon,
+  PublishIcon,
   RestartIcon,
   SaveIcon,
   ShieldIcon,
@@ -37,6 +38,8 @@ type Props = {
   accessMissing?: string[];
   /** Opens Notebook Access; shown while `accessMissing` has anything. */
   onNotebookAccess?(): void;
+  /** Opens Publish as Web Page (#563); no item without it. */
+  onPublish?(): void;
 };
 
 const TRUST_PROMPT =
@@ -85,6 +88,7 @@ export function Toolbar({
   specs,
   accessMissing = [],
   onNotebookAccess,
+  onPublish,
 }: Props) {
   const disabled = !c;
   const kernelDisplay = c?.missingKernel
@@ -335,6 +339,25 @@ export function Toolbar({
       ),
       menu: [{ label: 'Download Notebook', disabled, onSelect: () => c?.download() }],
     },
+    ...(onPublish
+      ? [
+          {
+            key: 'publish',
+            priority: 0,
+            node: (
+              <button
+                className="tb-button"
+                title="Publish as Web Page"
+                disabled={disabled}
+                onClick={onPublish}
+              >
+                <PublishIcon />
+              </button>
+            ),
+            menu: [{ label: 'Publish as Web Page…', disabled, onSelect: onPublish }],
+          },
+        ]
+      : []),
     {
       key: 'save',
       priority: 5,

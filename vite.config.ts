@@ -65,16 +65,19 @@ function onlyForAgent(id: string, info: (id: string) => ModuleInfo): boolean {
 
 // Proxy the API so the page and the server share an origin. Ganymede checks
 // Origin against Host, as jupyter_server does, so rewrite both.
-const proxy: Record<string, ProxyOptions> = {
-  '/api': {
-    target: GANYMEDE,
-    ws: true,
-    changeOrigin: true,
-    configure: p => {
-      p.on('proxyReq', req => req.setHeader('origin', GANYMEDE));
-      p.on('proxyReqWs', req => req.setHeader('origin', GANYMEDE));
-    },
+const toServer: ProxyOptions = {
+  target: GANYMEDE,
+  ws: true,
+  changeOrigin: true,
+  configure: p => {
+    p.on('proxyReq', req => req.setHeader('origin', GANYMEDE));
+    p.on('proxyReqWs', req => req.setHeader('origin', GANYMEDE));
   },
+};
+const proxy: Record<string, ProxyOptions> = {
+  '/api': toServer,
+  // Publish as Web Page (#563): the server's HTML export.
+  '/nbconvert': { ...toServer, ws: false },
 };
 
 const config: UserConfig = {

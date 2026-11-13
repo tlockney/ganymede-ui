@@ -62,6 +62,8 @@ export const PAGE_COMMANDS = {
   'open-examples': 'arg',
   save: '',
   download: '',
+  publish: '',
+  'notebook-access': '',
   trust: '',
   run: '',
   'run-all': '',
@@ -151,6 +153,8 @@ export type PageState = {
   trusted: boolean;
   /** Whether Notebook Access works here: a Ganymede server that runs the kernels. */
   hostGrants: boolean;
+  /** Whether Publish as Web Page works here: a Ganymede server (#563). */
+  publish: boolean;
   /** What the notebook asks for that its grant doesn't give (`missingWants`). */
   accessWanted: string[];
   /** The active cell's type. */

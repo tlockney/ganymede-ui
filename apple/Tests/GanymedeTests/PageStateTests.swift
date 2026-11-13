@@ -12,6 +12,7 @@ final class PageStateTests: XCTestCase {
             "kernelMissing": false,
             "trusted": true,
             "hostGrants": true,
+            "publish": true,
             "accessWanted": ["notebooks.run"],
             "cellType": "markdown",
             "kernels": [["name": "cdp", "displayName": "TypeScript"]],
@@ -20,6 +21,7 @@ final class PageStateTests: XCTestCase {
         let state = PageState(body: body)
         XCTAssertEqual(state?.path, "moons/Io.ipynb")
         XCTAssertEqual(state?.hostGrants, true)
+        XCTAssertEqual(state?.publish, true)
         XCTAssertEqual(state?.accessWanted, ["notebooks.run"])
         XCTAssertEqual(state?.dirty, true)
         XCTAssertEqual(state?.isBusy, true)

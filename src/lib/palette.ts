@@ -43,6 +43,8 @@ export type PaletteContext = {
   trusted: boolean;
   /** Whether the backend keeps host API grants (a Ganymede server). */
   hostGrants?: boolean;
+  /** Whether the backend publishes notebooks as web pages (a Ganymede server). */
+  publish?: boolean;
   /** Whether a backend is connected. */
   connected: boolean;
 };
@@ -98,6 +100,7 @@ export function paletteEntries(context: PaletteContext): PaletteEntry[] {
       disabled: !open,
     }),
     app('download', 'Download Notebook', 'File', { disabled: !open }),
+    app('publish', 'Publish as Web Page…', 'File', { disabled: !open || !context.publish }),
     app('trust', 'Trust Notebook', 'File', { disabled: !open || context.trusted }),
     app('notebook-access', 'Notebook Access…', 'File', {
       disabled: !open || !context.hostGrants,

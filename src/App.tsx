@@ -19,6 +19,8 @@ import { ConnectSheet } from './components/ConnectSheet';
 import { EmptyState } from './components/EmptyState';
 import { ShortcutsSheet } from './components/ShortcutsSheet';
 import { HostAccessSheet } from './components/HostAccessSheet';
+import { PublishSheet } from './components/PublishSheet';
+import { publishAvailable } from './lib/publish';
 import {
   hostGrantsAvailable,
   loadHostGrants,
@@ -191,6 +193,9 @@ export function App() {
   const closeSettings = useCallback(() => setSettingsOpen(false), []);
   /** Notebook Access, for the notebook open when it was asked for. */
   const [accessFor, setAccessFor] = useState<{ path: string; name: string; wants: string[] }>();
+  /** Publish as Web Page, for the notebook open when it was asked for (#563). */
+  const [publishFor, setPublishFor] = useState<{ path: string; name: string }>();
+  const closePublish = useCallback(() => setPublishFor(undefined), []);
   const closeAccess = useCallback(() => {
     setAccessFor(undefined);
     setAccessChecked(n => n + 1);
@@ -495,6 +500,10 @@ export function App() {
       case 'trust':
         await c.trust();
         return true;
+      case 'publish':
+        if (!publishAvailable(backend)) return false;
+        setPublishFor({ path: c.path, name: c.name });
+        return true;
       case 'notebook-access':
         if (!hostGrantsAvailable(backend)) return false;
         setAccessFor({ path: c.path, name: c.name, wants: c.hostWants() });
@@ -661,6 +670,7 @@ export function App() {
       kernelMissing: !!shown?.missingKernel,
       trusted: shown?.trusted ?? true,
       hostGrants: hostGrantsAvailable(backend),
+      publish: publishAvailable(backend),
       accessWanted: JSON.parse(accessKey) as string[],
       cellType: shown?.cellType ?? null,
       kernels: Object.values(specs?.kernelspecs ?? {}).flatMap(k =>
@@ -704,9 +714,10 @@ export function App() {
   }, [controller]);
 
   // Esc on a sheet opened from the sidebar closes the sheet, not the sidebar.
-  const accessOpen = !!accessFor;
-  const sheetShown = sheetOpen || shortcutsOpen || settingsOpen || accessOpen || paletteOpen;
-  otherSheetShown.current = sheetOpen || shortcutsOpen || settingsOpen || accessOpen;
+  // Notebook Access or Publish.
+  const notebookSheetOpen = !!accessFor || !!publishFor;
+  const sheetShown = sheetOpen || shortcutsOpen || settingsOpen || notebookSheetOpen || paletteOpen;
+  otherSheetShown.current = sheetOpen || shortcutsOpen || settingsOpen || notebookSheetOpen;
   useEffect(() => {
     if (!sidebarFloats || sheetShown) return;
     const onKey = (e: KeyboardEvent) => {
@@ -797,6 +808,9 @@ export function App() {
               specs={specs}
               accessMissing={accessMissing}
               onNotebookAccess={() => void runCommand.current('notebook-access')}
+              onPublish={
+                publishAvailable(backend) ? () => void runCommand.current('publish') : undefined
+              }
             />
           )}
           <div
@@ -888,6 +902,7 @@ export function App() {
             recents: backend ? loadRecents(recentsKey(backend.config)) : [],
             trusted: shown?.trusted ?? true,
             hostGrants: hostGrantsAvailable(backend),
+            publish: publishAvailable(backend),
             connected: !!backend,
           })}
           onRun={(entry, arg) => {
@@ -907,6 +922,21 @@ export function App() {
           load={() => loadHostGrants(backend, accessFor.path)}
           save={grant => saveHostGrant(backend, accessFor.path, grant)}
           onClose={closeAccess}
+        />
+      )}
+      {publishFor && (
+        <PublishSheet
+          key={publishFor.path}
+          name={publishFor.name}
+          publish={async opts => {
+            // The notebook it was opened for, not one opened since.
+            const c = controllerRef.current;
+            if (c?.path !== publishFor.path) {
+              throw new Error(`${publishFor.name} isn’t open any more.`);
+            }
+            await c.publish(opts);
+          }}
+          onClose={closePublish}
         />
       )}
     </>

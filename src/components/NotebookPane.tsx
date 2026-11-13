@@ -15,6 +15,7 @@ import { CellMenu } from './CellMenu';
 import { KeyboardBar } from './KeyboardBar';
 import type { Cell, ICodeCellModel } from '@jupyterlab/cells';
 import { downloadFile } from '../lib/download';
+import { PUBLISH_TIMEOUT_MS, type PublishOptions, fetchPublished, pageName } from '../lib/publish';
 import {
   AUTOSAVE_INTERVAL_MS,
   DISK_CHECK_INTERVAL_MS,
@@ -94,6 +95,12 @@ export type NotebookController = {
   save(): Promise<boolean>;
   /** Download the notebook as it is now, unsaved edits included, as .ipynb. */
   download(): void;
+  /**
+   * Publish the notebook as one web page (#563): saves unsaved edits
+   * first, since the server makes the page from the file, then downloads
+   * `<name>.html`. Rejects with what went wrong.
+   */
+  publish(opts: PublishOptions): Promise<void>;
   /** Trust the notebook: render its outputs in full, and sign it on the server. */
   trust(): Promise<void>;
   /** What the notebook asks of the host API (`metadata.ganymede.host.wants`). */
@@ -1163,6 +1170,33 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         // As nbformat writes it: one-space indent, trailing newline.
         const text = JSON.stringify(model.toJSON(), null, 1) + '\n';
         downloadFile(basename(path), text, 'application/x-ipynb+json');
+      },
+      publish: async opts => {
+        // Locked: the file on disk isn't what this pane shows, and the
+        // server would make the page from the file. Say so again, with
+        // what unlocks it.
+        if (locked.current) {
+          locked.current = changedOnDisk(basename(saver.path), model.dirty);
+          setNotice(locked.current);
+          throw new Error(
+            `${basename(saver.path)} changed on disk. Reload it or unlock saving first.`,
+          );
+        }
+        // The sheet can't be cancelled while it waits: a save that hangs
+        // gets the same time as the page.
+        if (model.dirty) {
+          let timer: ReturnType<typeof setTimeout> | undefined;
+          const late = new Promise<'late'>(resolve => {
+            timer = setTimeout(() => resolve('late'), PUBLISH_TIMEOUT_MS);
+          });
+          const saved = await Promise.race([controller.save(), late]).finally(() =>
+            clearTimeout(timer),
+          );
+          if (saved === 'late') throw new Error('The server didn’t answer the save in time.');
+          if (!saved) throw new Error('The notebook couldn’t be saved first.');
+        }
+        const page = await fetchPublished(backend, saver.path, opts);
+        downloadFile(pageName(saver.path), page, 'text/html');
       },
       trust: report(`trust ${fileName}`, async () => {
         // As NotebookActions.trust, without its dialog: trusting a cell

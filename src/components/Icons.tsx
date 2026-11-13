@@ -65,6 +65,13 @@ export const DownloadIcon = (p: P) => (
     <path d="M4 13.5v1A2.5 2.5 0 0 0 6.5 17h7a2.5 2.5 0 0 0 2.5-2.5v-1" />
   </svg>
 );
+/** A page with an arrow out of it: Publish as Web Page (#563). */
+export const PublishIcon = (p: P) => (
+  <svg {...base(p)}>
+    <path d="M10 12.5V3M6.75 6.25 10 3l3.25 3.25" />
+    <path d="M7 9H5.5A1.5 1.5 0 0 0 4 10.5v5A1.5 1.5 0 0 0 5.5 17h9a1.5 1.5 0 0 0 1.5-1.5v-5A1.5 1.5 0 0 0 14.5 9H13" />
+  </svg>
+);
 export const NotebookIcon = (p: P) => (
   <svg {...base(p)}>
     <rect x="4" y="2.5" width="12" height="15" rx="2.5" />

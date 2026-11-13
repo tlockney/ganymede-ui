@@ -744,6 +744,10 @@ struct IPadNotebookToolbar: ToolbarContent {
                     .disabled(!page.state.dirty)
                 Button(action: rename) { Label("Rename…", systemImage: "pencil") }
                 Button { page.run("download") } label: { Label("Download", systemImage: "arrow.down.doc") }
+                Button { page.run("publish") } label: {
+                    Label("Publish as Web Page…", systemImage: "globe")
+                }
+                .disabled(page.state.publish != true)
                 Button { page.run("trust") } label: { Label("Trust Notebook", systemImage: "checkmark.shield") }
                     .disabled(page.state.trusted)
                 Button { page.run("notebook-access") } label: {

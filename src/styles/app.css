@@ -1957,3 +1957,7 @@ button {
     border-left: 0;
   }
 }
+
+.publish-sheet > .hint {
+  margin: 0;
+}
