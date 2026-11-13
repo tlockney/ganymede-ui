@@ -79,6 +79,8 @@ import { nodeAt, useVariables } from './lib/useVariables';
 import { useFileDrop } from './lib/file-drop';
 import { copySample } from './lib/sample';
 import { refreshKernelsOnReturn } from './lib/kernel-refresh';
+import { RunSheet } from './components/RunSheet';
+import { runAvailable, runWithParams } from './lib/run';
 import { EXPORT_FORMATS, type ExportFormat } from './lib/export';
 
 /**
@@ -175,10 +177,16 @@ export function App() {
   }, [narrow]);
   const [openPath, setOpenPath] = useState<string>();
   // Not if another notebook was opened while it renamed.
-  const followRename = useCallback(
-    (from: string, to: string) => setOpenPath(p => (p === from ? to : p)),
-    [],
-  );
+  const followRename = useCallback((from: string, to: string) => {
+    setOpenPath(p => (p === from ? to : p));
+    // A run going on keeps going: its sheet and parameters follow the name.
+    setRunFor(r => (r?.path === from ? { ...r, path: to } : r));
+    const params = lastParams.current.get(from);
+    if (params !== undefined) {
+      lastParams.current.delete(from);
+      lastParams.current.set(to, params);
+    }
+  }, []);
   const [controller, setController] = useState<NotebookController>();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -197,6 +205,15 @@ export function App() {
   /** Publish as Web Page, for the notebook open when it was asked for (#563). */
   const [publishFor, setPublishFor] = useState<{ path: string; name: string }>();
   const closePublish = useCallback(() => setPublishFor(undefined), []);
+  const [runFor, setRunFor] = useState<{ path: string; name: string; params: string }>();
+  const closeRun = useCallback(() => setRunFor(undefined), []);
+  // Closing the notebook (or opening another) closes its sheet, which
+  // stops a run in progress.
+  useEffect(() => {
+    if (runFor && runFor.path !== openPath) setRunFor(undefined);
+  }, [runFor, openPath]);
+  /** The parameters each notebook last ran with from the sheet, by path. */
+  const lastParams = useRef(new Map<string, string>());
   const closeAccess = useCallback(() => {
     setAccessFor(undefined);
     setAccessChecked(n => n + 1);
@@ -511,6 +528,14 @@ export function App() {
         }
         await c.exportAs(arg as ExportFormat);
         return true;
+      case 'run-with-params':
+        if (!runAvailable(backend)) return false;
+        setRunFor({
+          path: c.path,
+          name: c.name,
+          params: lastParams.current.get(c.path) ?? c.recordedParams(),
+        });
+        return true;
       case 'notebook-access':
         if (!hostGrantsAvailable(backend)) return false;
         setAccessFor({ path: c.path, name: c.name, wants: c.hostWants() });
@@ -681,6 +706,7 @@ export function App() {
       trusted: shown?.trusted ?? true,
       hostGrants: hostGrantsAvailable(backend),
       publish: publishAvailable(backend),
+      runParams: runAvailable(backend),
       accessWanted: JSON.parse(accessKey) as string[],
       cellType: shown?.cellType ?? null,
       kernels: Object.values(specs?.kernelspecs ?? {}).flatMap(k =>
@@ -725,7 +751,7 @@ export function App() {
 
   // Esc on a sheet opened from the sidebar closes the sheet, not the sidebar.
   // Notebook Access or Publish.
-  const notebookSheetOpen = !!accessFor || !!publishFor;
+  const notebookSheetOpen = !!accessFor || !!publishFor || !!runFor;
   const sheetShown = sheetOpen || shortcutsOpen || settingsOpen || notebookSheetOpen || paletteOpen;
   otherSheetShown.current = sheetOpen || shortcutsOpen || settingsOpen || notebookSheetOpen;
   useEffect(() => {
@@ -820,6 +846,9 @@ export function App() {
               onNotebookAccess={() => void runCommand.current('notebook-access')}
               onPublish={
                 publishAvailable(backend) ? () => void runCommand.current('publish') : undefined
+              }
+              onRunWithParams={
+                runAvailable(backend) ? () => void runCommand.current('run-with-params') : undefined
               }
               onExport={
                 publishAvailable(backend)
@@ -918,6 +947,7 @@ export function App() {
             trusted: shown?.trusted ?? true,
             hostGrants: hostGrantsAvailable(backend),
             publish: publishAvailable(backend),
+            runParams: runAvailable(backend),
             connected: !!backend,
           })}
           onRun={(entry, arg) => {
@@ -952,6 +982,22 @@ export function App() {
             await c.publish(opts);
           }}
           onClose={closePublish}
+        />
+      )}
+      {runFor && backend && (
+        <RunSheet
+          name={runFor.name}
+          initialParams={runFor.params}
+          run={(params, opts) => {
+            lastParams.current.set(runFor.path, JSON.stringify(params, null, 2));
+            return runWithParams(
+              backend.services.contents.serverSettings,
+              runFor.path,
+              params,
+              opts,
+            );
+          }}
+          onClose={closeRun}
         />
       )}
     </>

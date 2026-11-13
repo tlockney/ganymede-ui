@@ -65,6 +65,7 @@ describe('native', () => {
       trusted: true,
       hostGrants: true,
       publish: true,
+      runParams: true,
       accessWanted: [],
       cellType: 'code',
       kernels: [{ name: 'cdp', displayName: 'TypeScript' }],

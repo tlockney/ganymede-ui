@@ -55,6 +55,7 @@ import { declareDevice } from '../lib/kernel-relay';
 import { guardReload, reloadPage } from '../lib/reload';
 import { DevicePrompt } from './DevicePrompt';
 import { type LastReading, diedOutOfMemory, useLastKernelReading } from '../lib/kernel-usage';
+import { initialParams } from '../lib/run';
 
 export type CellType = nbformat.CellType;
 
@@ -109,6 +110,8 @@ export type NotebookController = {
   publish(opts: PublishOptions): Promise<void>;
   /** Trust the notebook: render its outputs in full, and sign it on the server. */
   trust(): Promise<void>;
+  /** The parameters the notebook last ran with, as the Run with Parameters sheet starts. */
+  recordedParams(): string;
   /** What the notebook asks of the host API (`metadata.ganymede.host.wants`). */
   hostWants(): string[];
   run(): Promise<void>;
@@ -280,6 +283,9 @@ function intendedKernel(
     : { name: installed ? wanted.name : (specs?.default ?? undefined) };
 }
 
+/** The file changed on disk: saving is locked, and the pane says so. */
+class FileLocked extends Error {}
+
 /**
  * One notebook file: loads it through the contents API, joins or starts its
  * session, and shows JupyterLab's `Notebook` widget for it. The file is
@@ -287,9 +293,6 @@ function intendedKernel(
  * JupyterLab document context, so the same code saves to a Ganymede server
  * or to the browser's own storage.
  */
-/** The file changed on disk: saving is locked, and the pane says so. */
-class FileLocked extends Error {}
-
 export function NotebookPane({ backend, path, onController, onRenamed }: Props) {
   // A ref, not a dependency of the controller effect: a parent that
   // passes a new function each render would otherwise loop (the effect
@@ -1247,6 +1250,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         await trustNotebook(backend, path);
       }),
       hostWants: () => hostWants(model.getMetadata('ganymede')),
+      recordedParams: () => initialParams(model.getMetadata('ganymede')),
       run: reportRun('run the cell', async () => {
         if (await open.ensureKernel()) await NotebookActions.runAndAdvance(notebook, session);
       }),

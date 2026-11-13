@@ -155,6 +155,9 @@ struct PageState: Decodable, Equatable {
     /// Whether Publish as Web Page and Export As work on this backend (a
     /// server, which makes them from the file); absent before #563.
     var publish: Bool?
+    /// Whether Run with Parameters works on this backend (a Ganymede
+    /// server that runs the kernels); absent before #592.
+    var runParams: Bool?
     /// What the notebook asks for that its grant doesn't give, such as
     /// `notebooks.run`; the toolbar offers Notebook Access while there is
     /// any. Absent before #504.

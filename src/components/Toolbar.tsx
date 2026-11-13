@@ -41,6 +41,8 @@ type Props = {
   onNotebookAccess?(): void;
   /** Opens Publish as Web Page (#563); no item without it. */
   onPublish?(): void;
+  /** Run with Parameters; absent where the backend can't. */
+  onRunWithParams?(): void;
   /** Export as Markdown or a script; absent where the backend can't. */
   onExport?(format: ExportFormat): void;
 };
@@ -93,6 +95,7 @@ export function Toolbar({
   onNotebookAccess,
   onPublish,
   onExport,
+  onRunWithParams,
 }: Props) {
   const disabled = !c;
   const kernelDisplay = c?.missingKernel
@@ -152,6 +155,9 @@ export function Toolbar({
       ),
       menu: [
         { label: 'Run All', disabled, onSelect: () => void c?.runAll() },
+        ...(onRunWithParams
+          ? [{ label: 'Run with Parameters…', disabled, onSelect: onRunWithParams }]
+          : []),
         { label: 'Clear All Outputs', disabled, onSelect: () => c?.clearOutputs() },
         {
           label: 'Interrupt',
