@@ -17,3 +17,5 @@ apple/build
 # Notebook sources (#414): their cells are formatted by hand, in the
 # notebooks' own style.
 examples/src
+# Written by scripts/fonts.py (json.dumps).
+public/fonts/catalog.json

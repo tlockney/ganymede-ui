@@ -1,6 +1,6 @@
 /**
- * The code font (#354): the face, size, ligatures and stylistic
- * alternates of notebook cells and text outputs.
+ * The code font (#354): the face, size, ligatures and style of notebook
+ * cells and text outputs, and the font of rendered Markdown (#565).
  *
  * The fonts are bundled in `public/fonts/` (`scripts/fonts.py`), with
  * `catalog.json` listing each one's family, files and OpenType features;
@@ -16,6 +16,9 @@ import catalogJson from '../../public/fonts/catalog.json';
 
 export type FontFeature = { tag: string; label: string };
 
+/** A named set of a font's features (#565), `scripts/fonts.py`'s `STYLES`. */
+export type FontStyle = { id: string; name: string; features: string[] };
+
 export type CatalogFont = {
   id: string;
   name: string;
@@ -25,7 +28,31 @@ export type CatalogFont = {
   files: { file: string; style: string; weight: string; hash: string }[];
   ligatures: boolean;
   features: FontFeature[];
+  /** Besides its standard look. */
+  styles: FontStyle[];
+  /**
+   * Features that hold the font's ligatures, which the Ligatures switch
+   * turns on (Monaspace's ss01-ss10). Without them it turns `calt` off.
+   */
+  ligatureFeatures?: string[];
 };
+
+/** Every font's look as its designer ships it: no style's features. */
+export const STANDARD_STYLE = 'standard';
+
+/** The rendered Markdown's font (#565). */
+export type MarkdownFont = 'system' | 'serif' | 'mono';
+
+export const MARKDOWN_FONTS: readonly { id: MarkdownFont; name: string; family: string }[] = [
+  { id: 'system', name: 'System', family: 'var(--font-ui)' },
+  // `ganymede nb publish`'s page (ganymede-nbformat's html.rs, `--serif`).
+  {
+    id: 'serif',
+    name: 'Serif, as published notebooks',
+    family: 'ui-serif, "Iowan Old Style", "Charter", "Source Serif Pro", Georgia, Cambria, serif',
+  },
+  { id: 'mono', name: 'Monospace, the code font', family: 'var(--jp-code-font-family)' },
+];
 
 /** The system's monospace font, `--font-mono`: no ligatures or alternates. */
 export const SYSTEM_FONT = 'system';
@@ -38,15 +65,17 @@ export type CodeFontSetting = {
   /** In CSS pixels (points in the app); null keeps each view's own size. */
   size: number | null;
   ligatures: boolean;
-  /** OpenType feature tags turned on: `ss01`, `cv02`, `zero`. */
-  features: string[];
+  /** `STANDARD_STYLE` or one of the font's `styles`. */
+  style: string;
+  markdown: MarkdownFont;
 };
 
 export const DEFAULT_CODE_FONT: CodeFontSetting = {
   font: SYSTEM_FONT,
   size: null,
   ligatures: true,
-  features: [],
+  style: STANDARD_STYLE,
+  markdown: 'system',
 };
 
 export const MIN_SIZE = 8;
@@ -70,7 +99,15 @@ export function catalogFont(id: string): CatalogFont | undefined {
   return FONTS.find(f => f.id === id);
 }
 
-/** A setting from JSON, with anything unknown or out of range dropped. */
+export function fontStyle(setting: Pick<CodeFontSetting, 'font' | 'style'>): FontStyle | undefined {
+  return catalogFont(setting.font)?.styles.find(s => s.id === setting.style);
+}
+
+/**
+ * A setting from JSON, with anything unknown or out of range dropped. A
+ * setting saved before styles (#565) lists `features`: the style with
+ * just those, if there is one.
+ */
 export function parseCodeFont(value: unknown): CodeFontSetting {
   if (!value || typeof value !== 'object') return { ...DEFAULT_CODE_FONT };
   const v = value as Record<string, unknown>;
@@ -82,20 +119,32 @@ export function parseCodeFont(value: unknown): CodeFontSetting {
     typeof v.size === 'number' && Number.isFinite(v.size)
       ? Math.min(MAX_SIZE, Math.max(MIN_SIZE, v.size))
       : null;
-  const known = new Set(catalogFont(font)?.features.map(f => f.tag) ?? []);
-  const features = Array.isArray(v.features)
-    ? [...new Set(v.features.filter((t): t is string => typeof t === 'string' && known.has(t)))]
-    : [];
-  return { font, size, ligatures: v.ligatures !== false, features };
+  const styles = catalogFont(font)?.styles ?? [];
+  let style = styles.find(s => s.id === v.style)?.id;
+  if (!style && v.style === undefined && Array.isArray(v.features)) {
+    const old = [...new Set(v.features)].sort().join(' ');
+    style = styles.find(s => [...s.features].sort().join(' ') === old)?.id;
+  }
+  const markdown = MARKDOWN_FONTS.find(m => m.id === v.markdown)?.id ?? 'system';
+  return { font, size, ligatures: v.ligatures !== false, style: style ?? STANDARD_STYLE, markdown };
 }
 
-/** `font-feature-settings` for a setting: the alternates, and ligatures off if asked. */
+/** `font-feature-settings` for a setting: its style's features, and the ligatures. */
 export function featureSettings(setting: CodeFontSetting): string {
   const font = catalogFont(setting.font);
   if (!font) return 'normal';
-  const parts = setting.features.map(t => `"${t}" 1`);
-  if (!setting.ligatures && font.ligatures) parts.push('"calt" 0', '"liga" 0', '"dlig" 0');
+  const tags = [...(fontStyle(setting)?.features ?? [])];
+  if (setting.ligatures && font.ligatureFeatures) tags.push(...font.ligatureFeatures);
+  const parts = [...new Set(tags)].map(t => `"${t}" 1`);
+  if (!setting.ligatures && font.ligatures && !font.ligatureFeatures) {
+    parts.push('"calt" 0', '"liga" 0', '"dlig" 0');
+  }
   return parts.length ? parts.join(', ') : 'normal';
+}
+
+/** The rendered Markdown's CSS family list. */
+export function markdownFamily(setting: Pick<CodeFontSetting, 'markdown'>): string {
+  return (MARKDOWN_FONTS.find(m => m.id === setting.markdown) ?? MARKDOWN_FONTS[0]!).family;
 }
 
 /** The CSS family list: the font, then the system's monospace font. */
@@ -137,6 +186,8 @@ export function applyCodeFont(
   if (setting.size !== null) root.setProperty('--code-font-size', `${setting.size}px`);
   else root.removeProperty('--code-font-size');
   root.setProperty('--code-font-features', featureSettings(setting));
+  if (setting.markdown !== 'system') root.setProperty('--markdown-font', markdownFamily(setting));
+  else root.removeProperty('--markdown-font');
 }
 
 /** The setting: the app's when it set one, otherwise this browser's. */

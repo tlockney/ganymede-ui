@@ -85,6 +85,38 @@ CASCADIA_CODE = {
     "ss20": "Control pictures",
 }
 
+# Each font's styles (#565): a few named sets of its features, in place
+# of one switch per feature, checked by eye against the font. Every font
+# also has its standard look, with none of them. Fira Code's default zero
+# is slashed and JetBrains Mono's and Cascadia Code's dotted, so `zero`
+# swaps those.
+STYLES = {
+    "jetbrains-mono": [
+        {"id": "slashed-zero", "name": "Slashed zero", "features": ["zero"]},
+        {"id": "classic", "name": "Classic", "features": ["ss01"]},
+        {"id": "closed", "name": "Closed", "features": ["ss02"]},
+    ],
+    "fira-code": [
+        {"id": "dotted-zero", "name": "Dotted zero", "features": ["zero"]},
+        {"id": "alternate-letters", "name": "Alternate a, r, & and @",
+         "features": ["cv01", "ss01", "ss03", "ss05"]},
+    ],
+    "cascadia-code": [
+        {"id": "slashed-zero", "name": "Slashed zero", "features": ["zero"]},
+    ],
+    "iosevka": [
+        {"id": "menlo", "name": "Menlo style", "features": ["ss04"]},
+        {"id": "pragmata-pro", "name": "Pragmata Pro style", "features": ["ss08"]},
+        {"id": "source-code-pro", "name": "Source Code Pro style", "features": ["ss09"]},
+        {"id": "jetbrains-mono", "name": "JetBrains Mono style", "features": ["ss14"]},
+    ],
+}
+
+# Monaspace keeps its code ligatures in stylistic sets ss01-ss10 (its
+# README, "Coding ligatures"), and `calt` is its texture healing: the
+# Ligatures switch turns the sets on rather than `calt` off.
+MONASPACE_LIGATURES = [f"ss{i:02d}" for i in range(1, 11)]
+
 MONASPACE = ["Neon", "Argon", "Xenon", "Radon", "Krypton"]
 MONASPACE_LICENSE = JSDELIVR + "gh/githubnext/monaspace@v1.200/LICENSE"
 
@@ -334,7 +366,12 @@ def main() -> None:
             "files": files,
             "ligatures": ligatures,
             "features": [{"tag": t, "label": features[t]} for t in sorted(features)],
+            "styles": STYLES.get(spec["id"], []),
+            **({"ligatureFeatures": MONASPACE_LIGATURES} if spec["id"].startswith("monaspace-") else {}),
         })
+        for style in STYLES.get(spec["id"], []):
+            missing = set(style["features"]) - set(features)
+            assert not missing, f"{spec['id']} {style['id']}: no {missing}"
         print(f"{spec['id']}: {family}, {len(files)} file(s), {len(features)} features", file=sys.stderr)
     (OUT / "catalog.json").write_text(json.dumps({"fonts": catalog}, indent=2, ensure_ascii=False) + "\n")
     if update:

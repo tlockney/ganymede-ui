@@ -263,24 +263,37 @@ describe('SettingsSheet code font', () => {
         store={new BrowserCredentialStore(sessionStorage, localStorage)}
         loadModels={vi.fn()}
         codeFont={{
-          setting: { font: 'system', size: null, ligatures: true, features: [] },
+          setting: {
+            font: 'system',
+            size: null,
+            ligatures: true,
+            style: 'standard',
+            markdown: 'system',
+          },
           owner: 'page',
         }}
       />,
     );
-    await userEvent.selectOptions(screen.getByRole('combobox', { name: 'Font' }), 'fira-code');
+    const [code] = screen.getAllByRole('combobox', { name: 'Font' });
+    await userEvent.selectOptions(code!, 'fira-code');
     await userEvent.click(screen.getByRole('checkbox', { name: 'Ligatures' }));
-    await userEvent.click(screen.getByText(/^Alternates/));
-    await userEvent.click(screen.getByRole('checkbox', { name: 'ss01 r' }));
-    expect(screen.getByTestId('code-font-preview').style.fontFeatureSettings).toBe(
-      '"ss01", "calt" 0, "liga" 0, "dlig" 0',
+    await userEvent.selectOptions(
+      screen.getByRole('combobox', { name: 'Style' }),
+      'alternate-letters',
     );
+    expect(screen.getByTestId('code-font-preview').style.fontFeatureSettings).toBe(
+      '"cv01", "ss01", "ss03", "ss05", "calt" 0, "liga" 0, "dlig" 0',
+    );
+    const [, markdown] = screen.getAllByRole('combobox', { name: 'Font' });
+    await userEvent.selectOptions(markdown!, 'serif');
+    expect(screen.getByTestId('markdown-font-preview').style.fontFamily).toContain('ui-serif');
     await userEvent.click(save());
     expect(JSON.parse(localStorage.getItem('ganymede-ui:code-font')!)).toEqual({
       font: 'fira-code',
       size: null,
       ligatures: false,
-      features: ['ss01'],
+      style: 'alternate-letters',
+      markdown: 'serif',
     });
     expect(onClose).toHaveBeenCalled();
   });
@@ -292,7 +305,13 @@ describe('SettingsSheet code font', () => {
         store={new BrowserCredentialStore(sessionStorage, localStorage)}
         loadModels={vi.fn()}
         codeFont={{
-          setting: { font: 'system', size: null, ligatures: true, features: [] },
+          setting: {
+            font: 'system',
+            size: null,
+            ligatures: true,
+            style: 'standard',
+            markdown: 'system',
+          },
           owner: 'app',
         }}
       />,

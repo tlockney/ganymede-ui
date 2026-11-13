@@ -832,7 +832,8 @@ button {
 }
 
 /* The code font's preview and alternates (#354). */
-.code-font-preview {
+.code-font-preview,
+.markdown-font-preview {
   margin: 0 0 0 66px;
   padding: 8px 10px;
   border-radius: 6px;
@@ -842,29 +843,8 @@ button {
   overflow-x: auto;
 }
 
-.code-font-features {
-  margin-left: 66px;
-  font-size: 12px;
-}
-
-.code-font-features summary {
-  cursor: default;
-  color: var(--text-2);
-}
-
-.code-font-features[open] {
-  display: grid;
-  gap: 4px;
-  max-height: 180px;
-  overflow-y: auto;
-}
-
-.form-rows .code-font-features label.check-row {
-  grid-template-columns: auto 1fr;
-}
-
-.form-rows .code-font-features label.check-row > input {
-  grid-column: 1;
+.markdown-font-preview {
+  font-size: 15px;
 }
 
 .hint {
