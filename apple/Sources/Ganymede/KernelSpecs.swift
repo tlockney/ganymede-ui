@@ -36,8 +36,7 @@ struct KernelSpecs: Equatable {
 
     /// Asks `server` for its kernels.
     static func load(from server: ServerEndpoint) async throws -> KernelSpecs {
-        var request = URLRequest(url: server.base.appendingPathComponent("api/kernelspecs"))
-        request.setValue("token \(server.token)", forHTTPHeaderField: "Authorization")
+        let request = server.request("api/kernelspecs")
         let (data, response) = try await URLSession.shared.data(for: request)
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
             throw URLError(.badServerResponse)

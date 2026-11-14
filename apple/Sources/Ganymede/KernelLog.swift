@@ -94,7 +94,7 @@ struct KernelLog: Equatable {
             URLQueryItem(name: "lines", value: String(limit)),
         ]
         var request = URLRequest(url: parts?.url ?? route)
-        request.setValue("token \(server.token)", forHTTPHeaderField: "Authorization")
+        server.authorize(&request)
         return request
     }
 }

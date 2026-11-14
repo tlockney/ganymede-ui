@@ -363,6 +363,22 @@ this Mac, so any program on the Mac could send one too: share only from a
 Mac you alone use. MCP still needs its token. The details are in
 Ganymede's [security notes](https://ganymede-server.com/docs/security#tailnet-identity).
 
+### Remotes on your tailnet
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+A remote can leave its token empty when it is a Ganymede server that lets
+you in by your tailnet login, such as another Mac sharing Ganymede as
+above, or `ganymede serve` set up as in Ganymede's
+[security notes](https://ganymede-server.com/docs/security#tailnet-identity).
+The apps send that server a `Ganymede-Client` header, which marks their
+requests as an app's rather than a web page's, on iPad and iPhone too.
+On the Mac, the remote editor's **Tailnet Device** menu lists the other
+devices on your tailnet and fills in `https://<device>.<tailnet>.ts.net/`;
+picking a different device clears the token.
+
 ### Settings
 
 Settings (⌘,) is one window with tabs. General makes Ganymede the

@@ -45,10 +45,21 @@ struct ServerEndpoint: Equatable, Sendable {
     func request(_ path: String, method: String = "GET") -> URLRequest {
         var request = URLRequest(url: url(path))
         request.httpMethod = method
+        authorize(&request)
+        return request
+    }
+
+    /// The header a Ganymede server lets a program in by, without a token,
+    /// when it lets this device in by tailnet identity (ganymede#816).
+    /// Other servers ignore it.
+    static let clientHeader = (name: "Ganymede-Client", value: "Ganymede app")
+
+    /// Adds the token, when there is one, and `clientHeader`.
+    func authorize(_ request: inout URLRequest) {
         if !token.isEmpty {
             request.setValue("token \(token)", forHTTPHeaderField: "Authorization")
         }
-        return request
+        request.setValue(Self.clientHeader.value, forHTTPHeaderField: Self.clientHeader.name)
     }
 }
 
