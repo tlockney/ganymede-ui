@@ -102,18 +102,6 @@ shown or hidden, its tab and its expanded folders across launches.
 - Help > Ganymede Website, Ganymede Documentation and Apps Guide open
   ganymede-server.com, its docs and this page in the browser.
 
-> [!NOTE]
-> **Unreleased.** Collapsing and expanding code from the Cell menu and
-> the chevron is available only from a build of `main` (HEAD), not in the
-> latest release, where only the thin bar at a cell's left edge collapses
-> a cell's code.
-
-> [!NOTE]
-> **Unreleased.** Clear All Outputs (Cell menu, Command Palette, the web
-> toolbar's run menu, the iPad's Cell and ⋯ menus) and Run with
-> Parameters (Cell menu, the iPad's Cell and ⋯ menus) are available only
-> from a build of `main` (HEAD), not in the latest release.
-
 ### Kernels
 
 - Kernels come from the kernelspecs installed on the Mac, as with
@@ -151,10 +139,6 @@ shown or hidden, its tab and its expanded folders across launches.
   Move to Panel in a terminal tab's toolbar, which moves it into the
   panel of a notebook tab in the same window, else of the frontmost
   notebook window. Its screen and scrollback move with it.
-
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release.
 
 - The panel's first tab, Kernel Log, follows the open notebook kernel's
   stdout and stderr (outside its cell output) and the server's lines
@@ -226,9 +210,6 @@ with parameters asks on its own. The question is a dialog on the Mac, so a
 Shortcut run by an automation waits for an answer the first time: run it
 once by hand and choose "Always allow" before automating it.
 
-> [!NOTE]
-> **Unreleased.** The latest release runs these actions without asking.
-
 ### Links
 
 The Mac app opens `ganymede://` links, so launchers, Markdown links,
@@ -272,10 +253,6 @@ writes into a folder under Settings › General › Spotlight and copies a
 template from one. In those folders its reply, like `open`'s, tells
 the caller whether a name is taken or a template exists.
 
-> [!NOTE]
-> **Unreleased.** The latest release creates `new` notebooks without
-> asking, and `run` answers "not found" before asking.
-
 For a reply, put the route under `x-callback-url/` and add
 [x-callback-url](https://x-callback-url.com) answers:
 
@@ -292,10 +269,6 @@ you answer Cancel. In Shortcuts, the Open X-Callback URL action does
 this and gives the answer to the next action.
 
 ### Agents over MCP
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
 
 Agents outside the app, such as Claude Code and Claude Desktop, can read,
 edit and run the notebooks open in Ganymede over
@@ -349,10 +322,6 @@ again makes a new one.
 
 A notebook can be edited on one server at a time: if an agent's own
 `ganymede mcp` server has it open, Ganymede shows it read-only.
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
 
 The Mac app gives its own server your account's full name with each
 notebook it opens, so an agent working there is told who changed a
@@ -408,11 +377,6 @@ Font (⌘−) and Actual Code Font Size (⌘0) change the size from any window.
 The Markdown Font beside it sets the font of text cells: System, Serif
 (the font of pages from `ganymede nb publish`), or Monospace (the code
 font).
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release, which lists each stylistic set and character variant
-> under Alternates and has no Markdown font.
 
 Ganymede > Agent Settings… (⌥⌘,), Help > Keyboard Shortcuts and Kernel >
 Manage Remotes… open those Settings tabs, as do the command palette's
@@ -546,10 +510,6 @@ headings; pick one to go to its cell.
   changes only when a run publishes again. Notebooks opened after the
   switch is turned on can publish.
 
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release.
-
 - **Notebook Access…** (Kernel menu on the Mac, the ⋯ menu on the iPad
   and iPhone, and the Command Palette) sets what a notebook's cells may
   ask the server for through `jupyter.host()`: the notebooks they may
@@ -563,11 +523,6 @@ headings; pick one to go to its cell.
   toolbar shows Notebook Access (a padlock), naming what it asks
   for; the button goes once the grant covers it.
 
-  > [!NOTE]
-  > **Unreleased.** On the Mac, the default read grant is the folders
-  > under Settings › General › Spotlight, not the whole disk. The latest
-  > release lets every notebook read every notebook.
-
   On the Mac, where the app's server serves the whole disk, the default
   for reads is the folders under Settings › General › Spotlight: with
   none there, a notebook may read only itself. Adding or removing a
@@ -579,10 +534,6 @@ headings; pick one to go to its cell.
   foreground the app restarts it if it stopped answering.
 
 ## Publishing a notebook
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
 
 **Publish as Web Page…** (File menu on the Mac, the ⋯ menu on the iPad
 and iPhone, the toolbar and the Command Palette in the browser) saves
@@ -610,10 +561,6 @@ export replaces nothing, the sheet refuses its page the same way.
 
 ## Running with parameters
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
-
 **Run with Parameters…** (Cell menu on the Mac, the ⋯ menu on the iPad
 and iPhone, the Command Palette in the browser, and its toolbar's More
 menu in a narrow window) runs the notebook as a program, the way `ganymede execute -p
@@ -632,10 +579,6 @@ has no such run.
 
 ## Exporting a notebook
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
-
 **Export As › Markdown** and **Script** (File menu on the Mac, the ⋯ menu
 on the iPad and iPhone, the Command Palette and the toolbar's More menu
 in the browser) save the notebook as a Markdown file or as its code in
@@ -647,10 +590,6 @@ replaced: like Download Notebook, the file holds what the notebook does.
 Export needs a server connection, Ganymede or Jupyter.
 
 ## Spotlight
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
 
 On the Mac, iPad and iPhone, a Spotlight search finds notebooks by their
 title, headings and Markdown text, and choosing one opens it in

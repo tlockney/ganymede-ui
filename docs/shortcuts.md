@@ -28,11 +28,6 @@ for a private window, so there use the toolbar button or rebind the
 palette in the Shortcuts sheet. In the Mac app the menu's `⇧⌘P` stays as
 it is when you rebind it.
 
-> [!NOTE]
-> **Unreleased.** Publish as Web Page…, the exports, Run with Parameters…
-> and Clear All Outputs are available only from a build of `main` (HEAD),
-> not in the latest release.
-
 ## On a touch screen
 
 While you edit a cell with the on-screen keyboard (an iPhone, or an iPad
@@ -119,7 +114,3 @@ origin across launches, so changes there last.
 | Command palette | `⌘⇧P` | `Ctrl+Shift+P` |
 
 <!-- shortcuts:end -->
-
-> [!NOTE]
-> **Unreleased.** Collapse code, Expand code and their "all" pair are
-> available only from a build of `main` (HEAD), not in the latest release.

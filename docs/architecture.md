@@ -143,10 +143,6 @@ Two kernels are registered:
   cdp-kernel's specifiers to them with the kernel's `modules` option, so
   charts draw offline. The apps' kernel page does the same.
 
-  > [!NOTE]
-  > **Unreleased.** The latest release loads these libraries from esm.sh,
-  > so charts need a network connection.
-
   `jupyter.sql` works the same way for DuckDB's module, which is served
   from `kernel-modules/` too. DuckDB's wasm and worker are 36 MB, so
   they don't ship in the app. Instead,
@@ -154,10 +150,6 @@ Two kernels are registered:
   from jsDelivr into the page's Cache Storage the first time the page is
   online. Kernels started after that get them as blob URLs, so SQL runs
   offline. Until then, the kernel loads them from jsDelivr.
-
-  > [!NOTE]
-  > **Unreleased.** The latest release loads DuckDB from esm.sh and
-  > jsDelivr, so SQL needs a network connection.
 
 - **JavaScript (Web Worker)**, `javascript`, from
   `@jupyterlite/javascript-kernel`.

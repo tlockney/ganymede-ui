@@ -122,11 +122,6 @@ They load packages from esm.sh and data from public sites, so they need
 a network connection. [examples/README.md](examples/README.md) says how
 they are built.
 
-> [!NOTE]
-> **Unreleased.** The examples use `jupyter.table`, `jupyter.sql` and
-> `jupyter.chart` (cdp-kernel 0.11.0) only in a build of `main` (HEAD).
-> The latest release's examples draw charts and tables by hand.
-
 Open a notebook from the sidebar, which also lists running kernels. The
 toolbar runs, interrupts and restarts the kernel, switches kernels, trusts
 the notebook, downloads it, and saves (⌘S). Keyboard shortcuts follow
@@ -220,11 +215,6 @@ font of pages from `ganymede nb publish`), or Monospace (the code font).
 Both choices stay in this browser (`ganymede-ui:code-font` in local
 storage); the Mac and iPad apps keep their own, in their Settings.
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release, which lists each stylistic set and character variant
-> under Alternates and has no Markdown font.
-
 ### Collapsing code
 
 A code cell's chevron, left of its prompt (shown on hover and on the
@@ -234,11 +224,6 @@ elsewhere) collapse and expand the selected cells, and ⇧ with them does
 every code cell; the command palette has all four, and on a phone the
 cell's … menu has Collapse Code. A collapsed cell is saved that way in the
 notebook (`metadata.jupyter.source_hidden`, as JupyterLab saves it).
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release, where only the thin bar at a cell's left edge
-> collapses its code.
 
 ### Running cells and errors
 
