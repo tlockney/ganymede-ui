@@ -21,11 +21,26 @@ enum SSHSignIn {
         return nil
     }
 
-    /// How long to wait for the server to finish signing in: longer once
-    /// it has sent a banner, which in Tailscale SSH's check mode asks the
-    /// person to approve the sign-in in a browser first.
-    static func timeLimit(bannerShown: Bool) -> Int {
-        bannerShown ? 300 : 30
+    /// How long to wait for the server to finish signing in, in seconds:
+    /// longer from a banner with a link, which in Tailscale SSH's check
+    /// mode asks the person to approve the sign-in in a browser first. A
+    /// banner without one, such as a legal notice, changes nothing.
+    static func timeLimit(linkShown: Bool) -> Int {
+        linkShown ? 300 : 30
+    }
+
+    static func hasLink(_ message: String) -> Bool {
+        message.firstMatch(of: link) != nil
+    }
+
+    /// Why the sign-in failed, by what was offered.
+    static func refusal(user: String, offered: [Offer]) -> String {
+        let policy = "On a Tailscale SSH host, check that the tailnet's SSH policy lets you in as \(user)."
+        guard offered.contains(.key) else {
+            return "The server refused \(user) without a key and doesn't take keys. " + policy
+        }
+        return "The server did not accept the app's key for \(user). Add the public key from the "
+            + "remote's settings to ~/.ssh/authorized_keys there. " + policy
     }
 
     /// A banner as terminal output: without control characters, which
@@ -34,6 +49,7 @@ enum SSHSignIn {
     static func banner(_ message: String) -> [UInt8] {
         let lines = message
             .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
             .split(separator: "\n", omittingEmptySubsequences: false)
             .map { line in
                 String(String.UnicodeScalarView(line.unicodeScalars.filter { scalar in
@@ -52,7 +68,7 @@ enum SSHSignIn {
         while let match = rest.firstMatch(of: link) {
             var url = match.output[...]
             // Punctuation that ends a sentence isn't part of the link.
-            while let last = url.last, ".,;:!?)'\"".contains(last) { url = url.dropLast() }
+            while let last = url.last, trailing(last, in: url) { url = url.dropLast() }
             out += rest[..<match.range.lowerBound]
             out += "\u{1B}]8;;\(url)\u{1B}\\\(url)\u{1B}]8;;\u{1B}\\"
             rest = rest[url.endIndex...]
@@ -60,5 +76,15 @@ enum SSHSignIn {
         return out + rest
     }
 
-    private static let link = try! Regex<Substring>("https?://[^\\s]+")
+    /// Whether `last` ends a sentence rather than `url`: punctuation, or a
+    /// closing bracket without its opening one.
+    private static func trailing(_ last: Character, in url: Substring) -> Bool {
+        if ".,;:!?'".contains(last) { return true }
+        for (open, close) in [("(", ")"), ("[", "]")] where String(last) == close {
+            return url.filter { String($0) == close }.count > url.filter { String($0) == open }.count
+        }
+        return false
+    }
+
+    private static let link = try! Regex<Substring>("https?://[^\\s<>\"]+")
 }
