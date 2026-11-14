@@ -58,7 +58,8 @@ enum AppTailnet {
 
     /// Another device on the tailnet, for the remote editor's picker.
     struct Peer: Equatable, Identifiable, Sendable {
-        /// Its host name, as Tailscale shows it.
+        /// The first label of its MagicDNS name: its machine name, as the
+        /// URL and Tailscale's own apps show it.
         let name: String
         /// Its MagicDNS name, without the trailing dot.
         let dnsName: String
@@ -70,7 +71,8 @@ enum AppTailnet {
     }
 
     /// The other devices in `tailscale status --json`, online ones first,
-    /// then by name.
+    /// then by name. Mullvad exit nodes, which can number hundreds and
+    /// run no Ganymede, are left out.
     static func peers(status: Data) -> [Peer] {
         guard let json = try? JSONSerialization.jsonObject(with: status) as? [String: Any],
               let peers = json["Peer"] as? [String: Any]
@@ -79,11 +81,12 @@ enum AppTailnet {
             .compactMap { value -> Peer? in
                 guard let peer = value as? [String: Any],
                       let dns = (peer["DNSName"] as? String).map({ $0.hasSuffix(".") ? String($0.dropLast()) : $0 }),
-                      !dns.isEmpty
+                      !dns.isEmpty, !dns.hasSuffix(".mullvad.ts.net")
                 else { return nil }
-                let host = peer["HostName"] as? String ?? ""
+                // Not `HostName`: the OS's name, `localhost` on iPhones and
+                // iPads, and unchanged by a rename in the admin console.
                 return Peer(
-                    name: host.isEmpty ? String(dns.prefix(while: { $0 != "." })) : host,
+                    name: String(dns.prefix(while: { $0 != "." })),
                     dnsName: dns,
                     online: peer["Online"] as? Bool ?? false
                 )
@@ -92,12 +95,15 @@ enum AppTailnet {
     }
 
     /// The other devices on the tailnet; none when Tailscale isn't
-    /// installed or connected. Off the main thread.
-    static func loadPeers() -> [Peer] {
-        dispatchPrecondition(condition: .notOnQueue(.main))
-        guard let cli = command() else { return [] }
-        let status = run(cli, ["status", "--json"])
-        return status.code == 0 ? peers(status: status.output) : []
+    /// installed or connected. On a dispatch queue, since `run` blocks.
+    static func loadPeers() async -> [Peer] {
+        await withCheckedContinuation { done in
+            DispatchQueue.global(qos: .userInitiated).async {
+                guard let cli = command() else { return done.resume(returning: []) }
+                let status = run(cli, ["status", "--json"])
+                done.resume(returning: status.code == 0 ? peers(status: status.output) : [])
+            }
+        }
     }
 
     /// The `ganymede.toml` keys over the app's own server config: the

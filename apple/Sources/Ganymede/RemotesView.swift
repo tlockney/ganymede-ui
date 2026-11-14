@@ -149,6 +149,8 @@ struct RemoteEditor: View {
     #if os(macOS)
     /// Other devices on the tailnet, to fill in the URL (ganymede#816).
     @State private var peers: [AppTailnet.Peer] = []
+    /// The name the picker last filled in, so a second pick replaces it.
+    @State private var pickedName: String?
     #endif
     let isNew: Bool
 
@@ -180,9 +182,14 @@ struct RemoteEditor: View {
                         Menu("Tailnet Device") {
                             ForEach(peers) { peer in
                                 Button(peer.online ? peer.name : "\(peer.name) (offline)") {
+                                    // Another server's token isn't for this one.
+                                    if remote.serverURL.trimmingCharacters(in: .whitespaces) != peer.serverURL {
+                                        token = ""
+                                    }
                                     remote.serverURL = peer.serverURL
-                                    if remote.name.trimmingCharacters(in: .whitespaces).isEmpty {
+                                    if remote.name.trimmingCharacters(in: .whitespaces).isEmpty || remote.name == pickedName {
                                         remote.name = peer.name
+                                        pickedName = peer.name
                                     }
                                 }
                             }
@@ -253,7 +260,7 @@ struct RemoteEditor: View {
         }
         #if os(macOS)
         .task {
-            peers = await Task.detached(operation: { AppTailnet.loadPeers() }).value
+            peers = await AppTailnet.loadPeers()
         }
         #endif
     }

@@ -376,7 +376,8 @@ above, or `ganymede serve` set up as in Ganymede's
 The apps send that server a `Ganymede-Client` header, which marks their
 requests as an app's rather than a web page's, on iPad and iPhone too.
 On the Mac, the remote editor's **Tailnet Device** menu lists the other
-devices on your tailnet and fills in `https://<device>.<tailnet>.ts.net/`.
+devices on your tailnet and fills in `https://<device>.<tailnet>.ts.net/`;
+picking a different device clears the token.
 
 ### Settings
 

@@ -38,8 +38,9 @@ final class AppTailnetTests: XCTestCase {
          "Peer":{
           "nodekey:1":{"HostName":"zeta","DNSName":"zeta.tail1234.ts.net.","Online":false},
           "nodekey:2":{"HostName":"box","DNSName":"box.tail1234.ts.net.","Online":true},
-          "nodekey:3":{"HostName":"","DNSName":"agent.tail1234.ts.net.","Online":true},
-          "nodekey:4":{"HostName":"nodns","DNSName":"","Online":true}}}
+          "nodekey:3":{"HostName":"localhost","DNSName":"agent.tail1234.ts.net.","Online":true},
+          "nodekey:4":{"HostName":"nodns","DNSName":"","Online":true},
+          "nodekey:5":{"HostName":"se-sto-wg-001","DNSName":"se-sto-wg-001.mullvad.ts.net.","Online":true}}}
         """#.utf8)
         let peers = AppTailnet.peers(status: status)
         XCTAssertEqual(peers.map(\.name), ["agent", "box", "zeta"])
