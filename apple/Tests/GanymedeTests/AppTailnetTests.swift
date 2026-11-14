@@ -32,6 +32,22 @@ final class AppTailnetTests: XCTestCase {
         XCTAssertEqual(AppTailnet.url(dnsName: "box.tail1234.ts.net")?.absoluteString, "https://box.tail1234.ts.net/")
     }
 
+    func testPeers() {
+        let status = Data(#"""
+        {"Self":{"DNSName":"mac.tail1234.ts.net."},
+         "Peer":{
+          "nodekey:1":{"HostName":"zeta","DNSName":"zeta.tail1234.ts.net.","Online":false},
+          "nodekey:2":{"HostName":"box","DNSName":"box.tail1234.ts.net.","Online":true},
+          "nodekey:3":{"HostName":"","DNSName":"agent.tail1234.ts.net.","Online":true},
+          "nodekey:4":{"HostName":"nodns","DNSName":"","Online":true}}}
+        """#.utf8)
+        let peers = AppTailnet.peers(status: status)
+        XCTAssertEqual(peers.map(\.name), ["agent", "box", "zeta"])
+        XCTAssertEqual(peers.map(\.online), [true, true, false])
+        XCTAssertEqual(peers[1].serverURL, "https://box.tail1234.ts.net/")
+        XCTAssertEqual(AppTailnet.peers(status: Data("{}".utf8)), [])
+    }
+
     func testCommand() {
         XCTAssertEqual(
             AppTailnet.command(isExecutable: { $0 == "/opt/homebrew/bin/tailscale" }),

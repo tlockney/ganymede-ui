@@ -146,6 +146,10 @@ struct RemoteEditor: View {
     @State private var port = ""
     /// Run kernels on this remote's server once it is saved (#473).
     @State private var runsKernels: Bool
+    #if os(macOS)
+    /// Other devices on the tailnet, to fill in the URL (ganymede#816).
+    @State private var peers: [AppTailnet.Peer] = []
+    #endif
     let isNew: Bool
 
     init(remote: Remote, isNew: Bool) {
@@ -171,6 +175,20 @@ struct RemoteEditor: View {
                         .keyboardType(.URL)
                         .textInputAutocapitalization(.never)
                         #endif
+                    #if os(macOS)
+                    if !peers.isEmpty {
+                        Menu("Tailnet Device") {
+                            ForEach(peers) { peer in
+                                Button(peer.online ? peer.name : "\(peer.name) (offline)") {
+                                    remote.serverURL = peer.serverURL
+                                    if remote.name.trimmingCharacters(in: .whitespaces).isEmpty {
+                                        remote.name = peer.name
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    #endif
                     SecureField("Token", text: $token)
                     if !remote.serverURL.trimmingCharacters(in: .whitespaces).isEmpty {
                         Toggle("Run kernels on this remote", isOn: $runsKernels)
@@ -233,6 +251,11 @@ struct RemoteEditor: View {
         .onAppear {
             token = isNew ? "" : model.token(for: remote.id)
         }
+        #if os(macOS)
+        .task {
+            peers = await Task.detached(operation: { AppTailnet.loadPeers() }).value
+        }
+        #endif
     }
 
     /// Saves the remote and moves kernels to it, or back to this device,
@@ -252,10 +275,12 @@ struct RemoteEditor: View {
     private var serverFooter: String {
         #if os(macOS)
         "Optional. Used for kernels and terminals. Choose where kernels run here, from the foot of a "
-            + "window's sidebar, or from the Kernel menu. Running kernels are shut down when it changes."
+            + "window's sidebar, or from the Kernel menu. Running kernels are shut down when it changes. "
+            + "A Ganymede server that lets you in by your tailnet login needs no token."
         #else
         "Optional. Used for kernels and terminals. Choose where kernels run here, above, or from a "
-            + "notebook's More menu. Running kernels are shut down when it changes."
+            + "notebook's More menu. Running kernels are shut down when it changes. "
+            + "A Ganymede server that lets you in by your tailnet login needs no token."
         #endif
     }
 

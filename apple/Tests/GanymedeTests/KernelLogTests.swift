@@ -81,5 +81,21 @@ final class KernelLogTests: XCTestCase {
             URLQueryItem(name: "lines", value: String(KernelLog.limit)),
         ])
         XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "token abc")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Ganymede-Client"), "Ganymede app")
+    }
+
+    /// A remote with no token, which a Ganymede server lets in by tailnet
+    /// identity (ganymede#816): no `Authorization`, and the header that
+    /// marks the request as a program's.
+    func testATokenlessRemoteSendsOnlyTheClientHeader() throws {
+        let server = ServerEndpoint(base: URL(string: "https://box.tail1234.ts.net/")!, token: "")
+        for request in [
+            KernelLog.request(kernel: "k1", after: 0, on: server),
+            server.request("api/kernelspecs"),
+            server.request("api/terminals", method: "POST"),
+        ] {
+            XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Ganymede-Client"), "Ganymede app")
+        }
     }
 }

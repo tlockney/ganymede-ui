@@ -56,6 +56,50 @@ enum AppTailnet {
         return trimmed.isEmpty ? nil : trimmed
     }
 
+    /// Another device on the tailnet, for the remote editor's picker.
+    struct Peer: Equatable, Identifiable, Sendable {
+        /// Its host name, as Tailscale shows it.
+        let name: String
+        /// Its MagicDNS name, without the trailing dot.
+        let dnsName: String
+        let online: Bool
+        var id: String { dnsName }
+
+        /// Where a Ganymede server shared with `tailscale serve` answers.
+        var serverURL: String { "https://\(dnsName)/" }
+    }
+
+    /// The other devices in `tailscale status --json`, online ones first,
+    /// then by name.
+    static func peers(status: Data) -> [Peer] {
+        guard let json = try? JSONSerialization.jsonObject(with: status) as? [String: Any],
+              let peers = json["Peer"] as? [String: Any]
+        else { return [] }
+        return peers.values
+            .compactMap { value -> Peer? in
+                guard let peer = value as? [String: Any],
+                      let dns = (peer["DNSName"] as? String).map({ $0.hasSuffix(".") ? String($0.dropLast()) : $0 }),
+                      !dns.isEmpty
+                else { return nil }
+                let host = peer["HostName"] as? String ?? ""
+                return Peer(
+                    name: host.isEmpty ? String(dns.prefix(while: { $0 != "." })) : host,
+                    dnsName: dns,
+                    online: peer["Online"] as? Bool ?? false
+                )
+            }
+            .sorted { ($0.online ? 0 : 1, $0.name.lowercased(), $0.dnsName) < ($1.online ? 0 : 1, $1.name.lowercased(), $1.dnsName) }
+    }
+
+    /// The other devices on the tailnet; none when Tailscale isn't
+    /// installed or connected. Off the main thread.
+    static func loadPeers() -> [Peer] {
+        dispatchPrecondition(condition: .notOnQueue(.main))
+        guard let cli = command() else { return [] }
+        let status = run(cli, ["status", "--json"])
+        return status.code == 0 ? peers(status: status.output) : []
+    }
+
     /// The `ganymede.toml` keys over the app's own server config: the
     /// tailnet name passes the Host check, and `allow` lets those logins
     /// in without the token. `trust_xheaders` makes the login cookie
