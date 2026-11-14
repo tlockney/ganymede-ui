@@ -10,10 +10,13 @@ function fakeCaches() {
     put: async (url: string, res: Response) => void store.set(url, res),
   };
   const opened: string[] = [];
+  const names = new Set(['duckdb-wasm-1.0.0', 'workbox-precache']);
   vi.stubGlobal('caches', {
-    open: async (name: string) => (opened.push(name), cache),
+    open: async (name: string) => (opened.push(name), names.add(name), cache),
+    keys: async () => [...names],
+    delete: async (name: string) => names.delete(name),
   });
-  return { store, opened };
+  return { store, opened, names };
 }
 
 describe('DuckDB files', () => {
@@ -30,11 +33,14 @@ describe('DuckDB files', () => {
   });
 
   it('fetches the eh pair once, then maps it from the cache', async () => {
-    const { store, opened } = fakeCaches();
+    const { store, opened, names } = fakeCaches();
     const fetched: string[] = [];
     vi.stubGlobal('fetch', async (url: string) => (fetched.push(url), new Response(url)));
     await loadDuckdbFiles();
     expect(opened).toEqual([CACHE]);
+    expect(CACHE).toBe(`duckdb-wasm-${SQL_MODULES.duckdb.split('@').pop()}`);
+    // An earlier DuckDB's cache goes; others stay.
+    expect([...names].sort()).toEqual([CACHE, 'workbox-precache'].sort());
     expect(fetched).toEqual(FILES.map(f => f.url));
     expect([...store.keys()]).toEqual(FILES.map(f => f.url));
     expect(Object.keys(duckdbModules()).sort()).toEqual(

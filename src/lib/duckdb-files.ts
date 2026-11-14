@@ -11,10 +11,12 @@
  */
 import { SQL_MODULES } from '@tlockney/cdp-kernel/browser';
 
-const VERSION = '1.29.0';
+/** The version cdp-kernel imports, from its specifier. */
+const VERSION = SQL_MODULES.duckdb.slice(SQL_MODULES.duckdb.lastIndexOf('@') + 1);
 const CDN = `https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@${VERSION}/dist/`;
 /** Named by version, so a new DuckDB never reads an old file. */
-export const CACHE = `duckdb-wasm-${VERSION}`;
+const PREFIX = 'duckdb-wasm-';
+export const CACHE = `${PREFIX}${VERSION}`;
 
 /**
  * The `eh` pair: every browser the apps run in has wasm exceptions, so
@@ -52,6 +54,10 @@ export function loadDuckdbFiles(): Promise<void> {
 
 async function load(): Promise<void> {
   if (typeof caches === 'undefined') return;
+  // An earlier DuckDB's files: 37 MB nothing reads any more.
+  for (const name of await caches.keys()) {
+    if (name.startsWith(PREFIX) && name !== CACHE) await caches.delete(name);
+  }
   const cache = await caches.open(CACHE);
   if (!(await read(cache)) && (await prefetch(cache))) await read(cache);
 }
