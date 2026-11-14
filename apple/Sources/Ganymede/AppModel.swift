@@ -478,19 +478,14 @@ final class AppModel {
 
     /// Writes the server info file for the server at `serverURL` when it
     /// was launched with MCP on (`settings`, not the current mode, which a
-    /// queued start may have changed since). It holds the server's own
-    /// token, as `ganymede serve` writes it, not `mcp_token`.
+    /// queued start may have changed since).
     private func writeServerInfo(_ serverURL: URL, settings: [String: any Sendable]) {
         removeServerInfo()
-        guard settings["mcp_enabled"] as? Bool == true,
-              let root = settings["root_dir"] as? String,
-              let endpoint = ServerEndpoint(serverURL: serverURL) else { return }
-        let token = endpoint.token
         let pid = ProcessInfo.processInfo.processIdentifier
+        guard let info = AppMCP.serverInfo(serverURL: serverURL, settings: settings, pid: pid) else { return }
         let dir = AppMCP.runtimeDirectory()
         // A crashed run's file, with its token, would stay otherwise.
         AppMCP.removeStaleServerInfo(in: dir)
-        let info = AppMCP.serverInfo(base: endpoint.base, token: token, root: root, pid: pid)
         serverInfoFile = AppMCP.writeServerInfo(info, in: dir, pid: pid)
         if serverInfoFile == nil {
             NSLog("Ganymede: the server info file for `ganymede mcp` couldn't be written")

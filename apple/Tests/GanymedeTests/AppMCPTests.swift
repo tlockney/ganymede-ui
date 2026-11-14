@@ -68,6 +68,19 @@ final class AppMCPTests: XCTestCase {
         XCTAssertEqual(mode, 0o600)
     }
 
+    /// The file holds `mcp_token`, never the server's own token (#583),
+    /// and is written only while MCP is on.
+    func testServerInfoHoldsTheMCPToken() throws {
+        let url = try XCTUnwrap(URL(string: "http://127.0.0.1:52011/?token=serverown"))
+        let settings = AppMCP.serverConfig(mode: .readOnly, images: false, token: "agent")
+            .merging(["root_dir": "/"]) { $1 }
+        let info = try XCTUnwrap(AppMCP.serverInfo(serverURL: url, settings: settings, pid: 42))
+        XCTAssertEqual(info["token"] as? String, "agent")
+        XCTAssertEqual(info["url"] as? String, "http://127.0.0.1:52011/")
+        let off = AppMCP.serverConfig(mode: .off, images: false, token: "agent").merging(["root_dir": "/"]) { $1 }
+        XCTAssertNil(AppMCP.serverInfo(serverURL: url, settings: off, pid: 42))
+    }
+
     /// A crashed run's file goes; a live one, and other servers', stay.
     func testStaleServerInfoIsRemoved() throws {
         let runtime = dir.appendingPathComponent("runtime")
@@ -190,24 +203,23 @@ final class AppMCPTests: XCTestCase {
     func testMCPTokenOpensOnlyMCP() async throws {
         let host = try server(.readOnly)
         defer { host.stop() }
-        let (status, _, _) = try await post(host, ["jsonrpc": "2.0", "id": 1, "method": "ping"])
-        XCTAssertNotEqual(status, 403, "the MCP token opens /mcp")
-        let own = try XCTUnwrap(URLComponents(url: host.url, resolvingAgainstBaseURL: false)?
-            .queryItems?.first { $0.name == "token" }?.value)
-        XCTAssertNotEqual(own, "secret")
+        let (status, _, _) = try await post(host, [
+            "jsonrpc": "2.0", "id": 1, "method": "initialize",
+            "params": ["protocolVersion": "2025-06-18", "capabilities": [:] as [String: Any],
+                       "clientInfo": ["name": "AppMCPTests", "version": "1"]],
+        ])
+        XCTAssertEqual(status, 200, "the MCP token opens /mcp")
+        let page = try XCTUnwrap(ServerEndpoint(serverURL: host.url))
+        XCTAssertNotEqual(page.token, "secret")
         func contents(_ token: String) async throws -> Int {
-            var parts = try XCTUnwrap(URLComponents(url: host.url, resolvingAgainstBaseURL: false))
-            parts.query = nil
-            parts.path = "/api/contents"
-            var request = URLRequest(url: try XCTUnwrap(parts.url))
-            request.setValue("token \(token)", forHTTPHeaderField: "Authorization")
+            let request = ServerEndpoint(base: page.base, token: token).request("api/contents")
             let (_, response) = try await URLSession.shared.data(for: request)
             return try XCTUnwrap(response as? HTTPURLResponse).statusCode
         }
         let refused = try await contents("secret")
         XCTAssertEqual(refused, 403)
-        let page = try await contents(own)
-        XCTAssertEqual(page, 200)
+        let own = try await contents(page.token)
+        XCTAssertEqual(own, 200)
     }
 
     func testReadOnlyRefusesEdits() async throws {

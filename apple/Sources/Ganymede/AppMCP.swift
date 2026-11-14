@@ -170,6 +170,20 @@ enum AppMCP {
         ]
     }
 
+    /// The server info file for the server at `serverURL` launched with
+    /// `settings`, or nil when MCP was off. Its token is `mcp_token`, not
+    /// the server's: `ganymede mcp` sends it only to `/mcp`, the server's
+    /// own token stays off disk, and the keychain token outlives a
+    /// restart, so an agent's running session keeps working after a mode
+    /// change or relaunch (`ganymede mcp` keeps the token it found).
+    static func serverInfo(serverURL: URL, settings: [String: any Sendable], pid: Int32) -> [String: Any]? {
+        guard settings["mcp_enabled"] as? Bool == true,
+              let token = settings["mcp_token"] as? String, !token.isEmpty,
+              let root = settings["root_dir"] as? String,
+              let endpoint = ServerEndpoint(serverURL: serverURL) else { return nil }
+        return serverInfo(base: endpoint.base, token: token, root: root, pid: pid)
+    }
+
     /// Writes the server info file in `dir`, readable by this user only
     /// (it holds the token); its URL, or nil when it can't be written.
     static func writeServerInfo(_ info: [String: Any], in dir: URL, pid: Int32) -> URL? {
