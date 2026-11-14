@@ -53,6 +53,15 @@ final class AppModel {
     /// The `jpserver-<pid>.json` written while MCP is on, so `ganymede mcp`
     /// finds the app's server.
     @ObservationIgnored private var serverInfoFile: URL?
+    /// Whether the server is shared on the tailnet through `tailscale
+    /// serve` (`AppTailnet`); off by default.
+    private(set) var tailnetShare: Bool
+    /// The tailnet logins (or tags) let in without the token while shared.
+    private(set) var tailnetAllow: [String]
+    /// Where other devices open the server while it is shared.
+    private(set) var tailnetURL: URL?
+    /// Why sharing on the tailnet failed, if it did.
+    private(set) var tailnetError: String?
     #endif
 
     @ObservationIgnored private var server: ServerHost?
@@ -92,6 +101,8 @@ final class AppModel {
         #if os(macOS)
         mcpMode = UserDefaults.standard.string(forKey: AppMCP.modeKey).flatMap(MCPMode.init(rawValue:)) ?? .off
         mcpImages = UserDefaults.standard.bool(forKey: AppMCP.imagesKey)
+        tailnetAllow = UserDefaults.standard.stringArray(forKey: AppTailnet.allowKey) ?? []
+        tailnetShare = UserDefaults.standard.bool(forKey: AppTailnet.shareKey)
         if let path = UserDefaults.standard.string(forKey: Keys.root),
            FileManager.default.fileExists(atPath: path) {
             root = URL(fileURLWithPath: path, isDirectory: true)
@@ -174,9 +185,35 @@ final class AppModel {
         #if os(macOS)
         let path = pathReady
         #endif
+        #if os(macOS)
+        let tailnetAllow = tailnetShare ? tailnetAllow : []
+        #endif
         enqueue { [self] in
             #if os(macOS)
             await path?.value
+            // Shared on the tailnet: Tailscale names this Mac, and the
+            // server lets that name and the listed logins in.
+            var withTailnet = settings
+            var tailnetName: String?
+            tailnetURL = nil
+            tailnetError = nil
+            if tailnetAllow.isEmpty, let port = defaults.object(forKey: AppTailnet.servedPortKey) as? Int {
+                // Sharing was turned off: remove the app's handler here, in
+                // the queue, after any earlier start's `serve`.
+                defaults.removeObject(forKey: AppTailnet.servedPortKey)
+                await Task.detached(operation: { AppTailnet.unserve(port: port) }).value
+            } else if !tailnetAllow.isEmpty {
+                switch await Task.detached(operation: { AppTailnet.prepare(allow: tailnetAllow) }).value {
+                case .success(let prepared):
+                    withTailnet.merge(prepared.config) { $1 }
+                    tailnetName = prepared.name
+                case .failure(let failure):
+                    tailnetError = failure.message
+                }
+            }
+            let launched = withTailnet
+            #else
+            let launched = settings
             #endif
             let old = server
             server = nil
@@ -192,7 +229,7 @@ final class AppModel {
             let result: Result<ServerHost, Error> = await withCheckedContinuation { done in
                 Self.serverQueue.async {
                     old?.stop()
-                    done.resume(returning: Result { try AppModel.launch(settings, saved) })
+                    done.resume(returning: Result { try AppModel.launch(launched, saved) })
                 }
             }
             switch result {
@@ -208,11 +245,23 @@ final class AppModel {
                 serverURL = host.url
                 url = pageURL(host.url)
                 #if os(macOS)
-                writeServerInfo(host.url, settings: settings)
+                writeServerInfo(host.url, settings: launched)
                 #endif
                 if let port = host.url.port {
                     defaults.set(port, forKey: Keys.port)
                 }
+                #if os(macOS)
+                if let name = tailnetName, let port = host.url.port {
+                    let ours = defaults.object(forKey: AppTailnet.servedPortKey) as? Int
+                    switch await Task.detached(operation: { AppTailnet.serve(name: name, port: port, ours: ours) }).value {
+                    case .success(let shared):
+                        defaults.set(port, forKey: AppTailnet.servedPortKey)
+                        tailnetURL = shared
+                    case .failure(let failure):
+                        tailnetError = failure.message
+                    }
+                }
+                #endif
             case .failure(let failure):
                 #if os(macOS)
                 removeServerInfo()
@@ -467,6 +516,27 @@ final class AppModel {
             mcpToken = storeMCPToken(AppMCP.newToken())
         }
         start()
+    }
+
+    /// Shares the server on the tailnet, or stops, and restarts the server
+    /// with the logins `allow` lets in without the token. Sharing needs at
+    /// least one login. Stopping removes the app's `tailscale serve`
+    /// handler, if it still points at the server, in the restart.
+    func setTailnet(share: Bool, allow: [String]) {
+        let share = share && !allow.isEmpty
+        guard share != tailnetShare || allow != tailnetAllow else { return }
+        let wasSharing = tailnetShare
+        tailnetShare = share
+        tailnetAllow = allow
+        defaults.set(share, forKey: AppTailnet.shareKey)
+        defaults.set(allow, forKey: AppTailnet.allowKey)
+        if !share {
+            tailnetURL = nil
+            tailnetError = nil
+        }
+        // The list reaches the server only while sharing; the queued start
+        // removes the `tailscale serve` handler when sharing stops.
+        if share || wasSharing { start() }
     }
 
     /// A new MCP token, for when the old one leaked: agents given the old

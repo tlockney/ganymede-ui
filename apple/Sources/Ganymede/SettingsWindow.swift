@@ -109,6 +109,7 @@ private struct GeneralSettings: View {
             CrashReportsSettings()
             LinkRunSettings()
             MCPSettings()
+            TailnetSettings()
             SpotlightSettingsSection()
         }
         .formStyle(.grouped)
@@ -191,6 +192,59 @@ private struct MCPSettings: View {
         } footer: {
             Text("Lets Claude Code, Claude Desktop and other agents read, edit and run the notebooks open here, and you see each change arrive. Agents set up with `ganymede mcp` use Ganymede while it runs, and a server of their own when it doesn’t. The server listens on this Mac only and needs the token. Agents set up either way get a token that opens MCP and nothing else, and the mode limits what they do there; an agent that can run code can still reach the rest of the server. Changing this restarts Ganymede’s server and its kernels.")
         }
+    }
+}
+
+/// Sharing the app's server on the tailnet through `tailscale serve`
+/// (ganymede#816), with the logins let in without the token.
+private struct TailnetSettings: View {
+    @Environment(AppModel.self) private var model
+    @State private var allowText = ""
+
+    private var allow: [String] { AppTailnet.allowList(allowText) }
+
+    var body: some View {
+        Section {
+            Toggle("Share on my tailnet", isOn: Binding(
+                get: { model.tailnetShare },
+                set: { model.setTailnet(share: $0, allow: allow) }
+            ))
+            .disabled(!model.tailnetShare && allow.isEmpty)
+            LabeledContent("Let in without the token") {
+                HStack {
+                    TextField("you@example.com", text: $allowText)
+                        .labelsHidden()
+                        .onSubmit { apply() }
+                    Button("Apply") { apply() }
+                        .disabled(allow == model.tailnetAllow)
+                }
+            }
+            if model.tailnetShare {
+                if let url = model.tailnetURL {
+                    LabeledContent("Address") {
+                        Link(url.absoluteString, destination: url)
+                            .textSelection(.enabled)
+                    }
+                } else if let error = model.tailnetError {
+                    Text(error)
+                        .foregroundStyle(.red)
+                } else {
+                    Text(model.error.map { "Ganymede could not start: \($0)" } ?? "Sharing…")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        } header: {
+            Text("Tailnet")
+        } footer: {
+            Text("Opens Ganymede to your other devices at this Mac’s tailnet name over HTTPS, through `tailscale serve`. The logins listed (your Tailscale login, such as you@example.com) get in without the token; no one else can, since the token stays with this app. Ganymede trusts the login Tailscale sends only from this Mac, and any program on this Mac could send one too, so turn this on only on a Mac you alone use. Agents still need the MCP token. Turning it off removes the `tailscale serve` setting. Changing this restarts Ganymede’s server and its kernels.")
+        }
+        .onAppear { allowText = model.tailnetAllow.joined(separator: ", ") }
+    }
+
+    private func apply() {
+        let list = allow
+        model.setTailnet(share: model.tailnetShare && !list.isEmpty, allow: list)
+        allowText = list.joined(separator: ", ")
     }
 }
 
