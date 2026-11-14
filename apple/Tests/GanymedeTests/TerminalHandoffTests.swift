@@ -11,14 +11,15 @@ final class TerminalHandoffTests: XCTestCase {
         let handoff = TerminalHandoff()
         let id = UUID()
         let transport = EchoTransport()
-        handoff.register(id, target: here, transport: transport, title: "zsh")
+        let old = UUID()
+        handoff.register(id, owner: old, target: here, transport: transport, title: "zsh")
         XCTAssertNil(handoff.arriving(id), "nothing is on its way before a move")
         var arrived = false
         XCTAssertTrue(handoff.move(id) { arrived = true })
         XCTAssertFalse(handoff.canMove(id), "one move at a time")
         XCTAssertTrue(handoff.isLeaving(id))
         // Its old place goes away; the session stays listed.
-        handoff.unregister(id, transport: transport)
+        handoff.unregister(id, owner: old)
         XCTAssertFalse(arrived, "the new place waits for the view to leave")
         let view = NSObject(), coordinator = NSObject()
         var closed = false
@@ -37,18 +38,23 @@ final class TerminalHandoffTests: XCTestCase {
         XCTAssertNil(handoff.takeView(id))
         XCTAssertFalse(closed)
         XCTAssertFalse(transport.closed)
+        // The new place lists the same transport; a late unregister from
+        // the old place leaves it able to move again.
+        handoff.register(id, owner: UUID(), target: here, transport: transport, title: "zsh")
+        handoff.unregister(id, owner: old)
+        XCTAssertTrue(handoff.canMove(id))
     }
 
     func testOnlyATerminalOnShowCanMove() {
         let handoff = TerminalHandoff()
         let id = UUID()
         XCTAssertFalse(handoff.move(id) {})
-        let first = EchoTransport()
-        handoff.register(id, target: here, transport: first, title: "")
+        let place = UUID()
+        handoff.register(id, owner: place, target: here, transport: EchoTransport(), title: "")
         // A late unregister from another place with the same id is ignored.
-        handoff.unregister(id, transport: EchoTransport())
+        handoff.unregister(id, owner: UUID())
         XCTAssertTrue(handoff.canMove(id))
-        handoff.unregister(id, transport: first)
+        handoff.unregister(id, owner: place)
         XCTAssertFalse(handoff.canMove(id), "a closed or ended terminal can't move")
     }
 
@@ -58,7 +64,7 @@ final class TerminalHandoffTests: XCTestCase {
         handoff.timeout = 0.2
         let id = UUID()
         let view = NSObject(), coordinator = NSObject()
-        handoff.register(id, target: here, transport: EchoTransport(), title: "")
+        handoff.register(id, owner: UUID(), target: here, transport: EchoTransport(), title: "")
         XCTAssertTrue(handoff.move(id) {})
         var closed = false
         handoff.park(id, view: view, coordinator: coordinator) { closed = true }
@@ -79,7 +85,7 @@ final class TerminalHandoffTests: XCTestCase {
         let handoff = TerminalHandoff()
         handoff.timeout = 0.05
         let id = UUID()
-        handoff.register(id, target: here, transport: EchoTransport(), title: "")
+        handoff.register(id, owner: UUID(), target: here, transport: EchoTransport(), title: "")
         XCTAssertTrue(handoff.move(id) {})
         let closed = expectation(description: "closed")
         handoff.park(id, view: NSObject(), coordinator: NSObject()) { closed.fulfill() }
@@ -93,7 +99,7 @@ final class TerminalHandoffTests: XCTestCase {
         let handoff = TerminalHandoff()
         handoff.timeout = 0.05
         let id = UUID()
-        handoff.register(id, target: here, transport: EchoTransport(), title: "")
+        handoff.register(id, owner: UUID(), target: here, transport: EchoTransport(), title: "")
         var arrived = false
         XCTAssertTrue(handoff.move(id) { arrived = true })
         let lapsed = expectation(description: "lapsed")

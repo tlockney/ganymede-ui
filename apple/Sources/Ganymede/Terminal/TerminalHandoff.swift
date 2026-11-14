@@ -22,6 +22,9 @@ final class TerminalHandoff {
     var timeout: TimeInterval = 10
 
     private struct Live {
+        /// The place showing it: a moved terminal keeps its id and
+        /// transport, so only this tells the old place from the new.
+        var owner: UUID
         var target: TerminalTarget
         var transport: TerminalTransport
         var title: String
@@ -43,16 +46,16 @@ final class TerminalHandoff {
     /// Each move under way, so a timer never ends another move.
     private var moves: [UUID: UUID] = [:]
 
-    /// `id`'s terminal is on show with `transport`.
-    func register(_ id: UUID, target: TerminalTarget, transport: TerminalTransport, title: String) {
-        live[id] = Live(target: target, transport: transport, title: title)
+    /// `id`'s terminal is on show in the place `owner`, with `transport`.
+    func register(_ id: UUID, owner: UUID, target: TerminalTarget, transport: TerminalTransport, title: String) {
+        live[id] = Live(owner: owner, target: target, transport: transport, title: title)
     }
 
-    /// `id`'s terminal with `transport` is gone, or its session ended, so it
-    /// can't move. A leaving one stays listed for its new place, and one
-    /// that has since arrived with the same id elsewhere is left alone.
-    func unregister(_ id: UUID, transport: TerminalTransport) {
-        guard !isLeaving(id), live[id]?.transport === transport else { return }
+    /// `id`'s terminal in the place `owner` is gone, or its session ended,
+    /// so it can't move. A leaving one stays listed for its new place, and
+    /// one that has since arrived in another place is left alone.
+    func unregister(_ id: UUID, owner: UUID) {
+        guard !isLeaving(id), live[id]?.owner == owner else { return }
         live[id] = nil
     }
 
