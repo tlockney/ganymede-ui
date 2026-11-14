@@ -470,7 +470,8 @@ final class AppModel {
     }
 
     /// A new MCP token, for when the old one leaked: agents given the old
-    /// config must be given the new one.
+    /// config must be given the new one, and running `ganymede mcp` agents
+    /// restarted.
     func resetMCPToken() {
         guard mcpMode != .off else { return }
         mcpToken = storeMCPToken(AppMCP.newToken())
