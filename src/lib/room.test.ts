@@ -5,7 +5,14 @@ import { ServerConnection } from '@jupyterlab/services';
 import * as encoding from 'lib0/encoding';
 import type { ICodeCellModel } from '@jupyterlab/cells';
 import * as Y from 'yjs';
-import { NotebookRoom, RoomSaver, trustFromFile, trustHere, watchRemoteOutputs } from './room';
+import {
+  awarenessUser,
+  NotebookRoom,
+  RoomSaver,
+  trustFromFile,
+  trustHere,
+  watchRemoteOutputs,
+} from './room';
 
 function settingsAnswering(status: number, body: unknown) {
   const fetch = vi.fn(
@@ -179,7 +186,7 @@ class FakeSocket {
 
 describe('NotebookRoom connection', () => {
   const session = { format: 'json', type: 'notebook', fileId: 'f1', sessionId: 's1' };
-  function joining(onClosed = vi.fn()) {
+  function joining(onClosed = vi.fn(), person?: string) {
     FakeSocket.all = [];
     const { settings } = settingsAnswering(200, session);
     const join = NotebookRoom.join({
@@ -187,9 +194,31 @@ describe('NotebookRoom connection', () => {
       path: 'Io.ipynb',
       onClosed,
       WebSocket: FakeSocket as unknown as typeof WebSocket,
+      person,
     });
     return { join, onClosed };
   }
+
+  it('names the person in its awareness, when it has a name', async () => {
+    for (const [person, user] of [
+      ['Thomas  Lockney', awarenessUser('Thomas Lockney')],
+      [undefined, undefined],
+    ] as const) {
+      const { join } = joining(vi.fn(), person);
+      const ws = await socket();
+      ws.open();
+      ws.sync();
+      const room = (await join)!;
+      expect(room.notebook.awareness.getLocalState()?.user).toEqual(user);
+      room.dispose();
+    }
+    expect(awarenessUser(' Thomas  Lockney ')).toMatchObject({
+      name: 'Thomas Lockney',
+      display_name: 'Thomas Lockney',
+      initials: 'TL',
+    });
+    expect(awarenessUser('  ')).toBeUndefined();
+  });
   const socket = () => vi.waitFor(() => FakeSocket.all.at(-1) ?? Promise.reject(new Error('none')));
 
   it('joins the file’s room once it syncs', async () => {

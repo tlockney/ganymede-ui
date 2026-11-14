@@ -332,6 +332,17 @@ again makes a new one.
 A notebook can be edited on one server at a time: if an agent's own
 `ganymede mcp` server has it open, Ganymede shows it read-only.
 
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+The Mac app gives the server your account's full name with each
+notebook it opens, as JupyterLab gives its user's, so an agent is told
+who changed a cell: "changed by "Thomas"" rather than "by a person".
+The name goes to the server the notebook is on, which may be a remote
+one, and to anyone else with the notebook open there. iPad and iPhone
+send no name.
+
 ### Settings
 
 Settings (⌘,) is one window with tabs. General makes Ganymede the

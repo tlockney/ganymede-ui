@@ -63,7 +63,44 @@ export type RoomOptions = {
   onClosed?: (why: RoomClosed) => void;
   /** Tests pass a fake socket. */
   WebSocket?: typeof WebSocket;
+  /**
+   * The person's name, sent in the room's awareness so the server credits
+   * their edits to it (an agent is told who changed a cell). By default
+   * the name the Mac app gives the page; none in a browser or on iPad and
+   * iPhone, and the server says "a person".
+   */
+  person?: string;
 };
+
+declare global {
+  interface Window {
+    /** Set by the Mac app before the page loads: the account's full name. */
+    ganymedeUser?: { name?: string };
+  }
+}
+
+/**
+ * The awareness `user` for a person named `name`, with the fields
+ * JupyterLab's own sends (its collaborators list and cursors read them).
+ * Undefined without a name.
+ */
+export function awarenessUser(name: string | undefined) {
+  const n = name?.replace(/\s+/g, ' ').trim();
+  if (!n) return undefined;
+  const initials = n
+    .split(' ')
+    .map(w => [...w][0] ?? '')
+    .join('')
+    .slice(0, 2)
+    .toUpperCase();
+  return {
+    username: n,
+    name: n,
+    display_name: n,
+    initials,
+    color: 'var(--jp-collaborator-color1)',
+  };
+}
 
 export class NotebookRoom {
   readonly notebook: YNotebook;
@@ -88,6 +125,10 @@ export class NotebookRoom {
   ) {
     // As JupyterLab's notebook model does by default: undo per cell.
     this.notebook = new YNotebook({ disableDocumentWideUndoRedo: true });
+    const user = awarenessUser(
+      o.person ?? (typeof window === 'undefined' ? undefined : window.ganymedeUser?.name),
+    );
+    if (user) this.notebook.awareness.setLocalStateField('user', user);
     const token = o.settings.token;
     this.provider = new WebsocketProvider(roomUrl, roomId, this.notebook.ydoc, {
       params: {
