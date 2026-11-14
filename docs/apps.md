@@ -336,12 +336,12 @@ A notebook can be edited on one server at a time: if an agent's own
 > **Unreleased.** Available only from a build of `main` (HEAD), not in
 > the latest release.
 
-The Mac app gives the server your account's full name with each
-notebook it opens, as JupyterLab gives its user's, so an agent is told
-who changed a cell: "changed by "Thomas"" rather than "by a person".
-The name goes to the server the notebook is on, which may be a remote
-one, and to anyone else with the notebook open there. iPad and iPhone
-send no name.
+The Mac app gives its own server your account's full name with each
+notebook it opens, so an agent working there is told who changed a
+cell: "changed by "Thomas"" rather than "by a person". The name goes
+only to the app's server on this Mac, and to the other clients with
+that notebook open (such as an agent, or JupyterLab), never to a remote
+server. iPad and iPhone send no name.
 
 ### Settings
 

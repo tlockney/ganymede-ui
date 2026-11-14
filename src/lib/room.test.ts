@@ -8,6 +8,7 @@ import * as Y from 'yjs';
 import {
   awarenessUser,
   NotebookRoom,
+  pageUserName,
   RoomSaver,
   trustFromFile,
   trustHere,
@@ -218,6 +219,47 @@ describe('NotebookRoom connection', () => {
       initials: 'TL',
     });
     expect(awarenessUser('  ')).toBeUndefined();
+    expect(awarenessUser('Thomas van Lockney')?.initials).toBe('TL');
+    expect(awarenessUser('𝒜da 𝒷o')?.initials).toBe('𝒜𝒷');
+  });
+
+  it('takes the Mac app’s name only for a room on the page’s own server', () => {
+    const page = (ganymedeUser: unknown) => ({
+      ganymedeUser,
+      location: { href: 'http://127.0.0.1:4321/lab', origin: 'http://127.0.0.1:4321' },
+    });
+    const thomas = page({ name: 'Thomas' });
+    expect(pageUserName('', thomas)).toBe('Thomas');
+    expect(pageUserName('http://127.0.0.1:4321/', thomas)).toBe('Thomas');
+    // A remote server gets no name.
+    expect(pageUserName('https://kernels.example:9999/', thomas)).toBeUndefined();
+    // Nothing, or something that isn't a name, from the app: none.
+    expect(pageUserName('', page(undefined))).toBeUndefined();
+    expect(pageUserName('', page({ name: 42 }))).toBeUndefined();
+    expect(pageUserName('', page('Thomas'))).toBeUndefined();
+    expect(pageUserName('', undefined)).toBeUndefined();
+  });
+
+  it('names the person from the Mac app by default, on the page’s own server', async () => {
+    const origin = window.location.origin;
+    window.ganymedeUser = { name: 'Thomas' };
+    try {
+      FakeSocket.all = [];
+      const { settings } = settingsAnswering(200, session);
+      const join = NotebookRoom.join({
+        settings: { ...settings, baseUrl: `${origin}/` },
+        path: 'Io.ipynb',
+        WebSocket: FakeSocket as unknown as typeof WebSocket,
+      });
+      const ws = await socket();
+      ws.open();
+      ws.sync();
+      const room = (await join)!;
+      expect(room.notebook.awareness.getLocalState()?.user).toEqual(awarenessUser('Thomas'));
+      room.dispose();
+    } finally {
+      delete window.ganymedeUser;
+    }
   });
   const socket = () => vi.waitFor(() => FakeSocket.all.at(-1) ?? Promise.reject(new Error('none')));
 

@@ -6,9 +6,12 @@ through a room to the name in the client's awareness state
 cell. The apps sent no awareness state, so their edits read "by a
 person". `NotebookRoom` now sets `user` (the fields JupyterLab's own
 client sends: `username`, `name`, `display_name`, `initials`, `color`)
-when it has a name: `RoomOptions.person`, by default
-`window.ganymedeUser.name`, which the Mac app sets before the page loads
-from `NSFullUserName()` (`PersonName.swift`). iPad and iPhone have no
-account name to give, and a browser has none, so nothing changes there.
-The name reaches the notebook's server, remote ones included, and other
-clients in the room, as JupyterLab's does; apps.md says so.
+when it has a name: `RoomOptions.person`, by default `pageUserName`,
+the `window.ganymedeUser.name` the Mac app sets before the page loads
+from `NSFullUserName()` (`PersonName.swift`). Since the name is personal
+data, it reaches only the person's own server: the script sets it only
+on a page served from this machine (the in-app server's), and the page
+uses it only for a room on its own origin, so a remote server never gets
+it, and a site the web view is redirected to can't read it. iPad and
+iPhone have no account name, and a browser has none, so nothing changes
+there. Ganymede's privacy page says so.

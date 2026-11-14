@@ -188,7 +188,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         // The code font (#354), before the page loads.
         scripts.addUserScript(CodeFont.pageScript)
         // The person's name for the notebook rooms (#606).
-        scripts.addUserScript(PersonName.pageScript)
+        if let script = PersonName.pageScript { scripts.addUserScript(script) }
     }
 
     /// `keepRunning`: the page runs at full speed while it isn't visible
