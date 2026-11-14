@@ -1,12 +1,19 @@
 import '../test/notebook-env';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Contents } from '@jupyterlab/services';
 import { MimeModel } from '@jupyterlab/rendermime';
 import type { IRenderMime } from '@jupyterlab/rendermime-interfaces';
 
 const { createRendermime } = await import('./jupyterlab');
-const { PAGE_TARGET, RenderedTable, TABLE_MIME, compareValues, footerText, rowsOf } =
-  await import('./table-output');
+const {
+  FIRST_REPLY_MS,
+  PAGE_TARGET,
+  RenderedTable,
+  TABLE_MIME,
+  compareValues,
+  footerText,
+  rowsOf,
+} = await import('./table-output');
 type RenderedTable = import('./table-output').RenderedTable;
 type Kernel = import('@jupyterlab/services').Kernel.IKernelConnection;
 
@@ -173,11 +180,19 @@ describe('table helpers', () => {
  * and answers the table comm. `refuse` makes it close the comm at once, as
  * a kernel that no longer has the table does.
  */
-function pagingKernel(options: { refuse?: boolean } = {}) {
+function pagingKernel(
+  options: { refuse?: boolean; refuseSort?: boolean; hold?: boolean; total?: number } = {},
+) {
   const all = Array.from({ length: 2500 }, (_, i) => [i, `row ${i}`]);
   const log: Record<string, unknown>[] = [];
-  let held: ((data: unknown) => void) | null = null;
+  const listeners: ((sender: unknown, status: string) => void)[] = [];
   const kernel = {
+    statusChanged: {
+      connect: (fn: (sender: unknown, status: string) => void, self: unknown) =>
+        void listeners.push(fn.bind(self)),
+      disconnect: () => true,
+    },
+    status: (status: string) => listeners.forEach(fn => fn(kernel, status)),
     createComm(target: string) {
       expect(target).toBe(PAGE_TARGET);
       const comm = {
@@ -209,19 +224,19 @@ function pagingKernel(options: { refuse?: boolean } = {}) {
                   (a[c]! < b[c]! ? -1 : a[c]! > b[c]! ? 1 : 0) * (data.sort!.descending ? -1 : 1),
               );
             }
-            const reply = {
-              request: data.request,
-              offset: data.offset,
-              total: all.length,
-              rows: rows.slice(data.offset, data.offset + data.limit),
-            };
+            const reply =
+              options.refuseSort && data.sort
+                ? { request: data.request, error: 'sorting is offered up to 1,000,000 rows' }
+                : {
+                    request: data.request,
+                    offset: data.offset,
+                    total: options.total ?? all.length,
+                    rows: rows.slice(data.offset, data.offset + data.limit),
+                  };
             comm.onMsg({ content: { data: reply } });
           };
-          held = () => answer();
-          queueMicrotask(() => {
-            held?.(null);
-            held = null;
-          });
+          // Each request answered on its own, or never with `hold`.
+          if (!options.hold) queueMicrotask(answer);
         },
         close() {
           comm.isDisposed = true;
@@ -230,7 +245,7 @@ function pagingKernel(options: { refuse?: boolean } = {}) {
       return comm;
     },
   };
-  return { kernel: kernel as unknown as Kernel, log };
+  return { kernel: kernel as unknown as Kernel, log, status: kernel.status };
 }
 
 const big = {
@@ -304,10 +319,76 @@ describe('paging through the kernel', () => {
   it("doesn't page an untrusted output, or without a kernel", async () => {
     const { kernel, log } = pagingKernel();
     expect((await renderPaged(kernel, false)).paged).toBe(false);
-    expect((await renderPaged(null)).paged).toBe(false);
     const fits = { ...big, ganymede: { rows: 1000, shown: 1000, page: 't1' } };
     expect((await renderPaged(kernel, true, fits)).paged).toBe(false);
     expect(log).toEqual([]);
+    // No kernel when a page is needed: back to the embedded rows.
+    const alone = await renderPaged(null);
+    alone.showPage(30);
+    await settle();
+    expect(alone.paged).toBe(false);
+    expect(footer(alone.node)).toBe('Rows 951–1,000 of 1,000 embedded; the source has 2,500.');
+  });
+
+  it('asks the kernel for page 1 when fewer rows are embedded', async () => {
+    const { kernel, log } = pagingKernel();
+    const few = { ...big, data: big.data.slice(0, 20), ganymede: { ...big.ganymede, shown: 20 } };
+    const table = await renderPaged(kernel, true, few);
+    await settle();
+    expect(log).toEqual([{ open: 't1' }, { request: 1, offset: 0, limit: 50 }]);
+    expect(column(table.node, 0)).toHaveLength(50);
+    expect(footer(table.node)).toBe('Rows 1–50 of 2,500');
+  });
+
+  it('keeps paging when the kernel refuses a sort, and says why', async () => {
+    const { kernel } = pagingKernel({ refuseSort: true });
+    const table = await renderPaged(kernel);
+    table.sortBy(0);
+    await settle();
+    await settle();
+    expect(table.paged).toBe(true);
+    expect(footer(table.node)).toBe('Rows 1–50 of 2,500 · sorting is offered up to 1,000,000 rows');
+    expect(table.node.querySelector('[aria-sort]')).toBeNull();
+    table.showPage(20);
+    await settle();
+    expect(column(table.node, 0)[0]).toBe('1000');
+  });
+
+  it('stops loading when the kernel restarts mid-request', async () => {
+    const { kernel, status } = pagingKernel({ hold: true });
+    const table = await renderPaged(kernel);
+    table.showPage(20);
+    expect(footer(table.node)).toContain('Loading…');
+    status('restarting');
+    await settle();
+    expect(table.paged).toBe(false);
+    expect(footer(table.node)).not.toContain('Loading…');
+  });
+
+  it("falls back when the kernel doesn't answer at all", async () => {
+    vi.useFakeTimers();
+    try {
+      const { kernel } = pagingKernel({ hold: true });
+      const table = await renderPaged(kernel);
+      table.showPage(20);
+      expect(footer(table.node)).toContain('Loading…');
+      await vi.advanceTimersByTimeAsync(FIRST_REPLY_MS);
+      expect(table.paged).toBe(false);
+      expect(footer(table.node)).not.toContain('Loading…');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("asks once for a page in flight, and takes the kernel's row count", async () => {
+    const { kernel, log } = pagingKernel({ total: 3000 });
+    const table = await renderPaged(kernel);
+    table.showPage(20);
+    table.showPage(21);
+    table.showPage(20);
+    await settle();
+    expect(log.filter(entry => 'request' in entry && entry.offset === 1000)).toHaveLength(1);
+    expect(footer(table.node)).toBe('Rows 1,001–1,050 of 3,000');
   });
 
   it('writes the footer for a paged table', () => {

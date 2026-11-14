@@ -48,35 +48,71 @@ interface PageReply {
   error?: unknown;
 }
 
+/**
+ * How long the kernel has to answer its first page request. A kernel that
+ * ignores the comm (one without the target that doesn't close it) would
+ * otherwise leave the table loading. Once it has answered, a request waits
+ * as long as it takes: a busy kernel answers when its cell ends.
+ */
+export const FIRST_REPLY_MS = 30_000;
+
+/** The kernel can't page the table any more: it closed the comm, or restarted. */
+class PagesClosed extends Error {}
+
+/** One page of a table, as the kernel sent it. */
+interface Page {
+  rows: unknown[];
+  total?: number;
+}
+
 /** A comm to the kernel's copy of one table, asking for rows by offset and sort. */
 class TablePages {
   private _comm: Kernel.IComm;
+  private _kernel: Kernel.IKernelConnection;
   private _next = 0;
   private _pending = new Map<
     number,
-    { resolve: (rows: unknown[][]) => void; reject: (e: Error) => void }
+    { resolve: (page: Page) => void; reject: (e: Error) => void }
   >();
   private _failed: Error | null = null;
+  private _answered = false;
+  private _timer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(kernel: Kernel.IKernelConnection, id: string) {
+    this._kernel = kernel;
     this._comm = kernel.createComm(PAGE_TARGET);
     this._comm.onMsg = msg => this._receive(msg.content.data as PageReply);
     // A kernel without the target, or that no longer has the table, closes it.
-    this._comm.onClose = () => this._fail(new Error('The kernel closed the table.'));
+    this._comm.onClose = () => this._fail(new PagesClosed('The kernel closed the table.'));
+    // A restart disposes the comm without closing it.
+    kernel.statusChanged.connect(this._onStatus, this);
     this._comm.open({ id });
   }
 
   rows(offset: number, limit: number, sort?: { column: string; descending: boolean }) {
     if (this._failed) return Promise.reject(this._failed);
     const request = ++this._next;
-    return new Promise<unknown[][]>((resolve, reject) => {
+    return new Promise<Page>((resolve, reject) => {
+      try {
+        this._comm.send(sort ? { request, offset, limit, sort } : { request, offset, limit });
+      } catch {
+        this._fail(new PagesClosed('The kernel is gone.'));
+        reject(this._failed!);
+        return;
+      }
       this._pending.set(request, { resolve, reject });
-      this._comm.send(sort ? { request, offset, limit, sort } : { request, offset, limit });
+      if (!this._answered && this._timer === undefined) {
+        this._timer = setTimeout(
+          () => this._fail(new PagesClosed('The kernel did not answer.')),
+          FIRST_REPLY_MS,
+        );
+      }
     });
   }
 
   dispose(): void {
-    this._fail(new Error('The table closed.'));
+    this._kernel.statusChanged.disconnect(this._onStatus, this);
+    this._fail(new PagesClosed('The table closed.'));
     if (!this._comm.isDisposed) {
       try {
         this._comm.close();
@@ -87,22 +123,37 @@ class TablePages {
   }
 
   private _receive(reply: PageReply): void {
+    this._answered = true;
+    clearTimeout(this._timer);
     const waiting =
       typeof reply?.request === 'number' ? this._pending.get(reply.request) : undefined;
     if (!waiting) {
       // An answer to no request: the kernel refused the table.
-      if (typeof reply?.error === 'string') this._fail(new Error(reply.error));
+      if (typeof reply?.error === 'string') this._fail(new PagesClosed(reply.error));
       return;
     }
     this._pending.delete(reply.request as number);
     if (typeof reply.error === 'string' || !Array.isArray(reply.rows)) {
+      // The kernel refused this request (a sort too big, say); the comm stays open.
       waiting.reject(new Error(typeof reply.error === 'string' ? reply.error : 'No rows.'));
     } else {
-      waiting.resolve(reply.rows.map(r => (Array.isArray(r) ? r : [])));
+      const total = reply.total;
+      waiting.resolve({
+        rows: reply.rows,
+        total:
+          typeof total === 'number' && Number.isInteger(total) && total >= 0 ? total : undefined,
+      });
+    }
+  }
+
+  private _onStatus(_: Kernel.IKernelConnection, status: Kernel.Status): void {
+    if (status === 'restarting' || status === 'autorestarting' || status === 'dead') {
+      this._fail(new PagesClosed('The kernel restarted.'));
     }
   }
 
   private _fail(error: Error): void {
+    clearTimeout(this._timer);
     this._failed ??= error;
     for (const { reject } of this._pending.values()) reject(error);
     this._pending.clear();
@@ -226,6 +277,10 @@ export class RenderedTable extends Widget implements IRenderMime.IRenderer {
   private _lastShown: unknown[][] = [];
   /** Bumped when the sort or the data changes, so a late answer is dropped. */
   private _generation = 0;
+  /** Pages asked for and not answered yet, for the current generation. */
+  private _inflight = new Set<number>();
+  /** Why the kernel refused the last request (a sort too big), shown in the footer. */
+  private _notice = '';
 
   constructor(
     readonly mimeType: string = TABLE_MIME,
@@ -261,14 +316,21 @@ export class RenderedTable extends Widget implements IRenderMime.IRenderer {
     // nobody trusted doesn't get to open comms.
     const page = resource.ganymede?.page;
     this._closePages();
+    // The kernel is looked up when a page is needed, so an output drawn
+    // before the notebook rejoins its kernel still pages; with none, the
+    // table falls back to the embedded rows then.
     this._remote =
       typeof page === 'string' &&
       model.trusted &&
-      this._kernel?.() &&
+      this._kernel !== undefined &&
       this._total > this._rows.length
         ? page
         : null;
-    this._draw();
+    this._lastShown = [];
+    this._loading = false;
+    this._notice = '';
+    // Fewer than a page embedded asks the kernel for the rest of page 1.
+    this._show();
     return Promise.resolve();
   }
 
@@ -284,9 +346,11 @@ export class RenderedTable extends Widget implements IRenderMime.IRenderer {
     else if (!s.descending) this._sort = { column, descending: true };
     else this._sort = null;
     this._page = 0;
+    this._notice = '';
     if (this._remote !== null) {
       this._generation++;
       this._cache.clear();
+      this._inflight.clear();
       this._show(`sort-${column}`);
       return;
     }
@@ -344,6 +408,8 @@ export class RenderedTable extends Widget implements IRenderMime.IRenderer {
     }
     this._loading = true;
     this._draw(focus);
+    // Asked already: its answer draws the page.
+    if (this._inflight.has(this._page)) return;
     void this._fetch(this._page, focus);
   }
 
@@ -352,23 +418,45 @@ export class RenderedTable extends Widget implements IRenderMime.IRenderer {
     const sort = this._sort
       ? { column: this._fields[this._sort.column]!.name, descending: this._sort.descending }
       : undefined;
+    this._inflight.add(page);
     try {
       if (!this._pages) {
         const kernel = this._kernel?.();
-        if (!kernel || this._remote === null) throw new Error('No kernel.');
+        if (!kernel || this._remote === null) throw new PagesClosed('No kernel.');
         this._pages = new TablePages(kernel, this._remote);
       }
-      const rows = await this._pages.rows(page * PAGE_SIZE, PAGE_SIZE, sort);
+      const reply = await this._pages.rows(page * PAGE_SIZE, PAGE_SIZE, sort);
       if (generation !== this._generation || this.isDisposed) return;
-      this._cache.set(page, rows);
+      this._inflight.delete(page);
+      this._cache.set(page, rowsOf({ data: reply.rows }, this._fields));
+      // The kernel's count wins: the table it holds is the live value.
+      if (reply.total !== undefined) this._total = reply.total;
       if (page === this._page) {
         this._loading = false;
-        this._draw(focus);
+        this._draw(this._keepFocus(focus));
       }
-    } catch {
+    } catch (err) {
       if (generation !== this._generation || this.isDisposed) return;
-      this._local(focus);
+      this._inflight.delete(page);
+      if (err instanceof PagesClosed || !this._sort) {
+        this._local(this._keepFocus(focus));
+        return;
+      }
+      // The kernel refused the sort (too many rows): back to its order,
+      // still paging, and say why.
+      this._sort = null;
+      this._generation++;
+      this._cache.clear();
+      this._inflight.clear();
+      this._page = 0;
+      this._notice = err instanceof Error ? err.message : String(err);
+      this._show(this._keepFocus(focus));
     }
+  }
+
+  /** `focus` for a late answer, only if the person is still in this table. */
+  private _keepFocus(focus?: string): string | undefined {
+    return focus && this.node.contains(document.activeElement) ? focus : undefined;
   }
 
   /** Back to the embedded rows: the kernel can't page this table. */
@@ -384,6 +472,7 @@ export class RenderedTable extends Widget implements IRenderMime.IRenderer {
   private _closePages(): void {
     this._generation++;
     this._cache.clear();
+    this._inflight.clear();
     this._pages?.dispose();
     this._pages = null;
   }
@@ -483,6 +572,7 @@ export class RenderedTable extends Widget implements IRenderMime.IRenderer {
       paged: this._remote !== null,
     });
     if (this._loading) info.textContent += ' · Loading…';
+    if (this._notice) info.textContent += ` · ${this._notice}`;
     if (this._loading) body.setAttribute('aria-busy', 'true');
     footer.append(info);
     node.append(footer);
