@@ -90,9 +90,10 @@ declare global {
  */
 export function pageUserName(
   baseUrl: string,
-  win:
-    | { ganymedeUser?: unknown; location: { href: string; origin: string } }
-    | undefined = typeof window === 'undefined' ? undefined : window,
+  win: {
+    ganymedeUser?: unknown;
+    location: { href: string; origin: string };
+  } | null = typeof window === 'undefined' ? null : window,
 ): string | undefined {
   if (!win) return undefined;
   const user = win.ganymedeUser;

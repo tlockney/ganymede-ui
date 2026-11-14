@@ -275,6 +275,10 @@ notice says the kernel ran out of memory.
 - **Recents:** the paths of the notebooks you opened last, for each
   backend, are kept in local storage (`ganymede-ui:recents`) until you
   clear them from the sidebar.
+- **Your name (Mac app):** the Mac app gives its own server your
+  account's full name when it opens a notebook, so an agent working in
+  the notebook is told who changed a cell; other clients with that
+  notebook open there see it too. It never goes to a remote server.
 
 Ganymede's [security page](https://ganymede-server.com/docs/security)
 covers tokens, cookies and cross-origin access on the server side.

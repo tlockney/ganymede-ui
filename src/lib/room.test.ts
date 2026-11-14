@@ -237,7 +237,7 @@ describe('NotebookRoom connection', () => {
     expect(pageUserName('', page(undefined))).toBeUndefined();
     expect(pageUserName('', page({ name: 42 }))).toBeUndefined();
     expect(pageUserName('', page('Thomas'))).toBeUndefined();
-    expect(pageUserName('', undefined)).toBeUndefined();
+    expect(pageUserName('', null)).toBeUndefined();
   });
 
   it('names the person from the Mac app by default, on the page’s own server', async () => {
