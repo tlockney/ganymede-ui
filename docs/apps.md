@@ -499,6 +499,16 @@ headings; pick one to go to its cell.
   first time, refusing it if it changes later. iOS drops the connection
   soon after the app goes to the background; the terminal then offers to
   reconnect.
+
+  A host running [Tailscale SSH](https://tailscale.com/kb/1193/tailscale-ssh)
+  signs you in by your tailnet login, with no key: the app asks for that
+  first, then offers its key. In Tailscale SSH's check mode the terminal
+  shows Tailscale's link; tap it, approve in the browser, and the sign-in
+  goes on, waiting up to 5 minutes.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release.
 - **Text files** open in an editor with the same highlighting, line
   numbers, auto-indent and pairing as on the Mac. Edits are saved when
   the app goes to the background, since iOS may close the editor there.

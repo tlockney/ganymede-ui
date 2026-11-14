@@ -7,7 +7,8 @@ import NIOSSH
 
 /// A shell on a remote over SSH, in the app's process (swift-nio-ssh):
 /// what iOS uses, since it can't run /usr/bin/ssh. Signs in with the
-/// app's ed25519 key and trusts the host key on first use.
+/// app's ed25519 key, or with none for Tailscale SSH (#630), and trusts
+/// the host key on first use.
 @MainActor
 final class SSHTerminalTransport: TerminalTransport {
     var onOutput: ((ArraySlice<UInt8>) -> Void)?
@@ -64,6 +65,7 @@ final class SSHTerminalTransport: TerminalTransport {
                         inboundChildChannelInitializer: nil
                     )
                     try channel.pipeline.syncOperations.addHandler(ssh)
+                    try channel.pipeline.syncOperations.addHandler(ShowBanners(relay: relay, problem: problem))
                     try channel.pipeline.syncOperations.addHandler(CloseOnError(problem: problem))
                 }
             }
@@ -106,11 +108,23 @@ final class SSHTerminalTransport: TerminalTransport {
             channel.closeFuture.whenComplete { _ in
                 complete(.failure(SSHFailure("Disconnected.")))
             }
-            let timeout = channel.eventLoop.scheduleTask(in: .seconds(30)) {
-                problem.set("The server did not finish signing in within 30 seconds.")
-                channel.close(promise: nil)
+            // Longer once the server has sent a banner: Tailscale SSH's
+            // check mode waits for the person to approve in a browser.
+            var timeout: Scheduled<Void>?
+            func arm(after seconds: Int, waited: Int) {
+                timeout = channel.eventLoop.scheduleTask(in: .seconds(Int64(seconds))) {
+                    let limit = SSHSignIn.timeLimit(bannerShown: problem.bannerShown)
+                    let total = waited + seconds
+                    if total < limit {
+                        arm(after: limit - total, waited: total)
+                        return
+                    }
+                    problem.set("The server did not finish signing in within \(Self.duration(total)).")
+                    channel.close(promise: nil)
+                }
             }
-            result.futureResult.whenComplete { _ in timeout.cancel() }
+            arm(after: SSHSignIn.timeLimit(bannerShown: false), waited: 0)
+            result.futureResult.whenComplete { _ in timeout?.cancel() }
             do {
                 let ssh = try channel.pipeline.syncOperations.handler(type: NIOSSHHandler.self)
                 let promise = channel.eventLoop.makePromise(of: Channel.self)
@@ -192,6 +206,10 @@ final class SSHTerminalTransport: TerminalTransport {
         onClose?(reason)
     }
 
+    private nonisolated static func duration(_ seconds: Int) -> String {
+        seconds % 60 == 0 ? "\(seconds / 60) minute\(seconds == 60 ? "" : "s")" : "\(seconds) seconds"
+    }
+
     private nonisolated static func describe(_ error: Error) -> String {
         if let failure = error as? SSHFailure { return failure.message }
         return "Could not connect: \(error)"
@@ -203,10 +221,17 @@ struct SSHFailure: Error {
     init(_ message: String) { self.message = message }
 }
 
-/// The first reason given for refusing the connection.
+/// The first reason given for refusing the connection, and whether the
+/// server sent a banner while signing in.
 private final class Problem: @unchecked Sendable {
     private let lock = NSLock()
     private var reason: String?
+    private var banner = false
+
+    var bannerShown: Bool {
+        get { lock.withLock { banner } }
+        set { lock.withLock { banner = newValue } }
+    }
 
     var value: String? {
         lock.lock()
@@ -243,13 +268,14 @@ private final class SessionRelay: @unchecked Sendable {
     }
 }
 
-/// Offers the app's key once; the server may refuse it.
+/// Offers none, then the app's key once (`SSHSignIn.next`); the server
+/// may refuse both.
 private final class KeyAuthentication: NIOSSHClientUserAuthenticationDelegate, @unchecked Sendable {
     private let user: String
     private let key: NIOSSHPrivateKey
     private let problem: Problem
     private let refuse: () -> Void
-    private var offered = false
+    private var offered: [SSHSignIn.Offer] = []
 
     init(user: String, key: NIOSSHPrivateKey, problem: Problem, refuse: @escaping () -> Void) {
         self.user = user
@@ -262,7 +288,7 @@ private final class KeyAuthentication: NIOSSHClientUserAuthenticationDelegate, @
         availableMethods: NIOSSHAvailableUserAuthenticationMethods,
         nextChallengePromise: EventLoopPromise<NIOSSHUserAuthenticationOffer?>
     ) {
-        guard !offered, availableMethods.contains(.publicKey) else {
+        guard let next = SSHSignIn.next(offered: offered, keysAccepted: availableMethods.contains(.publicKey)) else {
             problem.set(
                 "The server did not accept the app's key for \(user). Add the public key from the "
                     + "remote's settings to ~/.ssh/authorized_keys there."
@@ -273,10 +299,13 @@ private final class KeyAuthentication: NIOSSHClientUserAuthenticationDelegate, @
             refuse()
             return
         }
-        offered = true
-        nextChallengePromise.succeed(
-            NIOSSHUserAuthenticationOffer(username: user, serviceName: "", offer: .privateKey(.init(privateKey: key)))
-        )
+        offered.append(next)
+        let offer: NIOSSHUserAuthenticationOffer.Offer
+        switch next {
+        case .none: offer = .none
+        case .key: offer = .privateKey(.init(privateKey: key))
+        }
+        nextChallengePromise.succeed(NIOSSHUserAuthenticationOffer(username: user, serviceName: "", offer: offer))
     }
 }
 
@@ -306,6 +335,29 @@ private final class HostKeyCheck: NIOSSHClientServerAuthenticationDelegate, @unc
             problem.set(message)
             validationCompletePromise.fail(SSHFailure(message))
             refuse()
+        }
+    }
+}
+
+/// Shows what the server sends while signing in, such as Tailscale SSH's
+/// check-mode link, in the terminal.
+private final class ShowBanners: ChannelInboundHandler {
+    typealias InboundIn = Any
+
+    private let relay: SessionRelay
+    private let problem: Problem
+
+    init(relay: SessionRelay, problem: Problem) {
+        self.relay = relay
+        self.problem = problem
+    }
+
+    func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
+        if let banner = event as? NIOUserAuthBannerEvent {
+            problem.bannerShown = true
+            relay.output(SSHSignIn.banner(banner.message))
+        } else {
+            context.fireUserInboundEventTriggered(event)
         }
     }
 }
