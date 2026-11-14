@@ -1,5 +1,7 @@
 // The chart libraries jupyter.chart imports (vega, vega-lite, linkedom),
-// bundled into the app so charts draw offline (ganymede#747, decision 7).
+// bundled into the app so charts draw offline (ganymede#747, decision 7),
+// and the DuckDB module jupyter.sql imports. DuckDB's wasm and worker are
+// too big to ship this way: src/lib/duckdb-files.ts pre-fetches them.
 //
 // `virtual:kernel-modules` exports a map from the specifier cdp-kernel
 // imports (its CHART_MODULES) to the URL the app serves the module at;
@@ -22,6 +24,7 @@ export const PACKAGES: { readonly [specifier: string]: string } = {
   'npm:vega@6': 'vega',
   'npm:vega-lite@6': 'vega-lite',
   'npm:linkedom@0.18': 'linkedom',
+  'npm:@duckdb/duckdb-wasm@1.29.0': '@duckdb/duckdb-wasm',
 };
 
 function version(name: string): string {
@@ -32,7 +35,7 @@ function version(name: string): string {
 
 /** The file each package's bundle is served as, under kernel-modules/. */
 function fileName(name: string): string {
-  return `${name}-${version(name)}.js`;
+  return `${name.replace(/^@/, '').replace('/', '-')}-${version(name)}.js`;
 }
 
 async function bundle(name: string): Promise<string> {

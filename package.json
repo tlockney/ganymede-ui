@@ -70,6 +70,7 @@
     "y-websocket": "3.1.0"
   },
   "devDependencies": {
+    "@duckdb/duckdb-wasm": "1.29.0",
     "@eslint/js": "10.0.1",
     "@playwright/test": "1.65.0",
     "@testing-library/dom": "10.4.2",
