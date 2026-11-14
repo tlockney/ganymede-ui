@@ -103,6 +103,8 @@ vi.mock('../lib/widgets', () => ({
   }),
 }));
 
+vi.mock('../lib/table-output', () => ({ installTableOutput: vi.fn() }));
+
 vi.mock('../lib/kernel-relay', async importOriginal => ({
   ...(await importOriginal<typeof import('../lib/kernel-relay')>()),
   declareDevice: vi.fn(),

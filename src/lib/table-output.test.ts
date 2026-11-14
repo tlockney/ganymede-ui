@@ -5,8 +5,10 @@ import { MimeModel } from '@jupyterlab/rendermime';
 import type { IRenderMime } from '@jupyterlab/rendermime-interfaces';
 
 const { createRendermime } = await import('./jupyterlab');
-const { TABLE_MIME, compareValues, footerText, rowsOf } = await import('./table-output');
+const { PAGE_TARGET, RenderedTable, TABLE_MIME, compareValues, footerText, rowsOf } =
+  await import('./table-output');
 type RenderedTable = import('./table-output').RenderedTable;
+type Kernel = import('@jupyterlab/services').Kernel.IKernelConnection;
 
 const contents = {
   getDownloadUrl: async (path: string) => `/files/${path}`,
@@ -163,5 +165,161 @@ describe('table helpers', () => {
     expect(footerText({ start: 50, end: 100, embedded: 1000, total: 1000, sorted: true })).toBe(
       'Rows 51–100 of 1,000',
     );
+  });
+});
+
+/**
+ * A kernel that keeps a 2,500-row table under id "t1", as cdp-kernel does,
+ * and answers the table comm. `refuse` makes it close the comm at once, as
+ * a kernel that no longer has the table does.
+ */
+function pagingKernel(options: { refuse?: boolean } = {}) {
+  const all = Array.from({ length: 2500 }, (_, i) => [i, `row ${i}`]);
+  const log: Record<string, unknown>[] = [];
+  let held: ((data: unknown) => void) | null = null;
+  const kernel = {
+    createComm(target: string) {
+      expect(target).toBe(PAGE_TARGET);
+      const comm = {
+        isDisposed: false,
+        onMsg: (_msg: unknown) => {},
+        onClose: (_msg: unknown) => {},
+        open(data: { id: string }) {
+          log.push({ open: data.id });
+          if (options.refuse || data.id !== 't1') {
+            queueMicrotask(() => {
+              comm.onMsg({ content: { data: { error: 'The kernel no longer has this table' } } });
+              comm.onClose({});
+            });
+          }
+        },
+        send(data: {
+          request: number;
+          offset: number;
+          limit: number;
+          sort?: { column: string; descending: boolean };
+        }) {
+          log.push(data);
+          const answer = () => {
+            const rows = [...all];
+            if (data.sort) {
+              const c = data.sort.column === 'n' ? 0 : 1;
+              rows.sort(
+                (a, b) =>
+                  (a[c]! < b[c]! ? -1 : a[c]! > b[c]! ? 1 : 0) * (data.sort!.descending ? -1 : 1),
+              );
+            }
+            const reply = {
+              request: data.request,
+              offset: data.offset,
+              total: all.length,
+              rows: rows.slice(data.offset, data.offset + data.limit),
+            };
+            comm.onMsg({ content: { data: reply } });
+          };
+          held = () => answer();
+          queueMicrotask(() => {
+            held?.(null);
+            held = null;
+          });
+        },
+        close() {
+          comm.isDisposed = true;
+        },
+      };
+      return comm;
+    },
+  };
+  return { kernel: kernel as unknown as Kernel, log };
+}
+
+const big = {
+  schema: {
+    fields: [
+      { name: 'n', type: 'integer' },
+      { name: 'name', type: 'string' },
+    ],
+  },
+  data: Array.from({ length: 1000 }, (_, i) => ({ n: i, name: `row ${i}` })),
+  ganymede: { rows: 2500, shown: 1000, page: 't1' },
+};
+
+async function renderPaged(kernel: Kernel | null, trusted = true, resource: unknown = big) {
+  const renderer = new RenderedTable(TABLE_MIME, () => kernel);
+  renderers.push(renderer);
+  document.body.appendChild(renderer.node);
+  await renderer.renderModel(new MimeModel({ data: { [TABLE_MIME]: resource as never }, trusted }));
+  return renderer;
+}
+
+const settle = () => new Promise(resolve => setTimeout(resolve, 0));
+const footer = (node: HTMLElement) => node.querySelector('.gm-table-footer span')!.textContent;
+
+describe('paging through the kernel', () => {
+  it('shows embedded pages without the kernel, and asks it for the rest', async () => {
+    const { kernel, log } = pagingKernel();
+    const table = await renderPaged(kernel);
+    expect(table.paged).toBe(true);
+    expect(footer(table.node)).toBe('Rows 1–50 of 2,500');
+    table.showPage(19);
+    expect(log).toEqual([]);
+    expect(column(table.node, 0)[0]).toBe('950');
+    table.showPage(20);
+    expect(footer(table.node)).toContain('Loading…');
+    await settle();
+    expect(log).toEqual([{ open: 't1' }, { request: 1, offset: 1000, limit: 50 }]);
+    expect(column(table.node, 0)[0]).toBe('1000');
+    expect(footer(table.node)).toBe('Rows 1,001–1,050 of 2,500');
+    table.showPage(49);
+    await settle();
+    expect(column(table.node, 0).at(-1)).toBe('2499');
+  });
+
+  it('sorts the whole table in the kernel', async () => {
+    const { kernel, log } = pagingKernel();
+    const table = await renderPaged(kernel);
+    table.sortBy(0);
+    table.sortBy(0);
+    await settle();
+    expect(log.at(-1)).toEqual({
+      request: 2,
+      offset: 0,
+      limit: 50,
+      sort: { column: 'n', descending: true },
+    });
+    expect(column(table.node, 0)[0]).toBe('2499');
+    expect(footer(table.node)).toBe('Rows 1–50 of 2,500');
+  });
+
+  it('keeps to the embedded rows when the kernel no longer has the table', async () => {
+    const { kernel } = pagingKernel({ refuse: true });
+    const table = await renderPaged(kernel);
+    table.showPage(30);
+    await settle();
+    await settle();
+    expect(table.paged).toBe(false);
+    expect(footer(table.node)).toBe('Rows 951–1,000 of 1,000 embedded; the source has 2,500.');
+  });
+
+  it("doesn't page an untrusted output, or without a kernel", async () => {
+    const { kernel, log } = pagingKernel();
+    expect((await renderPaged(kernel, false)).paged).toBe(false);
+    expect((await renderPaged(null)).paged).toBe(false);
+    const fits = { ...big, ganymede: { rows: 1000, shown: 1000, page: 't1' } };
+    expect((await renderPaged(kernel, true, fits)).paged).toBe(false);
+    expect(log).toEqual([]);
+  });
+
+  it('writes the footer for a paged table', () => {
+    expect(
+      footerText({
+        start: 1000,
+        end: 1050,
+        embedded: 1000,
+        total: 2500,
+        sorted: true,
+        paged: true,
+      }),
+    ).toBe('Rows 1,001–1,050 of 2,500');
   });
 });

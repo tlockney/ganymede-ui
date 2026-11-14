@@ -11,6 +11,7 @@ import { type Backend, trustNotebook } from '../lib/backends';
 import { attachEditing, createCommands, createNotebook, createRendermime } from '../lib/jupyterlab';
 import { attachCellControls } from '../lib/cell-controls';
 import { attachCodeCollapse } from '../lib/code-collapse';
+import { installTableOutput } from '../lib/table-output';
 import { CellMenu } from './CellMenu';
 import { KeyboardBar } from './KeyboardBar';
 import type { Cell, ICodeCellModel } from '@jupyterlab/cells';
@@ -524,6 +525,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       // Before the notebook gets its model, so saved widget outputs render
       // from the file's widget state.
       const notebookWidgets = widgets.attachWidgets(session, rendermime, model);
+      // Tables the kernel kept page and sort through it (ganymede#747).
+      installTableOutput(rendermime, () => session.session?.kernel);
       notebook.model = model;
 
       // Without JupyterLab's NotebookPanel, keep its habit of copying the
