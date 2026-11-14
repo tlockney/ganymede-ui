@@ -351,7 +351,9 @@ no one else gets in, since the server's token stays with the app.
 The app runs `tailscale serve` for you, pointing HTTPS on the tailnet
 name at its server on this Mac, and Settings shows the address. It won't
 replace a `tailscale serve` setting on port 443 that it didn't make; it
-says so instead. Turning sharing off removes its setting. The first time,
+says so instead. Turning sharing off removes its setting. The setting
+outlives the app: while Ganymede isn't running, the address answers with
+an error, and the next launch points it at the server again. The first time,
 Tailscale may ask you to turn on HTTPS for your tailnet in its admin
 console; Settings shows the message. Sharing restarts Ganymede's server
 and its kernels.

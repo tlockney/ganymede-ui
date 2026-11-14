@@ -197,7 +197,12 @@ final class AppModel {
             var tailnetName: String?
             tailnetURL = nil
             tailnetError = nil
-            if !tailnetAllow.isEmpty {
+            if tailnetAllow.isEmpty, let port = defaults.object(forKey: AppTailnet.servedPortKey) as? Int {
+                // Sharing was turned off: remove the app's handler here, in
+                // the queue, after any earlier start's `serve`.
+                defaults.removeObject(forKey: AppTailnet.servedPortKey)
+                await Task.detached(operation: { AppTailnet.unserve(port: port) }).value
+            } else if !tailnetAllow.isEmpty {
                 switch await Task.detached(operation: { AppTailnet.prepare(allow: tailnetAllow) }).value {
                 case .success(let prepared):
                     withTailnet.merge(prepared.config) { $1 }
@@ -516,10 +521,11 @@ final class AppModel {
     /// Shares the server on the tailnet, or stops, and restarts the server
     /// with the logins `allow` lets in without the token. Sharing needs at
     /// least one login. Stopping removes the app's `tailscale serve`
-    /// handler, if it still points at the server.
+    /// handler, if it still points at the server, in the restart.
     func setTailnet(share: Bool, allow: [String]) {
         let share = share && !allow.isEmpty
         guard share != tailnetShare || allow != tailnetAllow else { return }
+        let wasSharing = tailnetShare
         tailnetShare = share
         tailnetAllow = allow
         defaults.set(share, forKey: AppTailnet.shareKey)
@@ -527,12 +533,10 @@ final class AppModel {
         if !share {
             tailnetURL = nil
             tailnetError = nil
-            if let port = defaults.object(forKey: AppTailnet.servedPortKey) as? Int {
-                defaults.removeObject(forKey: AppTailnet.servedPortKey)
-                Task.detached { AppTailnet.unserve(port: port) }
-            }
         }
-        start()
+        // The list reaches the server only while sharing; the queued start
+        // removes the `tailscale serve` handler when sharing stops.
+        if share || wasSharing { start() }
     }
 
     /// A new MCP token, for when the old one leaked: agents given the old
