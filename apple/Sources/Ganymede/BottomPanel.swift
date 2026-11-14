@@ -134,7 +134,7 @@ struct BottomPanel: View {
     private func moveToTab(_ terminal: PanelTerminal) {
         let request = TerminalRequest(id: terminal.id, target: terminal.target)
         let openWindow = openWindow
-        // Not while it is still connecting, or once its session has ended.
+        // Not once its session has ended, or while it is already moving.
         guard TerminalHandoff.shared.move(terminal.id, arrive: { openWindow(value: request) }) else {
             NSSound.beep()
             return

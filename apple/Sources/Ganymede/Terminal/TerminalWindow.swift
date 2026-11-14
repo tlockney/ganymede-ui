@@ -41,7 +41,7 @@ struct TerminalWindow: View {
     /// window ends it.
     var reveal: (() -> Void)?
     var shutDown: (() -> Void)?
-    /// Its entry in `OpenTerminals`.
+    /// Its entry in `OpenTerminals`, and its place in `TerminalHandoff`.
     @State private var entry = UUID()
     @State private var window = WeakWindow()
     #endif
@@ -62,7 +62,7 @@ struct TerminalWindow: View {
                         ended = reason ?? "Session ended."
                         #if os(macOS)
                         // An ended session doesn't move; Reconnect makes a new one.
-                        if let handoff { TerminalHandoff.shared.unregister(handoff, transport: transport) }
+                        if let handoff { TerminalHandoff.shared.unregister(handoff, owner: entry) }
                         #endif
                     },
                     focused: focused,
@@ -100,7 +100,7 @@ struct TerminalWindow: View {
         .onChange(of: title) { register() }
         .onDisappear {
             OpenTerminals.shared.remove(entry)
-            if let handoff, let transport { TerminalHandoff.shared.unregister(handoff, transport: transport) }
+            if let handoff { TerminalHandoff.shared.unregister(handoff, owner: entry) }
         }
         .modifier(MoveToPanelButton(
             enabled: !inPanel && handoff != nil,
@@ -127,14 +127,18 @@ struct TerminalWindow: View {
             panel.adopt(terminal)
             host?.makeKeyAndOrderFront(nil)
         }
-        if moving { window.performClose(nil) }
+        guard moving else {
+            NSSound.beep()
+            return
+        }
+        window.performClose(nil)
     }
 
     /// Lists the terminal, or updates its title, in `OpenTerminals`, and
     /// its session in `TerminalHandoff`.
     private func register() {
         if let handoff, let transport {
-            TerminalHandoff.shared.register(handoff, target: target, transport: transport, title: title)
+            TerminalHandoff.shared.register(handoff, owner: entry, target: target, transport: transport, title: title)
         }
         let window = window
         let reveal = reveal
