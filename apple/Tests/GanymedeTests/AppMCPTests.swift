@@ -8,7 +8,8 @@ final class AppMCPTests: XCTestCase {
         XCTAssertTrue(AppMCP.serverConfig(mode: .off, images: true, token: "t").isEmpty)
         XCTAssertTrue(AppMCP.serverConfig(mode: .full, images: false, token: "").isEmpty, "never without a token")
         let full = AppMCP.serverConfig(mode: .full, images: true, token: "t")
-        XCTAssertEqual(full["token"] as? String, "t")
+        XCTAssertEqual(full["mcp_token"] as? String, "t")
+        XCTAssertNil(full["token"], "the server keeps its own token for the page")
         XCTAssertEqual(full["mcp_enabled"] as? Bool, true)
         XCTAssertEqual(full["mcp_read_only"] as? Bool, false)
         XCTAssertEqual(full["mcp_no_execute"] as? Bool, false)
@@ -178,9 +179,35 @@ final class AppMCPTests: XCTestCase {
     func testTokenIsRequired() async throws {
         let host = try server(.full)
         defer { host.stop() }
-        XCTAssertTrue(host.url.absoluteString.contains("token=secret"), "the app's MCP token is the server's")
+        XCTAssertFalse(host.url.absoluteString.contains("token=secret"), "the server keeps its own token")
         let (status, _, _) = try await post(host, ["jsonrpc": "2.0", "id": 1, "method": "ping"], token: nil)
         XCTAssertEqual(status, 403)
+    }
+
+    /// The app's MCP token opens `/mcp` and no other route (#583): with
+    /// MCP read only, it is refused on `/api/contents`, while the
+    /// server's own token, the page's, still works there.
+    func testMCPTokenOpensOnlyMCP() async throws {
+        let host = try server(.readOnly)
+        defer { host.stop() }
+        let (status, _, _) = try await post(host, ["jsonrpc": "2.0", "id": 1, "method": "ping"])
+        XCTAssertNotEqual(status, 403, "the MCP token opens /mcp")
+        let own = try XCTUnwrap(URLComponents(url: host.url, resolvingAgainstBaseURL: false)?
+            .queryItems?.first { $0.name == "token" }?.value)
+        XCTAssertNotEqual(own, "secret")
+        func contents(_ token: String) async throws -> Int {
+            var parts = try XCTUnwrap(URLComponents(url: host.url, resolvingAgainstBaseURL: false))
+            parts.query = nil
+            parts.path = "/api/contents"
+            var request = URLRequest(url: try XCTUnwrap(parts.url))
+            request.setValue("token \(token)", forHTTPHeaderField: "Authorization")
+            let (_, response) = try await URLSession.shared.data(for: request)
+            return try XCTUnwrap(response as? HTTPURLResponse).statusCode
+        }
+        let refused = try await contents("secret")
+        XCTAssertEqual(refused, 403)
+        let page = try await contents(own)
+        XCTAssertEqual(page, 200)
     }
 
     func testReadOnlyRefusesEdits() async throws {

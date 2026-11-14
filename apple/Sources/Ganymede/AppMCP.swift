@@ -33,7 +33,9 @@ enum MCPMode: String, CaseIterable, Identifiable {
 /// running. Clients that connect over HTTP take the URL and token
 /// Settings shows: while MCP is on the token is one the app keeps in the
 /// keychain, and the port the one it had last time (`AppModel`), so that
-/// config stays good across launches too.
+/// config stays good across launches too. That token is the server's
+/// `mcp_token`, which only `/mcp` accepts (ganymede#766): the page keeps
+/// the server's own random per-launch token, which opens every route.
 enum AppMCP {
     static let modeKey = "mcpMode"
     static let imagesKey = "mcpImages"
@@ -45,11 +47,13 @@ enum AppMCP {
     static let revokedKey = "mcpTokenRevoked"
 
     /// The `ganymede.toml` keys for `mode`, over the app's own server
-    /// config; none when off, so the server serves no `/mcp`.
+    /// config; none when off, so the server serves no `/mcp`. `token`
+    /// becomes `mcp_token`, so it opens `/mcp` and no other route, and
+    /// the server keeps a token of its own for the page.
     static func serverConfig(mode: MCPMode, images: Bool, token: String) -> [String: any Sendable] {
         guard mode != .off, !token.isEmpty else { return [:] }
         return [
-            "token": token,
+            "mcp_token": token,
             "mcp_enabled": true,
             "mcp_read_only": mode == .readOnly,
             "mcp_no_execute": mode == .editOnly,
