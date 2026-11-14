@@ -1,10 +1,11 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
+import { kernelModules } from './scripts/kernel-modules.ts';
 
 // Unit tests for the app in src/ and the agent package. Separate from
 // vite.config.ts so the PWA and build plugins stay out of the test run.
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), kernelModules()],
   // One React, as in vite.config.ts.
   resolve: { dedupe: ['react', 'react-dom'] },
   test: {

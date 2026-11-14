@@ -22,6 +22,7 @@ import {
   type ToKernel,
 } from './lib/kernel-relay';
 import { readyWhenCurrent } from './lib/kernel-page-worker';
+import { kernelModules } from './lib/kernel-modules';
 
 /** The running kernels, by id, each with the run Swift gave its start. */
 const kernels = new Map<string, { kernel: BrowserKernel; run: number }>();
@@ -73,6 +74,7 @@ function start(id: string, run: number, params?: string): void {
   const device = deviceOptions();
   const kernel = startBrowserKernel({
     createWorker: () => new Worker(workerUrl, { type: 'module' }),
+    modules: kernelModules(),
     // `ganymede://run` with parameters and Run Notebook with Parameters
     // start a kernel with them (ganymede-ui#303).
     params: parseParams(params),
