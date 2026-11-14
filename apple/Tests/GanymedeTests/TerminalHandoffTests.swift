@@ -70,11 +70,14 @@ final class TerminalHandoffTests: XCTestCase {
         handoff.park(id, view: view, coordinator: coordinator) { closed = true }
         XCTAssertTrue(handoff.takeView(id) === view)
         // Moved back with the same view, its first timer still pending.
+        // The second move's own timers wait far longer than this test, so
+        // a slow runner can't let them fire before the check.
         let later = expectation(description: "first timer passed")
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            handoff.timeout = 60
             XCTAssertTrue(handoff.move(id) {})
             handoff.park(id, view: view, coordinator: coordinator) { closed = true }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { later.fulfill() }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { later.fulfill() }
         }
         wait(for: [later], timeout: 2)
         XCTAssertFalse(closed, "the first move's timer closed the second move's terminal")
