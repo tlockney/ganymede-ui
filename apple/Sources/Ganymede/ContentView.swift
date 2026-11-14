@@ -214,6 +214,8 @@ struct ContentView: View {
         // Notebook windows are tabs too (#247).
         .background(WindowReader { window in
             document.attach(to: window)
+            // So a terminal tab can move into this panel (#248).
+            panel.attach(to: window)
             WorkspaceTabs.join(window, alone: request?.alone ?? false)
             noteWindow(window)
             // A page already running when the window arrives gets its dot.

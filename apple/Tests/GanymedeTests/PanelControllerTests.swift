@@ -97,6 +97,23 @@ final class PanelControllerTests: XCTestCase {
         XCTAssertEqual(panel.height, PanelController.minHeight)
     }
 
+    /// A terminal moved in from a tab (#248) keeps its id, is selected and
+    /// shows the panel; adopting it twice adds it once.
+    func testAnAdoptedTerminalKeepsItsID() {
+        let panel = PanelController()
+        panel.add(here)
+        panel.showLog()
+        panel.isShown = false
+        let moved = PanelTerminal(id: UUID(), target: here)
+        panel.adopt(moved)
+        panel.adopt(moved)
+        XCTAssertEqual(panel.terminals.map(\.id).last, moved.id)
+        XCTAssertEqual(panel.terminals.count, 2)
+        XCTAssertEqual(panel.selection, moved.id)
+        XCTAssertFalse(panel.showsLog)
+        XCTAssertTrue(panel.isShown)
+    }
+
     func testAStoredHeightBelowTheMinimumIsRaised() {
         let panel = PanelController()
         panel.resize(to: 10, available: .infinity)

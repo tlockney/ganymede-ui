@@ -16,9 +16,17 @@ struct TerminalSurface: View {
     /// The bottom panels (#248, #251) set it so keys never go to a hidden
     /// shell.
     var focused: Bool?
+    /// The terminal's id in `TerminalHandoff` (#248), on the Mac: it parks
+    /// there instead of closing when it moves, and a terminal arriving
+    /// under this id brings its view and running session.
+    var handoff: UUID?
 
     var body: some View {
+        #if os(macOS)
+        TerminalRepresentable(transport: transport, onTitle: onTitle, onEnd: onEnd, focused: focused, handoff: handoff)
+        #else
         TerminalRepresentable(transport: transport, onTitle: onTitle, onEnd: onEnd, focused: focused)
+        #endif
     }
 }
 
@@ -28,17 +36,35 @@ private struct TerminalRepresentable: NSViewRepresentable {
     var onTitle: ((String) -> Void)?
     var onEnd: ((String?) -> Void)?
     var focused: Bool?
+    var handoff: UUID?
 
+    /// A terminal moved here (#248) keeps its coordinator, which holds its
+    /// transport's callbacks.
     func makeCoordinator() -> TerminalCoordinator {
-        TerminalCoordinator(transport: transport)
+        if let handoff, let moved = TerminalHandoff.shared.coordinator(handoff) as? TerminalCoordinator {
+            return moved
+        }
+        let coordinator = TerminalCoordinator(transport: transport)
+        coordinator.handoff = handoff
+        return coordinator
     }
 
     func makeNSView(context: Context) -> TerminalView {
-        let view = TerminalView(frame: .zero)
         context.coordinator.onTitle = onTitle
         context.coordinator.onEnd = onEnd
-        context.coordinator.attach(view)
         context.coordinator.focused = focused
+        let view: TerminalView
+        if let handoff, let moved = TerminalHandoff.shared.takeView(handoff) as? TerminalView {
+            // Its screen and session come with it; already started.
+            moved.removeFromSuperview()
+            view = moved
+        } else {
+            view = TerminalView(frame: .zero)
+            // A session that moved without its view is running already.
+            let moving = handoff.map { TerminalHandoff.shared.arriving($0) != nil } ?? false
+            context.coordinator.attach(view, start: !moving)
+            if moving, let handoff { TerminalHandoff.shared.arrived(handoff) }
+        }
         Self.applyFocus(focused, to: view)
         return view
     }
@@ -70,6 +96,14 @@ private struct TerminalRepresentable: NSViewRepresentable {
     }
 
     static func dismantleNSView(_ view: TerminalView, coordinator: TerminalCoordinator) {
+        // Moving to the panel or a tab (#248): the session goes on there.
+        if let id = coordinator.handoff, TerminalHandoff.shared.isLeaving(id) {
+            TerminalHandoff.shared.park(id, view: view, coordinator: coordinator) {
+                coordinator.detach()
+                TerminalCoordinator.closeWhenIdle(view)
+            }
+            return
+        }
         coordinator.detach()
         TerminalCoordinator.closeWhenIdle(view)
     }
@@ -164,6 +198,8 @@ final class TerminalCoordinator: NSObject, TerminalViewDelegate {
     var onEnd: ((String?) -> Void)?
     /// The last `TerminalSurface.focused` applied.
     var focused: Bool?
+    /// Its id in `TerminalHandoff` (#248), on the Mac.
+    var handoff: UUID?
     private weak var view: TerminalView?
     private var fontObserver: CodeFontObserver?
 
@@ -178,7 +214,9 @@ final class TerminalCoordinator: NSObject, TerminalViewDelegate {
         self.transport = transport
     }
 
-    func attach(_ view: TerminalView) {
+    /// Joins `view` to the transport, and starts it unless `start` is
+    /// false: a session moved without its view (#248) is running already.
+    func attach(_ view: TerminalView, start: Bool = true) {
         self.view = view
         view.terminalDelegate = self
         // The code font setting (#354), now and as it changes.
@@ -196,7 +234,7 @@ final class TerminalCoordinator: NSObject, TerminalViewDelegate {
         }
         // SwiftTerm reports the size through `sizeChanged` once the view
         // is laid out.
-        transport.start()
+        if start { transport.start() }
     }
 
     func detach() {

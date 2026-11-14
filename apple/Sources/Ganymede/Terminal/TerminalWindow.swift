@@ -31,6 +31,10 @@ struct TerminalWindow: View {
     var onTitle: ((String) -> Void)?
     /// Whether the terminal has the keyboard; see `TerminalSurface.focused`.
     var focused: Bool?
+    /// Its id for moving between the panel and a tab (#248), on the Mac:
+    /// the panel terminal's id, or the window's `TerminalRequest` id. A
+    /// terminal moving here under this id brings its session and screen.
+    var handoff: UUID?
     #if os(macOS)
     /// For the Running list (#246): what shows this terminal and what ends
     /// it, besides its window coming to the front. Left out, closing the
@@ -51,7 +55,13 @@ struct TerminalWindow: View {
     var body: some View {
         VStack(spacing: 0) {
             if let transport {
-                TerminalSurface(transport: transport, onTitle: { title = $0; onTitle?($0) }, onEnd: { ended = $0 ?? "Session ended." }, focused: focused)
+                TerminalSurface(
+                    transport: transport,
+                    onTitle: { title = $0; onTitle?($0) },
+                    onEnd: { ended = $0 ?? "Session ended." },
+                    focused: focused,
+                    handoff: handoff
+                )
                     .id(generation)
             } else if let problem {
                 Text(problem)
@@ -82,13 +92,44 @@ struct TerminalWindow: View {
         .background(WindowReader { window.window = $0 })
         .onAppear(perform: register)
         .onChange(of: title) { register() }
-        .onDisappear { OpenTerminals.shared.remove(entry) }
+        .onDisappear {
+            OpenTerminals.shared.remove(entry)
+            if let handoff { TerminalHandoff.shared.unregister(handoff) }
+        }
+        .modifier(MoveToPanelButton(
+            enabled: !inPanel && handoff != nil,
+            disabled: transport == nil || ended != nil,
+            action: moveToPanel
+        ))
         #endif
     }
 
     #if os(macOS)
-    /// Lists the terminal, or updates its title, in `OpenTerminals`.
+    /// Moves this terminal into the bottom panel of a notebook window, a
+    /// tab of this window first (#248); its shell keeps running there. With
+    /// no notebook window open, it stays.
+    private func moveToPanel() {
+        guard let handoff, let window = window.window,
+              let nearest = PanelController.nearest(to: window)
+        else {
+            NSSound.beep()
+            return
+        }
+        let terminal = PanelTerminal(id: handoff, target: target)
+        let panel = nearest.panel
+        let moving = TerminalHandoff.shared.move(handoff) { [weak host = nearest.window] in
+            panel.adopt(terminal)
+            host?.makeKeyAndOrderFront(nil)
+        }
+        if moving { window.performClose(nil) }
+    }
+
+    /// Lists the terminal, or updates its title, in `OpenTerminals`, and
+    /// its session in `TerminalHandoff`.
     private func register() {
+        if let handoff, let transport {
+            TerminalHandoff.shared.register(handoff, target: target, transport: transport, title: title)
+        }
         let window = window
         let reveal = reveal
         let shutDown = shutDown
@@ -119,6 +160,9 @@ struct TerminalWindow: View {
         onTitle?("")
         generation += 1
         transport = next
+        #if os(macOS)
+        register()
+        #endif
     }
 
     /// The transport for the target, once what it needs is known.
@@ -190,8 +234,22 @@ struct TerminalWindow: View {
     /// keeps its shell even if the server restarts under it, and shows
     /// the session ending instead.
     private func connect() {
-        guard transport == nil, problem == nil else { return }
+        guard transport == nil else { return }
+        #if os(macOS)
+        // A terminal moved here (#248): its session, already running.
+        if let handoff, let arriving = TerminalHandoff.shared.arriving(handoff) {
+            transport = arriving.transport
+            title = arriving.title
+            onTitle?(arriving.title)
+            register()
+            return
+        }
+        #endif
+        guard problem == nil else { return }
         transport = makeTransport()
+        #if os(macOS)
+        register()
+        #endif
     }
 }
 
@@ -199,6 +257,30 @@ struct TerminalWindow: View {
 /// The window a terminal is in, without keeping it open.
 final class WeakWindow {
     weak var window: NSWindow?
+}
+
+/// A terminal tab's Move to Panel toolbar button (#248); none in a panel,
+/// where a toolbar item would land in the notebook window's toolbar.
+private struct MoveToPanelButton: ViewModifier {
+    let enabled: Bool
+    let disabled: Bool
+    let action: () -> Void
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content.toolbar {
+                ToolbarItem {
+                    Button(action: action) {
+                        Label("Move to Panel", systemImage: "rectangle.bottomthird.inset.filled")
+                    }
+                    .help("Move this terminal into a notebook window’s bottom panel")
+                    .disabled(disabled)
+                }
+            }
+        } else {
+            content
+        }
+    }
 }
 #endif
 

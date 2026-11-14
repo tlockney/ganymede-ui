@@ -9,6 +9,7 @@ import SwiftUI
 /// keeps running; closing a tab ends it.
 struct BottomPanel: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.openWindow) private var openWindow
     var panel: PanelController
     /// Where a new local terminal starts: the window's folder.
     let folder: URL
@@ -63,6 +64,7 @@ struct BottomPanel: View {
                         // Only the terminal on show has the keyboard, so keys
                         // never go to a hidden shell; a new one gets it.
                         focused: selected && panel.isShown,
+                        handoff: terminal.id,
                         reveal: {
                             panel.select(terminal.id)
                             panel.isShown = true
@@ -106,7 +108,8 @@ struct BottomPanel: View {
                             systemImage: "terminal",
                             selected: terminal.id == panel.selection && !panel.showsLog,
                             select: { panel.select(terminal.id) },
-                            close: { close(terminal.id) }
+                            close: { close(terminal.id) },
+                            moveToTab: { moveToTab(terminal) }
                         )
                     }
                 }
@@ -124,6 +127,15 @@ struct BottomPanel: View {
             .padding(.trailing, 8)
         }
         .frame(height: 28)
+    }
+
+    /// Moves `terminal` out of the panel into a tab of its own (#248),
+    /// shell and screen with it, once its view has left the panel.
+    private func moveToTab(_ terminal: PanelTerminal) {
+        let request = TerminalRequest(id: terminal.id, target: terminal.target)
+        let openWindow = openWindow
+        guard TerminalHandoff.shared.move(terminal.id, arrive: { openWindow(value: request) }) else { return }
+        close(terminal.id)
     }
 
     private func close(_ id: PanelTerminal.ID) {
@@ -147,6 +159,8 @@ private struct PanelTab: View {
     let selected: Bool
     let select: () -> Void
     let close: (() -> Void)?
+    /// Moves the terminal to a tab of its own (#248).
+    var moveToTab: (() -> Void)?
     @State private var hovering = false
 
     var body: some View {
@@ -176,6 +190,14 @@ private struct PanelTab: View {
                 .fill(selected ? Color.primary.opacity(0.1) : .clear)
         )
         .onHover { hovering = $0 }
+        .contextMenu {
+            if let moveToTab {
+                Button("Move to Tab", action: moveToTab)
+            }
+            if let close {
+                Button("Close Terminal", action: close)
+            }
+        }
     }
 }
 

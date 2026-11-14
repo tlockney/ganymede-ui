@@ -83,7 +83,7 @@ struct GanymedeApp: App {
         }
         // Terminals and text files open as tabs of the front window (#247).
         WindowGroup("Terminal", for: TerminalRequest.self) { $request in
-            TerminalWindow(target: request?.target ?? .local(folder: nil))
+            TerminalWindow(target: request?.target ?? .local(folder: nil), handoff: request?.id)
                 .environment(model)
                 .settingsOpener()
                 .workspaceTab()
