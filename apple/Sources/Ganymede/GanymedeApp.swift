@@ -42,14 +42,6 @@ struct GanymedeApp: App {
             CommandGroup(replacing: .newItem) {
                 NewCommands(model: model)
             }
-            CommandGroup(replacing: .saveItem) {
-                CloseCommand()
-                SaveCommand()
-                RenameCommand()
-                DownloadCommand()
-                ExportCommand()
-                PublishCommand()
-            }
             CommandMenu("Cell") {
                 CellMenu()
             }
@@ -98,6 +90,20 @@ struct GanymedeApp: App {
             }
         }
         .handlesExternalEvents(matching: [])
+        // File > Close, Save, Rename, Download, Export As and Publish
+        // (#622). With more than one WindowGroup, SwiftUI on macOS takes the
+        // `.saveItem` group from the last one: on the first it is dropped
+        // and the system's Close and Close All show instead.
+        .commands {
+            CommandGroup(replacing: .saveItem) {
+                CloseCommand()
+                SaveCommand()
+                RenameCommand()
+                DownloadCommand()
+                ExportCommand()
+                PublishCommand()
+            }
+        }
         Settings {
             SettingsWindow()
                 .environment(model)
