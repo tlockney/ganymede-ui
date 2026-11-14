@@ -1,5 +1,6 @@
 import { defineConfig, type ProxyOptions, type UserConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { kernelModules } from './scripts/kernel-modules.ts';
 import { VitePWA } from 'vite-plugin-pwa';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -83,6 +84,7 @@ const proxy: Record<string, ProxyOptions> = {
 const config: UserConfig = {
   plugins: [
     react(),
+    kernelModules(),
     // The build's release, which the kernel page compares with its own
     // before it says it is ready (#537). Not precached (no .json in
     // globPatterns), so it always comes from the server.

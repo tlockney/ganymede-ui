@@ -3,6 +3,7 @@ import type { IKernel } from '@jupyterlite/services';
 import { Signal } from '@lumino/signaling';
 import { startBrowserKernel, type BrowserKernel } from '@tlockney/cdp-kernel/browser';
 import workerUrl from '@tlockney/cdp-kernel/browser/worker?worker&url';
+import { kernelModules } from './kernel-modules';
 
 /** The kernelspec name, as cdp-kernel names its kernelspecs (`cdp-node`, …). */
 export const CDP_KERNEL_NAME = 'cdp-browser';
@@ -40,6 +41,7 @@ export class CdpBrowserKernel implements IKernel {
     this.location = options.location;
     this._kernel = startBrowserKernel({
       createWorker: () => new Worker(workerUrl, { type: 'module' }),
+      modules: kernelModules(),
     });
     this._stop = this._kernel.onMessage((channel, msg) => {
       // LiteKernelClient routes a message to the client whose session is

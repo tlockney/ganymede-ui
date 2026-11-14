@@ -137,6 +137,16 @@ Two kernels are registered:
   session id into replies, which `LiteKernelClient` routes on, and
   `CdpAwareKernelClient` sends interrupts as an `interrupt_request`, since
   JupyterLite's own interrupt only cancels its message queue.
+  The app serves the libraries `jupyter.chart` imports (vega, vega-lite
+  and linkedom) from `kernel-modules/`, built by
+  [`scripts/kernel-modules.ts`](../scripts/kernel-modules.ts), and maps
+  cdp-kernel's specifiers to them with the kernel's `modules` option, so
+  charts draw offline. The apps' kernel page does the same.
+
+  > [!NOTE]
+  > **Unreleased.** The latest release loads these libraries from esm.sh,
+  > so charts need a network connection.
+
 - **JavaScript (Web Worker)**, `javascript`, from
   `@jupyterlite/javascript-kernel`.
 
