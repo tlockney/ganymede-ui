@@ -186,13 +186,19 @@ function pagingKernel(
   const all = Array.from({ length: 2500 }, (_, i) => [i, `row ${i}`]);
   const log: Record<string, unknown>[] = [];
   const listeners: ((sender: unknown, status: string) => void)[] = [];
+  const disposedListeners: (() => void)[] = [];
   const kernel = {
     statusChanged: {
       connect: (fn: (sender: unknown, status: string) => void, self: unknown) =>
         void listeners.push(fn.bind(self)),
       disconnect: () => true,
     },
+    disposed: {
+      connect: (fn: () => void, self: unknown) => void disposedListeners.push(fn.bind(self)),
+      disconnect: () => true,
+    },
     status: (status: string) => listeners.forEach(fn => fn(kernel, status)),
+    dispose: () => disposedListeners.forEach(fn => fn()),
     createComm(target: string) {
       expect(target).toBe(PAGE_TARGET);
       const comm = {
@@ -245,7 +251,12 @@ function pagingKernel(
       return comm;
     },
   };
-  return { kernel: kernel as unknown as Kernel, log, status: kernel.status };
+  return {
+    kernel: kernel as unknown as Kernel,
+    log,
+    status: kernel.status,
+    dispose: kernel.dispose,
+  };
 }
 
 const big = {
@@ -380,11 +391,38 @@ describe('paging through the kernel', () => {
     }
   });
 
+  it('notices a kernel connection disposed mid-request', async () => {
+    const { kernel, dispose } = pagingKernel({ hold: true });
+    const table = await renderPaged(kernel);
+    table.showPage(20);
+    dispose();
+    await settle();
+    expect(table.paged).toBe(false);
+    expect(footer(table.node)).not.toContain('Loading…');
+  });
+
+  it('asks again for a page whose answer was lost, once the person comes back', async () => {
+    const { kernel, log } = pagingKernel({ hold: true });
+    const table = await renderPaged(kernel);
+    table.showPage(20);
+    table.showPage(21);
+    table.showPage(20);
+    expect(log.filter(entry => 'request' in entry && entry.offset === 1000)).toHaveLength(2);
+  });
+
+  it('moves back to the last page when the kernel says the table shrank', async () => {
+    const { kernel } = pagingKernel({ total: 1100 });
+    const table = await renderPaged(kernel);
+    table.showPage(40);
+    await settle();
+    await settle();
+    expect(footer(table.node)).toBe('Rows 1,051–1,100 of 1,100');
+  });
+
   it("asks once for a page in flight, and takes the kernel's row count", async () => {
     const { kernel, log } = pagingKernel({ total: 3000 });
     const table = await renderPaged(kernel);
     table.showPage(20);
-    table.showPage(21);
     table.showPage(20);
     await settle();
     expect(log.filter(entry => 'request' in entry && entry.offset === 1000)).toHaveLength(1);

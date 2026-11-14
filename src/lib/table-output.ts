@@ -22,6 +22,8 @@ import { Widget } from '@lumino/widgets';
 
 export const TABLE_MIME = 'application/vnd.dataresource+json';
 export const PAGE_SIZE = 50;
+/** Pages from the kernel kept for the current sort. */
+const CACHE_PAGES = 20;
 /** The comm target cdp-kernel answers page requests on. */
 export const PAGE_TARGET = 'ganymede.table.v1';
 /** Longest text shown in a cell; the rest is in its tooltip. */
@@ -86,6 +88,8 @@ class TablePages {
     this._comm.onClose = () => this._fail(new PagesClosed('The kernel closed the table.'));
     // A restart disposes the comm without closing it.
     kernel.statusChanged.connect(this._onStatus, this);
+    // A kernel change disposes the old connection with no `dead` status.
+    kernel.disposed.connect(this._onDisposed, this);
     this._comm.open({ id });
   }
 
@@ -112,6 +116,7 @@ class TablePages {
 
   dispose(): void {
     this._kernel.statusChanged.disconnect(this._onStatus, this);
+    this._kernel.disposed.disconnect(this._onDisposed, this);
     this._fail(new PagesClosed('The table closed.'));
     if (!this._comm.isDisposed) {
       try {
@@ -144,6 +149,10 @@ class TablePages {
           typeof total === 'number' && Number.isInteger(total) && total >= 0 ? total : undefined,
       });
     }
+  }
+
+  private _onDisposed(): void {
+    this._fail(new PagesClosed('The kernel connection closed.'));
   }
 
   private _onStatus(_: Kernel.IKernelConnection, status: Kernel.Status): void {
@@ -364,6 +373,9 @@ export class RenderedTable extends Widget implements IRenderMime.IRenderer {
     const previous = page < this._page;
     this._page = Math.min(Math.max(0, page), pages - 1);
     const focus = previous ? 'previous' : 'next';
+    // Only the current page's request is de-duplicated: one whose answer
+    // was lost is asked again when the person comes back to it.
+    for (const asked of this._inflight) if (asked !== this._page) this._inflight.delete(asked);
     if (this._remote !== null) this._show(focus);
     else this._draw(focus);
   }
@@ -423,14 +435,29 @@ export class RenderedTable extends Widget implements IRenderMime.IRenderer {
       if (!this._pages) {
         const kernel = this._kernel?.();
         if (!kernel || this._remote === null) throw new PagesClosed('No kernel.');
-        this._pages = new TablePages(kernel, this._remote);
+        try {
+          this._pages = new TablePages(kernel, this._remote);
+        } catch {
+          throw new PagesClosed('The kernel is gone.');
+        }
       }
       const reply = await this._pages.rows(page * PAGE_SIZE, PAGE_SIZE, sort);
       if (generation !== this._generation || this.isDisposed) return;
       this._inflight.delete(page);
       this._cache.set(page, rowsOf({ data: reply.rows }, this._fields));
+      // Keep the last CACHE_PAGES pages.
+      while (this._cache.size > CACHE_PAGES) this._cache.delete(this._cache.keys().next().value!);
       // The kernel's count wins: the table it holds is the live value.
-      if (reply.total !== undefined) this._total = reply.total;
+      if (reply.total !== undefined && reply.total !== this._total) {
+        this._total = reply.total;
+        const last = this._pageCount() - 1;
+        if (this._page > last) {
+          // The table shrank past the page shown.
+          this._page = last;
+          this._show(this._keepFocus(focus));
+          return;
+        }
+      }
       if (page === this._page) {
         this._loading = false;
         this._draw(this._keepFocus(focus));
