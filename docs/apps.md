@@ -514,7 +514,8 @@ headings; pick one to go to its cell.
   `~/.ssh/authorized_keys` on the remote) and trusts the host key the
   first time, refusing it if it changes later. iOS drops the connection
   soon after the app goes to the background; the terminal then offers to
-  reconnect.
+  reconnect. Hosts running Tailscale SSH need no key; see
+  [Tailscale SSH](#tailscale-ssh).
 - **Text files** open in an editor with the same highlighting, line
   numbers, auto-indent and pairing as on the Mac. Edits are saved when
   the app goes to the background, since iOS may close the editor there.
@@ -582,6 +583,25 @@ headings; pick one to go to its cell.
 - **Downloads** open the share sheet, where Save to Files keeps them.
 - In the background iOS may stop the app's server; back in the
   foreground the app restarts it if it stopped answering.
+
+### Tailscale SSH
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+On iPad and iPhone, a host running
+[Tailscale SSH](https://tailscale.com/kb/1193/tailscale-ssh) signs you in
+by your tailnet login, with no key: the app asks for that first, then
+offers its key. If the host refuses, check the tailnet's SSH policy as
+well as `authorized_keys`.
+
+In Tailscale SSH's check mode, the terminal shows Tailscale's message and
+link. Tap the link, approve in the browser, and the sign-in goes on; the
+app waits up to 5 minutes. Approving on the same iPhone or iPad sends the
+app to the background, which can drop the connection: if the terminal
+says it disconnected, reconnect, and Tailscale lets you in without
+asking again for its check period.
 
 ## Publishing a notebook
 

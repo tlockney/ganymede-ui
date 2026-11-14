@@ -7,7 +7,8 @@ import NIOSSH
 
 /// A shell on a remote over SSH, in the app's process (swift-nio-ssh):
 /// what iOS uses, since it can't run /usr/bin/ssh. Signs in with the
-/// app's ed25519 key and trusts the host key on first use.
+/// app's ed25519 key, or with none for Tailscale SSH (#630), and trusts
+/// the host key on first use.
 @MainActor
 final class SSHTerminalTransport: TerminalTransport {
     var onOutput: ((ArraySlice<UInt8>) -> Void)?
@@ -43,6 +44,7 @@ final class SSHTerminalTransport: TerminalTransport {
         started = true
         let relay = SessionRelay(owner: self)
         let problem = self.problem
+        let timer = SignInTimer()
         let sshKey = NIOSSHPrivateKey(ed25519Key: key)
         let user = target.user
         let remote = target.remote
@@ -56,7 +58,7 @@ final class SSHTerminalTransport: TerminalTransport {
                     // swift-nio-ssh doesn't close the connection when the
                     // sign-in or host key is refused, so these do.
                     let refuse = { channel.close(promise: nil) }
-                    let auth = KeyAuthentication(user: user, key: sshKey, problem: problem, refuse: refuse)
+                    let auth = SignInOffers(user: user, key: sshKey, problem: problem, refuse: refuse)
                     let hosts = HostKeyCheck(remote: remote, store: hostKeys, problem: problem, refuse: refuse)
                     let ssh = NIOSSHHandler(
                         role: .client(.init(userAuthDelegate: auth, serverAuthDelegate: hosts)),
@@ -64,6 +66,7 @@ final class SSHTerminalTransport: TerminalTransport {
                         inboundChildChannelInitializer: nil
                     )
                     try channel.pipeline.syncOperations.addHandler(ssh)
+                    try channel.pipeline.syncOperations.addHandler(ShowBanners(relay: relay, timer: timer))
                     try channel.pipeline.syncOperations.addHandler(CloseOnError(problem: problem))
                 }
             }
@@ -80,7 +83,9 @@ final class SSHTerminalTransport: TerminalTransport {
                     channel.close(promise: nil)
                     return
                 }
-                let session = try await Self.openSession(on: channel, size: size, relay: relay, problem: problem)
+                let session = try await Self.openSession(
+                    on: channel, size: size, relay: relay, problem: problem, timer: timer
+                )
                 self.connected(channel: channel, session: session)
             } catch {
                 connection?.close(promise: nil)
@@ -93,7 +98,7 @@ final class SSHTerminalTransport: TerminalTransport {
     /// connection closes first (a refused host key or sign-in), or if the
     /// server doesn't get that far in time.
     private nonisolated static func openSession(
-        on channel: Channel, size: (cols: Int, rows: Int), relay: SessionRelay, problem: Problem
+        on channel: Channel, size: (cols: Int, rows: Int), relay: SessionRelay, problem: Problem, timer: SignInTimer
     ) async throws -> Channel {
         try await channel.eventLoop.flatSubmit {
             let result = channel.eventLoop.makePromise(of: Channel.self)
@@ -106,11 +111,11 @@ final class SSHTerminalTransport: TerminalTransport {
             channel.closeFuture.whenComplete { _ in
                 complete(.failure(SSHFailure("Disconnected.")))
             }
-            let timeout = channel.eventLoop.scheduleTask(in: .seconds(30)) {
-                problem.set("The server did not finish signing in within 30 seconds.")
+            timer.start(on: channel.eventLoop) { seconds in
+                problem.set("The server did not finish signing in within \(Self.duration(seconds)).")
                 channel.close(promise: nil)
             }
-            result.futureResult.whenComplete { _ in timeout.cancel() }
+            result.futureResult.whenComplete { _ in timer.stop() }
             do {
                 let ssh = try channel.pipeline.syncOperations.handler(type: NIOSSHHandler.self)
                 let promise = channel.eventLoop.makePromise(of: Channel.self)
@@ -192,6 +197,10 @@ final class SSHTerminalTransport: TerminalTransport {
         onClose?(reason)
     }
 
+    private nonisolated static func duration(_ seconds: Int) -> String {
+        seconds % 60 == 0 ? "\(seconds / 60) minute\(seconds == 60 ? "" : "s")" : "\(seconds) seconds"
+    }
+
     private nonisolated static func describe(_ error: Error) -> String {
         if let failure = error as? SSHFailure { return failure.message }
         return "Could not connect: \(error)"
@@ -243,13 +252,55 @@ private final class SessionRelay: @unchecked Sendable {
     }
 }
 
-/// Offers the app's key once; the server may refuse it.
-private final class KeyAuthentication: NIOSSHClientUserAuthenticationDelegate, @unchecked Sendable {
+/// The sign-in time limit (`SSHSignIn.timeLimit`), on the connection's
+/// event loop, where both the banners and the session's start arrive: it
+/// starts again, longer, from a banner with a link, such as Tailscale
+/// SSH's check mode.
+private final class SignInTimer: @unchecked Sendable {
+    private var loop: EventLoop?
+    private var expire: ((Int) -> Void)?
+    private var task: Scheduled<Void>?
+    private var linkShown = false
+    private var stopped = false
+
+    func start(on loop: EventLoop, expire: @escaping (Int) -> Void) {
+        loop.preconditionInEventLoop()
+        self.loop = loop
+        self.expire = expire
+        arm()
+    }
+
+    /// A banner arrived; one with a link restarts the limit, once.
+    func banner(_ message: String) {
+        guard !linkShown, SSHSignIn.hasLink(message) else { return }
+        linkShown = true
+        if loop != nil { arm() }
+    }
+
+    func stop() {
+        stopped = true
+        task?.cancel()
+    }
+
+    private func arm() {
+        guard let loop, !stopped else { return }
+        task?.cancel()
+        let seconds = SSHSignIn.timeLimit(linkShown: linkShown)
+        task = loop.scheduleTask(in: .seconds(Int64(seconds))) { [self] in
+            guard !stopped else { return }
+            expire?(seconds)
+        }
+    }
+}
+
+/// Offers none, then the app's key once (`SSHSignIn.next`); the server
+/// may refuse both.
+private final class SignInOffers: NIOSSHClientUserAuthenticationDelegate, @unchecked Sendable {
     private let user: String
     private let key: NIOSSHPrivateKey
     private let problem: Problem
     private let refuse: () -> Void
-    private var offered = false
+    private var offered: [SSHSignIn.Offer] = []
 
     init(user: String, key: NIOSSHPrivateKey, problem: Problem, refuse: @escaping () -> Void) {
         self.user = user
@@ -262,21 +313,21 @@ private final class KeyAuthentication: NIOSSHClientUserAuthenticationDelegate, @
         availableMethods: NIOSSHAvailableUserAuthenticationMethods,
         nextChallengePromise: EventLoopPromise<NIOSSHUserAuthenticationOffer?>
     ) {
-        guard !offered, availableMethods.contains(.publicKey) else {
-            problem.set(
-                "The server did not accept the app's key for \(user). Add the public key from the "
-                    + "remote's settings to ~/.ssh/authorized_keys there."
-            )
+        guard let next = SSHSignIn.next(offered: offered, keysAccepted: availableMethods.contains(.publicKey)) else {
+            problem.set(SSHSignIn.refusal(user: user, offered: offered))
             nextChallengePromise.succeed(nil)
             // Giving up sends nothing, so the server would wait out its
             // LoginGraceTime.
             refuse()
             return
         }
-        offered = true
-        nextChallengePromise.succeed(
-            NIOSSHUserAuthenticationOffer(username: user, serviceName: "", offer: .privateKey(.init(privateKey: key)))
-        )
+        offered.append(next)
+        let offer: NIOSSHUserAuthenticationOffer.Offer
+        switch next {
+        case .none: offer = .none
+        case .key: offer = .privateKey(.init(privateKey: key))
+        }
+        nextChallengePromise.succeed(NIOSSHUserAuthenticationOffer(username: user, serviceName: "", offer: offer))
     }
 }
 
@@ -306,6 +357,29 @@ private final class HostKeyCheck: NIOSSHClientServerAuthenticationDelegate, @unc
             problem.set(message)
             validationCompletePromise.fail(SSHFailure(message))
             refuse()
+        }
+    }
+}
+
+/// Shows what the server sends while signing in, such as Tailscale SSH's
+/// check-mode link, in the terminal.
+private final class ShowBanners: ChannelInboundHandler {
+    typealias InboundIn = Any
+
+    private let relay: SessionRelay
+    private let timer: SignInTimer
+
+    init(relay: SessionRelay, timer: SignInTimer) {
+        self.relay = relay
+        self.timer = timer
+    }
+
+    func userInboundEventTriggered(context: ChannelHandlerContext, event: Any) {
+        if let banner = event as? NIOUserAuthBannerEvent {
+            timer.banner(banner.message)
+            relay.output(SSHSignIn.banner(banner.message))
+        } else {
+            context.fireUserInboundEventTriggered(event)
         }
     }
 }
