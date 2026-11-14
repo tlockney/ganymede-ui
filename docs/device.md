@@ -345,10 +345,6 @@ if (folder) {
 
 ### Running a Shortcut
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
-
 `device.shortcuts.run(name, { input })` runs one of your Shortcuts and
 resolves with its output as text, or `null` when it gives none. The
 Shortcuts app comes forward while it runs and hands the result back to
