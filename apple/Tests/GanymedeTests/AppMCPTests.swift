@@ -8,7 +8,8 @@ final class AppMCPTests: XCTestCase {
         XCTAssertTrue(AppMCP.serverConfig(mode: .off, images: true, token: "t").isEmpty)
         XCTAssertTrue(AppMCP.serverConfig(mode: .full, images: false, token: "").isEmpty, "never without a token")
         let full = AppMCP.serverConfig(mode: .full, images: true, token: "t")
-        XCTAssertEqual(full["token"] as? String, "t")
+        XCTAssertEqual(full["mcp_token"] as? String, "t")
+        XCTAssertNil(full["token"], "the server keeps its own token for the page")
         XCTAssertEqual(full["mcp_enabled"] as? Bool, true)
         XCTAssertEqual(full["mcp_read_only"] as? Bool, false)
         XCTAssertEqual(full["mcp_no_execute"] as? Bool, false)
@@ -65,6 +66,19 @@ final class AppMCPTests: XCTestCase {
         XCTAssertEqual(read["pid"] as? Int, 42)
         let mode = try FileManager.default.attributesOfItem(atPath: file.path)[.posixPermissions] as? Int
         XCTAssertEqual(mode, 0o600)
+    }
+
+    /// The file holds `mcp_token`, never the server's own token (#583),
+    /// and is written only while MCP is on.
+    func testServerInfoHoldsTheMCPToken() throws {
+        let url = try XCTUnwrap(URL(string: "http://127.0.0.1:52011/?token=serverown"))
+        let settings = AppMCP.serverConfig(mode: .readOnly, images: false, token: "agent")
+            .merging(["root_dir": "/"]) { $1 }
+        let info = try XCTUnwrap(AppMCP.serverInfo(serverURL: url, settings: settings, pid: 42))
+        XCTAssertEqual(info["token"] as? String, "agent")
+        XCTAssertEqual(info["url"] as? String, "http://127.0.0.1:52011/")
+        let off = AppMCP.serverConfig(mode: .off, images: false, token: "agent").merging(["root_dir": "/"]) { $1 }
+        XCTAssertNil(AppMCP.serverInfo(serverURL: url, settings: off, pid: 42))
     }
 
     /// A crashed run's file goes; a live one, and other servers', stay.
@@ -178,9 +192,34 @@ final class AppMCPTests: XCTestCase {
     func testTokenIsRequired() async throws {
         let host = try server(.full)
         defer { host.stop() }
-        XCTAssertTrue(host.url.absoluteString.contains("token=secret"), "the app's MCP token is the server's")
+        XCTAssertFalse(host.url.absoluteString.contains("token=secret"), "the server keeps its own token")
         let (status, _, _) = try await post(host, ["jsonrpc": "2.0", "id": 1, "method": "ping"], token: nil)
         XCTAssertEqual(status, 403)
+    }
+
+    /// The app's MCP token opens `/mcp` and no other route (#583): with
+    /// MCP read only, it is refused on `/api/contents`, while the
+    /// server's own token, the page's, still works there.
+    func testMCPTokenOpensOnlyMCP() async throws {
+        let host = try server(.readOnly)
+        defer { host.stop() }
+        let (status, _, _) = try await post(host, [
+            "jsonrpc": "2.0", "id": 1, "method": "initialize",
+            "params": ["protocolVersion": "2025-06-18", "capabilities": [:] as [String: Any],
+                       "clientInfo": ["name": "AppMCPTests", "version": "1"]],
+        ])
+        XCTAssertEqual(status, 200, "the MCP token opens /mcp")
+        let page = try XCTUnwrap(ServerEndpoint(serverURL: host.url))
+        XCTAssertNotEqual(page.token, "secret")
+        func contents(_ token: String) async throws -> Int {
+            let request = ServerEndpoint(base: page.base, token: token).request("api/contents")
+            let (_, response) = try await URLSession.shared.data(for: request)
+            return try XCTUnwrap(response as? HTTPURLResponse).statusCode
+        }
+        let refused = try await contents("secret")
+        XCTAssertEqual(refused, 403)
+        let own = try await contents(page.token)
+        XCTAssertEqual(own, 200)
     }
 
     func testReadOnlyRefusesEdits() async throws {

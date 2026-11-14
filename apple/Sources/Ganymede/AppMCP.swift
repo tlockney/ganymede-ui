@@ -33,7 +33,9 @@ enum MCPMode: String, CaseIterable, Identifiable {
 /// running. Clients that connect over HTTP take the URL and token
 /// Settings shows: while MCP is on the token is one the app keeps in the
 /// keychain, and the port the one it had last time (`AppModel`), so that
-/// config stays good across launches too.
+/// config stays good across launches too. That token is the server's
+/// `mcp_token`, which only `/mcp` accepts (ganymede#766): the page keeps
+/// the server's own random per-launch token, which opens every route.
 enum AppMCP {
     static let modeKey = "mcpMode"
     static let imagesKey = "mcpImages"
@@ -45,11 +47,13 @@ enum AppMCP {
     static let revokedKey = "mcpTokenRevoked"
 
     /// The `ganymede.toml` keys for `mode`, over the app's own server
-    /// config; none when off, so the server serves no `/mcp`.
+    /// config; none when off, so the server serves no `/mcp`. `token`
+    /// becomes `mcp_token`, so it opens `/mcp` and no other route, and
+    /// the server keeps a token of its own for the page.
     static func serverConfig(mode: MCPMode, images: Bool, token: String) -> [String: any Sendable] {
         guard mode != .off, !token.isEmpty else { return [:] }
         return [
-            "token": token,
+            "mcp_token": token,
             "mcp_enabled": true,
             "mcp_read_only": mode == .readOnly,
             "mcp_no_execute": mode == .editOnly,
@@ -164,6 +168,20 @@ enum AppMCP {
             "pid": Int(pid),
             appMarker: true,
         ]
+    }
+
+    /// The server info file for the server at `serverURL` launched with
+    /// `settings`, or nil when MCP was off. Its token is `mcp_token`, not
+    /// the server's: `ganymede mcp` sends it only to `/mcp`, the server's
+    /// own token stays off disk, and the keychain token outlives a
+    /// restart, so an agent's running session keeps working after a mode
+    /// change or relaunch (`ganymede mcp` keeps the token it found).
+    static func serverInfo(serverURL: URL, settings: [String: any Sendable], pid: Int32) -> [String: Any]? {
+        guard settings["mcp_enabled"] as? Bool == true,
+              let token = settings["mcp_token"] as? String, !token.isEmpty,
+              let root = settings["root_dir"] as? String,
+              let endpoint = ServerEndpoint(serverURL: serverURL) else { return nil }
+        return serverInfo(base: endpoint.base, token: token, root: root, pid: pid)
     }
 
     /// Writes the server info file in `dir`, readable by this user only

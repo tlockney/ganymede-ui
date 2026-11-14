@@ -46,8 +46,9 @@ final class AppModel {
     private(set) var mcpMode: MCPMode
     /// Whether `/mcp` sends images in outputs to the model.
     private(set) var mcpImages: Bool
-    /// The server's token while MCP is on, kept in the keychain so the
-    /// config agents were given keeps working; nil while it is off.
+    /// The MCP token (`mcp_token`, which only `/mcp` accepts) while MCP is
+    /// on, kept in the keychain so the config agents were given keeps
+    /// working; nil while it is off.
     private(set) var mcpToken: String?
     /// The `jpserver-<pid>.json` written while MCP is on, so `ganymede mcp`
     /// finds the app's server.
@@ -469,7 +470,8 @@ final class AppModel {
     }
 
     /// A new MCP token, for when the old one leaked: agents given the old
-    /// config must be given the new one.
+    /// config must be given the new one, and running `ganymede mcp` agents
+    /// restarted.
     func resetMCPToken() {
         guard mcpMode != .off else { return }
         mcpToken = storeMCPToken(AppMCP.newToken())
@@ -481,14 +483,11 @@ final class AppModel {
     /// queued start may have changed since).
     private func writeServerInfo(_ serverURL: URL, settings: [String: any Sendable]) {
         removeServerInfo()
-        guard settings["mcp_enabled"] as? Bool == true, let token = settings["token"] as? String,
-              let root = settings["root_dir"] as? String,
-              let endpoint = ServerEndpoint(serverURL: serverURL) else { return }
         let pid = ProcessInfo.processInfo.processIdentifier
+        guard let info = AppMCP.serverInfo(serverURL: serverURL, settings: settings, pid: pid) else { return }
         let dir = AppMCP.runtimeDirectory()
         // A crashed run's file, with its token, would stay otherwise.
         AppMCP.removeStaleServerInfo(in: dir)
-        let info = AppMCP.serverInfo(base: endpoint.base, token: token, root: root, pid: pid)
         serverInfoFile = AppMCP.writeServerInfo(info, in: dir, pid: pid)
         if serverInfoFile == nil {
             NSLog("Ganymede: the server info file for `ganymede mcp` couldn't be written")

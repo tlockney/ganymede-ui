@@ -189,7 +189,7 @@ private struct MCPSettings: View {
         } header: {
             Text("MCP")
         } footer: {
-            Text("Lets Claude Code, Claude Desktop and other agents read, edit and run the notebooks open here, and you see each change arrive. Agents set up with `ganymede mcp` use Ganymede while it runs, and a server of their own when it doesn’t. The server listens on this Mac only and needs the token, which opens all of Ganymede’s server: the mode limits what agents do over MCP. Changing this restarts Ganymede’s server and its kernels.")
+            Text("Lets Claude Code, Claude Desktop and other agents read, edit and run the notebooks open here, and you see each change arrive. Agents set up with `ganymede mcp` use Ganymede while it runs, and a server of their own when it doesn’t. The server listens on this Mac only and needs the token. Agents set up either way get a token that opens MCP and nothing else, and the mode limits what they do there; an agent that can run code can still reach the rest of the server. Changing this restarts Ganymede’s server and its kernels.")
         }
     }
 }
