@@ -335,13 +335,40 @@ only to the app's server on this Mac, and to the other clients with
 that notebook open (such as an agent, or JupyterLab), never to a remote
 server. iPad and iPhone send no name.
 
+### Sharing on your tailnet
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+With [Tailscale](https://tailscale.com) on the Mac, Settings › General ›
+Tailnet opens Ganymede to your other devices at the Mac's tailnet name,
+such as `https://box.tail1234.ts.net/`. List the Tailscale logins to let
+in (yours, such as `you@example.com`), then turn on **Share on my
+tailnet**. Those logins open the address in a browser without a token;
+no one else gets in, since the server's token stays with the app.
+
+The app runs `tailscale serve` for you, pointing HTTPS on the tailnet
+name at its server on this Mac, and Settings shows the address. It won't
+replace a `tailscale serve` setting on port 443 that it didn't make; it
+says so instead. Turning sharing off removes its setting. The first time,
+Tailscale may ask you to turn on HTTPS for your tailnet in its admin
+console; Settings shows the message. Sharing restarts Ganymede's server
+and its kernels.
+
+The server believes the login Tailscale sends only on connections from
+this Mac, so any program on the Mac could send one too: share only from a
+Mac you alone use. MCP still needs its token. The details are in
+Ganymede's [security notes](https://ganymede-server.com/docs/security#tailnet-identity).
+
 ### Settings
 
 Settings (⌘,) is one window with tabs. General makes Ganymede the
 default app for notebooks, sets how it updates ([Updates](#updates)),
 turns crash reports on or off, lists the notebooks links may run
-([Links](#links)), and turns on MCP for agents
-([Agents over MCP](#agents-over-mcp)). Appearance
+([Links](#links)), turns on MCP for agents
+([Agents over MCP](#agents-over-mcp)), and shares Ganymede on your
+tailnet ([Sharing on your tailnet](#sharing-on-your-tailnet)). Appearance
 sets the code font (below). Kernels
 picks where kernels run, this Mac or, as on iPadOS, one remote's server,
 and lists the kernels installed there. Remotes keeps a list of remotes:
