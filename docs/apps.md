@@ -146,6 +146,16 @@ shown or hidden, its tab and its expanded folders across launches.
   over SSH with `/usr/bin/ssh`, so `~/.ssh/config`, the SSH agent and
   known_hosts apply. File > New Terminal Tab opens a shell in a tab of its
   own.
+- A terminal moves between the panel and a tab of its own without ending
+  its shell: right-click its panel tab and choose Move to Tab, or click
+  Move to Panel in a terminal tab's toolbar, which moves it into the
+  panel of a notebook tab in the same window, else of the frontmost
+  notebook window. Its screen and scrollback move with it.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release.
+
 - The panel's first tab, Kernel Log, follows the open notebook kernel's
   stdout and stderr (outside its cell output) and the server's lines
   about its process, such as why it died. It needs a Ganymede server with

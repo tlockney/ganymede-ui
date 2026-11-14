@@ -1,5 +1,8 @@
 import Foundation
 import Observation
+#if os(macOS)
+import AppKit
+#endif
 
 /// A terminal in a window's bottom panel (#248).
 struct PanelTerminal: Identifiable, Hashable {
@@ -56,10 +59,19 @@ final class PanelController {
     @discardableResult
     func add(_ target: TerminalTarget) -> PanelTerminal {
         let terminal = PanelTerminal(target: target)
-        terminals.append(terminal)
+        adopt(terminal)
+        return terminal
+    }
+
+    /// Takes `terminal` in, selected, with the panel shown: a terminal
+    /// moved here from a tab (#248) keeps its id, by which its session
+    /// arrives. One already here is only selected.
+    func adopt(_ terminal: PanelTerminal) {
+        if !terminals.contains(where: { $0.id == terminal.id }) {
+            terminals.append(terminal)
+        }
         select(terminal.id)
         isShown = true
-        return terminal
     }
 
     /// Ends a terminal. The neighbour to its right (else left) is selected;
@@ -83,4 +95,28 @@ final class PanelController {
         let most = max(minHeight, available - notebookRoom)
         return min(max(proposed, minHeight), most)
     }
+
+    #if os(macOS)
+    /// Each notebook window's panel, for a terminal tab moving into one
+    /// (#248). Weak both ways: a closed window drops out.
+    private static let byWindow = NSMapTable<NSWindow, PanelController>.weakToWeakObjects()
+
+    /// Notes that this panel is `window`'s.
+    func attach(to window: NSWindow) {
+        Self.byWindow.setObject(self, forKey: window)
+    }
+
+    /// The panel a terminal in `window` moves into, with its window: a
+    /// notebook tab of the same window first, then the frontmost notebook
+    /// window. `windows` is the app's windows front to back.
+    static func nearest(
+        to window: NSWindow, windows: [NSWindow] = NSApp.orderedWindows
+    ) -> (panel: PanelController, window: NSWindow)? {
+        let tabs = window.tabbedWindows ?? []
+        for candidate in tabs + windows where candidate !== window {
+            if let panel = byWindow.object(forKey: candidate) { return (panel, candidate) }
+        }
+        return nil
+    }
+    #endif
 }
