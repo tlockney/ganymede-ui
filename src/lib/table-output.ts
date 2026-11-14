@@ -61,6 +61,15 @@ export const FIRST_REPLY_MS = 30_000;
 /** The kernel can't page the table any more: it closed the comm, or restarted. */
 class PagesClosed extends Error {}
 
+/**
+ * No kernel to page through now, or it hasn't answered: the table shows
+ * the embedded rows and tries the kernel again on the next page or sort.
+ */
+class PagesUnavailable extends PagesClosed {}
+
+/** How cdp-kernel's answer starts when it no longer has the table. */
+const GONE = 'The kernel no longer has this table';
+
 /** One page of a table, as the kernel sent it. */
 interface Page {
   rows: unknown[];
@@ -90,7 +99,12 @@ class TablePages {
     kernel.statusChanged.connect(this._onStatus, this);
     // A kernel change disposes the old connection with no `dead` status.
     kernel.disposed.connect(this._onDisposed, this);
-    this._comm.open({ id });
+    try {
+      this._comm.open({ id });
+    } catch (err) {
+      this._disconnect();
+      throw err;
+    }
   }
 
   rows(offset: number, limit: number, sort?: { column: string; descending: boolean }) {
@@ -105,18 +119,30 @@ class TablePages {
         return;
       }
       this._pending.set(request, { resolve, reject });
-      if (!this._answered && this._timer === undefined) {
-        this._timer = setTimeout(
-          () => this._fail(new PagesClosed('The kernel did not answer.')),
-          FIRST_REPLY_MS,
-        );
-      }
+      this._arm();
     });
   }
 
-  dispose(): void {
+  /**
+   * Times the first answer, but only while the kernel is idle: it handles
+   * comm messages after the cell it is running, however long that takes.
+   */
+  private _arm(): void {
+    if (this._answered || this._timer !== undefined || this._pending.size === 0) return;
+    if (this._kernel.status !== 'idle') return;
+    this._timer = setTimeout(
+      () => this._fail(new PagesUnavailable('The kernel did not answer.')),
+      FIRST_REPLY_MS,
+    );
+  }
+
+  private _disconnect(): void {
     this._kernel.statusChanged.disconnect(this._onStatus, this);
     this._kernel.disposed.disconnect(this._onDisposed, this);
+  }
+
+  dispose(): void {
+    this._disconnect();
     this._fail(new PagesClosed('The table closed.'));
     if (!this._comm.isDisposed) {
       try {
@@ -139,8 +165,10 @@ class TablePages {
     }
     this._pending.delete(reply.request as number);
     if (typeof reply.error === 'string' || !Array.isArray(reply.rows)) {
-      // The kernel refused this request (a sort too big, say); the comm stays open.
-      waiting.reject(new Error(typeof reply.error === 'string' ? reply.error : 'No rows.'));
+      const error = typeof reply.error === 'string' ? reply.error : 'No rows.';
+      // The kernel refused this request (a sort too big, say) and the comm
+      // stays open; or it no longer has the table, and closes it.
+      waiting.reject(error.startsWith(GONE) ? new PagesClosed(error) : new Error(error));
     } else {
       const total = reply.total;
       waiting.resolve({
@@ -158,6 +186,11 @@ class TablePages {
   private _onStatus(_: Kernel.IKernelConnection, status: Kernel.Status): void {
     if (status === 'restarting' || status === 'autorestarting' || status === 'dead') {
       this._fail(new PagesClosed('The kernel restarted.'));
+    } else if (status === 'idle') {
+      this._arm();
+    } else if (status === 'busy') {
+      clearTimeout(this._timer);
+      this._timer = undefined;
     }
   }
 
@@ -290,6 +323,12 @@ export class RenderedTable extends Widget implements IRenderMime.IRenderer {
   private _inflight = new Set<number>();
   /** Why the kernel refused the last request (a sort too big), shown in the footer. */
   private _notice = '';
+  /** The kernel's table id while the table waits for a kernel to page through. */
+  private _retry: string | null = null;
+  /** The row count the output gave. */
+  private _outputTotal = 0;
+  /** The kernel's table no longer matches the output's rows, so every page comes from it. */
+  private _live = false;
 
   constructor(
     readonly mimeType: string = TABLE_MIME,
@@ -335,7 +374,11 @@ export class RenderedTable extends Widget implements IRenderMime.IRenderer {
       this._total > this._rows.length
         ? page
         : null;
-    this._lastShown = [];
+    this._retry = null;
+    this._outputTotal = this._total;
+    this._live = false;
+    // While the kernel sends page 1, show what the output has of it.
+    this._lastShown = this._remote !== null ? this._rows.slice(0, PAGE_SIZE) : [];
     this._loading = false;
     this._notice = '';
     // Fewer than a page embedded asks the kernel for the rest of page 1.
@@ -356,6 +399,7 @@ export class RenderedTable extends Widget implements IRenderMime.IRenderer {
     else this._sort = null;
     this._page = 0;
     this._notice = '';
+    this._resume();
     if (this._remote !== null) {
       this._generation++;
       this._cache.clear();
@@ -369,6 +413,7 @@ export class RenderedTable extends Widget implements IRenderMime.IRenderer {
 
   /** Shows page `page` (from 0), clamped to the pages there are. */
   showPage(page: number): void {
+    this._resume();
     const pages = this._pageCount();
     const previous = page < this._page;
     this._page = Math.min(Math.max(0, page), pages - 1);
@@ -405,7 +450,7 @@ export class RenderedTable extends Widget implements IRenderMime.IRenderer {
     const cached = this._cache.get(this._page);
     if (cached) return cached;
     // Unsorted pages within the embedded rows need no kernel.
-    if (!this._sort && start + PAGE_SIZE <= this._rows.length) {
+    if (!this._sort && !this._live && start + PAGE_SIZE <= this._rows.length) {
       return this._rows.slice(start, start + PAGE_SIZE);
     }
     return undefined;
@@ -434,7 +479,7 @@ export class RenderedTable extends Widget implements IRenderMime.IRenderer {
     try {
       if (!this._pages) {
         const kernel = this._kernel?.();
-        if (!kernel || this._remote === null) throw new PagesClosed('No kernel.');
+        if (!kernel || this._remote === null) throw new PagesUnavailable('No kernel.');
         try {
           this._pages = new TablePages(kernel, this._remote);
         } catch {
@@ -448,6 +493,10 @@ export class RenderedTable extends Widget implements IRenderMime.IRenderer {
       // Keep the last CACHE_PAGES pages.
       while (this._cache.size > CACHE_PAGES) this._cache.delete(this._cache.keys().next().value!);
       // The kernel's count wins: the table it holds is the live value.
+      if (reply.total !== undefined && reply.total !== this._outputTotal && !this._live) {
+        // A later cell changed it: the embedded rows are out of date.
+        this._live = true;
+      }
       if (reply.total !== undefined && reply.total !== this._total) {
         this._total = reply.total;
         const last = this._pageCount() - 1;
@@ -466,7 +515,7 @@ export class RenderedTable extends Widget implements IRenderMime.IRenderer {
       if (generation !== this._generation || this.isDisposed) return;
       this._inflight.delete(page);
       if (err instanceof PagesClosed || !this._sort) {
-        this._local(this._keepFocus(focus));
+        this._local(this._keepFocus(focus), err instanceof PagesUnavailable);
         return;
       }
       // The kernel refused the sort (too many rows): back to its order,
@@ -481,15 +530,29 @@ export class RenderedTable extends Widget implements IRenderMime.IRenderer {
     }
   }
 
+  /** Pages through the kernel again, after a fallback that allows it, once there is one. */
+  private _resume(): void {
+    if (this._remote !== null || this._retry === null || !this._kernel?.()) return;
+    this._remote = this._retry;
+    this._retry = null;
+    this._sortLocal();
+  }
+
   /** `focus` for a late answer, only if the person is still in this table. */
   private _keepFocus(focus?: string): string | undefined {
     return focus && this.node.contains(document.activeElement) ? focus : undefined;
   }
 
-  /** Back to the embedded rows: the kernel can't page this table. */
-  private _local(focus?: string): void {
+  /**
+   * Back to the embedded rows: the kernel can't page this table. With
+   * `retry` (no kernel yet, or it didn't answer), the next page or sort
+   * tries the kernel again.
+   */
+  private _local(focus?: string, retry = false): void {
+    this._retry = retry ? this._remote : null;
     this._closePages();
     this._remote = null;
+    this._notice = '';
     this._loading = false;
     this._sortLocal();
     this._page = Math.min(this._page, this._pageCount() - 1);

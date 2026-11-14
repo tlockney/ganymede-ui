@@ -20,14 +20,19 @@ it had before, in these cases:
 - the kernel doesn't know the comm target (a cdp-kernel before #489, or
   another kernel), so the comm closes;
 - the kernel restarts while a request is out;
-- the kernel doesn't answer its first request within 30 seconds.
+- the kernel doesn't answer its first request within 30 seconds of
+  being idle (a busy kernel answers after its cell).
+
+With no kernel yet, or no answer, the next page or sort tries the kernel
+again (ganymede-ui#612).
 
 When the kernel refuses a single request, the table keeps paging. For
 example, a sort over more than a million rows is refused: the sort is
 undone and the footer says why. A table that embeds fewer than 50 rows
 asks the kernel for the rest of the first page. A page already asked for
 isn't asked for again. The kernel's row count in each reply wins over
-the output's.
+the output's. Once it differs, the table changed in a later cell, and
+every page comes from the kernel, not the embedded rows.
 
 The kernel comes from the notebook's session through
 `installTableOutput(rendermime, () => session.session?.kernel)`, set

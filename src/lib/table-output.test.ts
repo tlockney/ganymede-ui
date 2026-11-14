@@ -181,7 +181,13 @@ describe('table helpers', () => {
  * a kernel that no longer has the table does.
  */
 function pagingKernel(
-  options: { refuse?: boolean; refuseSort?: boolean; hold?: boolean; total?: number } = {},
+  options: {
+    refuse?: boolean;
+    refuseSort?: boolean;
+    goneOnSort?: boolean;
+    hold?: boolean;
+    total?: number;
+  } = {},
 ) {
   const all = Array.from({ length: 2500 }, (_, i) => [i, `row ${i}`]);
   const log: Record<string, unknown>[] = [];
@@ -197,7 +203,11 @@ function pagingKernel(
       connect: (fn: () => void, self: unknown) => void disposedListeners.push(fn.bind(self)),
       disconnect: () => true,
     },
-    status: (status: string) => listeners.forEach(fn => fn(kernel, status)),
+    status: 'idle',
+    setStatus: (status: string) => {
+      kernel.status = status;
+      listeners.forEach(fn => fn(kernel, status));
+    },
     dispose: () => disposedListeners.forEach(fn => fn()),
     createComm(target: string) {
       expect(target).toBe(PAGE_TARGET);
@@ -233,12 +243,17 @@ function pagingKernel(
             const reply =
               options.refuseSort && data.sort
                 ? { request: data.request, error: 'sorting is offered up to 1,000,000 rows' }
-                : {
-                    request: data.request,
-                    offset: data.offset,
-                    total: options.total ?? all.length,
-                    rows: rows.slice(data.offset, data.offset + data.limit),
-                  };
+                : options.goneOnSort && data.sort
+                  ? {
+                      request: data.request,
+                      error: 'The kernel no longer has this table: run the cell again.',
+                    }
+                  : {
+                      request: data.request,
+                      offset: data.offset,
+                      total: options.total ?? all.length,
+                      rows: rows.slice(data.offset, data.offset + data.limit),
+                    };
             comm.onMsg({ content: { data: reply } });
           };
           // Each request answered on its own, or never with `hold`.
@@ -254,7 +269,7 @@ function pagingKernel(
   return {
     kernel: kernel as unknown as Kernel,
     log,
-    status: kernel.status,
+    status: kernel.setStatus,
     dispose: kernel.dispose,
   };
 }
@@ -417,6 +432,55 @@ describe('paging through the kernel', () => {
     await settle();
     await settle();
     expect(footer(table.node)).toBe('Rows 1,051–1,100 of 1,100');
+  });
+
+  it('waits for a busy kernel before timing out, and tries again after', async () => {
+    vi.useFakeTimers();
+    try {
+      const { kernel, log, status } = pagingKernel({ hold: true });
+      status('busy');
+      const table = await renderPaged(kernel);
+      table.showPage(20);
+      await vi.advanceTimersByTimeAsync(FIRST_REPLY_MS * 2);
+      expect(table.paged).toBe(true);
+      expect(footer(table.node)).toContain('Loading…');
+      status('idle');
+      await vi.advanceTimersByTimeAsync(FIRST_REPLY_MS);
+      expect(table.paged).toBe(false);
+      // The next page asks the kernel again.
+      table.showPage(21);
+      expect(table.paged).toBe(true);
+      expect(log.filter(entry => 'open' in entry)).toHaveLength(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('falls back when the kernel no longer has a sorted table', async () => {
+    const { kernel } = pagingKernel({ goneOnSort: true });
+    const table = await renderPaged(kernel);
+    table.sortBy(0);
+    await settle();
+    expect(table.paged).toBe(false);
+    expect(footer(table.node)).not.toContain('no longer');
+  });
+
+  it('pages from the kernel only, once its table differs from the output', async () => {
+    const { kernel, log } = pagingKernel({ total: 3000 });
+    const table = await renderPaged(kernel);
+    table.showPage(20);
+    await settle();
+    table.showPage(0);
+    await settle();
+    expect(log.at(-1)).toEqual({ request: 2, offset: 0, limit: 50 });
+  });
+
+  it('shows the embedded rows of page 1 while the kernel sends the rest', async () => {
+    const { kernel } = pagingKernel({ hold: true });
+    const few = { ...big, data: big.data.slice(0, 20), ganymede: { ...big.ganymede, shown: 20 } };
+    const table = await renderPaged(kernel, true, few);
+    expect(column(table.node, 0)).toHaveLength(20);
+    expect(footer(table.node)).toContain('Loading…');
   });
 
   it("asks once for a page in flight, and takes the kernel's row count", async () => {
