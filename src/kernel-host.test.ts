@@ -10,7 +10,8 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@tlockney/cdp-kernel/browser/worker?worker&url', () => ({ default: '/worker.js' }));
-vi.mock('@tlockney/cdp-kernel/browser', () => ({
+vi.mock('@tlockney/cdp-kernel/browser', async importOriginal => ({
+  SQL_MODULES: (await importOriginal<typeof import('@tlockney/cdp-kernel/browser')>()).SQL_MODULES,
   startBrowserKernel: (options: Record<string, unknown>) => {
     mocks.options.push(options);
     let close!: () => void;
