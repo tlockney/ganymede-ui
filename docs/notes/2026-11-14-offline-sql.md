@@ -1,4 +1,4 @@
-## 2026-11-14, offline SQL in the browser kernel (ganymede#747)
+## 2026-11-14, offline SQL in the browser kernel (#614)
 
 `jupyter.sql` in the browser kernel loads DuckDB's module from esm.sh,
 and its wasm and worker from jsDelivr, so SQL needed a network
