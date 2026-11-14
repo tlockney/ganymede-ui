@@ -180,13 +180,17 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
 
     /// Every user script the page gets, replacing any already there: add
     /// a new one here, since a code font change reinstalls them all.
-    private static func installPageScripts(on view: WKWebView) {
+    /// `loaded`: the page's URL, the in-app server's, whose origin alone
+    /// gets the person's name.
+    private static func installPageScripts(on view: WKWebView, loaded: URL?) {
         let scripts = view.configuration.userContentController
         scripts.removeAllUserScripts()
         // The page's error reports follow the app's choice (#318, #319).
         scripts.addUserScript(CrashReports.shared.pageScript)
         // The code font (#354), before the page loads.
         scripts.addUserScript(CodeFont.pageScript)
+        // The person's name for the notebook rooms (#606).
+        if let script = PersonName.pageScript(for: loaded) { scripts.addUserScript(script) }
     }
 
     /// `keepRunning`: the page runs at full speed while it isn't visible
@@ -205,12 +209,12 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
             let url = change.newValue ?? nil
             Task { @MainActor in self?.onNavigate?(url) }
         }
-        Self.installPageScripts(on: view)
+        Self.installPageScripts(on: view, loaded: loaded)
         // The code font (#354) as it changes: a reload must get the new
         // setting too, so the scripts are installed again.
-        codeFontObserver = observeCodeFont(markdown: true) { [weak view] in
+        codeFontObserver = observeCodeFont(markdown: true) { [weak self, weak view] in
             guard let view else { return }
-            Self.installPageScripts(on: view)
+            Self.installPageScripts(on: view, loaded: self?.loaded)
             view.evaluateJavaScript(CodeFont.updateScript, completionHandler: nil)
         }
         // The page's sidebar opens text files in the app's editor (#122).
@@ -241,6 +245,8 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     func load(_ url: URL, in view: WKWebView) {
         guard url != loaded else { return }
         loaded = url
+        // The person's name, for this server's origin only (#606).
+        Self.installPageScripts(on: view, loaded: url)
         // The ledger keeps notebooks by absolute path (#383).
         kernels.notebookRoot = AppModel.shared.serverRootFolder
         kernels.uiWillLoad(url)

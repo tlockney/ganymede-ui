@@ -63,7 +63,74 @@ export type RoomOptions = {
   onClosed?: (why: RoomClosed) => void;
   /** Tests pass a fake socket. */
   WebSocket?: typeof WebSocket;
+  /**
+   * The person's name, sent in the room's awareness so the server credits
+   * their edits to it (an agent is told who changed a cell). By default
+   * [`pageUserName`]: the name the Mac app gives the page, for its own
+   * server only.
+   */
+  person?: string;
 };
+
+declare global {
+  interface Window {
+    /**
+     * Set by the Mac app before the page loads, on its own server's page
+     * only: the account's full name.
+     */
+    ganymedeUser?: unknown;
+  }
+}
+
+/**
+ * The name the Mac app gave the page (`window.ganymedeUser.name`), for a
+ * room on the page's own server: the in-app server, the person's own. A
+ * remote server, or a browser, iPad or iPhone, gets none, and the server
+ * says "a person".
+ */
+export function pageUserName(
+  baseUrl: string,
+  win: {
+    ganymedeUser?: unknown;
+    location: { href: string; origin: string };
+  } | null = typeof window === 'undefined' ? null : window,
+): string | undefined {
+  if (!win) return undefined;
+  const user = win.ganymedeUser;
+  const name = user && typeof user === 'object' ? (user as { name?: unknown }).name : undefined;
+  if (typeof name !== 'string') return undefined;
+  let origin: string;
+  try {
+    origin = new URL(baseUrl, win.location.href).origin;
+  } catch {
+    return undefined;
+  }
+  return origin === win.location.origin ? name : undefined;
+}
+
+/**
+ * The awareness `user` for a person named `name`, with the fields
+ * JupyterLab's own sends (its collaborators list and cursors read them).
+ * Undefined without a name.
+ */
+export function awarenessUser(name: string | undefined) {
+  const n = name?.replace(/\s+/g, ' ').trim();
+  if (!n) return undefined;
+  // First and last word's first letters, by code point.
+  const words = n.split(' ');
+  const ends = words.length > 1 ? [words[0], words[words.length - 1]] : words;
+  const initials = ends
+    .map(w => [...w][0] ?? '')
+    .join('')
+    .toUpperCase();
+  return {
+    username: n,
+    name: n,
+    display_name: n,
+    initials,
+    color: 'var(--jp-collaborator-color1)',
+  };
+}
 
 export class NotebookRoom {
   readonly notebook: YNotebook;
@@ -88,6 +155,8 @@ export class NotebookRoom {
   ) {
     // As JupyterLab's notebook model does by default: undo per cell.
     this.notebook = new YNotebook({ disableDocumentWideUndoRedo: true });
+    const user = awarenessUser(o.person ?? pageUserName(o.settings.baseUrl));
+    if (user) this.notebook.awareness.setLocalStateField('user', user);
     const token = o.settings.token;
     this.provider = new WebsocketProvider(roomUrl, roomId, this.notebook.ydoc, {
       params: {
