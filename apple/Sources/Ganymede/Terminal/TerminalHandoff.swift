@@ -32,14 +32,15 @@ final class TerminalHandoff {
         var coordinator: AnyObject
         /// Ends the session and frees the view, if no place takes it.
         var close: @MainActor () -> Void
+        /// The move it parked for.
+        var move: UUID
     }
 
     private var live: [UUID: Live] = [:]
-    private var leaving: Set<UUID> = []
     private var parked: [UUID: Parked] = [:]
     /// Waiting for a leaving terminal to park.
     private var onParked: [UUID: [@MainActor () -> Void]] = [:]
-    /// Each move under way, so a lapse is never another move's.
+    /// Each move under way, so a timer never ends another move.
     private var moves: [UUID: UUID] = [:]
 
     /// `id`'s terminal is on show with `transport`.
@@ -47,55 +48,59 @@ final class TerminalHandoff {
         live[id] = Live(target: target, transport: transport, title: title)
     }
 
-    /// `id`'s terminal is gone. A leaving one stays listed for its new place.
-    func unregister(_ id: UUID) {
-        guard !leaving.contains(id) else { return }
+    /// `id`'s terminal with `transport` is gone, or its session ended, so it
+    /// can't move. A leaving one stays listed for its new place, and one
+    /// that has since arrived with the same id elsewhere is left alone.
+    func unregister(_ id: UUID, transport: TerminalTransport) {
+        guard !isLeaving(id), live[id]?.transport === transport else { return }
         live[id] = nil
     }
 
     /// Whether `id` names a terminal on show that can move.
     func canMove(_ id: UUID) -> Bool {
-        live[id] != nil && !leaving.contains(id)
+        live[id] != nil && !isLeaving(id)
     }
 
     /// Starts moving `id`'s terminal; the caller then removes it from where
-    /// it is. `arrive` runs once its view has parked, to show it in its
-    /// new place. False, and nothing happens, if it can't move.
+    /// it is. `arrive` runs once its view has parked, on the next turn of
+    /// the run loop (parking happens inside a SwiftUI update), to show it
+    /// in its new place. False, and nothing happens, if it can't move.
     @discardableResult
     func move(_ id: UUID, arrive: @escaping @MainActor () -> Void) -> Bool {
         guard canMove(id) else { return false }
-        leaving.insert(id)
-        onParked[id, default: []].append(arrive)
         let move = UUID()
         moves[id] = move
+        onParked[id] = [arrive]
         // A view that never leaves its place keeps its session there.
         DispatchQueue.main.asyncAfter(deadline: .now() + timeout) { @MainActor [weak self] in
             guard let self, self.moves[id] == move, self.parked[id] == nil else { return }
-            self.leaving.remove(id)
-            self.onParked[id] = nil
-            self.moves[id] = nil
+            self.finish(id)
         }
         return true
     }
 
     /// Whether `id`'s view should park rather than close its transport.
     func isLeaving(_ id: UUID) -> Bool {
-        leaving.contains(id)
+        moves[id] != nil
     }
 
     /// `id`'s view has left its place; it waits here for the new one.
     func park(_ id: UUID, view: AnyObject, coordinator: AnyObject, close: @escaping @MainActor () -> Void) {
-        parked[id] = Parked(view: view, coordinator: coordinator, close: close)
-        for arrive in onParked.removeValue(forKey: id) ?? [] { arrive() }
+        guard let move = moves[id] else { return close() }
+        parked[id] = Parked(view: view, coordinator: coordinator, close: close, move: move)
+        let arrivals = onParked.removeValue(forKey: id) ?? []
+        DispatchQueue.main.async {
+            for arrive in arrivals { arrive() }
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + timeout) { @MainActor [weak self] in
-            self?.expire(id, view: view)
+            self?.expire(id, move: move)
         }
     }
 
     /// The transport and title of a terminal arriving as `id`, or nil when
     /// none is on its way.
     func arriving(_ id: UUID) -> (transport: TerminalTransport, title: String)? {
-        guard leaving.contains(id), let entry = live[id] else { return nil }
+        guard isLeaving(id), let entry = live[id] else { return nil }
         return (entry.transport, entry.title)
     }
 
@@ -107,28 +112,28 @@ final class TerminalHandoff {
 
     /// Takes `id`'s parked view for its new place, which ends the move.
     func takeView(_ id: UUID) -> AnyObject? {
-        guard let entry = parked.removeValue(forKey: id) else { return nil }
-        leaving.remove(id)
-        moves[id] = nil
+        guard let entry = parked[id] else { return nil }
+        finish(id)
         return entry.view
     }
 
     /// The move ended without a view, as when the new place made its own.
     func arrived(_ id: UUID) {
-        leaving.remove(id)
-        parked[id] = nil
-        onParked[id] = nil
-        moves[id] = nil
+        finish(id)
     }
 
-    /// Closes a parked terminal no place took.
-    private func expire(_ id: UUID, view: AnyObject) {
-        guard let entry = parked[id], entry.view === view else { return }
-        parked[id] = nil
-        leaving.remove(id)
-        live[id] = nil
-        onParked[id] = nil
+    /// Ends `id`'s move, whichever way it went.
+    private func finish(_ id: UUID) {
         moves[id] = nil
+        parked[id] = nil
+        onParked[id] = nil
+    }
+
+    /// Closes a terminal parked for `move` that no place took.
+    private func expire(_ id: UUID, move: UUID) {
+        guard let entry = parked[id], entry.move == move else { return }
+        finish(id)
+        live[id] = nil
         entry.close()
     }
 }

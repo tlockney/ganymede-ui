@@ -18,7 +18,11 @@ the old view had gone would have made a second view and started the
 transport again.
 
 A parked terminal nothing takes within 10 s is closed, and a move whose
-view never leaves lapses, so a failed move can't leak a shell.
+view never leaves lapses, so a failed move can't leak a shell. Each move
+has a token, and both timers check it, because the same view parks again
+on a move back. The new place opens on the next turn of the run loop,
+not inside the SwiftUI update that dismantled the old view. A terminal
+whose session ended is unlisted, so it can't move.
 `TerminalHandoff` holds the view and coordinator as `AnyObject`, so its
 unit tests build without SwiftTerm. Move to Panel picks a notebook tab of
 the same window first, then the frontmost notebook window, from a weak

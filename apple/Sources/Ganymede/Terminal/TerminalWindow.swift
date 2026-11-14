@@ -58,7 +58,13 @@ struct TerminalWindow: View {
                 TerminalSurface(
                     transport: transport,
                     onTitle: { title = $0; onTitle?($0) },
-                    onEnd: { ended = $0 ?? "Session ended." },
+                    onEnd: { reason in
+                        ended = reason ?? "Session ended."
+                        #if os(macOS)
+                        // An ended session doesn't move; Reconnect makes a new one.
+                        if let handoff { TerminalHandoff.shared.unregister(handoff, transport: transport) }
+                        #endif
+                    },
                     focused: focused,
                     handoff: handoff
                 )
@@ -94,7 +100,7 @@ struct TerminalWindow: View {
         .onChange(of: title) { register() }
         .onDisappear {
             OpenTerminals.shared.remove(entry)
-            if let handoff { TerminalHandoff.shared.unregister(handoff) }
+            if let handoff, let transport { TerminalHandoff.shared.unregister(handoff, transport: transport) }
         }
         .modifier(MoveToPanelButton(
             enabled: !inPanel && handoff != nil,
