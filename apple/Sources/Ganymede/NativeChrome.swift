@@ -489,6 +489,24 @@ struct NotebookToolbar: ToolbarContent {
         ToolbarItem {
             KernelPicker(page: page, panel: panel)
         }
+        // Download, Export As and Publish, as in the File menu (#620): the
+        // web toolbar that has them is hidden under native chrome.
+        ToolbarItem {
+            Menu {
+                Button("Download Notebook…") { page.run("download") }
+                Menu("Export As") {
+                    Button("Markdown…") { page.run("export", arg: "markdown") }
+                    Button("Script…") { page.run("export", arg: "script") }
+                }
+                .disabled(page.state.publish != true)
+                Button("Publish as Web Page…") { page.run("publish") }
+                    .disabled(page.state.publish != true)
+            } label: {
+                Label("Share", systemImage: "square.and.arrow.up")
+            }
+            .help("Download, export or publish the notebook")
+            .disabled(!page.state.hasNotebook)
+        }
         ToolbarItem {
             Button { confirmTrust(page) } label: { Label("Trust", systemImage: "checkmark.shield") }
                 .help("Trust this notebook's HTML and JavaScript outputs")

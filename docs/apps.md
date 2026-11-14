@@ -86,8 +86,13 @@ shown or hidden, its tab and its expanded folders across launches.
 
 ### Toolbar and menus
 
+> [!NOTE]
+> **Unreleased.** The Mac toolbar's Share button is available only from a
+> build of `main` (HEAD); in the latest release, use the File menu.
+
 - The toolbar saves, runs cells, interrupts and restarts the kernel,
-  inserts cells, sets the cell type and trusts the notebook. Its kernel
+  inserts cells, sets the cell type and trusts the notebook. Its Share
+  button downloads, exports or publishes the notebook. Its kernel
   button opens a popover with the kernel's state and memory, Interrupt,
   Restart, Kernel Log and the kernels to change to.
 - The Cell menu runs, runs with parameters, inserts, moves and deletes
@@ -535,7 +540,8 @@ headings; pick one to go to its cell.
 
 ## Publishing a notebook
 
-**Publish as Web Page…** (File menu on the Mac, the ⋯ menu on the iPad
+**Publish as Web Page…** (File menu and the toolbar's Share button on
+the Mac, the ⋯ menu on the iPad
 and iPhone, the toolbar and the Command Palette in the browser) saves
 the notebook as one self-contained `.html` page to read and share: the
 page `ganymede nb publish` writes, with prose, charts and tables, light
@@ -579,7 +585,8 @@ has no such run.
 
 ## Exporting a notebook
 
-**Export As › Markdown** and **Script** (File menu on the Mac, the ⋯ menu
+**Export As › Markdown** and **Script** (File menu and the toolbar's
+Share button on the Mac, the ⋯ menu
 on the iPad and iPhone, the Command Palette and the toolbar's More menu
 in the browser) save the notebook as a Markdown file or as its code in
 the kernel's language (`.ts`, `.py`, …), as JupyterLab's Save and Export
