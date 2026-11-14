@@ -46,8 +46,9 @@ final class AppModel {
     private(set) var mcpMode: MCPMode
     /// Whether `/mcp` sends images in outputs to the model.
     private(set) var mcpImages: Bool
-    /// The server's token while MCP is on, kept in the keychain so the
-    /// config agents were given keeps working; nil while it is off.
+    /// The MCP token (`mcp_token`, which only `/mcp` accepts) while MCP is
+    /// on, kept in the keychain so the config agents were given keeps
+    /// working; nil while it is off.
     private(set) var mcpToken: String?
     /// The `jpserver-<pid>.json` written while MCP is on, so `ganymede mcp`
     /// finds the app's server.

@@ -322,14 +322,16 @@ The server listens on this Mac only and needs the token. Agents get a
 token that opens `/mcp` and nothing else (the server's `mcp_token`), both
 in the HTTP config and in the server info file `ganymede mcp` reads, so
 an agent can't write files, start kernels or change grants over the REST
-API, and the mode limits what it does over MCP. That holds only while the
+API, and the mode limits what it does over MCP. Other readers of that
+file, such as `jupyter server list`, get a URL the server refuses. That holds only while the
 agent can't run code: a cell can read the server's own token, and an
 agent reads any output that shows it. While MCP is on, the token is kept
 in the keychain and the port is the one the server had last time, so the
 HTTP config, and an agent session already running, keep working after
 Ganymede restarts.
 Should that port be taken, Settings shows the new one. Reset Token makes a
-new token, after which HTTP agents need the new config. Changing these
+new token, after which HTTP agents need the new config and agents
+using `ganymede mcp` need restarting. Changing these
 settings restarts Ganymede's server, which restarts its kernels; turning
 MCP off ends agents' sessions and revokes the token, so turning it on
 again makes a new one.
