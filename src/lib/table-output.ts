@@ -8,13 +8,24 @@
  * notebook is safe to show. The bundle's `ganymede.rows` is the source's
  * row count when the kernel embedded fewer (`ganymede.shown`); the footer
  * says so, and sorting says it covers only the rows embedded.
+ *
+ * When the kernel kept the whole table (`ganymede.page`, cdp-kernel#489)
+ * and the output is trusted, the table pages and sorts through the kernel
+ * instead, over the `ganymede.table.v1` comm: pages past the embedded rows,
+ * and every sorted page, come from the kernel. If the kernel no longer has
+ * the table (it restarted), the table keeps to the embedded rows.
  */
 import type { IRenderMimeRegistry } from '@jupyterlab/rendermime';
 import type { IRenderMime } from '@jupyterlab/rendermime-interfaces';
+import type { Kernel } from '@jupyterlab/services';
 import { Widget } from '@lumino/widgets';
 
 export const TABLE_MIME = 'application/vnd.dataresource+json';
 export const PAGE_SIZE = 50;
+/** Pages from the kernel kept for the current sort. */
+const CACHE_PAGES = 20;
+/** The comm target cdp-kernel answers page requests on. */
+export const PAGE_TARGET = 'ganymede.table.v1';
 /** Longest text shown in a cell; the rest is in its tooltip. */
 const MAX_CELL = 200;
 
@@ -26,7 +37,136 @@ export interface TableField {
 export interface TableResource {
   schema?: { fields?: TableField[] };
   data?: unknown[];
-  ganymede?: { rows?: number; shown?: number; title?: string };
+  ganymede?: { rows?: number; shown?: number; title?: string; page?: string };
+}
+
+/** The kernel a notebook's tables page through, when it has one. */
+export type KernelSource = () => Kernel.IKernelConnection | null | undefined;
+
+interface PageReply {
+  request?: unknown;
+  rows?: unknown;
+  total?: unknown;
+  error?: unknown;
+}
+
+/**
+ * How long the kernel has to answer its first page request. A kernel that
+ * ignores the comm (one without the target that doesn't close it) would
+ * otherwise leave the table loading. Once it has answered, a request waits
+ * as long as it takes: a busy kernel answers when its cell ends.
+ */
+export const FIRST_REPLY_MS = 30_000;
+
+/** The kernel can't page the table any more: it closed the comm, or restarted. */
+class PagesClosed extends Error {}
+
+/** One page of a table, as the kernel sent it. */
+interface Page {
+  rows: unknown[];
+  total?: number;
+}
+
+/** A comm to the kernel's copy of one table, asking for rows by offset and sort. */
+class TablePages {
+  private _comm: Kernel.IComm;
+  private _kernel: Kernel.IKernelConnection;
+  private _next = 0;
+  private _pending = new Map<
+    number,
+    { resolve: (page: Page) => void; reject: (e: Error) => void }
+  >();
+  private _failed: Error | null = null;
+  private _answered = false;
+  private _timer: ReturnType<typeof setTimeout> | undefined;
+
+  constructor(kernel: Kernel.IKernelConnection, id: string) {
+    this._kernel = kernel;
+    this._comm = kernel.createComm(PAGE_TARGET);
+    this._comm.onMsg = msg => this._receive(msg.content.data as PageReply);
+    // A kernel without the target, or that no longer has the table, closes it.
+    this._comm.onClose = () => this._fail(new PagesClosed('The kernel closed the table.'));
+    // A restart disposes the comm without closing it.
+    kernel.statusChanged.connect(this._onStatus, this);
+    // A kernel change disposes the old connection with no `dead` status.
+    kernel.disposed.connect(this._onDisposed, this);
+    this._comm.open({ id });
+  }
+
+  rows(offset: number, limit: number, sort?: { column: string; descending: boolean }) {
+    if (this._failed) return Promise.reject(this._failed);
+    const request = ++this._next;
+    return new Promise<Page>((resolve, reject) => {
+      try {
+        this._comm.send(sort ? { request, offset, limit, sort } : { request, offset, limit });
+      } catch {
+        this._fail(new PagesClosed('The kernel is gone.'));
+        reject(this._failed!);
+        return;
+      }
+      this._pending.set(request, { resolve, reject });
+      if (!this._answered && this._timer === undefined) {
+        this._timer = setTimeout(
+          () => this._fail(new PagesClosed('The kernel did not answer.')),
+          FIRST_REPLY_MS,
+        );
+      }
+    });
+  }
+
+  dispose(): void {
+    this._kernel.statusChanged.disconnect(this._onStatus, this);
+    this._kernel.disposed.disconnect(this._onDisposed, this);
+    this._fail(new PagesClosed('The table closed.'));
+    if (!this._comm.isDisposed) {
+      try {
+        this._comm.close();
+      } catch {
+        // The kernel is gone already.
+      }
+    }
+  }
+
+  private _receive(reply: PageReply): void {
+    this._answered = true;
+    clearTimeout(this._timer);
+    const waiting =
+      typeof reply?.request === 'number' ? this._pending.get(reply.request) : undefined;
+    if (!waiting) {
+      // An answer to no request: the kernel refused the table.
+      if (typeof reply?.error === 'string') this._fail(new PagesClosed(reply.error));
+      return;
+    }
+    this._pending.delete(reply.request as number);
+    if (typeof reply.error === 'string' || !Array.isArray(reply.rows)) {
+      // The kernel refused this request (a sort too big, say); the comm stays open.
+      waiting.reject(new Error(typeof reply.error === 'string' ? reply.error : 'No rows.'));
+    } else {
+      const total = reply.total;
+      waiting.resolve({
+        rows: reply.rows,
+        total:
+          typeof total === 'number' && Number.isInteger(total) && total >= 0 ? total : undefined,
+      });
+    }
+  }
+
+  private _onDisposed(): void {
+    this._fail(new PagesClosed('The kernel connection closed.'));
+  }
+
+  private _onStatus(_: Kernel.IKernelConnection, status: Kernel.Status): void {
+    if (status === 'restarting' || status === 'autorestarting' || status === 'dead') {
+      this._fail(new PagesClosed('The kernel restarted.'));
+    }
+  }
+
+  private _fail(error: Error): void {
+    clearTimeout(this._timer);
+    this._failed ??= error;
+    for (const { reject } of this._pending.values()) reject(error);
+    this._pending.clear();
+  }
 }
 
 const NUMERIC = new Set(['integer', 'number']);
@@ -114,9 +254,12 @@ export function footerText(options: {
   embedded: number;
   total: number;
   sorted: boolean;
+  /** Paging through the kernel: every row is there to show. */
+  paged?: boolean;
 }): string {
-  const { start, end, embedded, total, sorted } = options;
+  const { start, end, embedded, total, sorted, paged } = options;
   const fmt = (n: number) => n.toLocaleString('en-US');
+  if (paged) return total === 0 ? 'No rows' : `Rows ${fmt(start + 1)}–${fmt(end)} of ${fmt(total)}`;
   const range =
     embedded === 0 ? 'No rows' : `Rows ${fmt(start + 1)}–${fmt(end)} of ${fmt(embedded)}`;
   if (total <= embedded) return range;
@@ -133,10 +276,32 @@ export class RenderedTable extends Widget implements IRenderMime.IRenderer {
   private _page = 0;
   private _sort: { column: number; descending: boolean } | null = null;
   private _title?: string;
+  /** The kernel's id for the whole table, while paging through the kernel. */
+  private _remote: string | null = null;
+  private _pages: TablePages | null = null;
+  /** Pages fetched for the current sort. */
+  private _cache = new Map<number, unknown[][]>();
+  private _loading = false;
+  /** The rows drawn last, kept on screen while the kernel sends the next page. */
+  private _lastShown: unknown[][] = [];
+  /** Bumped when the sort or the data changes, so a late answer is dropped. */
+  private _generation = 0;
+  /** Pages asked for and not answered yet, for the current generation. */
+  private _inflight = new Set<number>();
+  /** Why the kernel refused the last request (a sort too big), shown in the footer. */
+  private _notice = '';
 
-  constructor(readonly mimeType: string = TABLE_MIME) {
+  constructor(
+    readonly mimeType: string = TABLE_MIME,
+    private readonly _kernel?: KernelSource,
+  ) {
     super();
     this.addClass('gm-table');
+  }
+
+  /** Whether pages and sorts come from the kernel. */
+  get paged(): boolean {
+    return this._remote !== null;
   }
 
   renderModel(model: IRenderMime.IMimeModel): Promise<void> {
@@ -156,8 +321,31 @@ export class RenderedTable extends Widget implements IRenderMime.IRenderer {
     this._sort = null;
     this._title =
       typeof resource.ganymede?.title === 'string' ? resource.ganymede.title : undefined;
-    this._draw();
+    // Only a trusted output pages through the kernel: one from a file
+    // nobody trusted doesn't get to open comms.
+    const page = resource.ganymede?.page;
+    this._closePages();
+    // The kernel is looked up when a page is needed, so an output drawn
+    // before the notebook rejoins its kernel still pages; with none, the
+    // table falls back to the embedded rows then.
+    this._remote =
+      typeof page === 'string' &&
+      model.trusted &&
+      this._kernel !== undefined &&
+      this._total > this._rows.length
+        ? page
+        : null;
+    this._lastShown = [];
+    this._loading = false;
+    this._notice = '';
+    // Fewer than a page embedded asks the kernel for the rest of page 1.
+    this._show();
     return Promise.resolve();
+  }
+
+  dispose(): void {
+    this._closePages();
+    super.dispose();
   }
 
   /** Sorts by a column: ascending, then descending, then as the kernel sent it. */
@@ -166,6 +354,38 @@ export class RenderedTable extends Widget implements IRenderMime.IRenderer {
     if (s?.column !== column) this._sort = { column, descending: false };
     else if (!s.descending) this._sort = { column, descending: true };
     else this._sort = null;
+    this._page = 0;
+    this._notice = '';
+    if (this._remote !== null) {
+      this._generation++;
+      this._cache.clear();
+      this._inflight.clear();
+      this._show(`sort-${column}`);
+      return;
+    }
+    this._sortLocal();
+    this._draw(`sort-${column}`);
+  }
+
+  /** Shows page `page` (from 0), clamped to the pages there are. */
+  showPage(page: number): void {
+    const pages = this._pageCount();
+    const previous = page < this._page;
+    this._page = Math.min(Math.max(0, page), pages - 1);
+    const focus = previous ? 'previous' : 'next';
+    // Only the current page's request is de-duplicated: one whose answer
+    // was lost is asked again when the person comes back to it.
+    for (const asked of this._inflight) if (asked !== this._page) this._inflight.delete(asked);
+    if (this._remote !== null) this._show(focus);
+    else this._draw(focus);
+  }
+
+  private _pageCount(): number {
+    const rows = this._remote !== null ? this._total : this._rows.length;
+    return Math.max(1, Math.ceil(rows / PAGE_SIZE));
+  }
+
+  private _sortLocal(): void {
     this._order = this._rows.map((_, i) => i);
     if (this._sort) {
       const { column: c, descending } = this._sort;
@@ -174,16 +394,114 @@ export class RenderedTable extends Widget implements IRenderMime.IRenderer {
         compareValues(this._rows[i]![c], this._rows[j]![c], type, descending),
       );
     }
-    this._page = 0;
-    this._draw(`sort-${column}`);
   }
 
-  /** Shows page `page` (from 0), clamped to the pages there are. */
-  showPage(page: number): void {
-    const pages = Math.max(1, Math.ceil(this._rows.length / PAGE_SIZE));
-    const previous = page < this._page;
-    this._page = Math.min(Math.max(0, page), pages - 1);
-    this._draw(previous ? 'previous' : 'next');
+  /** The rows on the current page, or undefined while the kernel hasn't sent them. */
+  private _visible(): unknown[][] | undefined {
+    const start = this._page * PAGE_SIZE;
+    if (this._remote === null) {
+      return this._order.slice(start, start + PAGE_SIZE).map(i => this._rows[i]!);
+    }
+    const cached = this._cache.get(this._page);
+    if (cached) return cached;
+    // Unsorted pages within the embedded rows need no kernel.
+    if (!this._sort && start + PAGE_SIZE <= this._rows.length) {
+      return this._rows.slice(start, start + PAGE_SIZE);
+    }
+    return undefined;
+  }
+
+  /** Draws the current page, asking the kernel for it first if needed. */
+  private _show(focus?: string): void {
+    if (this._visible() !== undefined) {
+      this._loading = false;
+      this._draw(focus);
+      return;
+    }
+    this._loading = true;
+    this._draw(focus);
+    // Asked already: its answer draws the page.
+    if (this._inflight.has(this._page)) return;
+    void this._fetch(this._page, focus);
+  }
+
+  private async _fetch(page: number, focus?: string): Promise<void> {
+    const generation = this._generation;
+    const sort = this._sort
+      ? { column: this._fields[this._sort.column]!.name, descending: this._sort.descending }
+      : undefined;
+    this._inflight.add(page);
+    try {
+      if (!this._pages) {
+        const kernel = this._kernel?.();
+        if (!kernel || this._remote === null) throw new PagesClosed('No kernel.');
+        try {
+          this._pages = new TablePages(kernel, this._remote);
+        } catch {
+          throw new PagesClosed('The kernel is gone.');
+        }
+      }
+      const reply = await this._pages.rows(page * PAGE_SIZE, PAGE_SIZE, sort);
+      if (generation !== this._generation || this.isDisposed) return;
+      this._inflight.delete(page);
+      this._cache.set(page, rowsOf({ data: reply.rows }, this._fields));
+      // Keep the last CACHE_PAGES pages.
+      while (this._cache.size > CACHE_PAGES) this._cache.delete(this._cache.keys().next().value!);
+      // The kernel's count wins: the table it holds is the live value.
+      if (reply.total !== undefined && reply.total !== this._total) {
+        this._total = reply.total;
+        const last = this._pageCount() - 1;
+        if (this._page > last) {
+          // The table shrank past the page shown.
+          this._page = last;
+          this._show(this._keepFocus(focus));
+          return;
+        }
+      }
+      if (page === this._page) {
+        this._loading = false;
+        this._draw(this._keepFocus(focus));
+      }
+    } catch (err) {
+      if (generation !== this._generation || this.isDisposed) return;
+      this._inflight.delete(page);
+      if (err instanceof PagesClosed || !this._sort) {
+        this._local(this._keepFocus(focus));
+        return;
+      }
+      // The kernel refused the sort (too many rows): back to its order,
+      // still paging, and say why.
+      this._sort = null;
+      this._generation++;
+      this._cache.clear();
+      this._inflight.clear();
+      this._page = 0;
+      this._notice = err instanceof Error ? err.message : String(err);
+      this._show(this._keepFocus(focus));
+    }
+  }
+
+  /** `focus` for a late answer, only if the person is still in this table. */
+  private _keepFocus(focus?: string): string | undefined {
+    return focus && this.node.contains(document.activeElement) ? focus : undefined;
+  }
+
+  /** Back to the embedded rows: the kernel can't page this table. */
+  private _local(focus?: string): void {
+    this._closePages();
+    this._remote = null;
+    this._loading = false;
+    this._sortLocal();
+    this._page = Math.min(this._page, this._pageCount() - 1);
+    this._draw(focus);
+  }
+
+  private _closePages(): void {
+    this._generation++;
+    this._cache.clear();
+    this._inflight.clear();
+    this._pages?.dispose();
+    this._pages = null;
   }
 
   /**
@@ -232,10 +550,14 @@ export class RenderedTable extends Widget implements IRenderMime.IRenderer {
 
     const body = table.createTBody();
     const start = this._page * PAGE_SIZE;
-    const end = Math.min(start + PAGE_SIZE, this._order.length);
-    for (const index of this._order.slice(start, end)) {
+    const shown = this._visible() ?? this._lastShown;
+    this._lastShown = shown;
+    const end =
+      this._remote !== null ? Math.min(start + PAGE_SIZE, this._total) : start + shown.length;
+    for (const row of shown) {
       const tr = body.insertRow();
-      this._rows[index]!.forEach((value, c) => {
+      this._fields.forEach((_, c) => {
+        const value = row[c];
         const td = tr.insertCell();
         const text = cellText(value);
         td.textContent = text.length > MAX_CELL ? `${text.slice(0, MAX_CELL - 1)}…` : text;
@@ -249,7 +571,8 @@ export class RenderedTable extends Widget implements IRenderMime.IRenderer {
 
     const footer = document.createElement('div');
     footer.className = 'gm-table-footer';
-    const pages = Math.ceil(this._order.length / PAGE_SIZE);
+    const pages =
+      this._remote !== null ? this._pageCount() : Math.ceil(this._order.length / PAGE_SIZE);
     if (pages > 1) {
       const pager = (label: string, text: string, page: number, disabled: boolean) => {
         const b = document.createElement('button');
@@ -273,7 +596,11 @@ export class RenderedTable extends Widget implements IRenderMime.IRenderer {
       embedded: this._rows.length,
       total: this._total,
       sorted: this._sort !== null,
+      paged: this._remote !== null,
     });
+    if (this._loading) info.textContent += ' · Loading…';
+    if (this._notice) info.textContent += ` · ${this._notice}`;
+    if (this._loading) body.setAttribute('aria-busy', 'true');
     footer.append(info);
     node.append(footer);
     scroller.scrollLeft = scrollLeft;
@@ -287,14 +614,18 @@ export class RenderedTable extends Widget implements IRenderMime.IRenderer {
   }
 }
 
-/** Adds the table renderer, ahead of HTML so tables don't show as their HTML fallback. */
-export function installTableOutput(registry: IRenderMimeRegistry): void {
+/**
+ * Adds the table renderer, ahead of HTML so tables don't show as their HTML
+ * fallback. With `kernel`, the notebook's, tables the kernel kept page
+ * through it.
+ */
+export function installTableOutput(registry: IRenderMimeRegistry, kernel?: KernelSource): void {
   const html = registry.getRank('text/html') ?? 50;
   registry.addFactory(
     {
       safe: true,
       mimeTypes: [TABLE_MIME],
-      createRenderer: options => new RenderedTable(options.mimeType),
+      createRenderer: options => new RenderedTable(options.mimeType, kernel),
     },
     html - 1,
   );
