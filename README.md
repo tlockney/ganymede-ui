@@ -45,16 +45,20 @@ against a real server.
 
 ## Download the Mac app
 
-Each
-[release](https://github.com/tlockney/ganymede-ui/releases) attaches
-`Ganymede-macOS-<version>.zip`, a signed and notarized app that runs the
-Ganymede server in its own process and can be the default app for
-`.ipynb` files. It checks for new releases and installs them over
-itself, asking first ([Updates](docs/apps.md#updates)). The iPad and
-iPhone app is on TestFlight for internal testers. The latest build of
-`main` is the
-[`main-build`](https://github.com/tlockney/ganymede-ui/releases/tag/main-build)
-prerelease, signed and notarized too ([apple/README.md](apple/README.md#download)). [docs/apps.md](docs/apps.md) is the apps' user guide;
+- [Latest release](https://github.com/tlockney/ganymede-ui/releases/latest):
+  download `Ganymede-macOS-<version>.zip` from the release's assets.
+- [Latest build of `main`](https://github.com/tlockney/ganymede-ui/releases/download/main-build/Ganymede-macOS.zip):
+  a direct download from the
+  [`main-build`](https://github.com/tlockney/ganymede-ui/releases/tag/main-build)
+  prerelease, rebuilt on each push to `main` that changes the app.
+
+Both are signed and notarized apps that run the Ganymede server in their
+own process and can be the default app for `.ipynb` files. The app
+checks for new releases and installs them over itself, asking first
+([Updates](docs/apps.md#updates)); a main build has the same bundle ID,
+so it replaces an installed release ([apple/README.md](apple/README.md#download)).
+The iPad and iPhone app is on TestFlight for internal testers.
+[docs/apps.md](docs/apps.md) is the apps' user guide;
 [apple/README.md](apple/README.md) has how to build them.
 
 ## Run
