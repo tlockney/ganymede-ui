@@ -110,6 +110,29 @@ describe('testModel', () => {
     });
   });
 
+  it('explains a blocked request to each hosted provider', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new TypeError('Failed to fetch');
+      }),
+    );
+    for (const [provider, model, host] of [
+      ['anthropic', 'claude-sonnet-5-5', 'api.anthropic.com'],
+      ['openai', 'gpt-5.5', 'api.openai.com'],
+      ['google', 'gemini-3.5-flash', 'generativelanguage.googleapis.com'],
+    ] as const) {
+      const result = await testModel(
+        { ...DEFAULT_SETTINGS, provider, model },
+        keyOnly(provider, 'sk-test'),
+      );
+      expect(result).toEqual({
+        ok: false,
+        message: `Couldn't reach ${host}: check the network, or the provider doesn't let this page call it (CORS).`,
+      });
+    }
+  });
+
   it('refuses a blank or non-http server URL without sending anything', async () => {
     const fetch = vi.fn(async () => chatStream('OK'));
     vi.stubGlobal('fetch', fetch);

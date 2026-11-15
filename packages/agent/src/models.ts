@@ -99,9 +99,17 @@ export interface TestResult {
   message: string;
 }
 
-/** The browser's bare "Connection error." says nothing about why. */
+/**
+ * A blocked or failed request says nothing about why: the SDKs report
+ * "Connection error.", pi-ai 1.5.2 and later append the fetch error's cause
+ * ("Connection error.: Failed to fetch"), and Google's provider passes the
+ * browser's own text on ("Failed to fetch", "Load failed", "NetworkError ...").
+ */
+const UNEXPLAINED =
+  /^(?:connection error\.?(?::.*)?|failed to fetch|load failed|networkerror\b.*)$/i;
+
 function explain(message: string, baseUrl: string, local: boolean): string {
-  if (!/^connection error\.?$/i.test(message.trim())) return message;
+  if (!UNEXPLAINED.test(message.trim())) return message;
   let host = baseUrl;
   try {
     host = new URL(baseUrl).host;
