@@ -200,6 +200,8 @@ private struct MCPSettings: View {
 private struct TailnetSettings: View {
     @Environment(AppModel.self) private var model
     @State private var allowText = ""
+    /// The login this Mac is signed in to Tailscale as, once known.
+    @State private var ownLogin: String?
 
     private var allow: [String] { AppTailnet.allowList(allowText) }
 
@@ -210,11 +212,20 @@ private struct TailnetSettings: View {
                 set: { model.setTailnet(share: $0, allow: allow) }
             ))
             .disabled(!model.tailnetShare && allow.isEmpty)
+            if !model.tailnetShare && allow.isEmpty {
+                Text("Enter at least one Tailscale login under “Let in without the token” to turn this on.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             LabeledContent("Let in without the token") {
                 HStack {
                     TextField("you@example.com", text: $allowText)
                         .labelsHidden()
                         .onSubmit { apply() }
+                    if allow.isEmpty, let login = ownLogin {
+                        Button("Use Mine") { allowText = login }
+                            .help("Fill in \(login), the login this Mac is signed in to Tailscale as")
+                    }
                     Button("Apply") { apply() }
                         .disabled(allow == model.tailnetAllow)
                 }
@@ -239,6 +250,7 @@ private struct TailnetSettings: View {
             Text("Opens Ganymede to your other devices at this Mac’s tailnet name over HTTPS, through `tailscale serve`. The logins listed (your Tailscale login, such as you@example.com) get in without the token; no one else can, since the token stays with this app. Ganymede trusts the login Tailscale sends only from this Mac, and any program on this Mac could send one too, so turn this on only on a Mac you alone use. Agents still need the MCP token. Turning it off removes the `tailscale serve` setting. Changing this restarts Ganymede’s server and its kernels.")
         }
         .onAppear { allowText = model.tailnetAllow.joined(separator: ", ") }
+        .task { ownLogin = await AppTailnet.loadOwnLogin() }
     }
 
     private func apply() {

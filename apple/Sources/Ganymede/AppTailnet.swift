@@ -56,6 +56,25 @@ enum AppTailnet {
         return trimmed.isEmpty ? nil : trimmed
     }
 
+    /// The Tailscale login this Mac is signed in as (`you@example.com`),
+    /// from `tailscale status --json`: `Self.UserID` names an entry of the
+    /// top-level `User` map, whose `LoginName` is the login. nil when
+    /// Tailscale isn't running or any of those is missing or empty, and on
+    /// a tagged Mac, whose user is Tailscale's `tagged-devices`, no person.
+    static func ownLogin(status: Data) -> String? {
+        guard let json = try? JSONSerialization.jsonObject(with: status) as? [String: Any],
+              let me = json["Self"] as? [String: Any],
+              (me["Tags"] as? [Any] ?? []).isEmpty,
+              // A JSON number: an NSNumber here.
+              let id = (me["UserID"] as? NSNumber).map({ String($0.int64Value) }),
+              let users = json["User"] as? [String: Any],
+              let user = users[id] as? [String: Any],
+              let login = user["LoginName"] as? String,
+              !login.isEmpty, login != "tagged-devices"
+        else { return nil }
+        return login
+    }
+
     /// Another device on the tailnet, for the remote editor's picker.
     struct Peer: Equatable, Identifiable, Sendable {
         /// The first label of its MagicDNS name: its machine name, as the
@@ -97,13 +116,25 @@ enum AppTailnet {
     /// The other devices on the tailnet; none when Tailscale isn't
     /// installed or connected. On a dispatch queue, since `run` blocks.
     static func loadPeers() async -> [Peer] {
+        await loadStatus().map(peers(status:)) ?? []
+    }
+
+    /// `tailscale status --json`; nil when Tailscale isn't installed or
+    /// the command fails. On a dispatch queue, since `run` blocks.
+    private static func loadStatus() async -> Data? {
         await withCheckedContinuation { done in
             DispatchQueue.global(qos: .userInitiated).async {
-                guard let cli = command() else { return done.resume(returning: []) }
+                guard let cli = command() else { return done.resume(returning: nil) }
                 let status = run(cli, ["status", "--json"])
-                done.resume(returning: status.code == 0 ? peers(status: status.output) : [])
+                done.resume(returning: status.code == 0 ? status.output : nil)
             }
         }
+    }
+
+    /// This Mac's Tailscale login; nil when Tailscale isn't installed or
+    /// connected.
+    static func loadOwnLogin() async -> String? {
+        await loadStatus().flatMap(ownLogin(status:))
     }
 
     /// The `ganymede.toml` keys over the app's own server config: the
@@ -146,17 +177,48 @@ enum AppTailnet {
     }
 
     /// The config for a server shared on the tailnet: asks Tailscale for
-    /// this Mac's name. Off the main thread.
-    static func prepare(allow: [String]) -> Result<(name: String, config: [String: any Sendable]), Failure> {
+    /// this Mac's name. `cli` is the `tailscale` to run, for tests. Off the
+    /// main thread.
+    static func prepare(
+        allow: [String],
+        cli: String? = command()
+    ) -> Result<(name: String, config: [String: any Sendable]), Failure> {
         dispatchPrecondition(condition: .notOnQueue(.main))
-        guard let cli = command() else {
+        guard let cli else {
             return .failure(Failure(message: "Ganymede can’t find Tailscale. Install the Tailscale app, then turn this on again."))
         }
         let status = run(cli, ["status", "--json"])
         guard status.code == 0, let name = dnsName(status: status.output) else {
-            return .failure(Failure(message: "Tailscale isn’t connected, or has no name for this Mac. Connect it, then turn this on again."))
+            return .failure(Failure(message: "Tailscale isn’t connected, or has no name for this Mac. Connect it, then turn this on again." + said(status.output, status.error)))
         }
         return .success((name, serverConfig(dnsName: name, allow: allow)))
+    }
+
+    /// What `tailscale` printed, when that wasn't JSON, to add to a
+    /// failure: " Tailscale said: …", cut to one line of at most 200
+    /// characters; empty for JSON or no output.
+    static func said(_ output: Data, _ error: Data) -> String {
+        let text = [output, error]
+            .filter { (try? JSONSerialization.jsonObject(with: $0)) == nil }
+            .map { String(decoding: $0, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+            .split(whereSeparator: \.isNewline)
+            .joined(separator: " ")
+        guard !text.isEmpty else { return "" }
+        return " Tailscale said: " + (text.count > 200 ? String(text.prefix(200)) + "…" : text)
+    }
+
+    /// The environment for `tailscale`: the app's own, plus
+    /// `TAILSCALE_BE_CLI=1`. The Tailscale app's binary, which `command()`
+    /// finds first, acts as the CLI only when it sees signs of a shell
+    /// (`TERM`, `SHLVL`); started from an app without them, it tries to
+    /// start its GUI instead, prints "The Tailscale GUI failed to start"
+    /// and exits 0 (#632).
+    static func environment(_ base: [String: String]) -> [String: String] {
+        var environment = base
+        environment["TAILSCALE_BE_CLI"] = "1"
+        return environment
     }
 
     /// Points `tailscale serve` at the server on `port`, unless it already
@@ -194,11 +256,13 @@ enum AppTailnet {
         _ = run(cli, ["serve", "--https=\(httpsPort)", "off"])
     }
 
-    /// Runs `cli` with `arguments`, for at most ten seconds.
-    private static func run(_ cli: String, _ arguments: [String]) -> (code: Int32, output: Data, error: Data) {
+    /// Runs `cli` with `arguments`, for at most ten seconds, with
+    /// `environment(_:)`.
+    static func run(_ cli: String, _ arguments: [String]) -> (code: Int32, output: Data, error: Data) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: cli)
         process.arguments = arguments
+        process.environment = environment(ProcessInfo.processInfo.environment)
         let outPipe = Pipe(), errPipe = Pipe()
         process.standardOutput = outPipe
         process.standardError = errPipe

@@ -346,7 +346,10 @@ Tailnet opens Ganymede to your other devices at the Mac's tailnet name,
 such as `https://box.tail1234.ts.net/`. List the Tailscale logins to let
 in (yours, such as `you@example.com`), then turn on **Share on my
 tailnet**. Those logins open the address in a browser without a token;
-no one else gets in, since the server's token stays with the app.
+no one else gets in, since the server's token stays with the app. The
+toggle stays off until a login is listed; Settings says so, and a
+**Use Mine** button beside the field fills in the login the Mac is signed in
+to Tailscale as.
 
 The app runs `tailscale serve` for you, pointing HTTPS on the tailnet
 name at its server on this Mac, and Settings shows the address. It won't

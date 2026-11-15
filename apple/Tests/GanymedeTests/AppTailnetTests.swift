@@ -32,6 +32,81 @@ final class AppTailnetTests: XCTestCase {
         XCTAssertEqual(AppTailnet.url(dnsName: "box.tail1234.ts.net")?.absoluteString, "https://box.tail1234.ts.net/")
     }
 
+    func testOwnLogin() {
+        let status = Data(#"""
+        {"Self":{"DNSName":"box.tail1234.ts.net.","UserID":1234567890123},
+         "User":{"1234567890123":{"ID":1234567890123,"LoginName":"me@example.com"},
+                 "42":{"ID":42,"LoginName":"other@example.com"}}}
+        """#.utf8)
+        XCTAssertEqual(AppTailnet.ownLogin(status: status), "me@example.com")
+        // No Self, or no UserID in it.
+        XCTAssertNil(AppTailnet.ownLogin(status: Data(#"{"User":{"42":{"LoginName":"o@example.com"}}}"#.utf8)))
+        XCTAssertNil(AppTailnet.ownLogin(status: Data(#"{"Self":{"DNSName":"box."},"User":{"42":{"LoginName":"o@example.com"}}}"#.utf8)))
+        // No User map.
+        XCTAssertNil(AppTailnet.ownLogin(status: Data(#"{"Self":{"UserID":42}}"#.utf8)))
+        // UserID not in User.
+        XCTAssertNil(AppTailnet.ownLogin(status: Data(#"{"Self":{"UserID":7},"User":{"42":{"LoginName":"o@example.com"}}}"#.utf8)))
+        // Empty or missing LoginName.
+        XCTAssertNil(AppTailnet.ownLogin(status: Data(#"{"Self":{"UserID":42},"User":{"42":{"LoginName":""}}}"#.utf8)))
+        XCTAssertNil(AppTailnet.ownLogin(status: Data(#"{"Self":{"UserID":42},"User":{"42":{}}}"#.utf8)))
+        XCTAssertNil(AppTailnet.ownLogin(status: Data("not json".utf8)))
+        // A tagged Mac: its user is Tailscale's tagged-devices, no person.
+        XCTAssertNil(AppTailnet.ownLogin(status: Data(#"{"Self":{"UserID":42,"Tags":["tag:server"]},"User":{"42":{"LoginName":"o@example.com"}}}"#.utf8)))
+        XCTAssertNil(AppTailnet.ownLogin(status: Data(#"{"Self":{"UserID":42},"User":{"42":{"LoginName":"tagged-devices"}}}"#.utf8)))
+    }
+
+    /// Started from an app, the Tailscale app's binary acts as the CLI
+    /// only with `TAILSCALE_BE_CLI` set (#632).
+    func testEnvironmentMakesTailscaleACLI() {
+        let environment = AppTailnet.environment(["HOME": "/Users/me", "PATH": "/usr/bin:/bin"])
+        XCTAssertEqual(environment["TAILSCALE_BE_CLI"], "1")
+        XCTAssertEqual(environment["HOME"], "/Users/me")
+        XCTAssertEqual(environment["PATH"], "/usr/bin:/bin")
+    }
+
+    /// `run` passes that environment to the process it starts.
+    func testRunSetsTailscaleBeCLI() {
+        let result = AppTailnet.run("/bin/sh", ["-c", #"printf '%s|%s' "$TAILSCALE_BE_CLI" "$HOME""#])
+        XCTAssertEqual(result.code, 0)
+        XCTAssertEqual(
+            String(decoding: result.output, as: UTF8.self),
+            "1|" + (ProcessInfo.processInfo.environment["HOME"] ?? "")
+        )
+    }
+
+    /// A `tailscale` that prints the GUI's error and exits 0, as the
+    /// Tailscale app's binary did when started without `TAILSCALE_BE_CLI`:
+    /// the failure says what it printed.
+    func testPrepareShowsWhatTailscaleSaid() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let cli = dir.appendingPathComponent("tailscale").path
+        try Data("#!/bin/sh\necho 'The Tailscale GUI failed to start: (Tailscale.CLIError error 3.)'\n".utf8)
+            .write(to: URL(fileURLWithPath: cli))
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: cli)
+        // Off the main thread, as prepare requires.
+        let result = await Task.detached { AppTailnet.prepare(allow: ["me@example.com"], cli: cli) }.value
+        guard case .failure(let failure) = result else { return XCTFail("prepare succeeded") }
+        XCTAssertEqual(
+            failure.message,
+            "Tailscale isn’t connected, or has no name for this Mac. Connect it, then turn this on again. Tailscale said: The Tailscale GUI failed to start: (Tailscale.CLIError error 3.)"
+        )
+    }
+
+    func testSaid() {
+        let gui = Data("The Tailscale GUI failed to start: The operation couldn’t be completed. (Tailscale.CLIError error 3.)\n".utf8)
+        XCTAssertEqual(
+            AppTailnet.said(gui, Data()),
+            " Tailscale said: The Tailscale GUI failed to start: The operation couldn’t be completed. (Tailscale.CLIError error 3.)"
+        )
+        XCTAssertEqual(AppTailnet.said(Data(#"{"Self":{}}"#.utf8), Data()), "")
+        XCTAssertEqual(AppTailnet.said(Data(), Data()), "")
+        XCTAssertEqual(AppTailnet.said(Data(), Data("line one\nline two\n".utf8)), " Tailscale said: line one line two")
+        let long = AppTailnet.said(Data(String(repeating: "x", count: 300).utf8), Data())
+        XCTAssertEqual(long, " Tailscale said: " + String(repeating: "x", count: 200) + "…")
+    }
+
     func testPeers() {
         let status = Data(#"""
         {"Self":{"DNSName":"mac.tail1234.ts.net."},
