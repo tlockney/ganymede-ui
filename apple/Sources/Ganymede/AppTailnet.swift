@@ -177,10 +177,14 @@ enum AppTailnet {
     }
 
     /// The config for a server shared on the tailnet: asks Tailscale for
-    /// this Mac's name. Off the main thread.
-    static func prepare(allow: [String]) -> Result<(name: String, config: [String: any Sendable]), Failure> {
+    /// this Mac's name. `cli` is the `tailscale` to run, for tests. Off the
+    /// main thread.
+    static func prepare(
+        allow: [String],
+        cli: String? = command()
+    ) -> Result<(name: String, config: [String: any Sendable]), Failure> {
         dispatchPrecondition(condition: .notOnQueue(.main))
-        guard let cli = command() else {
+        guard let cli else {
             return .failure(Failure(message: "Ganymede can’t find Tailscale. Install the Tailscale app, then turn this on again."))
         }
         let status = run(cli, ["status", "--json"])
@@ -252,8 +256,9 @@ enum AppTailnet {
         _ = run(cli, ["serve", "--https=\(httpsPort)", "off"])
     }
 
-    /// Runs `cli` with `arguments`, for at most ten seconds.
-    private static func run(_ cli: String, _ arguments: [String]) -> (code: Int32, output: Data, error: Data) {
+    /// Runs `cli` with `arguments`, for at most ten seconds, with
+    /// `environment(_:)`.
+    static func run(_ cli: String, _ arguments: [String]) -> (code: Int32, output: Data, error: Data) {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: cli)
         process.arguments = arguments

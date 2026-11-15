@@ -64,6 +64,36 @@ final class AppTailnetTests: XCTestCase {
         XCTAssertEqual(environment["PATH"], "/usr/bin:/bin")
     }
 
+    /// `run` passes that environment to the process it starts.
+    func testRunSetsTailscaleBeCLI() {
+        let result = AppTailnet.run("/bin/sh", ["-c", #"printf '%s|%s' "$TAILSCALE_BE_CLI" "$HOME""#])
+        XCTAssertEqual(result.code, 0)
+        XCTAssertEqual(
+            String(decoding: result.output, as: UTF8.self),
+            "1|" + (ProcessInfo.processInfo.environment["HOME"] ?? "")
+        )
+    }
+
+    /// A `tailscale` that prints the GUI's error and exits 0, as the
+    /// Tailscale app's binary did when started without `TAILSCALE_BE_CLI`:
+    /// the failure says what it printed.
+    func testPrepareShowsWhatTailscaleSaid() async throws {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let cli = dir.appendingPathComponent("tailscale").path
+        try Data("#!/bin/sh\necho 'The Tailscale GUI failed to start: (Tailscale.CLIError error 3.)'\n".utf8)
+            .write(to: URL(fileURLWithPath: cli))
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: cli)
+        // Off the main thread, as prepare requires.
+        let result = await Task.detached { AppTailnet.prepare(allow: ["me@example.com"], cli: cli) }.value
+        guard case .failure(let failure) = result else { return XCTFail("prepare succeeded") }
+        XCTAssertEqual(
+            failure.message,
+            "Tailscale isn’t connected, or has no name for this Mac. Connect it, then turn this on again. Tailscale said: The Tailscale GUI failed to start: (Tailscale.CLIError error 3.)"
+        )
+    }
+
     func testSaid() {
         let gui = Data("The Tailscale GUI failed to start: The operation couldn’t be completed. (Tailscale.CLIError error 3.)\n".utf8)
         XCTAssertEqual(
