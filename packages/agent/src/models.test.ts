@@ -133,6 +133,28 @@ describe('testModel', () => {
     }
   });
 
+  it("explains each browser's own fetch failure from Google's provider", async () => {
+    for (const text of [
+      'Failed to fetch',
+      'Load failed',
+      'The network connection was lost.',
+      'NetworkError when attempting to fetch resource.',
+      'Network error',
+    ]) {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => {
+          throw new TypeError(text);
+        }),
+      );
+      const result = await testModel(
+        { ...DEFAULT_SETTINGS, provider: 'google', model: 'gemini-3.5-flash' },
+        keyOnly('google', 'sk-test'),
+      );
+      expect(result.message, text).toMatch(/^Couldn't reach generativelanguage\.googleapis\.com:/);
+    }
+  });
+
   it('refuses a blank or non-http server URL without sending anything', async () => {
     const fetch = vi.fn(async () => chatStream('OK'));
     vi.stubGlobal('fetch', fetch);

@@ -11,7 +11,7 @@ The pre-push review found a neighbour: Google's provider has no SDK
 wrapper and passes the browser's own `Failed to fetch` on, so a blocked
 Google request was never explained, before or after the bump. The match
 now also takes the browser's bare fetch failures (`Failed to fetch`,
-Safari's `Load failed`, Firefox's `NetworkError ...`), and a new test
+Safari's `Load failed` and `The network connection was lost.`, Firefox's `NetworkError ...`; the same list as `isUnreachable()` in src/lib/problems.ts), and a new test
 blocks a request to each hosted provider.
 
 chord 1.5.2 declares optional peers on exactly `react` 19.3.0 and `ws`
