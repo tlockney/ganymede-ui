@@ -32,6 +32,26 @@ final class AppTailnetTests: XCTestCase {
         XCTAssertEqual(AppTailnet.url(dnsName: "box.tail1234.ts.net")?.absoluteString, "https://box.tail1234.ts.net/")
     }
 
+    func testOwnLogin() {
+        let status = Data(#"""
+        {"Self":{"DNSName":"box.tail1234.ts.net.","UserID":1234567890123},
+         "User":{"1234567890123":{"ID":1234567890123,"LoginName":"me@example.com"},
+                 "42":{"ID":42,"LoginName":"other@example.com"}}}
+        """#.utf8)
+        XCTAssertEqual(AppTailnet.ownLogin(status: status), "me@example.com")
+        // No Self, or no UserID in it.
+        XCTAssertNil(AppTailnet.ownLogin(status: Data(#"{"User":{"42":{"LoginName":"o@example.com"}}}"#.utf8)))
+        XCTAssertNil(AppTailnet.ownLogin(status: Data(#"{"Self":{"DNSName":"box."},"User":{"42":{"LoginName":"o@example.com"}}}"#.utf8)))
+        // No User map.
+        XCTAssertNil(AppTailnet.ownLogin(status: Data(#"{"Self":{"UserID":42}}"#.utf8)))
+        // UserID not in User.
+        XCTAssertNil(AppTailnet.ownLogin(status: Data(#"{"Self":{"UserID":7},"User":{"42":{"LoginName":"o@example.com"}}}"#.utf8)))
+        // Empty or missing LoginName.
+        XCTAssertNil(AppTailnet.ownLogin(status: Data(#"{"Self":{"UserID":42},"User":{"42":{"LoginName":""}}}"#.utf8)))
+        XCTAssertNil(AppTailnet.ownLogin(status: Data(#"{"Self":{"UserID":42},"User":{"42":{}}}"#.utf8)))
+        XCTAssertNil(AppTailnet.ownLogin(status: Data("not json".utf8)))
+    }
+
     func testPeers() {
         let status = Data(#"""
         {"Self":{"DNSName":"mac.tail1234.ts.net."},

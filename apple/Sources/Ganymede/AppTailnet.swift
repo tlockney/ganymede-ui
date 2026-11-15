@@ -56,6 +56,23 @@ enum AppTailnet {
         return trimmed.isEmpty ? nil : trimmed
     }
 
+    /// The Tailscale login this Mac is signed in as (`you@example.com`),
+    /// from `tailscale status --json`: `Self.UserID` names an entry of the
+    /// top-level `User` map, whose `LoginName` is the login. nil when
+    /// Tailscale isn't running or any of those is missing or empty.
+    static func ownLogin(status: Data) -> String? {
+        guard let json = try? JSONSerialization.jsonObject(with: status) as? [String: Any],
+              let me = json["Self"] as? [String: Any],
+              // A JSON number: an NSNumber here.
+              let id = (me["UserID"] as? NSNumber).map({ String($0.int64Value) }),
+              let users = json["User"] as? [String: Any],
+              let user = users[id] as? [String: Any],
+              let login = user["LoginName"] as? String,
+              !login.isEmpty
+        else { return nil }
+        return login
+    }
+
     /// Another device on the tailnet, for the remote editor's picker.
     struct Peer: Equatable, Identifiable, Sendable {
         /// The first label of its MagicDNS name: its machine name, as the
@@ -102,6 +119,18 @@ enum AppTailnet {
                 guard let cli = command() else { return done.resume(returning: []) }
                 let status = run(cli, ["status", "--json"])
                 done.resume(returning: status.code == 0 ? peers(status: status.output) : [])
+            }
+        }
+    }
+
+    /// This Mac's Tailscale login; nil when Tailscale isn't installed or
+    /// connected. On a dispatch queue, since `run` blocks.
+    static func loadOwnLogin() async -> String? {
+        await withCheckedContinuation { done in
+            DispatchQueue.global(qos: .userInitiated).async {
+                guard let cli = command() else { return done.resume(returning: nil) }
+                let status = run(cli, ["status", "--json"])
+                done.resume(returning: status.code == 0 ? ownLogin(status: status.output) : nil)
             }
         }
     }
