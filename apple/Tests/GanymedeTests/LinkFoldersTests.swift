@@ -285,6 +285,43 @@ final class LinkFoldersTests: XCTestCase {
         }
     }
 
+    func testICloudPlaceholderStartsADownload() throws {
+        let dir = try folder("Vault")
+        let placeholder = dir.appendingPathComponent(".n.ipynb.icloud")
+        try Data().write(to: placeholder)
+        var started: [URL] = []
+        XCTAssertThrowsError(try LinkFolders.checkNotebook(dir.appendingPathComponent("n.ipynb"), startDownload: { started.append($0) })) {
+            XCTAssertEqual($0 as? LinkFolderError, .downloading("n.ipynb"))
+        }
+        XCTAssertEqual(started.map(\.lastPathComponent), ["n.ipynb"])
+        // No placeholder: not found, and nothing to download.
+        started = []
+        XCTAssertThrowsError(try LinkFolders.checkNotebook(dir.appendingPathComponent("m.ipynb"), startDownload: { started.append($0) })) {
+            XCTAssertEqual($0 as? LinkFolderError, .notFound("m.ipynb"))
+        }
+        // A file that is there is checked as before.
+        let here = try file("h.ipynb", in: dir)
+        XCTAssertNoThrow(try LinkFolders.checkNotebook(here, startDownload: { started.append($0) }))
+        XCTAssertEqual(started, [])
+        XCTAssertTrue(LinkFolders.isICloudPlaceholder(of: dir.appendingPathComponent("n.ipynb")))
+        XCTAssertFalse(LinkFolders.isICloudPlaceholder(of: dir.appendingPathComponent("m.ipynb")))
+        // A failed start is reported as it is, not as a download.
+        struct Refused: Error {}
+        XCTAssertThrowsError(try LinkFolders.checkNotebook(dir.appendingPathComponent("n.ipynb"), startDownload: { _ in throw Refused() })) {
+            XCTAssertTrue($0 is Refused)
+        }
+    }
+
+    func testAPlaceholderOutsideTheFoldersIsStillNotGranted() throws {
+        let root = try folder("Documents")
+        let vault = try folder("Vault")
+        let elsewhere = try folder("Elsewhere")
+        try Data().write(to: elsewhere.appendingPathComponent(".n.ipynb.icloud"))
+        XCTAssertEqual(failure(.path(elsewhere.path + "/n.ipynb"), root: root, granted: [vault]), .notGranted)
+        XCTAssertEqual(LinkFolderError.downloading("n.ipynb").errorDescription,
+                       "“n.ipynb” is downloading from iCloud. Open the link again in a moment.")
+    }
+
     // MARK: Granted folders
 
     private func makeDefaults() throws -> UserDefaults {

@@ -55,11 +55,22 @@ struct AppURL: Equatable {
     /// `scheme://host`, so the two never share a key.
     static let shortcutsDestination = "Shortcuts actions"
 
+    /// A file's path with `.`, `..` and symlinks resolved, so two spellings
+    /// of one place (`/var` and `/private/var`) compare equal.
+    static func resolvedURL(_ url: URL) -> URL {
+        url.standardizedFileURL.resolvingSymlinksInPath()
+    }
+
+    /// Whether `a` and `b` are the same place, by whatever spelling.
+    static func isSame(_ a: URL, _ b: URL) -> Bool {
+        resolvedURL(a).path == resolvedURL(b).path
+    }
+
     /// Whether `url` is one of `folders` or inside one.
     static func isInside(_ url: URL, anyOf folders: [URL]) -> Bool {
-        let path = url.standardizedFileURL.resolvingSymlinksInPath().path
+        let path = resolvedURL(url).path
         return folders.contains { folder in
-            let base = folder.standardizedFileURL.resolvingSymlinksInPath().path
+            let base = resolvedURL(folder).path
             return path == base || path.hasPrefix(base.hasSuffix("/") ? base : base + "/")
         }
     }

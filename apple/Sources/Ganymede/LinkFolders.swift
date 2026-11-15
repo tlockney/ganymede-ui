@@ -11,16 +11,19 @@ enum LinkFolderError: LocalizedError, Equatable {
     case badPath(String)
     case notFound(String)
     case notNotebook(String)
+    /// An iCloud Drive file that isn't on the device yet; its download started.
+    case downloading(String)
 
     var errorDescription: String? {
         switch self {
         case .notGranted:
             "Ganymede can only open files in folders you’ve let it use. Grant access to the folder that holds this notebook."
         case .ambiguousFolder(let name):
-            "More than one folder you’ve let Ganymede use is called “\(name)”. Use a link with path=, or revoke one of them in Settings › Links."
+            "More than one folder Ganymede can use is called “\(name)”. Use a link with path=, open another folder in Ganymede, or revoke one of them in Settings › Links."
         case .badPath(let text): "“\(text)” isn’t a path Ganymede can open here."
         case .notFound(let name): "Ganymede couldn’t find “\(name)”."
         case .notNotebook: "Links open notebooks (.ipynb) on iPad and iPhone."
+        case .downloading(let name): "“\(name)” is downloading from iCloud. Open the link again in a moment."
         }
     }
 }
@@ -67,7 +70,7 @@ enum LinkFolders {
             var matches: [URL] = []
             for folder in candidates where folder.lastPathComponent == name || resolved(folder).lastPathComponent == name {
                 // The same folder, granted and open, is one folder.
-                if !matches.contains(where: { resolved($0).path == resolved(folder).path }) {
+                if !matches.contains(where: { AppURL.isSame($0, folder) }) {
                     matches.append(folder)
                 }
             }
@@ -82,9 +85,19 @@ enum LinkFolders {
 
     /// `file` must exist and be a notebook. Called once `resolve` has put
     /// it inside a granted folder, with that folder's access on.
-    static func checkNotebook(_ file: URL, fileManager: FileManager = .default) throws {
+    /// A file iCloud Drive keeps off the device is a hidden `.name.icloud`
+    /// placeholder where it should be: its download starts, through
+    /// `startDownload`, and the error says so.
+    static func checkNotebook(
+        _ file: URL, fileManager: FileManager = .default,
+        startDownload: (URL) throws -> Void = { try FileManager.default.startDownloadingUbiquitousItem(at: $0) }
+    ) throws {
         var isDirectory: ObjCBool = false
         guard fileManager.fileExists(atPath: file.path, isDirectory: &isDirectory) else {
+            if isICloudPlaceholder(of: file, fileManager: fileManager) {
+                try startDownload(file)
+                throw LinkFolderError.downloading(file.lastPathComponent)
+            }
             throw LinkFolderError.notFound(file.lastPathComponent)
         }
         guard !isDirectory.boolValue, file.pathExtension.lowercased() == "ipynb" else {
@@ -92,8 +105,16 @@ enum LinkFolders {
         }
     }
 
+    /// Whether iCloud Drive has `file` but not on this device: its
+    /// placeholder, `.<name>.icloud`, is next to where it should be.
+    static func isICloudPlaceholder(of file: URL, fileManager: FileManager = .default) -> Bool {
+        let placeholder = file.deletingLastPathComponent()
+            .appendingPathComponent("." + file.lastPathComponent + ".icloud")
+        return fileManager.fileExists(atPath: placeholder.path)
+    }
+
     private static func resolved(_ url: URL) -> URL {
-        url.standardizedFileURL.resolvingSymlinksInPath()
+        AppURL.resolvedURL(url)
     }
 }
 
@@ -195,6 +216,6 @@ final class LinkFolderStore {
     }
 
     nonisolated private static func key(_ url: URL) -> String {
-        url.standardizedFileURL.resolvingSymlinksInPath().path
+        AppURL.resolvedURL(url).path
     }
 }

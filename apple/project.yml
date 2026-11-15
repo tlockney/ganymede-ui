@@ -484,8 +484,9 @@ targets:
     info:
       path: build/Info-iOS.plist
       properties:
-        # Where the Shortcuts app calls back after `device.shortcuts.run`
-        # (ganymede-device#40).
+        # Shortcuts calls back here after `device.shortcuts.run`
+        # (ganymede-device#40), and other apps open `ganymede://open`
+        # links (#640).
         CFBundleURLTypes:
           - CFBundleURLName: com.ganymede-server.Ganymede
             CFBundleURLSchemes:
@@ -584,6 +585,7 @@ targets:
       - path: Sources/Ganymede/NotebookActions.swift
       - path: Sources/Ganymede/AppURL.swift
       - path: Sources/Ganymede/LinkFolders.swift
+      - path: Sources/Ganymede/LinkOpener.swift
       - path: Sources/Ganymede/AppMCP.swift
       - path: Sources/Ganymede/AppTailnet.swift
       - path: Sources/Ganymede/HelpLinks.swift
@@ -656,6 +658,7 @@ targets:
       - path: Sources/Ganymede/NotebookActions.swift
       - path: Sources/Ganymede/AppURL.swift
       - path: Sources/Ganymede/LinkFolders.swift
+      - path: Sources/Ganymede/LinkOpener.swift
       - path: Sources/Ganymede/AppMCP.swift
       - path: Sources/Ganymede/AppTailnet.swift
       - path: Sources/Ganymede/HelpLinks.swift

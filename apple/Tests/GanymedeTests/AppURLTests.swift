@@ -45,6 +45,15 @@ final class AppURLTests: XCTestCase {
         XCTAssertEqual(try parse("ganymede://open?path=/a.ipynb&file=b.ipynb").command, .open(path: "/a.ipynb"))
     }
 
+    func testFolderLinksAreForIPadAndIPhone() {
+        XCTAssertEqual(
+            AppURLError.folderLinkNotOnMac.errorDescription,
+            "Links with a folder open on iPad and iPhone. On the Mac, a link names the notebook with path=."
+        )
+        XCTAssertEqual(AppURLError.macOnly("run").errorDescription, "“run” links work only on the Mac.")
+        XCTAssertEqual(AppURLError.folderLinkNotOnMac.code, 2)
+    }
+
     func testNew() throws {
         let url = try parse("ganymede://new?dir=~/notes&name=Today&template=~/t.ipynb")
         XCTAssertEqual(url.command, .new(dir: "~/notes", name: "Today", template: "~/t.ipynb"))

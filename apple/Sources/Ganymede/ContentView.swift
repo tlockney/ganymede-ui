@@ -396,7 +396,9 @@ struct ContentView: View {
         }
         .focusedSceneValue(\.pageModel, pageModel)
         .modifier(KeychainAlert(model: model))
-        .modifier(LinkAlert(links: links, grant: startGrant, change: { links.confirm($0, model: model) }))
+        .modifier(LinkAlert(links: links, grant: startGrant, change: { change in
+            links.confirm(change) { model.open(folder: $0) }
+        }))
         // Spotlight (#305): the page's recents are indexed, a save updates
         // its entry, and a result opens here.
         .onChange(of: pageModel.state.recents, initial: true) { _, recents in
@@ -415,15 +417,17 @@ struct ContentView: View {
         // A Shortcut a cell ran, calling back (ganymede-device#40), or a
         // link to open a notebook (#640).
         .onOpenURL { url in
-            if url.host?.lowercased() == "device-callback" {
+            if LinkOpener.isShortcutsCallback(url) {
                 KernelHost.shortcuts.handle(url)
             } else {
-                links.handle(url, model: model, show: showNotebook)
+                // Settings covers the alert and the notebook.
+                settings = false
+                links.handle(url, root: model.serverRootFolder, show: showNotebook)
             }
         }
         // A notebook waiting for another folder's server (#640).
         .onChange(of: pageModel.ready) { _, ready in
-            if ready { links.pageReady(model: model, show: showNotebook) }
+            if ready { links.pageReady(root: model.serverRootFolder, show: showNotebook) }
         }
         .onChange(of: model.serverRootFolder) { _, root in links.rootChanged(to: root) }
         .onChange(of: model.error) { _, error in
@@ -470,7 +474,7 @@ struct ContentView: View {
                     model.open(folder: folder)
                 }
             case .grantForLink:
-                links.picked(result, model: model, show: showNotebook)
+                links.picked(result, root: model.serverRootFolder, show: showNotebook)
             }
         }
         .onChange(of: phase) { _, phase in
@@ -844,7 +848,9 @@ struct ContentView: View {
     }
 
     /// A link needs a folder granted: the picker, after the alert that
-    /// asked has gone, which a picker shown at once may not outlast.
+    /// asked has gone. SwiftUI has no signal for an alert's dismissal
+    /// finishing (a binding going false comes before its animation ends),
+    /// and a picker shown during it may be dropped, so this waits a moment.
     private func startGrant(_ request: AppURL) {
         links.beginGrant(for: request)
         pickPurpose = .grantForLink

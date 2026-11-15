@@ -284,22 +284,27 @@ is the folder's own name (for an Obsidian vault, the vault's folder) and
 `file` is relative to it. If a link has `path` it is used, and `folder`
 and `file` are ignored. A relative `path` is relative to the folder
 Ganymede has open; `~/` paths don't work there, since the apps have no
-home folder. The notebook opens only if it is in the folder Ganymede has
-open or in a folder you granted. A link that names a file anywhere
-else, by `..` or a symlink too, gets "Ganymede can't open this file" with
-a **Grant Access…** button, which asks you to pick the folder and then
-tries the link again; the message is the same whether or not the file
-exists. Settings › Links lists the granted folders, adds more, and
-revokes them (swipe a folder, or Edit). Revoking stops links; it doesn't
-close a folder that is open. If two granted folders have the same name, a
-`folder` link asks you to use `path` or revoke one.
+home folder. A link opens notebooks (`.ipynb`) only, not folders. The
+notebook opens only if it is in the folder Ganymede has open or in a
+folder you granted. A link that names a file anywhere else, by `..` or a
+symlink too, gets "Ganymede can't open this file" with a **Grant
+Access…** button, which asks you to pick the folder and then tries the
+link again; the message is the same whether or not the file exists.
+Settings › Links lists the granted folders, adds more, and revokes them
+(swipe a folder, or Edit). Revoking stops links into that folder, unless
+it is the folder Ganymede has open, and doesn't close an open folder. If
+two folders Ganymede can use have the same name, a `folder` link asks you
+to use `path`, open another folder, or revoke one. A file in iCloud Drive
+that isn't on the device yet starts downloading, and the link says so:
+open it again in a moment.
 
 A notebook in a granted folder other than the open one asks first:
 Ganymede switches to that folder, which restarts its server and stops the
 kernels running in the folder it leaves. `run` and `new` links work only
 on the Mac, and the apps ignore an `x-success`, `x-error` and `x-cancel`
 reply: a link to `x-callback-url/open` still opens the notebook, and
-nothing is sent back. The Mac takes `path` links only.
+nothing is sent back. The Mac takes `path` links only. A link opens in
+the window that is showing, and closes Settings if it is open.
 
 ### Agents over MCP
 

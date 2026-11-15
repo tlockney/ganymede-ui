@@ -1,13 +1,5 @@
-#if os(iOS)
+import Foundation
 import Observation
-import SwiftUI
-import UniformTypeIdentifiers
-
-/// What the folder picker in `ContentView` is for: the Open Folder button,
-/// or a link that needs a folder granted (#640).
-enum FolderPick {
-    case openFolder, grantForLink
-}
 
 /// Does what a `ganymede://open` link asks on iPad and iPhone (#640), as
 /// `AppURLHandler` does on the Mac: opens the notebook when it is in the
@@ -15,7 +7,8 @@ enum FolderPick {
 /// before switching to another granted folder, and says how to grant a
 /// folder when it isn't in any. `run` and `new` work only on the Mac. The
 /// x-callback answers are never opened: nothing here runs code or has an
-/// answer to give.
+/// answer to give. Free of the app's model, so tests can run it; the app
+/// gives it the open folder and the actions at each call.
 @MainActor
 @Observable
 final class LinkOpener {
@@ -43,14 +36,25 @@ final class LinkOpener {
 
     var notice: Notice?
 
+    @ObservationIgnored private let store: LinkFolderStore
     /// The link to open again once the person grants a folder.
     @ObservationIgnored private var grantFor: AppURL?
     /// The notebook to open once the page of the server on `folder` is up.
-    @ObservationIgnored private var pending: FolderSwitch?
+    @ObservationIgnored private(set) var pending: FolderSwitch?
 
-    /// A `ganymede://` URL, other than Shortcuts' callbacks. `show` opens
-    /// a notebook in the folder the app serves, by its path there.
-    func handle(_ url: URL, model: AppModel, show: (String) -> Void) {
+    init(store: LinkFolderStore = .shared) {
+        self.store = store
+    }
+
+    /// Whether `url` is a Shortcuts callback (ganymede-device#40), which
+    /// `KernelHost.shortcuts` takes, not a link to open.
+    static func isShortcutsCallback(_ url: URL) -> Bool {
+        url.host?.lowercased() == "device-callback"
+    }
+
+    /// A `ganymede://` URL that isn't a Shortcuts callback. `root` is the
+    /// folder the app serves; `show` opens a notebook in it, by its path.
+    func handle(_ url: URL, root: URL, show: (String) -> Void) {
         pending = nil
         let request: AppURL
         do {
@@ -59,10 +63,10 @@ final class LinkOpener {
             fail(error)
             return
         }
-        open(request, model: model, show: show)
+        open(request, root: root, show: show)
     }
 
-    private func open(_ request: AppURL, model: AppModel, show: (String) -> Void) {
+    private func open(_ request: AppURL, root: URL, show: (String) -> Void) {
         let target: LinkFolders.Target
         switch request.command {
         case .open(let path): target = .path(path)
@@ -70,11 +74,10 @@ final class LinkOpener {
         case .new: return fail(AppURLError.macOnly("new"))
         case .run: return fail(AppURLError.macOnly("run"))
         }
-        let root = model.serverRootFolder
         let found: (folder: URL, file: URL)
         do {
             // Read inside the folders' access: the file is checked there.
-            found = try LinkFolderStore.shared.withAccess { granted -> (folder: URL, file: URL) in
+            found = try store.withAccess { granted -> (folder: URL, file: URL) in
                 let found = try LinkFolders.resolve(target, root: root, granted: granted)
                 try LinkFolders.checkNotebook(found.file)
                 return found
@@ -112,37 +115,41 @@ final class LinkOpener {
         )
     }
 
-    /// The person said yes to switching: the server restarts on the
-    /// folder, and the notebook opens once its page is up (`pageReady`).
-    /// Not at once: the old page stays ready until the new one commits,
-    /// and would take the command.
-    func confirm(_ change: FolderSwitch, model: AppModel) {
+    /// The person said yes to switching: `openFolder` makes the server
+    /// serve the folder, and the notebook opens once its page is up
+    /// (`pageReady`). Not at once: the old page stays ready until the new
+    /// one commits, and would take the command. A folder revoked since
+    /// the question isn't opened.
+    func confirm(_ change: FolderSwitch, openFolder: (URL) -> Void) {
         // Resolved again, in case the folder was revoked since the question.
-        let switched = LinkFolderStore.shared.withAccess { granted -> Bool in
-            guard let folder = granted.first(where: { Self.same($0, change.folder) }) else { return false }
+        let switched = store.withAccess { granted -> Bool in
+            guard let folder = granted.first(where: { AppURL.isSame($0, change.folder) }) else { return false }
             pending = FolderSwitch(folder: folder, apiPath: change.apiPath)
-            model.open(folder: folder)
+            openFolder(folder)
             return true
         }
-        if !switched {
-            // After the alert that asked has gone, or it would clear this one.
-            Task { self.fail(LinkFolderError.notGranted) }
-        }
+        if !switched { fail(LinkFolderError.notGranted) }
+    }
+
+    /// The alert with `id` went away. A newer notice, posted by the action
+    /// that closed it, stays.
+    func dismiss(_ id: Notice.ID) {
+        if notice?.id == id { notice = nil }
     }
 
     /// The page reports ready (again): opens the notebook a folder switch
-    /// waits for, if the server now serves that folder.
-    func pageReady(model: AppModel, show: (String) -> Void) {
+    /// waits for, if the server now serves that folder (`root`).
+    func pageReady(root: URL, show: (String) -> Void) {
         guard let waiting = pending else { return }
         pending = nil
-        guard Self.same(waiting.folder, model.serverRootFolder) else { return }
+        guard AppURL.isSame(waiting.folder, root) else { return }
         show(waiting.apiPath)
     }
 
     /// The folder the app serves changed: a notebook waiting for another
     /// folder's server won't open.
     func rootChanged(to root: URL) {
-        if let waiting = pending, !Self.same(waiting.folder, root) { pending = nil }
+        if let waiting = pending, !AppURL.isSame(waiting.folder, root) { pending = nil }
     }
 
     /// The server didn't start on the folder.
@@ -157,7 +164,7 @@ final class LinkOpener {
 
     /// The folder picker answered for a link: keeps the folder, and tries
     /// the link again once. Still in no granted folder, it asks again.
-    func picked(_ result: Result<URL, Error>, model: AppModel, show: (String) -> Void) {
+    func picked(_ result: Result<URL, Error>, root: URL, show: (String) -> Void) {
         let request = grantFor
         grantFor = nil
         switch result {
@@ -166,7 +173,7 @@ final class LinkOpener {
             notice = Notice(title: "Ganymede couldn’t use that folder", message: error.localizedDescription, action: .dismiss)
         case .success(let folder):
             do {
-                try LinkFolderStore.shared.add(folder)
+                try store.add(folder)
             } catch {
                 notice = Notice(
                     title: "Ganymede couldn’t keep access to that folder",
@@ -174,18 +181,23 @@ final class LinkOpener {
                 )
                 return
             }
-            if let request { open(request, model: model, show: show) }
+            if let request { open(request, root: root, show: show) }
         }
     }
 
     private func fail(_ error: Error) {
         notice = Notice(title: "Ganymede couldn’t open the link", message: error.localizedDescription, action: .dismiss)
     }
+}
 
-    /// The same folder, by whatever spelling of its path.
-    private static func same(_ a: URL, _ b: URL) -> Bool {
-        AppURL.isInside(a, anyOf: [b]) && AppURL.isInside(b, anyOf: [a])
-    }
+#if os(iOS)
+import SwiftUI
+import UniformTypeIdentifiers
+
+/// What the folder picker in `ContentView` is for: the Open Folder button,
+/// or a link that needs a folder granted (#640).
+enum FolderPick {
+    case openFolder, grantForLink
 }
 
 /// The alert for `LinkOpener.notice`.
@@ -199,7 +211,10 @@ struct LinkAlert: ViewModifier {
             links.notice?.title ?? "",
             isPresented: Binding(
                 get: { links.notice != nil },
-                set: { if !$0 { links.notice = nil } }
+                // Only the alert shown: an action may have posted another.
+                set: { [shown = links.notice?.id] in
+                    if !$0, let shown { links.dismiss(shown) }
+                }
             ),
             presenting: links.notice
         ) { notice in
@@ -248,7 +263,7 @@ struct LinkFoldersSettings: View {
                 }
                 Button("Add Folder…") { adding = true }
             } footer: {
-                Text("Links from other apps open notebooks only in these folders and the folder Ganymede has open. Swipe a folder to revoke it: that stops links, and doesn’t close a folder that is open.")
+                Text("Links from other apps open notebooks only in these folders and the folder Ganymede has open. Swipe a folder to revoke it. That stops links into it, unless it is the folder Ganymede has open, and doesn’t close it.")
             }
             if let problem = store.problem {
                 Section { Text(problem) }
