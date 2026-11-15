@@ -223,7 +223,8 @@ private struct TailnetSettings: View {
                         .labelsHidden()
                         .onSubmit { apply() }
                     if allow.isEmpty, let login = ownLogin {
-                        Button("Use \(login)") { allowText = login }
+                        Button("Use Mine") { allowText = login }
+                            .help("Fill in \(login), the login this Mac is signed in to Tailscale as")
                     }
                     Button("Apply") { apply() }
                         .disabled(allow == model.tailnetAllow)

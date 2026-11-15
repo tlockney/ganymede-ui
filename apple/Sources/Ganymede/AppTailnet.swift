@@ -59,16 +59,18 @@ enum AppTailnet {
     /// The Tailscale login this Mac is signed in as (`you@example.com`),
     /// from `tailscale status --json`: `Self.UserID` names an entry of the
     /// top-level `User` map, whose `LoginName` is the login. nil when
-    /// Tailscale isn't running or any of those is missing or empty.
+    /// Tailscale isn't running or any of those is missing or empty, and on
+    /// a tagged Mac, whose user is Tailscale's `tagged-devices`, no person.
     static func ownLogin(status: Data) -> String? {
         guard let json = try? JSONSerialization.jsonObject(with: status) as? [String: Any],
               let me = json["Self"] as? [String: Any],
+              (me["Tags"] as? [Any] ?? []).isEmpty,
               // A JSON number: an NSNumber here.
               let id = (me["UserID"] as? NSNumber).map({ String($0.int64Value) }),
               let users = json["User"] as? [String: Any],
               let user = users[id] as? [String: Any],
               let login = user["LoginName"] as? String,
-              !login.isEmpty
+              !login.isEmpty, login != "tagged-devices"
         else { return nil }
         return login
     }
@@ -114,25 +116,25 @@ enum AppTailnet {
     /// The other devices on the tailnet; none when Tailscale isn't
     /// installed or connected. On a dispatch queue, since `run` blocks.
     static func loadPeers() async -> [Peer] {
+        await loadStatus().map(peers(status:)) ?? []
+    }
+
+    /// `tailscale status --json`; nil when Tailscale isn't installed or
+    /// the command fails. On a dispatch queue, since `run` blocks.
+    private static func loadStatus() async -> Data? {
         await withCheckedContinuation { done in
             DispatchQueue.global(qos: .userInitiated).async {
-                guard let cli = command() else { return done.resume(returning: []) }
+                guard let cli = command() else { return done.resume(returning: nil) }
                 let status = run(cli, ["status", "--json"])
-                done.resume(returning: status.code == 0 ? peers(status: status.output) : [])
+                done.resume(returning: status.code == 0 ? status.output : nil)
             }
         }
     }
 
     /// This Mac's Tailscale login; nil when Tailscale isn't installed or
-    /// connected. On a dispatch queue, since `run` blocks.
+    /// connected.
     static func loadOwnLogin() async -> String? {
-        await withCheckedContinuation { done in
-            DispatchQueue.global(qos: .userInitiated).async {
-                guard let cli = command() else { return done.resume(returning: nil) }
-                let status = run(cli, ["status", "--json"])
-                done.resume(returning: status.code == 0 ? ownLogin(status: status.output) : nil)
-            }
-        }
+        await loadStatus().flatMap(ownLogin(status:))
     }
 
     /// The `ganymede.toml` keys over the app's own server config: the

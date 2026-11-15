@@ -50,6 +50,9 @@ final class AppTailnetTests: XCTestCase {
         XCTAssertNil(AppTailnet.ownLogin(status: Data(#"{"Self":{"UserID":42},"User":{"42":{"LoginName":""}}}"#.utf8)))
         XCTAssertNil(AppTailnet.ownLogin(status: Data(#"{"Self":{"UserID":42},"User":{"42":{}}}"#.utf8)))
         XCTAssertNil(AppTailnet.ownLogin(status: Data("not json".utf8)))
+        // A tagged Mac: its user is Tailscale's tagged-devices, no person.
+        XCTAssertNil(AppTailnet.ownLogin(status: Data(#"{"Self":{"UserID":42,"Tags":["tag:server"]},"User":{"42":{"LoginName":"o@example.com"}}}"#.utf8)))
+        XCTAssertNil(AppTailnet.ownLogin(status: Data(#"{"Self":{"UserID":42},"User":{"42":{"LoginName":"tagged-devices"}}}"#.utf8)))
     }
 
     func testPeers() {

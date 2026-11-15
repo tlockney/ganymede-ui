@@ -6,9 +6,11 @@ the toggle looked broken. Now a caption under it asks for at least one
 Tailscale login while the toggle is off and the list is empty.
 
 When the list is empty and Tailscale knows who this Mac is signed in as,
-a **Use you@example.com** button beside the field fills it in. It only
+a **Use Mine** button beside the field fills it in (its tooltip names
+the login). It only
 fills the field: Apply still saves it, and the toggle enables as soon as
 the field holds a login. The login comes from `tailscale status --json`
 (`Self.UserID`, then that entry's `LoginName` in `User`), read when the
-section opens; without Tailscale the button doesn't appear.
+section opens; without Tailscale, or on a tagged Mac, the button doesn't
+appear.
 Tested in `AppTailnetTests.testOwnLogin`; the view itself is not tested.
