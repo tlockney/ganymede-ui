@@ -84,6 +84,15 @@ describe('renderSafeMarkdown', () => {
     for (const a of el.querySelectorAll('a')) {
       expect(a.getAttribute('rel')).toBe('noopener noreferrer');
     }
+    const [web, plain, mail, frag] = [...el.querySelectorAll('a')];
+    for (const a of [web, plain]) {
+      expect(a.getAttribute('target')).toBe('_blank');
+      expect(a.className).toBe('external-link');
+    }
+    for (const a of [mail, frag]) {
+      expect(a.hasAttribute('target')).toBe(false);
+      expect(a.className).toBe('');
+    }
   });
 
   it('strips onclick, style, class and id', () => {
@@ -139,6 +148,23 @@ describe('renderSafeMarkdown', () => {
     expect(el.querySelector('custom-box')).toBeNull();
     expect(el.textContent?.trim()).toBe('inner text');
     expect(el.querySelector('em')!.textContent).toBe('text');
+  });
+
+  it('resolves attachment: images to bitmap data URLs only', () => {
+    const el = document.createElement('div');
+    renderSafeMarkdown(
+      '![p](attachment:a.png) ![s](attachment:b.svg) ![m](attachment:none.png) <img src="attachment:my%20pic.png" alt="sp">',
+      el,
+      {
+        'a.png': PNG,
+        'b.svg': 'data:image/svg+xml;base64,PHN2Zz4=',
+        'my pic.png': PNG,
+      },
+    );
+    const imgs = [...el.querySelectorAll('img')];
+    expect(imgs.map(i => i.getAttribute('src'))).toEqual([PNG, PNG]);
+    expect(el.textContent).toContain('s');
+    expect(el.textContent).toContain('m');
   });
 
   it('keeps only numeric colspan and rowspan', () => {

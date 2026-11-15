@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { fence, NotebookError, parseNotebook, standaloneSvg, stripAnsi } from './notebook.ts';
+import {
+  fence,
+  NotebookError,
+  overwriteReturns,
+  parseNotebook,
+  standaloneSvg,
+  stripAnsi,
+} from './notebook.ts';
 import type { Output } from './notebook.ts';
 
 function nb(cells: unknown[], metadata: unknown = {}, nbformat = 4): string {
@@ -97,12 +104,16 @@ describe('parseNotebook outputs', () => {
     expect(stripAnsi('\x1b[38;5;208mx\x1b[0m')).toBe('x');
   });
 
-  it('prefers html over png over plain', () => {
+  it('prefers png over html over plain', () => {
     expect(bundle({ 'text/plain': 'p', 'image/png': 'AAAA', 'text/html': '<b>h</b>' })).toEqual({
+      kind: 'image',
+      mime: 'image/png',
+      base64: 'AAAA',
+    });
+    expect(bundle({ 'text/plain': 'p', 'text/html': '<b>h</b>' })).toEqual({
       kind: 'html',
       html: '<b>h</b>',
     });
-    expect(bundle({ 'text/plain': 'p', 'image/png': 'AAAA' })).toMatchObject({ kind: 'image' });
   });
 
   it('prefers the ganymede result over html and renders name = value', () => {
@@ -120,12 +131,12 @@ describe('parseNotebook outputs', () => {
   it('follows the whole MIME preference list, pair by pair', () => {
     const order: [string, unknown, string][] = [
       ['application/vnd.ganymede.result+json', { name: 'n', value: 1 }, 'text'],
-      ['text/html', '<b>h</b>', 'html'],
       ['image/svg+xml', '<svg/>', 'svg'],
       ['image/png', 'AA', 'image'],
       ['image/jpeg', 'AA', 'image'],
       ['image/gif', 'AA', 'image'],
       ['image/webp', 'AA', 'image'],
+      ['text/html', '<b>h</b>', 'html'],
       ['text/markdown', '# m', 'markdown'],
       ['application/json', { a: 1 }, 'text'],
       ['text/plain', 'p', 'text'],
@@ -160,14 +171,20 @@ describe('parseNotebook outputs', () => {
     expect(o).toMatchObject({ ename: 'TypeError', evalue: 'bad' });
   });
 
-  it('shows a ganymede result with an empty or missing name as the value alone', () => {
-    expect(bundle({ 'application/vnd.ganymede.result+json': { name: '', value: [1] } })).toEqual({
+  it('treats a ganymede result with an empty or missing name as absent', () => {
+    const mime = 'application/vnd.ganymede.result+json';
+    expect(bundle({ [mime]: { name: '', value: [1] }, 'text/plain': 'plain' })).toEqual({
       kind: 'text',
-      text: '[\n  1\n]',
+      text: 'plain',
       stderr: false,
     });
-    expect(bundle({ 'application/vnd.ganymede.result+json': { value: 2 } })).toMatchObject({
-      text: '2',
+    expect(bundle({ [mime]: { value: 2 }, 'text/html': '<b>h</b>' })).toEqual({
+      kind: 'html',
+      html: '<b>h</b>',
+    });
+    expect(bundle({ [mime]: { name: '', value: 1 } })).toEqual({
+      kind: 'unsupported',
+      mimes: [mime],
     });
   });
 
@@ -211,6 +228,71 @@ describe('parseNotebook outputs', () => {
       text: '{\n  "a": 1\n}',
       stderr: false,
     });
+  });
+});
+
+describe('streams', () => {
+  const stream = (name: string, text: string | string[]) => ({ output_type: 'stream', name, text });
+  const outs = (...o: unknown[]) => {
+    const p = parseNotebook(nb([{ cell_type: 'code', source: '', outputs: o }]));
+    const c = p.cells[0];
+    if (c.type !== 'code') throw new Error('not code');
+    return c.outputs;
+  };
+
+  it('merges consecutive outputs of the same stream', () => {
+    expect(outs(stream('stdout', 'a'), stream('stdout', ['b\n']), stream('stdout', 'c'))).toEqual([
+      { kind: 'text', text: 'ab\nc', stderr: false },
+    ]);
+  });
+
+  it('keeps different streams and separated streams apart', () => {
+    const display = { output_type: 'display_data', data: { 'text/plain': 'd' } };
+    expect(
+      outs(stream('stdout', 'a'), stream('stderr', 'b'), display, stream('stderr', 'c')),
+    ).toEqual([
+      { kind: 'text', text: 'a', stderr: false },
+      { kind: 'text', text: 'b', stderr: true },
+      { kind: 'text', text: 'd', stderr: false },
+      { kind: 'text', text: 'c', stderr: true },
+    ]);
+  });
+
+  it('applies carriage returns across merged chunks (tqdm)', () => {
+    const o = outs(
+      stream('stderr', '  0%|          | 0/3\r'),
+      stream('stderr', ' 33%|###       | 1/3\r'),
+      stream('stderr', '100%|##########| 3/3\n'),
+    );
+    expect(o).toEqual([{ kind: 'text', text: '100%|##########| 3/3\n', stderr: true }]);
+  });
+
+  it('treats \\r\\n as a newline', () => {
+    expect(overwriteReturns('a\r\nb\r\n')).toBe('a\nb\n');
+    expect(overwriteReturns('x\ry\r\nz')).toBe('y\nz');
+    expect(overwriteReturns('no returns')).toBe('no returns');
+  });
+});
+
+describe('markdown cell attachments', () => {
+  it('keeps bitmap attachments as data URLs and drops the rest', () => {
+    const p = parseNotebook(
+      nb([
+        {
+          cell_type: 'markdown',
+          source: '![](attachment:a.png)',
+          attachments: {
+            'a.png': { 'image/png': 'AA\nBB' },
+            'b.svg': { 'image/svg+xml': '<svg/>' },
+            'c.txt': { 'text/plain': 'x' },
+          },
+        },
+        { cell_type: 'markdown', source: 'none' },
+      ]),
+    );
+    expect(p.cells[0]).toMatchObject({ attachments: { 'a.png': 'data:image/png;base64,AABB' } });
+    expect(Object.keys((p.cells[0] as { attachments: object }).attachments)).toEqual(['a.png']);
+    expect(p.cells[1]).toMatchObject({ attachments: {} });
   });
 });
 

@@ -88,11 +88,13 @@ function copyAttrs(src: Element, dest: Element, tag: string): void {
   if (tag === 'a') {
     const href = src.getAttribute('href');
     set('href', href === null ? null : safeHref(href));
-    if (dest.hasAttribute('href')) dest.setAttribute('rel', 'noopener noreferrer');
-    set('title', src.getAttribute('title'));
-  } else if (tag === 'img') {
-    set('src', src.getAttribute('src')?.replace(/\s+/g, '') ?? null);
-    set('alt', src.getAttribute('alt'));
+    if (dest.hasAttribute('href')) {
+      dest.setAttribute('rel', 'noopener noreferrer');
+      if (/^https?:/i.test(dest.getAttribute('href')!)) {
+        dest.setAttribute('target', '_blank');
+        dest.setAttribute('class', 'external-link');
+      }
+    }
     set('title', src.getAttribute('title'));
   } else if (tag === 'th' || tag === 'td') {
     const align = src.getAttribute('align')?.toLowerCase() ?? null;
@@ -104,22 +106,24 @@ function copyAttrs(src: Element, dest: Element, tag: string): void {
   }
 }
 
-function copyChildren(src: Node, dest: Node, doc: Document): void {
+type Attachments = Record<string, string>;
+
+function copyChildren(src: Node, dest: Node, doc: Document, att: Attachments): void {
   for (const child of Array.from(src.childNodes)) {
     if (child.nodeType === 3) {
       dest.appendChild(doc.createTextNode(child.textContent ?? ''));
     } else if (child.nodeType === 1) {
-      copyElement(child as Element, dest, doc);
+      copyElement(child as Element, dest, doc, att);
     }
     // Comments, processing instructions and the rest are dropped.
   }
 }
 
-function copyElement(src: Element, dest: Node, doc: Document): void {
+function copyElement(src: Element, dest: Node, doc: Document, att: Attachments): void {
   const tag = src.localName.toLowerCase();
   if (DROP_WITH_CONTENTS.has(tag)) return;
   if (!ALLOWED.has(tag)) {
-    copyChildren(src, dest, doc);
+    copyChildren(src, dest, doc, att);
     return;
   }
   if (tag === 'input') {
@@ -132,27 +136,52 @@ function copyElement(src: Element, dest: Node, doc: Document): void {
     return;
   }
   if (tag === 'img') {
-    const src_ = src.getAttribute('src')?.replace(/\s+/g, '') ?? '';
-    if (!SAFE_IMG.test(src_)) {
+    let url = src.getAttribute('src')?.replace(/\s+/g, '') ?? '';
+    // A notebook's own attachment, already limited to bitmap data: URLs.
+    if (url.startsWith('attachment:')) {
+      let name = url.slice('attachment:'.length);
+      try {
+        name = decodeURIComponent(name);
+      } catch {
+        // Use the name as written.
+      }
+      url = att[name] ?? '';
+    }
+    if (!SAFE_IMG.test(url)) {
       // Never load it: show the alt text instead.
       const alt = src.getAttribute('alt');
       if (alt) dest.appendChild(doc.createTextNode(alt));
       return;
     }
+    const img = doc.createElement('img');
+    img.setAttribute('src', url);
+    for (const a of ['alt', 'title']) {
+      const v = src.getAttribute(a);
+      if (v !== null) img.setAttribute(a, v);
+    }
+    dest.appendChild(img);
+    return;
   }
   const out = doc.createElement(tag);
   copyAttrs(src, out, tag);
   dest.appendChild(out);
-  if (tag !== 'img') copyChildren(src, out, doc);
+  copyChildren(src, out, doc, att);
 }
 
-/** Parse `markdown` and append a clean rendering of it to `el`. */
-export function renderSafeMarkdown(markdown: string, el: HTMLElement): void {
+/**
+ * Parse `markdown` and append a clean rendering of it to `el`. `attachments`
+ * maps a cell's attachment names to bitmap data: URLs, for `attachment:NAME`
+ * images. */
+export function renderSafeMarkdown(
+  markdown: string,
+  el: HTMLElement,
+  attachments: Attachments = {},
+): void {
   const html = marked.parse(markdown, { gfm: true, async: false }) as string;
   const parsed = new DOMParser().parseFromString(html, 'text/html');
   const doc = el.ownerDocument;
   const wrap = doc.createElement('div');
   wrap.className = 'markdown-rendered ganymede-nb-markdown';
-  copyChildren(parsed.body, wrap, doc);
+  copyChildren(parsed.body, wrap, doc, attachments);
   el.appendChild(wrap);
 }

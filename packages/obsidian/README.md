@@ -30,12 +30,12 @@ size limit for your plan: notebooks with large outputs can exceed it.
 ## What it shows
 
 - Markdown cells, rendered by the plugin (see Security) and styled by Obsidian's reading-view CSS.
-- Code cells folded under a `Code [n]` summary (a header action shows or hides all code), highlighted by Obsidian. The fence names a language only from a short allowlist.
+- Code cells folded under a `Code [n]` summary (a header action shows or hides all code), syntax-highlighted with Obsidian's Prism when it knows the language (plain text otherwise). A language is named only from a short allowlist.
 - Outputs: streams, errors (ANSI colors removed), plain text, JSON,
   Markdown, images (PNG, JPEG, GIF, WebP, SVG) and HTML. SVG from kernels that omit the `xmlns` attribute (Observable Plot's) gets it added, as Ganymede's HTML exporter does, so it draws. Ganymede's named
   results (`application/vnd.ganymede.result+json`) show as `name = value`.
   When an output has several representations, one is chosen: Ganymede
-  result, HTML, SVG, bitmap, Markdown, JSON, plain text.
+  result (with a non-empty name), SVG, bitmap, HTML, Markdown, JSON, plain text, as Ganymede's HTML export orders them. Consecutive outputs of one stream are merged and carriage returns overwrite (progress bars). An error shows its traceback, or `name: value` without one. Images in Markdown cells given as `attachment:` names show for PNG, JPEG, GIF and WebP. Code cells you expanded stay expanded when the file changes.
 - Changes that arrive while a notebook is open, such as from Obsidian
   Sync, re-render it. A notebook that can't be read shows why in the
   view.
@@ -72,5 +72,8 @@ attributes are copied into the page. Scripts, frames, objects, SVG and
 styles are dropped; links keep only `http:`, `https:`, `mailto:` and `#`;
 images keep only `data:` PNG, JPEG, GIF and WebP, and any other image
 shows its alt text. Trade-off: no wikilinks, embeds or callouts in
-notebook Markdown. Code cells still go through Obsidian, as a fenced block
-with an allowlisted language.
+notebook Markdown. Code cells don't go through Obsidian's Markdown renderer
+either, since every plugin's post-processors would see them: the plugin
+builds `<pre><code>` with `textContent` and only then asks Prism to
+highlight it, for an allowlisted language. External links open in a new
+window with `rel="noopener noreferrer"`.

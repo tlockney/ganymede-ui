@@ -11,7 +11,7 @@ export type Output =
   | { kind: 'unsupported'; mimes: string[] };
 
 export type Cell =
-  | { type: 'markdown'; source: string }
+  | { type: 'markdown'; source: string; attachments: Record<string, string> }
   | { type: 'code'; source: string; executionCount: number | null; outputs: Output[] }
   | { type: 'raw'; source: string };
 
@@ -25,12 +25,16 @@ export type ImageMime = (typeof IMAGE_MIMES)[number];
 
 export const GANYMEDE_RESULT_MIME = 'application/vnd.ganymede.result+json';
 
-/** Preference order for a display_data / execute_result bundle. */
+/**
+ * Preference order for a display_data / execute_result bundle: images before
+ * HTML, as ganymede's html.rs does (an image looks the same everywhere and
+ * needs no frame).
+ */
 const MIME_PREFERENCE = [
   GANYMEDE_RESULT_MIME,
-  'text/html',
   'image/svg+xml',
   ...IMAGE_MIMES,
+  'text/html',
   'text/markdown',
   'application/json',
   'text/plain',
@@ -45,6 +49,21 @@ const ANSI = /\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?|\x1b[@-
 
 export function stripAnsi(text: string): string {
   return text.replace(ANSI, '');
+}
+
+/**
+ * Apply carriage returns within each line: the text after the last `\r`
+ * replaces what came before (progress bars). `\r\n` is a newline. Mirrors
+ * ganymede's `overwrite_returns`.
+ */
+export function overwriteReturns(text: string): string {
+  return text
+    .split('\n')
+    .map(line => {
+      const l = line.endsWith('\r') ? line.slice(0, -1) : line;
+      return l.slice(l.lastIndexOf('\r') + 1);
+    })
+    .join('\n');
 }
 
 /** A Markdown fenced code block whose fence outruns any backticks in source. */
@@ -138,7 +157,11 @@ function parseOutput(raw: unknown): Output | null {
   if (!isObj(raw)) return null;
   switch (raw.output_type) {
     case 'stream':
-      return { kind: 'text', text: stripAnsi(multiline(raw.text)), stderr: raw.name === 'stderr' };
+      return {
+        kind: 'text',
+        text: overwriteReturns(stripAnsi(multiline(raw.text))),
+        stderr: raw.name === 'stderr',
+      };
     case 'error': {
       const tb = Array.isArray(raw.traceback) ? raw.traceback : [];
       return {
@@ -162,12 +185,12 @@ function parseBundle(data: Obj): Output {
     const value = data[mime];
     switch (mime) {
       case GANYMEDE_RESULT_MIME: {
-        // An empty or missing name shows the value alone, as ganymede's
-        // named_result does.
+        // A missing or empty name isn't a named result: fall through to the
+        // next MIME type, as ganymede's named_result returns None.
         const name = isObj(value) && typeof value.name === 'string' ? value.name : '';
-        const v = isObj(value) ? value.value : value;
-        const json = JSON.stringify(v, null, 2) ?? 'undefined';
-        return { kind: 'text', text: name ? `${name} = ${json}` : json, stderr: false };
+        if (!name || !isObj(value)) continue;
+        const json = JSON.stringify(value.value ?? null, null, 2);
+        return { kind: 'text', text: `${name} = ${json}`, stderr: false };
       }
       case 'text/html':
         return { kind: 'html', html: multiline(value) };
@@ -192,6 +215,36 @@ function parseBundle(data: Obj): Output {
     }
   }
   return { kind: 'unsupported', mimes: Object.keys(data) };
+}
+
+/** Consecutive stream outputs with the same name are one stream. */
+function mergeStreams(outputs: unknown[]): unknown[] {
+  const merged: unknown[] = [];
+  for (const o of outputs) {
+    const prev = merged[merged.length - 1];
+    if (
+      isObj(o) &&
+      o.output_type === 'stream' &&
+      isObj(prev) &&
+      prev.output_type === 'stream' &&
+      prev.name === o.name
+    ) {
+      merged[merged.length - 1] = { ...prev, text: multiline(prev.text) + multiline(o.text) };
+    } else merged.push(o);
+  }
+  return merged;
+}
+
+/** A markdown cell's attachments as data: URLs, for bitmap mimes only. */
+function parseAttachments(raw: unknown): Record<string, string> {
+  const out: Record<string, string> = {};
+  if (!isObj(raw)) return out;
+  for (const [name, bundle] of Object.entries(raw)) {
+    if (!isObj(bundle)) continue;
+    const mime = IMAGE_MIMES.find(m => typeof bundle[m] === 'string' || Array.isArray(bundle[m]));
+    if (mime) out[name] = `data:${mime};base64,${multiline(bundle[mime]).replace(/\s+/g, '')}`;
+  }
+  return out;
 }
 
 /** Parse the text of an .ipynb file. Throws NotebookError with a message fit to show. */
@@ -220,10 +273,11 @@ export function parseNotebook(text: string): Notebook {
   for (const raw of Array.isArray(json.cells) ? json.cells : []) {
     if (!isObj(raw)) continue;
     const source = multiline(raw.source);
-    if (raw.cell_type === 'markdown') cells.push({ type: 'markdown', source });
-    else if (raw.cell_type === 'code') {
+    if (raw.cell_type === 'markdown') {
+      cells.push({ type: 'markdown', source, attachments: parseAttachments(raw.attachments) });
+    } else if (raw.cell_type === 'code') {
       const outputs: Output[] = [];
-      for (const o of Array.isArray(raw.outputs) ? raw.outputs : []) {
+      for (const o of mergeStreams(Array.isArray(raw.outputs) ? raw.outputs : [])) {
         const parsed = parseOutput(o);
         if (parsed) outputs.push(parsed);
       }

@@ -4,10 +4,11 @@
 // the obsidian package at runtime so it runs under jsdom in tests.
 
 import { renderSafeMarkdown } from './markdown.ts';
-import { fence, fenceLanguage, IMAGE_MIMES, standaloneSvg } from './notebook.ts';
+import { fenceLanguage, IMAGE_MIMES, standaloneSvg } from './notebook.ts';
 import type { Cell, Notebook, Output } from './notebook.ts';
 
-export type RenderMarkdown = (markdown: string, el: HTMLElement) => Promise<void>;
+/** Syntax-highlights a code element in place (Prism, in the view); optional. */
+export type Highlight = (code: HTMLElement, language: string) => void;
 
 /** Applied to the iframe document: no scripts, no network, inline styles and data: images only. */
 export const IFRAME_CSP = "default-src 'none'; img-src data:; style-src 'unsafe-inline'";
@@ -50,13 +51,17 @@ function renderOutput(out: Output, parent: HTMLElement): void {
     case 'text':
       pre(box, out.stderr ? 'ganymede-nb-text ganymede-nb-stderr' : 'ganymede-nb-text', out.text);
       break;
-    case 'error':
-      pre(
-        box,
-        'ganymede-nb-text ganymede-nb-error',
-        [`${out.ename}: ${out.evalue}`, out.traceback].filter(Boolean).join('\n'),
-      );
+    case 'error': {
+      // The traceback when there is one, else the name and value, as
+      // ganymede's html.rs does.
+      const text = out.traceback
+        ? out.traceback
+        : out.ename || out.evalue
+          ? `${out.ename}: ${out.evalue}`
+          : '';
+      pre(box, 'ganymede-nb-text ganymede-nb-error', text.trimEnd());
       break;
+    }
     case 'html': {
       // An empty sandbox: no scripts, no same-origin access. The CSP meta is
       // a second layer. No script can report a height, so the CSS gives a
@@ -92,15 +97,15 @@ function renderOutput(out: Output, parent: HTMLElement): void {
   }
 }
 
-async function renderCell(
+function renderCell(
   cell: Cell,
   language: string,
   parent: HTMLElement,
-  renderMarkdown: RenderMarkdown,
-): Promise<void> {
+  highlight: Highlight | undefined,
+): void {
   const box = div(parent, `ganymede-nb-cell ganymede-nb-${cell.type}`);
   if (cell.type === 'markdown') {
-    renderSafeMarkdown(cell.source, box);
+    renderSafeMarkdown(cell.source, box, cell.attachments);
     return;
   }
   if (cell.type === 'raw') {
@@ -120,22 +125,30 @@ async function renderCell(
   }
   details.appendChild(summary);
   box.appendChild(details);
-  await renderMarkdown(
-    fence(cell.source, fenceLanguage(language)),
-    div(details, 'markdown-rendered ganymede-nb-source'),
-  );
+  // Built here, not by Obsidian's MarkdownRenderer: every plugin's
+  // post-processors see what that renders. The source is textContent; the
+  // highlighter only re-writes it as escaped tokens.
+  const lang = fenceLanguage(language);
+  const doc = box.ownerDocument;
+  const source = div(details, 'markdown-rendered ganymede-nb-source');
+  const preEl = doc.createElement('pre');
+  const code = doc.createElement('code');
+  if (lang) {
+    preEl.className = `language-${lang}`;
+    code.className = `language-${lang}`;
+  }
+  code.textContent = cell.source;
+  preEl.appendChild(code);
+  source.appendChild(preEl);
+  if (lang && highlight) highlight(code, lang);
   for (const out of cell.outputs) renderOutput(out, box);
 }
 
 /** Replace the contents of `root` with the rendered notebook. */
-export async function renderNotebook(
-  nb: Notebook,
-  root: HTMLElement,
-  renderMarkdown: RenderMarkdown,
-): Promise<void> {
+export function renderNotebook(nb: Notebook, root: HTMLElement, highlight?: Highlight): void {
   const frag = root.ownerDocument.createElement('div');
   frag.className = 'ganymede-nb markdown-preview-view markdown-rendered';
-  for (const cell of nb.cells) await renderCell(cell, nb.language, frag, renderMarkdown);
+  for (const cell of nb.cells) renderCell(cell, nb.language, frag, highlight);
   if (nb.cells.length === 0) pre(frag, 'ganymede-nb-text', 'This notebook has no cells.');
   root.replaceChildren(frag);
 }
@@ -150,4 +163,18 @@ export function renderError(root: HTMLElement, message: string): void {
   body.textContent = message;
   box.append(title, body);
   root.replaceChildren(box);
+}
+
+/** Which code cells are expanded, by their order in the notebook. */
+export function captureOpen(root: ParentNode): boolean[] {
+  return Array.from(root.querySelectorAll('details.ganymede-nb-code')).map(d =>
+    d.hasAttribute('open'),
+  );
+}
+
+/** Re-expand the code cells `captureOpen` saw open, by index. */
+export function applyOpen(root: ParentNode, open: boolean[]): void {
+  Array.from(root.querySelectorAll('details.ganymede-nb-code')).forEach((d, i) => {
+    if (open[i]) d.setAttribute('open', '');
+  });
 }
