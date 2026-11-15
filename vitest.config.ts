@@ -10,7 +10,12 @@ export default defineConfig({
   resolve: { dedupe: ['react', 'react-dom'] },
   test: {
     environment: 'jsdom',
-    include: ['src/**/*.test.{ts,tsx}', 'packages/agent/src/**/*.test.ts', 'scripts/**/*.test.mjs'],
+    include: [
+      'src/**/*.test.{ts,tsx}',
+      'packages/agent/src/**/*.test.ts',
+      'packages/obsidian/src/**/*.test.ts',
+      'scripts/**/*.test.mjs',
+    ],
     setupFiles: ['src/test/setup.ts'],
     restoreMocks: true,
     unstubGlobals: true,

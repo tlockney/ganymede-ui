@@ -44,6 +44,11 @@ export default tseslint.config(
     languageOptions: { globals: globals.node },
   },
   {
+    // The Obsidian plugin runs in Obsidian's web view (#636).
+    files: ['packages/obsidian/src/**/*.ts'],
+    languageOptions: { globals: globals.browser },
+  },
+  {
     files: ['public/**/*.js'],
     languageOptions: { globals: globals.serviceworker },
   },
