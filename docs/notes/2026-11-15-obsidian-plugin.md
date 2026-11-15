@@ -69,9 +69,13 @@ under `packages/obsidian/`. The `obsidian` typings package (1.14.4) and `marked`
 the only new dependencies; it pins `@codemirror/view` 6.43.13 as a peer, so
 npm installs a second, types-only copy under `packages/obsidian`.
 
-Not verified here: the plugin hasn't been loaded in a real Obsidian;
-`MarkdownRenderer.render` and `minAppVersion` 1.5.0 come from the typings
-and memory, not a run. Next: step 2, pointing the journal plugin and the
+Checked by hand: an earlier build of this branch loaded in Obsidian on
+a Mac and rendered a journal. Not verified in a run, only from the
+typings: `loadPrism`, the `FileView` load and unload order,
+`registerExtensions`, `getConfig('readableLineLength')`, `window.open`
+with a `ganymede://` URL, and `minAppVersion` 1.5.0. The view's
+`onunload` timer clear and `invalidate()` are a backstop to the
+file-close path, which the tests cover; they have no test of their own. Next: step 2, pointing the journal plugin and the
 Mac app at a vault folder and using it for a while (check Obsidian Sync's
 "Sync all other types" setting and its file size limit); step 3, search
 inside notebooks (a plugin index or Markdown summaries).
