@@ -4,7 +4,7 @@
 // the obsidian package at runtime so it runs under jsdom in tests.
 
 import { renderSafeMarkdown } from './markdown.ts';
-import { fenceLanguage, IMAGE_MIMES, standaloneSvg } from './notebook.ts';
+import { codeLanguage, IMAGE_MIMES, standaloneSvg } from './notebook.ts';
 import type { Cell, Notebook, Output } from './notebook.ts';
 
 /** Syntax-highlights a code element in place (Prism, in the view); optional. */
@@ -69,6 +69,7 @@ function renderOutput(out: Output, parent: HTMLElement): void {
       const frame = parent.ownerDocument.createElement('iframe');
       frame.className = 'ganymede-nb-html';
       frame.setAttribute('sandbox', '');
+      frame.setAttribute('referrerpolicy', 'no-referrer');
       frame.srcdoc = `<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="${IFRAME_CSP}"></head><body>${out.html}</body></html>`;
       box.appendChild(frame);
       break;
@@ -115,6 +116,7 @@ function renderCell(
   // Code is folded by default; outputs stay visible after it.
   const details = box.ownerDocument.createElement('details');
   details.className = 'ganymede-nb-code';
+  if (cell.id) details.setAttribute('data-cell-id', cell.id);
   const summary = box.ownerDocument.createElement('summary');
   summary.append('Code');
   if (cell.executionCount !== null) {
@@ -128,7 +130,7 @@ function renderCell(
   // Built here, not by Obsidian's MarkdownRenderer: every plugin's
   // post-processors see what that renders. The source is textContent; the
   // highlighter only re-writes it as escaped tokens.
-  const lang = fenceLanguage(language);
+  const lang = codeLanguage(language);
   const doc = box.ownerDocument;
   const source = div(details, 'markdown-rendered ganymede-nb-source');
   const preEl = doc.createElement('pre');
@@ -165,16 +167,30 @@ export function renderError(root: HTMLElement, message: string): void {
   root.replaceChildren(box);
 }
 
-/** Which code cells are expanded, by their order in the notebook. */
-export function captureOpen(root: ParentNode): boolean[] {
-  return Array.from(root.querySelectorAll('details.ganymede-nb-code')).map(d =>
-    d.hasAttribute('open'),
-  );
+export interface OpenState {
+  id: string | null;
+  open: boolean;
 }
 
-/** Re-expand the code cells `captureOpen` saw open, by index. */
-export function applyOpen(root: ParentNode, open: boolean[]): void {
+/** Which code cells are expanded, in notebook order, with their cell ids. */
+export function captureOpen(root: ParentNode): OpenState[] {
+  return Array.from(root.querySelectorAll('details.ganymede-nb-code')).map(d => ({
+    id: d.getAttribute('data-cell-id'),
+    open: d.hasAttribute('open'),
+  }));
+}
+
+/**
+ * Re-expand the code cells `captureOpen` saw open. A cell with an id is
+ * matched by id, so inserting a cell above doesn't move the state; a cell
+ * without one is matched by position (against states that also had no id).
+ */
+export function applyOpen(root: ParentNode, state: OpenState[]): void {
+  const byId = new Map<string, boolean>();
+  for (const s of state) if (s.id) byId.set(s.id, s.open);
   Array.from(root.querySelectorAll('details.ganymede-nb-code')).forEach((d, i) => {
-    if (open[i]) d.setAttribute('open', '');
+    const id = d.getAttribute('data-cell-id');
+    const open = id ? byId.get(id) : state[i] && !state[i].id ? state[i].open : false;
+    if (open) d.setAttribute('open', '');
   });
 }

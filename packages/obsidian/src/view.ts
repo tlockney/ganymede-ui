@@ -12,7 +12,7 @@ interface PrismLike {
   highlightElement(el: Element): void;
 }
 
-/** Obsidian's Prism, or null: code then shows as plain text. */
+/** Obsidian's Prism, or undefined: code then shows as plain text. */
 async function prismHighlighter(): Promise<Highlight | undefined> {
   try {
     const prism = (await loadPrism()) as PrismLike | undefined;
@@ -26,9 +26,15 @@ async function prismHighlighter(): Promise<Highlight | undefined> {
   }
 }
 
+/** A modify event re-renders after this quiet time (Sync can write in bursts). */
+export const MODIFY_DEBOUNCE_MS = 300;
+
 export class NotebookView extends FileView {
   // A slow render never lands after a newer one or after the file closed.
   private readonly renders = new RenderSequencer();
+  // Resolved once per view.
+  private readonly highlighter = prismHighlighter();
+  private modifyTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(leaf: WorkspaceLeaf) {
     super(leaf);
@@ -56,7 +62,9 @@ export class NotebookView extends FileView {
     // Changes from Obsidian Sync arrive as vault modify events.
     this.registerEvent(
       this.app.vault.on('modify', (f: TAbstractFile) => {
-        if (appliesTo(f.path, this.file?.path) && f instanceof TFile) void this.render(f);
+        if (!appliesTo(f.path, this.file?.path) || !(f instanceof TFile)) return;
+        clearTimeout(this.modifyTimer);
+        this.modifyTimer = setTimeout(() => void this.render(f), MODIFY_DEBOUNCE_MS);
       }),
     );
     this.addAction('code', 'Show/hide all code', () => this.toggleCode());
@@ -67,11 +75,17 @@ export class NotebookView extends FileView {
     }
   }
 
+  onunload(): void {
+    clearTimeout(this.modifyTimer);
+    this.renders.invalidate();
+  }
+
   async onLoadFile(file: TFile): Promise<void> {
     await this.render(file);
   }
 
   async onUnloadFile(_file: TFile): Promise<void> {
+    clearTimeout(this.modifyTimer);
     this.renders.invalidate();
     this.contentEl.empty();
   }
@@ -95,7 +109,7 @@ export class NotebookView extends FileView {
     try {
       const [text, highlight] = await Promise.all([
         this.app.vault.cachedRead(file),
-        prismHighlighter(),
+        this.highlighter,
       ]);
       if (!this.renders.isCurrent(token)) return;
       const nb = parseNotebook(text);

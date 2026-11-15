@@ -12,7 +12,13 @@ export type Output =
 
 export type Cell =
   | { type: 'markdown'; source: string; attachments: Record<string, string> }
-  | { type: 'code'; source: string; executionCount: number | null; outputs: Output[] }
+  | {
+      type: 'code';
+      id: string | null;
+      source: string;
+      executionCount: number | null;
+      outputs: Output[];
+    }
   | { type: 'raw'; source: string };
 
 export interface Notebook {
@@ -66,43 +72,17 @@ export function overwriteReturns(text: string): string {
     .join('\n');
 }
 
-/** A Markdown fenced code block whose fence outruns any backticks in source. */
-export function fence(source: string, lang: string): string {
-  let longest = 0;
-  for (const run of source.match(/`+/g) ?? []) longest = Math.max(longest, run.length);
-  const ticks = '`'.repeat(Math.max(3, longest + 1));
-  return `${ticks}${lang}\n${source}\n${ticks}`;
-}
-
-// Languages a fence may name. Anything else gets no info string, so a
-// kernel language like `dataviewjs` can't trigger an Obsidian code-block
-// processor and the source stays inert text.
-const FENCE_LANGUAGES = new Set([
-  'typescript',
-  'javascript',
-  'python',
-  'r',
-  'julia',
-  'sql',
-  'bash',
-  'sh',
-  'rust',
-  'go',
-  'ruby',
-  'scala',
-  'java',
-  'kotlin',
-  'swift',
-  'c',
-  'cpp',
-  'csharp',
-]);
-
-/** The info string for a code cell's fence: an allowlisted language, or ''. */
-export function fenceLanguage(language: string): string {
+/**
+ * The language for a code cell's `language-x` class: lowercase, `deno` as
+ * `typescript`, and only a plain token (letters, digits, `+`, `#`, `-`);
+ * anything else gets none. The source is built with textContent and never
+ * passes through a Markdown renderer, so the name is only a class and a
+ * Prism lookup.
+ */
+export function codeLanguage(language: string): string {
   const lang = language.trim().toLowerCase();
   if (lang === 'deno') return 'typescript';
-  return FENCE_LANGUAGES.has(lang) ? lang : '';
+  return /^[a-z0-9+#-]+$/.test(lang) ? lang : '';
 }
 
 /**
@@ -192,12 +172,21 @@ function parseBundle(data: Obj): Output {
         const json = JSON.stringify(value.value ?? null, null, 2);
         return { kind: 'text', text: `${name} = ${json}`, stderr: false };
       }
-      case 'text/html':
-        return { kind: 'html', html: multiline(value) };
-      case 'image/svg+xml':
-        return { kind: 'svg', svg: multiline(value) };
-      case 'text/markdown':
-        return { kind: 'markdown', markdown: multiline(value) };
+      case 'text/html': {
+        const html = multiline(value);
+        if (!html.trim()) continue;
+        return { kind: 'html', html };
+      }
+      case 'image/svg+xml': {
+        const svg = multiline(value);
+        if (!svg.trim()) continue;
+        return { kind: 'svg', svg };
+      }
+      case 'text/markdown': {
+        const markdown = multiline(value);
+        if (!markdown.trim()) continue;
+        return { kind: 'markdown', markdown };
+      }
       case 'application/json':
         return {
           kind: 'text',
@@ -206,12 +195,12 @@ function parseBundle(data: Obj): Output {
         };
       case 'text/plain':
         return { kind: 'text', text: stripAnsi(multiline(value)), stderr: false };
-      default:
-        return {
-          kind: 'image',
-          mime: mime as ImageMime,
-          base64: multiline(value).replace(/\s+/g, ''),
-        };
+      default: {
+        // A bitmap only if its data is base64; else try the next type.
+        const base64 = multiline(value).replace(/\s+/g, '');
+        if (!base64 || !/^[A-Za-z0-9+/]*={0,2}$/.test(base64)) continue;
+        return { kind: 'image', mime: mime as ImageMime, base64 };
+      }
     }
   }
   return { kind: 'unsupported', mimes: Object.keys(data) };
@@ -283,6 +272,7 @@ export function parseNotebook(text: string): Notebook {
       }
       cells.push({
         type: 'code',
+        id: typeof raw.id === 'string' && raw.id ? raw.id : null,
         source,
         executionCount: typeof raw.execution_count === 'number' ? raw.execution_count : null,
         outputs,

@@ -1,3 +1,4 @@
+import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 import { kernelModules } from './scripts/kernel-modules.ts';
@@ -7,7 +8,15 @@ import { kernelModules } from './scripts/kernel-modules.ts';
 export default defineConfig({
   plugins: [react(), kernelModules()],
   // One React, as in vite.config.ts.
-  resolve: { dedupe: ['react', 'react-dom'] },
+  resolve: {
+    dedupe: ['react', 'react-dom'],
+    // The obsidian package is types only; its tests mock it (#636).
+    alias: {
+      obsidian: fileURLToPath(
+        new URL('./packages/obsidian/src/test/obsidian-stub.ts', import.meta.url),
+      ),
+    },
+  },
   test: {
     environment: 'jsdom',
     include: [

@@ -14,7 +14,7 @@ import type { Highlight } from './render.ts';
 function codeNb(output: unknown, source = 'x'): Notebook {
   return {
     language: 'python',
-    cells: [{ type: 'code', source, executionCount: 3, outputs: [output as never] }],
+    cells: [{ type: 'code', id: null, source, executionCount: 3, outputs: [output as never] }],
   };
 }
 
@@ -34,6 +34,7 @@ describe('renderNotebook', () => {
     expect(frame).not.toBeNull();
     expect(frame!.hasAttribute('sandbox')).toBe(true);
     expect(frame!.getAttribute('sandbox')).toBe('');
+    expect(frame!.getAttribute('referrerpolicy')).toBe('no-referrer');
     const srcdoc = frame!.getAttribute('srcdoc')!;
     expect(srcdoc).toContain('http-equiv="Content-Security-Policy"');
     expect(srcdoc).toContain(IFRAME_CSP);
@@ -78,6 +79,7 @@ describe('renderNotebook', () => {
         cells: [
           {
             cell_type: 'code',
+            id: null,
             source: '',
             outputs: [
               { output_type: 'stream', name: 'stdout', text: '<b>x</b>' },
@@ -118,6 +120,7 @@ describe('renderNotebook', () => {
         cells: [
           {
             cell_type: 'code',
+            id: null,
             source: '',
             outputs: [{ output_type: 'display_data', data: { 'image/x-foo': 'AAAA' } }],
           },
@@ -136,6 +139,7 @@ describe('renderNotebook', () => {
         { type: 'markdown', source: '# Title', attachments: {} },
         {
           type: 'code',
+          id: null,
           source: 'a',
           executionCount: 1,
           outputs: [{ kind: 'markdown', markdown: '**out**' }],
@@ -192,7 +196,7 @@ describe('renderNotebook', () => {
     expect(hl.mock.calls[0][1]).toBe('python');
   });
 
-  it('names only allowlisted languages and skips the highlighter otherwise', async () => {
+  it('names only plain-token languages and skips the highlighter otherwise', async () => {
     const lang = async (l: string) => {
       const { root, hl } = await draw({
         ...codeNb({ kind: 'text', text: '', stderr: false }),
@@ -202,7 +206,7 @@ describe('renderNotebook', () => {
     };
     expect(await lang('Python')).toEqual({ cls: 'language-python', called: 1 });
     expect(await lang('deno')).toEqual({ cls: 'language-typescript', called: 1 });
-    expect(await lang('dataviewjs')).toEqual({ cls: '', called: 0 });
+    expect(await lang('dataviewjs')).toEqual({ cls: 'language-dataviewjs', called: 1 });
     expect(await lang('py`thon')).toEqual({ cls: '', called: 0 });
     expect(await lang('')).toEqual({ cls: '', called: 0 });
   });
@@ -229,6 +233,7 @@ describe('renderNotebook', () => {
       language: 'python',
       cells: [1, 2, 3].map(n => ({
         type: 'code' as const,
+        id: null,
         source: String(n),
         executionCount: n,
         outputs: [],
@@ -236,7 +241,7 @@ describe('renderNotebook', () => {
     };
     const { root } = await draw(nb);
     root.querySelectorAll('details')[1].setAttribute('open', '');
-    expect(captureOpen(root)).toEqual([false, true, false]);
+    expect(captureOpen(root).map(o => o.open)).toEqual([false, true, false]);
     const next = document.createElement('div');
     renderNotebook(nb, next);
     applyOpen(next, captureOpen(root));
@@ -248,7 +253,39 @@ describe('renderNotebook', () => {
     // A notebook with fewer cells doesn't throw.
     const small = document.createElement('div');
     renderNotebook({ ...nb, cells: nb.cells.slice(0, 1) }, small);
-    expect(() => applyOpen(small, [false, true, true])).not.toThrow();
+    expect(() =>
+      applyOpen(small, [
+        { id: null, open: false },
+        { id: null, open: true },
+      ]),
+    ).not.toThrow();
+  });
+
+  it('keys expanded state by cell id, so inserting a cell above keeps it', async () => {
+    const cell = (id: string) => ({
+      type: 'code' as const,
+      id,
+      source: id,
+      executionCount: null,
+      outputs: [],
+    });
+    const before = document.createElement('div');
+    renderNotebook({ language: '', cells: [cell('a'), cell('b')] }, before);
+    before.querySelectorAll('details')[1].setAttribute('open', '');
+    const state = captureOpen(before);
+    expect(state).toEqual([
+      { id: 'a', open: false },
+      { id: 'b', open: true },
+    ]);
+    expect(before.querySelectorAll('details')[1].getAttribute('data-cell-id')).toBe('b');
+    const after = document.createElement('div');
+    renderNotebook({ language: '', cells: [cell('new'), cell('a'), cell('b')] }, after);
+    applyOpen(after, state);
+    expect([...after.querySelectorAll('details')].map(d => d.hasAttribute('open'))).toEqual([
+      false,
+      false,
+      true,
+    ]);
   });
 
   it('omits the count for a cell that never ran', async () => {
@@ -261,6 +298,46 @@ describe('renderNotebook', () => {
   it('shows a message for an empty notebook', async () => {
     const { root } = await draw({ language: '', cells: [] });
     expect(root.textContent).toContain('no cells');
+  });
+});
+
+describe('untrusted Markdown through renderNotebook', () => {
+  const evil = [
+    '<script>window.x=1</script>',
+    '<img src=x onerror=alert(1)>',
+    '[a](javascript:alert(1))',
+    '![h](https://x/y.png)',
+    '<a href="javascript:alert(2)" onclick="alert(3)">b</a>',
+  ].join('\n\n');
+
+  function expectClean(root: HTMLElement) {
+    expect(root.querySelector('script')).toBeNull();
+    for (const el of root.querySelectorAll('*')) {
+      expect(el.getAttributeNames().filter(n => n.startsWith('on'))).toEqual([]);
+    }
+    expect(root.innerHTML).not.toMatch(/onerror|onclick/i);
+    for (const img of root.querySelectorAll('img')) {
+      expect(img.getAttribute('src')).toMatch(/^data:/);
+    }
+    for (const a of root.querySelectorAll('a')) {
+      expect(a.getAttribute('href') ?? '').not.toMatch(/^javascript:/i);
+    }
+    // The http image is text, the link text stays.
+    expect(root.textContent).toContain('h');
+    expect(root.textContent).toContain('a');
+  }
+
+  it('a markdown cell', async () => {
+    const { root } = await draw({
+      language: '',
+      cells: [{ type: 'markdown', source: evil, attachments: {} }],
+    });
+    expectClean(root);
+  });
+
+  it('a text/markdown output', async () => {
+    const { root } = await draw(codeNb({ kind: 'markdown', markdown: evil }));
+    expectClean(root.querySelector('.ganymede-nb-output') as HTMLElement);
   });
 });
 

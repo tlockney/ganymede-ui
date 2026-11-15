@@ -30,12 +30,12 @@ size limit for your plan: notebooks with large outputs can exceed it.
 ## What it shows
 
 - Markdown cells, rendered by the plugin (see Security) and styled by Obsidian's reading-view CSS.
-- Code cells folded under a `Code [n]` summary (a header action shows or hides all code), syntax-highlighted with Obsidian's Prism when it knows the language (plain text otherwise). A language is named only from a short allowlist.
+- Code cells folded under a `Code [n]` summary (a header action shows or hides all code), syntax-highlighted with Obsidian's Prism when it knows the language (plain text otherwise). The language is used only as a class and a Prism lookup, and only if it is a plain token.
 - Outputs: streams, errors (ANSI colors removed), plain text, JSON,
   Markdown, images (PNG, JPEG, GIF, WebP, SVG) and HTML. SVG from kernels that omit the `xmlns` attribute (Observable Plot's) gets it added, as Ganymede's HTML exporter does, so it draws. Ganymede's named
   results (`application/vnd.ganymede.result+json`) show as `name = value`.
   When an output has several representations, one is chosen: Ganymede
-  result (with a non-empty name), SVG, bitmap, HTML, Markdown, JSON, plain text, as Ganymede's HTML export orders them. Consecutive outputs of one stream are merged and carriage returns overwrite (progress bars). An error shows its traceback, or `name: value` without one. Images in Markdown cells given as `attachment:` names show for PNG, JPEG, GIF and WebP. Code cells you expanded stay expanded when the file changes.
+  result (with a non-empty name), SVG, bitmap, HTML, Markdown, JSON, plain text: the same relative order as Ganymede's HTML export for the types both show. Empty HTML, Markdown and SVG, and bitmaps whose data isn't base64, are skipped for the next type. Consecutive outputs of one stream are merged and carriage returns overwrite (progress bars). An error shows its traceback, or `name: value` without one. Images in Markdown cells given as `attachment:` names show for PNG, JPEG, GIF and WebP. Code cells you expanded stay expanded when the file changes (matched by cell id, else position); a change re-renders after 300 ms of quiet. Math (`$…$`, `$$…$$`) shows as its source, not typeset.
 - Changes that arrive while a notebook is open, such as from Obsidian
   Sync, re-render it. A notebook that can't be read shows why in the
   view.
@@ -56,8 +56,11 @@ ran from a notebook output would run with the person's privileges. The
 viewer therefore:
 
 - renders HTML outputs only in an `<iframe sandbox="">` (no scripts, no
-  same-origin access) whose document carries a Content-Security-Policy
-  of `default-src 'none'; img-src data:; style-src 'unsafe-inline'`;
+  same-origin access), `referrerpolicy="no-referrer"`, whose document
+  carries a Content-Security-Policy of
+  `default-src 'none'; img-src data:; style-src 'unsafe-inline'`. A link
+  clicked inside an HTML output can still navigate the frame (no script
+  runs there);
 - shows SVG only as an `<img>` data URL, never inline, and bitmaps only
   for the listed image types;
 - puts text, stream and error output in `<pre>` through `textContent`;
@@ -75,5 +78,5 @@ shows its alt text. Trade-off: no wikilinks, embeds or callouts in
 notebook Markdown. Code cells don't go through Obsidian's Markdown renderer
 either, since every plugin's post-processors would see them: the plugin
 builds `<pre><code>` with `textContent` and only then asks Prism to
-highlight it, for an allowlisted language. External links open in a new
+highlight it, for a plain-token language. External links open in a new
 window with `rel="noopener noreferrer"`.

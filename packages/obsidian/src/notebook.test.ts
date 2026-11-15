@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
-  fence,
+  codeLanguage,
   NotebookError,
   overwriteReturns,
   parseNotebook,
@@ -38,7 +38,9 @@ describe('parseNotebook structure', () => {
   it('tolerates missing cells, outputs and metadata', () => {
     expect(parseNotebook('{"nbformat":4}')).toEqual({ language: '', cells: [] });
     const p = parseNotebook('{"nbformat":4,"cells":[{"cell_type":"code","source":"1"}]}');
-    expect(p.cells).toEqual([{ type: 'code', source: '1', executionCount: null, outputs: [] }]);
+    expect(p.cells).toEqual([
+      { type: 'code', id: null, source: '1', executionCount: null, outputs: [] },
+    ]);
   });
 
   it('rejects nbformat 3 with a clear message', () => {
@@ -338,16 +340,48 @@ describe('standaloneSvg', () => {
   });
 });
 
-describe('fence', () => {
-  it('uses three backticks by default', () => {
-    expect(fence('x = 1', 'python')).toBe('```python\nx = 1\n```');
+describe('codeLanguage', () => {
+  it.each([
+    ['Python', 'python'],
+    ['deno', 'typescript'],
+    ['c++', 'c++'],
+    ['f#', 'f#'],
+    ['dataviewjs', 'dataviewjs'],
+    ['py`thon', ''],
+    ['a b', ''],
+    ['x"onload=1', ''],
+    ['', ''],
+  ])('%j gives %j', (input, expected) => {
+    expect(codeLanguage(input)).toBe(expected);
+  });
+});
+
+describe('bundle edge cases', () => {
+  it('skips empty html, markdown and svg, falling through', () => {
+    expect(bundle({ 'text/html': '  \n', 'text/plain': 'p' })).toMatchObject({ text: 'p' });
+    expect(bundle({ 'text/markdown': '', 'text/plain': 'p' })).toMatchObject({ text: 'p' });
+    expect(bundle({ 'image/svg+xml': ' ', 'text/html': '<b>h</b>' })).toMatchObject({
+      kind: 'html',
+    });
   });
 
-  it('outruns a ``` run in the source', () => {
-    expect(fence('a\n```\nb', 'md')).toBe('````md\na\n```\nb\n````');
+  it('chooses a bitmap only when its data is base64', () => {
+    expect(bundle({ 'image/png': 'not base64!', 'text/plain': 'p' })).toMatchObject({
+      kind: 'text',
+    });
+    expect(bundle({ 'image/png': '', 'text/plain': 'p' })).toMatchObject({ kind: 'text' });
+    expect(bundle({ 'image/png': '<script>', 'image/jpeg': 'AA==' })).toMatchObject({
+      kind: 'image',
+      mime: 'image/jpeg',
+    });
+    expect(bundle({ 'image/png': 'AA\nBB==' })).toMatchObject({ kind: 'image', base64: 'AABB==' });
   });
 
-  it('outruns a ```` run in the source', () => {
-    expect(fence('````', '')).toBe('`````\n````\n`````');
+  it('reads the cell id', () => {
+    const p = parseNotebook(nb([{ cell_type: 'code', id: 'abc', source: '' }]));
+    expect(p.cells[0]).toMatchObject({ id: 'abc' });
+    expect(parseNotebook(nb([{ cell_type: 'code', source: '' }])).cells[0]).toMatchObject({
+      id: null,
+    });
   });
 });
