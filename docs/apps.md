@@ -273,6 +273,34 @@ link, 3 cancelled) and `errorMessage`, and `x-cancel` is opened when
 you answer Cancel. In Shortcuts, the Open X-Callback URL action does
 this and gives the answer to the next action.
 
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+The iPad and iPhone app opens `ganymede://open` links too, in two forms:
+`ganymede://open?path=…` and
+`ganymede://open?folder=<name>&file=<path in that folder>`, where `name`
+is the folder's own name (for an Obsidian vault, the vault's folder) and
+`file` is relative to it. If a link has `path` it is used, and `folder`
+and `file` are ignored. A relative `path` is relative to the folder
+Ganymede has open; `~/` paths don't work there, since the apps have no
+home folder. The notebook opens only if it is in the folder Ganymede has
+open or in a folder you granted. A link that names a file anywhere
+else, by `..` or a symlink too, gets "Ganymede can't open this file" with
+a **Grant Access…** button, which asks you to pick the folder and then
+tries the link again; the message is the same whether or not the file
+exists. Settings › Links lists the granted folders, adds more, and
+revokes them (swipe a folder, or Edit). Revoking stops links; it doesn't
+close a folder that is open. If two granted folders have the same name, a
+`folder` link asks you to use `path` or revoke one.
+
+A notebook in a granted folder other than the open one asks first:
+Ganymede switches to that folder, which restarts its server and stops the
+kernels running in the folder it leaves. `run` and `new` links work only
+on the Mac, and the apps ignore an `x-success`, `x-error` and `x-cancel`
+reply: a link to `x-callback-url/open` still opens the notebook, and
+nothing is sent back. The Mac takes `path` links only.
+
 ### Agents over MCP
 
 Agents outside the app, such as Claude Code and Claude Desktop, can read,

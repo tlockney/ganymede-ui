@@ -583,6 +583,7 @@ targets:
       - path: Sources/Ganymede/CrashScrub.swift
       - path: Sources/Ganymede/NotebookActions.swift
       - path: Sources/Ganymede/AppURL.swift
+      - path: Sources/Ganymede/LinkFolders.swift
       - path: Sources/Ganymede/AppMCP.swift
       - path: Sources/Ganymede/AppTailnet.swift
       - path: Sources/Ganymede/HelpLinks.swift
@@ -654,6 +655,7 @@ targets:
       - path: Sources/Ganymede/CrashScrub.swift
       - path: Sources/Ganymede/NotebookActions.swift
       - path: Sources/Ganymede/AppURL.swift
+      - path: Sources/Ganymede/LinkFolders.swift
       - path: Sources/Ganymede/AppMCP.swift
       - path: Sources/Ganymede/AppTailnet.swift
       - path: Sources/Ganymede/HelpLinks.swift

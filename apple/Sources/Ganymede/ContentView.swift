@@ -68,6 +68,10 @@ struct ContentView: View {
     #if os(iOS)
     @Environment(\.scenePhase) private var phase
     @State private var picking = false
+    /// What the folder picker is for (#640).
+    @State private var pickPurpose = FolderPick.openFolder
+    /// `ganymede://open` links (#640).
+    @State private var links = LinkOpener()
     @State private var settings = false
     /// What Settings shows over its first screen: the Agent or Keyboard
     /// Shortcuts, when the page asked for them (#332).
@@ -392,6 +396,7 @@ struct ContentView: View {
         }
         .focusedSceneValue(\.pageModel, pageModel)
         .modifier(KeychainAlert(model: model))
+        .modifier(LinkAlert(links: links, grant: startGrant, change: { links.confirm($0, model: model) }))
         // Spotlight (#305): the page's recents are indexed, a save updates
         // its entry, and a result opens here.
         .onChange(of: pageModel.state.recents, initial: true) { _, recents in
@@ -407,10 +412,22 @@ struct ContentView: View {
         .onContinueUserActivity(CSSearchableItemActionType) { activity in
             _ = SpotlightSettings.shared.open(activity, with: openFromSpotlight)
         }
-        // A Shortcut a cell ran, calling back (ganymede-device#40); the
-        // app has no other `ganymede://` URLs here yet.
+        // A Shortcut a cell ran, calling back (ganymede-device#40), or a
+        // link to open a notebook (#640).
         .onOpenURL { url in
-            KernelHost.shortcuts.handle(url)
+            if url.host?.lowercased() == "device-callback" {
+                KernelHost.shortcuts.handle(url)
+            } else {
+                links.handle(url, model: model, show: showNotebook)
+            }
+        }
+        // A notebook waiting for another folder's server (#640).
+        .onChange(of: pageModel.ready) { _, ready in
+            if ready { links.pageReady(model: model, show: showNotebook) }
+        }
+        .onChange(of: model.serverRootFolder) { _, root in links.rootChanged(to: root) }
+        .onChange(of: model.error) { _, error in
+            if error != nil { links.startFailed() }
         }
         // Opened again from the root, not where the last visit ended.
         .sheet(isPresented: $settings, onDismiss: { settingsPath = [] }) {
@@ -447,8 +464,13 @@ struct ContentView: View {
             }
         }
         .fileImporter(isPresented: $picking, allowedContentTypes: [.folder]) { result in
-            if case .success(let folder) = result {
-                model.open(folder: folder)
+            switch pickPurpose {
+            case .openFolder:
+                if case .success(let folder) = result {
+                    model.open(folder: folder)
+                }
+            case .grantForLink:
+                links.picked(result, model: model, show: showNotebook)
             }
         }
         .onChange(of: phase) { _, phase in
@@ -763,6 +785,7 @@ struct ContentView: View {
         }
         .keyboardShortcut(",")
         Button {
+            pickPurpose = .openFolder
             picking = true
         } label: {
             Label("Open Folder", systemImage: "folder")
@@ -804,6 +827,12 @@ struct ContentView: View {
     /// the server serves, opens as one picked in the sidebar would.
     private func openFromSpotlight(_ url: URL) {
         guard let path = NotebookActions.apiPath(for: url, root: model.serverRootFolder) else { return }
+        showNotebook(apiPath: path)
+    }
+
+    /// Opens the notebook at `path` in the folder the server serves, and
+    /// shows it: from Spotlight (#305) or a link (#640).
+    private func showNotebook(apiPath path: String) {
         pageModel.run("open", arg: path)
         if isPhone {
             phonePath = [.notebook]
@@ -811,6 +840,17 @@ struct ContentView: View {
             openFiles.showNotebook()
             panelFills = false
             if portrait { columns = .detailOnly }
+        }
+    }
+
+    /// A link needs a folder granted: the picker, after the alert that
+    /// asked has gone, which a picker shown at once may not outlast.
+    private func startGrant(_ request: AppURL) {
+        links.beginGrant(for: request)
+        pickPurpose = .grantForLink
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(300))
+            picking = true
         }
     }
 

@@ -7,16 +7,22 @@ import Observation
 /// operations Shortcuts uses (`NotebookActions`).
 ///
 ///     ganymede://open?path=…
+///     ganymede://open?folder=<name>&file=<path in that folder>
 ///     ganymede://new?dir=…[&name=…][&template=…]
 ///     ganymede://run?path=…[&cell=id|tag][&restart=0][&timeout=600]
 ///     ganymede://run?path=…&p.NAME=VALUE…|&params=<JSON object>[&timeout=600]
 ///     ganymede://x-callback-url/<route>?…&x-success=…&x-error=…&x-cancel=…
 ///
 /// Paths are file paths: absolute, `~/…`, or relative to the folder the
-/// app's server serves.
+/// app's server serves. On iPad and iPhone `open` works only in the folders
+/// the person granted and the one the app has open (`LinkFolders`); `folder`
+/// and `file` name a notebook by the granted folder's name, as a link made
+/// where the full path isn't known does (#640).
 struct AppURL: Equatable {
     enum Command: Equatable {
         case open(path: String)
+        /// `file` is relative to the granted folder named `folder` (#640).
+        case openInFolder(folder: String, file: String)
         case new(dir: String, name: String?, template: String?)
         /// `cell`: a cell id, or a tag; nil runs every code cell.
         /// `params`: the run contract's parameters (ganymede#650), as a
@@ -110,7 +116,14 @@ struct AppURL: Equatable {
 
         switch route {
         case "open":
-            command = .open(path: try required("path"))
+            // `path` wins when a link has both forms.
+            if let path = value("path") {
+                command = .open(path: path)
+            } else if let folder = value("folder") {
+                command = .openInFolder(folder: folder, file: try required("file"))
+            } else {
+                throw AppURLError.missing("path")
+            }
         case "new":
             command = .new(dir: try required("dir"), name: value("name"), template: value("template"))
         case "run":
@@ -244,6 +257,10 @@ enum AppURLError: LocalizedError, Equatable {
     case badValue(String, String)
     case cellWithParameters
     case cancelled
+    /// A `folder=` link reached the Mac, which opens files by `path=` (#640).
+    case folderLinkNotOnMac
+    /// A route iPad and iPhone don't do (#640): `run` and `new`.
+    case macOnly(String)
 
     var errorDescription: String? {
         switch self {
@@ -253,6 +270,8 @@ enum AppURLError: LocalizedError, Equatable {
         case .badValue(let name, let value): "“\(value)” isn’t a valid \(name)."
         case .cellWithParameters: "A run with parameters runs the whole notebook; leave out “cell”."
         case .cancelled: "The run was cancelled."
+        case .folderLinkNotOnMac: "Links with a folder open on iPad and iPhone. On the Mac, a link names the notebook with path=."
+        case .macOnly(let route): "“\(route)” links work only on the Mac."
         }
     }
 
