@@ -185,9 +185,36 @@ enum AppTailnet {
         }
         let status = run(cli, ["status", "--json"])
         guard status.code == 0, let name = dnsName(status: status.output) else {
-            return .failure(Failure(message: "Tailscale isn’t connected, or has no name for this Mac. Connect it, then turn this on again."))
+            return .failure(Failure(message: "Tailscale isn’t connected, or has no name for this Mac. Connect it, then turn this on again." + said(status.output, status.error)))
         }
         return .success((name, serverConfig(dnsName: name, allow: allow)))
+    }
+
+    /// What `tailscale` printed, when that wasn't JSON, to add to a
+    /// failure: " Tailscale said: …", cut to one line of at most 200
+    /// characters; empty for JSON or no output.
+    static func said(_ output: Data, _ error: Data) -> String {
+        let text = [output, error]
+            .filter { (try? JSONSerialization.jsonObject(with: $0)) == nil }
+            .map { String(decoding: $0, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+            .split(whereSeparator: \.isNewline)
+            .joined(separator: " ")
+        guard !text.isEmpty else { return "" }
+        return " Tailscale said: " + (text.count > 200 ? String(text.prefix(200)) + "…" : text)
+    }
+
+    /// The environment for `tailscale`: the app's own, plus
+    /// `TAILSCALE_BE_CLI=1`. The Tailscale app's binary, which `command()`
+    /// finds first, acts as the CLI only when it sees signs of a shell
+    /// (`TERM`, `SHLVL`); started from an app without them, it tries to
+    /// start its GUI instead, prints "The Tailscale GUI failed to start"
+    /// and exits 0 (#632).
+    static func environment(_ base: [String: String]) -> [String: String] {
+        var environment = base
+        environment["TAILSCALE_BE_CLI"] = "1"
+        return environment
     }
 
     /// Points `tailscale serve` at the server on `port`, unless it already
@@ -230,6 +257,7 @@ enum AppTailnet {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: cli)
         process.arguments = arguments
+        process.environment = environment(ProcessInfo.processInfo.environment)
         let outPipe = Pipe(), errPipe = Pipe()
         process.standardOutput = outPipe
         process.standardError = errPipe

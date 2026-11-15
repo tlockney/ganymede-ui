@@ -55,6 +55,28 @@ final class AppTailnetTests: XCTestCase {
         XCTAssertNil(AppTailnet.ownLogin(status: Data(#"{"Self":{"UserID":42},"User":{"42":{"LoginName":"tagged-devices"}}}"#.utf8)))
     }
 
+    /// Started from an app, the Tailscale app's binary acts as the CLI
+    /// only with `TAILSCALE_BE_CLI` set (#632).
+    func testEnvironmentMakesTailscaleACLI() {
+        let environment = AppTailnet.environment(["HOME": "/Users/me", "PATH": "/usr/bin:/bin"])
+        XCTAssertEqual(environment["TAILSCALE_BE_CLI"], "1")
+        XCTAssertEqual(environment["HOME"], "/Users/me")
+        XCTAssertEqual(environment["PATH"], "/usr/bin:/bin")
+    }
+
+    func testSaid() {
+        let gui = Data("The Tailscale GUI failed to start: The operation couldn’t be completed. (Tailscale.CLIError error 3.)\n".utf8)
+        XCTAssertEqual(
+            AppTailnet.said(gui, Data()),
+            " Tailscale said: The Tailscale GUI failed to start: The operation couldn’t be completed. (Tailscale.CLIError error 3.)"
+        )
+        XCTAssertEqual(AppTailnet.said(Data(#"{"Self":{}}"#.utf8), Data()), "")
+        XCTAssertEqual(AppTailnet.said(Data(), Data()), "")
+        XCTAssertEqual(AppTailnet.said(Data(), Data("line one\nline two\n".utf8)), " Tailscale said: line one line two")
+        let long = AppTailnet.said(Data(String(repeating: "x", count: 300).utf8), Data())
+        XCTAssertEqual(long, " Tailscale said: " + String(repeating: "x", count: 200) + "…")
+    }
+
     func testPeers() {
         let status = Data(#"""
         {"Self":{"DNSName":"mac.tail1234.ts.net."},
