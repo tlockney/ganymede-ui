@@ -3,7 +3,7 @@
 // set as innerHTML or inserted as live markup. This file imports nothing from
 // the obsidian package at runtime so it runs under jsdom in tests.
 
-import { fence, IMAGE_MIMES } from './notebook.ts';
+import { fence, fenceLanguage, IMAGE_MIMES } from './notebook.ts';
 import type { Cell, Notebook, Output } from './notebook.ts';
 
 export type RenderMarkdown = (markdown: string, el: HTMLElement) => Promise<void>;
@@ -112,7 +112,7 @@ async function renderCell(
   }
   const label = div(box, 'ganymede-nb-prompt');
   label.textContent = `In [${cell.executionCount ?? ' '}]:`;
-  await renderMarkdown(fence(cell.source, language), div(box, 'ganymede-nb-source'));
+  await renderMarkdown(fence(cell.source, fenceLanguage(language)), div(box, 'ganymede-nb-source'));
   for (const out of cell.outputs) await renderOutput(out, box, renderMarkdown);
 }
 

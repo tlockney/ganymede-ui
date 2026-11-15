@@ -40,7 +40,14 @@ export default tseslint.config(
     },
   },
   {
-    files: ['e2e/**/*.ts', 'scripts/**/*.{js,mjs}', '*.config.{js,ts}', 'packages/*/src/**/*.ts'],
+    files: [
+      'e2e/**/*.ts',
+      'scripts/**/*.{js,mjs}',
+      '*.config.{js,ts}',
+      'packages/*/*.config.ts',
+      'packages/*/src/**/*.ts',
+    ],
+    ignores: ['packages/obsidian/src/**'],
     languageOptions: { globals: globals.node },
   },
   {

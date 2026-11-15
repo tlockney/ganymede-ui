@@ -1,4 +1,11 @@
-import { FileSystemAdapter, FileView, MarkdownRenderer, Platform, TFile } from 'obsidian';
+import {
+  Component,
+  FileSystemAdapter,
+  FileView,
+  MarkdownRenderer,
+  Platform,
+  TFile,
+} from 'obsidian';
 import type { TAbstractFile, WorkspaceLeaf } from 'obsidian';
 import { NotebookError, parseNotebook } from './notebook.ts';
 import { renderError, renderNotebook } from './render.ts';
@@ -9,6 +16,8 @@ export class NotebookView extends FileView {
   // Bumped on every render and unload so a slow render never lands after a
   // newer one or after the file was closed.
   private generation = 0;
+  // Owns the Markdown renderer's child components for the current render.
+  private current: Component | null = null;
 
   constructor(leaf: WorkspaceLeaf) {
     super(leaf);
@@ -52,6 +61,7 @@ export class NotebookView extends FileView {
 
   async onUnloadFile(_file: TFile): Promise<void> {
     this.generation++;
+    this.dropCurrent();
     this.contentEl.empty();
   }
 
@@ -62,22 +72,42 @@ export class NotebookView extends FileView {
     window.open(`ganymede://open?path=${encodeURIComponent(path)}`);
   }
 
+  private dropCurrent(): void {
+    if (this.current) this.removeChild(this.current);
+    this.current = null;
+  }
+
   private async render(file: TFile): Promise<void> {
     const gen = ++this.generation;
     const root = this.contentEl;
     root.addClass('ganymede-nb-view');
+    const comp = new Component();
+    this.addChild(comp);
     try {
       const nb = parseNotebook(await this.app.vault.cachedRead(file));
-      if (gen !== this.generation) return;
+      if (gen !== this.generation) {
+        this.removeChild(comp);
+        return;
+      }
       // Render into a detached element so a newer render never interleaves.
       const staging = root.ownerDocument.createElement('div');
       await renderNotebook(nb, staging, (md, el) =>
-        MarkdownRenderer.render(this.app, md, el, file.path, this),
+        MarkdownRenderer.render(this.app, md, el, file.path, comp),
       );
-      if (gen !== this.generation) return;
+      if (gen !== this.generation) {
+        this.removeChild(comp);
+        return;
+      }
       root.replaceChildren(...Array.from(staging.childNodes));
+      this.dropCurrent();
+      this.current = comp;
     } catch (e) {
-      if (gen !== this.generation) return;
+      if (gen !== this.generation) {
+        this.removeChild(comp);
+        return;
+      }
+      this.dropCurrent();
+      this.removeChild(comp);
       const message =
         e instanceof NotebookError ? e.message : `Could not read the file: ${String(e)}`;
       renderError(root, message);

@@ -55,6 +55,37 @@ export function fence(source: string, lang: string): string {
   return `${ticks}${lang}\n${source}\n${ticks}`;
 }
 
+// Languages a fence may name. Anything else gets no info string, so a
+// kernel language like `dataviewjs` can't trigger an Obsidian code-block
+// processor and the source stays inert text.
+const FENCE_LANGUAGES = new Set([
+  'typescript',
+  'javascript',
+  'python',
+  'r',
+  'julia',
+  'sql',
+  'bash',
+  'sh',
+  'rust',
+  'go',
+  'ruby',
+  'scala',
+  'java',
+  'kotlin',
+  'swift',
+  'c',
+  'cpp',
+  'csharp',
+]);
+
+/** The info string for a code cell's fence: an allowlisted language, or ''. */
+export function fenceLanguage(language: string): string {
+  const lang = language.trim().toLowerCase();
+  if (lang === 'deno') return 'typescript';
+  return FENCE_LANGUAGES.has(lang) ? lang : '';
+}
+
 type Obj = Record<string, unknown>;
 
 function isObj(v: unknown): v is Obj {
@@ -96,13 +127,12 @@ function parseBundle(data: Obj): Output {
     const value = data[mime];
     switch (mime) {
       case GANYMEDE_RESULT_MIME: {
-        const name = isObj(value) && typeof value.name === 'string' ? value.name : 'result';
+        // An empty or missing name shows the value alone, as ganymede's
+        // named_result does.
+        const name = isObj(value) && typeof value.name === 'string' ? value.name : '';
         const v = isObj(value) ? value.value : value;
-        return {
-          kind: 'text',
-          text: `${name} = ${JSON.stringify(v, null, 2) ?? 'undefined'}`,
-          stderr: false,
-        };
+        const json = JSON.stringify(v, null, 2) ?? 'undefined';
+        return { kind: 'text', text: name ? `${name} = ${json}` : json, stderr: false };
       }
       case 'text/html':
         return { kind: 'html', html: multiline(value) };

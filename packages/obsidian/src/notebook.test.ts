@@ -117,6 +117,60 @@ describe('parseNotebook outputs', () => {
     });
   });
 
+  it('follows the whole MIME preference list, pair by pair', () => {
+    const order: [string, unknown, string][] = [
+      ['application/vnd.ganymede.result+json', { name: 'n', value: 1 }, 'text'],
+      ['text/html', '<b>h</b>', 'html'],
+      ['image/svg+xml', '<svg/>', 'svg'],
+      ['image/png', 'AA', 'image'],
+      ['image/jpeg', 'AA', 'image'],
+      ['image/gif', 'AA', 'image'],
+      ['image/webp', 'AA', 'image'],
+      ['text/markdown', '# m', 'markdown'],
+      ['application/json', { a: 1 }, 'text'],
+      ['text/plain', 'p', 'text'],
+    ];
+    for (let i = 0; i < order.length - 1; i++) {
+      const [hi, hv, kind] = order[i];
+      const [lo, lv] = order[i + 1];
+      const out = bundle({ [lo]: lv, [hi]: hv });
+      expect(out.kind, `${hi} over ${lo}`).toBe(kind);
+      if (out.kind === 'image') expect(out.mime, `${hi} over ${lo}`).toBe(hi);
+      if (out.kind === 'text') expect(out.text, `${hi} over ${lo}`).not.toBe(String(lv));
+    }
+  });
+
+  it('strips ANSI from a text/plain execute_result', () => {
+    expect(
+      outputsOf({
+        output_type: 'execute_result',
+        execution_count: 1,
+        data: { 'text/plain': '\x1b[1;32mok\x1b[0m' },
+      }),
+    ).toEqual([{ kind: 'text', text: 'ok', stderr: false }]);
+  });
+
+  it('strips ANSI from the error name and value', () => {
+    const [o] = outputsOf({
+      output_type: 'error',
+      ename: '\x1b[31mTypeError\x1b[0m',
+      evalue: '\x1b[1mbad\x1b[22m',
+      traceback: [],
+    });
+    expect(o).toMatchObject({ ename: 'TypeError', evalue: 'bad' });
+  });
+
+  it('shows a ganymede result with an empty or missing name as the value alone', () => {
+    expect(bundle({ 'application/vnd.ganymede.result+json': { name: '', value: [1] } })).toEqual({
+      kind: 'text',
+      text: '[\n  1\n]',
+      stderr: false,
+    });
+    expect(bundle({ 'application/vnd.ganymede.result+json': { value: 2 } })).toMatchObject({
+      text: '2',
+    });
+  });
+
   it('falls back to text/plain for widget-only bundles', () => {
     expect(
       bundle({ 'application/vnd.jupyter.widget-view+json': { model_id: 'x' }, 'text/plain': 'W' }),

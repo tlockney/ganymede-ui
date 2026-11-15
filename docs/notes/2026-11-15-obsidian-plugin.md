@@ -26,8 +26,9 @@ iframe has a fixed, resizable height because no script can report one.
 
 "Open in Ganymede" (`ganymede://open?path=`) is added only on macOS
 desktop with a file-system vault; on iPad and iPhone Ganymede can't read
-Obsidian's sandbox. The `ganymede://open` handler itself is not part of
-this step.
+Obsidian's sandbox. The action uses the `ganymede://open` URL the Mac
+app already handles (`AppURL.swift`, `AppURLHandler.swift`, #471), so
+the apps need no change for it.
 
 `npm run check` type-checks and builds the package; the build job always
 runs, so `scripts/ci-changes.sh` skips the app jobs for changes only
@@ -37,5 +38,7 @@ npm installs a second, types-only copy under `packages/obsidian`.
 
 Not verified here: the plugin hasn't been loaded in a real Obsidian;
 `MarkdownRenderer.render` and `minAppVersion` 1.5.0 come from the typings
-and memory, not a run. Next: step 2 (the `ganymede://open` handling in
-the apps) and step 3 (writing notebooks into the vault from Ganymede).
+and memory, not a run. Next: step 2, pointing the journal plugin and the
+Mac app at a vault folder and using it for a while (check Obsidian Sync's
+"Sync all other types" setting and its file size limit); step 3, search
+inside notebooks (a plugin index or Markdown summaries).

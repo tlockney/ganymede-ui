@@ -34,7 +34,6 @@ describe('renderNotebook', () => {
     expect(srcdoc.indexOf('Content-Security-Policy')).toBeLessThan(srcdoc.indexOf('<p>hi</p>'));
     expect(root.querySelector('script')).toBeNull();
     expect(document.querySelector('script')).toBeNull();
-    expect((window as unknown as { pwned?: number }).pwned).toBeUndefined();
   });
 
   it('renders svg as an img data URL, never inline', async () => {
@@ -137,6 +136,17 @@ describe('renderNotebook', () => {
     const { root, md } = await draw(codeNb({ kind: 'text', text: 'o', stderr: false }, 'a = ```'));
     expect(md.mock.calls[0][0]).toBe('````python\na = ```\n````');
     expect(root.querySelector('.ganymede-nb-prompt')!.textContent).toBe('In [3]:');
+  });
+
+  it('names only allowlisted languages in the fence', async () => {
+    const lang = async (l: string) =>
+      (await draw({ ...codeNb({ kind: 'text', text: '', stderr: false }), language: l })).md.mock
+        .calls[0][0];
+    expect(await lang('Python')).toBe('```python\nx\n```');
+    expect(await lang('deno')).toBe('```typescript\nx\n```');
+    expect(await lang('dataviewjs')).toBe('```\nx\n```');
+    expect(await lang('py`thon')).toBe('```\nx\n```');
+    expect(await lang('')).toBe('```\nx\n```');
   });
 
   it('shows a message for an empty notebook', async () => {

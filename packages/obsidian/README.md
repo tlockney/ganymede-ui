@@ -40,7 +40,7 @@ size limit for your plan: notebooks with large outputs can exceed it.
   Sync, re-render it. A notebook that can't be read shows why in the
   view.
 - On macOS desktop, an **Open in Ganymede** action in the view's header
-  opens `ganymede://open?path=<absolute path>`. It isn't offered on iPad
+  opens `ganymede://open?path=<absolute path>`, which the Mac app handles. It isn't offered on iPad
   or iPhone, where Ganymede can't read Obsidian's sandbox.
 
 ## What it does not do
