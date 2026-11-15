@@ -86,6 +86,41 @@ export function fenceLanguage(language: string): string {
   return FENCE_LANGUAGES.has(lang) ? lang : '';
 }
 
+/**
+ * SVG as an <img> needs it: kernels such as Observable Plot serialize from
+ * an HTML DOM and leave out the namespace. Mirrors ganymede's
+ * `standalone_svg` (crates/ganymede-nbformat/src/html.rs), and also skips
+ * comments before the root tag.
+ */
+export function standaloneSvg(svg: string): string {
+  let start = -1;
+  for (let i = 0; ;) {
+    const comment = svg.indexOf('<!--', i);
+    const root = svg.indexOf('<svg', i);
+    if (root === -1) break;
+    if (comment !== -1 && comment < root) {
+      const close = svg.indexOf('-->', comment + 4);
+      if (close === -1) break;
+      i = close + 3;
+      continue;
+    }
+    start = root;
+    break;
+  }
+  if (start === -1) return svg;
+  const end = svg.indexOf('>', start);
+  if (end === -1) return svg;
+  const tag = svg.slice(start, end);
+  let add = '';
+  if (!tag.includes('xmlns=')) add += ' xmlns="http://www.w3.org/2000/svg"';
+  if (!tag.includes('xmlns:xlink=') && svg.includes('xlink:')) {
+    add += ' xmlns:xlink="http://www.w3.org/1999/xlink"';
+  }
+  if (!add) return svg;
+  const at = start + '<svg'.length;
+  return svg.slice(0, at) + add + svg.slice(at);
+}
+
 type Obj = Record<string, unknown>;
 
 function isObj(v: unknown): v is Obj {

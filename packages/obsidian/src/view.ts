@@ -50,6 +50,7 @@ export class NotebookView extends FileView {
     );
     // Only on macOS desktop, where Ganymede can read the vault's files; on
     // iPad and iPhone it can't see Obsidian's sandbox.
+    this.addAction('code', 'Show/hide all code', () => this.toggleCode());
     if (Platform.isMacOS && Platform.isDesktopApp) {
       this.addAction('external-link', 'Open in Ganymede', () => this.openInGanymede());
     }
@@ -63,6 +64,12 @@ export class NotebookView extends FileView {
     this.generation++;
     this.dropCurrent();
     this.contentEl.empty();
+  }
+
+  private toggleCode(): void {
+    const all = Array.from(this.contentEl.querySelectorAll('details.ganymede-nb-code'));
+    const open = all.some(d => !d.hasAttribute('open'));
+    for (const d of all) d.toggleAttribute('open', open);
   }
 
   private openInGanymede(): void {
@@ -98,6 +105,11 @@ export class NotebookView extends FileView {
         this.removeChild(comp);
         return;
       }
+      // "Readable line length" is a vault setting that isn't in the public typings.
+      const getConfig = (this.app.vault as unknown as { getConfig?: (k: string) => unknown })
+        .getConfig;
+      const readable = getConfig?.call(this.app.vault, 'readableLineLength') === true;
+      staging.firstElementChild?.classList.toggle('is-readable-line-width', readable);
       root.replaceChildren(...Array.from(staging.childNodes));
       this.dropCurrent();
       this.current = comp;

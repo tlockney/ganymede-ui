@@ -45,6 +45,16 @@ describe('renderNotebook', () => {
     expect(root.querySelector('script')).toBeNull();
   });
 
+  it('adds the svg namespace so an img can draw it', async () => {
+    const svg = '<svg viewBox="0 0 1 1" fill="currentColor"><use xlink:href="#a"/></svg>';
+    const { root } = await draw(codeNb({ kind: 'svg', svg }));
+    const src = root.querySelector('img')!.getAttribute('src')!;
+    const decoded = atob(src.replace('data:image/svg+xml;base64,', ''));
+    expect(decoded).toBe(
+      '<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1 1" fill="currentColor"><use xlink:href="#a"/></svg>',
+    );
+  });
+
   it('encodes unicode svg without throwing', async () => {
     const svg = '<svg xmlns="http://www.w3.org/2000/svg"><text>héllo ✓ 日本 😀</text></svg>';
     expect(() => btoa(svg)).toThrow();
@@ -113,7 +123,7 @@ describe('renderNotebook', () => {
     expect(root.textContent).toContain('unsupported output: image/x-foo');
   });
 
-  it('sends markdown cells and markdown outputs to the callback', async () => {
+  it('renders markdown cells and outputs itself, not through the callback', async () => {
     const nb: Notebook = {
       language: 'python',
       cells: [
@@ -126,16 +136,29 @@ describe('renderNotebook', () => {
         },
       ],
     };
-    const { md } = await draw(nb);
-    const texts = md.mock.calls.map(c => c[0]);
-    expect(texts).toContain('# Title');
-    expect(texts).toContain('**out**');
+    const { md, root } = await draw(nb);
+    expect(root.querySelector('h1')!.textContent).toBe('Title');
+    expect(root.querySelector('strong')!.textContent).toBe('out');
+    // Notebook Markdown never goes through the injected (Obsidian) renderer.
+    expect(md).toHaveBeenCalledTimes(1);
+    expect(md.mock.calls[0][0]).toBe('```python\na\n```');
   });
 
   it('renders code cells as a fenced block with an In label', async () => {
     const { root, md } = await draw(codeNb({ kind: 'text', text: 'o', stderr: false }, 'a = ```'));
     expect(md.mock.calls[0][0]).toBe('````python\na = ```\n````');
-    expect(root.querySelector('.ganymede-nb-prompt')!.textContent).toBe('In [3]:');
+    expect(root.querySelector('.ganymede-nb-prompt')).toBeNull();
+    const details = root.querySelector('details.ganymede-nb-code')!;
+    expect(details.hasAttribute('open')).toBe(false);
+    expect(details.querySelector('summary')!.textContent).toBe('Code [3]');
+    expect(details.querySelector('summary .ganymede-nb-count')!.textContent).toBe(' [3]');
+    expect(details.querySelector('.ganymede-nb-source.markdown-rendered')).not.toBeNull();
+    // Outputs stay visible: after the details, not inside it.
+    expect(details.querySelector('.ganymede-nb-output')).toBeNull();
+    expect(details.nextElementSibling!.classList.contains('ganymede-nb-output')).toBe(true);
+    expect(root.querySelector('.ganymede-nb')!.classList.contains('markdown-preview-view')).toBe(
+      true,
+    );
   });
 
   it('names only allowlisted languages in the fence', async () => {
@@ -147,6 +170,13 @@ describe('renderNotebook', () => {
     expect(await lang('dataviewjs')).toBe('```\nx\n```');
     expect(await lang('py`thon')).toBe('```\nx\n```');
     expect(await lang('')).toBe('```\nx\n```');
+  });
+
+  it('omits the count for a cell that never ran', async () => {
+    const nb = codeNb({ kind: 'text', text: '', stderr: false });
+    if (nb.cells[0].type === 'code') nb.cells[0].executionCount = null;
+    const { root } = await draw(nb);
+    expect(root.querySelector('summary')!.textContent).toBe('Code');
   });
 
   it('shows a message for an empty notebook', async () => {

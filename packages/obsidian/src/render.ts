@@ -3,7 +3,8 @@
 // set as innerHTML or inserted as live markup. This file imports nothing from
 // the obsidian package at runtime so it runs under jsdom in tests.
 
-import { fence, fenceLanguage, IMAGE_MIMES } from './notebook.ts';
+import { renderSafeMarkdown } from './markdown.ts';
+import { fence, fenceLanguage, IMAGE_MIMES, standaloneSvg } from './notebook.ts';
 import type { Cell, Notebook, Output } from './notebook.ts';
 
 export type RenderMarkdown = (markdown: string, el: HTMLElement) => Promise<void>;
@@ -43,11 +44,7 @@ function img(parent: HTMLElement, src: string): void {
   parent.appendChild(el);
 }
 
-async function renderOutput(
-  out: Output,
-  parent: HTMLElement,
-  renderMarkdown: RenderMarkdown,
-): Promise<void> {
+function renderOutput(out: Output, parent: HTMLElement): void {
   const box = div(parent, 'ganymede-nb-output');
   switch (out.kind) {
     case 'text':
@@ -73,7 +70,7 @@ async function renderOutput(
     }
     case 'svg':
       // As an <img> an SVG cannot run script; never inline it.
-      img(box, `data:image/svg+xml;base64,${utf8ToBase64(out.svg)}`);
+      img(box, `data:image/svg+xml;base64,${utf8ToBase64(standaloneSvg(out.svg))}`);
       break;
     case 'image':
       if ((IMAGE_MIMES as readonly string[]).includes(out.mime)) {
@@ -83,7 +80,7 @@ async function renderOutput(
       }
       break;
     case 'markdown':
-      await renderMarkdown(out.markdown, div(box, 'ganymede-nb-markdown'));
+      renderSafeMarkdown(out.markdown, box);
       break;
     case 'unsupported':
       pre(
@@ -103,17 +100,31 @@ async function renderCell(
 ): Promise<void> {
   const box = div(parent, `ganymede-nb-cell ganymede-nb-${cell.type}`);
   if (cell.type === 'markdown') {
-    await renderMarkdown(cell.source, div(box, 'ganymede-nb-markdown'));
+    renderSafeMarkdown(cell.source, box);
     return;
   }
   if (cell.type === 'raw') {
     pre(box, 'ganymede-nb-text ganymede-nb-raw', cell.source);
     return;
   }
-  const label = div(box, 'ganymede-nb-prompt');
-  label.textContent = `In [${cell.executionCount ?? ' '}]:`;
-  await renderMarkdown(fence(cell.source, fenceLanguage(language)), div(box, 'ganymede-nb-source'));
-  for (const out of cell.outputs) await renderOutput(out, box, renderMarkdown);
+  // Code is folded by default; outputs stay visible after it.
+  const details = box.ownerDocument.createElement('details');
+  details.className = 'ganymede-nb-code';
+  const summary = box.ownerDocument.createElement('summary');
+  summary.append('Code');
+  if (cell.executionCount !== null) {
+    const count = box.ownerDocument.createElement('span');
+    count.className = 'ganymede-nb-count';
+    count.textContent = ` [${cell.executionCount}]`;
+    summary.appendChild(count);
+  }
+  details.appendChild(summary);
+  box.appendChild(details);
+  await renderMarkdown(
+    fence(cell.source, fenceLanguage(language)),
+    div(details, 'markdown-rendered ganymede-nb-source'),
+  );
+  for (const out of cell.outputs) renderOutput(out, box);
 }
 
 /** Replace the contents of `root` with the rendered notebook. */
@@ -123,7 +134,7 @@ export async function renderNotebook(
   renderMarkdown: RenderMarkdown,
 ): Promise<void> {
   const frag = root.ownerDocument.createElement('div');
-  frag.className = 'ganymede-nb';
+  frag.className = 'ganymede-nb markdown-preview-view markdown-rendered';
   for (const cell of nb.cells) await renderCell(cell, nb.language, frag, renderMarkdown);
   if (nb.cells.length === 0) pre(frag, 'ganymede-nb-text', 'This notebook has no cells.');
   root.replaceChildren(frag);
@@ -132,7 +143,7 @@ export async function renderNotebook(
 /** Show a parse failure in the view instead of leaving it blank. */
 export function renderError(root: HTMLElement, message: string): void {
   const box = root.ownerDocument.createElement('div');
-  box.className = 'ganymede-nb ganymede-nb-failure';
+  box.className = 'ganymede-nb markdown-preview-view markdown-rendered ganymede-nb-failure';
   const title = root.ownerDocument.createElement('strong');
   title.textContent = 'Cannot open this notebook';
   const body = root.ownerDocument.createElement('p');

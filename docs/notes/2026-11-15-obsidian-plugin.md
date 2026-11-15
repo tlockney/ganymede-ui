@@ -23,6 +23,27 @@ with an empty `sandbox` and a CSP meta (`default-src 'none'`); SVG only
 as an `<img>` data URL; bitmaps only for a fixed list of types; text
 through `textContent`; no `innerHTML` with notebook content. The
 iframe has a fixed, resizable height because no script can report one.
+Code cells name a language in their fence only from a short allowlist
+(`deno` maps to `typescript`), so a kernel language such as `dataviewjs`
+can't trigger another plugin's code-block processor.
+
+Markdown cells and outputs don't go through Obsidian's renderer, which
+runs other plugins' processors (Dataview JS, inline `$=` queries) and
+passes raw HTML through. `src/markdown.ts` parses with `marked`, reads
+the HTML with `DOMParser`, and copies only allowlisted elements and
+attributes (http, https, mailto and `#` links; `data:` PNG, JPEG, GIF
+and WebP images). The trade-off is no wikilinks, embeds or callouts in
+notebook Markdown. `marked` 17.0.6, already in the lockfile through
+JupyterLab, is bundled into `main.js`.
+
+The notebook sits in Obsidian's reading-view root classes so the theme
+styles it. Code cells are folded under a `Code [n]` summary, as in
+Ganymede's published `code=folded`; a header action toggles them all.
+Charts get a white background so they read in dark themes.
+
+SVG outputs get the `xmlns` (and `xmlns:xlink`) that Observable Plot's
+serializer leaves out, by the rule of Ganymede's HTML exporter, since an
+`<img>` can't draw them without it.
 
 "Open in Ganymede" (`ganymede://open?path=`) is added only on macOS
 desktop with a file-system vault; on iPad and iPhone Ganymede can't read
@@ -32,8 +53,8 @@ the apps need no change for it.
 
 `npm run check` type-checks and builds the package; the build job always
 runs, so `scripts/ci-changes.sh` skips the app jobs for changes only
-under `packages/obsidian/`. The `obsidian` typings package (1.14.4) is
-the only new dependency; it pins `@codemirror/view` 6.43.13 as a peer, so
+under `packages/obsidian/`. The `obsidian` typings package (1.14.4) and `marked` are
+the only new dependencies; it pins `@codemirror/view` 6.43.13 as a peer, so
 npm installs a second, types-only copy under `packages/obsidian`.
 
 Not verified here: the plugin hasn't been loaded in a real Obsidian;

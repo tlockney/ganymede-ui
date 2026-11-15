@@ -1,33 +1,40 @@
-.ganymede-nb-view .view-content,
-.ganymede-nb-view.view-content {
-  padding: var(--size-4-4, 16px);
-}
+/* Notebook content sits in Obsidian's reading-view root classes
+   (markdown-preview-view markdown-rendered), so headings, tables, lists and
+   code blocks take their styling from the theme. Only notebook-specific
+   parts are styled here, with Obsidian's variables. */
 .ganymede-nb {
-  max-width: 60rem;
+  max-width: var(--file-line-width, 700px);
   margin: 0 auto;
+  padding: var(--size-4-4, 16px) 0;
+}
+.ganymede-nb.is-readable-line-width {
+  max-width: var(--file-line-width, 700px);
 }
 .ganymede-nb-cell {
-  margin-bottom: var(--size-4-4, 16px);
+  margin-bottom: var(--size-4-3, 12px);
 }
-.ganymede-nb-prompt {
+.ganymede-nb-code > summary {
+  cursor: pointer;
   color: var(--text-muted);
-  font-family: var(--font-monospace);
   font-size: var(--font-smaller);
 }
+.ganymede-nb-count {
+  color: var(--text-faint);
+}
 .ganymede-nb-source pre {
-  margin: 0;
+  margin: var(--size-4-1, 4px) 0 0;
 }
 .ganymede-nb-output {
-  margin-top: var(--size-4-2, 8px);
+  margin-top: var(--size-4-1, 4px);
   overflow-x: auto;
 }
 .ganymede-nb-text {
   margin: 0;
   padding: var(--size-4-2, 8px);
-  background: var(--background-secondary);
+  background: var(--code-background, var(--background-secondary));
   color: var(--text-normal);
   font-family: var(--font-monospace);
-  font-size: var(--font-smaller);
+  font-size: var(--code-size, var(--font-smaller));
   white-space: pre-wrap;
   word-break: break-word;
   user-select: text;
@@ -43,9 +50,14 @@
   color: var(--text-muted);
   font-style: italic;
 }
+/* Charts (Observable Plot) draw black text on a white background; keep them
+   readable in dark themes. */
 .ganymede-nb-image {
   max-width: 100%;
   height: auto;
+  padding: var(--size-4-2, 8px);
+  background: #fff;
+  border-radius: var(--radius-s, 4px);
 }
 .ganymede-nb-html {
   width: 100%;
@@ -56,6 +68,5 @@
   color-scheme: light;
 }
 .ganymede-nb-failure {
-  padding: var(--size-4-4, 16px);
   color: var(--text-error);
 }

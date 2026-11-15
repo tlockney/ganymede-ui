@@ -29,10 +29,10 @@ size limit for your plan: notebooks with large outputs can exceed it.
 
 ## What it shows
 
-- Markdown cells, rendered by Obsidian.
-- Code cells with an `In [n]:` label, highlighted by Obsidian.
+- Markdown cells, rendered by the plugin (see Security) and styled by Obsidian's reading-view CSS.
+- Code cells folded under a `Code [n]` summary (a header action shows or hides all code), highlighted by Obsidian. The fence names a language only from a short allowlist.
 - Outputs: streams, errors (ANSI colors removed), plain text, JSON,
-  Markdown, images (PNG, JPEG, GIF, WebP, SVG) and HTML. Ganymede's named
+  Markdown, images (PNG, JPEG, GIF, WebP, SVG) and HTML. SVG from kernels that omit the `xmlns` attribute (Observable Plot's) gets it added, as Ganymede's HTML exporter does, so it draws. Ganymede's named
   results (`application/vnd.ganymede.result+json`) show as `name = value`.
   When an output has several representations, one is chosen: Ganymede
   result, HTML, SVG, bitmap, Markdown, JSON, plain text.
@@ -63,5 +63,14 @@ viewer therefore:
 - puts text, stream and error output in `<pre>` through `textContent`;
 - never sets `innerHTML` with notebook content.
 
-Markdown cells and Markdown outputs go through Obsidian's own renderer,
-as a note's Markdown does.
+Markdown cells and Markdown outputs are untrusted too, and Obsidian's own
+renderer would run other plugins' processors on them (Dataview JS, inline
+`$=` queries) and pass raw HTML through. So the plugin renders them itself:
+`marked` (bundled, the plugin's only runtime dependency) parses them, the
+HTML is read with `DOMParser` (inert), and only allowlisted elements and
+attributes are copied into the page. Scripts, frames, objects, SVG and
+styles are dropped; links keep only `http:`, `https:`, `mailto:` and `#`;
+images keep only `data:` PNG, JPEG, GIF and WebP, and any other image
+shows its alt text. Trade-off: no wikilinks, embeds or callouts in
+notebook Markdown. Code cells still go through Obsidian, as a fenced block
+with an allowlisted language.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fence, NotebookError, parseNotebook, stripAnsi } from './notebook.ts';
+import { fence, NotebookError, parseNotebook, standaloneSvg, stripAnsi } from './notebook.ts';
 import type { Output } from './notebook.ts';
 
 function nb(cells: unknown[], metadata: unknown = {}, nbformat = 4): string {
@@ -211,6 +211,48 @@ describe('parseNotebook outputs', () => {
       text: '{\n  "a": 1\n}',
       stderr: false,
     });
+  });
+});
+
+describe('standaloneSvg', () => {
+  const NS = 'xmlns="http://www.w3.org/2000/svg"';
+  const XL = 'xmlns:xlink="http://www.w3.org/1999/xlink"';
+
+  it('adds xmlns to an svg without one', () => {
+    expect(standaloneSvg('<svg viewBox="0 0 1 1"><g/></svg>')).toBe(
+      `<svg ${NS} viewBox="0 0 1 1"><g/></svg>`,
+    );
+  });
+
+  it('leaves an svg that has xmlns unchanged', () => {
+    const svg = `<svg ${NS} width="1"></svg>`;
+    expect(standaloneSvg(svg)).toBe(svg);
+  });
+
+  it('adds xmlns:xlink when xlink: is used and not declared', () => {
+    expect(standaloneSvg('<svg width="1"><use xlink:href="#a"/></svg>')).toBe(
+      `<svg ${NS} ${XL} width="1"><use xlink:href="#a"/></svg>`,
+    );
+    const declared = `<svg ${NS} ${XL}><use xlink:href="#a"/></svg>`;
+    expect(standaloneSvg(declared)).toBe(declared);
+    expect(standaloneSvg(`<svg ${NS}><use xlink:href="#a"/></svg>`)).toBe(
+      `<svg ${XL} ${NS}><use xlink:href="#a"/></svg>`,
+    );
+  });
+
+  it('handles whitespace, an XML declaration and comments before the root', () => {
+    expect(standaloneSvg('\n  <?xml version="1.0"?>\n<svg width="1"></svg>')).toBe(
+      `\n  <?xml version="1.0"?>\n<svg ${NS} width="1"></svg>`,
+    );
+    expect(standaloneSvg('<!-- <svg a="1"> --><svg width="1"></svg>')).toBe(
+      `<!-- <svg a="1"> --><svg ${NS} width="1"></svg>`,
+    );
+    const full = '<?xml version="1.0"?><svg xmlns="http://www.w3.org/2000/svg"></svg>';
+    expect(standaloneSvg(full)).toBe(full);
+  });
+
+  it('returns text without an svg tag as is', () => {
+    expect(standaloneSvg('not svg')).toBe('not svg');
   });
 });
 
