@@ -37,10 +37,11 @@ test('opens from the URL ganymede serve prints, runs a cell and saves', async ({
     .toContain('Ganymede is the largest moon in the solar system');
 });
 
-// The Apple apps load their hidden kernel page from the server, on the
-// origin the notebook page's service worker controls. With a query, the
-// precache missed it and the navigation fallback loaded the notebook app
-// in its place, so the in-app kernel never started (#518).
+// kernel.html opened in a browser, on the origin the notebook page's
+// service worker controls. With a query, the precache missed it and the
+// navigation fallback loaded the notebook app in its place, which once
+// kept the Apple apps' kernel from starting (#518; since #557 their
+// kernel web view has its own store, which no worker controls).
 test('serves the kernel page, not the app, under the service worker', async ({ page }) => {
   await page.goto(`${GANYMEDE_URL}/?token=${TOKEN}`);
   await expect
