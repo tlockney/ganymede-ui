@@ -303,9 +303,6 @@ It is a prototype. What it doesn't do yet, or does roughly:
   from session storage while the tab is open. Relative
   links and images in trusted HTML outputs don't load, since the frame
   has no origin to resolve them against.
-- **Switching backends** leaves the old backend's kernels running with no
-  way to reach them from the app
-  ([#62](https://github.com/tlockney/ganymede-ui/issues/62)).
 - **File operations** are in the sidebar (rename, duplicate, delete, new
   folder) and the toolbar's title (rename the open notebook). A notebook
   dragged in from Finder or Files is copied into the sidebar's folder,
