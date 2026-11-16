@@ -533,8 +533,7 @@ a late message from the run before is dropped.
 Since #557 the kernel web view has its own data store, so the notebook
 page's service worker never controls `kernel.html`. The page and its
 files come from the app's own server, which serves the release the app
-was built with, so a kernel page always matches the server until the app
-restarts, and a restart loads the page again.
+was built with, through the web view's HTTP cache like any page.
 
 The kernels belong to the server, not to a window: a window's reload
 leaves them running, and the hidden web view lives inside whichever

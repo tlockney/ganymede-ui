@@ -25,7 +25,8 @@ process.env.VITE_RELEASE ??= release();
 // The build's HTML pages. Every page but the app's own is left out of the
 // service worker's navigation fallback, which would answer it with the
 // notebook app (#518, #521). kernel.html is the Apple apps' hidden kernel
-// web view (#99).
+// web view (#99); in the apps no worker controls it (#557), but in a
+// browser on the same origin the notebook page's worker does.
 const PAGES = { main: 'index.html', kernel: 'kernel.html' };
 const escapeRegExp = (text: string) => text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const OTHER_PAGES = Object.values(PAGES)
@@ -160,8 +161,9 @@ const config: UserConfig = {
             options: { cacheName: 'agent', expiration: { maxEntries: 40 } },
           },
         ],
-        // The server API is never cached. The other pages (kernel.html):
-        // with a query they miss the precache, and the fallback would load
+        // The server API is never cached. The other pages (kernel.html,
+        // when a browser opens it under this worker): with a query they
+        // miss the precache, and the fallback would load
         // the notebook app in their place (#518).
         navigateFallbackDenylist: [/^\/api\//, ...OTHER_PAGES],
         // JupyterLite's service-worker relay (kernel file access and

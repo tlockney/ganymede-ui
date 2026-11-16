@@ -12,9 +12,8 @@ controller and said ready at once. #534, the stale-precache case after the
 page's worker was replaced, is closed by the same change.
 
 The page and its files come from the app's in-process server, which serves
-the release the app was built with. They differ from the server only after
-the app restarts, and a restart reloads the page. So nothing replaced the
-checks: `src/kernel-host.ts` posts `ready` as it loads. `VITE_RELEASE` stays,
+the release the app was built with, through the web view's HTTP cache. The
+removed checks never ran there, so nothing replaced them: `src/kernel-host.ts` posts `ready` as it loads. `VITE_RELEASE` stays,
 for crash reports. `docs/architecture.md` says this instead of the old
 mechanism, and the comment on `AppKernels.kernelPageURL` no longer says a
 worker controls the page.
@@ -24,4 +23,4 @@ worker with scope `/` in a notebook page on the default store, checks it
 controls that page, then checks the kernel web view, on the same origin,
 has no controller. It guards #557's separate store: sharing it again would
 let the notebook page's worker control the kernel page. It is skipped where
-the web view has no service workers.
+the web view has no service workers, and unregisters its worker at the end.

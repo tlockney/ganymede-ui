@@ -316,6 +316,10 @@ final class KernelHostTests: XCTestCase {
         XCTAssertEqual(stillControlsUI, true)
         let (deleted, _) = try await request(server, "DELETE", "/api/kernels/\(id)")
         XCTAssertEqual(deleted, 204)
+        // Leave the default store as it was.
+        _ = try await ui.callAsyncJavaScript(
+            "for (const r of await navigator.serviceWorker.getRegistrations()) await r.unregister(); return true",
+            contentWorld: .page)
     }
 
     /// The notebook page gets the remote subset of `device`, not from a
