@@ -1,9 +1,0 @@
-{
-  "id": "ganymede-notebooks",
-  "name": "Ganymede Notebooks",
-  "version": "0.0.1",
-  "minAppVersion": "1.5.0",
-  "description": "Open Jupyter notebooks (.ipynb) in your vault, read-only. A notebook library for Ganymede.",
-  "author": "Thomas Lockney",
-  "isDesktopOnly": false
-}
