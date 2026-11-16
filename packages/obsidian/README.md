@@ -45,7 +45,7 @@ size limit for your plan: notebooks with large outputs can exceed it.
   `ganymede://open?folder=<name>&file=<path in that folder>` links into a
   folder you granted in Settings › Link Folders (a build of `main`; see
   [the apps docs](../../docs/apps.md#links)), and the plugin's action for it is
-  planned in [obsidian-notebooks#1](https://github.com/tlockney/obsidian-notebooks/issues/1).
+  planned in [obsidian-notebook-library#8](https://github.com/tlockney/obsidian-notebook-library/issues/8).
 
 ## What it does not do
 
