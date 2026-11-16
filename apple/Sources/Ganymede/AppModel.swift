@@ -20,6 +20,10 @@ final class AppModel {
     /// The URL the server printed, with its token; windows build their
     /// page from it.
     private(set) var serverURL: URL?
+    /// The folder the running server was started on: `root` changes as
+    /// soon as a restart is asked for, this once the new server listens
+    /// (#640). Nil while none is up.
+    private(set) var servedRoot: URL?
     private(set) var error: String?
     /// The notebook folder: on macOS the last folder opened, which a window
     /// opened on nothing shows; on iOS the folder the server serves.
@@ -151,6 +155,7 @@ final class AppModel {
     func start() {
         url = nil
         serverURL = nil
+        servedRoot = nil
         error = nil
         #if os(macOS)
         removeServerInfo()
@@ -189,6 +194,12 @@ final class AppModel {
         let tailnetAllow = tailnetShare ? tailnetAllow : []
         #endif
         enqueue { [self] in
+            // A start queued behind another that has since finished: its
+            // page goes too, so the page loads again for this server even
+            // on the same port (#640).
+            url = nil
+            serverURL = nil
+            servedRoot = nil
             #if os(macOS)
             await path?.value
             // Shared on the tailnet: Tailscale names this Mac, and the
@@ -243,6 +254,7 @@ final class AppModel {
                     NSLog("Ganymede: the in-app kernel didn't register: %@", error.localizedDescription)
                 }
                 serverURL = host.url
+                servedRoot = serverRootFolder
                 url = pageURL(host.url)
                 #if os(macOS)
                 writeServerInfo(host.url, settings: launched)

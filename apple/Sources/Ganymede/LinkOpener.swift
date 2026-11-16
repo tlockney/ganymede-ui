@@ -181,12 +181,14 @@ final class LinkOpener {
         if notice?.id == id { notice = nil }
     }
 
-    /// The page reports ready (again): opens the notebook a folder switch
-    /// waits for, if the server now serves that folder (`root`).
-    func pageReady(root: URL, show: (String) -> Void) {
-        guard let waiting = pending else { return }
+    /// The page is ready and its server was started on `served`
+    /// (`AppModel.servedRoot`, not the requested root): opens the notebook
+    /// a folder switch waits for once that is its folder. A page of the
+    /// old folder's server, ready after the switch was asked for (a start
+    /// still queued at a cold launch), leaves it waiting.
+    func pageReady(served: URL?, show: (String) -> Void) {
+        guard let waiting = pending, let served, AppURL.isSame(waiting.folder, served) else { return }
         pending = nil
-        guard AppURL.isSame(waiting.folder, root) else { return }
         show(waiting.apiPath)
     }
 

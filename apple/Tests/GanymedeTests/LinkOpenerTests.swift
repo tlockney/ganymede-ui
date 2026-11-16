@@ -319,18 +319,17 @@ final class LinkOpenerTests: XCTestCase {
         f.opener.handle(try link("open", ["folder": "Vault", "file": "n/a.ipynb"]), root: f.root, openFiles: { [] }) { _ in }
         f.opener.confirm(try switchRequest(f.opener.notice)) { _ in }
         var shown: [String] = []
-        // Ready for a server on another folder: not for this notebook.
-        f.opener.pageReady(root: f.root) { shown.append($0) }
+        // Ready while the old folder's server runs (its start was still
+        // queued at a cold launch) or none does: the notebook keeps waiting.
+        f.opener.pageReady(served: f.root) { shown.append($0) }
+        f.opener.pageReady(served: nil) { shown.append($0) }
         XCTAssertEqual(shown, [])
-        // And that was the one chance.
-        f.opener.pageReady(root: f.vault) { shown.append($0) }
-        XCTAssertEqual(shown, [])
-
-        f.opener.confirm(try switchRequest(f.opener.notice)) { _ in }
-        f.opener.pageReady(root: f.vault) { shown.append($0) }
+        XCTAssertNotNil(f.opener.pending)
+        // Then the new folder's server is up.
+        f.opener.pageReady(served: f.vault) { shown.append($0) }
         XCTAssertEqual(shown, ["n/a.ipynb"])
         XCTAssertNil(f.opener.pending)
-        f.opener.pageReady(root: f.vault) { shown.append($0) }
+        f.opener.pageReady(served: f.vault) { shown.append($0) }
         XCTAssertEqual(shown, ["n/a.ipynb"], "once")
     }
 
@@ -345,7 +344,7 @@ final class LinkOpenerTests: XCTestCase {
         f.opener.rootChanged(to: try folder("Other"))
         XCTAssertNil(f.opener.pending)
         var shown: [String] = []
-        f.opener.pageReady(root: f.vault) { shown.append($0) }
+        f.opener.pageReady(served: f.vault) { shown.append($0) }
         XCTAssertEqual(shown, [])
     }
 
@@ -356,7 +355,7 @@ final class LinkOpenerTests: XCTestCase {
         f.opener.confirm(try switchRequest(f.opener.notice)) { _ in }
         f.opener.startFailed()
         var shown: [String] = []
-        f.opener.pageReady(root: f.vault) { shown.append($0) }
+        f.opener.pageReady(served: f.vault) { shown.append($0) }
         XCTAssertEqual(shown, [])
     }
 

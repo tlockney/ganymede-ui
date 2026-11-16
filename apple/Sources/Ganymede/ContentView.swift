@@ -432,8 +432,12 @@ struct ContentView: View {
             }
         }
         // A notebook waiting for another folder's server (#640).
+        // Waits for both: the page ready, and its server on that folder.
         .onChange(of: pageModel.ready) { _, ready in
-            if ready { links.pageReady(root: model.serverRootFolder, show: showNotebook) }
+            if ready { links.pageReady(served: model.servedRoot, show: showNotebook) }
+        }
+        .onChange(of: model.servedRoot) { _, served in
+            if pageModel.ready { links.pageReady(served: served, show: showNotebook) }
         }
         .onChange(of: model.serverRootFolder) { _, root in links.rootChanged(to: root) }
         .onChange(of: model.error) { _, error in
