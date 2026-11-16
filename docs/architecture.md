@@ -530,18 +530,11 @@ messages from the server's origin. A restart keeps the kernel id, so each
 start gets a run number, which the page puts on everything it sends:
 a late message from the run before is dropped.
 
-`kernel.html` comes from the service worker's precache, so after an app
-update the first kernel page can be the previous release's. Before it
-says it is ready, the page asks the worker to check for an update, and
-compares its release with the server's `release.json` (built with the
-page and left out of the precache); it loads again (once per web view
-session) when a newer worker takes control or the releases differ;
-Swift holds the kernels' starts until then
-(`src/lib/kernel-page-worker.ts`). After that the page stays on its
-release until the next session, since a reload would end the running
-kernels, but a newer worker still takes control of it at once and drops
-the old precache, so a later kernel start in that page can miss its own
-release's files (#534).
+Since #557 the kernel web view has its own data store, so the notebook
+page's service worker never controls `kernel.html`. The page and its
+files come from the app's own server, which serves the release the app
+was built with, so a kernel page always matches the server until the app
+restarts, and a restart loads the page again.
 
 The kernels belong to the server, not to a window: a window's reload
 leaves them running, and the hidden web view lives inside whichever

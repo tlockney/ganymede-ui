@@ -215,9 +215,9 @@ final class AppKernels: NSObject {
 
     /// kernel.html on the server, with no query. The page makes no API
     /// calls (its messages go through here), and the server serves static
-    /// files without the token. With the token, the notebook page's
-    /// service worker, which controls this origin too, found no precached
-    /// match and answered with the notebook app instead (#518).
+    /// files without the token. Loading it without the token is also what
+    /// keeps the server from setting the login cookie in the kernel web
+    /// view's data store (#557).
     nonisolated static func kernelPageURL(_ server: URL) -> URL {
         guard var parts = URLComponents(url: server, resolvingAgainstBaseURL: false) else { return server }
         parts.path = "/kernel.html"

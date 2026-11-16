@@ -21,7 +21,6 @@ import {
   messageHandler,
   type ToKernel,
 } from './lib/kernel-relay';
-import { readyWhenCurrent } from './lib/kernel-page-worker';
 import { kernelModules } from './lib/kernel-modules';
 
 /** The running kernels, by id, each with the run Swift gave its start. */
@@ -145,9 +144,6 @@ export function deliver(m: ToKernel): void {
 }
 
 (window as { ganymedeKernelHost?: { deliver: typeof deliver } }).ganymedeKernelHost = { deliver };
-// Ready at once outside a service worker (the dev server, tests); under
-// one, after checking it is the current release's (#521).
-void readyWhenCurrent(navigator.serviceWorker, {
-  ready: () => post({ op: 'ready' }),
-  reload: () => location.reload(),
-});
+// No service worker controls this page (the app's kernel web view has its
+// own data store, #557), so it is ready at once.
+post({ op: 'ready' });

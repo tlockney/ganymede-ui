@@ -181,8 +181,8 @@ final class KernelHostTests: XCTestCase {
         }
         try await eventually("the kernel", idle)
         XCTAssertEqual(kernels.webView.url?.path, "/kernel.html")
-        // No token: under the page's service worker, a query missed the
-        // precache and loaded the notebook app instead (#518).
+        // No token: the server sets the login cookie only for a page loaded
+        // with it (#557).
         XCTAssertNil(kernels.webView.url?.query)
         try await eventually("the ledger's notebook") { ledger.notebook(for: 7) != nil }
         XCTAssertEqual(ledger.notebook(for: 7)?.hasSuffix("/trips/Trip.ipynb"), true, ledger.notebook(for: 7) ?? "")
@@ -259,6 +259,61 @@ final class KernelHostTests: XCTestCase {
             });
             """, contentWorld: .page) as? String
         XCTAssertEqual(socket, "refused")
+        let (deleted, _) = try await request(server, "DELETE", "/api/kernels/\(id)")
+        XCTAssertEqual(deleted, 204)
+    }
+
+    /// No service worker controls the kernel page. The notebook pages' worker,
+    /// scope `/`, controls the notebook page here, on the same origin as
+    /// `kernel.html`, yet not the kernel web view, which has its own data
+    /// store (#557). This guards that: a change that shares the store again
+    /// would let the notebook page's worker control the kernel page.
+    @MainActor
+    func testNoServiceWorkerControlsTheKernelPage() async throws {
+        // A worker that takes control of every page in its scope at once.
+        try """
+        self.addEventListener('install', () => self.skipWaiting());
+        self.addEventListener('activate', e => e.waitUntil(self.clients.claim()));
+        self.addEventListener('fetch', () => {});
+        """.write(to: dir.appendingPathComponent("web/sw.js"), atomically: true, encoding: .utf8)
+        let server = try server()
+        defer { server.stop() }
+        let ledger = PermissionLedger(store: MemoryLedgerStore())
+        let kernels = AppKernels(device: DeviceBridge(presenter: SilentPresenter(), ledger: ledger))
+        kernels.notebookRoot = dir
+        try kernels.serve(server)
+        let ui = uiView()
+        kernels.lend(ui)
+        ui.load(URLRequest(url: server.url))
+        try await waitFor(ui, "location.protocol === 'http:' && location.search === '' && document.readyState === 'complete'")
+        let available = try await eval(ui, "navigator.serviceWorker !== undefined") as? Bool
+        if available != true { throw XCTSkip("no service workers in this web view") }
+
+        // The notebook page's worker takes control of it.
+        let registered = try await ui.callAsyncJavaScript(
+            "await navigator.serviceWorker.register('/sw.js', { scope: '/' });"
+                + " await navigator.serviceWorker.ready; return true",
+            contentWorld: .page) as? Bool
+        XCTAssertEqual(registered, true)
+        try await waitFor(ui, "navigator.serviceWorker.controller !== null")
+
+        // Then the app's kernel starts, and its page loads kernel.html.
+        let (created, session) = try await request(
+            server, "POST", "/api/sessions",
+            #"{"path": "Trip.ipynb", "type": "notebook", "name": "Trip.ipynb", "kernel": {"name": "cdp-browser"}}"#)
+        XCTAssertEqual(created, 201, session)
+        let object = try JSONSerialization.jsonObject(with: Data(session.utf8)) as? [String: Any]
+        let id = try XCTUnwrap((object?["kernel"] as? [String: Any])?["id"] as? String)
+        try await eventually("the kernel") {
+            try await self.request(server, "GET", "/api/kernels/\(id)").1.contains(#""execution_state":"idle""#)
+        }
+        XCTAssertEqual(kernels.webView.url?.path, "/kernel.html")
+        let uncontrolled = try await eval(
+            kernels.webView,
+            "navigator.serviceWorker === undefined || navigator.serviceWorker.controller === null") as? Bool
+        XCTAssertEqual(uncontrolled, true, "the notebook page's worker must not control the kernel page")
+        let stillControlsUI = try await eval(ui, "navigator.serviceWorker.controller !== null") as? Bool
+        XCTAssertEqual(stillControlsUI, true)
         let (deleted, _) = try await request(server, "DELETE", "/api/kernels/\(id)")
         XCTAssertEqual(deleted, 204)
     }
