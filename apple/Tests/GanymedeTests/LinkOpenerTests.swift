@@ -443,4 +443,29 @@ final class LinkOpenerTests: XCTestCase {
         f.opener.dismiss(second)
         XCTAssertNil(f.opener.notice)
     }
+
+    // MARK: Open text files
+
+    @MainActor
+    func testOpenTextFilesCoverEveryWindow() {
+        let files = OpenTextFiles()
+        let a = UUID(), b = UUID()
+        XCTAssertEqual(files.all, [])
+        files.set(["src/main.py"], for: a)
+        files.set(["notes.md", "src/main.py"], for: b)
+        // Another window's file counts too, each once.
+        XCTAssertEqual(files.all, ["notes.md", "src/main.py"])
+        files.set([], for: b)
+        XCTAssertEqual(files.all, ["src/main.py"])
+        files.set([], for: a)
+        XCTAssertEqual(files.all, [])
+    }
+
+    @MainActor
+    func testABadPathInTheOpenFolderIsReportedAsSuch() throws {
+        let f = try fixture(granting: true)
+        f.opener.handle(try link("open", ["path": "~/n.ipynb"]), root: f.root, openFiles: { [] }) { _ in XCTFail("opened") }
+        XCTAssertNotNil(f.opener.notice)
+        if case .grant? = f.opener.notice?.action { XCTFail("a grant can't help a home path") }
+    }
 }

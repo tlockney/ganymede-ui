@@ -126,6 +126,8 @@ struct EditorWindow: View {
 /// An editor in its own scene, beside the notebook on iPad.
 struct EditorScene: View {
     let request: EditorRequest?
+    /// This window, in `OpenTextFiles` (#640).
+    @State private var windowID = UUID()
 
     var body: some View {
         NavigationStack {
@@ -136,6 +138,8 @@ struct EditorScene: View {
                     .foregroundStyle(.secondary)
             }
         }
+        .onAppear { OpenTextFiles.shared.set(request.map { [$0.path] } ?? [], for: windowID) }
+        .onDisappear { OpenTextFiles.shared.set([], for: windowID) }
     }
 }
 #endif

@@ -302,7 +302,7 @@ downloading, and the link says so: open it again in a moment.
 A notebook in a granted folder other than the open one asks first:
 Ganymede switches to that folder, which restarts its server and stops the
 kernels running in the folder it leaves. It doesn't switch while a text
-file is open for editing, since the editor would save into the new
+file is open for editing in any window, since the editor would save into the new
 folder: close the file first. `run` and `new` links work only on the Mac.
 The apps never open an `x-success`, `x-error` or `x-cancel` address, so a
 link to `x-callback-url/open` still opens the notebook and nothing is

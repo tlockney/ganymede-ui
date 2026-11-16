@@ -101,7 +101,17 @@ final class LinkOpener {
         // long way, to tell whether it is ambiguous.
         var namedByAGrant = false
         if case .inFolder(let name, _) = target { namedByAGrant = store.folders.contains { $0.name == name } }
-        if !namedByAGrant, let found = try? LinkFolders.resolve(target, root: root, granted: []) {
+        var inRoot: (folder: URL, file: URL)?
+        if !namedByAGrant {
+            do {
+                inRoot = try LinkFolders.resolve(target, root: root, granted: [])
+            } catch LinkFolderError.notGranted {
+                // Not in the open folder: the granted ones, below.
+            } catch {
+                return fail(error, deferred: deferNotices)
+            }
+        }
+        if let found = inRoot {
             do {
                 try LinkFolders.checkNotebook(found.file, isUbiquitous: isUbiquitous, startDownload: startDownload)
                 guard let path = LinkFolders.relativePath(of: found.file, in: root) else { throw LinkFolderError.notGranted }
@@ -239,6 +249,24 @@ final class LinkOpener {
         } else {
             self.notice = notice
         }
+    }
+}
+
+/// The text files open for editing in every window (#640): a folder
+/// switch restarts the one server they all save through, so it waits
+/// until none is open. Each window or editor scene reports its own.
+@MainActor
+final class OpenTextFiles {
+    static let shared = OpenTextFiles()
+    private var byOwner: [UUID: [String]] = [:]
+
+    func set(_ paths: [String], for owner: UUID) {
+        byOwner[owner] = paths.isEmpty ? nil : paths
+    }
+
+    /// Every window's, sorted, each once.
+    var all: [String] {
+        Array(Set(byOwner.values.joined())).sorted()
     }
 }
 

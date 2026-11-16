@@ -193,6 +193,8 @@ final class AppModel {
         #if os(macOS)
         let tailnetAllow = tailnetShare ? tailnetAllow : []
         #endif
+        // The folder this start serves: `root` may change before it runs.
+        let launchedRoot = serverRootFolder
         enqueue { [self] in
             // A start queued behind another that has since finished: its
             // page goes too, so the page loads again for this server even
@@ -254,7 +256,7 @@ final class AppModel {
                     NSLog("Ganymede: the in-app kernel didn't register: %@", error.localizedDescription)
                 }
                 serverURL = host.url
-                servedRoot = serverRootFolder
+                servedRoot = launchedRoot
                 url = pageURL(host.url)
                 #if os(macOS)
                 writeServerInfo(host.url, settings: launched)
@@ -407,6 +409,7 @@ final class AppModel {
         server = nil
         url = nil
         serverURL = nil
+        servedRoot = nil
         await withCheckedContinuation { done in
             Self.serverQueue.async {
                 old.stop()
@@ -427,6 +430,7 @@ final class AppModel {
         server = nil
         url = nil
         serverURL = nil
+        servedRoot = nil
     }
 
     /// Makes `folder` the notebook folder. On macOS that is only the folder

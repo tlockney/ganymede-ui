@@ -76,6 +76,8 @@ struct ContentView: View {
     @State private var pickPurpose = FolderPick.openFolder
     /// `ganymede://open` links (#640).
     @State private var links = LinkOpener(later: ContentView.afterPresentationEnds)
+    /// This window, in `OpenTextFiles`.
+    @State private var windowID = UUID()
     @State private var settings = false
     /// What Settings shows over its first screen: the Agent or Keyboard
     /// Shortcuts, when the page asked for them (#332).
@@ -428,17 +430,26 @@ struct ContentView: View {
             } else {
                 // Nothing closes for a link: it may be from any web page,
                 // and a shell, an SSH session or an edit would be lost.
-                links.handle(url, root: model.serverRootFolder, openFiles: { openTextFiles }, show: showNotebook)
+                links.handle(url, root: model.serverRootFolder, openFiles: { OpenTextFiles.shared.all }, show: showNotebook)
             }
         }
         // A notebook waiting for another folder's server (#640).
-        // Waits for both: the page ready, and its server on that folder.
+        // The page ready, checked against the folder its server was
+        // started on. Only on the transition: a page from before the
+        // restart isn't the new folder's.
         .onChange(of: pageModel.ready) { _, ready in
             if ready { links.pageReady(served: model.servedRoot, show: showNotebook) }
         }
-        .onChange(of: model.servedRoot) { _, served in
-            if pageModel.ready { links.pageReady(served: served, show: showNotebook) }
+        // The page goes with its server, on every layout (the iPhone's
+        // store does this too): commands and a waiting notebook wait for
+        // the next page's state, not the old page's.
+        .onChange(of: model.url) { _, url in
+            if url == nil { pageModel.reset() }
         }
+        .onChange(of: openTextFiles, initial: true) { _, paths in
+            OpenTextFiles.shared.set(paths, for: windowID)
+        }
+        .onDisappear { OpenTextFiles.shared.set([], for: windowID) }
         .onChange(of: model.serverRootFolder) { _, root in links.rootChanged(to: root) }
         .onChange(of: model.error) { _, error in
             if error != nil { links.startFailed() }
@@ -884,7 +895,7 @@ struct ContentView: View {
 
     /// The folder picker answered for a link, wherever it was shown.
     private func linkFolderPicked(_ result: Result<URL, Error>) {
-        links.picked(result, root: model.serverRootFolder, openFiles: { openTextFiles }, show: showNotebook)
+        links.picked(result, root: model.serverRootFolder, openFiles: { OpenTextFiles.shared.all }, show: showNotebook)
     }
 
     /// Whether a terminal or editor is over the window, and the sheet.
