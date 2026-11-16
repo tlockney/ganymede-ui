@@ -36,21 +36,31 @@ final class LinkOpener {
 
     var notice: Notice?
 
+    /// Runs a closure once whatever is being dismissed is gone; for the
+    /// notices posted after a picker or from an alert's own action, which
+    /// SwiftUI drops if they come while another presentation closes.
+    typealias Scheduler = @MainActor (@escaping @MainActor () -> Void) -> Void
+    @ObservationIgnored var later: Scheduler
+
     @ObservationIgnored private let store: LinkFolderStore
+    @ObservationIgnored private let isUbiquitous: (URL) -> Bool
+    /// Starts an iCloud download (`checkNotebook`); replaced in tests.
+    @ObservationIgnored private let startDownload: (URL) throws -> Void
     /// The link to open again once the person grants a folder.
     @ObservationIgnored private var grantFor: AppURL?
     /// The notebook to open once the page of the server on `folder` is up.
     @ObservationIgnored private(set) var pending: FolderSwitch?
 
-    /// Starts an iCloud download (`checkNotebook`); replaced in tests.
-    @ObservationIgnored private let startDownload: (URL) throws -> Void
-
     init(
         store: LinkFolderStore = .shared,
-        startDownload: @escaping (URL) throws -> Void = { try FileManager.default.startDownloadingUbiquitousItem(at: $0) }
+        isUbiquitous: @escaping (URL) -> Bool = LinkFolders.isUbiquitousItem,
+        startDownload: @escaping (URL) throws -> Void = { try FileManager.default.startDownloadingUbiquitousItem(at: $0) },
+        later: @escaping Scheduler = { work in work() }
     ) {
         self.store = store
+        self.isUbiquitous = isUbiquitous
         self.startDownload = startDownload
+        self.later = later
     }
 
     /// Whether `url` is a Shortcuts callback (ganymede-device#40), which
@@ -60,8 +70,10 @@ final class LinkOpener {
     }
 
     /// A `ganymede://` URL that isn't a Shortcuts callback. `root` is the
-    /// folder the app serves; `show` opens a notebook in it, by its path.
-    func handle(_ url: URL, root: URL, show: (String) -> Void) {
+    /// folder the app serves; `openFiles` lists the text files open for
+    /// editing (a folder switch would break them); `show` opens a notebook
+    /// in the folder the app serves, by its path.
+    func handle(_ url: URL, root: URL, openFiles: () -> [String], show: (String) -> Void) {
         pending = nil
         let request: AppURL
         do {
@@ -70,56 +82,80 @@ final class LinkOpener {
             fail(error)
             return
         }
-        open(request, root: root, show: show)
+        open(request, root: root, openFiles: openFiles, deferNotices: false, show: show)
     }
 
-    private func open(_ request: AppURL, root: URL, show: (String) -> Void) {
+    private func open(
+        _ request: AppURL, root: URL, openFiles: () -> [String], deferNotices: Bool, show: (String) -> Void
+    ) {
         let target: LinkFolders.Target
         switch request.command {
         case .open(let path): target = .path(path)
         case .openInFolder(let folder, let file): target = .inFolder(folder: folder, file: file)
-        case .new: return fail(AppURLError.macOnly("new"))
-        case .run: return fail(AppURLError.macOnly("run"))
+        case .new: return fail(AppURLError.macOnly("new"), deferred: deferNotices)
+        case .run: return fail(AppURLError.macOnly("run"), deferred: deferNotices)
         }
-        let found: (folder: URL, file: URL)
-        do {
-            // Read inside the folders' access: the file is checked there.
-            found = try store.withAccess { granted -> (folder: URL, file: URL) in
-                let found = try LinkFolders.resolve(target, root: root, granted: granted)
-                try LinkFolders.checkNotebook(found.file, startDownload: startDownload)
-                return found
+
+        // The open folder first, with no bookmark resolved: a file in it
+        // needs no grant. A folder name a granted folder also has goes the
+        // long way, to tell whether it is ambiguous.
+        var namedByAGrant = false
+        if case .inFolder(let name, _) = target { namedByAGrant = store.folders.contains { $0.name == name } }
+        if !namedByAGrant, let found = try? LinkFolders.resolve(target, root: root, granted: []) {
+            do {
+                try LinkFolders.checkNotebook(found.file, isUbiquitous: isUbiquitous, startDownload: startDownload)
+                guard let path = LinkFolders.relativePath(of: found.file, in: root) else { throw LinkFolderError.notGranted }
+                show(path)
+            } catch {
+                fail(error, deferred: deferNotices)
             }
-        } catch LinkFolderError.notGranted {
-            notice = Notice(
-                title: "Ganymede can’t open this file",
-                message: LinkFolderError.notGranted.localizedDescription,
-                action: .grant(request)
-            )
-            return
-        } catch {
-            fail(error)
             return
         }
 
-        // In the open folder, whatever grants hold it as well.
-        if AppURL.isInside(found.file, anyOf: [root]) {
-            if let path = NotebookActions.apiPath(for: found.file, root: root) {
-                show(path)
-            } else {
-                fail(LinkFolderError.notGranted)
+        let found: (folder: URL, file: URL, relative: String?)
+        do {
+            // Read inside the folders' access: the file is checked, and
+            // its path in the folder worked out, there.
+            found = try store.withAccess { granted -> (folder: URL, file: URL, relative: String?) in
+                let found = try LinkFolders.resolve(target, root: root, granted: granted)
+                try LinkFolders.checkNotebook(found.file, isUbiquitous: isUbiquitous, startDownload: startDownload)
+                return (found.folder, found.file, LinkFolders.relativePath(of: found.file, in: found.folder))
             }
+        } catch LinkFolderError.notGranted {
+            post(Notice(
+                title: "Ganymede can’t open this file",
+                message: LinkFolderError.notGranted.localizedDescription,
+                action: .grant(request)
+            ), deferred: deferNotices)
+            return
+        } catch {
+            fail(error, deferred: deferNotices)
+            return
+        }
+
+        // In the open folder after all (a grant inside it holds the file too).
+        if let path = LinkFolders.relativePath(of: found.file, in: root) {
+            show(path)
+            return
+        }
+        guard let relative = found.relative else {
+            fail(LinkFolderError.notGranted, deferred: deferNotices)
+            return
+        }
+        // A switch restarts the server on the other folder, and an open
+        // editor would save into it.
+        if let openFile = openFiles().first {
+            fail(LinkFolderError.openFile(URL(fileURLWithPath: openFile).lastPathComponent), deferred: deferNotices)
             return
         }
         let name = found.file.deletingPathExtension().lastPathComponent
         let folder = found.folder.lastPathComponent
         let current = root.lastPathComponent
-        notice = Notice(
+        post(Notice(
             title: "Open “\(name)” from “\(folder)”?",
             message: "Ganymede will switch from the folder “\(current)” to “\(folder)”. Kernels running in “\(current)” stop.",
-            action: .switchFolder(FolderSwitch(
-                folder: found.folder, apiPath: FolderEntry.serverPath(found.file, root: found.folder)
-            ))
-        )
+            action: .switchFolder(FolderSwitch(folder: found.folder, apiPath: relative))
+        ), deferred: deferNotices)
     }
 
     /// The person said yes to switching: `openFolder` makes the server
@@ -135,7 +171,8 @@ final class LinkOpener {
             openFolder(folder)
             return true
         }
-        if !switched { fail(LinkFolderError.notGranted) }
+        // From an alert's action: after that alert has closed.
+        if !switched { fail(LinkFolderError.notGranted, deferred: true) }
     }
 
     /// The alert with `id` went away. A newer notice, posted by the action
@@ -171,29 +208,35 @@ final class LinkOpener {
 
     /// The folder picker answered for a link: keeps the folder, and tries
     /// the link again once. Still in no granted folder, it asks again.
-    func picked(_ result: Result<URL, Error>, root: URL, show: (String) -> Void) {
+    /// What it says comes after the picker has gone.
+    func picked(_ result: Result<URL, Error>, root: URL, openFiles: () -> [String], show: (String) -> Void) {
         let request = grantFor
         grantFor = nil
-        switch result {
-        case .failure(let error):
-            if (error as? CocoaError)?.code == .userCancelled { return }
-            notice = Notice(title: "Ganymede couldn’t use that folder", message: error.localizedDescription, action: .dismiss)
-        case .success(let folder):
-            do {
-                try store.add(folder)
-            } catch {
-                notice = Notice(
-                    title: "Ganymede couldn’t keep access to that folder",
-                    message: error.localizedDescription, action: .dismiss
-                )
-                return
+        switch store.add(picked: result) {
+        case .cancelled:
+            return
+        case .failed(let message):
+            post(Notice(title: LinkFolderStore.addFailureTitle, message: message, action: .dismiss), deferred: true)
+        case .added:
+            if let request {
+                open(request, root: root, openFiles: openFiles, deferNotices: true, show: show)
             }
-            if let request { open(request, root: root, show: show) }
         }
     }
 
-    private func fail(_ error: Error) {
-        notice = Notice(title: "Ganymede couldn’t open the link", message: error.localizedDescription, action: .dismiss)
+    private func fail(_ error: Error, deferred: Bool = false) {
+        post(
+            Notice(title: "Ganymede couldn’t open the link", message: error.localizedDescription, action: .dismiss),
+            deferred: deferred
+        )
+    }
+
+    private func post(_ notice: Notice, deferred: Bool) {
+        if deferred {
+            later { [weak self] in self?.notice = notice }
+        } else {
+            self.notice = notice
+        }
     }
 }
 
@@ -245,7 +288,7 @@ struct LinkAlert: ViewModifier {
     }
 }
 
-/// Settings › Links: the folders `ganymede://` links may open notebooks
+/// Settings › Link Folders: the folders `ganymede://` links may open notebooks
 /// in, besides the one Ganymede has open.
 struct LinkFoldersSettings: View {
     @State private var store = LinkFolderStore.shared
@@ -280,23 +323,14 @@ struct LinkFoldersSettings: View {
                 Section { Text(problem) }
             }
         }
-        .navigationTitle("Links")
+        .navigationTitle("Link Folders")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { EditButton() }
         .fileImporter(isPresented: $adding, allowedContentTypes: [.folder]) { result in
-            switch result {
-            case .success(let folder):
-                do {
-                    try store.add(folder)
-                } catch {
-                    failure = error.localizedDescription
-                }
-            case .failure(let error):
-                if (error as? CocoaError)?.code != .userCancelled { failure = error.localizedDescription }
-            }
+            if case .failed(let message) = store.add(picked: result) { failure = message }
         }
         .alert(
-            "Ganymede couldn’t keep access to that folder",
+            LinkFolderStore.addFailureTitle,
             isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })
         ) {
             Button("OK", role: .cancel) {}

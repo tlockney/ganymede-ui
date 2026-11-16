@@ -33,7 +33,7 @@ struct SettingsScreen: View {
                 NavigationLink {
                     LinkFoldersSettings()
                 } label: {
-                    Label("Links", systemImage: "link")
+                    Label("Link Folders", systemImage: "link")
                 }
             } footer: {
                 Text("The folders links from other apps may open notebooks in.")

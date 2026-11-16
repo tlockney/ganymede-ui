@@ -114,11 +114,11 @@ final class LinkFoldersTests: XCTestCase {
         let root = try folder("Documents")
         let vault = try folder("Vault")
         try file("secret.ipynb", in: base)
-        XCTAssertEqual(failure(.inFolder(folder: "Vault", file: "../secret.ipynb"), root: root, granted: [vault]), .notGranted)
-        XCTAssertEqual(failure(.inFolder(folder: "Vault", file: "a/../../secret.ipynb"), root: root, granted: [vault]), .notGranted)
+        XCTAssertEqual(failure(.inFolder(folder: "Vault", file: "../secret.ipynb"), root: root, granted: [vault]), .badPath("../secret.ipynb"))
+        XCTAssertEqual(failure(.inFolder(folder: "Vault", file: "a/../../secret.ipynb"), root: root, granted: [vault]), .badPath("a/../../secret.ipynb"))
         // Into the sibling folder that is the root.
         try file("r.ipynb", in: root)
-        XCTAssertEqual(failure(.inFolder(folder: "Vault", file: "../Documents/r.ipynb"), root: root, granted: [vault]), .notGranted)
+        XCTAssertEqual(failure(.inFolder(folder: "Vault", file: "../Documents/r.ipynb"), root: root, granted: [vault]), .badPath("../Documents/r.ipynb"))
     }
 
     func testDotDotInPathEscaping() throws {
@@ -149,7 +149,7 @@ final class LinkFoldersTests: XCTestCase {
         try link(vault.appendingPathComponent("file.ipynb"), to: secret)
         try link(vault.appendingPathComponent("dir"), to: outside)
         for name in ["file.ipynb", "dir/secret.ipynb"] {
-            XCTAssertEqual(failure(.inFolder(folder: "Vault", file: name), root: root, granted: [vault]), .notGranted, name)
+            XCTAssertEqual(failure(.inFolder(folder: "Vault", file: name), root: root, granted: [vault]), .badPath(name), name)
             XCTAssertEqual(failure(.path(vault.path + "/" + name), root: root, granted: [vault]), .notGranted, name)
         }
     }
@@ -335,7 +335,7 @@ final class LinkFoldersTests: XCTestCase {
         let vault = try folder("Vault")
         let outside = try folder("Elsewhere")
         try link(vault.appendingPathComponent("dir"), to: outside)
-        XCTAssertEqual(failure(.inFolder(folder: "Vault", file: "dir/none.ipynb"), root: root, granted: [vault]), .notGranted)
+        XCTAssertEqual(failure(.inFolder(folder: "Vault", file: "dir/none.ipynb"), root: root, granted: [vault]), .badPath("dir/none.ipynb"))
         XCTAssertEqual(failure(.path(vault.path + "/dir/none.ipynb"), root: root, granted: [vault]), .notGranted)
         XCTAssertEqual(failure(.path(vault.path + "/dir/a/b/none.ipynb"), root: root, granted: [vault]), .notGranted)
     }
@@ -365,6 +365,41 @@ final class LinkFoldersTests: XCTestCase {
         XCTAssertFalse(AppURL.isSame(vault, vault.appendingPathComponent("none")))
     }
 
+    func testDanglingSymlinksAreFollowed() throws {
+        let root = try folder("Documents")
+        let vault = try folder("Vault")
+        let outside = try folder("Elsewhere")
+        let manager = FileManager.default
+        // Pointing out of the folder at nothing: not the folder's.
+        try manager.createSymbolicLink(atPath: vault.appendingPathComponent("out.ipynb").path, withDestinationPath: outside.path + "/none.ipynb")
+        try manager.createSymbolicLink(atPath: vault.appendingPathComponent("rel.ipynb").path, withDestinationPath: "../Elsewhere/none.ipynb")
+        try manager.createSymbolicLink(atPath: vault.appendingPathComponent("gone").path, withDestinationPath: outside.path + "/gone")
+        for name in ["out.ipynb", "rel.ipynb", "gone/under.ipynb"] {
+            XCTAssertEqual(failure(.inFolder(folder: "Vault", file: name), root: root, granted: [vault]), .badPath(name), name)
+            XCTAssertEqual(failure(.path(vault.path + "/" + name), root: root, granted: [vault]), .notGranted, name)
+        }
+        // Pointing inside, at nothing: the folder's file, not found.
+        try manager.createSymbolicLink(atPath: vault.appendingPathComponent("in.ipynb").path, withDestinationPath: "later.ipynb")
+        XCTAssertEqual(opening(.inFolder(folder: "Vault", file: "in.ipynb"), root: root, granted: [vault]), .notFound("later.ipynb"))
+        XCTAssertEqual(AppURL.resolvedURL(vault.appendingPathComponent("in.ipynb")).path, AppURL.resolvedURL(vault).path + "/later.ipynb")
+        // A loop ends.
+        try manager.createSymbolicLink(atPath: vault.appendingPathComponent("a").path, withDestinationPath: "b")
+        try manager.createSymbolicLink(atPath: vault.appendingPathComponent("b").path, withDestinationPath: "a")
+        XCTAssertFalse(AppURL.resolvedURL(vault.appendingPathComponent("a")).path.isEmpty)
+    }
+
+    func testRelativePath() throws {
+        let vault = try folder("Vault")
+        let note = try file("n/a.ipynb", in: vault)
+        XCTAssertEqual(LinkFolders.relativePath(of: note, in: vault), "n/a.ipynb")
+        XCTAssertEqual(LinkFolders.relativePath(of: vault, in: vault), "")
+        XCTAssertEqual(LinkFolders.relativePath(of: vault.appendingPathComponent("n/none.ipynb"), in: vault), "n/none.ipynb")
+        XCTAssertNil(LinkFolders.relativePath(of: try folder("Elsewhere"), in: vault))
+        XCTAssertNil(LinkFolders.relativePath(of: try folder("VaultOld"), in: vault))
+        let spelled = try otherSpelling(of: vault)
+        XCTAssertEqual(LinkFolders.relativePath(of: note, in: spelled), "n/a.ipynb")
+    }
+
     func testResolvedURLOfAMissingFileInTheOtherSpelling() throws {
         let vault = try folder("Vault")
         let spelled = try otherSpelling(of: vault)
@@ -380,24 +415,33 @@ final class LinkFoldersTests: XCTestCase {
         let placeholder = dir.appendingPathComponent(".n.ipynb.icloud")
         try Data().write(to: placeholder)
         var started: [URL] = []
-        XCTAssertThrowsError(try LinkFolders.checkNotebook(dir.appendingPathComponent("n.ipynb"), startDownload: { started.append($0) })) {
+        XCTAssertThrowsError(try LinkFolders.checkNotebook(dir.appendingPathComponent("n.ipynb"), isUbiquitous: { _ in true }, startDownload: { started.append($0) })) {
             XCTAssertEqual($0 as? LinkFolderError, .downloading("n.ipynb"))
         }
         XCTAssertEqual(started.map(\.lastPathComponent), ["n.ipynb"])
         // No placeholder: not found, and nothing to download.
         started = []
-        XCTAssertThrowsError(try LinkFolders.checkNotebook(dir.appendingPathComponent("m.ipynb"), startDownload: { started.append($0) })) {
+        XCTAssertThrowsError(try LinkFolders.checkNotebook(dir.appendingPathComponent("m.ipynb"), isUbiquitous: { _ in true }, startDownload: { started.append($0) })) {
             XCTAssertEqual($0 as? LinkFolderError, .notFound("m.ipynb"))
         }
         // A file that is there is checked as before.
         let here = try file("h.ipynb", in: dir)
         XCTAssertNoThrow(try LinkFolders.checkNotebook(here, startDownload: { started.append($0) }))
         XCTAssertEqual(started, [])
-        XCTAssertTrue(LinkFolders.isICloudPlaceholder(of: dir.appendingPathComponent("n.ipynb")))
-        XCTAssertFalse(LinkFolders.isICloudPlaceholder(of: dir.appendingPathComponent("m.ipynb")))
+        XCTAssertTrue(LinkFolders.isICloudPlaceholder(of: dir.appendingPathComponent("n.ipynb"), isUbiquitous: { _ in true }))
+        XCTAssertFalse(LinkFolders.isICloudPlaceholder(of: dir.appendingPathComponent("m.ipynb"), isUbiquitous: { _ in true }))
+        // A hidden file of that name iCloud doesn't manage is only a file.
+        started = []
+        XCTAssertFalse(LinkFolders.isICloudPlaceholder(of: dir.appendingPathComponent("n.ipynb"), isUbiquitous: { _ in false }))
+        XCTAssertThrowsError(try LinkFolders.checkNotebook(dir.appendingPathComponent("n.ipynb"), isUbiquitous: { _ in false }, startDownload: { started.append($0) })) {
+            XCTAssertEqual($0 as? LinkFolderError, .notFound("n.ipynb"))
+        }
+        XCTAssertEqual(started, [])
+        // Nothing in a temporary folder is iCloud's.
+        XCTAssertFalse(LinkFolders.isUbiquitousItem(dir.appendingPathComponent(".n.ipynb.icloud")))
         // A failed start is reported as it is, not as a download.
         struct Refused: Error {}
-        XCTAssertThrowsError(try LinkFolders.checkNotebook(dir.appendingPathComponent("n.ipynb"), startDownload: { _ in throw Refused() })) {
+        XCTAssertThrowsError(try LinkFolders.checkNotebook(dir.appendingPathComponent("n.ipynb"), isUbiquitous: { _ in true }, startDownload: { _ in throw Refused() })) {
             XCTAssertTrue($0 is Refused)
         }
     }
@@ -451,6 +495,23 @@ final class LinkFoldersTests: XCTestCase {
         try store.add(vault.appendingPathComponent("../Vault"))
         XCTAssertEqual(store.folders.count, 1)
         XCTAssertEqual(LinkFolderStore(defaults: defaults).folders.count, 1)
+    }
+
+    @MainActor
+    func testStoreAddsWhatThePickerReturned() throws {
+        let store = LinkFolderStore(defaults: try makeDefaults())
+        let vault = try folder("Vault")
+        XCTAssertEqual(store.add(picked: .success(vault)), .added)
+        XCTAssertEqual(store.folders.count, 1)
+        XCTAssertEqual(store.add(picked: .failure(CocoaError(.userCancelled))), .cancelled)
+        guard case .failed(let reason) = store.add(picked: .failure(CocoaError(.fileReadNoPermission))) else {
+            return XCTFail("not a failure")
+        }
+        XCTAssertFalse(reason.isEmpty)
+        guard case .failed = store.add(picked: .success(base.appendingPathComponent("Gone"))) else {
+            return XCTFail("a folder that is gone was added")
+        }
+        XCTAssertEqual(store.folders.count, 1)
     }
 
     @MainActor

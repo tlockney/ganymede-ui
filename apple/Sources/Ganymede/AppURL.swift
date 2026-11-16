@@ -66,10 +66,22 @@ struct AppURL: Equatable {
     /// doesn't exist, and drops `/private` only from a path that exists,
     /// so a missing file would not match its folder. This resolves the
     /// deepest part that exists, and puts the rest after it.
-    static func resolvedURL(_ url: URL, fileManager: FileManager = .default) -> URL {
+    /// A symlink that points at nothing is there, and is followed to where
+    /// it points (up to `maxLinks` of them in a row), so a dangling link
+    /// that leaves a folder doesn't look like a missing file inside it.
+    static func resolvedURL(_ url: URL, fileManager: FileManager = .default, linksFollowed: Int = 0) -> URL {
         var existing = url.standardizedFileURL
         var missing: [String] = []
         while existing.path != "/", !fileManager.fileExists(atPath: existing.path) {
+            if linksFollowed < maxLinks,
+               let destination = try? fileManager.destinationOfSymbolicLink(atPath: existing.path) {
+                let target = destination.hasPrefix("/")
+                    ? URL(fileURLWithPath: destination)
+                    : existing.deletingLastPathComponent().appendingPathComponent(destination)
+                var followed = resolvedURL(target, fileManager: fileManager, linksFollowed: linksFollowed + 1)
+                for name in missing { followed.appendPathComponent(name) }
+                return followed
+            }
             missing.insert(existing.lastPathComponent, at: 0)
             existing = existing.deletingLastPathComponent()
         }
@@ -77,6 +89,8 @@ struct AppURL: Equatable {
         for name in missing { resolved.appendPathComponent(name) }
         return resolved
     }
+
+    private static let maxLinks = 16
 
     /// Whether `a` and `b` are the same place, by whatever spelling.
     static func isSame(_ a: URL, _ b: URL) -> Bool {
@@ -86,10 +100,12 @@ struct AppURL: Equatable {
     /// Whether `url` is one of `folders` or inside one.
     static func isInside(_ url: URL, anyOf folders: [URL]) -> Bool {
         let path = resolvedURL(url).path
-        return folders.contains { folder in
-            let base = resolvedURL(folder).path
-            return path == base || path.hasPrefix(base.hasSuffix("/") ? base : base + "/")
-        }
+        return folders.contains { contains(base: resolvedURL($0).path, path) }
+    }
+
+    /// Whether `path` is `base` or inside it, both already resolved.
+    static func contains(base: String, _ path: String) -> Bool {
+        path == base || path.hasPrefix(base.hasSuffix("/") ? base : base + "/")
     }
 
     /// Whether a `new` link must ask first (#586): unless it writes into
