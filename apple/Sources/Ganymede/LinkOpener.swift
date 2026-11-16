@@ -73,7 +73,10 @@ final class LinkOpener {
     /// folder the app serves; `openFiles` lists the text files open for
     /// editing (a folder switch would break them); `show` opens a notebook
     /// in the folder the app serves, by its path.
-    func handle(_ url: URL, root: URL, openFiles: () -> [String], show: (String) -> Void) {
+    /// `root` is the folder the app serves, as last asked for; `served`
+    /// the folder its running server was started on (nil while none is
+    /// up). They differ during a restart.
+    func handle(_ url: URL, root: URL, served: URL?, openFiles: () -> [String], show: (String) -> Void) {
         pending = nil
         let request: AppURL
         do {
@@ -82,11 +85,11 @@ final class LinkOpener {
             fail(error)
             return
         }
-        open(request, root: root, openFiles: openFiles, deferNotices: false, show: show)
+        open(request, root: root, served: served, openFiles: openFiles, deferNotices: false, show: show)
     }
 
     private func open(
-        _ request: AppURL, root: URL, openFiles: () -> [String], deferNotices: Bool, show: (String) -> Void
+        _ request: AppURL, root: URL, served: URL?, openFiles: () -> [String], deferNotices: Bool, show: (String) -> Void
     ) {
         let target: LinkFolders.Target
         switch request.command {
@@ -115,7 +118,7 @@ final class LinkOpener {
             do {
                 try LinkFolders.checkNotebook(found.file, isUbiquitous: isUbiquitous, startDownload: startDownload)
                 guard let path = LinkFolders.relativePath(of: found.file, in: root) else { throw LinkFolderError.notGranted }
-                show(path)
+                showWhenServed(path, root: root, served: served, show: show)
             } catch {
                 fail(error, deferred: deferNotices)
             }
@@ -145,7 +148,7 @@ final class LinkOpener {
 
         // In the open folder after all (a grant inside it holds the file too).
         if let path = LinkFolders.relativePath(of: found.file, in: root) {
-            show(path)
+            showWhenServed(path, root: root, served: served, show: show)
             return
         }
         guard let relative = found.relative else {
@@ -209,8 +212,21 @@ final class LinkOpener {
     }
 
     /// The server didn't start on the folder.
-    func startFailed() {
-        pending = nil
+    /// A start on `root` failed: a notebook waiting for that folder won't
+    /// open. An older start's failure (another folder) leaves it waiting.
+    func startFailed(on root: URL?) {
+        if let waiting = pending, let root, AppURL.isSame(waiting.folder, root) { pending = nil }
+    }
+
+    /// A notebook in the open folder: shown now when the running server
+    /// serves that folder, else once its page is ready (a restart on it is
+    /// under way, and the old folder's page could take the command).
+    private func showWhenServed(_ path: String, root: URL, served: URL?, show: (String) -> Void) {
+        if let served, AppURL.isSame(served, root) {
+            show(path)
+        } else {
+            pending = FolderSwitch(folder: root, apiPath: path)
+        }
     }
 
     /// The person chose Grant Access…; `picked` follows from the picker.
@@ -221,7 +237,7 @@ final class LinkOpener {
     /// The folder picker answered for a link: keeps the folder, and tries
     /// the link again once. Still in no granted folder, it asks again.
     /// What it says comes after the picker has gone.
-    func picked(_ result: Result<URL, Error>, root: URL, openFiles: () -> [String], show: (String) -> Void) {
+    func picked(_ result: Result<URL, Error>, root: URL, served: URL?, openFiles: () -> [String], show: (String) -> Void) {
         let request = grantFor
         grantFor = nil
         switch store.add(picked: result) {
@@ -231,7 +247,7 @@ final class LinkOpener {
             post(Notice(title: LinkFolderStore.addFailureTitle, message: message, action: .dismiss), deferred: true)
         case .added:
             if let request {
-                open(request, root: root, openFiles: openFiles, deferNotices: true, show: show)
+                open(request, root: root, served: served, openFiles: openFiles, deferNotices: true, show: show)
             }
         }
     }

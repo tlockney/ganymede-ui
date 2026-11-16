@@ -430,7 +430,7 @@ struct ContentView: View {
             } else {
                 // Nothing closes for a link: it may be from any web page,
                 // and a shell, an SSH session or an edit would be lost.
-                links.handle(url, root: model.serverRootFolder, openFiles: { OpenTextFiles.shared.all }, show: showNotebook)
+                links.handle(url, root: model.serverRootFolder, served: model.servedRoot, openFiles: { OpenTextFiles.shared.all }, show: showNotebook)
             }
         }
         // A notebook waiting for another folder's server (#640).
@@ -444,7 +444,7 @@ struct ContentView: View {
         // store does this too): commands and a waiting notebook wait for
         // the next page's state, not the old page's.
         .onChange(of: model.url) { _, url in
-            if url == nil { pageModel.reset() }
+            if url == nil { pageModel.reset(awaitingCommit: true) }
         }
         .onChange(of: openTextFiles, initial: true) { _, paths in
             OpenTextFiles.shared.set(paths, for: windowID)
@@ -452,7 +452,7 @@ struct ContentView: View {
         .onDisappear { OpenTextFiles.shared.set([], for: windowID) }
         .onChange(of: model.serverRootFolder) { _, root in links.rootChanged(to: root) }
         .onChange(of: model.error) { _, error in
-            if error != nil { links.startFailed() }
+            if error != nil { links.startFailed(on: model.failedRoot) }
         }
         // Opened again from the root, not where the last visit ended.
         .sheet(isPresented: $settings, onDismiss: { settingsPath = [] }) {
@@ -895,7 +895,7 @@ struct ContentView: View {
 
     /// The folder picker answered for a link, wherever it was shown.
     private func linkFolderPicked(_ result: Result<URL, Error>) {
-        links.picked(result, root: model.serverRootFolder, openFiles: { OpenTextFiles.shared.all }, show: showNotebook)
+        links.picked(result, root: model.serverRootFolder, served: model.servedRoot, openFiles: { OpenTextFiles.shared.all }, show: showNotebook)
     }
 
     /// Whether a terminal or editor is over the window, and the sheet.

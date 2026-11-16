@@ -105,7 +105,7 @@ final class WebViewStore {
     /// commands wait for it.
     func forget(page: PageModel) {
         coordinator.forget()
-        page.reset()
+        page.reset(awaitingCommit: true)
     }
 
     /// Puts the web view back in `parking` when no screen in the window
@@ -258,7 +258,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         kernels.reset()
         // The new page takes commands once it has posted its state.
-        page?.reset()
+        page?.committed()
     }
 
     /// The UI page's process died: its dialogs and sounds for server
@@ -605,6 +605,10 @@ final class PageModel {
     /// Whether the page has posted its state with a backend, so its
     /// commands and calls are ready.
     private(set) var ready = false
+    /// The page was let go with its server (`reset(awaitingCommit:)`): a
+    /// state the old page still posts, before the next page commits, makes
+    /// nothing ready (#640).
+    @ObservationIgnored private var awaitingCommit = false
     /// Commands run before then: the iPhone's list can be tapped while the
     /// page is still loading (#209).
     @ObservationIgnored private var pending: [String] = []
@@ -616,7 +620,7 @@ final class PageModel {
         if state != self.state { self.state = state }
         // Ready once it is connected: before that, `open` and
         // `new-notebook` have no backend to act on.
-        if !ready, state.backend != nil {
+        if !ready, !awaitingCommit, state.backend != nil {
             ready = true
             // A page loaded again starts without being asked.
             if let arg = memoryWatch.onReload, !pending.contains(PageCommand.script("watch-memory", arg: arg)) {
@@ -647,8 +651,18 @@ final class PageModel {
     }
 
     /// The page is going away: commands wait for the next one's state.
-    func reset() {
+    /// `awaitingCommit` when its server went and the old page may still
+    /// run (the iPhone's parked view): only a page committed after this
+    /// counts.
+    func reset(awaitingCommit: Bool = false) {
         ready = false
+        if awaitingCommit { self.awaitingCommit = true }
+    }
+
+    /// A page committed: its state counts again.
+    func committed() {
+        ready = false
+        awaitingCommit = false
     }
 
     enum CallError: LocalizedError {

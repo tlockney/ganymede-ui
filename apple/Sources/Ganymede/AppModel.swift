@@ -24,6 +24,8 @@ final class AppModel {
     /// soon as a restart is asked for, this once the new server listens
     /// (#640). Nil while none is up.
     private(set) var servedRoot: URL?
+    /// The folder the last failed start was for, set with `error`.
+    private(set) var failedRoot: URL?
     private(set) var error: String?
     /// The notebook folder: on macOS the last folder opened, which a window
     /// opened on nothing shows; on iOS the folder the server serves.
@@ -156,6 +158,7 @@ final class AppModel {
         url = nil
         serverURL = nil
         servedRoot = nil
+        failedRoot = nil
         error = nil
         #if os(macOS)
         removeServerInfo()
@@ -280,6 +283,7 @@ final class AppModel {
                 #if os(macOS)
                 removeServerInfo()
                 #endif
+                failedRoot = launchedRoot
                 error = failure.localizedDescription
             }
         }

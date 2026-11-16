@@ -91,7 +91,7 @@ final class LinkOpenerTests: XCTestCase {
         let f = try fixture(granting: false)
         try file("a.ipynb", in: f.root)
         var shown: [String] = []
-        f.opener.handle(try link("open", ["path": "a.ipynb"]), root: f.root, openFiles: { [] }) { shown.append($0) }
+        f.opener.handle(try link("open", ["path": "a.ipynb"]), root: f.root, served: f.root, openFiles: { [] }) { shown.append($0) }
         XCTAssertEqual(shown, ["a.ipynb"])
         XCTAssertNil(f.opener.notice)
         // The folder form too, and a file under the open folder that a
@@ -99,7 +99,7 @@ final class LinkOpenerTests: XCTestCase {
         let sub = try folder("Documents/Sub")
         try file("b.ipynb", in: sub)
         try f.store.add(sub)
-        f.opener.handle(try link("open", ["folder": "Sub", "file": "b.ipynb"]), root: f.root, openFiles: { [] }) { shown.append($0) }
+        f.opener.handle(try link("open", ["folder": "Sub", "file": "b.ipynb"]), root: f.root, served: f.root, openFiles: { [] }) { shown.append($0) }
         XCTAssertEqual(shown, ["a.ipynb", "Sub/b.ipynb"])
         XCTAssertNil(f.opener.notice)
     }
@@ -108,7 +108,7 @@ final class LinkOpenerTests: XCTestCase {
     func testFileInAnotherGrantedFolderAsksBeforeSwitching() throws {
         let f = try fixture(granting: true)
         var shown: [String] = []
-        f.opener.handle(try link("open", ["folder": "Vault", "file": "n/a.ipynb"]), root: f.root, openFiles: { [] }) { shown.append($0) }
+        f.opener.handle(try link("open", ["folder": "Vault", "file": "n/a.ipynb"]), root: f.root, served: f.root, openFiles: { [] }) { shown.append($0) }
         XCTAssertEqual(shown, [])
         XCTAssertEqual(f.opener.notice?.title, "Open “a” from “Vault”?")
         XCTAssertEqual(
@@ -125,7 +125,7 @@ final class LinkOpenerTests: XCTestCase {
         let f = try fixture(granting: false)
         let request = try link("open", ["path": f.note.path])
         var shown: [String] = []
-        f.opener.handle(request, root: f.root, openFiles: { [] }) { shown.append($0) }
+        f.opener.handle(request, root: f.root, served: f.root, openFiles: { [] }) { shown.append($0) }
         XCTAssertEqual(shown, [])
         XCTAssertEqual(f.opener.notice?.title, "Ganymede can’t open this file")
         XCTAssertEqual(f.opener.notice?.message, LinkFolderError.notGranted.errorDescription)
@@ -133,7 +133,7 @@ final class LinkOpenerTests: XCTestCase {
         XCTAssertEqual(again.command, .open(path: f.note.path))
         // A missing file outside the folders gets the same answer.
         f.opener.notice = nil
-        f.opener.handle(try link("open", ["path": base.appendingPathComponent("Vault/none.ipynb").path]), root: f.root, openFiles: { [] }) { shown.append($0) }
+        f.opener.handle(try link("open", ["path": base.appendingPathComponent("Vault/none.ipynb").path]), root: f.root, served: f.root, openFiles: { [] }) { shown.append($0) }
         XCTAssertEqual(f.opener.notice?.message, LinkFolderError.notGranted.errorDescription)
     }
 
@@ -141,19 +141,19 @@ final class LinkOpenerTests: XCTestCase {
     func testErrorsInAGrantedFolderArePlain() throws {
         let f = try fixture(granting: true)
         try file("c.txt", in: f.vault)
-        f.opener.handle(try link("open", ["folder": "Vault", "file": "c.txt"]), root: f.root, openFiles: { [] }) { _ in XCTFail("opened") }
+        f.opener.handle(try link("open", ["folder": "Vault", "file": "c.txt"]), root: f.root, served: f.root, openFiles: { [] }) { _ in XCTFail("opened") }
         XCTAssertEqual(f.opener.notice?.title, "Ganymede couldn’t open the link")
         XCTAssertEqual(f.opener.notice?.message, LinkFolderError.notNotebook("c.txt").errorDescription)
-        f.opener.handle(try link("open", ["folder": "Vault", "file": "none.ipynb"]), root: f.root, openFiles: { [] }) { _ in XCTFail("opened") }
+        f.opener.handle(try link("open", ["folder": "Vault", "file": "none.ipynb"]), root: f.root, served: f.root, openFiles: { [] }) { _ in XCTFail("opened") }
         XCTAssertEqual(f.opener.notice?.message, LinkFolderError.notFound("none.ipynb").errorDescription)
     }
 
     @MainActor
     func testBadLinksAreReported() throws {
         let f = try fixture(granting: false)
-        f.opener.handle(try link("open", [:]), root: f.root, openFiles: { [] }) { _ in XCTFail("opened") }
+        f.opener.handle(try link("open", [:]), root: f.root, served: f.root, openFiles: { [] }) { _ in XCTFail("opened") }
         XCTAssertEqual(f.opener.notice?.message, "The URL needs “path”.")
-        f.opener.handle(try link("delete", ["path": "/a"]), root: f.root, openFiles: { [] }) { _ in XCTFail("opened") }
+        f.opener.handle(try link("delete", ["path": "/a"]), root: f.root, served: f.root, openFiles: { [] }) { _ in XCTFail("opened") }
         XCTAssertEqual(f.opener.notice?.message, AppURLError.unknownRoute("delete").errorDescription)
     }
 
@@ -162,7 +162,7 @@ final class LinkOpenerTests: XCTestCase {
         let f = try fixture(granting: true)
         for (route, items) in [("run", ["path": "a.ipynb"]), ("new", ["dir": "x"])] {
             f.opener.notice = nil
-            f.opener.handle(try link(route, items), root: f.root, openFiles: { [] }) { _ in XCTFail("opened") }
+            f.opener.handle(try link(route, items), root: f.root, served: f.root, openFiles: { [] }) { _ in XCTFail("opened") }
             XCTAssertEqual(f.opener.notice?.message, "“\(route)” links work only on the Mac.")
             XCTAssertEqual(f.opener.notice?.title, "Ganymede couldn’t open the link")
         }
@@ -182,12 +182,12 @@ final class LinkOpenerTests: XCTestCase {
         try store.add(vault)
         var started: [URL] = []
         let opener = LinkOpener(store: store, isUbiquitous: { _ in true }, startDownload: { started.append($0) })
-        opener.handle(try link("open", ["folder": "Vault", "file": "n.ipynb"]), root: root, openFiles: { [] }) { _ in XCTFail("opened") }
+        opener.handle(try link("open", ["folder": "Vault", "file": "n.ipynb"]), root: root, served: root, openFiles: { [] }) { _ in XCTFail("opened") }
         XCTAssertEqual(opener.notice?.message, LinkFolderError.downloading("n.ipynb").errorDescription)
         XCTAssertEqual(started.map { real($0) }, [real(vault.appendingPathComponent("n.ipynb"))])
         // Outside the folders, the same file is only not granted: no download.
         started = []
-        opener.handle(try link("open", ["path": base.appendingPathComponent("Documents/../Elsewhere/n.ipynb").path]), root: root, openFiles: { [] }) { _ in }
+        opener.handle(try link("open", ["path": base.appendingPathComponent("Documents/../Elsewhere/n.ipynb").path]), root: root, served: root, openFiles: { [] }) { _ in }
         XCTAssertEqual(opener.notice?.message, LinkFolderError.notGranted.errorDescription)
         XCTAssertEqual(started, [])
     }
@@ -205,7 +205,7 @@ final class LinkOpenerTests: XCTestCase {
         var started: [URL] = []
         // iCloud doesn't manage it: a hidden file of that name is a file.
         let opener = LinkOpener(store: store, isUbiquitous: { _ in false }, startDownload: { started.append($0) })
-        opener.handle(try link("open", ["folder": "Vault", "file": "n.ipynb"]), root: root, openFiles: { [] }) { _ in XCTFail("opened") }
+        opener.handle(try link("open", ["folder": "Vault", "file": "n.ipynb"]), root: root, served: root, openFiles: { [] }) { _ in XCTFail("opened") }
         XCTAssertEqual(opener.notice?.message, LinkFolderError.notFound("n.ipynb").errorDescription)
         XCTAssertEqual(started, [])
     }
@@ -215,7 +215,7 @@ final class LinkOpenerTests: XCTestCase {
     @MainActor
     func testASwitchIsRefusedWhileATextFileIsOpen() throws {
         let f = try fixture(granting: true)
-        f.opener.handle(try link("open", ["folder": "Vault", "file": "n/a.ipynb"]), root: f.root, openFiles: { ["/Documents/src/main.py"] }) {
+        f.opener.handle(try link("open", ["folder": "Vault", "file": "n/a.ipynb"]), root: f.root, served: f.root, openFiles: { ["/Documents/src/main.py"] }) {
             _ in XCTFail("opened")
         }
         XCTAssertEqual(f.opener.notice?.message, LinkFolderError.openFile("main.py").errorDescription)
@@ -227,7 +227,7 @@ final class LinkOpenerTests: XCTestCase {
         // A notebook in the open folder doesn't need the switch.
         try file("a.ipynb", in: f.root)
         var shown: [String] = []
-        f.opener.handle(try link("open", ["path": "a.ipynb"]), root: f.root, openFiles: { ["/Documents/src/main.py"] }) { shown.append($0) }
+        f.opener.handle(try link("open", ["path": "a.ipynb"]), root: f.root, served: f.root, openFiles: { ["/Documents/src/main.py"] }) { shown.append($0) }
         XCTAssertEqual(shown, ["a.ipynb"])
     }
 
@@ -235,7 +235,7 @@ final class LinkOpenerTests: XCTestCase {
     func testTheSwitchPathIsWorkedOutInsideTheFoldersAccess() throws {
         let f = try fixture(granting: true)
         try file("deep/er/b.ipynb", in: f.vault)
-        f.opener.handle(try link("open", ["folder": "Vault", "file": "deep/er/../er/b.ipynb"]), root: f.root, openFiles: { [] }) { _ in }
+        f.opener.handle(try link("open", ["folder": "Vault", "file": "deep/er/../er/b.ipynb"]), root: f.root, served: f.root, openFiles: { [] }) { _ in }
         XCTAssertEqual(try switchRequest(f.opener.notice).apiPath, "deep/er/b.ipynb")
     }
 
@@ -251,13 +251,13 @@ final class LinkOpenerTests: XCTestCase {
         var queued: [@MainActor () -> Void] = []
         let opener = LinkOpener(store: store, later: { queued.append($0) })
         // Right away: a link's own answer.
-        opener.handle(try link("open", ["path": note.path]), root: root, openFiles: { [] }) { _ in }
+        opener.handle(try link("open", ["path": note.path]), root: root, served: root, openFiles: { [] }) { _ in }
         XCTAssertEqual(opener.notice?.title, "Ganymede can’t open this file")
         XCTAssertTrue(queued.isEmpty)
         // After the picker: the retry's notice waits.
         opener.notice = nil
         opener.beginGrant(for: try AppURL(try link("open", ["path": note.path])))
-        opener.picked(.success(vault), root: root, openFiles: { [] }) { _ in }
+        opener.picked(.success(vault), root: root, served: root, openFiles: { [] }) { _ in }
         XCTAssertNil(opener.notice)
         XCTAssertEqual(queued.count, 1)
         queued.removeFirst()()
@@ -272,7 +272,7 @@ final class LinkOpenerTests: XCTestCase {
         XCTAssertEqual(opener.notice?.message, LinkFolderError.notGranted.errorDescription)
         // And a picker's failure.
         opener.notice = nil
-        opener.picked(.failure(CocoaError(.fileReadNoPermission)), root: root, openFiles: { [] }) { _ in }
+        opener.picked(.failure(CocoaError(.fileReadNoPermission)), root: root, served: root, openFiles: { [] }) { _ in }
         XCTAssertNil(opener.notice)
         queued.removeFirst()()
         XCTAssertEqual(opener.notice?.title, "Ganymede couldn’t add the folder")
@@ -282,7 +282,7 @@ final class LinkOpenerTests: XCTestCase {
     func testALinkThatLeavesItsFolderOffersNoGrant() throws {
         let f = try fixture(granting: true)
         try file("secret.ipynb", in: base)
-        f.opener.handle(try link("open", ["folder": "Vault", "file": "../secret.ipynb"]), root: f.root, openFiles: { [] }) {
+        f.opener.handle(try link("open", ["folder": "Vault", "file": "../secret.ipynb"]), root: f.root, served: f.root, openFiles: { [] }) {
             _ in XCTFail("opened")
         }
         XCTAssertEqual(f.opener.notice?.message, LinkFolderError.badPath("../secret.ipynb").errorDescription)
@@ -292,7 +292,7 @@ final class LinkOpenerTests: XCTestCase {
     @MainActor
     func testConfirmOpensTheGrantedFolder() throws {
         let f = try fixture(granting: true)
-        f.opener.handle(try link("open", ["folder": "Vault", "file": "n/a.ipynb"]), root: f.root, openFiles: { [] }) { _ in }
+        f.opener.handle(try link("open", ["folder": "Vault", "file": "n/a.ipynb"]), root: f.root, served: f.root, openFiles: { [] }) { _ in }
         let change = try switchRequest(f.opener.notice)
         var opened: [URL] = []
         f.opener.confirm(change) { opened.append($0) }
@@ -303,7 +303,7 @@ final class LinkOpenerTests: XCTestCase {
     @MainActor
     func testConfirmAfterRevokeOpensNothing() throws {
         let f = try fixture(granting: true)
-        f.opener.handle(try link("open", ["folder": "Vault", "file": "n/a.ipynb"]), root: f.root, openFiles: { [] }) { _ in }
+        f.opener.handle(try link("open", ["folder": "Vault", "file": "n/a.ipynb"]), root: f.root, served: f.root, openFiles: { [] }) { _ in }
         let change = try switchRequest(f.opener.notice)
         f.store.remove(try XCTUnwrap(f.store.folders.first).id)
         var opened: [URL] = []
@@ -316,7 +316,7 @@ final class LinkOpenerTests: XCTestCase {
     @MainActor
     func testTheNotebookOpensWhenTheNewFoldersPageIsReady() throws {
         let f = try fixture(granting: true)
-        f.opener.handle(try link("open", ["folder": "Vault", "file": "n/a.ipynb"]), root: f.root, openFiles: { [] }) { _ in }
+        f.opener.handle(try link("open", ["folder": "Vault", "file": "n/a.ipynb"]), root: f.root, served: f.root, openFiles: { [] }) { _ in }
         f.opener.confirm(try switchRequest(f.opener.notice)) { _ in }
         var shown: [String] = []
         // Ready while the old folder's server runs (its start was still
@@ -336,7 +336,7 @@ final class LinkOpenerTests: XCTestCase {
     @MainActor
     func testAnotherRootCancelsTheWaitingNotebook() throws {
         let f = try fixture(granting: true)
-        f.opener.handle(try link("open", ["folder": "Vault", "file": "n/a.ipynb"]), root: f.root, openFiles: { [] }) { _ in }
+        f.opener.handle(try link("open", ["folder": "Vault", "file": "n/a.ipynb"]), root: f.root, served: f.root, openFiles: { [] }) { _ in }
         f.opener.confirm(try switchRequest(f.opener.notice)) { _ in }
         // The folder the notebook waits for becoming the root keeps it.
         f.opener.rootChanged(to: f.vault)
@@ -351,20 +351,45 @@ final class LinkOpenerTests: XCTestCase {
     @MainActor
     func testAServerThatDoesNotStartCancelsTheWaitingNotebook() throws {
         let f = try fixture(granting: true)
-        f.opener.handle(try link("open", ["folder": "Vault", "file": "n/a.ipynb"]), root: f.root, openFiles: { [] }) { _ in }
+        f.opener.handle(try link("open", ["folder": "Vault", "file": "n/a.ipynb"]), root: f.root, served: f.root, openFiles: { [] }) { _ in }
         f.opener.confirm(try switchRequest(f.opener.notice)) { _ in }
-        f.opener.startFailed()
+        // The old folder's start failing (queued at a cold launch) is
+        // not this switch's.
+        f.opener.startFailed(on: f.root)
+        XCTAssertNotNil(f.opener.pending)
+        f.opener.startFailed(on: f.vault)
         var shown: [String] = []
         f.opener.pageReady(served: f.vault) { shown.append($0) }
         XCTAssertEqual(shown, [])
     }
 
     @MainActor
+    func testANotebookInTheOpenFolderWaitsWhileItsServerStarts() throws {
+        let f = try fixture(granting: true)
+        // A switch to the vault was asked for (root is the vault), but the
+        // running server, or none, still serves another folder: a second
+        // link into the vault waits for the vault's page.
+        var shown: [String] = []
+        f.opener.handle(try link("open", ["folder": "Vault", "file": "n/a.ipynb"]), root: f.vault, served: f.root, openFiles: { [] }) {
+            shown.append($0)
+        }
+        f.opener.handle(try link("open", ["folder": "Vault", "file": "n/a.ipynb"]), root: f.vault, served: nil, openFiles: { [] }) {
+            shown.append($0)
+        }
+        XCTAssertEqual(shown, [])
+        XCTAssertNil(f.opener.notice)
+        f.opener.pageReady(served: f.root) { shown.append($0) }
+        XCTAssertEqual(shown, [])
+        f.opener.pageReady(served: f.vault) { shown.append($0) }
+        XCTAssertEqual(shown, ["n/a.ipynb"])
+    }
+
+    @MainActor
     func testANewLinkCancelsTheWaitingNotebook() throws {
         let f = try fixture(granting: true)
-        f.opener.handle(try link("open", ["folder": "Vault", "file": "n/a.ipynb"]), root: f.root, openFiles: { [] }) { _ in }
+        f.opener.handle(try link("open", ["folder": "Vault", "file": "n/a.ipynb"]), root: f.root, served: f.root, openFiles: { [] }) { _ in }
         f.opener.confirm(try switchRequest(f.opener.notice)) { _ in }
-        f.opener.handle(try link("run", ["path": "x"]), root: f.root, openFiles: { [] }) { _ in }
+        f.opener.handle(try link("run", ["path": "x"]), root: f.root, served: f.root, openFiles: { [] }) { _ in }
         XCTAssertNil(f.opener.pending)
     }
 
@@ -373,17 +398,17 @@ final class LinkOpenerTests: XCTestCase {
     @MainActor
     func testPickingTheFolderKeepsItAndTriesTheLinkOnce() throws {
         let f = try fixture(granting: false)
-        f.opener.handle(try link("open", ["path": f.note.path]), root: f.root, openFiles: { [] }) { _ in XCTFail("opened") }
+        f.opener.handle(try link("open", ["path": f.note.path]), root: f.root, served: f.root, openFiles: { [] }) { _ in XCTFail("opened") }
         guard case .grant(let request)? = f.opener.notice?.action else { return XCTFail("no grant button") }
         f.opener.notice = nil
         f.opener.beginGrant(for: request)
-        f.opener.picked(.success(f.vault), root: f.root, openFiles: { [] }) { _ in XCTFail("not in the open folder") }
+        f.opener.picked(.success(f.vault), root: f.root, served: f.root, openFiles: { [] }) { _ in XCTFail("not in the open folder") }
         XCTAssertEqual(f.store.folders.map(\.name), ["Vault"])
         // Granted now, but not the open folder: the link asks to switch.
         XCTAssertEqual(try switchRequest(f.opener.notice).apiPath, "n/a.ipynb")
         // Tried once: a second pick has no link to try.
         f.opener.notice = nil
-        f.opener.picked(.success(try folder("Other")), root: f.root, openFiles: { [] }) { _ in XCTFail("opened") }
+        f.opener.picked(.success(try folder("Other")), root: f.root, served: f.root, openFiles: { [] }) { _ in XCTFail("opened") }
         XCTAssertNil(f.opener.notice)
     }
 
@@ -394,7 +419,7 @@ final class LinkOpenerTests: XCTestCase {
         let f = try fixture(granting: false)
         f.opener.beginGrant(for: try AppURL(try link("open", ["path": f.note.path])))
         var shown: [String] = []
-        f.opener.picked(.success(f.vault), root: f.vault, openFiles: { [] }) { shown.append($0) }
+        f.opener.picked(.success(f.vault), root: f.vault, served: f.vault, openFiles: { [] }) { shown.append($0) }
         XCTAssertEqual(shown, ["n/a.ipynb"])
         XCTAssertEqual(f.store.folders.count, 1)
     }
@@ -405,7 +430,7 @@ final class LinkOpenerTests: XCTestCase {
         let request = try AppURL(try link("open", ["path": f.note.path]))
         f.opener.beginGrant(for: request)
         let other = try folder("Other")
-        f.opener.picked(.success(other), root: f.root, openFiles: { [] }) { _ in XCTFail("opened") }
+        f.opener.picked(.success(other), root: f.root, served: f.root, openFiles: { [] }) { _ in XCTFail("opened") }
         XCTAssertEqual(f.store.folders.map(\.name), ["Other"])
         XCTAssertEqual(f.opener.notice?.title, "Ganymede can’t open this file")
         guard case .grant(let again)? = f.opener.notice?.action else { return XCTFail("no grant button") }
@@ -416,15 +441,15 @@ final class LinkOpenerTests: XCTestCase {
     func testPickerAnswersThatAreNotFolders() throws {
         let f = try fixture(granting: false)
         f.opener.beginGrant(for: try AppURL(try link("open", ["path": f.note.path])))
-        f.opener.picked(.failure(CocoaError(.userCancelled)), root: f.root, openFiles: { [] }) { _ in }
+        f.opener.picked(.failure(CocoaError(.userCancelled)), root: f.root, served: f.root, openFiles: { [] }) { _ in }
         XCTAssertNil(f.opener.notice, "cancelled")
         f.opener.beginGrant(for: try AppURL(try link("open", ["path": f.note.path])))
-        f.opener.picked(.failure(CocoaError(.fileReadNoPermission)), root: f.root, openFiles: { [] }) { _ in }
+        f.opener.picked(.failure(CocoaError(.fileReadNoPermission)), root: f.root, served: f.root, openFiles: { [] }) { _ in }
         XCTAssertEqual(f.opener.notice?.title, "Ganymede couldn’t add the folder")
         // A folder that can't be kept is reported, and the link isn't tried.
         f.opener.notice = nil
         f.opener.beginGrant(for: try AppURL(try link("open", ["path": f.note.path])))
-        f.opener.picked(.success(base.appendingPathComponent("Gone")), root: f.root, openFiles: { [] }) { _ in XCTFail("opened") }
+        f.opener.picked(.success(base.appendingPathComponent("Gone")), root: f.root, served: f.root, openFiles: { [] }) { _ in XCTFail("opened") }
         XCTAssertEqual(f.opener.notice?.title, "Ganymede couldn’t add the folder")
         XCTAssertTrue(f.store.folders.isEmpty)
     }
@@ -434,9 +459,9 @@ final class LinkOpenerTests: XCTestCase {
     @MainActor
     func testDismissingAnAlertKeepsANewerOne() throws {
         let f = try fixture(granting: false)
-        f.opener.handle(try link("run", ["path": "x"]), root: f.root, openFiles: { [] }) { _ in }
+        f.opener.handle(try link("run", ["path": "x"]), root: f.root, served: f.root, openFiles: { [] }) { _ in }
         let first = try XCTUnwrap(f.opener.notice?.id)
-        f.opener.handle(try link("new", ["dir": "x"]), root: f.root, openFiles: { [] }) { _ in }
+        f.opener.handle(try link("new", ["dir": "x"]), root: f.root, served: f.root, openFiles: { [] }) { _ in }
         let second = try XCTUnwrap(f.opener.notice?.id)
         f.opener.dismiss(first)
         XCTAssertEqual(f.opener.notice?.id, second)
@@ -464,7 +489,7 @@ final class LinkOpenerTests: XCTestCase {
     @MainActor
     func testABadPathInTheOpenFolderIsReportedAsSuch() throws {
         let f = try fixture(granting: true)
-        f.opener.handle(try link("open", ["path": "~/n.ipynb"]), root: f.root, openFiles: { [] }) { _ in XCTFail("opened") }
+        f.opener.handle(try link("open", ["path": "~/n.ipynb"]), root: f.root, served: f.root, openFiles: { [] }) { _ in XCTFail("opened") }
         XCTAssertNotNil(f.opener.notice)
         if case .grant? = f.opener.notice?.action { XCTFail("a grant can't help a home path") }
     }
