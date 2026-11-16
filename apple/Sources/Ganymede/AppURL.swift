@@ -7,16 +7,22 @@ import Observation
 /// operations Shortcuts uses (`NotebookActions`).
 ///
 ///     ganymede://open?path=…
+///     ganymede://open?folder=<name>&file=<path in that folder>
 ///     ganymede://new?dir=…[&name=…][&template=…]
 ///     ganymede://run?path=…[&cell=id|tag][&restart=0][&timeout=600]
 ///     ganymede://run?path=…&p.NAME=VALUE…|&params=<JSON object>[&timeout=600]
 ///     ganymede://x-callback-url/<route>?…&x-success=…&x-error=…&x-cancel=…
 ///
 /// Paths are file paths: absolute, `~/…`, or relative to the folder the
-/// app's server serves.
+/// app's server serves. On iPad and iPhone `open` works only in the folders
+/// the person granted and the one the app has open (`LinkFolders`); `folder`
+/// and `file` name a notebook by the granted folder's name, as a link made
+/// where the full path isn't known does (#640).
 struct AppURL: Equatable {
     enum Command: Equatable {
         case open(path: String)
+        /// `file` is relative to the granted folder named `folder` (#640).
+        case openInFolder(folder: String, file: String)
         case new(dir: String, name: String?, template: String?)
         /// `cell`: a cell id, or a tag; nil runs every code cell.
         /// `params`: the run contract's parameters (ganymede#650), as a
@@ -49,13 +55,57 @@ struct AppURL: Equatable {
     /// `scheme://host`, so the two never share a key.
     static let shortcutsDestination = "Shortcuts actions"
 
+    /// The host of Shortcuts' callbacks, `ganymede://device-callback/…`
+    /// (ganymede-device#40), which `KernelHost.shortcuts` takes; any other
+    /// `ganymede://` URL is a link to open.
+    static let shortcutsCallbackHost = "device-callback"
+
+    /// `url` with `.`, `..` and symlinks resolved, so two spellings of one
+    /// place (`/var` and `/private/var`) compare equal. Foundation's
+    /// `resolvingSymlinksInPath` leaves a path alone whose last component
+    /// doesn't exist, and drops `/private` only from a path that exists,
+    /// so a missing file would not match its folder. This resolves the
+    /// deepest part that exists, and puts the rest after it.
+    /// A symlink that points at nothing is there, and is followed to where
+    /// it points (up to `maxLinks` of them in a row), so a dangling link
+    /// that leaves a folder doesn't look like a missing file inside it.
+    static func resolvedURL(_ url: URL, fileManager: FileManager = .default, linksFollowed: Int = 0) -> URL {
+        var existing = url.standardizedFileURL
+        var missing: [String] = []
+        while existing.path != "/", !fileManager.fileExists(atPath: existing.path) {
+            if linksFollowed < maxLinks,
+               let destination = try? fileManager.destinationOfSymbolicLink(atPath: existing.path) {
+                let target = destination.hasPrefix("/")
+                    ? URL(fileURLWithPath: destination)
+                    : existing.deletingLastPathComponent().appendingPathComponent(destination)
+                var followed = resolvedURL(target, fileManager: fileManager, linksFollowed: linksFollowed + 1)
+                for name in missing { followed.appendPathComponent(name) }
+                return followed
+            }
+            missing.insert(existing.lastPathComponent, at: 0)
+            existing = existing.deletingLastPathComponent()
+        }
+        var resolved = existing.resolvingSymlinksInPath()
+        for name in missing { resolved.appendPathComponent(name) }
+        return resolved
+    }
+
+    private static let maxLinks = 16
+
+    /// Whether `a` and `b` are the same place, by whatever spelling.
+    static func isSame(_ a: URL, _ b: URL) -> Bool {
+        resolvedURL(a).path == resolvedURL(b).path
+    }
+
     /// Whether `url` is one of `folders` or inside one.
     static func isInside(_ url: URL, anyOf folders: [URL]) -> Bool {
-        let path = url.standardizedFileURL.resolvingSymlinksInPath().path
-        return folders.contains { folder in
-            let base = folder.standardizedFileURL.resolvingSymlinksInPath().path
-            return path == base || path.hasPrefix(base.hasSuffix("/") ? base : base + "/")
-        }
+        let path = resolvedURL(url).path
+        return folders.contains { contains(base: resolvedURL($0).path, path) }
+    }
+
+    /// Whether `path` is `base` or inside it, both already resolved.
+    static func contains(base: String, _ path: String) -> Bool {
+        path == base || path.hasPrefix(base.hasSuffix("/") ? base : base + "/")
     }
 
     /// Whether a `new` link must ask first (#586): unless it writes into
@@ -110,7 +160,14 @@ struct AppURL: Equatable {
 
         switch route {
         case "open":
-            command = .open(path: try required("path"))
+            // `path` wins when a link has both forms.
+            if let path = value("path") {
+                command = .open(path: path)
+            } else if let folder = value("folder") {
+                command = .openInFolder(folder: folder, file: try required("file"))
+            } else {
+                throw AppURLError.missing("path")
+            }
         case "new":
             command = .new(dir: try required("dir"), name: value("name"), template: value("template"))
         case "run":
@@ -244,6 +301,10 @@ enum AppURLError: LocalizedError, Equatable {
     case badValue(String, String)
     case cellWithParameters
     case cancelled
+    /// A `folder=` link reached the Mac, which opens files by `path=` (#640).
+    case folderLinkNotOnMac
+    /// A route iPad and iPhone don't do (#640): `run` and `new`.
+    case macOnly(String)
 
     var errorDescription: String? {
         switch self {
@@ -253,6 +314,8 @@ enum AppURLError: LocalizedError, Equatable {
         case .badValue(let name, let value): "“\(value)” isn’t a valid \(name)."
         case .cellWithParameters: "A run with parameters runs the whole notebook; leave out “cell”."
         case .cancelled: "The run was cancelled."
+        case .folderLinkNotOnMac: "Links with a folder open on iPad and iPhone. On the Mac, a link names the notebook with path=."
+        case .macOnly(let route): "“\(route)” links work only on the Mac."
         }
     }
 

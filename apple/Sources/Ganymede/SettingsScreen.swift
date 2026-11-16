@@ -28,6 +28,16 @@ struct SettingsScreen: View {
             }
             CrashReportsSettings()
             SpotlightSettingsSection()
+            // The folders `ganymede://open` links may read (#640).
+            Section {
+                NavigationLink {
+                    LinkFoldersSettings()
+                } label: {
+                    Label("Link Folders", systemImage: "link")
+                }
+            } footer: {
+                Text("The folders links from other apps may open notebooks in.")
+            }
             if hardwareKeyboard {
                 Section {
                     NavigationLink(value: SettingsTab.shortcuts) {

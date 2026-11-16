@@ -25,6 +25,35 @@ final class AppURLTests: XCTestCase {
         XCTAssertFalse(url.runsCode)
     }
 
+    func testOpenInFolder() throws {
+        let url = try parse("ganymede://open?folder=My%20Vault&file=Daily/2026-11-15.ipynb")
+        XCTAssertEqual(url.command, .openInFolder(folder: "My Vault", file: "Daily/2026-11-15.ipynb"))
+        XCTAssertNil(url.callback)
+        XCTAssertFalse(url.runsCode)
+        // Through x-callback-url, as for the other routes.
+        XCTAssertEqual(
+            try parse("ganymede://x-callback-url/open?folder=V&file=a.ipynb").command,
+            .openInFolder(folder: "V", file: "a.ipynb")
+        )
+    }
+
+    func testOpenWithPathAndFolderUsesThePath() throws {
+        let url = try parse("ganymede://open?path=/a.ipynb&folder=V&file=b.ipynb")
+        XCTAssertEqual(url.command, .open(path: "/a.ipynb"))
+        // Even when the folder form is incomplete.
+        XCTAssertEqual(try parse("ganymede://open?path=/a.ipynb&folder=V").command, .open(path: "/a.ipynb"))
+        XCTAssertEqual(try parse("ganymede://open?path=/a.ipynb&file=b.ipynb").command, .open(path: "/a.ipynb"))
+    }
+
+    func testFolderLinksAreForIPadAndIPhone() {
+        XCTAssertEqual(
+            AppURLError.folderLinkNotOnMac.errorDescription,
+            "Links with a folder open on iPad and iPhone. On the Mac, a link names the notebook with path=."
+        )
+        XCTAssertEqual(AppURLError.macOnly("run").errorDescription, "“run” links work only on the Mac.")
+        XCTAssertEqual(AppURLError.folderLinkNotOnMac.code, 2)
+    }
+
     func testNew() throws {
         let url = try parse("ganymede://new?dir=~/notes&name=Today&template=~/t.ipynb")
         XCTAssertEqual(url.command, .new(dir: "~/notes", name: "Today", template: "~/t.ipynb"))
@@ -79,6 +108,11 @@ final class AppURLTests: XCTestCase {
         XCTAssertEqual(error("ganymede://delete?path=/a"), .unknownRoute("delete"))
         XCTAssertEqual(error("ganymede://open"), .missing("path"))
         XCTAssertEqual(error("ganymede://open?path="), .missing("path"))
+        XCTAssertEqual(error("ganymede://open?folder=V"), .missing("file"))
+        XCTAssertEqual(error("ganymede://open?folder=V&file="), .missing("file"))
+        XCTAssertEqual(error("ganymede://open?file=a.ipynb"), .missing("path"))
+        XCTAssertEqual(error("ganymede://open?folder=&file=a.ipynb"), .missing("path"))
+        XCTAssertEqual(error("ganymede://run?folder=V&file=a.ipynb"), .missing("path"))
         XCTAssertEqual(error("ganymede://new?name=x"), .missing("dir"))
         XCTAssertEqual(error("ganymede://run?path=/a&restart=maybe"), .badValue("restart", "maybe"))
         XCTAssertEqual(error("ganymede://run?path=/a&timeout=0"), .badValue("timeout", "0"))

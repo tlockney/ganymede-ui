@@ -68,6 +68,16 @@ struct ContentView: View {
     #if os(iOS)
     @Environment(\.scenePhase) private var phase
     @State private var picking = false
+    /// The folder picker for a link, from the Settings sheet or from a
+    /// terminal or editor cover, which the window's picker can't show over.
+    @State private var settingsPicking = false
+    @State private var coverPicking = false
+    /// What the folder picker is for (#640).
+    @State private var pickPurpose = FolderPick.openFolder
+    /// `ganymede://open` links (#640).
+    @State private var links = LinkOpener(later: ContentView.afterPresentationEnds)
+    /// This window, in `OpenTextFiles`.
+    @State private var windowID = UUID()
     @State private var settings = false
     /// What Settings shows over its first screen: the Agent or Keyboard
     /// Shortcuts, when the page asked for them (#332).
@@ -337,13 +347,15 @@ struct ContentView: View {
                     .navigationDestination(for: PhoneScreen.self) { _ in notebook }
                 }
                 .task { model.startIfNeeded() }
-                .task(id: model.url) {
+                // Each start too: a quick restart can bring the same URL
+                // back without `url` being seen to go nil (#640).
+                .task(id: "\(model.serverStart) \(model.url?.absoluteString ?? "")") {
                     if let url = model.url {
                         phonePage.load(url, page: pageModel, onOpenFile: openEditor)
                     } else {
                         // Stopped, to restart (Open Folder, Try Again,
                         // remotes, resume): load the new server's page.
-                        phonePage.forget(page: pageModel)
+                        phonePage.forget()
                     }
                 }
             } else if drawsNativeChrome {
@@ -392,6 +404,11 @@ struct ContentView: View {
         }
         .focusedSceneValue(\.pageModel, pageModel)
         .modifier(KeychainAlert(model: model))
+        // A link's alert shows on the topmost thing presented: the window,
+        // the Settings sheet, or a cover. Only one of them takes it.
+        .modifier(LinkAlert(
+            links: links, isEnabled: !settings && !coverShown, grant: startGrant, change: changeFolder
+        ))
         // Spotlight (#305): the page's recents are indexed, a save updates
         // its entry, and a result opens here.
         .onChange(of: pageModel.state.recents, initial: true) { _, recents in
@@ -407,10 +424,37 @@ struct ContentView: View {
         .onContinueUserActivity(CSSearchableItemActionType) { activity in
             _ = SpotlightSettings.shared.open(activity, with: openFromSpotlight)
         }
-        // A Shortcut a cell ran, calling back (ganymede-device#40); the
-        // app has no other `ganymede://` URLs here yet.
+        // A Shortcut a cell ran, calling back (ganymede-device#40), or a
+        // link to open a notebook (#640).
         .onOpenURL { url in
-            KernelHost.shortcuts.handle(url)
+            if LinkOpener.isShortcutsCallback(url) {
+                KernelHost.shortcuts.handle(url)
+            } else {
+                // Nothing closes for a link: it may be from any web page,
+                // and a shell, an SSH session or an edit would be lost.
+                links.handle(url, root: model.serverRootFolder, served: model.servedRoot, openFiles: { OpenTextFiles.shared.all }, show: showNotebook)
+            }
+        }
+        // A notebook waiting for another folder's server (#640).
+        // The page ready, checked against the folder its server was
+        // started on. Only on the transition: a page from before the
+        // restart isn't the new folder's.
+        .onChange(of: pageModel.ready) { _, ready in
+            if ready { links.pageReady(served: model.servedRoot, show: showNotebook) }
+        }
+        // The page goes with its server, on every layout: commands and a
+        // waiting notebook wait for the next page's state, not the old
+        // page's.
+        .onChange(of: model.startsRequested, initial: true) { _, start in
+            pageModel.reset(forStart: start)
+        }
+        .onChange(of: openTextFiles, initial: true) { _, paths in
+            OpenTextFiles.shared.set(paths, for: windowID)
+        }
+        .onDisappear { OpenTextFiles.shared.set([], for: windowID) }
+        .onChange(of: model.serverRootFolder) { _, root in links.rootChanged(to: root) }
+        .onChange(of: model.startFailures) {
+            links.startFailed(on: model.failedRoot, reason: model.error)
         }
         // Opened again from the root, not where the last visit ended.
         .sheet(isPresented: $settings, onDismiss: { settingsPath = [] }) {
@@ -418,6 +462,8 @@ struct ContentView: View {
                 SettingsScreen(page: pageModel) { settings = false }
             }
             .environment(model)
+            .modifier(LinkAlert(links: links, isEnabled: !coverShown, grant: startGrant, change: changeFolder))
+            .fileImporter(isPresented: $settingsPicking, allowedContentTypes: [.folder], onCompletion: linkFolderPicked)
         }
         .onReceive(NotificationCenter.default.publisher(for: .showAppSettings)) { note in
             guard note.object as? PageModel === pageModel else { return }
@@ -440,15 +486,26 @@ struct ContentView: View {
                     }
             }
             .environment(model)
+            .modifier(LinkAlert(links: links, grant: startGrant, change: changeFolder))
+            .fileImporter(isPresented: $coverPicking, allowedContentTypes: [.folder], onCompletion: linkFolderPicked)
         }
         .fullScreenCover(item: $editing) { request in
+            // A link closes nothing: an editor may have unsaved edits. Its
+            // alert, and the folder picker a grant needs, are its own.
             NavigationStack {
                 EditorWindow(request: request) { editing = nil }
             }
+            .modifier(LinkAlert(links: links, isEnabled: terminal == nil, grant: startGrant, change: changeFolder))
+            .fileImporter(isPresented: $coverPicking, allowedContentTypes: [.folder], onCompletion: linkFolderPicked)
         }
         .fileImporter(isPresented: $picking, allowedContentTypes: [.folder]) { result in
-            if case .success(let folder) = result {
-                model.open(folder: folder)
+            switch pickPurpose {
+            case .openFolder:
+                if case .success(let folder) = result {
+                    model.open(folder: folder)
+                }
+            case .grantForLink:
+                linkFolderPicked(result)
             }
         }
         .onChange(of: phase) { _, phase in
@@ -763,6 +820,7 @@ struct ContentView: View {
         }
         .keyboardShortcut(",")
         Button {
+            pickPurpose = .openFolder
             picking = true
         } label: {
             Label("Open Folder", systemImage: "folder")
@@ -804,13 +862,65 @@ struct ContentView: View {
     /// the server serves, opens as one picked in the sidebar would.
     private func openFromSpotlight(_ url: URL) {
         guard let path = NotebookActions.apiPath(for: url, root: model.serverRootFolder) else { return }
+        showNotebook(apiPath: path)
+    }
+
+    /// Opens the notebook at `path` in the folder the server serves, and
+    /// shows it: from Spotlight (#305) or a link (#640).
+    private func showNotebook(apiPath path: String) {
         pageModel.run("open", arg: path)
         if isPhone {
+            // Behind a cover, if one is up: there when it closes.
             phonePath = [.notebook]
         } else if drawsNativeChrome {
             openFiles.showNotebook()
             panelFills = false
             if portrait { columns = .detailOnly }
+        }
+    }
+
+    /// A link needs a folder granted: the picker, on the topmost thing
+    /// presented, after the alert that asked has gone.
+    private func startGrant(_ request: AppURL) {
+        links.beginGrant(for: request)
+        pickPurpose = .grantForLink
+        Self.afterPresentationEnds {
+            if coverShown {
+                coverPicking = true
+            } else if settings {
+                settingsPicking = true
+            } else {
+                picking = true
+            }
+        }
+    }
+
+    /// The folder picker answered for a link, wherever it was shown.
+    private func linkFolderPicked(_ result: Result<URL, Error>) {
+        links.picked(result, root: model.serverRootFolder, served: model.servedRoot, openFiles: { OpenTextFiles.shared.all }, show: showNotebook)
+    }
+
+    /// Whether a terminal or editor is over the window, and the sheet.
+    private var coverShown: Bool { terminal != nil || editing != nil }
+
+    /// The text files open for editing: the editor's, and the iPad's.
+    private var openTextFiles: [String] {
+        (editing.map { [$0.path] } ?? []) + openFiles.stack
+    }
+
+    /// The person said yes to switching folders for a link.
+    private func changeFolder(_ change: LinkOpener.FolderSwitch) {
+        links.confirm(change) { model.open(folder: $0) }
+    }
+
+    /// Runs `work` once a sheet, cover, picker or alert that is closing is
+    /// gone. SwiftUI has no signal for that (a binding going false comes
+    /// before the animation ends), and an alert or picker shown during it
+    /// may be dropped, so this waits a moment.
+    private static func afterPresentationEnds(_ work: @escaping @MainActor () -> Void) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(300))
+            work()
         }
     }
 

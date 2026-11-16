@@ -273,6 +273,48 @@ link, 3 cancelled) and `errorMessage`, and `x-cancel` is opened when
 you answer Cancel. In Shortcuts, the Open X-Callback URL action does
 this and gives the answer to the next action.
 
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+The iPad and iPhone app opens `ganymede://open` links too, in two forms:
+`ganymede://open?path=…` and
+`ganymede://open?folder=<name>&file=<path in that folder>`, where `name`
+is the folder's own name (for an Obsidian vault, the vault's folder) and
+`file` is relative to it. If a link has `path` it is used, and `folder`
+and `file` are ignored. A relative `path` is relative to the folder
+Ganymede has open; `~/` paths don't work there, since the apps have no
+home folder. A link opens notebooks (`.ipynb`) only, not folders. The
+notebook opens only if it is in the folder Ganymede has open or in a
+folder you granted. A link that names a file anywhere else gets
+"Ganymede can't open this file" with a **Grant Access…** button, which
+asks you to pick the folder and then tries the link again; the message is
+the same whether or not the file exists. A `folder` link whose file
+leaves that folder (by `..` or a symlink) is refused with no button, since
+granting wouldn't help. Settings › Link Folders lists the granted folders,
+adds more, and revokes them (swipe a folder, or Edit). Revoking stops
+links into that folder, unless it is the folder Ganymede has open, and
+doesn't close an open folder. If two folders Ganymede can use have the
+same name, a `folder` link asks you to use `path`, open another folder,
+or revoke one. A file in iCloud Drive that isn't on the device yet starts
+downloading, and the link says so: open it again in a moment.
+
+A notebook in a granted folder other than the open one asks first:
+Ganymede switches to that folder, which restarts its server and stops the
+kernels running in the folder it leaves. It doesn't switch while a text
+file is open for editing in any window, since the editor would save into the new
+folder: close the file first. `run` and `new` links work only on the Mac.
+The apps never open an `x-success`, `x-error` or `x-cancel` address, so a
+link to `x-callback-url/open` still opens the notebook and nothing is
+sent back; a link whose callback isn't a valid URL (a `file:` address,
+say) is refused, as on the Mac. The Mac takes `path` links only.
+
+A link opens in the window that is showing, and closes nothing: a link
+can come from any web page, and a terminal, an SSH session or an edit in
+Settings would be lost. Its question or error shows over Settings, a
+terminal or the editor, whichever is up. On the iPhone the notebook opens
+behind them, and is there when you close them.
+
 ### Agents over MCP
 
 Agents outside the app, such as Claude Code and Claude Desktop, can read,
@@ -505,6 +547,14 @@ headings; pick one to go to its cell.
   with a keyboard attached, the notebook's keyboard shortcuts, listed and
   rebound in place. The API key goes to the Keychain. The page's own
   Settings, Keyboard Shortcuts and Connect open this screen.
+- **Links**: other apps can open a notebook with a `ganymede://open`
+  link, in the folder Ganymede has open or one you granted in
+  Settings › Link Folders; see [Links](#links).
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release.
+
 - **Code font**: Settings > Appearance, with the same fonts and choices
   as on the Mac. With a keyboard, ⌘+, ⌘− and ⌘0 change the size. On a touch
   screen a cell being edited stays at 16 points or more, so iOS doesn't

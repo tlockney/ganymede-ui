@@ -20,7 +20,25 @@ final class AppModel {
     /// The URL the server printed, with its token; windows build their
     /// page from it.
     private(set) var serverURL: URL?
+    /// The folder the running server was started on: `root` changes as
+    /// soon as a restart is asked for, this once the new server listens
+    /// (#640). Nil while none is up.
+    private(set) var servedRoot: URL?
+    /// The folder the last failed start was for, set with `error`.
+    private(set) var failedRoot: URL?
     private(set) var error: String?
+    /// The number (`startsRequested`) of the latest start that has begun:
+    /// the page loads again for each, even when the URL comes back the
+    /// same, and views watch it rather than `url` going nil, which a quick
+    /// start can skip (#640).
+    private(set) var serverStart = 0
+    /// Counts the starts asked for, and numbers them: once a window sees
+    /// one, its page waits for that start's page, though the start may be
+    /// queued behind another (#640).
+    private(set) var startsRequested = 0
+    /// Counts failed starts, set with `error` and `failedRoot`: each one is
+    /// a change even with the same message (#640).
+    private(set) var startFailures = 0
     /// The notebook folder: on macOS the last folder opened, which a window
     /// opened on nothing shows; on iOS the folder the server serves.
     private(set) var root: URL
@@ -151,6 +169,8 @@ final class AppModel {
     func start() {
         url = nil
         serverURL = nil
+        servedRoot = nil
+        failedRoot = nil
         error = nil
         #if os(macOS)
         removeServerInfo()
@@ -188,7 +208,22 @@ final class AppModel {
         #if os(macOS)
         let tailnetAllow = tailnetShare ? tailnetAllow : []
         #endif
+        // The folder this start serves: `root` may change before it runs.
+        let launchedRoot = serverRootFolder
+        startsRequested += 1
+        let number = startsRequested
         enqueue { [self] in
+            // A start queued behind another that has since finished: its
+            // page goes too, so the page loads again for this server even
+            // on the same port (#640). An earlier start's failure goes
+            // too: it isn't this start's (failures are counted in
+            // `startFailures`).
+            serverStart = number
+            url = nil
+            serverURL = nil
+            servedRoot = nil
+            error = nil
+            failedRoot = nil
             #if os(macOS)
             await path?.value
             // Shared on the tailnet: Tailscale names this Mac, and the
@@ -243,6 +278,7 @@ final class AppModel {
                     NSLog("Ganymede: the in-app kernel didn't register: %@", error.localizedDescription)
                 }
                 serverURL = host.url
+                servedRoot = launchedRoot
                 url = pageURL(host.url)
                 #if os(macOS)
                 writeServerInfo(host.url, settings: launched)
@@ -266,7 +302,9 @@ final class AppModel {
                 #if os(macOS)
                 removeServerInfo()
                 #endif
+                failedRoot = launchedRoot
                 error = failure.localizedDescription
+                startFailures += 1
             }
         }
     }
@@ -395,6 +433,7 @@ final class AppModel {
         server = nil
         url = nil
         serverURL = nil
+        servedRoot = nil
         await withCheckedContinuation { done in
             Self.serverQueue.async {
                 old.stop()
@@ -415,6 +454,7 @@ final class AppModel {
         server = nil
         url = nil
         serverURL = nil
+        servedRoot = nil
     }
 
     /// Makes `folder` the notebook folder. On macOS that is only the folder
@@ -436,6 +476,9 @@ final class AppModel {
         }
         guard folder.startAccessingSecurityScopedResource() else {
             error = "Ganymede was not allowed to open \(folder.lastPathComponent)."
+            // A notebook link waiting for this folder won't open (#640).
+            failedRoot = folder
+            startFailures += 1
             return
         }
         scoped?.stopAccessingSecurityScopedResource()

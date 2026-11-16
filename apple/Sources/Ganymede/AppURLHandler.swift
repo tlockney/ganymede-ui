@@ -68,6 +68,9 @@ enum AppURLHandler {
             IntentServer.open(url)
             return []
 
+        case .openInFolder:
+            throw AppURLError.folderLinkNotOnMac
+
         case .new(let dir, let name, let template):
             let folder = AppURL.fileURL(dir, root: root, home: home)
             let templateURL = template.map { AppURL.fileURL($0, root: root, home: home) }

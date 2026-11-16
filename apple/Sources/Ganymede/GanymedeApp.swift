@@ -115,10 +115,13 @@ struct GanymedeApp: App {
             ContentView()
                 .environment(model)
                 .crashReportsPrompt()
+                // A link goes to the window that shows, not a new one
+                // (#640); the Terminal and Editor scenes don't take it.
+                .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
         }
-        // URLs (the Shortcuts callback, ganymede-device#40) go to a main
-        // window, whose `onOpenURL` handles them, never a Terminal or
-        // Editor window.
+        // URLs (Shortcuts callbacks, ganymede-device#40, and `open` links,
+        // #640) go to a main window, whose `onOpenURL` handles them, never
+        // a Terminal or Editor window.
         .handlesExternalEvents(matching: ["*"])
         // Holding ⌘ lists them, and the iPadOS menu bar shows them (#208).
         .commands { IPadCommands() }
