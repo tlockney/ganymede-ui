@@ -64,9 +64,6 @@ while IFS= read -r f; do
     packages/device/swift/Tests/*) device_swift=true ;;
     packages/device/Package.swift | packages/device/swift/*) device_swift=true; macos=true ;;
     packages/device/*) device=true; e2e=true; macos=true ;;
-    # The Obsidian plugin (#636) is checked, tested and built by the build
-    # job, which always runs; nothing in the apps or the page uses it.
-    packages/obsidian/*) ;;
     # The example notebooks' Markdown sources are code (#414).
     examples/src/*) e2e=true; macos=true ;;
     *.md | docs/* | screenshots/* | LICENSE | cliff.toml | .cliffignore | scripts/release.sh | scripts/release-pins.sh) ;;
