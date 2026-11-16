@@ -55,10 +55,27 @@ struct AppURL: Equatable {
     /// `scheme://host`, so the two never share a key.
     static let shortcutsDestination = "Shortcuts actions"
 
-    /// A file's path with `.`, `..` and symlinks resolved, so two spellings
-    /// of one place (`/var` and `/private/var`) compare equal.
-    static func resolvedURL(_ url: URL) -> URL {
-        url.standardizedFileURL.resolvingSymlinksInPath()
+    /// The host of Shortcuts' callbacks, `ganymede://device-callback/…`
+    /// (ganymede-device#40), which `KernelHost.shortcuts` takes; any other
+    /// `ganymede://` URL is a link to open.
+    static let shortcutsCallbackHost = "device-callback"
+
+    /// `url` with `.`, `..` and symlinks resolved, so two spellings of one
+    /// place (`/var` and `/private/var`) compare equal. Foundation's
+    /// `resolvingSymlinksInPath` leaves a path alone whose last component
+    /// doesn't exist, and drops `/private` only from a path that exists,
+    /// so a missing file would not match its folder. This resolves the
+    /// deepest part that exists, and puts the rest after it.
+    static func resolvedURL(_ url: URL, fileManager: FileManager = .default) -> URL {
+        var existing = url.standardizedFileURL
+        var missing: [String] = []
+        while existing.path != "/", !fileManager.fileExists(atPath: existing.path) {
+            missing.insert(existing.lastPathComponent, at: 0)
+            existing = existing.deletingLastPathComponent()
+        }
+        var resolved = existing.resolvingSymlinksInPath()
+        for name in missing { resolved.appendPathComponent(name) }
+        return resolved
     }
 
     /// Whether `a` and `b` are the same place, by whatever spelling.

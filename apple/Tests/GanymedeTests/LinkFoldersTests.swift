@@ -285,6 +285,96 @@ final class LinkFoldersTests: XCTestCase {
         }
     }
 
+    // MARK: Files that aren't there
+
+    /// `url` in its other spelling under /var and /private/var, or a skip.
+    private func otherSpelling(of url: URL) throws -> URL {
+        let path = url.path
+        if path.hasPrefix("/private/var/") {
+            return URL(fileURLWithPath: String(path.dropFirst("/private".count)), isDirectory: true)
+        }
+        if path.hasPrefix("/var/") {
+            return URL(fileURLWithPath: "/private" + path, isDirectory: true)
+        }
+        throw XCTSkip("the temporary folder isn't under /var")
+    }
+
+    /// What a link ends in: the resolve, then the notebook check, with no
+    /// download started.
+    private func opening(_ target: LinkFolders.Target, root: URL, granted: [URL]) -> LinkFolderError? {
+        do {
+            let found = try resolve(target, root: root, granted: granted)
+            try LinkFolders.checkNotebook(found.file, startDownload: { _ in })
+            return nil
+        } catch {
+            return error as? LinkFolderError
+        }
+    }
+
+    func testMissingFileInAFolderGrantedUnderAnotherSpelling() throws {
+        let root = try folder("Documents")
+        let vault = try folder("Vault")
+        let granted = try otherSpelling(of: vault)
+        XCTAssertEqual(opening(.inFolder(folder: "Vault", file: "none.ipynb"), root: root, granted: [granted]), .notFound("none.ipynb"))
+        XCTAssertEqual(opening(.path(vault.path + "/none.ipynb"), root: root, granted: [granted]), .notFound("none.ipynb"))
+        XCTAssertEqual(opening(.path(vault.path + "/Sub/none.ipynb"), root: root, granted: [granted]), .notFound("none.ipynb"))
+    }
+
+    func testMissingFileSpelledUnderAnotherPrefixThanItsFolder() throws {
+        let root = try folder("Documents")
+        let vault = try folder("Vault")
+        let spelled = try otherSpelling(of: vault)
+        XCTAssertEqual(opening(.path(spelled.path + "/none.ipynb"), root: root, granted: [vault]), .notFound("none.ipynb"))
+        XCTAssertEqual(opening(.path(spelled.path + "/Sub/../none.ipynb"), root: root, granted: [vault]), .notFound("none.ipynb"))
+        // The open folder too.
+        XCTAssertEqual(opening(.path(spelled.path + "/none.ipynb"), root: vault, granted: []), .notFound("none.ipynb"))
+    }
+
+    func testMissingFileUnderASymlinkedFolderLeavingTheFolderIsRefused() throws {
+        let root = try folder("Documents")
+        let vault = try folder("Vault")
+        let outside = try folder("Elsewhere")
+        try link(vault.appendingPathComponent("dir"), to: outside)
+        XCTAssertEqual(failure(.inFolder(folder: "Vault", file: "dir/none.ipynb"), root: root, granted: [vault]), .notGranted)
+        XCTAssertEqual(failure(.path(vault.path + "/dir/none.ipynb"), root: root, granted: [vault]), .notGranted)
+        XCTAssertEqual(failure(.path(vault.path + "/dir/a/b/none.ipynb"), root: root, granted: [vault]), .notGranted)
+    }
+
+    func testResolvedURL() throws {
+        let vault = try folder("Vault")
+        let outside = try folder("Elsewhere")
+        let here = AppURL.resolvedURL(vault).path
+        XCTAssertEqual(here, vault.standardizedFileURL.resolvingSymlinksInPath().path)
+        // What isn't there follows its deepest folder that is.
+        XCTAssertEqual(AppURL.resolvedURL(vault.appendingPathComponent("none.ipynb")).path, here + "/none.ipynb")
+        XCTAssertEqual(AppURL.resolvedURL(vault.appendingPathComponent("a/b/none.ipynb")).path, here + "/a/b/none.ipynb")
+        XCTAssertEqual(AppURL.resolvedURL(vault.appendingPathComponent("x/../none.ipynb")).path, here + "/none.ipynb")
+        XCTAssertEqual(AppURL.resolvedURL(vault.appendingPathComponent("a/../../Vault/none.ipynb")).path, here + "/none.ipynb")
+        // A symlink in the way is followed, whether or not the file is there.
+        try link(vault.appendingPathComponent("dir"), to: outside)
+        let target = AppURL.resolvedURL(outside).path
+        XCTAssertEqual(AppURL.resolvedURL(vault.appendingPathComponent("dir")).path, target)
+        XCTAssertEqual(AppURL.resolvedURL(vault.appendingPathComponent("dir/none.ipynb")).path, target + "/none.ipynb")
+        XCTAssertEqual(AppURL.resolvedURL(vault.appendingPathComponent("dir/a/none.ipynb")).path, target + "/a/none.ipynb")
+        // The top.
+        XCTAssertEqual(AppURL.resolvedURL(URL(fileURLWithPath: "/")).path, "/")
+        XCTAssertEqual(AppURL.resolvedURL(URL(fileURLWithPath: "/ganymede-no-such-folder/x")).path, "/ganymede-no-such-folder/x")
+        // Sameness.
+        XCTAssertTrue(AppURL.isSame(vault, vault.appendingPathComponent("x/..")))
+        XCTAssertFalse(AppURL.isSame(vault, outside))
+        XCTAssertFalse(AppURL.isSame(vault, vault.appendingPathComponent("none")))
+    }
+
+    func testResolvedURLOfAMissingFileInTheOtherSpelling() throws {
+        let vault = try folder("Vault")
+        let spelled = try otherSpelling(of: vault)
+        XCTAssertEqual(
+            AppURL.resolvedURL(spelled.appendingPathComponent("none.ipynb")).path,
+            AppURL.resolvedURL(vault).path + "/none.ipynb"
+        )
+        XCTAssertTrue(AppURL.isSame(vault, spelled))
+    }
+
     func testICloudPlaceholderStartsADownload() throws {
         let dir = try folder("Vault")
         let placeholder = dir.appendingPathComponent(".n.ipynb.icloud")

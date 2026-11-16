@@ -42,14 +42,21 @@ final class LinkOpener {
     /// The notebook to open once the page of the server on `folder` is up.
     @ObservationIgnored private(set) var pending: FolderSwitch?
 
-    init(store: LinkFolderStore = .shared) {
+    /// Starts an iCloud download (`checkNotebook`); replaced in tests.
+    @ObservationIgnored private let startDownload: (URL) throws -> Void
+
+    init(
+        store: LinkFolderStore = .shared,
+        startDownload: @escaping (URL) throws -> Void = { try FileManager.default.startDownloadingUbiquitousItem(at: $0) }
+    ) {
         self.store = store
+        self.startDownload = startDownload
     }
 
     /// Whether `url` is a Shortcuts callback (ganymede-device#40), which
     /// `KernelHost.shortcuts` takes, not a link to open.
-    static func isShortcutsCallback(_ url: URL) -> Bool {
-        url.host?.lowercased() == "device-callback"
+    nonisolated static func isShortcutsCallback(_ url: URL) -> Bool {
+        url.host?.lowercased() == AppURL.shortcutsCallbackHost
     }
 
     /// A `ganymede://` URL that isn't a Shortcuts callback. `root` is the
@@ -79,7 +86,7 @@ final class LinkOpener {
             // Read inside the folders' access: the file is checked there.
             found = try store.withAccess { granted -> (folder: URL, file: URL) in
                 let found = try LinkFolders.resolve(target, root: root, granted: granted)
-                try LinkFolders.checkNotebook(found.file)
+                try LinkFolders.checkNotebook(found.file, startDownload: startDownload)
                 return found
             }
         } catch LinkFolderError.notGranted {
@@ -201,8 +208,12 @@ enum FolderPick {
 }
 
 /// The alert for `LinkOpener.notice`.
+/// Attached to the window and to each full-screen cover, since an alert
+/// can't present from under a cover; `isEnabled` is true for one of them
+/// at a time, or the alert would show twice.
 struct LinkAlert: ViewModifier {
     var links: LinkOpener
+    var isEnabled = true
     var grant: (AppURL) -> Void
     var change: (LinkOpener.FolderSwitch) -> Void
 
@@ -210,13 +221,13 @@ struct LinkAlert: ViewModifier {
         content.alert(
             links.notice?.title ?? "",
             isPresented: Binding(
-                get: { links.notice != nil },
+                get: { isEnabled && links.notice != nil },
                 // Only the alert shown: an action may have posted another.
-                set: { [shown = links.notice?.id] in
-                    if !$0, let shown { links.dismiss(shown) }
+                set: { [shown = links.notice?.id, enabled = isEnabled] in
+                    if enabled, !$0, let shown { links.dismiss(shown) }
                 }
             ),
-            presenting: links.notice
+            presenting: isEnabled ? links.notice : nil
         ) { notice in
             switch notice.action {
             case .dismiss:

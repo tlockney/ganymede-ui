@@ -73,7 +73,7 @@ final class KernelHost: NSObject {
     /// (ganymede-device#40), one for every bridge: the Shortcuts app calls
     /// back to a `ganymede://device-callback/shortcuts/...` URL, which the
     /// app hands to `shortcuts.handle(_:)` before anything else sees it.
-    static let shortcuts = ShortcutCalls(callback: URL(string: "ganymede://device-callback/shortcuts")!)
+    static let shortcuts = ShortcutCalls(callback: URL(string: "ganymede://\(AppURL.shortcutsCallbackHost)/shortcuts")!)
 
     /// The bridge cells get by default: every namespace ganymede-device
     /// has, with the permissioned ones (#569, #422) turned

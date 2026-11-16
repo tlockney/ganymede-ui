@@ -168,6 +168,30 @@ final class LinkOpenerTests: XCTestCase {
         }
     }
 
+    // MARK: iCloud
+
+    @MainActor
+    func testAnEvictedNotebookStartsDownloading() throws {
+        let suite = "LinkOpenerTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let root = try folder("Documents")
+        let vault = try folder("Vault")
+        try Data().write(to: vault.appendingPathComponent(".n.ipynb.icloud"))
+        let store = LinkFolderStore(defaults: defaults)
+        try store.add(vault)
+        var started: [URL] = []
+        let opener = LinkOpener(store: store) { started.append($0) }
+        opener.handle(try link("open", ["folder": "Vault", "file": "n.ipynb"]), root: root) { _ in XCTFail("opened") }
+        XCTAssertEqual(opener.notice?.message, LinkFolderError.downloading("n.ipynb").errorDescription)
+        XCTAssertEqual(started.map { real($0) }, [real(vault.appendingPathComponent("n.ipynb"))])
+        // Outside the folders, the same file is only not granted: no download.
+        started = []
+        opener.handle(try link("open", ["path": base.appendingPathComponent("Documents/../Elsewhere/n.ipynb").path]), root: root) { _ in }
+        XCTAssertEqual(opener.notice?.message, LinkFolderError.notGranted.errorDescription)
+        XCTAssertEqual(started, [])
+    }
+
     // MARK: Switching folders
 
     @MainActor

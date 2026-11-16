@@ -301,10 +301,14 @@ open it again in a moment.
 A notebook in a granted folder other than the open one asks first:
 Ganymede switches to that folder, which restarts its server and stops the
 kernels running in the folder it leaves. `run` and `new` links work only
-on the Mac, and the apps ignore an `x-success`, `x-error` and `x-cancel`
-reply: a link to `x-callback-url/open` still opens the notebook, and
-nothing is sent back. The Mac takes `path` links only. A link opens in
-the window that is showing, and closes Settings if it is open.
+on the Mac. The apps never open an `x-success`, `x-error` or `x-cancel`
+address, so a link to `x-callback-url/open` still opens the notebook and
+nothing is sent back; a link whose callback isn't a valid URL (a `file:`
+address, say) is refused, as on the Mac. The Mac takes `path` links only.
+A link opens in the window that is showing. It closes Settings and a
+terminal on the iPhone, but not a text file being edited, which may have
+unsaved changes: the question or error shows over the editor, and the
+notebook opens behind it.
 
 ### Agents over MCP
 
@@ -538,6 +542,9 @@ headings; pick one to go to its cell.
   with a keyboard attached, the notebook's keyboard shortcuts, listed and
   rebound in place. The API key goes to the Keychain. The page's own
   Settings, Keyboard Shortcuts and Connect open this screen.
+- **Links**: other apps can open a notebook with a `ganymede://open`
+  link, in the folder Ganymede has open or one you granted in
+  Settings › Links; see [Links](#links).
 - **Code font**: Settings > Appearance, with the same fonts and choices
   as on the Mac. With a keyboard, ⌘+, ⌘− and ⌘0 change the size. On a touch
   screen a cell being edited stays at 16 points or more, so iOS doesn't

@@ -68,6 +68,9 @@ struct ContentView: View {
     #if os(iOS)
     @Environment(\.scenePhase) private var phase
     @State private var picking = false
+    /// The folder picker for a link, over the editor, which the window's
+    /// picker can't show over.
+    @State private var coverPicking = false
     /// What the folder picker is for (#640).
     @State private var pickPurpose = FolderPick.openFolder
     /// `ganymede://open` links (#640).
@@ -396,9 +399,9 @@ struct ContentView: View {
         }
         .focusedSceneValue(\.pageModel, pageModel)
         .modifier(KeychainAlert(model: model))
-        .modifier(LinkAlert(links: links, grant: startGrant, change: { change in
-            links.confirm(change) { model.open(folder: $0) }
-        }))
+        .modifier(LinkAlert(
+            links: links, isEnabled: terminal == nil && editing == nil, grant: startGrant, change: changeFolder
+        ))
         // Spotlight (#305): the page's recents are indexed, a save updates
         // its entry, and a result opens here.
         .onChange(of: pageModel.state.recents, initial: true) { _, recents in
@@ -420,9 +423,7 @@ struct ContentView: View {
             if LinkOpener.isShortcutsCallback(url) {
                 KernelHost.shortcuts.handle(url)
             } else {
-                // Settings covers the alert and the notebook.
-                settings = false
-                links.handle(url, root: model.serverRootFolder, show: showNotebook)
+                openLink(url)
             }
         }
         // A notebook waiting for another folder's server (#640).
@@ -463,8 +464,14 @@ struct ContentView: View {
             .environment(model)
         }
         .fullScreenCover(item: $editing) { request in
+            // An editor may have unsaved edits, so a link doesn't close it:
+            // its alert, and the folder picker a grant needs, are its own.
             NavigationStack {
                 EditorWindow(request: request) { editing = nil }
+            }
+            .modifier(LinkAlert(links: links, grant: startGrant, change: changeFolder))
+            .fileImporter(isPresented: $coverPicking, allowedContentTypes: [.folder]) { result in
+                links.picked(result, root: model.serverRootFolder, show: showNotebook)
             }
         }
         .fileImporter(isPresented: $picking, allowedContentTypes: [.folder]) { result in
@@ -839,7 +846,8 @@ struct ContentView: View {
     private func showNotebook(apiPath path: String) {
         pageModel.run("open", arg: path)
         if isPhone {
-            phonePath = [.notebook]
+            // Not behind the editor, which a link leaves open.
+            if editing == nil { phonePath = [.notebook] }
         } else if drawsNativeChrome {
             openFiles.showNotebook()
             panelFills = false
@@ -848,15 +856,42 @@ struct ContentView: View {
     }
 
     /// A link needs a folder granted: the picker, after the alert that
-    /// asked has gone. SwiftUI has no signal for an alert's dismissal
-    /// finishing (a binding going false comes before its animation ends),
-    /// and a picker shown during it may be dropped, so this waits a moment.
+    /// asked has gone.
     private func startGrant(_ request: AppURL) {
         links.beginGrant(for: request)
         pickPurpose = .grantForLink
+        afterPresentationEnds {
+            if editing != nil { coverPicking = true } else { picking = true }
+        }
+    }
+
+    /// A link: Settings and the terminal, which hold nothing to lose, close
+    /// first, and the link waits for them to go, since an alert shown while
+    /// they dismiss is dropped. The editor stays; it shows the alert.
+    private func openLink(_ url: URL) {
+        let covered = settings || terminal != nil
+        settings = false
+        terminal = nil
+        if covered {
+            afterPresentationEnds { links.handle(url, root: model.serverRootFolder, show: showNotebook) }
+        } else {
+            links.handle(url, root: model.serverRootFolder, show: showNotebook)
+        }
+    }
+
+    /// The person said yes to switching folders for a link.
+    private func changeFolder(_ change: LinkOpener.FolderSwitch) {
+        links.confirm(change) { model.open(folder: $0) }
+    }
+
+    /// Runs `work` once a sheet, cover or alert that is closing is gone.
+    /// SwiftUI has no signal for that (a binding going false comes before
+    /// the animation ends), and a picker or alert shown during it may be
+    /// dropped, so this waits a moment.
+    private func afterPresentationEnds(_ work: @escaping @MainActor () -> Void) {
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(300))
-            picking = true
+            work()
         }
     }
 
