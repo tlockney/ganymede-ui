@@ -6,8 +6,9 @@ with its history (`git subtree split`), as the Notebook Library plugin.
 Thomas asked for the move: the plugin isn't specific to Ganymede, and a
 repo of its own can be installed by others. Search (step 3 of #636),
 links and embeds, an outline, a header, settings and an "Open with"
-option (Ganymede's `ganymede://open` by default) were added there
-(obsidian-notebooks#1).
+option (Ganymede's `ganymede://open` by default) are added there in
+obsidian-notebooks#2 (for #1). The math-placeholder follow-up from the
+#637 review moved with the code as obsidian-notebooks#3.
 
 This removes the package, its lint, test and type-check entries, the
 `check` script's build step and its `ci-changes.sh` case. Opening
