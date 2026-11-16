@@ -211,11 +211,21 @@ final class LinkOpener {
         if let waiting = pending, !AppURL.isSame(waiting.folder, root) { pending = nil }
     }
 
-    /// The server didn't start on the folder.
-    /// A start on `root` failed: a notebook waiting for that folder won't
-    /// open. An older start's failure (another folder) leaves it waiting.
-    func startFailed(on root: URL?) {
-        if let waiting = pending, let root, AppURL.isSame(waiting.folder, root) { pending = nil }
+    /// A start on `root` failed, or its folder couldn't be opened: a
+    /// notebook waiting for that folder won't open, and says why, since
+    /// the old folder's page may still show (`reason`: the app's error).
+    /// An older start's failure (another folder) leaves it waiting.
+    func startFailed(on root: URL?, reason: String? = nil) {
+        guard let waiting = pending, let root, AppURL.isSame(waiting.folder, root) else { return }
+        pending = nil
+        post(
+            Notice(
+                title: "Ganymede couldn’t open “\(waiting.folder.lastPathComponent)”",
+                message: reason ?? "Its server didn’t start.",
+                action: .dismiss
+            ),
+            deferred: true
+        )
     }
 
     /// A notebook in the open folder: shown now when the running server

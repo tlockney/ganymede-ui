@@ -347,13 +347,15 @@ struct ContentView: View {
                     .navigationDestination(for: PhoneScreen.self) { _ in notebook }
                 }
                 .task { model.startIfNeeded() }
-                .task(id: model.url) {
+                // Each start too: a quick restart can bring the same URL
+                // back without `url` being seen to go nil (#640).
+                .task(id: "\(model.serverStart) \(model.url?.absoluteString ?? "")") {
                     if let url = model.url {
                         phonePage.load(url, page: pageModel, onOpenFile: openEditor)
                     } else {
                         // Stopped, to restart (Open Folder, Try Again,
                         // remotes, resume): load the new server's page.
-                        phonePage.forget(page: pageModel)
+                        phonePage.forget()
                     }
                 }
             } else if drawsNativeChrome {
@@ -440,19 +442,19 @@ struct ContentView: View {
         .onChange(of: pageModel.ready) { _, ready in
             if ready { links.pageReady(served: model.servedRoot, show: showNotebook) }
         }
-        // The page goes with its server, on every layout (the iPhone's
-        // store does this too): commands and a waiting notebook wait for
-        // the next page's state, not the old page's.
-        .onChange(of: model.url) { _, url in
-            if url == nil { pageModel.reset(awaitingCommit: true) }
+        // The page goes with its server, on every layout: commands and a
+        // waiting notebook wait for the next page's state, not the old
+        // page's.
+        .onChange(of: model.startsRequested, initial: true) { _, start in
+            pageModel.reset(forStart: start)
         }
         .onChange(of: openTextFiles, initial: true) { _, paths in
             OpenTextFiles.shared.set(paths, for: windowID)
         }
         .onDisappear { OpenTextFiles.shared.set([], for: windowID) }
         .onChange(of: model.serverRootFolder) { _, root in links.rootChanged(to: root) }
-        .onChange(of: model.error) { _, error in
-            if error != nil { links.startFailed(on: model.failedRoot) }
+        .onChange(of: model.startFailures) {
+            links.startFailed(on: model.failedRoot, reason: model.error)
         }
         // Opened again from the root, not where the last visit ended.
         .sheet(isPresented: $settings, onDismiss: { settingsPath = [] }) {

@@ -357,7 +357,9 @@ final class LinkOpenerTests: XCTestCase {
         // not this switch's.
         f.opener.startFailed(on: f.root)
         XCTAssertNotNil(f.opener.pending)
-        f.opener.startFailed(on: f.vault)
+        f.opener.startFailed(on: f.vault, reason: "Ganymede was not allowed to open Vault.")
+        XCTAssertNil(f.opener.pending)
+        XCTAssertEqual(f.opener.notice?.message, "Ganymede was not allowed to open Vault.", "said, not dropped silently")
         var shown: [String] = []
         f.opener.pageReady(served: f.vault) { shown.append($0) }
         XCTAssertEqual(shown, [])

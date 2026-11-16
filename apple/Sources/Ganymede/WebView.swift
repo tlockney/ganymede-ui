@@ -101,11 +101,10 @@ final class WebViewStore {
     }
 
     /// The server stopped (a restart reuses its port, so the page's URL
-    /// comes back the same): the next `load` loads the page again, and its
-    /// commands wait for it.
-    func forget(page: PageModel) {
+    /// comes back the same): the next `load` loads the page again. The
+    /// window's `PageModel.reset(forStart:)` makes its commands wait.
+    func forget() {
         coordinator.forget()
-        page.reset(awaitingCommit: true)
     }
 
     /// Puts the web view back in `parking` when no screen in the window
@@ -147,7 +146,10 @@ enum NotebookWindows {
 
 @MainActor
 final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
-    private var loaded: URL?
+    /// The app's page loads: which URL for which server start (#640).
+    private var loads = PageLoads()
+    /// The page's URL, the in-app server's.
+    private var loaded: URL? { loads.url }
     private weak var webView: WKWebView?
     private let agentKeys = AgentKeys(secrets: KeychainStore())
     private var urlObservation: NSKeyValueObservation?
@@ -238,19 +240,33 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
 
     /// The next `load` loads even the same URL: the server restarted.
     func forget() {
-        loaded = nil
+        loads.forget()
     }
 
-    /// Loads `url` when it changed: a restart for another folder.
+    /// Loads `url` when it changed, or the server restarted.
     func load(_ url: URL, in view: WKWebView) {
-        guard url != loaded else { return }
-        loaded = url
+        let start = AppModel.shared.serverStart
+        guard loads.shouldLoad(url, start: start) else { return }
+        startLoad(url, start: start, in: view)
+    }
+
+    private func startLoad(_ url: URL, start: Int, in view: WKWebView) {
         // The person's name, for this server's origin only (#606).
         Self.installPageScripts(on: view, loaded: url)
         // The ledger keeps notebooks by absolute path (#383).
         kernels.notebookRoot = AppModel.shared.serverRootFolder
         kernels.uiWillLoad(url)
-        view.load(URLRequest(url: url))
+        page?.loadStarted(view.load(URLRequest(url: url)), start: start)
+    }
+
+    /// The app's load failed before it committed: loaded again, so the
+    /// page can still become ready for this start (#640). Each time
+    /// another navigation, such as the old page reloading, cancelled it;
+    /// once when the server didn't answer.
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        let cancelled = (error as NSError).domain == NSURLErrorDomain && (error as NSError).code == NSURLErrorCancelled
+        guard page?.loadFailed(navigation) == true, let again = loads.retry(cancelled: cancelled) else { return }
+        startLoad(again.url, start: again.start, in: webView)
     }
 
     /// A reload or another page: the old page's remote `device` calls go
@@ -258,7 +274,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
         kernels.reset()
         // The new page takes commands once it has posted its state.
-        page?.committed()
+        page?.committed(navigation)
     }
 
     /// The UI page's process died: its dialogs and sounds for server
@@ -590,116 +606,6 @@ private final class AgentKeysHandler: NSObject, WKScriptMessageHandlerWithReply 
             return
         }
         coordinator.received(agentKeys: message, reply: replyHandler)
-    }
-}
-
-/// What a window's page shows, and the commands it runs: the native
-/// toolbar and menus read `state` and call `run` (#205).
-@MainActor
-@Observable
-final class PageModel {
-    private(set) var state = PageState()
-    @ObservationIgnored weak var webView: WKWebView? {
-        didSet { flush() }
-    }
-    /// Whether the page has posted its state with a backend, so its
-    /// commands and calls are ready.
-    private(set) var ready = false
-    /// The page was let go with its server (`reset(awaitingCommit:)`): a
-    /// state the old page still posts, before the next page commits, makes
-    /// nothing ready (#640).
-    @ObservationIgnored private var awaitingCommit = false
-    /// Commands run before then: the iPhone's list can be tapped while the
-    /// page is still loading (#209).
-    @ObservationIgnored private var pending: [String] = []
-
-    /// Views that want the kernels' memory (#241).
-    @ObservationIgnored private var memoryWatch = MemoryWatch()
-
-    func update(_ state: PageState) {
-        if state != self.state { self.state = state }
-        // Ready once it is connected: before that, `open` and
-        // `new-notebook` have no backend to act on.
-        if !ready, !awaitingCommit, state.backend != nil {
-            ready = true
-            // A page loaded again starts without being asked.
-            if let arg = memoryWatch.onReload, !pending.contains(PageCommand.script("watch-memory", arg: arg)) {
-                pending.append(PageCommand.script("watch-memory", arg: arg))
-            }
-            flush()
-        }
-    }
-
-    /// The Running list or kernel popover shows (or goes): the page reads
-    /// each kernel's memory while any of them shows (#241).
-    func watchMemory(_ watching: Bool) {
-        if let arg = memoryWatch.change(watching: watching) { run("watch-memory", arg: arg) }
-    }
-
-    /// Runs one of the page's commands (`PageCommand`), once the page is
-    /// ready for them.
-    func run(_ id: String, arg: String? = nil) {
-        pending.append(PageCommand.script(id, arg: arg))
-        flush()
-    }
-
-    /// Asks the page to list the server's kernels again (#350); nothing
-    /// while it is loading, as a new page lists them itself.
-    func refreshKernels() {
-        guard ready else { return }
-        run("refresh-kernels")
-    }
-
-    /// The page is going away: commands wait for the next one's state.
-    /// `awaitingCommit` when its server went and the old page may still
-    /// run (the iPhone's parked view): only a page committed after this
-    /// counts.
-    func reset(awaitingCommit: Bool = false) {
-        ready = false
-        if awaitingCommit { self.awaitingCommit = true }
-    }
-
-    /// A page committed: its state counts again.
-    func committed() {
-        ready = false
-        awaitingCommit = false
-    }
-
-    enum CallError: LocalizedError {
-        case notReady
-
-        var errorDescription: String? { "The notebook page hasn't loaded." }
-    }
-
-    /// One of the page's calls (`window.ganymede.call`, #210), with its
-    /// answer as JSON values. Throws when the page isn't ready, or with the
-    /// page's error.
-    @MainActor
-    func call(_ id: String, arg: String? = nil) async throws -> Any? {
-        guard ready, let webView else { throw CallError.notReady }
-        // The completion-handler form: the async one traps on a null answer.
-        return try await withCheckedThrowingContinuation { done in
-            webView.callAsyncJavaScript(
-                "return await window.ganymede.call(id, arg ?? undefined)",
-                arguments: ["id": id, "arg": arg ?? NSNull()],
-                in: nil,
-                in: .page
-            ) { result in
-                switch result {
-                case .success(let value): done.resume(returning: value)
-                case .failure(let error): done.resume(throwing: error)
-                }
-            }
-        }
-    }
-
-    private func flush() {
-        guard ready, let webView, !pending.isEmpty else { return }
-        let scripts = pending
-        pending = []
-        for script in scripts {
-            webView.evaluateJavaScript(script, completionHandler: nil)
-        }
     }
 }
 

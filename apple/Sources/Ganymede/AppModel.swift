@@ -27,6 +27,18 @@ final class AppModel {
     /// The folder the last failed start was for, set with `error`.
     private(set) var failedRoot: URL?
     private(set) var error: String?
+    /// The number (`startsRequested`) of the latest start that has begun:
+    /// the page loads again for each, even when the URL comes back the
+    /// same, and views watch it rather than `url` going nil, which a quick
+    /// start can skip (#640).
+    private(set) var serverStart = 0
+    /// Counts the starts asked for, and numbers them: once a window sees
+    /// one, its page waits for that start's page, though the start may be
+    /// queued behind another (#640).
+    private(set) var startsRequested = 0
+    /// Counts failed starts, set with `error` and `failedRoot`: each one is
+    /// a change even with the same message (#640).
+    private(set) var startFailures = 0
     /// The notebook folder: on macOS the last folder opened, which a window
     /// opened on nothing shows; on iOS the folder the server serves.
     private(set) var root: URL
@@ -198,13 +210,20 @@ final class AppModel {
         #endif
         // The folder this start serves: `root` may change before it runs.
         let launchedRoot = serverRootFolder
+        startsRequested += 1
+        let number = startsRequested
         enqueue { [self] in
             // A start queued behind another that has since finished: its
             // page goes too, so the page loads again for this server even
-            // on the same port (#640).
+            // on the same port (#640). An earlier start's failure goes
+            // too: it isn't this start's (failures are counted in
+            // `startFailures`).
+            serverStart = number
             url = nil
             serverURL = nil
             servedRoot = nil
+            error = nil
+            failedRoot = nil
             #if os(macOS)
             await path?.value
             // Shared on the tailnet: Tailscale names this Mac, and the
@@ -285,6 +304,7 @@ final class AppModel {
                 #endif
                 failedRoot = launchedRoot
                 error = failure.localizedDescription
+                startFailures += 1
             }
         }
     }
@@ -456,6 +476,9 @@ final class AppModel {
         }
         guard folder.startAccessingSecurityScopedResource() else {
             error = "Ganymede was not allowed to open \(folder.lastPathComponent)."
+            // A notebook link waiting for this folder won't open (#640).
+            failedRoot = folder
+            startFailures += 1
             return
         }
         scoped?.stopAccessingSecurityScopedResource()
