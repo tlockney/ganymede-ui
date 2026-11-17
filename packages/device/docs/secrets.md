@@ -82,7 +82,7 @@ that refreshes an OAuth token has to replace it unattended. Only the
 person creates a name: in Settings, or in `get`'s "enter it now"
 prompt. A `set` for a name that isn't saved fails `failed` ("no secret
 named “github”: add it in Settings › Device") before any prompt, so a
-notebook can't squat a name (Security, below; open question 2).
+notebook can't squat a name (Security, below; decision 2).
 
 **`delete(name)`** removes the keychain item for everyone and answers
 whether there was one. It has its own capability so that refusing a
@@ -229,7 +229,10 @@ Settings › Device gains a Secrets section above the per-notebook list:
   field, so the person can enter or rotate a credential without any
   notebook seeing it. Neither grants any notebook access.
 - Delete, with a confirmation naming the notebooks that read it.
-- Values are never shown.
+- Show Value… on each row asks for the device's own authentication
+  (Touch ID, Face ID or the passcode, through `LocalAuthentication`'s
+  `.deviceOwnerAuthentication`) and then shows the value until the
+  section is left. Values are never shown otherwise.
 
 A secret is flagged "Unused" when nothing has read it for 90 days, or
 when no notebook has access and it was saved or last read more than 30
@@ -275,8 +278,8 @@ had saved one, and every notebook later granted "openai" would send its
 prompts and data to that account. The read prompt can't help: it shows
 the name, not who put the value there. So only the person creates a
 name (Settings or "enter it now"), and `set` only replaces; Settings
-also shows which notebook last changed each secret. Open question 2
-asks whether cells need to create names at all.
+also shows which notebook last changed each secret. Thomas decided
+cells never create names (decision 2).
 
 **Exfiltration.** A notebook allowed to read a name can send the value
 anywhere; the grant is the trust decision, and there is no network
@@ -284,8 +287,8 @@ policy behind it. The limits are scope and visibility: a notebook reads
 only names it was granted, `list` shows only those, the prompt comes
 before any lookup, and access goes when the file changes outside the
 app, so a pulled or downloaded notebook asks again. The bridge never
-logs a value or puts one in an error message, and Settings never shows
-one. A value printed in a cell is saved in the notebook like any
+logs a value or puts one in an error message, and Settings shows one
+only after the device's own authentication. A value printed in a cell is saved in the notebook like any
 output; device.md says so.
 
 **Which notebook is asking.** Access is keyed by what the notebook page
@@ -336,18 +339,16 @@ key, and changes the account format; the service name stays.
 4. Docs: docs/device.md's secrets rows and a Secrets section, with an
    "Unreleased" note until the apps' release.
 
-## Open questions for Thomas
+## Decisions
+
+Thomas answered the open questions on 2026-11-17 (ui#650):
 
 1. Names: ASCII letters, digits, `.`, `_` and `-`, up to 64, matched
-   without regard to case. Too strict for anyone?
-2. Creating names: this note lets only the person create one (Settings
-   or the "enter it now" prompt), because a cell that creates names can
-   squat one (Security) and its value has passed through the notebook.
-   Unless there's a strong case for setup notebooks that save new
-   credentials themselves, keep it that way?
-3. Keep "Always Allow" for change access (token refresh), or make
-   replace ask every time and give up unattended rotation?
-4. The "Unused" thresholds: 90 days unread, 30 days with no notebook
+   without regard to case. Kept.
+2. Creating names: only the person creates a name (Settings or the
+   "enter it now" prompt); cells only replace.
+3. Change access keeps "Always Allow", so a notebook can rotate a token
+   unattended.
+4. "Unused" thresholds: 90 days unread, 30 days with no notebook
    allowed.
-5. Should Settings show a value after the device's own authentication
-   (Touch ID, passcode), or never?
+5. Settings shows a value only after the device's own authentication.
