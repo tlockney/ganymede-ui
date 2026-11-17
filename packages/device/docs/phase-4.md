@@ -143,7 +143,7 @@ As built so far (bridge side, #115): `device.input` and
 `device.output(...)` (wire `input` and `output`, answered by an
 `EngineDevice` with `attachRun(_:output:)`; files as plain
 `{ name, type, data }`, since JavaScriptCore has no `File`), and
-`device.widget.update` (`addWidgets()`, `PublishedWidgets` per notebook
+`device.widget.update` (`addWidgets(_:enabled:)`, `PublishedWidgets` per notebook
 and kind in a `WidgetStore`). The share extension, intents and widget
 extension are prototyped in ganymede-ui on JavaScriptCore, ahead of
 ganymede#266 (decided 2026-11-09).

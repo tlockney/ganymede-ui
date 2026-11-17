@@ -2344,7 +2344,7 @@ what it showed, and asks the system to redraw it.
 | `content` | `WidgetContent` | yes | The layout: `title`, `rows`, `tint`, `sparkline`. |
 | `options` | `CallOptions` | no | The call's `signal`. Cancel rejects `cancelled`; content already published stays. |
 
-**Throws** `DeviceError`: `failed` when `kind` or `content` isn't valid; `denied` when the app hasn't said which notebook runs.
+**Throws** `DeviceError`: `failed` when `kind` or `content` isn't valid; `denied` when the app hasn't said which notebook runs; `unavailable` when the app's Notebook Widgets switch is off.
 
 **Availability**
 

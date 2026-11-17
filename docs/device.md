@@ -110,10 +110,16 @@ browser yet.
 
 > [!NOTE]
 > The table's "In the app" column says what the device package supports.
-> The apps don't register `device.secrets` or `device.widget` yet, so
-> there they answer `unavailable` despite its "yes"; `device.output`
-> works only in a run with no window, such as Shortcuts' Run Script on
-> Device.
+> The apps don't register `device.secrets` yet, so there it answers
+> `unavailable` despite its "yes"; `device.widget` works once Settings ›
+> Device › Notebook Widgets is on, and answers `unavailable` until then
+> (see below); `device.output` works only in a run with no window,
+> such as Shortcuts' Run Script on Device.
+
+> [!NOTE]
+> **Unreleased.** `device.widget` working once the switch is on, in
+> notebooks already open, is available only from a build of `main`
+> (HEAD), not in the latest release.
 
 <!-- device-table:start (generated: node scripts/device-table.mjs --write) -->
 

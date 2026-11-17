@@ -892,7 +892,7 @@ Any other context (a notebook's, the page, a remote kernel) answers both
 
 `device.widget.update(kind, content)` publishes what a widget shows,
 since a widget can't run a script itself. The app turns it on with
-`DeviceBridge.addWidgets()`; the widget extension reads the same
+`DeviceBridge.addWidgets(_:enabled:)`; the widget extension reads the same
 `UserDefaultsWidgetStore` (on the App Group suite, with
 `UserDefaultsWidgetStore.read(_:)` from its timeline provider).
 
@@ -909,5 +909,10 @@ since a widget can't run a script itself. The app turns it on with
   up to 128 characters, or `{ label?, value, unit? }` with a finite
   number and labels and units up to 32), `tint` (one of `WIDGET_TINTS`),
   `sparkline` (up to 64 finite numbers). Anything else fails `failed`.
+- `enabled` is asked on every call. When it says no, the call fails
+  `unavailable` and keeps nothing; the app ties it to its settings
+  switch, so turning it off or on applies to kernels already running.
+  `hello` lists `widget.update` whenever `addWidgets` ran, so
+  `device.has` is true even while the switch is off.
 - No permission. A call needs the notebook (`setNotebook`); without it,
   `denied`.

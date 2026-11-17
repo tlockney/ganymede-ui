@@ -470,7 +470,10 @@ public final class DeviceBridge: NSObject, WKScriptMessageHandlerWithReply {
     /// built-in dialogs and those a namespace added.
     var personMethods: Set<String> { Self.dialogMethods.union(addedDialogs.keys).union(foregroundMethods) }
 
-    /// The methods this bridge answers, as `hello` reports them.
+    /// The methods this bridge answers, as `hello` reports them. An
+    /// exception to "`has()` is true only if it works": `widget.update`
+    /// is listed whenever `addWidgets` ran, and fails `unavailable` while
+    /// the app's switch is off (#494).
     public var capabilities: [String] {
         Self.capabilities + (haptics.isAvailable ? ["haptics.impact", "haptics.notification", "haptics.selection"] : [])
             + permissions.keys.sorted().flatMap { ["\($0).authorizationStatus", "\($0).requestAuthorization"] }

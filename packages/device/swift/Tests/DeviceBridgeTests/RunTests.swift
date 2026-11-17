@@ -21,7 +21,7 @@ final class RunTests: XCTestCase {
     override func setUp() async throws {
         widgets = MemoryWidgetStore()
         bridge = DeviceBridge(clipboard: nil, ledger: PermissionLedger(store: MemoryLedgerStore()), appVersion: "")
-        bridge.addWidgets(PublishedWidgets(store: widgets))
+        bridge.addWidgets(PublishedWidgets(store: widgets), enabled: { true })
     }
 
     private func send(_ engine: EngineDevice, _ message: [String: Any]) -> [String: Any]? {
@@ -94,6 +94,30 @@ final class RunTests: XCTestCase {
         XCTAssertEqual(widgets.reloads, 3, "the same content again doesn't reload")
         bridge.notebookMoved(from: "/n/A.ipynb", to: "/n/C.ipynb")
         XCTAssertEqual(published.content(notebook: "/n/C.ipynb", kind: "weather")?.title, "Bergen")
+    }
+
+    func testTheWidgetSwitchIsAskedOnEachCall() {
+        final class Switch { var on = false }
+        let toggle = Switch()
+        let store = MemoryWidgetStore()
+        let bridge = DeviceBridge(clipboard: nil, ledger: PermissionLedger(store: MemoryLedgerStore()), appVersion: "")
+        bridge.addWidgets(PublishedWidgets(store: store), enabled: { toggle.on })
+        bridge.setNotebook("/n/A.ipynb", for: 1)
+        func update() -> [String: Any]? {
+            var reply: [String: Any]?
+            bridge.respond(to: ["id": 1, "owner": 1, "method": "widget.update", "params": ["kind": "k", "content": ["title": "T"]]]) { reply = $0 }
+            return reply
+        }
+        let hello = (send(bridge.engineDevice(), ["id": 9, "method": "hello", "params": [:]])?["result"] as? [String: Any])?["capabilities"] as? [String] ?? []
+        XCTAssertTrue(hello.contains("widget.update"), "listed even while off")
+        XCTAssertEqual(code(update()), "unavailable", "off: nothing is kept")
+        XCTAssertTrue(store.saved.isEmpty)
+        toggle.on = true
+        XCTAssertTrue(update()?["result"] is NSNull, "on, with no restart")
+        XCTAssertEqual(store.saved.count, 1)
+        toggle.on = false
+        XCTAssertEqual(code(update()), "unavailable")
+        XCTAssertEqual(store.saved.first?.content.title, "T", "off again: the update is refused")
     }
 
     func testBadWidgetsFail() {

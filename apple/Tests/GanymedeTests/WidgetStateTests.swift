@@ -22,6 +22,39 @@ final class WidgetStateTests: XCTestCase {
         XCTAssertNil(WidgetState.parse("no newline"))
     }
 
+    func testATapOpensTheNotebook() throws {
+        let path = "/Users/me/My Notebooks/Wéather & Wind+1 #2.ipynb"
+        let widgets = try published(two.replacingOccurrences(of: "/n/Weather.ipynb", with: path))
+        let id = WidgetState.id(notebook: path, kind: "today")
+        let url = try XCTUnwrap(WidgetState.resolve(enabled: true, published: widgets, selection: id).url)
+        XCTAssertEqual(url.scheme, "ganymede")
+        XCTAssertEqual(try AppURL(url).command, .open(path: path))
+    }
+
+    func testATapNeverRuns() throws {
+        let url = try XCTUnwrap(WidgetState.openURL(notebook: "/n/a.ipynb"))
+        XCTAssertEqual(url.host, "open")
+        if case .run = try AppURL(url).command { XCTFail("a widget tap must not run") }
+    }
+
+    func testNoTapWithoutANotebook() throws {
+        let widgets = try published(two)
+        let id = WidgetState.id(notebook: "/n/Weather.ipynb", kind: "today")
+        XCTAssertNil(WidgetState.resolve(enabled: false, published: widgets, selection: id).url)
+        XCTAssertNil(WidgetState.resolve(enabled: true, published: widgets, selection: nil).url)
+        XCTAssertNil(WidgetState.openURL(notebook: "  "))
+    }
+
+    func testAMissingWidgetOpensItsNotebook() throws {
+        let missing = WidgetState.resolve(enabled: true, published: [], selection: WidgetState.id(notebook: "/n/x.ipynb", kind: "k"))
+        XCTAssertEqual(try AppURL(try XCTUnwrap(missing.url)).command, .open(path: "/n/x.ipynb"))
+    }
+
+    func testOnlyAnAbsolutePathHasALink() {
+        XCTAssertNil(WidgetState.openURL(notebook: "shortcuts/a.ipynb"))
+        XCTAssertNil(WidgetState.openURL(notebook: "~/a.ipynb"))
+    }
+
     func testOffShowsNothing() throws {
         let widgets = try published(two)
         let id = WidgetState.id(notebook: "/n/Weather.ipynb", kind: "today")
