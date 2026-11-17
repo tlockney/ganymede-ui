@@ -86,10 +86,6 @@ shown or hidden, its tab and its expanded folders across launches.
 
 ### Toolbar and menus
 
-> [!NOTE]
-> **Unreleased.** The Mac toolbar's Share button is available only from a
-> build of `main` (HEAD); in the latest release, use the File menu.
-
 - The toolbar saves, runs cells, interrupts and restarts the kernel,
   inserts cells, sets the cell type and trusts the notebook. Its Share
   button downloads, exports or publishes the notebook. Its kernel
@@ -116,10 +112,6 @@ shown or hidden, its tab and its expanded folders across launches.
   running inside the app, as on the iPad. Its cells get the
   [device API](device.md); kernels in their own process can't reach the
   app.
-
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release.
 
   The Mac's kernel popover and Kernel > Change Kernel, the iPad's kernel
   menu and the browser's kernel pickers mark kernels that offer the
@@ -283,10 +275,6 @@ link, 3 cancelled) and `errorMessage`, and `x-cancel` is opened when
 you answer Cancel. In Shortcuts, the Open X-Callback URL action does
 this and gives the answer to the next action.
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
-
 The iPad and iPhone app opens `ganymede://open` links too, in two forms:
 `ganymede://open?path=…` and
 `ganymede://open?folder=<name>&file=<path in that folder>`, where `name`
@@ -389,10 +377,6 @@ server. iPad and iPhone send no name.
 
 ### Sharing on your tailnet
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
-
 With [Tailscale](https://tailscale.com) on the Mac, Settings › General ›
 Tailnet opens Ganymede to your other devices at the Mac's tailnet name,
 such as `https://box.tail1234.ts.net/`. List the Tailscale logins to let
@@ -419,10 +403,6 @@ Mac you alone use. MCP still needs its token. The details are in
 Ganymede's [security notes](https://ganymede-server.com/docs/security#tailnet-identity).
 
 ### Remotes on your tailnet
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
 
 A remote can leave its token empty when it is a Ganymede server that lets
 you in by your tailnet login, such as another Mac sharing Ganymede as
@@ -561,10 +541,6 @@ headings; pick one to go to its cell.
   link, in the folder Ganymede has open or one you granted in
   Settings › Link Folders; see [Links](#links).
 
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release.
-
 - **Code font**: Settings > Appearance, with the same fonts and choices
   as on the Mac. With a keyboard, ⌘+, ⌘− and ⌘0 change the size. On a touch
   screen a cell being edited stays at 16 points or more, so iOS doesn't
@@ -626,11 +602,6 @@ headings; pick one to go to its cell.
   already open: while it is off, `device.widget.update` fails
   `unavailable`.
 
-  > [!NOTE]
-  > **Unreleased.** The tap to open and the switch applying at once are
-  > available only from a build of `main` (HEAD), not in the latest
-  > release.
-
 - **Notebook Access…** (Kernel menu on the Mac, the ⋯ menu on the iPad
   and iPhone, and the Command Palette) sets what a notebook's cells may
   ask the server for through `jupyter.host()`: the notebooks they may
@@ -655,10 +626,6 @@ headings; pick one to go to its cell.
   foreground the app restarts it if it stopped answering.
 
 ### Tailscale SSH
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
 
 On iPad and iPhone, a host running
 [Tailscale SSH](https://tailscale.com/kb/1193/tailscale-ssh) signs you in

@@ -123,11 +123,6 @@ browser yet.
 > [design note](https://github.com/tlockney/ganymede-ui/blob/main/packages/device/docs/secrets.md)
 > has the details.
 
-> [!NOTE]
-> **Unreleased.** `device.widget` working once the switch is on, in
-> notebooks already open, is available only from a build of `main`
-> (HEAD), not in the latest release.
-
 <!-- device-table:start (generated: node scripts/device-table.mjs --write) -->
 
 | Method                                                                    | Returns                                                    | In the app   | Permission    | Remote kernel | Browser       |
