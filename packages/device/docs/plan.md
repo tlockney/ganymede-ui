@@ -325,7 +325,7 @@ const people = await device.contacts.search("alex");
 await device.reminders.add({ title: "Buy milk", due: new Date(…) });
 
 // Phase 3: app-level
-const token = await device.secrets.get("github");   // Keychain, scoped per notebook
+const token = await device.secrets.get("github");   // Keychain, shared by name, granted per notebook
 for await (const adv of device.bluetooth.scan({ services: [NUS], timeout: 10 })) { … }
 await using conn = await adv.peripheral.connect();
 await device.shortcuts.run("Log", { input: text }); // x-callback round trip
@@ -619,6 +619,10 @@ Done:
 21. **Phase 3's secrets** (#113): `device.secrets` get, set, delete and
    list, strings kept per notebook in the keychain on this device, with
    the ledger's prompt as the only consent (docs/protocol.md, "Secrets").
+   Not registered by the apps. Replaced before they do by one shared set
+   of named secrets with access granted per notebook and per name
+   (decided 2026-11-17, ganymede-ui#570; design in
+   [secrets.md](secrets.md)).
 22. **Shortcuts** (#40): `device.shortcuts.run(name, { input })`, an
    x-callback round trip through the Shortcuts app, with the ledger's
    prompt as the only consent; not in a headless run (docs/protocol.md,

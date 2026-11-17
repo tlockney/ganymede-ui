@@ -98,6 +98,11 @@ entitlement) and `NotebookSecrets` for Settings. Names count UTF-16 code
 units, as the cell's `length` does. A rename the keychain refuses is kept
 (`pendingMoves`) and applied before the next secrets call.
 
+Superseded (2026-11-17, ganymede-ui#570): the apps never registered the
+per-notebook store. Secrets become one shared set of named secrets, one
+keychain item per name, with read and change access granted per
+notebook and per name through the ledger; see [secrets.md](secrets.md).
+
 ## 3. Host events (`device.on`)
 
 ```ts
@@ -243,7 +248,8 @@ plan.md "Where things stand" updated.
 ## Open questions
 
 1. ~~Secrets: per notebook only, or also an app-wide scope?~~ Per
-   notebook only (decided 2026-11-09).
+   notebook only (decided 2026-11-09), then shared by name with access
+   per notebook (decided 2026-11-17; [secrets.md](secrets.md)).
 2. Folders: should a process kernel on the Mac get them as Deno
    permission scopes in this phase, or wait?
 3. Bluetooth on a remote kernel stays "no"; confirm no need for it from
