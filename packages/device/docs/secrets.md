@@ -52,12 +52,17 @@ Values stay strings up to 64 KiB as UTF-8.
 separately, both per notebook and per name, through the ledger:
 
 - Read, ledger capability `secrets:<name>`: `get`.
-- Change, ledger capability `secrets.set:<name>`: `set` and `delete`.
+- Change, ledger capability `secrets.set:<name>`: `set`.
+- Delete, ledger capability `secrets.delete:<name>`: `delete`, never
+  kept (below).
 
-The bridge keys each call by its name with `setLedgerCapability`, as
-`shortcuts.run` keys by `shortcuts:<name>`, and both are narrower than
-the `secrets` namespace: a kept "deny" for `secrets` refuses every
-name, and a kept "always" for `secrets` lets none through.
+`<name>` in a capability is always the lowercase form, so "GitHub" and
+"github" are one grant; prompts and Settings show the secret's label
+instead. The bridge keys each call by its name with
+`setLedgerCapability`, as `shortcuts.run` keys by `shortcuts:<name>`,
+and all three are narrower than the `secrets` namespace: a kept "deny"
+for `secrets` refuses every name, and a kept "always" for `secrets`
+lets none through.
 
 **`get(name)`** asks for read access when the notebook has no kept
 answer for the name. Once allowed, it answers the value, or `null` when
@@ -70,18 +75,24 @@ read access as answered, and `get` answers it. That way a credential
 never has to pass through a cell's source or output, where it would be
 saved into the `.ipynb`.
 
-**`set(name, value)`** needs change access. For a name that doesn't
-exist yet it creates the secret, and a notebook may create any new name
-this way; the creating notebook also gets read access to it with the
-same answer, since it already knows the value. For a name that exists
-it replaces the value for every notebook that reads it, so the prompt
-says so and names them (below). "Always Allow" is offered for both,
-since a notebook that refreshes an OAuth token has to replace it
-unattended.
+**`set(name, value)`** needs change access and replaces an existing
+secret's value for every notebook that reads it, so the prompt says so
+and names them (below). "Always Allow" is offered, since a notebook
+that refreshes an OAuth token has to replace it unattended. Only the
+person creates a name: in Settings, or in `get`'s "enter it now"
+prompt. A `set` for a name that isn't saved fails `failed` ("no secret
+named “github”: add it in Settings › Device") before any prompt, so a
+notebook can't squat a name (Security, below; open question 2).
 
-**`delete(name)`** needs change access too, removes the keychain item
-for everyone, and answers whether there was one. Its prompt names the
-notebooks that read it. The usual place to delete is Settings.
+**`delete(name)`** removes the keychain item for everyone and answers
+whether there was one. It has its own capability so that refusing a
+delete can't block a later `set`: if delete shared `secrets.set:<name>`,
+its "Don't Allow" would keep a deny there and stop a token refresh. Its
+prompt offers Allow Once and Don't Allow, and Don't Allow answers the
+ledger nil (as a dismissed prompt does today), which refuses this call
+and keeps nothing; so no ledger change is needed, nothing about delete
+is ever kept, and a delete always asks. The usual place to delete is
+Settings.
 
 **`list()`** answers, sorted, the names this notebook has a kept read
 "always" for that exist now. It never asks, and it never shows names the
@@ -108,18 +119,12 @@ safe for quotes with `AppLedgerPrompter.quotable`.
 - Read, not saved: the same title, with "No secret named “github” is
   saved on this device." and a secure field; Save and Allow Once, Save
   and Always Allow, Don't Allow.
-- Create: "“Setup.ipynb” wants to save a new secret “github”". Allow
-  Once, Always Allow, Don't Allow.
 - Replace: "“Setup.ipynb” wants to replace the secret “github”".
   Message: "Report.ipynb and Sync.ipynb read it and will get the new
   value." (or "No other notebook reads it."). Allow Once, Always Allow,
   Don't Allow.
 - Delete: "“Setup.ipynb” wants to delete the secret “github”", with the
-  same message. Allow Once, Don't Allow: a delete is never kept as
-  "always" on its own; a kept change "always" from `set` covers it.
-
-Create and replace share one ledger capability, so the prompt's wording
-is picked when it shows, from whether the name exists then.
+  same message. Allow Once, Don't Allow (refuses this call only).
 
 ## Keychain layout
 
@@ -141,9 +146,13 @@ One generic password per name:
   extensions ([phase-4.md](phase-4.md), part 2), with
   `keychain-access-groups` on the app and each extension.
 
-`KeychainSecretStore` keeps its shape; only the account changes. Nothing
-about a notebook is in the keychain, so a rename or move touches no
-item, and `NotebookSecrets`' pending renames (`pendingMoves`, `settle`,
+`KeychainSecretStore` changes in two ways: the account is the
+lowercase name, and the store takes a label when it creates an item.
+`SecretStore.write(_:to:)` and `KeychainSecretStore.write` have no label
+today; `write` gains one, set as `kSecAttrLabel` on `SecItemAdd` and
+left alone on `SecItemUpdate`, so a replace keeps the first spelling.
+Nothing about a notebook is in the keychain, so a rename or move
+touches no item, and `NotebookSecrets`' pending renames (`pendingMoves`, `settle`,
 `forgetPendingMoves`) go away.
 
 ## Ledger and index
@@ -157,30 +166,47 @@ notebook shows them too ("Secret “github”", "Change secret “github”"),
 with Revoke, and `revoke(notebook:)` drops them with the rest.
 
 Dropping access when a notebook changes is #584's job, not a second
-mechanism: #584 stores with each kept row what the app last saw of the
-file (as tlockney/ganymede#827 does for host grants: size, modification
-time and inode, refreshed on the app's own saves). When the file no
-longer matches, every kept row for that path goes, secrets rows
-included, and the next call asks again. So secrets depend on #584
+mechanism. #584 is open; what this note needs from it is that each kept
+row stores what the app last saw of the file, refreshed on the app's own
+saves, and that the stamp includes the inode, as tlockney/ganymede#827
+does for host grants (size, modification time and inode). Size and
+modification time alone miss a file replaced by one of the same size
+with its time set back, which git and archive tools can do; #584's body
+also allows a hash, which is fine if refreshed on the app's saves. When
+the file no longer matches, every kept row for that path goes, secrets
+rows included, and the next call asks again. So secrets depend on #584
 landing first. A notebook is gone when its file is missing and its
 folder is there; then its rows go when Settings or a call next looks. A
 notebook on a volume that isn't mounted, or an iCloud file not yet
-downloaded, isn't gone: its rows stay and Settings shows it as "Not
-found" with Revoke, as folder grants do.
+downloaded, isn't gone: its rows stay. Settings showing such a notebook
+as "Not found" with Revoke is new; nothing in Settings does that today
+(PR 3).
 
 The keychain item itself never goes with access: a notebook replaced
 in git loses its grant, and the credential waits for the next yes.
 
 What the keychain can't hold cheaply sits in an index in the App Group
-suite, `ganymede.device.secrets.index`, keyed by lowercase name: when
-the secret was saved and by which notebook (or "Settings"), when it was
-last changed and by which, and for each notebook when it last read it.
-Reads update the index at most once an hour per notebook and name, so a
-loop that reads a token doesn't rewrite UserDefaults on every call.
-Phase 4 lets extensions read the App Group and only the app write; the
-index is the exception, since a headless read should count as a read.
-Each write keeps the later of two times, so a race loses nothing that
-matters. `notebookMoved` moves a notebook's read times with its rows.
+suite, one UserDefaults key per fact, so no write rewrites another
+process's entries:
+
+- `ganymede.device.secrets.meta.<name>`: a dictionary with when the
+  secret was saved and changed, and by which notebook path (or
+  "Settings"). Written only by the app, on save and replace.
+- `ganymede.device.secrets.read.<name>\u{1F}<notebook path>`: one date,
+  that notebook's last read of that name. `<name>` is lowercase; the
+  unit separator can't occur in a name and doesn't occur in paths the
+  ledger keeps (URLRunPermissions splits its keys on it too).
+
+Reads update their key at most once an hour, so a loop that reads a
+token doesn't rewrite UserDefaults on every call. Phase 4 lets
+extensions read the App Group and only the app write; read-time keys are
+the exception, since a headless read should count as a read. Each
+read-time key has one writer at a time in practice (the process running
+that notebook), and a write keeps the later of the stored and new
+dates, so the worst race loses a time a few seconds apart. Settings
+finds read times by prefix in `dictionaryRepresentation()`.
+`notebookMoved` renames a notebook's read-time keys with its rows, and
+deleting a secret removes its keys.
 
 The keychain is the source of truth for which secrets exist. An item
 with no index entry (the index was lost, or the app was deleted and
@@ -218,13 +244,16 @@ a widget refresh) has no prompter, so:
 - `get` answers only with a kept read "always"; otherwise `denied`. The
   "enter it now" path needs a window, so a missing name with a kept
   "always" answers `null`.
-- `set` and `delete` need a kept change "always", so a token refresh can
-  run unattended once the person said so. Creating a name needs the
-  same kept answer for that name, which only an earlier run in a window
-  can have given.
+- `set` needs a kept change "always", so a token refresh can run
+  unattended once the person said so. It never creates a name.
+- `delete` is never kept, so it always fails `denied` headless.
 - `list` behaves as in a window.
 - `hello` lists the secrets methods only when the notebook has a kept
   "always" for some `secrets:` name, and the call checks the name.
+  `hello` is the same for every kernel on a bridge today
+  (`DeviceBridge.capabilities` takes no owner); a headless bridge runs
+  one notebook, so PR 2 makes `hello` take the asking owner and its
+  notebook.
 
 ## Security
 
@@ -237,6 +266,15 @@ says which notebooks read the name; Settings shows who last changed
 each secret. A notebook granted read access can't change it. That is
 a prompt, not a guarantee: someone who allows "Always" for a changing
 notebook trusts it with every reader of that name.
+
+**Squatting a name.** If a notebook could create names, a downloaded
+notebook could save "openai" holding its author's key before the person
+had saved one, and every notebook later granted "openai" would send its
+prompts and data to that account. The read prompt can't help: it shows
+the name, not who put the value there. So only the person creates a
+name (Settings or "enter it now"), and `set` only replaces; Settings
+also shows which notebook last changed each secret. Open question 2
+asks whether cells need to create names at all.
 
 **Exfiltration.** A notebook allowed to read a name can send the value
 anywhere; the grant is the trust decision, and there is no network
@@ -276,16 +314,23 @@ key, and changes the account format; the service name stays.
    shared model (names, read and change access, `list`), reference.md
    regenerated, protocol.md "Secrets" rewritten from this note.
 2. Swift store and ledger, after #584: `SharedSecrets` and the index in
-   place of `NotebookSecrets`, the account and label change,
-   `secrets:` and `secrets.set:` ledger capabilities, declared
-   `secrets:<name>` at open, the headless `hello` rule, and XCTest
+   place of `NotebookSecrets`, the lowercase account, a label parameter
+   on `SecretStore.write` and `KeychainSecretStore.write` set as
+   `kSecAttrLabel` on create, the `secrets:`, `secrets.set:` and
+   `secrets.delete:` ledger capabilities (lowercase names), declared
+   `secrets:<name>` at open, `hello` per owner with the headless rule,
+   and XCTest
    against a fake keychain: two notebooks share a name, a third can't
    read it, change access is separate, a changed file drops access, a
    rename keeps it.
 3. Apps and Settings: `addSecrets()` in the app's bridges and the
    extensions' with the access group and entitlement, the prompts in
-   `AppLedgerPrompter`, Settings' Secrets section with Add, Change
-   Value, Delete and Unused.
+   `AppLedgerPrompter` (`title` and `describe` for the three
+   capabilities, delete's Don't Allow answering nil),
+   `DeviceGrants.name(_:)` in DeviceSettings.swift for the per-notebook
+   list, Settings' Secrets section with Add, Change Value, Delete and
+   Unused, and "Not found" for a notebook whose file can't be reached
+   now.
 4. Docs: docs/device.md's secrets rows and a Secrets section, with an
    "Unreleased" note until the apps' release.
 
@@ -293,11 +338,13 @@ key, and changes the account format; the service name stays.
 
 1. Names: ASCII letters, digits, `.`, `_` and `-`, up to 64, matched
    without regard to case. Too strict for anyone?
-2. Should a notebook be able to create a new name at all, or only the
-   person (Settings, or the "enter it now" prompt)? Creating from a cell
-   means the value passed through the notebook.
+2. Creating names: this note lets only the person create one (Settings
+   or the "enter it now" prompt), because a cell that creates names can
+   squat one (Security) and its value has passed through the notebook.
+   Unless there's a strong case for setup notebooks that save new
+   credentials themselves, keep it that way?
 3. Keep "Always Allow" for change access (token refresh), or make
-   replace and delete ask every time and give up unattended rotation?
+   replace ask every time and give up unattended rotation?
 4. The "Unused" thresholds: 90 days unread, 30 days with no notebook
    allowed.
 5. Should Settings show a value after the device's own authentication
