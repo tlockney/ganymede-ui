@@ -733,11 +733,12 @@ struct IPadNotebookToolbar: ToolbarContent {
                             page.run("change-kernel", arg: kernel.name)
                         } label: {
                             if kernel.name == page.state.kernel {
-                                Label(kernel.displayName, systemImage: "checkmark")
+                                Label(kernel.pickerName, systemImage: "checkmark")
                             } else {
-                                Text(kernel.displayName)
+                                Text(kernel.pickerName)
                             }
                         }
+                        .accessibilityLabel(kernel.pickerLabel)
                     }
                 } label: {
                     Label(page.state.kernelDisplayName ?? "Kernel", systemImage: "cpu")

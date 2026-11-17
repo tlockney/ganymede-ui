@@ -101,9 +101,13 @@ final class KernelHost: NSObject {
         bridge.addShortcuts(shortcuts)
         // Notebook widgets (#436), off until Settings › Device turns them
         // on: what a run publishes goes to the App Group, where the
-        // widget reads it.
-        if let group = AppGroup.defaults(), group.bool(forKey: AppGroup.widgetsKey) {
-            bridge.addWidgets(PublishedWidgets(store: UserDefaultsWidgetStore(defaults: group, widgetKind: AppGroup.widgetKind)))
+        // widget reads it. The switch is read on each call (#494), so it
+        // applies to notebooks already open.
+        if let group = AppGroup.defaults() {
+            bridge.addWidgets(
+                PublishedWidgets(store: UserDefaultsWidgetStore(defaults: group, widgetKind: AppGroup.widgetKind)),
+                enabled: { group.bool(forKey: AppGroup.widgetsKey) }
+            )
         }
         return bridge
     }

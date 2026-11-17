@@ -8,6 +8,7 @@ import {
   saveConfig,
   signedInHere,
 } from './lib/backends';
+import { offersDevice } from './lib/kernel-device';
 import { reportMoved } from './lib/kernel-relay';
 import { useColorScheme } from './lib/useColorScheme';
 import { TOUCH_QUERY, useMedia, useNarrow } from './lib/useNarrow';
@@ -728,7 +729,7 @@ export function App() {
       accessWanted: JSON.parse(accessKey) as string[],
       cellType: shown?.cellType ?? null,
       kernels: Object.values(specs?.kernelspecs ?? {}).flatMap(k =>
-        k ? [{ name: k.name, displayName: k.display_name }] : [],
+        k ? [{ name: k.name, displayName: k.display_name, device: offersDevice(k) }] : [],
       ),
       backend: backend ? { label: backend.label, detail: backend.detail } : null,
       running: JSON.parse(runningKey) as RunningSession[],

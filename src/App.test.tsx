@@ -268,6 +268,14 @@ describe('App', () => {
         { name: 'Europa.ipynb', type: 'notebook' },
       ],
     });
+    (fake.services.kernelspecs.specs!.kernelspecs as Record<string, unknown>)['cdp-browser'] = {
+      name: 'cdp-browser',
+      display_name: 'TypeScript (in app)',
+      language: 'typescript',
+      argv: [],
+      resources: {},
+      metadata: { capabilities: { device: true } },
+    };
     mocks.connect.mockResolvedValue(fakeBackend(fake.services));
     history.replaceState(null, '', '/?kernels=server&open=Io.ipynb');
     render(<App />);
@@ -278,7 +286,10 @@ describe('App', () => {
         kernel: 'python3',
         kernelDisplayName: 'Python 3',
         cellType: 'code',
-        kernels: [{ name: 'python3', displayName: 'Python 3' }],
+        kernels: [
+          { name: 'python3', displayName: 'Python 3', device: false },
+          { name: 'cdp-browser', displayName: 'TypeScript (in app)', device: true },
+        ],
         outline: [{ level: 1, text: 'Io', cell: 2 }],
       }),
     );

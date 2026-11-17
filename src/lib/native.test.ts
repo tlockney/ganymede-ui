@@ -68,7 +68,7 @@ describe('native', () => {
       runParams: true,
       accessWanted: [],
       cellType: 'code',
-      kernels: [{ name: 'cdp', displayName: 'TypeScript' }],
+      kernels: [{ name: 'cdp', displayName: 'TypeScript', device: false }],
       backend: { label: 'Ganymede', detail: 'local server' },
       running: [
         {

@@ -112,6 +112,7 @@ struct NotebookWidgetView: View {
             }
         }
         .containerBackground(for: .widget) { Color.clear }
+        .widgetURL(state.url)
     }
 
     private func message(_ text: String) -> some View {

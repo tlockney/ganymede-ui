@@ -41,6 +41,31 @@ enum WidgetState: Equatable {
         return UserDefaultsWidgetStore.read(defaults).sorted { $0.updated > $1.updated }
     }
 
+    /// The link a tap on a widget follows (#494): `ganymede://open?path=`
+    /// the notebook, through the app's usual link handling and its
+    /// checks. Always `open`, never `run`: a tap on a widget shouldn't run
+    /// code. Nil unless the path is absolute.
+    static func openURL(notebook: String) -> URL? {
+        // Absolute only: Run Script on Device publishes under pseudo-paths
+        // such as "shortcuts/foo.ipynb", which no link can open.
+        guard notebook.hasPrefix("/") else { return nil }
+        // Everything but unreserved characters is escaped, so `&`, `=`,
+        // `+`, `#` and spaces in a path can't change what the link means.
+        let allowed = CharacterSet(charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~/")
+        guard let path = notebook.addingPercentEncoding(withAllowedCharacters: allowed) else { return nil }
+        return URL(string: "ganymede://open?path=\(path)")
+    }
+
+    /// What a tap on the widget opens: the notebook it shows, or the one
+    /// that hasn't published what it was set to show, so it can be rerun.
+    var url: URL? {
+        switch self {
+        case let .shown(widget): return Self.openURL(notebook: widget.notebook)
+        case let .missing(notebook, _): return Self.openURL(notebook: notebook)
+        case .off, .unset: return nil
+        }
+    }
+
     /// The notebook's file name, without `.ipynb`.
     static func name(_ notebook: String) -> String {
         let file = URL(fileURLWithPath: notebook).lastPathComponent

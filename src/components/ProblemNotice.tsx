@@ -1,4 +1,5 @@
 import type { KernelSpec } from '@jupyterlab/services';
+import { DEVICE_LABEL, offersDevice, pickerLabel } from '../lib/kernel-device';
 import { ACTION_LABEL, type Problem, type ProblemAction } from '../lib/problems';
 
 type Props = {
@@ -37,11 +38,19 @@ export function ProblemNotice({ problem, onAction, onPickKernel, onDismiss, spec
                   <option value="" disabled>
                     {ACTION_LABEL[action]}…
                   </option>
-                  {kernels.map(s => (
-                    <option key={s.name} value={s.name}>
-                      {s.display_name}
-                    </option>
-                  ))}
+                  {kernels.map(s => {
+                    const { text, label } = pickerLabel(s);
+                    return (
+                      <option
+                        key={s.name}
+                        value={s.name}
+                        aria-label={offersDevice(s) ? label : undefined}
+                        title={offersDevice(s) ? DEVICE_LABEL : undefined}
+                      >
+                        {text}
+                      </option>
+                    );
+                  })}
                 </select>
               </label>
             )

@@ -588,7 +588,9 @@ private struct KernelPopover: View {
                     }
                 )) {
                     ForEach(state.kernels, id: \.name) { kernel in
-                        Text(kernel.displayName).tag(kernel.name)
+                        Text(kernel.pickerName)
+                            .accessibilityLabel(kernel.pickerLabel)
+                            .tag(kernel.name)
                     }
                 }
             }
@@ -799,7 +801,8 @@ struct KernelMenu: View {
         Divider()
         Menu("Change Kernel") {
             ForEach(page?.state.kernels ?? [], id: \.name) { kernel in
-                Button(kernel.displayName) { page?.run("change-kernel", arg: kernel.name) }
+                Button(kernel.pickerName) { page?.run("change-kernel", arg: kernel.name) }
+                    .accessibilityLabel(kernel.pickerLabel)
             }
         }
         .disabled(page?.state.hasNotebook != true || (page?.state.kernels.isEmpty ?? true))

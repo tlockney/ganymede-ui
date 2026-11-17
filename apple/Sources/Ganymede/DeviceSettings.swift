@@ -257,7 +257,7 @@ struct WidgetSettings: View {
             Toggle("Notebook Widgets", isOn: $enabled)
                 .onChange(of: enabled) { WidgetCenter.shared.reloadTimelines(ofKind: AppGroup.widgetKind) }
         } footer: {
-            Text("Experimental. A notebook's cells can publish what a Ganymede widget shows with device.widget.update; edit the widget to pick one. Notebooks opened after you turn this on can publish.")
+            Text("Experimental. A notebook's cells can publish what a Ganymede widget shows with device.widget.update; edit the widget to pick one. Tapping the widget opens the notebook. The switch applies at once, to notebooks already open.")
         }
     }
 }

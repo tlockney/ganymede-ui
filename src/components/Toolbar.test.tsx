@@ -271,6 +271,42 @@ describe('Toolbar', () => {
     await userEvent.selectOptions(select, 'javascript');
     expect(c.changeKernel).toHaveBeenCalledWith('javascript');
   });
+
+  it('marks a kernel that offers the device API (#648)', () => {
+    const specs: KernelSpec.ISpecModels = {
+      default: 'python3',
+      kernelspecs: {
+        ...SPECS.kernelspecs,
+        'cdp-browser': {
+          name: 'cdp-browser',
+          display_name: 'TypeScript (cdp-kernel, in app)',
+          language: 'typescript',
+          argv: [],
+          resources: {},
+          metadata: { capabilities: { device: true } },
+        },
+      },
+    };
+    render(
+      <Toolbar controller={controller()} specs={specs} sidebarOpen onToggleSidebar={vi.fn()} />,
+    );
+    const select = screen.getByRole('combobox', { name: 'Kernel' }) as HTMLSelectElement;
+    expect([...select.options].map(o => o.text)).toEqual([
+      'Python 3',
+      'JavaScript',
+      'TypeScript (cdp-kernel, in app) ◆',
+    ]);
+    expect(
+      screen.getByRole('option', {
+        name: 'TypeScript (cdp-kernel, in app), offers the device API',
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Python 3' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /offers the device API/ })).toHaveAttribute(
+      'title',
+      'offers the device API',
+    );
+  });
 });
 
 describe('overflowing', () => {
@@ -401,6 +437,38 @@ describe('Toolbar overflow (#201)', () => {
     await userEvent.click(screen.getByTitle('More'));
     await userEvent.click(screen.getByRole('menuitem', { name: 'Download Notebook' }));
     expect(c.download).toHaveBeenCalled();
+  });
+
+  it('marks a device kernel in More, with its accessible name (#648)', async () => {
+    layout(393);
+    const specs: KernelSpec.ISpecModels = {
+      default: 'python3',
+      kernelspecs: {
+        ...SPECS.kernelspecs,
+        'cdp-browser': {
+          name: 'cdp-browser',
+          display_name: 'TypeScript (in app)',
+          language: 'typescript',
+          argv: [],
+          resources: {},
+          metadata: { capabilities: { device: true } },
+        },
+      },
+    };
+    render(
+      <Toolbar
+        controller={controller()}
+        sidebarOpen={false}
+        onToggleSidebar={() => {}}
+        specs={specs}
+      />,
+    );
+    await userEvent.click(screen.getByTitle('More'));
+    const item = screen.getByRole('menuitemradio', {
+      name: 'TypeScript (in app), offers the device API',
+    });
+    expect(item).toHaveTextContent('TypeScript (in app) ◆');
+    expect(screen.getByRole('menuitemradio', { name: 'Python 3' })).toBeInTheDocument();
   });
 
   it('lists the exports under Download in More, only where the app can export', async () => {

@@ -469,6 +469,14 @@ final class KernelHostTests: XCTestCase {
         let page = AppKernels.kernelPageURL(URL(string: "http://127.0.0.1:8888/?token=t#x")!)
         XCTAssertEqual(page.absoluteString, "http://127.0.0.1:8888/kernel.html")
     }
+
+    /// #647: the page is always fetched from the server, so an app update on the same port
+    /// can't run the old release's cached `kernel.html`.
+    func testKernelPageRequestSkipsTheCache() {
+        let request = AppKernels.kernelPageRequest(URL(string: "http://127.0.0.1:8888/?token=t#x")!)
+        XCTAssertEqual(request.url?.absoluteString, "http://127.0.0.1:8888/kernel.html")
+        XCTAssertEqual(request.cachePolicy, .reloadIgnoringLocalCacheData)
+    }
 }
 
 /// A system permission that is already granted.
