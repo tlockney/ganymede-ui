@@ -282,9 +282,53 @@ describe('attachRunStatus', () => {
       model(1).executionState = 'idle';
       start(1);
       expect(status.busy).toBe(true);
+      // Another notebook's cell finishing, with the same cell id, isn't ours.
+      finished({ notebook: {}, cell: cellOf(1), success: true });
+      expect(status.busy).toBe(true);
       executed(1);
       expect(status.busy).toBe(false);
       status.dispose();
+    });
+
+    it('follows a real NotebookActions.run until the kernel replies', async () => {
+      const status = attachRunStatus(notebook, { interrupt, now: () => clock });
+      let reply!: (r: unknown) => void;
+      const done = new Promise(resolve => (reply = resolve));
+      const future = {
+        done,
+        onIOPub: undefined,
+        onReply: undefined,
+        onStdin: undefined,
+        dispose() {},
+      };
+      const session = {
+        hasNoKernel: false,
+        isTerminating: false,
+        pendingInput: false,
+        session: { kernel: { requestExecute: () => future, name: 'k' } },
+        kernelDisplayName: 'K',
+      };
+      notebook.activeCellIndex = 0;
+      const running = NotebookActions.run(notebook, session as never);
+      await Promise.resolve();
+      expect(model(0).executionState).toBe('running');
+      expect(status.busy).toBe(true);
+      reply({ content: { status: 'ok', execution_count: 1 } });
+      await running;
+      expect(status.busy).toBe(false);
+      status.dispose();
+    });
+
+    it('stops listening to JupyterLab once disposed', () => {
+      const status = attachRunStatus(notebook, { interrupt, now: () => clock });
+      const seen: boolean[] = [];
+      status.busyChanged.connect((_, busy) => void seen.push(busy));
+      // Another client's run is in the queue when the pane goes.
+      model(0).executionState = 'running';
+      status.dispose();
+      scheduled({ notebook, cell: cellOf(0) });
+      expect(status.busy).toBe(false);
+      expect(seen).toEqual([]);
     });
   });
 
