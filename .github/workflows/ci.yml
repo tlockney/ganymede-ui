@@ -23,7 +23,7 @@ permissions:
 # read it from this file.
 env:
   # A tag downloads the release's XCFramework; a commit builds it.
-  GANYMEDE_REF: 6d2c25dfcfb2659fd5d7ebf7fb534c8647515835
+  GANYMEDE_REF: v0.12.0
 
 # A new push to a pull request cancels its older run; runs on main finish.
 concurrency:
@@ -154,7 +154,7 @@ jobs:
     timeout-minutes: 30
     env:
       # What this job installs, in one place.
-      GANYMEDE_VERSION: 0.11.0
+      GANYMEDE_VERSION: 0.12.0
       CDP_KERNEL_VERSION: 0.12.2
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
