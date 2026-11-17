@@ -1459,7 +1459,7 @@ export interface Widget {
    * @param kind A name for the widget, 1 to 64 letters, digits, `.`, `_` or `-`; a widget configured for this notebook and kind shows it.
    * @param content The layout: `title`, `rows`, `tint`, `sparkline`.
    * @param options The call's `signal`. Cancel rejects `cancelled`; content already published stays.
-   * @throws {DeviceError} `failed` when `kind` or `content` isn't valid; `denied` when the app hasn't said which notebook runs.
+   * @throws {DeviceError} `failed` when `kind` or `content` isn't valid; `denied` when the app hasn't said which notebook runs; `unavailable` when the app's Notebook Widgets switch is off.
    * @example
    * ```ts
    * await device.widget.update("weather", {

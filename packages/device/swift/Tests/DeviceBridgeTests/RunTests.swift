@@ -108,13 +108,15 @@ final class RunTests: XCTestCase {
             bridge.respond(to: ["id": 1, "owner": 1, "method": "widget.update", "params": ["kind": "k", "content": ["title": "T"]]]) { reply = $0 }
             return reply
         }
+        let hello = (send(bridge.engineDevice(), ["id": 9, "method": "hello", "params": [:]])?["result"] as? [String: Any])?["capabilities"] as? [String] ?? []
+        XCTAssertTrue(hello.contains("widget.update"), "listed even while off")
         XCTAssertEqual(code(update()), "unavailable", "off: nothing is kept")
         XCTAssertTrue(store.saved.isEmpty)
         toggle.on = true
         XCTAssertTrue(update()?["result"] is NSNull, "on, with no restart")
         XCTAssertEqual(store.saved.count, 1)
         toggle.on = false
-        bridge.respond(to: ["id": 2, "owner": 1, "method": "widget.update", "params": ["kind": "k", "content": ["title": "U"]]]) { _ in }
+        XCTAssertEqual(code(update()), "unavailable")
         XCTAssertEqual(store.saved.first?.content.title, "T", "off again: the update is refused")
     }
 
