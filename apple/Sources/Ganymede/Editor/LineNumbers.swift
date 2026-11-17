@@ -80,6 +80,10 @@ final class LineNumberRuler: NSRulerView {
         super.init(scrollView: scrollView, orientation: .verticalRuler)
         clientView = textView
         ruleThickness = LineNumbers.width(for: lineCount)
+        // Views built against the macOS 14 SDK and later don't clip to
+        // their bounds, and AppKit may pass a dirty rect beyond them:
+        // filling it painted the background over the text (#661).
+        clipsToBounds = true
         scrollView.contentView.postsBoundsChangedNotifications = true
         NotificationCenter.default.addObserver(
             self, selector: #selector(redraw), name: NSView.boundsDidChangeNotification, object: scrollView.contentView)
@@ -97,9 +101,10 @@ final class LineNumberRuler: NSRulerView {
     override var isFlipped: Bool { true }
 
     override func draw(_ dirtyRect: NSRect) {
+        let rect = dirtyRect.intersection(bounds)
         NSColor.textBackgroundColor.setFill()
-        dirtyRect.fill()
-        drawHashMarksAndLabels(in: dirtyRect)
+        rect.fill()
+        drawHashMarksAndLabels(in: rect)
     }
 
     override func drawHashMarksAndLabels(in rect: NSRect) {
