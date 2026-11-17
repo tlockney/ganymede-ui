@@ -4,7 +4,8 @@ A kernelspec that declares `metadata.capabilities.device: true` (the shape
 `AppKernels.spec` registers for the app's in-process kernel) is marked
 with a `◆` after its name and read as "<name>, offers the device API".
 `offersDevice` and `pickerLabel` in `src/lib/kernel-device.ts` are the
-mapping: strict (only `true`), and false for missing or odd `metadata`, so
+mapping: `true` or an object (a capability can be more specific than
+`true`) counts, and it is false for missing or odd `metadata`, so
 servers that don't send the field see no change.
 
 The apps never show the web toolbar (`chrome=native`), and the only
@@ -17,7 +18,10 @@ now sends as `{ name, displayName, device }`; `PageState.Kernel` decodes
 label. The web pickers (the toolbar's `<select>` and its overflow menu,
 and the missing-kernel notice's picker) use the same mapping; `MenuItem`
 gained an optional `ariaLabel`, and a marked `<option>` has a `title`. The
-command palette's kernel list is not marked.
+command palette's kernel list and the Settings > Kernels default-kernel
+picker are not marked. VoiceOver on Kernel > Change Kernel and the Mac
+popover is a by-hand check (#399): SwiftUI may drop `.accessibilityLabel`
+on menu items.
 
 Checked: `npm run check`, `npm test`, `npm run build`. The Swift changes
 and tests (`PageStateTests`) were not built here.

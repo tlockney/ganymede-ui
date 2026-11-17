@@ -122,9 +122,9 @@ shown or hidden, its tab and its expanded folders across launches.
   > the latest release.
 
   The Mac's kernel popover and Kernel > Change Kernel, the iPad's kernel
-  menu and the browser toolbar's kernel picker mark kernels that offer
-  the device API with a ◆, which a screen reader announces as "offers the
-  device API".
+  menu and the browser's kernel pickers mark kernels that offer the
+  device API with a ◆, and the items carry an accessibility label,
+  "offers the device API".
 
 - Kernels can run on a remote server instead. Add the remote in
   Settings > Remotes (its editor can switch kernels to it), then pick

@@ -7,16 +7,20 @@ export const DEVICE_LABEL = 'offers the device API';
 /**
  * Whether a kernelspec declares the `device` API (#648): the app's
  * in-process kernel registers `metadata: { capabilities: { device: true } }`
- * (`AppKernels.spec`). Anything else is false, including a server that sends
- * no `metadata` or a `capabilities` of another shape, so such servers see no
- * change.
+ * (`AppKernels.spec`). A capability is `true` or something more specific
+ * (an object, such as a namespace's methods). Anything else is false: no
+ * `metadata`, a `capabilities` of another shape, or a `device` that is
+ * false, a string, an array or null, so such servers see no change.
  */
 export function offersDevice(spec: { metadata?: unknown } | null | undefined): boolean {
   const metadata = spec?.metadata;
   if (typeof metadata !== 'object' || metadata === null) return false;
   const capabilities = (metadata as { capabilities?: unknown }).capabilities;
   if (typeof capabilities !== 'object' || capabilities === null) return false;
-  return (capabilities as { device?: unknown }).device === true;
+  const device = (capabilities as { device?: unknown }).device;
+  return (
+    device === true || (typeof device === 'object' && device !== null && !Array.isArray(device))
+  );
 }
 
 /** A kernel's name in the picker: its display name, marked when it offers `device`. */

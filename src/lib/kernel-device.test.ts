@@ -7,6 +7,13 @@ describe('offersDevice', () => {
     expect(offersDevice({ metadata: { capabilities: { device: true, other: 1 } } })).toBe(true);
   });
 
+  it('is true for a more specific capability, an object', () => {
+    expect(offersDevice({ metadata: { capabilities: { device: {} } } })).toBe(true);
+    expect(offersDevice({ metadata: { capabilities: { device: { methods: ['pick'] } } } })).toBe(
+      true,
+    );
+  });
+
   it.each([
     ['no spec', undefined],
     ['null spec', null],
@@ -21,7 +28,8 @@ describe('offersDevice', () => {
     ['no device', { metadata: { capabilities: {} } }],
     ['device false', { metadata: { capabilities: { device: false } } }],
     ['device a string', { metadata: { capabilities: { device: 'true' } } }],
-    ['device an object', { metadata: { capabilities: { device: {} } } }],
+    ['device null', { metadata: { capabilities: { device: null } } }],
+    ['device an array', { metadata: { capabilities: { device: ['pick'] } } }],
   ])('is false for %s', (_, spec) => {
     expect(offersDevice(spec)).toBe(false);
   });
