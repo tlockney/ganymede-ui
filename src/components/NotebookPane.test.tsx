@@ -85,13 +85,36 @@ vi.mock('../lib/code-collapse', () => ({
 const runStatus = vi.hoisted(() => ({
   clear: vi.fn(),
   options: undefined as { interrupt(): void } | undefined,
+  /** Whether a cell is running or queued, and the signal for it changing. */
+  busy: false,
+  busyChanged: undefined as { emit(busy: boolean): void } | undefined,
+  /** The functions connected to `busyChanged` now. */
+  handlers: new Set<unknown>(),
 }));
-vi.mock('../lib/run-status', () => ({
-  attachRunStatus: vi.fn((_: unknown, options: { interrupt(): void }) => {
-    runStatus.options = options;
-    return { clear: runStatus.clear, dispose: vi.fn(), isDisposed: false };
-  }),
-}));
+vi.mock('../lib/run-status', async () => {
+  const { Signal } = await import('@lumino/signaling');
+  return {
+    attachRunStatus: vi.fn((_: unknown, options: { interrupt(): void }) => {
+      runStatus.options = options;
+      const busyChanged = new Signal<object, boolean>({});
+      runStatus.busyChanged = busyChanged;
+      runStatus.handlers.clear();
+      const connect = busyChanged.connect.bind(busyChanged);
+      const disconnect = busyChanged.disconnect.bind(busyChanged);
+      busyChanged.connect = (fn, ctx) => (runStatus.handlers.add(fn), connect(fn, ctx));
+      busyChanged.disconnect = (fn, ctx) => (runStatus.handlers.delete(fn), disconnect(fn, ctx));
+      return {
+        clear: runStatus.clear,
+        dispose: vi.fn(),
+        isDisposed: false,
+        get busy() {
+          return runStatus.busy;
+        },
+        busyChanged,
+      };
+    }),
+  };
+});
 /** What the pane gave the running line: its Interrupt. */
 const runStatusOptions = () => runStatus.options!;
 
@@ -176,6 +199,7 @@ function setup(
 }
 
 beforeEach(() => {
+  runStatus.busy = false;
   fakes.sessions.length = 0;
   fakes.notebooks.length = 0;
   fakes.widgets.length = 0;
@@ -522,6 +546,67 @@ describe('NotebookPane', () => {
       await waitFor(() => expect(s.latest()?.status).toBe('idle'));
       return { ...s, session };
     }
+
+    it('shows busy while a cell runs even when the kernel reports idle (#655)', async () => {
+      const { latest, session } = await running();
+      expect(latest()?.status).toBe('idle');
+      // The first run: the page marked the cell running, and the last
+      // status the kernel sent was an idle, for another request's busy/idle.
+      runStatus.busy = true;
+      act(() => runStatus.busyChanged!.emit(true));
+      await waitFor(() => expect(latest()?.status).toBe('busy'));
+      // A kernel that sent no status yet reads the same.
+      session.session!.kernel.status = 'unknown';
+      act(() => session.statusChanged.emit('unknown'));
+      expect(latest()?.status).toBe('busy');
+      // The cell finishes: back to what the kernel says.
+      session.session!.kernel.status = 'idle';
+      runStatus.busy = false;
+      act(() => runStatus.busyChanged!.emit(false));
+      await waitFor(() => expect(latest()?.status).toBe('idle'));
+    });
+
+    it.each(['restarting', 'autorestarting', 'starting', 'terminating'])(
+      'keeps %s while a run is in flight (#655)',
+      async state => {
+        const { latest, session } = await running();
+        runStatus.busy = true;
+        session.session!.kernel.status = state;
+        act(() => session.statusChanged.emit(state));
+        await waitFor(() => expect(latest()?.status).toBe(state));
+        act(() => runStatus.busyChanged!.emit(true));
+        expect(latest()?.status).toBe(state);
+      },
+    );
+
+    it('listens for busy changes once, even after the status effect runs again (#655)', async () => {
+      const { latest, session, unmount } = await running();
+      // `joined` changed while the notebook opened, so the effect has run
+      // more than once: only the latest run's handler stays connected.
+      expect(runStatus.handlers.size).toBe(1);
+      runStatus.busy = true;
+      act(() => runStatus.busyChanged!.emit(true));
+      await waitFor(() => expect(latest()?.status).toBe('busy'));
+      expect(session.session!.kernel.status).toBe('idle');
+      unmount();
+      expect(runStatus.handlers.size).toBe(0);
+    });
+
+    it('does not show busy for a run on a kernel that is dead or not connected (#655)', async () => {
+      const { latest, session } = await running();
+      runStatus.busy = true;
+      const k = session.session!.kernel;
+      k.connectionStatus = 'connecting';
+      act(() => session.connectionStatusChanged.emit('connecting'));
+      await waitFor(() => expect(latest()?.status).toBe('connecting'));
+      session.session!.kernel = kernel({
+        status: 'dead',
+        connectionStatus: 'disconnected',
+        isDisposed: true,
+      });
+      act(() => session.statusChanged.emit('dead'));
+      await waitFor(() => expect(latest()?.status).toBe('dead'));
+    });
 
     it('says the kernel died, and Restart starts a new one', async () => {
       const { latest, session } = await running();

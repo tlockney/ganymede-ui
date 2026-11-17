@@ -4,6 +4,7 @@ import type { ICodeCellModel } from '@jupyterlab/cells';
 import type * as nbformat from '@jupyterlab/nbformat';
 import type { Notebook } from '@jupyterlab/notebook';
 import type { Contents } from '@jupyterlab/services';
+import type { Signal } from '@lumino/signaling';
 
 // The queue on its own, and the lines on JupyterLab's real Notebook in
 // jsdom, with cells marked running as `CodeCell.execute` marks them.
@@ -15,7 +16,7 @@ Range.prototype.getBoundingClientRect ??= () => new DOMRect();
 
 const { createNotebook, createRendermime } = await import('./jupyterlab');
 const { RunQueue, attachRunStatus, describeRun, formatElapsed } = await import('./run-status');
-const { NotebookModel } = await import('@jupyterlab/notebook');
+const { NotebookModel, NotebookActions } = await import('@jupyterlab/notebook');
 const { Widget } = await import('@lumino/widgets');
 
 describe('RunQueue', () => {
@@ -77,6 +78,12 @@ const code = (id: string): nbformat.ICodeCell => ({
   outputs: [],
   execution_count: null,
 });
+
+/** JupyterLab's static signals, which tests emit as its actions would. */
+const scheduled = (args: object) =>
+  (NotebookActions.executionScheduled as unknown as Signal<unknown, object>).emit(args);
+const finished = (args: object) =>
+  (NotebookActions.executed as unknown as Signal<unknown, object>).emit(args);
 
 describe('attachRunStatus', () => {
   let notebook: Notebook;
@@ -186,6 +193,143 @@ describe('attachRunStatus', () => {
     expect(line(0)).toHaveTextContent('Running 0:00');
     model(0).executionState = 'idle';
     status.dispose();
+  });
+
+  describe('busy (#655)', () => {
+    const cellOf = (i: number) => notebook.widgets[i]!;
+    /** JupyterLab reports a cell it is about to run, then marks it running. */
+    const start = (i: number) => {
+      scheduled({ notebook, cell: cellOf(i) });
+      model(i).executionState = 'running';
+    };
+    const executed = (i: number, success = true) => {
+      model(i).executionState = 'idle';
+      finished({ notebook, cell: cellOf(i), success });
+    };
+
+    it('is true while a run this page started is unfinished, and says when it changes', () => {
+      const status = attachRunStatus(notebook, { interrupt, now: () => clock });
+      const seen: boolean[] = [];
+      status.busyChanged.connect((_, busy) => void seen.push(busy));
+      expect(status.busy).toBe(false);
+      start(0);
+      start(1);
+      expect(status.busy).toBe(true);
+      executed(0);
+      // One still waits: no change to report.
+      expect(status.busy).toBe(true);
+      executed(1, false);
+      expect(status.busy).toBe(false);
+      expect(seen).toEqual([true, false]);
+      status.dispose();
+    });
+
+    it('ends when a run is cancelled, which sends no executed, or the queue is cleared', () => {
+      const status = attachRunStatus(notebook, { interrupt, now: () => clock });
+      start(0);
+      model(0).executionState = 'idle';
+      expect(status.busy).toBe(false);
+      // The run is over: a peer running the same cell later isn't this page's.
+      model(0).executionState = 'running';
+      expect(status.busy).toBe(false);
+      model(0).executionState = 'idle';
+      start(2);
+      status.clear();
+      expect(status.busy).toBe(false);
+      status.dispose();
+    });
+
+    it('ends on executed even when the cell is still marked running, as after an aborted reply', () => {
+      const status = attachRunStatus(notebook, { interrupt, now: () => clock });
+      start(0);
+      expect(status.busy).toBe(true);
+      finished({ notebook, cell: cellOf(0), success: false });
+      expect(model(0).executionState).toBe('running');
+      expect(status.busy).toBe(false);
+      status.dispose();
+    });
+
+    it('stays busy when a running cell this page started is moved', async () => {
+      const status = attachRunStatus(notebook, { interrupt, now: () => clock });
+      start(0);
+      const id = model(0).id;
+      // A move recreates the cell's model, same id, and marks it running again.
+      notebook.model!.sharedModel.moveCell(0, 2);
+      await Promise.resolve();
+      const moved = notebook.model!.cells.get(2) as ICodeCellModel;
+      expect(moved.id).toBe(id);
+      moved.executionState = 'running';
+      expect(status.busy).toBe(true);
+      moved.executionState = 'idle';
+      expect(status.busy).toBe(false);
+      status.dispose();
+    });
+
+    it('ignores a cell that was already running, or that another client marks running', () => {
+      model(0).executionState = 'running';
+      const status = attachRunStatus(notebook, { interrupt, now: () => clock });
+      // Running when attached: the line shows it, but the page didn't start it.
+      expect(line(0)).toHaveTextContent('Running');
+      expect(status.busy).toBe(false);
+      // A peer in the room marks another cell running.
+      model(1).executionState = 'running';
+      expect(status.busy).toBe(false);
+      // A run in another notebook doesn't count either.
+      scheduled({ notebook: {}, cell: cellOf(2) });
+      model(2).executionState = 'running';
+      expect(status.busy).toBe(false);
+      // A run this page starts on a cell that no one else is running does.
+      model(1).executionState = 'idle';
+      start(1);
+      expect(status.busy).toBe(true);
+      // Another notebook's cell finishing, with the same cell id, isn't ours.
+      finished({ notebook: {}, cell: cellOf(1), success: true });
+      expect(status.busy).toBe(true);
+      executed(1);
+      expect(status.busy).toBe(false);
+      status.dispose();
+    });
+
+    it('follows a real NotebookActions.run until the kernel replies', async () => {
+      const status = attachRunStatus(notebook, { interrupt, now: () => clock });
+      let reply!: (r: unknown) => void;
+      const done = new Promise(resolve => (reply = resolve));
+      const future = {
+        done,
+        onIOPub: undefined,
+        onReply: undefined,
+        onStdin: undefined,
+        dispose() {},
+      };
+      const session = {
+        hasNoKernel: false,
+        isTerminating: false,
+        pendingInput: false,
+        session: { kernel: { requestExecute: () => future, name: 'k' } },
+        kernelDisplayName: 'K',
+      };
+      notebook.activeCellIndex = 0;
+      const running = NotebookActions.run(notebook, session as never);
+      await Promise.resolve();
+      expect(model(0).executionState).toBe('running');
+      expect(status.busy).toBe(true);
+      reply({ content: { status: 'ok', execution_count: 1 } });
+      await running;
+      expect(status.busy).toBe(false);
+      status.dispose();
+    });
+
+    it('stops listening to JupyterLab once disposed', () => {
+      const status = attachRunStatus(notebook, { interrupt, now: () => clock });
+      const seen: boolean[] = [];
+      status.busyChanged.connect((_, busy) => void seen.push(busy));
+      // Another client's run is in the queue when the pane goes.
+      model(0).executionState = 'running';
+      status.dispose();
+      scheduled({ notebook, cell: cellOf(0) });
+      expect(status.busy).toBe(false);
+      expect(seen).toEqual([]);
+    });
   });
 
   it('forgets the queue when cleared, as on a restart', () => {
