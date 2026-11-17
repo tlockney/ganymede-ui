@@ -81,8 +81,8 @@ final class LineNumberRuler: NSRulerView {
         clientView = textView
         ruleThickness = LineNumbers.width(for: lineCount)
         // Views built against the macOS 14 SDK and later don't clip to
-        // their bounds, and AppKit may pass a dirty rect beyond them:
-        // filling it painted the background over the text (#661).
+        // their bounds by default, and AppKit may pass a dirty rect beyond
+        // them: filling it painted the background over the text (#661).
         clipsToBounds = true
         scrollView.contentView.postsBoundsChangedNotifications = true
         NotificationCenter.default.addObserver(
