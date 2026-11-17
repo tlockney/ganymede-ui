@@ -199,7 +199,7 @@ final class AppKernels: NSObject {
         keepInWindow()
         if !loaded, let url = serverURL {
             loaded = true
-            webView.load(URLRequest(url: Self.kernelPageURL(url)))
+            webView.load(Self.kernelPageRequest(url))
         }
         if ready {
             deliver(message)
@@ -224,6 +224,17 @@ final class AppKernels: NSObject {
         parts.query = nil
         parts.fragment = nil
         return parts.url ?? server
+    }
+
+    /// The request that loads the kernel page: it is always fetched from
+    /// the server, never the cache (#647). The server's `ServeDir` sends `Last-Modified` but
+    /// no `Cache-Control`, so WebKit may serve a cached `kernel.html` on
+    /// heuristic freshness, and the app reuses its port, so after an update
+    /// the first launch could run the old release's page against the new
+    /// Swift. The page's hashed `/assets/*` are not requested this way and
+    /// stay cached.
+    nonisolated static func kernelPageRequest(_ server: URL) -> URLRequest {
+        URLRequest(url: kernelPageURL(server), cachePolicy: .reloadIgnoringLocalCacheData)
     }
 
     fileprivate func received(_ message: WKScriptMessage) {
