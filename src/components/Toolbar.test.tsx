@@ -302,6 +302,10 @@ describe('Toolbar', () => {
       }),
     ).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'Python 3' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /offers the device API/ })).toHaveAttribute(
+      'title',
+      'offers the device API',
+    );
   });
 });
 
@@ -433,6 +437,38 @@ describe('Toolbar overflow (#201)', () => {
     await userEvent.click(screen.getByTitle('More'));
     await userEvent.click(screen.getByRole('menuitem', { name: 'Download Notebook' }));
     expect(c.download).toHaveBeenCalled();
+  });
+
+  it('marks a device kernel in More, with its accessible name (#648)', async () => {
+    layout(393);
+    const specs: KernelSpec.ISpecModels = {
+      default: 'python3',
+      kernelspecs: {
+        ...SPECS.kernelspecs,
+        'cdp-browser': {
+          name: 'cdp-browser',
+          display_name: 'TypeScript (in app)',
+          language: 'typescript',
+          argv: [],
+          resources: {},
+          metadata: { capabilities: { device: true } },
+        },
+      },
+    };
+    render(
+      <Toolbar
+        controller={controller()}
+        sidebarOpen={false}
+        onToggleSidebar={() => {}}
+        specs={specs}
+      />,
+    );
+    await userEvent.click(screen.getByTitle('More'));
+    const item = screen.getByRole('menuitemradio', {
+      name: 'TypeScript (in app), offers the device API',
+    });
+    expect(item).toHaveTextContent('TypeScript (in app) ◆');
+    expect(screen.getByRole('menuitemradio', { name: 'Python 3' })).toBeInTheDocument();
   });
 
   it('lists the exports under Download in More, only where the app can export', async () => {

@@ -16,7 +16,7 @@ final class PageStateTests: XCTestCase {
             "runParams": true,
             "accessWanted": ["notebooks.run"],
             "cellType": "markdown",
-            "kernels": [["name": "cdp", "displayName": "TypeScript"]],
+            "kernels": [["name": "cdp", "displayName": "TypeScript", "device": true]],
             "backend": ["label": "Ganymede", "detail": "local server"],
         ]
         let state = PageState(body: body)
@@ -29,7 +29,7 @@ final class PageStateTests: XCTestCase {
         XCTAssertEqual(state?.isBusy, true)
         XCTAssertEqual(state?.hasKernel, true)
         XCTAssertEqual(state?.cellType, "markdown")
-        XCTAssertEqual(state?.kernels, [PageState.Kernel(name: "cdp", displayName: "TypeScript")])
+        XCTAssertEqual(state?.kernels, [PageState.Kernel(name: "cdp", displayName: "TypeScript", device: true)])
         XCTAssertEqual(state?.backend?.detail, "local server")
         XCTAssertEqual(state?.sessions, [])
     }
@@ -54,6 +54,30 @@ final class PageStateTests: XCTestCase {
         XCTAssertEqual(state?.otherSessions.map(\.id), ["s2"])
         XCTAssertEqual(state?.kernelID, "k1", "the open notebook's")
         XCTAssertNil(state?.sessions.last?.kernelID, "absent from an older page")
+    }
+
+    func testMarksKernelsThatOfferDevice() {
+        let marked = PageState.Kernel(name: "cdp-browser", displayName: "TypeScript (in app)", device: true)
+        XCTAssertEqual(marked.pickerName, "TypeScript (in app) ◆")
+        XCTAssertEqual(marked.pickerLabel, "TypeScript (in app), offers the device API")
+        // A page older than #648 sends no `device`, and false is the same.
+        for device in [nil, false] as [Bool?] {
+            let plain = PageState.Kernel(name: "python3", displayName: "Python 3", device: device)
+            XCTAssertEqual(plain.pickerName, "Python 3")
+            XCTAssertEqual(plain.pickerLabel, "Python 3")
+        }
+    }
+
+    func testReadsAKernelWithNoDeviceField() {
+        let body: [String: Any] = [
+            "path": "Io.ipynb", "dirty": false, "status": "idle", "kernel": "py",
+            "kernelDisplayName": "Python", "kernelMissing": false, "trusted": true,
+            "cellType": "code", "backend": NSNull(), "running": [Any](),
+            "kernels": [["name": "py", "displayName": "Python"]],
+        ]
+        let state = PageState(body: body)
+        XCTAssertEqual(state?.kernels, [PageState.Kernel(name: "py", displayName: "Python")])
+        XCTAssertEqual(state?.kernels.first?.device, nil)
     }
 
     func testReadsTheKernelsMemory() {

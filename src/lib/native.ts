@@ -167,8 +167,8 @@ export type PageState = {
   accessWanted: string[];
   /** The active cell's type. */
   cellType: string | null;
-  /** The kernels a notebook can switch to. */
-  kernels: { name: string; displayName: string }[];
+  /** The kernels a notebook can switch to; `device` marks those that offer the device API (#648). */
+  kernels: { name: string; displayName: string; device: boolean }[];
   /** Where kernels run: the backend's label and detail, or null before it connects. */
   backend: { label: string; detail: string } | null;
   /** The backend's running sessions: each notebook with a kernel (#225). */

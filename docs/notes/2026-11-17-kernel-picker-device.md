@@ -1,14 +1,23 @@
-## 2026-11-17, kernel picker marks kernels with `device` (#648)
+## 2026-11-17, kernel pickers mark kernels with `device` (#648)
 
-The toolbar's kernel picker (and its overflow-menu form) now puts a `◆`
-after a kernel whose kernelspec declares `metadata.capabilities.device:
-true`, the shape `AppKernels.spec` registers for the app's in-process
-kernel. The option also gets an `aria-label` ("..., offers the device
-API"); the overflow menu has no per-item label, so there the mark is part
-of the text. `offersDevice` in `src/lib/kernel-device.ts` is the mapping:
-it is strict (only `true`) and returns false for missing or odd
-`metadata`, so servers that don't send the field see no change. The Mac
-menu bar's kernel list (`PageState.kernels`, built in Swift) and the
-command palette are not marked; that is left for a follow-up.
+A kernelspec that declares `metadata.capabilities.device: true` (the shape
+`AppKernels.spec` registers for the app's in-process kernel) is marked
+with a `◆` after its name and read as "<name>, offers the device API".
+`offersDevice` and `pickerLabel` in `src/lib/kernel-device.ts` are the
+mapping: strict (only `true`), and false for missing or odd `metadata`, so
+servers that don't send the field see no change.
 
-Checked: `npm run check`, `npm test`, `npm run build`.
+The apps never show the web toolbar (`chrome=native`), and the only
+`device` kernelspec is the apps' own, so the pickers that matter are
+native: the Mac kernel popover and Kernel > Change Kernel, and the iPad
+kernel menu. They are built from `PageState.kernels`, which `postState`
+now sends as `{ name, displayName, device }`; `PageState.Kernel` decodes
+`device` as an optional (a page from before this sends none) and
+`pickerName` and `pickerLabel` give the marked name and the accessible
+label. The web pickers (the toolbar's `<select>` and its overflow menu,
+and the missing-kernel notice's picker) use the same mapping; `MenuItem`
+gained an optional `ariaLabel`, and a marked `<option>` has a `title`. The
+command palette's kernel list is not marked.
+
+Checked: `npm run check`, `npm test`, `npm run build`. The Swift changes
+and tests (`PageStateTests`) were not built here.

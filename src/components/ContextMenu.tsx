@@ -8,6 +8,8 @@ export type MenuItem =
       disabled?: boolean;
       /** One of a set to pick from (a cell's type): checked when it is the one. */
       checked?: boolean;
+      /** The accessible name, when it differs from the label (a mark in the label). */
+      ariaLabel?: string;
     }
   | 'separator'
   /** A label over the items after it. */
@@ -121,6 +123,7 @@ export function ContextMenu({ at, label, items, onClose }: Props) {
               type="button"
               role={item.checked === undefined ? 'menuitem' : 'menuitemradio'}
               aria-checked={item.checked}
+              aria-label={item.ariaLabel}
               className={`popup-menu-item ${item.destructive ? 'destructive' : ''}`}
               disabled={item.disabled}
               onClick={() => {

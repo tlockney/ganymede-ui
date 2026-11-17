@@ -121,8 +121,9 @@ shown or hidden, its tab and its expanded folders across launches.
   > **Unreleased.** Available only from a build of `main` (HEAD), not in
   > the latest release.
 
-  The notebook toolbar's kernel picker marks kernels that offer the
-  device API with a ◆, which a screen reader announces as "offers the
+  The Mac's kernel popover and Kernel > Change Kernel, the iPad's kernel
+  menu and the browser toolbar's kernel picker mark kernels that offer
+  the device API with a ◆, which a screen reader announces as "offers the
   device API".
 
 - Kernels can run on a remote server instead. Add the remote in

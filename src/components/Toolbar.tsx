@@ -4,7 +4,7 @@ import type { CellType, NotebookController } from './NotebookPane';
 import { NotebookTitle } from './NotebookTitle';
 import { ContextMenu, type MenuItem } from './ContextMenu';
 import { GAP, MORE_WIDTH, overflowing } from '../lib/overflow';
-import { pickerLabel } from '../lib/kernel-device';
+import { DEVICE_LABEL, offersDevice, pickerLabel } from '../lib/kernel-device';
 import {
   CodeIcon,
   DownloadIcon,
@@ -274,7 +274,12 @@ export function Toolbar({
             {kernels.map(s => {
               const { text, label } = pickerLabel(s);
               return (
-                <option key={s.name} value={s.name} aria-label={label}>
+                <option
+                  key={s.name}
+                  value={s.name}
+                  aria-label={label}
+                  title={offersDevice(s) ? DEVICE_LABEL : undefined}
+                >
                   {text}
                 </option>
               );
@@ -286,6 +291,7 @@ export function Toolbar({
         { heading: 'Kernel' },
         ...kernels.map(s => ({
           label: pickerLabel(s).text,
+          ariaLabel: pickerLabel(s).label,
           checked: c.kernelName === s.name,
           onSelect: () => void c.changeKernel(s.name),
         })),

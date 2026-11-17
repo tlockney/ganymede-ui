@@ -1,7 +1,7 @@
 /** The mark the kernel picker puts after a kernel that offers `device`. */
 export const DEVICE_MARK = '◆';
 
-/** What the mark means, for assistive technology and tooltips. */
+/** What the mark means: the accessible label and the option's tooltip. */
 export const DEVICE_LABEL = 'offers the device API';
 
 /**

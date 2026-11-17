@@ -7,6 +7,14 @@ struct PageState: Decodable, Equatable {
     struct Kernel: Decodable, Equatable, Hashable {
         var name: String
         var displayName: String
+        /// Whether the kernelspec declares `capabilities.device` (#648);
+        /// absent from a page older than that.
+        var device: Bool?
+
+        /// The name in a picker: marked when the kernel offers `device`.
+        var pickerName: String { device == true ? "\(displayName) ◆" : displayName }
+        /// What a screen reader says for it.
+        var pickerLabel: String { device == true ? "\(displayName), offers the device API" : displayName }
     }
 
     struct Backend: Decodable, Equatable {
