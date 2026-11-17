@@ -114,6 +114,13 @@ browser yet.
 > there they answer `unavailable` despite its "yes"; `device.output`
 > works only in a run with no window, such as Shortcuts' Run Script on
 > Device.
+>
+> The `device.secrets` rows describe the package's per-notebook store,
+> which the apps won't register. Before they do, secrets become one
+> shared set of named secrets, each a single keychain item, that a
+> notebook reads only once you allow it that name. The
+> [design note](https://github.com/tlockney/ganymede-ui/blob/main/packages/device/docs/secrets.md)
+> has the details.
 
 <!-- device-table:start (generated: node scripts/device-table.mjs --write) -->
 

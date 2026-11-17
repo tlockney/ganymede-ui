@@ -418,6 +418,11 @@ shares the bridge's store.
 
 ## Secrets
 
+This section describes the per-notebook store as built (#113), which
+the apps don't register. It is being replaced by one shared set of
+named secrets with access granted per notebook and per name:
+[secrets.md](secrets.md).
+
 `device.secrets` keeps strings a notebook saved, such as an API token,
 in the keychain. The app turns it on with `DeviceBridge.addSecrets()`; a
 Settings screen lists names (never values) and deletes them with its own
