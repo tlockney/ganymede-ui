@@ -339,8 +339,8 @@ on the agent's PATH. While MCP is on, the app writes a
 so `ganymede mcp` uses the app's server while Ganymede runs, and a server
 of its own when it doesn't. The agent keeps the server it found for the
 whole session, so start the agent after Ganymede to work in the app's
-windows. Relative paths start in the agent's folder from a `ganymede`
-build of `main` (ganymede#730); earlier versions start them at `/`.
+windows. Relative paths start in the agent's folder from `ganymede` 0.11.0
+on; earlier versions start them at `/`.
 The app writes the file in `~/Library/Jupyter/runtime`, or where
 `JUPYTER_RUNTIME_DIR` or `JUPYTER_DATA_DIR` point in its own environment;
 a value set only in your shell's startup files doesn't reach the app, and
