@@ -41,7 +41,7 @@ test("lists the server's kernels and the page's, and moves between them", async 
   await expect(page.locator('.jp-Cell').first()).toBeVisible({ timeout: 60_000 });
   await waitForReady(page);
 
-  const picker = page.getByLabel('Kernel');
+  const picker = page.getByRole('combobox', { name: 'Kernel', exact: true });
   await expect(picker.locator('option', { hasText: 'in app' })).toHaveCount(1);
   await expect(picker.locator(`option[value="${KERNEL}"]`)).toHaveCount(1);
 

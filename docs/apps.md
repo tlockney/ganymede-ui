@@ -116,6 +116,16 @@ shown or hidden, its tab and its expanded folders across launches.
   running inside the app, as on the iPad. Its cells get the
   [device API](device.md); kernels in their own process can't reach the
   app.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release.
+
+  The Mac's kernel popover and Kernel > Change Kernel, the iPad's kernel
+  menu and the browser's kernel pickers mark kernels that offer the
+  device API with a ◆, and the items carry an accessibility label,
+  "offers the device API".
+
 - Kernels can run on a remote server instead. Add the remote in
   Settings > Remotes (its editor can switch kernels to it), then pick
   where kernels run from the foot of the sidebar, the kernel button in
