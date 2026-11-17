@@ -17,6 +17,7 @@
 import type { Cell, ICellModel, ICodeCellModel } from '@jupyterlab/cells';
 import type { Notebook } from '@jupyterlab/notebook';
 import type { IDisposable } from '@lumino/disposable';
+import { type ISignal, Signal } from '@lumino/signaling';
 
 export type RunState =
   | { phase: 'running'; since: number }
@@ -93,6 +94,10 @@ type Options = {
 export type RunStatus = IDisposable & {
   /** Forget the queue: the kernel was restarted or died. */
   clear(): void;
+  /** Whether any cell is running or queued: the page sent it to the kernel and it hasn't finished. */
+  readonly busy: boolean;
+  /** Emitted when {@link busy} changes. */
+  readonly busyChanged: ISignal<Notebook, boolean>;
 };
 
 /**
@@ -104,6 +109,8 @@ export function attachRunStatus(notebook: Notebook, { interrupt, now = Date.now 
   const watched = new Set<ICellModel>();
   let timer: ReturnType<typeof setInterval> | undefined;
   let disposed = false;
+  let busy = false;
+  const busyChanged = new Signal<Notebook, boolean>(notebook);
 
   const lineOf = (cell: Cell, create: boolean): HTMLElement | null => {
     let line = cell.node.querySelector<HTMLElement>(`:scope > .${LINE}`);
@@ -142,6 +149,11 @@ export function attachRunStatus(notebook: Notebook, { interrupt, now = Date.now 
       line.dataset.phase = state.phase;
       line.querySelector('.gn-run-text')!.textContent = describeRun(state, t);
       line.querySelector<HTMLElement>('.gn-run-interrupt')!.hidden = state.phase !== 'running';
+    }
+    const nowBusy = queue.keys.length > 0;
+    if (nowBusy !== busy) {
+      busy = nowBusy;
+      busyChanged.emit(busy);
     }
     // Tick only while something runs.
     if (queue.keys.length && !timer) timer = setInterval(render, 1000);
@@ -208,6 +220,10 @@ export function attachRunStatus(notebook: Notebook, { interrupt, now = Date.now 
     get isDisposed() {
       return disposed;
     },
+    get busy() {
+      return busy;
+    },
+    busyChanged,
     clear() {
       queue.clear();
       render();
@@ -216,6 +232,7 @@ export function attachRunStatus(notebook: Notebook, { interrupt, now = Date.now 
       if (disposed) return;
       disposed = true;
       if (timer) clearInterval(timer);
+      Signal.clearData(busyChanged);
       cells?.changed.disconnect(onCells);
       watched.forEach(m => m.stateChanged.disconnect(onState));
       watched.clear();

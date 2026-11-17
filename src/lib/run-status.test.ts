@@ -188,6 +188,29 @@ describe('attachRunStatus', () => {
     status.dispose();
   });
 
+  it('reports whether any cell runs or waits, and when that changes (#655)', () => {
+    const status = attachRunStatus(notebook, { interrupt, now: () => clock });
+    const seen: boolean[] = [];
+    status.busyChanged.connect((_, busy) => void seen.push(busy));
+    expect(status.busy).toBe(false);
+
+    model(0).executionState = 'running';
+    expect(status.busy).toBe(true);
+    model(1).executionState = 'running';
+    model(0).executionState = 'idle';
+    // Still one waiting: no change to report.
+    expect(status.busy).toBe(true);
+    model(1).executionState = 'idle';
+    expect(status.busy).toBe(false);
+    expect(seen).toEqual([true, false]);
+
+    model(2).executionState = 'running';
+    status.clear();
+    expect(status.busy).toBe(false);
+    expect(seen).toEqual([true, false, true, false]);
+    status.dispose();
+  });
+
   it('forgets the queue when cleared, as on a restart', () => {
     const status = attachRunStatus(notebook, { interrupt, now: () => clock });
     model(0).executionState = 'running';

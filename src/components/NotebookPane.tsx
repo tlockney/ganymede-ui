@@ -284,6 +284,19 @@ function intendedKernel(
     : { name: installed ? wanted.name : (specs?.default ?? undefined) };
 }
 
+/**
+ * The kernel's status, or `busy` when it reports `idle` or nothing yet but a
+ * cell the page sent it hasn't finished (#655). A kernel's status is the
+ * last `status` message on its iopub, and the server's own probes of a
+ * kernel while it starts (`kernel_info_request` on shell and control, each
+ * answered with busy and idle) are among them: one answered mid-run leaves
+ * `idle` under a running cell, so Interrupt stayed disabled for a first run.
+ * The cell's own state is the page's own record that it is running.
+ */
+function busyWhileRunning(status: Kernel.Status, running: boolean): Kernel.Status {
+  return running && (status === 'idle' || status === 'unknown') ? 'busy' : status;
+}
+
 /** The file changed on disk: saving is locked, and the pane says so. */
 class FileLocked extends Error {}
 
@@ -766,7 +779,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
             kernel?.status === 'dead'
             ? 'dead'
             : kernel?.connectionStatus === 'connected'
-              ? kernel.status
+              ? busyWhileRunning(kernel.status, runStatus.busy)
               : 'connecting';
       setStatus(next);
       if (kernel && next === 'dead') {
@@ -801,9 +814,11 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
     session.statusChanged.connect(update);
     session.connectionStatusChanged.connect(update);
     session.kernelChanged.connect(update);
+    runStatus.busyChanged.connect(update);
     model.stateChanged.connect(update);
     model.contentChanged.connect(update);
     return () => {
+      runStatus.busyChanged.disconnect(update);
       session.statusChanged.disconnect(update);
       session.connectionStatusChanged.disconnect(update);
       session.kernelChanged.disconnect(update);
