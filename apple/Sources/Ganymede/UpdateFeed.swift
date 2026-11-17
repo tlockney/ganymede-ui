@@ -17,4 +17,21 @@ enum UpdateFeed {
         return url
     }
 }
+
+/// Whether a check the person starts needs a new updater (#666). Sparkle
+/// keeps an update it found for the rest of the process and shows it
+/// again without reading the feed, so a release found before a newer one
+/// came out would be the one installed; a new updater holds nothing.
+///
+/// With no session open, whatever the old updater holds may be out of
+/// date. In an open session, only the update behind the toolbar button,
+/// not yet downloaded, is dropped: a check, a download, a downloaded
+/// update or a window the person has seen carries on.
+/// `toolbarUpdateDownloaded` is nil when the toolbar shows no update.
+enum UpdateCheck {
+    static func startsFresh(sessionInProgress: Bool, toolbarUpdateDownloaded: Bool?) -> Bool {
+        guard sessionInProgress else { return true }
+        return toolbarUpdateDownloaded == false
+    }
+}
 #endif

@@ -48,11 +48,20 @@ final class AppUpdater: NSObject {
     /// At launch: starts the updater when this build has a feed.
     func start() {
         guard controller == nil, UpdateFeed.url(in: Bundle.main.infoDictionary ?? [:]) != nil else { return }
+        startController()
+        isEnabled = true
+    }
+
+    /// Makes a new updater, replacing any old one and what it held.
+    private func startController() {
+        // The old updater's changes mustn't reach the new one's state.
+        observations.forEach { $0.invalidate() }
+        observations = []
+        controller = nil
         let controller = SPUStandardUpdaterController(
             startingUpdater: true, updaterDelegate: nil, userDriverDelegate: self
         )
         self.controller = controller
-        isEnabled = true
         let updater = controller.updater
         // Sparkle changes these itself too: its update window has an
         // "Automatically download and install" checkbox.
@@ -72,9 +81,22 @@ final class AppUpdater: NSObject {
         ]
     }
 
-    /// Check for Updates…, and the toolbar button: Sparkle's window, with
-    /// the update found or a check for one.
+    /// Check for Updates…, Check Now, and the toolbar button: Sparkle's
+    /// window, with the newest update or a check for one.
+    ///
+    /// It starts a new updater first when the old one may hold an
+    /// out-of-date update (`UpdateCheck.startsFresh`, #666), so the check
+    /// reads the feed. An installer already running is resumed by the new
+    /// updater too.
     func checkForUpdates() {
+        guard let updater = controller?.updater else { return }
+        if UpdateCheck.startsFresh(
+            sessionInProgress: updater.sessionInProgress,
+            toolbarUpdateDownloaded: available?.downloaded
+        ) {
+            available = nil
+            startController()
+        }
         controller?.checkForUpdates(nil)
     }
 
