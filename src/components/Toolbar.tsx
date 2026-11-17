@@ -4,6 +4,7 @@ import type { CellType, NotebookController } from './NotebookPane';
 import { NotebookTitle } from './NotebookTitle';
 import { ContextMenu, type MenuItem } from './ContextMenu';
 import { GAP, MORE_WIDTH, overflowing } from '../lib/overflow';
+import { pickerLabel } from '../lib/kernel-device';
 import {
   CodeIcon,
   DownloadIcon,
@@ -270,18 +271,21 @@ export function Toolbar({
                 {c.missingKernel ? `${c.missingKernel} (not installed)` : 'Pick a kernel'}
               </option>
             )}
-            {kernels.map(s => (
-              <option key={s.name} value={s.name}>
-                {s.display_name}
-              </option>
-            ))}
+            {kernels.map(s => {
+              const { text, label } = pickerLabel(s);
+              return (
+                <option key={s.name} value={s.name} aria-label={label}>
+                  {text}
+                </option>
+              );
+            })}
           </select>
         </label>
       ),
       menu: [
         { heading: 'Kernel' },
         ...kernels.map(s => ({
-          label: s.display_name,
+          label: pickerLabel(s).text,
           checked: c.kernelName === s.name,
           onSelect: () => void c.changeKernel(s.name),
         })),

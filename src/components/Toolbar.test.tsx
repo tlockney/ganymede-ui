@@ -271,6 +271,38 @@ describe('Toolbar', () => {
     await userEvent.selectOptions(select, 'javascript');
     expect(c.changeKernel).toHaveBeenCalledWith('javascript');
   });
+
+  it('marks a kernel that offers the device API (#648)', () => {
+    const specs: KernelSpec.ISpecModels = {
+      default: 'python3',
+      kernelspecs: {
+        ...SPECS.kernelspecs,
+        'cdp-browser': {
+          name: 'cdp-browser',
+          display_name: 'TypeScript (cdp-kernel, in app)',
+          language: 'typescript',
+          argv: [],
+          resources: {},
+          metadata: { capabilities: { device: true } },
+        },
+      },
+    };
+    render(
+      <Toolbar controller={controller()} specs={specs} sidebarOpen onToggleSidebar={vi.fn()} />,
+    );
+    const select = screen.getByRole('combobox', { name: 'Kernel' }) as HTMLSelectElement;
+    expect([...select.options].map(o => o.text)).toEqual([
+      'Python 3',
+      'JavaScript',
+      'TypeScript (cdp-kernel, in app) ◆',
+    ]);
+    expect(
+      screen.getByRole('option', {
+        name: 'TypeScript (cdp-kernel, in app), offers the device API',
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Python 3' })).toBeInTheDocument();
+  });
 });
 
 describe('overflowing', () => {
