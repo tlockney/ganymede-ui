@@ -24,9 +24,12 @@ those paths, not observed.
 Fix: `attachRunStatus` now reports `busy` and a `busyChanged` signal.
 `busy` is true while a run this page started is unfinished: a cell that
 JupyterLab's `NotebookActions.executionScheduled` reported for this
-notebook and that is still marked `running`. It ends when `executed` is
-reported, when the cell's state leaves `running` (a cancelled run sends no
-`executed`), when the cell is removed, or on `clear`. Cells already
+notebook and that is still marked `running`. The runs are kept by cell id, so moving a running cell (which recreates
+its model with the same id) keeps it busy. It ends when `executed` is
+reported (even if the cell is still marked `running`, as after an
+`aborted` reply), when the cell's state leaves `running` (a cancelled run
+sends no `executed`), or when the cell leaves the queue (removed, or
+`clear`). Cells already
 `running` when the notebook is attached, or marked running by another
 client in a room (or left so by a client that went away), never count, so
 they can't hold the window at Running. The status effect in `NotebookPane`
@@ -34,8 +37,8 @@ shows `busy` when the kernel is connected, reports `idle` or `unknown`, and
 `busy` is true; every other status (`restarting`, `autorestarting`,
 `starting`, `terminating`, `dead`) and `connecting` show as they are. The
 effect listens to `busyChanged` and disconnects it on cleanup. Tests:
-`run-status.test.ts` (own runs only, ends on executed, error and state
-change) and `NotebookPane.test.tsx` (idle under a run reads busy; other
+`run-status.test.ts` (own runs only; ends on executed with the cell still running, on a
+state change and on clear; a move) and `NotebookPane.test.tsx` (idle under a run reads busy; other
 statuses kept; not while connecting or dead; effect re-run).
 
 Not done: filtering the probes' statuses out by their parent's session,

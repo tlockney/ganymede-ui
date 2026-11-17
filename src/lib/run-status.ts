@@ -115,8 +115,11 @@ export function attachRunStatus(notebook: Notebook, { interrupt, now = Date.now 
   let timer: ReturnType<typeof setInterval> | undefined;
   let disposed = false;
   let busy = false;
-  /** Cells this page scheduled and that haven't finished. */
-  const mine = new Set<ICellModel>();
+  /**
+   * Ids of the cells this page scheduled and that haven't finished. By id,
+   * not model: moving a cell recreates its model with the same id.
+   */
+  const mine = new Set<string>();
   const busyChanged = new Signal<Notebook, boolean>(notebook);
 
   const lineOf = (cell: Cell, create: boolean): HTMLElement | null => {
@@ -141,6 +144,14 @@ export function attachRunStatus(notebook: Notebook, { interrupt, now = Date.now 
     return line;
   };
 
+  /** Emits synchronously: a listener may call `clear`, which comes back here. */
+  const updateBusy = () => {
+    const nowBusy = queue.keys.some(model => mine.has(model.id));
+    if (nowBusy === busy) return;
+    busy = nowBusy;
+    busyChanged.emit(busy);
+  };
+
   const render = () => {
     if (disposed || notebook.isDisposed) return;
     const t = now();
@@ -157,11 +168,7 @@ export function attachRunStatus(notebook: Notebook, { interrupt, now = Date.now 
       line.querySelector('.gn-run-text')!.textContent = describeRun(state, t);
       line.querySelector<HTMLElement>('.gn-run-interrupt')!.hidden = state.phase !== 'running';
     }
-    const nowBusy = queue.keys.some(model => mine.has(model));
-    if (nowBusy !== busy) {
-      busy = nowBusy;
-      busyChanged.emit(busy);
-    }
+    updateBusy();
     // Tick only while something runs.
     if (queue.keys.length && !timer) timer = setInterval(render, 1000);
     if (!queue.keys.length && timer) {
@@ -174,7 +181,7 @@ export function attachRunStatus(notebook: Notebook, { interrupt, now = Date.now 
     if (args.name !== 'executionState') return;
     if (args.newValue === 'running') queue.schedule(model, now());
     else {
-      mine.delete(model);
+      mine.delete(model.id);
       queue.finish(model, now());
     }
     render();
@@ -187,23 +194,23 @@ export function attachRunStatus(notebook: Notebook, { interrupt, now = Date.now 
   };
   const unwatch = (model: ICellModel) => {
     if (!watched.delete(model)) return;
-    mine.delete(model);
     model.stateChanged.disconnect(onState);
     queue.finish(model, now());
   };
 
   // The runs this page starts, as JupyterLab reports them for this notebook.
   // `executed` is not sent when a run is cancelled (a restart, a disposed
-  // cell): then the cell's state leaving `running`, or `clear`, ends it.
+  // cell): then the cell's state leaving `running`, or `clear`, ends it. An
+  // `aborted` reply leaves the cell `running` but does send `executed`.
   const onScheduled = (_: unknown, args: { notebook: Notebook; cell: Cell }) => {
     if (disposed || args.notebook !== notebook) return;
-    mine.add(args.cell.model);
-    render();
+    mine.add(args.cell.model.id);
+    updateBusy();
   };
   const onExecuted = (_: unknown, args: { notebook: Notebook; cell: Cell }) => {
     if (disposed || args.notebook !== notebook) return;
-    mine.delete(args.cell.model);
-    render();
+    mine.delete(args.cell.model.id);
+    updateBusy();
   };
   NotebookActions.executionScheduled.connect(onScheduled);
   NotebookActions.executed.connect(onExecuted);
@@ -253,7 +260,6 @@ export function attachRunStatus(notebook: Notebook, { interrupt, now = Date.now 
     busyChanged,
     clear() {
       queue.clear();
-      mine.clear();
       render();
     },
     dispose() {

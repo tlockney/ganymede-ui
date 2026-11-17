@@ -590,7 +590,6 @@ describe('NotebookPane', () => {
       expect(session.session!.kernel.status).toBe('idle');
       unmount();
       expect(runStatus.handlers.size).toBe(0);
-      runStatus.busy = false;
     });
 
     it('does not show busy for a run on a kernel that is dead or not connected (#655)', async () => {
@@ -607,7 +606,6 @@ describe('NotebookPane', () => {
       });
       act(() => session.statusChanged.emit('dead'));
       await waitFor(() => expect(latest()?.status).toBe('dead'));
-      runStatus.busy = false;
     });
 
     it('says the kernel died, and Restart starts a new one', async () => {
