@@ -167,15 +167,23 @@ public final class PublishedWidgets {
 
 extension DeviceBridge {
     /// Turns on `device.widget.update`. No permission: a widget shows only
-    /// what the person configured it to.
-    public func addWidgets(_ widgets: PublishedWidgets? = nil) {
+    /// what the person configured it to. `enabled` is asked on every call,
+    /// so a switch (the app's Settings) takes effect at once, in kernels
+    /// already running; when it says no the call fails `unavailable` and
+    /// nothing is kept.
+    public func addWidgets(_ widgets: PublishedWidgets? = nil, enabled: @escaping @MainActor () -> Bool = { true }) {
         let widgets = widgets ?? PublishedWidgets()
         publishedWidgets = widgets
+        func off() -> DeviceCallError {
+            DeviceCallError("unavailable", "widget.update: Notebook Widgets are off; turn them on in Settings › Device")
+        }
         addMethod("widget.update", check: { params in
+            guard enabled() else { throw off() }
             _ = try Self.widgetKind(params)
             _ = try WidgetContent(params["content"])
         }, contextHandler: { params, context, reply in
             do {
+                guard enabled() else { throw off() }
                 guard let notebook = context.notebook else {
                     throw DeviceCallError("denied", "widget.update: the app hasn't said which notebook this kernel runs")
                 }

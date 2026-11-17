@@ -611,8 +611,15 @@ headings; pick one to go to its cell.
   `device.widget.update(kind, { title, rows, tint, sparkline })`, and
   the Ganymede widget, edited to pick that notebook and kind, shows the
   last content published. A widget can't run the notebook itself, so it
-  changes only when a run publishes again. Notebooks opened after the
-  switch is turned on can publish.
+  changes only when a run publishes again. Tapping the widget opens
+  that notebook. The switch applies at once, including to notebooks
+  already open: while it is off, `device.widget.update` fails
+  `unavailable`.
+
+  > [!NOTE]
+  > **Unreleased.** The tap to open and the switch applying at once are
+  > available only from a build of `main` (HEAD), not in the latest
+  > release.
 
 - **Notebook Access…** (Kernel menu on the Mac, the ⋯ menu on the iPad
   and iPhone, and the Command Palette) sets what a notebook's cells may

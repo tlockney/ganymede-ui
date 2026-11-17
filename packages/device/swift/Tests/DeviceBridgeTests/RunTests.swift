@@ -96,6 +96,28 @@ final class RunTests: XCTestCase {
         XCTAssertEqual(published.content(notebook: "/n/C.ipynb", kind: "weather")?.title, "Bergen")
     }
 
+    func testTheWidgetSwitchIsAskedOnEachCall() {
+        final class Switch { var on = false }
+        let toggle = Switch()
+        let store = MemoryWidgetStore()
+        let bridge = DeviceBridge(clipboard: nil, ledger: PermissionLedger(store: MemoryLedgerStore()), appVersion: "")
+        bridge.addWidgets(PublishedWidgets(store: store), enabled: { toggle.on })
+        bridge.setNotebook("/n/A.ipynb", for: 1)
+        func update() -> [String: Any]? {
+            var reply: [String: Any]?
+            bridge.respond(to: ["id": 1, "owner": 1, "method": "widget.update", "params": ["kind": "k", "content": ["title": "T"]]]) { reply = $0 }
+            return reply
+        }
+        XCTAssertEqual(code(update()), "unavailable", "off: nothing is kept")
+        XCTAssertTrue(store.saved.isEmpty)
+        toggle.on = true
+        XCTAssertTrue(update()?["result"] is NSNull, "on, with no restart")
+        XCTAssertEqual(store.saved.count, 1)
+        toggle.on = false
+        bridge.respond(to: ["id": 2, "owner": 1, "method": "widget.update", "params": ["kind": "k", "content": ["title": "U"]]]) { _ in }
+        XCTAssertEqual(store.saved.first?.content.title, "T", "off again: the update is refused")
+    }
+
     func testBadWidgetsFail() {
         bridge.setNotebook("/n/A.ipynb", for: 1)
         let bad: [[String: Any]] = [

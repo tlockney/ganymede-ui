@@ -41,6 +41,26 @@ enum WidgetState: Equatable {
         return UserDefaultsWidgetStore.read(defaults).sorted { $0.updated > $1.updated }
     }
 
+    /// The link a tap on a widget follows (#494): `ganymede://open?path=`
+    /// the notebook, through the app's usual link handling and its
+    /// checks. Always `open`, never `run`: a tap on a widget shouldn't run
+    /// code. Nil when the notebook's path is blank.
+    static func openURL(notebook: String) -> URL? {
+        guard !notebook.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        // Everything but unreserved characters is escaped, so `&`, `=`,
+        // `+`, `#` and spaces in a path can't change what the link means.
+        var allowed = CharacterSet.alphanumerics
+        allowed.insert(charactersIn: "-._~/")
+        guard let path = notebook.addingPercentEncoding(withAllowedCharacters: allowed) else { return nil }
+        return URL(string: "ganymede://open?path=\(path)")
+    }
+
+    /// What a tap on the widget opens: the notebook it shows.
+    var url: URL? {
+        if case let .shown(widget) = self { return Self.openURL(notebook: widget.notebook) }
+        return nil
+    }
+
     /// The notebook's file name, without `.ipynb`.
     static func name(_ notebook: String) -> String {
         let file = URL(fileURLWithPath: notebook).lastPathComponent
