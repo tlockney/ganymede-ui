@@ -101,9 +101,11 @@ person uses. A kept "deny" for `secrets` makes it fail `denied`.
 
 **`requestAuthorization()`** for `secrets` asks nothing, as for
 `shortcuts`: it has no single answer to keep. A notebook can name the
-secrets it needs in its metadata, `"device": ["secrets:github"]`, and
-the app asks for read access to each at open, so a set of notebooks
-that share credentials can be granted up front. A bare `"secrets"`
+secrets it needs in its metadata, at `metadata.ganymede.device`
+(`["secrets:github"]`), and the app asks for read access to each at
+open, so a set of notebooks that share credentials can be granted up
+front. `DeviceBridge.undecided` keeps only declarations it has a
+permission for, so the Swift PR must let `secrets:<name>` through. A bare `"secrets"`
 declaration asks nothing, as `shortcuts` does.
 
 ### Prompts
