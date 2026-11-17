@@ -277,7 +277,7 @@ export function Toolbar({
                 <option
                   key={s.name}
                   value={s.name}
-                  aria-label={label}
+                  aria-label={offersDevice(s) ? label : undefined}
                   title={offersDevice(s) ? DEVICE_LABEL : undefined}
                 >
                   {text}
