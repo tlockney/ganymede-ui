@@ -21,16 +21,22 @@ started (cdp-kernel handles control apart from the shell queue) leaves
 matches "correct on later runs". The exact event order is inferred from
 those paths, not observed.
 
-Fix: `attachRunStatus` now reports `busy` (any cell running or queued, from
-the cells' own `executionState`) and a `busyChanged` signal. The status
-effect in `NotebookPane` shows `busy` when the kernel is connected, reports
-`idle` or `unknown`, and a cell is running. `connecting`, `dead`,
-`restarting` and the like still show as they are, so a stuck queue on a
-lost connection doesn't read as running. The effect also listens to
-`busyChanged`, so the status falls back to the kernel's own when the last
-cell ends. Tests: `run-status.test.ts` (busy and its changes) and
-`NotebookPane.test.tsx` (idle under a running cell reads busy, and not
-while connecting or dead).
+Fix: `attachRunStatus` now reports `busy` and a `busyChanged` signal.
+`busy` is true while a run this page started is unfinished: a cell that
+JupyterLab's `NotebookActions.executionScheduled` reported for this
+notebook and that is still marked `running`. It ends when `executed` is
+reported, when the cell's state leaves `running` (a cancelled run sends no
+`executed`), when the cell is removed, or on `clear`. Cells already
+`running` when the notebook is attached, or marked running by another
+client in a room (or left so by a client that went away), never count, so
+they can't hold the window at Running. The status effect in `NotebookPane`
+shows `busy` when the kernel is connected, reports `idle` or `unknown`, and
+`busy` is true; every other status (`restarting`, `autorestarting`,
+`starting`, `terminating`, `dead`) and `connecting` show as they are. The
+effect listens to `busyChanged` and disconnects it on cleanup. Tests:
+`run-status.test.ts` (own runs only, ends on executed, error and state
+change) and `NotebookPane.test.tsx` (idle under a run reads busy; other
+statuses kept; not while connecting or dead; effect re-run).
 
 Not done: filtering the probes' statuses out by their parent's session,
 which would need a change to JupyterLab's connection.

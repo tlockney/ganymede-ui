@@ -4,6 +4,7 @@ import type { ICodeCellModel } from '@jupyterlab/cells';
 import type * as nbformat from '@jupyterlab/nbformat';
 import type { Notebook } from '@jupyterlab/notebook';
 import type { Contents } from '@jupyterlab/services';
+import type { Signal } from '@lumino/signaling';
 
 // The queue on its own, and the lines on JupyterLab's real Notebook in
 // jsdom, with cells marked running as `CodeCell.execute` marks them.
@@ -15,7 +16,7 @@ Range.prototype.getBoundingClientRect ??= () => new DOMRect();
 
 const { createNotebook, createRendermime } = await import('./jupyterlab');
 const { RunQueue, attachRunStatus, describeRun, formatElapsed } = await import('./run-status');
-const { NotebookModel } = await import('@jupyterlab/notebook');
+const { NotebookModel, NotebookActions } = await import('@jupyterlab/notebook');
 const { Widget } = await import('@lumino/widgets');
 
 describe('RunQueue', () => {
@@ -188,27 +189,81 @@ describe('attachRunStatus', () => {
     status.dispose();
   });
 
-  it('reports whether any cell runs or waits, and when that changes (#655)', () => {
-    const status = attachRunStatus(notebook, { interrupt, now: () => clock });
-    const seen: boolean[] = [];
-    status.busyChanged.connect((_, busy) => void seen.push(busy));
-    expect(status.busy).toBe(false);
+  describe('busy (#655)', () => {
+    const cellOf = (i: number) => notebook.widgets[i]!;
+    /** JupyterLab reports a cell it is about to run, then marks it running. */
+    const start = (i: number) => {
+      (NotebookActions.executionScheduled as unknown as Signal<unknown, object>).emit({
+        notebook,
+        cell: cellOf(i),
+      });
+      model(i).executionState = 'running';
+    };
+    const executed = (i: number, success = true) => {
+      model(i).executionState = 'idle';
+      (NotebookActions.executed as unknown as Signal<unknown, object>).emit({
+        notebook,
+        cell: cellOf(i),
+        success,
+      });
+    };
 
-    model(0).executionState = 'running';
-    expect(status.busy).toBe(true);
-    model(1).executionState = 'running';
-    model(0).executionState = 'idle';
-    // Still one waiting: no change to report.
-    expect(status.busy).toBe(true);
-    model(1).executionState = 'idle';
-    expect(status.busy).toBe(false);
-    expect(seen).toEqual([true, false]);
+    it('is true while a run this page started is unfinished, and says when it changes', () => {
+      const status = attachRunStatus(notebook, { interrupt, now: () => clock });
+      const seen: boolean[] = [];
+      status.busyChanged.connect((_, busy) => void seen.push(busy));
+      expect(status.busy).toBe(false);
+      start(0);
+      start(1);
+      expect(status.busy).toBe(true);
+      executed(0);
+      // One still waits: no change to report.
+      expect(status.busy).toBe(true);
+      executed(1, false);
+      expect(status.busy).toBe(false);
+      expect(seen).toEqual([true, false]);
+      status.dispose();
+    });
 
-    model(2).executionState = 'running';
-    status.clear();
-    expect(status.busy).toBe(false);
-    expect(seen).toEqual([true, false, true, false]);
-    status.dispose();
+    it('ends when a run is cancelled, which sends no executed, or the queue is cleared', () => {
+      const status = attachRunStatus(notebook, { interrupt, now: () => clock });
+      start(0);
+      model(0).executionState = 'idle';
+      expect(status.busy).toBe(false);
+      // The run is over: a peer running the same cell later isn't this page's.
+      model(0).executionState = 'running';
+      expect(status.busy).toBe(false);
+      model(0).executionState = 'idle';
+      start(2);
+      status.clear();
+      expect(status.busy).toBe(false);
+      status.dispose();
+    });
+
+    it('ignores a cell that was already running, or that another client marks running', () => {
+      model(0).executionState = 'running';
+      const status = attachRunStatus(notebook, { interrupt, now: () => clock });
+      // Running when attached: the line shows it, but the page didn't start it.
+      expect(line(0)).toHaveTextContent('Running');
+      expect(status.busy).toBe(false);
+      // A peer in the room marks another cell running.
+      model(1).executionState = 'running';
+      expect(status.busy).toBe(false);
+      // A run in another notebook doesn't count either.
+      (NotebookActions.executionScheduled as unknown as Signal<unknown, object>).emit({
+        notebook: {},
+        cell: cellOf(2),
+      });
+      model(2).executionState = 'running';
+      expect(status.busy).toBe(false);
+      // A run this page starts on a cell that no one else is running does.
+      model(1).executionState = 'idle';
+      start(1);
+      expect(status.busy).toBe(true);
+      executed(1);
+      expect(status.busy).toBe(false);
+      status.dispose();
+    });
   });
 
   it('forgets the queue when cleared, as on a restart', () => {

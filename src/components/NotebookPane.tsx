@@ -285,13 +285,14 @@ function intendedKernel(
 }
 
 /**
- * The kernel's status, or `busy` when it reports `idle` or nothing yet but a
- * cell the page sent it hasn't finished (#655). A kernel's status is the
+ * The kernel's status, or `busy` when it reports `idle` or nothing yet while
+ * a run this page started hasn't finished (#655). A kernel's status is the
  * last `status` message on its iopub, and the server's own probes of a
  * kernel while it starts (`kernel_info_request` on shell and control, each
  * answered with busy and idle) are among them: one answered mid-run leaves
  * `idle` under a running cell, so Interrupt stayed disabled for a first run.
- * The cell's own state is the page's own record that it is running.
+ * Any other status (`restarting`, `starting`, `dead`...) is kept. Cells that
+ * other clients marked running don't count (`RunStatus.busy`).
  */
 function busyWhileRunning(status: Kernel.Status, running: boolean): Kernel.Status {
   return running && (status === 'idle' || status === 'unknown') ? 'busy' : status;

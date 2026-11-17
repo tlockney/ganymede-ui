@@ -15,7 +15,7 @@
  * the touch cell controls are (cell-controls.ts).
  */
 import type { Cell, ICellModel, ICodeCellModel } from '@jupyterlab/cells';
-import type { Notebook } from '@jupyterlab/notebook';
+import { type Notebook, NotebookActions } from '@jupyterlab/notebook';
 import type { IDisposable } from '@lumino/disposable';
 import { type ISignal, Signal } from '@lumino/signaling';
 
@@ -94,7 +94,12 @@ type Options = {
 export type RunStatus = IDisposable & {
   /** Forget the queue: the kernel was restarted or died. */
   clear(): void;
-  /** Whether any cell is running or queued: the page sent it to the kernel and it hasn't finished. */
+  /**
+   * Whether a run this page started is unfinished: a cell it scheduled
+   * (JupyterLab's `executionScheduled`, for this notebook) that is still
+   * marked running. A cell already running when the notebook was attached,
+   * or marked running by another client in a room, doesn't count.
+   */
   readonly busy: boolean;
   /** Emitted when {@link busy} changes. */
   readonly busyChanged: ISignal<Notebook, boolean>;
@@ -110,6 +115,8 @@ export function attachRunStatus(notebook: Notebook, { interrupt, now = Date.now 
   let timer: ReturnType<typeof setInterval> | undefined;
   let disposed = false;
   let busy = false;
+  /** Cells this page scheduled and that haven't finished. */
+  const mine = new Set<ICellModel>();
   const busyChanged = new Signal<Notebook, boolean>(notebook);
 
   const lineOf = (cell: Cell, create: boolean): HTMLElement | null => {
@@ -150,7 +157,7 @@ export function attachRunStatus(notebook: Notebook, { interrupt, now = Date.now 
       line.querySelector('.gn-run-text')!.textContent = describeRun(state, t);
       line.querySelector<HTMLElement>('.gn-run-interrupt')!.hidden = state.phase !== 'running';
     }
-    const nowBusy = queue.keys.length > 0;
+    const nowBusy = queue.keys.some(model => mine.has(model));
     if (nowBusy !== busy) {
       busy = nowBusy;
       busyChanged.emit(busy);
@@ -166,7 +173,10 @@ export function attachRunStatus(notebook: Notebook, { interrupt, now = Date.now 
   const onState = (model: ICellModel, args: { name: string; newValue: unknown }) => {
     if (args.name !== 'executionState') return;
     if (args.newValue === 'running') queue.schedule(model, now());
-    else queue.finish(model, now());
+    else {
+      mine.delete(model);
+      queue.finish(model, now());
+    }
     render();
   };
   const watch = (model: ICellModel) => {
@@ -177,9 +187,26 @@ export function attachRunStatus(notebook: Notebook, { interrupt, now = Date.now 
   };
   const unwatch = (model: ICellModel) => {
     if (!watched.delete(model)) return;
+    mine.delete(model);
     model.stateChanged.disconnect(onState);
     queue.finish(model, now());
   };
+
+  // The runs this page starts, as JupyterLab reports them for this notebook.
+  // `executed` is not sent when a run is cancelled (a restart, a disposed
+  // cell): then the cell's state leaving `running`, or `clear`, ends it.
+  const onScheduled = (_: unknown, args: { notebook: Notebook; cell: Cell }) => {
+    if (disposed || args.notebook !== notebook) return;
+    mine.add(args.cell.model);
+    render();
+  };
+  const onExecuted = (_: unknown, args: { notebook: Notebook; cell: Cell }) => {
+    if (disposed || args.notebook !== notebook) return;
+    mine.delete(args.cell.model);
+    render();
+  };
+  NotebookActions.executionScheduled.connect(onScheduled);
+  NotebookActions.executed.connect(onExecuted);
 
   const cells = notebook.model?.cells;
   const onCells = () => {
@@ -226,13 +253,15 @@ export function attachRunStatus(notebook: Notebook, { interrupt, now = Date.now 
     busyChanged,
     clear() {
       queue.clear();
+      mine.clear();
       render();
     },
     dispose() {
       if (disposed) return;
       disposed = true;
       if (timer) clearInterval(timer);
-      Signal.clearData(busyChanged);
+      NotebookActions.executionScheduled.disconnect(onScheduled);
+      NotebookActions.executed.disconnect(onExecuted);
       cells?.changed.disconnect(onCells);
       watched.forEach(m => m.stateChanged.disconnect(onState));
       watched.clear();

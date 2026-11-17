@@ -88,6 +88,8 @@ const runStatus = vi.hoisted(() => ({
   /** Whether a cell is running or queued, and the signal for it changing. */
   busy: false,
   busyChanged: undefined as { emit(busy: boolean): void } | undefined,
+  /** The functions connected to `busyChanged` now. */
+  handlers: new Set<unknown>(),
 }));
 vi.mock('../lib/run-status', async () => {
   const { Signal } = await import('@lumino/signaling');
@@ -96,6 +98,11 @@ vi.mock('../lib/run-status', async () => {
       runStatus.options = options;
       const busyChanged = new Signal<object, boolean>({});
       runStatus.busyChanged = busyChanged;
+      runStatus.handlers.clear();
+      const connect = busyChanged.connect.bind(busyChanged);
+      const disconnect = busyChanged.disconnect.bind(busyChanged);
+      busyChanged.connect = (fn, ctx) => (runStatus.handlers.add(fn), connect(fn, ctx));
+      busyChanged.disconnect = (fn, ctx) => (runStatus.handlers.delete(fn), disconnect(fn, ctx));
       return {
         clear: runStatus.clear,
         dispose: vi.fn(),
@@ -557,6 +564,33 @@ describe('NotebookPane', () => {
       runStatus.busy = false;
       act(() => runStatus.busyChanged!.emit(false));
       await waitFor(() => expect(latest()?.status).toBe('idle'));
+    });
+
+    it.each(['restarting', 'autorestarting', 'starting', 'terminating'])(
+      'keeps %s while a run is in flight (#655)',
+      async state => {
+        const { latest, session } = await running();
+        runStatus.busy = true;
+        session.session!.kernel.status = state;
+        act(() => session.statusChanged.emit(state));
+        await waitFor(() => expect(latest()?.status).toBe(state));
+        act(() => runStatus.busyChanged!.emit(true));
+        expect(latest()?.status).toBe(state);
+      },
+    );
+
+    it('listens for busy changes once, even after the status effect runs again (#655)', async () => {
+      const { latest, session, unmount } = await running();
+      // `joined` changed while the notebook opened, so the effect has run
+      // more than once: only the latest run's handler stays connected.
+      expect(runStatus.handlers.size).toBe(1);
+      runStatus.busy = true;
+      act(() => runStatus.busyChanged!.emit(true));
+      await waitFor(() => expect(latest()?.status).toBe('busy'));
+      expect(session.session!.kernel.status).toBe('idle');
+      unmount();
+      expect(runStatus.handlers.size).toBe(0);
+      runStatus.busy = false;
     });
 
     it('does not show busy for a run on a kernel that is dead or not connected (#655)', async () => {
