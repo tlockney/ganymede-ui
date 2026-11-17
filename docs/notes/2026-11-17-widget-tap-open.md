@@ -4,10 +4,10 @@ A tap on a notebook widget now opens that notebook. The widget view sets
 `.widgetURL` to `ganymede://open?path=<notebook>`, built by
 `WidgetState.openURL(notebook:)` with every character but unreserved ones
 and `/` escaped, so `&`, `+`, `#` and spaces in a path keep their meaning.
-On iOS it arrives through `onOpenURL`, on the Mac as a `kAEGetURL`
-Apple Event (`GanymedeApp.getURL`), and both reach
-`AppURLHandler.handle` and so `AppURLHandler` and
-`LinkOpener`, with their checks, including the granted folders on iOS. The
+On the Mac it arrives as a `kAEGetURL` Apple Event
+(`GanymedeApp.getURL`) and reaches `AppURLHandler.handle`; on iOS it
+arrives through `onOpenURL` and reaches `LinkOpener.handle`, each with its
+usual checks (granted folders on iOS). The
 route is always `open`, never `run`: a tap on a widget shouldn't run code.
 A `.shown` widget links to its notebook, and a `.missing` one too, so it
 can be rerun; off and unset have no link. Only an absolute path has a

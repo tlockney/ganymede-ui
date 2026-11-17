@@ -7,7 +7,7 @@ import WidgetKit
 // itself, so a run publishes what it shows. `widget.update` keeps the
 // content per notebook and kind in a `WidgetStore` (the App Group's
 // UserDefaults suite, which the widget extension reads too) and asks
-// WidgetKit to redraw. The app turns it on with `DeviceBridge.addWidgets()`.
+// WidgetKit to redraw. The app turns it on with `DeviceBridge.addWidgets(_:enabled:)`.
 
 /// A widget's content: what `device.widget.update` sent, checked.
 public struct WidgetContent: Codable, Equatable, Sendable {
@@ -168,10 +168,14 @@ public final class PublishedWidgets {
 extension DeviceBridge {
     /// Turns on `device.widget.update`. No permission: a widget shows only
     /// what the person configured it to. `enabled` is asked on every call
-    /// (in the params check, which runs before the handler), so a switch (the app's Settings) takes effect at once, in kernels
-    /// already running; when it says no the call fails `unavailable` and
-    /// nothing is kept.
-    public func addWidgets(_ widgets: PublishedWidgets? = nil, enabled: @escaping @MainActor () -> Bool = { true }) {
+    /// (in the params check, which runs before the handler), so a switch
+    /// (the app's Settings) takes effect at once, in kernels already
+    /// running; when it says no the call fails `unavailable` and nothing is
+    /// kept. It has no default, so a caller can't drop the switch by
+    /// accident.
+    public func addWidgets(
+        _ widgets: PublishedWidgets? = nil, enabled: @escaping @MainActor () -> Bool
+    ) {
         let widgets = widgets ?? PublishedWidgets()
         publishedWidgets = widgets
         func off() -> DeviceCallError {

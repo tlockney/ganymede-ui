@@ -21,7 +21,7 @@ final class RunTests: XCTestCase {
     override func setUp() async throws {
         widgets = MemoryWidgetStore()
         bridge = DeviceBridge(clipboard: nil, ledger: PermissionLedger(store: MemoryLedgerStore()), appVersion: "")
-        bridge.addWidgets(PublishedWidgets(store: widgets))
+        bridge.addWidgets(PublishedWidgets(store: widgets), enabled: { true })
     }
 
     private func send(_ engine: EngineDevice, _ message: [String: Any]) -> [String: Any]? {
