@@ -41,6 +41,7 @@ describe('paletteEntries', () => {
         'Open Europa',
         'Keyboard Shortcuts',
         'Show or Hide Type Errors',
+        'Show or Hide Live Markdown Preview',
       ]),
     );
     // Only in a cell editor, or the palette itself.
@@ -56,6 +57,14 @@ describe('paletteEntries', () => {
       group: 'View',
     });
     expect(find('Show or Hide Type Errors')!.disabled).toBeFalsy();
+  });
+
+  it('offers the live Markdown preview switch as the page command that runs it (#672)', () => {
+    expect(find('Show or Hide Live Markdown Preview')).toMatchObject({
+      id: 'toggle-live-markdown',
+      group: 'View',
+    });
+    expect(find('Show or Hide Live Markdown Preview')!.disabled).toBeFalsy();
   });
 
   it('gives each its key and its argument', () => {

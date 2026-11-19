@@ -75,6 +75,7 @@ import {
   useRecents,
 } from './lib/recents';
 import { paletteEntries } from './lib/palette';
+import { liveMarkdownEnabled, setLiveMarkdownEnabled } from './lib/markdown-preview';
 import { setTypeErrorsEnabled, typeErrorsEnabled } from './lib/type-errors';
 import { CommandPalette } from './components/CommandPalette';
 import { VariablesPanel } from './components/VariablesPanel';
@@ -506,6 +507,9 @@ export function App() {
         return true;
       case 'toggle-type-errors':
         setTypeErrorsEnabled(!typeErrorsEnabled());
+        return true;
+      case 'toggle-live-markdown':
+        setLiveMarkdownEnabled(!liveMarkdownEnabled());
         return true;
       case 'watch-memory':
         if (arg !== 'on' && arg !== 'off') return false;

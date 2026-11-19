@@ -88,6 +88,8 @@ import '@jupyterlab/tooltip/style/index.js';
 import '@jupyterlab/documentsearch/style/index.js';
 import '@jupyterlab/cell-toolbar/style/index.js';
 
+import { liveMarkdownPreview } from './markdown-preview';
+
 const languages = new EditorLanguageRegistry();
 for (const language of EditorLanguageRegistry.getDefaultLanguages()) {
   languages.addLanguage(language);
@@ -112,6 +114,16 @@ extensions.addExtension({
       ybinding({ ytext: shared.ysource, undoManager: shared.undoManager ?? undefined }),
     );
   },
+});
+
+// Live Markdown preview (#672): only Markdown cells' editors, and only while
+// its switch is on (the extension itself follows the switch).
+extensions.addExtension({
+  name: 'live-markdown-preview',
+  factory: options =>
+    (options.model.sharedModel as { cell_type?: string }).cell_type === 'markdown'
+      ? EditorExtensionRegistry.createImmutableExtension(liveMarkdownPreview())
+      : null,
 });
 
 const editorServices = {
