@@ -72,8 +72,18 @@ describe('paletteEntries', () => {
     expect(find('Move cells up')).toMatchObject({ id: 'move-up', group: 'Command mode' });
     expect(find('Change Kernel to TypeScript')).toMatchObject({ id: 'change-kernel', arg: 'cdp' });
     expect(find('New Notebook')).toMatchObject({ id: 'new-notebook', arg: 'moons' });
+    expect(find('New DuckDB Console')).toMatchObject({
+      id: 'new-duckdb-console',
+      arg: 'moons',
+      group: 'File',
+      disabled: false,
+    });
     expect(find('Open Europa')).toMatchObject({ id: 'open', arg: 'Europa.ipynb', keys: '' });
     expect(find('Rename Notebook…')).toMatchObject({ prompt: 'New name', initial: 'Io' });
+  });
+
+  it('disables the DuckDB console without a connection', () => {
+    expect(find('New DuckDB Console', { ...CONTEXT, connected: false })?.disabled).toBe(true);
   });
 
   it('disables what can’t run now', () => {

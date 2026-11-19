@@ -16,6 +16,7 @@ import { useJupyterLabTheme } from './lib/theme';
 import { Sidebar } from './components/Sidebar';
 import { Toolbar } from './components/Toolbar';
 import { DataPane } from './components/DataPane';
+import { DuckdbConsole } from './components/DuckdbConsole';
 import { NotebookPane, type NotebookController } from './components/NotebookPane';
 import { dataKind } from './lib/data-files';
 import { ConnectSheet } from './components/ConnectSheet';
@@ -181,6 +182,16 @@ export function App() {
     if (narrow) setSidebarOpen(false);
   }, [narrow]);
   const [openPath, setOpenPath] = useState<string>();
+  /**
+   * The DuckDB console (#679) shows in the page where a notebook would, in
+   * this folder. It has no path: the app's state says no notebook is open,
+   * so its notebook menus disable, as they do for a data file. Opening
+   * anything closes it.
+   */
+  const [duckFolder, setDuckFolder] = useState<string>();
+  useEffect(() => {
+    if (openPath) setDuckFolder(undefined);
+  }, [openPath]);
   // Not if another notebook was opened while it renamed.
   // A run going on keeps going through a rename or move (of the notebook
   // or a folder it's in): its sheet and parameters follow the name.
@@ -416,7 +427,17 @@ export function App() {
         setOpenPath(path);
         return true;
       }
+      case 'new-duckdb-console':
+        if (!backend) return false;
+        // A notebook open goes the way another notebook's opening takes it.
+        setOpenPath(undefined);
+        setDuckFolder(clean(arg ?? folder));
+        return true;
       case 'close':
+        if (!openPath && duckFolder !== undefined) {
+          setDuckFolder(undefined);
+          return true;
+        }
         // Without saving: the app closes a notebook it moved to the Trash.
         if (!openPath) return false;
         c?.discard();
@@ -897,6 +918,13 @@ export function App() {
                 backend={backend}
                 path={openPath}
                 onOpenAsText={editsFiles ? () => openFile(openPath) : undefined}
+                onOpenNotebook={setOpenPath}
+              />
+            ) : backend && duckFolder !== undefined ? (
+              <DuckdbConsole
+                key={`${backend.config.kind}:${duckFolder}`}
+                backend={backend}
+                folder={duckFolder}
                 onOpenNotebook={setOpenPath}
               />
             ) : backend && openPath ? (

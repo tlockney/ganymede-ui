@@ -41,6 +41,21 @@ vi.mock('./components/DataPane', () => ({
   ),
 }));
 
+// The console's own tests render the real one, against a stand-in DuckDB.
+vi.mock('./components/DuckdbConsole', () => ({
+  DuckdbConsole: ({
+    folder,
+    onOpenNotebook,
+  }: {
+    folder: string;
+    onOpenNotebook(p: string): void;
+  }) => (
+    <div data-testid="duck-console" data-folder={folder}>
+      <button onClick={() => onOpenNotebook('duckdb-console.ipynb')}>Open exported</button>
+    </div>
+  ),
+}));
+
 vi.mock('./components/NotebookPane', async () => {
   const { useEffect } = await import('react');
   return {
@@ -805,6 +820,42 @@ describe('App', () => {
     expect(opened).toEqual([]);
     await userEvent.click(screen.getByRole('button', { name: 'Open as Text' }));
     expect(opened).toEqual([{ path: 'moons.csv' }]);
+    vi.unstubAllGlobals();
+  });
+
+  it('opens the DuckDB console in the page, with no notebook open for the app (#679)', async () => {
+    const states: Record<string, unknown>[] = [];
+    vi.stubGlobal('webkit', {
+      messageHandlers: {
+        state: { postMessage: (m: Record<string, unknown>) => states.push(m) },
+      },
+    });
+    mocks.controller = { dirty: false, save: vi.fn(async () => true), kernelName: 'python3' };
+    const fake = fakeServices({
+      '': [{ name: 'moons', type: 'directory' }],
+      moons: [{ name: 'Io.ipynb', type: 'notebook' }],
+    });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    history.replaceState(null, '', '/?kernels=server&open=moons/Io.ipynb');
+    render(<App />);
+    await screen.findByTestId('pane');
+    await waitFor(() => expect(states.at(-1)).toMatchObject({ path: 'moons/Io.ipynb' }));
+
+    expect(await window.ganymede!.command('new-duckdb-console', '/moons/')).toBe(true);
+    // In the notebook's place, for the folder as the app gave it.
+    expect(await screen.findByTestId('duck-console')).toHaveAttribute('data-folder', 'moons');
+    expect(screen.queryByTestId('pane')).toBeNull();
+    // The app's state has no path, so its notebook menus disable.
+    await waitFor(() => expect(states.at(-1)).toMatchObject({ path: null }));
+
+    // The app's close closes it; opening anything else does too.
+    expect(await window.ganymede!.command('close')).toBe(true);
+    await waitFor(() => expect(screen.queryByTestId('duck-console')).toBeNull());
+    expect(await window.ganymede!.command('new-duckdb-console', '')).toBe(true);
+    expect(await screen.findByTestId('duck-console')).toHaveAttribute('data-folder', '');
+    await userEvent.click(screen.getByRole('button', { name: 'Open exported' }));
+    await waitFor(() => expect(screen.queryByTestId('duck-console')).toBeNull());
+    expect(await screen.findByTestId('pane')).toHaveTextContent('duckdb-console.ipynb');
     vi.unstubAllGlobals();
   });
 
