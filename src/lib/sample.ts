@@ -26,7 +26,7 @@ const CDP_BROWSER: Kernelspec = {
   language: 'typescript',
 };
 
-type Cell = { cell_type: 'markdown' | 'code'; source: string };
+export type Cell = { cell_type: 'markdown' | 'code'; source: string };
 
 const CELLS: Cell[] = [
   {
@@ -122,8 +122,8 @@ export function sampleKernel(specs?: KernelSpec.ISpecModels | null): Kernelspec 
   return { name: pick.name, display_name: pick.display_name, language: pick.language };
 }
 
-/** The sample as an nbformat 4 notebook, asking for `kernelspec`. */
-export function sampleNotebook(kernelspec: Kernelspec = CDP_BROWSER) {
+/** An nbformat 4 notebook of `cells`, asking for `kernelspec`; cell ids are `<prefix>-<n>`. */
+export function notebookOf(kernelspec: Kernelspec, cells: readonly Cell[], prefix: string) {
   return {
     nbformat: 4,
     nbformat_minor: 5,
@@ -135,14 +135,19 @@ export function sampleNotebook(kernelspec: Kernelspec = CDP_BROWSER) {
       },
       language_info: { name: 'typescript' },
     },
-    cells: CELLS.map((c, i) => ({
-      id: `tour-${i + 1}`,
+    cells: cells.map((c, i) => ({
+      id: `${prefix}-${i + 1}`,
       cell_type: c.cell_type,
       metadata: {},
       source: c.source,
       ...(c.cell_type === 'code' ? { outputs: [], execution_count: null } : {}),
     })),
   };
+}
+
+/** The sample as an nbformat 4 notebook, asking for `kernelspec`. */
+export function sampleNotebook(kernelspec: Kernelspec = CDP_BROWSER) {
+  return notebookOf(kernelspec, CELLS, 'tour');
 }
 
 /**

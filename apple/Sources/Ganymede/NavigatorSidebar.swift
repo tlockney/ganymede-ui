@@ -182,7 +182,7 @@ private struct SearchNavigator: View {
     }
 
     private func open(_ entry: FolderEntry) {
-        if entry.isNotebook {
+        if entry.opensInPage {
             page.run("open", arg: entry.serverPath)
         } else if entry.isDirectory {
             openWindow(value: WindowTarget(opening: entry.url))

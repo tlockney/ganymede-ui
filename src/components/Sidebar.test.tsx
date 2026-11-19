@@ -73,6 +73,24 @@ describe('Sidebar', () => {
     expect(onOpenFile).toHaveBeenCalledTimes(1);
   });
 
+  it('opens data files in the page, through onOpen, with or without an editor (#671)', async () => {
+    const onOpenFile = vi.fn();
+    const tree = {
+      ...TREE,
+      '': [
+        { name: 'moons.csv', type: 'file' as const },
+        { name: 'a.parquet', type: 'file' as const },
+      ],
+    };
+    const { onOpen } = renderSidebar({ onOpenFile }, tree);
+    const csv = (await screen.findByText('moons.csv')).closest('button')!;
+    expect(csv).toBeEnabled();
+    await userEvent.click(csv);
+    await userEvent.click(screen.getByText('a.parquet'));
+    expect(onOpen.mock.calls).toEqual([['moons.csv'], ['a.parquet']]);
+    expect(onOpenFile).not.toHaveBeenCalled();
+  });
+
   it('walks into a folder and back out', async () => {
     const { fake, onNew, onOpen } = renderSidebar();
     await userEvent.click(await screen.findByText('moons'));
@@ -472,6 +490,25 @@ describe('Sidebar search and Recents', () => {
     expect(await screen.findByText('No matches')).toBeInTheDocument();
     await userEvent.type(field, '{Escape}');
     expect(field).toHaveValue('');
+  });
+
+  it('opens a found data file in the page, and leaves another file disabled without an editor (#671)', async () => {
+    const files = {
+      '': [
+        { name: 'moons.csv', type: 'file' as const },
+        { name: 'moons.txt', type: 'file' as const },
+      ],
+    };
+    const { onOpen } = renderSidebar({}, files as never);
+    await screen.findByText('moons.csv');
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Search files' }), 'moons');
+    await waitFor(() => expect(results()).toHaveLength(2));
+    const list = within(screen.getByRole('list', { name: 'Search results' }));
+    expect(list.getByRole('button', { name: /moons\.txt/ })).toBeDisabled();
+    const csv = list.getByRole('button', { name: /moons\.csv/ });
+    expect(csv).toBeEnabled();
+    await userEvent.click(csv);
+    expect(onOpen).toHaveBeenCalledWith('moons.csv');
   });
 
   it('searches inside notebooks when asked', async () => {

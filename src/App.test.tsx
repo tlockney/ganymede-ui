@@ -32,6 +32,15 @@ vi.mock('./lib/host-grants', async importOriginal => ({
   loadHostGrants: mocks.loadHostGrants,
 }));
 
+// The data view's own tests render the real one (and JupyterLab's JSON viewer).
+vi.mock('./components/DataPane', () => ({
+  DataPane: ({ path, onOpenAsText }: { path: string; onOpenAsText?(): void }) => (
+    <div data-testid="data-pane" data-path={path}>
+      {onOpenAsText && <button onClick={onOpenAsText}>Open as Text</button>}
+    </div>
+  ),
+}));
+
 vi.mock('./components/NotebookPane', async () => {
   const { useEffect } = await import('react');
   return {
@@ -757,6 +766,45 @@ describe('App', () => {
     // Nor do the app's renames and deletes move its Recents (#240).
     const gone = JSON.stringify({ from: 'notes.md', to: null });
     expect(await window.ganymede!.command('file-moved', gone)).toBe(false);
+    vi.unstubAllGlobals();
+  });
+
+  it('opens CSV, TSV, JSON and Parquet files in the data view, in a browser too (#671)', async () => {
+    localStorage.setItem('ganymede-ui:backend', JSON.stringify({ kind: 'ganymede', url: '' }));
+    const tree = {
+      '': [
+        { name: 'moons.csv', type: 'file' as const },
+        { name: 'notes.md', type: 'file' as const },
+      ],
+    };
+    mocks.connect.mockResolvedValue(fakeBackend(fakeServices(tree).services));
+    render(<App />);
+    // A browser has no text editor: the other file stays disabled, the CSV opens.
+    expect((await screen.findByText('notes.md')).closest('button')).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    await userEvent.click(screen.getByText('moons.csv'));
+    expect(await screen.findByTestId('data-pane')).toHaveAttribute('data-path', 'moons.csv');
+    expect(screen.queryByRole('button', { name: 'Open as Text' })).toBeNull();
+    expect(document.title).toBe('moons.csv');
+  });
+
+  it('routes a data file the app opens to the page, with Open as Text to its editor (#671)', async () => {
+    const opened: unknown[] = [];
+    vi.stubGlobal('webkit', {
+      messageHandlers: { openFile: { postMessage: (m: unknown) => opened.push(m) } },
+    });
+    localStorage.setItem('ganymede-ui:backend', JSON.stringify({ kind: 'ganymede', url: '' }));
+    const tree = { '': [{ name: 'moons.csv', type: 'file' as const }] };
+    mocks.connect.mockResolvedValue(fakeBackend(fakeServices(tree).services));
+    render(<App />);
+    await userEvent.click(await screen.findByText('moons.csv'));
+    // In the page, not the editor.
+    expect(await screen.findByTestId('data-pane')).toHaveAttribute('data-path', 'moons.csv');
+    expect(opened).toEqual([]);
+    await userEvent.click(screen.getByRole('button', { name: 'Open as Text' }));
+    expect(opened).toEqual([{ path: 'moons.csv' }]);
     vi.unstubAllGlobals();
   });
 

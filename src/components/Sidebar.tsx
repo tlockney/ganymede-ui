@@ -3,6 +3,7 @@ import type { Contents } from '@jupyterlab/services';
 import type { Backend } from '../lib/backends';
 import { useSignals } from '../lib/useSignal';
 import { parentOf } from '../lib/launch';
+import { dataKind } from '../lib/data-files';
 import { type FileActions, type FileItem, deletePrompt } from '../lib/file-actions';
 import { useFileSearch } from '../lib/search';
 import { clearRecents, recentsKey, useRecents } from '../lib/recents';
@@ -276,7 +277,7 @@ export function Sidebar({
               if (item.type === 'directory') {
                 setDir(item.path);
                 setQuery('');
-              } else if (item.type === 'notebook') onOpen(item.path);
+              } else if (item.type === 'notebook' || dataKind(item.path)) onOpen(item.path);
               else onOpenFile?.(item.path);
             }}
           />
@@ -310,7 +311,9 @@ export function Sidebar({
           {items.map(item => {
             const isNb = item.type === 'notebook';
             const isDir = item.type === 'directory';
-            const isFile = item.type === 'file' && !!onOpenFile;
+            // CSV, TSV, JSON and Parquet files open in the page's data view (#671).
+            const isData = item.type === 'file' && !!dataKind(item.path);
+            const isFile = item.type === 'file' && !!onOpenFile && !isData;
             const shown = item.name.replace(/\.ipynb$/, '');
             const icon = isDir ? (
               <FolderIcon className="tint" />
@@ -339,12 +342,12 @@ export function Sidebar({
                 <button
                   className={`source-item ${openPath === item.path ? 'selected' : ''}`}
                   // A file that can't be opened still has its menu.
-                  disabled={!actions && !isNb && !isDir && !isFile}
-                  aria-disabled={!isNb && !isDir && !isFile}
+                  disabled={!actions && !isNb && !isDir && !isFile && !isData}
+                  aria-disabled={!isNb && !isDir && !isFile && !isData}
                   onClick={() =>
                     isDir
                       ? setDir(item.path)
-                      : isNb
+                      : isNb || isData
                         ? onOpen(item.path)
                         : isFile && onOpenFile?.(item.path)
                   }

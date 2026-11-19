@@ -27,4 +27,11 @@ struct DocumentMessage: Equatable {
             file = nil
         }
     }
+
+    /// The file is a notebook, so it belongs in Open Recent and Spotlight.
+    /// A data file shown in the page (#671) is the window's file too, for
+    /// its title and proxy icon, but not a document to reopen or index.
+    var isNotebook: Bool {
+        file?.pathExtension.lowercased() == "ipynb"
+    }
 }

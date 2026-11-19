@@ -23,6 +23,18 @@ final class DocumentMessageTests: XCTestCase {
         )
     }
 
+    /// Only a notebook goes to Open Recent and Spotlight; a data file the
+    /// page shows (#671) doesn't.
+    func testOnlyANotebookIsANotebook() {
+        let message = { (path: String) in DocumentMessage(body: ["path": path, "dirty": false])! }
+        XCTAssertTrue(message("Users/me/Io.ipynb").isNotebook)
+        XCTAssertTrue(message("Users/me/Io.IPYNB").isNotebook)
+        for path in ["Users/me/moons.csv", "Users/me/moons.tsv", "Users/me/moons.json", "Users/me/moons.parquet"] {
+            XCTAssertFalse(message(path).isNotebook, path)
+        }
+        XCTAssertFalse(DocumentMessage(file: nil, dirty: false).isNotebook)
+    }
+
     func testIgnoresOtherMessages() {
         XCTAssertNil(DocumentMessage(body: "saved"))
         XCTAssertNil(DocumentMessage(body: ["path": "Io.ipynb"]))
