@@ -233,6 +233,15 @@ describe('signature help in a cell', () => {
     expect(tooltip()).toBeNull();
   });
 
+  it('closes when the cell loses focus', async () => {
+    await start({ answer: () => ({ signature: SIG }) });
+    type(2, '(');
+    await settle();
+    expect(tooltip()).not.toBeNull();
+    view(2).contentDOM.dispatchEvent(new FocusEvent('blur'));
+    expect(tooltip()).toBeNull();
+  });
+
   it('is silent against a kernel without the comm', async () => {
     const k = (await start({ refuse: true }))!;
     type(2, '(');

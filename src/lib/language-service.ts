@@ -287,8 +287,14 @@ export function createLanguageService(
   const codeCells = () => notebook.widgets.filter(w => w.model.type === 'code');
   const source = (cell: Cell) => cell.model.sharedModel.getSource();
   const viewOf = (cell: Cell) => (cell.editor as CodeMirrorEditor | null | undefined)?.editor;
-  const sameSources = (cells: Cell[], texts: string[]) =>
-    cells.length === texts.length && cells.every((c, i) => !c.isDisposed && source(c) === texts[i]);
+  /** The notebook's code cells are still `cells`, in order, with `texts` as their text. */
+  const sameSources = (cells: Cell[], texts: string[]) => {
+    const current = codeCells();
+    return (
+      current.length === cells.length &&
+      current.every((c, i) => c === cells[i] && !c.isDisposed && source(c) === texts[i])
+    );
+  };
 
   /** What a definition or rename request sends, and what the answer is read against. */
   const snapshot = (cell: Cell | undefined) => {

@@ -91,11 +91,8 @@ equivalent would fire while typing. The Swift only adds two buttons that run
 page commands, as `Find in Notebook…` does; it has no logic to test and was
 not compiled here.
 
-`@codemirror/view` (6.43.15) and `@codemirror/state` (6.7.6) are now direct
-dependencies, pinned to the versions already in the lock file as
-dependencies of `@jupyterlab/codemirror`, as #670 did for `@codemirror/lint`;
-no package is added. They are needed for the tooltip, key map and
-transactions.
+`@codemirror/view` and `@codemirror/state`, needed for the tooltip, key map
+and transactions, were already direct dependencies (#674); nothing is added.
 
 Left out: the signature opening on `(` typed by paste or by completion
 (only a typed `(` or `,` opens it, then it follows), multiple definitions

@@ -704,6 +704,20 @@ describe('rename', () => {
     expect(hooks.notify).toHaveBeenCalledWith(expect.stringContaining('changed'));
   });
 
+  it('applies nothing when a code cell was added while the kernel answered', async () => {
+    const k = start()!;
+    await settle();
+    cursorAt(0, 3);
+    const done = service.rename('sum');
+    await settle();
+    notebook.model!.sharedModel.insertCell(1, { cell_type: 'code', source: 'total + 1' });
+    await settle();
+    k.reply(EDITS);
+    expect(await done).toBe(false);
+    expect(text(0)).toBe(CELL0);
+    expect(hooks.notify).toHaveBeenCalledWith(expect.stringContaining('changed'));
+  });
+
   it('sends nothing when the name is cancelled, empty, or the same', async () => {
     const k = start({ answer: () => EDITS })!;
     await settle();
