@@ -92,7 +92,8 @@ shown or hidden, its tab and its expanded folders across launches.
   button opens a popover with the kernel's state and memory, Interrupt,
   Restart, Kernel Log and the kernels to change to.
 - The Cell menu runs, runs with parameters, inserts, moves and deletes
-  cells, clears all outputs, collapses and expands code, and opens Find; the Kernel menu interrupts (⌘.),
+  cells, clears all outputs, collapses and expands code, goes to a definition and renames a symbol (see
+  [Signatures, definitions and renames](#signatures-definitions-and-renames)), and opens Find; the Kernel menu interrupts (⌘.),
   restarts, changes and trusts. A code cell's chevron, left of its
   prompt, collapses its code to the first line, as on the web page
   (README, "Collapsing code"); the iPad's Cell menu has Collapse All Code
@@ -666,6 +667,48 @@ becomes Markdown or raw.
 It is on by default, and the app remembers the choice; other windows of
 the app follow it. There is no View menu item
 for it yet.
+
+## Signatures, definitions and renames
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release. It also needs a cdp-kernel release that has the
+> language comm (cdp-kernel#522): until a kernel answers, none of this does
+> anything.
+
+Code cells of a TypeScript or JavaScript kernel get three more things from
+the kernel's language service, in the Mac, iPad and iPhone apps and in the
+browser:
+
+- **Signature help.** Typing `(` or `,` inside a call shows the call's
+  signature above the cursor, with the argument you are on marked and its
+  documentation. It follows the cursor, and closes on Esc, when the cursor
+  leaves the call, or when the cell loses focus.
+- **Go to definition.** ⌘-click (Ctrl-click off the Mac) on a name, or F12
+  with the cursor in it, jumps to where the notebook declares it and
+  selects the name there. A name declared outside the notebook, in a
+  package or in the runtime, does nothing.
+- **Rename symbol.** F2 with the cursor in a name asks for the new name;
+  Enter renames it, Esc cancels. The declaration and its uses change in
+  every cell they are in, as one change per cell, so ⌘Z in a cell takes
+  back that cell's part. A rename the kernel refuses (a keyword, a package
+  export or global such as `process`, a name no cell declares, a name that
+  isn't a valid name) shows the reason in a notice and changes nothing. A
+  name that a later cell declares again is a separate variable: rename it
+  from that cell.
+
+**Go to Definition** and **Rename Symbol…** are also in the Command
+Palette (the second asks for the name there), and in the Mac's and iPad's
+Cell menu. They act on the cursor of the active cell.
+
+These work only against a cdp-kernel that answers; against another kernel,
+the in-app kernel, or a cdp-kernel started with `--no-language-service`
+nothing shows and the keys do nothing. They need no setting: nothing runs
+until you press a key or click. A kernel that can't tell yet (TypeScript is
+still loading, or the request took too long) shows no signature and moves
+nowhere; a rename then says the service can't tell. If a cell changes
+while the kernel is answering, the answer is dropped, so a rename never
+lands on text it wasn't made for.
 
 ## Publishing a notebook
 

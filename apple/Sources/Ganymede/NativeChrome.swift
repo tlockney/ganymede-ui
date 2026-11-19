@@ -773,6 +773,10 @@ struct CellMenu: View {
             Button("Collapse All Code") { page?.run("collapse-all-code") }
             Button("Expand All Code") { page?.run("expand-all-code") }
             Divider()
+            // Through the kernel's language service (#676); the page binds F12 and F2.
+            Button("Go to Definition") { page?.run("go-to-definition") }
+            Button("Rename Symbol…") { page?.run("rename-symbol") }
+            Divider()
             Button("Find in Notebook…") { page?.run("find") }
         }
         .disabled(page?.state.hasNotebook != true)

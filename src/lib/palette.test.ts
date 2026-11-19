@@ -58,6 +58,24 @@ describe('paletteEntries', () => {
     expect(find('Show or Hide Type Errors')!.disabled).toBeFalsy();
   });
 
+  it('offers go to definition and rename symbol as page commands, the second asking for the name (#676)', () => {
+    expect(find('Go to Definition')).toMatchObject({
+      id: 'go-to-definition',
+      group: 'Cell',
+      keys: 'F12',
+    });
+    expect(find('Rename Symbol…')).toMatchObject({
+      id: 'rename-symbol',
+      group: 'Cell',
+      keys: 'F2',
+      prompt: 'New name',
+    });
+    expect(find('Go to Definition')!.disabled).toBeFalsy();
+    const none = { ...CONTEXT, path: undefined, kernel: undefined };
+    expect(find('Go to Definition', none)?.disabled).toBe(true);
+    expect(find('Rename Symbol…', none)?.disabled).toBe(true);
+  });
+
   it('gives each its key and its argument', () => {
     expect(find('Save')).toMatchObject({ id: 'save', keys: expect.stringMatching(/S$/) });
     expect(find('Move cells up')).toMatchObject({ id: 'move-up', group: 'Command mode' });

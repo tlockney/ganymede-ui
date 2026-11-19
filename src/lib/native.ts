@@ -49,6 +49,9 @@ export type NativeHooks = {
  * folder it takes, and opens the first (#414).
  * `toggle-type-errors` turns type errors in TypeScript and JavaScript cells
  * on or off (#669).
+ * `go-to-definition` and `rename-symbol` act on the name at the open
+ * notebook's active cell, through the kernel's language service (#676);
+ * `rename-symbol` takes the new name, and without one asks for it.
  * `inspect-variables` takes `on` or `off`: whether the app's inspector
  * shows the Variables view, so the page reads the variables and posts them
  * as `PageState.variables` (#249). `toggle-variable` expands or collapses
@@ -83,6 +86,8 @@ export const PAGE_COMMANDS = {
   'command-palette': '',
   'toggle-variables': '',
   'toggle-type-errors': '',
+  'go-to-definition': '',
+  'rename-symbol': 'arg',
   connect: '',
   search: 'arg',
   'clear-recents': '',

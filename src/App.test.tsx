@@ -247,10 +247,14 @@ describe('App', () => {
     const discard = vi.fn();
     const rename = vi.fn(async () => true);
     const goToCell = vi.fn((i: number) => i < 3);
+    const goToDefinition = vi.fn(async () => true);
+    const renameSymbol = vi.fn(async (name?: string) => name !== 'refused');
     mocks.controller = {
       discard,
       rename,
       goToCell,
+      goToDefinition,
+      renameSymbol,
       outline: [{ level: 1, text: 'Io', cell: 2 }],
       dirty: false,
       save: vi.fn(async () => true),
@@ -302,6 +306,14 @@ describe('App', () => {
     expect(await run('go-to-cell', 'one')).toBe(false);
     expect(await run('go-to-cell')).toBe(false);
     expect(goToCell).toHaveBeenCalledTimes(2);
+    // Go to definition and rename through the kernel's language service (#676).
+    expect(await run('go-to-definition')).toBe(true);
+    expect(goToDefinition).toHaveBeenCalledTimes(1);
+    expect(await run('rename-symbol', 'sum')).toBe(true);
+    expect(renameSymbol).toHaveBeenLastCalledWith('sum');
+    expect(await run('rename-symbol')).toBe(true);
+    expect(renameSymbol).toHaveBeenLastCalledWith(undefined);
+    expect(await run('rename-symbol', 'refused')).toBe(false);
     expect(await run('run-all')).toBe(true);
     expect(runAll).toHaveBeenCalled();
     expect(await run('clear-outputs')).toBe(true);
@@ -438,6 +450,13 @@ describe('App', () => {
     expect(screen.queryByRole('complementary', { name: 'Variables' })).not.toBeInTheDocument();
     expect(await window.ganymede!.command('toggle-variables')).toBe(true);
     expect(await screen.findByRole('complementary', { name: 'Variables' })).toBeInTheDocument();
+  });
+
+  it('does nothing for go-to-definition and rename-symbol with no notebook open (#676)', async () => {
+    render(<App />);
+    await waitFor(() => expect(window.ganymede).toBeDefined());
+    expect(await window.ganymede!.command('go-to-definition')).toBe(false);
+    expect(await window.ganymede!.command('rename-symbol', 'x')).toBe(false);
   });
 
   it('turns type errors on and off from the app, and remembers it (#669)', async () => {

@@ -39,6 +39,8 @@ function controller(over: Partial<NotebookController> = {}): NotebookController 
     moved: vi.fn(async () => {}),
     outline: [],
     goToCell: vi.fn(() => true),
+    goToDefinition: vi.fn(async () => true),
+    renameSymbol: vi.fn(async () => true),
     ...over,
   };
 }
