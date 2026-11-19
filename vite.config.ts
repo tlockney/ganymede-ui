@@ -80,6 +80,8 @@ const proxy: Record<string, ProxyOptions> = {
   '/api': toServer,
   // Publish as Web Page (#563): the server's HTML export.
   '/nbconvert': { ...toServer, ws: false },
+  // The data view (#671) reads a file's bytes from the server's /files.
+  '/files': { ...toServer, ws: false },
 };
 
 const config: UserConfig = {
