@@ -12,6 +12,22 @@ const parquet = vi.hoisted(() => ({
 }));
 vi.mock('../lib/parquet', () => parquet);
 
+// JupyterLab's JSON renderer is its own package, with its own React 18
+// under it, which the test run can't share with the app's React (the
+// build dedupes them). This stands in for it: a widget with its class.
+vi.mock('@jupyterlab/json-extension', async () => {
+  const { Widget } = await import('@lumino/widgets');
+  return {
+    rendererFactory: {
+      createRenderer: () => {
+        const w = new Widget();
+        w.addClass('jp-RenderedJSON');
+        return Object.assign(w, { renderModel: async () => {} });
+      },
+    },
+  };
+});
+
 /** A browser-kind backend, whose files come through the contents API, with `files` as text. */
 function backendWith(files: Record<string, string>, sizes: Record<string, number> = {}) {
   const fake = fakeServices({ '': [] });
