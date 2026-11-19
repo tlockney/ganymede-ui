@@ -8,7 +8,8 @@ import { outputs, waitForReady } from './helpers';
 
 test('type errors and typed completion from TypeScript the app serves', async ({ page }) => {
   const fetched: string[] = [];
-  page.on('request', r => {
+  // The context sees the service worker's requests too, not just the page's.
+  page.context().on('request', r => {
     if (r.url().includes('/kernel-typescript/')) fetched.push(r.url());
   });
   await page.goto('/');
@@ -18,7 +19,20 @@ test('type errors and typed completion from TypeScript the app serves', async ({
   await page.getByRole('button', { name: 'New Notebook' }).first().click();
   await expect(page.locator('.jp-Cell').first()).toBeVisible({ timeout: 60_000 });
   await waitForReady(page);
-  // Nothing of TypeScript is fetched with the page or the notebook.
+  // Nothing of TypeScript is fetched with the page or the notebook, nor
+  // precached by the service worker once it is installed.
+  const precached = await page.evaluate(async () => {
+    await navigator.serviceWorker.ready;
+    const urls: string[] = [];
+    for (const name of await caches.keys()) {
+      for (const req of await (await caches.open(name)).keys()) urls.push(req.url);
+    }
+    const sw = await (await fetch('/sw.js')).text();
+    return { urls, inManifest: sw.includes('kernel-typescript/typescript-') };
+  });
+  expect(precached.urls.length).toBeGreaterThan(0);
+  expect(precached.urls.filter(u => u.includes('/kernel-typescript/'))).toEqual([]);
+  expect(precached.inManifest).toBe(false);
   expect(fetched).toEqual([]);
 
   const first = page.locator('.jp-Cell .cm-content').first();

@@ -699,8 +699,8 @@ TypeScript error number (`TS2322`). Each cell is checked with what the
 cells that ran declared, so a name an earlier cell declares is not an
 error, nor is importing a package no cell has run yet.
 
-cdp-kernel's kernels answer: Node, Deno and Bun, and, from a build of
-`main`, the in-app kernel and the kernel in the browser, with
+cdp-kernel's kernels answer: Node, Deno and Bun, and the in-app kernel
+and the kernel in the browser, with
 [the TypeScript the app ships](#typescript-in-the-in-app-kernel). Other
 kernels show nothing: other languages, and a cdp-kernel started with
 `--no-language-service`. A kernel that can't tell yet (TypeScript is
@@ -747,8 +747,8 @@ browser:
 Palette (the second asks for the name there), and in the Mac's and iPad's
 Cell menu. They act on the cursor of the active cell.
 
-These work only against a cdp-kernel that answers (the in-app kernel and
-the kernel in the browser too, from a build of `main`); against another kernel, or a
+These work only against a cdp-kernel that answers, the in-app kernel and
+the kernel in the browser included; against another kernel, or a
 cdp-kernel started with `--no-language-service`, nothing shows and the
 keys do nothing. They need no setting: nothing runs
 until you press a key or click. A kernel that can't tell yet (TypeScript is
