@@ -688,8 +688,8 @@ asking again for its check period.
 
 > [!NOTE]
 > **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release. It also needs a cdp-kernel release after 0.12.3:
-> until a kernel answers, nothing is underlined.
+> the latest release. It also needs cdp-kernel 0.13.0 or later: an
+> older kernel doesn't answer, and nothing is underlined.
 
 Code cells of a TypeScript or JavaScript kernel underline type errors as
 you type, in the Mac, iPad and iPhone apps and in the browser. Pause for
@@ -718,9 +718,8 @@ for it yet.
 
 > [!NOTE]
 > **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release. It also needs a cdp-kernel release that has the
-> language comm (cdp-kernel#522): until a kernel answers, none of this does
-> anything.
+> the latest release. It also needs cdp-kernel 0.14.0 or later: an
+> older kernel doesn't answer, and none of this does anything.
 
 Code cells of a TypeScript or JavaScript kernel get three more things from
 the kernel's language service, in the Mac, iPad and iPhone apps and in the
