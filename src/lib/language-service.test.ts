@@ -582,6 +582,26 @@ describe('applyEdits', () => {
   });
 });
 
+describe('applyEdits without an editor', () => {
+  it('goes through the model, in one change, at the positions of the text before', () => {
+    start();
+    // A cell that has no editor view (not set up yet).
+    Object.defineProperty(cell(2), 'editor', { get: () => null, configurable: true });
+    const changes: unknown[] = [];
+    cell(2).model.sharedModel.changed.connect((_, c) => changes.push(c));
+    applyEdits(
+      [cell(0), cell(2)],
+      [
+        { cell: 1, from: 12, to: 17, text: 'sum' },
+        { cell: 1, from: 19, to: 24, text: 'summation' },
+      ],
+    );
+    delete (cell(2) as { editor?: unknown }).editor;
+    expect(text(2)).toBe('console.log(sum, summation)');
+    expect(changes).toHaveLength(1);
+  });
+});
+
 describe('rename', () => {
   const EDITS = {
     edits: [
@@ -710,5 +730,84 @@ describe('rename', () => {
     cursorAt(0, 3);
     expect(await service.rename('x')).toBe(false);
     expect(text(0)).toBe(CELL0);
+  });
+
+  it('asks for what the notebook says after the name was typed', async () => {
+    const k = start({ answer: () => EDITS })!;
+    await settle();
+    cursorAt(0, T0.utf16[0] + 2);
+    let typed!: (name: string) => void;
+    hooks.askName.mockReturnValue(new Promise<string | null>(r => (typed = r)));
+    const done = service.rename();
+    await settle();
+    cell(2).model.sharedModel.setSource('console.log(total, total) // edited');
+    typed('sum');
+    expect(await done).toBe(true);
+    expect(k.comms[0]!.sent).toEqual([
+      expect.objectContaining({
+        op: 'rename',
+        cells: [CELL0, 'console.log(total, total) // edited'],
+        newName: 'sum',
+      }),
+    ]);
+    expect(text(2)).toBe('console.log(sum, sum) // edited');
+  });
+
+  it('asks nothing when the cursor moved while the name was typed', async () => {
+    const k = start({ answer: () => EDITS })!;
+    await settle();
+    cursorAt(0, T0.utf16[0] + 2);
+    let typed!: (name: string) => void;
+    hooks.askName.mockReturnValue(new Promise<string | null>(r => (typed = r)));
+    const done = service.rename();
+    await settle();
+    cursorAt(0, 3);
+    typed('sum');
+    expect(await done).toBe(false);
+    expect(k.comms[0]!.sent).toEqual([]);
+    expect(text(0)).toBe(CELL0);
+  });
+
+  it('does nothing when the service is disposed while the name was typed', async () => {
+    const k = start({ answer: () => EDITS })!;
+    await settle();
+    cursorAt(0, T0.utf16[0] + 2);
+    let typed!: (name: string) => void;
+    hooks.askName.mockReturnValue(new Promise<string | null>(r => (typed = r)));
+    const done = service.rename();
+    await settle();
+    service.dispose();
+    typed('sum');
+    expect(await done).toBe(false);
+    expect(k.comms[0]!.sent).toEqual([]);
+  });
+
+  it('applies nothing from an answer that arrives as the service is disposed', async () => {
+    const k = start()!;
+    await settle();
+    cursorAt(0, 3);
+    const done = service.rename('sum');
+    await settle();
+    k.reply(EDITS);
+    service.dispose();
+    expect(await done).toBe(false);
+    expect(text(0)).toBe(CELL0);
+    expect(hooks.notify).not.toHaveBeenCalled();
+  });
+});
+
+describe('go to definition and the service’s end', () => {
+  it('does not move to an answer that arrives as the service is disposed', async () => {
+    const k = start()!;
+    await settle();
+    cursorAt(2, 2);
+    notebook.activeCellIndex = 2;
+    const done = service.goToDefinition();
+    await settle();
+    k.reply({ locations: [{ cell: 0, start: T0.cp[0], end: T0.cp[1] }] });
+    service.dispose();
+    expect(await done).toBe(false);
+    expect(notebook.activeCellIndex).toBe(2);
+    expect(view(0).state.selection.main.from).toBe(0);
   });
 });

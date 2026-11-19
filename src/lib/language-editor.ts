@@ -69,7 +69,8 @@ const signatureField = StateField.define<Tooltip | null>({
       if (e.is(setSignature)) return e.value;
       if (e.is(closeSignature)) return null;
     }
-    return value;
+    // The text moved under the tooltip (an edit, a rename): it stays at its place in the text.
+    return value && tr.docChanged ? { ...value, pos: tr.changes.mapPos(value.pos) } : value;
   },
   provide: f => [
     showTooltip.from(f),
@@ -143,8 +144,9 @@ export function languageExtension(service: LanguageService, cell: Cell) {
       // The cursor or text moved on since: the later request answers.
       if (mine !== epoch) return;
       pendingRequest = false;
-      // The pane or the cell went while the kernel answered.
-      if (service.isDisposed || cell.isDisposed || !view.dom.isConnected) return;
+      // The pane or the cell went while the kernel answered (a cell that
+      // went has its editor, and so its DOM, gone with it).
+      if (service.isDisposed || !view.dom.isConnected) return;
       view.dispatch({
         effects: setSignature.of(
           sig
@@ -311,11 +313,10 @@ export function attachLanguageFeatures(
     }
   };
 
-  const onCells = () => {
-    inject();
-    // The notebook makes the widget for a new cell as it handles the same change.
-    queueMicrotask(inject);
-  };
+  // The notebook connected to the model's cells before this did, so a new
+  // cell's widget is there when `inject` runs. A model set after this is
+  // attached is not watched: its first active cell is the signal.
+  const onCells = () => inject();
   notebook.model?.cells.changed.connect(onCells);
   notebook.activeCellChanged.connect(inject);
   inject();

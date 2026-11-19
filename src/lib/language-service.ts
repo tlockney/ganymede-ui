@@ -366,7 +366,7 @@ export function createLanguageService(
         name = asked;
       }
       name = name.trim();
-      if (!name || name === current || disposed) return false;
+      if (!name || name === current) return false;
       // The text may have changed while the name was typed: ask for what is there now.
       const now = snapshot(snap.target);
       if (!now || now.head !== snap.head) return false;

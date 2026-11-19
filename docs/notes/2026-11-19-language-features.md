@@ -46,21 +46,36 @@ view gets one `sharedModel.transact`.
 
 `src/lib/language-editor.ts` is the CodeMirror side, injected into each
 code cell's editor with `injectExtension` once its `ready` resolves (new
-cells are picked up on the model's `cells.changed` and when the active
-cell changes):
+cells are picked up on the model's `cells.changed`, which the notebook
+handles first, so the widget is there; a model set after the features were
+attached is picked up when the active cell changes):
 
 - Signature help is a `showTooltip` field. A user-typed insert starting with
   `(` or `,` asks; while a tooltip shows (or a request is out) every
   selection or text change asks again, and the answer replaces the tooltip or
   closes it (null: the cursor left the call). A counter drops answers to an
-  earlier request. Esc, losing focus, and the pane going close it. The label is
+  earlier request, and the tooltip's position is mapped through edits made
+  while it shows. Esc, losing focus, and the pane going close it. The label is
   built with DOM text nodes, the active parameter in `<strong>` found by
   looking for each parameter label in turn after the one before it.
+- Esc with a tooltip open closed the tooltip but also left edit mode (found
+  against a real kernel): the app runs `commands.processKeydownEvent` in the
+  capture phase, before CodeMirror's keymap, and `command-mode` is bound to
+  Esc. The editor has the class `gm-mod-signature-help` while the tooltip
+  shows, and `jupyterlab.ts` binds Esc on `#id .gm-mod-signature-help` to
+  `signature-help:dismiss`, which sends a `closeSignature` effect (the
+  listener bumps the counter, so a later answer doesn't reopen it). Tested
+  through the same capture-phase listener and the real commands.
 - F12 and Cmd-click (Ctrl-click off a Mac) go to the definition; F2 renames.
   The keys are not consumed when the kernel doesn't answer. F2 opens its
   input in a `setTimeout`: the notebook's own `keydown` handler calls
   `_ensureFocus(true)` as the event bubbles, which puts the focus back in the
   editor and closed the input at once (found by the test).
+- Enter in the name input renamed nothing (found against a real kernel): the
+  notebook's capture-phase handler moved the focus first, and the blur
+  cancelled before the form's submit. The blur is judged after the task
+  (`setTimeout`) and cancels only if the focus is not on the input then. The
+  input stops its keydowns from reaching the notebook's shortcuts.
 - The name input is a small `position: fixed` form next to the cursor
   (`askNameNear`), as there is no prompt component in the app but the
   palette's, and that one is used when the palette runs the command: the

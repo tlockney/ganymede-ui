@@ -186,7 +186,7 @@ export function attachTypeErrors(
   const check = (id: string) => {
     timers.delete(id);
     const cell = cellOf(id);
-    if (!link.isOpen || !cell || cell.model.type !== 'code') return;
+    if (!cell || cell.model.type !== 'code') return;
     const code = cell.model.sharedModel.getSource();
     const request = ++nextRequest;
     latest.set(id, { request, code });
