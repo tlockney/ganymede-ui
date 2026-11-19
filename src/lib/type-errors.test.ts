@@ -48,7 +48,9 @@ const CONTENT: nbformat.INotebookContent = {
 type Sent = { request: number; code: string };
 
 /** A kernel with the diagnostics comm; `refuse` closes it at once, as one without it does. */
-function fakeKernel(options: { language?: string; refuse?: boolean } = {}) {
+function fakeKernel(
+  options: { language?: string; refuse?: boolean; throwOnSend?: boolean; deferInfo?: boolean } = {},
+) {
   const comms: {
     sent: Sent[];
     opened: boolean;
@@ -57,12 +59,16 @@ function fakeKernel(options: { language?: string; refuse?: boolean } = {}) {
     onMsg: (msg: unknown) => void;
     onClose: (msg: unknown) => void;
   }[] = [];
+  let resolveInfo!: () => void;
+  const info = { language_info: { name: options.language ?? 'typescript' } };
   // Signals name their sender: the kernel.
   const kernel = {
     status: 'idle',
     statusChanged: undefined as unknown as Signal<object, string>,
     disposed: undefined as unknown as Signal<object, void>,
-    info: Promise.resolve({ language_info: { name: options.language ?? 'typescript' } }),
+    info: options.deferInfo
+      ? new Promise<typeof info>(r => (resolveInfo = () => r(info)))
+      : Promise.resolve(info),
     createComm(target: string) {
       expect(target).toBe(TYPE_ERRORS_TARGET);
       const comm = {
@@ -77,6 +83,7 @@ function fakeKernel(options: { language?: string; refuse?: boolean } = {}) {
           if (options.refuse) queueMicrotask(() => comm.onClose({}));
         },
         send(data: Sent) {
+          if (options.throwOnSend) throw new Error('disposed');
           comm.sent.push(data);
         },
         close() {
@@ -93,6 +100,7 @@ function fakeKernel(options: { language?: string; refuse?: boolean } = {}) {
   return {
     kernel,
     comms,
+    resolveInfo: () => resolveInfo(),
     /** The kernel's answer to the latest request on the newest comm. */
     answer(diagnostics: unknown, request?: number) {
       const comm = comms.at(-1)!;
@@ -515,5 +523,109 @@ describe('attachTypeErrors', () => {
     k.setStatus('busy');
     await settle();
     expect(k.comms).toHaveLength(1);
+  });
+  it('opens again after the runtime exits and closes a comm that had answered', async () => {
+    const k = fakeKernel();
+    start(k);
+    await settle();
+    setSource(0, 'let n: string = 1');
+    await pause();
+    k.answer([error(16, 17)]);
+    k.comms[0]!.onClose({});
+    expect(marks()).toEqual([]);
+    k.setStatus('busy');
+    k.setStatus('idle');
+    await settle();
+    expect(k.comms).toHaveLength(2);
+  });
+
+  it('asks a new kernel after one that refused, or was not TypeScript', async () => {
+    for (const first of [fakeKernel({ refuse: true }), fakeKernel({ language: 'python' })]) {
+      start(first);
+      await settle();
+      const second = fakeKernel();
+      session.session = { kernel: second.kernel };
+      session.kernelChanged.emit({});
+      await settle();
+      expect(second.comms).toHaveLength(1);
+      attached.dispose();
+      notebook.dispose();
+      holder.remove();
+    }
+  });
+
+  it('gives up an open that the kernel restarted under', async () => {
+    const k = fakeKernel({ deferInfo: true });
+    start(k);
+    k.setStatus('restarting');
+    k.resolveInfo();
+    await settle();
+    expect(k.comms).toHaveLength(0);
+  });
+
+  it('stops when the kernel is disposed', async () => {
+    const k = fakeKernel();
+    start(k);
+    await settle();
+    setSource(0, 'let n: string = 1');
+    await pause();
+    k.answer([error(16, 17)]);
+    k.kernel.disposed.emit();
+    expect(marks()).toEqual([]);
+    expect(k.comms[0]!.closed).toBe(true);
+    setSource(0, 'let m = 1');
+    await pause();
+    expect(k.comms[0]!.sent).toHaveLength(1);
+  });
+
+  it('follows a session that gets its kernel later', async () => {
+    start(null);
+    await settle();
+    const k = fakeKernel();
+    session.session = { kernel: k.kernel };
+    (session as unknown as { sessionChanged: Signal<object, unknown> }).sessionChanged.emit({});
+    await settle();
+    expect(k.comms).toHaveLength(1);
+  });
+
+  it('drops the comm when sending fails, and opens it again with the next status', async () => {
+    const k = fakeKernel({ throwOnSend: true });
+    start(k);
+    await settle();
+    setSource(0, 'let n = 1');
+    await pause();
+    expect(k.comms[0]!.closed).toBe(true);
+    k.setStatus('busy');
+    await settle();
+    expect(k.comms).toHaveLength(2);
+  });
+
+  it('does nothing after dispose, when the switch changes', async () => {
+    const k = fakeKernel();
+    start(k);
+    await settle();
+    attached.dispose();
+    expect(k.comms[0]!.closed).toBe(true);
+    setTypeErrorsEnabled(false);
+    setTypeErrorsEnabled(true);
+    await settle();
+    expect(k.comms).toHaveLength(1);
+  });
+
+  it('follows the switch changed in another window (the storage event)', async () => {
+    const k = fakeKernel();
+    start(k);
+    await settle();
+    localStorage.setItem('ganymede-ui:type-errors', 'off');
+    window.dispatchEvent(new StorageEvent('storage', { key: 'ganymede-ui:type-errors' }));
+    expect(k.comms[0]!.closed).toBe(true);
+    localStorage.removeItem('ganymede-ui:type-errors');
+    window.dispatchEvent(new StorageEvent('storage', { key: 'ganymede-ui:type-errors' }));
+    await settle();
+    expect(k.comms).toHaveLength(2);
+    // Another key is none of its business.
+    window.dispatchEvent(new StorageEvent('storage', { key: 'other' }));
+    await settle();
+    expect(k.comms).toHaveLength(2);
   });
 });

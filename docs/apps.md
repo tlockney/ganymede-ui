@@ -651,9 +651,9 @@ Code cells of a TypeScript or JavaScript kernel underline type errors as
 you type, in the Mac, iPad and iPhone apps and in the browser. Pause for
 a moment after an edit and the kernel's language service checks the cell
 against the cells that ran; hover a mark to see the message and its
-TypeScript error number (`TS2322`). A cell is checked alone, so a name
-that an earlier cell declares, and a package no cell has imported yet, are
-not errors.
+TypeScript error number (`TS2322`). Each cell is checked with what the
+cells that ran declared, so a name an earlier cell declares is not an
+error, nor is importing a package no cell has run yet.
 
 Only cdp-kernel's Node, Deno and Bun kernels answer. Other kernels show
 nothing: the in-app kernel, other languages, and a cdp-kernel started with
@@ -662,8 +662,9 @@ still loading, or the check took too long) leaves the cell's marks as they
 were. Marks go when the kernel restarts or changes, and when the cell
 becomes Markdown or raw.
 
-**Show Type Errors** in the Command Palette turns this on or off. It is on
-by default, and the app remembers the choice. There is no View menu item
+**Show or Hide Type Errors** in the Command Palette turns this on or off.
+It is on by default, and the app remembers the choice; other windows of
+the app follow it. There is no View menu item
 for it yet.
 
 ## Publishing a notebook

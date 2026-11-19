@@ -9,8 +9,8 @@
  * kernel that doesn't answer the comm closes it, and nothing is shown for
  * that kernel: the in-app kernel, other languages, and a cdp-kernel started
  * with `--no-language-service`. A restart closes the comm without telling
- * us; it opens again once the kernel is back. The switch ("Show Type
- * Errors") is the app's, kept in local storage and on by default.
+ * us; it opens again once the kernel is back. The switch ("Show or Hide
+ * Type Errors") is the app's, kept in local storage and on by default.
  */
 import { setDiagnostics, type Diagnostic } from '@codemirror/lint';
 import type { ISessionContext } from '@jupyterlab/apputils';
@@ -31,6 +31,12 @@ const KEY = 'ganymede-ui:type-errors';
 /** The switch for this page when local storage can't hold it. */
 let fallback: boolean | undefined;
 const changed = new Signal<object, boolean>({});
+// Another window (each Mac window is its own web view) changed the switch.
+if (typeof window !== 'undefined') {
+  window.addEventListener('storage', e => {
+    if (e.key === KEY || e.key === null) changed.emit(typeErrorsEnabled());
+  });
+}
 
 /** Whether type errors show; on unless the person turned them off. */
 export function typeErrorsEnabled(): boolean {
@@ -138,6 +144,8 @@ export function attachTypeErrors(
 ): IDisposable {
   let kernel: Kernel.IKernelConnection | null = null;
   let comm: Kernel.IComm | null = null;
+  /** The kernel has answered on the current comm: a later close is not a refusal. */
+  let answered = false;
   /** The kernel closed the comm, or isn't a TypeScript one: nothing more for it. */
   let closed = false;
   /** Bumped whenever the comm is dropped, so an open still waiting for the kernel gives up. */
@@ -178,6 +186,7 @@ export function attachTypeErrors(
   /** Drop the comm and what hangs on it; marks go too. */
   const stop = () => {
     epoch++;
+    answered = false;
     forgetRequests();
     const old = comm;
     comm = null;
@@ -259,12 +268,18 @@ export function attachTypeErrors(
     let c: Kernel.IComm;
     try {
       c = k.createComm(TYPE_ERRORS_TARGET);
-      c.onMsg = msg => receive(msg.content.data as Answer);
+      c.onMsg = msg => {
+        answered = true;
+        receive(msg.content.data as Answer);
+      };
       c.onClose = () => {
         if (comm !== c) return;
-        // The kernel doesn't answer this comm: for this kernel, that's all.
+        // A comm that never answered is a refusal: for this kernel, that's
+        // all. One that did was closed under us, as when the runtime exits
+        // ("restarting on next cell"): the next idle opens it again.
+        const refused = !answered;
         stop();
-        closed = true;
+        if (refused) closed = true;
       };
       comm = c;
       c.open({});

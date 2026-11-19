@@ -40,7 +40,7 @@ describe('paletteEntries', () => {
         'Find',
         'Open Europa',
         'Keyboard Shortcuts',
-        'Show Type Errors',
+        'Show or Hide Type Errors',
       ]),
     );
     // Only in a cell editor, or the palette itself.
@@ -51,11 +51,11 @@ describe('paletteEntries', () => {
   });
 
   it('offers the type errors switch as the page command that runs it (#669)', () => {
-    expect(find('Show Type Errors')).toMatchObject({
+    expect(find('Show or Hide Type Errors')).toMatchObject({
       id: 'toggle-type-errors',
       group: 'View',
     });
-    expect(find('Show Type Errors')!.disabled).toBeFalsy();
+    expect(find('Show or Hide Type Errors')!.disabled).toBeFalsy();
   });
 
   it('gives each its key and its argument', () => {
