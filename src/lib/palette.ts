@@ -138,6 +138,8 @@ export function paletteEntries(context: PaletteContext): PaletteEntry[] {
     app('toggle-variables', 'Show or Hide Variables', 'View', { disabled: !open }),
     // Switches type errors on or off (#669); the page remembers which.
     app('toggle-type-errors', 'Show or Hide Type Errors', 'View'),
+    // Switches the live Markdown preview on or off (#672); the page remembers which.
+    app('toggle-live-markdown', 'Show or Hide Live Markdown Preview', 'View'),
     app('show-shortcuts', 'Keyboard Shortcuts', 'Help'),
     app('show-settings', 'Settings…', 'App'),
     app('connect', 'Connect to a Server…', 'App'),
