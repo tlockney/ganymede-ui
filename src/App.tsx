@@ -15,7 +15,9 @@ import { TOUCH_QUERY, useMedia, useNarrow } from './lib/useNarrow';
 import { useJupyterLabTheme } from './lib/theme';
 import { Sidebar } from './components/Sidebar';
 import { Toolbar } from './components/Toolbar';
+import { DataPane } from './components/DataPane';
 import { NotebookPane, type NotebookController } from './components/NotebookPane';
+import { dataKind } from './lib/data-files';
 import { ConnectSheet } from './components/ConnectSheet';
 import { EmptyState } from './components/EmptyState';
 import { ShortcutsSheet } from './components/ShortcutsSheet';
@@ -893,7 +895,16 @@ export function App() {
             className={`content${drop.active ? ' drop-active' : ''}${showVariables ? ' with-inspector' : ''}`}
             {...drop.handlers}
           >
-            {backend && openPath ? (
+            {backend && openPath && dataKind(openPath) ? (
+              // CSV, TSV, JSON and Parquet files show their data (#671).
+              <DataPane
+                key={`${backend.config.kind}:${openPath}`}
+                backend={backend}
+                path={openPath}
+                onOpenAsText={editsFiles ? () => openFile(openPath) : undefined}
+                onOpenNotebook={setOpenPath}
+              />
+            ) : backend && openPath ? (
               <NotebookPane
                 key={`${backend.config.kind}:${openPath}`}
                 backend={backend}

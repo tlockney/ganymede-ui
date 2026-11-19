@@ -2,6 +2,7 @@
  * The sidebar's search field, its results, and the Recents list (#215).
  * The logic is in `lib/search.ts` and `lib/recents.ts`.
  */
+import { dataKind } from '../lib/data-files';
 import { parentOf } from '../lib/launch';
 import type { Found, SearchState } from '../lib/search';
 import { FileIcon, FolderIcon, NotebookIcon } from './Icons';
@@ -85,7 +86,7 @@ export function SearchResults({
         {matches.map(({ item, snippet }) => {
           const isDir = item.type === 'directory';
           const isNb = item.type === 'notebook';
-          const opens = isDir || isNb || canOpenFiles;
+          const opens = isDir || isNb || canOpenFiles || (!isDir && !!dataKind(item.path));
           const folder = where(item.path);
           return (
             <li key={item.path} className="search-result">

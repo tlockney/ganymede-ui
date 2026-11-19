@@ -200,6 +200,17 @@ final class PageStateTests: XCTestCase {
         XCTAssertTrue(own.opens(file))
         XCTAssertFalse(search.opens(file))
         XCTAssertFalse(own.opens(matches[2]))
+        // A CSV, TSV, JSON or Parquet file opens in the page on any server (#671).
+        let data = PageState.Search.Match(path: "moons/Io.CSV", name: "Io.CSV", type: "file", snippet: nil)
+        XCTAssertTrue(data.isData)
+        XCTAssertTrue(data.opensInPage)
+        XCTAssertTrue(search.opens(data))
+        XCTAssertFalse(file.isData)
+        XCTAssertFalse(file.opensInPage)
+        XCTAssertFalse(matches[0].isData)
+        XCTAssertTrue(matches[0].opensInPage)
+        let folder = PageState.Search.Match(path: "a.csv", name: "a.csv", type: "directory", snippet: nil)
+        XCTAssertFalse(folder.isData)
     }
 
     func testBuildsTheFileMovedArgument() throws {
@@ -263,5 +274,25 @@ final class PageStateTests: XCTestCase {
         state.kernelDisplayName = "Python 3"
         state.status = "none"
         XCTAssertEqual(state.subtitle, "Python 3 (not installed) · Starts when you run a cell")
+    }
+
+    /// A data file open in the page has no kernel or cells: the notebook
+    /// menus disable and the subtitle shows no kernel (#671).
+    func testADataFileIsNotANotebook() {
+        var state = PageState()
+        state.path = "Io.ipynb"
+        XCTAssertTrue(state.hasNotebook)
+        XCTAssertFalse(state.showsData)
+        for path in ["moons/Io.csv", "a.TSV", "a.json", "dir/a.parquet"] {
+            state.path = path
+            XCTAssertFalse(state.hasNotebook, path)
+            XCTAssertTrue(state.showsData, path)
+            XCTAssertEqual(state.subtitle, "", path)
+        }
+        state.path = "notes.md"
+        XCTAssertTrue(state.hasNotebook)
+        state.path = nil
+        XCTAssertFalse(state.hasNotebook)
+        XCTAssertFalse(state.showsData)
     }
 }

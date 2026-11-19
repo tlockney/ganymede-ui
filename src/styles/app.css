@@ -2084,3 +2084,95 @@ button {
   font: inherit;
   font-family: var(--jp-code-font-family, monospace);
 }
+
+/* ---------- Data files (#671, src/components/DataPane.tsx) ---------- */
+
+.data-pane {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: var(--toolbar-h) 16px 0;
+  overflow: hidden;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.data-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  padding: 10px 0;
+}
+
+.data-name {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.data-filter {
+  width: 14em;
+  max-width: 100%;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--separator, rgba(128, 128, 128, 0.35));
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.data-spacer {
+  flex: 1;
+}
+
+.data-note,
+.data-loading,
+.data-error {
+  margin: 0 0 8px;
+}
+
+.data-error {
+  color: var(--red);
+}
+
+.data-schema {
+  margin-bottom: 8px;
+}
+
+.data-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+}
+
+/* The table fills the pane, its header sticking, instead of the notebook output's 32em. */
+.data-pane:not([data-kind='json']) .data-body {
+  overflow: hidden;
+}
+
+.data-body > .lm-Widget {
+  height: 100%;
+}
+
+.data-pane .gm-table {
+  display: flex;
+  flex-direction: column;
+}
+
+.data-pane .gm-table-scroll {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+}
+
+.data-scalar {
+  margin: 0;
+  white-space: pre-wrap;
+}

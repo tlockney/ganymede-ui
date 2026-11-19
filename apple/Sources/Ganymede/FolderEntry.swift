@@ -8,6 +8,13 @@ struct FolderEntry: Identifiable, Hashable {
     var id: URL { url }
     var name: String { url.lastPathComponent }
     var isNotebook: Bool { !isDirectory && url.pathExtension.lowercased() == "ipynb" }
+    /// The extensions the page shows as data, not in the text editor (#671):
+    /// `dataKind` in `src/lib/data-files.ts`.
+    static let dataExtensions: Set<String> = ["csv", "tsv", "json", "parquet"]
+    /// A CSV, TSV, JSON or Parquet file, which the page opens in its data view.
+    var isData: Bool { !isDirectory && Self.dataExtensions.contains(url.pathExtension.lowercased()) }
+    /// Opened by the page (`open`), as notebooks and data files are, not in the editor.
+    var opensInPage: Bool { isNotebook || isData }
     /// The name without `.ipynb`, as the sidebar shows notebooks.
     var title: String { isNotebook ? url.deletingPathExtension().lastPathComponent : name }
     /// The item's path on the Mac app's server, which is rooted at `/`.
