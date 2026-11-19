@@ -19,6 +19,8 @@ const { NotebookModel, NotebookActions } = await import('@jupyterlab/notebook');
 const { Widget } = await import('@lumino/widgets');
 const {
   TYPE_ERRORS_DELAY_MS,
+  TYPE_ERRORS_RETRIES,
+  TYPE_ERRORS_RETRY_MS,
   TYPE_ERRORS_TARGET,
   attachTypeErrors,
   codePointToOffset,
@@ -392,6 +394,80 @@ describe('attachTypeErrors', () => {
     await pause();
     k.answer([]);
     expect(marks()).toEqual([]);
+  });
+
+  it('asks again, backing off, while the kernel cannot tell yet, and stops on an answer', async () => {
+    const k = fakeKernel();
+    start(k);
+    await settle();
+    setSource(0, 'let n: string = 1');
+    await pause();
+    const sent = () => k.comms[0]!.sent.length;
+    const before = sent();
+    // Loading TypeScript: null, asked again after 1 s, then 2 s.
+    k.answer(null);
+    await vi.advanceTimersByTimeAsync(TYPE_ERRORS_RETRY_MS - 1);
+    expect(sent()).toBe(before);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(sent()).toBe(before + 1);
+    expect(k.comms[0]!.sent.at(-1)).toMatchObject({ code: 'let n: string = 1' });
+    k.answer(null);
+    await vi.advanceTimersByTimeAsync(2 * TYPE_ERRORS_RETRY_MS - 1);
+    expect(sent()).toBe(before + 1);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(sent()).toBe(before + 2);
+    // It answers: the marks show, and nothing more is asked.
+    k.answer([error(16, 17)]);
+    expect(marks()).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(sent()).toBe(before + 2);
+  });
+
+  it('gives up asking again after a few tries, and starts over with an edit', async () => {
+    const k = fakeKernel();
+    start(k);
+    await settle();
+    setSource(0, 'let n = 1');
+    await pause();
+    const before = k.comms[0]!.sent.length;
+    for (let i = 0; i <= TYPE_ERRORS_RETRIES; i++) {
+      k.answer(null);
+      await vi.advanceTimersByTimeAsync(8000);
+    }
+    expect(k.comms[0]!.sent.length).toBe(before + TYPE_ERRORS_RETRIES);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(k.comms[0]!.sent.length).toBe(before + TYPE_ERRORS_RETRIES);
+    // An edit is new text: it is checked, and retried again if need be.
+    append(0, ';');
+    await pause();
+    expect(k.comms[0]!.sent.length).toBe(before + TYPE_ERRORS_RETRIES + 1);
+    k.answer(null);
+    await vi.advanceTimersByTimeAsync(TYPE_ERRORS_RETRY_MS);
+    expect(k.comms[0]!.sent.length).toBe(before + TYPE_ERRORS_RETRIES + 2);
+  });
+
+  it('starts the retries over after a restart', async () => {
+    const k = fakeKernel();
+    start(k);
+    await settle();
+    setSource(0, 'let n = 1');
+    await pause();
+    for (let i = 0; i <= TYPE_ERRORS_RETRIES; i++) {
+      k.answer(null);
+      await vi.advanceTimersByTimeAsync(8000);
+    }
+    // A new kernel loads TypeScript again: its "can't tell" is retried.
+    k.setStatus('restarting');
+    k.setStatus('starting');
+    k.setStatus('idle');
+    await settle();
+    expect(k.comms).toHaveLength(2);
+    await pause();
+    const before = k.comms[1]!.sent.length;
+    expect(before).toBeGreaterThan(0);
+    k.answer(null);
+    await vi.advanceTimersByTimeAsync(TYPE_ERRORS_RETRY_MS);
+    expect(k.comms[1]!.sent.length).toBe(before + 1);
   });
 
   it('stops for a kernel that closes the comm, until it restarts', async () => {

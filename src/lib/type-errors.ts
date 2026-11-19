@@ -28,6 +28,14 @@ export { codePointToOffset };
 export const TYPE_ERRORS_TARGET = 'cdp-kernel.diagnostics.v1';
 /** How long an edit pauses before the cell is sent for a check. */
 export const TYPE_ERRORS_DELAY_MS = 400;
+/**
+ * When the kernel can't tell yet (its TypeScript is still loading, which
+ * takes a second or more on a first request), the cell is asked again
+ * after this, doubling each time up to 8 s, at most `TYPE_ERRORS_RETRIES`
+ * times until it answers or the cell changes (#668).
+ */
+export const TYPE_ERRORS_RETRY_MS = 1000;
+export const TYPE_ERRORS_RETRIES = 6;
 
 const KEY = 'ganymede-ui:type-errors';
 /** The switch for this page when local storage can't hold it. */
@@ -126,6 +134,8 @@ export function attachTypeErrors(
 ): IDisposable {
   /** Each cell's latest request and the text it checked, by the cell model's id. */
   const latest = new Map<string, { request: number; code: string }>();
+  /** How many "can't tell" answers in a row each cell has had for its text. */
+  const unknown = new Map<string, number>();
   let nextRequest = 0;
   const timers = new Map<string, ReturnType<typeof setTimeout>>();
   /** Cells whose editor has marks of ours. */
@@ -156,8 +166,17 @@ export function attachTypeErrors(
       latest.delete(id);
       // The cell changed since the request: its next check follows.
       if (cellOf(id)?.model.sharedModel.getSource() !== entry.code) return;
-      // The kernel can't tell: the marks stay as they are.
-      if (data.diagnostics === null || !Array.isArray(data.diagnostics)) return;
+      // The kernel can't tell: the marks stay as they are, and the cell is
+      // asked again in a while, as the kernel may be loading TypeScript.
+      if (data.diagnostics === null || !Array.isArray(data.diagnostics)) {
+        const tries = (unknown.get(id) ?? 0) + 1;
+        unknown.set(id, tries);
+        if (tries <= TYPE_ERRORS_RETRIES) {
+          schedule(id, Math.min(TYPE_ERRORS_RETRY_MS * 2 ** (tries - 1), 8000));
+        }
+        return;
+      }
+      unknown.delete(id);
       mark(id, toDiagnostics(entry.code, data.diagnostics));
       return;
     }
@@ -179,6 +198,7 @@ export function attachTypeErrors(
       for (const timer of timers.values()) clearTimeout(timer);
       timers.clear();
       latest.clear();
+      unknown.clear();
       clearMarks();
     },
   });
@@ -194,12 +214,12 @@ export function attachTypeErrors(
     link.send({ request, code });
   };
 
-  function schedule(id: string) {
+  function schedule(id: string, wait = delay) {
     if (!link.isOpen) return;
     clearTimeout(timers.get(id));
     timers.set(
       id,
-      setTimeout(() => check(id), delay),
+      setTimeout(() => check(id), wait),
     );
   }
 
@@ -216,7 +236,10 @@ export function attachTypeErrors(
       present.add(id);
       if (watched.has(id)) continue;
       const onChange = (_: unknown, change: { sourceChange?: unknown }) => {
-        if (change.sourceChange) schedule(id);
+        if (!change.sourceChange) return;
+        // New text: the retries start over.
+        unknown.delete(id);
+        schedule(id);
       };
       model.sharedModel.changed.connect(onChange);
       watched.set(id, () => model.sharedModel.changed.disconnect(onChange));
@@ -229,6 +252,7 @@ export function attachTypeErrors(
       clearTimeout(timers.get(id));
       timers.delete(id);
       latest.delete(id);
+      unknown.delete(id);
       if (marked.has(id)) mark(id, []);
     }
     for (const id of [...marked]) if (!present.has(id)) mark(id, []);

@@ -151,6 +151,15 @@ Two kernels are registered:
   online. Kernels started after that get them as blob URLs, so SQL runs
   offline. Until then, the kernel loads them from jsDelivr.
 
+  Typed help (completion, tooltips, type errors, signatures, definition
+  and rename) comes from TypeScript 6, which cdp-kernel's language
+  service runs in a Worker of its own. The app serves `typescript.js`,
+  the `lib.*.d.ts` files `lib.esnext.d.ts` reaches, and cdp-kernel's
+  `runtime/*.d.mts` from `kernel-typescript/`, built by
+  [`scripts/kernel-typescript.ts`](../scripts/kernel-typescript.ts)
+  (9.7 MB). Nothing is fetched until a notebook first asks for typed
+  help. The apps' kernel page does the same.
+
 - **JavaScript (Web Worker)**, `javascript`, from
   `@jupyterlite/javascript-kernel`.
 
@@ -355,7 +364,8 @@ web view the Apple apps run in (macOS 26, iOS 26) is newer.
 
 `vite-plugin-pwa` adds the manifest and a Workbox service worker that
 precaches the app, so it works offline and installs as an app. `/api/` is
-never cached. The release is this `dist/` as a static site
+never cached. `kernel-typescript/` isn't precached either: it is cached
+on first use. The release is this `dist/` as a static site
 (`ganymede-ui-X.Y.Z.tar.gz` and `.zip`), which `ganymede ui install`
 downloads; see [releasing](releasing.md).
 

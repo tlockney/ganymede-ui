@@ -71,6 +71,15 @@ describe('kernel host page', () => {
     ]);
   });
 
+  it('gives the kernel TypeScript for typed help (#668)', () => {
+    deliver({ kernel: 't1', op: 'start', run: 9 });
+    const ts = mocks.options.at(-1)?.typescript as Record<string, unknown>;
+    expect(typeof ts.createWorker).toBe('function');
+    for (const key of ['module', 'libs', 'runtimeTypes']) {
+      expect(new URL(ts[key] as string).pathname).toMatch(/\/kernel-typescript\//);
+    }
+  });
+
   it("passes a start's parameters to the kernel as jupyter.params", () => {
     deliver({ kernel: 'p1', op: 'start', run: 7, params: '{"name":"Ada","n":2}' });
     expect(mocks.options.at(-1)?.params).toEqual({ name: 'Ada', n: 2 });

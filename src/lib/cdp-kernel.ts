@@ -4,6 +4,7 @@ import { Signal } from '@lumino/signaling';
 import { startBrowserKernel, type BrowserKernel } from '@tlockney/cdp-kernel/browser';
 import workerUrl from '@tlockney/cdp-kernel/browser/worker?worker&url';
 import { kernelModules } from './kernel-modules';
+import { kernelTypescript } from './kernel-typescript';
 
 /** The kernelspec name, as cdp-kernel names its kernelspecs (`cdp-node`, …). */
 export const CDP_KERNEL_NAME = 'cdp-browser';
@@ -42,6 +43,8 @@ export class CdpBrowserKernel implements IKernel {
     this._kernel = startBrowserKernel({
       createWorker: () => new Worker(workerUrl, { type: 'module' }),
       modules: kernelModules(),
+      // Typed help from TypeScript 6, loaded on the first request (#668).
+      typescript: kernelTypescript(),
     });
     this._stop = this._kernel.onMessage((channel, msg) => {
       // LiteKernelClient routes a message to the client whose session is
