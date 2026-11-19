@@ -7,10 +7,10 @@ import languageWorkerUrl from '@tlockney/cdp-kernel/browser/language-worker?work
  * completion, tooltips, type errors, signature help, definition and rename
  * in the in-app and browser kernels. The language service runs in a Worker
  * of its own, started on the first request for typed help, so a notebook
- * that never asks fetches nothing. The URLs are absolute, as that Worker
- * resolves them against its own base.
+ * that never asks fetches nothing.
  */
 export function kernelTypescript() {
+  // cdp-kernel resolves these against the page; absolute, they say where.
   const at = (url: string) => new URL(url, location.href).href;
   return {
     createWorker: () => new Worker(languageWorkerUrl, { type: 'module' }),

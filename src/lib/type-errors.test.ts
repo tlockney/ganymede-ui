@@ -446,6 +446,30 @@ describe('attachTypeErrors', () => {
     expect(k.comms[0]!.sent.length).toBe(before + TYPE_ERRORS_RETRIES + 2);
   });
 
+  it('starts the retries over after a restart', async () => {
+    const k = fakeKernel();
+    start(k);
+    await settle();
+    setSource(0, 'let n = 1');
+    await pause();
+    for (let i = 0; i <= TYPE_ERRORS_RETRIES; i++) {
+      k.answer(null);
+      await vi.advanceTimersByTimeAsync(8000);
+    }
+    // A new kernel loads TypeScript again: its "can't tell" is retried.
+    k.setStatus('restarting');
+    k.setStatus('starting');
+    k.setStatus('idle');
+    await settle();
+    expect(k.comms).toHaveLength(2);
+    await pause();
+    const before = k.comms[1]!.sent.length;
+    expect(before).toBeGreaterThan(0);
+    k.answer(null);
+    await vi.advanceTimersByTimeAsync(TYPE_ERRORS_RETRY_MS);
+    expect(k.comms[1]!.sent.length).toBe(before + 1);
+  });
+
   it('stops for a kernel that closes the comm, until it restarts', async () => {
     const k = fakeKernel({ refuse: true });
     start(k);

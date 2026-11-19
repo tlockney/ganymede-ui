@@ -14,10 +14,10 @@ under `kernel-typescript/`, named by version
 (`typescript-6.0.3/typescript.js`, `typescript-6.0.3/lib/lib.*.d.ts`,
 `cdp-kernel-0.14.0/runtime/*.d.mts`), and the dev server serves them from
 `node_modules`. The lib files are the ones `lib.esnext.d.ts` reaches by
-its `/// <reference lib>` lines (87 in 6.0.3, itself included), the same walk the Worker
-makes, so `lib.dom` and `lib.webworker` (3 MB) aren't shipped. 104 files,
-9.7 MB, 1.8 MB zipped. `src/lib/kernel-typescript.ts` makes the option,
-with absolute URLs since the Worker resolves them against its own base.
+its `/// <reference lib>` lines (87 in 6.0.3, itself included), the
+same walk the Worker makes, so `lib.dom` and `lib.webworker` (3 MB)
+aren't shipped. 104 files, 9.7 MB, 1.8 MB zipped.
+`src/lib/kernel-typescript.ts` makes the option.
 `typescript` was already a dev dependency at 6.0.3; nothing new is added,
 but its `lib/typescript.js` now ships in the build.
 
