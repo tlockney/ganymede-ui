@@ -85,6 +85,26 @@ vi.mock('../lib/type-errors', () => ({
   attachTypeErrors: vi.fn(() => ({ dispose: vi.fn(), isDisposed: false })),
 }));
 
+// Signature help, definition and rename need JupyterLab's cells and a
+// kernel; language-service.test.ts and language-editor.test.ts cover them.
+const language = vi.hoisted(() => ({
+  goToDefinition: vi.fn(async () => true),
+  rename: vi.fn(async () => true),
+  notify: undefined as ((message: string) => void) | undefined,
+}));
+vi.mock('../lib/language-editor', () => ({
+  attachLanguageFeatures: vi.fn(
+    (_notebook: unknown, _session: unknown, notify: (m: string) => void) => {
+      language.notify = notify;
+      return {
+        service: { goToDefinition: language.goToDefinition, rename: language.rename },
+        dispose: vi.fn(),
+        isDisposed: false,
+      };
+    },
+  ),
+}));
+
 // The running and queued lines need JupyterLab's cells; run-status.test.ts
 // covers them.
 const runStatus = vi.hoisted(() => ({
@@ -971,6 +991,21 @@ describe('NotebookPane', () => {
       'start',
     );
     expect(latest()!.goToCell(5)).toBe(false);
+  });
+
+  it('goes to a definition and renames a symbol through the language service, and shows its refusals (#676)', async () => {
+    const { latest } = setup();
+    await waitFor(() => expect(latest()?.status).toBe('none'));
+    await expect(latest()!.goToDefinition()).resolves.toBe(true);
+    expect(language.goToDefinition).toHaveBeenCalledTimes(1);
+    await expect(latest()!.renameSymbol('sum')).resolves.toBe(true);
+    expect(language.rename).toHaveBeenCalledWith('sum');
+    await latest()!.renameSymbol();
+    expect(language.rename).toHaveBeenLastCalledWith(undefined);
+    act(() => language.notify!('Can’t rename: "process" is declared outside the notebook'));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Can’t rename: "process" is declared outside the notebook',
+    );
   });
 
   it('starts one kernel for runs that come in while it starts', async () => {

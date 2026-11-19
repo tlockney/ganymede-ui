@@ -59,6 +59,24 @@ describe('paletteEntries', () => {
     expect(find('Show or Hide Type Errors')!.disabled).toBeFalsy();
   });
 
+  it('offers go to definition and rename symbol as page commands, the second asking for the name (#676)', () => {
+    expect(find('Go to Definition')).toMatchObject({
+      id: 'go-to-definition',
+      group: 'Cell',
+      keys: 'F12',
+    });
+    expect(find('Rename Symbol…')).toMatchObject({
+      id: 'rename-symbol',
+      group: 'Cell',
+      keys: 'F2',
+      prompt: 'New name',
+    });
+    expect(find('Go to Definition')!.disabled).toBeFalsy();
+    const none = { ...CONTEXT, path: undefined, kernel: undefined };
+    expect(find('Go to Definition', none)?.disabled).toBe(true);
+    expect(find('Rename Symbol…', none)?.disabled).toBe(true);
+  });
+
   it('offers the live Markdown preview switch as the page command that runs it (#672)', () => {
     expect(find('Show or Hide Live Markdown Preview')).toMatchObject({
       id: 'toggle-live-markdown',

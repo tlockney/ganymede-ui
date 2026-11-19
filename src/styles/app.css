@@ -2040,6 +2040,51 @@ button {
   user-select: text;
 }
 
+/* Signature help in a code cell (#676): CodeMirror's tooltip. */
+.cm-signature-help {
+  max-width: 480px;
+  padding: 6px 10px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.cm-signature-label {
+  font-family: var(--jp-code-font-family, monospace);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.cm-signature-active {
+  text-decoration: underline;
+}
+.cm-signature-parameter-doc,
+.cm-signature-doc {
+  margin-top: 4px;
+  white-space: pre-wrap;
+  opacity: 0.8;
+}
+
+/* The input that asks for a symbol's new name (#676). */
+.rename-prompt {
+  position: fixed;
+  z-index: 1000;
+  display: flex;
+  padding: 6px 8px;
+  background: var(--sheet-bg);
+  color: var(--text);
+  border-radius: 8px;
+  box-shadow: var(--shadow-sheet);
+  font-size: 12px;
+}
+.rename-prompt label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.rename-prompt input {
+  min-width: 14em;
+  font: inherit;
+  font-family: var(--jp-code-font-family, monospace);
+}
+
 /* ---------- Data files (#671, src/components/DataPane.tsx) ---------- */
 
 .data-pane {
