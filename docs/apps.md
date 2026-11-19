@@ -182,10 +182,6 @@ version to keep.
 
 ### Data files
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release. Until then, these files open in the text editor.
-
 CSV, TSV, JSON and Parquet files open in the notebook's place, in the
 window's page, on the Mac, iPad and iPhone and in a browser, read-only:
 
@@ -687,9 +683,8 @@ asking again for its check period.
 ## Type errors
 
 > [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release. It also needs cdp-kernel 0.13.0 or later: an
-> older kernel doesn't answer, and nothing is underlined.
+> Needs cdp-kernel 0.13.0 or later: an older kernel doesn't answer, and
+> nothing is underlined.
 
 Code cells of a TypeScript or JavaScript kernel underline type errors as
 you type, in the Mac, iPad and iPhone apps and in the browser. Pause for
@@ -717,9 +712,8 @@ for it yet.
 ## Signatures, definitions and renames
 
 > [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release. It also needs cdp-kernel 0.14.0 or later: an
-> older kernel doesn't answer, and none of this does anything.
+> Needs cdp-kernel 0.14.0 or later: an older kernel doesn't answer, and
+> none of this does anything.
 
 Code cells of a TypeScript or JavaScript kernel get three more things from
 the kernel's language service, in the Mac, iPad and iPhone apps and in the
@@ -758,10 +752,6 @@ lands on text it wasn't made for.
 
 ## TypeScript in the in-app kernel
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
-
 The in-app kernel (iPad, iPhone, and the Mac's in-app kernel) and the
 kernel in the browser get typed completion and tooltips (declared types,
 not only runtime values), [type errors](#type-errors), and
@@ -782,10 +772,6 @@ than it are unknown here, while the Mac's Node kernels may use a newer
 TypeScript.
 
 ## Live Markdown preview
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
 
 A Markdown cell can render as you type, the way Obsidian's live preview
 does, in the Mac, iPad and iPhone apps and in the browser. Headings,
@@ -813,10 +799,6 @@ cell; the app remembers the choice, and other windows of the app follow
 it. There is no View menu item for it yet.
 
 ## DuckDB console
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
 
 A DuckDB prompt that opens in the window's page, where a notebook would,
 in the Mac, iPad and iPhone apps and in a browser. Open it with **New
