@@ -49,7 +49,15 @@ type Sent = { request: number; code: string };
 
 /** A kernel with the diagnostics comm; `refuse` closes it at once, as one without it does. */
 function fakeKernel(
-  options: { language?: string; refuse?: boolean; throwOnSend?: boolean; deferInfo?: boolean } = {},
+  options: {
+    language?: string;
+    refuse?: boolean;
+    throwOnSend?: boolean;
+    deferInfo?: boolean;
+    infoFails?: number;
+    subshells?: boolean;
+    deferSubshell?: boolean;
+  } = {},
 ) {
   const comms: {
     sent: Sent[];
@@ -62,13 +70,25 @@ function fakeKernel(
   let resolveInfo!: () => void;
   const info = { language_info: { name: options.language ?? 'typescript' } };
   // Signals name their sender: the kernel.
+  let failures = options.infoFails ?? 0;
+  const deferred = options.deferInfo
+    ? new Promise<typeof info>(r => (resolveInfo = () => r(info)))
+    : undefined;
+  let settleSubshell!: (ok: boolean) => void;
+  const subshellStarted = options.deferSubshell
+    ? new Promise<void>((res, rej) => (settleSubshell = ok => (ok ? res() : rej(new Error('no')))))
+    : Promise.resolve();
   const kernel = {
     status: 'idle',
+    supportsSubshells: options.subshells ?? false,
     statusChanged: undefined as unknown as Signal<object, string>,
     disposed: undefined as unknown as Signal<object, void>,
-    info: options.deferInfo
-      ? new Promise<typeof info>(r => (resolveInfo = () => r(info)))
-      : Promise.resolve(info),
+    infoReads: 0,
+    get info() {
+      kernel.infoReads++;
+      if (failures-- > 0) return Promise.reject(new Error('no info'));
+      return deferred ?? Promise.resolve(info);
+    },
     createComm(target: string) {
       expect(target).toBe(TYPE_ERRORS_TARGET);
       const comm = {
@@ -76,6 +96,7 @@ function fakeKernel(
         opened: false,
         closed: false,
         isDisposed: false,
+        subshellStarted,
         onMsg: (_msg: unknown) => {},
         onClose: (_msg: unknown) => {},
         open() {
@@ -101,6 +122,7 @@ function fakeKernel(
     kernel,
     comms,
     resolveInfo: () => resolveInfo(),
+    settleSubshell: (ok = true) => settleSubshell(ok),
     /** The kernel's answer to the latest request on the newest comm. */
     answer(diagnostics: unknown, request?: number) {
       const comm = comms.at(-1)!;
@@ -121,7 +143,7 @@ let holder: HTMLDivElement;
 let session: { session: { kernel: unknown } | null; kernelChanged: Signal<object, unknown> };
 let owner: object;
 
-function start(kernel: ReturnType<typeof fakeKernel> | null) {
+function start(kernel: ReturnType<typeof fakeKernel> | null, attach = true) {
   owner = {};
   session = {
     session: kernel ? { kernel: kernel.kernel } : null,
@@ -138,7 +160,8 @@ function start(kernel: ReturnType<typeof fakeKernel> | null) {
   document.body.append(holder);
   Widget.attach(notebook, holder);
   notebook.activeCellIndex = 0;
-  attached = attachTypeErrors(notebook, context);
+  if (attach) attached = attachTypeErrors(notebook, context);
+  return context;
 }
 
 /** Let an open that waits for the kernel's info finish. */
@@ -627,5 +650,160 @@ describe('attachTypeErrors', () => {
     window.dispatchEvent(new StorageEvent('storage', { key: 'other' }));
     await settle();
     expect(k.comms).toHaveLength(2);
+  });
+  it('forgets that a comm answered when the kernel changes: a refusal by the next is a refusal', async () => {
+    const a = fakeKernel();
+    start(a);
+    await settle();
+    setSource(0, 'let n = 1');
+    await pause();
+    a.answer([]);
+    const b = fakeKernel({ refuse: true });
+    session.session = { kernel: b.kernel };
+    session.kernelChanged.emit({});
+    await settle();
+    for (let i = 0; i < 3; i++) {
+      b.setStatus('busy');
+      b.setStatus('idle');
+      await settle();
+    }
+    expect(b.comms).toHaveLength(1);
+  });
+
+  it.each(['autorestarting', 'dead'])('clears the marks and reopens after %s', async status => {
+    const k = fakeKernel();
+    start(k);
+    await settle();
+    setSource(0, 'let n: string = 1');
+    await pause();
+    k.answer([error(16, 17)]);
+    k.setStatus(status);
+    expect(marks()).toEqual([]);
+    expect(k.comms[0]!.closed).toBe(true);
+    k.setStatus('idle');
+    await settle();
+    expect(k.comms).toHaveLength(2);
+  });
+
+  it('follows a cleared local storage in another window (a storage event with no key)', async () => {
+    setTypeErrorsEnabled(false);
+    const k = fakeKernel();
+    start(k);
+    await settle();
+    expect(k.comms).toHaveLength(0);
+    localStorage.clear();
+    window.dispatchEvent(new StorageEvent('storage', { key: null }));
+    await settle();
+    expect(k.comms).toHaveLength(1);
+  });
+
+  it('stops listening to the switch once disposed', async () => {
+    const k = fakeKernel();
+    start(k);
+    await settle();
+    // Kept apart from the kernel: only the switch listener can reopen it.
+    attached.dispose();
+    const before = k.comms.length;
+    k.kernel.status = 'idle';
+    const spy = vi.spyOn(k.kernel, 'createComm');
+    setTypeErrorsEnabled(false);
+    setTypeErrorsEnabled(true);
+    await settle();
+    expect(spy).not.toHaveBeenCalled();
+    expect(k.comms).toHaveLength(before);
+  });
+
+  it('disconnects everything it connected when disposed', async () => {
+    const k = fakeKernel();
+    const context = start(k, false);
+    const connect = vi.spyOn(Signal.prototype, 'connect');
+    const disconnect = vi.spyOn(Signal.prototype, 'disconnect');
+    try {
+      attached = attachTypeErrors(notebook, context);
+      await settle();
+      const ours = ['setKernel', 'onStatus', 'onDisposed', 'onSwitch', 'syncCells', 'onChange'];
+      const pairs = connect.mock.calls
+        .map((call, i) => [connect.mock.contexts[i], call[0]] as const)
+        .filter(([, fn]) => ours.includes((fn as { name: string }).name));
+      // The session's two signals, the cells, the kernel's two, the switch.
+      expect(pairs.length).toBeGreaterThanOrEqual(6);
+      attached.dispose();
+      const gone = disconnect.mock.calls.map((call, i) => [disconnect.mock.contexts[i], call[0]]);
+      for (const [signal, fn] of pairs) {
+        expect(gone.some(([s, f]) => s === signal && f === fn)).toBe(true);
+      }
+    } finally {
+      connect.mockRestore();
+      disconnect.mockRestore();
+    }
+  });
+
+  it('tries again at the next status when the kernel info fails', async () => {
+    const k = fakeKernel({ infoFails: 1 });
+    start(k);
+    await settle();
+    expect(k.comms).toHaveLength(0);
+    k.setStatus('busy');
+    await settle();
+    expect(k.comms).toHaveLength(1);
+  });
+
+  it('asks a kernel of another language once, not at every status', async () => {
+    const k = fakeKernel({ language: 'python' });
+    start(k);
+    await settle();
+    const reads = k.kernel.infoReads;
+    k.setStatus('busy');
+    k.setStatus('idle');
+    await settle();
+    expect(k.kernel.infoReads).toBe(reads);
+  });
+
+  it('opens the comm only once its subshell has started', async () => {
+    const k = fakeKernel({ subshells: true, deferSubshell: true });
+    start(k);
+    await settle();
+    expect(k.comms).toHaveLength(1);
+    expect(k.comms[0]!.opened).toBe(false);
+    k.settleSubshell();
+    await settle();
+    expect(k.comms[0]!.opened).toBe(true);
+  });
+
+  it('opens on the main shell when the subshell fails, and not at all when dropped meanwhile', async () => {
+    const k = fakeKernel({ subshells: true, deferSubshell: true });
+    start(k);
+    await settle();
+    k.settleSubshell(false);
+    await settle();
+    expect(k.comms[0]!.opened).toBe(true);
+
+    const j = fakeKernel({ subshells: true, deferSubshell: true });
+    session.session = { kernel: j.kernel };
+    session.kernelChanged.emit({});
+    await settle();
+    j.setStatus('restarting');
+    j.settleSubshell();
+    await settle();
+    expect(j.comms[0]!.opened).toBe(false);
+  });
+
+  it('does not wait for a subshell the kernel does not have', async () => {
+    const k = fakeKernel({ deferSubshell: true });
+    start(k);
+    await settle();
+    expect(k.comms[0]!.opened).toBe(true);
+  });
+
+  it('checks again after a check that was never answered', async () => {
+    const k = fakeKernel();
+    start(k);
+    await settle();
+    setSource(0, 'let n: string = 1');
+    await pause();
+    append(0, ';');
+    await pause();
+    k.answer([error(16, 17)]);
+    expect(marks()).toHaveLength(1);
   });
 });

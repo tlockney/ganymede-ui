@@ -282,6 +282,25 @@ export function attachTypeErrors(
         if (refused) closed = true;
       };
       comm = c;
+    } catch {
+      stop();
+      return;
+    }
+    // The comm's per-target subshell starts as it is made. Until it has, a
+    // message goes on the main shell, behind a running cell, and a check
+    // sent on the subshell before the kernel handled the open is dropped.
+    // `subshellStarted` is CommHandler's public getter; a kernel without
+    // subshells never settles it, so wait only when it has them.
+    const started = (c as { subshellStarted?: Promise<void> }).subshellStarted;
+    if (k.supportsSubshells && started) {
+      try {
+        await started;
+      } catch {
+        // No subshell: the open goes on the main shell.
+      }
+      if (comm !== c || mine !== epoch) return;
+    }
+    try {
       c.open({});
     } catch {
       stop();

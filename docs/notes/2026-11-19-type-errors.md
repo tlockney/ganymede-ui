@@ -48,7 +48,15 @@ then each cell as it's edited). Checks go on a kernel subshell, not behind a
 running cell, as far as the source says: `@jupyterlab/services` 7.6.6's
 `CommHandler` defaults to `CommsOverSubshells.PerCommTarget` and starts a
 subshell for the target when the kernel advertises "kernel subshells",
-which cdp-kernel does (not run against a real kernel here).
+which cdp-kernel does. The subshell starts when the comm is made, and until
+it has, a message goes on the main shell (behind a running cell), and a
+check sent on the subshell before the kernel handled the open would be
+dropped. So the app waits for the comm's public `subshellStarted` promise
+before `comm_open`, only when the kernel supports subshells (a kernel
+without them never settles it), and opens on the main shell if the subshell
+fails. A check whose answer never comes blocks nothing: the next edit's
+request replaces it as the cell's latest. Not run against a real kernel
+here.
 
 An end-to-end test needs a cdp-kernel newer than 0.12.3, which the e2e job
 installs from npm (`CDP_KERNEL_VERSION` in `ci.yml`); until one is
