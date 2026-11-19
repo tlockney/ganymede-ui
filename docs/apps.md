@@ -829,8 +829,9 @@ for JSON and 64 MB for Parquet. A bigger file is refused with a note, since
 a query over part of a file would answer wrongly; a notebook on a kernel can
 query it. A file read once is not read again while the console is open, so
 a change on disk shows after you open a new console (**New DuckDB Console**
-again). Renaming or moving the folder keeps the console and what it has
-read. A file that isn't there is DuckDB's error. The console can't write to the folder: `copy ... to`
+again). Renaming or moving the folder, in the app or in the page's
+sidebar, keeps the console and what it has read; deleting it closes the
+console. A file that isn't there is DuckDB's error. The console can't write to the folder: `copy ... to`
 makes a file DuckDB holds in memory only (rerun in an exported notebook on a
 kernel, it writes a real file there).
 

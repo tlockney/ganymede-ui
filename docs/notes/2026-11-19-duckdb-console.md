@@ -41,3 +41,10 @@ only an extension (`.csv`) is not read; Shift-Enter on only a comment keeps
 it. Left for #683: reading only strings in FROM and `read_*` calls, a row cap
 before the result reaches the page, the shared type helpers with
 `parquet.ts`, `E'...'` strings, and tests for three guards.
+
+Second review (6d7bf14): the page's own sidebar (a browser, or any page
+without the native chrome) moves and deletes through `fileActions`, which
+didn't know the console. `fileActions` takes `onMoved(from, to)` (`to` null
+for a delete), and `App.tsx` gives it the same `followFolder` the native
+`file-moved` uses: a move keeps the console and moves its folder, a delete of
+its folder closes it.

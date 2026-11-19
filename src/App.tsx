@@ -194,6 +194,15 @@ export function App() {
    * nothing read, even on the same folder. A move of the folder keeps it.
    */
   const [duckId, setDuckId] = useState(0);
+  /**
+   * A move of the console's folder, or one it is in, keeps the console and
+   * moves it along; a delete closes it, as it closes an open data file.
+   */
+  const followFolder = useCallback((from: string, to: string | null) => {
+    setDuckFolder(f =>
+      f === undefined || !within(f, from) ? f : to === null ? undefined : to + f.slice(from.length),
+    );
+  }, []);
   useEffect(() => {
     if (openPath) setDuckFolder(undefined);
   }, [openPath]);
@@ -508,6 +517,7 @@ export function App() {
         const move = fileMove(arg);
         if (!backend || !move || !isAppServer(backend.config)) return false;
         const key = recentsKey(backend.config);
+        followFolder(move.from, move.to);
         if (move.to === null) forgetRecent(key, move.from);
         else {
           moveRecent(key, move.from, move.to);
@@ -519,8 +529,6 @@ export function App() {
           const { from, to } = move;
           setOpenPath(p => (p && within(p, from) ? to + p.slice(from.length) : p));
           followRun(from, to);
-          // The DuckDB console follows its folder, and keeps what it has.
-          setDuckFolder(f => (f !== undefined && within(f, from) ? to + f.slice(from.length) : f));
         }
         return true;
       }
@@ -884,6 +892,7 @@ export function App() {
                 openPath,
                 controller,
                 setOpenPath,
+                onMoved: followFolder,
               })
             }
           />

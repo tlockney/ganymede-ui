@@ -914,7 +914,41 @@ describe('App', () => {
     const other = { from: 'mo', to: 'x' };
     expect(await window.ganymede!.command('file-moved', JSON.stringify(other))).toBe(true);
     expect(console()).toHaveAttribute('data-folder', 'satellites/inner');
+    // A delete of it closes it.
+    const gone = { from: 'satellites', to: null };
+    expect(await window.ganymede!.command('file-moved', JSON.stringify(gone))).toBe(true);
+    await waitFor(() => expect(screen.queryByTestId('duck-console')).toBeNull());
     vi.unstubAllGlobals();
+  });
+
+  it('follows a rename of the DuckDB console’s folder from the page’s own sidebar, and closes on its delete (#679)', async () => {
+    const fake = fakeServices({ '': [{ name: 'moons', type: 'directory' }], moons: [] });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    history.replaceState(null, '', '/?kernels=server');
+    render(<App />);
+    await waitFor(() => expect(window.ganymede).toBeDefined());
+    expect(await window.ganymede!.command('new-duckdb-console', 'moons')).toBe(true);
+    const console = () => screen.getByTestId('duck-console');
+    await screen.findByTestId('duck-console');
+    const mount = console().dataset.mount;
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Actions for moons' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Rename' }));
+    const field = screen.getByRole('textbox', { name: 'New name for moons' });
+    await userEvent.clear(field);
+    await userEvent.type(field, 'satellites{Enter}');
+    await waitFor(() => expect(console()).toHaveAttribute('data-folder', 'satellites'));
+    expect(console().dataset.mount).toBe(mount);
+
+    // The fake's listing still shows moons: a console there, then its delete.
+    Object.assign(fake.services.contents, { delete: vi.fn(async () => {}) });
+    expect(await window.ganymede!.command('new-duckdb-console', 'moons')).toBe(true);
+    await waitFor(() => expect(console()).toHaveAttribute('data-folder', 'moons'));
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    await userEvent.click(screen.getByRole('button', { name: 'Actions for moons' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Delete…' }));
+    await waitFor(() => expect(screen.queryByTestId('duck-console')).toBeNull());
+    confirm.mockRestore();
   });
 
   it('closes the DuckDB console when the server changes, since its folder was the old one’s (#679)', async () => {
