@@ -1,6 +1,7 @@
 import { defineConfig, type ProxyOptions, type UserConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { kernelModules } from './scripts/kernel-modules.ts';
+import { kernelTypescript } from './scripts/kernel-typescript.ts';
 import { VitePWA } from 'vite-plugin-pwa';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -88,6 +89,7 @@ const config: UserConfig = {
   plugins: [
     react(),
     kernelModules(),
+    kernelTypescript(),
     {
       name: 'agent-module-graph',
       buildEnd() {
@@ -143,7 +145,9 @@ const config: UserConfig = {
         // The agent (packages/agent) is off by default: cache its chunks
         // on first use too, not for everyone (ganymede-ui#165).
         // The code fonts (public/fonts, #354): each page uses one, if any.
-        globIgnores: ['**/fa-*.woff2', '**/agent-*.js', 'fonts/**'],
+        // TypeScript for the kernel's typed help (#668, 9 MB): only a
+        // notebook that asks for it fetches it, and keeps it from then on.
+        globIgnores: ['**/fa-*.woff2', '**/agent-*.js', 'fonts/**', 'kernel-typescript/**'],
         runtimeCaching: [
           {
             urlPattern: /\/assets\/fa-[\w-]+\.woff2$/,
@@ -155,6 +159,13 @@ const config: UserConfig = {
             urlPattern: /\/fonts\/[\w-]+\.woff2(\?v=\w+)?$/,
             handler: 'CacheFirst',
             options: { cacheName: 'code-fonts', expiration: { maxEntries: 20 } },
+          },
+          {
+            // Named by version (scripts/kernel-typescript.ts): one release's
+            // files are never another's.
+            urlPattern: /\/kernel-typescript\//,
+            handler: 'CacheFirst',
+            options: { cacheName: 'kernel-typescript', expiration: { maxEntries: 200 } },
           },
           {
             urlPattern: /\/assets\/agent-[\w.-]+\.js$/,

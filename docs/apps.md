@@ -699,11 +699,14 @@ TypeScript error number (`TS2322`). Each cell is checked with what the
 cells that ran declared, so a name an earlier cell declares is not an
 error, nor is importing a package no cell has run yet.
 
-Only cdp-kernel's Node, Deno and Bun kernels answer. Other kernels show
-nothing: the in-app kernel, other languages, and a cdp-kernel started with
+cdp-kernel's kernels answer: Node, Deno and Bun, and the in-app kernel
+and the kernel in the browser, with
+[the TypeScript the app ships](#typescript-in-the-in-app-kernel). Other
+kernels show nothing: other languages, and a cdp-kernel started with
 `--no-language-service`. A kernel that can't tell yet (TypeScript is
 still loading, or the check took too long) leaves the cell's marks as they
-were. Marks go when the kernel restarts or changes, and when the cell
+were, and the cell is asked again a few times over the next half minute,
+so the marks show once TypeScript has loaded. Marks go when the kernel restarts or changes, and when the cell
 becomes Markdown or raw.
 
 **Show or Hide Type Errors** in the Command Palette turns this on or off.
@@ -744,14 +747,40 @@ browser:
 Palette (the second asks for the name there), and in the Mac's and iPad's
 Cell menu. They act on the cursor of the active cell.
 
-These work only against a cdp-kernel that answers; against another kernel,
-the in-app kernel, or a cdp-kernel started with `--no-language-service`
-nothing shows and the keys do nothing. They need no setting: nothing runs
+These work only against a cdp-kernel that answers, the in-app kernel and
+the kernel in the browser included; against another kernel, or a
+cdp-kernel started with `--no-language-service`, nothing shows and the
+keys do nothing. They need no setting: nothing runs
 until you press a key or click. A kernel that can't tell yet (TypeScript is
 still loading, or the request took too long) shows no signature and moves
 nowhere; a rename then says the service can't tell. If a cell changes
 while the kernel is answering, the answer is dropped, so a rename never
 lands on text it wasn't made for.
+
+## TypeScript in the in-app kernel
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+The in-app kernel (iPad, iPhone, and the Mac's in-app kernel) and the
+kernel in the browser get typed completion and tooltips (declared types,
+not only runtime values), [type errors](#type-errors), and
+[signature help, go to definition and rename](#signatures-definitions-and-renames)
+from TypeScript 6, which the app ships for them: TypeScript's own
+`typescript.js` and its ES library declarations, 9.7 MB (1.8 MB
+compressed). It loads in a Worker of its own the first time a notebook
+asks for typed help, which takes a second or so; until then completion
+offers runtime values. It works offline, and a browser keeps it after the
+first load.
+
+What it checks against: the ES libraries and what a cell in a Worker
+reaches for (`console`, timers, `fetch`, `URL` and so on), and `jupyter`'s
+own types. The DOM's types aren't loaded, since cells run in a Worker. An
+imported package is `any`: its types aren't fetched. TypeScript 6 is the
+last version that runs in a web page, so syntax or library types newer
+than it are unknown here, while the Mac's Node kernels may use a newer
+TypeScript.
 
 ## Live Markdown preview
 

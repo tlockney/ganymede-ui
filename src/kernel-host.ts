@@ -22,6 +22,7 @@ import {
   type ToKernel,
 } from './lib/kernel-relay';
 import { kernelModules } from './lib/kernel-modules';
+import { kernelTypescript } from './lib/kernel-typescript';
 
 /** The running kernels, by id, each with the run Swift gave its start. */
 const kernels = new Map<string, { kernel: BrowserKernel; run: number }>();
@@ -74,6 +75,8 @@ function start(id: string, run: number, params?: string): void {
   const kernel = startBrowserKernel({
     createWorker: () => new Worker(workerUrl, { type: 'module' }),
     modules: kernelModules(),
+    // Typed help from TypeScript 6, loaded on the first request (#668).
+    typescript: kernelTypescript(),
     // `ganymede://run` with parameters and Run Notebook with Parameters
     // start a kernel with them (ganymede-ui#303).
     params: parseParams(params),
