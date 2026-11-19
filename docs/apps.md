@@ -172,12 +172,45 @@ into thin strips at the window's edges; clicking one, the same button,
 
 ### Text files
 
-Other files in the sidebar (not notebooks) open in a text editor window:
+Other files in the sidebar (not notebooks, and not the [data files](#data-files) below) open in a text editor window:
 the system text view with syntax highlighting for Python, JavaScript,
 TypeScript, JSON, Markdown, shell, YAML and TOML, line numbers,
 auto-indent, and paired brackets and quotes. ⌘S saves. When the file
 changes on disk the editor reloads it, or, with unsaved edits, asks which
 version to keep.
+
+### Data files
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release. Until then, these files open in the text editor.
+
+CSV, TSV, JSON and Parquet files open in the notebook's place, in the
+window's page, on the Mac, iPad and iPhone and in a browser, read-only:
+
+- **CSV and TSV** show a table you sort by a column (numbers sort as
+  numbers; column types are guessed from the values), page through 50 rows
+  at a time and filter with the Filter rows box, which keeps the rows with
+  that text in any cell. Quoted fields, line breaks inside them, a byte
+  order mark and rows of uneven length are read as spreadsheets read them.
+- **JSON** shows a tree you fold and search.
+- **Parquet** shows the rows as a table, with its schema under Schema,
+  read by DuckDB in the app. The first Parquet file you open fetches
+  DuckDB (36 MB, once, then kept) as SQL in a notebook does.
+
+Large files are read in part so a phone doesn't run out of memory: a CSV
+or TSV shows its first 10,000 rows (the bar says so; the first 8 MB are
+read), and a Parquet file shows its first 10,000 rows. A JSON file over
+16 MB and a Parquet file over 64 MB aren't opened in the data view; use
+Open as Text for the JSON.
+
+**Open as Text** opens the file in the editor above (the apps; a browser has
+no editor), and **New Notebook from File** writes a notebook beside the
+file, named for it, with a cell that loads it with `jupyter.sql.load` and
+one that shows its first rows, then opens it. A notebook on a kernel that
+doesn't run in the file's folder, such as the one in the browser, can't
+find the file by name there. Open Recent and the Recents list keep to
+notebooks.
 
 ### Shortcuts
 
@@ -555,6 +588,8 @@ headings; pick one to go to its cell.
   soon after the app goes to the background; the terminal then offers to
   reconnect. Hosts running Tailscale SSH need no key; see
   [Tailscale SSH](#tailscale-ssh).
+- **Data files** (CSV, TSV, JSON, Parquet) open in the page, as on the
+  Mac ([Data files](#data-files)); Open as Text opens the editor.
 - **Text files** open in an editor with the same highlighting, line
   numbers, auto-indent and pairing as on the Mac. Edits are saved when
   the app goes to the background, since iOS may close the editor there.

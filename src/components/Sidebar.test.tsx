@@ -73,6 +73,24 @@ describe('Sidebar', () => {
     expect(onOpenFile).toHaveBeenCalledTimes(1);
   });
 
+  it('opens data files in the page, through onOpen, with or without an editor (#671)', async () => {
+    const onOpenFile = vi.fn();
+    const tree = {
+      ...TREE,
+      '': [
+        { name: 'moons.csv', type: 'file' as const },
+        { name: 'a.parquet', type: 'file' as const },
+      ],
+    };
+    const { onOpen } = renderSidebar({ onOpenFile }, tree);
+    const csv = (await screen.findByText('moons.csv')).closest('button')!;
+    expect(csv).toBeEnabled();
+    await userEvent.click(csv);
+    await userEvent.click(screen.getByText('a.parquet'));
+    expect(onOpen.mock.calls).toEqual([['moons.csv'], ['a.parquet']]);
+    expect(onOpenFile).not.toHaveBeenCalled();
+  });
+
   it('walks into a folder and back out', async () => {
     const { fake, onNew, onOpen } = renderSidebar();
     await userEvent.click(await screen.findByText('moons'));

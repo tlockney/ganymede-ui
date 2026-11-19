@@ -62,7 +62,7 @@ struct FolderSidebar: View {
     }
 
     private func open(_ entry: FolderEntry) {
-        if entry.isNotebook {
+        if entry.opensInPage {
             page.run("open", arg: entry.serverPath)
         } else {
             openFile(entry.serverPath)

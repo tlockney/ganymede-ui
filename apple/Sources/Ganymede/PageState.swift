@@ -67,6 +67,13 @@ struct PageState: Decodable, Equatable {
             var id: String { path + "\n" + (snippet ?? "") }
             var isNotebook: Bool { type == "notebook" }
             var isDirectory: Bool { type == "directory" }
+            /// A CSV, TSV, JSON or Parquet file: the page shows it as data (#671).
+            var isData: Bool {
+                !isDirectory && !isNotebook
+                    && FolderEntry.dataExtensions.contains((name as NSString).pathExtension.lowercased())
+            }
+            /// Opened by the page, as notebooks and data files are.
+            var opensInPage: Bool { isNotebook || isData }
             /// The name without `.ipynb`.
             var title: String { isNotebook && name.hasSuffix(".ipynb") ? String(name.dropLast(6)) : name }
             /// The folder it is in, for the row's second line; "" at the root.
@@ -88,7 +95,7 @@ struct PageState: Decodable, Equatable {
 
         /// Whether tapping `match` opens it.
         func opens(_ match: Match) -> Bool {
-            match.isNotebook || (!match.isDirectory && opensFiles == true)
+            match.opensInPage || (!match.isDirectory && opensFiles == true)
         }
     }
 

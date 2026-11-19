@@ -324,7 +324,7 @@ struct IPadSidebar: View {
     }
 
     private func openMatch(_ match: PageState.Search.Match) {
-        if match.isNotebook {
+        if match.opensInPage {
             page.run("open", arg: match.path)
             opened()
         } else if page.state.search?.opens(match) == true {
@@ -376,7 +376,7 @@ struct IPadSidebar: View {
     }
 
     private func open(_ entry: FolderEntry) {
-        if entry.isNotebook {
+        if entry.opensInPage {
             page.run("open", arg: path(entry))
             opened()
         } else {

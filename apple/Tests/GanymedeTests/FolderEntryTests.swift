@@ -19,6 +19,24 @@ final class FolderEntryTests: XCTestCase {
         XCTAssertFalse(entries[1].isNotebook)
     }
 
+    /// CSV, TSV, JSON and Parquet open in the page's data view, as notebooks
+    /// do (#671), and any other file in the editor. Matches `dataKind` in
+    /// `src/lib/data-files.ts`.
+    func testDataFilesOpenInThePage() {
+        func entry(_ path: String, directory: Bool = false) -> FolderEntry {
+            FolderEntry(url: URL(fileURLWithPath: "/tmp/" + path), isDirectory: directory)
+        }
+        for name in ["a.csv", "a.TSV", "a.json", "a.parquet", "Io.ipynb"] {
+            XCTAssertTrue(entry(name).opensInPage, name)
+        }
+        for name in ["notes.md", "csv", "a.csv.bak", "data.txt"] {
+            XCTAssertFalse(entry(name).opensInPage, name)
+        }
+        XCTAssertFalse(entry("folder.csv", directory: true).opensInPage)
+        XCTAssertTrue(entry("a.csv").isData)
+        XCTAssertFalse(entry("Io.ipynb").isData)
+    }
+
     func testServerPathsAreFromTheRoot() {
         XCTAssertEqual(
             FolderEntry.serverPath(URL(fileURLWithPath: "/Users/me/Moons & rings/Io.ipynb")),
