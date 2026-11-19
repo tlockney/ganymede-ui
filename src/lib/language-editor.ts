@@ -59,14 +59,42 @@ export function signatureDom(sig: SignatureHelp): HTMLElement {
 
 const setSignature = StateEffect.define<Tooltip | null>();
 
+/** Closes the signature tooltip from outside the editor's own keymap. */
+const closeSignature = StateEffect.define<null>();
+
 const signatureField = StateField.define<Tooltip | null>({
   create: () => null,
   update(value, tr) {
-    for (const e of tr.effects) if (e.is(setSignature)) return e.value;
+    for (const e of tr.effects) {
+      if (e.is(setSignature)) return e.value;
+      if (e.is(closeSignature)) return null;
+    }
     return value;
   },
-  provide: f => showTooltip.from(f),
+  provide: f => [
+    showTooltip.from(f),
+    // Marks the editor while the tooltip shows, so the notebook's Escape
+    // binding (which runs first, in the capture phase) can yield to it.
+    EditorView.editorAttributes.of(view =>
+      view.state.field(f) ? { class: SIGNATURE_OPEN } : null,
+    ),
+  ],
 });
+
+/** The class an editor has while it shows signature help. */
+export const SIGNATURE_OPEN = 'gm-mod-signature-help';
+
+/**
+ * Closes the signature help shown in an editor under `root`; the
+ * notebook's Escape binding for an editor with SIGNATURE_OPEN.
+ */
+export function dismissSignatureHelp(root: Element): boolean {
+  const el = root.querySelector(`.cm-editor.${SIGNATURE_OPEN}`);
+  const view = el instanceof HTMLElement ? EditorView.findFromDOM(el) : null;
+  if (!view) return false;
+  view.dispatch({ effects: closeSignature.of(null) });
+  return true;
+}
 
 /** Whether the edit typed the start of an argument list or the next argument. */
 function typedArgument(update: {
@@ -94,6 +122,11 @@ export function languageExtension(service: LanguageService, cell: Cell) {
   let pendingRequest = false;
   const signatureHelp = EditorView.updateListener.of(update => {
     const { view } = update;
+    if (update.transactions.some(t => t.effects.some(e => e.is(closeSignature)))) {
+      epoch++;
+      pendingRequest = false;
+      return;
+    }
     if (!update.docChanged && !update.selectionSet) return;
     const open = update.state.field(signatureField) !== null;
     const wanted =
@@ -225,7 +258,14 @@ export function askNameNear(
       done(null);
     }
   });
-  input.addEventListener('blur', () => done(null));
+  // Deferred: the notebook's capture-phase keydown handler can take the
+  // focus while Enter is on its way to the form, and the submit that
+  // follows must still win.
+  input.addEventListener('blur', () =>
+    setTimeout(() => {
+      if (document.activeElement !== input) done(null);
+    }, 0),
+  );
   input.focus();
   input.select();
   return { result, cancel: () => done(null) };

@@ -73,6 +73,7 @@ import { canCollapse, expandAll } from './code-collapse';
 import { installOutputFrames } from './output-frames';
 import { installTableOutput } from './table-output';
 import { bindShortcuts, SHOW_SHORTCUTS_EVENT } from './shortcuts';
+import { dismissSignatureHelp, SIGNATURE_OPEN } from './language-editor';
 
 // JupyterLab's own stylesheets for the notebook and everything it pulls in
 // (cells, output area, CodeMirror, Lumino). Theme variables are injected
@@ -489,6 +490,9 @@ export function attachEditing(
     },
   });
   commands.addCommand('tooltip:dismiss', { execute: dismissTooltip });
+  commands.addCommand('signature-help:dismiss', {
+    execute: () => void dismissSignatureHelp(notebook.node),
+  });
   disposables.add(new DisposableDelegate(dismissTooltip));
 
   // Find: documentsearch's bar over the notebook's own search provider,
@@ -591,6 +595,7 @@ export function attachEditing(
   );
   bindKeys(['Enter'], 'completer:select', `#${id} .jp-mod-completer-active`);
   bindKeys(['Escape'], 'tooltip:dismiss', `body.jp-mod-tooltip #${id}`);
+  bindKeys(['Escape'], 'signature-help:dismiss', `#${id} .${SIGNATURE_OPEN}`);
   bindKeys(['Escape'], 'find-close', searchBar);
   return disposables;
 }
