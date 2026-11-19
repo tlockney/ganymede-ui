@@ -469,6 +469,16 @@ describe('App', () => {
     expect(localStorage.getItem('ganymede-ui:type-errors')).toBeNull();
   });
 
+  it('turns the live Markdown preview on and off from the app, and remembers it (#672)', async () => {
+    localStorage.removeItem('ganymede-ui:live-markdown');
+    render(<App />);
+    await waitFor(() => expect(window.ganymede).toBeDefined());
+    expect(await window.ganymede!.command('toggle-live-markdown')).toBe(true);
+    expect(localStorage.getItem('ganymede-ui:live-markdown')).toBe('on');
+    expect(await window.ganymede!.command('toggle-live-markdown')).toBe(true);
+    expect(localStorage.getItem('ganymede-ui:live-markdown')).toBeNull();
+  });
+
   it('reads the variables for the app’s inspector and expands them for it (#249)', async () => {
     const states: Record<string, unknown>[] = [];
     vi.stubGlobal('webkit', {

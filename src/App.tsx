@@ -73,6 +73,7 @@ import {
   useRecents,
 } from './lib/recents';
 import { paletteEntries } from './lib/palette';
+import { liveMarkdownEnabled, setLiveMarkdownEnabled } from './lib/markdown-preview';
 import { setTypeErrorsEnabled, typeErrorsEnabled } from './lib/type-errors';
 import { CommandPalette } from './components/CommandPalette';
 import { VariablesPanel } from './components/VariablesPanel';
@@ -510,6 +511,9 @@ export function App() {
       case 'rename-symbol':
         // With a new name when the palette asked for it, else the cursor's input.
         return c ? c.renameSymbol(arg) : false;
+      case 'toggle-live-markdown':
+        setLiveMarkdownEnabled(!liveMarkdownEnabled());
+        return true;
       case 'watch-memory':
         if (arg !== 'on' && arg !== 'off') return false;
         setWatchMemory(arg === 'on');

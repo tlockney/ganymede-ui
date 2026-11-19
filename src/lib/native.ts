@@ -48,7 +48,8 @@ export type NativeHooks = {
  * `open-examples` copies the example notebooks into a new folder in the
  * folder it takes, and opens the first (#414).
  * `toggle-type-errors` turns type errors in TypeScript and JavaScript cells
- * on or off (#669).
+ * on or off (#669). `toggle-live-markdown` does the same for the live
+ * Markdown preview in Markdown cells (#672).
  * `go-to-definition` and `rename-symbol` act on the name at the open
  * notebook's active cell, through the kernel's language service (#676);
  * `rename-symbol` takes the new name, and without one asks for it.
@@ -88,6 +89,7 @@ export const PAGE_COMMANDS = {
   'toggle-type-errors': '',
   'go-to-definition': '',
   'rename-symbol': 'arg',
+  'toggle-live-markdown': '',
   connect: '',
   search: 'arg',
   'clear-recents': '',
