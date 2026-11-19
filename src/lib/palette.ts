@@ -136,6 +136,8 @@ export function paletteEntries(context: PaletteContext): PaletteEntry[] {
       // The folder tells two notebooks of one name apart, and filters.
       .map(p => app('open', `Open ${nameOf(p)}`, recentGroup(p), { arg: p, keys: '' })),
     app('toggle-variables', 'Show or Hide Variables', 'View', { disabled: !open }),
+    // Switches type errors on or off (#669); the page remembers which.
+    app('toggle-type-errors', 'Show or Hide Type Errors', 'View'),
     app('show-shortcuts', 'Keyboard Shortcuts', 'Help'),
     app('show-settings', 'Settings…', 'App'),
     app('connect', 'Connect to a Server…', 'App'),

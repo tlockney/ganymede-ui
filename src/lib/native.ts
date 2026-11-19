@@ -47,6 +47,8 @@ export type NativeHooks = {
  * `RunningSession.memory` (#241).
  * `open-examples` copies the example notebooks into a new folder in the
  * folder it takes, and opens the first (#414).
+ * `toggle-type-errors` turns type errors in TypeScript and JavaScript cells
+ * on or off (#669).
  * `inspect-variables` takes `on` or `off`: whether the app's inspector
  * shows the Variables view, so the page reads the variables and posts them
  * as `PageState.variables` (#249). `toggle-variable` expands or collapses
@@ -80,6 +82,7 @@ export const PAGE_COMMANDS = {
   'show-settings': '',
   'command-palette': '',
   'toggle-variables': '',
+  'toggle-type-errors': '',
   connect: '',
   search: 'arg',
   'clear-recents': '',

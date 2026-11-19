@@ -22,6 +22,7 @@
     "e2e": "playwright test"
   },
   "dependencies": {
+    "@codemirror/lint": "6.9.7",
     "@fortawesome/fontawesome-free": "5.15.4",
     "@jupyter-widgets/base": "6.0.12",
     "@jupyter-widgets/controls": "5.0.13",

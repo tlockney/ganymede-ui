@@ -40,6 +40,7 @@ describe('paletteEntries', () => {
         'Find',
         'Open Europa',
         'Keyboard Shortcuts',
+        'Show or Hide Type Errors',
       ]),
     );
     // Only in a cell editor, or the palette itself.
@@ -47,6 +48,14 @@ describe('paletteEntries', () => {
     expect(labels).not.toContain('Command palette');
     // The open notebook isn't offered again.
     expect(labels).not.toContain('Open Io');
+  });
+
+  it('offers the type errors switch as the page command that runs it (#669)', () => {
+    expect(find('Show or Hide Type Errors')).toMatchObject({
+      id: 'toggle-type-errors',
+      group: 'View',
+    });
+    expect(find('Show or Hide Type Errors')!.disabled).toBeFalsy();
   });
 
   it('gives each its key and its argument', () => {

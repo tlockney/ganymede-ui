@@ -640,6 +640,33 @@ app to the background, which can drop the connection: if the terminal
 says it disconnected, reconnect, and Tailscale lets you in without
 asking again for its check period.
 
+## Type errors
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release. It also needs a cdp-kernel release after 0.12.3:
+> until a kernel answers, nothing is underlined.
+
+Code cells of a TypeScript or JavaScript kernel underline type errors as
+you type, in the Mac, iPad and iPhone apps and in the browser. Pause for
+a moment after an edit and the kernel's language service checks the cell
+against the cells that ran; hover a mark to see the message and its
+TypeScript error number (`TS2322`). Each cell is checked with what the
+cells that ran declared, so a name an earlier cell declares is not an
+error, nor is importing a package no cell has run yet.
+
+Only cdp-kernel's Node, Deno and Bun kernels answer. Other kernels show
+nothing: the in-app kernel, other languages, and a cdp-kernel started with
+`--no-language-service`. A kernel that can't tell yet (TypeScript is
+still loading, or the check took too long) leaves the cell's marks as they
+were. Marks go when the kernel restarts or changes, and when the cell
+becomes Markdown or raw.
+
+**Show or Hide Type Errors** in the Command Palette turns this on or off.
+It is on by default, and the app remembers the choice; other windows of
+the app follow it. There is no View menu item
+for it yet.
+
 ## Publishing a notebook
 
 **Publish as Web Page…** (File menu and the toolbar's Share button on
