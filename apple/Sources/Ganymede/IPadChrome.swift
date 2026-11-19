@@ -869,6 +869,9 @@ private struct IPadNewNotebook: View {
         Button("New Notebook") { page?.run("new-notebook", arg: "") }
             .keyboardShortcut("n")
             .disabled(page == nil)
+        // A DuckDB prompt in the page, for the notebook folder (#679).
+        Button("New DuckDB Console") { page?.run("new-duckdb-console", arg: "") }
+            .disabled(page == nil)
         // A copy of the example notebooks in a new folder (#414).
         Button("Open Example Notebooks") { page?.run("open-examples", arg: "") }
             .disabled(page == nil)

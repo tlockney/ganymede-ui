@@ -61,14 +61,16 @@ function setup(
     open = update(open);
   });
   const opened = () => open;
+  const onMoved = vi.fn();
   const actions = fileActions({
     contents: fake as unknown as Contents.IManager,
     sessions: running as unknown as Session.IManager | undefined,
     openPath,
     controller: c,
     setOpenPath,
+    onMoved,
   });
-  return { fake, setOpenPath, opened, actions };
+  return { fake, setOpenPath, opened, actions, onMoved };
 }
 
 const nb = (path: string) => ({ path, name: path.split('/').pop()!, type: 'notebook' as const });
@@ -91,9 +93,22 @@ describe('fileActions', () => {
   });
 
   it('refuses a name that is taken', async () => {
-    const { fake, actions } = setup(undefined, undefined, ['Europa.ipynb']);
+    const { fake, actions, onMoved } = setup(undefined, undefined, ['Europa.ipynb']);
     await expect(actions.rename(nb('Io.ipynb'), 'Europa')).rejects.toThrow(/already exists/);
     expect(fake.rename).not.toHaveBeenCalled();
+    expect(onMoved).not.toHaveBeenCalled();
+  });
+
+  it('tells each move and delete it made, with or without the open notebook in it', async () => {
+    const { actions, onMoved } = setup();
+    await actions.rename(dir('moons'), 'satellites');
+    expect(onMoved).toHaveBeenLastCalledWith('moons', 'satellites');
+    await actions.remove(dir('satellites'));
+    expect(onMoved).toHaveBeenLastCalledWith('satellites', null);
+    const c = controller('moons/Io.ipynb');
+    const held = setup('moons/Io.ipynb', c);
+    await held.actions.rename(dir('moons'), 'satellites');
+    expect(held.onMoved).toHaveBeenLastCalledWith('moons', 'satellites');
   });
 
   it('renames the open notebook through its controller, which keeps it open', async () => {

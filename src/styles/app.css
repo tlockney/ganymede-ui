@@ -2040,6 +2040,85 @@ button {
   user-select: text;
 }
 
+/* ---------- DuckDB console (#679, src/components/DuckdbConsole.tsx) ---------- */
+
+.duck-console {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: var(--toolbar-h) 16px 0;
+  overflow: hidden;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.duck-folder {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.duck-log {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.duck-entry {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--separator, rgba(128, 128, 128, 0.25));
+}
+
+.duck-sql {
+  margin: 0;
+  font-family: var(--code-font, ui-monospace, monospace);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.duck-status,
+.duck-error {
+  margin: 4px 0 0;
+  font-size: 0.9em;
+}
+
+.duck-error {
+  color: var(--red);
+  white-space: pre-wrap;
+}
+
+.duck-table {
+  margin-top: 6px;
+}
+
+.duck-input {
+  padding: 8px 0 calc(12px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--separator, rgba(128, 128, 128, 0.35));
+}
+
+.duck-input .cm-editor {
+  max-height: 40vh;
+  border: 1px solid var(--separator, rgba(128, 128, 128, 0.35));
+  border-radius: 7px;
+  background: transparent;
+}
+
+.duck-input .cm-scroller {
+  font-family: var(--code-font, ui-monospace, monospace);
+}
+
+.duck-input .cm-content {
+  padding: 6px 8px;
+}
+
+.duck-input .cm-focused {
+  outline: 2px solid var(--accent, #3b82f6);
+  outline-offset: -1px;
+}
+
 /* Signature help in a code cell (#676): CodeMirror's tooltip. */
 .cm-signature-help {
   max-width: 480px;

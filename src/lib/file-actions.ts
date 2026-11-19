@@ -44,6 +44,8 @@ type Options = {
   /** App's setter; given an updater, so a move or delete that ends after
    * another notebook was opened leaves that one open. */
   setOpenPath(update: (open: string | undefined) => string | undefined): void;
+  /** Hears each file or folder moved (`to`) or deleted (`to` null), once it is done. */
+  onMoved?(from: string, to: string | null): void;
 };
 
 export function fileActions({
@@ -52,6 +54,7 @@ export function fileActions({
   openPath,
   controller,
   setOpenPath,
+  onMoved,
 }: Options): FileActions {
   const open = controller?.path === openPath ? controller : undefined;
   /**
@@ -76,6 +79,8 @@ export function fileActions({
       // follows. It says why it failed in the pane, which the sidebar can
       // cover (on a phone), so the sidebar says it too.
       if (held && item.path === openPath) return held.rename(input, { throws: true });
+      // A notebook renaming itself is a file, never a folder that the
+      // DuckDB console (#679) is in, so only the moves below are told.
       const next = renamedPath(item.path, input, item.type === 'notebook');
       if (!next) return false;
       const holdsOpen = !!held;
@@ -94,6 +99,7 @@ export function fileActions({
           const moved = next + from!.slice(item.path.length);
           setOpenPath(p => (p === from ? moved : p));
         }
+        onMoved?.(item.path, next);
         await others();
         return true;
       }
@@ -104,6 +110,7 @@ export function fileActions({
       await open!.moved(moved, move);
       const from = openPath;
       setOpenPath(p => (p === from ? moved : p));
+      onMoved?.(item.path, next);
       await others();
       return true;
     },
@@ -131,6 +138,7 @@ export function fileActions({
       if (holdsOpen || (dataOpen && within(openPath, item.path))) {
         setOpenPath(p => (within(p, item.path) ? undefined : p));
       }
+      onMoved?.(item.path, null);
     },
 
     async newFolder(dir) {

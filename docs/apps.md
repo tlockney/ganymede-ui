@@ -784,6 +784,68 @@ Preview** in the Command Palette turns it on or off for every Markdown
 cell; the app remembers the choice, and other windows of the app follow
 it. There is no View menu item for it yet.
 
+## DuckDB console
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+A DuckDB prompt that opens in the window's page, where a notebook would,
+in the Mac, iPad and iPhone apps and in a browser. Open it with **New
+DuckDB Console** in the Command Palette, File > New DuckDB Console on the
+Mac, or File > New DuckDB Console on the iPad. Opening a notebook or file
+closes it, as it closes any page; the notebook menus are disabled while it
+shows.
+
+Type SQL in the box at the bottom. **Enter** runs it when it ends with a
+`;` (a `;` inside a string or a comment doesn't count), and otherwise adds
+a line; **Shift-Enter** runs it whatever it ends with. Several statements
+pasted together run in order, and stop at the first error. **↑** and **↓**
+walk what you entered, an input at a time, when the cursor is on the first or last line.
+Each statement is kept above the box with its result: the rows as a table
+you sort, page and filter as in a notebook (the first 10,000 rows of a
+bigger result), or the row count, `OK`, or DuckDB's error, with the time
+it took. An error stays in the scrollback and the console goes on.
+Lists, structs, maps, intervals, blobs, timestamps and decimals too wide for a
+double show as the text DuckDB writes for them. `.tables` shows the tables,
+and `.schema <table>` describes one; a dot command takes its line and may
+come between statements. An input entered while another still runs waits for it.
+
+DuckDB wasm is the build SQL in a notebook uses, in a worker of its own: the
+first console fetches it (36 MB, once, then kept), and later ones run offline.
+There is one DuckDB for as long as the console is open, so the tables you
+create stay between statements, and its worker ends when the console
+closes. Nothing is saved when it closes.
+
+A quoted path in a statement that names a CSV, TSV, JSON or Parquet file in
+the window's folder (`select * from 'data/moons.csv'`) reads the file
+through the server and gives it to DuckDB before the statement runs, the
+first time a statement names it. A path is relative to the window's folder,
+and `..` can't leave it; a URL or an absolute path is left to DuckDB, and
+only `'single quoted'` strings count. Any such string is read, wherever it
+is in the statement (`where src = 'big.parquet'` reads `big.parquet` too). A file is read in full, up to what
+the [data view](#data-files) holds in memory: 8 MB for a CSV or TSV, 16 MB
+for JSON and 64 MB for Parquet. A bigger file is refused with a note, since
+a query over part of a file would answer wrongly; a notebook on a kernel can
+query it. A file read once is not read again while the console is open, so
+a change on disk shows after you open a new console (**New DuckDB Console**
+again). Renaming or moving the folder, in the app or in the page's
+sidebar, keeps the console and what it has read; deleting it closes the
+console. A file that isn't there is DuckDB's error. The console can't write to the folder: `copy ... to`
+makes a file DuckDB holds in memory only (rerun in an exported notebook on a
+kernel, it writes a real file there).
+
+**Export to Notebook** writes `duckdb-console.ipynb` in the folder (a number
+after the name when it is taken) and opens it, which closes the console. It
+has a `jupyter.sql.load` cell for each file the console read, loading it as a
+table named for the file with `_file` after it (and `_2`, `_3` for files of
+one name in different folders), then one `jupyter.sql` cell
+for each statement that ran without an error, in order. The statements read
+files by the paths you typed, relative to the notebook's folder, so a
+TypeScript kernel that runs in the folder reruns the session. The kernel in
+the browser and the in-app kernel on iPad and iPhone can't find files by
+name, as for New Notebook from File.
+
 ## Publishing a notebook
 
 **Publish as Web Page…** (File menu and the toolbar's Share button on

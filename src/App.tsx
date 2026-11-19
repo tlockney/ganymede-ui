@@ -16,6 +16,7 @@ import { useJupyterLabTheme } from './lib/theme';
 import { Sidebar } from './components/Sidebar';
 import { Toolbar } from './components/Toolbar';
 import { DataPane } from './components/DataPane';
+import { DuckdbConsole } from './components/DuckdbConsole';
 import { NotebookPane, type NotebookController } from './components/NotebookPane';
 import { dataKind } from './lib/data-files';
 import { ConnectSheet } from './components/ConnectSheet';
@@ -181,6 +182,30 @@ export function App() {
     if (narrow) setSidebarOpen(false);
   }, [narrow]);
   const [openPath, setOpenPath] = useState<string>();
+  /**
+   * The DuckDB console (#679) shows in the page where a notebook would, in
+   * this folder. It has no path: the app's state says no notebook is open,
+   * so its notebook menus disable, as they do for a data file. Opening
+   * anything closes it.
+   */
+  const [duckFolder, setDuckFolder] = useState<string>();
+  /**
+   * Bumped by each New DuckDB Console: a new console is a new engine with
+   * nothing read, even on the same folder. A move of the folder keeps it.
+   */
+  const [duckId, setDuckId] = useState(0);
+  /**
+   * A move of the console's folder, or one it is in, keeps the console and
+   * moves it along; a delete closes it, as it closes an open data file.
+   */
+  const followFolder = useCallback((from: string, to: string | null) => {
+    setDuckFolder(f =>
+      f === undefined || !within(f, from) ? f : to === null ? undefined : to + f.slice(from.length),
+    );
+  }, []);
+  useEffect(() => {
+    if (openPath) setDuckFolder(undefined);
+  }, [openPath]);
   // Not if another notebook was opened while it renamed.
   // A run going on keeps going through a rename or move (of the notebook
   // or a folder it's in): its sheet and parameters follow the name.
@@ -277,6 +302,8 @@ export function App() {
     setConnecting(true);
     setError(undefined);
     setOpenPath(undefined);
+    // A console is of the server it started on: its folder is that one's.
+    setDuckFolder(undefined);
     connect(config)
       .then(b => {
         if (cancelled) {
@@ -416,7 +443,18 @@ export function App() {
         setOpenPath(path);
         return true;
       }
+      case 'new-duckdb-console':
+        if (!backend) return false;
+        // A notebook open goes the way another notebook's opening takes it.
+        setOpenPath(undefined);
+        setDuckFolder(clean(arg ?? folder));
+        setDuckId(n => n + 1);
+        return true;
       case 'close':
+        if (!openPath && duckFolder !== undefined) {
+          setDuckFolder(undefined);
+          return true;
+        }
         // Without saving: the app closes a notebook it moved to the Trash.
         if (!openPath) return false;
         c?.discard();
@@ -479,6 +517,7 @@ export function App() {
         const move = fileMove(arg);
         if (!backend || !move || !isAppServer(backend.config)) return false;
         const key = recentsKey(backend.config);
+        followFolder(move.from, move.to);
         if (move.to === null) forgetRecent(key, move.from);
         else {
           moveRecent(key, move.from, move.to);
@@ -853,6 +892,7 @@ export function App() {
                 openPath,
                 controller,
                 setOpenPath,
+                onMoved: followFolder,
               })
             }
           />
@@ -902,6 +942,13 @@ export function App() {
                 backend={backend}
                 path={openPath}
                 onOpenAsText={editsFiles ? () => openFile(openPath) : undefined}
+                onOpenNotebook={setOpenPath}
+              />
+            ) : backend && duckFolder !== undefined ? (
+              <DuckdbConsole
+                key={`${backend.config.kind}:duck:${duckId}`}
+                backend={backend}
+                folder={duckFolder}
                 onOpenNotebook={setOpenPath}
               />
             ) : backend && openPath ? (

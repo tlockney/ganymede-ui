@@ -6,7 +6,8 @@ import { rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { SQL_MODULES } from '@tlockney/cdp-kernel/browser';
 import { loadDuckdbFiles } from './duckdb-files';
 import { columnFor, openEngine, parquetTable, plain, type ArrowLike, type Engine } from './parquet';
 
@@ -137,5 +138,47 @@ describe('openEngine', () => {
       }),
     ).rejects.toThrow(/isn’t part of this build/);
     expect(order).toEqual(['loaded', 'map']);
+  });
+});
+
+describe('openEngine close', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  /** A DuckDB module whose connection never closes, as one running a long query doesn't. */
+  function stuck(closeConnection: string) {
+    const terminate = vi.fn();
+    vi.stubGlobal('Worker', class {});
+    vi.stubGlobal('location', { origin: 'http://localhost' });
+    vi.stubGlobal('__terminate', terminate);
+    const code = `
+      export class VoidLogger {}
+      export class AsyncDuckDB {
+        async instantiate() {}
+        async registerFileBuffer() {}
+        async connect() { return { query: async () => ({}), close: () => ${closeConnection} }; }
+        async terminate() { globalThis.__terminate(); }
+      }`;
+    return {
+      terminate,
+      modules: () => ({ [SQL_MODULES.duckdb]: `data:text/javascript,${encodeURIComponent(code)}` }),
+    };
+  }
+
+  it('ends the worker even when the connection never finishes closing', async () => {
+    vi.mocked(loadDuckdbFiles).mockResolvedValue();
+    const { terminate, modules } = stuck('new Promise(() => {})');
+    const engine = await openEngine(modules);
+    await engine.close!();
+    expect(terminate).toHaveBeenCalledTimes(1);
+  });
+
+  it('ends the worker when closing the connection would fail', async () => {
+    vi.mocked(loadDuckdbFiles).mockResolvedValue();
+    const { terminate, modules } = stuck("Promise.reject(new Error('worker busy'))");
+    const engine = await openEngine(modules);
+    await engine.close!();
+    expect(terminate).toHaveBeenCalledTimes(1);
   });
 });

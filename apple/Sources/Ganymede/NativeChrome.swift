@@ -640,6 +640,11 @@ struct NewCommands: View {
             }
         }
         .keyboardShortcut("n")
+        // A DuckDB prompt in the window's page, for this folder (#679).
+        Button("New DuckDB Console") {
+            page?.run("new-duckdb-console", arg: FolderEntry.serverPath(folder ?? model.root))
+        }
+        .disabled(page == nil)
         // A copy of the example notebooks in a new folder, with the first
         // open (#414).
         Button("Open Example Notebooks") {

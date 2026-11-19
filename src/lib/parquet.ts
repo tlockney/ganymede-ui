@@ -158,10 +158,14 @@ export async function openEngine(modules: () => { [specifier: string]: string })
     return {
       register: (name, bytes) => db.registerFileBuffer(name, bytes),
       query: sql => connection.query(sql),
+      // Terminate first: the connection closes only after a running query
+      // does, which can be never, and terminating the worker ends both.
       close: async () => {
-        await connection.close();
-        await db.terminate();
-        script.revoke();
+        try {
+          await db.terminate();
+        } finally {
+          script.revoke();
+        }
       },
     };
   } catch (e) {

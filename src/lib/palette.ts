@@ -96,6 +96,10 @@ export function paletteEntries(context: PaletteContext): PaletteEntry[] {
       arg: context.folder,
       disabled: !context.connected,
     }),
+    app('new-duckdb-console', 'New DuckDB Console', 'File', {
+      arg: context.folder,
+      disabled: !context.connected,
+    }),
     app('save', 'Save', 'File', { disabled: !open }),
     app('rename', 'Rename Notebook…', 'File', {
       prompt: 'New name',
