@@ -1,9 +1,14 @@
 import '../test/notebook-env';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown';
-import { ensureSyntaxTree, syntaxTree } from '@codemirror/language';
+import {
+  ensureSyntaxTree,
+  forceParsing,
+  syntaxTree,
+  syntaxTreeAvailable,
+} from '@codemirror/language';
 import { EditorSelection, EditorState } from '@codemirror/state';
-import { EditorView } from '@codemirror/view';
+import { EditorView, runScopeHandlers } from '@codemirror/view';
 import type { Notebook } from '@jupyterlab/notebook';
 import type { CodeMirrorEditor } from '@jupyterlab/codemirror';
 import { Widget } from '@lumino/widgets';
@@ -265,6 +270,11 @@ describe('multi-line constructs', () => {
     expect(kinds(at(doc, 13), 'hide')).toEqual([]);
   });
 
+  it('styles every line of a quote, a bare `>` line too', () => {
+    const doc = '> one\n>\n> two';
+    expect(kinds(at(doc, doc.length), 'cm-md-quote').map(r => r[0])).toEqual([0, 6, 8]);
+  });
+
   it('keeps a multi-line list’s other items rendered', () => {
     const doc = '- a\n- b\n- c';
     expect(kinds(at(doc, 5), 'BulletWidget')).toEqual([
@@ -345,6 +355,41 @@ describe('the extension on an editor', () => {
     expect(v.state.sliceDoc(0, v.state.doc.length)).toBe(doc);
     v.dispatch({ changes: { from: 0, insert: 'x' } });
     expect(v.state.doc.toString()).toBe('x' + doc);
+    v.destroy();
+  });
+
+  it('adds no keymap, paste handling or completion: only decorations', () => {
+    setLiveMarkdownEnabled(true);
+    const doc = '- one';
+    const v = view(doc, doc.length);
+    // Markdown's own Enter would continue the list with `- `.
+    const enter = new KeyboardEvent('keydown', { key: 'Enter', keyCode: 13 });
+    expect(runScopeHandlers(v, enter, 'editor')).toBe(false);
+    expect(v.state.doc.toString()).toBe(doc);
+    // Markdown's own paste would turn a URL over a selection into a link.
+    v.dispatch({ selection: { anchor: 2, head: 5 } });
+    const paste = new Event('paste', { bubbles: true, cancelable: true });
+    Object.assign(paste, { clipboardData: { getData: () => 'https://x.dev' } });
+    v.contentDOM.dispatchEvent(paste);
+    expect(v.state.doc.toString()).toBe('- https://x.dev');
+    v.destroy();
+  });
+
+  it('decorates what the parser reaches later, with no edit or cursor move', () => {
+    setLiveMarkdownEnabled(true);
+    const filler = 'plain words in a paragraph\n\n'.repeat(60000);
+    const doc = `${filler}a **late** one`;
+    // Not `view()`: it parses to the end before the test looks.
+    const v = new EditorView({
+      parent: document.body,
+      state: EditorState.create({ doc, extensions: [liveMarkdownPreview()] }),
+    });
+    // The first parse stops short, so the end isn't decorated yet.
+    expect(syntaxTreeAvailable(v.state, doc.length)).toBe(false);
+    expect(hidden(v)).toBe(0);
+    forceParsing(v, doc.length, 10_000);
+    expect(syntaxTreeAvailable(v.state, doc.length)).toBe(true);
+    expect(hidden(v)).toBeGreaterThan(0);
     v.destroy();
   });
 

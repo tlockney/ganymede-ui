@@ -14,7 +14,10 @@ Design:
   tree to read. The extension brings `@codemirror/lang-markdown` (GFM, as
   the rendered cell is) in a compartment, only while the switch is on, so
   with it off a Markdown cell's editor is exactly as before. No fenced code
-  language highlighting yet (`codeLanguages` needs the registry).
+  language highlighting yet (`codeLanguages` needs the registry). The
+  language is made with `addKeymap`, `pasteURLAsLink` and `completeHTMLTags`
+  off: their keymap, paste and completion change the text, and the
+  preview only decorates.
 - Which places show raw: an inline element (emphasis, strikethrough, inline
   code, link) while a selection range touches it, the ends included; a
   heading, list item, quote line or rule while a range touches its line; a
@@ -40,6 +43,6 @@ Dependencies: `@codemirror/view` 6.43.15, `@codemirror/state` 6.7.6,
 direct dependencies, each pinned to the version already in the lock file
 as a dependency of `@jupyterlab/codemirror`; no package is added.
 
-Left out: a Mac View menu item (Swift, can't be built here), tables, math,
+Follow-ups are filed as #673. Left out: a Mac View menu item (Swift, can't be built here), tables, math,
 images, task boxes, language highlighting in fenced code, hanging indents
 for wrapped list items and quotes.

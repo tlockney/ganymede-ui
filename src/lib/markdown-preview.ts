@@ -207,8 +207,7 @@ export function livePreviewDecorations(state: EditorState): DecorationSet {
         if (bullet && !touchesLines(state, from, to)) out.push(BULLET.range(from, to));
       } else if (name === 'Blockquote') {
         for (const n of lineRange(state, from, to)) {
-          const l = state.doc.line(n);
-          if (l.text.trim() !== '') out.push(line('cm-md-quote').range(l.from));
+          out.push(line('cm-md-quote').range(state.doc.line(n).from));
         }
       } else if (name === 'QuoteMark') {
         if (!touchesLines(state, from, to)) hide(from, withSpace(state, from, to));
@@ -305,7 +304,16 @@ const follow = ViewPlugin.fromClass(
  * off a cell's editor is as it always was. GFM, as the rendered cell is.
  */
 const languageSlot = new Compartment();
-const languageFor = (on: boolean): Extension => (on ? markdown({ base: markdownLanguage }) : []);
+const languageFor = (on: boolean): Extension =>
+  on
+    ? markdown({
+        base: markdownLanguage,
+        // The language's own keymap, paste and completion change the text; the preview never does.
+        addKeymap: false,
+        pasteURLAsLink: false,
+        completeHTMLTags: false,
+      })
+    : [];
 
 /** The extension for one Markdown cell's editor. */
 export function liveMarkdownPreview(): Extension {
