@@ -39,7 +39,12 @@ function engineFor(answer: (sql: string) => ArrowResult | Error = () => MOONS) {
     }),
     close: vi.fn(async () => {}),
   };
-  parquet.openEngine.mockResolvedValue(engine);
+  // The `describe` the console asks of a query first is not one of the statements.
+  parquet.openEngine.mockResolvedValue({
+    ...engine,
+    query: async (sql: string) =>
+      sql.startsWith('describe select * from (') ? { toArray: () => [] } : engine.query(sql),
+  });
   return engine;
 }
 
@@ -165,6 +170,72 @@ describe('DuckdbConsole', () => {
     expect(typed()).toBe('select 2;');
     key('ArrowDown');
     expect(typed()).toBe('draft');
+  });
+
+  it('starts the history walk over after an edit of any kind, Backspace and Delete too', async () => {
+    engineFor();
+    setup();
+    await waitFor(() => expect(screen.queryByText('Starting DuckDB…')).toBeNull());
+    type('select 1;');
+    key('Enter');
+    type('select 2;');
+    key('Enter');
+    await waitFor(() => expect(screen.getAllByRole('table')).toHaveLength(2));
+    const edits: [string, () => void][] = [
+      [
+        'typing',
+        () =>
+          act(() =>
+            view().dispatch({ changes: { from: 9, insert: 'x' }, userEvent: 'input.type' }),
+          ),
+      ],
+      [
+        'Backspace',
+        () =>
+          act(() => view().dispatch({ changes: { from: 8, to: 9 }, userEvent: 'delete.backward' })),
+      ],
+      [
+        'Delete',
+        () =>
+          act(() => view().dispatch({ changes: { from: 8, to: 9 }, userEvent: 'delete.forward' })),
+      ],
+    ];
+    for (const [, edit] of edits) {
+      key('ArrowUp');
+      expect(typed()).toBe('select 2;');
+      edit();
+      // Walking again starts from the newest, not one further back.
+      view().dispatch({ selection: { anchor: 0 } });
+      key('ArrowUp');
+      expect(typed()).toBe('select 2;');
+      key('ArrowDown');
+      type('');
+    }
+  });
+
+  it('keeps two inputs entered quickly in order, each statement under its own', async () => {
+    const release: (() => void)[] = [];
+    const engine = engineFor();
+    engine.query.mockImplementation(async (sql: string) => {
+      if (sql === 'a1') await new Promise<void>(r => release.push(r));
+      return MOONS;
+    });
+    setup();
+    await waitFor(() => expect(screen.queryByText('Starting DuckDB…')).toBeNull());
+    type('a1; a2;');
+    key('Enter');
+    type('b1;');
+    key('Enter');
+    await waitFor(() => expect(release).toHaveLength(1));
+    expect(engine.query.mock.calls.map(c => c[0])).toEqual(['a1']);
+    await act(async () => release[0]!());
+    await waitFor(() => expect(screen.getAllByRole('table')).toHaveLength(3));
+    expect(engine.query.mock.calls.map(c => c[0])).toEqual(['a1', 'a2', 'b1']);
+    expect([...document.querySelectorAll('.duck-sql')].map(e => e.textContent)).toEqual([
+      'a1',
+      'a2',
+      'b1',
+    ]);
   });
 
   it('leaves ↑ to the cursor inside a multi-line input', async () => {

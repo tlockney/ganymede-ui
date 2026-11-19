@@ -763,7 +763,10 @@ Each statement is kept above the box with its result: the rows as a table
 you sort, page and filter as in a notebook (the first 10,000 rows of a
 bigger result), or the row count, `OK`, or DuckDB's error, with the time
 it took. An error stays in the scrollback and the console goes on.
-`.tables` shows the tables, and `.schema <table>` describes one.
+Lists, structs, maps, intervals, blobs, timestamps and decimals too wide for a
+double show as the text DuckDB writes for them. `.tables` shows the tables,
+and `.schema <table>` describes one; a dot command takes its line and may
+come between statements. An input entered while another still runs waits for it.
 
 DuckDB wasm is the build SQL in a notebook uses, in a worker of its own: the
 first console fetches it (36 MB, once, then kept), and later ones run offline.
@@ -783,7 +786,8 @@ a query over part of a file would answer wrongly; a notebook on a kernel can
 query it. A file read once is not read again while the console is open, so
 a change on disk shows after you open a new console. A file that isn't
 there is DuckDB's error. The console can't write to the folder: `copy ... to`
-makes a file DuckDB holds in memory only.
+makes a file DuckDB holds in memory only (rerun in an exported notebook on a
+kernel, it writes a real file there).
 
 **Export to Notebook** writes `duckdb-console.ipynb` in the folder (a number
 after the name when it is taken) and opens it, which closes the console. It

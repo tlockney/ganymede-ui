@@ -48,7 +48,7 @@ export type NativeHooks = {
  * `open-examples` copies the example notebooks into a new folder in the
  * folder it takes, and opens the first (#414).
  * `new-duckdb-console` opens the DuckDB console in the page, for the folder
- * it takes ('' for the sidebar's), and closes the open notebook (#679).
+ * it takes ('' is the root), and closes the open notebook (#679).
  * `toggle-type-errors` turns type errors in TypeScript and JavaScript cells
  * on or off (#669). `toggle-live-markdown` does the same for the live
  * Markdown preview in Markdown cells (#672).

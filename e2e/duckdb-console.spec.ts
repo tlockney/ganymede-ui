@@ -142,3 +142,39 @@ test('Export to Notebook writes the statements that ran and opens the notebook',
   );
   expect(readFileSync(join(ROOT_DIR, 'duckdb-console.ipynb'), 'utf8')).not.toContain('selec 1');
 });
+
+test('closing the console during a long statement still ends DuckDB’s worker', async ({ page }) => {
+  test.setTimeout(180_000);
+  await serveDuckdb(page);
+  await openConsole(page);
+  expect(page.workers()).toHaveLength(1);
+
+  // Far longer than the test: it never finishes, so the worker is mid-query.
+  await enter(page, 'select count(*) from range(200000000000) a;');
+  await expect(page.locator('.duck-entry').first()).toContainText('Running…');
+  await sidebarItem(page, 'Galilean moons').click();
+  await expect(page.locator('.jp-Cell').first()).toBeVisible();
+  await expect(page.locator('.duck-console')).toHaveCount(0);
+  await expect.poll(() => page.workers().length, { timeout: 15_000 }).toBe(0);
+});
+
+test('shows nested values, intervals and long timestamps as DuckDB writes them', async ({
+  page,
+}) => {
+  test.setTimeout(180_000);
+  await serveDuckdb(page);
+  await openConsole(page);
+  await enter(
+    page,
+    "select [1.5, 2.25] as l, {'a': 1.5} as s, [date '2024-01-01'] as d, interval 1 day as i, " +
+      "timestamp '2024-01-02 03:04:05.123456' as t;",
+  );
+  const cells = page.locator('.duck-entry').first().locator('.gm-table tbody td');
+  await expect(cells).toHaveText([
+    '[1.50, 2.25]',
+    "{'a': 1.5}",
+    '[2024-01-01]',
+    '1 day',
+    '2024-01-02 03:04:05.123456',
+  ]);
+});

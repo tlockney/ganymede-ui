@@ -38,6 +38,18 @@ describe('statementsOf', () => {
     expect(statementsOf(';; -- nothing\n; /* x */ ;')).toEqual([]);
     expect(statementsOf('')).toEqual([]);
   });
+  it('takes dot commands among statements, wherever the line falls', () => {
+    expect(statementsOf('.tables\nselect 1;\n.schema t\nselect 2')).toEqual([
+      '.tables',
+      'select 1',
+      '.schema t',
+      'select 2',
+    ]);
+    expect(statementsOf('select 1;\n.tables')).toEqual(['select 1', '.tables']);
+    // A dotted line that continues a statement, or a string, is not a command.
+    expect(statementsOf('select\n.5 + 1;')).toEqual(['select\n.5 + 1']);
+    expect(statementsOf("select 'a\n.b';")).toEqual(["select 'a\n.b'"]);
+  });
   it('takes a dot command a line', () => {
     expect(statementsOf('.tables\n.schema moons')).toEqual(['.tables', '.schema moons']);
   });
@@ -64,6 +76,12 @@ describe('endsStatement (the Enter rule)', () => {
     expect(endsStatement('select 1; -- done')).toBe(true);
     expect(endsStatement('select 1; /* done */')).toBe(true);
     expect(endsStatement('select 1 -- ;')).toBe(false);
+  });
+  it('runs on Enter when dot commands and statements are all ended', () => {
+    expect(endsStatement('.tables\nselect 1;')).toBe(true);
+    expect(endsStatement('select 1;\n.tables')).toBe(true);
+    expect(endsStatement('.tables\nselect 1')).toBe(false);
+    expect(endsStatement('select\n.5')).toBe(false);
   });
   it('runs a dot command on Enter', () => {
     expect(endsStatement('.tables')).toBe(true);
@@ -264,16 +282,38 @@ describe('templateText and the exported notebook', () => {
 
 // ---------- ConsoleSession, against a stand-in engine ----------
 
-type Calls = { registered: [string, Uint8Array][]; queries: string[] };
+type Calls = { registered: [string, Uint8Array][]; queries: string[]; described: string[] };
+
+/** The column types a `describe` of a query answers: `[name, DuckDB type]`. */
+function described(columns: [string, string][] = []): ArrowResult {
+  return {
+    numRows: columns.length,
+    schema: { fields: [] },
+    toArray: () =>
+      columns.map(([column_name, column_type]) => ({
+        toJSON: () => ({ column_name, column_type }),
+      })),
+  } as unknown as ArrowResult;
+}
+
+/** The `describe` the console asks of a query before running it. */
+const isDescribe = (sql: string) => sql.startsWith('describe select * from (');
 
 function standIn(
   answer: (sql: string) => ArrowResult | Error = () => arrow([['n', 'Int32', [1]]]),
+  types: (sql: string) => ArrowResult | Error = () => described(),
 ) {
-  const calls: Calls = { registered: [], queries: [] };
+  const calls: Calls = { registered: [], queries: [], described: [] };
   const close = vi.fn(async () => {});
   const engine: Engine = {
     register: (name, bytes) => void calls.registered.push([name, bytes]),
     query: async sql => {
+      if (isDescribe(sql)) {
+        calls.described.push(sql);
+        const d = types(sql);
+        if (d instanceof Error) throw d;
+        return d;
+      }
       calls.queries.push(sql);
       const r = answer(sql);
       if (r instanceof Error) throw r;
@@ -321,14 +361,20 @@ describe('ConsoleSession', () => {
 
   it('runs before a statement’s files are read, not after', async () => {
     const order: string[] = [];
-    const { engine } = standIn(() => {
-      order.push('query');
-      return arrow([['n', 'Int32', [1]]]);
-    });
+    const { engine } = standIn(
+      () => {
+        order.push('query');
+        return arrow([['n', 'Int32', [1]]]);
+      },
+      () => {
+        order.push('describe');
+        return described();
+      },
+    );
     engine.register = () => void order.push('register');
     const { backend } = backendWith({ 'a.parquet': 'x' });
     await new ConsoleSession(engine, backend, '').run(`select * from 'a.parquet'`);
-    expect(order).toEqual(['register', 'query']);
+    expect(order).toEqual(['register', 'describe', 'query']);
   });
 
   it('refuses a file over the data view’s limit, before it runs, saying what to do', async () => {
@@ -371,6 +417,17 @@ describe('ConsoleSession', () => {
     expect(calls.registered).toEqual([]);
     expect(s.ran).toEqual([]);
     expect(s.files).toEqual([]);
+  });
+
+  it('leaves a file missing from the in-browser drive to DuckDB too', async () => {
+    // JupyterLite's drive throws a plain Error, with no response status.
+    const { engine, calls } = standIn();
+    const { backend, fake } = backendWith({});
+    fake.contents.get.mockRejectedValue(new Error('Could not find file: a.csv'));
+    const s = new ConsoleSession(engine, backend, '');
+    await expect(s.run(`select * from 'a.csv'`)).resolves.toMatchObject({ files: [] });
+    expect(calls.queries).toEqual([`select * from 'a.csv'`]);
+    expect(calls.registered).toEqual([]);
   });
 
   it('does not read URLs or files named in a comment', async () => {
@@ -427,6 +484,7 @@ describe('ConsoleSession', () => {
     const engine: Engine = {
       register: () => {},
       query: async sql => {
+        if (isDescribe(sql)) return described();
         order.push(`start ${sql}`);
         if (sql === 'slow') await gate;
         order.push(`end ${sql}`);
@@ -436,11 +494,99 @@ describe('ConsoleSession', () => {
     const s = new ConsoleSession(engine, backendWith({}).backend, '');
     const a = s.run('slow');
     const b = s.run('fast');
-    await Promise.resolve();
+    await vi.waitFor(() => expect(order).toEqual(['start slow']));
+    await new Promise(r => setTimeout(r, 5));
     expect(order).toEqual(['start slow']);
     release();
     await Promise.all([a, b]);
     expect(order).toEqual(['start slow', 'end slow', 'start fast', 'end fast']);
+  });
+
+  it('casts the columns with no plain value, after asking their types', async () => {
+    const { engine, calls } = standIn(undefined, () =>
+      described([
+        ['l', 'DECIMAL(3,2)[]'],
+        ['n', 'INTEGER'],
+        ['d', 'DECIMAL(10,2)'],
+        ['w', 'DECIMAL(38,0)'],
+        ['a b', 'TIMESTAMP'],
+      ]),
+    );
+    const s = new ConsoleSession(engine, backendWith({}).backend, '');
+    await s.run('select * from t -- c');
+    expect(calls.described).toEqual(['describe select * from (\nselect * from t -- c\n)']);
+    expect(calls.queries).toEqual([
+      'select cast(#1 as varchar) as "l", #2 as "n", #3 as "d", cast(#4 as varchar) as "w", ' +
+        'cast(#5 as varchar) as "a b" from (\nselect * from t -- c\n)',
+    ]);
+    // What ran is the statement as typed.
+    expect(s.ran).toEqual(['select * from t -- c']);
+  });
+
+  it('runs a query as written when every column is plain or it can’t be described', async () => {
+    const plain = standIn(undefined, () =>
+      described([
+        ['a', 'BIGINT'],
+        ['b', 'VARCHAR'],
+        ['c', 'DATE'],
+      ]),
+    );
+    await new ConsoleSession(plain.engine, backendWith({}).backend, '').run('select 1');
+    expect(plain.calls.queries).toEqual(['select 1']);
+    const broken = standIn(undefined, () => new Error('Binder Error'));
+    await new ConsoleSession(broken.engine, backendWith({}).backend, '').run('select 1');
+    expect(broken.calls.queries).toEqual(['select 1']);
+  });
+
+  it('asks no types of a statement that isn’t a query', async () => {
+    const { engine, calls } = standIn();
+    const s = new ConsoleSession(engine, backendWith({}).backend, '');
+    await s.run('create table t as select 1');
+    await s.run('insert into t values (1)');
+    expect(calls.described).toEqual([]);
+    await s.run('/* c */ with x as (select 1) select * from x');
+    await s.run('(select 1)');
+    expect(calls.described).toHaveLength(2);
+  });
+
+  it('keeps the statements of one input together, whatever else is asked', async () => {
+    const order: string[] = [];
+    let release!: () => void;
+    const gate = new Promise<void>(r => (release = r));
+    const engine: Engine = {
+      register: () => {},
+      query: async sql => {
+        if (isDescribe(sql)) return described();
+        order.push(sql);
+        if (sql === 'a1') await gate;
+        return arrow([['n', 'Int32', [1]]]);
+      },
+    };
+    const s = new ConsoleSession(engine, backendWith({}).backend, '');
+    const heard: string[] = [];
+    const a = s.runInput(['a1', 'a2'], (i, o) => heard.push(`a${i + 1} ${'ran' in o}`));
+    const b = s.runInput(['b1'], (i, o) => heard.push(`b${i + 1} ${'ran' in o}`));
+    await vi.waitFor(() => expect(order).toEqual(['a1']));
+    release();
+    await Promise.all([a, b]);
+    expect(order).toEqual(['a1', 'a2', 'b1']);
+    expect(heard).toEqual(['a1 true', 'a2 true', 'b1 true']);
+    // The export follows the same order.
+    expect(s.ran).toEqual(['a1', 'a2', 'b1']);
+  });
+
+  it('stops an input at its first error, and the next input still runs', async () => {
+    const { engine, calls } = standIn(sql =>
+      sql === 'bad' ? new Error('Parser Error') : arrow([['n', 'Int32', [1]]]),
+    );
+    const s = new ConsoleSession(engine, backendWith({}).backend, '');
+    const heard: string[] = [];
+    const report = (i: number, o: { ran: unknown } | { error: unknown }) =>
+      heard.push(`${i} ${'ran' in o ? 'ran' : (o.error as Error).message}`);
+    await s.runInput(['ok', 'bad', 'never'], report);
+    await s.runInput(['later'], report);
+    expect(heard).toEqual(['0 ran', '1 Parser Error', '0 ran']);
+    expect(calls.queries).toEqual(['ok', 'bad', 'later']);
   });
 
   it('closes the engine once, and then refuses statements', async () => {

@@ -133,17 +133,57 @@ describe('ConsoleSession on the real DuckDB', () => {
         2.5,
         '2024-01-02',
         '2024-01-02 03:04:05',
-        '[1,2]',
-        '{"a":1}',
+        '[1, 2]',
+        "{'a': 1}",
         5,
         true,
         null,
         '01:02:03',
-        1,
+        '1',
       ],
     ]);
     const two = await s.run('select 1 as x, 2 as x');
     expect(two.shown?.resource.data).toEqual([[1, 2]]);
     expect(two.shown?.resource.schema?.fields?.map(f => f.name)).toEqual(['x', 'x_2']);
+  }, 60_000);
+
+  it('shows nested and odd types as DuckDB writes them', async () => {
+    const { engine } = await nodeEngine();
+    const s = new ConsoleSession(engine, backendWith({}), '');
+    const one = async (sql: string) => (await s.run(sql)).shown?.resource.data?.[0];
+    expect(await one('select [1.5, 2.25] as v')).toEqual(['[1.50, 2.25]']);
+    expect(await one(`select {'a': 1.5} as v`)).toEqual(["{'a': 1.5}"]);
+    expect(await one(`select [date '2024-01-01'] as v`)).toEqual(['[2024-01-01]']);
+    expect(await one(`select interval 1 day as v`)).toEqual(['1 day']);
+    expect(await one(`select 'ab'::blob as v`)).toEqual(['ab']);
+    expect(await one(`select map {'k': 1} as v`)).toEqual(['{k=1}']);
+    // Microseconds, which a JavaScript date can't hold.
+    expect(await one(`select timestamp '2024-01-02 03:04:05.123456' as v`)).toEqual([
+      '2024-01-02 03:04:05.123456',
+    ]);
+    expect(await one(`select time '01:02:03.5' as v`)).toEqual(['01:02:03.5']);
+    // Past 2^53: every digit.
+    expect(await one(`select 12345678901234567890123456789012345678::decimal(38, 0) as v`)).toEqual(
+      ['12345678901234567890123456789012345678'],
+    );
+    expect(await one('select 123456789012345678901234567890::hugeint as v')).toEqual([
+      '123456789012345678901234567890',
+    ]);
+    // Plain columns stay typed beside them, and a repeated name is kept.
+    const mixed = await s.run('select 1 as a, [1] as b, 2 as a, 2.5 as d');
+    expect(mixed.shown?.resource.schema?.fields).toEqual([
+      { name: 'a', type: 'integer' },
+      { name: 'b', type: 'string' },
+      { name: 'a_1', type: 'integer' },
+      { name: 'd', type: 'number' },
+    ]);
+    expect(mixed.shown?.resource.data).toEqual([[1, '[1]', 2, 2.5]]);
+    // Other query forms are wrapped too, with a comment last.
+    expect(await one('with x as (select [1] as l) select * from x -- done')).toEqual(['[1]']);
+    expect(await one('from (values ([1, 2])) t(l)')).toEqual(['[1, 2]']);
+    expect((await s.run('summarize select 1 as x')).shown?.total).toBe(1);
+    // A statement that isn't a query runs as written.
+    expect((await s.run('create table n as select [1] as l')).message).toBe('1 row affected');
+    expect(await one('select l from n')).toEqual(['[1]']);
   }, 60_000);
 });

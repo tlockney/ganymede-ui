@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { EditorState } from '@codemirror/state';
+import { Annotation, EditorState } from '@codemirror/state';
 import { EditorView, keymap, placeholder } from '@codemirror/view';
 import { Widget } from '@lumino/widgets';
 import type { IRenderMime } from '@jupyterlab/rendermime-interfaces';
@@ -122,22 +122,30 @@ export function DuckdbConsole({ backend, folder, onOpenNotebook }: Props) {
       const mine = statements.map(sql => ({ id: nextId.current++, sql }));
       setEntries(all => [...all, ...mine.map(m => ({ ...m, state: 'running' as const }))]);
       const started = session.current;
-      for (const m of mine) {
-        try {
-          const s = await started;
-          if (!s) throw new Error('The console is closed.');
-          const ran = await s.run(m.sql);
+      try {
+        const s = await started;
+        if (!s) throw new Error('The console is closed.');
+        // The whole input is one turn on the session: another input waits for it.
+        await s.runInput(statements, (i, outcome) => {
           if (session.current !== started) return;
-          setRanCount(s.ran.length);
-          update(m.id, { state: 'done', ran });
-        } catch (e) {
-          if (session.current !== started) return;
-          update(m.id, { state: 'error', error: messageOf(e) });
-          // The rest of the input is dropped, as a script stops at its error.
-          const rest = new Set(mine.slice(mine.indexOf(m) + 1).map(r => r.id));
-          setEntries(all => all.filter(x => !rest.has(x.id)));
-          return;
-        }
+          const id = mine[i]!.id;
+          if ('ran' in outcome) {
+            setRanCount(s.ran.length);
+            update(id, { state: 'done', ran: outcome.ran });
+          } else {
+            update(id, { state: 'error', error: messageOf(outcome.error) });
+            // The rest of the input is dropped, as a script stops at its error.
+            const rest = new Set(mine.slice(i + 1).map(r => r.id));
+            setEntries(all => all.filter(x => !rest.has(x.id)));
+          }
+        });
+      } catch (e) {
+        // The engine never started, or the console closed.
+        if (session.current !== started) return;
+        const gone = new Set(mine.map(m => m.id));
+        setEntries(all =>
+          all.map(x => (gone.has(x.id) ? { ...x, state: 'error', error: messageOf(e) } : x)),
+        );
       }
     },
     [update],
@@ -150,8 +158,11 @@ export function DuckdbConsole({ backend, folder, onOpenNotebook }: Props) {
     const el = input.current;
     if (!el) return;
     const text = (v: EditorView) => v.state.doc.toString();
+    // The console's own replacing of the input, which is not an edit by hand.
+    const walked = Annotation.define<boolean>();
     const set = (v: EditorView, doc: string) =>
       v.dispatch({
+        annotations: walked.of(true),
         changes: { from: 0, to: v.state.doc.length, insert: doc },
         selection: { anchor: doc.length },
       });
@@ -204,9 +215,9 @@ export function DuckdbConsole({ backend, folder, onOpenNotebook }: Props) {
               },
             },
           ]),
-          // Typing starts the history walk over.
+          // Any edit by hand (typing, Backspace, Delete, a paste, a cut) starts the history walk over.
           EditorView.updateListener.of(u => {
-            if (u.docChanged && u.transactions.every(t => t.isUserEvent('input'))) {
+            if (u.docChanged && !u.transactions.some(t => t.annotation(walked))) {
               history.current.stop();
             }
           }),

@@ -288,6 +288,8 @@ export function App() {
     setConnecting(true);
     setError(undefined);
     setOpenPath(undefined);
+    // A console is of the server it started on: its folder is that one's.
+    setDuckFolder(undefined);
     connect(config)
       .then(b => {
         if (cancelled) {

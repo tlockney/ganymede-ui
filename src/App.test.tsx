@@ -859,6 +859,23 @@ describe('App', () => {
     vi.unstubAllGlobals();
   });
 
+  it('closes the DuckDB console when the server changes, since its folder was the old one’s (#679)', async () => {
+    const fake = fakeServices({ '': [] });
+    Object.assign(fake.services, { dispose: vi.fn() });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    history.replaceState(null, '', '/?kernels=server');
+    render(<App />);
+    await waitFor(() => expect(window.ganymede).toBeDefined());
+    expect(await window.ganymede!.command('new-duckdb-console', 'moons')).toBe(true);
+    expect(await screen.findByTestId('duck-console')).toHaveAttribute('data-folder', 'moons');
+
+    expect(await window.ganymede!.command('connect')).toBe(true);
+    await userEvent.click(await screen.findByRole('radio', { name: /This browser/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
+    await waitFor(() => expect(mocks.connect).toHaveBeenLastCalledWith({ kind: 'browser' }));
+    await waitFor(() => expect(screen.queryByTestId('duck-console')).toBeNull());
+  });
+
   it('keeps the sidebar open when a page with a notebook open is reloaded', async () => {
     history.replaceState(null, '', '/?open=work/Orbits.ipynb');
     vi.spyOn(performance, 'getEntriesByType').mockReturnValue([

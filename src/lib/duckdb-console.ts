@@ -17,6 +17,7 @@ import {
 } from './data-files';
 import { TooLarge, megabytes, readBytes } from './data-read';
 import { messageOf } from './problems';
+import { notFound } from './rename';
 import { type Cell, notebookOf } from './sample';
 import { plain, type ArrowLike, type Engine } from './parquet';
 import type { TableField, TableResource } from './table-output';
@@ -115,73 +116,80 @@ const hasCode = (ps: Piece[]) =>
   ps.some(p => p.kind !== 'comment' && (p.kind !== 'code' || /[^\s;]/.test(p.text)));
 
 /**
- * A dot command (`.tables`, `.schema name`): a line that starts with a
- * dot, which no SQL does. Each line is one command.
+ * A dot command (`.tables`, `.schema name`): one line that starts with a
+ * dot, which no statement does.
  */
 export function isDotCommand(text: string): boolean {
   return text.trimStart().startsWith('.');
 }
 
-/**
- * The statements in the text, each without its `;`, in order: split at a
- * `;` that is outside strings, names and comments. Text after the last `;`
- * is a statement too, and comments alone are not. A dot command takes its
- * line.
- */
-export function statementsOf(text: string): string[] {
-  if (isDotCommand(text)) {
-    return text
-      .split('\n')
-      .map(l => l.trim())
-      .filter(l => l !== '');
-  }
-  const out: string[] = [];
+/** SQL cut at each `;` outside strings, names and comments: the statements it ends, and the text after the last. */
+function splitSql(sql: string): { done: string[]; rest: string } {
+  const done: string[] = [];
   let current: Piece[] = [];
+  const text = (ps: Piece[]) => ps.map(p => p.text).join('');
   const end = () => {
-    if (hasCode(current))
-      out.push(
-        current
-          .map(p => p.text)
-          .join('')
-          .trim(),
-      );
+    if (hasCode(current)) done.push(text(current).trim());
     current = [];
   };
-  for (const p of pieces(text)) {
+  for (const p of pieces(sql)) {
     if (p.kind !== 'code') {
       current.push(p);
       continue;
     }
-    const parts = p.text.split(';');
-    parts.forEach((part, k) => {
+    p.text.split(';').forEach((part, k) => {
       if (k > 0) end();
       if (part) current.push({ kind: 'code', text: part, open: false });
     });
   }
-  end();
-  return out;
+  return { done, rest: hasCode(current) ? text(current).trim() : '' };
 }
 
 /**
- * The Enter rule: Enter runs the input when its last SQL character is a
- * `;` (a trailing comment doesn't count, and a `;` inside a string or
- * comment that is still open doesn't), or when it is a dot command; any
- * other Enter adds a line. Shift-Enter always runs.
+ * What the input holds: `items` that are complete (a statement ended by a
+ * `;`, or a dot command, which takes its line and may come before, between
+ * or after statements) and `rest`, SQL after the last `;` that nothing has
+ * ended, which is empty when only blanks and comments follow it. A line
+ * that starts with a dot continues the SQL above it when that is not yet
+ * ended (a number like `.5`, or a string still open).
+ */
+function scan(text: string): { items: string[]; rest: string } {
+  const items: string[] = [];
+  let buffer = '';
+  for (const line of text.split('\n')) {
+    if (line.trimStart().startsWith('.')) {
+      const above = splitSql(buffer);
+      if (above.rest === '') {
+        items.push(...above.done, line.trim());
+        buffer = '';
+        continue;
+      }
+    }
+    buffer += buffer === '' ? line : `\n${line}`;
+  }
+  const { done, rest } = splitSql(buffer);
+  return { items: [...items, ...done], rest };
+}
+
+/**
+ * The statements in the text, each without its `;`, in order: split at a
+ * `;` that is outside strings, names and comments. Text after the last `;`
+ * is a statement too, and comments alone are not.
+ */
+export function statementsOf(text: string): string[] {
+  const { items, rest } = scan(text);
+  return rest ? [...items, rest] : items;
+}
+
+/**
+ * The Enter rule: Enter runs the input when it holds a complete statement
+ * or dot command and nothing after it but blanks and comments (a `;` inside
+ * a string or a comment that is still open doesn't end one); any other
+ * Enter adds a line. Shift-Enter always runs.
  */
 export function endsStatement(text: string): boolean {
-  if (text.trim() === '') return false;
-  if (isDotCommand(text)) return true;
-  const ps = pieces(text);
-  if (ps.some(p => p.open)) return false;
-  for (let k = ps.length - 1; k >= 0; k--) {
-    const p = ps[k]!;
-    if (p.kind === 'comment') continue;
-    if (p.kind !== 'code') return false;
-    const t = p.text.trimEnd();
-    if (t === '') continue;
-    return t.endsWith(';');
-  }
-  return false;
+  const { items, rest } = scan(text);
+  return items.length > 0 && rest === '';
 }
 
 // ---------- History ----------
@@ -484,9 +492,29 @@ function summary(sql: string, result: ArrowResult): { shown?: Shown; message?: s
   return shown ? { shown } : { message: 'OK' };
 }
 
-/** A file a statement names that the folder has no file for. */
-const isMissing = (e: unknown) =>
-  (e as { response?: { status?: number } } | null)?.response?.status === 404;
+/** What a statement starts with when it is a query, which `describe` can wrap. */
+const SELECT_LIKE = /^\s*(select|with|from|values|table|show|summarize|describe|\()/i;
+
+/** The SQL without its comments, for reading how it starts. */
+const withoutComments = (sql: string) =>
+  pieces(sql)
+    .filter(p => p.kind !== 'comment')
+    .map(p => p.text)
+    .join('');
+
+/** DuckDB types whose Arrow value is plain JavaScript: numbers that fit, booleans, text, dates. */
+function plainType(type: string): boolean {
+  if (
+    /^(TINYINT|SMALLINT|INTEGER|BIGINT|UTINYINT|USMALLINT|UINTEGER|UBIGINT|FLOAT|DOUBLE|BOOLEAN|VARCHAR|DATE)$/.test(
+      type,
+    )
+  ) {
+    return true;
+  }
+  // A decimal of up to 15 digits is exact as a double.
+  const digits = /^DECIMAL\((\d+),\d+\)$/.exec(type)?.[1];
+  return digits !== undefined && Number(digits) <= 15;
+}
 
 /**
  * One console: a DuckDB engine, which the tables you create stay in, and
@@ -510,7 +538,33 @@ export class ConsoleSession {
 
   /** Runs `statement`; rejects with what to show when it can't. */
   run(statement: string): Promise<Ran> {
-    const next = this.chain.then(() => this.execute(statement));
+    return this.queue(() => this.execute(statement));
+  }
+
+  /**
+   * Runs everything one input held, one statement after another, as a
+   * single turn: another input asked meanwhile waits for the whole of it,
+   * so the statements of two inputs never interleave. Stops at the first
+   * error. `report` hears each result or error as it comes.
+   */
+  runInput(
+    statements: readonly string[],
+    report: (index: number, outcome: { ran: Ran } | { error: unknown }) => void,
+  ): Promise<void> {
+    return this.queue(async () => {
+      for (const [i, statement] of statements.entries()) {
+        try {
+          report(i, { ran: await this.execute(statement) });
+        } catch (error) {
+          report(i, { error });
+          return;
+        }
+      }
+    });
+  }
+
+  private queue<T>(task: () => Promise<T>): Promise<T> {
+    const next = this.chain.then(task);
     this.chain = next.catch(() => {});
     return next;
   }
@@ -527,12 +581,43 @@ export class ConsoleSession {
         if (read) files.push(read);
       }
     }
+    const shown = await this.forDisplay(sql);
     const t0 = performance.now();
-    const result = (await this.engine.query(sql)) as ArrowResult;
+    const result = (await this.engine.query(shown)) as ArrowResult;
     const ms = Math.round(performance.now() - t0);
-    if (this.closed) throw new Error('The console is closed.');
     if (!dot) this.ran.push(statement);
     return { ...summary(sql, result), ms, files };
+  }
+
+  /**
+   * The SQL to run for `sql`. A query's columns of a type that has no plain
+   * value in Arrow's JavaScript (lists, structs, maps, intervals, blobs,
+   * timestamps, times, wide decimals and integers, enums, UUIDs) come as
+   * DuckDB's own text for them, as the data view's Parquet does: the query
+   * is wrapped to cast them, after asking its column types (a `describe`,
+   * which plans the query and doesn't run it). Anything else, and a query
+   * that can't be wrapped, runs as written.
+   */
+  private async forDisplay(sql: string): Promise<string> {
+    if (!SELECT_LIKE.test(withoutComments(sql))) return sql;
+    let columns: { name: string; type: string }[];
+    try {
+      const described = (await this.engine.query(
+        `describe select * from (\n${sql}\n)`,
+      )) as ArrowResult;
+      columns = described
+        .toArray()
+        .map(r => r.toJSON())
+        .map(r => ({ name: String(r.column_name), type: String(r.column_type) }));
+    } catch {
+      return sql;
+    }
+    if (columns.every(c => plainType(c.type))) return sql;
+    const select = columns.map(
+      (c, i) =>
+        `${plainType(c.type) ? `#${i + 1}` : `cast(#${i + 1} as varchar)`} as ${quoteName(c.name)}`,
+    );
+    return `select ${select.join(', ')} from (\n${sql}\n)`;
   }
 
   /**
@@ -553,7 +638,7 @@ export class ConsoleSession {
       // Whole: a query over half a file would answer wrongly.
       ({ bytes } = await readBytes(this.backend, at.local, limit, true));
     } catch (e) {
-      if (isMissing(e)) return undefined;
+      if (notFound(e)) return undefined;
       if (e instanceof TooLarge) {
         throw new Error(
           `${written} is ${megabytes(e.size)}, over the ${megabytes(limit)} the console reads. ` +
