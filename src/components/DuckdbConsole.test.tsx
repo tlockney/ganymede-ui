@@ -48,6 +48,13 @@ function engineFor(answer: (sql: string) => ArrowResult | Error = () => MOONS) {
   return engine;
 }
 
+// One backend per fake, so a rerender passes the same one.
+const backends = new WeakMap<object, ReturnType<typeof fakeBackend>>();
+function backend(fake: ReturnType<typeof fakeServices>) {
+  if (!backends.has(fake)) backends.set(fake, fakeBackend(fake.services, { kind: 'browser' }));
+  return backends.get(fake)!;
+}
+
 function setup(files: Record<string, string> = {}, folder = '') {
   const fake = fakeServices({ '': [] });
   fake.contents.get.mockImplementation((async (path: string, opts?: { content?: boolean }) => {
@@ -56,9 +63,10 @@ function setup(files: Record<string, string> = {}, folder = '') {
       return { path, name: path, type: 'file', size: files[path]!.length };
     return { path, name: path, type: 'file', format: 'text', content: files[path] };
   }) as never);
-  const backend = fakeBackend(fake.services, { kind: 'browser' });
   const opened = vi.fn();
-  const ui = render(<DuckdbConsole backend={backend} folder={folder} onOpenNotebook={opened} />);
+  const ui = render(
+    <DuckdbConsole backend={backend(fake)} folder={folder} onOpenNotebook={opened} />,
+  );
   return { ...ui, fake, opened };
 }
 
@@ -109,6 +117,10 @@ describe('DuckdbConsole', () => {
     key('Enter', { shiftKey: true });
     await screen.findByRole('table');
     expect(engine.query).toHaveBeenCalledWith('select *\nfrom moons');
+    // Shift-Enter on only a comment runs nothing and keeps it.
+    type('-- a note');
+    key('Enter', { shiftKey: true });
+    expect(typed()).toBe('-- a note');
   });
 
   it('runs every statement of a paste, and stops at the first error', async () => {
@@ -309,6 +321,37 @@ describe('DuckdbConsole', () => {
     key('Enter');
     await waitFor(() => expect(screen.getAllByRole('table')).toHaveLength(2));
     expect(parquet.openEngine).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps its engine and what it read when its folder is renamed, and reads from the new one', async () => {
+    const engine = engineFor();
+    const files = { 'work/a.csv': 'x\n1\n', 'moved/b.csv': 'y\n2\n' };
+    const { fake, opened, rerender } = setup(files, 'work');
+    await waitFor(() => expect(screen.queryByText('Starting DuckDB…')).toBeNull());
+    type(`select * from 'a.csv';`);
+    key('Enter');
+    await screen.findByRole('table');
+
+    rerender(<DuckdbConsole backend={backend(fake)} folder="moved" onOpenNotebook={opened} />);
+    type(`select * from 'b.csv';`);
+    key('Enter');
+    await waitFor(() => expect(screen.getAllByRole('table')).toHaveLength(2));
+    expect(parquet.openEngine).toHaveBeenCalledTimes(1);
+    expect(engine.close).not.toHaveBeenCalled();
+    expect(engine.register.mock.calls.map(c => c[0])).toEqual(['a.csv', 'b.csv']);
+    expect(screen.getByText(/read moved\/b\.csv/)).toBeInTheDocument();
+
+    fake.contents.save.mockClear();
+    await userEvent.click(screen.getByRole('button', { name: 'Export to Notebook' }));
+    await waitFor(() => expect(opened).toHaveBeenCalledWith('moved/duckdb-console.ipynb'));
+    const [, model] = fake.contents.save.mock.calls[0] as unknown as [
+      string,
+      { content: { cells: { source: string }[] } },
+    ];
+    expect(model.content.cells.map(c => c.source).slice(1, 3)).toEqual([
+      'await jupyter.sql.load("a_file", "a.csv");',
+      'await jupyter.sql.load("b_file", "b.csv");',
+    ]);
   });
 
   it('says when DuckDB does not start', async () => {

@@ -42,19 +42,27 @@ vi.mock('./components/DataPane', () => ({
 }));
 
 // The console's own tests render the real one, against a stand-in DuckDB.
-vi.mock('./components/DuckdbConsole', () => ({
-  DuckdbConsole: ({
-    folder,
-    onOpenNotebook,
-  }: {
-    folder: string;
-    onOpenNotebook(p: string): void;
-  }) => (
-    <div data-testid="duck-console" data-folder={folder}>
-      <button onClick={() => onOpenNotebook('duckdb-console.ipynb')}>Open exported</button>
-    </div>
-  ),
-}));
+vi.mock('./components/DuckdbConsole', async () => {
+  const { useState } = await import('react');
+  let mounts = 0;
+  return {
+    DuckdbConsole: ({
+      folder,
+      onOpenNotebook,
+    }: {
+      folder: string;
+      onOpenNotebook(p: string): void;
+    }) => {
+      // Which console this is: a new one counts up, a re-render keeps it.
+      const [mount] = useState(() => ++mounts);
+      return (
+        <div data-testid="duck-console" data-folder={folder} data-mount={mount}>
+          <button onClick={() => onOpenNotebook('duckdb-console.ipynb')}>Open exported</button>
+        </div>
+      );
+    },
+  };
+});
 
 vi.mock('./components/NotebookPane', async () => {
   const { useEffect } = await import('react');
@@ -875,6 +883,37 @@ describe('App', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Open exported' }));
     await waitFor(() => expect(screen.queryByTestId('duck-console')).toBeNull());
     expect(await screen.findByTestId('pane')).toHaveTextContent('duckdb-console.ipynb');
+    vi.unstubAllGlobals();
+  });
+
+  it('opens a fresh DuckDB console each time, and keeps one through a move of its folder (#679)', async () => {
+    vi.stubGlobal('webkit', {
+      messageHandlers: { state: { postMessage: () => {} }, openFile: { postMessage: () => {} } },
+    });
+    const fake = fakeServices({ '': [{ name: 'moons', type: 'directory' }], moons: [] });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    history.replaceState(null, '', '/?kernels=server&chrome=native');
+    render(<App />);
+    await waitFor(() => expect(window.ganymede).toBeDefined());
+    const console = () => screen.getByTestId('duck-console');
+
+    expect(await window.ganymede!.command('new-duckdb-console', 'moons/inner')).toBe(true);
+    await screen.findByTestId('duck-console');
+    const first = console().dataset.mount;
+    // New DuckDB Console on the same folder is a new console.
+    expect(await window.ganymede!.command('new-duckdb-console', 'moons/inner')).toBe(true);
+    await waitFor(() => expect(console().dataset.mount).not.toBe(first));
+    const second = console().dataset.mount;
+
+    // A rename of a folder it's in moves it, and keeps it.
+    const move = { from: 'moons', to: 'satellites' };
+    expect(await window.ganymede!.command('file-moved', JSON.stringify(move))).toBe(true);
+    await waitFor(() => expect(console()).toHaveAttribute('data-folder', 'satellites/inner'));
+    expect(console().dataset.mount).toBe(second);
+    // Others leave it.
+    const other = { from: 'mo', to: 'x' };
+    expect(await window.ganymede!.command('file-moved', JSON.stringify(other))).toBe(true);
+    expect(console()).toHaveAttribute('data-folder', 'satellites/inner');
     vi.unstubAllGlobals();
   });
 

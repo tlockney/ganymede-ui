@@ -77,12 +77,22 @@ export function DuckdbConsole({ backend, folder, onOpenNotebook }: Props) {
   const log = useRef<HTMLDivElement>(null);
   const nextId = useRef(1);
 
+  // The folder as it is now: a rename or move of it keeps the console.
+  const folderNow = useRef(folder);
+  useEffect(() => {
+    folderNow.current = folder;
+    void session.current?.then(
+      s => s.moveFolder(folder),
+      () => {},
+    );
+  }, [folder]);
+
   // One engine for the console: started now, ended on unmount.
   useEffect(() => {
     let gone = false;
     const started = (async () => {
       const { openEngine } = await import('../lib/parquet');
-      return new ConsoleSession(await openEngine(kernelModules), backend, folder);
+      return new ConsoleSession(await openEngine(kernelModules), backend, folderNow.current);
     })();
     session.current = started;
     started.then(
@@ -107,7 +117,7 @@ export function DuckdbConsole({ backend, folder, onOpenNotebook }: Props) {
         () => {},
       );
     };
-  }, [backend, folder]);
+  }, [backend]);
 
   const update = useCallback((id: number, patch: Partial<Entry>) => {
     setEntries(all => all.map(e => (e.id === id ? { ...e, ...patch } : e)));
@@ -168,7 +178,8 @@ export function DuckdbConsole({ backend, folder, onOpenNotebook }: Props) {
       });
     const run = (v: EditorView) => {
       const t = text(v);
-      if (t.trim() === '') return true;
+      // Nothing to run (blank, or only comments): keep what was typed.
+      if (statementsOf(t).length === 0) return true;
       set(v, '');
       void submitRef.current(t);
       return true;

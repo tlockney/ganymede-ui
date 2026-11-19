@@ -27,3 +27,17 @@ By hand (for #399 and #273), Mac and iPad, a build of `main`:
 6. Export to Notebook is disabled until a statement succeeds, then writes `duckdb-console.ipynb` in the folder (a second export writes `duckdb-console 2.ipynb`) and opens it; run it on a TypeScript kernel on a server (cdp-node) and the cells give the same results. On the iPad, the in-app kernel can't find the files by name.
 7. Close the console (open a notebook): Activity Monitor or the Web Inspector's Workers shows the DuckDB worker gone. Open and close it a few times on the iPhone and iPad for memory.
 8. Dark mode and a narrow window: the input, scrollback and a wide table scroll without moving the page.
+
+Review fixes (GitHub reviewer on d4fc5cf). A block comment still open after
+the last `;` now keeps Enter adding lines, and a dotted line inside one is not
+a dot command (`splitSql` reports `open`). Each New DuckDB Console is a new
+console even on the same folder: `App.tsx` keys it on a counter, not the
+folder. A rename or move of its folder (`file-moved`) moves `duckFolder` and
+keeps the console: `ConsoleSession.moveFolder` rewrites the paths of the files
+read, and the component no longer restarts the engine on a folder change.
+Also: the export loads each file once and gives two files of one name their
+own tables; a leading comment no longer hides "rows affected"; a name that is
+only an extension (`.csv`) is not read; Shift-Enter on only a comment keeps
+it. Left for #683: reading only strings in FROM and `read_*` calls, a row cap
+before the result reaches the page, the shared type helpers with
+`parquet.ts`, `E'...'` strings, and tests for three guards.

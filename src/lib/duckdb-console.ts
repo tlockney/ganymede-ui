@@ -1,7 +1,7 @@
 /**
  * The DuckDB console's logic (#679): reading SQL, the files a statement
  * names, a session on one DuckDB engine, and the notebook Export to
- * Notebook writes. DuckConsole.tsx is the view. Everything here takes an
+ * Notebook writes. DuckdbConsole.tsx is the view. Everything here takes an
  * `Engine` (parquet.ts), so a test runs it against a stand-in or, in Node,
  * the real package.
  */
@@ -124,7 +124,7 @@ export function isDotCommand(text: string): boolean {
 }
 
 /** SQL cut at each `;` outside strings, names and comments: the statements it ends, and the text after the last. */
-function splitSql(sql: string): { done: string[]; rest: string } {
+function splitSql(sql: string): { done: string[]; rest: string; open: boolean } {
   const done: string[] = [];
   let current: Piece[] = [];
   const text = (ps: Piece[]) => ps.map(p => p.text).join('');
@@ -142,7 +142,12 @@ function splitSql(sql: string): { done: string[]; rest: string } {
       if (part) current.push({ kind: 'code', text: part, open: false });
     });
   }
-  return { done, rest: hasCode(current) ? text(current).trim() : '' };
+  return {
+    done,
+    rest: hasCode(current) ? text(current).trim() : '',
+    // A block comment still open after the last `;`: the input isn't ended.
+    open: current.some(p => p.open),
+  };
 }
 
 /**
@@ -153,13 +158,13 @@ function splitSql(sql: string): { done: string[]; rest: string } {
  * that starts with a dot continues the SQL above it when that is not yet
  * ended (a number like `.5`, or a string still open).
  */
-function scan(text: string): { items: string[]; rest: string } {
+function scan(text: string): { items: string[]; rest: string; open: boolean } {
   const items: string[] = [];
   let buffer = '';
   for (const line of text.split('\n')) {
     if (line.trimStart().startsWith('.')) {
       const above = splitSql(buffer);
-      if (above.rest === '') {
+      if (above.rest === '' && !above.open) {
         items.push(...above.done, line.trim());
         buffer = '';
         continue;
@@ -167,8 +172,8 @@ function scan(text: string): { items: string[]; rest: string } {
     }
     buffer += buffer === '' ? line : `\n${line}`;
   }
-  const { done, rest } = splitSql(buffer);
-  return { items: [...items, ...done], rest };
+  const { done, rest, open } = splitSql(buffer);
+  return { items: [...items, ...done], rest, open };
 }
 
 /**
@@ -188,8 +193,8 @@ export function statementsOf(text: string): string[] {
  * Enter adds a line. Shift-Enter always runs.
  */
 export function endsStatement(text: string): boolean {
-  const { items, rest } = scan(text);
-  return items.length > 0 && rest === '';
+  const { items, rest, open } = scan(text);
+  return items.length > 0 && rest === '' && !open;
 }
 
 // ---------- History ----------
@@ -264,7 +269,8 @@ export function filePaths(sql: string): string[] {
   const found = new Set<string>();
   for (const p of pieces(sql)) {
     const v = stringValue(p);
-    if (v !== undefined && FILE_EXTENSION.test(v)) found.add(v);
+    // `.csv` alone is a hidden file, not a CSV file.
+    if (v !== undefined && FILE_EXTENSION.test(v) && dataKind(v)) found.add(v);
   }
   return [...found];
 }
@@ -483,7 +489,10 @@ function summary(sql: string, result: ArrowResult): { shown?: Shown; message?: s
   const columns = result.schema.fields;
   if (columns.length === 1 && columns[0]!.name === 'Count') {
     if (result.numRows === 0) return { message: 'OK' };
-    if (/^\s*(create|insert|update|delete|copy|merge)\b/i.test(sql) && result.numRows === 1) {
+    if (
+      /^\s*(create|insert|update|delete|copy|merge)\b/i.test(withoutComments(sql)) &&
+      result.numRows === 1
+    ) {
       const n = Number(plain(result.getChildAt(0)?.get(0)));
       return { message: `${n.toLocaleString('en-US')} ${n === 1 ? 'row' : 'rows'} affected` };
     }
@@ -533,8 +542,24 @@ export class ConsoleSession {
     private readonly engine: Engine,
     private readonly backend: Backend,
     /** The window's folder, a contents path; '' for the root. */
-    private readonly folder: string,
+    private folder: string,
   ) {}
+
+  /**
+   * The folder was renamed or moved to `to`: later reads, and the paths of
+   * the files read so far, use the new path. What DuckDB has registered
+   * keeps its names, which are relative to the folder.
+   */
+  moveFolder(to: string): void {
+    const from = this.folder;
+    if (to === from) return;
+    this.files.forEach((path, i) => {
+      if (from === '' || path.startsWith(`${from}/`)) {
+        this.files[i] = from === '' ? `${to}/${path}` : to + path.slice(from.length);
+      }
+    });
+    this.folder = to;
+  }
 
   /** Runs `statement`; rejects with what to show when it can't. */
   run(statement: string): Promise<Ran> {
@@ -687,6 +712,16 @@ export function consoleNotebook(
 ) {
   const relative = (path: string) =>
     folder && path.startsWith(`${folder}/`) ? path.slice(folder.length + 1) : path;
+  // Each file once (`a.csv` and `./a.csv` are one), under a table name of its
+  // own: two files of one name in different folders get `_2`, `_3`, ….
+  const taken = new Set<string>();
+  const loads = [...new Set(session.files)].map(path => {
+    const base = `${tableName(path)}_file`;
+    let name = base;
+    for (let n = 2; taken.has(name); n++) name = `${base}_${n}`;
+    taken.add(name);
+    return { path, name };
+  });
   const cells: Cell[] = [
     {
       cell_type: 'markdown',
@@ -696,9 +731,9 @@ export function consoleNotebook(
         'The statements that ran, in order. Files are read by the paths the console used, relative to this notebook’s folder.',
       ].join('\n'),
     },
-    ...session.files.map((path): Cell => ({
+    ...loads.map(({ path, name }): Cell => ({
       cell_type: 'code',
-      source: `await jupyter.sql.load(${JSON.stringify(`${tableName(path)}_file`)}, ${JSON.stringify(relative(path))});`,
+      source: `await jupyter.sql.load(${JSON.stringify(name)}, ${JSON.stringify(relative(path))});`,
     })),
     ...session.ran.map((sql): Cell => ({
       cell_type: 'code',

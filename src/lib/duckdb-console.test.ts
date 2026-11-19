@@ -49,6 +49,10 @@ describe('statementsOf', () => {
     // A dotted line that continues a statement, or a string, is not a command.
     expect(statementsOf('select\n.5 + 1;')).toEqual(['select\n.5 + 1']);
     expect(statementsOf("select 'a\n.b';")).toEqual(["select 'a\n.b'"]);
+    // Nor is one inside a block comment still open above it.
+    expect(statementsOf('/* note\n.tables\n*/ select 1;')).toEqual([
+      '/* note\n.tables\n*/ select 1',
+    ]);
   });
   it('takes a dot command a line', () => {
     expect(statementsOf('.tables\n.schema moons')).toEqual(['.tables', '.schema moons']);
@@ -76,6 +80,9 @@ describe('endsStatement (the Enter rule)', () => {
     expect(endsStatement('select 1; -- done')).toBe(true);
     expect(endsStatement('select 1; /* done */')).toBe(true);
     expect(endsStatement('select 1 -- ;')).toBe(false);
+    // A comment still open after the statement is still being typed.
+    expect(endsStatement('select 1; /* still typing')).toBe(false);
+    expect(endsStatement('select 1;\n/* note\n.tables')).toBe(false);
   });
   it('runs on Enter when dot commands and statements are all ended', () => {
     expect(endsStatement('.tables\nselect 1;')).toBe(true);
@@ -130,6 +137,8 @@ describe('file paths', () => {
          /* 'w.csv' */ and e = $$q.csv$$`,
       ),
     ).toEqual(['data/moons.csv', 'y.TSV', 'b.json', 'x.parquet']);
+    // A name that is only an extension is a hidden file, not a data file.
+    expect(filePaths(`select '.csv', 'data/.json', 'a.csv'`)).toEqual(['a.csv']);
   });
   it('reads a doubled quote as one', () => {
     expect(filePaths(`select * from 'it''s.csv'`)).toEqual(["it's.csv"]);
@@ -272,6 +281,18 @@ describe('templateText and the exported notebook', () => {
       'await jupyter.sql.load("big_set_file", "Big Set.parquet");',
       "await jupyter.sql`create table m as select * from 'data/moons.csv'`;",
       'await jupyter.sql`select count(*) from m`;',
+    ]);
+  });
+
+  it('loads each file once, under a table name of its own', () => {
+    const nb = consoleNotebook(
+      { files: ['work/a.csv', 'work/a.csv', 'work/b/a.csv'], ran: [] },
+      'work',
+      kernel,
+    );
+    expect(nb.cells.slice(1).map(c => c.source)).toEqual([
+      'await jupyter.sql.load("a_file", "a.csv");',
+      'await jupyter.sql.load("a_file_2", "b/a.csv");',
     ]);
   });
 
@@ -466,6 +487,7 @@ describe('ConsoleSession', () => {
       'create table t(i int)': arrow([['Count', 'Int64', []]]),
       'insert into t values (1), (2)': arrow([['Count', 'Int64', [2n]]]),
       'insert into t values (3)': arrow([['Count', 'Int64', [1n]]]),
+      '-- one more\ninsert into t values (4)': arrow([['Count', 'Int64', [1n]]]),
       'select count(*) as "Count" from t': arrow([['Count', 'Int64', [3n]]]),
     };
     const { engine } = standIn(sql => answers[sql]!);
@@ -473,6 +495,8 @@ describe('ConsoleSession', () => {
     expect((await s.run('create table t(i int)')).message).toBe('OK');
     expect((await s.run('insert into t values (1), (2)')).message).toBe('2 rows affected');
     expect((await s.run('insert into t values (3)')).message).toBe('1 row affected');
+    // A comment before it doesn't hide what it was.
+    expect((await s.run('-- one more\ninsert into t values (4)')).message).toBe('1 row affected');
     // A query that happens to be called Count is a table.
     expect((await s.run('select count(*) as "Count" from t')).shown?.total).toBe(1);
   });

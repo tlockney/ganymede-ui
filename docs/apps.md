@@ -801,7 +801,7 @@ Type SQL in the box at the bottom. **Enter** runs it when it ends with a
 `;` (a `;` inside a string or a comment doesn't count), and otherwise adds
 a line; **Shift-Enter** runs it whatever it ends with. Several statements
 pasted together run in order, and stop at the first error. **↑** and **↓**
-walk the statements you ran when the cursor is on the first or last line.
+walk what you entered, an input at a time, when the cursor is on the first or last line.
 Each statement is kept above the box with its result: the rows as a table
 you sort, page and filter as in a notebook (the first 10,000 rows of a
 bigger result), or the row count, `OK`, or DuckDB's error, with the time
@@ -822,20 +822,23 @@ the window's folder (`select * from 'data/moons.csv'`) reads the file
 through the server and gives it to DuckDB before the statement runs, the
 first time a statement names it. A path is relative to the window's folder,
 and `..` can't leave it; a URL or an absolute path is left to DuckDB, and
-only `'single quoted'` strings count. A file is read in full, up to what
+only `'single quoted'` strings count. Any such string is read, wherever it
+is in the statement (`where src = 'big.parquet'` reads `big.parquet` too). A file is read in full, up to what
 the [data view](#data-files) holds in memory: 8 MB for a CSV or TSV, 16 MB
 for JSON and 64 MB for Parquet. A bigger file is refused with a note, since
 a query over part of a file would answer wrongly; a notebook on a kernel can
 query it. A file read once is not read again while the console is open, so
-a change on disk shows after you open a new console. A file that isn't
-there is DuckDB's error. The console can't write to the folder: `copy ... to`
+a change on disk shows after you open a new console (**New DuckDB Console**
+again). Renaming or moving the folder keeps the console and what it has
+read. A file that isn't there is DuckDB's error. The console can't write to the folder: `copy ... to`
 makes a file DuckDB holds in memory only (rerun in an exported notebook on a
 kernel, it writes a real file there).
 
 **Export to Notebook** writes `duckdb-console.ipynb` in the folder (a number
 after the name when it is taken) and opens it, which closes the console. It
 has a `jupyter.sql.load` cell for each file the console read, loading it as a
-table named for the file with `_file` after it, then one `jupyter.sql` cell
+table named for the file with `_file` after it (and `_2`, `_3` for files of
+one name in different folders), then one `jupyter.sql` cell
 for each statement that ran without an error, in order. The statements read
 files by the paths you typed, relative to the notebook's folder, so a
 TypeScript kernel that runs in the folder reruns the session. The kernel in

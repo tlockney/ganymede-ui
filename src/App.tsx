@@ -189,6 +189,11 @@ export function App() {
    * anything closes it.
    */
   const [duckFolder, setDuckFolder] = useState<string>();
+  /**
+   * Bumped by each New DuckDB Console: a new console is a new engine with
+   * nothing read, even on the same folder. A move of the folder keeps it.
+   */
+  const [duckId, setDuckId] = useState(0);
   useEffect(() => {
     if (openPath) setDuckFolder(undefined);
   }, [openPath]);
@@ -434,6 +439,7 @@ export function App() {
         // A notebook open goes the way another notebook's opening takes it.
         setOpenPath(undefined);
         setDuckFolder(clean(arg ?? folder));
+        setDuckId(n => n + 1);
         return true;
       case 'close':
         if (!openPath && duckFolder !== undefined) {
@@ -513,6 +519,8 @@ export function App() {
           const { from, to } = move;
           setOpenPath(p => (p && within(p, from) ? to + p.slice(from.length) : p));
           followRun(from, to);
+          // The DuckDB console follows its folder, and keeps what it has.
+          setDuckFolder(f => (f !== undefined && within(f, from) ? to + f.slice(from.length) : f));
         }
         return true;
       }
@@ -929,7 +937,7 @@ export function App() {
               />
             ) : backend && duckFolder !== undefined ? (
               <DuckdbConsole
-                key={`${backend.config.kind}:${duckFolder}`}
+                key={`${backend.config.kind}:duck:${duckId}`}
                 backend={backend}
                 folder={duckFolder}
                 onOpenNotebook={setOpenPath}
