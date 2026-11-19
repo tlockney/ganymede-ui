@@ -8,6 +8,7 @@
  */
 import type { TableField, TableResource } from './table-output';
 import { parentOf } from './launch';
+import { type Cell, notebookOf } from './sample';
 
 export type DataKind = 'csv' | 'tsv' | 'json' | 'parquet';
 
@@ -29,6 +30,12 @@ export function dataKind(path: string | undefined): DataKind | undefined {
 
 /** Rows the table view keeps: the rest of a big file is left unread. */
 export const MAX_ROWS = 10_000;
+/**
+ * The biggest CSV or TSV the view fetches from. The server reads the whole
+ * file into memory to answer, so this is the iPhone's protection; past it,
+ * New Notebook from File queries the file with DuckDB instead.
+ */
+export const MAX_FILE_BYTES = 256 * 1024 * 1024;
 /** Bytes of a CSV or TSV read: about what MAX_ROWS rows of a wide file come to. */
 export const MAX_TEXT_BYTES = 8 * 1024 * 1024;
 /** JSON can't be cut and still parse: past this the tree isn't built. */
@@ -40,8 +47,10 @@ export interface Parsed {
   /** The records after the header, each as long as the header. */
   header: string[];
   rows: string[][];
-  /** The file had more rows than were parsed. */
+  /** The text had more rows than were parsed (the row cap stopped it). */
   truncated: boolean;
+  /** Records read, the header included. */
+  records: number;
 }
 
 /**
@@ -140,7 +149,24 @@ export function parseDelimited(text: string, delimiter: string, maxRows = MAX_RO
   for (const r of rows) width = Math.max(width, r.length);
   const header = Array.from({ length: width }, (_, k) => first[k] ?? '');
   for (const r of rows) while (r.length < width) r.push('');
-  return { header: uniqueNames(header), rows, truncated };
+  return { header: uniqueNames(header), rows, truncated, records: records.length };
+}
+
+/**
+ * Parsed text that was cut at a byte cap, without the record the cut left
+ * half-read, wherever it fell (in a quoted multi-line field too). Not
+ * needed when the row cap stopped the parse first. Throws when no complete
+ * row is left, as when the first row is longer than the cap.
+ */
+export function withoutCutRecord(parsed: Parsed, readLabel: string): Parsed {
+  if (parsed.truncated) return parsed;
+  const rows = parsed.rows.slice(0, -1);
+  if (parsed.records < 2 || rows.length === 0) {
+    throw new Error(
+      `The first ${readLabel} of this file hold no complete row, so there is nothing to show.`,
+    );
+  }
+  return { ...parsed, rows, truncated: true };
 }
 
 /** Names for the columns: an empty one is `column N`, a repeated one gets `_2`, `_3`…. */
@@ -272,17 +298,6 @@ export function notebookFor(
       source: `await jupyter.sql.load(${JSON.stringify(table)}, ${JSON.stringify(file)});`,
     },
     { cell_type: 'code', source: `await jupyter.sql\`select * from ${table} limit 100\`;` },
-  ] as const;
-  return {
-    nbformat: 4,
-    nbformat_minor: 5,
-    metadata: { kernelspec, language_info: { name: 'typescript' } },
-    cells: cells.map((c, i) => ({
-      id: `data-${i + 1}`,
-      cell_type: c.cell_type,
-      metadata: {},
-      source: c.source,
-      ...(c.cell_type === 'code' ? { outputs: [], execution_count: null } : {}),
-    })),
-  };
+  ] satisfies Cell[];
+  return notebookOf(kernelspec, cells, 'data');
 }

@@ -22,6 +22,25 @@ beforeEach(() => {
 });
 
 describe('recents', () => {
+  it('records notebooks, not data files (#671)', () => {
+    addRecent(KEY, 'a.csv');
+    addRecent(KEY, 'dir/b.JSON');
+    addRecent(KEY, 'c.parquet');
+    expect(loadRecents(KEY)).toEqual([]);
+    addRecent(KEY, 'a.ipynb');
+    expect(loadRecents(KEY)).toEqual(['a.ipynb']);
+  });
+
+  it('does not record an open data file through the hook', () => {
+    const { services } = fakeServices({ '': [] });
+    const backend = fakeBackend(services);
+    const { rerender } = renderHook(({ path }) => useRecents(backend, path), {
+      initialProps: { path: 'a.ipynb' },
+    });
+    rerender({ path: 'moons.csv' });
+    expect(loadRecents(recentsKey(backend.config))).toEqual(['a.ipynb']);
+  });
+
   it('keeps notebooks newest first, once each, up to the cap', () => {
     addRecent(KEY, 'a.ipynb');
     addRecent(KEY, 'b.ipynb');

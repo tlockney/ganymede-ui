@@ -7,6 +7,7 @@
  */
 import type { Contents, Session } from '@jupyterlab/services';
 import type { NotebookController } from '../components/NotebookPane';
+import { dataKind } from './data-files';
 import { parentOf } from './launch';
 import { moveSessions, renameFile, renamedPath } from './rename';
 
@@ -59,8 +60,12 @@ export function fileActions({
    * saving to the old path, and a delete couldn't stop it writing the file
    * back, so neither goes ahead.
    */
+  // An open data file (#671) has no controller and no kernel: nothing
+  // holds it, so a move or delete goes straight to the contents API and
+  // the page follows (a rename) or closes it (a delete).
+  const dataOpen = !!dataKind(openPath);
   const holder = (item: FileItem) => {
-    if (!within(openPath, item.path)) return undefined;
+    if (!within(openPath, item.path) || dataOpen) return undefined;
     if (!open) throw new Error('The open notebook is still loading; try again.');
     return open;
   };
@@ -84,6 +89,11 @@ export function fileActions({
       const others = () => sessions && moveSessions(sessions, item.path, next, openPath);
       if (!holdsOpen) {
         await move();
+        if (dataOpen && within(openPath, item.path)) {
+          const from = openPath;
+          const moved = next + from!.slice(item.path.length);
+          setOpenPath(p => (p === from ? moved : p));
+        }
         await others();
         return true;
       }
@@ -118,7 +128,9 @@ export function fileActions({
         undo?.();
         throw e;
       }
-      if (holdsOpen) setOpenPath(p => (within(p, item.path) ? undefined : p));
+      if (holdsOpen || (dataOpen && within(openPath, item.path))) {
+        setOpenPath(p => (within(p, item.path) ? undefined : p));
+      }
     },
 
     async newFolder(dir) {

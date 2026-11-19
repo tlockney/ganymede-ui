@@ -715,10 +715,7 @@ export function App() {
       ),
     [nativeSearch, settled, found, editsFiles],
   );
-  const recents = useRecents(
-    native ? backend : undefined,
-    dataKind(openPath) ? undefined : openPath,
-  );
+  const recents = useRecents(native ? backend : undefined, openPath);
   const recentsKeyed = JSON.stringify(recents);
   useEffect(() => {
     const kernel = shown?.kernelName ?? null;

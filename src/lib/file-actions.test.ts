@@ -182,6 +182,40 @@ describe('fileActions', () => {
     expect(opened()).toBe('Europa.ipynb');
   });
 
+  describe('an open data file (#671)', () => {
+    const csv = (path: string) => ({ path, name: path.split('/').pop()!, type: 'file' as const });
+
+    it('renames the open file and the page follows it', async () => {
+      const { fake, opened, actions } = setup('moons/Io.csv');
+      expect(await actions.rename(csv('moons/Io.csv'), 'Europa.csv')).toBe(true);
+      expect(fake.rename).toHaveBeenCalledWith('moons/Io.csv', 'moons/Europa.csv');
+      expect(opened()).toBe('moons/Europa.csv');
+    });
+
+    it('renames a folder holding it, and the page follows', async () => {
+      const { fake, opened, actions } = setup('moons/Io.csv');
+      await actions.rename(dir('moons'), 'satellites');
+      expect(fake.rename).toHaveBeenCalledWith('moons', 'satellites');
+      expect(opened()).toBe('satellites/Io.csv');
+    });
+
+    it('deletes the open file, or a folder holding it, and closes it', async () => {
+      const one = setup('moons/Io.csv');
+      await one.actions.remove(csv('moons/Io.csv'));
+      expect(one.fake.delete).toHaveBeenCalledWith('moons/Io.csv');
+      expect(one.opened()).toBeUndefined();
+      const folder = setup('moons/Io.csv');
+      await folder.actions.remove(dir('moons'));
+      expect(folder.opened()).toBeUndefined();
+    });
+
+    it('leaves another open path alone', async () => {
+      const { opened, actions } = setup('Io.csv');
+      await actions.remove(csv('other.csv'));
+      expect(opened()).toBe('Io.csv');
+    });
+  });
+
   it('won’t move a folder whose open notebook is still loading', async () => {
     // The controller reported is the last notebook's, not the one opening.
     const { fake, setOpenPath, actions } = setup('moons/Io.ipynb', controller('Europa.ipynb'));

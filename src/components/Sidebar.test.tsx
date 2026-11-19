@@ -492,6 +492,25 @@ describe('Sidebar search and Recents', () => {
     expect(field).toHaveValue('');
   });
 
+  it('opens a found data file in the page, and leaves another file disabled without an editor (#671)', async () => {
+    const files = {
+      '': [
+        { name: 'moons.csv', type: 'file' as const },
+        { name: 'moons.txt', type: 'file' as const },
+      ],
+    };
+    const { onOpen } = renderSidebar({}, files as never);
+    await screen.findByText('moons.csv');
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Search files' }), 'moons');
+    await waitFor(() => expect(results()).toHaveLength(2));
+    const list = within(screen.getByRole('list', { name: 'Search results' }));
+    expect(list.getByRole('button', { name: /moons\.txt/ })).toBeDisabled();
+    const csv = list.getByRole('button', { name: /moons\.csv/ });
+    expect(csv).toBeEnabled();
+    await userEvent.click(csv);
+    expect(onOpen).toHaveBeenCalledWith('moons.csv');
+  });
+
   it('searches inside notebooks when asked', async () => {
     renderSidebar({}, tree as never);
     await screen.findByText('Saturn');

@@ -107,7 +107,8 @@ export async function parquetTable(
     resource: {
       schema: { fields: schema.map((c, i) => ({ name: c.name, type: columns[i]!.type })) },
       data,
-      ganymede: { title, rows: total },
+      // No `rows`: the table would call the rest "the source" in its footer.
+      ganymede: { title },
     },
   };
 }
@@ -127,11 +128,12 @@ interface DuckdbModule {
 }
 
 /** A Worker URL that can start from this page: a cross-origin script goes through a blob. */
-function workerUrl(url: string): string {
-  if (url.startsWith('blob:') || url.startsWith(location.origin)) return url;
-  return URL.createObjectURL(
+function workerUrl(url: string): { url: string; revoke(): void } {
+  if (url.startsWith('blob:') || url.startsWith(location.origin)) return { url, revoke() {} };
+  const wrapped = URL.createObjectURL(
     new Blob([`importScripts(${JSON.stringify(url)});`], { type: 'text/javascript' }),
   );
+  return { url: wrapped, revoke: () => URL.revokeObjectURL(wrapped) };
 }
 
 /**
@@ -139,15 +141,19 @@ function workerUrl(url: string): string {
  * jsDelivr the first time, as the kernel does, and from the page's cache
  * after (duckdb-files.ts); close it when the view goes away.
  */
-export async function openEngine(modules: { [specifier: string]: string }): Promise<Engine> {
+export async function openEngine(modules: () => { [specifier: string]: string }): Promise<Engine> {
+  // The map after the files are loaded, so a first open during the
+  // prefetch still uses what the cache then holds.
   await loadDuckdbFiles();
-  const moduleUrl = modules[SQL_MODULES.duckdb];
+  const urls = modules();
+  const moduleUrl = urls[SQL_MODULES.duckdb];
   if (!moduleUrl) throw new Error('DuckDB isn’t part of this build.');
   const duckdb = (await import(/* @vite-ignore */ moduleUrl)) as DuckdbModule;
-  const worker = new Worker(workerUrl(modules[SQL_MODULES.ehWorker] ?? FILES[0].url));
+  const script = workerUrl(urls[SQL_MODULES.ehWorker] ?? FILES[0].url);
+  const worker = new Worker(script.url);
   const db = new duckdb.AsyncDuckDB(new duckdb.VoidLogger(), worker);
   try {
-    await db.instantiate(modules[SQL_MODULES.ehWasm] ?? FILES[1].url);
+    await db.instantiate(urls[SQL_MODULES.ehWasm] ?? FILES[1].url);
     const connection = await db.connect();
     return {
       register: (name, bytes) => db.registerFileBuffer(name, bytes),
@@ -155,10 +161,12 @@ export async function openEngine(modules: { [specifier: string]: string }): Prom
       close: async () => {
         await connection.close();
         await db.terminate();
+        script.revoke();
       },
     };
   } catch (e) {
     worker.terminate();
+    script.revoke();
     throw e;
   }
 }

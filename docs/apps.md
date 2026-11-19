@@ -199,10 +199,15 @@ window's page, on the Mac, iPad and iPhone and in a browser, read-only:
   DuckDB (36 MB, once, then kept) as SQL in a notebook does.
 
 Large files are read in part so a phone doesn't run out of memory: a CSV
-or TSV shows its first 10,000 rows (the bar says so; the first 8 MB are
-read), and a Parquet file shows its first 10,000 rows. A JSON file over
-16 MB and a Parquet file over 64 MB aren't opened in the data view; use
-Open as Text for the JSON.
+or TSV shows its first 10,000 rows (the bar says so; the page reads at most
+the first 8 MB), and a Parquet file shows its first 10,000 rows. Before
+reading, the view asks the file's size and refuses a CSV or TSV over 256 MB,
+a JSON file over 16 MB and a Parquet file over 64 MB, because the server
+reads a whole file into memory to send any of it. For those, New Notebook
+from File queries the file with DuckDB, and Open as Text shows a JSON file.
+Text is read as UTF-8, or UTF-16 when the file starts with a byte order
+mark; a file in another encoding (Latin-1, Windows-1252) shows replacement
+characters where its text doesn't fit.
 
 **Open as Text** opens the file in the editor above (the apps; a browser has
 no editor), and **New Notebook from File** writes a notebook beside the
@@ -210,7 +215,8 @@ file, named for it, with a cell that loads it with `jupyter.sql.load` and
 one that shows its first rows, then opens it. A notebook on a kernel that
 doesn't run in the file's folder, such as the one in the browser, can't
 find the file by name there. Open Recent and the Recents list keep to
-notebooks.
+notebooks. Renaming or deleting the open data file from the sidebar works as
+for any file, and the page follows the rename or closes it.
 
 ### Shortcuts
 

@@ -6,8 +6,9 @@ import { rmSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { describe, expect, it } from 'vitest';
-import { columnFor, parquetTable, plain, type ArrowLike, type Engine } from './parquet';
+import { describe, expect, it, vi } from 'vitest';
+import { loadDuckdbFiles } from './duckdb-files';
+import { columnFor, openEngine, parquetTable, plain, type ArrowLike, type Engine } from './parquet';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Blocking = any;
@@ -81,7 +82,7 @@ describe('parquet', () => {
     ]);
     // The row cap, with the file's own count kept for the footer.
     expect(t.resource.data).toHaveLength(3);
-    expect(t.resource.ganymede?.rows).toBe(5);
+    expect(t.resource.ganymede?.rows).toBeUndefined();
     const first = t.resource.data![0] as unknown[];
     expect(first[0]).toBe(0);
     expect(first[1]).toBe('row 0');
@@ -114,5 +115,27 @@ describe('columns', () => {
     expect(plain(5n)).toBe(5);
     expect(plain(2n ** 60n)).toBe('1152921504606846976');
     expect(plain('x')).toBe('x');
+  });
+});
+
+vi.mock('./duckdb-files', async importOriginal => ({
+  ...(await importOriginal<object>()),
+  loadDuckdbFiles: vi.fn(),
+}));
+
+describe('openEngine', () => {
+  it('reads the module map after the files are loaded', async () => {
+    const order: string[] = [];
+    vi.mocked(loadDuckdbFiles).mockImplementation(async () => {
+      await Promise.resolve();
+      order.push('loaded');
+    });
+    await expect(
+      openEngine(() => {
+        order.push('map');
+        return {};
+      }),
+    ).rejects.toThrow(/isn’t part of this build/);
+    expect(order).toEqual(['loaded', 'map']);
   });
 });

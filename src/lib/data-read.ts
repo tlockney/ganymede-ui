@@ -1,12 +1,17 @@
 /**
- * Reads a data file's bytes for the data view, capped (#671): a Ganymede
- * server streams `files/<path>` and the read stops at the cap, so a huge
- * CSV never comes into memory whole; the in-browser backend has only its
- * contents API, which hands over the whole file, cut after the fact.
+ * Reads a data file's bytes for the data view (#671). The size comes first
+ * (a contents request without the content), and a file over the ceiling is
+ * refused before any byte is fetched. Then a Ganymede server's
+ * `files/<path>` is read as a stream and cancelled at the cap, so the page
+ * keeps no more than the cap; the server still reads the whole file into
+ * memory to answer (on iOS, in the app's own process), which is why the
+ * ceiling exists. The in-browser backend has only the contents API, which
+ * hands over the whole file, cut after the fact.
  */
 import { URLExt } from '@jupyterlab/coreutils';
 import { ServerConnection } from '@jupyterlab/services';
 import type { Backend } from './backends';
+import { MAX_FILE_BYTES } from './data-files';
 
 export interface Bytes {
   bytes: Uint8Array;
@@ -14,13 +19,13 @@ export interface Bytes {
   truncated: boolean;
 }
 
-/** Thrown when a file is over a limit that can't be cut (JSON, Parquet). */
+/** Thrown when a file is over what the data view will fetch or hold. */
 export class TooLarge extends Error {
   constructor(
     readonly size: number,
     readonly limit: number,
   ) {
-    super(`This file is ${megabytes(size)}; the data view opens files up to ${megabytes(limit)}.`);
+    super(`This file is ${megabytes(size)}, over the ${megabytes(limit)} the data view opens.`);
   }
 }
 
@@ -28,16 +33,32 @@ export function megabytes(n: number): string {
   return `${(n / (1024 * 1024)).toFixed(n < 10 * 1024 * 1024 ? 1 : 0)} MB`;
 }
 
+/** What a model from the contents API holds, as bytes: text, JSON or base64, as stored. */
+export function modelBytes(model: { content?: unknown; format?: string | null }): Uint8Array {
+  const { content, format } = model;
+  if (format === 'base64' && typeof content === 'string') {
+    return Uint8Array.from(atob(content), c => c.charCodeAt(0));
+  }
+  if (typeof content === 'string') return new TextEncoder().encode(content);
+  return new TextEncoder().encode(content === undefined ? '' : JSON.stringify(content));
+}
+
 /**
  * The first `limit` bytes of the file. With `whole`, a file past `limit`
- * is refused (TooLarge) rather than cut, for formats that can't be.
+ * is refused (TooLarge) rather than cut, for formats that can't be. A
+ * file past `ceiling` (`limit` when whole) is refused before it is
+ * fetched, since the server reads all of it to answer.
  */
 export async function readBytes(
   backend: Backend,
   path: string,
   limit: number,
   whole = false,
+  ceiling = whole ? limit : MAX_FILE_BYTES,
 ): Promise<Bytes> {
+  const { contents } = backend.services;
+  const size = (await contents.get(path, { content: false })).size;
+  if (typeof size === 'number' && size > ceiling) throw new TooLarge(size, ceiling);
   if (backend.config.kind === 'ganymede') {
     const settings = backend.services.serverSettings;
     const url = URLExt.join(settings.baseUrl, 'files', URLExt.encodeParts(path));
@@ -45,10 +66,9 @@ export async function readBytes(
     if (!res.ok) throw new Error(await failure(res));
     return readStream(res, limit, whole);
   }
-  const model = await backend.services.contents.get(path, { content: true, format: 'base64' });
-  const content = typeof model.content === 'string' ? model.content : '';
-  const binary = model.format === 'base64' ? atob(content) : new TextEncoder().encode(content);
-  const all = typeof binary === 'string' ? Uint8Array.from(binary, c => c.charCodeAt(0)) : binary;
+  // As stored: asking JupyterLite for base64 runs btoa over text, which
+  // garbles accents and throws past U+00FF.
+  const all = modelBytes(await contents.get(path, { content: true }));
   if (all.length > limit) {
     if (whole) throw new TooLarge(all.length, limit);
     return { bytes: all.slice(0, limit), truncated: true };
@@ -112,15 +132,13 @@ export async function readStream(res: Response, limit: number, whole: boolean): 
 }
 
 /**
- * Text from bytes read up to a cap: when the read stopped short, the last
- * record may be cut (and a character too), so everything after the last
- * line break goes. Invalid UTF-8 at the cut shows as U+FFFD at worst.
+ * Text from bytes: UTF-8 (a BOM is dropped), or UTF-16 when a byte order
+ * mark says so. Other encodings (Latin-1, Windows-1252) read as UTF-8, and
+ * show U+FFFD where it doesn't fit.
  */
-export function textOf({ bytes, truncated }: Bytes): { text: string; truncated: boolean } {
-  let text = new TextDecoder('utf-8').decode(bytes);
-  if (truncated) {
-    const cut = Math.max(text.lastIndexOf('\n'), text.lastIndexOf('\r'));
-    text = cut >= 0 ? text.slice(0, cut + 1) : '';
-  }
-  return { text, truncated };
+export function decodeText(bytes: Uint8Array): string {
+  const [a, b] = bytes;
+  const label =
+    a === 0xff && b === 0xfe ? 'utf-16le' : a === 0xfe && b === 0xff ? 'utf-16be' : 'utf-8';
+  return new TextDecoder(label).decode(bytes);
 }

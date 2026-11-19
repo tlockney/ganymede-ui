@@ -412,7 +412,7 @@ struct IPadSidebar: View {
         guard !name.isEmpty, !name.contains("/") else { return }
         // The open notebook renames through the page, which saves its
         // edits first and keeps its kernel.
-        if !entry.isDirectory, page.state.path == path(entry) {
+        if entry.isNotebook, page.state.path == path(entry) {
             page.run("rename", arg: name)
             return
         }

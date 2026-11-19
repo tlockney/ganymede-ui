@@ -88,7 +88,7 @@ struct FolderSidebar: View {
     private func rename(_ entry: FolderEntry) {
         // The open notebook renames through the page, which saves its
         // edits first and keeps its kernel.
-        if !entry.isDirectory, page.state.path == entry.serverPath {
+        if entry.isNotebook, page.state.path == entry.serverPath {
             if let name = askName(for: entry.name) { page.run("rename", arg: name) }
             return
         }

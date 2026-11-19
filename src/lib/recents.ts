@@ -4,6 +4,7 @@
  * Kept in this browser's local storage, per backend (the same path on
  * another server is another file), newest first.
  */
+import { dataKind } from './data-files';
 import { useEffect, useState } from 'react';
 import type { Contents } from '@jupyterlab/services';
 import type { Backend, BackendConfig } from './backends';
@@ -82,6 +83,8 @@ function update(key: string, change: (paths: string[]) => string[]): void {
 
 /** Puts `path` at the top of the list. */
 export function addRecent(key: string, path: string): void {
+  // Recents are notebooks; a data file (#671) opens from the sidebar.
+  if (dataKind(path)) return;
   update(key, paths => [path, ...paths]);
 }
 

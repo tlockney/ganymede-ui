@@ -214,7 +214,15 @@ struct PageState: Decodable, Equatable {
         self = state
     }
 
-    var hasNotebook: Bool { path != nil }
+    /// A CSV, TSV, JSON or Parquet file is open in the page's data view
+    /// (#671): it has no kernel, cells or notebook commands.
+    var showsData: Bool {
+        guard let path else { return false }
+        return FolderEntry.dataExtensions.contains((path as NSString).pathExtension.lowercased())
+    }
+
+    /// A notebook is open: what the notebook menus and toolbar act on.
+    var hasNotebook: Bool { path != nil && !showsData }
 
     /// The window's subtitle: the kernel and what it is doing, as the
     /// page's own toolbar showed it.

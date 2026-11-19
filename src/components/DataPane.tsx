@@ -15,9 +15,10 @@ import {
   notebookFor,
   notebookNameFor,
   parseDelimited,
+  withoutCutRecord,
   tableOf,
 } from '../lib/data-files';
-import { readBytes, textOf } from '../lib/data-read';
+import { TooLarge, decodeText, megabytes, readBytes } from '../lib/data-read';
 import { kernelModules } from '../lib/kernel-modules';
 import { messageOf } from '../lib/problems';
 import { freePath, sampleKernel } from '../lib/sample';
@@ -47,9 +48,10 @@ async function load(
 ): Promise<{ data: Loaded; close?: () => void }> {
   const name = path.split('/').pop() ?? path;
   if (kind === 'csv' || kind === 'tsv') {
-    const { text, truncated } = textOf(await readBytes(backend, path, MAX_TEXT_BYTES));
-    const parsed = parseDelimited(text, kind === 'csv' ? ',' : '\t');
-    const cut = parsed.truncated || truncated;
+    const read = await readBytes(backend, path, MAX_TEXT_BYTES);
+    const first = parseDelimited(decodeText(read.bytes), kind === 'csv' ? ',' : '\t');
+    const parsed = read.truncated ? withoutCutRecord(first, megabytes(MAX_TEXT_BYTES)) : first;
+    const cut = parsed.truncated;
     return {
       data: {
         kind: 'table',
@@ -60,7 +62,7 @@ async function load(
   }
   if (kind === 'json') {
     const { bytes } = await readBytes(backend, path, MAX_JSON_BYTES, true);
-    const text = new TextDecoder('utf-8').decode(bytes);
+    const text = decodeText(bytes);
     try {
       return { data: { kind: 'json', value: JSON.parse(text) } };
     } catch (e) {
@@ -69,7 +71,7 @@ async function load(
   }
   const { bytes } = await readBytes(backend, path, MAX_PARQUET_BYTES, true);
   const { openEngine, parquetTable } = await import('../lib/parquet');
-  const engine = await openEngine(kernelModules());
+  const engine = await openEngine(kernelModules);
   try {
     const t = await parquetTable(engine, bytes, name);
     const shown = t.resource.data?.length ?? 0;
@@ -110,6 +112,8 @@ export function DataPane({ backend, path, onOpenAsText, onOpenNotebook }: Props)
   const name = path.split('/').pop() ?? path;
   const [loaded, setLoaded] = useState<Loaded>();
   const [error, setError] = useState<string>();
+  // The file is over what the view opens: the error says what to do instead.
+  const [big, setBig] = useState(false);
   const [query, setQuery] = useState('');
   const [making, setMaking] = useState(false);
   const host = useRef<HTMLDivElement>(null);
@@ -120,6 +124,7 @@ export function DataPane({ backend, path, onOpenAsText, onOpenNotebook }: Props)
     let close: (() => void) | undefined;
     setLoaded(undefined);
     setError(undefined);
+    setBig(false);
     setQuery('');
     load(backend, path, kind).then(
       r => {
@@ -130,7 +135,9 @@ export function DataPane({ backend, path, onOpenAsText, onOpenNotebook }: Props)
         }
       },
       (e: unknown) => {
-        if (!cancelled) setError(messageOf(e));
+        if (cancelled) return;
+        setError(messageOf(e));
+        setBig(e instanceof TooLarge);
       },
     );
     return () => {
@@ -240,6 +247,10 @@ export function DataPane({ backend, path, onOpenAsText, onOpenNotebook }: Props)
       {error ? (
         <p className="data-error" role="alert">
           {error}
+          {big &&
+            (kind === 'json' && onOpenAsText
+              ? ' Open as Text shows it, and New Notebook from File queries it.'
+              : ' New Notebook from File queries it with DuckDB.')}
         </p>
       ) : !loaded ? (
         <p className="subtle data-loading">Loading…</p>

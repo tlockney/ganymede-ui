@@ -9,6 +9,7 @@ import {
   tableName,
   tableOf,
   typedValue,
+  withoutCutRecord,
 } from './data-files';
 
 describe('dataKind', () => {
@@ -41,6 +42,7 @@ describe('parseDelimited', () => {
         ['3', '4'],
       ],
       truncated: false,
+      records: 3,
     });
   });
 
@@ -111,7 +113,39 @@ describe('parseDelimited', () => {
   });
 
   it('handles an empty file', () => {
-    expect(parseDelimited('', ',')).toEqual({ header: [], rows: [], truncated: false });
+    expect(parseDelimited('', ',')).toEqual({
+      header: [],
+      rows: [],
+      truncated: false,
+      records: 0,
+    });
+  });
+});
+
+describe('withoutCutRecord', () => {
+  const cut = (text: string) => withoutCutRecord(parseDelimited(text, ','), '8 MB');
+
+  it('drops the half-read last record and marks the table cut', () => {
+    const p = cut('a,b\n1,2\n3,');
+    expect(p.rows).toEqual([['1', '2']]);
+    expect(p.truncated).toBe(true);
+  });
+
+  it('drops the record when the cut fell inside a quoted multi-line field', () => {
+    const p = cut('a,b\n1,2\n3,"first line\nsecond');
+    expect(p.rows).toEqual([['1', '2']]);
+  });
+
+  it('leaves rows alone when the row cap stopped the parse before the cut', () => {
+    const parsed = parseDelimited('n\n1\n2\n3\n', ',', 2);
+    expect(withoutCutRecord(parsed, '8 MB')).toBe(parsed);
+  });
+
+  it('says so when no complete row is left, instead of an empty table', () => {
+    expect(() => cut('a very long first line with no break')).toThrow(
+      /first 8 MB .* no complete row/,
+    );
+    expect(() => cut('a,b\n1,2')).toThrow(/no complete row/);
   });
 });
 
