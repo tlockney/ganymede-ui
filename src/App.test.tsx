@@ -440,6 +440,16 @@ describe('App', () => {
     expect(await screen.findByRole('complementary', { name: 'Variables' })).toBeInTheDocument();
   });
 
+  it('turns type errors on and off from the app, and remembers it (#669)', async () => {
+    localStorage.removeItem('ganymede-ui:type-errors');
+    render(<App />);
+    await waitFor(() => expect(window.ganymede).toBeDefined());
+    expect(await window.ganymede!.command('toggle-type-errors')).toBe(true);
+    expect(localStorage.getItem('ganymede-ui:type-errors')).toBe('off');
+    expect(await window.ganymede!.command('toggle-type-errors')).toBe(true);
+    expect(localStorage.getItem('ganymede-ui:type-errors')).toBeNull();
+  });
+
   it('reads the variables for the app’s inspector and expands them for it (#249)', async () => {
     const states: Record<string, unknown>[] = [];
     vi.stubGlobal('webkit', {

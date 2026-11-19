@@ -11,6 +11,7 @@ import { type Backend, trustNotebook } from '../lib/backends';
 import { attachEditing, createCommands, createNotebook, createRendermime } from '../lib/jupyterlab';
 import { attachCellControls } from '../lib/cell-controls';
 import { attachCodeCollapse } from '../lib/code-collapse';
+import { attachTypeErrors } from '../lib/type-errors';
 import { installTableOutput } from '../lib/table-output';
 import { CellMenu } from './CellMenu';
 import { KeyboardBar } from './KeyboardBar';
@@ -606,6 +607,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         setMenu({ cell, anchor }),
       );
       const codeCollapse = attachCodeCollapse(notebook);
+      const typeErrors = attachTypeErrors(notebook, session);
       const runStatus = attachRunStatus(notebook, {
         interrupt: () =>
           void session.session?.kernel
@@ -644,6 +646,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
           editing,
           cellControls,
           codeCollapse,
+          typeErrors,
           runStatus,
           notebookWidgets,
           // `device` for cells on server kernels (#568): the

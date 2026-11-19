@@ -80,6 +80,11 @@ vi.mock('../lib/code-collapse', () => ({
   attachCodeCollapse: vi.fn(() => ({ dispose: vi.fn(), isDisposed: false })),
 }));
 
+// Type errors need JupyterLab's cells and a kernel; type-errors.test.ts covers them.
+vi.mock('../lib/type-errors', () => ({
+  attachTypeErrors: vi.fn(() => ({ dispose: vi.fn(), isDisposed: false })),
+}));
+
 // The running and queued lines need JupyterLab's cells; run-status.test.ts
 // covers them.
 const runStatus = vi.hoisted(() => ({
