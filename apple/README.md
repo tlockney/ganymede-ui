@@ -85,6 +85,28 @@ The app links ganymede-ffi as `GanymedeFFI.xcframework`, which
 - `GANYMEDE_XCFRAMEWORK=<dir>` copies an XCFramework built earlier. CI
   uses it for its cached build of a pinned commit; it wins over both.
 
+The Mac app can also bundle the `ganymede` command line tool, which
+Settings links into `~/.local/bin` (#686). `bootstrap.sh` puts it at
+`apple/build/cli/ganymede` from the first of these that applies, and the
+`Ganymede` target's build phase copies it into
+`Contents/Helpers/ganymede` and signs it:
+
+- `GANYMEDE_CLI=<binary>` copies a `ganymede` built earlier.
+- `GANYMEDE_DIR` builds it in that checkout
+  (`cargo build --release -p ganymede-cli --target aarch64-apple-darwin`).
+- `GANYMEDE_REF=vX.Y.Z` downloads the release's
+  `ganymede-<version>-aarch64-apple-darwin.tar.gz` and checks its
+  `.sha256`, for a release later than v0.13.0. Up to v0.13.0, `ganymede
+update` replaces the binary where it runs, which would break the app's
+  signature ([ganymede#883](https://github.com/tlockney/ganymede/issues/883)),
+  so `bootstrap.sh` skips the tool with a message, as it does for
+  `GANYMEDE_XCFRAMEWORK` alone. A build without it works; Settings hides
+  the section.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
 ```sh
 GANYMEDE_REF=vX.Y.Z apple/scripts/bootstrap.sh
 # or

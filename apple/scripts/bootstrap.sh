@@ -9,6 +9,25 @@
 #                              SHA-256 (#359); GANYMEDE_DIR wins if both
 #     GANYMEDE_XCFRAMEWORK=<dir>  copies one built earlier, such as CI's
 #                              cache for a pinned commit; wins over both
+#   cli/ganymede             the `ganymede` command line tool the Mac app
+#                            bundles in Contents/Helpers and links from
+#                            Settings (#686), from the first that applies:
+#                              GANYMEDE_CLI=none      bundles none (iOS-only jobs)
+#                              GANYMEDE_CLI=<binary>  copies it
+#                              GANYMEDE_DIR=<checkout>  `cargo build
+#                                --release -p ganymede-cli --target
+#                                aarch64-apple-darwin` there, if its
+#                                update.rs has the #883 guard
+#                              GANYMEDE_REF=<tag>     downloads that
+#                                release's ganymede-<version>-aarch64-apple-darwin.tar.gz
+#                                and checks its SHA-256
+#                            Only a release after v0.13.0 is bundled. Up
+#                            to 0.13.0, `ganymede update` replaces the
+#                            binary where it is, which would break the
+#                            app's code signature (tlockney/ganymede#883),
+#                            so for an older tag, or with only
+#                            GANYMEDE_XCFRAMEWORK, this skips the CLI with
+#                            a message and the app builds without it.
 #   web/                     this repo's `npm run build`
 #   quicklook/               its `npm run build:quicklook` (#135)
 #   runner/                  its `npm run build:runner` (#69, a spike)
@@ -83,6 +102,89 @@ copy_xcframework() {
 if [ -n "$prebuilt" ]; then copy_xcframework
 elif [ -n "$ganymede" ]; then build_xcframework
 else download_xcframework; fi
+
+# The command line tool the Mac app bundles (#686): build/cli/ganymede,
+# which project.yml's build phase copies into the app. A stale one from an
+# earlier run is removed first, so a skipped step never bundles it.
+cli_out="$apple/build/cli/ganymede"
+rm -rf "$apple/build/cli"
+
+# 0 when $1 (X.Y.Z, optionally with a leading v) is later than $2.
+version_after() {
+  local a=${1#v} b=${2#v} i x y
+  a=${a%%-*}; b=${b%%-*}
+  local -a pa pb
+  IFS=. read -r -a pa <<< "$a"
+  IFS=. read -r -a pb <<< "$b"
+  for i in 0 1 2; do
+    x=${pa[$i]:-0}; y=${pb[$i]:-0}
+    case $x$y in *[!0-9]*) return 1 ;; esac
+    if [ "$x" -gt "$y" ]; then return 0; fi
+    if [ "$x" -lt "$y" ]; then return 1; fi
+  done
+  return 1
+}
+
+install_cli() {
+  mkdir -p "$apple/build/cli" && cp "$1" "$cli_out" && chmod 755 "$cli_out" || {
+    echo "error: couldn't copy the ganymede command line tool from $1" >&2
+    return 1
+  }
+}
+
+download_cli() {
+  local version=${ref#v}
+  local name="ganymede-$version-aarch64-apple-darwin"
+  local url="https://github.com/tlockney/ganymede/releases/download/$ref/$name.tar.gz"
+  local dl
+  dl=$(mktemp -d)
+  # Each step removes the temporary folder when it fails; set -e doesn't
+  # reach a failure inside a || list.
+  echo "Downloading the ganymede command line tool for $ref"
+  curl -fsSL --retry 3 -o "$dl/$name.tar.gz" "$url" || {
+    rm -rf "$dl"
+    echo "error: ganymede release '$ref' has no $name.tar.gz" >&2
+    return 1
+  }
+  curl -fsSL --retry 3 -o "$dl/$name.tar.gz.sha256" "$url.sha256" || {
+    rm -rf "$dl"
+    echo "error: ganymede release '$ref' has no $name.tar.gz.sha256" >&2
+    return 1
+  }
+  (cd "$dl" && shasum -a 256 -c "$name.tar.gz.sha256") || { rm -rf "$dl"; return 1; }
+  tar -xzf "$dl/$name.tar.gz" -C "$dl" || { rm -rf "$dl"; return 1; }
+  install_cli "$dl/$name/ganymede" || { rm -rf "$dl"; return 1; }
+  rm -rf "$dl"
+}
+
+skip_cli() {
+  echo "note: not bundling the ganymede command line tool. Bundle one with GANYMEDE_CLI=<binary>, a GANYMEDE_DIR checkout with the #883 guard in crates/ganymede-cli/src/update.rs, or a GANYMEDE_REF later than v0.13.0: releases up to 0.13.0 have a \`ganymede update\` that would overwrite the bundled copy and break the app's signature (tlockney/ganymede#883)." >&2
+}
+
+if [ "${GANYMEDE_CLI:-}" = none ]; then
+  echo "not bundling the ganymede command line tool (GANYMEDE_CLI=none)"
+elif [ -n "${GANYMEDE_CLI:-}" ]; then
+  [ -f "$GANYMEDE_CLI" ] && [ -x "$GANYMEDE_CLI" ] || {
+    echo "error: GANYMEDE_CLI=$GANYMEDE_CLI is not an executable file" >&2
+    exit 1
+  }
+  install_cli "$GANYMEDE_CLI"
+elif [ -n "$ganymede" ]; then
+  # A checkout from before ganymede#883 has an `update` that would
+  # replace the bundled copy.
+  if grep -q 'comes with the Ganymede app' "$ganymede/crates/ganymede-cli/src/update.rs" 2>/dev/null; then
+    rustup target add aarch64-apple-darwin
+    (cd "$ganymede" && cargo build --release -p ganymede-cli --target aarch64-apple-darwin)
+    install_cli "$ganymede/target/aarch64-apple-darwin/release/ganymede"
+  else
+    skip_cli
+  fi
+elif [ -n "$ref" ] && version_after "$ref" v0.13.0; then
+  download_cli
+else
+  skip_cli
+fi
+if [ -f "$cli_out" ]; then echo "bundling the ganymede command line tool: $("$cli_out" --version 2>&1 | head -n 1)"; fi
 
 (cd "$repo" && { [ -d node_modules ] || npm ci; } && npm run build)
 # Release builds (SENTRY_SOURCEMAPS=1): the web UI's source maps go to

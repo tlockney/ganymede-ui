@@ -107,6 +107,7 @@ private struct GeneralSettings: View {
             }
             UpdateSettings()
             CrashReportsSettings()
+            CommandLineToolSettings()
             LinkRunSettings()
             MCPSettings()
             TailnetSettings()
@@ -114,6 +115,132 @@ private struct GeneralSettings: View {
         }
         .formStyle(.grouped)
         .padding()
+    }
+}
+
+/// Installing the `ganymede` command line tool the app bundles (#686): a
+/// link at `~/.local/bin/ganymede`. Hidden when this build has none.
+private struct CommandLineToolSettings: View {
+    private let bundled = CommandLineTool.bundledTool()
+    private let link = CommandLineTool.defaultLink()
+    @State private var state = CommandLineTool.state(
+        bundled: CommandLineTool.bundledTool(), link: CommandLineTool.defaultLink()
+    )
+    @State private var error: String?
+    /// `--version` of the other `ganymede` on the PATH, once it has run.
+    @State private var otherVersion: String?
+    @State private var confirmingReplace = false
+
+    var body: some View {
+        if bundled != nil {
+            Group {
+                Section {
+                    LabeledContent("ganymede") {
+                        Text(statusText(state.status))
+                            .foregroundStyle(.secondary)
+                    }
+                    Text("Installs to ~/.local/bin/ganymede")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    buttons(state.status)
+                    if let error {
+                        Text(error)
+                            .foregroundStyle(.red)
+                    }
+                    if let other = state.otherOnPath {
+                        Text(otherText(other, installed: state.status == .installed))
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    if !state.directoryOnPath, mayNeedPath(state.status) {
+                        Text(CommandLineTool.pathAdvice())
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        MCPConfigRow(title: "PATH line", text: CommandLineTool.pathLine)
+                    }
+                } header: {
+                    Text("Command Line Tool")
+                } footer: {
+                    Text("A link to the ganymede command inside the app, for Terminal and agents. It stops working if you move or delete the app. Ganymede replaces only a link it made, unless you choose Replace.")
+                }
+            }
+            .onAppear { refresh() }
+            .confirmationDialog(
+                "Replace \(link.path)?", isPresented: $confirmingReplace, titleVisibility: .visible
+            ) {
+                Button("Move to Trash and Install", role: .destructive) {
+                    run { try CommandLineTool.install(bundled: bundled, link: link, force: true) }
+                }
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                if case .blocked(let what) = state.status {
+                    Text("There is \(what) there now. It moves to the Trash, and ganymede from this app is linked in its place.")
+                }
+            }
+            .task(id: state.otherOnPath) {
+                otherVersion = nil
+                guard let other = state.otherOnPath else { return }
+                // Runs the other tool, which can be slow: not on the main thread.
+                otherVersion = await Task.detached { CommandLineTool.version(of: other) }.value
+            }
+        }
+    }
+
+    private func otherText(_ other: String, installed: Bool) -> String {
+        let name = otherVersion.map { "\(other) (\($0))" } ?? other
+        return installed
+            ? "Terminals run \(name) first, not this one. Put ~/.local/bin earlier on your PATH to use this one."
+            : "Another ganymede is already on your PATH: \(name)."
+    }
+
+    private func mayNeedPath(_ status: CommandLineTool.Status) -> Bool {
+        switch status {
+        case .installed, .stale, .notInstalled: true
+        case .unavailable, .blocked: false
+        }
+    }
+
+    private func statusText(_ status: CommandLineTool.Status) -> String {
+        switch status {
+        case .unavailable: "Not in this build"
+        case .notInstalled: "Not installed"
+        case .installed: "Installed"
+        case .stale: "Points at another copy of Ganymede"
+        case .blocked(let what): "Another ganymede is there: \(what)"
+        }
+    }
+
+    @ViewBuilder
+    private func buttons(_ status: CommandLineTool.Status) -> some View {
+        switch status {
+        case .notInstalled:
+            Button("Install") { run { try CommandLineTool.install(bundled: bundled, link: link) } }
+        case .installed:
+            Button("Uninstall") { run { try CommandLineTool.uninstall(link: link) } }
+        case .stale:
+            HStack {
+                Button("Update Link") { run { try CommandLineTool.install(bundled: bundled, link: link) } }
+                Button("Uninstall") { run { try CommandLineTool.uninstall(link: link) } }
+            }
+        case .blocked:
+            Button("Replace…") { confirmingReplace = true }
+        case .unavailable:
+            EmptyView()
+        }
+    }
+
+    private func run(_ action: () throws -> Void) {
+        do {
+            try action()
+            error = nil
+        } catch {
+            self.error = error.localizedDescription
+        }
+        refresh()
+    }
+
+    private func refresh() {
+        state = CommandLineTool.state(bundled: bundled, link: link)
     }
 }
 
@@ -172,7 +299,9 @@ private struct MCPSettings: View {
                 MCPConfigRow(title: "Claude Code", text: AppMCP.claudeCodeCommand)
                 MCPConfigRow(
                     title: "Claude Desktop (claude_desktop_config.json)",
-                    text: AppMCP.desktopConfig(command: AppMCP.ganymedeCommand() ?? "ganymede")
+                    text: AppMCP.desktopConfig(
+                        command: CommandLineTool.desktopCommand()
+                    )
                 )
                 if let server = model.serverURL.flatMap(ServerEndpoint.init(serverURL:)), let token = model.mcpToken {
                     MCPConfigRow(

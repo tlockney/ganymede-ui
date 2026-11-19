@@ -126,6 +126,9 @@ for helper in "$sparkle"/Versions/B/XPCServices/*.xpc "$sparkle/Versions/B/Autou
   if [[ -e "$helper" ]]; then sign "$helper"; fi
 done
 sign "$sparkle"
+# The bundled command line tool (#686), when bootstrap.sh had one: signed
+# with this identity and the timestamp, before the app seals it in.
+if [[ -f "$app/Contents/Helpers/ganymede" ]]; then sign "$app/Contents/Helpers/ganymede"; fi
 sign "$app"
 # Symbols for crash reports (#318).
 "$apple/scripts/sentry-dsyms.sh" "$archive"

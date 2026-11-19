@@ -30,4 +30,11 @@ done
 # The Quick Look preview's page (#135).
 [[ -f "$plugins/GanymedeQuickLook.appex/Contents/Resources/quicklook/preview.html" ]] ||
   fail "GanymedeQuickLook.appex has no quicklook/preview.html"
+# The command line tool Settings links (#686), bundled only when
+# bootstrap.sh had one: then it must run.
+cli=$app/Contents/Helpers/ganymede
+if [[ -e "$cli" ]]; then
+  [[ -x "$cli" ]] || fail "Contents/Helpers/ganymede isn't executable"
+  "$cli" --version > /dev/null || fail "Contents/Helpers/ganymede --version fails"
+fi
 echo "app bundle checks passed: $app"

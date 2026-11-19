@@ -64,6 +64,12 @@ struct GanymedeApp: App {
                 }
                 .keyboardShortcut(",", modifiers: [.command, .option])
                 DefaultAppCommand()
+                // Only when this build bundles the tool (#686).
+                if CommandLineTool.bundledTool() != nil {
+                    Button("Install Command Line Tool…") {
+                        SettingsOpener.show(.general)
+                    }
+                }
             }
             CommandGroup(replacing: .help) {
                 Button("Keyboard Shortcuts") {

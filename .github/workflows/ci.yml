@@ -251,6 +251,8 @@ jobs:
       - uses: ./.github/actions/apple-setup
         with:
           caches: 'true'
+          # The iOS app bundles no command line tool (#686).
+          cli: 'false'
       - name: Build and test for iPadOS (simulator)
         run: |
           # Simulator names change with each Xcode; take the first iPad.
