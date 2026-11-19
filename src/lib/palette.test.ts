@@ -75,6 +75,8 @@ describe('paletteEntries', () => {
     const none = { ...CONTEXT, path: undefined, kernel: undefined };
     expect(find('Go to Definition', none)?.disabled).toBe(true);
     expect(find('Rename Symbol…', none)?.disabled).toBe(true);
+  });
+
   it('offers the live Markdown preview switch as the page command that runs it (#672)', () => {
     expect(find('Show or Hide Live Markdown Preview')).toMatchObject({
       id: 'toggle-live-markdown',
