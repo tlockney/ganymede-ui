@@ -12,6 +12,7 @@ import { attachEditing, createCommands, createNotebook, createRendermime } from 
 import { attachCellControls } from '../lib/cell-controls';
 import { attachCodeCollapse } from '../lib/code-collapse';
 import { attachTypeErrors } from '../lib/type-errors';
+import { attachLanguageFeatures, type LanguageFeatures } from '../lib/language-editor';
 import { installTableOutput } from '../lib/table-output';
 import { CellMenu } from './CellMenu';
 import { KeyboardBar } from './KeyboardBar';
@@ -159,6 +160,17 @@ export type NotebookController = {
   outline: OutlineItem[];
   /** Selects the cell at `index` and scrolls it to the top; false when there is none. */
   goToCell(index: number): boolean;
+  /**
+   * Jump to the definition of the name at the active cell's cursor (#676);
+   * false when the kernel has no language service or there is none to go to.
+   */
+  goToDefinition(): Promise<boolean>;
+  /**
+   * Rename the name at the active cell's cursor across the cells (#676),
+   * asking for the new name unless `newName` is given; false when nothing
+   * changed.
+   */
+  renameSymbol(newName?: string): Promise<boolean>;
 };
 
 type Props = {
@@ -215,6 +227,8 @@ type Open = {
   ensureKernel(all?: boolean): Promise<boolean>;
   /** The notebook's commands, which its keys run. */
   commands: CommandRegistry;
+  /** Go to definition and rename, through the kernel's language service (#676). */
+  language: LanguageFeatures;
   /** Which cells run and wait, shown on them. */
   runStatus: RunStatus;
   /** Settles once the session has rejoined the file's kernel, if any. */
@@ -608,6 +622,9 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       );
       const codeCollapse = attachCodeCollapse(notebook);
       const typeErrors = attachTypeErrors(notebook, session);
+      const language = attachLanguageFeatures(notebook, session, message =>
+        setNotice({ kind: 'failed', message, actions: [] }),
+      );
       const runStatus = attachRunStatus(notebook, {
         interrupt: () =>
           void session.session?.kernel
@@ -638,6 +655,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         room,
         ensureKernel,
         commands,
+        language,
         runStatus,
         joining,
         track,
@@ -647,6 +665,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
           cellControls,
           codeCollapse,
           typeErrors,
+          language,
           runStatus,
           notebookWidgets,
           // `device` for cells on server kernels (#568): the
@@ -1352,6 +1371,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       moved,
       kernel: session.session?.kernel ?? undefined,
       outline,
+      goToDefinition: () => open.language.service.goToDefinition(),
+      renameSymbol: newName => open.language.service.rename(newName),
       goToCell: index => {
         const cell = notebook.widgets[index];
         if (!cell) return false;

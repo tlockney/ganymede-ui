@@ -531,6 +531,11 @@ export function App() {
       case 'toggle-type-errors':
         setTypeErrorsEnabled(!typeErrorsEnabled());
         return true;
+      case 'go-to-definition':
+        return c ? c.goToDefinition() : false;
+      case 'rename-symbol':
+        // With a new name when the palette asked for it, else the cursor's input.
+        return c ? c.renameSymbol(arg) : false;
       case 'toggle-live-markdown':
         setLiveMarkdownEnabled(!liveMarkdownEnabled());
         return true;

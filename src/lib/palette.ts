@@ -139,6 +139,13 @@ export function paletteEntries(context: PaletteContext): PaletteEntry[] {
       .filter(p => p !== context.path)
       // The folder tells two notebooks of one name apart, and filters.
       .map(p => app('open', `Open ${nameOf(p)}`, recentGroup(p), { arg: p, keys: '' })),
+    // Through the kernel's language service (#676); F12 and F2 in a cell.
+    app('go-to-definition', 'Go to Definition', 'Cell', { disabled: !open, keys: 'F12' }),
+    app('rename-symbol', 'Rename Symbol…', 'Cell', {
+      disabled: !open,
+      prompt: 'New name',
+      keys: 'F2',
+    }),
     app('toggle-variables', 'Show or Hide Variables', 'View', { disabled: !open }),
     // Switches type errors on or off (#669); the page remembers which.
     app('toggle-type-errors', 'Show or Hide Type Errors', 'View'),

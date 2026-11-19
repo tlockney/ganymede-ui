@@ -817,6 +817,8 @@ struct IPadCommands: Commands {
             IPadPageButton("Insert Markdown Cell Below", "insert-markdown")
             IPadPageButton("Collapse All Code", "collapse-all-code")
             IPadPageButton("Expand All Code", "expand-all-code")
+            IPadPageButton("Go to Definition", "go-to-definition")
+            IPadPageButton("Rename Symbol…", "rename-symbol")
             IPadPageButton("Find…", "find", key: "f")
         }
         CommandMenu("Kernel") {
