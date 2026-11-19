@@ -213,8 +213,10 @@ characters where its text doesn't fit.
 no editor), and **New Notebook from File** writes a notebook beside the
 file, named for it, with a cell that loads it with `jupyter.sql.load` and
 one that shows its first rows, then opens it. A notebook on a kernel that
-doesn't run in the file's folder, such as the one in the browser, can't
-find the file by name there. Open Recent and the Recents list keep to
+doesn't run in the file's folder can't find the file by name there: the
+kernel in the browser, and the in-app kernel the iPad and iPhone apps use.
+On those, run the notebook on a server's kernel, or load the file another
+way. Open Recent and the Recents list keep to
 notebooks. Renaming or deleting the open data file from the sidebar works as
 for any file, and the page follows the rename or closes it.
 

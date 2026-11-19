@@ -28,6 +28,29 @@ describe('readStream', () => {
     expect(r.truncated).toBe(true);
   });
 
+  it('cancels the transfer after the chunk that crosses the cap, and asks for no more', async () => {
+    let pulled = 0;
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>(
+      {
+        pull(c) {
+          pulled++;
+          c.enqueue(new TextEncoder().encode('abcd'));
+          if (pulled === 5) c.close();
+        },
+        cancel() {
+          cancelled = true;
+        },
+      },
+      { highWaterMark: 0 },
+    );
+    const r = await readStream(new Response(body), 6, false);
+    expect(r.truncated).toBe(true);
+    expect(cancelled).toBe(true);
+    // Two chunks reach 8 bytes, past 6: the third is never asked for.
+    expect(pulled).toBe(2);
+  });
+
   it('is not cut when the body is exactly the cap', async () => {
     const r = await readStream(stream(['abc', 'def']), 6, false);
     expect(r.truncated).toBe(false);

@@ -29,8 +29,8 @@ final class PageDocument {
 
     func update(_ message: DocumentMessage) {
         if let opened = message.file, opened != file {
-            Recents.shared.note(opened)
-        } else if let saved = message.file, saved == file, dirty, !message.dirty {
+            if message.isNotebook { Recents.shared.note(opened) }
+        } else if let saved = message.file, saved == file, dirty, !message.dirty, message.isNotebook {
             // Saved: Spotlight gets its new contents (#305).
             SpotlightSettings.shared.saved(saved)
         }
