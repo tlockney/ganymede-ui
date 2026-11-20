@@ -385,6 +385,8 @@ function fileReferences(sql: string): string[] {
     if (t.kind !== 'string' || t.value === undefined) return;
     const afterFrom =
       prevWord === 'join' ||
+      // `delete … using 'f.csv'` and `merge … using 'f.csv'`; `join … using (id)` has no string here.
+      prevWord === 'using' ||
       TABLE_STATEMENTS.has(prevWord) ||
       (prevWord === 'from' && tokens[i - 2]?.text.toLowerCase() !== 'distinct') ||
       (prev?.text === ',' && top().from);

@@ -137,6 +137,9 @@ describe('ConsoleSession on the real DuckDB', () => {
       backendWith({
         'a.csv': 'x\n1\n',
         'b.csv': 'x\n2\n',
+        // Named only after USING, so only that position can have registered them.
+        'del.csv': 'x\n2\n',
+        'mrg.csv': 'x\n1\n',
         'p.parquet': parquet,
       }),
       '',
@@ -155,6 +158,14 @@ describe('ConsoleSession on the real DuckDB', () => {
       [`unpivot 'a.csv' on x into name n value v`, [['x', 1]]],
     ];
     for (const [sql, data] of forms) expect(await rows(sql), sql).toEqual(data);
+    // DELETE ... USING and MERGE INTO ... USING read the file after USING as a table.
+    await s.run(`create table t as select * from (values (1), (2), (3)) v(k)`);
+    await s.run(`delete from t using 'del.csv' b where t.k = b.x`);
+    expect(await rows(`select k from t order by k`), 'delete using').toEqual([[1], [3]]);
+    await s.run(
+      `merge into t using 'mrg.csv' s on t.k = s.x when matched then delete when not matched then insert values (s.x + 9)`,
+    );
+    expect(await rows(`select k from t order by k`), 'merge using').toEqual([[3]]);
     for (const sql of [
       `describe 'a.csv'`,
       `summarize 'a.csv'`,
