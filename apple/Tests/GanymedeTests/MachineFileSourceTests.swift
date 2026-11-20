@@ -397,7 +397,7 @@ final class MachineFileSourceTests: XCTestCase {
             "“Io” didn’t answer.")
         XCTAssertEqual(
             FileSourceError.message(URLError(.timedOut), place: .machine(id), machineName: nil),
-            "“This machine” didn’t answer.")
+            "The machine didn’t answer.")
     }
 
     func testAPlainTextNotMounted404IsToldApart() async {
