@@ -117,9 +117,3 @@ origin across launches, so changes there last.
 | Command palette | `⌘⇧P` | `Ctrl+Shift+P` |
 
 <!-- shortcuts:end -->
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release. The Go to Definition and Rename Symbol… rows of the
-> Edit mode table, and rebinding them in the Shortcuts sheet, are new:
-> `F12` and `F2` themselves already work in the latest release.

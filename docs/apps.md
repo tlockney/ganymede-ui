@@ -823,11 +823,6 @@ for it yet.
 > Needs cdp-kernel 0.14.0 or later: an older kernel doesn't answer, and
 > none of this does anything.
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release. Rebinding F12 and F2 in the Shortcuts sheet is
-> new; the keys themselves already work in the latest release.
-
 Code cells of a TypeScript or JavaScript kernel get three more things from
 the kernel's language service, in the Mac, iPad and iPhone apps and in the
 browser:
@@ -935,13 +930,6 @@ While the journal shows, the notebook's run, insert, cell-type and edit
 commands (toolbar, Command Palette and keys) are off, because they would act
 on cells you can't see. It works in the browser and in the Mac, iPad and iPhone apps,
 on a Ganymede server, and there is no setting for it.
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release. In 0.14.0 the Mac app's toolbar and menus and the
-> iPad and iPhone menu have no View as Journal (use the Command Palette),
-> the status line doesn't list agents, and the composer has no line
-> about who is in the room.
 
 - **The header** comes first: the notebook's title (its metadata title, else
   the file name), then its kernel, who started it and when (the first agent
