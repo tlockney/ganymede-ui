@@ -591,6 +591,65 @@ describe('NotebookPane', () => {
       await waitFor(() => expect(latest()?.status).toBe('idle'));
     });
 
+    describe('kernel version line (#693)', () => {
+      const reply = (implementation: string, implementation_version: string, banner = '') => ({
+        status: 'ok',
+        implementation,
+        implementation_version,
+        banner,
+      });
+      const withInfo = (info: unknown, over: Partial<FakeKernel> = {}) =>
+        ({
+          ...kernel(over),
+          info: Promise.resolve(info),
+          requestKernelInfo: vi.fn(async () => ({ content: info })),
+        }) as FakeKernel & { requestKernelInfo: ReturnType<typeof vi.fn> };
+
+      it('shows the running kernel’s implementation and version, then drops it with the kernel', async () => {
+        const { latest, session } = await running();
+        // This kernel never replied: no line, never "undefined".
+        expect(latest()?.kernelVersionLine).toBeUndefined();
+        const cdp = withInfo(reply('cdp-kernel', '0.14.0', 'cdp-kernel on node 24.11.0 (V8 13)'));
+        session.session = { kernel: cdp };
+        act(() => session.kernelChanged.emit(null));
+        await waitFor(() =>
+          expect(latest()?.kernelVersionLine).toBe('cdp-kernel 0.14.0 · node 24.11.0'),
+        );
+        // Switching kernels shows the new one's.
+        session.session = { kernel: withInfo(reply('ipython', '8.20.0'), { name: 'py' }) };
+        act(() => session.kernelChanged.emit(null));
+        await waitFor(() => expect(latest()?.kernelVersionLine).toBe('ipython 8.20.0'));
+        // And none while no kernel runs.
+        session.session = null;
+        act(() => session.kernelChanged.emit(null));
+        await waitFor(() => expect(latest()?.kernelVersionLine).toBeUndefined());
+      });
+
+      it('asks again after a restart', async () => {
+        const { latest, session } = await running();
+        const k = withInfo(reply('cdp-kernel', '0.14.0'));
+        session.session = { kernel: k };
+        act(() => session.kernelChanged.emit(null));
+        await waitFor(() => expect(latest()?.kernelVersionLine).toBe('cdp-kernel 0.14.0'));
+        k.status = 'restarting';
+        act(() => session.statusChanged.emit('restarting'));
+        await waitFor(() => expect(latest()?.kernelVersionLine).toBeUndefined());
+        k.requestKernelInfo.mockResolvedValue({ content: reply('cdp-kernel', '0.15.0') });
+        k.status = 'idle';
+        act(() => session.statusChanged.emit('idle'));
+        await waitFor(() => expect(latest()?.kernelVersionLine).toBe('cdp-kernel 0.15.0'));
+        expect(k.requestKernelInfo).toHaveBeenCalledOnce();
+      });
+
+      it('shows nothing when the kernel’s reply lacks the fields', async () => {
+        const { latest, session } = await running();
+        session.session = { kernel: withInfo({ status: 'ok' }) };
+        act(() => session.kernelChanged.emit(null));
+        await waitFor(() => expect(latest()?.status).toBe('idle'));
+        expect(latest()?.kernelVersionLine).toBeUndefined();
+      });
+    });
+
     it.each(['restarting', 'autorestarting', 'starting', 'terminating'])(
       'keeps %s while a run is in flight (#655)',
       async state => {

@@ -57,6 +57,7 @@ import { attachDevice, type DevicePromptState, promptClick } from '../lib/device
 import { declareDevice } from '../lib/kernel-relay';
 import { guardReload, reloadPage } from '../lib/reload';
 import { DevicePrompt } from './DevicePrompt';
+import { kernelVersionLine } from '../lib/kernel-version';
 import { type LastReading, diedOutOfMemory, useLastKernelReading } from '../lib/kernel-usage';
 import { initialParams } from '../lib/run';
 
@@ -77,6 +78,12 @@ export type NotebookController = {
    * name): running needs another one picked first.
    */
   missingKernel?: string;
+  /**
+   * The running kernel's implementation and version from its
+   * `kernel_info_reply`, as "cdp-kernel 0.14.0 · node 24.11.0" (#693);
+   * undefined with no kernel running or before it has replied.
+   */
+  kernelVersionLine?: string;
   dirty: boolean;
   /**
    * The file changed on disk since it was opened or last saved here, so
@@ -343,6 +350,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
   const [status, setStatus] = useState<KernelState>('connecting');
   const [kernelName, setKernelName] = useState<string>();
   const [kernelId, setKernelId] = useState<string>();
+  /** The running kernel's implementation and version (#693), once it has replied. */
+  const [kernelVersion, setKernelVersion] = useState<string>();
   // The kernel's memory while the notebook is shown, so a death can say
   // it ran out (#241): not from a backend whose kernels run in the page.
   const memory = useLastKernelReading(
@@ -792,6 +801,21 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
     /** The kernel last seen dead or cut off, so each says so once. */
     let dead: unknown;
     let lost: unknown;
+    /** The kernel whose info reply `kernelVersion` shows, and whether it was restarting. */
+    let versionOf: Kernel.IKernelConnection | null | undefined;
+    let restarting = false;
+    const readVersion = (kernel: Kernel.IKernelConnection, reply: () => Promise<unknown>) => {
+      Promise.resolve()
+        .then(reply)
+        .then(
+          info => {
+            // The kernel went, or restarted again, while the reply was due.
+            if (versionOf === kernel && !kernel.isDisposed)
+              setKernelVersion(kernelVersionLine(info));
+          },
+          () => {},
+        );
+    };
     const update = () => {
       const kernel = session.session?.kernel;
       const next: KernelState = !joined
@@ -830,6 +854,25 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       }
       setKernelName(kernel?.name);
       setKernelId(kernel?.id);
+      // The kernel's info reply: a new kernel's first one, then each
+      // restart's (the connection's `info` keeps the first).
+      const restartingNow = kernel?.status === 'restarting' || kernel?.status === 'autorestarting';
+      if (!kernel || kernel.isDisposed || kernel.status === 'dead') {
+        versionOf = null;
+        restarting = false;
+        setKernelVersion(undefined);
+      } else if (versionOf !== kernel) {
+        versionOf = kernel;
+        restarting = restartingNow;
+        setKernelVersion(undefined);
+        readVersion(kernel, () => kernel.info);
+      } else if (restartingNow) {
+        if (!restarting) setKernelVersion(undefined);
+        restarting = true;
+      } else if (restarting && kernel.connectionStatus === 'connected') {
+        restarting = false;
+        readVersion(kernel, async () => (await kernel.requestKernelInfo())?.content);
+      }
       setDirty(model.dirty);
       setTrusted(!hasUntrustedOutputs(model));
     };
@@ -1208,6 +1251,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       status,
       kernelName: kernelName ?? intended.name,
       missingKernel: kernelName ? undefined : intended.missing,
+      kernelVersionLine: kernelName ? kernelVersion : undefined,
       dirty,
       trusted,
       cellType,
@@ -1411,6 +1455,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
     path,
     status,
     kernelName,
+    kernelVersion,
     intended,
     dirty,
     trusted,

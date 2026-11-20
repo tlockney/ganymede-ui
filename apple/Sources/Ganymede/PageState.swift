@@ -163,6 +163,10 @@ struct PageState: Decodable, Equatable {
     var status: String?
     var kernel: String?
     var kernelDisplayName: String?
+    /// The running kernel's implementation and version, such as
+    /// "cdp-kernel 0.14.0 · node 24.11.0"; nil with none running, and from
+    /// a page older than #693.
+    var kernelVersionLine: String?
     var kernelMissing = false
     var trusted = true
     /// Whether Notebook Access works on this backend; absent before #479.

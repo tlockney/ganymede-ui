@@ -164,6 +164,12 @@ export type PageState = {
   kernel: string | null;
   /** That kernel's display name, or what the file asks for when it isn't installed. */
   kernelDisplayName: string | null;
+  /**
+   * The running kernel's implementation and version, from its
+   * `kernel_info_reply` ("cdp-kernel 0.14.0 · node 24.11.0", #693); null
+   * with no kernel running or none reported.
+   */
+  kernelVersionLine: string | null;
   /** True when the file's kernel isn't installed here. */
   kernelMissing: boolean;
   trusted: boolean;

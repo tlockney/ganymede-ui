@@ -775,6 +775,7 @@ export function App() {
       kernelDisplayName:
         shown?.missingKernel ??
         (kernel ? (specs?.kernelspecs[kernel]?.display_name ?? kernel) : null),
+      kernelVersionLine: shown?.kernelVersionLine ?? null,
       kernelMissing: !!shown?.missingKernel,
       trusted: shown?.trusted ?? true,
       hostGrants: hostGrantsAvailable(backend),

@@ -743,6 +743,10 @@ struct IPadNotebookToolbar: ToolbarContent {
                 } label: {
                     Label(page.state.kernelDisplayName ?? "Kernel", systemImage: "cpu")
                 }
+                // Which kernel runs, from its own reply (#693).
+                if let version = page.state.kernelVersionLine {
+                    Text(version)
+                }
                 // Where every notebook's kernels run (#473).
                 if AppModel.shared.kernelLocations.hasRemotes {
                     KernelLocationPicker(running: page.state.sessions.count)

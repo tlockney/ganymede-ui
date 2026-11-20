@@ -307,6 +307,7 @@ describe('attachRunStatus', () => {
         pendingInput: false,
         session: { kernel: { requestExecute: () => future, name: 'k' } },
         kernelDisplayName: 'K',
+        kernelVersionLine: null,
       };
       notebook.activeCellIndex = 0;
       const running = NotebookActions.run(notebook, session as never);

@@ -9,6 +9,7 @@ final class PageStateTests: XCTestCase {
             "status": "busy",
             "kernel": "cdp",
             "kernelDisplayName": "TypeScript",
+            "kernelVersionLine": "cdp-kernel 0.14.0 · node 24.11.0",
             "kernelMissing": false,
             "trusted": true,
             "hostGrants": true,
@@ -21,6 +22,7 @@ final class PageStateTests: XCTestCase {
         ]
         let state = PageState(body: body)
         XCTAssertEqual(state?.path, "moons/Io.ipynb")
+        XCTAssertEqual(state?.kernelVersionLine, "cdp-kernel 0.14.0 · node 24.11.0")
         XCTAssertEqual(state?.hostGrants, true)
         XCTAssertEqual(state?.publish, true)
         XCTAssertEqual(state?.runParams, true)

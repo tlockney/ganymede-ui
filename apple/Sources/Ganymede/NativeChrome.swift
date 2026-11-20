@@ -543,7 +543,7 @@ struct KernelPicker: View {
         } label: {
             Label(page.state.kernelDisplayName ?? "Kernel", systemImage: "cpu")
         }
-        .help("The notebook's kernel")
+        .help(page.state.kernelVersionLine ?? "The notebook's kernel")
         .disabled(!page.state.hasNotebook)
         .popover(isPresented: $shown, arrowEdge: .bottom) {
             KernelPopover(page: page, panel: panel) { shown = false }
@@ -563,6 +563,9 @@ private struct KernelPopover: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(state.kernelDisplayName ?? "No kernel").font(.headline)
                 Text(PageState.statusLabel(state.status)).foregroundStyle(.secondary)
+                if let version = state.kernelVersionLine {
+                    Text(version).foregroundStyle(.secondary)
+                }
             }
             if let memory = session?.memoryLabel {
                 LabeledContent("Memory", value: memory)
@@ -800,6 +803,11 @@ struct KernelMenu: View {
     @FocusedValue(\.pageModel) private var page
 
     var body: some View {
+        // Which kernel runs, from its own reply (#693).
+        if let version = page?.state.kernelVersionLine {
+            Text(version)
+            Divider()
+        }
         Button("Interrupt") { page?.run("interrupt") }
             .keyboardShortcut(".")
             .disabled(page?.state.isBusy != true)

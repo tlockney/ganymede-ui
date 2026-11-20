@@ -321,6 +321,7 @@ describe('App', () => {
         status: 'idle',
         kernel: 'python3',
         kernelDisplayName: 'Python 3',
+        kernelVersionLine: null,
         cellType: 'code',
         kernels: [
           { name: 'python3', displayName: 'Python 3', device: false },
