@@ -303,7 +303,8 @@ export function agentNames(cells: readonly Pick<JournalCellData, 'metadata'>[]):
  * Whether a Markdown cell is a request, and whether the agent answered it.
  * As the server reads it (`mcp/marks.rs`): the text starts with `@agent`, or
  * `@` and a client's name (`@claude-code`) or its first part (`@claude`),
- * ignoring case; it is answered when `metadata.ganymede.request` has `done`
+ * ignoring case, in a cell a person wrote (one without agent metadata);
+ * it is answered when `metadata.ganymede.request` has `done`
  * and this cell's own `id` (a copy of an answered request keeps the
  * metadata under a new id, and is a new request). `clients` are the
  * names the page knows agents by (see {@link agentNames}); the server's
@@ -314,6 +315,8 @@ export function requestState(
   clients: readonly string[] = [],
 ): 'open' | 'answered' | undefined {
   if (cell.cell_type !== 'markdown') return undefined;
+  // Only a person's cell is a request: the server skips what an agent wrote.
+  if (agentMetadata(cell)) return undefined;
   const word = /^@([\p{L}\p{N}_-]+)/u.exec(sourceOf(cell).trimStart())?.[1]?.toLowerCase();
   if (!word) return undefined;
   const ganymede = isRecord(cell.metadata) ? cell.metadata.ganymede : undefined;
@@ -379,19 +382,80 @@ export function attachmentDataUrl(attachments: unknown, url: string): string | u
 
 // The view a person chose ---------------------------------------------------
 
-const chosen = new Map<string, boolean>();
+/** Keyed by server, then path. */
+const chosen = new Map<string, Map<string, boolean>>();
 
-/** The view the person chose for `key` (a file) this session: true for the journal. */
-export function chosenView(key: string): boolean | undefined {
-  return chosen.get(key);
+/** The view the person chose for `path` on `server` this session: true for the journal. */
+export function chosenView(server: string, path: string): boolean | undefined {
+  return chosen.get(server)?.get(path);
 }
 
-/** Remember the person's choice for `key`; a reopen of the file keeps it. */
-export function chooseView(key: string, journal: boolean): void {
-  chosen.set(key, journal);
+/** Remember the person's choice for `path` on `server`; a reopen of the file keeps it. */
+export function chooseView(server: string, path: string, journal: boolean): void {
+  let paths = chosen.get(server);
+  if (!paths) chosen.set(server, (paths = new Map()));
+  paths.set(path, journal);
+}
+
+/**
+ * The choices follow a file or folder moved from `from` to `to`, or are
+ * dropped when it was deleted (`to` null).
+ */
+export function moveChosenViews(server: string, from: string, to: string | null): void {
+  const paths = chosen.get(server);
+  if (!paths) return;
+  for (const [p, journal] of [...paths]) {
+    if (p !== from && !p.startsWith(`${from}/`)) continue;
+    paths.delete(p);
+    if (to !== null) paths.set(to + p.slice(from.length), journal);
+  }
 }
 
 /** Forget every choice (tests). */
 export function forgetChosenViews(): void {
   chosen.clear();
+}
+
+// The header -------------------------------------------------------------------
+
+/** What the header says of the notebook. */
+export type JournalHeaderData = {
+  title: string;
+  /** Kernel or language, who started it and when, the cell count: each a short phrase. */
+  details: string[];
+};
+
+/**
+ * The header's text: the notebook's `metadata.title` or else the file name
+ * without its extension; the kernel (its display name, else its language);
+ * who started it (the first agent that wrote a cell) and the earliest time an
+ * agent wrote one; and the cell count.
+ */
+export function journalHeader(
+  metadata: unknown,
+  cells: readonly Pick<JournalCellData, 'metadata'>[],
+  fileName: string,
+  formatDate: (at: Date) => string = d => d.toLocaleDateString(),
+): JournalHeaderData {
+  const meta = isRecord(metadata) ? metadata : {};
+  const title = text(meta.title) ?? (fileName.replace(/\.ipynb$/i, '') || fileName);
+  const kernelspec = isRecord(meta.kernelspec) ? meta.kernelspec : {};
+  const info = isRecord(meta.language_info) ? meta.language_info : {};
+  const kernel = text(kernelspec.display_name) ?? text(info.name) ?? text(kernelspec.language);
+  const by = agentNames(cells)[0];
+  let first: number | undefined;
+  for (const c of cells) {
+    const at = text(agentMetadata(c)?.at);
+    const t = at ? Date.parse(at) : NaN;
+    if (!Number.isNaN(t) && (first === undefined || t < first)) first = t;
+  }
+  const details: string[] = [];
+  if (kernel) details.push(kernel);
+  if (by || first !== undefined) {
+    details.push(
+      `Started${by ? ` by ${by}` : ''}${first !== undefined ? ` ${formatDate(new Date(first))}` : ''}`,
+    );
+  }
+  details.push(cells.length === 1 ? '1 cell' : `${cells.length} cells`);
+  return { title, details };
 }

@@ -1,6 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import {
   agentNames,
+  chooseView,
+  chosenView,
+  forgetChosenViews,
+  journalHeader,
+  moveChosenViews,
   attachmentDataUrl,
   cellTrusted,
   trustedCellIds,
@@ -323,5 +328,71 @@ describe('attachmentDataUrl', () => {
     expect(attachmentDataUrl(attachments, 'attachment:b.svg')).toBeUndefined();
     expect(attachmentDataUrl(attachments, 'https://x/a.png')).toBeUndefined();
     expect(attachmentDataUrl(undefined, 'attachment:a.png')).toBeUndefined();
+  });
+});
+
+describe('a person-written request', () => {
+  it("is not a request when an agent wrote the cell, as the server counts only a person's", () => {
+    const cell = (metadata: unknown) => ({ cell_type: 'markdown', source: '@agent hi', metadata });
+    expect(requestState(cell({}))).toBe('open');
+    expect(requestState(cell(agent('note').metadata))).toBeUndefined();
+  });
+});
+
+describe('the chosen view', () => {
+  beforeEach(forgetChosenViews);
+
+  it('is kept per server and path', () => {
+    chooseView('a', 'x.ipynb', true);
+    expect(chosenView('a', 'x.ipynb')).toBe(true);
+    expect(chosenView('b', 'x.ipynb')).toBeUndefined();
+    expect(chosenView('a', 'y.ipynb')).toBeUndefined();
+  });
+
+  it('follows a rename, a folder move, and goes with a delete, on its server only', () => {
+    chooseView('a', 'w/x.ipynb', false);
+    chooseView('a', 'w2/x.ipynb', true);
+    chooseView('b', 'w/x.ipynb', true);
+    moveChosenViews('a', 'w/x.ipynb', 'w/y.ipynb');
+    expect(chosenView('a', 'w/y.ipynb')).toBe(false);
+    expect(chosenView('a', 'w/x.ipynb')).toBeUndefined();
+    moveChosenViews('a', 'w', 'v');
+    expect(chosenView('a', 'v/y.ipynb')).toBe(false);
+    // A folder named like a prefix isn't inside it.
+    expect(chosenView('a', 'w2/x.ipynb')).toBe(true);
+    expect(chosenView('b', 'w/x.ipynb')).toBe(true);
+    moveChosenViews('a', 'v', null);
+    expect(chosenView('a', 'v/y.ipynb')).toBeUndefined();
+  });
+});
+
+describe('journalHeader', () => {
+  const at = (iso: string) => ({ metadata: agent('note', { at: iso }).metadata });
+  const fmt = (d: Date) => d.toISOString().slice(0, 10);
+
+  it('says the title, kernel, who started it and when, and the cell count', () => {
+    const cells = [
+      at('2026-11-19T12:00:00Z'),
+      { metadata: {} },
+      { metadata: agent('executed', { by: 'other', at: '2026-11-18T12:00:00Z' }).metadata },
+    ];
+    expect(
+      journalHeader(
+        { title: 'Trend', kernelspec: { display_name: 'Python 3', name: 'python3' } },
+        cells,
+        'Trend.ipynb',
+        fmt,
+      ),
+    ).toEqual({
+      title: 'Trend',
+      details: ['Python 3', 'Started by claude-code 2026-11-18', '3 cells'],
+    });
+  });
+
+  it('falls back to the file name, the language, and says nothing of a start with no agent', () => {
+    expect(
+      journalHeader({ language_info: { name: 'python' } }, [{ metadata: {} }], 'Io moons.ipynb'),
+    ).toEqual({ title: 'Io moons', details: ['python', '1 cell'] });
+    expect(journalHeader({}, [], 'x.ipynb').details).toEqual(['0 cells']);
   });
 });

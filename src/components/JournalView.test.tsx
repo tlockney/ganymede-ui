@@ -122,6 +122,51 @@ function withOutput(data: Record<string, string>, id = 'c1') {
 }
 
 describe('JournalView', () => {
+  it('starts with a header: the title, the kernel, who started it, and the cell count', async () => {
+    // A notebook with its metadata, as a file gives it.
+    const nb = new YNotebook();
+    nb.fromJSON({
+      nbformat: 4,
+      nbformat_minor: 5,
+      metadata: {
+        title: 'Trend of moons',
+        kernelspec: { name: 'python3', display_name: 'Python 3' },
+      },
+      cells: journal().cells.map(c => c.toJSON()),
+    } as never);
+    show(nb);
+    const region = screen.getByRole('region', { name: 'Journal of Trend.ipynb' });
+    // First among the view's elements.
+    expect(region.firstElementChild?.tagName).toBe('HEADER');
+    expect(screen.getByRole('heading', { level: 1, name: 'Trend of moons' })).toBeInTheDocument();
+    const meta = region.querySelector('.journal-meta')!.textContent!;
+    expect(meta).toContain('Python 3');
+    expect(meta).toContain('Started by claude-code');
+    expect(meta).toContain('3 cells');
+    // It follows the notebook.
+    act(() => {
+      nb.setMetadata('title', 'Renamed');
+    });
+    expect(await screen.findByRole('heading', { level: 1, name: 'Renamed' })).toBeInTheDocument();
+  });
+
+  it('titles a notebook with no title by its file name', () => {
+    show(new YNotebook());
+    expect(screen.getByRole('heading', { level: 1, name: 'Trend' })).toBeInTheDocument();
+    expect(screen.getByText('0 cells')).toBeInTheDocument();
+  });
+
+  it('reads only the cells a change touched', async () => {
+    const nb = journal();
+    show(nb);
+    const spies = nb.cells.map(c => vi.spyOn(c, 'toJSON'));
+    act(() => {
+      nb.cells[2]!.setSource('a person’s second thought');
+    });
+    expect(await screen.findByText(/second thought/)).toBeInTheDocument();
+    expect(spies.map(s => s.mock.calls.length)).toEqual([0, 0, 1]);
+  });
+
   it('labels each cell with who wrote it, from the metadata', async () => {
     show(journal());
     const [note, ran, person] = await screen.findAllByRole('article');

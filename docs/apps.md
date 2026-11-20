@@ -873,13 +873,17 @@ the Command Palette) shows the open notebook that way; **Open as Notebook**
 goes back to full editing, in the same live room and on the same kernel.
 A notebook with cells an agent wrote opens as a journal; any other opens as
 a notebook. Your choice for a file holds until you close the app or page,
-including when the file is reopened after a Reload or a server restart.
+including when the file is reopened after a Reload or a server restart,
+and it goes with the file when you rename or move it.
 While the journal shows, the notebook's run, insert, cell-type and edit
 commands (toolbar, Command Palette and keys) are off, because they would act
 on cells you can't see. It works in the browser and in the Mac, iPad and iPhone apps,
 on a Ganymede server, and there is no setting for it. The Mac app's menus
 don't list it yet; use the Command Palette there.
 
+- **The header** comes first: the notebook's title (its metadata title, else
+  the file name), then its kernel, who started it and when (the first agent
+  that wrote a cell, and the earliest time an agent did), and the cell count.
 - **Who wrote each cell** is in a left column: _Agent ran it_ (with its
   execution count), _Recorded step_, _Agent note_, or _Person_ for a cell
   without agent metadata, with the author and time where the cell has

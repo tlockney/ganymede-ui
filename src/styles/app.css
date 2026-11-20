@@ -2270,6 +2270,25 @@ button {
   background: var(--window-bg);
 }
 
+.journal-header {
+  padding: 10px max(16px, var(--safe-right)) 6px max(16px, var(--safe-left));
+  border-bottom: 1px solid var(--separator);
+}
+
+.journal-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.journal-meta {
+  margin: 2px 0 0;
+  color: var(--text-2);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
 .journal-status {
   display: flex;
   flex-wrap: wrap;

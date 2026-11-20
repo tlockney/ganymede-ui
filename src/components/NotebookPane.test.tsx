@@ -30,8 +30,16 @@ vi.mock('../lib/jupyterlab', async () => {
   const { Widget } = await import('@lumino/widgets');
   const { Signal } = await import('@lumino/signaling');
   return {
-    createRendermime: vi.fn(() => ({})),
-    createNotebook: vi.fn(() => {
+    // Enough for the journal view to render outputs into.
+    createRendermime: vi.fn(() => ({
+      createRenderer: () => {
+        const w = new Widget();
+        (w as unknown as { renderModel: unknown }).renderModel = async () => {};
+        return w;
+      },
+      preferredMimeType: () => undefined,
+    })),
+    createNotebook: vi.fn((rendermime: unknown) => {
       // A plain Lumino widget stands in for JupyterLab's Notebook.
       const w = new Widget() as InstanceType<typeof Widget> & {
         model?: NotebookModel;
@@ -59,6 +67,7 @@ vi.mock('../lib/jupyterlab', async () => {
       // The outline goes to a heading's cell (#212).
       w.deselectAll = vi.fn();
       w.scrollToCell = vi.fn(async () => {});
+      (w as unknown as { rendermime: unknown }).rendermime = rendermime;
       fakes.notebooks.push(w);
       return w;
     }),
@@ -312,6 +321,51 @@ describe('NotebookPane', () => {
     expect(await c.renameSymbol('x')).toBe(false);
     expect(modelOf().cells.length).toBe(before);
     expect(fakes.sessions.length).toBeGreaterThan(0);
+  });
+
+  /** A journal whose one code cell has an output, with the controller. */
+  async function journalWithOutput() {
+    const nb = kept();
+    Object.assign(nb.cells[0]!, {
+      execution_count: 3,
+      outputs: [{ output_type: 'stream', name: 'stdout', text: '1\n' }],
+    });
+    const view = setup(vi.fn(async () => ({ path: 'moons/Io.ipynb', content: nb })));
+    await waitFor(() => expect(view.latest()?.journal).toBe(true));
+    return view;
+  }
+
+  it('does not start a kernel or run a cell from the journal, as the page commands run and run-all call it (#184)', async () => {
+    const { latest } = await journalWithOutput();
+    const session = fakes.sessions[0] as { changeKernel: ReturnType<typeof vi.fn> };
+    const advance = vi.spyOn(NotebookActions, 'runAndAdvance').mockResolvedValue(true);
+    const all = vi.spyOn(NotebookActions, 'runAll').mockResolvedValue(true);
+    await act(() => latest()!.run());
+    expect(session.changeKernel).not.toHaveBeenCalled();
+    expect(advance).not.toHaveBeenCalled();
+    await act(() => latest()!.runAll());
+    expect(session.changeKernel).not.toHaveBeenCalled();
+    expect(all).not.toHaveBeenCalled();
+    advance.mockRestore();
+    all.mockRestore();
+  });
+
+  it('keeps the outputs and counts when Clear All Outputs runs from the journal (#184)', async () => {
+    const { latest } = await journalWithOutput();
+    const cell = modelOf().cells.get(0) as ICodeCellModel;
+    act(() => latest()!.clearOutputs());
+    expect(cell.outputs.length).toBe(1);
+    expect(cell.executionCount).toBe(3);
+    expect(modelOf().dirty).toBe(false);
+  });
+
+  it('leaves the cell type alone when the page command cell-type runs from the journal (#184)', async () => {
+    const { latest } = await journalWithOutput();
+    const change = vi.spyOn(NotebookActions, 'changeCellType').mockImplementation(() => {});
+    act(() => latest()!.changeCellType('markdown'));
+    expect(change).not.toHaveBeenCalled();
+    expect(modelOf().cells.get(0).type).toBe('code');
+    change.mockRestore();
   });
 
   it('takes focus out of the hidden notebook when the journal shows (#184)', async () => {

@@ -7,6 +7,8 @@ import { ServerConnection } from '@jupyterlab/services';
 import type { Backend, BackendConfig } from './lib/backends';
 import { entry, fakeBackend, fakeServices } from './test/fakes';
 import { debugKernel } from './test/debug-kernel';
+import { chooseView, chosenView, forgetChosenViews } from './lib/journal';
+import { recentsKey } from './lib/recents';
 
 // The shell's wiring: which backend it connects to, the sheet, and new
 // notebooks. The backends and the notebook pane are tested on their own.
@@ -736,7 +738,8 @@ describe('App', () => {
       ],
       moons: [{ name: 'Europa.ipynb', type: 'notebook' }],
     });
-    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    const backend = fakeBackend(fake.services);
+    mocks.connect.mockResolvedValue(backend);
     history.replaceState(null, '', '/?kernels=server&chrome=native&open=Io.ipynb');
     render(<App />);
     await waitFor(() =>
@@ -789,7 +792,10 @@ describe('App', () => {
     expect(await run('run-with-params')).toBe(true);
     const sheet = await screen.findByRole('dialog', { name: /with Parameters/ });
     const move = { from: 'Io.ipynb', to: 'moons/Europa.ipynb' };
+    chooseView(recentsKey(backend.config), 'Io.ipynb', false);
     expect(await run('file-moved', JSON.stringify(move))).toBe(true);
+    expect(chosenView(recentsKey(backend.config), 'moons/Europa.ipynb')).toBe(false);
+    forgetChosenViews();
     // The app sends the two as separate tasks: a render can land between.
     await act(() => new Promise(r => setTimeout(r, 100)));
     expect(await run('open', 'moons/Europa.ipynb')).toBe(true);
@@ -1030,6 +1036,27 @@ describe('App', () => {
     await waitFor(() => expect(screen.getByTestId('pane')).toHaveTextContent('work/Moons.ipynb'));
     act(() => renamed('work/Kepler.ipynb', 'work/Laws.ipynb'));
     expect(screen.getByTestId('pane')).toHaveTextContent('work/Moons.ipynb');
+  });
+
+  it('moves the view a person chose with the notebook on a rename, and drops it on a delete (#184)', async () => {
+    history.replaceState(null, '', '/?kernels=server&open=work%2FOrbits.ipynb');
+    const fake = fakeServices({
+      '': [{ name: 'work', type: 'directory' }],
+      work: [{ name: 'Orbits.ipynb', type: 'notebook' }],
+    });
+    const backend = fakeBackend(fake.services);
+    mocks.connect.mockResolvedValue(backend);
+    render(<App />);
+    await waitFor(() => expect(screen.getByTestId('pane')).toHaveTextContent('work/Orbits.ipynb'));
+    const server = recentsKey(backend.config);
+    chooseView(server, 'work/Orbits.ipynb', false);
+    chooseView('another server', 'work/Orbits.ipynb', true);
+    act(() => mocks.onRenamed!('work/Orbits.ipynb', 'work/Kepler.ipynb'));
+    expect(chosenView(server, 'work/Orbits.ipynb')).toBeUndefined();
+    expect(chosenView(server, 'work/Kepler.ipynb')).toBe(false);
+    // Only this server's choices move.
+    expect(chosenView('another server', 'work/Orbits.ipynb')).toBe(true);
+    forgetChosenViews();
   });
 
   it('hands a missing launch file to the pane, not the connect sheet', async () => {

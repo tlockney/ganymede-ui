@@ -20,6 +20,7 @@ import {
   classifyProvenance,
   followLabel,
   foldLabel,
+  journalHeader,
   latestAgentTime,
   newCellCount,
   nextFollow,
@@ -54,10 +55,22 @@ type Cell = JournalCellData & { running: boolean };
 function useCells(notebook: YNotebook) {
   const [version, setVersion] = useState(0);
   const [changedAt, setChangedAt] = useState<number>();
+  /** The cells' Y.Maps changed since the cells were last read. */
+  const touched = useRef(new Set<object>());
   useEffect(() => {
     let frame = 0;
-    const onChange = (tr: { changed: Map<unknown, unknown>; local: boolean }) => {
+    const onChange = (tr: {
+      changed: Map<unknown, unknown>;
+      changedParentTypes: Map<unknown, unknown>;
+      local: boolean;
+    }) => {
       if (tr.changed.size === 0) return;
+      // Which cells this touched: a cell's own Y.Map is among the changed
+      // parents of anything inside it (its source, outputs, metadata).
+      for (const c of notebook.cells) {
+        const y = (c as unknown as { ymodel: object }).ymodel;
+        if (tr.changedParentTypes.has(y)) touched.current.add(y);
+      }
       // "Changed N ago" is about the others: a change made here (the
       // composer, this page's own runs) is not news.
       if (!tr.local) setChangedAt(Date.now());
@@ -73,26 +86,46 @@ function useCells(notebook: YNotebook) {
       if (frame) cancelAnimationFrame(frame);
     };
   }, [notebook]);
-  // A cell that didn't change keeps its object, so its view isn't redone.
-  const known = useRef(new Map<string, { key: string; cell: Cell }>());
+  // A cell that didn't change keeps its object, so its view isn't redone,
+  // and isn't read again: only the cells a transaction touched are.
+  const known = useRef(new Map<object, Cell>());
   const cells = useMemo<Cell[]>(() => {
-    const next = new Map<string, { key: string; cell: Cell }>();
-    const list = notebook.cells.map((c, i) => {
-      const data = c.toJSON() as unknown as JournalCellData;
-      const running = c.cell_type === 'code' && (c as YCodeCell).executionState === 'running';
-      const key = JSON.stringify([data, running]);
-      const at = data.id ?? `#${i}`;
-      const prev = known.current.get(at);
-      const cell = prev?.key === key ? prev.cell : { ...data, running };
-      next.set(at, { key, cell });
+    const next = new Map<object, Cell>();
+    const list = notebook.cells.map(c => {
+      const y = (c as unknown as { ymodel: object }).ymodel;
+      let cell = known.current.get(y);
+      if (!cell || touched.current.has(y)) {
+        const data = c.toJSON() as unknown as JournalCellData;
+        const running = c.cell_type === 'code' && (c as YCodeCell).executionState === 'running';
+        cell = { ...data, running };
+      }
+      next.set(y, cell);
       return cell;
     });
     known.current = next;
+    touched.current.clear();
     return list;
     // `version` is what says the document changed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [notebook, version]);
   return { cells, changedAt };
+}
+
+/** The notebook's metadata, read again when it changes. */
+function useMetadata(notebook: YNotebook): unknown {
+  const [, bump] = useState(0);
+  useEffect(() => {
+    const changed = () => bump(n => n + 1);
+    notebook.metadataChanged.connect(changed);
+    return () => {
+      notebook.metadataChanged.disconnect(changed);
+    };
+  }, [notebook]);
+  return {
+    title: notebook.getMetadata('title'),
+    kernelspec: notebook.getMetadata('kernelspec'),
+    language_info: notebook.getMetadata('language_info'),
+  };
 }
 
 /** The room's awareness names, live. */
@@ -408,6 +441,7 @@ export function JournalView({
 }: Props) {
   const { cells, changedAt } = useCells(notebook);
   const names = usePresence(notebook);
+  const header = journalHeader(useMetadata(notebook), cells, name);
   const now = useNow(15_000);
   const [live, setLive] = useState(() => room?.live ?? true);
   useEffect(() => room?.watchLive(setLive), [room]);
@@ -468,6 +502,10 @@ export function JournalView({
 
   return (
     <section className="journal" aria-label={`Journal of ${name}`}>
+      <header className="journal-header">
+        <h1 className="journal-title">{header.title}</h1>
+        <p className="journal-meta">{header.details.join(' · ')}</p>
+      </header>
       <div className="journal-status">
         <span>
           {names.length > 1 ? `In the room: ${names.join(', ')}` : 'Only you are here'}

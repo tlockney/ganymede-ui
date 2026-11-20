@@ -27,6 +27,16 @@ Decisions:
   shown only for `executed`.
 - **History**: "rev N" is `history.length + 1`; entries without a string
   `source` are skipped.
+- **Header** (the issue's first element): `journalHeader` gives the title
+  (`metadata.title`, else the file name), kernel, who started it and the
+  earliest agent `at`, and the cell count; it follows `metadataChanged`.
+- **View choice** is keyed by server (`recentsKey`) and path, and moves with
+  a rename or folder move (the pane's rename, the native `file-moved`, the
+  sidebar's file actions) and is dropped on a delete.
+- **Change detection** reads only the cells a transaction touched
+  (`changedParentTypes` of each cell's Y.Map), not every cell's JSON.
+- **Requests** count only a person's cell (no agent metadata), as the
+  server's `by.person` check does.
 - **The notebook goes quiet**: the hidden notebook's run, insert, cell-type,
   clear-outputs, language-service and notebook commands do nothing while the
   journal shows (the controller ignores them; the toolbar and palette list

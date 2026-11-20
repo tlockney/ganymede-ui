@@ -66,6 +66,7 @@ import { agentCall } from './lib/native-agent';
 import { sendTestReport } from './lib/crash-reports';
 import { useSignals } from './lib/useSignal';
 import { fileActions, within } from './lib/file-actions';
+import { moveChosenViews } from './lib/journal';
 import { useFileSearch } from './lib/search';
 import {
   clearRecents,
@@ -199,6 +200,9 @@ export function App() {
    * moves it along; a delete closes it, as it closes an open data file.
    */
   const followFolder = useCallback((from: string, to: string | null) => {
+    // The view chosen for a notebook goes with it.
+    const b = backendRef.current;
+    if (b) moveChosenViews(recentsKey(b.config), from, to);
     setDuckFolder(f =>
       f === undefined || !within(f, from) ? f : to === null ? undefined : to + f.slice(from.length),
     );
@@ -220,6 +224,8 @@ export function App() {
   }, []);
   const followRename = useCallback(
     (from: string, to: string) => {
+      const b = backendRef.current;
+      if (b) moveChosenViews(recentsKey(b.config), from, to);
       setOpenPath(p => (p === from ? to : p));
       followRun(from, to);
     },

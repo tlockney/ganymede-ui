@@ -17,6 +17,7 @@ import { installTableOutput } from '../lib/table-output';
 import { CellMenu } from './CellMenu';
 import { KeyboardBar } from './KeyboardBar';
 import { JournalView } from './JournalView';
+import { recentsKey } from '../lib/recents';
 import { chooseView, chosenView, hasAgentCells, trustedCellIds } from '../lib/journal';
 import type { Cell, ICodeCellModel } from '@jupyterlab/cells';
 import { downloadFile } from '../lib/download';
@@ -718,7 +719,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       // The person's choice for this file holds across reopens (a Reload, a
       // restarted server); the default is only for the first open.
       const isJournal =
-        chosenView(`${backend.config.kind}:${path}`) ??
+        chosenView(recentsKey(backend.config), path) ??
         hasAgentCells((model.sharedModel as YNotebook).cells.map(c => c.toJSON()));
       journalRef.current = isJournal;
       setJournal(isJournal);
@@ -794,7 +795,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         teardown();
       }
     };
-  }, [services, rooms, path, attempt, memory, setIntended, backend.config.kind]);
+  }, [services, rooms, path, attempt, memory, setIntended, backend.config]);
 
   // Put the Lumino widget in the page. The widget lives in a holder node
   // that moves in and out of the pane: when the pane goes, the holder is
@@ -1478,7 +1479,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       toggleJournal: () => {
         const next = !journalRef.current;
         journalRef.current = next;
-        chooseView(`${backend.config.kind}:${path}`, next);
+        chooseView(recentsKey(backend.config), path, next);
         setJournal(next);
       },
       goToCell: index => {
