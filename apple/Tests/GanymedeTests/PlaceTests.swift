@@ -94,6 +94,10 @@ final class PlaceTests: XCTestCase {
         XCTAssertTrue(machine.allowsFollowing(try url("/?kernels=server&machine=\(id)&open=/a.ipynb")))
         XCTAssertFalse(machine.allowsFollowing(try url("/")))
         XCTAssertFalse(machine.allowsFollowing(try url("/?machine=other")))
+        // Only the first `machine=` counts, as the page reads it.
+        XCTAssertFalse(machine.allowsFollowing(try url("/?machine=&machine=\(id)")))
+        XCTAssertFalse(machine.allowsFollowing(try url("/?machine=bad!&machine=\(id)")))
+        XCTAssertTrue(machine.allowsFollowing(try url("/?machine=\(id)&machine=other")))
         XCTAssertFalse(machine.allowsFollowing(try url("/api/contents/")))
         XCTAssertFalse(machine.allowsFollowing(try url("/machines/other/api/status")))
         XCTAssertFalse(machine.allowsFollowing(try url("/files/secret.txt")))

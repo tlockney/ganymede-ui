@@ -76,7 +76,9 @@ Review follow-ups:
 - **A machine window can't become one of this device's pages.** A link in
   its page to the app's own origin loads only under its mount or as its
   own page (`Place.allowsFollowing`). The page's places list is refreshed
-  when the app's list changes (`WebViewCoordinator.places`).
+  when the app's list changes (`WebViewCoordinator.places` sets
+  `window.ganymedePlaces` and fires a `ganymede-places` event, which
+  `usePlaces` listens for).
 - **Running tab** of a machine says "Nothing is running on <machine>." It
   has no New Terminal; a terminal on a machine is a follow-up.
 - The journal list's classes are `journal-item-agent` and

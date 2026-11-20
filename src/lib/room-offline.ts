@@ -17,8 +17,11 @@ export function isEditKey(e: Pick<KeyboardEvent, 'key' | 'metaKey' | 'ctrlKey' |
 function setSync(cell: Cell, on: boolean) {
   const code = 'syncScrolled' in cell ? (cell as CodeCell) : undefined;
   if (on) {
-    // Read each state back while it still isn't synced: turning the sync
-    // on first would write what was read, as the metadata already says.
+    // The sync setters read the metadata when turned on, but after setting
+    // the flag, so what they set (the cell's state, as the metadata says)
+    // is written straight back: a Y-doc update on every reconnect. Reading
+    // it first, while the sync is still off, writes nothing (a test of a
+    // real notebook counts the updates).
     cell.loadEditableState();
     cell.loadCollapseState();
     code?.loadScrolledState();

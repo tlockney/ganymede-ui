@@ -21,6 +21,20 @@ declare global {
   }
 }
 
+/** Fired on `window` by the app after it sets `ganymedePlaces` again. */
+export const PLACES_EVENT = 'ganymede-places';
+
+/** The places the app lists, kept current as it changes the list. */
+export function usePlaces(): PlaceInfo[] {
+  const [places, setPlaces] = useState(() => pagePlaces());
+  useEffect(() => {
+    const update = () => setPlaces(pagePlaces());
+    window.addEventListener(PLACES_EVENT, update);
+    return () => window.removeEventListener(PLACES_EVENT, update);
+  }, []);
+  return places;
+}
+
 /** The places the app gave the page, dropping anything malformed. */
 export function pagePlaces(
   win: { ganymedePlaces?: unknown } | null = typeof window === 'undefined' ? null : window,

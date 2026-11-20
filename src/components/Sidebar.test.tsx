@@ -640,6 +640,15 @@ describe('Sidebar on a connected machine (#701)', () => {
     expect(await screen.findByText(/too old to list journals/)).toBeInTheDocument();
   });
 
+  it('shows the folder again on Files after a search on Search', async () => {
+    renderMachine();
+    await userEvent.click(await screen.findByRole('tab', { name: 'Search' }));
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Search files' }), 'moons');
+    await userEvent.click(screen.getByRole('tab', { name: 'Files' }));
+    expect(screen.queryByRole('list', { name: 'Search results' })).toBeNull();
+    expect(await screen.findByText('Saturn')).toBeVisible();
+  });
+
   it('has no place switcher or tabs for this device', async () => {
     renderSidebar();
     await screen.findByText('Saturn');

@@ -1,3 +1,4 @@
+import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   FIRST_RETRY_MS,
@@ -5,6 +6,7 @@ import {
   REACHABLE_POLL_MS,
   nextCheckDelay,
   pagePlaces,
+  usePlaces,
   watchReachable,
 } from './places';
 
@@ -86,5 +88,29 @@ describe('reachability backoff', () => {
       expect(seen).toEqual([]);
       expect(check).toHaveBeenCalledTimes(1);
     });
+  });
+});
+
+describe('usePlaces', () => {
+  afterEach(() => {
+    delete (window as { ganymedePlaces?: unknown }).ganymedePlaces;
+  });
+
+  it('follows the list the app sets again, on its ganymede-places event', () => {
+    window.ganymedePlaces = [{ id: null, name: 'This Mac' }];
+    const { result, unmount } = renderHook(() => usePlaces());
+    expect(result.current).toEqual([{ id: null, name: 'This Mac' }]);
+    window.ganymedePlaces = [
+      { id: null, name: 'This Mac' },
+      { id: 'mini-1', name: 'm4mini' },
+    ];
+    // Not until the app says so.
+    expect(result.current).toHaveLength(1);
+    act(() => void window.dispatchEvent(new Event('ganymede-places')));
+    expect(result.current.map(p => p.name)).toEqual(['This Mac', 'm4mini']);
+    const remove = vi.spyOn(window, 'removeEventListener');
+    unmount();
+    expect(remove).toHaveBeenCalledWith('ganymede-places', expect.any(Function));
+    remove.mockRestore();
   });
 });

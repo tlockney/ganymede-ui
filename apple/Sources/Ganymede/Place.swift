@@ -112,7 +112,8 @@ enum Place: Hashable, Codable {
         if url.path == "/machines/\(id)" || url.path.hasPrefix(mountPath) { return true }
         guard url.path == "/" || url.path.isEmpty else { return false }
         let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
-        return items.contains { $0.name == "machine" && $0.value == id }
+        // The first `machine=`, as `WindowTarget(page:)` and the page read it.
+        return items.first { $0.name == "machine" }?.value == id
     }
 
     /// Whether notebooks of this place go in native Recents, File > Open

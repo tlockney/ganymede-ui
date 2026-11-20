@@ -3,13 +3,12 @@ import {
   type Backend,
   type BackendConfig,
   connect,
-  loadConfig,
-  machineFromSearch,
   SAME_ORIGIN,
   saveConfig,
   signedInHere,
 } from './lib/backends';
-import { pagePlaces } from './lib/places';
+import { usePlaces } from './lib/places';
+import { initialConfig, isAppServer, sameBackend } from './lib/app-config';
 import { openPlace as postOpenPlace } from './lib/native';
 import { offersDevice } from './lib/kernel-device';
 import { reportMoved } from './lib/kernel-relay';
@@ -93,32 +92,6 @@ import { RunSheet } from './components/RunSheet';
 import { runAvailable, runWithParams } from './lib/run';
 import { EXPORT_FORMATS, type ExportFormat } from './lib/export';
 
-/**
- * A token in the page URL, as `ganymede serve` prints it, wins once, and so
- * does `kernels=page`, `kernels=both` or `kernels=server`, which the Apple
- * apps add on every launch (`page` on an iPad without a kernel server,
- * `both` on the Mac). Pure, as React
- * may call a state initializer twice (#60); `stripLaunchParams` takes them
- * out of the URL afterwards.
- */
-function initialConfig(): BackendConfig | undefined {
-  const params = new URLSearchParams(window.location.search);
-  const token = params.get('token');
-  const kernels = params.get('kernels');
-  // A connected machine's window (#701): the page's server is the app's
-  // mount of that machine, whatever the page connected to last time. The
-  // parameters stay in the URL, so a reload comes back to the machine.
-  const machine = machineFromSearch(window.location.search);
-  if (machine) return { kind: 'ganymede', url: '', token: '', ...machine };
-  if (token === null && kernels === null) return loadConfig();
-  return {
-    kind: 'ganymede',
-    url: '',
-    token: token ?? '',
-    ...(kernels === 'page' || kernels === 'both' ? { kernels } : {}),
-  };
-}
-
 /** Keeps the token out of history and the referrer. `open` is kept in step instead. */
 function stripLaunchParams(): void {
   const params = new URLSearchParams(window.location.search);
@@ -126,17 +99,6 @@ function stripLaunchParams(): void {
   LAUNCH_PARAMS.forEach(p => params.delete(p));
   const rest = params.toString();
   history.replaceState(null, '', window.location.pathname + (rest ? `?${rest}` : ''));
-}
-
-/** The Apple app's own server: the one this page came from. */
-function isAppServer(config: BackendConfig): boolean {
-  return config.kind === 'ganymede' && config.url === '' && !config.machine;
-}
-
-/** Whether two configs reach the same notebooks, whatever the token. */
-function sameBackend(a: BackendConfig, b: BackendConfig): boolean {
-  if (a.kind !== 'ganymede' || b.kind !== 'ganymede') return a.kind === b.kind;
-  return a.url === b.url && a.kernels === b.kernels && a.machine === b.machine;
 }
 
 export function App() {
@@ -147,7 +109,7 @@ export function App() {
   // lists for switching.
   const machineName =
     config?.kind === 'ganymede' && config.machine ? (config.machineName ?? 'machine') : undefined;
-  const [places] = useState(() => pagePlaces());
+  const places = usePlaces();
   const openPlace = useCallback((id: string | null) => postOpenPlace(id), []);
   // The notebook and folder the URL asks for (`?open=`, `?dir=`): a window
   // the Apple apps open on one file.
