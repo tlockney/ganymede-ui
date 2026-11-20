@@ -98,11 +98,10 @@ final class PreviewSchemeHandler: NSObject, WKURLSchemeHandler {
         else {
             return task.didFailWithError(URLError(.fileDoesNotExist))
         }
-        let headers = [
-            "Content-Type": PreviewResources.mimeType(for: file),
-            "Content-Length": String(data.count),
-        ]
-        task.didReceive(HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: headers)!)
+        guard let response = PreviewResources.response(for: url, file: file, byteCount: data.count) else {
+            return task.didFailWithError(URLError(.badServerResponse))
+        }
+        task.didReceive(response)
         task.didReceive(data)
         task.didFinish()
     }

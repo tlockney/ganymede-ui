@@ -10,6 +10,20 @@ final class SettingsTabTests: XCTestCase {
         XCTAssertNil(SettingsTab(message: ["tab": "agent"]))
     }
 
+    func testDeveloperTabShowsOnlyWhileItIsOn() {
+        XCTAssertEqual(SettingsTab.developer.shown(developer: true), .developer)
+        // The tab kept from the last launch, with the switch since turned off.
+        XCTAssertEqual(SettingsTab.developer.shown(developer: false), .general)
+        for tab in SettingsTab.allCases where tab != .developer {
+            XCTAssertEqual(tab.shown(developer: false), tab)
+            XCTAssertEqual(tab.shown(developer: true), tab)
+        }
+    }
+
+    func testThePageCannotOpenTheDeveloperTab() {
+        XCTAssertNil(SettingsTab(message: "developer"))
+    }
+
     func testShortcutsPageKeepsTheServersQuery() throws {
         let server = try XCTUnwrap(URL(string: "http://127.0.0.1:8888/?token=abc"))
         let url = ShortcutsPane.url(server: server)

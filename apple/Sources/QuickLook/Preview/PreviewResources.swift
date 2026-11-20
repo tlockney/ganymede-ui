@@ -4,7 +4,9 @@ import UniformTypeIdentifiers
 /// The preview page's files (`npm run build:quicklook`, bundled in the
 /// extension as `quicklook/`), served to the web view under a scheme of
 /// the extension's own (#135). Module scripts don't load from `file:`
-/// URLs in WebKit, and there is no server to serve them.
+/// URLs in WebKit, and there is no server to serve them. The engine
+/// benchmark's Worker page (#698) serves its bundled files the same way,
+/// under its own scheme and host (`file(for:in:scheme:host:)`).
 enum PreviewResources {
     static let scheme = "ganymede-preview"
     static let host = "app"
@@ -12,8 +14,8 @@ enum PreviewResources {
 
     /// The file under `root` that `url` asks for, or nil when it names
     /// anything else: another scheme or host, a folder, or a path that
-    /// leaves `root`.
-    static func file(for url: URL, in root: URL) -> URL? {
+    /// leaves `root`. The scheme and host are the preview's unless given.
+    static func file(for url: URL, in root: URL, scheme: String = scheme, host: String = host) -> URL? {
         guard url.scheme == scheme, url.host == host else { return nil }
         let parts = url.path.split(separator: "/", omittingEmptySubsequences: false).dropFirst()
         guard !parts.isEmpty, !parts.contains(where: { $0.isEmpty || $0 == "." || $0 == ".." }) else {
@@ -39,5 +41,13 @@ enum PreviewResources {
             return UTType(filenameExtension: file.pathExtension)?.preferredMIMEType
                 ?? "application/octet-stream"
         }
+    }
+
+    /// A 200 answer for `file`'s `byteCount` bytes, with its Content-Type.
+    static func response(for url: URL, file: URL, byteCount: Int) -> HTTPURLResponse? {
+        HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: [
+            "Content-Type": mimeType(for: file),
+            "Content-Length": String(byteCount),
+        ])
     }
 }

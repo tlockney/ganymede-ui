@@ -6,7 +6,7 @@ import UIKit
 #endif
 
 /// Puts `text` on the pasteboard.
-private func copyToPasteboard(_ text: String) {
+func copyToPasteboard(_ text: String) {
     #if os(macOS)
     NSPasteboard.general.clearContents()
     NSPasteboard.general.setString(text, forType: .string)
