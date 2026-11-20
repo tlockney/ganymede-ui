@@ -1630,6 +1630,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
           trustedIds={() => trustedCellIds(open.model)}
           room={open.room}
           name={basename(path)}
+          path={path}
+          roomSettings={rooms ? services.serverSettings : undefined}
           onOpenAsNotebook={() => controllerRef.current?.toggleJournal()}
         />
       )}

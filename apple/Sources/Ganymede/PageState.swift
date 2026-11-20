@@ -183,6 +183,9 @@ struct PageState: Decodable, Equatable {
     var accessWanted: [String]?
     /// The active cell's type: `code`, `markdown` or `raw`.
     var cellType: String?
+    /// Whether the open notebook shows as a journal (#184); absent from a
+    /// page older than #724.
+    var journal: Bool?
     var kernels: [Kernel] = []
     var backend: Backend?
     /// Running sessions; absent from a page older than #225.
@@ -227,6 +230,15 @@ struct PageState: Decodable, Equatable {
 
     /// A notebook is open: what the notebook menus and toolbar act on.
     var hasNotebook: Bool { path != nil && !showsData }
+
+    /// Whether the notebook's cells show, so run, insert and cell type can
+    /// act on them: not while the journal shows (#184, #724).
+    var editsCells: Bool { hasNotebook && journal != true }
+
+    /// What the journal toggle offers: back to the notebook while the
+    /// journal shows, otherwise the journal (#724).
+    var journalToggleTitle: String { journal == true ? "Open as Notebook" : "View as Journal" }
+    var journalToggleSymbol: String { journal == true ? "square.grid.2x2" : "text.page" }
 
     /// The window's subtitle: the kernel and what it is doing, as the
     /// page's own toolbar showed it.

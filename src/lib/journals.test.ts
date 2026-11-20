@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { ServerConnection } from '@jupyterlab/services';
 import {
   type Room,
+  agentsAt,
+  composerHint,
   fetchRooms,
   isJournal,
   journalStatus,
@@ -131,5 +133,38 @@ describe('fetchRooms', () => {
       kind: 'error',
       message: 'The server answered 502.',
     });
+  });
+});
+
+describe('agents at a path (#724)', () => {
+  const rooms = {
+    kind: 'rooms' as const,
+    rooms: [
+      room('a.ipynb', {
+        clients: [
+          { name: 'claude-code', kind: 'agent' },
+          { name: 'Thomas', kind: 'person' },
+          { name: 'claude-code', kind: 'agent' },
+        ],
+      }),
+    ],
+  };
+
+  it('lists the agents in that room, once each; none when no room is open for it', () => {
+    expect(agentsAt(rooms, 'a.ipynb')).toEqual(['claude-code']);
+    expect(agentsAt(rooms, 'b.ipynb')).toEqual([]);
+  });
+
+  it('knows nothing before an answer, from an older server, or on an error', () => {
+    expect(agentsAt(undefined, 'a.ipynb')).toBeUndefined();
+    expect(agentsAt({ kind: 'unsupported' }, 'a.ipynb')).toBeUndefined();
+    expect(agentsAt({ kind: 'error', message: 'x' }, 'a.ipynb')).toBeUndefined();
+  });
+
+  it('words the composer line', () => {
+    expect(composerHint(undefined)).toBeUndefined();
+    expect(composerHint([])).toMatch(/^No agent is in the room\./);
+    expect(composerHint(['claude-code'])).toBe('claude-code is in the room.');
+    expect(composerHint(['a', 'b'])).toBe('a, b are in the room.');
   });
 });

@@ -452,7 +452,7 @@ struct NotebookToolbar: ToolbarContent {
                 Button { page.run("run-all") } label: { Label("Run All", systemImage: "forward.fill") }
                     .help("Run all cells")
             }
-            .disabled(!page.state.hasNotebook)
+            .disabled(!page.state.editsCells)
         }
         ToolbarItem {
             ControlGroup {
@@ -466,6 +466,15 @@ struct NotebookToolbar: ToolbarContent {
                 .disabled(!page.state.hasKernel)
             }
         }
+        // Back and forth between the journal and the notebook (#724); the
+        // page's own button is under the app's chrome.
+        ToolbarItem {
+            Button { page.run("toggle-journal") } label: {
+                Label(page.state.journalToggleTitle, systemImage: page.state.journalToggleSymbol)
+            }
+            .help(page.state.journalToggleTitle)
+            .disabled(!page.state.hasNotebook)
+        }
         ToolbarItem {
             Menu {
                 Button("Code Cell") { page.run("insert-code") }
@@ -474,7 +483,7 @@ struct NotebookToolbar: ToolbarContent {
                 Label("Insert Cell", systemImage: "plus.rectangle")
             }
             .help("Insert a cell below")
-            .disabled(!page.state.hasNotebook)
+            .disabled(!page.state.editsCells)
         }
         ToolbarItem {
             Picker("Cell Type", selection: cellType) {
@@ -483,7 +492,7 @@ struct NotebookToolbar: ToolbarContent {
                 Text("Raw").tag("raw")
             }
             .help("The selected cell's type")
-            .disabled(!page.state.hasNotebook)
+            .disabled(!page.state.editsCells)
         }
         ToolbarItem {
             KernelPicker(page: page, panel: panel)
@@ -731,6 +740,17 @@ struct PublishCommand: View {
     var body: some View {
         Button("Publish as Web Page…") { page?.run("publish") }
             .disabled(page?.state.hasNotebook != true || page?.state.publish != true)
+    }
+}
+
+/// View › View as Journal / Open as Notebook (#724): the open notebook's
+/// journal view, or back to the notebook.
+struct JournalCommand: View {
+    @FocusedValue(\.pageModel) private var page
+
+    var body: some View {
+        Button(page?.state.journalToggleTitle ?? "View as Journal") { page?.run("toggle-journal") }
+            .disabled(page?.state.hasNotebook != true)
     }
 }
 

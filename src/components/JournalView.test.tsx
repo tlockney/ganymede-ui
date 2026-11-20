@@ -2,6 +2,7 @@ import '../test/notebook-env';
 import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Widget } from '@lumino/widgets';
+import { ServerConnection } from '@jupyterlab/services';
 import { YNotebook } from '@jupyter/ydoc';
 import * as Y from 'yjs';
 import { describe, expect, it, vi } from 'vitest';
@@ -51,7 +52,7 @@ function journal() {
 function show(
   nb: YNotebook,
   room?: Partial<NotebookRoom>,
-  more: { rendermime?: unknown; trusted?: string[] } = {},
+  more: { rendermime?: unknown; trusted?: string[]; path?: string; roomSettings?: unknown } = {},
 ) {
   const onOpenAsNotebook = vi.fn();
   const view = render(
@@ -60,6 +61,8 @@ function show(
       rendermime={(more.rendermime ?? rendermime) as never}
       trustedIds={() => new Set(more.trusted ?? [])}
       room={room as NotebookRoom}
+      path={more.path}
+      roomSettings={more.roomSettings as never}
       name="Trend.ipynb"
       onOpenAsNotebook={onOpenAsNotebook}
     />,
@@ -480,5 +483,39 @@ describe('JournalView', () => {
     });
     await screen.findByText(/more/);
     expect(log.filter(r => r.mime === 'text/plain')).toHaveLength(1);
+  });
+
+  describe('which agents are in the room (#724)', () => {
+    const roomsAnswer = (rooms: unknown[]) =>
+      ServerConnection.makeSettings({
+        baseUrl: 'http://127.0.0.1:1/',
+        fetch: (async () => new Response(JSON.stringify({ rooms }))) as unknown as typeof fetch,
+      });
+
+    it('names the agent in the room, beside the composer and in the status line', async () => {
+      show(journal(), undefined, {
+        path: 'Trend.ipynb',
+        roomSettings: roomsAnswer([
+          { path: 'Trend.ipynb', clients: [{ name: 'claude-code', kind: 'agent' }] },
+        ]),
+      });
+      expect(await screen.findByText('claude-code is in the room.')).toBeInTheDocument();
+      expect(screen.getByText(/In the room: .*claude-code/)).toBeInTheDocument();
+    });
+
+    it('says a note waits in the notebook when no agent is in the room', async () => {
+      show(journal(), undefined, {
+        path: 'Trend.ipynb',
+        roomSettings: roomsAnswer([
+          { path: 'Other.ipynb', clients: [{ name: 'x', kind: 'agent' }] },
+        ]),
+      });
+      expect(await screen.findByText(/No agent is in the room/)).toBeInTheDocument();
+    });
+
+    it('says nothing without a server to ask', () => {
+      show(journal());
+      expect(screen.queryByText(/is in the room\.|No agent is in the room/)).toBeNull();
+    });
   });
 });

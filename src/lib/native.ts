@@ -53,7 +53,7 @@ export type NativeHooks = {
  * on or off (#669). `toggle-live-markdown` does the same for the live
  * Markdown preview in Markdown cells (#672).
  * `toggle-journal` switches the open notebook between the journal view and
- * the notebook (#184); `PageState` doesn't report which shows yet.
+ * the notebook (#184); `PageState.journal` says which shows (#724).
  * `go-to-definition` and `rename-symbol` act on the name at the open
  * notebook's active cell, through the kernel's language service (#676);
  * `rename-symbol` takes the new name, and without one asks for it.
@@ -189,6 +189,8 @@ export type PageState = {
   accessWanted: string[];
   /** The active cell's type. */
   cellType: string | null;
+  /** Whether the open notebook shows as a journal (#184, #724): the app's View as Journal / Open as Notebook. */
+  journal: boolean;
   /** The kernels a notebook can switch to; `device` marks those that offer the device API (#648). */
   kernels: { name: string; displayName: string; device: boolean }[];
   /** Where kernels run: the backend's label and detail, or null before it connects. */

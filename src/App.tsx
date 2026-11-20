@@ -769,6 +769,7 @@ export function App() {
       runParams: runAvailable(backend),
       accessWanted: JSON.parse(accessKey) as string[],
       cellType: shown?.cellType ?? null,
+      journal: shown?.journal ?? false,
       kernels: Object.values(specs?.kernelspecs ?? {}).flatMap(k =>
         k ? [{ name: k.name, displayName: k.display_name, device: offersDevice(k) }] : [],
       ),

@@ -728,9 +728,9 @@ struct IPadNotebookToolbar: ToolbarContent {
     var body: some ToolbarContent {
         ToolbarItemGroup(placement: bottom ? .bottomBar : .navigationBarTrailing) {
             Button { page.run("run") } label: { Label("Run", systemImage: "play.fill") }
-                .disabled(!page.state.hasNotebook)
+                .disabled(!page.state.editsCells)
             Button { page.run("run-all") } label: { Label("Run All", systemImage: "forward.fill") }
-                .disabled(!page.state.hasNotebook)
+                .disabled(!page.state.editsCells)
             Button { page.run("interrupt") } label: { Label("Interrupt", systemImage: "stop.fill") }
                 .disabled(!page.state.isBusy)
             // Only while the notebook asks for something its grant doesn't give.
@@ -756,6 +756,10 @@ struct IPadNotebookToolbar: ToolbarContent {
                 .disabled(page.state.runParams != true)
                 Button { page.run("clear-outputs") } label: {
                     Label("Clear All Outputs", systemImage: "eraser")
+                }
+                // The journal view and back (#724).
+                Button { page.run("toggle-journal") } label: {
+                    Label(page.state.journalToggleTitle, systemImage: page.state.journalToggleSymbol)
                 }
                 Divider()
                 Button { page.run("restart") } label: { Label("Restart Kernel", systemImage: "arrow.clockwise") }
