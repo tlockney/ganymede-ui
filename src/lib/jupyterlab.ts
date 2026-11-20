@@ -30,7 +30,7 @@ import {
   ContextCompleterProvider,
   KernelCompleterProvider,
 } from '@jupyterlab/completer';
-import { Text } from '@jupyterlab/coreutils';
+import { PathExt, Text } from '@jupyterlab/coreutils';
 import { SearchDocumentModel, SearchDocumentView } from '@jupyterlab/documentsearch';
 import {
   Notebook,
@@ -155,12 +155,29 @@ installOutputFrames(baseRendermime);
 installTableOutput(baseRendermime);
 
 /**
+ * JupyterLab's resolver, with `resolveUrl` that doesn't read Node's `process`.
+ * Upstream calls `PathExt.resolve`, which asks `process.cwd()` for a relative
+ * path; JupyterLab's webpack build provides `process`, this Vite build doesn't
+ * (#704). Joining onto '/' and normalizing gives what upstream returns with a
+ * cwd of '/', `..` clamped at the root included.
+ */
+export class UrlResolver extends RenderMimeRegistry.UrlResolver {
+  override resolveUrl(url: string): Promise<string> {
+    return Promise.resolve(
+      this.isLocal(url)
+        ? PathExt.normalize(PathExt.join('/', encodeURI(PathExt.dirname(this.path)), url))
+        : url,
+    );
+  }
+}
+
+/**
  * A rendermime registry for one notebook: relative links and images in
  * Markdown and HTML resolve against the notebook's folder.
  */
 export function createRendermime(path: string, contents: Contents.IManager): IRenderMimeRegistry {
   return baseRendermime.clone({
-    resolver: new RenderMimeRegistry.UrlResolver({ path, contents }),
+    resolver: new UrlResolver({ path, contents }),
   });
 }
 
