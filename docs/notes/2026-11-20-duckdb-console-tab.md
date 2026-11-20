@@ -10,8 +10,8 @@ the tab.
 window (`WorkspaceTabs.join`). The `id` makes each one a different value:
 opening by value brings forward a window that has the value, and a new
 console must not. File > New DuckDB Console opens `.console(folder:id:)`
-directly (`NewCommands`), so it no longer needs a page and is never
-disabled. The page loads with `dir=<folder>&console=duckdb`; `console`
+directly (`NewCommands`), so it no longer needs a page; it is still
+disabled without a window folder (see below). The page loads with `dir=<folder>&console=duckdb`; `console`
 stays in the URL (it is not a `LAUNCH_PARAMS` entry), so a reload keeps the
 console. With the backend connected the page sets its console folder to
 `dir`. A restored console tab decodes its saved target, so it comes back on
