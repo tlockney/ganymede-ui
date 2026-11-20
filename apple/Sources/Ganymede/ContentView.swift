@@ -169,7 +169,8 @@ struct ContentView: View {
         }
         .navigationSubtitle(pageModel.state.subtitle)
         .frame(minWidth: 720, minHeight: 480)
-        .navigationTitle((target ?? loaded).title)
+        // A console's tab is titled with its name (#735).
+        .navigationTitle((target ?? loaded).tabTitle(consoleName: pageModel.state.console?.name))
         .focusedSceneValue(\.windowFolder, sidebarRoot)
         // Notebooks opened from the Finder (#228): the first window to see
         // them takes them. Each opens in a new tab (or brings forward

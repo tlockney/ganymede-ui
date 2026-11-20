@@ -159,6 +159,7 @@ struct OpenCommands: View {
     @Environment(\.openWindow) private var openWindow
     var model: AppModel
     private let recents = Recents.shared
+    @FocusedValue(\.pageModel) private var page
 
     var body: some View {
         Button("Open…") {
@@ -177,6 +178,22 @@ struct OpenCommands: View {
             Button("Clear Menu") { recents.clear() }
                 .disabled(recents.urls.isEmpty)
         }
+        // The page's recent DuckDB consoles (#735): each opens as a tab, or
+        // brings forward the tab showing it.
+        let consoles = page?.state.consoles ?? []
+        Menu("Open Recent Console") {
+            ForEach(consoles) { recent in
+                Button(recent.menuTitle) {
+                    openWindow(
+                        value: TabRequest.duckdbConsole(folder: recent.folder, session: UUID(uuidString: recent.id))
+                            .target(root: model.serverRootFolder))
+                }
+            }
+            Divider()
+            Button("Clear Recent Consoles") { page?.run("clear-recent-consoles") }
+                .disabled(consoles.isEmpty)
+        }
+        .disabled(page == nil)
         Button("Open Folder…") {
             if let folder = model.chooseFolder() {
                 openWindow(value: WindowTarget.folder(folder.standardizedFileURL))

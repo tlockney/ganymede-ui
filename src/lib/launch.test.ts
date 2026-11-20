@@ -15,6 +15,17 @@ describe('readLaunch', () => {
     expect(readLaunch('?open=Orbits.ipynb')).toEqual({ open: 'Orbits.ipynb', dir: '' });
   });
 
+  it('reads a console tab’s session, in lower case, only beside console=duckdb (#735)', () => {
+    const id = '0F8FAD5B-D9CB-469F-A165-70867728950E';
+    expect(readLaunch(`?dir=a&console=duckdb&session=${id}`)).toEqual({
+      dir: 'a',
+      console: 'duckdb',
+      session: id.toLowerCase(),
+    });
+    expect(readLaunch('?console=duckdb&session=not-an-id')).toEqual({ dir: '', console: 'duckdb' });
+    expect(readLaunch(`?dir=a&session=${id}`)).toEqual({ dir: 'a' });
+  });
+
   it('opens the DuckDB console on a folder with console=duckdb (#729)', () => {
     expect(readLaunch('?dir=/Users/me/work&console=duckdb')).toEqual({
       dir: 'Users/me/work',

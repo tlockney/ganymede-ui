@@ -5,9 +5,13 @@
  * Both are server paths, relative to the server's root; a leading `/` is
  * dropped, so `/Users/me/a.ipynb` works against a server rooted at `/`.
  * `console=duckdb` opens the DuckDB console on `dir` instead (#729): the
- * Mac app's console tabs.
+ * Mac app's console tabs, whose `session` is the id of the console's record
+ * in the recent consoles (#735): the tab's own id, so a restored tab comes
+ * back as the same console.
  */
-export type Launch = { open?: string; dir: string; console?: 'duckdb' };
+export type Launch = { open?: string; dir: string; console?: 'duckdb'; session?: string };
+
+const UUID = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i;
 
 /** A server path: no leading, trailing or repeated slashes. */
 export const clean = (path: string) => path.split('/').filter(Boolean).join('/');
@@ -15,16 +19,20 @@ export const clean = (path: string) => path.split('/').filter(Boolean).join('/')
 /** The folder a server path is in; '' for the root. */
 export const parentOf = (path: string) => path.split('/').slice(0, -1).join('/');
 
-/** Reads `open`, `dir` and `console` from a query string. Pure. */
+/** Reads `open`, `dir`, `console` and `session` from a query string. Pure. */
 export function readLaunch(search: string): Launch {
   const params = new URLSearchParams(search);
   const open = params.get('open');
   const dir = params.get('dir');
   const file = open ? clean(open) : '';
+  const session = params.get('session');
+  const duck = params.get('console') === 'duckdb' && !file;
   return {
     ...(file ? { open: file } : {}),
     // A console has no notebook, so `open` doesn't mix with it.
-    ...(params.get('console') === 'duckdb' && !file ? { console: 'duckdb' as const } : {}),
+    ...(duck ? { console: 'duckdb' as const } : {}),
+    // Lower case, as the page writes ids; the Mac app's UUIDs are upper case.
+    ...(duck && session && UUID.test(session) ? { session: session.toLowerCase() } : {}),
     dir: dir !== null ? clean(dir) : parentOf(file),
   };
 }

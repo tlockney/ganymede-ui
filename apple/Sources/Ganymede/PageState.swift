@@ -99,6 +99,24 @@ struct PageState: Decodable, Equatable {
         }
     }
 
+    /// The DuckDB console the page shows (#735): its record's id, which is
+    /// the console tab's own id, and its name.
+    struct Console: Decodable, Equatable {
+        var id: String
+        var name: String
+    }
+
+    /// A recent DuckDB console, for File > Open Recent Console (#735).
+    struct RecentConsole: Decodable, Equatable, Identifiable {
+        var id: String
+        var name: String
+        /// Its folder, a server path; "" for the root.
+        var folder: String
+
+        /// The menu item: the name, and the folder that tells two of one name apart.
+        var menuTitle: String { "\(name) · \(folder.isEmpty ? "/" : folder)" }
+    }
+
     /// A heading of the open notebook, for the Outline (#212).
     struct Heading: Decodable, Equatable {
         /// 1 to 6, as `#` to `######`.
@@ -192,6 +210,11 @@ struct PageState: Decodable, Equatable {
     var running: [Session]?
     /// The notebooks opened last, newest first; absent before #240.
     var recents: [String]?
+    /// The DuckDB console the page shows, or nil (#735); absent from a page
+    /// older than that.
+    var console: Console?
+    /// The recent DuckDB consoles, most recent first (#735).
+    var consoles: [RecentConsole]?
     /// The sidebar search, while there is one (#240).
     var search: Search?
     /// The open notebook's headings; absent from a page older than #212.
@@ -230,6 +253,9 @@ struct PageState: Decodable, Equatable {
 
     /// A notebook is open: what the notebook menus and toolbar act on.
     var hasNotebook: Bool { path != nil && !showsData }
+
+    /// File > Rename… has something to name: the notebook, or the console (#735).
+    var canRename: Bool { hasNotebook || console != nil }
 
     /// Whether the notebook's cells show, so run, insert and cell type can
     /// act on them: not while the journal shows (#184, #724).

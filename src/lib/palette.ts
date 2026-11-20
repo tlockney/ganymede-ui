@@ -40,6 +40,8 @@ export type PaletteContext = {
   kernel?: string;
   /** Recent notebooks, newest first. */
   recents: string[];
+  /** Recent DuckDB consoles, most recent first (#735); the one shown is left out. */
+  consoles?: { id: string; name: string; folder: string }[];
   /** Whether the open notebook shows as a journal (#184). */
   journal?: boolean;
   /** Whether the open notebook is trusted. */
@@ -107,6 +109,16 @@ export function paletteEntries(context: PaletteContext): PaletteEntry[] {
       arg: context.folder,
       disabled: !context.connected,
     }),
+    // The console's name and folder tell two of them apart, and filter (#735).
+    ...(context.consoles ?? []).map(c =>
+      app('open-console', `Open Recent Console: ${c.name}`, `Console · ${c.folder || '/'}`, {
+        arg: c.id,
+        disabled: !context.connected,
+      }),
+    ),
+    ...(context.consoles?.length
+      ? [app('clear-recent-consoles', 'Clear Recent Consoles', 'File')]
+      : []),
     app('save', 'Save', 'File', { disabled: !open }),
     app('rename', 'Rename Notebook…', 'File', {
       prompt: 'New name',

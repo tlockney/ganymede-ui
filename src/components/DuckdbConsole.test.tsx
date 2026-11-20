@@ -6,6 +6,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeBackend, fakeServices } from '../test/fakes';
 import type { ArrowResult } from '../lib/duckdb-console';
 import { DuckdbConsole } from './DuckdbConsole';
+import { loadConsoles, saveConsole } from '../lib/console-recents';
+import { recentsKey } from '../lib/recents';
 
 // DuckDB itself runs in a worker; duckdb-console.real.test.ts covers the real package.
 const parquet = vi.hoisted(() => ({ openEngine: vi.fn() }));
@@ -55,7 +57,16 @@ function backend(fake: ReturnType<typeof fakeServices>) {
   return backends.get(fake)!;
 }
 
-function setup(files: Record<string, string> = {}, folder = '') {
+const handlers = { onRename: vi.fn(), onOpenConsole: vi.fn() };
+const props = (
+  fake: ReturnType<typeof fakeServices>,
+  folder: string,
+  id: string,
+  onOpenNotebook: () => void,
+  name = 'Console 1',
+) => ({ backend: backend(fake), folder, id, name, ...handlers, onOpenNotebook });
+
+function setup(files: Record<string, string> = {}, folder = '', id = 'c1') {
   const fake = fakeServices({ '': [] });
   fake.contents.get.mockImplementation((async (path: string, opts?: { content?: boolean }) => {
     if (!(path in files)) throw Object.assign(new Error('nf'), { response: { status: 404 } });
@@ -64,9 +75,7 @@ function setup(files: Record<string, string> = {}, folder = '') {
     return { path, name: path, type: 'file', format: 'text', content: files[path] };
   }) as never);
   const opened = vi.fn();
-  const ui = render(
-    <DuckdbConsole backend={backend(fake)} folder={folder} onOpenNotebook={opened} />,
-  );
+  const ui = render(<DuckdbConsole {...props(fake, folder, id, opened)} />);
   return { ...ui, fake, opened };
 }
 
@@ -87,6 +96,9 @@ const typed = () => view().state.doc.toString();
 describe('DuckdbConsole', () => {
   beforeEach(() => {
     parquet.openEngine.mockReset();
+    localStorage.clear();
+    handlers.onRename.mockReset();
+    handlers.onOpenConsole.mockReset();
   });
 
   it('runs a statement ending in ; on Enter and shows its rows as a table', async () => {
@@ -354,7 +366,7 @@ describe('DuckdbConsole', () => {
     key('Enter');
     await screen.findByRole('table');
 
-    rerender(<DuckdbConsole backend={backend(fake)} folder="moved" onOpenNotebook={opened} />);
+    rerender(<DuckdbConsole {...props(fake, 'moved', 'c1', opened)} />);
     type(`select * from 'b.csv';`);
     key('Enter');
     await waitFor(() => expect(screen.getAllByRole('table')).toHaveLength(2));
@@ -423,5 +435,131 @@ describe('DuckdbConsole', () => {
     expect(opened).not.toHaveBeenCalled();
     await userEvent.click(button);
     await waitFor(() => expect(opened).toHaveBeenCalledWith('duckdb-console 2.ipynb'));
+  });
+
+  describe('names and recent consoles (#735)', () => {
+    const storeKey = recentsKey({ kind: 'browser' } as never);
+    const record = (id: string, name: string, statements: string[], used = 1) => ({
+      id,
+      name,
+      folder: '',
+      statements,
+      used,
+    });
+
+    it('shows its name and renames it on Enter, not on Esc or an empty name', async () => {
+      engineFor();
+      setup();
+      await userEvent.click(screen.getByRole('button', { name: 'Console 1' }));
+      const field = screen.getByRole('textbox', { name: 'Console name' });
+      await userEvent.clear(field);
+      await userEvent.type(field, 'Moons{Enter}');
+      expect(handlers.onRename).toHaveBeenCalledWith('Moons');
+      expect(screen.queryByRole('textbox', { name: 'Console name' })).toBeNull();
+
+      await userEvent.click(screen.getByRole('button', { name: 'Console 1' }));
+      await userEvent.type(screen.getByRole('textbox', { name: 'Console name' }), 'zzz{Escape}');
+      expect(screen.queryByRole('textbox', { name: 'Console name' })).toBeNull();
+      await userEvent.click(screen.getByRole('button', { name: 'Console 1' }));
+      await userEvent.clear(screen.getByRole('textbox', { name: 'Console name' }));
+      await userEvent.keyboard('{Enter}');
+      expect(handlers.onRename).toHaveBeenCalledTimes(1);
+    });
+
+    it('keeps what ran under its record, most recent first', async () => {
+      engineFor();
+      saveConsole(storeKey, record('old', 'Old', ['select 0'], 1));
+      setup({}, 'moons', 'c1');
+      await waitFor(() => expect(screen.queryByText('Starting DuckDB…')).toBeNull());
+      type('select 1; select 2;');
+      key('Enter', { shiftKey: true });
+      await waitFor(() => expect(screen.getAllByRole('table')).toHaveLength(2));
+      const [first, second] = loadConsoles(storeKey);
+      expect(first).toMatchObject({
+        id: 'c1',
+        name: 'Console 1',
+        folder: 'moons',
+        statements: ['select 1', 'select 2'],
+      });
+      expect(second?.id).toBe('old');
+    });
+
+    it('opens again with its statements and no results, and runs them again on a new engine', async () => {
+      const engine = engineFor();
+      saveConsole(storeKey, record('c1', 'Console 1', ['select 1', 'select 2']));
+      setup({}, '', 'c1');
+      await waitFor(() => expect(screen.queryByText('Starting DuckDB…')).toBeNull());
+      expect([...document.querySelectorAll('.duck-sql')].map(e => e.textContent)).toEqual([
+        'select 1',
+        'select 2',
+      ]);
+      expect(screen.queryByRole('table')).toBeNull();
+      expect(engine.query).not.toHaveBeenCalled();
+      expect(screen.getAllByText('Not run in this session')).toHaveLength(2);
+
+      await userEvent.click(screen.getByRole('button', { name: 'Run All Again' }));
+      await waitFor(() => expect(screen.getAllByRole('table')).toHaveLength(2));
+      expect(engine.query.mock.calls.map(c => c[0])).toEqual(['select 1', 'select 2']);
+      expect(screen.queryByRole('button', { name: 'Run All Again' })).toBeNull();
+      expect(screen.queryByText('Not run in this session')).toBeNull();
+      // Running them again adds nothing to the record.
+      expect(loadConsoles(storeKey)[0]?.statements).toEqual(['select 1', 'select 2']);
+
+      // A new statement appends to the same record; ↑ brings back the last.
+      type('select 3;');
+      key('Enter');
+      await waitFor(() => expect(screen.getAllByRole('table')).toHaveLength(3));
+      const records = loadConsoles(storeKey);
+      expect(records).toHaveLength(1);
+      expect(records[0]?.statements).toEqual(['select 1', 'select 2', 'select 3']);
+      key('ArrowUp');
+      expect(typed()).toBe('select 3;');
+    });
+
+    it('stops Run All Again at an error and leaves the rest to run again', async () => {
+      const engine = engineFor(sql => (sql === 'bad' ? new Error('boom') : MOONS));
+      saveConsole(storeKey, record('c1', 'Console 1', ['select 1', 'bad', 'select 3']));
+      setup();
+      await waitFor(() => expect(screen.queryByText('Starting DuckDB…')).toBeNull());
+      await userEvent.click(screen.getByRole('button', { name: 'Run All Again' }));
+      expect(await screen.findByText('boom')).toBeInTheDocument();
+      expect(engine.query.mock.calls.map(c => c[0])).toEqual(['select 1', 'bad']);
+      expect(screen.getAllByText('Not run in this session')).toHaveLength(1);
+      expect(screen.getByRole('button', { name: 'Run All Again' })).toBeEnabled();
+    });
+
+    it('lists other recent consoles to open, and clears them', async () => {
+      engineFor();
+      saveConsole(storeKey, record('c1', 'Console 1', ['select 1'], 3));
+      saveConsole(storeKey, record('b', 'Beta', ['select 2'], 2));
+      setup({}, '', 'c1');
+      const menu = screen.getByRole('combobox', { name: 'Recent consoles' });
+      // Not the console itself.
+      expect(within(menu).queryByRole('option', { name: /Console 1/ })).toBeNull();
+      await userEvent.selectOptions(menu, 'b');
+      expect(handlers.onOpenConsole).toHaveBeenCalledWith('b');
+      await userEvent.selectOptions(
+        menu,
+        screen.getByRole('option', { name: 'Clear Recent Consoles' }),
+      );
+      expect(loadConsoles(storeKey)).toEqual([]);
+      await waitFor(() => expect(screen.queryByRole('combobox')).toBeNull());
+    });
+
+    it('runs when storage fails', async () => {
+      engineFor();
+      const set = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new Error('full');
+      });
+      try {
+        setup();
+        await waitFor(() => expect(screen.queryByText('Starting DuckDB…')).toBeNull());
+        type('select 1;');
+        key('Enter');
+        expect(await screen.findByRole('table')).toBeInTheDocument();
+      } finally {
+        set.mockRestore();
+      }
+    });
   });
 });

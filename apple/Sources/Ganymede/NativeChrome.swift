@@ -696,17 +696,23 @@ func askName(for current: String) -> String? {
 
 /// File > Rename…: the open notebook, through the page's rename, which
 /// saves first and keeps the kernel. The name is shown without `.ipynb`,
-/// as the page's title shows it.
+/// as the page's title shows it. In a console tab it names the console
+/// (#735).
 struct RenameCommand: View {
     @FocusedValue(\.pageModel) private var page
 
     var body: some View {
         Button("Rename…") {
-            guard let page, let path = page.state.path else { return }
+            guard let page else { return }
+            if let console = page.state.console {
+                if let name = askName(for: console.name) { page.run("rename", arg: name) }
+                return
+            }
+            guard let path = page.state.path else { return }
             let title = URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
             if let name = askName(for: title) { page.run("rename", arg: name) }
         }
-        .disabled(page?.state.hasNotebook != true)
+        .disabled(page?.state.canRename != true)
     }
 }
 

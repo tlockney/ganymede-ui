@@ -147,14 +147,76 @@ final class WindowTargetTests: XCTestCase {
     }
 
     func testAConsoleLoadsTheDuckDBPageForItsFolder() {
-        let target = WindowTarget.console(folder: consoleFolder, id: UUID())
+        let id = UUID()
+        let target = WindowTarget.console(folder: consoleFolder, id: id)
+        // The console's id is its record's: the page reads it as `session` (#735).
         XCTAssertEqual(
             query(target.pageURL(server: server, kernels: "server", nativeChrome: true)),
             [
                 "token": "abc", "kernels": "server", "dir": "/Users/me/work",
-                "console": "duckdb", "chrome": "native",
+                "console": "duckdb", "session": id.uuidString.lowercased(), "chrome": "native",
             ]
         )
+    }
+
+    // MARK: Console names and recent consoles (#735)
+
+    func testTheConsolePageReadsBackItsSessionAsItsId() throws {
+        let id = UUID()
+        let target = WindowTarget.console(folder: consoleFolder, id: id)
+        // A restored or reopened console is the same console: same id, so the same record.
+        XCTAssertEqual(
+            WindowTarget(page: target.pageURL(server: server, kernels: "server", nativeChrome: true)),
+            target)
+        // The page writes it as the app did; upper case reads too. Not a UUID, or none: a new id.
+        let upper = URL(string: "http://127.0.0.1:8123/?dir=Users%2Fme%2Fwork&console=duckdb&session=\(id.uuidString)")!
+        XCTAssertEqual(WindowTarget(page: upper), target)
+        guard case .console(_, let other)? = WindowTarget(
+            page: URL(string: "http://127.0.0.1:8123/?console=duckdb&session=nope")!)
+        else { return XCTFail("not a console") }
+        XCTAssertNotEqual(other, id)
+    }
+
+    func testAConsoleTabIsTitledWithItsName() {
+        let console = WindowTarget.console(folder: consoleFolder, id: UUID())
+        XCTAssertEqual(console.tabTitle(consoleName: "Orbits"), "Orbits")
+        // Until the page reports one, or with a blank one: the folder's title.
+        XCTAssertEqual(console.tabTitle(consoleName: nil), "DuckDB · work")
+        XCTAssertEqual(console.tabTitle(consoleName: "  "), "DuckDB · work")
+        // Only a console takes a name.
+        let notebook = WindowTarget.file(URL(fileURLWithPath: "/Users/me/work/a.ipynb"))
+        XCTAssertEqual(notebook.tabTitle(consoleName: "Orbits"), "a")
+    }
+
+    func testAConsoleSavedBeforeNamesStillDecodes() throws {
+        // As #730 saved it: no record, nothing but the folder and the id.
+        let saved = #"{"console":{"folder":"file:///Users/me/work/","id":"0F8FAD5B-D9CB-469F-A165-70867728950E"}}"#
+        let target = try XCTUnwrap(WindowTarget(saved: saved))
+        guard case .console(let folder, let id) = target else { return XCTFail("not a console") }
+        XCTAssertEqual(folder.path, "/Users/me/work")
+        XCTAssertEqual(id, UUID(uuidString: "0F8FAD5B-D9CB-469F-A165-70867728950E"))
+        // Its page names the id as its record.
+        XCTAssertEqual(
+            query(target.pageURL(server: server, kernels: "server"))["session"],
+            "0f8fad5b-d9cb-469f-a165-70867728950e")
+    }
+
+    func testTheOpenTabMessageCarriesARecentConsolesSession() {
+        let id = UUID()
+        XCTAssertEqual(
+            TabRequest(body: ["console": "duckdb", "folder": "Users/me", "session": id.uuidString]),
+            .duckdbConsole(folder: "Users/me", session: id))
+        XCTAssertEqual(
+            TabRequest(body: ["console": "duckdb", "folder": "Users/me", "session": "nope"]),
+            .duckdbConsole(folder: "Users/me"))
+        let root = URL(fileURLWithPath: "/", isDirectory: true)
+        // The request names the console, so the same window comes forward.
+        XCTAssertEqual(
+            TabRequest.duckdbConsole(folder: "Users/me", session: id).target(root: root),
+            TabRequest.duckdbConsole(folder: "Users/me", session: id).target(root: root))
+        guard case .console(_, let shown) = TabRequest.duckdbConsole(folder: "Users/me", session: id).target(root: root)
+        else { return XCTFail("not a console") }
+        XCTAssertEqual(shown, id)
     }
 
     func testTheConsolePageReadsBackAsTheSameConsole() throws {
