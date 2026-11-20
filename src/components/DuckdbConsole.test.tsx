@@ -409,6 +409,10 @@ describe('DuckdbConsole', () => {
       <DuckdbConsole
         backend={backend(fakeServices({ '': [] }))}
         folder=""
+        id="c1"
+        name="Console 1"
+        onRename={handlers.onRename}
+        onOpenConsole={handlers.onOpenConsole}
         onOpenNotebook={opened}
       />,
     );
@@ -429,6 +433,10 @@ describe('DuckdbConsole', () => {
       <DuckdbConsole
         backend={backend(fakeServices({ '': [] }))}
         folder=""
+        id="c1"
+        name="Console 1"
+        onRename={handlers.onRename}
+        onOpenConsole={handlers.onOpenConsole}
         onOpenNotebook={opened}
       />,
     );
@@ -454,6 +462,10 @@ describe('DuckdbConsole', () => {
       <DuckdbConsole
         backend={backend(fakeServices({ '': [] }))}
         folder=""
+        id="c1"
+        name="Console 1"
+        onRename={handlers.onRename}
+        onOpenConsole={handlers.onOpenConsole}
         onOpenNotebook={opened}
       />,
     );
