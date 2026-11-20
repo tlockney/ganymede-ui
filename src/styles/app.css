@@ -2543,6 +2543,12 @@ button {
   resize: vertical;
 }
 
+.journal-hint {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 12px;
+}
+
 .journal-actions {
   display: flex;
   gap: 8px;

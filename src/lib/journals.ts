@@ -63,6 +63,32 @@ export function parseRooms(body: unknown): Room[] {
   return rooms;
 }
 
+/**
+ * The agents in the room for `path` now, by name; undefined while the
+ * server hasn't said or can't (an older server, or an error). No room for
+ * the path means none (#724).
+ */
+export function agentsAt(result: RoomsResult | undefined, path: string): string[] | undefined {
+  if (result?.kind !== 'rooms') return undefined;
+  const room = result.rooms.find(r => r.path === path);
+  return room ? [...new Set(agentsIn(room).map(c => c.name))] : [];
+}
+
+/**
+ * What the journal's composer says about who is there to see a request
+ * (#724): the agents in the room, or that none is. A request is saved in
+ * the notebook either way, and `ganymede mcp watch` reports the open
+ * notebook's requests to an agent watching its folder. Nothing while it
+ * isn't known.
+ */
+export function composerHint(agents: readonly string[] | undefined): string | undefined {
+  if (!agents) return undefined;
+  if (agents.length === 0) {
+    return 'No agent is in the room. A request is saved in the notebook; an agent watching this folder is told while the notebook stays open.';
+  }
+  return `${agents.join(', ')} ${agents.length === 1 ? 'is' : 'are'} in the room.`;
+}
+
 /** An agent is in the room now. */
 export function agentsIn(room: Room): RoomClient[] {
   return room.clients.filter(c => c.kind === 'agent');

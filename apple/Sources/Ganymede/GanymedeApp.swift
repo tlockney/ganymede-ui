@@ -44,6 +44,7 @@ struct GanymedeApp: App {
                 InspectorCommands()
                 FillCommands()
                 CommandPaletteCommand()
+                JournalCommand()
                 Divider()
                 CodeFontSizeCommands()
             }

@@ -300,6 +300,7 @@ describe('App', () => {
       kernelName: 'python3',
       kernelVersionLine: 'cdp-kernel 0.14.0 · node 24.11.0',
       cellType: 'code',
+      journal: true,
     };
     const fake = fakeServices({
       '': [
@@ -326,6 +327,8 @@ describe('App', () => {
         kernelDisplayName: 'Python 3',
         kernelVersionLine: 'cdp-kernel 0.14.0 · node 24.11.0',
         cellType: 'code',
+        // Which view shows, for the app's View as Journal (#724).
+        journal: true,
         kernels: [
           { name: 'python3', displayName: 'Python 3', device: false },
           { name: 'cdp-browser', displayName: 'TypeScript (in app)', device: true },

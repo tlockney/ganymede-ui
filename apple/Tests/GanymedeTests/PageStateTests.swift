@@ -17,6 +17,7 @@ final class PageStateTests: XCTestCase {
             "runParams": true,
             "accessWanted": ["notebooks.run"],
             "cellType": "markdown",
+            "journal": true,
             "kernels": [["name": "cdp", "displayName": "TypeScript", "device": true]],
             "backend": ["label": "Ganymede", "detail": "local server"],
         ]
@@ -31,6 +32,10 @@ final class PageStateTests: XCTestCase {
         XCTAssertEqual(state?.isBusy, true)
         XCTAssertEqual(state?.hasKernel, true)
         XCTAssertEqual(state?.cellType, "markdown")
+        XCTAssertEqual(state?.journal, true)
+        XCTAssertEqual(state?.journalToggleTitle, "Open as Notebook")
+        XCTAssertEqual(state?.hasNotebook, true)
+        XCTAssertEqual(state?.editsCells, false, "the journal hides the cells")
         XCTAssertEqual(state?.kernels, [PageState.Kernel(name: "cdp", displayName: "TypeScript", device: true)])
         XCTAssertEqual(state?.backend?.detail, "local server")
         XCTAssertEqual(state?.sessions, [])

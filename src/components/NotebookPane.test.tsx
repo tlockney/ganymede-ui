@@ -322,6 +322,43 @@ describe('NotebookPane', () => {
     await waitFor(() => expect(latest()!.journal).toBe(true));
   });
 
+  it('tells the journal which agents are in its room, from the server (#724)', async () => {
+    const content = structuredClone(NOTEBOOK);
+    content.cells[0]!.metadata = {
+      ganymede: { agent: { by: 'claude-code', mode: 'executed', at: '2026-11-20T10:00:00Z' } },
+    };
+    const { YNotebook } = await import('@jupyter/ydoc');
+    const shared = new YNotebook();
+    shared.fromJSON(content as never);
+    const room = {
+      notebook: shared,
+      connected: true,
+      live: true,
+      onConnection: () => () => {},
+      watchLive: () => () => {},
+      dispose: vi.fn(),
+    };
+    const join = vi.spyOn(NotebookRoom, 'join').mockResolvedValue(room as unknown as NotebookRoom);
+    serverSettings = ServerConnection.makeSettings({
+      baseUrl: 'http://127.0.0.1:1/',
+      fetch: (async (r: Request) =>
+        new Response(
+          JSON.stringify(
+            r.url.includes('api/collaboration/rooms')
+              ? {
+                  rooms: [
+                    { path: 'moons/Io.ipynb', clients: [{ name: 'claude-code', kind: 'agent' }] },
+                  ],
+                }
+              : {},
+          ),
+        )) as unknown as typeof fetch,
+    });
+    setup(vi.fn(async () => ({ path: 'moons/Io.ipynb', content })));
+    expect(await screen.findByText('claude-code is in the room.')).toBeInTheDocument();
+    join.mockRestore();
+  });
+
   /** A notebook an agent kept. */
   const kept = () => {
     const nb = structuredClone(NOTEBOOK);

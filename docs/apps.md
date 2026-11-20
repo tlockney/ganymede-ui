@@ -913,9 +913,10 @@ it. There is no View menu item for it yet.
 ## Journal view
 
 A notebook a Claude session keeps through `ganymede mcp` reads better as a
-journal than as cells. **View as Journal** (the toolbar's journal button, or
-the Command Palette) shows the open notebook that way; **Open as Notebook**
-goes back to full editing, in the same live room and on the same kernel.
+journal than as cells. **View as Journal** shows the open notebook that
+way: the toolbar's journal button, View › View as Journal in the Mac app,
+the notebook's More menu on the iPad and iPhone, or the Command Palette.
+**Open as Notebook** goes back to full editing, in the same live room and on the same kernel.
 A notebook with cells an agent wrote opens as a journal; any other opens as
 a notebook. Your choice for a file holds until you close the app or page,
 including when the file is reopened after a Reload or a server restart,
@@ -923,8 +924,14 @@ and it goes with the file when you rename or move it.
 While the journal shows, the notebook's run, insert, cell-type and edit
 commands (toolbar, Command Palette and keys) are off, because they would act
 on cells you can't see. It works in the browser and in the Mac, iPad and iPhone apps,
-on a Ganymede server, and there is no setting for it. The Mac app's menus
-don't list it yet; use the Command Palette there.
+on a Ganymede server, and there is no setting for it.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release. In 0.14.0 the Mac app's toolbar and menus and the
+> iPad and iPhone menu have no View as Journal (use the Command Palette),
+> the status line doesn't list agents, and the composer has no line
+> about who is in the room.
 
 - **The header** comes first: the notebook's title (its metadata title, else
   the file name), then its kernel, who started it and when (the first agent
@@ -943,16 +950,20 @@ don't list it yet; use the Command Palette there.
   and it stops, and a **N new cells · Follow** button brings you back.
 - **The status line** names who is in the room ("Only you are here" when
   no one else is) and how long ago someone else last changed the
-  notebook; your own edits don't count. It lists the clients that have
-  presence in the room. An agent working through `ganymede mcp` is not
-  listed yet: the server doesn't publish its presence there, so the
-  agent shows only in the cells' labels, and a rooms list that names it
-  is a follow-up. When a client marks a cell as running (JupyterLab
+  notebook; your own edits don't count. It lists the people with
+  presence in the room, and the agents working through `ganymede mcp`
+  that the server's rooms list names (a server older than 0.14.0
+  can't say). When a client marks a cell as running (JupyterLab
   does; Ganymede's own runs don't yet), it adds "name is running cell N".
 - **Writing**: the box at the bottom adds your text as a Markdown cell at
   the end (**Add Note**), or as an `@agent` request (**Ask the agent**),
   which `ganymede mcp watch` reports to the agent once the text has
-  stayed the same for a few seconds. Everything else is read-only.
+  stayed the same for a few seconds. Above the buttons, a line names the
+  agents in the room, or says none is. A request is saved in the notebook
+  either way. While the notebook stays open, an agent running `ganymede
+mcp watch` on its folder is told about it, in the room or not; after
+  that it waits until an agent reads the notebook. Everything else is
+  read-only.
 - **Reconnecting…**: when the connection to the server drops, the journal
   is read-only until it is back.
 

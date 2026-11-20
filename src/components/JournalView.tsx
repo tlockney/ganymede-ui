@@ -7,6 +7,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { YCodeCell, YNotebook } from '@jupyter/ydoc';
 import type { IRenderMimeRegistry } from '@jupyterlab/rendermime';
+import type { ServerConnection } from '@jupyterlab/services';
 import { MimeModel } from '@jupyterlab/rendermime';
 import type { ReadonlyJSONObject } from '@lumino/coreutils';
 import { Widget } from '@lumino/widgets';
@@ -36,6 +37,7 @@ import {
   type NewCell,
   type Revision,
 } from '../lib/journal';
+import { agentsAt, composerHint, useRooms } from '../lib/journals';
 import type { NotebookRoom } from '../lib/room';
 
 type Props = {
@@ -46,6 +48,9 @@ type Props = {
   room?: NotebookRoom;
   /** The file's name, for labels. */
   name: string;
+  /** The notebook's path, and the server to ask which agents are in its room (#724). */
+  path?: string;
+  roomSettings?: ServerConnection.ISettings;
   onOpenAsNotebook(): void;
 };
 
@@ -437,10 +442,18 @@ export function JournalView({
   trustedIds,
   room,
   name,
+  path,
+  roomSettings,
   onOpenAsNotebook,
 }: Props) {
   const { cells, changedAt } = useCells(notebook);
-  const names = usePresence(notebook);
+  const people = usePresence(notebook);
+  // Agents hold the room on the server, not through its awareness, so
+  // the server's rooms list says which are here (#724).
+  const rooms = useRooms(roomSettings, !!roomSettings && !!path);
+  const agents = path ? agentsAt(rooms, path) : undefined;
+  const names = [...people, ...(agents ?? []).filter(a => !people.includes(a))];
+  const hint = composerHint(agents);
   const header = journalHeader(useMetadata(notebook), cells, name);
   const now = useNow(15_000);
   const [live, setLive] = useState(() => room?.live ?? true);
@@ -564,6 +577,11 @@ export function JournalView({
           disabled={!live}
           onChange={e => setText(e.target.value)}
         />
+        {hint && (
+          <p className="journal-hint" role="status">
+            {hint}
+          </p>
+        )}
         <div className="journal-actions">
           <button type="submit" disabled={!live || blank}>
             Add Note
