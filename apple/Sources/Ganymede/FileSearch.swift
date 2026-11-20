@@ -1,8 +1,9 @@
 import Foundation
 
 /// The Mac navigator's Search tab (#246): file and folder names under a
-/// folder, and optionally the text of the notebooks there, read straight
-/// from disk. The same limits as the page's search (#233), so a huge folder
+/// folder, and optionally the text of the notebooks there, read through a
+/// `FileSource` (#737): this device's disk or a machine's contents API. The
+/// same limits as the page's search (#233), so a huge folder
 /// stops early instead of hanging.
 struct FileSearch {
     struct Match: Identifiable, Hashable {
@@ -68,14 +69,15 @@ struct FileSearch {
     }
 
     /// Searches `root` breadth first. `isCancelled` is checked between
-    /// folders and files, so a newer query can stop an older one.
+    /// folders and files, so a newer query can stop an older one; by
+    /// default it is the calling task's own cancellation.
     func run(
         _ query: String,
         in root: URL,
         contents: Bool,
-        fileManager: FileManager = .default,
-        isCancelled: () -> Bool = { false }
-    ) -> Results {
+        source: any FileSource,
+        isCancelled: @Sendable () -> Bool = { Task.isCancelled }
+    ) async -> Results {
         var results = Results()
         guard !Self.normalized(query).isEmpty else { return results }
         var queue: [(URL, Int)] = [(root, 0)]
@@ -90,7 +92,7 @@ struct FileSearch {
                 results.stoppedEarly = true
                 break
             }
-            guard let listed = try? FolderEntry.list(folder, fileManager: fileManager) else { continue }
+            guard let listed = try? await source.list(folder) else { continue }
             for entry in listed {
                 if isCancelled() { return results }
                 entries += 1
@@ -117,8 +119,8 @@ struct FileSearch {
                         continue
                     }
                     notebooksRead += 1
-                    if let data = fileManager.contents(atPath: entry.url.path),
-                       let snippet = Self.snippet(inNotebook: data, query: query) {
+                    if let text = try? await source.readText(entry.url),
+                       let snippet = Self.snippet(inNotebook: Data(text.utf8), query: query) {
                         results.contents.append(Match(entry: entry, snippet: snippet))
                     }
                 }

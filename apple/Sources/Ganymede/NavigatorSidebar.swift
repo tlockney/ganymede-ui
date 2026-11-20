@@ -7,6 +7,8 @@ import SwiftUI
 /// navigators do.
 struct NavigatorSidebar: View {
     let folder: URL
+    /// Where the files are; this Mac's disk for now (#737).
+    var source: any FileSource = LocalFileSource()
     var page: PageModel
     /// The window's bottom panel, for terminals the foot's menu opens.
     var panel: PanelController?
@@ -68,9 +70,9 @@ struct NavigatorSidebar: View {
             Divider()
             switch tab {
             case .files:
-                FolderSidebar(folder: folder, page: page, openFile: openFile)
+                FolderSidebar(folder: folder, source: source, page: page, openFile: openFile)
             case .search:
-                SearchNavigator(folder: folder, page: page, openFile: openFile)
+                SearchNavigator(folder: folder, source: source, page: page, openFile: openFile)
             case .running:
                 RunningList(page: page)
             case .outline:
@@ -92,6 +94,7 @@ struct NavigatorSidebar: View {
 /// its notebooks (#246). Searching starts a moment after typing stops.
 private struct SearchNavigator: View {
     let folder: URL
+    let source: any FileSource
     var page: PageModel
     let openFile: (String) -> Void
     @Environment(\.openWindow) private var openWindow
@@ -106,7 +109,7 @@ private struct SearchNavigator: View {
             field
             list
         }
-        .task(id: "\(folder.path)|\(query)|\(contents)") { await search() }
+        .task(id: "\(folder.absoluteString)|\(query)|\(contents)") { await search() }
     }
 
     private var field: some View {
@@ -222,11 +225,11 @@ private struct SearchNavigator: View {
         // Wait for typing to stop.
         try? await Task.sleep(nanoseconds: 250_000_000)
         guard !Task.isCancelled else { return }
-        let (query, folder, contents) = (query, folder, contents)
+        let (query, folder, contents, source) = (query, folder, contents, source)
         // Off the main thread; a detached task doesn't inherit
         // cancellation, so pass it on, and the scan checks its own flag.
         let scan = Task.detached(priority: .userInitiated) {
-            FileSearch().run(query, in: folder, contents: contents, isCancelled: { Task.isCancelled })
+            await FileSearch().run(query, in: folder, contents: contents, source: source)
         }
         let found = await withTaskCancellationHandler {
             await scan.value
