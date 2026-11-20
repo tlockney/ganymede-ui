@@ -48,11 +48,29 @@ struct KernelSpecs: Equatable {
             return number.stringValue
         }
         if JSONSerialization.isValidJSONObject(value),
-           let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys]),
+           let data = try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys, .withoutEscapingSlashes]),
            let text = String(data: data, encoding: .utf8) {
             return text
         }
         return String(describing: value)
+    }
+
+    /// A string field, nil when absent or "": the server always sends
+    /// `kernel_protocol_version` (empty when kernel.json lacks it).
+    static func string(_ value: Any?) -> String? {
+        guard let string = value as? String, !string.isEmpty else { return nil }
+        return string
+    }
+
+    /// `argv` as one shell command line: an element with a space or other
+    /// shell metacharacter is single-quoted, with `'` written `'\''`.
+    static func shellCommand(_ argv: [String]) -> String {
+        argv.map { arg in
+            let safe = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789@%+=:,./-_{}")
+            if !arg.isEmpty, arg.unicodeScalars.allSatisfy({ safe.contains($0) }) { return arg }
+            return "'" + arg.replacingOccurrences(of: "'", with: "'\\''") + "'"
+        }
+        .joined(separator: " ")
     }
 
     private static func fields(_ value: Any?) -> [Field] {
@@ -77,10 +95,10 @@ struct KernelSpecs: Equatable {
             return Spec(
                 name: name,
                 displayName: spec?["display_name"] as? String ?? name,
-                language: spec?["language"] as? String,
-                interruptMode: spec?["interrupt_mode"] as? String,
-                protocolVersion: spec?["kernel_protocol_version"] as? String,
-                resourceDir: entry["resource_dir"] as? String,
+                language: Self.string(spec?["language"]),
+                interruptMode: Self.string(spec?["interrupt_mode"]),
+                protocolVersion: Self.string(spec?["kernel_protocol_version"]),
+                resourceDir: Self.string(entry["resource_dir"]),
                 argv: (spec?["argv"] as? [Any])?.compactMap { $0 as? String } ?? [],
                 env: Self.fields(spec?["env"]),
                 metadata: Self.fields(spec?["metadata"])

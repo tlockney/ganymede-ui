@@ -20,6 +20,7 @@ struct RemotesView<Extra: View>: View {
         Form {
             #if os(iOS)
             KernelLocationSection()
+            InstalledKernelsSection()
             #endif
             Section {
                 ForEach(model.remotes) { remote in

@@ -26,7 +26,7 @@ final class KernelSpecsTests: XCTestCase {
               "argv": ["python3", "-m", "k", "-f", "{connection_file}"],
               "env": {"B": "2", "A": "one"},
               "metadata": {"debugger": true, "count": 3, "ratio": 1.5, "note": "hi",
-                "nested": {"b": [1, "x"], "a": null}}},
+                "nested": {"b": [1, "x"], "a": null, "path": "/a/b"}}},
             "resources": {"logo-32x32": "/kernelspecs/k/logo-32x32.png"}}
         }}
         """.utf8)
@@ -42,7 +42,7 @@ final class KernelSpecsTests: XCTestCase {
         XCTAssertEqual(values["count"], "3")
         XCTAssertEqual(values["ratio"], "1.5")
         XCTAssertEqual(values["note"], "hi")
-        XCTAssertEqual(values["nested"], #"{"a":null,"b":[1,"x"]}"#)
+        XCTAssertEqual(values["nested"], #"{"a":null,"b":[1,"x"],"path":"/a/b"}"#)
         XCTAssertTrue(spec.hasDetails)
     }
 
@@ -61,6 +61,28 @@ final class KernelSpecsTests: XCTestCase {
             XCTAssertEqual(spec.metadata, [])
             XCTAssertFalse(spec.hasDetails)
         }
+    }
+
+    func testEmptyStringsAreAbsent() throws {
+        let body = Data("""
+        {"kernelspecs": {"k": {"name": "k", "resource_dir": "",
+          "spec": {"display_name": "K", "language": "", "interrupt_mode": "",
+            "kernel_protocol_version": ""}}}}
+        """.utf8)
+        let spec = try XCTUnwrap(KernelSpecs(json: body)?.specs.first)
+        XCTAssertNil(spec.protocolVersion)
+        XCTAssertNil(spec.interruptMode)
+        XCTAssertNil(spec.language)
+        XCTAssertNil(spec.resourceDir)
+        XCTAssertFalse(spec.hasDetails)
+    }
+
+    func testShellCommandQuotesWhatNeedsIt() {
+        XCTAssertEqual(KernelSpecs.shellCommand(["python3", "-m", "k", "-f", "{connection_file}"]),
+                       "python3 -m k -f {connection_file}")
+        XCTAssertEqual(KernelSpecs.shellCommand(["/Users/me/My Tools/node", "a'b", "", "x;y", "$HOME"]),
+                       "'/Users/me/My Tools/node' 'a'\\''b' '' 'x;y' '$HOME'")
+        XCTAssertEqual(KernelSpecs.shellCommand([]), "")
     }
 
     func testRejectsOtherBodies() {
