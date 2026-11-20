@@ -105,6 +105,28 @@ describe('DuckdbConsole', () => {
     expect(document.querySelector('.duck-sql')).toHaveTextContent('select * from moons');
   });
 
+  it('highlights SQL in the scrollback and in the input (#708)', async () => {
+    engineFor();
+    setup();
+    await waitFor(() => expect(screen.queryByText('Starting DuckDB…')).toBeNull());
+    type('select * from moons qualify 1');
+    const typedKeywords = () =>
+      [...content().querySelectorAll('span')].filter(s => s.className).map(s => s.textContent);
+    await waitFor(() =>
+      expect(typedKeywords()).toEqual(expect.arrayContaining(['select', 'qualify'])),
+    );
+    key('Enter', { shiftKey: true });
+    await screen.findByRole('table');
+    const sql = document.querySelector('.duck-sql')!;
+    expect(sql).toHaveTextContent('select * from moons qualify 1');
+    const marked = () =>
+      [...sql.querySelectorAll('span')].filter(s => s.className).map(s => s.textContent);
+    await waitFor(() =>
+      expect(marked()).toEqual(expect.arrayContaining(['select', 'from', 'qualify'])),
+    );
+    expect(sql).toHaveTextContent('select * from moons qualify 1');
+  });
+
   it('adds a line on Enter before the statement ends, and runs on Shift-Enter', async () => {
     const engine = engineFor();
     setup();

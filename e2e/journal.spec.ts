@@ -110,14 +110,11 @@ test('opens an agent’s notebook as a journal, and writes a note and a request'
 test('fits a phone: no sideways scroll and 44 px buttons', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 800 });
   await openWithToken(page);
-  // The sidebar floats at this width; its entry opens the file.
-  const item = sidebarItem(page, 'Journal e2e');
-  if (!(await item.isVisible()))
-    await page
-      .getByRole('button', { name: /Show Sidebar|Sidebar/ })
-      .first()
-      .click();
-  await item.click();
+  // The sidebar starts closed at this width and floats when shown; its
+  // entry opens the file. Closed, it is still in the page, off to the side,
+  // so `isVisible` can't tell whether to open it: open it always.
+  await page.getByRole('button', { name: 'Show Sidebar' }).click();
+  await sidebarItem(page, 'Journal e2e').click();
   const journal = page.getByRole('region', { name: `Journal of ${FILE}` });
   await expect(journal).toBeVisible();
   const overflow = await journal.evaluate(el => el.scrollWidth - el.clientWidth);
