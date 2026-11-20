@@ -15,6 +15,17 @@ describe('readLaunch', () => {
     expect(readLaunch('?open=Orbits.ipynb')).toEqual({ open: 'Orbits.ipynb', dir: '' });
   });
 
+  it('opens the DuckDB console on a folder with console=duckdb (#729)', () => {
+    expect(readLaunch('?dir=/Users/me/work&console=duckdb')).toEqual({
+      dir: 'Users/me/work',
+      console: 'duckdb',
+    });
+    expect(readLaunch('?console=duckdb')).toEqual({ dir: '', console: 'duckdb' });
+    // No other console, and none beside a notebook.
+    expect(readLaunch('?dir=a&console=sql')).toEqual({ dir: 'a' });
+    expect(readLaunch('?open=a/b.ipynb&console=duckdb')).toEqual({ open: 'a/b.ipynb', dir: 'a' });
+  });
+
   it('drops leading and trailing slashes from absolute paths', () => {
     expect(readLaunch('?open=%2FUsers%2Fme%2FOrbits.ipynb')).toEqual({
       open: 'Users/me/Orbits.ipynb',

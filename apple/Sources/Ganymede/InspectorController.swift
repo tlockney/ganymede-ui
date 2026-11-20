@@ -33,9 +33,30 @@ final class InspectorController {
     /// Room the notebook keeps beside the inspector.
     static let notebookRoom: Double = 360
 
+    /// What the person chose: kept across launches, and left alone while
+    /// the tab has no notebook (`available`), so it comes back with one.
     var isShown = false
+    /// Whether the tab shows a notebook (#729): the inspector is for one,
+    /// so a console, a data file or the start screen has none. The window
+    /// sets it as the page changes.
+    var available = true
     var tab = InspectorTab.outline
     private(set) var width = InspectorController.defaultWidth
+
+    /// Whether it is on screen: chosen, and the tab has a notebook.
+    var isVisible: Bool { isShown && available }
+
+    /// Whether a tab shows a notebook, as the page's state says once it
+    /// has posted one (`pageReported`). Before that a window opened on a
+    /// notebook counts as showing one, so the inspector doesn't flash away
+    /// as the page loads.
+    static func showsNotebook(state: PageState, pageReported: Bool, target: WindowTarget) -> Bool {
+        if pageReported { return state.hasNotebook }
+        if case .file(let url) = target {
+            return !FolderEntry.dataExtensions.contains(url.pathExtension.lowercased())
+        }
+        return false
+    }
 
     /// ⌥⌘0: shows or hides it.
     func toggle() {
@@ -55,7 +76,7 @@ final class InspectorController {
         self.width = min(max(width, Self.minWidth), most)
     }
 
-    /// Whether the page should read the variables for it: shown, on
+    /// Whether the page should read the variables for it: on screen, on
     /// Variables.
-    var wantsVariables: Bool { isShown && tab == .variables }
+    var wantsVariables: Bool { isVisible && tab == .variables }
 }

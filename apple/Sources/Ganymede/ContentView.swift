@@ -150,13 +150,16 @@ struct ContentView: View {
                 }
                 .help(panel.isShown ? "Hide the terminal panel (⌃`)" : "Show the terminal panel (⌃`)")
             }
-            ToolbarItem {
-                Button {
-                    inspector.toggle()
-                } label: {
-                    Label(inspector.isShown ? "Hide Inspector" : "Show Inspector", systemImage: "sidebar.right")
+            // Only a tab with a notebook has an inspector (#729).
+            if showsNotebook {
+                ToolbarItem {
+                    Button {
+                        inspector.toggle()
+                    } label: {
+                        Label(inspector.isShown ? "Hide Inspector" : "Show Inspector", systemImage: "sidebar.right")
+                    }
+                    .help(inspector.isShown ? "Hide the inspector (⌥⌘0)" : "Show the inspector (⌥⌘0)")
                 }
-                .help(inspector.isShown ? "Hide the inspector (⌥⌘0)" : "Show the inspector (⌥⌘0)")
             }
             if let available = updater.available {
                 ToolbarItem {
@@ -290,6 +293,9 @@ struct ContentView: View {
         // (#356).
         macPanelSync
         .focusedSceneValue(\.inspectorController, inspector)
+        .modifier(InspectorAvailability(
+            inspector: inspector, shows: showsNotebook, fillsWindow: layout.filled == .inspector
+        ) { layout.restore() })
         .focusedSceneValue(\.windowFill, WindowFill(filled: layout.filled) {
             // The area with the keyboard: a panel terminal, or the notebook.
             if layout.filled != nil {
@@ -553,7 +559,10 @@ struct ContentView: View {
     /// for the window that opens after the last one closes (#416).
     private func noteWindow(_ window: NSWindow) {
         var start = true
-        if case .file = target ?? loaded { start = false }
+        switch target ?? loaded {
+        case .file, .console: start = false
+        default: break
+        }
         WorkspaceTabs.note(window, folder: sidebarRoot, start: start)
     }
 
@@ -563,6 +572,20 @@ struct ContentView: View {
     }
 
     private var page: URL? { model.page(for: loaded) }
+
+    /// Whether this tab shows a notebook, which the inspector is for
+    /// (#729): not a console, a data file or the start screen.
+    private var showsNotebook: Bool {
+        InspectorController.showsNotebook(
+            state: pageModel.state, pageReported: pageModel.ready, target: target ?? loaded
+        )
+    }
+
+    /// The page asks for a tab (`openTab`): a notebook or data file, or a
+    /// new DuckDB console. The server is rooted at `/` on the Mac.
+    private func openTab(_ request: TabRequest) {
+        openWindow(value: request.target(root: model.serverRootFolder))
+    }
 
     /// The notebook, with the bottom panel under it (#248). The panel stays
     /// in the view tree while hidden, so its terminals keep running.
@@ -587,12 +610,12 @@ struct ContentView: View {
                         )
                     }
                 }
-                if layout.filled == nil, inspector.isShown {
+                if layout.filled == nil, inspector.isShown, showsNotebook {
                     Inspector(
                         inspector: inspector, page: pageModel, available: whole.size.width,
                         fills: false, toggleFill: { layout.toggle(.inspector) }
                     )
-                } else if layout.folds(.inspector) {
+                } else if layout.folds(.inspector), showsNotebook {
                     Divider()
                     FoldedStrip(
                         items: InspectorTab.allCases.map { tab in
@@ -687,7 +710,9 @@ struct ContentView: View {
             pageReported = true
         }
         // A local page can't turn itself into a machine's window (#701).
-        guard let shown, shown.place == .thisDevice, shown != target else { return }
+        guard let shown, shown.place == .thisDevice else { return }
+        // A console's page reports its folder, not the tab's own id.
+        if let target, target.shows(shown) { return }
         // A window opened on nothing stays blank on the folder it loaded,
         // so it can still take the Finder's files at launch (#228).
         if target == nil, case .folder = shown, shown.url.path == loaded.url.path { return }
@@ -944,9 +969,11 @@ struct ContentView: View {
         Group {
             if let url = page {
                 #if os(macOS)
-                WebView(url: url, onNavigate: follow, document: document, page: pageModel) { path in
-                    openWindow(value: EditorRequest(path: path))
-                }
+                WebView(
+                    url: url, onNavigate: follow, document: document, page: pageModel,
+                    onOpenTab: openTab,
+                    onOpenFile: { path in openWindow(value: EditorRequest(path: path)) }
+                )
                 #else
                 WebView(url: url, page: pageModel, onOpenFile: openEditor, store: isPhone ? phonePage : nil)
                 #endif
@@ -1007,3 +1034,25 @@ private struct KeychainAlert: ViewModifier {
         }
     }
 }
+
+#if os(macOS)
+/// Keeps the inspector in step with whether the tab shows a notebook
+/// (#729): `available` follows it, and an inspector filling the window
+/// that goes away gives the layout back.
+private struct InspectorAvailability: ViewModifier {
+    var inspector: InspectorController
+    var shows: Bool
+    var fillsWindow: Bool
+    var restore: () -> Void
+
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: shows, initial: true) { _, shows in
+                inspector.available = shows
+            }
+            .onChange(of: inspector.isVisible) { _, visible in
+                if !visible, fillsWindow { restore() }
+            }
+    }
+}
+#endif

@@ -650,11 +650,11 @@ struct NewCommands: View {
             }
         }
         .keyboardShortcut("n")
-        // A DuckDB prompt in the window's page, for this folder (#679).
+        // A DuckDB prompt for this folder (#679), as a tab of its own with
+        // a new engine (#729): the notebook in the front tab stays open.
         Button("New DuckDB Console") {
-            page?.run("new-duckdb-console", arg: FolderEntry.serverPath(folder ?? model.root))
+            openWindow(value: WindowTarget.console(folder: folder ?? model.root, id: UUID()))
         }
-        .disabled(page == nil)
         // A copy of the example notebooks in a new folder, with the first
         // open (#414).
         Button("Open Example Notebooks") {

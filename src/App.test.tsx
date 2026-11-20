@@ -957,6 +957,110 @@ describe('App', () => {
     vi.unstubAllGlobals();
   });
 
+  describe('DuckDB console tabs (#729)', () => {
+    type Posted = Record<string, unknown>;
+    const stubApp = (tabs: boolean) => {
+      const opened: Posted[] = [];
+      const states: Posted[] = [];
+      vi.stubGlobal('webkit', {
+        messageHandlers: {
+          state: { postMessage: (m: Posted) => states.push(m) },
+          openFile: { postMessage: () => {} },
+          ...(tabs ? { openTab: { postMessage: (m: Posted) => opened.push(m) } } : {}),
+        },
+      });
+      return { opened, states };
+    };
+    const connectTo = () => {
+      const fake = fakeServices({
+        '': [{ name: 'moons', type: 'directory' }],
+        moons: [{ name: 'Io.ipynb', type: 'notebook' }],
+      });
+      mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    };
+
+    it('asks the app for a console tab and leaves the notebook open', async () => {
+      const { opened } = stubApp(true);
+      mocks.controller = { dirty: false, save: vi.fn(async () => true), kernelName: 'python3' };
+      connectTo();
+      history.replaceState(null, '', '/?kernels=server&chrome=native&open=moons/Io.ipynb');
+      render(<App />);
+      await screen.findByTestId('pane');
+
+      expect(await window.ganymede!.command('new-duckdb-console', '/moons/')).toBe(true);
+      expect(opened).toEqual([{ console: 'duckdb', folder: 'moons' }]);
+      // The notebook stays; nothing replaced it.
+      expect(screen.getByTestId('pane')).toHaveTextContent('moons/Io.ipynb');
+      expect(screen.queryByTestId('duck-console')).toBeNull();
+      // Every call is another request, and so another console.
+      expect(await window.ganymede!.command('new-duckdb-console', '')).toBe(true);
+      expect(opened.at(-1)).toEqual({ console: 'duckdb', folder: '' });
+      expect(opened).toHaveLength(2);
+      vi.unstubAllGlobals();
+    });
+
+    it('shows the console for the launch folder, and opens notebooks in other tabs', async () => {
+      const { opened, states } = stubApp(true);
+      connectTo();
+      history.replaceState(null, '', '/?kernels=server&chrome=native&dir=moons&console=duckdb');
+      render(<App />);
+
+      expect(await screen.findByTestId('duck-console')).toHaveAttribute('data-folder', 'moons');
+      // The app's state has no notebook, so its inspector and menus stand down.
+      await waitFor(() => expect(states.at(-1)).toMatchObject({ path: null }));
+      // A reload keeps the console: the parameter stays in the URL.
+      expect(window.location.search).toContain('console=duckdb');
+      expect(window.location.search).toContain('dir=moons');
+
+      // The console's own open action, and the app's sidebar.
+      await userEvent.click(screen.getByRole('button', { name: 'Open exported' }));
+      expect(opened).toEqual([{ path: 'duckdb-console.ipynb' }]);
+      expect(await window.ganymede!.command('open', 'moons/Io.ipynb')).toBe(true);
+      expect(opened.at(-1)).toEqual({ path: 'moons/Io.ipynb' });
+      // The console keeps running: still there, the same one, nothing opened in the page.
+      expect(screen.getByTestId('duck-console')).toHaveAttribute('data-mount');
+      expect(screen.queryByTestId('pane')).toBeNull();
+      // Its tab closes with the window, not through the page.
+      expect(await window.ganymede!.command('close')).toBe(false);
+      expect(screen.getByTestId('duck-console')).toBeInTheDocument();
+      // New DuckDB Console from the page is another tab.
+      expect(await window.ganymede!.command('new-duckdb-console', 'moons')).toBe(true);
+      expect(opened.at(-1)).toEqual({ console: 'duckdb', folder: 'moons' });
+      expect(screen.getAllByTestId('duck-console')).toHaveLength(1);
+      vi.unstubAllGlobals();
+    });
+
+    it('is unchanged without an openTab handler: in the page, as before', async () => {
+      stubApp(false);
+      mocks.controller = { dirty: false, save: vi.fn(async () => true), kernelName: 'python3' };
+      connectTo();
+      history.replaceState(null, '', '/?kernels=server&chrome=native&open=moons/Io.ipynb');
+      render(<App />);
+      await screen.findByTestId('pane');
+
+      expect(await window.ganymede!.command('new-duckdb-console', 'moons')).toBe(true);
+      expect(await screen.findByTestId('duck-console')).toHaveAttribute('data-folder', 'moons');
+      expect(screen.queryByTestId('pane')).toBeNull();
+      // Its export opens in the page, closing it.
+      await userEvent.click(screen.getByRole('button', { name: 'Open exported' }));
+      expect(await screen.findByTestId('pane')).toHaveTextContent('duckdb-console.ipynb');
+      expect(screen.queryByTestId('duck-console')).toBeNull();
+      vi.unstubAllGlobals();
+    });
+
+    it('opens a notebook over a launch console in the page when the app has no tabs', async () => {
+      stubApp(false);
+      connectTo();
+      history.replaceState(null, '', '/?kernels=server&dir=moons&console=duckdb');
+      render(<App />);
+      await screen.findByTestId('duck-console');
+      await userEvent.click(screen.getByRole('button', { name: 'Open exported' }));
+      expect(await screen.findByTestId('pane')).toBeInTheDocument();
+      expect(screen.queryByTestId('duck-console')).toBeNull();
+      vi.unstubAllGlobals();
+    });
+  });
+
   it('follows a rename of the DuckDB console’s folder from the page’s own sidebar, and closes on its delete (#679)', async () => {
     const fake = fakeServices({ '': [{ name: 'moons', type: 'directory' }], moons: [] });
     mocks.connect.mockResolvedValue(fakeBackend(fake.services));

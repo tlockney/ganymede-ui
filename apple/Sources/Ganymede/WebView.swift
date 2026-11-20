@@ -12,6 +12,8 @@ struct WebView: NSViewRepresentable {
     var document: PageDocument? = nil
     /// What the page shows and the commands it runs, for native chrome (#205).
     var page: PageModel? = nil
+    /// Opens a tab the page asked for (`openTab`, #729).
+    var onOpenTab: ((TabRequest) -> Void)? = nil
     /// Opens a text file from the sidebar, by its path on the server (#122).
     var onOpenFile: ((String) -> Void)? = nil
     /// Where the window's notebooks live (#701): a machine's window gets
@@ -33,6 +35,7 @@ struct WebView: NSViewRepresentable {
         context.coordinator.onNavigate = onNavigate
         context.coordinator.document = document
         context.coordinator.page = page
+        context.coordinator.onOpenTab = onOpenTab
         context.coordinator.onOpenFile = onOpenFile
         context.coordinator.onOpenPlace = onOpenPlace
         context.coordinator.places = places
@@ -195,6 +198,9 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     }
     var onNavigate: ((URL?) -> Void)?
     var onOpenFile: ((String) -> Void)?
+    /// The page's `openTab` message (#729). Only the Mac's windows set it,
+    /// and only they register the handler.
+    var onOpenTab: ((TabRequest) -> Void)?
     /// A machine page's pick in its place switcher.
     var onOpenPlace: ((Place) -> Void)?
 
@@ -302,6 +308,8 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         if names.contains("place") { handlers.add(PlaceHandler(self), name: "place") }
         #if os(macOS)
         if names.contains("document") { handlers.add(DocumentHandler(self), name: "document") }
+        // Notebooks, data files and DuckDB consoles open as tabs (#729).
+        if names.contains("openFile") { handlers.add(OpenTabHandler(self), name: "openTab") }
         #endif
         // Safari's Web Inspector can attach (Develop menu).
         view.isInspectable = true
@@ -651,6 +659,33 @@ private final class OpenFileHandler: NSObject, WKScriptMessageHandler {
         coordinator?.received(openFile: message)
     }
 }
+
+#if os(macOS)
+extension WebViewCoordinator {
+    /// The page's `openTab` message (#729): `{ path }` for a notebook or
+    /// data file, `{ console: "duckdb", folder }` for a new DuckDB console,
+    /// by server paths (`TabRequest`). Only the page itself may send it:
+    /// output frames see the same handlers.
+    func received(openTab message: WKScriptMessage) {
+        guard message.frameInfo.isMainFrame, let request = TabRequest(body: message.body) else { return }
+        onOpenTab?(request)
+    }
+}
+
+/// The `openTab` handler; weak, since the content controller keeps its
+/// handlers.
+private final class OpenTabHandler: NSObject, WKScriptMessageHandler {
+    weak var coordinator: WebViewCoordinator?
+
+    init(_ coordinator: WebViewCoordinator) {
+        self.coordinator = coordinator
+    }
+
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        coordinator?.received(openTab: message)
+    }
+}
+#endif
 
 extension WebViewCoordinator {
     /// The page's `agentKeys` message (#166). Only the page the app loaded

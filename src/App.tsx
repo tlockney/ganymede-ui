@@ -48,9 +48,11 @@ import {
 } from './lib/launch';
 import {
   canOpenFiles,
+  canOpenTabs,
   exposeHooks,
   nativeChrome,
   openFile,
+  openTab,
   postDocument,
   postState,
   fileMove,
@@ -125,6 +127,16 @@ export function App() {
    * the connect sheet picks another backend.
    */
   const pendingOpen = useRef(launch.open);
+  /**
+   * The Mac app opens a DuckDB console in a tab of its own (#729): its page
+   * is loaded with `console=duckdb`, shows the console for `dir` once
+   * connected, and asks the app for a tab to open a notebook or a new
+   * console, so the console keeps running. A browser or the iPad app, with
+   * no `openTab` handler, opens them in the page as before.
+   */
+  const [consoleTab] = useState(() => launch.console === 'duckdb' && canOpenTabs());
+  /** The folder of the console to show on the first connection. */
+  const pendingConsole = useRef(launch.console === 'duckdb' ? launch.dir : undefined);
   /** The folder the sidebar starts in; the server root once the sheet picks a backend. */
   const [sidebarRoot, setSidebarRoot] = useState(launch.dir);
   /** The folder the sidebar shows, where new notebooks go. */
@@ -163,7 +175,8 @@ export function App() {
    * The DuckDB console (#679) shows in the page where a notebook would, in
    * this folder. It has no path: the app's state says no notebook is open,
    * so its notebook menus disable, as they do for a data file. Opening
-   * anything closes it.
+   * anything closes it, except in a console tab (`consoleTab`), where the
+   * app opens a tab for it.
    */
   const [duckFolder, setDuckFolder] = useState<string>();
   /**
@@ -171,6 +184,8 @@ export function App() {
    * nothing read, even on the same folder. A move of the folder keeps it.
    */
   const [duckId, setDuckId] = useState(0);
+  /** A console tab's notebook, from its export: a tab of its own (#729). */
+  const openInTab = useCallback((path: string) => openTab({ path }), []);
   /**
    * A move of the console's folder, or one it is in, keeps the console and
    * moves it along; a delete closes it, as it closes an open data file.
@@ -301,7 +316,10 @@ export function App() {
         if (pendingOpen.current) {
           setOpenPath(pendingOpen.current);
           pendingOpen.current = undefined;
+        } else if (pendingConsole.current !== undefined) {
+          setDuckFolder(pendingConsole.current);
         }
+        pendingConsole.current = undefined;
       })
       .catch(e => {
         if (cancelled) return;
@@ -422,17 +440,27 @@ export function App() {
         // As `?open=`: the app may pass an absolute path.
         const path = arg && clean(arg);
         if (!backend || !path) return false;
-        setOpenPath(path);
+        // A console tab keeps its console: the notebook gets a tab (#729).
+        if (consoleTab) openTab({ path });
+        else setOpenPath(path);
         return true;
       }
       case 'new-duckdb-console':
         if (!backend) return false;
+        // The app opens a console tab, with a new engine, and this page's
+        // own content stays (#729).
+        if (canOpenTabs()) {
+          openTab({ console: 'duckdb', folder: clean(arg ?? folder) });
+          return true;
+        }
         // A notebook open goes the way another notebook's opening takes it.
         setOpenPath(undefined);
         setDuckFolder(clean(arg ?? folder));
         setDuckId(n => n + 1);
         return true;
       case 'close':
+        // The tab's console stays until the tab closes.
+        if (consoleTab) return false;
         if (!openPath && duckFolder !== undefined) {
           setDuckFolder(undefined);
           return true;
@@ -940,7 +968,7 @@ export function App() {
                 key={`${backend.config.kind}:duck:${duckId}`}
                 backend={backend}
                 folder={duckFolder}
-                onOpenNotebook={setOpenPath}
+                onOpenNotebook={consoleTab ? openInTab : setOpenPath}
               />
             ) : backend && openPath ? (
               <NotebookPane
