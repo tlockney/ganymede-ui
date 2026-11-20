@@ -813,6 +813,11 @@ for it yet.
 > Needs cdp-kernel 0.14.0 or later: an older kernel doesn't answer, and
 > none of this does anything.
 
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release. Rebinding F12 and F2 in the Shortcuts sheet is
+> new; the keys themselves already work in the latest release.
+
 Code cells of a TypeScript or JavaScript kernel get three more things from
 the kernel's language service, in the Mac, iPad and iPhone apps and in the
 browser:
@@ -822,14 +827,16 @@ browser:
   documentation. It follows the cursor, and closes on Esc, when the cursor
   leaves the call, or when the cell loses focus.
 - **Go to definition.** ⌘-click (Ctrl-click off the Mac) on a name, or F12
-  with the cursor in it, jumps to where the notebook declares it and
+  with the cursor in it (by default; you can rebind it in the Shortcuts
+  sheet), jumps to where the notebook declares it and
   selects the name there. A name declared outside the notebook, in a
   package or in the runtime, does nothing. In a code cell whose kernel
   answers, ⌘-click (Ctrl-click elsewhere) goes to the definition instead
   of adding a cursor, CodeMirror's usual meaning of it; Alt-drag still
   makes a rectangular selection. Other cells, and the other mouse
   buttons, keep the usual clicks.
-- **Rename symbol.** F2 with the cursor in a name asks for the new name;
+- **Rename symbol.** F2 (by default; you can rebind it in the Shortcuts
+  sheet) with the cursor in a name asks for the new name;
   Enter renames it, Esc cancels. The declaration and its uses change in
   every cell they are in, as one change per cell, so ⌘Z in a cell takes
   back that cell's part. A rename the kernel refuses (a keyword, a package

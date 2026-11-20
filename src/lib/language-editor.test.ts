@@ -100,7 +100,7 @@ const type = (i: number, text: string) => {
 };
 const press = (i: number, key: string, init: KeyboardEventInit = {}) => {
   // Lumino reads `keyCode`, which jsdom leaves at 0 unless given.
-  const keyCode = { Escape: 27, F2: 113, F12: 123 }[key] ?? 0;
+  const keyCode = { Escape: 27, F2: 113, F12: 123, D: 68, R: 82 }[key] ?? 0;
   const event = new KeyboardEvent('keydown', {
     key,
     keyCode,
@@ -301,14 +301,36 @@ describe('definition and rename keys', () => {
     expect(view(0).state.selection.main.from).toBe(9);
   });
 
-  it('follows a rebinding of F12 in the Shortcuts sheet', async () => {
+  it('follows a rebinding of go to definition in the Shortcuts sheet', async () => {
     const { resetKeys, setKeys } = await import('./shortcuts');
     const k = (await start({ answer: () => ({ locations: [] }) }))!;
     try {
-      setKeys('go-to-definition', [['Accel Shift D']]);
+      setKeys('go-to-definition', [['Ctrl Shift D']]);
       expect(press(2, 'F12').defaultPrevented).toBe(false);
       await settle();
       expect(requests(k)).toEqual([]);
+      const event = press(2, 'D', { ctrlKey: true, shiftKey: true });
+      await settle();
+      expect(event.defaultPrevented).toBe(true);
+      expect(requests(k)).toEqual([expect.objectContaining({ op: 'definition' })]);
+    } finally {
+      resetKeys();
+    }
+  });
+
+  it('follows a rebinding of rename symbol in the Shortcuts sheet', async () => {
+    const { resetKeys, setKeys } = await import('./shortcuts');
+    await start({ answer: () => ({ edits: [] }) });
+    try {
+      setKeys('rename-symbol', [['Ctrl Shift R']]);
+      view(2).dispatch({ selection: { anchor: 1 } });
+      expect(press(2, 'F2').defaultPrevented).toBe(false);
+      await settle();
+      expect(document.querySelector('.rename-prompt')).toBeNull();
+      const event = press(2, 'R', { ctrlKey: true, shiftKey: true });
+      await settle();
+      expect(event.defaultPrevented).toBe(true);
+      expect(document.querySelector('.rename-prompt input')).not.toBeNull();
     } finally {
       resetKeys();
     }
