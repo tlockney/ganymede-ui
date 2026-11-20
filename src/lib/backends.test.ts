@@ -27,8 +27,9 @@ const sockets = vi.hoisted(() => {
   return { opened };
 });
 
-import type { ServiceManager } from '@jupyterlab/services';
+import { ServerConnection, type ServiceManager } from '@jupyterlab/services';
 import { fakeBackend, fakeServices } from '../test/fakes';
+import { NotebookRoom } from './room';
 import {
   type Backend,
   connect,
@@ -253,6 +254,75 @@ describe('connected machines (#701)', () => {
     expect(seen.every(r => r.url.startsWith(`${window.location.origin}/machines/${id}/api/`))).toBe(
       true,
     );
+  });
+
+  describe('the settings connect() hands out are confined to the mount', () => {
+    const machine = {
+      kind: 'ganymede',
+      url: '',
+      token: '',
+      machine: id,
+      machineName: 'm',
+    } as const;
+    const wsOrigin = () => window.location.origin.replace(/^http/, 'ws');
+
+    it('refuses a request that climbs out, before it reaches fetch', async () => {
+      const { fetch } = fakeServer();
+      const { services } = keep(await connect(machine));
+      const settings = services.serverSettings;
+      fetch.mockClear();
+      // A concatenated string passes handleRequest's string-prefix check, so
+      // only the transport guard stops it.
+      const climbing = `${settings.baseUrl}api/contents/../../../api/contents/x`;
+      await expect(ServerConnection.makeRequest(climbing, {}, settings)).rejects.toThrow(
+        /outside the machine/,
+      );
+      expect(fetch).not.toHaveBeenCalled();
+      // A request inside the mount still goes out.
+      await ServerConnection.makeRequest(`${settings.baseUrl}api/contents/a`, {}, settings);
+      expect(fetch).toHaveBeenCalledTimes(1);
+    });
+
+    it('refuses a socket that climbs out, and opens one inside', async () => {
+      fakeServer();
+      const { services } = keep(await connect(machine));
+      const settings = services.serverSettings;
+      sockets.opened.length = 0;
+      const wsBase = `${wsOrigin()}/machines/${id}/`;
+      expect(
+        () => new settings.WebSocket(`${wsBase}api/collaboration/room/a/../../../../../../api/x`),
+      ).toThrow(/outside the machine/);
+      expect(sockets.opened).toEqual([]);
+      new settings.WebSocket(`${wsBase}api/kernels/k/channels`);
+      expect(sockets.opened).toEqual([`${wsBase}api/kernels/k/channels`]);
+    });
+
+    it('opens no room socket outside the mount for a climbing fileId', async () => {
+      const { fetch } = fakeServer();
+      const { services } = keep(await connect(machine));
+      const settings = services.serverSettings;
+      const answer = fetch.getMockImplementation()!;
+      // y-websocket joins `<room url>/<format>:<type>:<fileId>`; the `/`
+      // after the colons makes the climb real.
+      fetch.mockImplementation(async (req: Request) =>
+        req.url.includes('/api/collaboration/session/')
+          ? new Response(
+              JSON.stringify({
+                format: 'json',
+                type: 'notebook',
+                fileId: '/../../../../../../../api/x',
+                sessionId: 's1',
+              }),
+              { status: 200, headers: { 'Content-Type': 'application/json' } },
+            )
+          : answer(req),
+      );
+      sockets.opened.length = 0;
+      await expect(NotebookRoom.join({ settings, path: 'a.ipynb' })).rejects.toThrow(
+        /outside the machine/,
+      );
+      expect(sockets.opened).toEqual([]);
+    });
   });
 
   it('doesn’t tell the app of renames: a machine may hold a local notebook’s path', async () => {
