@@ -37,7 +37,7 @@ async function nodeEngine(): Promise<{ engine: Engine; db: Blocking; conn: Block
       // As openEngine streams, over the blocking build's connection.
       stream: async (sql, maxRows) => {
         const reader = await conn.send(sql, true);
-        return takeBatches(reader, maxRows, () => conn.cancelSent());
+        return takeBatches(reader, maxRows);
       },
     },
   };
@@ -151,11 +151,14 @@ describe('ConsoleSession on the real DuckDB', () => {
       [`select x from $$b.csv$$`, [[2]]],
       [`select x from $t$a.csv$t$`, [[1]]],
       [`select x from read_csv(E'b.csv')`, [[2]]],
+      [`pivot 'a.csv' on x using sum(x)`, [[1]]],
+      [`unpivot 'a.csv' on x into name n value v`, [['x', 1]]],
     ];
     for (const [sql, data] of forms) expect(await rows(sql), sql).toEqual(data);
     for (const sql of [
       `describe 'a.csv'`,
       `summarize 'a.csv'`,
+      `show 'a.csv'`,
       `select * from sniff_csv('a.csv')`,
       `select * from parquet_metadata('p.parquet')`,
       `select * from parquet_schema('p.parquet')`,

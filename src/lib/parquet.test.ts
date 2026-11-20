@@ -225,25 +225,22 @@ describe('takeBatches', () => {
     };
   }
 
-  it('stops and cancels once the batches hold more than the cap', async () => {
+  it('stops reading once the batches hold more than the cap', async () => {
     const r = reader([4, 4, 4, 4, 4]);
-    const cancel = vi.fn();
-    const got = await takeBatches(r, 10, cancel);
+    const got = await takeBatches(r, 10);
     expect(got.more).toBe(true);
     expect(got.batches.map(b => b.numRows)).toEqual([4, 4, 4]);
     // No batch was pulled past the one that crossed the cap.
     expect(r.state.pulled).toBe(3);
-    expect(cancel).toHaveBeenCalledTimes(1);
     expect(r.state.opened).toBe(1);
   });
 
-  it('does not cancel a result that fits', async () => {
+  it('reads a result that fits whole', async () => {
     const r = reader([4, 6]);
-    const cancel = vi.fn();
-    const got = await takeBatches(r, 10, cancel);
+    const got = await takeBatches(r, 10);
     expect(got.more).toBe(false);
     expect(got.batches).toHaveLength(2);
-    expect(cancel).not.toHaveBeenCalled();
+    expect(r.state.pulled).toBe(2);
   });
 });
 
@@ -252,11 +249,10 @@ describe('openEngine stream', () => {
     vi.unstubAllGlobals();
   });
 
-  it('sends the SQL as a stream and cancels it past the row cap', async () => {
+  it('sends the SQL as a stream and stops reading past the row cap', async () => {
     vi.mocked(loadDuckdbFiles).mockResolvedValue();
     const calls = {
       send: [] as [string, boolean][],
-      cancelSent: 0,
       pulled: 0,
     };
     vi.stubGlobal('Worker', class {});
@@ -284,7 +280,6 @@ describe('openEngine stream', () => {
                 },
               };
             },
-            cancelSent: async () => { calls.cancelSent++; return true; },
             close: async () => {},
           };
         }
@@ -299,6 +294,5 @@ describe('openEngine stream', () => {
     // 3 + 3 + 3 rows is the first to pass 7; the other seven batches stay unread.
     expect(got.batches).toHaveLength(3);
     expect(calls.pulled).toBe(3);
-    expect(calls.cancelSent).toBe(1);
   });
 });

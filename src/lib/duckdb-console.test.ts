@@ -256,6 +256,8 @@ describe('file paths', () => {
   it('reads E and dollar strings as file names, as DuckDB does', () => {
     expect(filePaths(`select * from E'a.csv'`)).toEqual(['a.csv']);
     expect(filePaths(`select * from e'it\\'s.csv'`)).toEqual(["it's.csv"]);
+    expect(filePaths(`select * from E'\\'\\'.csv'`)).toEqual(["''.csv"]);
+    expect(filePaths(`select * from E'a''b.csv'`)).toEqual(["a'b.csv"]);
     expect(filePaths(`select * from $$a.csv$$`)).toEqual(['a.csv']);
     expect(filePaths(`select * from $t$b.csv$t$`)).toEqual(['b.csv']);
     expect(filePaths(`select * from read_csv(E'a.csv'), $$b.tsv$$`)).toEqual(['a.csv', 'b.tsv']);
@@ -277,6 +279,26 @@ describe('file paths', () => {
     expect(filePaths(`describe 'a.csv'`)).toEqual(['a.csv']);
     expect(filePaths(`SUMMARIZE 'b.parquet'`)).toEqual(['b.parquet']);
     expect(filePaths(`summarize select 'c.csv'`)).toEqual([]);
+  });
+  it('reads the name after pivot, unpivot and show', () => {
+    expect(filePaths(`pivot 'a.csv' on x using sum(y)`)).toEqual(['a.csv']);
+    expect(filePaths(`UNPIVOT 'b.csv' on x into name n value v`)).toEqual(['b.csv']);
+    expect(filePaths(`pivot_wider 'c.csv' on x using sum(y)`)).toEqual(['c.csv']);
+    expect(filePaths(`pivot_longer 'd.csv' on x`)).toEqual(['d.csv']);
+    expect(filePaths(`show 'e.csv'`)).toEqual(['e.csv']);
+    expect(filePaths(`select show, 'f.csv' from t`)).toEqual([]);
+    expect(filePaths(`select pivot, 'f.csv' from t`)).toEqual([]);
+  });
+  it('reads a string only as the argument itself or an item of its list', () => {
+    expect(filePaths(`select * from read_csv(m['a.csv'])`)).toEqual([]);
+    expect(filePaths(`select * from read_csv(x || 'b.csv')`)).toEqual([]);
+    expect(filePaths(`select * from read_csv([x || 'b.csv'])`)).toEqual([]);
+    expect(filePaths(`select * from read_csv([x, 'c.csv'])`)).toEqual(['c.csv']);
+  });
+  it('keeps a FROM list through an is distinct from in a join', () => {
+    expect(filePaths(`select * from t join u on t.x is distinct from u.x, 'a.csv'`)).toEqual([
+      'a.csv',
+    ]);
   });
   it('reads the other file functions', () => {
     for (const f of ['parquet_scan', 'sniff_csv', 'parquet_metadata', 'parquet_schema']) {

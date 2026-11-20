@@ -8,7 +8,8 @@ every single-quoted string that named a data file, so valid SQL such as
 `where src = 'big.parquet'` or `select '../x.csv'` was refused or read a
 file it never used. It now reads a string only where DuckDB does: the table
 right after `FROM` or any `JOIN`, a table after a comma in a `FROM` list, the
-name after `describe` or `summarize`, and the first argument (or a list that
+name after `describe`, `summarize`, `show`, `pivot`, `unpivot`,
+`pivot_wider` or `pivot_longer`, and the first argument (or a list that
 is the first argument, `read_csv(['a.csv', 'b.csv'])`) of a `read_*`,
 `parquet_*` or `sniff_csv` function. It runs over the lexer's pieces (so
 comments and `"names"` are never files; `E'...'` and `$$...$$` strings are,
@@ -19,7 +20,8 @@ opens a file function's arguments: `FROM` sets it, `SELECT`, `WHERE`,
 `GROUP`, `ORDER` and the like clear it, and a `(` starts a fresh level. That
 is what tells `from x, 'c.csv'` (a file) from `select a, 'c.csv'`,
 `in (1, 'c.csv')` and `group by a, 'c.csv'` (values). `IS DISTINCT FROM
-'a.csv'` is a comparison, not a table, and is skipped. Left as a known gap:
+'a.csv'` is a comparison, not a table: it neither sets nor clears the flag, so
+`join u on t.x is distinct from u.x, 'a.csv'` still reads a.csv. Left as a known gap:
 `extract(... from 'x')` and `trim(... from 'x')` read their string as a file
 if it ends in `.csv` and so on, which no real query does.
 
@@ -28,10 +30,12 @@ and showed 10,000 rows of it, so `select * from range(100000000)` could end
 the page on an iPhone. `Engine` (`parquet.ts`) has an optional `stream`: it
 runs `connection.send(sql, true)` (duckdb-wasm 1.32, `allowStreamResult`,
 so DuckDB doesn't materialise the result first), reads batches until they
-hold more than the row cap, then `cancelSent()`s the rest. `takeBatches`
-does the reading (tested with a counting reader and a cancel spy, and through
-`openEngine` with a fake module: `send(sql, true)`, one `cancelSent`, no batch
-pulled past the cap) for both the browser engine and the Node test engine.
+hold more than the row cap, then stops reading. It does not call
+`cancelSent()`: after `send()` returns that does nothing (it returns false),
+so the `break` out of the read loop is what stops it, and DuckDB drops the
+open result when the next statement runs. `takeBatches`
+does the reading (tested with a counting reader, and through `openEngine` with a fake
+module: `send(sql, true)`, no batch pulled past the cap) for both the browser engine and the Node test engine.
 `fromStream` makes the batches one result for `resultTable`, which then
 carries `more` and the bar says "more than 10,000 rows · showing the first
 10,000". A result that ends within the cap is read whole and its count is

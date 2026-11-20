@@ -35,8 +35,10 @@ export interface Streamed {
 
 /**
  * Reads batches from `reader` until they hold more than `maxRows` rows,
- * then stops it (`cancel`), so the rest of a big result is never brought
- * into the page.
+ * then stops reading (the `break` ends the loop), so the rest of a big
+ * result is never brought into the page. The query is not cancelled: once
+ * `send` has returned, `cancelSent` does nothing; DuckDB drops the open
+ * result when the next statement runs on the connection.
  */
 export async function takeBatches(
   reader: (AsyncIterable<BatchLike> | Iterable<BatchLike>) & {
@@ -45,7 +47,6 @@ export async function takeBatches(
     open(): unknown;
   },
   maxRows: number,
-  cancel: () => unknown,
 ): Promise<Streamed> {
   await reader.open();
   // Before reading on: a reader that has ended forgets its schema.
@@ -61,7 +62,6 @@ export async function takeBatches(
       break;
     }
   }
-  if (more) await cancel();
   return { schema, batches, more };
 }
 
@@ -197,7 +197,6 @@ interface DuckdbModule {
         sql: string,
         allowStreamResult: boolean,
       ): Promise<AsyncIterable<BatchLike> & { schema: Streamed['schema']; open(): unknown }>;
-      cancelSent(): Promise<boolean>;
       close(): Promise<void>;
     }>;
     terminate(): Promise<void>;
@@ -238,7 +237,7 @@ export async function openEngine(modules: () => { [specifier: string]: string })
       // Streamed, so a big result stays in the worker past what is shown.
       stream: async (sql, maxRows) => {
         const reader = await connection.send(sql, true);
-        return takeBatches(reader, maxRows, () => connection.cancelSent());
+        return takeBatches(reader, maxRows);
       },
       // Terminate first: the connection closes only after a running query
       // does, which can be never, and terminating the worker ends both.

@@ -274,8 +274,9 @@ function stringValue(p: Piece): string | undefined {
   }
   const escapes = !p.text.startsWith("'");
   const body = p.text.slice(escapes ? 2 : 1, -1);
-  const unescaped = escapes ? body.replace(/\\(.)/gs, '$1') : body;
-  return unescaped.replaceAll("''", "'");
+  // A doubled quote first, so `E'\'\''` (two escaped quotes) is `''`, not one quote.
+  const collapsed = body.replaceAll("''", "'");
+  return escapes ? collapsed.replace(/\\(.)/gs, '$1') : collapsed;
 }
 
 /** Keywords that end a FROM list at its own level of parentheses. */
@@ -299,6 +300,17 @@ const ENDS_FROM = new Set([
   'sample',
 ]);
 
+/** Statements whose next string is a table: `describe 'a.csv'`, `pivot 'a.csv' on x using sum(y)`. */
+const TABLE_STATEMENTS = new Set([
+  'describe',
+  'summarize',
+  'show',
+  'pivot',
+  'unpivot',
+  'pivot_wider',
+  'pivot_longer',
+]);
+
 /**
  * A table function whose first argument is a file name: `read_csv`,
  * `read_parquet`, ... (`read_*`), `parquet_scan` and the other `parquet_*`
@@ -309,7 +321,8 @@ const FILE_FUNCTION = /^(read_|parquet_|sniff_csv$)/;
 /**
  * The strings in the SQL that DuckDB reads as a file name: the table
  * reference after FROM or any JOIN (and after a comma of a FROM list), the
- * name after `describe` or `summarize`, or the first argument of a file
+ * name after `describe`, `summarize`, `show`, `pivot`, `unpivot`,
+ * `pivot_wider` or `pivot_longer`, or the first argument of a file
  * function (`FILE_FUNCTION`), which may be a list of names
  * (`read_csv(['a.csv', 'b.csv'])`). A string anywhere else is a value
  * (`where src = 'big.parquet'`, a select item, a function argument), so it
@@ -359,7 +372,8 @@ function fileReferences(sql: string): string[] {
     const word = t.kind === 'word' ? t.text.toLowerCase() : '';
     if (t.kind === 'word') {
       if (word === 'from' || word === 'join') {
-        top().from = !(word === 'from' && prevWord === 'distinct');
+        // `is distinct from` is a comparison: it neither starts a FROM list nor ends one.
+        if (!(word === 'from' && prevWord === 'distinct')) top().from = true;
       } else if (ENDS_FROM.has(word)) top().from = false;
     } else if (t.text === '(') {
       stack.push(frame({ fn: prev?.kind === 'word' && FILE_FUNCTION.test(prevWord) }));
@@ -371,8 +385,7 @@ function fileReferences(sql: string): string[] {
     if (t.kind !== 'string' || t.value === undefined) return;
     const afterFrom =
       prevWord === 'join' ||
-      prevWord === 'describe' ||
-      prevWord === 'summarize' ||
+      TABLE_STATEMENTS.has(prevWord) ||
       (prevWord === 'from' && tokens[i - 2]?.text.toLowerCase() !== 'distinct') ||
       (prev?.text === ',' && top().from);
     const readerArg = top().fn && top().first && prev?.text === '(';

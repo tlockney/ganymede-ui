@@ -215,6 +215,9 @@ window's page, on the Mac, iPad and iPhone and in a browser, read-only:
 - **Parquet** shows the rows as a table, with its schema under Schema,
   read by DuckDB in the app. The first Parquet file you open fetches
   DuckDB (36 MB, once, then kept) as SQL in a notebook does.
+  Decimals of up to 18 digits show as numbers and a `UBIGINT` as a
+  number while it fits; decimals wider than 18 digits show as exact text
+  and sort as text.
 
 Large files are read in part so a phone doesn't run out of memory: a CSV
 or TSV shows its first 10,000 rows (the bar says so; the page reads at most
@@ -1000,9 +1003,10 @@ closes. Nothing is saved when it closes.
 A statement that names a CSV, TSV, JSON or Parquet file in the window's
 folder (`select * from 'data/moons.csv'`) has the file read through the
 server and given to DuckDB before the statement runs, the first time a
-statement names it. The console reads a string as a file only where DuckDB
-does: as the table right after `FROM` or any `JOIN`, after a comma in a
-`FROM` list (`from moons, 'extra.csv'`), or after `describe` or `summarize`;
+statement names it. The console reads a string as a file only in these places: as the table right after `FROM` or
+any `JOIN`, after a comma in a `FROM` list (`from moons, 'extra.csv'`), or
+after `describe`, `summarize`, `show`, `pivot`, `unpivot`, `pivot_wider` or
+`pivot_longer`;
 and as the first argument of a table function that reads a file:
 `read_csv('data/moons.csv', header = true)`, `read_parquet`,
 `read_json_auto` and the other `read_` functions, `parquet_scan` and the
