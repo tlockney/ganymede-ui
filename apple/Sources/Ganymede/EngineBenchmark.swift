@@ -15,10 +15,46 @@ import Observation
 @MainActor
 @Observable
 final class EngineBenchmark {
-    static let shared = EngineBenchmark()
+    /// What a run calls out to: the engines, the bundled files and the
+    /// results file. `live` is the app's; tests pass their own.
+    struct Engines {
+        /// Whether this build of the library has V8.
+        var v8Available: Bool
+        /// The bench folder.
+        var folder: () throws -> URL
+        /// Runs the V8 config; returns the report.
+        var runV8: @Sendable (String) async -> String
+        /// Runs the Workers from the folder; returns the report. `show` puts
+        /// a page on screen while it runs, and nil when it's done.
+        var runWorkers: @MainActor (URL, _ show: (BenchWorkerPage?) -> Void) async -> String
+        /// Writes the results; returns the file.
+        var write: (String) throws -> URL
+
+        static let live = Engines(
+            v8Available: ganymede_v8_bench_available() == 1,
+            folder: EngineBenchmark.benchFolder,
+            runV8: { await EngineBenchmark.runV8(config: $0) },
+            runWorkers: { folder, show in
+                let page = BenchWorkerPage(root: folder)
+                show(page)
+                let report = await page.run()
+                show(nil)
+                return report
+            },
+            write: EngineBenchmark.write
+        )
+    }
+
+    static let shared = EngineBenchmark(engines: .live)
+
+    private let engines: Engines
+
+    init(engines: Engines) {
+        self.engines = engines
+    }
 
     /// Whether this build of the library has V8.
-    let v8Available = ganymede_v8_bench_available() == 1
+    var v8Available: Bool { engines.v8Available }
 
     private(set) var running = false
     /// What the run is doing, while it runs.
@@ -78,7 +114,7 @@ final class EngineBenchmark {
         let folder: URL
         let manifest: Data
         do {
-            folder = try Self.benchFolder()
+            folder = try engines.folder()
             manifest = try Data(contentsOf: folder.appendingPathComponent("workloads/manifest.json"))
         } catch {
             failure = "Couldn't load the benchmark's files: \(error.localizedDescription)"
@@ -93,7 +129,7 @@ final class EngineBenchmark {
                 let config = try EngineBench.config(manifest: manifest) { path in
                     try String(contentsOf: folder.appendingPathComponent(path), encoding: .utf8)
                 }
-                let raw = await Self.runV8(config: config)
+                let raw = await engines.runV8(config)
                 let after = Self.footprintNow()
                 footprint = EngineBench.Footprint(before: before.current, after: after.current, peak: after.peak)
                 v8Text = EngineBench.annotated(raw, device: device, os: os, footprint: footprint, leftScreen: leftScreen)
@@ -105,16 +141,15 @@ final class EngineBenchmark {
         }
 
         step = "Running the WebKit Workers…"
-        let worker = BenchWorkerPage(root: folder)
-        page = worker
-        let workerText = EngineBench.annotated(await worker.run(), device: device, os: os, leftScreen: leftScreen)
+        let workerRaw = await engines.runWorkers(folder) { self.page = $0 }
         page = nil
+        let workerText = EngineBench.annotated(workerRaw, device: device, os: os, leftScreen: leftScreen)
         workerReport = EngineBench.Report(json: workerText)
 
         let combined = EngineBench.combined(v8: v8Text, worker: workerText)
         resultsText = combined
         do {
-            resultsFile = try Self.write(combined)
+            resultsFile = try engines.write(combined)
         } catch {
             failure = "Couldn't write the results file: \(error.localizedDescription)"
         }
@@ -124,7 +159,7 @@ final class EngineBenchmark {
     /// The library runs V8 on a thread of its own with an 8 MB stack and
     /// blocks its caller until it's done: a thread of ours waits for it, so
     /// neither the main actor nor the cooperative pool does.
-    private nonisolated static func runV8(config: String) async -> String {
+    nonisolated static func runV8(config: String) async -> String {
         await withCheckedContinuation { done in
             let thread = Thread {
                 guard let raw = ganymede_v8_bench_run(config) else {
@@ -143,7 +178,7 @@ final class EngineBenchmark {
 
     /// The reports as a results-<time>.json file, the name `report.mjs`'s
     /// callers expect.
-    private static func write(_ text: String) throws -> URL {
+    nonisolated static func write(_ text: String) throws -> URL {
         let stamp = ISO8601DateFormatter().string(from: .now).replacingOccurrences(of: ":", with: "-")
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("results-\(stamp).json")
         try Data(text.utf8).write(to: url, options: .atomic)

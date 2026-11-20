@@ -16,7 +16,7 @@ shared by the app so results outlive the Settings window) runs the V8
 spike's workloads (ganymede `spikes/v8-engine`) twice. V8 goes through
 `ganymede_v8_bench_run` (ganymede#892; `_available` says whether the
 library has V8, else the table says "Not in this build" and only the
-WebKit half runs), called from a detached task because it blocks its
+WebKit half runs), called from a thread of its own because it blocks its
 caller while it runs on its own 8 MB-stack thread. The WebKit half is the
 spike's Worker page in a web view served from a `bench://` scheme
 (`BenchWorkerPage.swift`), shown on screen while it runs so WebKit doesn't
@@ -26,21 +26,32 @@ app shares it, with the device, OS and, on the V8 report, the app's
 `phys_footprint` before, after and peak, so `node bench/report.mjs` reads
 it. The pure parts (config from the manifest, report parsing, the table,
 `report.mjs`'s number formats) are in `EngineBenchmarkReport.swift` and
-`EngineBenchmarkTests`, so the test bundles build them without the FFI
-calls.
+`EngineBenchmarkTests`. The model takes its engines, the bench folder and
+the results writer as `EngineBenchmark.Engines` (`.live` in the app), so
+`EngineBenchmarkRunTests` runs it with fakes: the config V8 gets, a build
+without V8, and `left_screen` set only for the run the person left.
 
 The files it loads are vendored in `apple/Resources/Bench`, refreshed by
 `apple/scripts/update-bench.sh` (it builds `dist/strip-bundle.js` in the
 ganymede checkout); the Mac and iOS app targets bundle them, the
 extensions don't, and `check-app-bundle.sh` checks they are there. A
-`.gitignore` exception keeps the vendored `dist/` folder. `-lc++` is added
+`.gitignore` exception keeps the vendored `dist/` folder.
+`dist/strip-bundle.js` is an esbuild bundle of eight npm packages, which
+now ship in the apps: sucrase 3.35.1 and acorn 8.19.0 (the ts-strip
+workload strips TypeScript with them, as cdp-kernel does), and their
+dependencies @jridgewell/gen-mapping, resolve-uri, sourcemap-codec and
+trace-mapping, lines-and-columns (all MIT) and ts-interface-checker
+(Apache-2.0). `dist/LICENSES.txt` carries their notices, written by
+`apple/scripts/bench-licenses.mjs` from the spike's `node_modules` (the
+list is esbuild's metafile for the same build), and `check-app-bundle.sh`
+checks it ships. `-lc++` is added
 to the targets that link GanymedeFFI, for the V8 inside it.
 
 No `kernel-start`: the spike's page also times cdp-kernel's browser kernel
 from `dist/kernel`, but the apps bundle that kernel only inside the Vite
 build of `kernel-host.ts` (hashed file names, no standalone `kernel.js`),
 so the page here runs just the five workloads, and the vendored `bench.js`
-is the spike's without that step.
+is the spike's without that step. #713 adds it back.
 
 Size: V8 is now linked into every build of the apps. The spike measured
 +18.7 MB in the iOS binary, +6.9 MB compressed. Thomas chose this on

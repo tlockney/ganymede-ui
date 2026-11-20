@@ -636,8 +636,11 @@ targets:
       - path: Sources/Ganymede/Editor/LineNumbers.swift
       - path: Sources/Ganymede/FileStack.swift
       - path: Sources/Ganymede/CrashScrub.swift
-      # The benchmark's config and report formats (#698); not its FFI calls.
+      # The benchmark's config and report formats, and its run model with
+      # engines the tests pass in (#698).
       - path: Sources/Ganymede/EngineBenchmarkReport.swift
+      - path: Sources/Ganymede/EngineBenchmark.swift
+      - path: Sources/Ganymede/BenchWorkerPage.swift
       - path: Sources/Ganymede/NotebookActions.swift
       - path: Sources/Ganymede/AppURL.swift
       - path: Sources/Ganymede/LinkFolders.swift
@@ -714,8 +717,13 @@ targets:
       - path: Sources/Ganymede/NotebookIndex.swift
       - path: Sources/Ganymede/HostDefaults.swift
       - path: Sources/Ganymede/CrashScrub.swift
-      # The benchmark's config and report formats (#698); not its FFI calls.
+      # The benchmark's config and report formats, and its run model with
+      # engines the tests pass in (#698).
       - path: Sources/Ganymede/EngineBenchmarkReport.swift
+      - path: Sources/Ganymede/EngineBenchmark.swift
+      - path: Sources/Ganymede/BenchWorkerPage.swift
+      # BenchWorkerPage serves its files with the Quick Look preview's rules.
+      - path: Sources/QuickLook/Preview/PreviewResources.swift
       # The tests link ganymede-ffi too, so they need the app's stand-ins
       # for V8's WebAssembly members on iOS (#698).
       - path: Sources/V8iOS

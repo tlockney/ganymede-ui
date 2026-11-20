@@ -30,8 +30,8 @@ done
 # The Quick Look preview's page (#135).
 [[ -f "$plugins/GanymedeQuickLook.appex/Contents/Resources/quicklook/preview.html" ]] ||
   fail "GanymedeQuickLook.appex has no quicklook/preview.html"
-# Settings > Developer's engine benchmark files (#698).
-for file in web/index.html web/bench.js web/worker.js workloads/manifest.json dist/strip-bundle.js; do
+# Settings > Developer's engine benchmark files, with the bundled packages' notices (#698).
+for file in web/index.html web/bench.js web/worker.js workloads/manifest.json dist/strip-bundle.js dist/LICENSES.txt; do
   [[ -f "$app/Contents/Resources/Bench/$file" ]] || fail "no Resources/Bench/$file (the engine benchmark's files)"
 done
 # The command line tool Settings links (#686), bundled only when

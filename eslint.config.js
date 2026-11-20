@@ -45,6 +45,7 @@ export default tseslint.config(
     files: [
       'e2e/**/*.ts',
       'scripts/**/*.{js,mjs}',
+      'apple/scripts/**/*.mjs',
       '*.config.{js,ts}',
       'packages/*/*.config.ts',
       'packages/*/src/**/*.ts',
