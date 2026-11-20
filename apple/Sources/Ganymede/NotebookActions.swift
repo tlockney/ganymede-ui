@@ -245,11 +245,15 @@ struct NotebookActions: Sendable {
         case stale(String)
     }
 
+    /// The runner's name the server shows in the room as `execution_by` while the cells run (ganymede#908); servers before it ignore the field.
+    static let runnerName = "Ganymede"
+
     private func execute(kernel: String, document: String, cells: [NotebookCell], timeout: Int) async throws -> Executed {
         var post = try request("api/kernels/\(kernel)/execute", method: "POST", body: [
             "document_id": "json:notebook:\(document)",
             "cells": cells.map { ["cell_id": $0.id, "source_hash": String(Self.murmur2(Array($0.source.utf8)))] },
             "wait": max(1, timeout),
+            "by": Self.runnerName,
         ])
         // The server answers only when the cells are done.
         post.timeoutInterval = TimeInterval(max(1, timeout) + 30)

@@ -271,6 +271,13 @@ display or error), text, image and JSON, so the next action can take any
 of them; used as text, it is its text. A cell that fails, a missing file
 or a run that outlasts its time limit stops the shortcut with the error.
 
+While such a run's cells run, the notebook shows "Ganymede" as running
+them, on a server that supports it.
+
+> [!NOTE]
+> **Unreleased.** Needs a Ganymede server built from `main` (after
+> tlockney/ganymede#896); the latest release doesn't name the runner.
+
 The actions use the app's own server, and start it if no window has.
 Runs go through the server, as an agent's do: a window showing the
 notebook sees the outputs arrive, and they are saved with it. They use
