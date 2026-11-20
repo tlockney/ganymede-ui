@@ -288,8 +288,9 @@ shows who runs a cell (#702). Run Notebook with Parameters runs in a new
 kernel with no room, so it names no one.
 
 > [!NOTE]
-> **Unreleased.** Needs a Ganymede server built from `main` (after
-> tlockney/ganymede#896); the latest release doesn't name the runner.
+> **Unreleased.** Needs an app whose built-in Ganymede core includes
+> tlockney/ganymede#896 (a Ganymede release after v0.14.0). The latest
+> release and builds of `main` (core v0.14.0) record no runner at all.
 
 The actions use the app's own server, and start it if no window has.
 Runs go through the server, as an agent's do: a window showing the
