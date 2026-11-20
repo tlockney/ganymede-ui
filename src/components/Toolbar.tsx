@@ -260,7 +260,10 @@ export function Toolbar({
       key: 'kernel',
       priority: 2,
       node: (
-        <label className="popup-button" title="Kernel">
+        <label
+          className="popup-button"
+          title={c.kernelVersionLine ? `Kernel: ${c.kernelVersionLine}` : 'Kernel'}
+        >
           <select
             aria-label="Kernel"
             value={c.kernelName ?? ''}
@@ -502,7 +505,7 @@ export function Toolbar({
           {c && (
             <div className="subtitle">
               <span className={`status-dot s-${c.status}`} />
-              <span className="subtitle-text">
+              <span className="subtitle-text" title={c.kernelVersionLine}>
                 {kernelDisplay ?? 'No kernel'} · {STATUS_LABEL[c.status] ?? c.status}
               </span>
             </div>

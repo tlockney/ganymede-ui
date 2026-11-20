@@ -296,6 +296,7 @@ describe('App', () => {
       changeCellType,
       command,
       kernelName: 'python3',
+      kernelVersionLine: 'cdp-kernel 0.14.0 · node 24.11.0',
       cellType: 'code',
     };
     const fake = fakeServices({
@@ -321,6 +322,7 @@ describe('App', () => {
         status: 'idle',
         kernel: 'python3',
         kernelDisplayName: 'Python 3',
+        kernelVersionLine: 'cdp-kernel 0.14.0 · node 24.11.0',
         cellType: 'code',
         kernels: [
           { name: 'python3', displayName: 'Python 3', device: false },

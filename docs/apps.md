@@ -119,6 +119,19 @@ shown or hidden, its tab and its expanded folders across launches.
   device API with a ◆, and the items carry an accessibility label,
   "offers the device API".
 
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release.
+
+  The running kernel's implementation and version, from its
+  `kernel_info_reply`, show as a line such as "cdp-kernel 0.14.0 ·
+  node 24.11.0" (the name and version the kernel reports, and the
+  runtime when its banner names one; "ipython 8.20.0" for IPython): at
+  the top of the Mac's Kernel menu, in the kernel popover and the
+  button's help tag, in the iPad's kernel menu, and as the tooltip of
+  the browser toolbar's kernel label and picker. Nothing shows while no
+  kernel runs or before it has replied.
+
 - Kernels can run on a remote server instead. Add the remote in
   Settings > Remotes (its editor can switch kernels to it), then pick
   where kernels run from the foot of the sidebar, the kernel button in

@@ -135,6 +135,30 @@ describe('Toolbar', () => {
     expect(document.querySelector('.status-dot')).toHaveClass('s-idle');
   });
 
+  it('shows the kernel’s implementation and version as a tooltip, only when known', () => {
+    const { rerender } = render(
+      <Toolbar
+        controller={controller({ kernelVersionLine: 'cdp-kernel 0.14.0 · node 24.11.0' })}
+        specs={SPECS}
+        sidebarOpen
+        onToggleSidebar={vi.fn()}
+      />,
+    );
+    expect(screen.getByText('Python 3 · Idle')).toHaveAttribute(
+      'title',
+      'cdp-kernel 0.14.0 · node 24.11.0',
+    );
+    expect(screen.getByLabelText('Kernel').closest('label')).toHaveAttribute(
+      'title',
+      'Kernel: cdp-kernel 0.14.0 · node 24.11.0',
+    );
+    rerender(
+      <Toolbar controller={controller()} specs={SPECS} sidebarOpen onToggleSidebar={vi.fn()} />,
+    );
+    expect(screen.getByText('Python 3 · Idle')).not.toHaveAttribute('title');
+    expect(screen.getByLabelText('Kernel').closest('label')).toHaveAttribute('title', 'Kernel');
+  });
+
   it.each([
     ['busy', 'Running'],
     ['connecting', 'Connecting'],

@@ -728,6 +728,11 @@ struct IPadNotebookToolbar: ToolbarContent {
                 }
                 .disabled(page.state.otherSessions.isEmpty)
                 Menu {
+                    // Which kernel runs, from its own reply (#693).
+                    if let version = page.state.kernelVersionLine {
+                        Text(version)
+                        Divider()
+                    }
                     ForEach(page.state.kernels, id: \.name) { kernel in
                         Button {
                             page.run("change-kernel", arg: kernel.name)

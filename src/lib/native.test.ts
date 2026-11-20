@@ -61,6 +61,7 @@ describe('native', () => {
       status: 'idle',
       kernel: 'cdp',
       kernelDisplayName: 'TypeScript',
+      kernelVersionLine: 'cdp-kernel 0.14.0 · node 24.11.0',
       kernelMissing: false,
       trusted: true,
       hostGrants: true,

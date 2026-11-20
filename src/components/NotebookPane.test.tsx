@@ -7,6 +7,7 @@ import type * as nbformat from '@jupyterlab/nbformat';
 import type { NotebookModel } from '@jupyterlab/notebook';
 import type { ICodeCellModel } from '@jupyterlab/cells';
 import { ServerConnection } from '@jupyterlab/services';
+import { Signal } from '@lumino/signaling';
 import '../test/notebook-env';
 import { entry, fakeBackend, fakeServices } from '../test/fakes';
 import type { NotebookController } from './NotebookPane';
@@ -591,6 +592,114 @@ describe('NotebookPane', () => {
       await waitFor(() => expect(latest()?.status).toBe('idle'));
     });
 
+    describe('kernel version line (#693)', () => {
+      type Info = {
+        status: 'ok';
+        implementation: string;
+        implementation_version: string;
+        banner: string;
+      };
+      const info = (implementation: string, implementation_version: string, banner = ''): Info => ({
+        status: 'ok',
+        implementation,
+        implementation_version,
+        banner,
+      });
+      /** A kernel that announces messages as the library's connection does. */
+      const withMessages = (over: Partial<FakeKernel> = {}, first?: Info) => {
+        const anyMessage = new Signal<unknown, { msg: unknown; direction: string }>({});
+        const k = {
+          ...kernel(over),
+          anyMessage,
+          info: first ? Promise.resolve(first) : new Promise<never>(() => {}),
+        };
+        const reply = (content: Info, direction = 'recv', type = 'kernel_info_reply') =>
+          act(() => anyMessage.emit({ msg: { header: { msg_type: type }, content }, direction }));
+        return Object.assign(k, { reply });
+      };
+      const show = async (k: FakeKernel, s: Awaited<ReturnType<typeof running>>) => {
+        s.session.session = { kernel: k };
+        act(() => s.session.kernelChanged.emit(null));
+        await waitFor(() => expect(s.latest()?.kernelName).toBe(k.name));
+      };
+      const line = (s: Awaited<ReturnType<typeof running>>) => s.latest()?.kernelVersionLine;
+
+      it('shows the kernel’s reply, the one that came before it listened, and nothing otherwise', async () => {
+        const s = await running();
+        expect(line(s)).toBeUndefined();
+        // Replied before the pane listened: `info` has it.
+        await show(
+          withMessages({}, info('cdp-kernel', '0.14.0', 'cdp-kernel on node 24.11.0 (V8 13)')),
+          s,
+        );
+        await waitFor(() => expect(line(s)).toBe('cdp-kernel 0.14.0 · node 24.11.0'));
+        // A reply without the fields, or not a received kernel_info_reply, says nothing new.
+        const k = withMessages({ name: 'x' });
+        await show(k, s);
+        expect(line(s)).toBeUndefined();
+        k.reply(info('', ''));
+        expect(line(s)).toBeUndefined();
+        k.reply(info('ipython', '8.20.0'), 'send');
+        k.reply(info('ipython', '8.20.0'), 'recv', 'status');
+        expect(line(s)).toBeUndefined();
+        k.reply(info('ipython', '8.20.0'));
+        await waitFor(() => expect(line(s)).toBe('ipython 8.20.0'));
+      });
+
+      it('follows a kernel switch and ignores the old kernel’s late reply', async () => {
+        const s = await running();
+        const a = withMessages({ name: 'a' });
+        await show(a, s);
+        a.reply(info('ipython', '8.20.0'));
+        await waitFor(() => expect(line(s)).toBe('ipython 8.20.0'));
+        const b = withMessages({ name: 'b' });
+        await show(b, s);
+        expect(line(s)).toBeUndefined();
+        a.reply(info('ipython', '9.9.9'));
+        expect(line(s)).toBeUndefined();
+        b.reply(info('cdp-kernel', '0.14.0'));
+        await waitFor(() => expect(line(s)).toBe('cdp-kernel 0.14.0'));
+        a.reply(info('ipython', '9.9.9'));
+        expect(line(s)).toBe('cdp-kernel 0.14.0');
+      });
+
+      it.each(['restarting', 'autorestarting'])(
+        'clears on %s and takes the reply after the connection comes back, not the old kernel’s',
+        async state => {
+          const s = await running();
+          const k = withMessages({}, info('cdp-kernel', '0.14.0'));
+          await show(k, s);
+          await waitFor(() => expect(line(s)).toBe('cdp-kernel 0.14.0'));
+          k.status = state;
+          act(() => s.session.statusChanged.emit(state));
+          await waitFor(() => expect(line(s)).toBeUndefined());
+          // The old socket is still open: its reply is the old kernel's.
+          k.reply(info('cdp-kernel', '0.14.0'));
+          expect(line(s)).toBeUndefined();
+          // The connection goes down and comes back, and asks again.
+          k.connectionStatus = 'connecting';
+          act(() => s.session.connectionStatusChanged.emit('connecting'));
+          k.connectionStatus = 'connected';
+          act(() => s.session.connectionStatusChanged.emit('connected'));
+          k.reply(info('cdp-kernel', '0.15.0'));
+          await waitFor(() => expect(line(s)).toBe('cdp-kernel 0.15.0'));
+        },
+      );
+
+      it('clears when the kernel dies', async () => {
+        const s = await running();
+        const k = withMessages({});
+        await show(k, s);
+        k.reply(info('ipython', '8.20.0'));
+        await waitFor(() => expect(line(s)).toBe('ipython 8.20.0'));
+        k.status = 'dead';
+        act(() => s.session.statusChanged.emit('dead'));
+        await waitFor(() => expect(line(s)).toBeUndefined());
+        k.reply(info('ipython', '8.20.0'));
+        expect(line(s)).toBeUndefined();
+      });
+    });
+
     it.each(['restarting', 'autorestarting', 'starting', 'terminating'])(
       'keeps %s while a run is in flight (#655)',
       async state => {
@@ -927,7 +1036,9 @@ describe('NotebookPane', () => {
     fakes.initialize = session =>
       new Promise<boolean>(resolve => {
         rejoin = () => {
-          session.session = { kernel: { name: 'python3' } };
+          session.session = {
+            kernel: { name: 'python3', anyMessage: new Signal({}), info: new Promise(() => {}) },
+          };
           resolve(false);
         };
       });
