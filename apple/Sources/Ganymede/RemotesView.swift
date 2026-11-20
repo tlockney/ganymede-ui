@@ -153,6 +153,8 @@ struct RemoteEditor: View {
     /// The name the picker last filled in, so a second pick replaces it.
     @State private var pickedName: String?
     #endif
+    /// Server URLs saved before, most recent first (#731).
+    @State private var recentURLs = RecentHosts.load()
     let isNew: Bool
 
     init(remote: Remote, isNew: Bool) {
@@ -171,7 +173,7 @@ struct RemoteEditor: View {
                     TextField("Name", text: $remote.name, prompt: Text(edited.title))
                 }
                 Section {
-                    TextField("URL", text: $remote.serverURL, prompt: Text("https://host:8888"))
+                    TextField("URL", text: $remote.serverURL, prompt: Text(urlPrompt))
                         .autocorrectionDisabled()
                         #if os(iOS)
                         .textContentType(.URL)
@@ -197,6 +199,20 @@ struct RemoteEditor: View {
                         }
                     }
                     #endif
+                    let recent = RecentHosts.excluding(remote.serverURL, from: recentURLs)
+                    if !recent.isEmpty {
+                        Menu("Recent") {
+                            ForEach(recent, id: \.self) { url in
+                                Button(url) {
+                                    // Another server's token isn't for this one.
+                                    if remote.serverURL.trimmingCharacters(in: .whitespaces) != url {
+                                        token = ""
+                                    }
+                                    remote.serverURL = url
+                                }
+                            }
+                        }
+                    }
                     SecureField("Token", text: $token)
                     if !remote.serverURL.trimmingCharacters(in: .whitespaces).isEmpty {
                         Toggle("Run kernels on this remote", isOn: $runsKernels)
@@ -277,7 +293,17 @@ struct RemoteEditor: View {
         let current = model.kernelRemoteID == saved.id
         if current && !wanted { model.useForKernels(nil) }
         model.save(saved, token: token)
+        RecentHosts.record(saved.serverURL)
         if wanted && !current { model.useForKernels(saved.id) }
+    }
+
+    /// iOS has no tailnet picker, so its placeholder shows the address to type.
+    private var urlPrompt: String {
+        #if os(macOS)
+        "https://host:8888"
+        #else
+        "https://host.tailnet.ts.net/"
+        #endif
     }
 
     private var serverFooter: String {
@@ -288,7 +314,11 @@ struct RemoteEditor: View {
         #else
         "Optional. Used for kernels and terminals. Choose where kernels run here, above, or from a "
             + "notebook's More menu. Running kernels are shut down when it changes. "
-            + "A Ganymede server that lets you in by your tailnet login needs no token."
+            + "A Ganymede server that lets you in by your tailnet login needs no token. "
+            + "On your tailnet, enter the device's address, like https://name.tailnet.ts.net/, "
+            + "with the Tailscale app connected; the full name is in the Tailscale app. "
+            + "A Mac shares Ganymede there when Share on my tailnet is on in Settings › General › "
+            + "Tailnet and your Tailscale login is listed."
         #endif
     }
 

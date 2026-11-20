@@ -507,6 +507,19 @@ On the Mac, the remote editor's **Tailnet Device** menu lists the other
 devices on your tailnet and fills in `https://<device>.<tailnet>.ts.net/`;
 picking a different device clears the token.
 
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+On iPhone and iPad there is no device menu: type
+`https://<device>.<tailnet>.ts.net/` in the URL field, with the Tailscale
+app connected. The full name is in the Tailscale app. On every platform,
+the **Recent** menu under the field lists server URLs you saved before,
+most recent first; picking a different one clears the token. iOS blocks a
+plain `http://name.tailnet.ts.net:port` address; for a server on its own
+port, use the tailnet IP (`http://100.x.y.z:8888`) or the short name
+(`http://name:8888`).
+
 ### Settings
 
 Settings (⌘,) is one window with tabs. General makes Ganymede the

@@ -628,6 +628,7 @@ targets:
       - path: Sources/Ganymede/DocumentMessage.swift
       - path: Sources/Ganymede/PageState.swift
       - path: Sources/Ganymede/PageModel.swift
+      - path: Sources/Ganymede/RecentHosts.swift
       - path: Sources/Ganymede/KernelSpecs.swift
       - path: Sources/Ganymede/SettingsTab.swift
       - path: Sources/Ganymede/CodeFont.swift
@@ -709,6 +710,7 @@ targets:
       - path: Sources/Ganymede/DocumentMessage.swift
       - path: Sources/Ganymede/PageState.swift
       - path: Sources/Ganymede/PageModel.swift
+      - path: Sources/Ganymede/RecentHosts.swift
       - path: Sources/Ganymede/KernelSpecs.swift
       - path: Sources/Ganymede/SettingsTab.swift
       - path: Sources/Ganymede/CodeFont.swift
