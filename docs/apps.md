@@ -109,6 +109,21 @@ shown or hidden, its tab and its expanded folders across launches.
 - Kernels come from the kernelspecs installed on the Mac, as with
   `ganymede serve`. Opened from the Finder, the app takes `PATH` from your
   login shell, so kernelspecs that run `node`, `deno` or `python3` start.
+- Settings > Kernels lists the installed kernels, on the iPad and iPhone
+  as well as the Mac, from the server kernels run on. Click a kernel's row
+  to open its details: the display name, name and language, then what the
+  server reports of the interrupt mode, protocol version, kernelspec
+  folder, the command that starts it (with a Copy button), `env` and
+  `metadata`. A field the server leaves out or sends empty is not shown.
+  The folder appears once the app's bundled server includes
+  [tlockney/ganymede#890](https://github.com/tlockney/ganymede/issues/890),
+  which Ganymede v0.13.1 (the version the app pins) lacks. Kernels on a
+  remote, listed through the gateway, don't report it.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release.
+
 - The kernel menu also lists "TypeScript (cdp-kernel, in app)": cdp-kernel
   running inside the app, as on the iPad. Its cells get the
   [device API](device.md); kernels in their own process can't reach the
