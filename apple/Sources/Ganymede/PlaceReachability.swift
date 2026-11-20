@@ -61,10 +61,24 @@ final class PlaceReachability {
     /// The URL of `api/status` through the mount, on the app's server (its
     /// token rides in the query, as the page's first load does).
     nonisolated static func statusURL(_ id: String, server: URL) -> URL? {
+        mountURL(id, server: server, path: "api/status")
+    }
+
+    /// `path` (already percent-encoded, relative) under machine `id`'s mount
+    /// on `server`, keeping the server's own query (its token) and adding
+    /// `query`, whose items are percent-encoded here. Nil for a malformed id.
+    nonisolated static func mountURL(
+        _ id: String, server: URL, path: String, query: [(String, String)] = []
+    ) -> URL? {
         guard Place.isValidMachineID(id),
               var parts = URLComponents(url: server, resolvingAgainstBaseURL: false)
         else { return nil }
-        parts.path = Place.machine(id).mountPath + "api/status"
+        parts.percentEncodedPath = Place.machine(id).mountPath + path
+        if !query.isEmpty {
+            let extra = query.map { "\(NotebookActions.encode($0.0))=\(NotebookActions.encode($0.1))" }
+            parts.percentEncodedQuery = ([parts.percentEncodedQuery].compactMap { $0 } + extra)
+                .filter { !$0.isEmpty }.joined(separator: "&")
+        }
         return parts.url
     }
 

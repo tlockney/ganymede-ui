@@ -12,6 +12,8 @@ import SwiftUI
 /// files in the app's editor.
 struct FolderSidebar: View {
     let folder: URL
+    /// Where the files are: this Mac's disk, for now (#737).
+    var source: any FileSource = LocalFileSource()
     var page: PageModel
     let openFile: (String) -> Void
     @Environment(\.openWindow) private var openWindow
@@ -24,12 +26,12 @@ struct FolderSidebar: View {
     var body: some View {
         List {
             Section(folder.lastPathComponent.isEmpty ? folder.path : folder.lastPathComponent) {
-                FolderContents(folder: folder, actions: actions, generation: generation)
+                FolderContents(folder: folder, source: source, actions: actions, generation: generation)
             }
         }
         .listStyle(.sidebar)
         .contextMenu {
-            Button("New Notebook") { page.run("new-notebook", arg: FolderEntry.serverPath(folder)) }
+            Button("New Notebook") { page.run("new-notebook", arg: source.serverPath(folder)) }
             Button("New Folder") { newFolder(in: folder) }
         }
         // A notebook made or saved by the page shows up, and so do changes
@@ -52,7 +54,7 @@ struct FolderSidebar: View {
             },
             open: open,
             openInNewTab: { openWindow(value: WindowTarget(opening: $0.url)) },
-            newNotebook: { page.run("new-notebook", arg: FolderEntry.serverPath($0)) },
+            newNotebook: { page.run("new-notebook", arg: source.serverPath($0)) },
             newFolder: newFolder(in:),
             reveal: { NSWorkspace.shared.activateFileViewerSelecting([$0.url]) },
             rename: rename,
@@ -70,18 +72,13 @@ struct FolderSidebar: View {
     }
 
     private func newFolder(in parent: URL) {
-        let fm = FileManager.default
-        var url = parent.appendingPathComponent("untitled folder")
-        var n = 2
-        while fm.fileExists(atPath: url.path) {
-            url = parent.appendingPathComponent("untitled folder \(n)")
-            n += 1
-        }
-        do {
-            try fm.createDirectory(at: url, withIntermediateDirectories: false)
-            generation += 1
-        } catch {
-            NSAlert(error: error).runModal()
+        Task {
+            do {
+                _ = try await source.newFolder(in: parent)
+                generation += 1
+            } catch {
+                NSAlert(error: error).runModal()
+            }
         }
     }
 
@@ -102,28 +99,30 @@ struct FolderSidebar: View {
             return
         }
         guard let name = askName(for: entry.name), name != entry.name, !name.contains("/") else { return }
-        let target = entry.url.deletingLastPathComponent().appendingPathComponent(name)
-        do {
-            try FileManager.default.moveItem(at: entry.url, to: target)
-            generation += 1
-            if let moved = FolderEntry.path(
-                page.state.path, movedFrom: entry.serverPath, to: FolderEntry.serverPath(target)
-            ) {
-                page.run("open", arg: moved)
+        Task {
+            do {
+                let target = try await source.rename(entry.url, to: name)
+                generation += 1
+                // From the page's path now, after the move returned.
+                if let moved = FolderEntry.path(
+                    page.state.path, movedFrom: entry.serverPath, to: source.serverPath(target)
+                ) {
+                    page.run("open", arg: moved)
+                }
+            } catch {
+                NSAlert(error: error).runModal()
             }
-        } catch {
-            NSAlert(error: error).runModal()
         }
     }
 
     private func duplicate(_ entry: FolderEntry) {
-        let fm = FileManager.default
-        let target = FolderEntry.duplicateURL(for: entry.url) { fm.fileExists(atPath: $0.path) }
-        do {
-            try fm.copyItem(at: entry.url, to: target)
-            generation += 1
-        } catch {
-            NSAlert(error: error).runModal()
+        Task {
+            do {
+                _ = try await source.duplicate(entry.url)
+                generation += 1
+            } catch {
+                NSAlert(error: error).runModal()
+            }
         }
     }
 
@@ -143,12 +142,15 @@ struct FolderSidebar: View {
             alert.addButton(withTitle: "Cancel")
             guard alert.runModal() == .alertFirstButtonReturn else { return }
         }
-        do {
-            try FileManager.default.trashItem(at: entry.url, resultingItemURL: nil)
-            generation += 1
-            if holdsOpen { page.run("close") }
-        } catch {
-            NSAlert(error: error).runModal()
+        Task {
+            do {
+                try await source.delete(entry.url)
+                generation += 1
+                // What the page shows now, not when the person confirmed.
+                if FolderEntry.path(page.state.path, isAt: entry.serverPath) { page.run("close") }
+            } catch {
+                NSAlert(error: error).runModal()
+            }
         }
     }
 }
@@ -173,6 +175,7 @@ struct FolderActions {
 /// One folder's items; a subfolder lists its own when it is expanded.
 private struct FolderContents: View {
     let folder: URL
+    let source: any FileSource
     let actions: FolderActions
     let generation: Int
     @State private var entries: [FolderEntry] = []
@@ -183,7 +186,7 @@ private struct FolderContents: View {
             ForEach(entries) { entry in
                 if entry.isDirectory {
                     DisclosureGroup(isExpanded: actions.isExpanded(entry.url)) {
-                        FolderContents(folder: entry.url, actions: actions, generation: generation)
+                        FolderContents(folder: entry.url, source: source, actions: actions, generation: generation)
                     } label: {
                         Label(entry.name, systemImage: "folder")
                             .contextMenu { menu(for: entry) }
@@ -221,14 +224,19 @@ private struct FolderContents: View {
                 Text("No files").foregroundStyle(.secondary)
             }
         }
-        .task(id: "\(folder.path)#\(generation)") { load() }
+        .task(id: "\(folder.absoluteString)#\(generation)") { await load() }
     }
 
-    private func load() {
+    /// Runs as the view's task: a newer folder or refresh cancels it, and
+    /// a cancelled listing changes nothing.
+    private func load() async {
         do {
-            entries = try FolderEntry.list(folder)
+            let listed = try await source.list(folder)
+            guard !Task.isCancelled else { return }
+            entries = listed
             error = nil
         } catch {
+            guard !Task.isCancelled else { return }
             self.error = error.localizedDescription
         }
     }
