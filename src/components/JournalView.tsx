@@ -4,7 +4,7 @@
  * is no second connection; cells are read-only, and the composer at the
  * bottom is the one way to write (a note, or a request to the agent).
  */
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { YCodeCell, YNotebook } from '@jupyter/ydoc';
 import type { IRenderMimeRegistry } from '@jupyterlab/rendermime';
 import { MimeModel } from '@jupyterlab/rendermime';
@@ -14,11 +14,12 @@ import {
   FOLLOWING,
   type Follow,
   type JournalCellData,
+  agentNames,
   atBottom,
+  attachmentDataUrl,
   classifyProvenance,
   followLabel,
   foldLabel,
-  hasAgentCells,
   latestAgentTime,
   newCellCount,
   nextFollow,
@@ -39,8 +40,8 @@ import type { NotebookRoom } from '../lib/room';
 type Props = {
   notebook: YNotebook;
   rendermime: IRenderMimeRegistry;
-  /** Whether a cell's outputs may render in full (the page's trust for it). */
-  trusted(id: string): boolean;
+  /** The ids of the cells whose outputs may render in full (the page's trust for them). */
+  trustedIds(): ReadonlySet<string>;
   room?: NotebookRoom;
   /** The file's name, for labels. */
   name: string;
@@ -55,9 +56,11 @@ function useCells(notebook: YNotebook) {
   const [changedAt, setChangedAt] = useState<number>();
   useEffect(() => {
     let frame = 0;
-    const onChange = (tr: { changed: Map<unknown, unknown> }) => {
+    const onChange = (tr: { changed: Map<unknown, unknown>; local: boolean }) => {
       if (tr.changed.size === 0) return;
-      setChangedAt(Date.now());
+      // "Changed N ago" is about the others: a change made here (the
+      // composer, this page's own runs) is not news.
+      if (!tr.local) setChangedAt(Date.now());
       if (frame) return;
       frame = requestAnimationFrame(() => {
         frame = 0;
@@ -70,16 +73,25 @@ function useCells(notebook: YNotebook) {
       if (frame) cancelAnimationFrame(frame);
     };
   }, [notebook]);
-  const cells = useMemo<Cell[]>(
-    () =>
-      notebook.cells.map(c => ({
-        ...(c.toJSON() as unknown as JournalCellData),
-        running: c.cell_type === 'code' && (c as YCodeCell).executionState === 'running',
-      })),
+  // A cell that didn't change keeps its object, so its view isn't redone.
+  const known = useRef(new Map<string, { key: string; cell: Cell }>());
+  const cells = useMemo<Cell[]>(() => {
+    const next = new Map<string, { key: string; cell: Cell }>();
+    const list = notebook.cells.map((c, i) => {
+      const data = c.toJSON() as unknown as JournalCellData;
+      const running = c.cell_type === 'code' && (c as YCodeCell).executionState === 'running';
+      const key = JSON.stringify([data, running]);
+      const at = data.id ?? `#${i}`;
+      const prev = known.current.get(at);
+      const cell = prev?.key === key ? prev.cell : { ...data, running };
+      next.set(at, { key, cell });
+      return cell;
+    });
+    known.current = next;
+    return list;
     // `version` is what says the document changed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [notebook, version],
-  );
+  }, [notebook, version]);
   return { cells, changedAt };
 }
 
@@ -118,41 +130,70 @@ function useNow(ms: number): number {
 }
 
 /** One rendered mime bundle, in a Lumino renderer attached to the page. */
-function Rendered({
+const Rendered = memo(function Rendered({
   rendermime,
   mime,
   data,
   metadata,
   trusted,
+  attachments,
 }: {
   rendermime: IRenderMimeRegistry;
   mime: string;
   data: unknown;
   metadata?: ReadonlyJSONObject;
   trusted: boolean;
+  /** The cell's attachments, for `attachment:` images in Markdown. */
+  attachments?: unknown;
 }) {
   const host = useRef<HTMLDivElement>(null);
-  const key = JSON.stringify([mime, data, metadata ?? null, trusted]);
+  const key = JSON.stringify([mime, data, metadata ?? null, trusted, attachments ?? null]);
   // A layout effect: its cleanup runs before React removes the node, which
   // Lumino's detach needs.
   useLayoutEffect(() => {
     const node = host.current;
     if (!node) return;
-    const renderer = rendermime.createRenderer(mime);
+    const registry = withAttachments(rendermime, attachments);
+    const renderer = registry.createRenderer(mime);
     const model = new MimeModel({
       data: { [mime]: data } as never,
       metadata: metadata ?? {},
       trusted,
     });
     Widget.attach(renderer, node);
+    let cancelled = false;
     void renderer.renderModel(model).catch(() => {
-      node.textContent = String(data);
+      // The text goes in the renderer's own node: the host holds the
+      // attached widget, which the cleanup detaches.
+      if (!cancelled) renderer.node.textContent = String(data);
     });
-    return () => renderer.dispose();
+    return () => {
+      cancelled = true;
+      renderer.dispose();
+    };
     // The key stands for every input.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rendermime, key]);
   return <div ref={host} className="journal-rendered" />;
+});
+
+/** `rendermime`, resolving `attachment:` URLs to the cell's attached images. */
+function withAttachments(rendermime: IRenderMimeRegistry, attachments: unknown) {
+  if (!attachments || typeof rendermime.clone !== 'function') return rendermime;
+  const parent = rendermime.resolver;
+  const own = (url: string) => url.startsWith('attachment:');
+  return rendermime.clone({
+    resolver: {
+      resolveUrl: async url => (own(url) || !parent ? url : parent.resolveUrl(url)),
+      getDownloadUrl: async url =>
+        own(url)
+          ? (attachmentDataUrl(attachments, url) ?? url)
+          : parent
+            ? parent.getDownloadUrl(url)
+            : url,
+      isLocal: url => (own(url) ? true : (parent?.isLocal?.(url) ?? true)),
+    },
+  });
 }
 
 const joined = (v: unknown): unknown => (Array.isArray(v) ? v.join('') : v);
@@ -271,27 +312,29 @@ function RevisionChip({ revisions }: { revisions: Revision[] }) {
   );
 }
 
-function JournalCell({
+const JournalCell = memo(function JournalCell({
   cell,
   index,
   rendermime,
   trusted,
+  request,
 }: {
   cell: Cell;
   index: number;
   rendermime: IRenderMimeRegistry;
   trusted: boolean;
+  request: 'open' | 'answered' | undefined;
 }) {
   const [unfolded, setUnfolded] = useState(false);
   const p = classifyProvenance(cell);
   const revisions = revisionsOf(cell);
-  const request = requestState(cell);
   const source = sourceOf(cell);
   const outputs = (cell.outputs ?? []) as Record<string, unknown>[];
   return (
     <article
       className={`journal-cell journal-${p.kind}`}
       aria-label={`Cell ${index + 1}, ${p.label}`}
+      data-cell-index={index}
     >
       <div className="journal-gutter">
         <span className="journal-prov">
@@ -340,19 +383,25 @@ function JournalCell({
             ))}
           </>
         ) : cell.cell_type === 'markdown' ? (
-          <Rendered rendermime={rendermime} mime="text/markdown" data={source} trusted={false} />
+          <Rendered
+            rendermime={rendermime}
+            mime="text/markdown"
+            data={source}
+            trusted={false}
+            attachments={(cell as { attachments?: unknown }).attachments}
+          />
         ) : (
           <pre className="journal-code">{source}</pre>
         )}
       </div>
     </article>
   );
-}
+});
 
 export function JournalView({
   notebook,
   rendermime,
-  trusted,
+  trustedIds,
   room,
   name,
   onOpenAsNotebook,
@@ -404,7 +453,8 @@ export function JournalView({
   const last = changedAt ?? latestAgentTime(cells);
   const running = runningLine(cells);
   const unseen = newCellCount(follow, cells.length);
-  const agentCells = hasAgentCells(cells);
+  const trust = trustedIds();
+  const clients = useMemo(() => agentNames(cells), [cells]);
 
   const [text, setText] = useState('');
   const add = (make: (t: string) => NewCell | undefined) => {
@@ -420,7 +470,7 @@ export function JournalView({
     <section className="journal" aria-label={`Journal of ${name}`}>
       <div className="journal-status">
         <span>
-          {names.length > 0 ? `In the room: ${names.join(', ')}` : 'Nobody else is here'}
+          {names.length > 1 ? `In the room: ${names.join(', ')}` : 'Only you are here'}
           {last !== undefined ? ` · changed ${timeAgo(last, now)}` : ''}
         </span>
         <span role="status" className="journal-running">
@@ -438,9 +488,7 @@ export function JournalView({
       <div className="journal-scroll" ref={scroller} onScroll={onScroll}>
         <div className="journal-content" ref={content}>
           {cells.length === 0 && (
-            <p className="journal-empty">
-              {agentCells ? '' : 'Nothing here yet. Add a note or ask the agent below.'}
-            </p>
+            <p className="journal-empty">Nothing here yet. Add a note or ask the agent below.</p>
           )}
           {cells.map((cell, i) => (
             <JournalCell
@@ -448,7 +496,8 @@ export function JournalView({
               cell={cell}
               index={i}
               rendermime={rendermime}
-              trusted={!!cell.id && trusted(cell.id)}
+              trusted={!!cell.id && trust.has(cell.id)}
+              request={requestState(cell, clients)}
             />
           ))}
         </div>

@@ -82,6 +82,8 @@ const nameOf = (path: string) =>
 /** Every entry for `context`, in the palette's order. Pure but for the user's key bindings. */
 export function paletteEntries(context: PaletteContext): PaletteEntry[] {
   const open = !!context.path;
+  // The journal view hides the cells: what runs or edits them waits for the notebook.
+  const cells = open && !context.journal;
   const app = (
     id: string,
     label: string,
@@ -117,13 +119,13 @@ export function paletteEntries(context: PaletteContext): PaletteEntry[] {
     app('notebook-access', 'Notebook Access…', 'File', {
       disabled: !open || !context.hostGrants,
     }),
-    app('run-all', 'Run All Cells', 'Cell', { disabled: !open }),
+    app('run-all', 'Run All Cells', 'Cell', { disabled: !cells }),
     app('run-with-params', 'Run with Parameters…', 'Cell', {
       disabled: !open || !context.runParams,
     }),
-    app('clear-outputs', 'Clear All Outputs', 'Cell', { disabled: !open }),
-    app('insert-code', 'Insert Code Cell', 'Cell', { disabled: !open }),
-    app('insert-markdown', 'Insert Markdown Cell', 'Cell', { disabled: !open }),
+    app('clear-outputs', 'Clear All Outputs', 'Cell', { disabled: !cells }),
+    app('insert-code', 'Insert Code Cell', 'Cell', { disabled: !cells }),
+    app('insert-markdown', 'Insert Markdown Cell', 'Cell', { disabled: !cells }),
     app('interrupt', 'Interrupt Kernel', 'Kernel', { disabled: !open }),
     app('restart', 'Restart Kernel', 'Kernel', { disabled: !open }),
     ...context.kernels.map(k =>
@@ -134,7 +136,7 @@ export function paletteEntries(context: PaletteContext): PaletteEntry[] {
     ),
     ...SHORTCUTS.filter(s => !LEFT_OUT.has(s.id)).map(s =>
       app(s.id, sentence(s.label), s.group === 'Notebook' ? 'Cell' : s.group, {
-        disabled: !open,
+        disabled: !cells,
       }),
     ),
     ...context.recents
@@ -142,9 +144,9 @@ export function paletteEntries(context: PaletteContext): PaletteEntry[] {
       // The folder tells two notebooks of one name apart, and filters.
       .map(p => app('open', `Open ${nameOf(p)}`, recentGroup(p), { arg: p, keys: '' })),
     // Through the kernel's language service (#676); F12 and F2 in a cell.
-    app('go-to-definition', 'Go to Definition', 'Cell', { disabled: !open, keys: 'F12' }),
+    app('go-to-definition', 'Go to Definition', 'Cell', { disabled: !cells, keys: 'F12' }),
     app('rename-symbol', 'Rename Symbol…', 'Cell', {
-      disabled: !open,
+      disabled: !cells,
       prompt: 'New name',
       keys: 'F2',
     }),

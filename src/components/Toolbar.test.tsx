@@ -141,6 +141,19 @@ describe('Toolbar', () => {
     expect(button('Open as Notebook')).toHaveAttribute('aria-pressed', 'true');
   });
 
+  it('disables what runs or edits cells while the journal shows them hidden (#184)', async () => {
+    const c = controller({ journal: true });
+    render(<Toolbar sidebarOpen onToggleSidebar={vi.fn()} controller={c} />);
+    for (const title of ['Run Cell (⇧↩)', 'Run All', 'Insert Code Cell', 'Insert Text Cell']) {
+      expect(button(title), title).toBeDisabled();
+    }
+    expect(screen.getByLabelText('Cell Type')).toBeDisabled();
+    // The kernel and the file go on working.
+    expect(button('Restart Kernel')).toBeEnabled();
+    await userEvent.click(button('Run Cell (⇧↩)'));
+    expect(c.run).not.toHaveBeenCalled();
+  });
+
   it('toggles the sidebar', async () => {
     const onToggle = vi.fn();
     const { rerender } = render(<Toolbar sidebarOpen onToggleSidebar={onToggle} />);

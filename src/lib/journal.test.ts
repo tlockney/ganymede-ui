@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  agentNames,
+  attachmentDataUrl,
+  cellTrusted,
+  trustedCellIds,
   FOLLOWING,
   atBottom,
   classifyProvenance,
@@ -245,11 +249,79 @@ describe('cells the composer adds', () => {
       metadata,
     });
     expect(requestState(md('@agent hi'))).toBe('open');
-    expect(requestState(md('@agent hi', { ganymede: { request: { done: 't' } } }))).toBe(
-      'answered',
-    );
     expect(requestState(md('hello'))).toBeUndefined();
     expect(requestState({ cell_type: 'code', source: '@agent hi' })).toBeUndefined();
     expect(requestState(md('@claude hi'))).toBeUndefined();
+    expect(requestState(md('@ hi'))).toBeUndefined();
+  });
+
+  it('counts a request to the client the cells name, or its first part, as the server does', () => {
+    const md = (source: string) => ({ cell_type: 'markdown', source, metadata: {} });
+    expect(requestState(md('@claude-code hi'), ['claude-code'])).toBe('open');
+    expect(requestState(md('@Claude: hi'), ['claude-code'])).toBe('open');
+    expect(requestState(md('@claudette hi'), ['claude-code'])).toBeUndefined();
+    expect(requestState(md('@someone hi'), ['claude-code'])).toBeUndefined();
+  });
+
+  it("is answered only when the request is done for this cell's own id", () => {
+    const md = (id: string, request: unknown) => ({
+      id,
+      cell_type: 'markdown',
+      source: '@agent hi',
+      metadata: { ganymede: { request } },
+    });
+    expect(requestState(md('a', { done: 't', id: 'a' }))).toBe('answered');
+    // A copy (paste, duplicate) keeps the metadata under a new id: a new request.
+    expect(requestState(md('b', { done: 't', id: 'a' }))).toBe('open');
+    // No id in the metadata, or no done: not answered.
+    expect(requestState(md('a', { done: 't' }))).toBe('open');
+    expect(requestState(md('a', { id: 'a' }))).toBe('open');
+  });
+
+  it('lists the client names the cells were written under', () => {
+    expect(agentNames([agent('note'), agent('executed'), { metadata: {} }])).toEqual([
+      'claude-code',
+    ]);
+  });
+});
+
+describe('trust', () => {
+  const model = (...cells: { id: string; type: string; trusted?: boolean }[]) => ({
+    cells: { length: cells.length, get: (i: number) => cells[i]! },
+  });
+  const m = model(
+    { id: 'a', type: 'code', trusted: true },
+    { id: 'b', type: 'code', trusted: false },
+    { id: 'c', type: 'markdown', trusted: true },
+  );
+
+  it('trusts a code cell the model trusts, and no other', () => {
+    expect(cellTrusted(m, 'a')).toBe(true);
+    expect(cellTrusted(m, 'b')).toBe(false);
+    // Only code cells have outputs to trust.
+    expect(cellTrusted(m, 'c')).toBe(false);
+    expect(cellTrusted(m, 'missing')).toBe(false);
+  });
+
+  it('lists the trusted ids in one pass', () => {
+    expect([...trustedCellIds(m)]).toEqual(['a']);
+  });
+});
+
+describe('attachmentDataUrl', () => {
+  const attachments = {
+    'a.png': { 'image/png': 'AAEC\nAwQ=' },
+    'b.svg': { 'image/svg+xml': '<svg/>' },
+  };
+  it('turns an attached image into a data URL', () => {
+    expect(attachmentDataUrl(attachments, 'attachment:a.png')).toBe(
+      'data:image/png;base64,AAECAwQ=',
+    );
+  });
+  it('gives nothing for an unknown name, an unsafe type, or another URL', () => {
+    expect(attachmentDataUrl(attachments, 'attachment:none.png')).toBeUndefined();
+    expect(attachmentDataUrl(attachments, 'attachment:b.svg')).toBeUndefined();
+    expect(attachmentDataUrl(attachments, 'https://x/a.png')).toBeUndefined();
+    expect(attachmentDataUrl(undefined, 'attachment:a.png')).toBeUndefined();
   });
 });

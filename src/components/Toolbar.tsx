@@ -103,6 +103,8 @@ export function Toolbar({
   onRunWithParams,
 }: Props) {
   const disabled = !c;
+  // The journal view hides the cells: what runs or edits them waits for the notebook.
+  const noCells = !c || c.journal;
   const kernelDisplay = c?.missingKernel
     ? `${c.missingKernel} (not installed)`
     : (c?.kernelName && specs?.kernelspecs[c.kernelName]?.display_name) || c?.kernelName;
@@ -119,7 +121,7 @@ export function Toolbar({
         <button
           className="tb-button"
           title="Run Cell (⇧↩)"
-          disabled={disabled}
+          disabled={noCells}
           onClick={() => void c?.run()}
         >
           <PlayIcon />
@@ -135,7 +137,7 @@ export function Toolbar({
           <button
             className="tb-button"
             title="Run All"
-            disabled={disabled}
+            disabled={noCells}
             onClick={() => void c?.runAll()}
           >
             <ForwardIcon />
@@ -159,11 +161,11 @@ export function Toolbar({
         </div>
       ),
       menu: [
-        { label: 'Run All', disabled, onSelect: () => void c?.runAll() },
+        { label: 'Run All', disabled: noCells, onSelect: () => void c?.runAll() },
         ...(onRunWithParams
           ? [{ label: 'Run with Parameters…', disabled, onSelect: onRunWithParams }]
           : []),
-        { label: 'Clear All Outputs', disabled, onSelect: () => c?.clearOutputs() },
+        { label: 'Clear All Outputs', disabled: noCells, onSelect: () => c?.clearOutputs() },
         {
           label: 'Interrupt',
           disabled: disabled || c?.status !== 'busy',
@@ -184,7 +186,7 @@ export function Toolbar({
           <button
             className="tb-button"
             title="Insert Code Cell"
-            disabled={disabled}
+            disabled={noCells}
             onClick={() => c?.insert('code')}
           >
             <CodeIcon />
@@ -192,7 +194,7 @@ export function Toolbar({
           <button
             className="tb-button"
             title="Insert Text Cell"
-            disabled={disabled}
+            disabled={noCells}
             onClick={() => c?.insert('markdown')}
           >
             <TextIcon />
@@ -200,8 +202,8 @@ export function Toolbar({
         </div>
       ),
       menu: [
-        { label: 'Insert Code Cell', disabled, onSelect: () => c?.insert('code') },
-        { label: 'Insert Text Cell', disabled, onSelect: () => c?.insert('markdown') },
+        { label: 'Insert Code Cell', disabled: noCells, onSelect: () => c?.insert('code') },
+        { label: 'Insert Text Cell', disabled: noCells, onSelect: () => c?.insert('markdown') },
       ],
     },
     {
@@ -211,7 +213,7 @@ export function Toolbar({
         <label className="popup-button" title="Cell Type">
           <select
             aria-label="Cell Type"
-            disabled={disabled}
+            disabled={noCells}
             value={c?.cellType ?? 'code'}
             onChange={e => c?.changeCellType(e.target.value as CellType)}
           >
@@ -227,7 +229,7 @@ export function Toolbar({
         { heading: 'Cell Type' },
         ...CELL_TYPES.map(([type, label]) => ({
           label,
-          disabled,
+          disabled: noCells,
           checked: c?.cellType === type,
           onSelect: () => c?.changeCellType(type),
         })),

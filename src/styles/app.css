@@ -2420,6 +2420,26 @@ button {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
 }
 
+/* On a phone the gutter is a narrow column at the left edge, so a panel
+   hanging from the chip would run past the right edge: anchor it to the
+   cell, across the cell's width, just below it. */
+@media (max-width: 600px) {
+  .journal-cell {
+    position: relative;
+  }
+
+  .journal-rev {
+    position: static;
+  }
+
+  .journal-rev-panel {
+    left: 0;
+    right: 0;
+    width: auto;
+    max-width: 100%;
+  }
+}
+
 .journal-rev-meta {
   color: var(--text-2);
   font-size: 11px;

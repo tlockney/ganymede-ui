@@ -287,13 +287,111 @@ export function requestCell(input: string): NewCell | undefined {
 }
 
 /**
- * Whether a Markdown cell is a request, and whether the agent answered it
- * (`metadata.ganymede.request.done`).
+ * The names agents wrote cells under (`metadata.ganymede.agent.by`): the
+ * client names a request can be addressed to besides `@agent`.
  */
-export function requestState(cell: JournalCellData): 'open' | 'answered' | undefined {
-  if (cell.cell_type !== 'markdown' || !/^@\S/.test(sourceOf(cell).trimStart())) return undefined;
+export function agentNames(cells: readonly Pick<JournalCellData, 'metadata'>[]): string[] {
+  const names = new Set<string>();
+  for (const c of cells) {
+    const by = text(agentMetadata(c)?.by);
+    if (by) names.add(by);
+  }
+  return [...names];
+}
+
+/**
+ * Whether a Markdown cell is a request, and whether the agent answered it.
+ * As the server reads it (`mcp/marks.rs`): the text starts with `@agent`, or
+ * `@` and a client's name (`@claude-code`) or its first part (`@claude`),
+ * ignoring case; it is answered when `metadata.ganymede.request` has `done`
+ * and this cell's own `id` (a copy of an answered request keeps the
+ * metadata under a new id, and is a new request). `clients` are the
+ * names the page knows agents by (see {@link agentNames}); the server's
+ * is the connected client's, which the page doesn't see.
+ */
+export function requestState(
+  cell: JournalCellData,
+  clients: readonly string[] = [],
+): 'open' | 'answered' | undefined {
+  if (cell.cell_type !== 'markdown') return undefined;
+  const word = /^@([\p{L}\p{N}_-]+)/u.exec(sourceOf(cell).trimStart())?.[1]?.toLowerCase();
+  if (!word) return undefined;
   const ganymede = isRecord(cell.metadata) ? cell.metadata.ganymede : undefined;
   const request = isRecord(ganymede) ? ganymede.request : undefined;
-  if (isRecord(request) && request.done) return 'answered';
-  return /^@agent(?![\w-])/i.test(sourceOf(cell).trimStart()) ? 'open' : undefined;
+  if (isRecord(request) && 'done' in request && cell.id !== undefined && request.id === cell.id) {
+    return 'answered';
+  }
+  const asked = (name: string) => {
+    const client = name.toLowerCase();
+    return word === client || word === client.split(/[-_ ]/)[0];
+  };
+  return word === 'agent' || clients.some(asked) ? 'open' : undefined;
+}
+
+// Trust ---------------------------------------------------------------------
+
+/** What the trust helpers read of a notebook model: its cells. */
+type CellsModel = {
+  cells: { length: number; get(i: number): { id: string; type: string; trusted?: boolean } };
+};
+
+/** The ids of the cells trusted in this page: code cells the model trusts. */
+export function trustedCellIds(model: CellsModel): Set<string> {
+  const ids = new Set<string>();
+  for (let i = 0; i < model.cells.length; i++) {
+    const cell = model.cells.get(i);
+    if (cell.type === 'code' && cell.trusted) ids.add(cell.id);
+  }
+  return ids;
+}
+
+/** Whether the cell with `id` is trusted in this page; a cell not in the model is not. */
+export function cellTrusted(model: CellsModel, id: string): boolean {
+  for (let i = 0; i < model.cells.length; i++) {
+    const cell = model.cells.get(i);
+    if (cell.id === id) return cell.type === 'code' && !!cell.trusted;
+  }
+  return false;
+}
+
+// Attachments ---------------------------------------------------------------
+
+/** The image types a Markdown cell's attachment may be, as JupyterLab's. */
+const ATTACHMENT_IMAGES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
+
+/**
+ * The `data:` URL for an `attachment:<name>` URL, from a cell's
+ * `attachments` ({name: {mime: base64}}); undefined when the cell has no
+ * such attachment or it isn't a known image type.
+ */
+export function attachmentDataUrl(attachments: unknown, url: string): string | undefined {
+  if (!isRecord(attachments) || !url.startsWith('attachment:')) return undefined;
+  const bundle = attachments[url.slice('attachment:'.length)];
+  if (!isRecord(bundle)) return undefined;
+  const mime = Object.keys(bundle)[0];
+  if (!mime || !ATTACHMENT_IMAGES.has(mime)) return undefined;
+  const data = bundle[mime];
+  const base64 = Array.isArray(data) ? data.join('') : data;
+  return typeof base64 === 'string'
+    ? `data:${mime};base64,${base64.replace(/\s/g, '')}`
+    : undefined;
+}
+
+// The view a person chose ---------------------------------------------------
+
+const chosen = new Map<string, boolean>();
+
+/** The view the person chose for `key` (a file) this session: true for the journal. */
+export function chosenView(key: string): boolean | undefined {
+  return chosen.get(key);
+}
+
+/** Remember the person's choice for `key`; a reopen of the file keeps it. */
+export function chooseView(key: string, journal: boolean): void {
+  chosen.set(key, journal);
+}
+
+/** Forget every choice (tests). */
+export function forgetChosenViews(): void {
+  chosen.clear();
 }

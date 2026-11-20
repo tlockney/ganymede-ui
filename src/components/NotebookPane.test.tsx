@@ -12,6 +12,7 @@ import '../test/notebook-env';
 import { entry, fakeBackend, fakeServices } from '../test/fakes';
 import type { NotebookController } from './NotebookPane';
 import { declareDevice } from '../lib/kernel-relay';
+import { forgetChosenViews } from '../lib/journal';
 
 // No kernel and no real notebook widget: the pane's loading, dirty state and
 // saving are tested here with JupyterLab's real NotebookModel. Rendering,
@@ -225,6 +226,7 @@ function setup(
 }
 
 beforeEach(() => {
+  forgetChosenViews();
   runStatus.busy = false;
   fakes.sessions.length = 0;
   fakes.notebooks.length = 0;
@@ -283,6 +285,74 @@ describe('NotebookPane', () => {
 
     act(() => latest()!.toggleJournal());
     await waitFor(() => expect(latest()!.journal).toBe(true));
+  });
+
+  /** A notebook an agent kept. */
+  const kept = () => {
+    const nb = structuredClone(NOTEBOOK);
+    nb.cells[0]!.metadata = {
+      ganymede: { agent: { by: 'claude-code', mode: 'executed', at: '2026-11-20T10:00:00Z' } },
+    };
+    return nb;
+  };
+
+  it('does not run, insert into or edit the hidden notebook while the journal shows (#184)', async () => {
+    const { latest } = setup(vi.fn(async () => ({ path: 'moons/Io.ipynb', content: kept() })));
+    await waitFor(() => expect(latest()?.journal).toBe(true));
+    const c = latest()!;
+    const before = modelOf().cells.length;
+    c.insert('code');
+    c.insert('markdown');
+    c.changeCellType('markdown');
+    await c.run();
+    await c.runAll();
+    c.clearOutputs();
+    expect(c.command('delete')).toBe(false);
+    expect(await c.goToDefinition()).toBe(false);
+    expect(await c.renameSymbol('x')).toBe(false);
+    expect(modelOf().cells.length).toBe(before);
+    expect(fakes.sessions.length).toBeGreaterThan(0);
+  });
+
+  it('takes focus out of the hidden notebook when the journal shows (#184)', async () => {
+    const { latest } = setup();
+    await waitFor(() => expect(latest()).toBeDefined());
+    const inCell = document.createElement('textarea');
+    document.querySelector('.notebook-page')!.appendChild(inCell);
+    inCell.focus();
+    expect(document.activeElement).toBe(inCell);
+    act(() => latest()!.toggleJournal());
+    await waitFor(() => expect(latest()!.journal).toBe(true));
+    expect(document.activeElement).not.toBe(inCell);
+  });
+
+  it("keeps the person's view across a reopen of the file, and defaults only the first time (#184)", async () => {
+    const get = vi.fn(async () => ({ path: 'moons/Io.ipynb', content: kept() }));
+    const { latest } = setup(get);
+    await waitFor(() => expect(latest()?.journal).toBe(true));
+    act(() => latest()!.toggleJournal());
+    await waitFor(() => expect(latest()!.journal).toBe(false));
+    // Reload opens the file again, as a restarted server does.
+    act(() => {
+      latest()!.reload();
+    });
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(fakes.notebooks).toHaveLength(2));
+    await waitFor(() => expect(latest()?.journal).toBe(false));
+    expect(screen.queryByRole('region', { name: /^Journal of/ })).not.toBeInTheDocument();
+  });
+
+  it('scrolls the journal to a cell instead of moving the hidden notebook (#184)', async () => {
+    const { latest } = setup(vi.fn(async () => ({ path: 'moons/Io.ipynb', content: kept() })));
+    await waitFor(() => expect(latest()?.journal).toBe(true));
+    const article = document.querySelector('.journal [data-cell-index="0"]') as HTMLElement;
+    const scrollIntoView = vi.fn();
+    article.scrollIntoView = scrollIntoView;
+    const notebook = fakes.notebooks[0] as { scrollToCell: ReturnType<typeof vi.fn> };
+    expect(latest()!.goToCell(0)).toBe(true);
+    expect(scrollIntoView).toHaveBeenCalledOnce();
+    expect(notebook.scrollToCell).not.toHaveBeenCalled();
+    expect(latest()!.goToCell(7)).toBe(false);
   });
 
   it('opens a notebook with no agent cells as a notebook (#184)', async () => {

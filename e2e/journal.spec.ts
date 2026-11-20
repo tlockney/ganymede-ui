@@ -122,8 +122,64 @@ test('fits a phone: no sideways scroll and 44 px buttons', async ({ page }) => {
   await expect(journal).toBeVisible();
   const overflow = await journal.evaluate(el => el.scrollWidth - el.clientWidth);
   expect(overflow).toBeLessThanOrEqual(0);
+  // The earlier-versions panel stays inside the page.
+  await journal.getByRole('button', { name: /Revision 2/ }).click();
+  const panel = journal.getByRole('region', { name: 'Earlier versions' });
+  await expect(panel).toBeVisible();
+  const box = await panel.boundingBox();
+  expect(box!.x).toBeGreaterThanOrEqual(0);
+  expect(box!.x + box!.width).toBeLessThanOrEqual(390);
+  expect(await journal.evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+  ).toBeLessThanOrEqual(0);
+  await journal.getByRole('button', { name: /Revision 2/ }).click();
   for (const name of ['Add Note', 'Ask the agent', 'Open as Notebook']) {
     const box = await journal.getByRole('button', { name }).boundingBox();
     expect(box!.height).toBeGreaterThanOrEqual(44);
   }
+});
+
+test("sanitizes an untrusted cell's HTML output: no script runs, event attributes go", async ({
+  page,
+}) => {
+  const html =
+    '<b>bold</b><img src="http://127.0.0.1:1/x.png" onerror="window.__pwned = 1">' +
+    '<script>window.__pwned = 2</script>';
+  const notebook = JSON.parse(readFileSync(join(ROOT_DIR, FILE), 'utf8')) as {
+    cells: unknown[];
+  };
+  // Cell metadata says it is trusted, but the file has no signature from this
+  // server, so the page doesn't trust it.
+  notebook.cells.push({
+    cell_type: 'code',
+    id: 'h1',
+    source: 'display(html)',
+    execution_count: 2,
+    metadata: { trusted: true, ...agent('executed') },
+    outputs: [{ output_type: 'display_data', data: { 'text/html': html }, metadata: {} }],
+  });
+  writeFileSync(join(ROOT_DIR, FILE), JSON.stringify(notebook));
+
+  await openWithToken(page);
+  await sidebarItem(page, 'Journal e2e').click();
+  const journal = page.getByRole('region', { name: `Journal of ${FILE}` });
+  const cell = journal.getByRole('article').nth(3);
+  await expect(cell).toContainText('bold');
+  await expect(cell.locator('b')).toHaveCount(1);
+  // The image stays, without its handler; the script is gone.
+  const pic = cell.locator('img');
+  await expect(pic).toHaveCount(1);
+  expect(await pic.getAttribute('onerror')).toBeNull();
+  await expect(cell.locator('script')).toHaveCount(0);
+  // The image has failed to load (its error event has fired, so a handler would have run).
+  await pic.evaluate(
+    img =>
+      new Promise<void>(done => {
+        const i = img as HTMLImageElement;
+        if (i.complete) done();
+        else i.addEventListener('error', () => done());
+      }),
+  );
+  expect(await page.evaluate(() => (window as { __pwned?: number }).__pwned)).toBeUndefined();
 });
