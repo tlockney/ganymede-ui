@@ -252,6 +252,7 @@ final class NotebookActionsTests: XCTestCase {
         let body = Self.body(request)
         XCTAssertEqual(body["document_id"] as? String, "json:notebook:f1")
         XCTAssertEqual(body["wait"] as? Int, 30)
+        XCTAssertEqual(body["by"] as? String, "Ganymede")
         let sent = try XCTUnwrap(body["cells"] as? [[String: String]])
         XCTAssertEqual(sent, [
             ["cell_id": "a", "source_hash": String(NotebookActions.murmur2(Array("1".utf8)))],
