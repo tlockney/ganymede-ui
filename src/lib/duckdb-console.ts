@@ -322,7 +322,8 @@ const FILE_FUNCTION = /^(read_|parquet_|sniff_csv$)/;
  * The strings in the SQL that DuckDB reads as a file name: the table
  * reference after FROM or any JOIN (and after a comma of a FROM list), the
  * name after `describe`, `summarize`, `show`, `pivot`, `unpivot`,
- * `pivot_wider` or `pivot_longer`, or the first argument of a file
+ * `pivot_wider` or `pivot_longer`, the table after USING in a DELETE or
+ * MERGE, or the first argument of a file
  * function (`FILE_FUNCTION`), which may be a list of names
  * (`read_csv(['a.csv', 'b.csv'])`). A string anywhere else is a value
  * (`where src = 'big.parquet'`, a select item, a function argument), so it
@@ -364,6 +365,8 @@ function fileReferences(sql: string): string[] {
     list: false,
     ...over,
   });
+  // `using 'f.csv'` names a table only in DELETE and MERGE; ALTER ... USING takes a value.
+  const dml = tokens.some(t => t.kind === 'word' && /^(delete|merge)$/i.test(t.text));
   const stack: Frame[] = [frame()];
   const top = () => stack[stack.length - 1]!;
   tokens.forEach((t, i) => {
@@ -385,6 +388,8 @@ function fileReferences(sql: string): string[] {
     if (t.kind !== 'string' || t.value === undefined) return;
     const afterFrom =
       prevWord === 'join' ||
+      // `delete … using 'f.csv'` and `merge … using 'f.csv'`; `join … using (id)` has no string here.
+      (prevWord === 'using' && dml) ||
       TABLE_STATEMENTS.has(prevWord) ||
       (prevWord === 'from' && tokens[i - 2]?.text.toLowerCase() !== 'distinct') ||
       (prev?.text === ',' && top().from);
