@@ -156,7 +156,17 @@ export function DuckdbConsole({
       releaseConsole(key, id);
     };
     const back = (e: PageTransitionEvent) => {
-      if (e.persisted) released.current = false;
+      if (!e.persisted || !released.current) return;
+      released.current = false;
+      if (loadConsoles(key).some(r => r.id === id)) return;
+      // Only an unused, unnamed record was released: put it back as one.
+      saveConsole(key, {
+        id,
+        name: nameNow.current,
+        folder: folderNow.current,
+        statements: [],
+        used: Date.now(),
+      });
     };
     window.addEventListener('pagehide', release);
     window.addEventListener('pageshow', back);
