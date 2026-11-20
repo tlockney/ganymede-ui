@@ -289,6 +289,15 @@ describe('file paths', () => {
     expect(filePaths(`select show, 'f.csv' from t`)).toEqual([]);
     expect(filePaths(`select pivot, 'f.csv' from t`)).toEqual([]);
   });
+  it('reads the name after using in delete and merge', () => {
+    expect(filePaths(`delete from t using 'b.csv' b where t.k = b.k`)).toEqual(['b.csv']);
+    expect(
+      filePaths(`merge into t using 'x.csv' s on t.k = s.k when matched then update set v = s.v`),
+    ).toEqual(['x.csv']);
+    expect(filePaths(`select * from t join u using (id)`)).toEqual([]);
+    // ALTER ... USING takes a value, not a table.
+    expect(filePaths(`alter table t alter c set data type varchar using 'a.csv'`)).toEqual([]);
+  });
   it('reads a string only as the argument itself or an item of its list', () => {
     expect(filePaths(`select * from read_csv(m['a.csv'])`)).toEqual([]);
     expect(filePaths(`select * from read_csv(x || 'b.csv')`)).toEqual([]);

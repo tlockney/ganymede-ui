@@ -1083,8 +1083,9 @@ A statement that names a CSV, TSV, JSON or Parquet file in the window's
 folder (`select * from 'data/moons.csv'`) has the file read through the
 server and given to DuckDB before the statement runs, the first time a
 statement names it. The console reads a string as a file only in these places: as the table right after `FROM` or
-any `JOIN`, after a comma in a `FROM` list (`from moons, 'extra.csv'`), or
-after `describe`, `summarize`, `show`, `pivot`, `unpivot`, `pivot_wider` or
+any `JOIN`, after a comma in a `FROM` list (`from moons, 'extra.csv'`), after
+`USING` in `DELETE` and `MERGE` (`delete from t using 'gone.csv' g where t.id = g.id`),
+or after `describe`, `summarize`, `show`, `pivot`, `unpivot`, `pivot_wider` or
 `pivot_longer`;
 and as the first argument of a table function that reads a file:
 `read_csv('data/moons.csv', header = true)`, `read_parquet`,
