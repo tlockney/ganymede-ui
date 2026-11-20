@@ -353,13 +353,6 @@ behind them, and is there when you close them.
 
 ### The command line tool
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD) that
-> bundles a ganymede release after 0.13.0 (`GANYMEDE_REF` in ci.yml),
-> not in the latest release. Keep this note until that pin moves (#690).
-> Until then, install `ganymede` with its
-> [install script](https://ganymede-server.com/docs/install).
-
 The Mac app carries the [`ganymede` command](https://ganymede-server.com)
 inside it, and Settings › General › Command Line Tool (or Ganymede ›
 Install Command Line Tool…) links it into `~/.local/bin`, the folder
