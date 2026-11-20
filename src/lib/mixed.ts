@@ -38,13 +38,14 @@ export async function createMixedServices(
   const owners = new Owners(lite);
 
   // Kernel websockets: a page kernel's goes to the page's fake server
-  // (mock-socket), every other socket to the network.
+  // (mock-socket), every other socket through the given settings' own
+  // WebSocket, so a machine's confinement (`confinedWebSocket`) still holds.
   const settings = ServerConnection.makeSettings({
     ...serverSettings,
     WebSocket: dispatchingSocket(url => {
       const id = kernelIdFrom(url);
       return id !== undefined && owners.ofKernel(id) === 'page';
-    }),
+    }, serverSettings.WebSocket),
   });
 
   const kernelSpecClient = new MixedKernelSpecClient(
@@ -398,10 +399,15 @@ export function kernelIdFrom(url: string): string | undefined {
 
 /**
  * A WebSocket class that opens mock-socket's socket for URLs `isPage`
- * claims and the browser's for the rest. Constructing a class that returns
- * another object yields that object, so `new` works as the services expect.
+ * claims and `serverSocket` (the browser's, by default) for the rest, so a
+ * server socket keeps the behaviour of the settings it came from. Constructing
+ * a class that returns another object yields that object, so `new` works as
+ * the services expect.
  */
-export function dispatchingSocket(isPage: (url: string) => boolean): typeof WebSocket {
+export function dispatchingSocket(
+  isPage: (url: string) => boolean,
+  serverSocket?: typeof WebSocket,
+): typeof WebSocket {
   class DispatchingSocket {
     static readonly CONNECTING = 0;
     static readonly OPEN = 1;
@@ -411,7 +417,7 @@ export function dispatchingSocket(isPage: (url: string) => boolean): typeof WebS
       const href = String(url);
       return (isPage(href)
         ? new PageSocket(href, protocols)
-        : new WebSocket(href, protocols)) as unknown as DispatchingSocket;
+        : new (serverSocket ?? WebSocket)(href, protocols)) as unknown as DispatchingSocket;
     }
   }
   return DispatchingSocket as unknown as typeof WebSocket;
