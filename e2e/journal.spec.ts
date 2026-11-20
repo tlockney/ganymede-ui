@@ -107,6 +107,49 @@ test('opens an agent’s notebook as a journal, and writes a note and a request'
   await expect(journal).toBeHidden();
 });
 
+test('resolves a relative URL in an untrusted output without a page error (#704)', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', e => errors.push(e.message));
+  const notebook = JSON.parse(readFileSync(join(ROOT_DIR, FILE), 'utf8')) as {
+    cells: unknown[];
+  };
+  notebook.cells.push({
+    cell_type: 'code',
+    id: 'h2',
+    source: 'display(html)',
+    execution_count: 2,
+    metadata: agent('executed'),
+    outputs: [
+      {
+        output_type: 'display_data',
+        data: { 'text/html': '<b>rel</b><img src="x">' },
+        metadata: {},
+      },
+    ],
+  });
+  writeFileSync(join(ROOT_DIR, FILE), JSON.stringify(notebook));
+
+  await openWithToken(page);
+  await sidebarItem(page, 'Journal e2e').click();
+  const journal = page.getByRole('region', { name: `Journal of ${FILE}` });
+  // Rendered as HTML, not shown as raw text.
+  const cell = journal.getByRole('article').nth(3);
+  await expect(cell.locator('b')).toHaveText('rel');
+  await expect(cell.locator('img')).toHaveCount(1);
+  await expect(cell).not.toContainText('<img');
+
+  await journal.getByRole('button', { name: 'Open as Notebook' }).click();
+  await expect(page.locator('.jp-Cell')).toHaveCount(4);
+  const output = page.locator('.jp-Cell').nth(3).locator('.jp-OutputArea');
+  await expect(output.locator('b')).toHaveText('rel');
+  // OutputArea catches a render error and shows it as stderr text, not a page error.
+  await expect(output.locator('[data-mime-type="application/vnd.jupyter.stderr"]')).toHaveCount(0);
+  await expect(output).not.toContainText('process is not defined');
+  expect(errors.filter(m => m.includes('process is not defined'))).toEqual([]);
+});
+
 test('fits a phone: no sideways scroll and 44 px buttons', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 800 });
   await openWithToken(page);

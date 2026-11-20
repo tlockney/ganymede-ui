@@ -243,3 +243,51 @@ describe('createCommands', () => {
     expect(beforeRun).toHaveBeenLastCalledWith(true);
   });
 });
+
+describe('UrlResolver (#704)', () => {
+  // Only `driveName` is read, by `isLocal`.
+  const contents = { driveName: () => '' } as unknown as Contents.IManager;
+  const { UrlResolver } = jupyterlab;
+  const resolve = (path: string, url: string) =>
+    new UrlResolver({ path, contents }).resolveUrl(url);
+
+  const LOCAL: [string, string, string][] = [
+    ['a/b/nb.ipynb', 'x', 'a/b/x'],
+    ['a/b/nb.ipynb', './img/x.png', 'a/b/img/x.png'],
+    ['a/b/nb.ipynb', '../x', 'a/x'],
+    ['a/b/nb.ipynb', '../../../x', 'x'],
+    ['nb.ipynb', 'x', 'x'],
+    ['my dir/nb.ipynb', 'x', 'my%20dir/x'],
+    ['a/b/nb.ipynb', 'dir/', 'a/b/dir'],
+    ['a/b/nb.ipynb', './', 'a/b'],
+    ['nb.ipynb', './', ''],
+  ];
+  const OTHER = ['https://example.com/x.png', 'data:image/png;base64,AAAA', '/abs/x'];
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('resolves relative URLs without reading process.cwd()', async () => {
+    vi.spyOn(process, 'cwd').mockImplementation(() => {
+      throw new Error('no cwd in the browser');
+    });
+    for (const [path, url, want] of LOCAL) expect(await resolve(path, url)).toBe(want);
+  });
+
+  it('leaves URLs that are not local unchanged', async () => {
+    vi.spyOn(process, 'cwd').mockImplementation(() => {
+      throw new Error('no cwd in the browser');
+    });
+    for (const url of OTHER) expect(await resolve('a/b/nb.ipynb', url)).toBe(url);
+  });
+
+  it("matches JupyterLab's resolver when the working directory is '/'", async () => {
+    vi.spyOn(process, 'cwd').mockReturnValue('/');
+    const { RenderMimeRegistry } = await import('@jupyterlab/rendermime');
+    for (const [path, url] of [...LOCAL, ...OTHER.map(u => ['a/b/nb.ipynb', u] as const)]) {
+      const upstream = new RenderMimeRegistry.UrlResolver({ path, contents });
+      expect(await resolve(path, url)).toBe(await upstream.resolveUrl(url));
+    }
+  });
+});
