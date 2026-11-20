@@ -16,11 +16,12 @@ and the toolbar's cell type picker changes a cell's type with the mouse.
 
 `⇧⌘P` (`Ctrl+Shift+P` on Windows and Linux) opens the command palette:
 every command in the tables below that works outside a cell editor, plus
-New Notebook, Save, Rename…, Download, Publish as Web Page…, Export as
-Markdown, Export as Script, Trust, Run All, Run with Parameters…, Clear All
-Outputs, Interrupt,
-Restart, a Change Kernel entry for each kernel, and the notebooks you
-opened recently. Type to filter, use `↑` and `↓` to pick, `↩` to run, and
+Go to Definition and Rename Symbol… (the `F12` and `F2` of a code cell,
+[described here](apps.md#signatures-definitions-and-renames)), New
+Notebook, Save, Rename…, Download, Publish as Web Page…, Export as
+Markdown, Export as Script, Trust, Run All, Run with Parameters…, Clear
+All Outputs, Interrupt, Restart, a Change Kernel entry for each kernel,
+and the notebooks you opened recently. Type to filter, use `↑` and `↓` to pick, `↩` to run, and
 `Esc` to close. Rename… asks for the new name in the same field. The
 toolbar's command button opens it too (handy on a touch screen), and the
 Mac app has View › Command Palette…. Firefox keeps `Ctrl+Shift+P` (`⇧⌘P`)
@@ -105,6 +106,8 @@ origin across launches, so changes there last.
 | Leave the cell (command mode) | `Esc`, `⌃M` | `Esc`, `Ctrl+M` |
 | Complete                      | `⇥`         | `Tab`           |
 | Show documentation            | `⇧⇥`        | `Shift+Tab`     |
+| Go to Definition              | `F12`       | `F12`           |
+| Rename Symbol…                | `F2`        | `F2`            |
 
 ### App
 
@@ -114,3 +117,9 @@ origin across launches, so changes there last.
 | Command palette | `⌘⇧P` | `Ctrl+Shift+P` |
 
 <!-- shortcuts:end -->
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release. The Go to Definition and Rename Symbol… rows of the
+> Edit mode table, and rebinding them in the Shortcuts sheet, are new:
+> `F12` and `F2` themselves already work in the latest release.

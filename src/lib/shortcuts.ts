@@ -106,6 +106,9 @@ export const SHORTCUTS: readonly Shortcut[] = [
   },
   { id: 'completer:invoke', label: 'Complete', group: 'Edit mode', keys: [['Tab']] },
   { id: 'tooltip:launch', label: 'Show documentation', group: 'Edit mode', keys: [['Shift Tab']] },
+  // Through the kernel's language service (#676); bound in `language-editor.ts`.
+  { id: 'go-to-definition', label: 'Go to Definition', group: 'Edit mode', keys: [['F12']] },
+  { id: 'rename-symbol', label: 'Rename Symbol…', group: 'Edit mode', keys: [['F2']] },
 
   { id: 'save', label: 'Save', group: 'App', keys: [['Accel S']] },
   {
@@ -233,8 +236,11 @@ export function subscribe(listener: () => void): () => void {
   return () => listeners.delete(listener);
 }
 
-// As Lumino decides it.
-const IS_MAC = /Mac/i.test(navigator.platform);
+/**
+ * Whether this is a Mac, as Lumino decides it. False where there is no
+ * `navigator` (a worker, a test environment without one).
+ */
+export const IS_MAC = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform);
 
 /** Groups whose shortcuts can fire on the same keydown. */
 const overlap = (a: ShortcutGroup, b: ShortcutGroup) =>

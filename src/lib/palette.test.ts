@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { type PaletteContext, filterEntries, paletteEntries } from './palette';
-import { resetKeys } from './shortcuts';
+import { resetKeys, setKeys } from './shortcuts';
 
 const CONTEXT: PaletteContext = {
   path: 'moons/Io.ipynb',
@@ -75,6 +75,21 @@ describe('paletteEntries', () => {
     const none = { ...CONTEXT, path: undefined, kernel: undefined };
     expect(find('Go to Definition', none)?.disabled).toBe(true);
     expect(find('Rename Symbol…', none)?.disabled).toBe(true);
+  });
+
+  it('shows the keys the shortcuts table has for go to definition and rename symbol', () => {
+    try {
+      setKeys('go-to-definition', [['Accel Shift D']]);
+      setKeys('rename-symbol', [['Accel Shift R']]);
+      expect(find('Go to Definition')!.keys).not.toBe('F12');
+      expect(find('Go to Definition')!.keys).toMatch(/D$/);
+      expect(find('Rename Symbol…')!.keys).not.toBe('F2');
+      expect(find('Rename Symbol…')!.keys).toMatch(/R$/);
+    } finally {
+      resetKeys();
+    }
+    expect(find('Go to Definition')!.keys).toBe('F12');
+    expect(find('Rename Symbol…')!.keys).toBe('F2');
   });
 
   it('offers the live Markdown preview switch as the page command that runs it (#672)', () => {
