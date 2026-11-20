@@ -58,8 +58,9 @@ enum WindowTarget: Codable, Hashable {
     /// or else the folder its `dir=` names (the sidebar's folder, #220), or
     /// else the server's root. The paths are from the server's root, `/`,
     /// form-encoded as URLSearchParams writes them. A console is read with
-    /// its `session=` as the id, or a new one without: compare it with
-    /// `shows(_:)`, not `==`. Nil for a URL that
+    /// its `session=` as the id, so it equals the tab's own target; with no
+    /// `session` it has a new id, and only `shows(_:)` matches it to the
+    /// tab, not `==`. Nil for a URL that
     /// isn't the app's page, which is served at the server's root: a file
     /// the page linked to, or an error page.
     init?(page: URL) {

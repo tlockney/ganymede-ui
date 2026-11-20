@@ -18,6 +18,7 @@ import {
 import {
   MAX_STATEMENTS,
   clearConsoles,
+  listedConsoles,
   loadConsoles,
   saveConsole,
   useConsoles,
@@ -139,7 +140,26 @@ export function DuckdbConsole({
     setEditing(undefined);
     if (commit && next && next !== name) onRename(next);
   };
-  const recent = useConsoles(backend).filter(r => r.id !== id);
+  const records = useConsoles(backend);
+  const recent = listedConsoles(records).filter(r => r.id !== id);
+  // A Clear Recent Consoles removes this console's record too: what it has
+  // saved is gone, and its later statements start a record of their own.
+  const hadRecord = useRef(false);
+  useEffect(() => {
+    if (records.some(r => r.id === id)) hadRecord.current = true;
+    else if (hadRecord.current) {
+      hadRecord.current = false;
+      saved.current = [];
+      // Its name stays taken while it is open.
+      saveConsole(key, {
+        id,
+        name: nameNow.current,
+        folder: folderNow.current,
+        statements: [],
+        used: Date.now(),
+      });
+    }
+  }, [records, id, key]);
   const [starting, setStarting] = useState(true);
   const [fatal, setFatal] = useState<string>();
   const [notice, setNotice] = useState<string>();

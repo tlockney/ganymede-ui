@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeBackend, fakeServices } from '../test/fakes';
 import type { ArrowResult } from '../lib/duckdb-console';
 import { DuckdbConsole } from './DuckdbConsole';
-import { loadConsoles, saveConsole } from '../lib/console-recents';
+import { clearConsoles, listedConsoles, loadConsoles, saveConsole } from '../lib/console-recents';
 import { recentsKey } from '../lib/recents';
 
 // DuckDB itself runs in a worker; duckdb-console.real.test.ts covers the real package.
@@ -651,6 +651,30 @@ describe('DuckdbConsole', () => {
       expect(typed()).toBe('select 3;');
     });
 
+    it('walks the restored statements with ↑', async () => {
+      engineFor();
+      saveConsole(storeKey, record('c1', 'Console 1', ['select 1', 'select 2']));
+      setup();
+      await waitFor(() => expect(screen.queryByText('Starting DuckDB…')).toBeNull());
+      key('ArrowUp');
+      expect(typed()).toBe('select 2');
+      key('ArrowUp');
+      expect(typed()).toBe('select 1');
+    });
+
+    it('starts its record over after Clear Recent Consoles', async () => {
+      engineFor();
+      saveConsole(storeKey, record('c1', 'Console 1', ['select 1']));
+      setup();
+      await waitFor(() => expect(screen.queryByText('Starting DuckDB…')).toBeNull());
+      act(() => clearConsoles(storeKey));
+      type('select 2;');
+      key('Enter');
+      await screen.findByRole('table');
+      expect(loadConsoles(storeKey)).toHaveLength(1);
+      expect(loadConsoles(storeKey)[0]?.statements).toEqual(['select 2']);
+    });
+
     it('stops Run All Again at an error and leaves the rest to run again', async () => {
       const engine = engineFor(sql => (sql === 'bad' ? new Error('boom') : MOONS));
       saveConsole(storeKey, record('c1', 'Console 1', ['select 1', 'bad', 'select 3']));
@@ -677,7 +701,7 @@ describe('DuckdbConsole', () => {
         menu,
         screen.getByRole('option', { name: 'Clear Recent Consoles' }),
       );
-      expect(loadConsoles(storeKey)).toEqual([]);
+      expect(listedConsoles(loadConsoles(storeKey))).toEqual([]);
       await waitFor(() => expect(screen.queryByRole('combobox')).toBeNull());
     });
 

@@ -175,6 +175,11 @@ final class WindowTargetTests: XCTestCase {
             page: URL(string: "http://127.0.0.1:8123/?console=duckdb&session=nope")!)
         else { return XCTFail("not a console") }
         XCTAssertNotEqual(other, id)
+        // A page with no session isn't equal to the tab's target; `shows` still matches it.
+        let bare = try XCTUnwrap(WindowTarget(
+            page: URL(string: "http://127.0.0.1:8123/?dir=Users%2Fme%2Fwork&console=duckdb")!))
+        XCTAssertNotEqual(bare, target)
+        XCTAssertTrue(target.shows(bare))
     }
 
     func testAConsoleTabIsTitledWithItsName() {
@@ -225,9 +230,9 @@ final class WindowTargetTests: XCTestCase {
             WindowTarget(page: target.pageURL(server: server, kernels: "server", nativeChrome: true)))
         guard case .console(let folder, _) = read else { return XCTFail("not a console: \(read)") }
         XCTAssertEqual(folder.path, "/Users/me/work")
-        // The page doesn't know the tab's id: the tab still shows it.
+        // The page's `session` is the tab's id (#735), so it reads back as the same target.
         XCTAssertTrue(target.shows(read))
-        XCTAssertNotEqual(target, read)
+        XCTAssertEqual(target, read)
         // Another folder's console, or a notebook, is not the one shown.
         let other = WindowTarget.console(folder: URL(fileURLWithPath: "/Users/me/play", isDirectory: true), id: UUID())
         XCTAssertFalse(target.shows(other))

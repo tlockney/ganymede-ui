@@ -1054,15 +1054,18 @@ console's header to change it: **Enter** keeps the new name, **Esc** or an
 empty name leaves it as it was. On the Mac, File > Rename… does the same
 for the console tab, and the tab's title shows the name.
 
-Once a statement has run in a console, the page keeps it as a recent
-console, per server, in the browser's local storage: its name, folder, the
-statements that ran without an error, in order, and when it was last used.
-The 20 most recently used consoles are kept, with up to 200 statements
-each; results aren't. Open one again from the **Recent…** menu in the
+Once a statement has run in a console, or you have renamed it, the page
+keeps it as a recent console, per server, in the browser's local storage:
+its name, folder, the statements and dot commands that ran without an error
+(each as typed, in order), and when it was last used. A statement that
+failed isn't kept. The 20 most recently used consoles are kept, with the
+last 200 statements of each; results aren't. A console shown but never used
+or renamed only holds its name while it is open, and isn't listed. Open one again from the **Recent…** menu in the
 console's header (it lists the other recent consoles by name and folder),
 **Open Recent Console: …** in the Command Palette, or File > Open Recent
 Console on the Mac, which opens a tab. **Clear Recent Consoles** (that menu,
-the palette and the File menu) empties the list.
+the palette and the File menu) empties the list; a console that is open then
+starts its record over with only what you run after that.
 
 A console opened again has its name and folder and shows its statements
 without results, each marked "Not run in this session", on a new engine with

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from 'react';
 import {
   type Backend,
   type BackendConfig,
@@ -21,10 +21,11 @@ import { DataPane } from './components/DataPane';
 import { DuckdbConsole } from './components/DuckdbConsole';
 import {
   clearConsoles,
-  consoleFor,
+  listedConsoles,
   loadConsoles,
   moveConsoleFolders,
   renameConsole,
+  startConsole,
   useConsoles,
 } from './lib/console-recents';
 import { NotebookPane, type NotebookController } from './components/NotebookPane';
@@ -188,7 +189,7 @@ export function App() {
   const afterPick = useCallback(() => {
     if (narrow) setSidebarOpen(false);
   }, [narrow]);
-  const [openPath, setOpenPath] = useState<string>();
+  const [openPath, setOpenPathState] = useState<string>();
   /**
    * The DuckDB console (#679) shows in the page where a notebook would, in
    * this folder. It has no path: the app's state says no notebook is open,
@@ -227,9 +228,15 @@ export function App() {
       f === undefined || !within(f, from) ? f : to === null ? undefined : to + f.slice(from.length),
     );
   }, []);
-  useEffect(() => {
-    if (openPath) setDuckFolder(undefined);
-  }, [openPath]);
+  /**
+   * Sets the open path; a path opened closes the console, here and now, not
+   * from an effect after the render: an effect could run after a console
+   * shown since and close that one.
+   */
+  const setOpenPath = useCallback((next: SetStateAction<string | undefined>) => {
+    if (typeof next === 'string' && next) setDuckFolder(undefined);
+    setOpenPathState(next);
+  }, []);
   // Not if another notebook was opened while it renamed.
   // A run going on keeps going through a rename or move (of the notebook
   // or a folder it's in): its sheet and parameters follow the name.
@@ -348,7 +355,7 @@ export function App() {
         } else if (pendingConsole.current !== undefined) {
           // A tab's own record, if it has one (a restored tab, a reopened
           // console), else a new console with the tab's id (#735).
-          const c = consoleFor(
+          const c = startConsole(
             recentsKey(b.config),
             pendingSession.current,
             pendingConsole.current,
@@ -491,7 +498,7 @@ export function App() {
           return true;
         }
         // A notebook open goes the way another notebook's opening takes it.
-        showConsole(consoleFor(recentsKey(backend.config), undefined, ''), clean(arg ?? folder));
+        showConsole(startConsole(recentsKey(backend.config), undefined, ''), clean(arg ?? folder));
         return true;
       case 'open-console': {
         // A recent console again (#735): a tab on the Mac, else in the page.
@@ -844,7 +851,7 @@ export function App() {
   const recents = useRecents(native ? backend : undefined, openPath);
   const recentsKeyed = JSON.stringify(recents);
   // The recent consoles (#735): for the app's File > Open Recent Console and the palette.
-  const consoles = useConsoles(backend);
+  const consoles = listedConsoles(useConsoles(backend));
   const consolesKeyed = JSON.stringify(
     consoles.map(c => ({ id: c.id, name: c.name, folder: c.folder })),
   );

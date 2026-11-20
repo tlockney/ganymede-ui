@@ -17,7 +17,9 @@ export const MAX_CONSOLES = 20;
 /** Statements kept for each console; the oldest go first. */
 export const MAX_STATEMENTS = 200;
 /** Backends kept; the one used longest ago goes first. */
-const MAX_BACKENDS = 10;
+export const MAX_BACKENDS = 10;
+/** A record with no statements, left alone this long, is dropped: its console was never used. */
+const EMPTY_KEPT_MS = 24 * 60 * 60 * 1000;
 
 export type ConsoleRecord = {
   /** A UUID: on the Mac it is also the console tab's own id. */
@@ -29,6 +31,8 @@ export type ConsoleRecord = {
   statements: string[];
   /** When it was last used, in milliseconds. */
   used: number;
+  /** It was renamed: it is listed, and kept, though nothing has run in it. */
+  named?: boolean;
 };
 
 type Store = Record<string, ConsoleRecord[]>;
@@ -43,7 +47,7 @@ export function newConsoleId(): string {
 
 function record(value: unknown): ConsoleRecord | undefined {
   if (!value || typeof value !== 'object') return undefined;
-  const { id, name, folder, statements, used } = value as Record<string, unknown>;
+  const { id, name, folder, statements, used, named } = value as Record<string, unknown>;
   if (typeof id !== 'string' || !id || typeof name !== 'string' || typeof folder !== 'string') {
     return undefined;
   }
@@ -55,6 +59,7 @@ function record(value: unknown): ConsoleRecord | undefined {
       ? statements.filter((s): s is string => typeof s === 'string')
       : [],
     used: typeof used === 'number' && Number.isFinite(used) ? used : 0,
+    ...(named === true ? { named: true } : {}),
   };
 }
 
@@ -112,7 +117,12 @@ export function loadConsoles(key: string): ConsoleRecord[] {
 
 function update(key: string, change: (records: ConsoleRecord[]) => ConsoleRecord[]): void {
   const store = read();
-  const after = change(store[key] ?? []).slice(0, MAX_CONSOLES);
+  // A console shown makes a record at once, to hold its name; one that never
+  // ran anything doesn't stay.
+  const stale = Date.now() - EMPTY_KEPT_MS;
+  const after = change(store[key] ?? [])
+    .filter(r => r.statements.length > 0 || r.named || r.used >= stale)
+    .slice(0, MAX_CONSOLES);
   delete store[key];
   if (after.length) store[key] = after;
   // The backend used last goes last, so the oldest is dropped first.
@@ -122,14 +132,22 @@ function update(key: string, change: (records: ConsoleRecord[]) => ConsoleRecord
 
 /** Puts `saved` at the top, replacing the one of its id. */
 export function saveConsole(key: string, saved: ConsoleRecord): void {
-  const next = { ...saved, statements: saved.statements.slice(-MAX_STATEMENTS) };
-  update(key, records => [next, ...records.filter(r => r.id !== saved.id)]);
+  update(key, records => {
+    // A save of what ran keeps the name's being chosen.
+    const named = saved.named ?? records.find(r => r.id === saved.id)?.named;
+    const next = {
+      ...saved,
+      statements: saved.statements.slice(-MAX_STATEMENTS),
+      ...(named ? { named } : {}),
+    };
+    return [next, ...records.filter(r => r.id !== saved.id)];
+  });
 }
 
 /** Names console `id`, making its record if it has none yet (nothing has run in it). */
 export function renameConsole(key: string, id: string, name: string, folder: string): void {
   const found = read()[key]?.find(r => r.id === id);
-  saveConsole(key, { statements: [], ...found, id, name, folder, used: Date.now() });
+  saveConsole(key, { statements: [], ...found, id, name, folder, used: Date.now(), named: true });
 }
 
 /**
@@ -154,6 +172,10 @@ export function clearConsoles(key: string): void {
   update(key, () => []);
 }
 
+/** The records worth listing: those a statement ran in, or that were renamed. Any other is only its console's reservation of a name. */
+export const listedConsoles = (records: readonly ConsoleRecord[]) =>
+  records.filter(r => r.statements.length > 0 || r.named);
+
 /** "Console 1", "Console 2", …: the lowest number no console of the backend has. */
 export function defaultConsoleName(records: readonly ConsoleRecord[]): string {
   const taken = new Set(records.map(r => r.name));
@@ -177,7 +199,24 @@ export function consoleFor(
   return { id: id ?? newConsoleId(), name: defaultConsoleName(records), folder };
 }
 
-/** The backend's recent consoles, kept up to date as they change. */
+/**
+ * Shows a console: `consoleFor`, and a record for it when it has none, so
+ * the next console shown doesn't take its name before a statement has run
+ * in it. The record isn't listed until one has (`listedConsoles`).
+ */
+export function startConsole(
+  key: string,
+  id: string | undefined,
+  folder: string,
+): { id: string; name: string; folder: string } {
+  const c = consoleFor(key, id, folder);
+  if (!loadConsoles(key).some(r => r.id === c.id)) {
+    saveConsole(key, { ...c, statements: [], used: Date.now() });
+  }
+  return c;
+}
+
+/** All the backend's console records, listed or not, kept up to date as they change. */
 export function useConsoles(backend: Backend | undefined): ConsoleRecord[] {
   const key = backend && recentsKey(backend.config);
   const [records, setRecords] = useState<ConsoleRecord[]>(() => (key ? loadConsoles(key) : []));

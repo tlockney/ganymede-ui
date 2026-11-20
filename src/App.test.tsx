@@ -1285,6 +1285,51 @@ describe('App', () => {
         vi.unstubAllGlobals();
       });
 
+      it('gives two consoles shown before either ran anything their own names', async () => {
+        stubApp(false);
+        backendFor(fakeMoons());
+        history.replaceState(null, '', '/?kernels=server&chrome=native&dir=moons&console=duckdb');
+        render(<App />);
+        const first = await screen.findByTestId('duck-console');
+        expect(first).toHaveAttribute('data-name', 'Console 1');
+        expect(await window.ganymede!.command('new-duckdb-console', 'moons')).toBe(true);
+        await waitFor(() =>
+          expect(screen.getByTestId('duck-console')).toHaveAttribute('data-name', 'Console 2'),
+        );
+        vi.unstubAllGlobals();
+      });
+
+      it('leaves the console shown out of the palette’s recent consoles', async () => {
+        stubApp(false);
+        const key = backendFor(fakeMoons());
+        saveConsole(key, rec('past', 'Past', 'moons', 2));
+        saveConsole(key, rec('other', 'Other', '', 1));
+        history.replaceState(null, '', '/?kernels=server&chrome=native&dir=moons&console=duckdb');
+        render(<App />);
+        await screen.findByTestId('duck-console');
+        expect(await window.ganymede!.command('open-console', 'past')).toBe(true);
+        await waitFor(() =>
+          expect(screen.getByTestId('duck-console')).toHaveAttribute('data-id', 'past'),
+        );
+        expect(await window.ganymede!.command('command-palette')).toBe(true);
+        const palette = await screen.findByRole('dialog', { name: 'Command palette' });
+        expect(within(palette).getByText('Open Recent Console: Other')).toBeInTheDocument();
+        expect(within(palette).queryByText('Open Recent Console: Past')).toBeNull();
+        vi.unstubAllGlobals();
+      });
+
+      it('lists recent consoles to the app only with the app’s own chrome', async () => {
+        const { states } = stubApp(true);
+        const key = backendFor(fakeMoons());
+        saveConsole(key, rec('past', 'Past', 'moons', 2));
+        history.replaceState(null, '', '/?kernels=server&dir=moons&console=duckdb');
+        render(<App />);
+        await screen.findByTestId('duck-console');
+        await waitFor(() => expect(states.at(-1)?.console).not.toBeNull());
+        expect(states.every(st => (st.consoles as unknown[]).length === 0)).toBe(true);
+        vi.unstubAllGlobals();
+      });
+
       it('moves a console’s record with its folder, and drops it when the folder is deleted', async () => {
         stubApp(true);
         const key = backendFor(fakeMoons());
@@ -1296,12 +1341,13 @@ describe('App', () => {
         const move = (from: string, to: string | null) =>
           window.ganymede!.command('file-moved', JSON.stringify({ from, to }));
         expect(await move('moons', 'planets')).toBe(true);
-        expect(loadConsoles(key).map(r => [r.id, r.folder])).toEqual([
+        const mine = () => loadConsoles(key).filter(r => r.id === 'a' || r.id === 'b');
+        expect(mine().map(r => [r.id, r.folder])).toEqual([
           ['a', 'planets/inner'],
           ['b', 'other'],
         ]);
         expect(await move('planets', null)).toBe(true);
-        expect(loadConsoles(key).map(r => r.id)).toEqual(['b']);
+        expect(mine().map(r => r.id)).toEqual(['b']);
         vi.unstubAllGlobals();
       });
     });
