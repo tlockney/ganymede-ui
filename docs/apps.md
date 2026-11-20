@@ -1060,7 +1060,7 @@ its name, folder, the statements and dot commands that ran without an error
 (each as typed, in order), and when it was last used. A statement that
 failed isn't kept. The 20 most recently used consoles are kept, with the
 last 200 statements of each; results aren't. A console shown but never used
-or renamed only holds its name while it is open, and isn't listed. Open one again from the **Recent…** menu in the
+or renamed only holds its name while it is open, and isn't listed (closing it frees the name; one left behind by a crash is dropped after a day). Open one again from the **Recent…** menu in the
 console's header (it lists the other recent consoles by name and folder),
 **Open Recent Console: …** in the Command Palette, or File > Open Recent
 Console on the Mac, which opens a tab. **Clear Recent Consoles** (that menu,
