@@ -18,10 +18,12 @@ function setSync(cell: Cell, on: boolean) {
   const code = 'syncScrolled' in cell ? (cell as CodeCell) : undefined;
   if (on) {
     // The sync setters read the metadata when turned on, but after setting
-    // the flag, so what they set (the cell's state, as the metadata says)
-    // is written straight back: a Y-doc update on every reconnect. Reading
-    // it first, while the sync is still off, writes nothing (a test of a
-    // real notebook counts the updates).
+    // the flag, so a state that differs from what the cell shows is written
+    // straight back: a Y-doc update on reconnect. That happens for a
+    // collapsed cell (the cell was collapsed while away, the metadata
+    // says it isn't) and for `scrolled: "auto"`, which loads as false and
+    // is saved as such. Reading first, while the sync is still off, writes
+    // nothing (a test of a real notebook counts the updates).
     cell.loadEditableState();
     cell.loadCollapseState();
     code?.loadScrolledState();

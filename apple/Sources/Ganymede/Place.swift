@@ -159,6 +159,16 @@ enum Places {
         return list
     }
 
+    /// The page's event for a changed list (`PLACES_EVENT` in places.ts).
+    static let updateEvent = "ganymede-places"
+
+    /// The script that gives a loaded machine page a new list: sets the
+    /// global and tells the page.
+    static func updateScript(_ entries: [PlaceEntry]) -> String {
+        "window.ganymedePlaces = \(pageJSON(entries));"
+            + "window.dispatchEvent(new Event('\(updateEvent)'));"
+    }
+
     /// The JSON a machine's page gets as `window.ganymedePlaces`: names and
     /// ids, never an address or a token.
     static func pageJSON(_ entries: [PlaceEntry]) -> String {

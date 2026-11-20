@@ -181,15 +181,16 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// The places a machine's page offers, given to it as
     /// `window.ganymedePlaces`.
     /// Kept current by the view (`updateNSView`), so a machine added or
-    /// renamed while the window is open reaches the page: the global is set
-    /// again and the page is told with a `ganymede-places` event.
+    /// renamed while the window is open reaches the page's switcher: the
+    /// global is set again and the page is told with a `ganymede-places`
+    /// event (`Places.updateScript`), and the next load gets the current
+    /// list. The open machine's own label in the window comes from
+    /// `machine_name` in its URL and isn't changed by a rename.
     var places: [PlaceEntry] {
         didSet {
             guard place.allows(.switchPlace), oldValue != places, let webView else { return }
-            webView.evaluateJavaScript(
-                "window.ganymedePlaces = \(Places.pageJSON(places));"
-                    + "window.dispatchEvent(new Event('ganymede-places'));",
-                completionHandler: nil)
+            webView.evaluateJavaScript(Places.updateScript(places), completionHandler: nil)
+            Self.installPageScripts(on: webView, loaded: loaded, place: place, places: places)
         }
     }
     var onNavigate: ((URL?) -> Void)?

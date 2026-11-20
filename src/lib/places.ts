@@ -21,7 +21,10 @@ declare global {
   }
 }
 
-/** Fired on `window` by the app after it sets `ganymedePlaces` again. */
+/**
+ * Fired on `window` by the app after it sets `ganymedePlaces` again; the
+ * script is `Places.updateScript` (Place.swift), which names it too.
+ */
 export const PLACES_EVENT = 'ganymede-places';
 
 /** The places the app lists, kept current as it changes the list. */
@@ -30,6 +33,8 @@ export function usePlaces(): PlaceInfo[] {
   useEffect(() => {
     const update = () => setPlaces(pagePlaces());
     window.addEventListener(PLACES_EVENT, update);
+    // A change between the first render and now.
+    update();
     return () => window.removeEventListener(PLACES_EVENT, update);
   }, []);
   return places;

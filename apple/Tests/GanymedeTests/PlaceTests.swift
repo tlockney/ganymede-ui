@@ -211,6 +211,14 @@ final class PlaceTests: XCTestCase {
         XCTAssertEqual(ReachabilitySchedule.delay(afterFailures: 10_000), 30)
     }
 
+    func testTheUpdateScriptSetsTheListAndFiresThePagesEvent() {
+        let script = Places.updateScript(
+            Places.entries(remotes: [], thisDevice: "This Mac", mounting: true))
+        XCTAssertTrue(script.contains("window.ganymedePlaces = "))
+        XCTAssertTrue(script.contains("'ganymede-places'"))
+        XCTAssertEqual(Places.updateEvent, "ganymede-places")
+    }
+
     func testStatusIsAskedThroughTheMount() throws {
         let url = try XCTUnwrap(PlaceReachability.statusURL(id, server: server))
         XCTAssertEqual(url.path, "/machines/\(id)/api/status")

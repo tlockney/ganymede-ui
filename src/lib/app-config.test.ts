@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { initialConfig, isAppServer, sameBackend } from './app-config';
-import type { BackendConfig } from './backends';
+import { type BackendConfig, saveConfig } from './backends';
 
 beforeEach(() => {
   localStorage.clear();
@@ -64,5 +64,17 @@ describe('initialConfig', () => {
       kernels: 'both',
     });
     expect(initialConfig('')).toBeUndefined();
+  });
+
+  it('returns the saved config when the URL asks for nothing', () => {
+    saveConfig({ kind: 'ganymede', url: 'http://mini:8888', token: '' });
+    expect(initialConfig('')).toMatchObject({ kind: 'ganymede', url: 'http://mini:8888' });
+    expect(initialConfig('?open=%2Fa.ipynb')).toMatchObject({ url: 'http://mini:8888' });
+  });
+
+  it('sets no kernels key for kernels=server', () => {
+    const config = initialConfig('?kernels=server');
+    expect(config).toEqual({ kind: 'ganymede', url: '', token: '' });
+    expect(config).not.toHaveProperty('kernels');
   });
 });

@@ -1381,4 +1381,45 @@ describe('App', () => {
     expect(screen.queryByTestId('sidebar-scrim')).not.toBeInTheDocument();
     expect(container.querySelector('.sidebar-close')).toBeNull();
   });
+
+  it('lists the places the app sets again, on its ganymede-places event (#701)', async () => {
+    history.replaceState(null, '', '/?machine=mini-1&machine_name=m4mini');
+    window.ganymedePlaces = [
+      { id: null, name: 'This Mac' },
+      { id: 'mini-1', name: 'm4mini' },
+    ];
+    const fake = fakeServices({ '': [{ name: 'Io.ipynb', type: 'notebook' }] });
+    (fake.services as unknown as { serverSettings: unknown }).serverSettings =
+      ServerConnection.makeSettings({
+        baseUrl: 'http://127.0.0.1:1/machines/mini-1/',
+        fetch: (async () => new Response('{}')) as unknown as typeof fetch,
+      });
+    mocks.connect.mockImplementation(async c => fakeBackend(fake.services, c));
+    try {
+      render(<App />);
+      const open = async () => {
+        await userEvent.click(await screen.findByRole('button', { name: /Place: m4mini/ }));
+        return screen.findAllByRole('menuitemradio');
+      };
+      expect((await open()).map(i => i.textContent?.replace('✓', ''))).toEqual([
+        'This Mac',
+        'm4mini',
+      ]);
+      await userEvent.keyboard('{Escape}');
+
+      window.ganymedePlaces = [
+        { id: null, name: 'This Mac' },
+        { id: 'mini-1', name: 'm4mini' },
+        { id: 'laptop-2', name: 'Laptop' },
+      ];
+      act(() => void window.dispatchEvent(new Event('ganymede-places')));
+      expect((await open()).map(i => i.textContent?.replace('✓', ''))).toEqual([
+        'This Mac',
+        'm4mini',
+        'Laptop',
+      ]);
+    } finally {
+      delete window.ganymedePlaces;
+    }
+  });
 });
