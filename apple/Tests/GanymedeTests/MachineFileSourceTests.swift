@@ -302,4 +302,31 @@ final class MachineFileSourceTests: XCTestCase {
         }
         XCTAssertTrue(stub.requests.isEmpty)
     }
+
+    // MARK: Removing an item (#743)
+
+    func testAMachineDeletesForGoodAndAlwaysAsks() throws {
+        let action = RemoveAction(place: .machine(id))
+        XCTAssertEqual(action.menuTitle, "Delete…")
+        XCTAssertEqual(action.buttonTitle, "Delete")
+        let file = try XCTUnwrap(FolderEntry.machineURL(id, path: "a/Io.ipynb"))
+        let q = try XCTUnwrap(action.question(for: FolderEntry(url: file, isDirectory: false), holdsOpen: false, dirty: false))
+        XCTAssertEqual(q.message, "Delete “Io”?")
+        XCTAssertTrue(q.detail.contains("can’t be undone"))
+        let folder = try XCTUnwrap(FolderEntry.machineURL(id, path: "a"))
+        let open = try XCTUnwrap(action.question(for: FolderEntry(url: folder, isDirectory: true), holdsOpen: true, dirty: true))
+        XCTAssertEqual(open.message, "“a” holds the open notebook.")
+        XCTAssertTrue(open.detail.contains("everything in it"))
+        XCTAssertTrue(open.detail.contains("unsaved changes. Delete and close it without saving?"))
+    }
+
+    func testThisDeviceMovesToTheTrashAndAsksOnlyForTheOpenNotebook() throws {
+        let action = RemoveAction(place: .thisDevice)
+        XCTAssertEqual(action.menuTitle, "Move to Trash")
+        let entry = FolderEntry(url: URL(fileURLWithPath: "/tmp/Io.ipynb"), isDirectory: false)
+        XCTAssertNil(action.question(for: entry, holdsOpen: false, dirty: true))
+        let q = try XCTUnwrap(action.question(for: entry, holdsOpen: true, dirty: false))
+        XCTAssertEqual(q.message, "“Io” is open in this window.")
+        XCTAssertEqual(q.detail, "Move it to the Trash and close it?")
+    }
 }

@@ -819,8 +819,9 @@ with only SSH stays in Settings for shells.
 On the Mac a machine's window is the app's native window: the same
 sidebar (Files, Search, Running, Outline and Journals), toolbar,
 inspector, menus and tabs as for this Mac, listing the machine's files.
-Open, New Notebook, New Folder, Rename and Move to Trash work on the
-machine's files; the title is the notebook or folder and the subtitle
+Open, New Notebook, New Folder and Rename work on the machine's files.
+Delete removes a machine's file for good (its server keeps no Trash), so
+it always asks first. The title is the notebook or folder and the subtitle
 reads "on _machine_". These work on this Mac's disk, so a machine's window
 doesn't have them: Show in Finder, Duplicate on a folder (a machine copies
 files only), the Recents tab, File > Open Recent, the terminal panel and

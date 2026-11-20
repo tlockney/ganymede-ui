@@ -293,3 +293,57 @@ struct MachineFileSource: FileSource {
         return body
     }
 }
+
+// MARK: - Removing an item
+
+/// How the sidebar removes an item in a place (#743). This device moves it
+/// to the Trash, and asks only when it holds the open notebook. A machine's
+/// server deletes it for good (Ganymede's contents API keeps no Trash), so
+/// the item says Delete and always asks.
+struct RemoveAction: Equatable {
+    /// The menu item's title.
+    let menuTitle: String
+    /// The confirming button's title.
+    let buttonTitle: String
+    /// Whether to ask even when the item doesn't hold the open notebook.
+    let alwaysAsks: Bool
+
+    init(place: Place) {
+        if place.isMachine {
+            self.init(menuTitle: "Delete…", buttonTitle: "Delete", alwaysAsks: true)
+        } else {
+            self.init(menuTitle: "Move to Trash", buttonTitle: "Move to Trash", alwaysAsks: false)
+        }
+    }
+
+    private init(menuTitle: String, buttonTitle: String, alwaysAsks: Bool) {
+        self.menuTitle = menuTitle
+        self.buttonTitle = buttonTitle
+        self.alwaysAsks = alwaysAsks
+    }
+
+    /// The alert's message and detail, or nil when nothing needs asking.
+    /// `holdsOpen`: the item is or holds the window's open notebook, which
+    /// closes; `dirty`: that notebook has unsaved changes.
+    func question(for entry: FolderEntry, holdsOpen: Bool, dirty: Bool) -> (message: String, detail: String)? {
+        guard alwaysAsks || holdsOpen else { return nil }
+        let name = entry.isDirectory ? entry.name : entry.title
+        let message: String
+        if holdsOpen {
+            message = entry.isDirectory ? "“\(name)” holds the open notebook." : "“\(name)” is open in this window."
+        } else {
+            message = "Delete “\(name)”?"
+        }
+        var detail: [String] = []
+        if alwaysAsks {
+            detail.append(entry.isDirectory
+                ? "The machine deletes the folder and everything in it. This can’t be undone."
+                : "The machine deletes it for good. This can’t be undone.")
+        }
+        if holdsOpen {
+            let verb = alwaysAsks ? "Delete" : "Move it to the Trash"
+            detail.append(dirty ? "It has unsaved changes. \(verb) and close it without saving?" : "\(verb) and close it?")
+        }
+        return (message, detail.joined(separator: " "))
+    }
+}

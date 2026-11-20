@@ -152,18 +152,16 @@ struct FolderSidebar: View {
 
     private func trash(_ entry: FolderEntry) {
         // The page would write the notebook back on its next save, so it
-        // closes it, after asking.
+        // closes it, after asking. A machine deletes for good: always ask.
         let holdsOpen = FolderEntry.path(page.state.path, isAt: entry.serverPath)
-        if holdsOpen {
+        let action = RemoveAction(place: place)
+        if let question = action.question(for: entry, holdsOpen: holdsOpen, dirty: page.state.dirty) {
             let alert = NSAlert()
-            alert.messageText = entry.isDirectory
-                ? "“\(entry.name)” holds the open notebook."
-                : "“\(entry.title)” is open in this window."
-            alert.informativeText = page.state.dirty
-                ? "It has unsaved changes. Move it to the Trash and close it without saving?"
-                : "Move it to the Trash and close it?"
-            alert.addButton(withTitle: "Move to Trash")
+            alert.messageText = question.message
+            alert.informativeText = question.detail
+            alert.addButton(withTitle: action.buttonTitle)
             alert.addButton(withTitle: "Cancel")
+            if action.alwaysAsks { alert.alertStyle = .warning }
             guard alert.runModal() == .alertFirstButtonReturn else { return }
         }
         exclusively {
@@ -295,7 +293,7 @@ private struct FolderContents: View {
             Button("Show in Finder") { actions.reveal(entry) }
         }
         Divider()
-        Button("Move to Trash") { actions.trash(entry) }
+        Button(RemoveAction(place: actions.place).menuTitle) { actions.trash(entry) }
             .disabled(actions.busy)
     }
 }

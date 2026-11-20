@@ -46,6 +46,9 @@ Decisions:
 
 Review fixes:
 
+- **Delete, not Move to Trash, on a machine.** Its server deletes for good
+  (Ganymede's contents API has no Trash), so the item says Delete… and
+  always asks (`RemoveAction`, tested); this device's is as before.
 - **A machine's names are untrusted.** `FolderEntry.machineURL` and
   `machineLocation` refuse any `.` or `..` segment (and a `/` hidden in a
   decoded one), `contentsURL` throws for them, and `list` drops names with a
