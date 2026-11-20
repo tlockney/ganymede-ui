@@ -1275,6 +1275,7 @@ describe('App', () => {
         // Already shown: it stays, the same engine.
         const mount = shown.dataset.mount;
         expect(await window.ganymede!.command('open-console', 'past')).toBe(true);
+        await act(() => new Promise(r => setTimeout(r, 50)));
         expect(screen.getByTestId('duck-console').dataset.mount).toBe(mount);
         // A new console is a new record with the next name.
         expect(await window.ganymede!.command('new-duckdb-console', 'moons')).toBe(true);
