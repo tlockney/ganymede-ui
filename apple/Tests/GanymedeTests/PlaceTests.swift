@@ -64,6 +64,40 @@ final class PlaceTests: XCTestCase {
         XCTAssertEqual(Set(allowed.map { "\($0)" }), ["settings", "switchPlace", "nativeChrome"])
     }
 
+    func testKernelLocationAndLocalTerminalAreThisDevicesOnly() {
+        for capability in [Place.Capability.kernelLocation, .localTerminal] {
+            XCTAssertTrue(Place.thisDevice.allows(capability), "\(capability)")
+            XCTAssertFalse(Place.machine(id).allows(capability), "\(capability)")
+        }
+    }
+
+    func testNewTabOpensOnTheWindowsOwnMachineOrFolder() {
+        let root = URL(fileURLWithPath: "/Users/me/notebooks", isDirectory: true)
+        let folder = URL(fileURLWithPath: "/Users/me/moons", isDirectory: true)
+        // A machine's window: that machine's root, never this device's folder.
+        XCTAssertEqual(
+            WindowTarget.newTab(place: .machine(id), folder: nil, root: root),
+            .machineFolder(machine: id, path: "/"))
+        XCTAssertEqual(
+            WindowTarget.newTab(place: .machine(id), folder: folder, root: root),
+            .machineFolder(machine: id, path: "/"))
+        XCTAssertEqual(WindowTarget.newTab(place: .thisDevice, folder: folder, root: root), .folder(folder))
+        XCTAssertEqual(WindowTarget.newTab(place: .thisDevice, folder: nil, root: root), .folder(root))
+        XCTAssertEqual(WindowTarget.newTab(place: nil, folder: nil, root: root), .folder(root))
+        // A machine target keeps its place, so the new window loads that machine.
+        XCTAssertEqual(
+            WindowTarget.newTab(place: .machine(id), folder: nil, root: root).place, .machine(id))
+    }
+
+    func testANewWindowShowsItsValueElseTheRequestElseTheRoot() {
+        let root = URL(fileURLWithPath: "/Users/me/notebooks", isDirectory: true)
+        let machine = WindowTarget.machineFolder(machine: id, path: "/")
+        let file = WindowTarget.file(URL(fileURLWithPath: "/Users/me/a.ipynb"))
+        XCTAssertEqual(WindowTarget.opening(nil, requested: machine, root: root), machine)
+        XCTAssertEqual(WindowTarget.opening(file, requested: machine, root: root), file)
+        XCTAssertEqual(WindowTarget.opening(nil, requested: nil, root: root), .folder(root))
+    }
+
     func testTheWebViewIsMadeFromThePlacesHandlerTable() {
         let machine = Place.machine(id).handlerNames
         // The native window reads a machine's page through `state` and `document` (#740).

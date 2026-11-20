@@ -46,17 +46,17 @@ final class WorkspaceTabsTests: XCTestCase {
     func testNewTabAlwaysOpensAWindowAndLeavesItsRequestForIt() {
         var opened: [String] = []
         let folder = URL(fileURLWithPath: "/tmp/moons")
-        WorkspaceTabs.open(folder: folder, alone: true) { opened.append($0) }
+        WorkspaceTabs.open(target: .folder(folder), alone: true) { opened.append($0) }
         XCTAssertEqual(opened, [WorkspaceTabs.sceneID], "by id, so never an existing window")
         let request = WorkspaceTabs.pending
-        XCTAssertEqual(request?.folder, folder)
+        XCTAssertEqual(request?.target, .folder(folder))
         XCTAssertEqual(request?.alone, true)
         WorkspaceTabs.take(request!)
         XCTAssertNil(WorkspaceTabs.pending, "taken by the window it opened")
     }
 
     func testAnUntakenRequestLapses() {
-        WorkspaceTabs.open(folder: URL(fileURLWithPath: "/tmp"), alone: true) { _ in }
+        WorkspaceTabs.open(target: .folder(URL(fileURLWithPath: "/tmp")), alone: true) { _ in }
         XCTAssertNotNil(WorkspaceTabs.pending)
         let lapsed = expectation(description: "lapsed")
         Task { @MainActor in
@@ -107,7 +107,7 @@ final class WorkspaceTabsTests: XCTestCase {
         let folder = URL(fileURLWithPath: "/tmp/moons")
         WorkspaceTabs.openStart(folder: folder)
         XCTAssertEqual(opened, [WorkspaceTabs.sceneID])
-        XCTAssertEqual(WorkspaceTabs.pending?.folder, folder)
+        XCTAssertEqual(WorkspaceTabs.pending?.target, .folder(folder))
         WorkspaceTabs.take(WorkspaceTabs.pending!)
     }
 

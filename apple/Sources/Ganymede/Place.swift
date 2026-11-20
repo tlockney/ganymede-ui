@@ -80,6 +80,11 @@ enum Place: Hashable, Codable {
         case settings
         /// Switching to another place, from a machine window's own sidebar.
         case switchPlace
+        /// Where this Mac's kernels run (Runs On, Kernel > Advanced): a
+        /// setting of this device, not of a machine's window.
+        case kernelLocation
+        /// File > New Terminal and New Terminal Tab: a shell on this Mac.
+        case localTerminal
     }
 
     func allows(_ capability: Capability) -> Bool {
