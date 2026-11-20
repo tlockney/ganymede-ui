@@ -385,7 +385,7 @@ describe('journalHeader', () => {
       ),
     ).toEqual({
       title: 'Trend',
-      details: ['Python 3', 'Started by claude-code 2026-11-18', '3 cells'],
+      details: ['Python 3', 'Started by other 2026-11-18', '3 cells'],
     });
   });
 
