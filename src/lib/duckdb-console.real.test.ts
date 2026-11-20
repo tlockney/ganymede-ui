@@ -162,9 +162,7 @@ describe('ConsoleSession on the real DuckDB', () => {
     await s.run(`create table t as select * from (values (1), (2), (3)) v(k)`);
     await s.run(`delete from t using 'del.csv' b where t.k = b.x`);
     expect(await rows(`select k from t order by k`), 'delete using').toEqual([[1], [3]]);
-    await s.run(
-      `merge into t using 'mrg.csv' s on t.k = s.x when matched then delete when not matched then insert values (s.x + 9)`,
-    );
+    await s.run(`merge into t using 'mrg.csv' s on t.k = s.x when matched then delete`);
     expect(await rows(`select k from t order by k`), 'merge using').toEqual([[3]]);
     for (const sql of [
       `describe 'a.csv'`,

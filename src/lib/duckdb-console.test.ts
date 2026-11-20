@@ -295,8 +295,8 @@ describe('file paths', () => {
       filePaths(`merge into t using 'x.csv' s on t.k = s.k when matched then update set v = s.v`),
     ).toEqual(['x.csv']);
     expect(filePaths(`select * from t join u using (id)`)).toEqual([]);
-    // A string that is itself 'using' is a value, not the keyword.
-    expect(filePaths(`select 'using', 'a.csv'`)).toEqual([]);
+    // ALTER ... USING takes a value, not a table.
+    expect(filePaths(`alter table t alter c set data type varchar using 'a.csv'`)).toEqual([]);
   });
   it('reads a string only as the argument itself or an item of its list', () => {
     expect(filePaths(`select * from read_csv(m['a.csv'])`)).toEqual([]);
