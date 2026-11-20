@@ -40,6 +40,25 @@ final class PreviewResourcesTests: XCTestCase {
         }
     }
 
+    /// The engine benchmark's page (#698) uses the same rules under its own
+    /// scheme and host.
+    func testServesAnotherSchemeAndHostWhenAsked() throws {
+        let page = try XCTUnwrap(PreviewResources.file(
+            for: URL(string: "bench://app/preview.html")!, in: root, scheme: "bench", host: "app"))
+        XCTAssertEqual(page.lastPathComponent, "preview.html")
+        for url in ["ganymede-preview://app/preview.html", "bench://other/preview.html", "bench://app/../x", "bench://app/"] {
+            XCTAssertNil(PreviewResources.file(for: URL(string: url)!, in: root, scheme: "bench", host: "app"), url)
+        }
+    }
+
+    func testAnswersWithTheFilesTypeAndLength() throws {
+        let url = URL(string: "bench://app/assets/preview-1.js")!
+        let response = try XCTUnwrap(PreviewResources.response(for: url, file: url, byteCount: 9))
+        XCTAssertEqual(response.statusCode, 200)
+        XCTAssertEqual(response.value(forHTTPHeaderField: "Content-Type"), "text/javascript")
+        XCTAssertEqual(response.value(forHTTPHeaderField: "Content-Length"), "9")
+    }
+
     func testRefusesALinkOutOfTheRoot() throws {
         try FileManager.default.createSymbolicLink(
             at: root.appendingPathComponent("out"), withDestinationURL: URL(fileURLWithPath: "/etc"))

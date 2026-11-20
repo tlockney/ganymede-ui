@@ -8,9 +8,12 @@ import SwiftUI
 /// a tab here (`SettingsTab`, `SettingsOpener`).
 struct SettingsWindow: View {
     @AppStorage(SettingsTab.defaultsKey) private var tab = SettingsTab.general
+    /// General's "Show Developer Settings" (#698).
+    @AppStorage(SettingsTab.developerKey) private var developer = false
 
     var body: some View {
-        TabView(selection: $tab) {
+        // The kept tab can be Developer while it's hidden: show General.
+        TabView(selection: Binding(get: { tab.shown(developer: developer) }, set: { tab = $0 })) {
             GeneralSettings()
                 .tabItem { Label("General", systemImage: "gearshape") }
                 .tag(SettingsTab.general)
@@ -33,6 +36,13 @@ struct SettingsWindow: View {
             DeviceSettings()
                 .tabItem { Label("Device", systemImage: "hand.raised") }
                 .tag(SettingsTab.device)
+            // The engine benchmark and the crash report tests (#698).
+            if developer {
+                DeveloperSettings()
+                    .padding()
+                    .tabItem { Label("Developer", systemImage: "hammer") }
+                    .tag(SettingsTab.developer)
+            }
         }
         // A grouped Form has no height of its own: without one, the window
         // shrank to each tab's first row.
@@ -92,8 +102,8 @@ private struct OpenSettingsReader: View {
     }
 }
 
-/// General: which app opens notebooks, updates (#411), and crash reports
-/// (#318).
+/// General: which app opens notebooks, updates (#411), crash reports
+/// (#318), and the switch for the Developer tab (#698).
 private struct GeneralSettings: View {
     var body: some View {
         Form {
@@ -112,6 +122,7 @@ private struct GeneralSettings: View {
             MCPSettings()
             TailnetSettings()
             SpotlightSettingsSection()
+            ShowDeveloperSettingsSection()
         }
         .formStyle(.grouped)
         .padding()

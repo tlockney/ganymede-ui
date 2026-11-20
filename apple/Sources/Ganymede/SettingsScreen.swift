@@ -6,12 +6,15 @@ import GameController
 /// kernels run, the remotes and the SSH key, the agent, and, with a
 /// hardware keyboard, the keyboard shortcuts. The page's own Settings and
 /// Connect sheets are for the browser; in the app they open this screen.
-/// Pushes `.agent` or `.shortcuts` (the navigation stack's path).
+/// Pushes `.agent` or `.shortcuts` (the navigation stack's path), and
+/// Developer while General's switch for it is on (#698).
 struct SettingsScreen: View {
     var page: PageModel
     let done: () -> Void
     @Environment(AppModel.self) private var model
     @State private var hardwareKeyboard = GCKeyboard.coalesced != nil
+    /// General's "Show Developer Settings" (#698).
+    @AppStorage(SettingsTab.developerKey) private var developer = false
 
     var body: some View {
         RemotesView {
@@ -24,6 +27,11 @@ struct SettingsScreen: View {
                 }
                 NavigationLink(value: SettingsTab.device) {
                     Label("Device", systemImage: "hand.raised")
+                }
+                if developer {
+                    NavigationLink(value: SettingsTab.developer) {
+                        Label("Developer", systemImage: "hammer")
+                    }
                 }
             }
             CrashReportsSettings()
@@ -47,6 +55,7 @@ struct SettingsScreen: View {
                     Text("Lists the notebook's shortcuts, and changes them.")
                 }
             }
+            ShowDeveloperSettingsSection()
             // The website and docs, in Safari (#409).
             Section("Help") {
                 ForEach(HelpLink.allCases, id: \.self) { link in
@@ -83,6 +92,10 @@ struct SettingsScreen: View {
                 }
                 .navigationTitle("Keyboard Shortcuts")
                 .navigationBarTitleDisplayMode(.inline)
+            case .developer:
+                // The engine benchmark and the crash report tests (#698).
+                DeveloperSettings()
+                    .navigationBarTitleDisplayMode(.inline)
             default:
                 EmptyView()
             }

@@ -18,6 +18,8 @@ export default tseslint.config(
       'test-results',
       'dev-dist',
       'apple/build',
+      // The engine benchmark's vendored files (apple/scripts/update-bench.sh).
+      'apple/Resources/Bench',
       '.ganymede',
       // Imported from tlockney/ganymede-device in its own style (#560);
       // checked by its own tsc and tests until it moves to this config.
@@ -43,6 +45,7 @@ export default tseslint.config(
     files: [
       'e2e/**/*.ts',
       'scripts/**/*.{js,mjs}',
+      'apple/scripts/**/*.mjs',
       '*.config.{js,ts}',
       'packages/*/*.config.ts',
       'packages/*/src/**/*.ts',
