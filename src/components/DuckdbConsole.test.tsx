@@ -407,6 +407,28 @@ describe('DuckdbConsole', () => {
     expect(screen.getByText('Running…')).toBeInTheDocument();
   });
 
+  it('keeps waiting for its own engine when one it has since replaced starts', async () => {
+    let first!: (engine: unknown) => void;
+    parquet.openEngine.mockReturnValueOnce(new Promise(r => (first = r)));
+    const { opened, rerender } = setup();
+    // The replacement's engine stays pending.
+    parquet.openEngine.mockReturnValueOnce(new Promise(() => {}));
+    rerender(
+      <DuckdbConsole
+        backend={backend(fakeServices({ '': [] }))}
+        folder=""
+        onOpenNotebook={opened}
+      />,
+    );
+    await waitFor(() => expect(parquet.openEngine).toHaveBeenCalledTimes(2));
+    const stale = engineFor();
+    await act(async () => first(stale));
+    // The first engine is closed, and does not stand in for the one still starting.
+    await waitFor(() => expect(stale.close).toHaveBeenCalled());
+    expect(screen.getByText('Starting DuckDB…')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Export to Notebook' })).toBeDisabled();
+  });
+
   it('drops the failure of an engine the console has since replaced', async () => {
     let fail!: (e: unknown) => void;
     parquet.openEngine.mockReturnValueOnce(new Promise((_, reject) => (fail = reject)));

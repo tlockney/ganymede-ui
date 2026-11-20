@@ -247,8 +247,44 @@ describe('file paths', () => {
     expect(filePaths(`select * from t /* join 'a.csv' */`)).toEqual([]);
     expect(filePaths(`select read_csv_x, 'a.csv' from t`)).toEqual([]);
     expect(filePaths(`select * from "a.csv"`)).toEqual([]);
-    expect(filePaths(`select * from $$a.csv$$`)).toEqual([]);
-    expect(filePaths(`select * from E'a.csv'`)).toEqual([]);
+    // The `is distinct from` operator is not a FROM list.
+    expect(filePaths(`select a is distinct from b, 'c.csv' from t`)).toEqual([]);
+    expect(filePaths(`select describe, 'a.csv' from t`)).toEqual([]);
+    expect(filePaths(`select * from read_csv(['a.csv'], columns = ['b.csv'])`)).toEqual(['a.csv']);
+    expect(filePaths(`select f(['a.csv'])`)).toEqual([]);
+  });
+  it('reads E and dollar strings as file names, as DuckDB does', () => {
+    expect(filePaths(`select * from E'a.csv'`)).toEqual(['a.csv']);
+    expect(filePaths(`select * from e'it\\'s.csv'`)).toEqual(["it's.csv"]);
+    expect(filePaths(`select * from $$a.csv$$`)).toEqual(['a.csv']);
+    expect(filePaths(`select * from $t$b.csv$t$`)).toEqual(['b.csv']);
+    expect(filePaths(`select * from read_csv(E'a.csv'), $$b.tsv$$`)).toEqual(['a.csv', 'b.tsv']);
+    expect(filePaths(`select * from read_csv($$a.csv$$)`)).toEqual(['a.csv']);
+    expect(filePaths(`select E'a.csv', $$b.csv$$`)).toEqual([]);
+  });
+  it('reads a list as the first argument of a file function', () => {
+    expect(filePaths(`select * from read_csv(['a.csv', 'b.csv'])`)).toEqual(['a.csv', 'b.csv']);
+    expect(
+      filePaths(`select * from read_parquet( ['a.parquet','b.parquet'], union_by_name=true)`),
+    ).toEqual(['a.parquet', 'b.parquet']);
+    expect(filePaths(`select * from read_csv([E'a.csv', $$b.csv$$])`)).toEqual(['a.csv', 'b.csv']);
+    // Only the first argument's list, and only a file function's.
+    expect(filePaths(`select * from read_csv(x, ['b.csv'])`)).toEqual([]);
+    expect(filePaths(`select * from read_csv('a.csv', names = ['b.csv'])`)).toEqual(['a.csv']);
+    expect(filePaths(`select * from t where x in ['a.csv', 'b.csv']`)).toEqual([]);
+  });
+  it('reads the name after describe and summarize', () => {
+    expect(filePaths(`describe 'a.csv'`)).toEqual(['a.csv']);
+    expect(filePaths(`SUMMARIZE 'b.parquet'`)).toEqual(['b.parquet']);
+    expect(filePaths(`summarize select 'c.csv'`)).toEqual([]);
+  });
+  it('reads the other file functions', () => {
+    for (const f of ['parquet_scan', 'sniff_csv', 'parquet_metadata', 'parquet_schema']) {
+      expect(filePaths(`select * from ${f}('f.csv')`)).toEqual(['f.csv']);
+    }
+    expect(filePaths(`select * from parquet_file_metadata('g.parquet')`)).toEqual(['g.parquet']);
+    expect(filePaths(`select * from parquet_kv_metadata('h.parquet')`)).toEqual(['h.parquet']);
+    expect(filePaths(`select sniff_csv_x('i.csv')`)).toEqual([]);
   });
   it('reads a doubled quote as one', () => {
     expect(filePaths(`select * from 'it''s.csv'`)).toEqual(["it's.csv"]);

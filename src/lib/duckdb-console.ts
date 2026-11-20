@@ -261,10 +261,21 @@ export class History {
 
 const FILE_EXTENSION = /\.(csv|tsv|json|parquet)$/i;
 
-/** The text of a `'string'` piece, as SQL reads it. */
+/**
+ * The text of a string piece, as SQL reads it: `'it''s'`, `E'it\\'s'` (a
+ * backslash takes the next character) or `$tag$...$tag$` (verbatim).
+ * DuckDB reads all three as a file name where one is expected.
+ */
 function stringValue(p: Piece): string | undefined {
-  if (p.kind !== 'string' || p.open || !p.text.startsWith("'")) return undefined;
-  return p.text.slice(1, -1).replaceAll("''", "'");
+  if (p.kind !== 'string' || p.open) return undefined;
+  if (p.text.startsWith('$')) {
+    const tag = /^\$[^$]*\$/.exec(p.text)?.[0];
+    return tag === undefined ? undefined : p.text.slice(tag.length, -tag.length);
+  }
+  const escapes = !p.text.startsWith("'");
+  const body = p.text.slice(escapes ? 2 : 1, -1);
+  const unescaped = escapes ? body.replace(/\\(.)/gs, '$1') : body;
+  return unescaped.replaceAll("''", "'");
 }
 
 /** Keywords that end a FROM list at its own level of parentheses. */
@@ -289,13 +300,22 @@ const ENDS_FROM = new Set([
 ]);
 
 /**
+ * A table function whose first argument is a file name: `read_csv`,
+ * `read_parquet`, ... (`read_*`), `parquet_scan` and the other `parquet_*`
+ * functions, and `sniff_csv`.
+ */
+const FILE_FUNCTION = /^(read_|parquet_|sniff_csv$)/;
+
+/**
  * The strings in the SQL that DuckDB reads as a file name: the table
- * reference after FROM or any JOIN (and after a comma of a FROM list), or
- * the first argument of a `read_*` table function (`read_csv`,
- * `read_parquet`, ...). A string anywhere else is a value (`where src =
- * 'big.parquet'`, a select item, a function argument), so it is left alone.
- * Only `'single quoted'` strings: a `"name"` is an identifier, and a string
- * in a comment is not SQL.
+ * reference after FROM or any JOIN (and after a comma of a FROM list), the
+ * name after `describe` or `summarize`, or the first argument of a file
+ * function (`FILE_FUNCTION`), which may be a list of names
+ * (`read_csv(['a.csv', 'b.csv'])`). A string anywhere else is a value
+ * (`where src = 'big.parquet'`, a select item, a function argument), so it
+ * is left alone. `'single quoted'`, `E'escape'` and `$$dollar$$` strings
+ * count, as DuckDB reads all three as names; a `"name"` is an identifier,
+ * and a string in a comment is not SQL.
  */
 function fileReferences(sql: string): string[] {
   type Token = { kind: 'word' | 'punct' | 'string'; text: string; value?: string };
@@ -313,33 +333,52 @@ function fileReferences(sql: string): string[] {
     }
   }
   const found: string[] = [];
-  // For each level of parentheses: whether it is in a FROM list now.
-  const inFrom = [false];
+  // One frame for each open `(` or `[` (and the statement itself).
+  type Frame = {
+    /** In a FROM list now. */
+    from: boolean;
+    /** The parentheses of a file function. */
+    fn: boolean;
+    /** Still before the first comma. */
+    first: boolean;
+    /** The list that is a file function's first argument. */
+    list: boolean;
+  };
+  const frame = (over: Partial<Frame> = {}): Frame => ({
+    from: false,
+    fn: false,
+    first: true,
+    list: false,
+    ...over,
+  });
+  const stack: Frame[] = [frame()];
+  const top = () => stack[stack.length - 1]!;
   tokens.forEach((t, i) => {
     const prev = tokens[i - 1];
+    const prevWord = prev?.kind === 'word' ? prev.text.toLowerCase() : '';
     const word = t.kind === 'word' ? t.text.toLowerCase() : '';
     if (t.kind === 'word') {
       if (word === 'from' || word === 'join') {
-        inFrom[inFrom.length - 1] = !(
-          word === 'from' && tokens[i - 2]?.text.toLowerCase() === 'distinct'
-        );
-      } else if (ENDS_FROM.has(word)) inFrom[inFrom.length - 1] = false;
-    } else if (t.text === '(') inFrom.push(false);
-    else if (t.text === ')') {
-      if (inFrom.length > 1) inFrom.pop();
-    } else if (t.text === ';') inFrom[inFrom.length - 1] = false;
+        top().from = !(word === 'from' && prevWord === 'distinct');
+      } else if (ENDS_FROM.has(word)) top().from = false;
+    } else if (t.text === '(') {
+      stack.push(frame({ fn: prev?.kind === 'word' && FILE_FUNCTION.test(prevWord) }));
+    } else if (t.text === '[') {
+      stack.push(frame({ list: top().fn && top().first && prev?.text === '(' }));
+    } else if (t.text === ')' || t.text === ']') {
+      if (stack.length > 1) stack.pop();
+    } else if (t.text === ',') top().first = false;
     if (t.kind !== 'string' || t.value === undefined) return;
-    const prevWord = prev?.kind === 'word' ? prev.text.toLowerCase() : '';
     const afterFrom =
       prevWord === 'join' ||
+      prevWord === 'describe' ||
+      prevWord === 'summarize' ||
       (prevWord === 'from' && tokens[i - 2]?.text.toLowerCase() !== 'distinct') ||
-      (prev?.text === ',' && inFrom[inFrom.length - 1]);
-    const readerArg =
-      prev?.text === '(' &&
-      tokens[i - 2]?.kind === 'word' &&
-      tokens[i - 2]!.text.toLowerCase().startsWith('read_');
+      (prev?.text === ',' && top().from);
+    const readerArg = top().fn && top().first && prev?.text === '(';
+    const listed = top().list && (prev?.text === '[' || prev?.text === ',');
     // `.csv` alone is a hidden file, not a CSV file.
-    if ((afterFrom || readerArg) && FILE_EXTENSION.test(t.value) && dataKind(t.value)) {
+    if ((afterFrom || readerArg || listed) && FILE_EXTENSION.test(t.value) && dataKind(t.value)) {
       found.push(t.value);
     }
   });

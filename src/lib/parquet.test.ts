@@ -9,7 +9,16 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SQL_MODULES } from '@tlockney/cdp-kernel/browser';
 import { loadDuckdbFiles } from './duckdb-files';
-import { columnFor, openEngine, parquetTable, plain, type ArrowLike, type Engine } from './parquet';
+import {
+  columnFor,
+  openEngine,
+  parquetTable,
+  plain,
+  takeBatches,
+  type ArrowLike,
+  type BatchLike,
+  type Engine,
+} from './parquet';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Blocking = any;
@@ -111,6 +120,16 @@ describe('columns', () => {
       type: 'number',
       select: 'cast("x" as double)',
     });
+    // Up to 18 digits (64-bit) a number; wider, exact text; a list of them is no decimal.
+    expect(columnFor({ name: 'x', type: 'DECIMAL(18,2)' })).toEqual({
+      type: 'number',
+      select: 'cast("x" as double)',
+    });
+    expect(columnFor({ name: 'x', type: 'DECIMAL(19,2)' })).toEqual({
+      type: 'string',
+      select: 'cast("x" as varchar)',
+    });
+    expect(columnFor({ name: 'x', type: 'DECIMAL(3,2)[]' }).type).toBe('string');
     expect(columnFor({ name: 'x', type: 'TIMESTAMP' }).type).toBe('string');
   });
   it('turns 64-bit integers into numbers only when they fit', () => {
@@ -181,5 +200,105 @@ describe('openEngine close', () => {
     const engine = await openEngine(modules);
     await engine.close!();
     expect(terminate).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('takeBatches', () => {
+  const batch = (numRows: number): BatchLike => ({ numRows, getChildAt: () => null });
+  const schema = { fields: [] };
+
+  /** A reader of `sizes`-row batches that counts the batches pulled from it. */
+  function reader(sizes: number[]) {
+    const state = { pulled: 0, opened: 0 };
+    return {
+      state,
+      schema,
+      open: () => {
+        state.opened++;
+      },
+      async *[Symbol.asyncIterator]() {
+        for (const n of sizes) {
+          state.pulled++;
+          yield batch(n);
+        }
+      },
+    };
+  }
+
+  it('stops and cancels once the batches hold more than the cap', async () => {
+    const r = reader([4, 4, 4, 4, 4]);
+    const cancel = vi.fn();
+    const got = await takeBatches(r, 10, cancel);
+    expect(got.more).toBe(true);
+    expect(got.batches.map(b => b.numRows)).toEqual([4, 4, 4]);
+    // No batch was pulled past the one that crossed the cap.
+    expect(r.state.pulled).toBe(3);
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(r.state.opened).toBe(1);
+  });
+
+  it('does not cancel a result that fits', async () => {
+    const r = reader([4, 6]);
+    const cancel = vi.fn();
+    const got = await takeBatches(r, 10, cancel);
+    expect(got.more).toBe(false);
+    expect(got.batches).toHaveLength(2);
+    expect(cancel).not.toHaveBeenCalled();
+  });
+});
+
+describe('openEngine stream', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it('sends the SQL as a stream and cancels it past the row cap', async () => {
+    vi.mocked(loadDuckdbFiles).mockResolvedValue();
+    const calls = {
+      send: [] as [string, boolean][],
+      cancelSent: 0,
+      pulled: 0,
+    };
+    vi.stubGlobal('Worker', class {});
+    vi.stubGlobal('location', { origin: 'http://localhost' });
+    vi.stubGlobal('__calls', calls);
+    const code = `
+      export class VoidLogger {}
+      export class AsyncDuckDB {
+        async instantiate() {}
+        async registerFileBuffer() {}
+        async connect() {
+          const calls = globalThis.__calls;
+          return {
+            query: async () => ({}),
+            send: async (sql, stream) => {
+              calls.send.push([sql, stream]);
+              return {
+                schema: { fields: [] },
+                open() {},
+                async *[Symbol.asyncIterator]() {
+                  for (let i = 0; i < 10; i++) {
+                    calls.pulled++;
+                    yield { numRows: 3, getChildAt: () => null };
+                  }
+                },
+              };
+            },
+            cancelSent: async () => { calls.cancelSent++; return true; },
+            close: async () => {},
+          };
+        }
+        async terminate() {}
+      }`;
+    const engine = await openEngine(() => ({
+      [SQL_MODULES.duckdb]: `data:text/javascript,${encodeURIComponent(code)}`,
+    }));
+    const got = await engine.stream!('select 1', 7);
+    expect(calls.send).toEqual([['select 1', true]]);
+    expect(got.more).toBe(true);
+    // 3 + 3 + 3 rows is the first to pass 7; the other seven batches stay unread.
+    expect(got.batches).toHaveLength(3);
+    expect(calls.pulled).toBe(3);
+    expect(calls.cancelSent).toBe(1);
   });
 });

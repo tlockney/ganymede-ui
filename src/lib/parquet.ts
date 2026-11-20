@@ -106,7 +106,8 @@ const WIDE_INTEGERS = /^(HUGEINT|UHUGEINT)$/;
  * value is one the table shows. `ref` is how the column is written in SQL
  * (its quoted name, or `#1`).  `select` is `ref` itself when the column is
  * read as it is. Integers up to 64 bits (`UBIGINT` too) come as numbers, or text past
- * 2^53 (`plain`); a decimal of up to 15 digits is exact as a double, a wider
+ * 2^53 (`plain`); a decimal of up to 18 digits (a 64-bit one) is cast to a double,
+ * rounded to its precision, so it sorts and filters as a number; a wider
  * one comes as text so no digit is lost; everything with no plain value
  * (hugeints, dates, timestamps, lists, structs, ...) comes as DuckDB's text.
  */
@@ -123,10 +124,10 @@ export function columnFor(
   if (INTEGERS.test(t)) return raw('integer');
   if (WIDE_INTEGERS.test(t)) return as('integer', 'varchar');
   if (t === 'FLOAT' || t === 'DOUBLE' || t === 'REAL') return raw('number');
-  // `DECIMAL(10,2)`, not a list of them: up to 15 digits is exact as a double.
+  // `DECIMAL(10,2)`, not a list of them: up to 18 digits (64-bit) is a number.
   const decimal = /^DECIMAL\((\d+),\d+\)$/.exec(t);
   if (decimal) {
-    return Number(decimal[1]) <= 15 ? as('number', 'double') : as('string', 'varchar');
+    return Number(decimal[1]) <= 18 ? as('number', 'double') : as('string', 'varchar');
   }
   if (t === 'BOOLEAN') return raw('boolean');
   if (t === 'VARCHAR') return raw('string');

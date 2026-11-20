@@ -7,11 +7,15 @@ change.
 every single-quoted string that named a data file, so valid SQL such as
 `where src = 'big.parquet'` or `select '../x.csv'` was refused or read a
 file it never used. It now reads a string only where DuckDB does: the table
-right after `FROM` or any `JOIN`, a table after a comma in a `FROM` list, and
-the first argument of any `read_*` function. It runs over the lexer's pieces
-(so comments, `"names"`, `$$strings$$` and `E'...'` strings are never
-files), flattened to words, punctuation and strings, with one "in a FROM
-list" flag per level of parentheses: `FROM` sets it, `SELECT`, `WHERE`,
+right after `FROM` or any `JOIN`, a table after a comma in a `FROM` list, the
+name after `describe` or `summarize`, and the first argument (or a list that
+is the first argument, `read_csv(['a.csv', 'b.csv'])`) of a `read_*`,
+`parquet_*` or `sniff_csv` function. It runs over the lexer's pieces (so
+comments and `"names"` are never files; `E'...'` and `$$...$$` strings are,
+as DuckDB reads them as file names, checked against the real engine),
+flattened to words, punctuation and strings, with one frame per open
+parenthesis or bracket, holding an "in a FROM list" flag and whether it
+opens a file function's arguments: `FROM` sets it, `SELECT`, `WHERE`,
 `GROUP`, `ORDER` and the like clear it, and a `(` starts a fresh level. That
 is what tells `from x, 'c.csv'` (a file) from `select a, 'c.csv'`,
 `in (1, 'c.csv')` and `group by a, 'c.csv'` (values). `IS DISTINCT FROM
@@ -25,7 +29,9 @@ the page on an iPhone. `Engine` (`parquet.ts`) has an optional `stream`: it
 runs `connection.send(sql, true)` (duckdb-wasm 1.32, `allowStreamResult`,
 so DuckDB doesn't materialise the result first), reads batches until they
 hold more than the row cap, then `cancelSent()`s the rest. `takeBatches`
-does the reading for both the browser engine and the Node test engine.
+does the reading (tested with a counting reader and a cancel spy, and through
+`openEngine` with a fake module: `send(sql, true)`, one `cancelSent`, no batch
+pulled past the cap) for both the browser engine and the Node test engine.
 `fromStream` makes the batches one result for `resultTable`, which then
 carries `more` and the bar says "more than 10,000 rows · showing the first
 10,000". A result that ends within the cap is read whole and its count is
@@ -47,12 +53,14 @@ helpers in `parquet.ts`, and the type maps disagreed. `columnFor`
 (`parquet.ts`) is now the one map, with an optional column reference so the
 console reads columns by position (`#1`): integers up to 64 bits including
 `UBIGINT` read as they are (Arrow gives a bigint, shown as a number while it
-fits), `HUGEINT` and `UHUGEINT` as text, `DECIMAL(p,s)` of up to 15 digits as
-a double and a wider one as text, everything else without a plain value
+fits), `HUGEINT` and `UHUGEINT` as text, `DECIMAL(p,s)` of up to 18 digits (DuckDB's 64-bit decimals, such as
+`DECIMAL(18,2)` money, which the Parquet view showed as numbers before) as
+a double, rounded to double precision, so they sort and filter as numbers,
+and a wider one as exact text, sorting as text, everything else without a plain value
 (`DATE`, timestamps, lists, ...) as DuckDB's text. A list of decimals
 (`DECIMAL(3,2)[]`) is not a decimal: the old `startsWith('DECIMAL')` cast it
 to a double and failed. Where the old values were wrong: Parquet's `UBIGINT`
-was text (now a number while it fits), its wide decimals were inexact
+was text (now a number while it fits), its decimals past 18 digits were inexact
 doubles (now exact text, so a `DECIMAL(38,1)` column such as `i * 1.5` shows
 as text, not numbers), and the console left a `DATE` and a small `DECIMAL`
 to its own formatter (now cast in SQL like the rest, with the same text).
@@ -71,7 +79,9 @@ differing only in case count as the same); the console had `x`, `x_2`.
 **Tests that were missing.** `DuckdbConsole.test.tsx` covers three guards
 that had none, each shown to fail without it: a result or an engine failure
 that arrives after the console's engine was replaced (a new backend) is
-dropped (`session.current !== started`, twice), the starting line is gone once
+dropped (`session.current !== started`, twice), an engine that starts after
+it was replaced neither becomes the console's session nor ends the starting
+line (`!gone` in the start handler), the starting line is gone once
 DuckDB failed to start (`!fatal`), and ↓ leaves the cursor alone on all but
 the last line of a recalled input or with a selection. The component mock of
 `parquet.ts` is now partial (`importOriginal`), since the console imports

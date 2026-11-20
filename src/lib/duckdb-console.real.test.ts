@@ -126,6 +126,46 @@ describe('ConsoleSession on the real DuckDB', () => {
     expect(s.ran).toHaveLength(9);
   }, 60_000);
 
+  it('registers every string DuckDB reads as a file', async () => {
+    const { engine, db, conn } = await nodeEngine();
+    const file = join(tmpdir(), `ganymede-ui-console-forms-${process.pid}.parquet`);
+    conn.query(`copy (select 7::bigint as id) to '${file}' (format parquet)`);
+    const parquet: Uint8Array = db.copyFileToBuffer(file).slice();
+    rmSync(file, { force: true });
+    const s = new ConsoleSession(
+      engine,
+      backendWith({
+        'a.csv': 'x\n1\n',
+        'b.csv': 'x\n2\n',
+        'p.parquet': parquet,
+      }),
+      '',
+    );
+    const rows = async (sql: string) => (await s.run(sql)).shown?.resource.data;
+    const forms: [string, unknown[]][] = [
+      [`select x from read_csv(['a.csv', 'b.csv']) order by x`, [[1], [2]]],
+      [`select x from read_csv([E'a.csv', $$b.csv$$]) order by x`, [[1], [2]]],
+      [`select id from read_parquet(['p.parquet'])`, [[7]]],
+      [`select id from parquet_scan('p.parquet')`, [[7]]],
+      [`select x from E'a.csv'`, [[1]]],
+      [`select x from $$b.csv$$`, [[2]]],
+      [`select x from $t$a.csv$t$`, [[1]]],
+      [`select x from read_csv(E'b.csv')`, [[2]]],
+    ];
+    for (const [sql, data] of forms) expect(await rows(sql), sql).toEqual(data);
+    for (const sql of [
+      `describe 'a.csv'`,
+      `summarize 'a.csv'`,
+      `select * from sniff_csv('a.csv')`,
+      `select * from parquet_metadata('p.parquet')`,
+      `select * from parquet_schema('p.parquet')`,
+      `select * from parquet_file_metadata('p.parquet')`,
+    ]) {
+      const r = await s.run(sql);
+      expect(r.shown?.total, sql).toBeGreaterThan(0);
+    }
+  }, 60_000);
+
   it('shows the types DuckDB gives', async () => {
     const { engine } = await nodeEngine();
     const s = new ConsoleSession(engine, backendWith({}), '');
@@ -174,13 +214,14 @@ describe('ConsoleSession on the real DuckDB', () => {
     expect(await one('select 123456789012345678901234567890::hugeint as v')).toEqual([
       '123456789012345678901234567890',
     ]);
-    // The type map is parquet.ts's: a UBIGINT is a number while it fits, a wide decimal exact text.
+    // The type map is parquet.ts's: a UBIGINT is a number while it fits, a decimal of up to 18 digits a number, a wider one exact text.
     expect(await one('select 7::ubigint as v')).toEqual([7]);
     expect(await one('select 18446744073709551615::ubigint as v')).toEqual([
       '18446744073709551615',
     ]);
     expect(await one('select 1.25::decimal(15, 2) as v')).toEqual([1.25]);
-    expect(await one('select 1.25::decimal(18, 2) as v')).toEqual(['1.25']);
+    expect(await one('select 1.25::decimal(18, 2) as v')).toEqual([1.25]);
+    expect(await one('select 1.25::decimal(19, 2) as v')).toEqual(['1.25']);
     expect(await one(`select date '2024-01-02' as v`)).toEqual(['2024-01-02']);
     // Plain columns stay typed beside them, and a repeated name is kept.
     const mixed = await s.run('select 1 as a, [1] as b, 2 as a, 2.5 as d');
