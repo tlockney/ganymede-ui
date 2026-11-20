@@ -62,11 +62,14 @@ the reports. Copy Results copies the text; Share shares the file.
 `ganymede_v8_bench_*` symbols (ganymede#892).
 
 rusty_v8's iOS libraries are built without WebAssembly, but its C bindings
-(`v8__WasmModuleCompilation__NEW` and the rest) still call it, so the first
-iOS build failed to link. The macOS library has it. A test bundle and the
-debug dylib export their globals, which keeps those bindings past
-`-dead_strip`; `-Wl,-unexported_symbol,_v8__*` on Ganymede-iOS and
-GanymedeTests-iOS lets the linker drop them. Nothing calls them.
+(`v8__WasmModuleCompilation__NEW` and the rest, in `binding.o`) still call
+`v8::WasmModuleCompilation`, so the iOS test bundle failed to link. The
+macOS library has it. Unexporting `_v8__*` so `-dead_strip` could drop
+those bindings didn't help, so `apple/Sources/V8iOS/WasmStubs.c` defines
+the eight missing members (by their mangled names, as traps) in
+Ganymede-iOS and GanymedeTests-iOS. Nothing in ganymede-ffi compiles
+WebAssembly, so they aren't called. They belong in ganymede-ffi, so other
+iOS users of the XCFramework link too; that is a ganymede follow-up.
 
 Not compiled or run: the container has no Swift toolchain; CI is the first
 build. The Worker page's script parses (`node --check`), and
