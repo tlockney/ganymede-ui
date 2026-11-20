@@ -146,12 +146,16 @@ final class CrashReports {
         }
     }
 
-    /// Settings' test buttons: each sends what a real failure would.
+    /// Settings > Developer's test buttons (`CrashReportTestsSection`): each
+    /// sends what a real failure would.
     enum Test: String, CaseIterable, Identifiable {
         case error = "Send a Test Error"
         case swiftCrash = "Crash the App (Swift)"
         case rustPanic = "Crash the App (Rust Panic)"
         var id: Self { self }
+
+        /// Whether the app ends.
+        var crashes: Bool { self != .error }
     }
 
     func run(_ test: Test) {
@@ -231,14 +235,6 @@ struct CrashReportsSettings: View {
                 get: { reports.enabled },
                 set: { reports.set($0) }
             ))
-            if reports.enabled {
-                Menu("Test") {
-                    ForEach(CrashReports.Test.allCases) { test in
-                        Button(test.rawValue) { reports.run(test) }
-                    }
-                }
-                .fixedSize()
-            }
         } header: {
             Text("Crash Reports")
         } footer: {

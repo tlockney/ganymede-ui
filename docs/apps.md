@@ -531,6 +531,15 @@ keychain. Agent turns the optional agent on and picks its provider, model
 and API key, with a test. Shortcuts lists the notebook's keyboard
 shortcuts and rebinds them.
 
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+Developer settings stay hidden until General's **Show Developer
+Settings** is on ([Developer settings](#developer-settings)). In the
+latest release there is no such tab, and the crash report test menu is in
+General's crash report section.
+
 #### Updates
 
 Release builds check GitHub for a newer release once a day. When one is
@@ -1059,7 +1068,44 @@ app and in its embedded server go to Ganymede's Sentry with the stack,
 the app's version, the OS and the device model. Breadcrumbs,
 screenshots, sessions, the device name, paths under your home folder and
 notebook content are left out in the app before anything is sent. The
-page's own error reports follow the same choice. Settings has test
-buttons (an error, a Swift crash, a Rust panic) while it's on.
-Ganymede's [privacy page](https://ganymede-server.com/docs/privacy) has
-the rules.
+page's own error reports follow the same choice. Ganymede's
+[privacy page](https://ganymede-server.com/docs/privacy) has the rules.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+The test buttons (an error, a Swift crash, a Rust panic) are in
+[Developer settings](#developer-settings), and work only while crash
+reports are on. In the latest release, the Test menu is in General's
+crash report section, and shows while crash reports are on.
+
+## Developer settings
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+Settings has a Developer tab on the Mac, and a Developer row on iPad and
+iPhone, that stays hidden until **Show Developer Settings** is turned on
+at the bottom of General (on iPad and iPhone, in Settings, above Help).
+It is off by default, and turning it off hides the tab again. It holds:
+
+- **Engine Benchmark.** **Run Benchmark** runs the workloads of the
+  engine benchmark (ganymede's `spikes/v8-engine`: a start, CPU work,
+  TypeScript stripping, large output and memory) on the V8 inside the app
+  (jitless) and on WebKit's Workers, the engine of today's in-app kernel.
+  It takes under a minute: keep that screen open and the app in front until it's
+  done; the results say if you left. Each
+  workload shows cold and steady times in milliseconds for each engine,
+  the device, the OS and the app's peak memory footprint. V8 starts once
+  per process, so quit and relaunch the app between runs for steady
+  numbers. A build whose library has no V8 says so and runs only the
+  WebKit half. **Share Results** shares a
+  `results-<time>.json` file, and **Copy Results** copies its text; `node
+bench/report.mjs` in that folder turns the file into tables.
+- **Crash Report Tests.** Buttons that send a test error or crash the app
+  with a Swift crash or a Rust panic, to check what a real failure sends.
+  They are off while crash reports are, and the report of a crash goes out
+  the next time the app launches. They were in General's crash report
+  section.
