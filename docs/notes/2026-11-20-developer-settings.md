@@ -58,8 +58,8 @@ off screen, so the footer says to keep the screen open, and a run whose
 screen or app left the front is flagged in the UI and as `left_screen` in
 the reports. Copy Results copies the text; Share shares the file.
 
-CI pins `GANYMEDE_REF` to a ganymede commit with the `ganymede_v8_bench_*`
-symbols until a ganymede release has them (ganymede#892).
+`GANYMEDE_REF` moves to v0.14.0, the first ganymede release with the
+`ganymede_v8_bench_*` symbols (ganymede#892).
 
 rusty_v8's iOS libraries are built without WebAssembly, but its C bindings
 (`v8__WasmModuleCompilation__NEW` and the rest) still call it, so the first
