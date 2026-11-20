@@ -466,16 +466,15 @@ struct NotebookToolbar: ToolbarContent {
                 .disabled(!page.state.hasKernel)
             }
         }
-        // Back and forth between the journal and the notebook (#724); the
-        // page's own button is under the app's chrome.
-        ToolbarItem {
+        // One group, not two items: a ToolbarContentBuilder takes at most
+        // ten. The journal toggle (#724) is first: the page's own button
+        // is under the app's chrome.
+        ToolbarItemGroup {
             Button { page.run("toggle-journal") } label: {
                 Label(page.state.journalToggleTitle, systemImage: page.state.journalToggleSymbol)
             }
             .help(page.state.journalToggleTitle)
             .disabled(!page.state.hasNotebook)
-        }
-        ToolbarItem {
             Menu {
                 Button("Code Cell") { page.run("insert-code") }
                 Button("Markdown Cell") { page.run("insert-markdown") }
