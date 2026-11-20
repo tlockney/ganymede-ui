@@ -115,14 +115,9 @@ shown or hidden, its tab and its expanded folders across launches.
   server reports of the interrupt mode, protocol version, kernelspec
   folder, the command that starts it (with a Copy button), `env` and
   `metadata`. A field the server leaves out or sends empty is not shown.
-  The folder appears once the app's bundled server includes
-  [tlockney/ganymede#890](https://github.com/tlockney/ganymede/issues/890),
-  which Ganymede v0.13.1 (the version the app pins) lacks. Kernels on a
-  remote, listed through the gateway, don't report it.
-
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release.
+  The folder needs Ganymede 0.14.0 or later
+  ([tlockney/ganymede#890](https://github.com/tlockney/ganymede/issues/890));
+  kernels on a remote, listed through the gateway, don't report it.
 
 - The kernel menu also lists "TypeScript (cdp-kernel, in app)": cdp-kernel
   running inside the app, as on the iPad. Its cells get the
@@ -133,10 +128,6 @@ shown or hidden, its tab and its expanded folders across launches.
   menu and the browser's kernel pickers mark kernels that offer the
   device API with a ◆, and the items carry an accessibility label,
   "offers the device API".
-
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release.
 
   The running kernel's implementation and version, from its
   `kernel_info_reply`, show as a line such as "cdp-kernel 0.14.0 ·
@@ -533,14 +524,8 @@ keychain. Agent turns the optional agent on and picks its provider, model
 and API key, with a test. Shortcuts lists the notebook's keyboard
 shortcuts and rebinds them.
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
-
 Developer settings stay hidden until General's **Show Developer
-Settings** is on ([Developer settings](#developer-settings)). In the
-latest release there is no such tab, and the crash report test menu is in
-General's crash report section.
+Settings** is on ([Developer settings](#developer-settings)).
 
 #### Updates
 
@@ -756,12 +741,6 @@ asking again for its check period.
 
 ## Connected machines
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release. It also needs a Ganymede server with the machine
-> mount ([ganymede#894](https://github.com/tlockney/ganymede/issues/894)),
-> newer than v0.13.1; a build without it lists no machines.
-
 A connected machine is another computer running `ganymede serve`: a Mac
 mini, a laptop, a cloud box where an agent keeps a journal. Its files, its
 live notebooks and its kernels open in the app next to this device's. Each
@@ -919,10 +898,6 @@ it. There is no View menu item for it yet.
 
 ## Journal view
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
-
 A notebook a Claude session keeps through `ganymede mcp` reads better as a
 journal than as cells. **View as Journal** (the toolbar's journal button, or
 the Command Palette) shows the open notebook that way; **Open as Notebook**
@@ -996,10 +971,6 @@ template string tagged `sql` (`` jupyter.sql`select …` ``, `` sql`…` ``) in 
 JavaScript or TypeScript cell is highlighted as DuckDB SQL too, with `${…}`
 left as JavaScript, and a Markdown fence marked `duckdb` is highlighted the
 same way.
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
 
 DuckDB wasm is the build SQL in a notebook uses, in a worker of its own: the
 first console fetches it (36 MB, once, then kept), and later ones run offline.
@@ -1118,20 +1089,11 @@ notebook content are left out in the app before anything is sent. The
 page's own error reports follow the same choice. Ganymede's
 [privacy page](https://ganymede-server.com/docs/privacy) has the rules.
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
-
 The test buttons (an error, a Swift crash, a Rust panic) are in
 [Developer settings](#developer-settings), and work only while crash
-reports are on. In the latest release, the Test menu is in General's
-crash report section, and shows while crash reports are on.
+reports are on.
 
 ## Developer settings
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
 
 Settings has a Developer tab on the Mac, and a Developer row on iPad and
 iPhone, that stays hidden until **Show Developer Settings** is turned on
