@@ -52,6 +52,8 @@ export type NativeHooks = {
  * `toggle-type-errors` turns type errors in TypeScript and JavaScript cells
  * on or off (#669). `toggle-live-markdown` does the same for the live
  * Markdown preview in Markdown cells (#672).
+ * `toggle-journal` switches the open notebook between the journal view and
+ * the notebook (#184); `PageState` doesn't report which shows yet.
  * `go-to-definition` and `rename-symbol` act on the name at the open
  * notebook's active cell, through the kernel's language service (#676);
  * `rename-symbol` takes the new name, and without one asks for it.
@@ -88,6 +90,7 @@ export const PAGE_COMMANDS = {
   'show-shortcuts': '',
   'show-settings': '',
   'command-palette': '',
+  'toggle-journal': '',
   'toggle-variables': '',
   'toggle-type-errors': '',
   'go-to-definition': '',

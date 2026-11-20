@@ -152,6 +152,13 @@ export const VariablesIcon = (p: P) => (
     <path d="M5.5 8l3 4M8.5 8l-3 4M11 9h4M11 11h4" />
   </svg>
 );
+/** A page with a gutter and lines: the journal view (#184). */
+export const JournalIcon = (p: P) => (
+  <svg {...base(p)}>
+    <rect x="3.5" y="3" width="13" height="14" rx="2" />
+    <path d="M7 3v14M9.5 7h4M9.5 10h4M9.5 13h2.5" />
+  </svg>
+);
 /** A command line in a box: the command palette (#211). */
 export const CommandIcon = (p: P) => (
   <svg {...base(p)}>

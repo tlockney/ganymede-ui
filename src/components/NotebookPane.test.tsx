@@ -12,6 +12,7 @@ import '../test/notebook-env';
 import { entry, fakeBackend, fakeServices } from '../test/fakes';
 import type { NotebookController } from './NotebookPane';
 import { declareDevice } from '../lib/kernel-relay';
+import { forgetChosenViews } from '../lib/journal';
 
 // No kernel and no real notebook widget: the pane's loading, dirty state and
 // saving are tested here with JupyterLab's real NotebookModel. Rendering,
@@ -29,8 +30,16 @@ vi.mock('../lib/jupyterlab', async () => {
   const { Widget } = await import('@lumino/widgets');
   const { Signal } = await import('@lumino/signaling');
   return {
-    createRendermime: vi.fn(() => ({})),
-    createNotebook: vi.fn(() => {
+    // Enough for the journal view to render outputs into.
+    createRendermime: vi.fn(() => ({
+      createRenderer: () => {
+        const w = new Widget();
+        (w as unknown as { renderModel: unknown }).renderModel = async () => {};
+        return w;
+      },
+      preferredMimeType: () => undefined,
+    })),
+    createNotebook: vi.fn((rendermime: unknown) => {
       // A plain Lumino widget stands in for JupyterLab's Notebook.
       const w = new Widget() as InstanceType<typeof Widget> & {
         model?: NotebookModel;
@@ -58,6 +67,7 @@ vi.mock('../lib/jupyterlab', async () => {
       // The outline goes to a heading's cell (#212).
       w.deselectAll = vi.fn();
       w.scrollToCell = vi.fn(async () => {});
+      (w as unknown as { rendermime: unknown }).rendermime = rendermime;
       fakes.notebooks.push(w);
       return w;
     }),
@@ -225,6 +235,7 @@ function setup(
 }
 
 beforeEach(() => {
+  forgetChosenViews();
   runStatus.busy = false;
   fakes.sessions.length = 0;
   fakes.notebooks.length = 0;
@@ -264,6 +275,147 @@ const modelOf = () => (fakes.notebooks[0] as { model: NotebookModel }).model;
 const modelOf2 = () => (fakes.notebooks[1] as { model: NotebookModel }).model;
 
 describe('NotebookPane', () => {
+  it('opens a notebook an agent kept as a journal, and switches to the notebook and back (#184)', async () => {
+    const kept = structuredClone(NOTEBOOK);
+    kept.cells[0]!.metadata = {
+      ganymede: { agent: { by: 'claude-code', mode: 'executed', at: '2026-11-20T10:00:00Z' } },
+    };
+    const { latest } = setup(vi.fn(async () => ({ path: 'moons/Io.ipynb', content: kept })));
+    await waitFor(() => expect(latest()?.journal).toBe(true));
+    expect(screen.getByRole('region', { name: 'Journal of Io.ipynb' })).toBeInTheDocument();
+    expect(screen.getByText('Agent ran it')).toBeInTheDocument();
+    // The notebook stays mounted underneath, so its kernel and room go on.
+    expect(document.querySelector('.notebook-page')).toHaveAttribute('hidden');
+
+    act(() => latest()!.toggleJournal());
+    await waitFor(() => expect(latest()!.journal).toBe(false));
+    expect(screen.queryByRole('region', { name: 'Journal of Io.ipynb' })).not.toBeInTheDocument();
+    expect(document.querySelector('.notebook-page')).not.toHaveAttribute('hidden');
+
+    act(() => latest()!.toggleJournal());
+    await waitFor(() => expect(latest()!.journal).toBe(true));
+  });
+
+  /** A notebook an agent kept. */
+  const kept = () => {
+    const nb = structuredClone(NOTEBOOK);
+    nb.cells[0]!.metadata = {
+      ganymede: { agent: { by: 'claude-code', mode: 'executed', at: '2026-11-20T10:00:00Z' } },
+    };
+    return nb;
+  };
+
+  it('does not run, insert into or edit the hidden notebook while the journal shows (#184)', async () => {
+    const { latest } = setup(vi.fn(async () => ({ path: 'moons/Io.ipynb', content: kept() })));
+    await waitFor(() => expect(latest()?.journal).toBe(true));
+    const c = latest()!;
+    const before = modelOf().cells.length;
+    c.insert('code');
+    c.insert('markdown');
+    c.changeCellType('markdown');
+    await c.run();
+    await c.runAll();
+    c.clearOutputs();
+    expect(c.command('delete')).toBe(false);
+    expect(await c.goToDefinition()).toBe(false);
+    expect(await c.renameSymbol('x')).toBe(false);
+    expect(modelOf().cells.length).toBe(before);
+    expect(fakes.sessions.length).toBeGreaterThan(0);
+  });
+
+  /** A journal whose one code cell has an output, with the controller. */
+  async function journalWithOutput() {
+    const nb = kept();
+    Object.assign(nb.cells[0]!, {
+      execution_count: 3,
+      outputs: [{ output_type: 'stream', name: 'stdout', text: '1\n' }],
+    });
+    const view = setup(vi.fn(async () => ({ path: 'moons/Io.ipynb', content: nb })));
+    await waitFor(() => expect(view.latest()?.journal).toBe(true));
+    return view;
+  }
+
+  it('does not start a kernel or run a cell from the journal, as the page commands run and run-all call it (#184)', async () => {
+    const { latest } = await journalWithOutput();
+    const session = fakes.sessions[0] as { changeKernel: ReturnType<typeof vi.fn> };
+    const advance = vi.spyOn(NotebookActions, 'runAndAdvance').mockResolvedValue(true);
+    const all = vi.spyOn(NotebookActions, 'runAll').mockResolvedValue(true);
+    await act(() => latest()!.run());
+    expect(session.changeKernel).not.toHaveBeenCalled();
+    expect(advance).not.toHaveBeenCalled();
+    await act(() => latest()!.runAll());
+    expect(session.changeKernel).not.toHaveBeenCalled();
+    expect(all).not.toHaveBeenCalled();
+    advance.mockRestore();
+    all.mockRestore();
+  });
+
+  it('keeps the outputs and counts when Clear All Outputs runs from the journal (#184)', async () => {
+    const { latest } = await journalWithOutput();
+    const cell = modelOf().cells.get(0) as ICodeCellModel;
+    act(() => latest()!.clearOutputs());
+    expect(cell.outputs.length).toBe(1);
+    expect(cell.executionCount).toBe(3);
+    expect(modelOf().dirty).toBe(false);
+  });
+
+  it('leaves the cell type alone when the page command cell-type runs from the journal (#184)', async () => {
+    const { latest } = await journalWithOutput();
+    const change = vi.spyOn(NotebookActions, 'changeCellType').mockImplementation(() => {});
+    act(() => latest()!.changeCellType('markdown'));
+    expect(change).not.toHaveBeenCalled();
+    expect(modelOf().cells.get(0).type).toBe('code');
+    change.mockRestore();
+  });
+
+  it('takes focus out of the hidden notebook when the journal shows (#184)', async () => {
+    const { latest } = setup();
+    await waitFor(() => expect(latest()).toBeDefined());
+    const inCell = document.createElement('textarea');
+    document.querySelector('.notebook-page')!.appendChild(inCell);
+    inCell.focus();
+    expect(document.activeElement).toBe(inCell);
+    act(() => latest()!.toggleJournal());
+    await waitFor(() => expect(latest()!.journal).toBe(true));
+    expect(document.activeElement).not.toBe(inCell);
+  });
+
+  it("keeps the person's view across a reopen of the file, and defaults only the first time (#184)", async () => {
+    const get = vi.fn(async () => ({ path: 'moons/Io.ipynb', content: kept() }));
+    const { latest } = setup(get);
+    await waitFor(() => expect(latest()?.journal).toBe(true));
+    act(() => latest()!.toggleJournal());
+    await waitFor(() => expect(latest()!.journal).toBe(false));
+    // Reload opens the file again, as a restarted server does.
+    act(() => {
+      latest()!.reload();
+    });
+    await waitFor(() => expect(get).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(fakes.notebooks).toHaveLength(2));
+    await waitFor(() => expect(latest()?.journal).toBe(false));
+    expect(screen.queryByRole('region', { name: /^Journal of/ })).not.toBeInTheDocument();
+  });
+
+  it('scrolls the journal to a cell instead of moving the hidden notebook (#184)', async () => {
+    const { latest } = setup(vi.fn(async () => ({ path: 'moons/Io.ipynb', content: kept() })));
+    await waitFor(() => expect(latest()?.journal).toBe(true));
+    const article = document.querySelector('.journal [data-cell-index="0"]') as HTMLElement;
+    const scrollIntoView = vi.fn();
+    article.scrollIntoView = scrollIntoView;
+    const notebook = fakes.notebooks[0] as { scrollToCell: ReturnType<typeof vi.fn> };
+    expect(latest()!.goToCell(0)).toBe(true);
+    expect(scrollIntoView).toHaveBeenCalledOnce();
+    expect(notebook.scrollToCell).not.toHaveBeenCalled();
+    expect(latest()!.goToCell(7)).toBe(false);
+  });
+
+  it('opens a notebook with no agent cells as a notebook (#184)', async () => {
+    const { latest } = setup();
+    await waitFor(() => expect(latest()).toBeDefined());
+    expect(latest()!.journal).toBe(false);
+    expect(screen.queryByRole('region', { name: /^Journal of/ })).not.toBeInTheDocument();
+  });
+
   it('loads the file and hands the toolbar a clean controller', async () => {
     const { fake, latest } = setup();
     expect(screen.getByText('Opening Io.ipynb…')).toBeInTheDocument();
