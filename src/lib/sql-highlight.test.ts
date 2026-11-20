@@ -21,6 +21,24 @@ function sqlTokens(language: { parser: { parse(s: string): never } }, code: stri
   return out;
 }
 
+/** Each highlighted token as [classes, text], in order. */
+function classed(
+  language: { parser: { parse(s: string): never } },
+  code: string,
+): [string, string][] {
+  const out: [string, string][] = [];
+  highlightCode(
+    code,
+    language.parser.parse(code),
+    classHighlighter,
+    (text, classes) => {
+      if (classes && text.trim()) out.push([classes, text]);
+    },
+    () => {},
+  );
+  return out;
+}
+
 const ts = () => withSqlTemplates(javascript({ typescript: true })).language;
 const keywords = (code: string) => sqlTokens(ts() as never, code);
 
@@ -42,6 +60,50 @@ describe('SQL in template strings', () => {
     ['a call, not a tag', 'sql(`select a from t`)'],
   ])('leaves %s alone', (_, code) => {
     expect(keywords(code)).not.toContain('select');
+  });
+
+  it.each([
+    ['jupyter.sql.query', 'await jupyter.sql.query(`select a from t`)'],
+    ['a type argument', 'await jupyter.sql.query<Row>(`select a from t`)'],
+    ['more arguments', 'await jupyter.sql.query(\n  `select a from t`,\n  opts,\n)'],
+  ])('highlights the first argument of %s', (_, code) => {
+    expect(keywords(code)).toEqual(expect.arrayContaining(['select', 'from']));
+  });
+
+  it.each([
+    ['a later argument', 'jupyter.sql.query(q, `select a from t`)'],
+    ['another method', 'jupyter.sql.run(`select a from t`)'],
+    ['another object', 'jupyter.md.query(`select a from t`)'],
+    ['a bare query call', 'query(`select a from t`)'],
+    ['a template inside an argument', 'jupyter.sql.query(f(`select a from t`))'],
+  ])('leaves %s of a query call alone', (_, code) => {
+    expect(keywords(code)).not.toContain('select');
+  });
+
+  it('colors keywords, strings, numbers and comments, with ${…} inside a string', () => {
+    const code = [
+      'await jupyter.sql.query(`',
+      '  create or replace table meter_rows as',
+      '  select start, rate::double as rate -- per hour',
+      "  from read_parquet('s3://${BUCKET}/x/s=${SENSOR}/*.parquet')",
+      "  where d between date '${FROM}' - 2 and date '${TO}' + 1`);",
+      'const after = 1;',
+    ].join('\n');
+    const tokens = classed(ts() as never, code);
+    const of = (kind: string) => tokens.filter(([c]) => c.includes(kind)).map(([, t]) => t);
+    expect(of('tok-keyword')).toEqual(
+      expect.arrayContaining(['create', 'replace', 'table', 'select', 'from', 'where']),
+    );
+    expect(of('tok-keyword')).toEqual(expect.arrayContaining(['between', 'and', 'const']));
+    expect(of('tok-typeName')).toEqual(['double', 'date', 'date']);
+    expect(of('tok-comment')).toContain('-- per hour');
+    expect(of('tok-number')).toEqual(expect.arrayContaining(['2', '1']));
+    // Each string's pieces are strings, the interpolations are not, and the
+    // SQL after a quoted `${FROM}` goes on.
+    expect(of('tok-string')).toEqual(expect.arrayContaining(["'s3://", '/x/s=', "/*.parquet'"]));
+    expect(of('tok-string').filter(t => t === "'")).toHaveLength(4);
+    expect(of('tok-string').join('')).not.toMatch(/BUCKET|SENSOR|FROM|TO/);
+    expect(tokens.find(([, t]) => t === 'SENSOR')?.[0]).toMatch(/tok-variableName/);
   });
 
   it('leaves an interpolation to JavaScript', () => {
