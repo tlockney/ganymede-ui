@@ -11,6 +11,8 @@ import WebKit
 final class PageDocument {
     private(set) var file: URL?
     private(set) var dirty = false
+    /// The place of the page that last reported.
+    @ObservationIgnored private var place = Place.thisDevice
     /// The page, which saves through `window.ganymede.save()`.
     @ObservationIgnored weak var webView: WKWebView?
     @ObservationIgnored private(set) weak var window: NSWindow?
@@ -27,13 +29,13 @@ final class PageDocument {
         file?.deletingPathExtension().lastPathComponent ?? "Untitled"
     }
 
-    func update(_ message: DocumentMessage) {
-        if let opened = message.file, opened != file {
-            if message.isNotebook { Recents.shared.note(opened) }
-        } else if let saved = message.file, saved == file, dirty, !message.dirty, message.isNotebook {
-            // Saved: Spotlight gets its new contents (#305).
-            SpotlightSettings.shared.saved(saved)
-        }
+    /// `place` is the window's (`DocumentEffects` decides what a machine's
+    /// notebook may reach, #740).
+    func update(_ message: DocumentMessage, in place: Place = .thisDevice) {
+        let effects = DocumentEffects.of(message, previousFile: file, wasDirty: dirty, in: place)
+        if let opened = effects.noteRecent { Recents.shared.note(opened, in: place) }
+        if let saved = effects.indexSaved { SpotlightSettings.shared.saved(saved) }
+        self.place = place
         file = message.file
         dirty = message.dirty
         syncWindow()
@@ -53,7 +55,7 @@ final class PageDocument {
     private func syncWindow() {
         window?.isDocumentEdited = dirty
         // The proxy icon: drag the file, ⌘-click for its folder.
-        window?.representedURL = file
+        window?.representedURL = DocumentEffects.representedURL(for: file, in: place)
     }
 
     /// Saves through the page; true when there is nothing left unsaved.
@@ -177,7 +179,7 @@ final class Recents {
     /// noted: these Recents, File > Open Recent and Spotlight keep local
     /// file URLs (the page keeps a machine's own Recents, by place).
     func note(_ url: URL, in place: Place = .thisDevice) {
-        guard place.indexesLocally else { return }
+        guard place.indexesLocally, url.isFileURL else { return }
         NSDocumentController.shared.noteNewRecentDocumentURL(url)
         urls = NSDocumentController.shared.recentDocumentURLs
         // Recents are in Spotlight (#305).

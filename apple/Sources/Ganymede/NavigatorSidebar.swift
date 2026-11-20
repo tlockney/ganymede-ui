@@ -9,8 +9,13 @@ struct NavigatorSidebar: View {
     let folder: URL
     /// Where the files are; this Mac's disk for now (#737).
     var source: any FileSource = LocalFileSource()
+    /// The window's place (#740): its own is the place menu's current one,
+    /// and a machine's has no Recents (this Mac's notebooks), Reveal in
+    /// Finder or text editor.
+    var place: Place = .thisDevice
     var page: PageModel
-    /// The window's bottom panel, for terminals the foot's menu opens.
+    /// The window's bottom panel, for terminals the foot's menu opens; none
+    /// for a machine's window.
     var panel: PanelController?
     let openFile: (String) -> Void
     /// The selected tab, kept per window.
@@ -25,10 +30,10 @@ struct NavigatorSidebar: View {
             // to without a machine.
             if model.places.count > 1 {
                 PlaceMenu(
-                    entries: model.places, current: .thisDevice, reachability: .shared
-                ) { place in
-                    if let machine = place.machineID,
-                       let target = WindowTarget.machine(machine, path: "/", isFolder: true) {
+                    entries: model.places, current: place, reachability: .shared
+                ) { picked in
+                    if picked != place,
+                       let target = WindowTarget.root(of: picked, device: model.root) {
                         openWindow(value: target)
                     }
                 }
@@ -36,20 +41,20 @@ struct NavigatorSidebar: View {
                 .padding(.top, 8)
             }
             HStack(spacing: 2) {
-                ForEach(NavigatorTab.allCases) { item in
+                ForEach(tabs) { item in
                     Button {
                         tab = item
                     } label: {
                         Image(systemName: item.symbol)
-                            .symbolVariant(tab == item ? .fill : .none)
+                            .symbolVariant(shownTab == item ? .fill : .none)
                             .frame(width: 28, height: 22)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .foregroundStyle(tab == item ? Color.accentColor : Color.secondary)
+                    .foregroundStyle(shownTab == item ? Color.accentColor : Color.secondary)
                     .help("\(item.title) (⌘\(String(item.shortcut.character)))")
                     .accessibilityLabel(item.title)
-                    .accessibilityAddTraits(tab == item ? .isSelected : [])
+                    .accessibilityAddTraits(shownTab == item ? .isSelected : [])
                     .keyboardShortcut(item.shortcut, modifiers: .command)
                     // How many kernels and terminals run, on the Running tab.
                     .overlay(alignment: .topTrailing) {
@@ -68,22 +73,32 @@ struct NavigatorSidebar: View {
             .padding(.vertical, 6)
             .frame(maxWidth: .infinity)
             Divider()
-            switch tab {
+            switch shownTab {
             case .files:
-                FolderSidebar(folder: folder, source: source, page: page, openFile: openFile)
+                FolderSidebar(folder: folder, source: source, place: place, page: page, openFile: openFile)
             case .search:
-                SearchNavigator(folder: folder, source: source, page: page, openFile: openFile)
+                SearchNavigator(folder: folder, source: source, place: place, page: page, openFile: openFile)
             case .running:
                 RunningList(page: page)
+            case .journals:
+                JournalsNavigator(place: place, page: page)
             case .outline:
                 OutlineNavigator(page: page)
             case .recents:
                 RecentsNavigator(page: page)
             }
             Divider()
-            ServerLine(page: page, panel: panel)
+            ServerLine(page: page, panel: panel, machineName: place.machineID.flatMap(model.machineName(_:)))
         }
     }
+
+    /// The tabs: not Recents for a machine, whose notebooks aren't in them.
+    private var tabs: [NavigatorTab] {
+        NavigatorTab.allCases.filter { $0 != .recents || place.indexesLocally }
+    }
+
+    /// The selected tab, or Files when a machine's window has Recents kept.
+    private var shownTab: NavigatorTab { tabs.contains(tab) ? tab : .files }
 
     private var running: Int { page.state.sessions.count + terminals.entries.count }
 }
@@ -95,6 +110,7 @@ struct NavigatorSidebar: View {
 private struct SearchNavigator: View {
     let folder: URL
     let source: any FileSource
+    var place: Place = .thisDevice
     var page: PageModel
     let openFile: (String) -> Void
     @Environment(\.openWindow) private var openWindow
@@ -176,12 +192,18 @@ private struct SearchNavigator: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .disabled(!match.entry.isDirectory && !match.entry.canOpen(in: place))
         .contextMenu {
             Button("Open") { open(match.entry) }
+                .disabled(!match.entry.isDirectory && !match.entry.canOpen(in: place))
             if match.entry.isNotebook || match.entry.isDirectory {
-                Button("Open in New Tab") { openWindow(value: WindowTarget(opening: match.entry.url)) }
+                Button("Open in New Tab") {
+                    if let target = WindowTarget(opening: match.entry) { openWindow(value: target) }
+                }
             }
-            Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([match.entry.url]) }
+            if place.isThisDevice {
+                Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([match.entry.url]) }
+            }
         }
     }
 
@@ -191,21 +213,15 @@ private struct SearchNavigator: View {
 
     /// The match's folder, relative to the window's.
     private func relativeFolder(_ entry: FolderEntry) -> String {
-        let parent = entry.url.deletingLastPathComponent().standardizedFileURL.path
-        let base = folder.standardizedFileURL.path
-        if parent == base { return folder.lastPathComponent }
-        if parent.hasPrefix(base + "/") {
-            return folder.lastPathComponent + "/" + parent.dropFirst(base.count + 1)
-        }
-        return parent
+        FileSearch.relativeFolder(of: entry.url, in: folder)
     }
 
     private func open(_ entry: FolderEntry) {
         if entry.opensInPage {
             page.run("open", arg: entry.serverPath)
         } else if entry.isDirectory {
-            openWindow(value: WindowTarget(opening: entry.url))
-        } else {
+            if let target = WindowTarget(opening: entry) { openWindow(value: target) }
+        } else if entry.canOpen(in: place) {
             openFile(entry.serverPath)
         }
     }
@@ -239,6 +255,96 @@ private struct SearchNavigator: View {
         guard !Task.isCancelled else { return }
         results = found
         searching = false
+    }
+}
+
+// MARK: - Journals
+
+/// The notebooks an agent is in or last wrote, in the window's place (#705,
+/// #740): the server's open rooms, asked again every few seconds while the
+/// tab shows.
+private struct JournalsNavigator: View {
+    let place: Place
+    var page: PageModel
+    @Environment(AppModel.self) private var model
+    @Environment(\.openWindow) private var openWindow
+    @State private var result: Journals.Result?
+
+    var body: some View {
+        let journals: [Journals.Journal] = if case .rooms(let rooms)? = result { Journals.journalsOf(rooms) } else { [] }
+        List {
+            ForEach(journals) { journal in
+                Button {
+                    page.run("open", arg: journal.path)
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Label(journal.name, systemImage: "book.pages")
+                                .lineLimit(1)
+                            Text([journal.agent, Journals.status(journal)].compactMap { $0 }.joined(separator: " · "))
+                                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        Spacer()
+                        if journal.running {
+                            Circle().fill(Color.green).frame(width: 6, height: 6)
+                                .accessibilityLabel("An agent is in it")
+                        }
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(journal.path)
+                .contextMenu {
+                    Button("Open") { page.run("open", arg: journal.path) }
+                    Button("Open in New Tab") { openInNewTab(journal) }
+                }
+            }
+        }
+        .listStyle(.sidebar)
+        .overlay { status(journals) }
+        // Starts when the tab shows, and is cancelled when it hides or the
+        // server (its address and token) changes.
+        .task(id: model.serverURL) { await poll() }
+    }
+
+    @ViewBuilder
+    private func status(_ journals: [Journals.Journal]) -> some View {
+        switch result {
+        case nil:
+            ProgressView()
+        case .unsupported?:
+            message("This server is too old to list journals.")
+        case .error(let text)?:
+            message("Couldn’t list journals: \(text)")
+        case .rooms?:
+            if journals.isEmpty { message("No journals yet. A notebook an agent works in shows here.") }
+        }
+    }
+
+    private func message(_ text: String) -> some View {
+        Text(text).foregroundStyle(.secondary).multilineTextAlignment(.center).padding()
+    }
+
+    private func openInNewTab(_ journal: Journals.Journal) {
+        let target: WindowTarget?
+        if let id = place.machineID {
+            target = WindowTarget.machine(id, path: journal.path, isFolder: false)
+        } else {
+            target = WindowTarget(opening: URL(fileURLWithPath: "/" + journal.path))
+        }
+        if let target { openWindow(value: target) }
+    }
+
+    /// An older server won't start answering, so it is not asked again.
+    private func poll() async {
+        guard let server = model.serverURL else { return }
+        while !Task.isCancelled {
+            let answer = await Journals.fetch(place: place, server: server)
+            guard !Task.isCancelled else { return }
+            result = answer
+            if answer == .unsupported { return }
+            try? await Task.sleep(for: .seconds(Journals.pollSeconds))
+        }
     }
 }
 

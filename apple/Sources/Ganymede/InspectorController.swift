@@ -52,10 +52,12 @@ final class InspectorController {
     /// as the page loads.
     static func showsNotebook(state: PageState, pageReported: Bool, target: WindowTarget) -> Bool {
         if pageReported { return state.hasNotebook }
-        if case .file(let url) = target {
-            return !FolderEntry.dataExtensions.contains(url.pathExtension.lowercased())
+        switch target {
+        case .file, .machineFile:
+            return !FolderEntry.dataExtensions.contains(target.url.pathExtension.lowercased())
+        default:
+            return false
         }
-        return false
     }
 
     /// ⌥⌘0: shows or hides it.

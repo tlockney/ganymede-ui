@@ -83,15 +83,20 @@ final class LocalFileSourceTests: XCTestCase {
         let file = root.appendingPathComponent("Io.ipynb")
         try Data("x".utf8).write(to: file)
         #if os(macOS)
-        let trashed = try XCTUnwrap(try source.trash(file))
-        defer { try? FileManager.default.removeItem(at: trashed) }
+        // Through `delete` itself, which says where the item went.
+        let deletedIo = try await source.delete(file)
+        let trashedIo = try XCTUnwrap(deletedIo)
+        defer { try? FileManager.default.removeItem(at: trashedIo) }
         XCTAssertFalse(exists("Io.ipynb"), "gone from the folder")
-        XCTAssertTrue(FileManager.default.fileExists(atPath: trashed.path), "in the Trash")
-        XCTAssertTrue(trashed.path.contains(".Trash"), trashed.path)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: trashedIo.path), "in the Trash")
+        XCTAssertTrue(trashedIo.path.contains(".Trash"), trashedIo.path)
         let other = root.appendingPathComponent("Europa.ipynb")
         try Data().write(to: other)
-        try await source.delete(other)
+        let deletedEuropa = try await source.delete(other)
+        let trashedEuropa = try XCTUnwrap(deletedEuropa)
+        defer { try? FileManager.default.removeItem(at: trashedEuropa) }
         XCTAssertFalse(exists("Europa.ipynb"))
+        XCTAssertTrue(FileManager.default.fileExists(atPath: trashedEuropa.path), "in the Trash")
         #else
         do {
             try await source.delete(file)

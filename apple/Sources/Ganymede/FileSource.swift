@@ -18,8 +18,10 @@ protocol FileSource: Sendable {
     /// contents API copies files only, so a folder there throws
     /// `FileSourceError.foldersCantBeDuplicated`.
     func duplicate(_ url: URL) async throws -> URL
-    /// Removes the item: the Trash on this device.
-    func delete(_ url: URL) async throws
+    /// Removes the item: the Trash on this device. Returns where it went,
+    /// when the source can say (the Trash's copy).
+    @discardableResult
+    func delete(_ url: URL) async throws -> URL?
     /// The text of the file, or nil when it holds none. A notebook's is its
     /// JSON.
     func readText(_ url: URL) async throws -> String?
@@ -94,8 +96,9 @@ struct LocalFileSource: FileSource {
         return target
     }
 
-    func delete(_ url: URL) async throws {
-        _ = try trash(url)
+    @discardableResult
+    func delete(_ url: URL) async throws -> URL? {
+        try trash(url)
     }
 
     /// Moves the item to the Trash and returns where it went, when the
@@ -145,6 +148,13 @@ struct MachineFileSource: FileSource {
         let items = model["content"] as? [[String: Any]] ?? []
         let entries = items.compactMap { item -> FolderEntry? in
             guard let name = item["name"] as? String, !name.isEmpty, !name.hasPrefix(".") else { return nil }
+            // A machine sends the names: one with a separator would climb out of the folder.
+            guard !name.contains("/"), !name.contains("\\") else { return nil }
+            // The answer's own path for the item, when it has one, is the folder's plus the name.
+            if let itemPath = item["path"] as? String,
+               itemPath.trimmingCharacters(in: CharacterSet(charactersIn: "/")) != Self.join(path, name) {
+                return nil
+            }
             let isDirectory: Bool
             switch item["type"] as? String {
             case "directory": isDirectory = true
@@ -183,8 +193,10 @@ struct MachineFileSource: FileSource {
         return try location(of: copy, "the copy")
     }
 
-    func delete(_ url: URL) async throws {
+    @discardableResult
+    func delete(_ url: URL) async throws -> URL? {
         _ = try await json(request(machinePath(of: url), method: "DELETE"))
+        return nil
     }
 
     func readText(_ url: URL) async throws -> String? {
@@ -245,7 +257,9 @@ struct MachineFileSource: FileSource {
     /// The contents API's URL for `path` through the mount, each segment
     /// percent-encoded, with the server's token in the query.
     func contentsURL(_ path: String, query: [(String, String)] = []) throws -> URL {
-        let encoded = path.split(separator: "/").map {
+        let parts = path.split(separator: "/").map(String.init)
+        if let dot = parts.first(where: FolderEntry.isDotSegment) { throw FileSourceError.badName(dot) }
+        let encoded = parts.map {
             String($0).addingPercentEncoding(withAllowedCharacters: FolderEntry.segmentAllowed) ?? String($0)
         }
         let api = encoded.isEmpty ? "api/contents" : "api/contents/" + encoded.joined(separator: "/")
@@ -277,5 +291,59 @@ struct MachineFileSource: FileSource {
             throw FileSourceError.server(status: status, message: (body as? [String: Any])?["message"] as? String)
         }
         return body
+    }
+}
+
+// MARK: - Removing an item
+
+/// How the sidebar removes an item in a place (#743). This device moves it
+/// to the Trash, and asks only when it holds the open notebook. A machine's
+/// server deletes it for good (Ganymede's contents API keeps no Trash), so
+/// the item says Delete and always asks.
+struct RemoveAction: Equatable {
+    /// The menu item's title.
+    let menuTitle: String
+    /// The confirming button's title.
+    let buttonTitle: String
+    /// Whether to ask even when the item doesn't hold the open notebook.
+    let alwaysAsks: Bool
+
+    init(place: Place) {
+        if place.isMachine {
+            self.init(menuTitle: "Delete…", buttonTitle: "Delete", alwaysAsks: true)
+        } else {
+            self.init(menuTitle: "Move to Trash", buttonTitle: "Move to Trash", alwaysAsks: false)
+        }
+    }
+
+    private init(menuTitle: String, buttonTitle: String, alwaysAsks: Bool) {
+        self.menuTitle = menuTitle
+        self.buttonTitle = buttonTitle
+        self.alwaysAsks = alwaysAsks
+    }
+
+    /// The alert's message and detail, or nil when nothing needs asking.
+    /// `holdsOpen`: the item is or holds the window's open notebook, which
+    /// closes; `dirty`: that notebook has unsaved changes.
+    func question(for entry: FolderEntry, holdsOpen: Bool, dirty: Bool) -> (message: String, detail: String)? {
+        guard alwaysAsks || holdsOpen else { return nil }
+        let name = entry.isDirectory ? entry.name : entry.title
+        let message: String
+        if holdsOpen {
+            message = entry.isDirectory ? "“\(name)” holds the open notebook." : "“\(name)” is open in this window."
+        } else {
+            message = "Delete “\(name)”?"
+        }
+        var detail: [String] = []
+        if alwaysAsks {
+            detail.append(entry.isDirectory
+                ? "The machine deletes the folder and everything in it. This can’t be undone."
+                : "The machine deletes it for good. This can’t be undone.")
+        }
+        if holdsOpen {
+            let verb = alwaysAsks ? "Delete" : "Move it to the Trash"
+            detail.append(dirty ? "It has unsaved changes. \(verb) and close it without saving?" : "\(verb) and close it?")
+        }
+        return (message, detail.joined(separator: " "))
     }
 }

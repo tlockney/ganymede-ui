@@ -9,8 +9,17 @@
  */
 export type Launch = { open?: string; dir: string; console?: 'duckdb' };
 
-/** A server path: no leading, trailing or repeated slashes. */
-export const clean = (path: string) => path.split('/').filter(Boolean).join('/');
+/** Whether a path has a `.` or `..` segment (or its percent-encoded form). */
+export const hasDotSegment = (path: string) =>
+  path.split(/[/\\]/).some(s => /^(\.|%2e){1,2}$/i.test(s));
+
+/**
+ * A server path: no leading, trailing or repeated slashes. A path with a
+ * `.` or `..` segment is none (''): the server's URL joining would climb out
+ * of the place it is read from, as a machine's mount to this device's.
+ */
+export const clean = (path: string) =>
+  hasDotSegment(path) ? '' : path.split('/').filter(Boolean).join('/');
 
 /** The folder a server path is in; '' for the root. */
 export const parentOf = (path: string) => path.split('/').slice(0, -1).join('/');

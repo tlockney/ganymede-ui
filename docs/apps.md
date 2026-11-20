@@ -64,7 +64,7 @@ On first launch the app asks once whether to send crash reports
 
 ### Sidebar
 
-The sidebar has five tabs (⌘1 to ⌘5). Each window keeps its sidebar
+The sidebar has six tabs (⌘1 to ⌘6). Each window keeps its sidebar
 shown or hidden, its tab and its expanded folders across launches.
 
 - **Files** lists the window's folder as a tree. Right-click an item to
@@ -83,6 +83,17 @@ shown or hidden, its tab and its expanded folders across launches.
 - **Recents** lists the notebooks opened lately.
 - **Outline** lists the open notebook's headings; click one to go to its
   cell.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+- **Journals** (⌘6) lists the notebooks an agent is in or last wrote, in
+  this window's place: the notebook, the agent's name and "running" while
+  the agent is in it, otherwise when it last wrote ("2 min ago"). Click
+  one to open it, or right-click to open it in a new tab. The server is
+  asked every 5 seconds while the tab shows; an older server's 404
+  (before ganymede#893) says it is too old to list journals.
 
 ### Toolbar and menus
 
@@ -780,8 +791,9 @@ with only SSH stays in Settings for shells.
   independent, so one can show the Mac mini while another shows this Mac.
   On the iPad and iPhone the scene shows one place at a time: the
   machine's sidebar has the switcher back to this device.
-- **A machine's window** has Files, Journals, Running and Search tabs. Its
-  tab and title carry the machine's name ("Orbits · m4mini"). A notebook
+- **A machine's window** (on the iPad and iPhone, the machine's page with
+  its own sidebar) has Files, Journals, Running and Search tabs. Its tab
+  and title carry the machine's name ("Orbits · m4mini"). A notebook
   opens live in the machine's room, on the machine's kernels, and saves
   there; Running lists the machine's kernels. Recents are the machine's
   own: the same path on this device and on a machine stay apart.
@@ -789,6 +801,7 @@ with only SSH stays in Settings for shells.
   last changed: the agent's name, "running" while it is there, otherwise
   when it last wrote. Picking one opens the notebook. It needs a machine
   whose Ganymede lists open rooms (ganymede#893); an older one says so.
+  On the Mac this is the native sidebar's Journals tab.
 - **When a machine stops answering,** its open notebooks turn read-only
   and a banner reads "_machine_ went offline · Reconnecting…". They are
   editable again when it is back. There is no offline editing.
@@ -797,8 +810,25 @@ with only SSH stays in Settings for shells.
   Agent's keys, your name in the notebook's presence and `ganymede://`
   links are for this device's windows only. Neither Spotlight, File > Open
   Recent nor the Recents list in the app's sidebar include a machine's
-  notebooks. A machine window's page has no native toolbar: it draws its
-  own, as the web app does.
+  notebooks.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+On the Mac a machine's window is the app's native window: the same
+sidebar (Files, Search, Running, Outline and Journals), toolbar,
+inspector, menus and tabs as for this Mac, listing the machine's files.
+Open, New Notebook, New Folder and Rename work on the machine's files.
+Delete removes a machine's file for good (its server keeps no Trash), so
+it always asks first. The title is the notebook or folder and the subtitle
+reads "on _machine_". These work on this Mac's disk, so a machine's window
+doesn't have them: Show in Finder, Duplicate on a folder (a machine copies
+files only), the Recents tab, File > Open Recent, the terminal panel and
+its shells, and opening a text file in the app's editor (notebooks and
+data files open in the page; other files are dimmed). The sidebar's place
+menu shows the machine as the current place, and picking another opens
+its window. Its Journals tab lists that machine's journals.
 
 The app reaches a machine through its own server, which forwards a fixed
 list of routes to the machine with the machine's token, so no token is

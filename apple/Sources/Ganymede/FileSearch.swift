@@ -27,6 +27,27 @@ struct FileSearch {
     var maxNotebooksRead = 200
     var maxResults = 200
 
+    /// An item's or folder's absolute path: a file URL's, or a machine
+    /// location's server path with a leading slash.
+    private static func path(of location: URL) -> String {
+        if let machine = FolderEntry.machineLocation(location) { return "/" + machine.path }
+        return location.standardizedFileURL.path
+    }
+
+    /// The folder of the item at `entry`, relative to the window's `folder`
+    /// (second line of a result): the window's folder name, plus the
+    /// subfolders; the full path for one outside it.
+    static func relativeFolder(of entry: URL, in folder: URL) -> String {
+        let parent = path(of: FolderEntry.parent(of: entry))
+        let base = path(of: folder)
+        let name = base == "/" ? "/" : (base as NSString).lastPathComponent
+        if parent == base { return name }
+        if parent.hasPrefix(base + "/") {
+            return name + "/" + parent.dropFirst(base.count + 1)
+        }
+        return parent
+    }
+
     /// Whether `name` matches `query`: case-insensitive, and `.ipynb` is
     /// optional in the query.
     static func nameMatches(_ name: String, query: String) -> Bool {

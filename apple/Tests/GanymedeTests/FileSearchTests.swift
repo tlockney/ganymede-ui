@@ -136,7 +136,7 @@ final class FileSearchTests: XCTestCase {
         func newFolder(in parent: URL) async throws -> URL { parent }
         func rename(_ url: URL, to name: String) async throws -> URL { url }
         func duplicate(_ url: URL) async throws -> URL { url }
-        func delete(_ url: URL) async throws {}
+        func delete(_ url: URL) async throws -> URL? { nil }
     }
 
     /// Folders and files by machine-relative path.
@@ -169,6 +169,6 @@ final class FileSearchTests: XCTestCase {
         func newFolder(in parent: URL) async throws -> URL { parent }
         func rename(_ url: URL, to name: String) async throws -> URL { url }
         func duplicate(_ url: URL) async throws -> URL { url }
-        func delete(_ url: URL) async throws {}
+        func delete(_ url: URL) async throws -> URL? { nil }
     }
 }
