@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { SessionContext } from '@jupyterlab/apputils';
 import type * as nbformat from '@jupyterlab/nbformat';
 import { type Notebook, NotebookActions, NotebookModel } from '@jupyterlab/notebook';
-import type { NotebookChange } from '@jupyter/ydoc';
+import type { NotebookChange, YNotebook } from '@jupyter/ydoc';
 import type { Contents, Kernel, KernelSpec } from '@jupyterlab/services';
 import type { IDisposable } from '@lumino/disposable';
 import type { CommandRegistry } from '@lumino/commands';
@@ -16,6 +16,9 @@ import { attachLanguageFeatures, type LanguageFeatures } from '../lib/language-e
 import { installTableOutput } from '../lib/table-output';
 import { CellMenu } from './CellMenu';
 import { KeyboardBar } from './KeyboardBar';
+import { JournalView } from './JournalView';
+import { recentsKey } from '../lib/recents';
+import { chooseView, chosenView, hasAgentCells, trustedCellIds } from '../lib/journal';
 import type { Cell, ICodeCellModel } from '@jupyterlab/cells';
 import { downloadFile } from '../lib/download';
 import { PUBLISH_TIMEOUT_MS, type PublishOptions, fetchPublished, pageName } from '../lib/publish';
@@ -165,6 +168,13 @@ export type NotebookController = {
   kernel?: Kernel.IKernelConnection;
   /** The Markdown cells' headings, in order (#212). */
   outline: OutlineItem[];
+  /**
+   * Whether the journal view shows instead of the notebook (#184): on at
+   * open when the notebook has cells an agent wrote.
+   */
+  journal: boolean;
+  /** Switch between the journal view and the notebook, in the same room. */
+  toggleJournal(): void;
   /** Selects the cell at `index` and scrolls it to the top; false when there is none. */
   goToCell(index: number): boolean;
   /**
@@ -372,6 +382,16 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
   const [trusted, setTrusted] = useState(true);
   const [cellType, setCellType] = useState<CellType>('code');
   const [outline, setOutline] = useState<OutlineItem[]>([]);
+  /** Whether the journal view is showing (#184); decided when the file opens. */
+  const [journal, setJournal] = useState(false);
+  const journalRef = useRef(false);
+  journalRef.current = journal;
+  // Leaving the notebook for the journal: no focus stays in the hidden
+  // cells, where a command-mode key (a, b, dd) would edit them.
+  useEffect(() => {
+    const active = document.activeElement;
+    if (journal && active instanceof HTMLElement && host.current?.contains(active)) active.blur();
+  }, [journal]);
   /** Why the last notebook action failed, and what to do next, until dismissed. */
   const [notice, setNoticeState] = useState<Notice>();
   /** A server kernel's `device` call waiting on a click, in a browser. */
@@ -695,6 +715,14 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       };
       // A file deleted under an earlier open of this pane is back (Reload).
       gone.current = false;
+      // A notebook an agent kept opens as a journal; a person's as a notebook.
+      // The person's choice for this file holds across reopens (a Reload, a
+      // restarted server); the default is only for the first open.
+      const isJournal =
+        chosenView(recentsKey(backend.config), path) ??
+        hasAgentCells((model.sharedModel as YNotebook).cells.map(c => c.toJSON()));
+      journalRef.current = isJournal;
+      setJournal(isJournal);
       setOpen(current);
       await joining;
       if (cancelled) return;
@@ -767,7 +795,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         teardown();
       }
     };
-  }, [services, rooms, path, attempt, memory, setIntended]);
+  }, [services, rooms, path, attempt, memory, setIntended, backend.config]);
 
   // Put the Lumino widget in the page. The widget lives in a holder node
   // that moves in and out of the pane: when the pane goes, the holder is
@@ -1278,6 +1306,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       trusted,
       cellType,
       changeCellType: type => {
+        if (journal) return;
         NotebookActions.changeCellType(notebook, type);
         setCellType(activeType(notebook) ?? type);
         // Back to the notebook, so its shortcuts work after the picker.
@@ -1359,12 +1388,15 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       hostWants: () => hostWants(model.getMetadata('ganymede')),
       recordedParams: () => initialParams(model.getMetadata('ganymede')),
       run: reportRun('run the cell', async () => {
+        if (journal) return;
         if (await open.ensureKernel()) await NotebookActions.runAndAdvance(notebook, session);
       }),
       runAll: reportRun('run all cells', async () => {
+        if (journal) return;
         if (await open.ensureKernel(true)) await NotebookActions.runAll(notebook, session);
       }),
       clearOutputs: () => {
+        if (journal) return;
         // As NotebookActions.clearAllOutputs, which needs an active cell;
         // like it, not a step for undo.
         for (const cell of model.cells) {
@@ -1374,6 +1406,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         }
       },
       insert: type => {
+        if (journal) return;
         NotebookActions.insertBelow(notebook);
         if (type !== 'code') NotebookActions.changeCellType(notebook, type);
         notebook.mode = 'edit';
@@ -1394,7 +1427,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       }),
       command: id => {
         const { commands } = open;
-        if (!commands.hasCommand(id) || !commands.isEnabled(id)) return false;
+        // The notebook's own commands act on cells the journal hides.
+        if (journal || !commands.hasCommand(id) || !commands.isEnabled(id)) return false;
         void commands.execute(id).catch(e => setNotice(failed(id, e)));
         return true;
       },
@@ -1437,9 +1471,24 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       moved,
       kernel: session.session?.kernel ?? undefined,
       outline,
-      goToDefinition: () => open.language.service.goToDefinition(),
-      renameSymbol: newName => open.language.service.rename(newName),
+      goToDefinition: () =>
+        journal ? Promise.resolve(false) : open.language.service.goToDefinition(),
+      renameSymbol: newName =>
+        journal ? Promise.resolve(false) : open.language.service.rename(newName),
+      journal,
+      toggleJournal: () => {
+        const next = !journalRef.current;
+        journalRef.current = next;
+        chooseView(recentsKey(backend.config), path, next);
+        setJournal(next);
+      },
       goToCell: index => {
+        if (journalRef.current) {
+          const article = document.querySelector(`.journal [data-cell-index="${index}"]`);
+          if (!article) return false;
+          article.scrollIntoView({ block: 'start' });
+          return true;
+        }
         const cell = notebook.widgets[index];
         if (!cell) return false;
         notebook.mode = 'command';
@@ -1485,6 +1534,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
     lock,
     cellType,
     outline,
+    journal,
     backend,
     services,
     memory,
@@ -1526,8 +1576,18 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
   }
   return (
     <>
-      <div className="notebook-page" ref={host} />
-      <KeyboardBar notebook={open.notebook} commands={open.commands} />
+      <div className="notebook-page" ref={host} hidden={journal} />
+      {journal && (
+        <JournalView
+          notebook={open.model.sharedModel as YNotebook}
+          rendermime={open.notebook.rendermime}
+          trustedIds={() => trustedCellIds(open.model)}
+          room={open.room}
+          name={basename(path)}
+          onOpenAsNotebook={() => controllerRef.current?.toggleJournal()}
+        />
+      )}
+      {!journal && <KeyboardBar notebook={open.notebook} commands={open.commands} />}
       {menu && (
         <CellMenu
           notebook={open.notebook}

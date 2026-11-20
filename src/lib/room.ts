@@ -230,6 +230,33 @@ export class NotebookRoom {
   }
 
   /**
+   * Whether the room is live: the socket is up and the document has synced
+   * since it came up. False while y-websocket reconnects, and until the
+   * sync after it: what a client that must not edit meanwhile (the journal
+   * view's composer, #184) asks.
+   */
+  get live(): boolean {
+    return !this.disposed && !this.closedFor && this.provider.wsconnected && this.provider.synced;
+  }
+
+  /**
+   * Call `listener` when {@link live} may have changed, and once now.
+   * Returns a function that stops listening.
+   */
+  watchLive(listener: (live: boolean) => void): () => void {
+    const update = () => listener(this.live);
+    this.provider.on('status', update);
+    this.provider.on('sync', update);
+    this.closedListeners.add(update);
+    update();
+    return () => {
+      this.provider.off('status', update);
+      this.provider.off('sync', update);
+      this.closedListeners.delete(update);
+    };
+  }
+
+  /**
    * Ask the server to save the room now. Its autosave does this a second
    * after the last edit; ⌘S and the pane's teardown want it at once.
    */

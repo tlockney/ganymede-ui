@@ -2255,3 +2255,314 @@ button {
   margin: 0;
   white-space: pre-wrap;
 }
+
+/* The journal view (#184): a notebook an agent keeps, read and followed live. */
+.notebook-page[hidden] {
+  display: none;
+}
+
+.journal {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  padding-top: var(--toolbar-h);
+  background: var(--window-bg);
+}
+
+.journal-header {
+  padding: 10px max(16px, var(--safe-right)) 6px max(16px, var(--safe-left));
+  border-bottom: 1px solid var(--separator);
+}
+
+.journal-title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.journal-meta {
+  margin: 2px 0 0;
+  color: var(--text-2);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.journal-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  align-items: center;
+  padding: 8px max(16px, var(--safe-right)) 8px max(16px, var(--safe-left));
+  border-bottom: 1px solid var(--separator);
+  color: var(--text-2);
+  font-size: 13px;
+}
+
+.journal-running {
+  flex: 1;
+  color: var(--accent);
+}
+
+.journal button,
+.journal textarea {
+  font: inherit;
+}
+
+.journal-open,
+.journal-actions button,
+.journal-fold,
+.journal-chip {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--control-bg);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.journal-open:hover,
+.journal-actions button:hover:not(:disabled),
+.journal-fold:hover {
+  background: var(--control-bg-hover);
+}
+
+.journal button:disabled,
+.journal textarea:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.journal-banner {
+  padding: 10px 16px;
+  background: rgba(255, 149, 0, 0.16);
+  border-bottom: 1px solid var(--orange);
+  font-size: 13px;
+}
+
+.journal-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.journal-content {
+  max-width: 880px;
+  margin: 0 auto;
+  padding: 8px max(16px, var(--safe-right)) 24px max(16px, var(--safe-left));
+}
+
+.journal-empty {
+  color: var(--text-3);
+  text-align: center;
+}
+
+.journal-cell {
+  display: grid;
+  grid-template-columns: 132px minmax(0, 1fr);
+  gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--separator);
+}
+
+.journal-gutter {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  color: var(--text-2);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.journal-prov {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.journal-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--gray);
+}
+
+.journal-executed .journal-dot {
+  background: var(--green);
+}
+
+.journal-recorded .journal-dot {
+  background: var(--orange);
+}
+
+.journal-note .journal-dot {
+  background: var(--accent);
+}
+
+.journal-chip {
+  min-height: 44px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.journal-chip-static {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  cursor: default;
+}
+
+.journal-rev {
+  position: relative;
+}
+
+.journal-rev-panel {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 5;
+  width: min(420px, calc(100vw - 48px));
+  max-height: 50vh;
+  overflow: auto;
+  padding: 8px 10px;
+  border: 1px solid var(--separator);
+  border-radius: 10px;
+  background: var(--window-bg);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+/* On a phone the gutter is a narrow column at the left edge, so a panel
+   hanging from the chip would run past the right edge: anchor it to the
+   cell, across the cell's width, just below it. */
+@media (max-width: 600px) {
+  .journal-cell {
+    position: relative;
+  }
+
+  .journal-rev {
+    position: static;
+  }
+
+  .journal-rev-panel {
+    left: 0;
+    right: 0;
+    width: auto;
+    max-width: 100%;
+  }
+}
+
+.journal-rev-meta {
+  color: var(--text-2);
+  font-size: 11px;
+}
+
+.journal-rev-panel pre,
+.journal-code {
+  margin: 4px 0 8px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--code-font, var(--font-mono));
+  font-size: 12.5px;
+}
+
+.journal-body {
+  min-width: 0;
+}
+
+.journal-fold {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  padding: 0 10px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--code-font, var(--font-mono));
+  font-size: 12.5px;
+}
+
+.journal-output {
+  margin-top: 6px;
+  overflow-x: auto;
+}
+
+.journal-rendered {
+  min-width: 0;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.journal-follow {
+  position: absolute;
+  right: 16px;
+  bottom: calc(120px + var(--safe-bottom));
+  z-index: 6;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 22px;
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+}
+
+.journal-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px max(16px, var(--safe-right)) calc(8px + var(--safe-bottom))
+    max(16px, var(--safe-left));
+  border-top: 1px solid var(--separator);
+}
+
+.journal-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+.journal-text {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 10px;
+  border: 1px solid var(--separator);
+  border-radius: 8px;
+  background: var(--control-bg);
+  color: var(--text);
+  resize: vertical;
+}
+
+.journal-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+@media (max-width: 480px) {
+  .journal-cell {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 4px;
+  }
+
+  .journal-gutter {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 2px 8px;
+    align-items: center;
+  }
+
+  .journal-actions button {
+    flex: 1;
+  }
+}
