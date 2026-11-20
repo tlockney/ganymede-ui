@@ -18,7 +18,9 @@ the error, and the journal fell back to showing the raw HTML as text.
 - Checked: a unit test in `src/lib/jupyterlab.test.ts` makes
   `process.cwd` throw, and fails with the override removed. A second case
   compares our result with upstream's, with `cwd` returning '/', for
-  relative, `..`, spaced-folder, absolute, `https:` and `data:` URLs.
+  relative, `..`, trailing-slash, spaced-folder, absolute, `https:` and `data:` URLs.
   An e2e test in `e2e/journal.spec.ts` renders an output with
-  `<img src="x">` in the journal and the notebook view and expects no
-  `process is not defined` page error.
+  `<img src="x">` in the journal, where it must show as HTML, and in the
+  notebook view, where JupyterLab catches the error and shows it as
+  stderr in the output, so the test expects no stderr output there.
+  Each half fails on its own without the fix.

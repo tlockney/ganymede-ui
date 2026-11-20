@@ -142,7 +142,11 @@ test('resolves a relative URL in an untrusted output without a page error (#704)
 
   await journal.getByRole('button', { name: 'Open as Notebook' }).click();
   await expect(page.locator('.jp-Cell')).toHaveCount(4);
-  await expect(page.locator('.jp-Cell').nth(3).locator('.jp-OutputArea b')).toHaveText('rel');
+  const output = page.locator('.jp-Cell').nth(3).locator('.jp-OutputArea');
+  await expect(output.locator('b')).toHaveText('rel');
+  // OutputArea catches a render error and shows it as stderr text, not a page error.
+  await expect(output.locator('[data-mime-type="application/vnd.jupyter.stderr"]')).toHaveCount(0);
+  await expect(output).not.toContainText('process is not defined');
   expect(errors.filter(m => m.includes('process is not defined'))).toEqual([]);
 });
 

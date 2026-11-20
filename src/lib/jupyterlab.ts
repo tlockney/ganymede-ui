@@ -159,15 +159,14 @@ installTableOutput(baseRendermime);
  * Upstream calls `PathExt.resolve`, which asks `process.cwd()` for a relative
  * path; JupyterLab's webpack build provides `process`, this Vite build doesn't
  * (#704). Joining onto '/' and normalizing gives what upstream returns with a
- * cwd of '/', `..` clamped at the root included.
+ * cwd of '/': `..` clamped at the root, no trailing slash.
  */
 export class UrlResolver extends RenderMimeRegistry.UrlResolver {
   override resolveUrl(url: string): Promise<string> {
-    return Promise.resolve(
-      this.isLocal(url)
-        ? PathExt.normalize(PathExt.join('/', encodeURI(PathExt.dirname(this.path)), url))
-        : url,
-    );
+    if (!this.isLocal(url)) return Promise.resolve(url);
+    const joined = PathExt.normalize(PathExt.join('/', encodeURI(PathExt.dirname(this.path)), url));
+    // `resolve` drops a trailing slash; `join` keeps it.
+    return Promise.resolve(joined.replace(/\/$/, ''));
   }
 }
 

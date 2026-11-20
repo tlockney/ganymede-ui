@@ -258,6 +258,9 @@ describe('UrlResolver (#704)', () => {
     ['a/b/nb.ipynb', '../../../x', 'x'],
     ['nb.ipynb', 'x', 'x'],
     ['my dir/nb.ipynb', 'x', 'my%20dir/x'],
+    ['a/b/nb.ipynb', 'dir/', 'a/b/dir'],
+    ['a/b/nb.ipynb', './', 'a/b'],
+    ['nb.ipynb', './', ''],
   ];
   const OTHER = ['https://example.com/x.png', 'data:image/png;base64,AAAA', '/abs/x'];
 
