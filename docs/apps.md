@@ -947,7 +947,7 @@ on a Ganymede server, and there is no setting for it.
   stayed the same for a few seconds. Above the buttons, a line names the
   agents in the room, or says none is. A request is saved in the notebook
   either way. While the notebook stays open, an agent running `ganymede
-  mcp watch` on its folder is told about it, in the room or not; after
+mcp watch` on its folder is told about it, in the room or not; after
   that it waits until an agent reads the notebook. Everything else is
   read-only.
 - **Reconnecting…**: when the connection to the server drops, the journal
