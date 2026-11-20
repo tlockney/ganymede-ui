@@ -100,6 +100,35 @@ describe('attachCodeCollapse', () => {
     expect(hidden(0)).toBe(false);
   });
 
+  it('does not collapse a cell, or a heading, while the notebook may not be edited', () => {
+    collapse.dispose();
+    let away = true;
+    collapse = attachCodeCollapse(notebook, () => away);
+    // JupyterLab's heading buttons, which act on their own click handler
+    // (jsdom doesn't render the Markdown that makes them).
+    const presses: string[] = [];
+    const buttons = ['jp-collapseHeadingButton', 'jp-showHiddenCellsButton'].map(name => {
+      const button = document.createElement('button');
+      button.className = name;
+      button.addEventListener('click', () => presses.push(name));
+      cell(1).node.append(button);
+      return button;
+    });
+    toggle(0)!.click();
+    for (const b of buttons) b.click();
+    expect(cell(0).inputHidden).toBe(false);
+    expect(hidden(0)).toBe(false);
+    expect(presses).toEqual([]);
+    // The toggle shows what the cell is: still the one that collapses.
+    expect(toggle(0)!.getAttribute('aria-label')).toBe('Collapse Code');
+
+    away = false;
+    toggle(0)!.click();
+    for (const b of buttons) b.click();
+    expect(hidden(0)).toBe(true);
+    expect(presses).toEqual(['jp-collapseHeadingButton', 'jp-showHiddenCellsButton']);
+  });
+
   it('follows a change to the metadata from elsewhere', () => {
     cell(0).model.setMetadata('jupyter', { source_hidden: true });
     expect(cell(0).inputHidden).toBe(true);

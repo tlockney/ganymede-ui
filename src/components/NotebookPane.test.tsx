@@ -2448,6 +2448,8 @@ describe('NotebookPane on a connected machine that is away (#701)', () => {
     expect(canEdit()).toBe(false);
     const away = vi.mocked(attachCellControls).mock.lastCall![2] as () => boolean;
     expect(away()).toBe(true);
+    const { attachCodeCollapse } = await import('../lib/code-collapse');
+    expect((vi.mocked(attachCodeCollapse).mock.lastCall![1] as () => boolean)()).toBe(true);
   });
 
   /** Opens the cell menu on the first cell, as the cell's "…" button does. */

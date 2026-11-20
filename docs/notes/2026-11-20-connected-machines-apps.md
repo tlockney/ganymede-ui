@@ -91,3 +91,7 @@ Review follow-ups:
   state back from the metadata before turning them on again, so neither
   the outage nor the reconnect writes. The four collapse and expand
   commands are `mutating` too.
+- **Heading collapse and the code toggle** also do nothing while away
+  (`attachCodeCollapse`'s `away`): a Markdown heading's buttons write
+  `jp-MarkdownHeadingCollapsed` with no sync flag, and the code toggle
+  would otherwise show a state the reconnect reverts.

@@ -660,7 +660,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         (cell, anchor) => setMenu({ cell, anchor }),
         down,
       );
-      const codeCollapse = attachCodeCollapse(notebook);
+      const codeCollapse = attachCodeCollapse(notebook, down);
       const typeErrors = attachTypeErrors(notebook, session);
       const language = attachLanguageFeatures(notebook, session, message =>
         setNotice({ kind: 'failed', message, actions: [] }),

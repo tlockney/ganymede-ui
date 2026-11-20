@@ -96,7 +96,11 @@ function decorate(cell: Cell): void {
 }
 
 /** Give every code cell of `notebook` its disclosure button, and cells added later. */
-export function attachCodeCollapse(notebook: Notebook): IDisposable {
+export function attachCodeCollapse(
+  notebook: Notebook,
+  /** True while the notebook may not be edited (a machine that is away, #701). */
+  away: () => boolean = () => false,
+): IDisposable {
   let disposed = false;
   const sync = () => {
     if (disposed || notebook.isDisposed) return;
@@ -121,6 +125,8 @@ export function attachCodeCollapse(notebook: Notebook): IDisposable {
     if (!cell) return;
     e.preventDefault();
     e.stopPropagation();
+    // Collapsing writes to the shared notebook: not while away.
+    if (away()) return;
     setCollapsed(cell, !cell.inputHidden, notebook);
     // A clicked button keeps focus in Chrome and Firefox, where Enter would
     // then press it again instead of editing the cell: hand focus back to
@@ -134,7 +140,20 @@ export function attachCodeCollapse(notebook: Notebook): IDisposable {
   const onDown = (e: Event) => {
     if (toggleOf(e)) e.stopPropagation();
   };
+  // A Markdown heading's collapse and "show hidden cells" buttons write
+  // `jp-MarkdownHeadingCollapsed` to the notebook with no sync flag to
+  // turn off, so a press on them is stopped before it gets there.
+  const onHeading = (e: Event) => {
+    if (!away()) return;
+    if (
+      (e.target as Element | null)?.closest('.jp-collapseHeadingButton, .jp-showHiddenCellsButton')
+    ) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  };
   const node = notebook.node;
+  node.addEventListener('click', onHeading, true);
   node.addEventListener('click', onClick);
   node.addEventListener('mousedown', onDown, true);
   node.addEventListener('pointerdown', onDown, true);
@@ -143,6 +162,7 @@ export function attachCodeCollapse(notebook: Notebook): IDisposable {
   return new DisposableDelegate(() => {
     disposed = true;
     cells?.changed.disconnect(onCells);
+    node.removeEventListener('click', onHeading, true);
     node.removeEventListener('click', onClick);
     node.removeEventListener('mousedown', onDown, true);
     node.removeEventListener('pointerdown', onDown, true);
