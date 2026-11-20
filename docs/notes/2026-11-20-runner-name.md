@@ -11,8 +11,9 @@ ignore the unknown field, so the apps stay compatible with v0.14.0.
   runs. Nothing in the apps shows `execution_by` yet (#702). Run Notebook
   with Parameters uses another endpoint with no room and isn't covered.
 - `NotebookActionsTests` asserts the field in the execute request body.
-- `docs/apps.md` (Shortcuts) says so, with the Unreleased note: it needs a
-  server built from ganymede's `main`.
+- `docs/apps.md` (Shortcuts) says so, with the Unreleased note. The actions
+  use the app's in-process core, pinned by `GANYMEDE_REF` (v0.14.0), so the
+  name appears only once that ref moves past ganymede#896.
 - nb-cli's remote mode also sends no `by`. That is upstream
   (nteract/nb-cli), so the PR uses `Refs #719` and leaves that report
   open on #719 for a person to file.
