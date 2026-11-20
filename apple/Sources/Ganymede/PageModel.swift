@@ -81,6 +81,14 @@ final class PageModel {
         started = token.map { ($0, start) }
     }
 
+    /// Runs `load` and tells `page`, if there is one, its navigation. A
+    /// machine's window has no page, and its page loads all the same: as
+    /// `page?.loadStarted(load(), …)`, optional chaining would skip `load`.
+    static func startLoad(_ load: () -> AnyObject?, on page: PageModel?, start: Int) {
+        let token = load()
+        page?.loadStarted(token, start: start)
+    }
+
     /// A page committed, so commands wait for its state. The app's own
     /// load (`token` from `loadStarted`) sets the page's start; any other
     /// navigation (a reload, a link) keeps the page's start as it was.

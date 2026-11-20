@@ -155,4 +155,23 @@ final class PageModelTests: XCTestCase {
         XCTAssertNotNil(loads.retry(cancelled: true))
         XCTAssertNil(loads.retry(), "the once for other failures is still spent")
     }
+
+    func testAWindowWithNoPageStillLoads() {
+        // A machine's window has no PageModel (#720).
+        var loaded = 0
+        PageModel.startLoad({ loaded += 1; return NSObject() }, on: nil, start: 1)
+        XCTAssertEqual(loaded, 1)
+    }
+
+    func testAWindowWithAPageLoadsOnceAndTellsThePage() {
+        let page = PageModel()
+        page.reset(forStart: 2)
+        let token = NSObject()
+        var loaded = 0
+        PageModel.startLoad({ loaded += 1; return token }, on: page, start: 2)
+        XCTAssertEqual(loaded, 1)
+        page.committed(token)
+        page.update(connected)
+        XCTAssertTrue(page.ready, "the page's start is the load's")
+    }
 }

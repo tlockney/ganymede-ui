@@ -328,7 +328,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
             kernels.notebookRoot = AppModel.shared.serverRootFolder
             kernels.uiWillLoad(url)
         }
-        page?.loadStarted(view.load(URLRequest(url: url)), start: start)
+        PageModel.startLoad({ view.load(URLRequest(url: url)) }, on: page, start: start)
     }
 
     /// The app's load failed before it committed: loaded again, so the
