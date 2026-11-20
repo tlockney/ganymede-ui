@@ -17,11 +17,12 @@ enum WorkspaceTabs {
     /// already showing that value instead).
     static let sceneID = "workspace"
 
-    /// A new notebook window asked for by File › New Tab or New Window: the
-    /// folder it shows, and whether it opens as a window of its own.
+    /// A new notebook window asked for by File › New Tab or New Window: what
+    /// it shows (a folder here, or a machine's), and whether it opens
+    /// as a window of its own.
     struct Request: Equatable {
         var id = UUID()
-        var folder: URL
+        var target: WindowTarget
         var alone: Bool
     }
 
@@ -34,10 +35,10 @@ enum WorkspaceTabs {
     /// another by hand.
     static var launching = true
 
-    /// Opens a new notebook window on `folder`, as a tab of the front
+    /// Opens a new notebook window on `target`, as a tab of the front
     /// window or, with `alone`, a window of its own.
-    static func open(folder: URL, alone: Bool, with openWindow: (String) -> Void) {
-        let request = Request(folder: folder, alone: alone)
+    static func open(target: WindowTarget, alone: Bool, with openWindow: (String) -> Void) {
+        let request = Request(target: target, alone: alone)
         pending = request
         openWindow(sceneID)
         Task { @MainActor in
@@ -116,7 +117,7 @@ enum WorkspaceTabs {
     /// shows the start screen (New Notebook) until a notebook is chosen.
     static func openStart(folder: URL) {
         guard let openByID else { return }
-        open(folder: folder, alone: true, with: openByID)
+        open(target: .folder(folder), alone: true, with: openByID)
     }
 
     /// Marks `window`'s tab with a dot while its notebook's kernel is busy

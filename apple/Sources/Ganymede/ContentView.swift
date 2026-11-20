@@ -59,7 +59,7 @@ struct ContentView: View {
         // Read on every init, but `@State` keeps only the first: the one
         // made as this window opens.
         let request = target.wrappedValue == nil ? WorkspaceTabs.pending : nil
-        let loaded = target.wrappedValue ?? .folder(request?.folder ?? AppModel.shared.root)
+        let loaded = WindowTarget.opening(target.wrappedValue, requested: request?.target, root: AppModel.shared.root)
         _loaded = State(initialValue: loaded)
         _sidebarRoot = State(initialValue: loaded.folder)
         _request = State(initialValue: request)
@@ -143,7 +143,7 @@ struct ContentView: View {
             // machine's too; a machine's window has no panel (#740).
             NotebookToolbar(
                 page: pageModel, document: document, folder: sidebarRoot,
-                panel: place.isThisDevice ? panel : nil)
+                panel: place.isThisDevice ? panel : nil, place: place)
             // The panel's shells are on this Mac: none for a machine's window.
             if place.isThisDevice {
                 ToolbarItem {
@@ -188,7 +188,7 @@ struct ContentView: View {
         .onAppear {
             if let request {
                 WorkspaceTabs.take(request)
-                if target == nil { target = .folder(request.folder) }
+                if target == nil { target = request.target }
             } else if target == nil, let saved = WindowTarget(saved: savedTarget) {
                 // A window the system restored, without its value.
                 show(saved)
