@@ -54,6 +54,16 @@ backend); until then a `.file` target that isn't a data file counts, so
 opening a notebook doesn't flash the inspector away and back
 (`InspectorController.showsNotebook`).
 
+Known limitations: a console tab's folder doesn't follow a native rename or
+move of its folder (as a `.folder` window's doesn't today). File > New DuckDB
+Console is disabled without a `windowFolder`, which every notebook window
+sets (the start screen included) and a machine window doesn't.
+
+A console tab opens every notebook in a tab of its own (`openNotebook` in
+`App.tsx`: New Notebook, Open Example Notebooks, a dropped file, the
+console's export), so `open` never joins `console` in its URL; if it did,
+`WindowTarget(page:)` reads `open` first, as `readLaunch` does.
+
 Not changed: the iPad (`#if os(iOS)` paths) keeps the console in the page,
 and has no inspector. A machine window uses the page's own chrome.
 

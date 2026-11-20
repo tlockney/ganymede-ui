@@ -655,6 +655,9 @@ struct NewCommands: View {
         Button("New DuckDB Console") {
             openWindow(value: WindowTarget.console(folder: folder ?? model.root, id: UUID()))
         }
+        // As before: not from a machine's window or with no window, which
+        // have no `windowFolder` (a notebook window always sets it).
+        .disabled(folder == nil)
         // A copy of the example notebooks in a new folder, with the first
         // open (#414).
         Button("Open Example Notebooks") {

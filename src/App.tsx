@@ -137,6 +137,14 @@ export function App() {
   const [consoleTab] = useState(() => launch.console === 'duckdb' && canOpenTabs());
   /** The folder of the console to show on the first connection. */
   const pendingConsole = useRef(launch.console === 'duckdb' ? launch.dir : undefined);
+  /**
+   * Opens a notebook or data file: in the page, or in a tab of its own from a
+   * console tab, which keeps its console (#729).
+   */
+  const openNotebook = useCallback(
+    (path: string) => (consoleTab ? openTab({ path }) : setOpenPath(path)),
+    [consoleTab],
+  );
   /** The folder the sidebar starts in; the server root once the sheet picks a backend. */
   const [sidebarRoot, setSidebarRoot] = useState(launch.dir);
   /** The folder the sidebar shows, where new notebooks go. */
@@ -184,8 +192,6 @@ export function App() {
    * nothing read, even on the same folder. A move of the folder keeps it.
    */
   const [duckId, setDuckId] = useState(0);
-  /** A console tab's notebook, from its export: a tab of its own (#729). */
-  const openInTab = useCallback((path: string) => openTab({ path }), []);
   /**
    * A move of the console's folder, or one it is in, keeps the console and
    * moves it along; a delete closes it, as it closes an open data file.
@@ -370,10 +376,10 @@ export function App() {
       } catch (e) {
         console.warn(`Couldn’t set the kernel of ${model.path}:`, e);
       }
-      setOpenPath(model.path);
+      openNotebook(model.path);
       return true;
     },
-    [backend],
+    [backend, openNotebook],
   );
 
   const copyingExamples = useRef(false);
@@ -389,7 +395,7 @@ export function App() {
         const { contents, kernelspecs } = backend.services;
         const path = await copyExamples(contents, dir, kernelspecs.specs);
         // Not if the backend changed while the copy ran.
-        if (backendRef.current === backend) setOpenPath(path);
+        if (backendRef.current === backend) openNotebook(path);
         return true;
       } catch (e) {
         setNewError(`Couldn’t copy the examples: ${e instanceof Error ? e.message : String(e)}`);
@@ -398,7 +404,7 @@ export function App() {
         copyingExamples.current = false;
       }
     },
-    [backend],
+    [backend, openNotebook],
   );
 
   // A notebook dropped on the window from Finder or Files is copied into
@@ -406,7 +412,7 @@ export function App() {
   const drop = useFileDrop({
     contents: backend?.services.contents,
     dir: folder,
-    onCopied: paths => setOpenPath(paths[0]),
+    onCopied: paths => openNotebook(paths[0]),
     onError: setNewError,
   });
 
@@ -441,8 +447,7 @@ export function App() {
         const path = arg && clean(arg);
         if (!backend || !path) return false;
         // A console tab keeps its console: the notebook gets a tab (#729).
-        if (consoleTab) openTab({ path });
-        else setOpenPath(path);
+        openNotebook(path);
         return true;
       }
       case 'new-duckdb-console':
@@ -878,7 +883,7 @@ export function App() {
             openPath={openPath}
             root={sidebarRoot}
             onOpen={path => {
-              setOpenPath(path);
+              openNotebook(path);
               afterPick();
             }}
             onOpenFile={
@@ -968,7 +973,7 @@ export function App() {
                 key={`${backend.config.kind}:duck:${duckId}`}
                 backend={backend}
                 folder={duckFolder}
-                onOpenNotebook={consoleTab ? openInTab : setOpenPath}
+                onOpenNotebook={openNotebook}
               />
             ) : backend && openPath ? (
               <NotebookPane
@@ -996,7 +1001,7 @@ export function App() {
                     const { contents, kernelspecs } = backend.services;
                     const path = await copySample(contents, folder, kernelspecs.specs);
                     // Not if the backend changed while the copy ran.
-                    if (backendRef.current === backend) setOpenPath(path);
+                    if (backendRef.current === backend) openNotebook(path);
                   })
                 }
               />

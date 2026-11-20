@@ -177,6 +177,10 @@ final class WindowTargetTests: XCTestCase {
         guard case .console(let root, _)? = WindowTarget(page: URL(string: "http://127.0.0.1:8123/?console=duckdb")!)
         else { return XCTFail("not a console") }
         XCTAssertEqual(root.path, "/")
+        // A notebook wins over `console`, as the page reads its URL.
+        XCTAssertEqual(
+            WindowTarget(page: URL(string: "http://127.0.0.1:8123/?open=a.ipynb&console=duckdb")!),
+            .file(URL(fileURLWithPath: "/a.ipynb")))
         // Any other value of `console` is no console.
         XCTAssertEqual(
             WindowTarget(page: URL(string: "http://127.0.0.1:8123/?dir=Users&console=sql")!),

@@ -79,11 +79,12 @@ enum WindowTarget: Codable, Hashable {
             } else {
                 self = Self.machine(machine, path: path("dir") ?? "", isFolder: true)!
             }
+        } else if let file = path("open") {
+            // A notebook wins over `console`, as the page's `readLaunch` has it.
+            self = .file(URL(fileURLWithPath: "/" + file, isDirectory: false).standardizedFileURL)
         } else if items.first(where: { $0.name == "console" })?.value == "duckdb" {
             let folder = path("dir").map { "/" + $0 } ?? "/"
             self = .console(folder: URL(fileURLWithPath: folder, isDirectory: true), id: UUID())
-        } else if let file = path("open") {
-            self = .file(URL(fileURLWithPath: "/" + file, isDirectory: false).standardizedFileURL)
         } else {
             let folder = path("dir").map { "/" + $0 } ?? "/"
             self = .folder(URL(fileURLWithPath: folder, isDirectory: true))

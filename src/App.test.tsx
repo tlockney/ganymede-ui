@@ -21,7 +21,20 @@ const mocks = vi.hoisted(() => ({
   loadHostGrants: vi.fn(),
   /** The last pane's `onRenamed`. */
   onRenamed: undefined as undefined | ((from: string, to: string) => void),
+  /** Stands in for the examples' copy when a test sets it. */
+  copyExamples: undefined as undefined | (() => Promise<string>),
 }));
+
+vi.mock('./lib/examples', async importOriginal => {
+  const real = await importOriginal<typeof import('./lib/examples')>();
+  return {
+    ...real,
+    copyExamples: ((...args: Parameters<typeof real.copyExamples>) =>
+      mocks.copyExamples
+        ? mocks.copyExamples()
+        : real.copyExamples(...args)) as typeof real.copyExamples,
+  };
+});
 
 vi.mock('./lib/backends', async importOriginal => ({
   ...(await importOriginal<object>()),
@@ -103,6 +116,7 @@ const { resetOnboardingForTests } = await import('./lib/onboarding');
 
 beforeEach(() => {
   mocks.controller = undefined;
+  mocks.copyExamples = undefined;
   mocks.signedInHere.mockReset().mockResolvedValue(false);
   localStorage.clear();
   resetOnboardingForTests();
@@ -1027,6 +1041,38 @@ describe('App', () => {
       expect(await window.ganymede!.command('new-duckdb-console', 'moons')).toBe(true);
       expect(opened.at(-1)).toEqual({ console: 'duckdb', folder: 'moons' });
       expect(screen.getAllByTestId('duck-console')).toHaveLength(1);
+      vi.unstubAllGlobals();
+    });
+
+    it('opens new and example notebooks in tabs from a console tab', async () => {
+      const { opened } = stubApp(true);
+      const fake = fakeServices({ '': [{ name: 'moons', type: 'directory' }], moons: [] });
+      fake.contents.newUntitled.mockResolvedValue(
+        entry({ name: 'Untitled.ipynb', path: 'moons/Untitled.ipynb', type: 'notebook' }),
+      );
+      fake.contents.get.mockImplementation(async (path: string) =>
+        path.endsWith('.ipynb')
+          ? entry({ name: path, type: 'notebook', content: { metadata: {}, cells: [] } })
+          : entry({ name: '', path: '', type: 'directory', content: [] }),
+      );
+      mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+      mocks.copyExamples = async () => 'moons/Examples/Intro.ipynb';
+      history.replaceState(null, '', '/?kernels=server&chrome=native&dir=moons&console=duckdb');
+      render(<App />);
+      await screen.findByTestId('duck-console');
+
+      expect(await window.ganymede!.command('new-notebook', 'moons')).toBe(true);
+      expect(opened).toHaveLength(1);
+      expect(opened[0]).toMatchObject({
+        path: expect.stringMatching(/^moons\/Untitled.*\.ipynb$/),
+      });
+      expect(await window.ganymede!.command('open-examples', 'moons')).toBe(true);
+      expect(opened).toHaveLength(2);
+      expect(opened[1]).toEqual({ path: 'moons/Examples/Intro.ipynb' });
+      // The console stayed, and the URL never gained an `open`.
+      expect(screen.getByTestId('duck-console')).toBeInTheDocument();
+      expect(screen.queryByTestId('pane')).toBeNull();
+      expect(window.location.search).not.toContain('open=');
       vi.unstubAllGlobals();
     });
 
