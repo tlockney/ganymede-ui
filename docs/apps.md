@@ -271,8 +271,10 @@ display or error), text, image and JSON, so the next action can take any
 of them; used as text, it is its text. A cell that fails, a missing file
 or a run that outlasts its time limit stops the shortcut with the error.
 
-While such a run's cells run, the notebook shows "Ganymede" as running
-them, on a server that supports it.
+Run Notebook and Run Cell name "Ganymede" as the runner in the
+notebook's room (`execution_by`) while its cells run, for a view that
+shows who runs a cell (#702). Run Notebook with Parameters runs in a new
+kernel with no room, so it names no one.
 
 > [!NOTE]
 > **Unreleased.** Needs a Ganymede server built from `main` (after
