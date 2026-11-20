@@ -113,4 +113,21 @@ describe('usePlaces', () => {
     expect(remove).toHaveBeenCalledWith('ganymede-places', expect.any(Function));
     remove.mockRestore();
   });
+
+  it('catches a change made between its first render and its subscribe', () => {
+    window.ganymedePlaces = [{ id: null, name: 'This Mac' }];
+    let first = true;
+    const { result } = renderHook(() => {
+      const places = usePlaces();
+      if (first) {
+        first = false;
+        window.ganymedePlaces = [
+          { id: null, name: 'This Mac' },
+          { id: 'mini-1', name: 'm4mini' },
+        ];
+      }
+      return places;
+    });
+    expect(result.current.map(p => p.name)).toEqual(['This Mac', 'm4mini']);
+  });
 });
