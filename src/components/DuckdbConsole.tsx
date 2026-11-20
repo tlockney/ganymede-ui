@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { Annotation, EditorState } from '@codemirror/state';
+import { Annotation, Compartment, EditorState } from '@codemirror/state';
 import { syntaxHighlighting } from '@codemirror/language';
-import { Compartment } from '@codemirror/state';
 import { EditorView, keymap, placeholder } from '@codemirror/view';
 import { jupyterHighlightStyle } from '@jupyterlab/codemirror';
 import { Widget } from '@lumino/widgets';

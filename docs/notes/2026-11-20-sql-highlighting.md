@@ -21,8 +21,9 @@ one still highlights and doesn't throw.
 `jupyterlab.ts` passes the default languages through `withDuckdbSql`, which
 wraps `load` of Javascript, TypeScript, JSX and TSX and adds "DuckDB SQL"
 (alias `duckdb`, mime `text/x-duckdb`). Both import `sql-highlight` on demand,
-as JupyterLab lazy-loads lang-sql, so it stays out of the entry chunk (see
-the build note below). Rendered Markdown fences go through `languages.highlight`
+as JupyterLab lazy-loads lang-sql, so it stays out of the entry chunk: the
+build puts it in its own chunk, which the service worker precaches, so
+the console highlights offline. Rendered Markdown fences go through `languages.highlight`
 (the language's parser), so ` ```ts ` fences with `sql` templates and
 ` ```duckdb ` fences get it too. ` ```sql ` still uses JupyterLab's
 standard SQL, unchanged.

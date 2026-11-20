@@ -16,14 +16,13 @@ const DUCKDB_KEYWORDS =
   'attach detach macro exclude replace columns asof positional anti semi lambda ' +
   'tablesample reservoir bernoulli system ' +
   'force checkpoint vacuum export import database show ' +
-  'returning virtual generated always ignore respect nulls ' +
-  'epoch microseconds milliseconds';
+  'returning virtual generated always ignore respect nulls';
 
 const DUCKDB_TYPES =
   'hugeint uhugeint ubigint uinteger usmallint utinyint tinyint int1 int2 int4 int8 ' +
-  'float4 float8 struct map list union varint bignum bit bitstring blob bytea uuid json ' +
+  'float4 float8 struct union varint bignum bit bitstring blob bytea uuid json ' +
   'interval timestamptz timestamp_s timestamp_ms timestamp_ns datetime enum ' +
-  'varchar string text decimal';
+  'varchar decimal';
 
 /** PostgreSQL plus what DuckDB adds. */
 export const duckdbDialect = SQLDialect.define({
@@ -55,9 +54,7 @@ export function withSqlTemplates(support: LanguageSupport): LanguageSupport {
   const sqlParser: Parser = duckdbSql().language.parser;
   const language = (support.language as LRLanguage).configure({
     wrap: parseMixed((node, input): NestedParse | null => {
-      if (node.name !== 'TemplateString' || node.node.parent?.name !== 'TaggedTemplateExpression') {
-        return null;
-      }
+      if (node.name !== 'TemplateString') return null;
       if (tagName(node, (from, to) => input.read(from, to)) !== 'sql') return null;
       const closed = node.to - node.from > 1 && input.read(node.to - 1, node.to) === '`';
       const end = closed ? node.to - 1 : node.to;
@@ -80,11 +77,6 @@ export function withSqlTemplates(support: LanguageSupport): LanguageSupport {
 export function highlightSqlInto(el: HTMLElement, code: string): void {
   el.textContent = '';
   const tree = duckdbDialect.language.parser.parse(code);
-  let pos = 0;
-  const text = (to: number) => {
-    if (to > pos) el.appendChild(document.createTextNode(code.slice(pos, to)));
-    pos = to;
-  };
   highlightCode(
     code,
     tree,
@@ -94,12 +86,9 @@ export function highlightSqlInto(el: HTMLElement, code: string): void {
       span.className = classes;
       span.textContent = token;
       el.appendChild(span);
-      pos += token.length;
     },
     () => {
       el.appendChild(document.createTextNode('\n'));
-      pos += 1;
     },
   );
-  text(code.length);
 }

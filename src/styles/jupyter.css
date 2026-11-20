@@ -31,10 +31,6 @@
   --jp-ui-font-color1: var(--text);
   --jp-content-link-color: var(--accent);
 
-  /* JupyterLab colors numbers and keywords the same green; numbers take
-   * Xcode's colors instead. */
-  --jp-mirror-editor-number-color: #1c00cf;
-
   --cell-bg: #f5f5f7;
   --cell-border: rgba(0, 0, 0, 0.06);
 }
@@ -57,6 +53,19 @@
     /* --text-3 is too faint for prompts on the dark background. */
     --jp-cell-inprompt-font-color: var(--text-2);
     --jp-cell-outprompt-font-color: var(--text-2);
+  }
+}
+
+/* JupyterLab colors numbers and keywords the same green; numbers take
+ * Xcode's colors instead, in cells and in the DuckDB console (#708). */
+.notebook-page,
+.duck-console {
+  --jp-mirror-editor-number-color: #1c00cf;
+}
+
+@media (prefers-color-scheme: dark) {
+  .notebook-page,
+  .duck-console {
     --jp-mirror-editor-number-color: #d9c97c;
   }
 }
