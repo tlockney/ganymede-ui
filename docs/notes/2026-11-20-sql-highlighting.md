@@ -43,3 +43,13 @@ declaring them, and no package was added.
 Tests: `sql-highlight.test.ts` (tag forms that match and don't, interpolation,
 unterminated templates, dialect keywords, the static highlighter, the registry
 and Markdown-fence path) and `DuckdbConsole.test.tsx` (input and scrollback).
+
+Review follow-ups: `jupyterlab-sql.test.ts` renders Markdown through the
+app's own registry (`createStaticRendermime`), so the line in
+`jupyterlab.ts` that brings SQL to cells and Markdown has a test. If the
+`sql-highlight` chunk fails to load, JavaScript and TypeScript still load,
+with their templates plain. The PR also fixes the journal e2e test "fits a
+phone": it checked `isVisible()` on the closed sidebar's entry, which is
+still in the page off to the side, so on a fast file list it skipped Show
+Sidebar and its click landed on the empty state. It failed this PR's first
+CI run.

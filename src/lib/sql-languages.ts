@@ -17,11 +17,13 @@ export function withDuckdbSql(defaults: readonly IEditorLanguage[]): IEditorLang
     return {
       ...spec,
       async load() {
-        const [support, { withSqlTemplates }] = await Promise.all([
+        const [support, sql] = await Promise.all([
           load(),
-          import('./sql-highlight'),
+          // Without the SQL chunk (an old page after a deploy), the
+          // language still loads, with its templates plain.
+          import('./sql-highlight').catch(() => undefined),
         ]);
-        return withSqlTemplates(support);
+        return sql ? sql.withSqlTemplates(support) : support;
       },
     };
   });
