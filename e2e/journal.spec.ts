@@ -102,7 +102,7 @@ test('opens an agent’s notebook as a journal, and writes a note and a request'
     ]);
 
   // The same room as a notebook.
-  await page.getByRole('button', { name: 'Open as Notebook' }).click();
+  await journal.getByRole('button', { name: 'Open as Notebook' }).click();
   await expect(page.locator('.jp-Cell')).toHaveCount(5);
   await expect(journal).toBeHidden();
 });
