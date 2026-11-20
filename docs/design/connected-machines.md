@@ -99,9 +99,14 @@ only the app's own windows:
 - Before forwarding, it strips the page's `Cookie`, `Origin`, `_xsrf` and
   the local token, so no local credential reaches the machine (and the
   machine's tailnet `same_origin` check passes).
-- On `files` responses it sets its own sandbox CSP, the one Ganymede
-  sends for `/files`, whatever the machine sent, since a machine's HTML
-  lands on the app's origin.
+- On every forwarded HTTP response it sets its own sandbox CSP, whatever
+  the machine sent: the one Ganymede sends for `nbconvert` on
+  `nbconvert/html`, the one for `/files` on everything else. A machine's
+  HTML (a file, an export, an error page) lands on the app's origin, and
+  the machine may run an older or another Jupyter server.
+- It forwards only an allowlist of response headers and drops
+  `Set-Cookie`, so the machine's login or `_xsrf` cookie never reaches
+  the WebView's cookie store.
 - Off unless the person links a machine. No machine is linked by default.
 
 ### What a machine window doesn't get

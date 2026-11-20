@@ -29,3 +29,8 @@ Thomas's calls the same day: mobile is part of done; plain notebooks, not
 only journals; not tailnet-only (pairing, synced list, relay later); an
 unreachable machine's notebooks go read-only, no offline editing; Run
 Kernels On stays, moved into the kernel picker.
+
+The PR review added two more: the sandbox CSP goes on every forwarded
+response (`nbconvert/html` returns the machine's HTML too), and
+`Set-Cookie` is dropped, since the machine sets its login cookie on token
+requests.
