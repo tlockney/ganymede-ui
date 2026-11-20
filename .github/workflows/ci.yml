@@ -23,7 +23,7 @@ permissions:
 # read it from this file.
 env:
   # A tag downloads the release's XCFramework; a commit builds it.
-  GANYMEDE_REF: v0.13.1
+  GANYMEDE_REF: f5d2c97152d0d52b6b52bff5cf9aa9aa9103f55a
 
 # A new push to a pull request cancels its older run; runs on main finish.
 concurrency:

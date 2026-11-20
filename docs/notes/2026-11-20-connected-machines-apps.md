@@ -12,14 +12,13 @@ reads it; a malformed id is dropped, never put in a path.
 
 Decisions:
 
-- **The C functions are behind `GANYMEDE_FFI_MACHINES`.** `GANYMEDE_REF`
-  (v0.13.1) lacks them and nothing in the project weak-links or `dlsym`s
-  newer symbols, so `ServerHost.addMachine` / `removeMachine` compile only
-  with that flag (off by default) and `ServerHost.machinesSupported` is
-  false without it: the app then lists no machines. The flag-on Swift is
-  written against the header of #894 (tlockney/ganymede PR #900), so
-  turn the flag on in project.yml once `GANYMEDE_REF` moves to a release
-  that has it.
+- **The C functions are behind `GANYMEDE_FFI_MACHINES`.** Nothing in the
+  project weak-links or `dlsym`s newer symbols, so `ServerHost.addMachine`
+  / `removeMachine` compile only with that flag, and
+  `ServerHost.machinesSupported` is false without it (the app then lists no
+  machines). project.yml sets it on the Ganymede and Ganymede-iOS targets,
+  with `GANYMEDE_REF` moved to v0.14.0, the first Ganymede release with the
+  mount (#894); a build from an older ref drops the flag.
 - **A machine window uses the page's own chrome.** The native Mac sidebar,
   toolbar and `PageModel` read this device's files (`FileManager`) and
   state, so a machine window loads the page without `chrome=native`: the

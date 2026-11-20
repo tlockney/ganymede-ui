@@ -54,11 +54,10 @@ final class ServerHost: @unchecked Sendable {
 
     /// Whether this build can mount machines (#701). The C functions
     /// `ganymede_server_add_machine` and `ganymede_server_remove_machine`
-    /// (ganymede#894) are in the XCFramework only from the Ganymede release
-    /// that has the mount; until `GANYMEDE_REF` is one, the build leaves
-    /// them out, and the app shows no machines. Build with
-    /// `SWIFT_ACTIVE_COMPILATION_CONDITIONS = GANYMEDE_FFI_MACHINES` (in
-    /// project.yml) once it is.
+    /// (ganymede#894) are in the XCFramework from Ganymede v0.14.0. project.yml
+    /// sets `GANYMEDE_FFI_MACHINES` for the apps; without it (a build from
+    /// an older `GANYMEDE_REF`) they are left out and the app shows no
+    /// machines.
     #if GANYMEDE_FFI_MACHINES
     static let machinesSupported = true
     #else

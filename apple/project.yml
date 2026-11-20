@@ -246,6 +246,9 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.ganymede-server.Ganymede
         ENABLE_HARDENED_RUNTIME: YES
+        # Connected machines (#701): the XCFramework has the mount's C
+        # functions from Ganymede v0.14.0 (GANYMEDE_REF in ci.yml).
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) GANYMEDE_FFI_MACHINES
         ENABLE_USER_SCRIPT_SANDBOXING: NO
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         # Empty except in release builds (release-app.sh, #411).
@@ -568,6 +571,9 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.ganymede-server.Ganymede
         PRODUCT_NAME: Ganymede
         TARGETED_DEVICE_FAMILY: '1,2'
+        # Connected machines (#701): the XCFramework has the mount's C
+        # functions from Ganymede v0.14.0 (GANYMEDE_REF in ci.yml).
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: $(inherited) GANYMEDE_FFI_MACHINES
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         # release-ios.sh names its App Store profile here, for this target
         # only: on the command line it would reach the packages' targets,
