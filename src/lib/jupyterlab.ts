@@ -90,9 +90,10 @@ import '@jupyterlab/documentsearch/style/index.js';
 import '@jupyterlab/cell-toolbar/style/index.js';
 
 import { liveMarkdownPreview } from './markdown-preview';
+import { withDuckdbSql } from './sql-languages';
 
 const languages = new EditorLanguageRegistry();
-for (const language of EditorLanguageRegistry.getDefaultLanguages()) {
+for (const language of withDuckdbSql(EditorLanguageRegistry.getDefaultLanguages())) {
   languages.addLanguage(language);
 }
 

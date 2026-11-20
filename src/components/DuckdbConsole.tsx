@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Annotation, EditorState } from '@codemirror/state';
+import { syntaxHighlighting } from '@codemirror/language';
+import { Compartment } from '@codemirror/state';
 import { EditorView, keymap, placeholder } from '@codemirror/view';
+import { jupyterHighlightStyle } from '@jupyterlab/codemirror';
 import { Widget } from '@lumino/widgets';
 import type { IRenderMime } from '@jupyterlab/rendermime-interfaces';
 import type { Backend } from '../lib/backends';
@@ -35,6 +38,31 @@ type Entry = {
 };
 
 const count = (n: number) => n.toLocaleString('en-US');
+
+// lang-sql loads on demand, as JupyterLab's own SQL language does; until it
+// has, the console's SQL shows as plain text.
+const sqlHighlight = () => import('../lib/sql-highlight');
+
+/** A statement as typed, highlighted as DuckDB SQL (#708). */
+function SqlText({ sql }: { sql: string }) {
+  const host = useRef<HTMLPreElement>(null);
+  useLayoutEffect(() => {
+    const el = host.current;
+    if (!el) return;
+    el.textContent = sql;
+    let gone = false;
+    void sqlHighlight().then(
+      m => {
+        if (!gone) m.highlightSqlInto(el, sql);
+      },
+      () => {},
+    );
+    return () => {
+      gone = true;
+    };
+  }, [sql]);
+  return <pre className="duck-sql" ref={host} />;
+}
 
 /** One statement's rows in the table renderer: sort, page and filter as in a notebook. */
 function ResultTable({ resource }: { resource: TableResource }) {
@@ -184,11 +212,14 @@ export function DuckdbConsole({ backend, folder, onOpenNotebook }: Props) {
       void submitRef.current(t);
       return true;
     };
+    const language = new Compartment();
     const v = new EditorView({
       parent: el,
       state: EditorState.create({
         extensions: [
           EditorView.lineWrapping,
+          language.of([]),
+          syntaxHighlighting(jupyterHighlightStyle),
           placeholder('select 42; — Enter runs a line ending in ;, Shift-Enter runs'),
           EditorView.contentAttributes.of({ 'aria-label': 'SQL', spellcheck: 'false' }),
           keymap.of([
@@ -237,7 +268,15 @@ export function DuckdbConsole({ backend, folder, onOpenNotebook }: Props) {
     });
     view.current = v;
     v.focus();
+    let gone = false;
+    void sqlHighlight().then(
+      m => {
+        if (!gone) v.dispatch({ effects: language.reconfigure(m.duckdbSql()) });
+      },
+      () => {},
+    );
     return () => {
+      gone = true;
       view.current = undefined;
       v.destroy();
     };
@@ -299,7 +338,7 @@ export function DuckdbConsole({ backend, folder, onOpenNotebook }: Props) {
       <div className="duck-log" ref={log} aria-live="polite">
         {entries.map(e => (
           <section className="duck-entry" key={e.id} data-state={e.state}>
-            <pre className="duck-sql">{e.sql}</pre>
+            <SqlText sql={e.sql} />
             {e.state === 'running' && <p className="subtle duck-status">Running…</p>}
             {e.state === 'error' && (
               <p className="duck-error" role="alert">
