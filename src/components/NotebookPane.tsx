@@ -801,20 +801,28 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
     /** The kernel last seen dead or cut off, so each says so once. */
     let dead: unknown;
     let lost: unknown;
-    /** The kernel whose info reply `kernelVersion` shows, and whether it was restarting. */
-    let versionOf: Kernel.IKernelConnection | null | undefined;
-    let restarting = false;
-    const readVersion = (kernel: Kernel.IKernelConnection, reply: () => Promise<unknown>) => {
-      Promise.resolve()
-        .then(reply)
-        .then(
-          info => {
-            // The kernel went, or restarted again, while the reply was due.
-            if (versionOf === kernel && !kernel.isDisposed)
-              setKernelVersion(kernelVersionLine(info));
-          },
-          () => {},
-        );
+    /** The kernel whose kernel_info_reply `kernelVersion` shows. */
+    let versionOf: Kernel.IKernelConnection | null = null;
+    /** Stops listening to that kernel's messages. */
+    let unwatch = () => {};
+    /** A reply came in for it, so `kernel.info`'s first one is no longer news. */
+    let replied = false;
+    /**
+     * A restart began and the connection hasn't gone down and come back:
+     * until then a reply is from the old kernel (the old socket stays
+     * open until the restart request returns).
+     */
+    let waiting = false;
+    let sawDown = false;
+    const watchVersion = (kernel: Kernel.IKernelConnection) => {
+      const onMessage = (_: unknown, { msg, direction }: Kernel.IAnyMessageArgs) => {
+        if (direction !== 'recv' || msg.header.msg_type !== 'kernel_info_reply') return;
+        if (waiting || kernel.isDisposed) return;
+        replied = true;
+        setKernelVersion(kernelVersionLine(msg.content));
+      };
+      kernel.anyMessage.connect(onMessage);
+      unwatch = () => kernel.anyMessage.disconnect(onMessage);
     };
     const update = () => {
       const kernel = session.session?.kernel;
@@ -854,24 +862,37 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       }
       setKernelName(kernel?.name);
       setKernelId(kernel?.id);
-      // The kernel's info reply: a new kernel's first one, then each
-      // restart's (the connection's `info` keeps the first).
+      // The kernel's kernel_info_reply, which the connection requests each
+      // time it connects: so a start, a switch and a restart each give one.
       const restartingNow = kernel?.status === 'restarting' || kernel?.status === 'autorestarting';
       if (!kernel || kernel.isDisposed || kernel.status === 'dead') {
+        unwatch();
         versionOf = null;
-        restarting = false;
         setKernelVersion(undefined);
       } else if (versionOf !== kernel) {
+        unwatch();
         versionOf = kernel;
-        restarting = restartingNow;
+        replied = false;
+        waiting = restartingNow;
+        sawDown = false;
         setKernelVersion(undefined);
-        readVersion(kernel, () => kernel.info);
-      } else if (restartingNow) {
-        if (!restarting) setKernelVersion(undefined);
-        restarting = true;
-      } else if (restarting && kernel.connectionStatus === 'connected') {
-        restarting = false;
-        readVersion(kernel, async () => (await kernel.requestKernelInfo())?.content);
+        watchVersion(kernel);
+        // A reply that came before this listened: `info` holds the first.
+        kernel.info.then(
+          info => {
+            if (versionOf === kernel && !replied && !waiting)
+              setKernelVersion(kernelVersionLine(info));
+          },
+          () => {},
+        );
+      } else if (restartingNow && !waiting) {
+        waiting = true;
+        sawDown = false;
+        setKernelVersion(undefined);
+      }
+      if (waiting) {
+        if (kernel?.connectionStatus !== 'connected') sawDown = true;
+        else if (sawDown) waiting = false;
       }
       setDirty(model.dirty);
       setTrusted(!hasUntrustedOutputs(model));
@@ -884,6 +905,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
     model.stateChanged.connect(update);
     model.contentChanged.connect(update);
     return () => {
+      unwatch();
       runStatus.busyChanged.disconnect(update);
       session.statusChanged.disconnect(update);
       session.connectionStatusChanged.disconnect(update);
@@ -1251,7 +1273,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       status,
       kernelName: kernelName ?? intended.name,
       missingKernel: kernelName ? undefined : intended.missing,
-      kernelVersionLine: kernelName ? kernelVersion : undefined,
+      kernelVersionLine: kernelVersion,
       dirty,
       trusted,
       cellType,

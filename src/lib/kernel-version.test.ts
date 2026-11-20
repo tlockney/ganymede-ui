@@ -22,6 +22,31 @@ describe('kernelVersionLine', () => {
     ).toBe('ipython 8.20.0');
   });
 
+  it('keeps a dated or dashed runtime version whole, and handles other runtimes', () => {
+    expect(
+      kernelVersionLine({
+        implementation: 'cdp-kernel',
+        implementation_version: '0.14.0',
+        banner: 'cdp-kernel on workerd 2026-10-15 (V8 13)',
+      }),
+    ).toBe('cdp-kernel 0.14.0 · workerd 2026-10-15');
+    expect(
+      kernelVersionLine({
+        implementation: 'cdp-kernel',
+        implementation_version: '0.14.0',
+        banner: 'cdp-kernel on deno 2.1.4 (V8 13)',
+      }),
+    ).toBe('cdp-kernel 0.14.0 · deno 2.1.4');
+    // A Miniflare banner that names no runtime.
+    expect(
+      kernelVersionLine({
+        implementation: 'cdp-kernel',
+        implementation_version: '0.14.0',
+        banner: 'cdp-kernel in Miniflare',
+      }),
+    ).toBe('cdp-kernel 0.14.0');
+  });
+
   it('shows the name alone without a version', () => {
     expect(kernelVersionLine({ implementation: 'xeus-cpp', implementation_version: '' })).toBe(
       'xeus-cpp',

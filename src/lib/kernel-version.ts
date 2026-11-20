@@ -1,10 +1,11 @@
 /**
  * The runtime in a kernel's banner, when it names one the way cdp-kernel
- * does ("cdp-kernel on node 24.11.0 (V8 …)"): `node 24.11.0`.
+ * does ("cdp-kernel on node 24.11.0 (V8 …)"): `node 24.11.0`; a date or
+ * other dotted or dashed version ("on workerd 2026-10-15 (V8)") stays whole.
  */
 function bannerRuntime(banner: unknown): string | undefined {
   if (typeof banner !== 'string') return undefined;
-  const m = /\bon ([A-Za-z][\w.-]*) v?(\d+(?:\.\d+)*)/.exec(banner);
+  const m = /\bon ([A-Za-z][\w.-]*) v?(\d[\w.-]*)/.exec(banner);
   return m ? `${m[1]} ${m[2]}` : undefined;
 }
 
