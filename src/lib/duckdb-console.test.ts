@@ -4,9 +4,11 @@ import {
   ConsoleSession,
   History,
   consoleNotebook,
+  distinctNames,
   dotCommand,
   endsStatement,
   filePaths,
+  fromStream,
   limitFor,
   locate,
   resultTable,
@@ -33,6 +35,31 @@ describe('statementsOf', () => {
       'select 2',
     ]);
     expect(statementsOf(`select 'it''s;ok'; select 2`)).toEqual([`select 'it''s;ok'`, 'select 2']);
+  });
+  it("reads E'...' escape strings, where a backslash escapes the next character", () => {
+    expect(statementsOf(`select E'it\\'s; here'; select 2`)).toEqual([
+      `select E'it\\'s; here'`,
+      'select 2',
+    ]);
+    expect(statementsOf(`select e'a\\\\'; select 2`)).toEqual([`select e'a\\\\'`, 'select 2']);
+    expect(endsStatement(`select E'it\\'s; here';`)).toBe(true);
+    // Still open: the quote after the backslash is escaped.
+    expect(endsStatement(`select E'it\\'; select 2;`)).toBe(false);
+    // A doubled quote works in one too.
+    expect(statementsOf(`select E'it''s; ok'; select 2`)).toEqual([
+      `select E'it''s; ok'`,
+      'select 2',
+    ]);
+  });
+  it('does not take a backslash as an escape outside an E string', () => {
+    // `'a\'` is the string `a\`: the quote ends it, and the next `;` ends the statement.
+    expect(statementsOf(`select 'a\\'; select 2`)).toEqual([`select 'a\\'`, 'select 2']);
+    // An E at the end of a longer word is not the prefix.
+    expect(statementsOf(`select name'a\\'; select 2`)).toEqual([`select name'a\\'`, 'select 2']);
+    expect(statementsOf(`select 1 as e, 'a\\'; select 2`)).toEqual([
+      `select 1 as e, 'a\\'`,
+      'select 2',
+    ]);
   });
   it('skips empty statements and comments alone', () => {
     expect(statementsOf(';; -- nothing\n; /* x */ ;')).toEqual([]);
@@ -128,21 +155,104 @@ describe('History', () => {
   });
 });
 
+describe('distinctNames', () => {
+  it('keeps the first name and numbers the rest as DuckDB does', () => {
+    expect(distinctNames(['x', 'x'])).toEqual(['x', 'x_1']);
+    expect(distinctNames(['x', 'x', 'x'])).toEqual(['x', 'x_1', 'x_2']);
+    expect(distinctNames(['a', 'b', 'a', 'd'])).toEqual(['a', 'b', 'a_1', 'd']);
+    // The same as DuckDB gives for these (checked on the real engine).
+    expect(distinctNames(['x', 'x', 'x_1'])).toEqual(['x', 'x_1', 'x_1_1']);
+    expect(distinctNames(['x_1', 'x', 'x', 'x_1'])).toEqual(['x_1', 'x', 'x_2', 'x_1_1']);
+    expect(distinctNames(['X', 'x'])).toEqual(['X', 'x_1']);
+  });
+});
+
 describe('file paths', () => {
-  it('finds quoted data files, once each, and no others', () => {
+  it('finds the files a FROM, a JOIN or a read_ function names, once each, and no others', () => {
     expect(
       filePaths(
         `select * from 'data/moons.csv' join 'data/moons.csv' using (id) join "x.csv" join 'y.TSV'
          where a = 'b.json' or c = 'notes.txt' or d = 'x.parquet' -- 'z.csv'
          /* 'w.csv' */ and e = $$q.csv$$`,
       ),
-    ).toEqual(['data/moons.csv', 'y.TSV', 'b.json', 'x.parquet']);
+    ).toEqual(['data/moons.csv', 'y.TSV']);
     // A name that is only an extension is a hidden file, not a data file.
-    expect(filePaths(`select '.csv', 'data/.json', 'a.csv'`)).toEqual(['a.csv']);
+    expect(filePaths(`select * from '.csv'`)).toEqual([]);
+    expect(filePaths(`select * from 'data/.json'`)).toEqual([]);
+  });
+  it('reads the table after FROM and after any JOIN, past blanks and comments', () => {
+    expect(filePaths(`select * from 'a.csv'`)).toEqual(['a.csv']);
+    expect(filePaths(`SELECT * FROM\n  /* the moons */ -- note\n  'a.csv'`)).toEqual(['a.csv']);
+    for (const join of [
+      'join',
+      'inner join',
+      'left join',
+      'left outer join',
+      'right join',
+      'full outer join',
+      'cross join',
+      'natural join',
+      'semi join',
+      'anti join',
+      'asof join',
+      'positional join',
+      'lateral join',
+    ]) {
+      expect(filePaths(`select * from t ${join} 'b.parquet'`)).toEqual(['b.parquet']);
+    }
+    expect(filePaths(`select * from (select * from 'a.csv') t join 'b.json' on true`)).toEqual([
+      'a.csv',
+      'b.json',
+    ]);
+  });
+  it('reads a string after a comma of a FROM list', () => {
+    expect(filePaths(`select * from x, 'c.csv'`)).toEqual(['c.csv']);
+    expect(filePaths(`select * from x as t, y, 'c.csv' u, 'd.tsv'`)).toEqual(['c.csv', 'd.tsv']);
+    expect(filePaths(`select * from read_csv('a.csv'), 'b.csv'`)).toEqual(['a.csv', 'b.csv']);
+    expect(filePaths(`select * from (select 1) t, 'c.csv' where a = 1`)).toEqual(['c.csv']);
+    // Commas elsewhere are not a FROM list.
+    expect(filePaths(`select a, 'c.csv' from t`)).toEqual([]);
+    expect(filePaths(`select * from t where a in (1, 'c.csv')`)).toEqual([]);
+    expect(filePaths(`select * from t group by a, 'c.csv'`)).toEqual([]);
+    expect(filePaths(`select * from t order by a, 'c.csv'`)).toEqual([]);
+    expect(filePaths(`select * from t where f(a, 'c.csv')`)).toEqual([]);
+    expect(filePaths(`select * from t limit 1; select a, 'c.csv'`)).toEqual([]);
+  });
+  it('reads the first argument of a read_ function, in any case', () => {
+    expect(filePaths(`select * from read_csv('d.csv', header=true)`)).toEqual(['d.csv']);
+    expect(filePaths(`select * from READ_PARQUET ( 'e.parquet' )`)).toEqual(['e.parquet']);
+    for (const f of [
+      'read_csv',
+      'read_csv_auto',
+      'read_parquet',
+      'read_json',
+      'read_json_auto',
+      'read_ndjson',
+      'read_text',
+    ]) {
+      expect(filePaths(`select count(*) from ${f}('f.csv')`)).toEqual(['f.csv']);
+    }
+    // Only the first argument, and only a read_ function's.
+    expect(filePaths(`select * from read_csv('a.csv', columns = 'b.csv')`)).toEqual(['a.csv']);
+    expect(filePaths(`select * from read_csv(x, 'b.csv')`)).toEqual([]);
+    expect(filePaths(`select upper('g.csv'), lower('h.json')`)).toEqual([]);
+  });
+  it('leaves a string anywhere else alone, so valid SQL is not refused', () => {
+    expect(filePaths(`select * from t where src = 'big.parquet'`)).toEqual([]);
+    expect(filePaths(`select '../x.csv'`)).toEqual([]);
+    expect(filePaths(`select 'a.csv' as name, 'b.json' from t`)).toEqual([]);
+    expect(filePaths(`select * from t where src is distinct from 'a.csv'`)).toEqual([]);
+    expect(filePaths(`insert into t values ('a.csv')`)).toEqual([]);
+    expect(filePaths(`select * from t -- from 'a.csv'\n where x = 1`)).toEqual([]);
+    expect(filePaths(`select * from t /* join 'a.csv' */`)).toEqual([]);
+    expect(filePaths(`select read_csv_x, 'a.csv' from t`)).toEqual([]);
+    expect(filePaths(`select * from "a.csv"`)).toEqual([]);
+    expect(filePaths(`select * from $$a.csv$$`)).toEqual([]);
+    expect(filePaths(`select * from E'a.csv'`)).toEqual([]);
   });
   it('reads a doubled quote as one', () => {
     expect(filePaths(`select * from 'it''s.csv'`)).toEqual(["it's.csv"]);
-    expect(filePaths(`select 'unterminated.csv`)).toEqual([]);
+    expect(filePaths(`select * from 'unterminated.csv`)).toEqual([]);
   });
   it('locates a path from the folder, and refuses one outside it', () => {
     expect(locate('data/moons.csv', '')).toEqual({ local: 'data/moons.csv' });
@@ -246,7 +356,26 @@ describe('resultTable', () => {
     )!;
     expect(t.total).toBe(3);
     expect(t.resource.data).toHaveLength(2);
-    expect(t.resource.schema?.fields?.map(f => f.name)).toEqual(['a', 'a_2']);
+    expect(t.resource.schema?.fields?.map(f => f.name)).toEqual(['a', 'a_1']);
+  });
+  it('numbers rows across the batches of a streamed result', () => {
+    const batch = (values: number[]) => ({
+      numRows: values.length,
+      getChildAt: () => ({ get: (r: number) => values[r] }),
+    });
+    const result = fromStream({
+      schema: { fields: [{ name: 'n', type: { toString: () => 'Int32' } }] },
+      batches: [batch([0, 1, 2]), batch([3, 4]), batch([5])],
+      more: true,
+    });
+    expect(result.numRows).toBe(6);
+    const t = resultTable(result, undefined, 4)!;
+    expect(t.resource.data).toEqual([[0], [1], [2], [3]]);
+    expect(t.total).toBe(6);
+    expect(t.more).toBe(true);
+    expect(
+      resultTable(fromStream({ ...{ schema: result.schema }, batches: [], more: false }))?.total,
+    ).toBe(0);
   });
   it('has no table for no columns', () => {
     expect(resultTable(arrow([]))).toBeUndefined();
@@ -540,7 +669,8 @@ describe('ConsoleSession', () => {
     await s.run('select * from t -- c');
     expect(calls.described).toEqual(['describe select * from (\nselect * from t -- c\n)']);
     expect(calls.queries).toEqual([
-      'select cast(#1 as varchar) as "l", #2 as "n", #3 as "d", cast(#4 as varchar) as "w", ' +
+      'select cast(#1 as varchar) as "l", #2 as "n", cast(#3 as double) as "d", ' +
+        'cast(#4 as varchar) as "w", ' +
         'cast(#5 as varchar) as "a b" from (\nselect * from t -- c\n)',
     ]);
     // What ran is the statement as typed.
@@ -552,7 +682,7 @@ describe('ConsoleSession', () => {
       described([
         ['a', 'BIGINT'],
         ['b', 'VARCHAR'],
-        ['c', 'DATE'],
+        ['c', 'DOUBLE'],
       ]),
     );
     await new ConsoleSession(plain.engine, backendWith({}).backend, '').run('select 1');
@@ -560,6 +690,26 @@ describe('ConsoleSession', () => {
     const broken = standIn(undefined, () => new Error('Binder Error'));
     await new ConsoleSession(broken.engine, backendWith({}).backend, '').run('select 1');
     expect(broken.calls.queries).toEqual(['select 1']);
+  });
+
+  it('reads only the start of a big result when the engine can stream', async () => {
+    const stream = vi.fn(async (_sql: string, maxRows: number) => ({
+      schema: { fields: [{ name: 'n', type: { toString: () => 'Int32' } }] },
+      batches: [
+        { numRows: maxRows, getChildAt: () => ({ get: (r: number) => r }) },
+        { numRows: 2, getChildAt: () => ({ get: (r: number) => r + maxRows }) },
+      ],
+      more: true,
+    }));
+    const { engine, calls } = standIn();
+    const s = new ConsoleSession({ ...engine, stream }, backendWith({}).backend, '');
+    const ran = await s.run('select * from range(100000)');
+    expect(stream).toHaveBeenCalledWith('select * from range(100000)', 10_000);
+    // The whole result was never asked for: `query` only described it.
+    expect(calls.queries).toEqual([]);
+    expect(ran.shown?.resource.data).toHaveLength(10_000);
+    expect(ran.shown?.more).toBe(true);
+    expect(ran.shown?.total).toBe(10_002);
   });
 
   it('asks no types of a statement that isn’t a query', async () => {

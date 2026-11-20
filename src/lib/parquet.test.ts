@@ -72,7 +72,8 @@ describe('parquet', () => {
     expect(t.resource.schema?.fields?.map(f => f.type)).toEqual([
       'integer',
       'string',
-      'number',
+      // `i * 1.5` is a DECIMAL(38,1), wider than a double holds exactly: text.
+      'string',
       'boolean',
       'integer',
       'number',
@@ -87,7 +88,7 @@ describe('parquet', () => {
     const first = t.resource.data![0] as unknown[];
     expect(first[0]).toBe(0);
     expect(first[1]).toBe('row 0');
-    expect(first[2]).toBe(0);
+    expect(first[2]).toBe('0.0');
     expect(first[3]).toBe(true);
     // Past 2^53: kept exact, as text.
     expect(first[4]).toBe('9223372036854775807');

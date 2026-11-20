@@ -19,7 +19,7 @@ import { TooLarge, megabytes, readBytes } from './data-read';
 import { messageOf } from './problems';
 import { notFound } from './rename';
 import { type Cell, notebookOf } from './sample';
-import { plain, type ArrowLike, type Engine } from './parquet';
+import { columnFor, plain, quoteName, type ArrowLike, type Engine, type Streamed } from './parquet';
 import type { TableField, TableResource } from './table-output';
 
 // ---------- Reading SQL ----------
@@ -37,7 +37,8 @@ function dollarTag(text: string, i: number): string | undefined {
 }
 
 /**
- * The text as DuckDB's lexer splits it: code, `'strings'`, `"names"`,
+ * The text as DuckDB's lexer splits it: code, `'strings'` (and `E'escape
+ * strings'`, where `\'` is a quote), `"names"`,
  * `$$dollar strings$$` (also `string`), and `-- line` and nested
  * `/* block *\/` comments. A `;` or a quote inside any but code means
  * nothing to a statement.
@@ -50,30 +51,36 @@ function pieces(text: string): Piece[] {
     if (code) out.push({ kind: 'code', text: code, open: false });
     code = '';
   };
-  const quoted = (quote: string, kind: 'string' | 'name') => {
+  /**
+   * The quoted text from `start` (the quote is at `i`): up to the quote that
+   * ends it. A doubled quote is a quote in the text; in an escape string
+   * (`E'...'`) a backslash also takes the character after it.
+   */
+  const quoted = (quote: string, kind: 'string' | 'name', start = i, escapes = false) => {
     flush();
     let j = i + 1;
-    for (;;) {
-      const q = text.indexOf(quote, j);
-      if (q === -1) {
-        out.push({ kind, text: text.slice(i), open: true });
-        i = text.length;
+    while (j < text.length) {
+      const c = text[j];
+      if (escapes && c === '\\') j += 2;
+      else if (c !== quote) j++;
+      else if (text[j + 1] === quote) j += 2;
+      else {
+        out.push({ kind, text: text.slice(start, j + 1), open: false });
+        i = j + 1;
         return;
       }
-      // A doubled quote is a quote in the text.
-      if (text[q + 1] === quote) {
-        j = q + 2;
-        continue;
-      }
-      out.push({ kind, text: text.slice(i, q + 1), open: false });
-      i = q + 1;
-      return;
     }
+    out.push({ kind, text: text.slice(start), open: true });
+    i = text.length;
   };
   while (i < text.length) {
     const c = text[i]!;
-    if (c === "'") quoted("'", 'string');
-    else if (c === '"') quoted('"', 'name');
+    if (c === "'") {
+      // `E'...'`: the E belongs to the string, unless it ends a longer word.
+      const escapes = /[eE]$/.test(code) && !/[\w$\u0080-\uffff]/.test(text[i - 2] ?? '');
+      if (escapes) code = code.slice(0, -1);
+      quoted("'", 'string', escapes ? i - 1 : i, escapes);
+    } else if (c === '"') quoted('"', 'name');
     else if (c === '-' && text[i + 1] === '-') {
       flush();
       const nl = text.indexOf('\n', i);
@@ -260,19 +267,88 @@ function stringValue(p: Piece): string | undefined {
   return p.text.slice(1, -1).replaceAll("''", "'");
 }
 
+/** Keywords that end a FROM list at its own level of parentheses. */
+const ENDS_FROM = new Set([
+  'select',
+  'where',
+  'group',
+  'order',
+  'having',
+  'limit',
+  'offset',
+  'window',
+  'qualify',
+  'union',
+  'except',
+  'intersect',
+  'returning',
+  'set',
+  'values',
+  'using_sample',
+  'sample',
+]);
+
 /**
- * The quoted strings in the SQL that name a CSV, TSV, JSON or Parquet file,
- * as written, once each. Only `'single quoted'` strings: a `"name"` is an
- * identifier, and a string in a comment is not SQL.
+ * The strings in the SQL that DuckDB reads as a file name: the table
+ * reference after FROM or any JOIN (and after a comma of a FROM list), or
+ * the first argument of a `read_*` table function (`read_csv`,
+ * `read_parquet`, ...). A string anywhere else is a value (`where src =
+ * 'big.parquet'`, a select item, a function argument), so it is left alone.
+ * Only `'single quoted'` strings: a `"name"` is an identifier, and a string
+ * in a comment is not SQL.
  */
-export function filePaths(sql: string): string[] {
-  const found = new Set<string>();
+function fileReferences(sql: string): string[] {
+  type Token = { kind: 'word' | 'punct' | 'string'; text: string; value?: string };
+  const tokens: Token[] = [];
   for (const p of pieces(sql)) {
-    const v = stringValue(p);
-    // `.csv` alone is a hidden file, not a CSV file.
-    if (v !== undefined && FILE_EXTENSION.test(v) && dataKind(v)) found.add(v);
+    if (p.kind === 'comment') continue;
+    if (p.kind === 'string') {
+      tokens.push({ kind: 'string', text: p.text, value: stringValue(p) });
+    } else if (p.kind === 'name') {
+      tokens.push({ kind: 'punct', text: p.text });
+    } else {
+      for (const m of p.text.matchAll(/[\w$\u0080-\uffff]+|\S/g)) {
+        tokens.push({ kind: /^[\w$\u0080-\uffff]/.test(m[0]) ? 'word' : 'punct', text: m[0] });
+      }
+    }
   }
-  return [...found];
+  const found: string[] = [];
+  // For each level of parentheses: whether it is in a FROM list now.
+  const inFrom = [false];
+  tokens.forEach((t, i) => {
+    const prev = tokens[i - 1];
+    const word = t.kind === 'word' ? t.text.toLowerCase() : '';
+    if (t.kind === 'word') {
+      if (word === 'from' || word === 'join') {
+        inFrom[inFrom.length - 1] = !(
+          word === 'from' && tokens[i - 2]?.text.toLowerCase() === 'distinct'
+        );
+      } else if (ENDS_FROM.has(word)) inFrom[inFrom.length - 1] = false;
+    } else if (t.text === '(') inFrom.push(false);
+    else if (t.text === ')') {
+      if (inFrom.length > 1) inFrom.pop();
+    } else if (t.text === ';') inFrom[inFrom.length - 1] = false;
+    if (t.kind !== 'string' || t.value === undefined) return;
+    const prevWord = prev?.kind === 'word' ? prev.text.toLowerCase() : '';
+    const afterFrom =
+      prevWord === 'join' ||
+      (prevWord === 'from' && tokens[i - 2]?.text.toLowerCase() !== 'distinct') ||
+      (prev?.text === ',' && inFrom[inFrom.length - 1]);
+    const readerArg =
+      prev?.text === '(' &&
+      tokens[i - 2]?.kind === 'word' &&
+      tokens[i - 2]!.text.toLowerCase().startsWith('read_');
+    // `.csv` alone is a hidden file, not a CSV file.
+    if ((afterFrom || readerArg) && FILE_EXTENSION.test(t.value) && dataKind(t.value)) {
+      found.push(t.value);
+    }
+  });
+  return found;
+}
+
+/** The files the SQL reads (`fileReferences`), as written, once each. */
+export function filePaths(sql: string): string[] {
+  return [...new Set(fileReferences(sql))];
 }
 
 export type Located =
@@ -324,17 +400,50 @@ export function limitFor(kind: DataKind): number {
 
 // ---------- Results ----------
 
-/** What DuckDB's Arrow table gives the console, beyond `ArrowLike`. */
-export interface ArrowResult extends ArrowLike {
+/** What the console reads of a result: DuckDB's Arrow table, or the start of one. */
+export interface ResultRows {
   numRows: number;
+  /** Set when the result has more rows than `numRows`: it was read only so far. */
+  more?: boolean;
   schema: { fields: { name: string; type: { toString(): string; scale?: number } }[] };
   getChildAt(i: number): { get(row: number): unknown } | null;
 }
 
 export interface Shown {
   resource: TableResource;
-  /** Rows the statement returned, which may be more than the table holds. */
+  /**
+   * Rows the statement returned, which may be more than the table holds;
+   * when `more`, only the rows read before the result was cut off.
+   */
   total: number;
+  /** The result has more rows than `total`: its end was never read. */
+  more?: boolean;
+}
+
+/** What DuckDB's Arrow table gives the console, beyond `ArrowLike`. */
+export type ArrowResult = ArrowLike & ResultRows;
+
+/** A streamed result's batches as one result, rows numbered across them. */
+export function fromStream(streamed: Streamed): ResultRows {
+  const starts: number[] = [];
+  let numRows = 0;
+  for (const b of streamed.batches) {
+    starts.push(numRows);
+    numRows += b.numRows;
+  }
+  return {
+    numRows,
+    more: streamed.more,
+    schema: streamed.schema,
+    getChildAt: i => ({
+      get(row) {
+        // The last batch that starts at or before the row.
+        let k = starts.length - 1;
+        while (k > 0 && starts[k]! > row) k--;
+        return streamed.batches[k]?.getChildAt(i)?.get(row - starts[k]!);
+      },
+    }),
+  };
 }
 
 const INTEGER = /^(Int(8|16|32)|Uint(8|16|32))$/;
@@ -401,11 +510,35 @@ function columnType(name: string): TableField['type'] {
 }
 
 /**
+ * Names the table can tell apart: DuckDB allows two columns of one name,
+ * and names them as it does for a subquery: the first keeps the name, the
+ * next are `x_1`, `x_2`, ..., skipping a name that is taken (`x_1_1`), and
+ * names that differ only in case are the same.
+ */
+export function distinctNames(names: string[]): string[] {
+  // For each name (lower case): the suffix to try next; a name given out counts as taken.
+  const next = new Map<string, number>();
+  return names.map(base => {
+    const key = base.toLowerCase();
+    let n = next.get(key);
+    if (n === undefined) {
+      next.set(key, 1);
+      return base;
+    }
+    let name = `${base}_${n}`;
+    while (next.has(name.toLowerCase())) name = `${base}_${++n}`;
+    next.set(key, n + 1);
+    next.set(name.toLowerCase(), 1);
+    return name;
+  });
+}
+
+/**
  * A statement's rows for the table renderer, the first `maxRows` of them.
  * Undefined when it returned no columns (a `create`, say).
  */
 export function resultTable(
-  result: ArrowResult,
+  result: ResultRows,
   title?: string,
   maxRows = MAX_ROWS,
 ): Shown | undefined {
@@ -425,17 +558,10 @@ export function resultTable(
       }),
     );
   }
-  // Names the table can tell apart: DuckDB allows two columns of one name.
-  const seen = new Set<string>();
-  const names = fields.map((f, i) => {
-    const base = f.name || `column ${i + 1}`;
-    let name = base;
-    for (let n = 2; seen.has(name); n++) name = `${base}_${n}`;
-    seen.add(name);
-    return name;
-  });
+  const names = distinctNames(fields.map((f, i) => f.name || `column ${i + 1}`));
   return {
     total: result.numRows,
+    ...(result.more ? { more: true } : {}),
     resource: {
       schema: { fields: names.map((name, i) => ({ name, type: types[i] })) },
       data: types.some(
@@ -453,8 +579,6 @@ export function resultTable(
 }
 
 // ---------- A session ----------
-
-const quoteName = (name: string) => `"${name.replaceAll('"', '""')}"`;
 
 /** SQL for a dot command, or an error that says what it takes. */
 export function dotCommand(line: string): string {
@@ -485,7 +609,7 @@ export interface Ran {
  * DuckDB answers a `create` with an empty `Count` column and an `insert`,
  * `update` or `delete` with the rows it changed.
  */
-function summary(sql: string, result: ArrowResult): { shown?: Shown; message?: string } {
+function summary(sql: string, result: ResultRows): { shown?: Shown; message?: string } {
   const columns = result.schema.fields;
   if (columns.length === 1 && columns[0]!.name === 'Count') {
     if (result.numRows === 0) return { message: 'OK' };
@@ -510,20 +634,6 @@ const withoutComments = (sql: string) =>
     .filter(p => p.kind !== 'comment')
     .map(p => p.text)
     .join('');
-
-/** DuckDB types whose Arrow value is plain JavaScript: numbers that fit, booleans, text, dates. */
-function plainType(type: string): boolean {
-  if (
-    /^(TINYINT|SMALLINT|INTEGER|BIGINT|UTINYINT|USMALLINT|UINTEGER|UBIGINT|FLOAT|DOUBLE|BOOLEAN|VARCHAR|DATE)$/.test(
-      type,
-    )
-  ) {
-    return true;
-  }
-  // A decimal of up to 15 digits is exact as a double.
-  const digits = /^DECIMAL\((\d+),\d+\)$/.exec(type)?.[1];
-  return digits !== undefined && Number(digits) <= 15;
-}
 
 /**
  * One console: a DuckDB engine, which the tables you create stay in, and
@@ -608,7 +718,10 @@ export class ConsoleSession {
     }
     const shown = await this.forDisplay(sql);
     const t0 = performance.now();
-    const result = (await this.engine.query(shown)) as ArrowResult;
+    // Streamed where the engine can, so a big result isn't all brought here.
+    const result = this.engine.stream
+      ? fromStream(await this.engine.stream(shown, MAX_ROWS))
+      : ((await this.engine.query(shown)) as unknown as ResultRows);
     const ms = Math.round(performance.now() - t0);
     if (!dot) this.ran.push(statement);
     return { ...summary(sql, result), ms, files };
@@ -629,7 +742,7 @@ export class ConsoleSession {
     try {
       const described = (await this.engine.query(
         `describe select * from (\n${sql}\n)`,
-      )) as ArrowResult;
+      )) as ArrowLike;
       columns = described
         .toArray()
         .map(r => r.toJSON())
@@ -637,11 +750,10 @@ export class ConsoleSession {
     } catch {
       return sql;
     }
-    if (columns.every(c => plainType(c.type))) return sql;
-    const select = columns.map(
-      (c, i) =>
-        `${plainType(c.type) ? `#${i + 1}` : `cast(#${i + 1} as varchar)`} as ${quoteName(c.name)}`,
-    );
+    const refs = columns.map((_, i) => `#${i + 1}`);
+    const read = columns.map((c, i) => columnFor(c, refs[i]).select);
+    if (read.every((r, i) => r === refs[i])) return sql;
+    const select = columns.map((c, i) => `${read[i]} as ${quoteName(c.name)}`);
     return `select ${select.join(', ')} from (\n${sql}\n)`;
   }
 

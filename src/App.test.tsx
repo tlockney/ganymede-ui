@@ -987,6 +987,30 @@ describe('App', () => {
     confirm.mockRestore();
   });
 
+  it('keeps the DuckDB console open when deleting its folder fails (#679)', async () => {
+    const fake = fakeServices({ '': [{ name: 'moons', type: 'directory' }], moons: [] });
+    const remove = vi.fn(async () => {
+      throw new Error('Forbidden');
+    });
+    Object.assign(fake.services.contents, { delete: remove });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    history.replaceState(null, '', '/?kernels=server');
+    render(<App />);
+    await waitFor(() => expect(window.ganymede).toBeDefined());
+    expect(await window.ganymede!.command('new-duckdb-console', 'moons')).toBe(true);
+    const mount = (await screen.findByTestId('duck-console')).dataset.mount;
+
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    await userEvent.click(await screen.findByRole('button', { name: 'Actions for moons' }));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Delete…' }));
+    await waitFor(() => expect(remove).toHaveBeenCalledWith('moons'));
+    // The failure is reported, and nothing was deleted: the same console, in the same folder.
+    expect(await screen.findByText(/Forbidden/)).toBeInTheDocument();
+    expect(screen.getByTestId('duck-console')).toHaveAttribute('data-folder', 'moons');
+    expect(screen.getByTestId('duck-console').dataset.mount).toBe(mount);
+    confirm.mockRestore();
+  });
+
   it('closes the DuckDB console when the server changes, since its folder was the old one’s (#679)', async () => {
     const fake = fakeServices({ '': [] });
     Object.assign(fake.services, { dispose: vi.fn() });

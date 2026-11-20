@@ -9,7 +9,10 @@ import { DuckdbConsole } from './DuckdbConsole';
 
 // DuckDB itself runs in a worker; duckdb-console.real.test.ts covers the real package.
 const parquet = vi.hoisted(() => ({ openEngine: vi.fn() }));
-vi.mock('../lib/parquet', () => parquet);
+vi.mock('../lib/parquet', async importOriginal => ({
+  ...(await importOriginal<typeof import('../lib/parquet')>()),
+  ...parquet,
+}));
 
 function arrow(columns: [string, string, unknown[]][]): ArrowResult {
   return {
@@ -376,12 +379,110 @@ describe('DuckdbConsole', () => {
     ]);
   });
 
+  it('drops the result of a statement that ran on an engine the console has since replaced', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>(r => (release = r));
+    const engine = engineFor();
+    engine.query.mockImplementation(async () => {
+      await gate;
+      return MOONS;
+    });
+    const { opened, rerender } = setup();
+    await waitFor(() => expect(screen.queryByText('Starting DuckDB…')).toBeNull());
+    type('select * from moons;');
+    key('Enter');
+    expect(await screen.findByText('Running…')).toBeInTheDocument();
+    // A new backend means a new engine: the first one's answer is not this console's.
+    rerender(
+      <DuckdbConsole
+        backend={backend(fakeServices({ '': [] }))}
+        folder=""
+        onOpenNotebook={opened}
+      />,
+    );
+    await waitFor(() => expect(parquet.openEngine).toHaveBeenCalledTimes(2));
+    await act(async () => release());
+    await waitFor(() => expect(engine.close).toHaveBeenCalled());
+    expect(screen.queryByRole('table')).toBeNull();
+    expect(screen.getByText('Running…')).toBeInTheDocument();
+  });
+
+  it('drops the failure of an engine the console has since replaced', async () => {
+    let fail!: (e: unknown) => void;
+    parquet.openEngine.mockReturnValueOnce(new Promise((_, reject) => (fail = reject)));
+    const { opened, rerender } = setup();
+    // Typed while DuckDB is still starting: it waits for the engine.
+    type('select 1;');
+    key('Enter');
+    expect(await screen.findByText('Running…')).toBeInTheDocument();
+    engineFor();
+    rerender(
+      <DuckdbConsole
+        backend={backend(fakeServices({ '': [] }))}
+        folder=""
+        onOpenNotebook={opened}
+      />,
+    );
+    await waitFor(() => expect(parquet.openEngine).toHaveBeenCalledTimes(2));
+    await act(async () => fail(new Error('first engine failed')));
+    await waitFor(() => expect(screen.queryByText('Starting DuckDB…')).toBeNull());
+    expect(screen.queryByText(/first engine failed/)).toBeNull();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('leaves ↓ to the cursor on all but the last line of a recalled input, and ↓ to a selection', async () => {
+    engineFor();
+    setup();
+    await waitFor(() => expect(screen.queryByText('Starting DuckDB…')).toBeNull());
+    type('select\n1;');
+    key('Enter');
+    await screen.findByRole('table');
+    type('draft');
+    key('ArrowUp');
+    expect(typed()).toBe('select\n1;');
+    // Walking, the cursor on the first of two lines: ↓ moves the cursor, not the walk.
+    view().dispatch({ selection: { anchor: 0 } });
+    key('ArrowDown');
+    expect(typed()).toBe('select\n1;');
+    // A selection on the last line is for the cursor too.
+    view().dispatch({ selection: { anchor: 7, head: 9 } });
+    key('ArrowDown');
+    expect(typed()).toBe('select\n1;');
+    // From the end, ↓ goes on to what was typed.
+    view().dispatch({ selection: { anchor: 9 } });
+    key('ArrowDown');
+    expect(typed()).toBe('draft');
+  });
+
+  it('says a result it cut off has more rows than it shows', async () => {
+    const batch = (n: number) => ({ numRows: n, getChildAt: () => ({ get: (r: number) => r }) });
+    parquet.openEngine.mockResolvedValue({
+      register: vi.fn(),
+      query: async () => ({ toArray: () => [] }),
+      stream: async () => ({
+        schema: { fields: [{ name: 'i', type: { toString: () => 'Int64' } }] },
+        batches: [batch(10_240)],
+        more: true,
+      }),
+      close: async () => {},
+    });
+    setup();
+    await waitFor(() => expect(screen.queryByText('Starting DuckDB…')).toBeNull());
+    type('select * from range(100000);');
+    key('Enter');
+    expect(
+      await screen.findByText(/^more than 10,000 rows · \d+ ms · showing the first 10,000$/),
+    ).toBeInTheDocument();
+  });
+
   it('says when DuckDB does not start', async () => {
     parquet.openEngine.mockImplementation(async () => {
       throw new Error('no wasm');
     });
     setup();
     expect(await screen.findByRole('alert')).toHaveTextContent('DuckDB didn’t start: no wasm');
+    // The error replaces the starting line, which would otherwise stay for good.
+    expect(screen.queryByText('Starting DuckDB…')).toBeNull();
     expect(screen.getByRole('button', { name: 'Export to Notebook' })).toBeDisabled();
   });
 

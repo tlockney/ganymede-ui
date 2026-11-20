@@ -9,7 +9,7 @@ import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { fakeBackend, fakeServices } from '../test/fakes';
 import { ConsoleSession } from './duckdb-console';
-import type { ArrowLike, Engine } from './parquet';
+import { takeBatches, type ArrowLike, type Engine } from './parquet';
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Blocking = any;
@@ -34,6 +34,11 @@ async function nodeEngine(): Promise<{ engine: Engine; db: Blocking; conn: Block
     engine: {
       register: (name, bytes) => db.registerFileBuffer(name, bytes),
       query: sql => conn.query(sql) as ArrowLike,
+      // As openEngine streams, over the blocking build's connection.
+      stream: async (sql, maxRows) => {
+        const reader = await conn.send(sql, true);
+        return takeBatches(reader, maxRows, () => conn.cancelSent());
+      },
     },
   };
 }
@@ -144,7 +149,7 @@ describe('ConsoleSession on the real DuckDB', () => {
     ]);
     const two = await s.run('select 1 as x, 2 as x');
     expect(two.shown?.resource.data).toEqual([[1, 2]]);
-    expect(two.shown?.resource.schema?.fields?.map(f => f.name)).toEqual(['x', 'x_2']);
+    expect(two.shown?.resource.schema?.fields?.map(f => f.name)).toEqual(['x', 'x_1']);
   }, 60_000);
 
   it('shows nested and odd types as DuckDB writes them', async () => {
@@ -169,6 +174,14 @@ describe('ConsoleSession on the real DuckDB', () => {
     expect(await one('select 123456789012345678901234567890::hugeint as v')).toEqual([
       '123456789012345678901234567890',
     ]);
+    // The type map is parquet.ts's: a UBIGINT is a number while it fits, a wide decimal exact text.
+    expect(await one('select 7::ubigint as v')).toEqual([7]);
+    expect(await one('select 18446744073709551615::ubigint as v')).toEqual([
+      '18446744073709551615',
+    ]);
+    expect(await one('select 1.25::decimal(15, 2) as v')).toEqual([1.25]);
+    expect(await one('select 1.25::decimal(18, 2) as v')).toEqual(['1.25']);
+    expect(await one(`select date '2024-01-02' as v`)).toEqual(['2024-01-02']);
     // Plain columns stay typed beside them, and a repeated name is kept.
     const mixed = await s.run('select 1 as a, [1] as b, 2 as a, 2.5 as d');
     expect(mixed.shown?.resource.schema?.fields).toEqual([
@@ -185,5 +198,33 @@ describe('ConsoleSession on the real DuckDB', () => {
     // A statement that isn't a query runs as written.
     expect((await s.run('create table n as select [1] as l')).message).toBe('1 row affected');
     expect(await one('select l from n')).toEqual(['[1]']);
+  }, 60_000);
+
+  it('reads only the start of a big result, and keeps working after', async () => {
+    const { engine } = await nodeEngine();
+    const s = new ConsoleSession(engine, backendWith({}), '');
+    const big = await s.run('select * from range(50000)');
+    expect(big.shown?.resource.data).toHaveLength(10_000);
+    expect(big.shown?.resource.data?.[9_999]).toEqual([9_999]);
+    expect(big.shown?.more).toBe(true);
+    // Fewer rows than the result has were brought out of DuckDB: a few batches past the cap.
+    expect(big.shown!.total).toBeGreaterThan(10_000);
+    expect(big.shown!.total).toBeLessThan(50_000);
+    // The cut-off result leaves the connection usable.
+    expect((await s.run('select 7 as k')).shown?.resource.data).toEqual([[7]]);
+    // A result within the cap is read whole, with its exact count.
+    const small = await s.run('select * from range(9000)');
+    expect(small.shown?.total).toBe(9000);
+    expect(small.shown?.more).toBeUndefined();
+    // And so are results with no rows, and statements that return a count.
+    const none = await s.run('select 1 as a where false');
+    expect([none.shown?.total, none.shown?.resource.schema?.fields?.length]).toEqual([0, 1]);
+    expect((await s.run('create table r as select * from range(30000)')).message).toBe(
+      '30,000 rows affected',
+    );
+    expect((await s.run('select count(*) as n from r')).shown?.resource.data).toEqual([[30000]]);
+    const exact = await s.run('select * from r');
+    expect(exact.shown?.resource.data).toHaveLength(10_000);
+    expect(exact.shown!.total).toBeLessThan(30_000);
   }, 60_000);
 });

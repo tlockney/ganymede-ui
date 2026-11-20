@@ -971,10 +971,13 @@ pasted together run in order, and stop at the first error. **↑** and **↓**
 walk what you entered, an input at a time, when the cursor is on the first or last line.
 Each statement is kept above the box with its result: the rows as a table
 you sort, page and filter as in a notebook (the first 10,000 rows of a
-bigger result), or the row count, `OK`, or DuckDB's error, with the time
+bigger result, which the console stops reading there, so a very big result
+can't fill the device's memory; the line above the table says "more than
+10,000 rows" when it cut the result off), or the row count, `OK`, or DuckDB's error, with the time
 it took. An error stays in the scrollback and the console goes on.
 Lists, structs, maps, intervals, blobs, timestamps and decimals too wide for a
-double show as the text DuckDB writes for them. `.tables` shows the tables,
+double show as the text DuckDB writes for them; columns of one name are
+named as DuckDB names them (`x`, `x_1`, `x_2`). `.tables` shows the tables,
 and `.schema <table>` describes one; a dot command takes its line and may
 come between statements. An input entered while another still runs waits for it.
 
@@ -991,13 +994,18 @@ There is one DuckDB for as long as the console is open, so the tables you
 create stay between statements, and its worker ends when the console
 closes. Nothing is saved when it closes.
 
-A quoted path in a statement that names a CSV, TSV, JSON or Parquet file in
-the window's folder (`select * from 'data/moons.csv'`) reads the file
-through the server and gives it to DuckDB before the statement runs, the
-first time a statement names it. A path is relative to the window's folder,
-and `..` can't leave it; a URL or an absolute path is left to DuckDB, and
-only `'single quoted'` strings count. Any such string is read, wherever it
-is in the statement (`where src = 'big.parquet'` reads `big.parquet` too). A file is read in full, up to what
+A statement that names a CSV, TSV, JSON or Parquet file in the window's
+folder (`select * from 'data/moons.csv'`) has the file read through the
+server and given to DuckDB before the statement runs, the first time a
+statement names it. The console reads a `'single quoted'` string as a file
+only where DuckDB does: as the table right after `FROM` or any `JOIN`, or
+after a comma in a `FROM` list (`from moons, 'extra.csv'`), and as the first
+argument of a `read_` table function (`read_csv('data/moons.csv',
+header = true)`, `read_parquet`, `read_json_auto`, ...). A string anywhere
+else is a value and is left alone, so `where src = 'big.parquet'` and
+`select '../x.csv'` run as written and read nothing. A path is relative to
+the window's folder, and `..` can't leave it; a URL or an absolute path is
+left to DuckDB. A file is read in full, up to what
 the [data view](#data-files) holds in memory: 8 MB for a CSV or TSV, 16 MB
 for JSON and 64 MB for Parquet. A bigger file is refused with a note, since
 a query over part of a file would answer wrongly; a notebook on a kernel can

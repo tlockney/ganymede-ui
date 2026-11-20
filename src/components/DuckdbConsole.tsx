@@ -348,7 +348,9 @@ export function DuckdbConsole({ backend, folder, onOpenNotebook }: Props) {
               <>
                 <p className="subtle duck-status">
                   {e.ran.shown
-                    ? `${count(e.ran.shown.total)} ${e.ran.shown.total === 1 ? 'row' : 'rows'}`
+                    ? e.ran.shown.more
+                      ? `more than ${count(e.ran.shown.resource.data?.length ?? 0)} rows`
+                      : `${count(e.ran.shown.total)} ${e.ran.shown.total === 1 ? 'row' : 'rows'}`
                     : e.ran.message}
                   {` · ${e.ran.ms} ms`}
                   {e.ran.files.length > 0 && ` · read ${e.ran.files.join(', ')}`}

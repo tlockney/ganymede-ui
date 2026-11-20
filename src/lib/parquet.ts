@@ -19,11 +19,63 @@ export interface ArrowLike {
   toArray(): { toJSON(): Record<string, unknown> }[];
 }
 
+/** One batch of an Arrow result: a slice of its rows. */
+export interface BatchLike {
+  numRows: number;
+  getChildAt(i: number): { get(row: number): unknown } | null;
+}
+
+/** The start of a result read as a stream (`Engine.stream`). */
+export interface Streamed {
+  schema: { fields: { name: string; type: { toString(): string; scale?: number } }[] };
+  batches: BatchLike[];
+  /** The stream was stopped with rows unread: there are more than `batches` hold. */
+  more: boolean;
+}
+
+/**
+ * Reads batches from `reader` until they hold more than `maxRows` rows,
+ * then stops it (`cancel`), so the rest of a big result is never brought
+ * into the page.
+ */
+export async function takeBatches(
+  reader: (AsyncIterable<BatchLike> | Iterable<BatchLike>) & {
+    schema: Streamed['schema'];
+    /** Reads the schema; a reader has none before it, and does nothing a second time. */
+    open(): unknown;
+  },
+  maxRows: number,
+  cancel: () => unknown,
+): Promise<Streamed> {
+  await reader.open();
+  // Before reading on: a reader that has ended forgets its schema.
+  const schema = reader.schema;
+  const batches: BatchLike[] = [];
+  let rows = 0;
+  let more = false;
+  for await (const batch of reader) {
+    batches.push(batch);
+    rows += batch.numRows;
+    if (rows > maxRows) {
+      more = true;
+      break;
+    }
+  }
+  if (more) await cancel();
+  return { schema, batches, more };
+}
+
 /** DuckDB, as far as reading one file goes. */
 export interface Engine {
   /** Makes `bytes` readable by `name` in SQL. */
   register(name: string, bytes: Uint8Array): Promise<void> | void;
   query(sql: string): Promise<ArrowLike> | ArrowLike;
+  /**
+   * Runs `sql` and returns the first rows of its result, at least
+   * `maxRows` of them when it has that many, leaving the rest unread.
+   * Without it, a caller uses `query` and gets the whole result.
+   */
+  stream?(sql: string, maxRows: number): Promise<Streamed> | Streamed;
   close?(): Promise<void> | void;
 }
 
@@ -42,27 +94,43 @@ export interface ParquetTable {
 
 const FILE = 'data.parquet';
 
-const quote = (name: string) => `"${name.replaceAll('"', '""')}"`;
+/** `name` as a quoted SQL identifier. */
+export const quoteName = (name: string) => `"${name.replaceAll('"', '""')}"`;
 
-const INTEGERS = /^(TINYINT|SMALLINT|INTEGER|BIGINT|UTINYINT|USMALLINT|UINTEGER|INT\d*)$/;
-const WIDE_INTEGERS = /^(UBIGINT|HUGEINT|UHUGEINT)$/;
+const INTEGERS = /^(TINYINT|SMALLINT|INTEGER|BIGINT|UTINYINT|USMALLINT|UINTEGER|UBIGINT|INT\d*)$/;
+const WIDE_INTEGERS = /^(HUGEINT|UHUGEINT)$/;
 
 /**
- * The table type for a DuckDB type, and the SQL that reads the column so
- * that Arrow's JavaScript value is one the table shows: wide integers
- * and everything with no plain value (decimals, dates, lists, structs)
- * come as text or doubles.
+ * The one map from a DuckDB type (as `DESCRIBE` names it) to the table's
+ * column type and the SQL that reads the column, so that Arrow's JavaScript
+ * value is one the table shows. `ref` is how the column is written in SQL
+ * (its quoted name, or `#1`).  `select` is `ref` itself when the column is
+ * read as it is. Integers up to 64 bits (`UBIGINT` too) come as numbers, or text past
+ * 2^53 (`plain`); a decimal of up to 15 digits is exact as a double, a wider
+ * one comes as text so no digit is lost; everything with no plain value
+ * (hugeints, dates, timestamps, lists, structs, ...) comes as DuckDB's text.
  */
-export function columnFor(column: ParquetColumn): { type: TableField['type']; select: string } {
-  const id = quote(column.name);
+export function columnFor(
+  column: ParquetColumn,
+  ref = quoteName(column.name),
+): { type: TableField['type']; select: string } {
   const t = column.type.toUpperCase();
-  if (INTEGERS.test(t)) return { type: 'integer', select: id };
-  if (WIDE_INTEGERS.test(t)) return { type: 'integer', select: `cast(${id} as varchar)` };
-  if (t === 'FLOAT' || t === 'DOUBLE' || t === 'REAL') return { type: 'number', select: id };
-  if (t.startsWith('DECIMAL')) return { type: 'number', select: `cast(${id} as double)` };
-  if (t === 'BOOLEAN') return { type: 'boolean', select: id };
-  if (t === 'VARCHAR') return { type: 'string', select: id };
-  return { type: 'string', select: `cast(${id} as varchar)` };
+  const raw = (type: TableField['type']) => ({ type, select: ref });
+  const as = (type: TableField['type'], sql: string) => ({
+    type,
+    select: `cast(${ref} as ${sql})`,
+  });
+  if (INTEGERS.test(t)) return raw('integer');
+  if (WIDE_INTEGERS.test(t)) return as('integer', 'varchar');
+  if (t === 'FLOAT' || t === 'DOUBLE' || t === 'REAL') return raw('number');
+  // `DECIMAL(10,2)`, not a list of them: up to 15 digits is exact as a double.
+  const decimal = /^DECIMAL\((\d+),\d+\)$/.exec(t);
+  if (decimal) {
+    return Number(decimal[1]) <= 15 ? as('number', 'double') : as('string', 'varchar');
+  }
+  if (t === 'BOOLEAN') return raw('boolean');
+  if (t === 'VARCHAR') return raw('string');
+  return as('string', 'varchar');
 }
 
 /** A value from Arrow as the table shows it: 64-bit integers as numbers when they fit. */
@@ -94,7 +162,7 @@ export async function parquetTable(
     .map(r => ({ name: String(r.column_name), type: String(r.column_type) }));
   const count = await engine.query(`select count(*) as n from ${from}`);
   const total = Number(plain(count.toArray()[0]?.toJSON().n ?? 0));
-  const columns = schema.map(columnFor);
+  const columns = schema.map(c => columnFor(c));
   const select = columns.length ? columns.map((c, i) => `${c.select} as c${i}`).join(', ') : '1';
   const rows = await engine.query(`select ${select} from ${from} limit ${maxRows}`);
   const data = rows.toArray().map(r => {
@@ -122,7 +190,15 @@ interface DuckdbModule {
   ) => {
     instantiate(wasm: string): Promise<void>;
     registerFileBuffer(name: string, bytes: Uint8Array): Promise<void>;
-    connect(): Promise<{ query(sql: string): Promise<ArrowLike>; close(): Promise<void> }>;
+    connect(): Promise<{
+      query(sql: string): Promise<ArrowLike>;
+      send(
+        sql: string,
+        allowStreamResult: boolean,
+      ): Promise<AsyncIterable<BatchLike> & { schema: Streamed['schema']; open(): unknown }>;
+      cancelSent(): Promise<boolean>;
+      close(): Promise<void>;
+    }>;
     terminate(): Promise<void>;
   };
 }
@@ -158,6 +234,11 @@ export async function openEngine(modules: () => { [specifier: string]: string })
     return {
       register: (name, bytes) => db.registerFileBuffer(name, bytes),
       query: sql => connection.query(sql),
+      // Streamed, so a big result stays in the worker past what is shown.
+      stream: async (sql, maxRows) => {
+        const reader = await connection.send(sql, true);
+        return takeBatches(reader, maxRows, () => connection.cancelSent());
+      },
       // Terminate first: the connection closes only after a running query
       // does, which can be never, and terminating the worker ends both.
       close: async () => {
