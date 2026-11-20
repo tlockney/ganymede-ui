@@ -20,6 +20,7 @@ import {
   clearConsoles,
   listedConsoles,
   loadConsoles,
+  releaseConsole,
   saveConsole,
   useConsoles,
 } from '../lib/console-recents';
@@ -144,6 +145,8 @@ export function DuckdbConsole({
   const recent = listedConsoles(records).filter(r => r.id !== id);
   // A Clear Recent Consoles removes this console's record too: what it has
   // saved is gone, and its later statements start a record of their own.
+  // Closed unused and unnamed, it gives its name back.
+  useEffect(() => () => releaseConsole(key, id), [key, id]);
   const hadRecord = useRef(false);
   useEffect(() => {
     if (records.some(r => r.id === id)) hadRecord.current = true;

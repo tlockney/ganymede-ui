@@ -12,7 +12,7 @@ import { within } from './file-actions';
 import { recentsKey } from './recents';
 
 const KEY = 'ganymede-ui:console-recents';
-/** Consoles kept for each backend. */
+/** Listed consoles kept for each backend; the unlisted reservations (`listedConsoles`) are kept to as many again. */
 export const MAX_CONSOLES = 20;
 /** Statements kept for each console; the oldest go first. */
 export const MAX_STATEMENTS = 200;
@@ -115,14 +115,19 @@ export function loadConsoles(key: string): ConsoleRecord[] {
   return [...(read()[key] ?? [])].sort((a, b) => b.used - a.used);
 }
 
+const isListed = (r: ConsoleRecord) => r.statements.length > 0 || !!r.named;
+
 function update(key: string, change: (records: ConsoleRecord[]) => ConsoleRecord[]): void {
   const store = read();
   // A console shown makes a record at once, to hold its name; one that never
   // ran anything doesn't stay.
   const stale = Date.now() - EMPTY_KEPT_MS;
+  let listed = 0;
+  let reserved = 0;
   const after = change(store[key] ?? [])
-    .filter(r => r.statements.length > 0 || r.named || r.used >= stale)
-    .slice(0, MAX_CONSOLES);
+    .filter(r => isListed(r) || r.used >= stale)
+    // Each kind has its own cap: reservations can't push listed consoles out.
+    .filter(r => (isListed(r) ? ++listed : ++reserved) <= MAX_CONSOLES);
   delete store[key];
   if (after.length) store[key] = after;
   // The backend used last goes last, so the oldest is dropped first.
@@ -173,8 +178,13 @@ export function clearConsoles(key: string): void {
 }
 
 /** The records worth listing: those a statement ran in, or that were renamed. Any other is only its console's reservation of a name. */
-export const listedConsoles = (records: readonly ConsoleRecord[]) =>
-  records.filter(r => r.statements.length > 0 || r.named);
+export const listedConsoles = (records: readonly ConsoleRecord[]) => records.filter(isListed);
+
+/** A console closed: its record goes if it was never used or named, so its name is free again. */
+export function releaseConsole(key: string, id: string): void {
+  const found = read()[key]?.find(r => r.id === id);
+  if (found && !isListed(found)) update(key, records => records.filter(r => r.id !== id));
+}
 
 /** "Console 1", "Console 2", …: the lowest number no console of the backend has. */
 export function defaultConsoleName(records: readonly ConsoleRecord[]): string {

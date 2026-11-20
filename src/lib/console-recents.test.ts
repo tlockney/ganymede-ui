@@ -13,6 +13,7 @@ import {
   moveConsoleFolders,
   newConsoleId,
   onConsolesChange,
+  releaseConsole,
   renameConsole,
   saveConsole,
   startConsole,
@@ -206,5 +207,28 @@ describe('recent consoles (#735)', () => {
         .map(r => r.id)
         .sort(),
     ).toEqual(['named', 'ran', 'recent']);
+  });
+
+  it('caps listed consoles and unused reservations separately', () => {
+    for (let i = 0; i < MAX_CONSOLES + 5; i++) {
+      saveConsole(KEY, rec(`r${i}`, { statements: [], used: Date.now() }));
+    }
+    for (let i = 0; i < MAX_CONSOLES; i++) saveConsole(KEY, rec(`l${i}`, { used: i + 1 }));
+    const all = loadConsoles(KEY);
+    expect(listedConsoles(all)).toHaveLength(MAX_CONSOLES);
+    expect(all.filter(r => !r.statements.length)).toHaveLength(MAX_CONSOLES);
+  });
+
+  it('releases an unused, unnamed console, and only that', () => {
+    startConsole(KEY, 'unused', '');
+    startConsole(KEY, 'named', '');
+    renameConsole(KEY, 'named', 'Mine', '');
+    saveConsole(KEY, rec('ran'));
+    for (const id of ['unused', 'named', 'ran', 'missing']) releaseConsole(KEY, id);
+    expect(
+      loadConsoles(KEY)
+        .map(r => r.id)
+        .sort(),
+    ).toEqual(['named', 'ran']);
   });
 });

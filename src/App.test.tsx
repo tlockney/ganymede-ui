@@ -1300,6 +1300,20 @@ describe('App', () => {
         vi.unstubAllGlobals();
       });
 
+      it('reserves a new console’s name on its folder', async () => {
+        stubApp(false);
+        const key = backendFor(fakeMoons());
+        history.replaceState(null, '', '/?kernels=server&chrome=native&dir=moons&console=duckdb');
+        render(<App />);
+        await screen.findByTestId('duck-console');
+        expect(await window.ganymede!.command('new-duckdb-console', 'moons/inner')).toBe(true);
+        await waitFor(() =>
+          expect(screen.getByTestId('duck-console')).toHaveAttribute('data-folder', 'moons/inner'),
+        );
+        expect(loadConsoles(key).find(r => r.name === 'Console 2')?.folder).toBe('moons/inner');
+        vi.unstubAllGlobals();
+      });
+
       it('leaves the console shown out of the palette’s recent consoles', async () => {
         stubApp(false);
         const key = backendFor(fakeMoons());

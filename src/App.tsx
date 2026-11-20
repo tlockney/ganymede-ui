@@ -501,7 +501,10 @@ export function App() {
           return true;
         }
         // A notebook open goes the way another notebook's opening takes it.
-        showConsole(startConsole(recentsKey(backend.config), undefined, ''), clean(arg ?? folder));
+        {
+          const dir = clean(arg ?? folder);
+          showConsole(startConsole(recentsKey(backend.config), undefined, dir), dir);
+        }
         return true;
       case 'open-console': {
         // A recent console again (#735): a tab on the Mac, else in the page.

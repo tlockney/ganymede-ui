@@ -6,7 +6,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { fakeBackend, fakeServices } from '../test/fakes';
 import type { ArrowResult } from '../lib/duckdb-console';
 import { DuckdbConsole } from './DuckdbConsole';
-import { clearConsoles, listedConsoles, loadConsoles, saveConsole } from '../lib/console-recents';
+import {
+  startConsole,
+  clearConsoles,
+  listedConsoles,
+  loadConsoles,
+  saveConsole,
+} from '../lib/console-recents';
 import { recentsKey } from '../lib/recents';
 
 // DuckDB itself runs in a worker; duckdb-console.real.test.ts covers the real package.
@@ -649,6 +655,21 @@ describe('DuckdbConsole', () => {
       expect(records[0]?.statements).toEqual(['select 1', 'select 2', 'select 3']);
       key('ArrowUp');
       expect(typed()).toBe('select 3;');
+    });
+
+    it('gives its name back when closed unused, and keeps what ran', async () => {
+      engineFor();
+      expect(startConsole(storeKey, 'c1', '').name).toBe('Console 1');
+      const first = setup({}, '', 'c1');
+      first.unmount();
+      expect(startConsole(storeKey, 'c2', '').name).toBe('Console 1');
+      const second = setup({}, '', 'c2');
+      await waitFor(() => expect(screen.queryByText('Starting DuckDB…')).toBeNull());
+      type('select 1;');
+      key('Enter');
+      await screen.findByRole('table');
+      second.unmount();
+      expect(loadConsoles(storeKey).map(r => r.id)).toEqual(['c2']);
     });
 
     it('walks the restored statements with ↑', async () => {
