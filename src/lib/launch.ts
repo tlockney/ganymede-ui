@@ -4,8 +4,10 @@
  * sidebar starts in (the notebook's folder when only `open` is given).
  * Both are server paths, relative to the server's root; a leading `/` is
  * dropped, so `/Users/me/a.ipynb` works against a server rooted at `/`.
+ * `console=duckdb` opens the DuckDB console on `dir` instead (#729): the
+ * Mac app's console tabs.
  */
-export type Launch = { open?: string; dir: string };
+export type Launch = { open?: string; dir: string; console?: 'duckdb' };
 
 /** A server path: no leading, trailing or repeated slashes. */
 export const clean = (path: string) => path.split('/').filter(Boolean).join('/');
@@ -13,7 +15,7 @@ export const clean = (path: string) => path.split('/').filter(Boolean).join('/')
 /** The folder a server path is in; '' for the root. */
 export const parentOf = (path: string) => path.split('/').slice(0, -1).join('/');
 
-/** Reads `open` and `dir` from a query string. Pure. */
+/** Reads `open`, `dir` and `console` from a query string. Pure. */
 export function readLaunch(search: string): Launch {
   const params = new URLSearchParams(search);
   const open = params.get('open');
@@ -21,6 +23,8 @@ export function readLaunch(search: string): Launch {
   const file = open ? clean(open) : '';
   return {
     ...(file ? { open: file } : {}),
+    // A console has no notebook, so `open` doesn't mix with it.
+    ...(params.get('console') === 'duckdb' && !file ? { console: 'duckdb' as const } : {}),
     dir: dir !== null ? clean(dir) : parentOf(file),
   };
 }
@@ -28,7 +32,8 @@ export function readLaunch(search: string): Launch {
 /**
  * The query parameters the app reads once and then removes from the URL.
  * `open` and `dir` stay: the app keeps them in step with the open notebook
- * and the sidebar's folder, so a reload comes back to both.
+ * and the sidebar's folder, so a reload comes back to both. So does
+ * `console`, so a reload of a console tab keeps its console (#729).
  */
 export const LAUNCH_PARAMS = ['token', 'kernels'] as const;
 

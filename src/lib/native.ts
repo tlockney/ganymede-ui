@@ -48,7 +48,9 @@ export type NativeHooks = {
  * `open-examples` copies the example notebooks into a new folder in the
  * folder it takes, and opens the first (#414).
  * `new-duckdb-console` opens the DuckDB console in the page, for the folder
- * it takes ('' is the root), and closes the open notebook (#679).
+ * it takes ('' is the root), and closes the open notebook (#679). In a page
+ * that can open tabs (`canOpenTabs`, the Mac app) it asks the app for a new
+ * console tab instead (`openTab`, #729) and the page's own content stays.
  * `toggle-type-errors` turns type errors in TypeScript and JavaScript cells
  * on or off (#669). `toggle-live-markdown` does the same for the live
  * Markdown preview in Markdown cells (#672).
@@ -407,6 +409,25 @@ export function canOpenFiles(): boolean {
 /** Asks the app to open the file at `path` on its server in its editor. */
 export function openFile(path: string): void {
   handler('openFile')?.postMessage({ path });
+}
+
+/**
+ * Whether the app opens notebooks, data files and DuckDB consoles in tabs of
+ * its window (#729): the Mac app registers an `openTab` handler, a browser
+ * and the iPad app have none.
+ */
+export function canOpenTabs(): boolean {
+  return !!handler('openTab');
+}
+
+/**
+ * Asks the app for a tab (`openTab`, #729): a notebook or data file at
+ * `path` on its server, or a new DuckDB console on `folder` (a server path,
+ * '' for the root). The app brings forward the tab that already shows a
+ * notebook or file. Nothing without the handler.
+ */
+export function openTab(request: { path: string } | { console: 'duckdb'; folder: string }): void {
+  handler('openTab')?.postMessage(request);
 }
 
 /** Exposes `hooks` to the app until the returned function is called. */

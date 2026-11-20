@@ -236,11 +236,12 @@ struct InspectorCommands: View {
     @FocusedValue(\.inspectorController) private var inspector
 
     var body: some View {
-        Button(inspector?.isShown == true ? "Hide Inspector" : "Show Inspector") {
+        Button(inspector?.isVisible == true ? "Hide Inspector" : "Show Inspector") {
             inspector?.toggle()
         }
         .keyboardShortcut("0", modifiers: [.command, .option])
-        .disabled(inspector == nil)
+        // Only a tab with a notebook has one (#729).
+        .disabled(inspector?.available != true)
     }
 }
 #endif

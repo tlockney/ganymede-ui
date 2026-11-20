@@ -13,6 +13,11 @@ import UniformTypeIdentifiers
 enum WindowTarget: Codable, Hashable {
     case file(URL)
     case folder(URL)
+    /// A DuckDB console on a folder (#729), in a tab of its own. The id
+    /// makes each New DuckDB Console a window of its own: opening by value
+    /// brings forward a window that has the value, and each console has a
+    /// new engine.
+    case console(folder: URL, id: UUID)
     /// A notebook or folder on a connected machine (#701), by its path on
     /// that machine, from its root, `/`-led. The machine is a `Place` id.
     case machineFile(machine: String, path: String)
@@ -28,7 +33,7 @@ enum WindowTarget: Codable, Hashable {
     /// Where this target's notebooks live.
     var place: Place {
         switch self {
-        case .file, .folder: .thisDevice
+        case .file, .folder, .console: .thisDevice
         case .machineFile(let id, _), .machineFolder(let id, _): .machine(id)
         }
     }
@@ -46,10 +51,12 @@ enum WindowTarget: Codable, Hashable {
         }
     }
 
-    /// What a page from the server shows: the notebook its `open=` names,
+    /// What a page from the server shows: a DuckDB console (`console=duckdb`
+    /// with its `dir=`, #729), or the notebook its `open=` names,
     /// or else the folder its `dir=` names (the sidebar's folder, #220), or
-    /// else the server's root. Both are paths from the server's root, `/`,
-    /// form-encoded as URLSearchParams writes them. Nil for a URL that
+    /// else the server's root. The paths are from the server's root, `/`,
+    /// form-encoded as URLSearchParams writes them. A console is read with a
+    /// new id: compare it with `shows(_:)`, not `==`. Nil for a URL that
     /// isn't the app's page, which is served at the server's root: a file
     /// the page linked to, or an error page.
     init?(page: URL) {
@@ -73,7 +80,11 @@ enum WindowTarget: Codable, Hashable {
                 self = Self.machine(machine, path: path("dir") ?? "", isFolder: true)!
             }
         } else if let file = path("open") {
+            // A notebook wins over `console`, as the page's `readLaunch` has it.
             self = .file(URL(fileURLWithPath: "/" + file, isDirectory: false).standardizedFileURL)
+        } else if items.first(where: { $0.name == "console" })?.value == "duckdb" {
+            let folder = path("dir").map { "/" + $0 } ?? "/"
+            self = .console(folder: URL(fileURLWithPath: folder, isDirectory: true), id: UUID())
         } else {
             let folder = path("dir").map { "/" + $0 } ?? "/"
             self = .folder(URL(fileURLWithPath: folder, isDirectory: true))
@@ -82,7 +93,7 @@ enum WindowTarget: Codable, Hashable {
 
     var url: URL {
         switch self {
-        case .file(let url), .folder(let url): url
+        case .file(let url), .folder(let url), .console(let url, _): url
         // The machine's path as a URL, for its name and folder only: it is
         // not a file on this device.
         case .machineFile(_, let path): URL(fileURLWithPath: path, isDirectory: false)
@@ -95,7 +106,7 @@ enum WindowTarget: Codable, Hashable {
     var folder: URL {
         switch self {
         case .file(let url): url.deletingLastPathComponent()
-        case .folder(let url): url
+        case .folder(let url), .console(let url, _): url
         case .machineFile: url.deletingLastPathComponent()
         case .machineFolder: url
         }
@@ -108,6 +119,8 @@ enum WindowTarget: Codable, Hashable {
         switch self {
         case .file(let url): base = url.deletingPathExtension().lastPathComponent
         case .folder(let url): base = url.lastPathComponent.isEmpty ? url.path : url.lastPathComponent
+        case .console(let url, _):
+            base = "DuckDB · " + (url.lastPathComponent.isEmpty ? url.path : url.lastPathComponent)
         case .machineFile(_, let path):
             base = URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
         case .machineFolder(_, let path):
@@ -119,6 +132,16 @@ enum WindowTarget: Codable, Hashable {
     }
 
     var title: String { displayTitle() }
+
+    /// Whether this window already shows `page`, a target read from its
+    /// page's URL (`init?(page:)`): the same, but a console is the console
+    /// of that folder whatever its id.
+    func shows(_ page: WindowTarget) -> Bool {
+        if case .console(let mine, _) = self, case .console(let theirs, _) = page {
+            return mine.standardizedFileURL.path == theirs.standardizedFileURL.path
+        }
+        return self == page
+    }
 
     /// The page for this target on a server rooted at `/`, as ganymede-ui
     /// reads it (#129): `open=` a notebook's path, or `dir=` a folder's.
@@ -135,6 +158,8 @@ enum WindowTarget: Codable, Hashable {
             switch self {
             case .file(let url): [("kernels", kernels), ("open", url.path)]
             case .folder(let url): [("kernels", kernels), ("dir", url.path)]
+            // The page keeps `console` in its URL, so a reload keeps the console.
+            case .console(let url, _): [("kernels", kernels), ("dir", url.path), ("console", "duckdb")]
             case .machineFile(_, let path): [("kernels", kernels), ("open", path)]
             case .machineFolder(_, let path): [("kernels", kernels), ("dir", path)]
             }
@@ -270,6 +295,43 @@ final class OpenRequests {
     }
 }
 #endif
+
+/// A tab the page asks the app to open (its `openTab` message, #729), by
+/// server paths: the Mac's server is rooted at `/`.
+enum TabRequest: Equatable {
+    /// A notebook or data file.
+    case file(path: String)
+    /// A new DuckDB console on a folder; "" is the root.
+    case duckdbConsole(folder: String)
+
+    /// From the message body: `{ path }`, or `{ console: "duckdb", folder }`.
+    /// Nil for anything else.
+    init?(body: Any) {
+        guard let fields = body as? [String: Any] else { return nil }
+        if let console = fields["console"] as? String {
+            guard console == "duckdb" else { return nil }
+            self = .duckdbConsole(folder: fields["folder"] as? String ?? "")
+        } else if let path = fields["path"] as? String, !path.isEmpty {
+            self = .file(path: path)
+        } else {
+            return nil
+        }
+    }
+
+    /// The window that opens it, on a server rooted at `root`. A notebook,
+    /// data file or folder opens as `WindowTarget(opening:)` would, which
+    /// brings forward a window already showing it; each console gets a new
+    /// `id`.
+    func target(root: URL, id: UUID = UUID()) -> WindowTarget {
+        switch self {
+        case .file(let path):
+            return WindowTarget(opening: root.appendingPathComponent(path, isDirectory: false))
+        case .duckdbConsole(let folder):
+            let url = folder.isEmpty ? root : root.appendingPathComponent(folder, isDirectory: true)
+            return .console(folder: url.standardizedFileURL, id: id)
+        }
+    }
+}
 
 extension WindowTarget {
     /// For `@SceneStorage`, which keeps strings: JSON, or "" for none.

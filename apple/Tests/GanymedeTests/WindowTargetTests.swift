@@ -125,4 +125,116 @@ final class WindowTargetTests: XCTestCase {
         XCTAssertNil(WindowTarget(saved: ""))
         XCTAssertNil(WindowTarget(saved: "not json"))
     }
+
+    // MARK: DuckDB console tabs (#729)
+
+    private let consoleFolder = URL(fileURLWithPath: "/Users/me/work", isDirectory: true)
+
+    func testAConsoleIsAWindowOfItsOwn() {
+        let first = WindowTarget.console(folder: consoleFolder, id: UUID())
+        let second = WindowTarget.console(folder: consoleFolder, id: UUID())
+        // Opening by value brings forward an equal value: each console must differ.
+        XCTAssertNotEqual(first, second)
+        XCTAssertEqual(first.place, .thisDevice)
+        XCTAssertEqual(first.folder.path, "/Users/me/work")
+        XCTAssertEqual(first.url.path, "/Users/me/work")
+    }
+
+    func testAConsoleTabIsTitledWithItsFolder() {
+        XCTAssertEqual(WindowTarget.console(folder: consoleFolder, id: UUID()).title, "DuckDB · work")
+        let root = URL(fileURLWithPath: "/", isDirectory: true)
+        XCTAssertEqual(WindowTarget.console(folder: root, id: UUID()).title, "DuckDB · /")
+    }
+
+    func testAConsoleLoadsTheDuckDBPageForItsFolder() {
+        let target = WindowTarget.console(folder: consoleFolder, id: UUID())
+        XCTAssertEqual(
+            query(target.pageURL(server: server, kernels: "server", nativeChrome: true)),
+            [
+                "token": "abc", "kernels": "server", "dir": "/Users/me/work",
+                "console": "duckdb", "chrome": "native",
+            ]
+        )
+    }
+
+    func testTheConsolePageReadsBackAsTheSameConsole() throws {
+        let target = WindowTarget.console(folder: consoleFolder, id: UUID())
+        let read = try XCTUnwrap(
+            WindowTarget(page: target.pageURL(server: server, kernels: "server", nativeChrome: true)))
+        guard case .console(let folder, _) = read else { return XCTFail("not a console: \(read)") }
+        XCTAssertEqual(folder.path, "/Users/me/work")
+        // The page doesn't know the tab's id: the tab still shows it.
+        XCTAssertTrue(target.shows(read))
+        XCTAssertNotEqual(target, read)
+        // Another folder's console, or a notebook, is not the one shown.
+        let other = WindowTarget.console(folder: URL(fileURLWithPath: "/Users/me/play", isDirectory: true), id: UUID())
+        XCTAssertFalse(target.shows(other))
+        XCTAssertFalse(target.shows(.folder(consoleFolder)))
+        // As the page writes it (form-encoded, relative to `/`), and for the root.
+        let page = URL(string: "http://127.0.0.1:8123/?dir=Users%2Fme%2Fmy+work&console=duckdb")!
+        guard case .console(let spaced, _)? = WindowTarget(page: page) else { return XCTFail("not a console") }
+        XCTAssertEqual(spaced.path, "/Users/me/my work")
+        guard case .console(let root, _)? = WindowTarget(page: URL(string: "http://127.0.0.1:8123/?console=duckdb")!)
+        else { return XCTFail("not a console") }
+        XCTAssertEqual(root.path, "/")
+        // A notebook wins over `console`, as the page reads its URL.
+        XCTAssertEqual(
+            WindowTarget(page: URL(string: "http://127.0.0.1:8123/?open=a.ipynb&console=duckdb")!),
+            .file(URL(fileURLWithPath: "/a.ipynb")))
+        // Any other value of `console` is no console.
+        XCTAssertEqual(
+            WindowTarget(page: URL(string: "http://127.0.0.1:8123/?dir=Users&console=sql")!),
+            .folder(URL(fileURLWithPath: "/Users", isDirectory: true)))
+    }
+
+    func testOnlyAMatchingWindowShowsAPlainTarget() {
+        let file = WindowTarget.file(URL(fileURLWithPath: "/tmp/a.ipynb"))
+        XCTAssertTrue(file.shows(file))
+        XCTAssertFalse(file.shows(.file(URL(fileURLWithPath: "/tmp/b.ipynb"))))
+    }
+
+    func testAConsoleSurvivesRestorationWithItsFolder() throws {
+        let target = WindowTarget.console(folder: consoleFolder, id: UUID())
+        XCTAssertEqual(WindowTarget(saved: WindowTarget.saved(target)), target)
+        let data = try JSONEncoder().encode(target)
+        XCTAssertEqual(try JSONDecoder().decode(WindowTarget.self, from: data), target)
+    }
+
+    func testTheOpenTabMessage() {
+        XCTAssertEqual(TabRequest(body: ["path": "Users/me/a.ipynb"]), .file(path: "Users/me/a.ipynb"))
+        XCTAssertEqual(
+            TabRequest(body: ["console": "duckdb", "folder": "Users/me"]), .duckdbConsole(folder: "Users/me"))
+        XCTAssertEqual(TabRequest(body: ["console": "duckdb"]), .duckdbConsole(folder: ""))
+        XCTAssertNil(TabRequest(body: ["console": "python", "folder": "Users"]))
+        XCTAssertNil(TabRequest(body: ["path": ""]))
+        XCTAssertNil(TabRequest(body: ["path": 3]))
+        XCTAssertNil(TabRequest(body: ["folder": "Users"]))
+        XCTAssertNil(TabRequest(body: "Users/me/a.ipynb"))
+    }
+
+    func testAnOpenTabRequestBecomesAWindowOnTheServersRoot() throws {
+        let root = URL(fileURLWithPath: "/", isDirectory: true)
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let file = dir.appendingPathComponent("Io.ipynb")
+        try "{}".write(to: file, atomically: true, encoding: .utf8)
+        let relative = String(file.standardizedFileURL.path.drop { $0 == "/" })
+
+        XCTAssertEqual(TabRequest.file(path: relative).target(root: root), .file(file.standardizedFileURL))
+
+        // Compared by path: a directory URL may or may not end in a slash.
+        let id = UUID()
+        guard case .console(let work, let workID) = TabRequest.duckdbConsole(folder: "Users/me/work").target(root: root, id: id)
+        else { return XCTFail("not a console") }
+        XCTAssertEqual(work.path, "/Users/me/work")
+        XCTAssertEqual(workID, id)
+        guard case .console(let top, _) = TabRequest.duckdbConsole(folder: "").target(root: root, id: id)
+        else { return XCTFail("not a console") }
+        XCTAssertEqual(top.path, "/")
+        // Each request is a console of its own.
+        XCTAssertNotEqual(
+            TabRequest.duckdbConsole(folder: "Users/me/work").target(root: root),
+            TabRequest.duckdbConsole(folder: "Users/me/work").target(root: root))
+    }
 }

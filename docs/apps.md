@@ -183,6 +183,16 @@ value; objects expand a level at a time), read again after each run from
 a kernel that speaks the debugger protocol. Drag its left edge to resize
 it. The window keeps whether it shows, its tab and its width.
 
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+On the Mac the inspector is only for a tab that shows a notebook. A DuckDB
+console, a data file and the start screen have no Outline or Variables, so
+they show no inspector, no toolbar button, and a disabled View > Show
+Inspector. Your choice to show it is kept: it comes back when the tab shows
+a notebook.
+
 ### Filling the window
 
 Any of the notebook, the bottom panel and the inspector can fill the
@@ -970,12 +980,28 @@ mcp watch` on its folder is told about it, in the room or not; after
 
 ## DuckDB console
 
-A DuckDB prompt that opens in the window's page, where a notebook would,
-in the Mac, iPad and iPhone apps and in a browser. Open it with **New
-DuckDB Console** in the Command Palette, File > New DuckDB Console on the
-Mac, or File > New DuckDB Console on the iPad. Opening a notebook or file
-closes it, as it closes any page; the notebook menus are disabled while it
-shows.
+A DuckDB prompt, in the Mac, iPad and iPhone apps and in a browser. Open
+it with **New DuckDB Console** in the Command Palette, File > New DuckDB
+Console on the Mac, or File > New DuckDB Console on the iPad.
+
+On the iPad, iPhone and in a browser it opens in the window's page, where
+a notebook would. Opening a notebook or file closes it, as it closes any
+page; the notebook menus are disabled while it shows.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release. The latest release opens the console in the
+> window's page on the Mac too, replacing the notebook.
+
+On the Mac it opens as a tab of its own, titled "DuckDB · " and the
+folder's name, for the window's folder. The notebook in the tab you were
+on stays open, and each New DuckDB Console is another tab with a new
+engine. File > Close (⌘W) closes it like any tab. Opening a notebook or
+data file from the console, or from the sidebar, opens it in another tab
+(or brings forward the tab that shows it), and the console keeps running.
+A console tab comes back on relaunch for the same folder, with a new
+engine and nothing read. The notebook menus are disabled and the
+inspector hidden while it shows.
 
 Type SQL in the box at the bottom. **Enter** runs it when it ends with a
 `;` (a `;` inside a string or a comment doesn't count), and otherwise adds

@@ -52,4 +52,62 @@ final class InspectorControllerTests: XCTestCase {
         XCTAssertEqual(InspectorTab(rawValue: "outline"), .outline)
         XCTAssertNil(InspectorTab(rawValue: "agent"))
     }
+
+    // MARK: Only on a notebook tab (#729)
+
+    private func state(path: String?) -> PageState {
+        var state = PageState()
+        state.path = path
+        return state
+    }
+
+    func testAnUnavailableInspectorKeepsTheChoiceAndStaysOffScreen() {
+        let inspector = InspectorController()
+        inspector.show(.variables)
+        XCTAssertTrue(inspector.isVisible)
+        XCTAssertTrue(inspector.wantsVariables)
+        // A console tab: hidden, and the page isn't asked for variables.
+        inspector.available = false
+        XCTAssertTrue(inspector.isShown, "the choice is kept for the notebook tab")
+        XCTAssertFalse(inspector.isVisible)
+        XCTAssertFalse(inspector.wantsVariables)
+        // Back on a notebook it comes back as it was.
+        inspector.available = true
+        XCTAssertTrue(inspector.isVisible)
+        XCTAssertEqual(inspector.tab, .variables)
+    }
+
+    func testAnInspectorThatWasHiddenStaysHiddenOnANotebook() {
+        let inspector = InspectorController()
+        inspector.available = true
+        XCTAssertFalse(inspector.isVisible)
+    }
+
+    func testOnlyANotebookTabHasAnInspector() {
+        let notebook = WindowTarget.file(URL(fileURLWithPath: "/tmp/a.ipynb"))
+        let console = WindowTarget.console(folder: URL(fileURLWithPath: "/tmp", isDirectory: true), id: UUID())
+        let folder = WindowTarget.folder(URL(fileURLWithPath: "/tmp", isDirectory: true))
+        func shows(_ state: PageState, _ reported: Bool, _ target: WindowTarget) -> Bool {
+            InspectorController.showsNotebook(state: state, pageReported: reported, target: target)
+        }
+        // Once the page has posted its state, it says.
+        XCTAssertTrue(shows(state(path: "tmp/a.ipynb"), true, notebook))
+        XCTAssertFalse(shows(state(path: nil), true, folder), "the start screen")
+        XCTAssertFalse(shows(state(path: nil), true, console))
+        XCTAssertFalse(shows(state(path: "tmp/data.csv"), true, notebook), "a data file")
+        // The state wins over the target, which follows the page late.
+        XCTAssertFalse(shows(state(path: nil), true, notebook))
+    }
+
+    func testAWindowOpenedOnANotebookKeepsItsInspectorWhileThePageLoads() {
+        let loading = PageState()
+        func shows(_ target: WindowTarget) -> Bool {
+            InspectorController.showsNotebook(state: loading, pageReported: false, target: target)
+        }
+        XCTAssertTrue(shows(.file(URL(fileURLWithPath: "/tmp/a.ipynb"))))
+        XCTAssertFalse(shows(.file(URL(fileURLWithPath: "/tmp/data.CSV"))))
+        XCTAssertFalse(shows(.file(URL(fileURLWithPath: "/tmp/data.parquet"))))
+        XCTAssertFalse(shows(.folder(URL(fileURLWithPath: "/tmp", isDirectory: true))))
+        XCTAssertFalse(shows(.console(folder: URL(fileURLWithPath: "/tmp", isDirectory: true), id: UUID())))
+    }
 }

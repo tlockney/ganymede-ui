@@ -48,9 +48,11 @@ import {
 } from './lib/launch';
 import {
   canOpenFiles,
+  canOpenTabs,
   exposeHooks,
   nativeChrome,
   openFile,
+  openTab,
   postDocument,
   postState,
   fileMove,
@@ -125,6 +127,24 @@ export function App() {
    * the connect sheet picks another backend.
    */
   const pendingOpen = useRef(launch.open);
+  /**
+   * The Mac app opens a DuckDB console in a tab of its own (#729): its page
+   * is loaded with `console=duckdb`, shows the console for `dir` once
+   * connected, and asks the app for a tab to open a notebook or a new
+   * console, so the console keeps running. A browser or the iPad app, with
+   * no `openTab` handler, opens them in the page as before.
+   */
+  const [consoleTab] = useState(() => launch.console === 'duckdb' && canOpenTabs());
+  /** The folder of the console to show on the first connection. */
+  const pendingConsole = useRef(launch.console === 'duckdb' ? launch.dir : undefined);
+  /**
+   * Opens a notebook or data file: in the page, or in a tab of its own from a
+   * console tab, which keeps its console (#729).
+   */
+  const openNotebook = useCallback(
+    (path: string) => (consoleTab ? openTab({ path }) : setOpenPath(path)),
+    [consoleTab],
+  );
   /** The folder the sidebar starts in; the server root once the sheet picks a backend. */
   const [sidebarRoot, setSidebarRoot] = useState(launch.dir);
   /** The folder the sidebar shows, where new notebooks go. */
@@ -163,7 +183,8 @@ export function App() {
    * The DuckDB console (#679) shows in the page where a notebook would, in
    * this folder. It has no path: the app's state says no notebook is open,
    * so its notebook menus disable, as they do for a data file. Opening
-   * anything closes it.
+   * anything closes it, except in a console tab (`consoleTab`), where the
+   * app opens a tab for it.
    */
   const [duckFolder, setDuckFolder] = useState<string>();
   /**
@@ -301,7 +322,10 @@ export function App() {
         if (pendingOpen.current) {
           setOpenPath(pendingOpen.current);
           pendingOpen.current = undefined;
+        } else if (pendingConsole.current !== undefined) {
+          setDuckFolder(pendingConsole.current);
         }
+        pendingConsole.current = undefined;
       })
       .catch(e => {
         if (cancelled) return;
@@ -352,10 +376,10 @@ export function App() {
       } catch (e) {
         console.warn(`Couldn’t set the kernel of ${model.path}:`, e);
       }
-      setOpenPath(model.path);
+      openNotebook(model.path);
       return true;
     },
-    [backend],
+    [backend, openNotebook],
   );
 
   const copyingExamples = useRef(false);
@@ -371,7 +395,7 @@ export function App() {
         const { contents, kernelspecs } = backend.services;
         const path = await copyExamples(contents, dir, kernelspecs.specs);
         // Not if the backend changed while the copy ran.
-        if (backendRef.current === backend) setOpenPath(path);
+        if (backendRef.current === backend) openNotebook(path);
         return true;
       } catch (e) {
         setNewError(`Couldn’t copy the examples: ${e instanceof Error ? e.message : String(e)}`);
@@ -380,7 +404,7 @@ export function App() {
         copyingExamples.current = false;
       }
     },
-    [backend],
+    [backend, openNotebook],
   );
 
   // A notebook dropped on the window from Finder or Files is copied into
@@ -388,7 +412,7 @@ export function App() {
   const drop = useFileDrop({
     contents: backend?.services.contents,
     dir: folder,
-    onCopied: paths => setOpenPath(paths[0]),
+    onCopied: paths => openNotebook(paths[0]),
     onError: setNewError,
   });
 
@@ -422,17 +446,26 @@ export function App() {
         // As `?open=`: the app may pass an absolute path.
         const path = arg && clean(arg);
         if (!backend || !path) return false;
-        setOpenPath(path);
+        // A console tab keeps its console: the notebook gets a tab (#729).
+        openNotebook(path);
         return true;
       }
       case 'new-duckdb-console':
         if (!backend) return false;
+        // The app opens a console tab, with a new engine, and this page's
+        // own content stays (#729).
+        if (canOpenTabs()) {
+          openTab({ console: 'duckdb', folder: clean(arg ?? folder) });
+          return true;
+        }
         // A notebook open goes the way another notebook's opening takes it.
         setOpenPath(undefined);
         setDuckFolder(clean(arg ?? folder));
         setDuckId(n => n + 1);
         return true;
       case 'close':
+        // The tab's console stays until the tab closes.
+        if (consoleTab) return false;
         if (!openPath && duckFolder !== undefined) {
           setDuckFolder(undefined);
           return true;
@@ -850,7 +883,7 @@ export function App() {
             openPath={openPath}
             root={sidebarRoot}
             onOpen={path => {
-              setOpenPath(path);
+              openNotebook(path);
               afterPick();
             }}
             onOpenFile={
@@ -940,7 +973,7 @@ export function App() {
                 key={`${backend.config.kind}:duck:${duckId}`}
                 backend={backend}
                 folder={duckFolder}
-                onOpenNotebook={setOpenPath}
+                onOpenNotebook={openNotebook}
               />
             ) : backend && openPath ? (
               <NotebookPane
@@ -968,7 +1001,7 @@ export function App() {
                     const { contents, kernelspecs } = backend.services;
                     const path = await copySample(contents, folder, kernelspecs.specs);
                     // Not if the backend changed while the copy ran.
-                    if (backendRef.current === backend) setOpenPath(path);
+                    if (backendRef.current === backend) openNotebook(path);
                   })
                 }
               />

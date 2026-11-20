@@ -2,9 +2,11 @@ import type { Session } from '@jupyterlab/services';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   canOpenFiles,
+  canOpenTabs,
   exposeHooks,
   nativeChrome,
   openFile,
+  openTab,
   postDocument,
   fileMove,
   pageSearch,
@@ -44,6 +46,21 @@ describe('native', () => {
     expect(canOpenFiles()).toBe(true);
     openFile('moons/Io.md');
     expect(postMessage).toHaveBeenCalledWith({ path: 'moons/Io.md' });
+  });
+
+  it('opens tabs only when the app has an openTab handler (#729)', () => {
+    expect(canOpenTabs()).toBe(false);
+    expect(() => openTab({ path: 'a.ipynb' })).not.toThrow();
+    // The iPad app has an editor but no tabs.
+    vi.stubGlobal('webkit', { messageHandlers: { openFile: { postMessage: vi.fn() } } });
+    expect(canOpenTabs()).toBe(false);
+    const postMessage = vi.fn();
+    vi.stubGlobal('webkit', { messageHandlers: { openTab: { postMessage } } });
+    expect(canOpenTabs()).toBe(true);
+    openTab({ path: 'moons/Io.ipynb' });
+    openTab({ console: 'duckdb', folder: 'moons' });
+    expect(postMessage).toHaveBeenNthCalledWith(1, { path: 'moons/Io.ipynb' });
+    expect(postMessage).toHaveBeenNthCalledWith(2, { console: 'duckdb', folder: 'moons' });
   });
 
   it('exposes the hooks until they are taken back', async () => {
