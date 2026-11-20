@@ -672,6 +672,51 @@ describe('DuckdbConsole', () => {
       expect(loadConsoles(storeKey).map(r => r.id)).toEqual(['c2']);
     });
 
+    it('gives its name back on pagehide, as a closed Mac tab’s page gets it', async () => {
+      engineFor();
+      startConsole(storeKey, 'c1', '');
+      const { unmount } = setup({}, '', 'c1');
+      act(() => void window.dispatchEvent(new Event('pagehide')));
+      // Gone, and not put back by the console's own re-reservation.
+      expect(loadConsoles(storeKey)).toEqual([]);
+      expect(startConsole(storeKey, 'c2', '').name).toBe('Console 1');
+      // The unmount's own release after it changes nothing more.
+      unmount();
+      expect(loadConsoles(storeKey).map(r => r.id)).toEqual(['c2']);
+    });
+
+    it('keeps an open unused console’s name taken after a clear', async () => {
+      engineFor();
+      const a = startConsole(storeKey, 'a', '');
+      setup({}, '', 'a');
+      act(() => clearConsoles(storeKey));
+      // A's reservation is back, unlisted, so B can't take its name.
+      expect(loadConsoles(storeKey).map(r => r.id)).toEqual(['a']);
+      expect(listedConsoles(loadConsoles(storeKey))).toEqual([]);
+      expect(startConsole(storeKey, 'b', '').name).not.toBe(a.name);
+    });
+
+    it('keeps an open console’s name taken after a clear, and starts its record over', async () => {
+      engineFor();
+      const a = startConsole(storeKey, 'a', '');
+      setup({}, '', 'a');
+      await waitFor(() => expect(screen.queryByText('Starting DuckDB…')).toBeNull());
+      type('select 1;');
+      key('Enter');
+      await screen.findByRole('table');
+      expect(listedConsoles(loadConsoles(storeKey)).map(r => r.id)).toEqual(['a']);
+      act(() => clearConsoles(storeKey));
+      // Back as a reservation with nothing saved: unlisted, its name still taken.
+      expect(loadConsoles(storeKey)).toMatchObject([{ id: 'a', name: a.name, statements: [] }]);
+      expect(listedConsoles(loadConsoles(storeKey))).toEqual([]);
+      expect(startConsole(storeKey, 'b', '').name).not.toBe(a.name);
+      // Its next statement lists it again with only that statement.
+      type('select 2;');
+      key('Enter');
+      await waitFor(() => expect(screen.getAllByRole('table')).toHaveLength(2));
+      expect(loadConsoles(storeKey).find(r => r.id === 'a')?.statements).toEqual(['select 2']);
+    });
+
     it('walks the restored statements with ↑', async () => {
       engineFor();
       saveConsole(storeKey, record('c1', 'Console 1', ['select 1', 'select 2']));

@@ -146,9 +146,29 @@ export function DuckdbConsole({
   // A Clear Recent Consoles removes this console's record too: what it has
   // saved is gone, and its later statements start a record of their own.
   // Closed unused and unnamed, it gives its name back.
-  useEffect(() => () => releaseConsole(key, id), [key, id]);
+  // A Mac tab's page is torn down without its effects' cleanups: `pagehide`
+  // is what it gets. A page that comes back from the back/forward cache
+  // reserves its name again.
+  const released = useRef(false);
+  useEffect(() => {
+    const release = () => {
+      released.current = true;
+      releaseConsole(key, id);
+    };
+    const back = (e: PageTransitionEvent) => {
+      if (e.persisted) released.current = false;
+    };
+    window.addEventListener('pagehide', release);
+    window.addEventListener('pageshow', back);
+    return () => {
+      window.removeEventListener('pagehide', release);
+      window.removeEventListener('pageshow', back);
+      releaseConsole(key, id);
+    };
+  }, [key, id]);
   const hadRecord = useRef(false);
   useEffect(() => {
+    if (released.current) return;
     if (records.some(r => r.id === id)) hadRecord.current = true;
     else if (hadRecord.current) {
       hadRecord.current = false;
