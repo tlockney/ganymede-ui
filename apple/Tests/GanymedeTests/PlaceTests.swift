@@ -275,6 +275,7 @@ final class PlaceTests: XCTestCase {
         XCTAssertEqual(DocumentMessage(body: body)?.file, URL(fileURLWithPath: "/notes/Io.ipynb"))
     }
 
+    @MainActor
     func testAMachineTabShowsANotebookBeforeThePageReports() throws {
         let state = PageState()
         func shows(_ target: WindowTarget) -> Bool {
