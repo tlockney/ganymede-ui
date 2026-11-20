@@ -785,7 +785,7 @@ with only SSH stays in Settings for shells.
   when it last wrote. Picking one opens the notebook. It needs a machine
   whose Ganymede lists open rooms (ganymede#893); an older one says so.
 - **When a machine stops answering,** its open notebooks turn read-only
-  and a banner reads "<machine> went offline · Reconnecting…". They are
+  and a banner reads "_machine_ went offline · Reconnecting…". They are
   editable again when it is back. There is no offline editing.
 - **What a machine's window doesn't get.** The device API, Notebook
   Access, the Shortcuts bridge, the app's editor for text files, the
