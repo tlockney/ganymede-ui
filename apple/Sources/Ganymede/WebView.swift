@@ -35,6 +35,7 @@ struct WebView: NSViewRepresentable {
         context.coordinator.page = page
         context.coordinator.onOpenFile = onOpenFile
         context.coordinator.onOpenPlace = onOpenPlace
+        context.coordinator.places = places
         context.coordinator.load(url, in: view)
     }
 }
@@ -75,6 +76,7 @@ struct WebView: UIViewRepresentable {
         context.coordinator.page = page
         context.coordinator.onOpenFile = onOpenFile
         context.coordinator.onOpenPlace = onOpenPlace
+        context.coordinator.places = places
         context.coordinator.load(url, in: view)
     }
 }
@@ -178,7 +180,15 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     let place: Place
     /// The places a machine's page offers, given to it as
     /// `window.ganymedePlaces`.
-    private let places: [PlaceEntry]
+    /// Kept current by the view (`updateNSView`), so a machine added or
+    /// renamed while the window is open reaches the page.
+    var places: [PlaceEntry] {
+        didSet {
+            guard place.allows(.switchPlace), oldValue != places, let webView else { return }
+            webView.evaluateJavaScript(
+                "window.ganymedePlaces = \(Places.pageJSON(places));", completionHandler: nil)
+        }
+    }
     var onNavigate: ((URL?) -> Void)?
     var onOpenFile: ((String) -> Void)?
     /// A machine page's pick in its place switcher.
@@ -351,6 +361,13 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
             // `<a download>`, including the blob: and data: links outputs
             // and widgets make for files.
             decisionHandler(.download)
+        } else if place.isMachine, navigationAction.navigationType == .linkActivated,
+                  navigationAction.targetFrame?.isMainFrame ?? true,
+                  let target = navigationAction.request.url, !isExternal(target),
+                  Self.isWebURL(target), !place.allowsFollowing(target) {
+            // A link in a machine's page to one of this device's pages
+            // (the same origin): not a page the machine's window may become.
+            decisionHandler(.cancel)
         } else if let target = navigationAction.request.url, isExternal(target),
            navigationAction.navigationType == .linkActivated {
             // A machine's notebook may link to anything: web links open in
@@ -484,6 +501,10 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
             }
         }
         return nil
+    }
+
+    nonisolated private static func isWebURL(_ url: URL) -> Bool {
+        ["http", "https"].contains(url.scheme?.lowercased() ?? "")
     }
 
     private func isExternal(_ url: URL) -> Bool {

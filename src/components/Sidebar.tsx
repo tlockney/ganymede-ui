@@ -141,8 +141,8 @@ function JournalList({
         <li key={j.path}>
           <button className="source-item journal-item" onClick={() => onOpen(j.path)}>
             <span className="item-name">{j.name}</span>
-            <span className="journal-agent">{j.agent ?? 'agent'}</span>
-            <span className={`journal-status ${j.running ? 'running' : ''}`}>
+            <span className="journal-item-agent">{j.agent ?? 'agent'}</span>
+            <span className={`journal-item-status ${j.running ? 'running' : ''}`}>
               {journalStatus(j)}
             </span>
           </button>
@@ -554,6 +554,10 @@ export function Sidebar({
               ))}
             </ul>
           </nav>
+        )}
+
+        {machine && tab === 'running' && running.length === 0 && (
+          <div className="source-empty">Nothing is running on {machine}.</div>
         )}
 
         {running.length > 0 && inTab('running') && (

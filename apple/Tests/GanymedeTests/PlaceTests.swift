@@ -84,6 +84,22 @@ final class PlaceTests: XCTestCase {
         XCTAssertTrue(Place.thisDevice.opensExternally(app))
     }
 
+    func testAMachineWindowStaysOnItsMountOrItsOwnPage() throws {
+        let machine = Place.machine(id)
+        func url(_ path: String) throws -> URL {
+            try XCTUnwrap(URL(string: "http://127.0.0.1:8123" + path))
+        }
+        XCTAssertTrue(machine.allowsFollowing(try url("/machines/\(id)/files/a.png")))
+        XCTAssertTrue(machine.allowsFollowing(try url("/machines/\(id)")))
+        XCTAssertTrue(machine.allowsFollowing(try url("/?kernels=server&machine=\(id)&open=/a.ipynb")))
+        XCTAssertFalse(machine.allowsFollowing(try url("/")))
+        XCTAssertFalse(machine.allowsFollowing(try url("/?machine=other")))
+        XCTAssertFalse(machine.allowsFollowing(try url("/api/contents/")))
+        XCTAssertFalse(machine.allowsFollowing(try url("/machines/other/api/status")))
+        XCTAssertFalse(machine.allowsFollowing(try url("/files/secret.txt")))
+        XCTAssertTrue(Place.thisDevice.allowsFollowing(try url("/api/contents/")))
+    }
+
     func testMachineNotebooksStayOutOfNativeRecentsAndSpotlight() {
         XCTAssertTrue(Place.thisDevice.indexesLocally)
         XCTAssertFalse(Place.machine(id).indexesLocally)

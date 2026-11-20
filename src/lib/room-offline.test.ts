@@ -13,7 +13,10 @@ function setup(connected = true) {
       return () => void listeners.delete(l);
     },
   };
-  const cells = [{ readOnly: false }, { readOnly: false }];
+  const cells = [
+    { readOnly: false, syncEditable: true },
+    { readOnly: true, syncEditable: true },
+  ];
   const notebook = { widgets: cells } as unknown as Parameters<typeof watchOffline>[1];
   const model = { readOnly: false };
   const onOffline = vi.fn();
@@ -26,31 +29,23 @@ function setup(connected = true) {
 }
 
 describe('watchOffline', () => {
-  it('leaves a connected notebook editable', () => {
+  it('leaves a connected notebook as it is', () => {
     const { cells, model, onOffline } = setup(true);
     expect(onOffline).toHaveBeenLastCalledWith(false);
     expect(model.readOnly).toBe(false);
-    expect(cells.every(c => !c.readOnly)).toBe(true);
+    expect(cells.map(c => c.readOnly)).toEqual([false, true]);
   });
 
-  it('makes the notebook read-only while the room is away, and editable when it is back', () => {
+  it('makes the notebook read-only without syncing, and syncs again when it is back', () => {
     const { cells, model, onOffline, set } = setup(true);
     set(false);
     expect(onOffline).toHaveBeenLastCalledWith(true);
     expect(model.readOnly).toBe(true);
-    expect(cells.every(c => c.readOnly)).toBe(true);
+    expect(cells.every(c => c.readOnly && !c.syncEditable)).toBe(true);
     set(true);
     expect(onOffline).toHaveBeenLastCalledWith(false);
     expect(model.readOnly).toBe(false);
-    expect(cells.every(c => !c.readOnly)).toBe(true);
-  });
-
-  it('puts back each cell as it was', () => {
-    const { cells, set } = setup(true);
-    cells[1].readOnly = true;
-    set(false);
-    set(true);
-    expect(cells.map(c => c.readOnly)).toEqual([false, true]);
+    expect(cells.every(c => c.syncEditable)).toBe(true);
   });
 
   it('starts read-only for a room that is already down', () => {

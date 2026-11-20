@@ -102,6 +102,19 @@ enum Place: Hashable, Codable {
         allows(.appLinks) || ["http", "https"].contains(url.scheme?.lowercased() ?? "")
     }
 
+    /// Whether a link the person followed, to a page on the app's own
+    /// server, may load in this place's window. This device's windows may
+    /// go anywhere on it. A machine's may stay on its mount, or reload its
+    /// own page (`/` with its `machine=`), but not turn into this device's
+    /// pages, which have the app's handlers' trust.
+    func allowsFollowing(_ url: URL) -> Bool {
+        guard case .machine(let id) = self else { return true }
+        if url.path == "/machines/\(id)" || url.path.hasPrefix(mountPath) { return true }
+        guard url.path == "/" || url.path.isEmpty else { return false }
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        return items.contains { $0.name == "machine" && $0.value == id }
+    }
+
     /// Whether notebooks of this place go in native Recents, File > Open
     /// Recent and Spotlight: those keep local file URLs, and a machine's
     /// notebooks have none.

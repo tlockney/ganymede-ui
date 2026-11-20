@@ -628,6 +628,12 @@ describe('Sidebar on a connected machine (#701)', () => {
     expect(onOpen).toHaveBeenCalledWith('journal/Day 1.ipynb');
   });
 
+  it('says nothing is running on the machine when its Running tab is empty', async () => {
+    renderMachine();
+    await userEvent.click(await screen.findByRole('tab', { name: 'Running' }));
+    expect(await screen.findByText('Nothing is running on m4mini.')).toBeInTheDocument();
+  });
+
   it('says so when the machine’s Ganymede can’t list rooms', async () => {
     renderMachine({}, 404);
     await userEvent.click(await screen.findByRole('tab', { name: 'Journals' }));

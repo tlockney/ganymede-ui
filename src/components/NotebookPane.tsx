@@ -645,12 +645,20 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         starting ??= startKernel().finally(() => (starting = undefined));
         return starting;
       };
-      const commands = createCommands(notebook, session, ensureKernel, e =>
-        setNotice(runFailed(session, services.kernelspecs, memory, e)),
+      // A connected machine that stopped answering (#701): nothing edits.
+      const down = () => onMachine && !!room && !room.connected;
+      const commands = createCommands(
+        notebook,
+        session,
+        ensureKernel,
+        e => setNotice(runFailed(session, services.kernelspecs, memory, e)),
+        () => !down(),
       );
       const editing = attachEditing(notebook, session, rendermime, commands);
-      const cellControls = attachCellControls(notebook, (cell, anchor) =>
-        setMenu({ cell, anchor }),
+      const cellControls = attachCellControls(
+        notebook,
+        (cell, anchor) => setMenu({ cell, anchor }),
+        down,
       );
       const codeCollapse = attachCodeCollapse(notebook);
       const typeErrors = attachTypeErrors(notebook, session);
@@ -675,8 +683,9 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
           });
       const onKey = (e: KeyboardEvent) => {
         // This listener runs before the notebook's own, so a machine that
-        // is away is stopped here: its keys edit nothing (#701).
-        if (onMachine && room && !room.connected && isEditKey(e)) {
+        // is away is stopped here: keys in the notebook edit nothing (#701).
+        // The commands refuse too, whatever keys they are bound to.
+        if (down() && isEditKey(e) && notebook.node.contains(e.target as Node | null)) {
           e.preventDefault();
           e.stopPropagation();
           return;
@@ -1624,12 +1633,15 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
           onOpenAsNotebook={() => controllerRef.current?.toggleJournal()}
         />
       )}
-      {!journal && <KeyboardBar notebook={open.notebook} commands={open.commands} />}
+      {!journal && !(machineName && roomOffline) && (
+        <KeyboardBar notebook={open.notebook} commands={open.commands} />
+      )}
       {menu && (
         <CellMenu
           notebook={open.notebook}
           cell={menu.cell}
           anchor={menu.anchor}
+          away={!!machineName && roomOffline}
           run={async function run() {
             try {
               if (await open.ensureKernel()) {

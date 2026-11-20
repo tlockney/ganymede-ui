@@ -451,7 +451,7 @@ export function journalHeader(
     const t = at ? Date.parse(at) : NaN;
     if (!Number.isNaN(t) && (first === undefined || t < first)) {
       first = t;
-      by = text(agent?.by) ?? by;
+      by = text(agent?.by);
     }
   }
   by ??= agentNames(cells)[0];

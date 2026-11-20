@@ -26,20 +26,25 @@ export function watchOffline(
   model: Pick<NotebookModel, 'readOnly'>,
   onOffline: (offline: boolean) => void,
 ): () => void {
-  const before = new Map<unknown, boolean>();
+  let locked = false;
   const apply = (connected: boolean) => {
     onOffline(!connected);
     model.readOnly = !connected;
-    for (const cell of notebook.widgets) {
-      if (!connected) {
-        // Each cell's own state comes back when the room does.
-        if (!before.has(cell)) before.set(cell, cell.readOnly);
+    if (!connected) {
+      locked = true;
+      for (const cell of notebook.widgets) {
+        // A cell with `syncEditable` writes its read-only state to its
+        // `editable` metadata, which is in the shared notebook: not an
+        // edit to make for an outage, nor one to save to the machine.
+        cell.syncEditable = false;
         cell.readOnly = true;
-      } else {
-        cell.readOnly = before.get(cell) ?? false;
       }
+    } else if (locked) {
+      locked = false;
+      // Turned on again, each cell reads its state back from its metadata.
+      for (const cell of notebook.widgets) cell.syncEditable = true;
     }
-    if (connected) before.clear();
+    // Connected from the start: nothing to do.
   };
   apply(room.connected);
   // Command-mode keys are stopped by the pane's own key handler, which

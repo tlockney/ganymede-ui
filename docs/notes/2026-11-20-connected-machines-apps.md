@@ -1,7 +1,7 @@
 ## 2026-11-20, connected machines in the apps (#701)
 
-A Remote with a server URL is now a place (`Place.swift`): This Mac or
-On My iPad, or `machine(<Remote UUID>)`. The app's embedded server mounts
+A Remote with a server URL is now a place (`Place.swift`): this device
+(named This Mac, This iPad or This iPhone, `Places.deviceName`), or `machine(<Remote UUID>)`. The app's embedded server mounts
 each machine under `/machines/{id}/` (ganymede#894:
 `ganymede_server_add_machine` / `_remove_machine`), and a machine's window
 loads the app's own page with `machine=<id>&machine_name=<name>`. The page
@@ -59,3 +59,26 @@ The e2e (`e2e/machines.spec.ts`) starts a second `ganymede serve` and
 cookie, can go down, and answers the rooms list when the machine's Ganymede
 has none). It proves the page's side; the real mount is exercised once
 ganymede#894 is released.
+
+Review follow-ups:
+
+- **Offline writes nothing.** A cell with `syncEditable` writes its
+  read-only state to `metadata.editable` in the shared notebook, so
+  `watchOffline` sets `syncEditable = false` before locking the cells, and
+  back to `true` on reconnect (which reads each cell's state from its
+  metadata). Nothing is touched when the room is connected from the start.
+- **Commands, not keys, are the gate.** `createCommands` takes `canEdit`,
+  which the pane makes false while a machine is away: insert, delete, cut,
+  paste, undo, redo, move, cell type and every run do nothing, whatever
+  keys (or the touch keyboard bar, which is hidden) call them. The cell
+  menu's items are disabled, and the add-cell buttons and drag handle do
+  nothing (`attachCellControls`' `away`). The pane's key handler still
+  drops edit keys, only those pressed inside the notebook.
+- **A machine window can't become one of this device's pages.** A link in
+  its page to the app's own origin loads only under its mount or as its
+  own page (`Place.allowsFollowing`). The page's places list is refreshed
+  when the app's list changes (`WebViewCoordinator.places`).
+- **Running tab** of a machine says "Nothing is running on <machine>." It
+  has no New Terminal; a terminal on a machine is a follow-up.
+- The journal list's classes are `journal-item-agent` and
+  `journal-item-status`, apart from the journal view's `journal-status`.

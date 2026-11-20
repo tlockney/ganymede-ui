@@ -146,6 +146,8 @@ function decorate(cell: Cell): void {
 export function attachCellControls(
   notebook: Notebook,
   onMenu: (cell: Cell, anchor: HTMLElement) => void,
+  /** True while the notebook may not be edited (a machine that is away, #701). */
+  away: () => boolean = () => false,
 ): IDisposable {
   let disposed = false;
   const sync = () => {
@@ -172,7 +174,8 @@ export function attachCellControls(
     e.stopPropagation();
     const what = target.dataset.gnControl;
     if (what === 'menu') onMenu(cell, target);
-    else if (what === 'code' || what === 'markdown') addCellAfter(notebook, cell, what);
+    else if ((what === 'code' || what === 'markdown') && !away())
+      addCellAfter(notebook, cell, what);
   };
   // The notebook takes a mousedown in a cell to select it, drag it or
   // focus its editor, and a double click to edit Markdown; a tap on a
@@ -181,7 +184,7 @@ export function attachCellControls(
     const control = (e.target as Element | null)?.closest<HTMLElement>('[data-gn-control]');
     if (!control) return;
     e.stopPropagation();
-    if (e.type !== 'pointerdown' || control.dataset.gnControl !== 'drag') return;
+    if (e.type !== 'pointerdown' || control.dataset.gnControl !== 'drag' || away()) return;
     const cellNode = control.closest('.jp-Cell');
     const cell = notebook.widgets.find(w => w.node === cellNode);
     if (cell) dragCell(notebook, cell, control, e as PointerEvent);

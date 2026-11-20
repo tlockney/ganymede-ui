@@ -242,6 +242,34 @@ describe('createCommands', () => {
     await vi.waitFor(() => expect(onError).toHaveBeenCalledTimes(2));
     expect(beforeRun).toHaveBeenLastCalledWith(true);
   });
+
+  it('changes and runs nothing while it may not edit, whatever keys are bound', async () => {
+    const session = { session: { kernel } } as unknown as ISessionContext;
+    const beforeRun = vi.fn(async () => true);
+    let allowed = false;
+    const guarded = createCommands(notebook, session, beforeRun, undefined, () => allowed);
+    const cells = () => notebook.widgets.length;
+    const types = () => notebook.widgets.map(c => c.model.type);
+    for (const id of ['insert-above', 'insert-below', 'delete', 'cut', 'paste', 'undo', 'redo']) {
+      await guarded.execute(id);
+    }
+    for (const id of ['to-markdown', 'to-raw', 'to-code', 'move-up', 'move-down']) {
+      await guarded.execute(id);
+    }
+    for (const id of ['run-cell', 'run-and-advance', 'run-and-insert', 'run-all']) {
+      await guarded.execute(id);
+    }
+    expect(cells()).toBe(2);
+    expect(types()).toEqual(['code', 'markdown']);
+    expect(beforeRun).not.toHaveBeenCalled();
+    // Reading still works.
+    await guarded.execute('select-below');
+    expect(notebook.activeCellIndex).toBe(1);
+
+    allowed = true;
+    await guarded.execute('insert-below');
+    expect(cells()).toBe(3);
+  });
 });
 
 describe('UrlResolver (#704)', () => {

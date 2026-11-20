@@ -2637,8 +2637,8 @@ button {
   box-shadow: 0 0.5px 1.5px rgba(0, 0, 0, 0.2);
 }
 
-.journal-agent,
-.journal-status {
+.journal-item-agent,
+.journal-item-status {
   font-size: 11px;
   color: var(--text-3);
 }
@@ -2650,6 +2650,6 @@ button {
   gap: 1px;
 }
 
-.journal-status.running {
+.journal-item-status.running {
   color: var(--green);
 }

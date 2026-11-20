@@ -15,7 +15,7 @@ vi.mock('../lib/cell-controls', async importOriginal => ({
 const { CellMenu } = await import('./CellMenu');
 const { Signal } = await import('@lumino/signaling');
 
-function setup(index: number, type = 'code') {
+function setup(index: number, type = 'code', away = false) {
   const cells = [0, 1, 2].map(i => ({ model: { type: i === index ? type : 'code' } }));
   const notebook = {
     widgets: cells,
@@ -31,6 +31,7 @@ function setup(index: number, type = 'code') {
       cell={cells[index] as unknown as Cell}
       anchor={document.body}
       run={run}
+      away={away}
       onClose={onClose}
     />,
   );
@@ -62,6 +63,16 @@ describe('CellMenu', () => {
     await userEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
     expect(onClose).toHaveBeenCalled();
     expect(applyCellAction).toHaveBeenCalledWith(notebook, cell, 'delete', run);
+  });
+
+  it('offers no action while the machine is away', async () => {
+    applyCellAction.mockClear();
+    setup(1, 'code', true);
+    const items = screen.getByRole('menu').querySelectorAll('[role^="menuitem"]');
+    expect(items.length).toBeGreaterThan(0);
+    for (const item of items) expect(item, item.textContent ?? '').toBeDisabled();
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+    expect(applyCellAction).not.toHaveBeenCalled();
   });
 
   it('closes when the cells change', () => {
