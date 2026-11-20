@@ -22,17 +22,11 @@ struct GanymedeApp: App {
         // One window per notebook or folder (`WindowTarget`); none shows
         // the last folder. Opening one that is already open brings it front.
         WindowGroup(id: WorkspaceTabs.sceneID, for: WindowTarget.self) { $target in
-            // A connected machine's window has no native sidebar, which
-            // reads this device's files (#701).
-            if let machine = target, machine.place.isMachine {
-                MachineWindow(target: machine) { target = $0 }
-                    .environment(model)
-                    .settingsOpener()
-            } else {
-                ContentView(target: $target)
-                    .environment(model)
-                    .settingsOpener()
-            }
+            // A connected machine's window is this one too (#740): its
+            // sidebar reads the machine through the app's mount.
+            ContentView(target: $target)
+                .environment(model)
+                .settingsOpener()
         }
         // Files opened from the Finder go through the app delegate (#228).
         .handlesExternalEvents(matching: [])
@@ -160,6 +154,7 @@ struct OpenCommands: View {
     var model: AppModel
     private let recents = Recents.shared
     @FocusedValue(\.pageModel) private var page
+    @FocusedValue(\.windowScope) private var scope
 
     var body: some View {
         Button("Open…") {
@@ -178,6 +173,8 @@ struct OpenCommands: View {
             Button("Clear Menu") { recents.clear() }
                 .disabled(recents.urls.isEmpty)
         }
+        // This Mac's notebooks: not from a connected machine's window (#740).
+        .disabled(scope?.place.isMachine == true)
         // The page's recent DuckDB consoles (#735): each opens as a tab, or
         // brings forward the tab showing it.
         let consoles = page?.state.consoles ?? []
@@ -193,7 +190,7 @@ struct OpenCommands: View {
             Button("Clear Recent Consoles") { page?.run("clear-recent-consoles") }
                 .disabled(consoles.isEmpty)
         }
-        .disabled(page == nil)
+        .disabled(page == nil || scope?.place.isMachine == true)
         Button("Open Folder…") {
             if let folder = model.chooseFolder() {
                 openWindow(value: WindowTarget.folder(folder.standardizedFileURL))

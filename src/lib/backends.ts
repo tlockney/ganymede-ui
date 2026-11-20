@@ -75,6 +75,101 @@ export function serverBase(config: BackendConfig, origin: string): string {
 }
 
 /**
+ * Whether `url`, as the browser would resolve it, is on `origin` under the
+ * machine's mount. `new URL` removes `.`, `..` and `%2e` segments, so a path
+ * a machine's answer climbs with (`../../api/...`) is judged by where it
+ * lands, not by how it is spelled. `scheme` is `http` for fetch (the page's
+ * protocol), `ws` for a socket (ws for an http page, wss for https). The
+ * prefix ends in a slash, so another machine's `/machines/<id>x/` doesn't
+ * match.
+ */
+export function isUnderMount(
+  url: string,
+  origin: string,
+  id: string,
+  scheme: 'http' | 'ws',
+): boolean {
+  try {
+    const page = new URL(origin);
+    const target = new URL(url, page);
+    const protocol = scheme === 'http' ? page.protocol : page.protocol.replace(/^http/, 'ws');
+    return (
+      target.protocol === protocol &&
+      target.host === page.host &&
+      target.pathname.startsWith(machinePrefix(id))
+    );
+  } catch {
+    return false;
+  }
+}
+
+const REFUSED = 'Refused a request outside the machine’s mount.';
+
+/**
+ * A `fetch` for a machine's page that refuses, before any network call, a
+ * request that lands outside the machine's mount. A machine is less trusted
+ * than this device: its answers hold paths the page joins onto its base URL,
+ * and one could climb out to this device's own server, which the app token
+ * authenticates. `underlying` defaults to the global `fetch` when this is
+ * called (the `fetch` the settings would have used).
+ */
+export function confinedFetch(
+  origin: string,
+  id: string,
+  underlying?: typeof fetch,
+): (input: RequestInfo, init?: RequestInit) => Promise<Response> {
+  const send = underlying ?? globalThis.fetch;
+  return (input, init) => {
+    const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
+    if (!isUnderMount(url, origin, id, 'http')) return Promise.reject(new Error(REFUSED));
+    return send(input, init);
+  };
+}
+
+/** A `WebSocket` class that throws, before dialing, on a URL outside the machine's mount. */
+export function confinedWebSocket(
+  origin: string,
+  id: string,
+  underlying?: typeof WebSocket,
+): typeof WebSocket {
+  return class extends (underlying ?? globalThis.WebSocket) {
+    constructor(url: string | URL, protocols?: string | string[]) {
+      if (!isUnderMount(String(url), origin, id, 'ws')) throw new Error(REFUSED);
+      super(url, protocols);
+    }
+  };
+}
+
+/**
+ * The connection settings for a ganymede config on a page at `origin`. A
+ * machine's are confined to its mount (see `confinedFetch`). The 'page' and
+ * 'both' kernel variants reuse them; 'both' (`createMixedServices`) opens
+ * its server sockets through these settings' `WebSocket`, so the
+ * confinement holds there too.
+ */
+export function settingsFor(config: BackendConfig & { kind: 'ganymede' }, origin: string) {
+  const base = serverBase(config, origin);
+  return ServerConnection.makeSettings({
+    baseUrl: base,
+    wsUrl: base.replace(/^http/, 'ws'),
+    token: config.token,
+    appendToken: true,
+    // The token authenticates; cookies cross origins only without one.
+    // A credentialed cross-origin request needs the server to answer
+    // `Access-Control-Allow-Credentials: true`, which Ganymede doesn't.
+    init: {
+      credentials: config.url && !config.token ? 'include' : 'same-origin',
+    },
+    ...(config.machine
+      ? {
+          fetch: confinedFetch(origin, config.machine),
+          WebSocket: confinedWebSocket(origin, config.machine),
+        }
+      : {}),
+  });
+}
+
+/**
  * The machine the page URL names (`machine=<id>`, with `machine_name=` for
  * titles), as the Apple apps load a machine window's page. A malformed id
  * is ignored, so the page falls back to its own server rather than build a
@@ -109,18 +204,7 @@ function reportRename(_: unknown, change: Contents.IChangedArgs): void {
 async function connectTo(config: BackendConfig): Promise<Backend> {
   if (config.kind === 'ganymede') {
     const base = serverBase(config, window.location.origin);
-    const serverSettings = ServerConnection.makeSettings({
-      baseUrl: base,
-      wsUrl: base.replace(/^http/, 'ws'),
-      token: config.token,
-      appendToken: true,
-      // The token authenticates; cookies cross origins only without one.
-      // A credentialed cross-origin request needs the server to answer
-      // `Access-Control-Allow-Credentials: true`, which Ganymede doesn't.
-      init: {
-        credentials: config.url && !config.token ? 'include' : 'same-origin',
-      },
-    });
+    const serverSettings = settingsFor(config, window.location.origin);
     // Fail fast with a readable error instead of a hung kernel list.
     const res = await ServerConnection.makeRequest(base + 'api/status', {}, serverSettings);
     if (!res.ok) {

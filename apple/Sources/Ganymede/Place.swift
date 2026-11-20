@@ -38,6 +38,16 @@ enum Place: Hashable, Codable {
 
     var isMachine: Bool { machineID != nil }
 
+    /// Whether the app draws the sidebar and toolbar of a window of this
+    /// place (the page loads with `chrome=native`): every Mac window, and on
+    /// iOS this device's only, since the iPad's machine screen shows the
+    /// page's own chrome (#701, until #741).
+    func drawsNativeChrome(onMac: Bool) -> Bool { onMac || !isMachine }
+
+    /// This device's own disk and shells: what Reveal in Finder, the
+    /// terminal panel and local Recents work on.
+    var isThisDevice: Bool { !isMachine }
+
     /// The path the page uses as its server, on the app's own origin.
     var mountPath: String {
         switch self {
@@ -77,7 +87,11 @@ enum Place: Hashable, Codable {
         case .thisDevice:
             capability != .switchPlace
         case .machine:
-            capability == .settings || capability == .switchPlace
+            // `nativeChrome`: the Mac draws a machine's sidebar and toolbar
+            // too (#740), from the page's `state`. Its `document` message
+            // never reaches native Recents, Spotlight or the proxy icon
+            // (`indexesLocally`).
+            capability == .settings || capability == .switchPlace || capability == .nativeChrome
         }
     }
 

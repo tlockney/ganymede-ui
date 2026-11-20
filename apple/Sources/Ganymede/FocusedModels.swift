@@ -9,5 +9,16 @@ extension FocusedValues {
     @Entry var inspectorController: InspectorController?
     @Entry var editorDocument: EditorDocument?
     @Entry var pageDocument: PageDocument?
+    @Entry var windowScope: WindowScope?
     #endif
 }
+
+#if os(macOS)
+/// The front window's place and its folder as its own server knows it (a
+/// machine's path for a machine's window), for File > New Notebook and
+/// Open Recent (#740).
+struct WindowScope: Equatable {
+    var place: Place
+    var serverFolder: String
+}
+#endif

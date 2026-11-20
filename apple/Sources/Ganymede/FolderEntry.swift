@@ -39,16 +39,19 @@ struct FolderEntry: Identifiable, Hashable {
     /// The URL of the item at `path` (relative, no leading slash; "" for the
     /// root) on machine `id`: `ganymede-machine://<id>/<path>`, each segment
     /// percent-encoded. Nil for a malformed id, so a URL is never built
-    /// from one.
+    /// from one, and for a path with a "." or ".." segment: a machine sends
+    /// names, and a `..` must never climb out of its mount.
     static func machineURL(_ id: String, path: String) -> URL? {
         guard Place.isValidMachineID(id) else { return nil }
         var parts = URLComponents()
         parts.scheme = machineScheme
         parts.host = id
+        let raw = path.split(separator: "/", omittingEmptySubsequences: true).map(String.init)
+        guard !raw.contains(where: isDotSegment) else { return nil }
         // Encoded by hand with a strict set: `URLComponents.path` leaves
         // `;` and the like as they are, which don't survive a round trip.
-        let segments = path.split(separator: "/", omittingEmptySubsequences: true).map {
-            String($0).addingPercentEncoding(withAllowedCharacters: segmentAllowed) ?? String($0)
+        let segments = raw.map {
+            $0.addingPercentEncoding(withAllowedCharacters: segmentAllowed) ?? $0
         }
         parts.percentEncodedPath = "/" + segments.joined(separator: "/")
         return parts.url
@@ -58,6 +61,12 @@ struct FolderEntry: Identifiable, Hashable {
     static let segmentAllowed = CharacterSet(
         charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
 
+    /// A "." or ".." path segment, also as written with `%2E`.
+    static func isDotSegment(_ segment: String) -> Bool {
+        let plain = segment.replacingOccurrences(of: "%2e", with: ".", options: .caseInsensitive)
+        return plain == "." || plain == ".."
+    }
+
     /// The machine and the relative path (decoded; "" for the root) of a
     /// `machineURL`; nil for any other URL.
     static func machineLocation(_ url: URL) -> (id: String, path: String)? {
@@ -66,7 +75,46 @@ struct FolderEntry: Identifiable, Hashable {
         let segments = encoded.split(separator: "/", omittingEmptySubsequences: true).map {
             String($0).removingPercentEncoding ?? String($0)
         }
+        // Never a location with a dot segment, or a "/" hidden in one.
+        guard !segments.contains(where: { isDotSegment($0) || $0.contains("/") }) else { return nil }
         return (id, segments.joined(separator: "/"))
+    }
+
+    /// What a folder is stored under, for the expanded folders and the
+    /// window's sidebar (#740): a file URL's path (as before, so saved state
+    /// keeps working), a machine location's whole URL, so a machine's folder
+    /// and this device's never collide.
+    static func storageKey(_ url: URL) -> String {
+        url.isFileURL ? url.path : url.absoluteString
+    }
+
+    /// The location a `storageKey` names; nil for "" or a malformed one.
+    static func location(storageKey key: String) -> URL? {
+        guard !key.isEmpty else { return nil }
+        if key.hasPrefix(machineScheme + "://") {
+            guard let url = URL(string: key), machineLocation(url) != nil else { return nil }
+            return url
+        }
+        return URL(fileURLWithPath: key, isDirectory: true)
+    }
+
+    /// Whether `url` is a location in `place`: a file URL for this device, a
+    /// machine's URL for that machine (its id's case is not relied on).
+    static func isLocation(_ url: URL, in place: Place) -> Bool {
+        switch place {
+        case .thisDevice:
+            return url.isFileURL
+        case .machine(let id):
+            guard let location = machineLocation(url) else { return false }
+            return location.id.caseInsensitiveCompare(id) == .orderedSame
+        }
+    }
+
+    /// Whether a window of `place` can open the item: notebooks and data
+    /// files in the page anywhere, other files in the app's editor, which
+    /// reads this device's disk, only on this device.
+    func canOpen(in place: Place) -> Bool {
+        opensInPage || place.allows(.openFile)
     }
 
     /// The path of the folder holding the item at relative `path`; "" for

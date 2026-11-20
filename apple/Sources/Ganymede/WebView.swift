@@ -783,8 +783,8 @@ extension WebViewCoordinator {
     /// The page's `document` message: its notebook and unsaved edits. Only
     /// the page itself may send it.
     func received(document message: WKScriptMessage) {
-        if message.frameInfo.isMainFrame, let update = DocumentMessage(body: message.body) {
-            document?.update(update)
+        if message.frameInfo.isMainFrame, let update = DocumentMessage(body: message.body, place: place) {
+            document?.update(update, in: place)
         }
     }
 }

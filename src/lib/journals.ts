@@ -5,6 +5,7 @@
 import { URLExt } from '@jupyterlab/coreutils';
 import { ServerConnection } from '@jupyterlab/services';
 import { useEffect, useState } from 'react';
+import { hasDotSegment } from './launch';
 
 export type RoomClient = { name: string; kind: 'person' | 'agent' };
 
@@ -33,6 +34,8 @@ export function parseRooms(body: unknown): Room[] {
     if (!raw || typeof raw !== 'object') continue;
     const r = raw as Record<string, unknown>;
     if (typeof r.path !== 'string' || !r.path) continue;
+    // A machine sends the paths: not one that climbs out of its mount.
+    if (hasDotSegment(r.path) || r.path.includes('\\')) continue;
     const clients: RoomClient[] = [];
     if (Array.isArray(r.clients)) {
       for (const c of r.clients) {

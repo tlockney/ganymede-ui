@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { readLaunch, titleFor, withDir, withOpen } from './launch';
+import { clean, hasDotSegment, readLaunch, titleFor, withDir, withOpen } from './launch';
 
 describe('readLaunch', () => {
   it('opens nothing by default, at the root', () => {
@@ -97,5 +97,25 @@ describe('withDir', () => {
     expect(withDir('?open=a%2Fb.ipynb&dir=x', 'a')).toBe('?open=a%2Fb.ipynb');
     // The root, with a notebook open elsewhere, has to be said.
     expect(readLaunch(withDir('?open=a%2Fb.ipynb', '')).dir).toBe('');
+  });
+});
+
+describe('paths that climb out (#740)', () => {
+  it('are no path', () => {
+    for (const bad of ['../x', 'a/../../x', './a', 'a/..', '..', 'a/%2e%2E/b', 'a\\..\\b']) {
+      expect(hasDotSegment(bad), bad).toBe(true);
+      expect(clean(bad), bad).toBe('');
+    }
+  });
+
+  it('leave ordinary names alone', () => {
+    for (const ok of ['a/..b/c.d', '.hidden/x', 'a...b', 'Users/me/a.ipynb', '']) {
+      expect(hasDotSegment(ok), ok).toBe(false);
+    }
+    expect(clean('/Users//me/a.ipynb/')).toBe('Users/me/a.ipynb');
+  });
+
+  it('are not read from open= or dir=', () => {
+    expect(readLaunch('?open=../../a.ipynb&dir=../x')).toEqual({ dir: '' });
   });
 });

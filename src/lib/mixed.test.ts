@@ -6,6 +6,7 @@ import {
   MixedSessionClient,
   Owners,
   inApp,
+  dispatchingSocket,
   kernelIdFrom,
 } from './mixed';
 
@@ -300,5 +301,33 @@ describe('kernelIdFrom', () => {
       kernelIdFrom('ws://127.0.0.1:8888/api/kernels/a%2Fb/channels?session_id=x&token=t'),
     ).toBe('a/b');
     expect(kernelIdFrom('ws://127.0.0.1:8888/api/events/subscribe')).toBeUndefined();
+  });
+});
+
+describe('dispatchingSocket', () => {
+  it('opens a server socket through the given WebSocket, not the global one', () => {
+    const urls: string[] = [];
+    class Given {
+      constructor(readonly url: string) {
+        urls.push(url);
+      }
+    }
+    const Socket = dispatchingSocket(
+      url => url.includes('/api/kernels/page-1/'),
+      Given as unknown as typeof WebSocket,
+    );
+    const ws = new Socket('ws://h/api/kernels/server-1/channels');
+    expect(ws).toBeInstanceOf(Given);
+    expect(urls).toEqual(['ws://h/api/kernels/server-1/channels']);
+    // An error from the given class (a confined one throws) reaches the caller.
+    const Refusing = dispatchingSocket(
+      () => false,
+      class {
+        constructor() {
+          throw new Error('refused');
+        }
+      } as unknown as typeof WebSocket,
+    );
+    expect(() => new Refusing('ws://h/x')).toThrow('refused');
   });
 });

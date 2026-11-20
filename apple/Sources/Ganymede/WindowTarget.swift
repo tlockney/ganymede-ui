@@ -28,6 +28,10 @@ enum WindowTarget: Codable, Hashable {
     /// A machine's notebook or folder; nil for a malformed machine id.
     static func machine(_ id: String, path: String, isFolder: Bool) -> WindowTarget? {
         guard Place.isValidMachineID(id) else { return nil }
+        // Never a path that climbs: it becomes the page's `open=` / `dir=`.
+        guard !path.split(whereSeparator: { $0 == "/" || $0 == "\\" }).contains(where: {
+            FolderEntry.isDotSegment(String($0))
+        }) else { return nil }
         let clean = "/" + path.split(separator: "/").joined(separator: "/")
         return isFolder ? .machineFolder(machine: id, path: clean) : .machineFile(machine: id, path: clean)
     }
@@ -81,7 +85,9 @@ enum WindowTarget: Codable, Hashable {
             if let file = path("open"), let target = Self.machine(machine, path: file, isFolder: false) {
                 self = target
             } else {
-                self = Self.machine(machine, path: path("dir") ?? "", isFolder: true)!
+                // A `dir` that climbs is none: the root.
+                self = Self.machine(machine, path: path("dir") ?? "", isFolder: true)
+                    ?? .machineFolder(machine: machine, path: "/")
             }
         } else if let file = path("open") {
             // A notebook wins over `console`, as the page's `readLaunch` has it.
@@ -106,15 +112,56 @@ enum WindowTarget: Codable, Hashable {
         }
     }
 
-    /// The folder the target is in: a notebook's folder, or the folder.
-    /// A terminal opened from the window starts here.
+    /// The folder the target is in, as a location (#740): a notebook's
+    /// folder, or the folder. A file URL on this device, where a terminal
+    /// opened from the window starts; a machine's is its
+    /// `FolderEntry.machineURL`, which is never a file on this device.
     var folder: URL {
         switch self {
         case .file(let url): url.deletingLastPathComponent()
         case .folder(let url), .console(let url, _): url
-        case .machineFile: url.deletingLastPathComponent()
-        case .machineFolder: url
+        case .machineFile(let id, let path):
+            Self.machineLocation(id, path: FolderEntry.parentPath(path))
+        case .machineFolder(let id, let path):
+            Self.machineLocation(id, path: path)
         }
+    }
+
+    /// A machine's location; for a malformed id a host-less URL, which is
+    /// no machine's location (`FolderEntry.machineLocation` is nil), so
+    /// nothing falls back to this device's disk.
+    private static func machineLocation(_ id: String, path: String) -> URL {
+        FolderEntry.machineURL(id, path: path) ?? URL(string: "\(FolderEntry.machineScheme):///")!
+    }
+
+    /// The window that opens a sidebar item: its machine's notebook or
+    /// folder, or on this device what `init(opening:)` makes. Nil for a
+    /// machine URL with a malformed id.
+    init?(opening entry: FolderEntry) {
+        if entry.url.scheme == FolderEntry.machineScheme {
+            guard let location = FolderEntry.machineLocation(entry.url),
+                  let target = Self.machine(location.id, path: location.path, isFolder: entry.isDirectory)
+            else { return nil }
+            self = target
+        } else {
+            self = WindowTarget(opening: entry.url)
+        }
+    }
+
+    /// The folder window of `place`'s root: what the place menu opens.
+    /// `device` is this device's folder.
+    static func root(of place: Place, device: URL) -> WindowTarget? {
+        switch place {
+        case .thisDevice: .folder(device)
+        case .machine(let id): machine(id, path: "/", isFolder: true)
+        }
+    }
+
+    /// The window subtitle: "on <machine>" for a machine's window, then the
+    /// page's own (the kernel and its state, when a notebook is open).
+    static func subtitle(page: String, machineName: String?) -> String {
+        let machine = machineName.flatMap { $0.isEmpty ? nil : "on \($0)" }
+        return [machine, page.isEmpty ? nil : page].compactMap { $0 }.joined(separator: " · ")
     }
 
     /// The window title. A machine's window adds its name, so its tab
@@ -140,11 +187,11 @@ enum WindowTarget: Codable, Hashable {
 
     /// The tab's title: a console shows the name the page reports (#735),
     /// the rest their usual title.
-    func tabTitle(consoleName: String?) -> String {
+    func tabTitle(consoleName: String?, machineName: String? = nil) -> String {
         if case .console = self, let name = consoleName?.trimmingCharacters(in: .whitespaces), !name.isEmpty {
             return name
         }
-        return title
+        return displayTitle(machineName: machineName)
     }
 
     /// Whether this window already shows `page`, a target read from its
@@ -181,9 +228,8 @@ enum WindowTarget: Codable, Hashable {
             }
         }()
         added += place.pageQuery(name: machineName)
-        // A machine's window shows the page's own sidebar and toolbar: the
-        // app's native chrome reads this device's files and state.
-        if nativeChrome && !place.isMachine { added.append(("chrome", "native")) }
+        // The window draws the sidebar and toolbar, a machine's too (#740).
+        if nativeChrome { added.append(("chrome", "native")) }
         // Encoded by hand: URLComponents leaves `+` and `&` alone in query
         // values, which a page reads as a space and a separator.
         let encoded = added.map { name, value in "\(name)=\(Self.encode(value))" }
