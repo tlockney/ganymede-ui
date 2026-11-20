@@ -34,6 +34,44 @@ type Options = {
   rooms?: unknown;
 };
 
+/**
+ * The routes the mount forwards: ganymede-gateway's `mount::route`. Anything
+ * else under `/machines/{id}/` is refused ('malformed' for a bad path,
+ * 'not-allowed' for a route off the list).
+ */
+export function routeAllowed(rest: string): 'ok' | 'malformed' | 'not-allowed' {
+  const path = rest.split(/[?#]/)[0];
+  const raw = path.split('/');
+  const segs: string[] = [];
+  for (let i = 0; i < raw.length; i++) {
+    if (raw[i] === '') {
+      if (i === raw.length - 1 && i > 0) continue;
+      return 'malformed';
+    }
+    let seg: string;
+    try {
+      seg = decodeURIComponent(raw[i]);
+    } catch {
+      return 'malformed';
+    }
+    if (seg === '.' || seg === '..' || /[/\\\0]/.test(seg)) return 'malformed';
+    segs.push(seg);
+  }
+  const [a, b, c] = segs;
+  if (a === 'api' && b === 'status' && segs.length === 2) return 'ok';
+  if (a === 'api' && b === 'me' && segs.length === 2) return 'ok';
+  if (a === 'api' && b === 'notebooks' && c === 'run' && segs.length === 3) return 'ok';
+  if (a === 'api' && b === 'events' && c === 'subscribe' && segs.length === 3) return 'ok';
+  if (a === 'api' && b === 'nbconvert' && segs.length === 2) return 'ok';
+  if (a === 'files' || a === 'nbconvert') return 'ok';
+  if (a === 'api' && ['contents', 'collaboration', 'fileid', 'kernels'].includes(b ?? ''))
+    return 'ok';
+  if (a === 'api' && ['sessions', 'kernelspecs', 'terminals'].includes(b ?? '')) return 'ok';
+  if (a === 'api' && b === 'metrics' && c === 'v1' && segs[3] === 'kernel_usage') return 'ok';
+  if (a === 'terminals' && b === 'websocket' && segs.length === 3) return 'ok';
+  return 'not-allowed';
+}
+
 export async function startMountProxy(o: Options): Promise<MountProxy> {
   const prefix = `/machines/${o.machineId}/`;
   let down = false;
@@ -58,6 +96,13 @@ export async function startMountProxy(o: Options): Promise<MountProxy> {
   const server: Server = createServer((req: IncomingMessage, res: ServerResponse) => {
     const path = mounted(req.url ?? '');
     const target = path === undefined ? o.app : o.machine;
+    if (path !== undefined) {
+      const verdict = routeAllowed(path.slice(1));
+      if (verdict !== 'ok') {
+        res.writeHead(verdict === 'malformed' ? 400 : 404).end('not allowed');
+        return;
+      }
+    }
     if (path !== undefined && down) {
       res.writeHead(502).end('machine offline');
       return;
@@ -86,7 +131,7 @@ export async function startMountProxy(o: Options): Promise<MountProxy> {
 
   server.on('upgrade', (req: IncomingMessage, client: Socket, head: Buffer) => {
     const path = mounted(req.url ?? '');
-    if (path !== undefined && down) {
+    if (path !== undefined && (down || routeAllowed(path.slice(1)) !== 'ok')) {
       client.destroy();
       return;
     }

@@ -686,7 +686,8 @@ struct ContentView: View {
         if shown?.url.standardizedFileURL.path != loaded.url.standardizedFileURL.path {
             pageReported = true
         }
-        guard let shown, shown != target else { return }
+        // A local page can't turn itself into a machine's window (#701).
+        guard let shown, shown.place == .thisDevice, shown != target else { return }
         // A window opened on nothing stays blank on the folder it loaded,
         // so it can still take the Finder's files at launch (#228).
         if target == nil, case .folder = shown, shown.url.path == loaded.url.path { return }
@@ -992,6 +993,17 @@ private struct KeychainAlert: ViewModifier {
             Button("OK", role: .cancel) {}
         } message: {
             Text(model.keychainError ?? "")
+        }
+        .alert(
+            "Connected Machine",
+            isPresented: Binding(
+                get: { model.machineError != nil },
+                set: { if !$0 { model.machineError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(model.machineError ?? "")
         }
     }
 }

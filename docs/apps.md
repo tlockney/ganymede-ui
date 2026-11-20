@@ -151,8 +151,8 @@ shown or hidden, its tab and its expanded folders across launches.
   Settings > Remotes (its editor can switch kernels to it), then pick
   where kernels run from the kernel button in the toolbar or Kernel >
   Advanced > Run Kernels On. The sidebar's foot names where they run now
-  ("This Mac" or the remote), and its menu also opens a terminal on a
-  remote. The choice is app-wide, and switching shuts down running
+  ("This Mac" or the remote); its menu is where you open a terminal on
+  a remote. The choice is app-wide, and switching shuts down running
   kernels, so the Mac asks first while any run. To work on another
   machine's own notebooks, connect it instead
   ([Connected machines](#connected-machines)).

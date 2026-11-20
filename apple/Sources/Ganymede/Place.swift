@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(UIKit)
+import UIKit
+#endif
 
 /// Where a window's notebooks live (#701): this device, or a connected
 /// machine reached through the app's own server, which mounts it under
@@ -34,15 +37,6 @@ enum Place: Hashable, Codable {
     }
 
     var isMachine: Bool { machineID != nil }
-
-    /// What keeps this place's path-keyed state apart (the page's Recents
-    /// use the same: `local`, or `machine:<id>`).
-    var key: String {
-        switch self {
-        case .thisDevice: "local"
-        case .machine(let id): "machine:\(id)"
-        }
-    }
 
     /// The path the page uses as its server, on the app's own origin.
     var mountPath: String {
@@ -87,6 +81,27 @@ enum Place: Hashable, Codable {
         }
     }
 
+    /// The script message handlers a window of this place registers. The
+    /// one table the web view is made from, so a gate that is wrong shows
+    /// in a test. (`kernelRelay` and `deviceRemote` are the device bridge's,
+    /// attached by `ServerHost.kernels`.)
+    var handlerNames: [String] {
+        var names: [String] = []
+        if allows(.deviceBridge) { names += ["kernelRelay", "deviceRemote"] }
+        if allows(.openFile) { names.append("openFile") }
+        if allows(.nativeChrome) { names += ["state", "document"] }
+        if allows(.agentKeys) { names.append("agentKeys") }
+        if allows(.settings) { names.append("settings") }
+        if allows(.switchPlace) { names.append("place") }
+        return names
+    }
+
+    /// Whether a link the page asked to open goes to the system: web links
+    /// always, `ganymede://` and other app links only for this device.
+    func opensExternally(_ url: URL) -> Bool {
+        allows(.appLinks) || ["http", "https"].contains(url.scheme?.lowercased() ?? "")
+    }
+
     /// Whether notebooks of this place go in native Recents, File > Open
     /// Recent and Spotlight: those keep local file URLs, and a machine's
     /// notebooks have none.
@@ -109,6 +124,15 @@ struct PlaceEntry: Identifiable, Equatable {
 }
 
 enum Places {
+    /// What the place switcher calls this device.
+    @MainActor static var deviceName: String {
+        #if os(macOS)
+        "This Mac"
+        #else
+        UIDevice.current.userInterfaceIdiom == .pad ? "This iPad" : "This iPhone"
+        #endif
+    }
+
     /// This device first, then each remote with a server (an SSH-only remote
     /// stays in Settings and is not a place). Only one entry, this device,
     /// where the server can't mount machines.

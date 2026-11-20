@@ -90,11 +90,6 @@ export function machineFromSearch(
   return { machine, ...(name ? { machineName: name } : {}) };
 }
 
-/** Whether `config` is a connected machine reached through the app's server. */
-export function isMachine(config: BackendConfig): boolean {
-  return config.kind === 'ganymede' && !!config.machine;
-}
-
 export async function connect(config: BackendConfig): Promise<Backend> {
   const backend = await connectTo(config);
   // In the Apple apps, kept device permissions follow a rename made here
@@ -123,7 +118,7 @@ async function connectTo(config: BackendConfig): Promise<Backend> {
       // A credentialed cross-origin request needs the server to answer
       // `Access-Control-Allow-Credentials: true`, which Ganymede doesn't.
       init: {
-        credentials: config.url && !config.token && !config.machine ? 'include' : 'same-origin',
+        credentials: config.url && !config.token ? 'include' : 'same-origin',
       },
     });
     // Fail fast with a readable error instead of a hung kernel list.

@@ -5,14 +5,7 @@
  */
 import { useEffect, useState } from 'react';
 import { ServerConnection } from '@jupyterlab/services';
-import { type BackendConfig, isMachineId } from './backends';
-
-/** Key of the place a backend's notebooks live in: `local`, or `machine:<id>`. */
-export function placeKey(config: BackendConfig): string {
-  return config.kind === 'ganymede' && config.machine && isMachineId(config.machine)
-    ? `machine:${config.machine}`
-    : 'local';
-}
+import { isMachineId } from './backends';
 
 /** A place the app listed, as it passes them to a machine's page (`ganymedePlaces`). */
 export type PlaceInfo = { id: string | null; name: string };

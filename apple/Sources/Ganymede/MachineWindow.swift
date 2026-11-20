@@ -10,7 +10,7 @@ struct PlaceMenu: View {
     let pick: (Place) -> Void
 
     private var currentTitle: String {
-        entries.first { $0.place == current }?.title ?? KernelLocations.thisDevice
+        entries.first { $0.place == current }?.title ?? Places.deviceName
     }
 
     var body: some View {
@@ -57,13 +57,23 @@ struct MachineWindow: View {
     let target: WindowTarget
     let follow: (WindowTarget) -> Void
     @State private var current: WindowTarget?
+    /// What the page was loaded for, set once. The page's own navigation
+    /// moves `current` and `target`, not this, so it is never reloaded
+    /// under the person (as `ContentView.loaded`).
+    @State private var loaded: WindowTarget
+
+    init(target: WindowTarget, follow: @escaping (WindowTarget) -> Void) {
+        self.target = target
+        self.follow = follow
+        _loaded = State(initialValue: target)
+    }
 
     private var shown: WindowTarget { current ?? target }
     private var name: String? { shown.place.machineID.flatMap(model.machineName(_:)) }
 
     var body: some View {
         Group {
-            if let url = model.page(for: target) {
+            if let url = model.page(for: loaded) {
                 WebView(
                     url: url,
                     onNavigate: { page in

@@ -30,10 +30,7 @@ final class PlaceTests: XCTestCase {
         XCTAssertEqual(Place(remote: withServer), .machine(withServer.id.uuidString))
     }
 
-    func testPlacesKeepPathKeyedStateApart() {
-        let keys = [Place.thisDevice, .machine("a"), .machine("b")].map(\.key)
-        XCTAssertEqual(keys, ["local", "machine:a", "machine:b"])
-        XCTAssertEqual(Set(keys).count, 3)
+    func testAPlaceIsMountedOnTheAppsOwnServer() {
         XCTAssertEqual(Place.thisDevice.mountPath, "/")
         XCTAssertEqual(Place.machine("a").mountPath, "/machines/a/")
     }
@@ -65,6 +62,26 @@ final class PlaceTests: XCTestCase {
         // considered here.
         let allowed = Place.Capability.allCases.filter { machine.allows($0) }
         XCTAssertEqual(Set(allowed.map { "\($0)" }), ["settings", "switchPlace"])
+    }
+
+    func testTheWebViewIsMadeFromThePlacesHandlerTable() {
+        let machine = Place.machine(id).handlerNames
+        XCTAssertEqual(Set(machine), ["settings", "place"])
+        for name in ["kernelRelay", "deviceRemote", "openFile", "state", "document", "agentKeys"] {
+            XCTAssertFalse(machine.contains(name), name)
+            XCTAssertTrue(Place.thisDevice.handlerNames.contains(name), name)
+        }
+        XCTAssertFalse(Place.thisDevice.handlerNames.contains("place"))
+    }
+
+    func testAMachinePageOpensWebLinksButNotAppLinks() throws {
+        let web = try XCTUnwrap(URL(string: "https://example.com/a"))
+        let app = try XCTUnwrap(URL(string: "ganymede://open?path=/a"))
+        let file = try XCTUnwrap(URL(string: "file:///etc/hosts"))
+        XCTAssertTrue(Place.machine(id).opensExternally(web))
+        XCTAssertFalse(Place.machine(id).opensExternally(app))
+        XCTAssertFalse(Place.machine(id).opensExternally(file))
+        XCTAssertTrue(Place.thisDevice.opensExternally(app))
     }
 
     func testMachineNotebooksStayOutOfNativeRecentsAndSpotlight() {

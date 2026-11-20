@@ -69,11 +69,14 @@ const PLACE_TABS: { id: PlaceTab; label: string }[] = [
 
 /** The place's name and reachability dot; opens the list of places. */
 function PlaceSwitcher({
+  id,
   name,
   reachable,
   places,
   onPlace,
 }: {
+  /** The current place's id, null for this device. */
+  id: string | null;
   name: string;
   reachable: boolean;
   places: PlaceInfo[];
@@ -101,7 +104,7 @@ function PlaceSwitcher({
           label="Places"
           items={places.map(p => ({
             label: p.name,
-            checked: p.name === name,
+            checked: p.id === id,
             onSelect: () => onPlace?.(p.id),
           }))}
           onClose={() => setAt(undefined)}
@@ -369,7 +372,13 @@ export function Sidebar({
       <div className="sidebar-scroll">
         {machine && (
           <>
-            <PlaceSwitcher name={machine} reachable={reachable} places={places} onPlace={onPlace} />
+            <PlaceSwitcher
+              id={backend?.config.kind === 'ganymede' ? (backend.config.machine ?? null) : null}
+              name={machine}
+              reachable={reachable}
+              places={places}
+              onPlace={onPlace}
+            />
             <div className="place-tabs" role="tablist" aria-label="Place">
               {PLACE_TABS.map(t => (
                 <button

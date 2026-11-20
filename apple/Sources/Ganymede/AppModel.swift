@@ -49,6 +49,10 @@ final class AppModel {
     /// Set when a token or the remotes could not be saved; the page shows
     /// it in an alert.
     var keychainError: String?
+    /// Set when a connected machine couldn't be mounted (#701); the page
+    /// shows it in its own alert, not under "Keychain".
+    var machineError: String?
+    @ObservationIgnored private var machineFailures: [String: String] = [:]
     private let store: RemoteStore
     /// Tokens the keychain refused to store, used until the app quits.
     @ObservationIgnored private var unsavedTokens: [UUID: String] = [:]
@@ -283,7 +287,7 @@ final class AppModel {
                 serverURL = host.url
                 // A new server has no mounts; before the page loads.
                 mounted = [:]
-                syncMachines()
+                syncMachines(fromStart: true)
                 servedRoot = launchedRoot
                 url = pageURL(host.url)
                 #if os(macOS)
@@ -385,7 +389,7 @@ final class AppModel {
     /// This device and each machine, for the place switcher; this device
     /// alone where the server can't mount machines.
     var places: [PlaceEntry] {
-        Places.entries(remotes: remotes, thisDevice: KernelLocations.thisDevice, mounting: ServerHost.machinesSupported)
+        Places.entries(remotes: remotes, thisDevice: Places.deviceName, mounting: ServerHost.machinesSupported)
     }
 
     /// The name of the machine with this id (a Remote's UUID string).
@@ -396,11 +400,15 @@ final class AppModel {
     /// Mounts each remote with a server on the running server, and takes
     /// away the mounts of remotes that were removed or changed. Runs when
     /// the server starts (a new server has none) and when remotes change.
-    func syncMachines() {
+    func syncMachines(fromStart: Bool = false) {
         guard ServerHost.machinesSupported, let server else {
             mounted = [:]
             return
         }
+        // Not while a restart is pending: it stops this server, and the new
+        // one syncs when it listens. (A start's own sync is one of the
+        // queued.)
+        if queued > (fromStart ? 1 : 0) { return }
         var wanted: [String: (url: String, token: String)] = [:]
         for remote in remotes {
             if let id = Place(remote: remote)?.machineID {
@@ -411,15 +419,25 @@ final class AppModel {
             server.removeMachine(id: id)
             mounted[id] = nil
         }
+        machineFailures = machineFailures.filter { wanted[$0.key] != nil }
+        var fresh: [String] = []
         for (id, entry) in wanted where mounted[id] != "\(entry.url)|\(entry.token)" {
             do {
                 try server.addMachine(id: id, url: entry.url, token: entry.token.isEmpty ? nil : entry.token)
                 mounted[id] = "\(entry.url)|\(entry.token)"
             } catch {
                 mounted[id] = nil
-                keychainError = "Ganymede couldn’t connect to \(machineName(id) ?? "the machine"): "
+                // Said once for each failure, not on every persist.
+                let message = "Ganymede couldn’t connect to \(machineName(id) ?? "the machine"): "
                     + error.localizedDescription
+                if machineFailures[id] != message {
+                    machineFailures[id] = message
+                    fresh.append(message)
+                }
             }
+        }
+        if !fresh.isEmpty {
+            machineError = ([machineError].compactMap { $0 } + fresh).joined(separator: "\n\n")
         }
         PlaceReachability.shared.watch(places.map(\.place).filter(\.isMachine), on: serverURL)
     }

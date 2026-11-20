@@ -171,8 +171,15 @@ struct IPadSidebar: View {
     @ViewBuilder
     private var placesSection: some View {
         let machines = model.places.filter { $0.place.isMachine }
-        if let onPlace, !machines.isEmpty {
+        if let onPlace, !machines.isEmpty, tabbed {
+            // The iPad: the current place's name, with a dot, as the Mac's.
+            Section {
+                PlaceMenu(
+                    entries: model.places, current: .thisDevice, reachability: .shared, pick: onPlace)
+            }
+        } else if let onPlace, !machines.isEmpty {
             Section("Places") {
+                Label(Places.deviceName, systemImage: "checkmark")
                 ForEach(machines) { entry in
                     Button {
                         onPlace(entry.place)

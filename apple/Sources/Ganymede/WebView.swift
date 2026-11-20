@@ -252,9 +252,11 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         view.navigationDelegate = self
         view.uiDelegate = self
         webView = view
+        // What this window's place gets (`Place.handlerNames`, #701).
+        let names = place.handlerNames
         // The device bridge, ledger prompts and Shortcuts: this device's
-        // windows only (#701).
-        if place.allows(.deviceBridge) { kernels.attach(to: view) }
+        // windows only.
+        if names.contains("kernelRelay") { kernels.attach(to: view) }
         urlObservation = view.observe(\.url, options: [.new]) { [weak self] _, change in
             let url = change.newValue ?? nil
             Task { @MainActor in self?.onNavigate?(url) }
@@ -270,22 +272,22 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         }
         let handlers = view.configuration.userContentController
         // The page's sidebar opens text files in the app's editor (#122).
-        if place.allows(.openFile) { handlers.add(OpenFileHandler(self), name: "openFile") }
+        if names.contains("openFile") { handlers.add(OpenFileHandler(self), name: "openFile") }
         // What the page shows, for native toolbars and menus (#205).
-        if place.allows(.nativeChrome) { handlers.add(StateHandler(self), name: "state") }
+        if names.contains("state") { handlers.add(StateHandler(self), name: "state") }
         // The agent's API keys, in the Keychain (#166).
-        if place.allows(.agentKeys) {
+        if names.contains("agentKeys") {
             handlers.addScriptMessageHandler(
                 AgentKeysHandler(self), contentWorld: .page, name: "agentKeys"
             )
         }
         // The page's Settings, Keyboard Shortcuts and Connect open the
         // app's Settings at a tab (#332).
-        if place.allows(.settings) { handlers.add(SettingsHandler(self), name: "settings") }
+        if names.contains("settings") { handlers.add(SettingsHandler(self), name: "settings") }
         // A machine page's place switcher (#701).
-        if place.allows(.switchPlace) { handlers.add(PlaceHandler(self), name: "place") }
+        if names.contains("place") { handlers.add(PlaceHandler(self), name: "place") }
         #if os(macOS)
-        if place.allows(.nativeChrome) { handlers.add(DocumentHandler(self), name: "document") }
+        if names.contains("document") { handlers.add(DocumentHandler(self), name: "document") }
         #endif
         // Safari's Web Inspector can attach (Develop menu).
         view.isInspectable = true
@@ -354,7 +356,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
             // A machine's notebook may link to anything: web links open in
             // the browser, but not `ganymede://` or other app links, which
             // act on this device (#701).
-            if place.allows(.appLinks) || Self.isWebLink(target) { openExternally(target) }
+            if place.opensExternally(target) { openExternally(target) }
             decisionHandler(.cancel)
         } else {
             decisionHandler(.allow)
@@ -476,16 +478,12 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     ) -> WKWebView? {
         if let target = navigationAction.request.url {
             if isExternal(target) {
-                if place.allows(.appLinks) || Self.isWebLink(target) { openExternally(target) }
+                if place.opensExternally(target) { openExternally(target) }
             } else {
                 webView.load(navigationAction.request)
             }
         }
         return nil
-    }
-
-    nonisolated static func isWebLink(_ url: URL) -> Bool {
-        ["http", "https"].contains(url.scheme?.lowercased() ?? "")
     }
 
     private func isExternal(_ url: URL) -> Bool {

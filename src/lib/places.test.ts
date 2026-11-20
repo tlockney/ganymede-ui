@@ -5,23 +5,8 @@ import {
   REACHABLE_POLL_MS,
   nextCheckDelay,
   pagePlaces,
-  placeKey,
   watchReachable,
 } from './places';
-
-describe('placeKey', () => {
-  it('is local for this device’s server, and the machine id for a machine', () => {
-    expect(placeKey({ kind: 'ganymede', url: '', token: '' })).toBe('local');
-    expect(placeKey({ kind: 'browser' })).toBe('local');
-    expect(placeKey({ kind: 'ganymede', url: '', token: '', machine: 'mini_1' })).toBe(
-      'machine:mini_1',
-    );
-  });
-
-  it('never builds a key from a malformed id', () => {
-    expect(placeKey({ kind: 'ganymede', url: '', token: '', machine: '../x' })).toBe('local');
-  });
-});
 
 describe('pagePlaces', () => {
   it('reads the places the app gave the page, dropping the malformed', () => {

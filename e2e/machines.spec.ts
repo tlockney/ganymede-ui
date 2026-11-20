@@ -186,8 +186,12 @@ test('goes read-only with a banner while the machine is away, and editable when 
   await cells.nth(2).click();
   await page.keyboard.press('Escape');
   await page.keyboard.press('b');
+  // Insert-below did nothing; the count is read after the key has had its turn.
+  await page.waitForTimeout(300);
+  await expect(cells).toHaveCount(before);
   await page.keyboard.press('d');
   await page.keyboard.press('d');
+  await page.waitForTimeout(300);
   await expect(cells).toHaveCount(before);
 
   proxy.setDown(false);

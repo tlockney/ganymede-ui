@@ -30,7 +30,7 @@ import {
   SaveConflict,
   type Saver,
 } from '../lib/saver';
-import { watchOffline } from '../lib/room-offline';
+import { isEditKey, watchOffline } from '../lib/room-offline';
 import { NotebookRoom, RoomSaver, trustFromFile, watchRemoteOutputs } from '../lib/room';
 import {
   type Problem,
@@ -342,6 +342,8 @@ class FileLocked extends Error {}
  * or to the browser's own storage.
  */
 export function NotebookPane({ backend, path, onController, onRenamed }: Props) {
+  // A page for a connected machine (#701).
+  const onMachine = backend.config.kind === 'ganymede' && !!backend.config.machine;
   // A ref, not a dependency of the controller effect: a parent that
   // passes a new function each render would otherwise loop (the effect
   // sets the parent's controller state, which renders it again).
@@ -671,7 +673,16 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
             lastModified: file!.last_modified,
             beforeSave,
           });
-      const onKey = (e: KeyboardEvent) => commands.processKeydownEvent(e);
+      const onKey = (e: KeyboardEvent) => {
+        // This listener runs before the notebook's own, so a machine that
+        // is away is stopped here: its keys edit nothing (#701).
+        if (onMachine && room && !room.connected && isEditKey(e)) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+        commands.processKeydownEvent(e);
+      };
       // Capture phase, as a Lumino application does, so a notebook shortcut
       // (Shift+Enter) wins over the editor's own binding for the key.
       document.addEventListener('keydown', onKey, true);
@@ -701,6 +712,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
           // `device` for cells on server kernels (#568): the
           // app's bridge, or in a browser web APIs behind a click.
           attachDevice(session, {
+            // A machine's kernels get no `device` of this device's (#701).
+            disabled: onMachine,
             click: promptClick(setDevicePrompt, () => {
               const kernel = session.kernelDisplayName;
               const file = basename(saver.path);
@@ -796,7 +809,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         teardown();
       }
     };
-  }, [services, rooms, path, attempt, memory, setIntended, backend.config]);
+  }, [services, rooms, path, attempt, memory, setIntended, backend.config, onMachine]);
 
   // Put the Lumino widget in the page. The widget lives in a holder node
   // that moves in and out of the pane: when the pane goes, the holder is
@@ -1243,8 +1256,12 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
     };
     // A run's failure: when the kernel died under it, say that instead.
     // Retry runs it again, on the cells selected then.
+    // A connected machine that stopped answering (#701): the notebook shows
+    // what it had and does nothing that edits or runs until it is back.
+    const away = () => onMachine && !!open.room && !open.room.connected;
     const reportRun = (what: string, action: () => Promise<void>) => {
       const run = async () => {
+        if (away()) return;
         try {
           await action();
         } catch (e) {
@@ -1307,7 +1324,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       trusted,
       cellType,
       changeCellType: type => {
-        if (journal) return;
+        if (journal || away()) return;
         NotebookActions.changeCellType(notebook, type);
         setCellType(activeType(notebook) ?? type);
         // Back to the notebook, so its shortcuts work after the picker.
@@ -1397,7 +1414,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         if (await open.ensureKernel(true)) await NotebookActions.runAll(notebook, session);
       }),
       clearOutputs: () => {
-        if (journal) return;
+        if (journal || away()) return;
         // As NotebookActions.clearAllOutputs, which needs an active cell;
         // like it, not a step for undo.
         for (const cell of model.cells) {
@@ -1407,7 +1424,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         }
       },
       insert: type => {
-        if (journal) return;
+        if (journal || away()) return;
         NotebookActions.insertBelow(notebook);
         if (type !== 'code') NotebookActions.changeCellType(notebook, type);
         notebook.mode = 'edit';
@@ -1429,7 +1446,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       command: id => {
         const { commands } = open;
         // The notebook's own commands act on cells the journal hides.
-        if (journal || !commands.hasCommand(id) || !commands.isEnabled(id)) return false;
+        if (journal || away() || !commands.hasCommand(id) || !commands.isEnabled(id)) return false;
         void commands.execute(id).catch(e => setNotice(failed(id, e)));
         return true;
       },
@@ -1537,6 +1554,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
     outline,
     journal,
     backend,
+    onMachine,
     services,
     memory,
     onController,

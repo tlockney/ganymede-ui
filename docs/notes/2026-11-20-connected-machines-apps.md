@@ -17,9 +17,9 @@ Decisions:
   newer symbols, so `ServerHost.addMachine` / `removeMachine` compile only
   with that flag (off by default) and `ServerHost.machinesSupported` is
   false without it: the app then lists no machines. The flag-on Swift is
-  written against a guessed signature (`Int32` result, `char **error`
-  last, as `ganymede_kernel_register`); check it against the header when
-  `GANYMEDE_REF` moves, then turn the flag on in project.yml.
+  written against the header of #894 (tlockney/ganymede PR #900), so
+  turn the flag on in project.yml once `GANYMEDE_REF` moves to a release
+  that has it.
 - **A machine window uses the page's own chrome.** The native Mac sidebar,
   toolbar and `PageModel` read this device's files (`FileManager`) and
   state, so a machine window loads the page without `chrome=native`: the
@@ -29,7 +29,7 @@ Decisions:
   to 30 s while it fails). Local windows keep the native sidebar and get a
   `PlaceMenu` at the top (Mac) or a Places section (iPad, iPhone). The
   Journals tab is the web layer's only, so Mac, iPad and iPhone share it;
-  a Journals tab for this device waits for #184.
+  a Journals tab for this device is ganymede-ui#705.
 - **Gating is by the window's place.** `Place.allows(_:)` decides which
   message handlers `WebViewCoordinator` registers: a machine window gets
   `settings` and `place` only (no `kernelRelay` / device bridge, `openFile`,
@@ -38,8 +38,11 @@ Decisions:
   every `Place.Capability`, so a new one must be decided.
 - **Offline is read-only, not locked out.** `room.ts` reports connection
   changes (`onConnection`); `watchOffline` sets the model and each cell
-  read-only and blocks command-mode edit keys, and the pane shows the
-  banner. A toolbar action that edits (insert cell) isn't blocked yet.
+  read-only (and puts each back as it was), the pane shows the banner, and
+  the pane's own document key handler, which runs before the notebook's,
+  drops `isEditKey` keys while the room is down. The controller's run,
+  insert, cell type, clear outputs and command actions do nothing then.
+  A machine's kernels also get no `device` (`attachDevice` `disabled`).
 - **State by place.** Recents keys are `machine:<id>` (`recentsKey`); a
   machine config is never saved as the page's next backend (`saveConfig`).
   Native Recents / Spotlight take only `Place.indexesLocally` notebooks.
