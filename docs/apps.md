@@ -351,6 +351,45 @@ Settings would be lost. Its question or error shows over Settings, a
 terminal or the editor, whichever is up. On the iPhone the notebook opens
 behind them, and is there when you close them.
 
+### The command line tool
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD) that
+> bundles a ganymede release after 0.13.0 (`GANYMEDE_REF` in ci.yml),
+> not in the latest release. Keep this note until that pin moves (#690).
+> Until then, install `ganymede` with its
+> [install script](https://ganymede-server.com/docs/install).
+
+The Mac app carries the [`ganymede` command](https://ganymede-server.com)
+inside it, and Settings › General › Command Line Tool (or Ganymede ›
+Install Command Line Tool…) links it into `~/.local/bin`, the folder
+Ganymede's install script uses. **Install** creates `~/.local/bin` if it
+is missing and makes `~/.local/bin/ganymede`, a link to the copy in the
+app: no administrator password, no copy, and updating Ganymede updates
+it. **Uninstall** removes the link. The section shows whether the link is
+in place, and is absent from a build that has no tool to link.
+
+Ganymede changes only a link into a Ganymede app
+(`….app/Contents/Helpers/ganymede`). If you moved or replaced the app, the
+link is stale and **Update Link** points it at this copy. Anything else at
+`~/.local/bin/ganymede`, such as a `ganymede` from the install script or
+Homebrew, is left alone and shown with what it is. **Replace…** asks
+first, then moves it to the Trash (the file or link itself, never what a
+link points at) and installs; if the Trash refuses, it stays. The link breaks if you move or delete the app, and Ganymede
+won't install it while the app runs from the temporary place macOS uses
+for an app opened straight from a download: move it to Applications and
+open it again.
+
+Ganymede takes its PATH from your login shell (`$SHELL -l`). If that
+lacks `~/.local/bin`, Settings shows the line to add, with Copy:
+`export PATH="$HOME/.local/bin:$PATH"`. Put it in `~/.zprofile` (with
+zsh; otherwise your login shell's profile): a line in `~/.zshrc` reaches
+your terminals but not Ganymede or Claude Desktop. If another `ganymede`
+is on your PATH, Settings names it with its version, whether or not the
+link is installed, and when it comes before the link, terminals run that
+one. Claude Desktop's MCP config uses the bundled tool's full path when
+Ganymede finds no `ganymede` on its PATH.
+
 ### Agents over MCP
 
 Agents outside the app, such as Claude Code and Claude Desktop, can read,
@@ -371,8 +410,10 @@ With MCP on, Settings shows what to give the agent, with Copy:
   `claude mcp add --transport http` command with the app's URL and
   token.
 
-The first two need the [`ganymede` command](https://ganymede-server.com)
-on the agent's PATH. While MCP is on, the app writes a
+Claude Code's command needs the [`ganymede` command](https://ganymede-server.com)
+on its PATH, which [The command line tool](#the-command-line-tool)
+installs from the app; Claude Desktop's config uses the bundled tool's
+full path when no `ganymede` is on Ganymede's PATH. While MCP is on, the app writes a
 [server info file](https://ganymede-server.com/docs/reference#server-info-file),
 so `ganymede mcp` uses the app's server while Ganymede runs, and a server
 of its own when it doesn't. The agent keeps the server it found for the
@@ -456,7 +497,8 @@ picking a different device clears the token.
 
 Settings (⌘,) is one window with tabs. General makes Ganymede the
 default app for notebooks, sets how it updates ([Updates](#updates)),
-turns crash reports on or off, lists the notebooks links may run
+turns crash reports on or off, installs the command line tool
+([The command line tool](#the-command-line-tool)), lists the notebooks links may run
 ([Links](#links)), turns on MCP for agents
 ([Agents over MCP](#agents-over-mcp)), and shares Ganymede on your
 tailnet ([Sharing on your tailnet](#sharing-on-your-tailnet)). Appearance

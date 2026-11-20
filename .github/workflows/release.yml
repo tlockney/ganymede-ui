@@ -236,6 +236,8 @@ jobs:
         with:
           sentry-sourcemaps: 'true'
           sentry-auth-token: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          # The iOS app bundles no command line tool (#686).
+          cli: 'false'
       - name: Sign and upload to TestFlight
         run: apple/scripts/release-ios.sh
         env:

@@ -24,6 +24,11 @@ inputs:
   sentry-auth-token:
     description: The Sentry token for sentry-sourcemaps.
     default: ''
+  cli:
+    description: >
+      'false' for the iOS jobs, which bundle no command line tool:
+      bootstrap.sh gets GANYMEDE_CLI=none and skips building one (#686).
+    default: 'true'
 
 runs:
   using: composite
@@ -78,11 +83,15 @@ runs:
         key: swift-packages-${{ runner.os }}-${{ hashFiles('apple/Package.resolved') }}
     - shell: bash
       run: brew install xcodegen
+    # The CLI (#686): a tag pin after v0.13.0 downloads it. A commit pin
+    # builds it only on an ffi cache miss (GANYMEDE_DIR), so with a commit
+    # pin a CI app may or may not carry it; releases always pin a tag.
     - shell: bash
       run: apple/scripts/bootstrap.sh
       env:
         GANYMEDE_DIR: ${{ !startsWith(env.GANYMEDE_REF, 'v') && steps.ffi.outputs.cache-hit != 'true' && format('{0}/.ganymede', github.workspace) || '' }}
         GANYMEDE_XCFRAMEWORK: ${{ steps.ffi.outputs.cache-hit == 'true' && format('{0}/.ffi-cache/GanymedeFFI.xcframework', github.workspace) || '' }}
+        GANYMEDE_CLI: ${{ inputs.cli == 'false' && 'none' || '' }}
         SENTRY_SOURCEMAPS: ${{ inputs.sentry-sourcemaps == 'true' && '1' || '' }}
         SENTRY_AUTH_TOKEN: ${{ inputs.sentry-auth-token }}
     # What the ffi cache step saves when the job ends.
