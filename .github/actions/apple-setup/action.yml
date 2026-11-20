@@ -83,6 +83,9 @@ runs:
         key: swift-packages-${{ runner.os }}-${{ hashFiles('apple/Package.resolved') }}
     - shell: bash
       run: brew install xcodegen
+    # The CLI (#686): a tag pin after v0.13.0 downloads it. A commit pin
+    # builds it only on an ffi cache miss (GANYMEDE_DIR), so with a commit
+    # pin a CI app may or may not carry it; releases always pin a tag.
     - shell: bash
       run: apple/scripts/bootstrap.sh
       env:

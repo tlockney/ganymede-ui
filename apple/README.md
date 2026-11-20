@@ -104,8 +104,9 @@ update` replaces the binary where it runs, which would break the app's
   the section.
 
 > [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
+> **Unreleased.** Available only from a build of `main` (HEAD) that
+> bundles a ganymede release after 0.13.0 (`GANYMEDE_REF` in ci.yml),
+> not in the latest release. Keep this note until that pin moves (#690).
 
 ```sh
 GANYMEDE_REF=vX.Y.Z apple/scripts/bootstrap.sh

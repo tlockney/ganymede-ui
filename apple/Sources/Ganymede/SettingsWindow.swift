@@ -189,8 +189,8 @@ private struct CommandLineToolSettings: View {
     private func otherText(_ other: String, installed: Bool) -> String {
         let name = otherVersion.map { "\(other) (\($0))" } ?? other
         return installed
-            ? "Terminals run \(name) first, not this one. Put ~/.local/bin earlier on your PATH to use this one."
-            : "Another ganymede is already on your PATH: \(name)."
+            ? "On your login shell’s PATH, \(name) comes first, not this one. Put ~/.local/bin earlier on your PATH to use this one."
+            : "Another ganymede is already on your login shell’s PATH: \(name)."
     }
 
     private func mayNeedPath(_ status: CommandLineTool.Status) -> Bool {
