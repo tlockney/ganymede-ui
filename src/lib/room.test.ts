@@ -374,6 +374,28 @@ describe('NotebookRoom connection', () => {
     room.dispose();
   });
 
+  it('tells a listener when the connection drops and when it is back', async () => {
+    const { join } = joining();
+    const ws = await socket();
+    ws.open();
+    ws.sync();
+    const room = (await join)!;
+    const seen: boolean[] = [];
+    const off = room.onConnection(c => seen.push(c));
+    ws.serverClose(1006);
+    expect(seen).toEqual([false]);
+    expect(room.connected).toBe(false);
+    const again = await vi.waitFor(() =>
+      FakeSocket.all.length === 2 ? FakeSocket.all[1]! : Promise.reject(new Error('not yet')),
+    );
+    again.open();
+    expect(seen).toEqual([false, true]);
+    off();
+    again.serverClose(1006);
+    expect(seen).toEqual([false, true]);
+    room.dispose();
+  });
+
   it('holds a save while the connection is down, and sends it once synced again', async () => {
     const { join } = joining();
     const ws = await socket();

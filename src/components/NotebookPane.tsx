@@ -30,6 +30,7 @@ import {
   SaveConflict,
   type Saver,
 } from '../lib/saver';
+import { watchOffline } from '../lib/room-offline';
 import { NotebookRoom, RoomSaver, trustFromFile, watchRemoteOutputs } from '../lib/room';
 import {
   type Problem,
@@ -1544,6 +1545,19 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
 
   useEffect(() => () => onController(undefined), [onController]);
 
+  // A connected machine that stops answering (#701): its notebook turns
+  // read-only, with a banner, and is editable again when its room is back.
+  const machineName =
+    backend.config.kind === 'ganymede' && backend.config.machine
+      ? (backend.config.machineName ?? 'The machine')
+      : undefined;
+  const [roomOffline, setRoomOffline] = useState(false);
+  useEffect(() => {
+    const room = open?.room;
+    if (!open || !room || !machineName) return setRoomOffline(false);
+    return watchOffline(room, open.notebook, open.model, setRoomOffline);
+  }, [open, machineName]);
+
   if (error) {
     const offline = isUnreachable(error);
     // A chunk of the page didn't load: Retry would fail the same way, and
@@ -1576,6 +1590,11 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
   }
   return (
     <>
+      {roomOffline && machineName && (
+        <div className="machine-banner" role="status">
+          {machineName} went offline · Reconnecting…
+        </div>
+      )}
       <div className="notebook-page" ref={host} hidden={journal} />
       {journal && (
         <JournalView

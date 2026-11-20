@@ -30,6 +30,15 @@ export type BackendConfig =
        * their server's (ganymede#266).
        */
       kernels?: 'page' | 'both';
+      /**
+       * A connected machine (#701): the id of a machine the app's own
+       * server mounts under `/machines/{id}/`. The page talks to that
+       * prefix on its own origin, so `url` stays empty and `token` unused:
+       * the app's server adds the machine's credential.
+       */
+      machine?: string;
+      /** The machine's name, for titles, the sidebar and the offline banner. */
+      machineName?: string;
     }
   | {
       kind: 'browser';
@@ -42,12 +51,56 @@ export type Backend = {
   services: ServiceManager.IManager;
 };
 
+/** Machine ids the app's server accepts: the Remote's UUID string, or any `[A-Za-z0-9_-]{1,64}`. */
+const MACHINE_ID = /^[A-Za-z0-9_-]{1,64}$/;
+
+export function isMachineId(id: string | null | undefined): id is string {
+  return !!id && MACHINE_ID.test(id);
+}
+
+/** The path a machine's server is mounted at on the app's own server. */
+export function machinePrefix(id: string): string {
+  return `/machines/${id}/`;
+}
+
+/**
+ * The server base URL, with a trailing slash, a config talks to from a page
+ * at `origin`: a machine's mount on the page's own origin, another server's
+ * URL, or the page's own server.
+ */
+export function serverBase(config: BackendConfig, origin: string): string {
+  if (config.kind !== 'ganymede') return origin.replace(/\/+$/, '') + '/';
+  if (config.machine) return origin.replace(/\/+$/, '') + machinePrefix(config.machine);
+  return (config.url || origin).replace(/\/+$/, '') + '/';
+}
+
+/**
+ * The machine the page URL names (`machine=<id>`, with `machine_name=` for
+ * titles), as the Apple apps load a machine window's page. A malformed id
+ * is ignored, so the page falls back to its own server rather than build a
+ * path from it.
+ */
+export function machineFromSearch(
+  search: string,
+): { machine: string; machineName?: string } | undefined {
+  const params = new URLSearchParams(search);
+  const machine = params.get('machine');
+  if (!isMachineId(machine)) return undefined;
+  const name = params.get('machine_name')?.trim();
+  return { machine, ...(name ? { machineName: name } : {}) };
+}
+
+/** Whether `config` is a connected machine reached through the app's server. */
+export function isMachine(config: BackendConfig): boolean {
+  return config.kind === 'ganymede' && !!config.machine;
+}
+
 export async function connect(config: BackendConfig): Promise<Backend> {
   const backend = await connectTo(config);
   // In the Apple apps, kept device permissions follow a rename made here
   // (#383); the app's sidebar reports its own. Only on the app's own
   // server: a remote one may hold the same path as a local notebook.
-  if (relayAvailable() && config.kind === 'ganymede' && config.url === '')
+  if (relayAvailable() && config.kind === 'ganymede' && config.url === '' && !config.machine)
     backend.services.contents.fileChanged.connect(reportRename);
   return backend;
 }
@@ -60,7 +113,7 @@ function reportRename(_: unknown, change: Contents.IChangedArgs): void {
 
 async function connectTo(config: BackendConfig): Promise<Backend> {
   if (config.kind === 'ganymede') {
-    const base = (config.url || window.location.origin).replace(/\/+$/, '') + '/';
+    const base = serverBase(config, window.location.origin);
     const serverSettings = ServerConnection.makeSettings({
       baseUrl: base,
       wsUrl: base.replace(/^http/, 'ws'),
@@ -69,18 +122,30 @@ async function connectTo(config: BackendConfig): Promise<Backend> {
       // The token authenticates; cookies cross origins only without one.
       // A credentialed cross-origin request needs the server to answer
       // `Access-Control-Allow-Credentials: true`, which Ganymede doesn't.
-      init: { credentials: config.url && !config.token ? 'include' : 'same-origin' },
+      init: {
+        credentials: config.url && !config.token && !config.machine ? 'include' : 'same-origin',
+      },
     });
     // Fail fast with a readable error instead of a hung kernel list.
     const res = await ServerConnection.makeRequest(base + 'api/status', {}, serverSettings);
     if (!res.ok) {
       throw new Error(
         res.status === 403 || res.status === 401
-          ? 'The server refused the token.'
-          : `The server answered ${res.status}.`,
+          ? config.machine
+            ? 'The app refused to reach the machine. Check that it is still connected.'
+            : 'The server refused the token.'
+          : config.machine && res.status === 404
+            ? 'The app’s server has no connected machine with that id.'
+            : config.machine && res.status === 502
+              ? `${config.machineName ?? 'The machine'} didn’t answer.`
+              : `The server answered ${res.status}.`,
       );
     }
-    const host = config.url ? new URL(base).host : 'local server';
+    const host = config.machine
+      ? (config.machineName ?? 'connected machine')
+      : config.url
+        ? new URL(base).host
+        : 'local server';
     if (config.kernels === 'page') {
       const { createLiteServices } = await import('./lite');
       const services = await createLiteServices({
@@ -168,6 +233,9 @@ export function loadConfig(): BackendConfig | undefined {
 }
 
 export function saveConfig(config: BackendConfig): void {
+  // A machine window's page URL names its machine; saving it would send the
+  // next plain load of this origin to that machine.
+  if (config.kind === 'ganymede' && config.machine) return;
   try {
     localStorage.setItem(KEY, JSON.stringify(withoutToken(config)));
     if (config.kind === 'ganymede' && config.token) sessionStorage.setItem(TOKEN_KEY, config.token);

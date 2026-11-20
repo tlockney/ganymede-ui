@@ -4,10 +4,13 @@ import {
   type BackendConfig,
   connect,
   loadConfig,
+  machineFromSearch,
   SAME_ORIGIN,
   saveConfig,
   signedInHere,
 } from './lib/backends';
+import { pagePlaces } from './lib/places';
+import { openPlace as postOpenPlace } from './lib/native';
 import { offersDevice } from './lib/kernel-device';
 import { reportMoved } from './lib/kernel-relay';
 import { useColorScheme } from './lib/useColorScheme';
@@ -102,6 +105,11 @@ function initialConfig(): BackendConfig | undefined {
   const params = new URLSearchParams(window.location.search);
   const token = params.get('token');
   const kernels = params.get('kernels');
+  // A connected machine's window (#701): the page's server is the app's
+  // mount of that machine, whatever the page connected to last time. The
+  // parameters stay in the URL, so a reload comes back to the machine.
+  const machine = machineFromSearch(window.location.search);
+  if (machine) return { kind: 'ganymede', url: '', token: '', ...machine };
   if (token === null && kernels === null) return loadConfig();
   return {
     kind: 'ganymede',
@@ -122,19 +130,25 @@ function stripLaunchParams(): void {
 
 /** The Apple app's own server: the one this page came from. */
 function isAppServer(config: BackendConfig): boolean {
-  return config.kind === 'ganymede' && config.url === '';
+  return config.kind === 'ganymede' && config.url === '' && !config.machine;
 }
 
 /** Whether two configs reach the same notebooks, whatever the token. */
 function sameBackend(a: BackendConfig, b: BackendConfig): boolean {
   if (a.kind !== 'ganymede' || b.kind !== 'ganymede') return a.kind === b.kind;
-  return a.url === b.url && a.kernels === b.kernels;
+  return a.url === b.url && a.kernels === b.kernels && a.machine === b.machine;
 }
 
 export function App() {
   const scheme = useColorScheme();
   useJupyterLabTheme(scheme);
   const [config, setConfig] = useState<BackendConfig | undefined>(initialConfig);
+  // A connected machine's window (#701): its name, and the places the app
+  // lists for switching.
+  const machineName =
+    config?.kind === 'ganymede' && config.machine ? (config.machineName ?? 'machine') : undefined;
+  const [places] = useState(() => pagePlaces());
+  const openPlace = useCallback((id: string | null) => postOpenPlace(id), []);
   // The notebook and folder the URL asks for (`?open=`, `?dir=`): a window
   // the Apple apps open on one file.
   const [launch] = useState<Launch>(() => readLaunch(window.location.search));
@@ -424,13 +438,13 @@ export function App() {
   // (⌘R, or WebKit restarting the page) comes back to both. A launch file
   // not opened yet stays in the URL.
   useEffect(() => {
-    document.title = titleFor(openPath);
+    document.title = titleFor(openPath, machineName);
     if (!openPath && pendingOpen.current) return;
     const search = withDir(withOpen(window.location.search, openPath), folder);
     if (search !== window.location.search) {
       history.replaceState(null, '', window.location.pathname + search);
     }
-  }, [openPath, folder]);
+  }, [openPath, folder, machineName]);
 
   // The Mac app's window: its title bar's edited dot and proxy icon, and
   // its Save, close and quit prompts.
@@ -895,6 +909,8 @@ export function App() {
             onClose={sidebarFloats ? () => setSidebarOpen(false) : undefined}
             onConnect={openConnect}
             onSettings={openSettings}
+            places={places}
+            onPlace={openPlace}
             actions={
               backend &&
               fileActions({

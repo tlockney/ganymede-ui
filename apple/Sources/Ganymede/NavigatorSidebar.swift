@@ -14,9 +14,25 @@ struct NavigatorSidebar: View {
     /// The selected tab, kept per window.
     @SceneStorage("navigator.tab") private var tab: NavigatorTab = .files
     private let terminals = OpenTerminals.shared
+    @Environment(AppModel.self) private var model
+    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(spacing: 0) {
+            // This Mac and each connected machine (#701); nothing to switch
+            // to without a machine.
+            if model.places.count > 1 {
+                PlaceMenu(
+                    entries: model.places, current: .thisDevice, reachability: .shared
+                ) { place in
+                    if let machine = place.machineID,
+                       let target = WindowTarget.machine(machine, path: "/", isFolder: true) {
+                        openWindow(value: target)
+                    }
+                }
+                .padding(.horizontal, 10)
+                .padding(.top, 8)
+            }
             HStack(spacing: 2) {
                 ForEach(NavigatorTab.allCases) { item in
                     Button {

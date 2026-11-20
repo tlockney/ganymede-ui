@@ -14,8 +14,16 @@ struct WebView: NSViewRepresentable {
     var page: PageModel? = nil
     /// Opens a text file from the sidebar, by its path on the server (#122).
     var onOpenFile: ((String) -> Void)? = nil
+    /// Where the window's notebooks live (#701): a machine's window gets
+    /// none of the app's native handlers.
+    var place: Place = .thisDevice
+    /// The places a machine's page may switch to, and what it does on a pick.
+    var places: [PlaceEntry] = []
+    var onOpenPlace: ((Place) -> Void)? = nil
 
-    func makeCoordinator() -> WebViewCoordinator { WebViewCoordinator() }
+    func makeCoordinator() -> WebViewCoordinator {
+        WebViewCoordinator(place: place, places: places)
+    }
 
     func makeNSView(context: Context) -> WKWebView {
         context.coordinator.makeWebView()
@@ -26,6 +34,7 @@ struct WebView: NSViewRepresentable {
         context.coordinator.document = document
         context.coordinator.page = page
         context.coordinator.onOpenFile = onOpenFile
+        context.coordinator.onOpenPlace = onOpenPlace
         context.coordinator.load(url, in: view)
     }
 }
@@ -38,8 +47,15 @@ struct WebView: UIViewRepresentable {
     var onOpenFile: ((String) -> Void)? = nil
     /// Keeps the page alive while it is off screen (the iPhone, #209).
     var store: WebViewStore? = nil
+    /// Where the window's notebooks live (#701), the places a machine's page
+    /// may switch to, and what it does on a pick.
+    var place: Place = .thisDevice
+    var places: [PlaceEntry] = []
+    var onOpenPlace: ((Place) -> Void)? = nil
 
-    func makeCoordinator() -> WebViewCoordinator { store?.coordinator ?? WebViewCoordinator() }
+    func makeCoordinator() -> WebViewCoordinator {
+        store?.coordinator ?? WebViewCoordinator(place: place, places: places)
+    }
 
     func makeUIView(context: Context) -> WKWebView {
         store?.webView ?? context.coordinator.makeWebView()
@@ -58,6 +74,7 @@ struct WebView: UIViewRepresentable {
     func updateUIView(_ view: WKWebView, context: Context) {
         context.coordinator.page = page
         context.coordinator.onOpenFile = onOpenFile
+        context.coordinator.onOpenPlace = onOpenPlace
         context.coordinator.load(url, in: view)
     }
 }
@@ -153,8 +170,25 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     private weak var webView: WKWebView?
     private let agentKeys = AgentKeys(secrets: KeychainStore())
     private var urlObservation: NSKeyValueObservation?
+    /// Where this window's notebooks live. Fixed for the window's life: a
+    /// machine's window never becomes a local one, so what it was given
+    /// (or not given) at creation can't be undone by a later load. What a
+    /// page may ask the app for follows this, never its origin, which a
+    /// machine's page shares with this device's (#701).
+    let place: Place
+    /// The places a machine's page offers, given to it as
+    /// `window.ganymedePlaces`.
+    private let places: [PlaceEntry]
     var onNavigate: ((URL?) -> Void)?
     var onOpenFile: ((String) -> Void)?
+    /// A machine page's pick in its place switcher.
+    var onOpenPlace: ((Place) -> Void)?
+
+    init(place: Place = .thisDevice, places: [PlaceEntry] = []) {
+        self.place = place
+        self.places = places
+        super.init()
+    }
     #if os(iOS)
     /// Puts a stored page back where it waits off screen (`WebViewStore`).
     var park: (() -> Void)?
@@ -184,15 +218,27 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// a new one here, since a code font change reinstalls them all.
     /// `loaded`: the page's URL, the in-app server's, whose origin alone
     /// gets the person's name.
-    private static func installPageScripts(on view: WKWebView, loaded: URL?) {
+    private static func installPageScripts(
+        on view: WKWebView, loaded: URL?, place: Place, places: [PlaceEntry]
+    ) {
         let scripts = view.configuration.userContentController
         scripts.removeAllUserScripts()
         // The page's error reports follow the app's choice (#318, #319).
         scripts.addUserScript(CrashReports.shared.pageScript)
         // The code font (#354), before the page loads.
         scripts.addUserScript(CodeFont.pageScript)
-        // The person's name for the notebook rooms (#606).
-        if let script = PersonName.pageScript(for: loaded) { scripts.addUserScript(script) }
+        // The person's name for the notebook rooms (#606): not for a
+        // machine's, which isn't this device's server.
+        if place.allows(.personName), let script = PersonName.pageScript(for: loaded) {
+            scripts.addUserScript(script)
+        }
+        // A machine's page lists the places it can switch to (#701): names
+        // and ids only.
+        if place.allows(.switchPlace) {
+            scripts.addUserScript(WKUserScript(
+                source: "window.ganymedePlaces = \(Places.pageJSON(places));",
+                injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        }
     }
 
     /// `keepRunning`: the page runs at full speed while it isn't visible
@@ -206,32 +252,40 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         view.navigationDelegate = self
         view.uiDelegate = self
         webView = view
-        kernels.attach(to: view)
+        // The device bridge, ledger prompts and Shortcuts: this device's
+        // windows only (#701).
+        if place.allows(.deviceBridge) { kernels.attach(to: view) }
         urlObservation = view.observe(\.url, options: [.new]) { [weak self] _, change in
             let url = change.newValue ?? nil
             Task { @MainActor in self?.onNavigate?(url) }
         }
-        Self.installPageScripts(on: view, loaded: loaded)
+        Self.installPageScripts(on: view, loaded: loaded, place: place, places: places)
         // The code font (#354) as it changes: a reload must get the new
         // setting too, so the scripts are installed again.
         codeFontObserver = observeCodeFont(markdown: true) { [weak self, weak view] in
             guard let view else { return }
-            Self.installPageScripts(on: view, loaded: self?.loaded)
+            guard let self else { return }
+            Self.installPageScripts(on: view, loaded: self.loaded, place: self.place, places: self.places)
             view.evaluateJavaScript(CodeFont.updateScript, completionHandler: nil)
         }
+        let handlers = view.configuration.userContentController
         // The page's sidebar opens text files in the app's editor (#122).
-        view.configuration.userContentController.add(OpenFileHandler(self), name: "openFile")
+        if place.allows(.openFile) { handlers.add(OpenFileHandler(self), name: "openFile") }
         // What the page shows, for native toolbars and menus (#205).
-        view.configuration.userContentController.add(StateHandler(self), name: "state")
+        if place.allows(.nativeChrome) { handlers.add(StateHandler(self), name: "state") }
         // The agent's API keys, in the Keychain (#166).
-        view.configuration.userContentController.addScriptMessageHandler(
-            AgentKeysHandler(self), contentWorld: .page, name: "agentKeys"
-        )
+        if place.allows(.agentKeys) {
+            handlers.addScriptMessageHandler(
+                AgentKeysHandler(self), contentWorld: .page, name: "agentKeys"
+            )
+        }
         // The page's Settings, Keyboard Shortcuts and Connect open the
         // app's Settings at a tab (#332).
-        view.configuration.userContentController.add(SettingsHandler(self), name: "settings")
+        if place.allows(.settings) { handlers.add(SettingsHandler(self), name: "settings") }
+        // A machine page's place switcher (#701).
+        if place.allows(.switchPlace) { handlers.add(PlaceHandler(self), name: "place") }
         #if os(macOS)
-        view.configuration.userContentController.add(DocumentHandler(self), name: "document")
+        if place.allows(.nativeChrome) { handlers.add(DocumentHandler(self), name: "document") }
         #endif
         // Safari's Web Inspector can attach (Develop menu).
         view.isInspectable = true
@@ -252,10 +306,12 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
 
     private func startLoad(_ url: URL, start: Int, in view: WKWebView) {
         // The person's name, for this server's origin only (#606).
-        Self.installPageScripts(on: view, loaded: url)
-        // The ledger keeps notebooks by absolute path (#383).
-        kernels.notebookRoot = AppModel.shared.serverRootFolder
-        kernels.uiWillLoad(url)
+        Self.installPageScripts(on: view, loaded: url, place: place, places: places)
+        if place.allows(.deviceBridge) {
+            // The ledger keeps notebooks by absolute path (#383).
+            kernels.notebookRoot = AppModel.shared.serverRootFolder
+            kernels.uiWillLoad(url)
+        }
         page?.loadStarted(view.load(URLRequest(url: url)), start: start)
     }
 
@@ -272,7 +328,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// A reload or another page: the old page's remote `device` calls go
     /// with it. Its kernels are the server's and keep running.
     func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) {
-        kernels.reset()
+        if place.allows(.deviceBridge) { kernels.reset() }
         // The new page takes commands once it has posted its state.
         page?.committed(navigation)
     }
@@ -280,7 +336,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// The UI page's process died: its dialogs and sounds for server
     /// kernels have no one to answer.
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
-        kernels.uiPageEnded()
+        if place.allows(.deviceBridge) { kernels.uiPageEnded() }
     }
 
     /// Links to other hosts open in the default browser.
@@ -295,7 +351,10 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
             decisionHandler(.download)
         } else if let target = navigationAction.request.url, isExternal(target),
            navigationAction.navigationType == .linkActivated {
-            openExternally(target)
+            // A machine's notebook may link to anything: web links open in
+            // the browser, but not `ganymede://` or other app links, which
+            // act on this device (#701).
+            if place.allows(.appLinks) || Self.isWebLink(target) { openExternally(target) }
             decisionHandler(.cancel)
         } else {
             decisionHandler(.allow)
@@ -417,12 +476,16 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     ) -> WKWebView? {
         if let target = navigationAction.request.url {
             if isExternal(target) {
-                openExternally(target)
+                if place.allows(.appLinks) || Self.isWebLink(target) { openExternally(target) }
             } else {
                 webView.load(navigationAction.request)
             }
         }
         return nil
+    }
+
+    nonisolated static func isWebLink(_ url: URL) -> Bool {
+        ["http", "https"].contains(url.scheme?.lowercased() ?? "")
     }
 
     private func isExternal(_ url: URL) -> Bool {
@@ -680,3 +743,33 @@ private final class DocumentHandler: NSObject, WKScriptMessageHandler {
     }
 }
 #endif
+
+extension WebViewCoordinator {
+    /// A machine page's `place` message, `{ id: string | null }`: a place to
+    /// open in its own window. Only the page itself may send it; an id that
+    /// is not well formed, or a window of this device, is ignored.
+    func received(place message: WKScriptMessage) {
+        guard self.place.allows(.switchPlace), message.frameInfo.isMainFrame,
+              let fields = message.body as? [String: Any], fields.keys.contains("id")
+        else { return }
+        if fields["id"] is NSNull {
+            onOpenPlace?(.thisDevice)
+        } else if let id = fields["id"] as? String, let place = Place(machine: id) {
+            onOpenPlace?(place)
+        }
+    }
+}
+
+/// The `place` handler; weak, since the content controller keeps its
+/// handlers.
+private final class PlaceHandler: NSObject, WKScriptMessageHandler {
+    weak var coordinator: WebViewCoordinator?
+
+    init(_ coordinator: WebViewCoordinator) {
+        self.coordinator = coordinator
+    }
+
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        coordinator?.received(place: message)
+    }
+}

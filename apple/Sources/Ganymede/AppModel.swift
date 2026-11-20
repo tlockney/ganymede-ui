@@ -52,6 +52,9 @@ final class AppModel {
     private let store: RemoteStore
     /// Tokens the keychain refused to store, used until the app quits.
     @ObservationIgnored private var unsavedTokens: [UUID: String] = [:]
+    /// The machines mounted on the running server (#701): each id with the
+    /// URL and token it was mounted with.
+    @ObservationIgnored private var mounted: [String: String] = [:]
     /// The app's SSH key, for SSH remotes on iOS (the Mac uses its own
     /// ssh and keys).
     private(set) var sshKey: Curve25519.Signing.PrivateKey?
@@ -278,6 +281,9 @@ final class AppModel {
                     NSLog("Ganymede: the in-app kernel didn't register: %@", error.localizedDescription)
                 }
                 serverURL = host.url
+                // A new server has no mounts; before the page loads.
+                mounted = [:]
+                syncMachines()
                 servedRoot = launchedRoot
                 url = pageURL(host.url)
                 #if os(macOS)
@@ -361,14 +367,62 @@ final class AppModel {
         #endif
     }
 
-    #if os(macOS)
     /// The page a window loads for `target`; nil until the server listens.
+    /// A machine's page is the app's own page with `machine=` (#701): the
+    /// page reaches the machine through the mount, and draws its own
+    /// sidebar and toolbar, since the app's native chrome reads this
+    /// device's files.
     func page(for target: WindowTarget) -> URL? {
         guard let serverURL else { return nil }
         // The window draws the sidebar, toolbar and menus (#206, #207).
-        return target.pageURL(server: serverURL, kernels: kernels, nativeChrome: true)
+        return target.pageURL(
+            server: serverURL, kernels: kernels, nativeChrome: true,
+            machineName: target.place.machineID.flatMap(machineName(_:)))
     }
-    #endif
+
+    // MARK: Connected machines (#701)
+
+    /// This device and each machine, for the place switcher; this device
+    /// alone where the server can't mount machines.
+    var places: [PlaceEntry] {
+        Places.entries(remotes: remotes, thisDevice: KernelLocations.thisDevice, mounting: ServerHost.machinesSupported)
+    }
+
+    /// The name of the machine with this id (a Remote's UUID string).
+    func machineName(_ id: String) -> String? {
+        remotes.first { $0.id.uuidString == id && $0.hasServer }?.title
+    }
+
+    /// Mounts each remote with a server on the running server, and takes
+    /// away the mounts of remotes that were removed or changed. Runs when
+    /// the server starts (a new server has none) and when remotes change.
+    func syncMachines() {
+        guard ServerHost.machinesSupported, let server else {
+            mounted = [:]
+            return
+        }
+        var wanted: [String: (url: String, token: String)] = [:]
+        for remote in remotes {
+            if let id = Place(remote: remote)?.machineID {
+                wanted[id] = (remote.serverURL, token(for: remote.id))
+            }
+        }
+        for id in mounted.keys where wanted[id] == nil {
+            server.removeMachine(id: id)
+            mounted[id] = nil
+        }
+        for (id, entry) in wanted where mounted[id] != "\(entry.url)|\(entry.token)" {
+            do {
+                try server.addMachine(id: id, url: entry.url, token: entry.token.isEmpty ? nil : entry.token)
+                mounted[id] = "\(entry.url)|\(entry.token)"
+            } catch {
+                mounted[id] = nil
+                keychainError = "Ganymede couldn’t connect to \(machineName(id) ?? "the machine"): "
+                    + error.localizedDescription
+            }
+        }
+        PlaceReachability.shared.watch(places.map(\.place).filter(\.isMachine), on: serverURL)
+    }
 
     /// The app's own server, for clients other than the page (terminals).
     var localServer: ServerEndpoint? {
@@ -709,6 +763,7 @@ final class AppModel {
     }
 
     private func persist() {
+        syncMachines()
         do {
             try store.save(remotes, kernels: kernelRemoteID)
         } catch {

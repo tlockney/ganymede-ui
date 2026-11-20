@@ -257,6 +257,24 @@ export class NotebookRoom {
   }
 
   /**
+   * Calls `listener` with whether the socket is up, each time that
+   * changes (a machine going away, and coming back as y-websocket
+   * reconnects). Returns the unsubscribe.
+   */
+  onConnection(listener: (connected: boolean) => void): () => void {
+    let last = this.provider.wsconnected;
+    const handler = ({ status }: { status: string }) => {
+      // y-websocket also reports `connecting` on each retry.
+      const now = status === 'connected';
+      if (now === last) return;
+      last = now;
+      listener(now);
+    };
+    this.provider.on('status', handler);
+    return () => this.provider.off('status', handler);
+  }
+
+  /**
    * Ask the server to save the room now. Its autosave does this a second
    * after the last edit; ⌘S and the pane's teardown want it at once.
    */

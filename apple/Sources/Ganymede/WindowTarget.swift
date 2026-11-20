@@ -13,6 +13,25 @@ import UniformTypeIdentifiers
 enum WindowTarget: Codable, Hashable {
     case file(URL)
     case folder(URL)
+    /// A notebook or folder on a connected machine (#701), by its path on
+    /// that machine, from its root, `/`-led. The machine is a `Place` id.
+    case machineFile(machine: String, path: String)
+    case machineFolder(machine: String, path: String)
+
+    /// A machine's notebook or folder; nil for a malformed machine id.
+    static func machine(_ id: String, path: String, isFolder: Bool) -> WindowTarget? {
+        guard Place.isValidMachineID(id) else { return nil }
+        let clean = "/" + path.split(separator: "/").joined(separator: "/")
+        return isFolder ? .machineFolder(machine: id, path: clean) : .machineFile(machine: id, path: clean)
+    }
+
+    /// Where this target's notebooks live.
+    var place: Place {
+        switch self {
+        case .file, .folder: .thisDevice
+        case .machineFile(let id, _), .machineFolder(let id, _): .machine(id)
+        }
+    }
 
     /// From a URL the Finder or File > Open… hands over: a folder opens as
     /// one, anything else as a notebook.
@@ -38,6 +57,7 @@ enum WindowTarget: Codable, Hashable {
               parts.path.isEmpty || parts.path == "/"
         else { return nil }
         let items = parts.percentEncodedQueryItems ?? []
+        let machine = items.first { $0.name == "machine" }?.value?.removingPercentEncoding
         func path(_ name: String) -> String? {
             guard let value = items.first(where: { $0.name == name })?.value?
                 .replacingOccurrences(of: "+", with: " ").removingPercentEncoding
@@ -45,7 +65,14 @@ enum WindowTarget: Codable, Hashable {
             let path = value.split(separator: "/").joined(separator: "/")
             return path.isEmpty ? nil : path
         }
-        if let file = path("open") {
+        if let machine, Place.isValidMachineID(machine) {
+            // A machine's page: the paths are the machine's, not this device's.
+            if let file = path("open"), let target = Self.machine(machine, path: file, isFolder: false) {
+                self = target
+            } else {
+                self = Self.machine(machine, path: path("dir") ?? "", isFolder: true)!
+            }
+        } else if let file = path("open") {
             self = .file(URL(fileURLWithPath: "/" + file, isDirectory: false).standardizedFileURL)
         } else {
             let folder = path("dir").map { "/" + $0 } ?? "/"
@@ -56,6 +83,10 @@ enum WindowTarget: Codable, Hashable {
     var url: URL {
         switch self {
         case .file(let url), .folder(let url): url
+        // The machine's path as a URL, for its name and folder only: it is
+        // not a file on this device.
+        case .machineFile(_, let path): URL(fileURLWithPath: path, isDirectory: false)
+        case .machineFolder(_, let path): URL(fileURLWithPath: path, isDirectory: true)
         }
     }
 
@@ -65,23 +96,38 @@ enum WindowTarget: Codable, Hashable {
         switch self {
         case .file(let url): url.deletingLastPathComponent()
         case .folder(let url): url
+        case .machineFile: url.deletingLastPathComponent()
+        case .machineFolder: url
         }
     }
 
-    /// The window title.
-    var title: String {
+    /// The window title. A machine's window adds its name, so its tab
+    /// can't be taken for a local one (`machineName`, from `Remote.title`).
+    func displayTitle(machineName: String? = nil) -> String {
+        let base: String
         switch self {
-        case .file(let url): url.deletingPathExtension().lastPathComponent
-        case .folder(let url): url.lastPathComponent.isEmpty ? url.path : url.lastPathComponent
+        case .file(let url): base = url.deletingPathExtension().lastPathComponent
+        case .folder(let url): base = url.lastPathComponent.isEmpty ? url.path : url.lastPathComponent
+        case .machineFile(_, let path):
+            base = URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
+        case .machineFolder(_, let path):
+            let name = URL(fileURLWithPath: path, isDirectory: true).lastPathComponent
+            base = name.isEmpty || path == "/" ? (machineName ?? "Machine") : name
         }
+        guard let machineName, place.isMachine, base != machineName else { return base }
+        return "\(base) · \(machineName)"
     }
+
+    var title: String { displayTitle() }
 
     /// The page for this target on a server rooted at `/`, as ganymede-ui
     /// reads it (#129): `open=` a notebook's path, or `dir=` a folder's.
     /// `server` is the URL the server printed (with its token); `kernels`
     /// says where kernels run. With `nativeChrome` the page leaves the
     /// sidebar and toolbar to the app (`chrome=native`, #205).
-    func pageURL(server: URL, kernels: String, nativeChrome: Bool = false) -> URL {
+    func pageURL(
+        server: URL, kernels: String, nativeChrome: Bool = false, machineName: String? = nil
+    ) -> URL {
         guard var parts = URLComponents(url: server, resolvingAgainstBaseURL: false) else {
             return server
         }
@@ -89,9 +135,14 @@ enum WindowTarget: Codable, Hashable {
             switch self {
             case .file(let url): [("kernels", kernels), ("open", url.path)]
             case .folder(let url): [("kernels", kernels), ("dir", url.path)]
+            case .machineFile(_, let path): [("kernels", kernels), ("open", path)]
+            case .machineFolder(_, let path): [("kernels", kernels), ("dir", path)]
             }
         }()
-        if nativeChrome { added.append(("chrome", "native")) }
+        added += place.pageQuery(name: machineName)
+        // A machine's window shows the page's own sidebar and toolbar: the
+        // app's native chrome reads this device's files and state.
+        if nativeChrome && !place.isMachine { added.append(("chrome", "native")) }
         // Encoded by hand: URLComponents leaves `+` and `&` alone in query
         // values, which a page reads as a space and a separator.
         let encoded = added.map { name, value in "\(name)=\(Self.encode(value))" }

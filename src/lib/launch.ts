@@ -56,13 +56,18 @@ export function withDir(search: string, folder: string): string {
   return `?${params.toString()}`;
 }
 
-/** The window title for an open notebook, or the app's name. */
-export function titleFor(path?: string): string {
+/**
+ * The window title for an open notebook, or the app's name. A notebook on a
+ * connected machine carries the machine's name (#701), so its tab can't be
+ * taken for a local one.
+ */
+export function titleFor(path?: string, machine?: string): string {
   const name = path
     ?.split('/')
     .pop()
     ?.replace(/\.ipynb$/, '');
-  return name || 'Ganymede';
+  if (!machine) return name || 'Ganymede';
+  return name ? `${name} · ${machine}` : machine;
 }
 
 /**

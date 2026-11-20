@@ -545,3 +545,98 @@ describe('Sidebar search and Recents', () => {
     expect(screen.queryByRole('list', { name: 'Recents' })).not.toBeInTheDocument();
   });
 });
+
+describe('Sidebar on a connected machine (#701)', () => {
+  const config = {
+    kind: 'ganymede',
+    url: '',
+    token: '',
+    machine: 'mini-1',
+    machineName: 'm4mini',
+  } as const;
+
+  function renderMachine(rooms: unknown = { rooms: [] }, roomsStatus = 200) {
+    const fake = fakeServices(structuredClone(TREE));
+    const requested: string[] = [];
+    (fake.services as unknown as { serverSettings: unknown }).serverSettings =
+      ServerConnection.makeSettings({
+        baseUrl: 'http://127.0.0.1:1/machines/mini-1/',
+        fetch: (async (r: Request) => {
+          const url = r.url.split('?')[0]!;
+          requested.push(url);
+          return url.endsWith('/api/collaboration/rooms')
+            ? new Response(JSON.stringify(rooms), { status: roomsStatus })
+            : new Response('{}');
+        }) as unknown as typeof fetch,
+      });
+    const onOpen = vi.fn();
+    const onPlace = vi.fn();
+    render(
+      <Sidebar
+        backend={fakeBackend(fake.services, config)}
+        connecting={false}
+        onOpen={onOpen}
+        onNew={vi.fn()}
+        onConnect={vi.fn()}
+        places={[
+          { id: null, name: 'This Mac' },
+          { id: 'mini-1', name: 'm4mini' },
+        ]}
+        onPlace={onPlace}
+      />,
+    );
+    return { onOpen, onPlace, requested };
+  }
+
+  it('names the place with its reachability, and lists Files, Journals, Running and Search', async () => {
+    renderMachine();
+    expect(await screen.findByRole('button', { name: /Place: m4mini, reachable/ })).toBeEnabled();
+    const tabs = within(screen.getByRole('tablist', { name: 'Place' })).getAllByRole('tab');
+    expect(tabs.map(t => t.textContent)).toEqual(['Files', 'Journals', 'Running', 'Search']);
+    expect(screen.getByText('Saved on m4mini')).toBeInTheDocument();
+    // Files: the machine's folder, no search field until Search.
+    expect(await screen.findByText('Saturn')).toBeInTheDocument();
+    expect(screen.queryByRole('searchbox')).toBeNull();
+  });
+
+  it('switches place from the switcher', async () => {
+    const { onPlace } = renderMachine();
+    await userEvent.click(await screen.findByRole('button', { name: /Place: m4mini/ }));
+    await userEvent.click(await screen.findByRole('menuitemradio', { name: 'This Mac' }));
+    expect(onPlace).toHaveBeenCalledWith(null);
+  });
+
+  it('lists the journals among the rooms, and opens one', async () => {
+    const { onOpen, requested } = renderMachine({
+      rooms: [
+        {
+          path: 'journal/Day 1.ipynb',
+          clients: [{ name: 'Claude', kind: 'agent' }],
+          last_change: null,
+        },
+        { path: 'people.ipynb', clients: [{ name: 'T', kind: 'person' }], last_change: null },
+      ],
+    });
+    await userEvent.click(await screen.findByRole('tab', { name: 'Journals' }));
+    const list = await screen.findByRole('list', { name: 'Journals' });
+    expect(within(list).getAllByRole('listitem')).toHaveLength(1);
+    expect(within(list).getByText('Claude')).toBeInTheDocument();
+    expect(within(list).getByText('running')).toBeInTheDocument();
+    // Asked of the machine, through the mount.
+    expect(requested).toContain('http://127.0.0.1:1/machines/mini-1/api/collaboration/rooms');
+    await userEvent.click(within(list).getByText('Day 1'));
+    expect(onOpen).toHaveBeenCalledWith('journal/Day 1.ipynb');
+  });
+
+  it('says so when the machine’s Ganymede can’t list rooms', async () => {
+    renderMachine({}, 404);
+    await userEvent.click(await screen.findByRole('tab', { name: 'Journals' }));
+    expect(await screen.findByText(/too old to list journals/)).toBeInTheDocument();
+  });
+
+  it('has no place switcher or tabs for this device', async () => {
+    renderSidebar();
+    await screen.findByText('Saturn');
+    expect(screen.queryByRole('tablist', { name: 'Place' })).toBeNull();
+  });
+});

@@ -32,8 +32,12 @@ import { fakeBackend, fakeServices } from '../test/fakes';
 import {
   type Backend,
   connect,
+  isMachineId,
   loadConfig,
+  machineFromSearch,
+  machinePrefix,
   saveConfig,
+  serverBase,
   signedInHere,
   trustNotebook,
 } from './backends';
@@ -197,6 +201,86 @@ describe('connect: ganymede', () => {
   it('reports an unreachable server', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
     await expect(connect({ kind: 'ganymede', url: '', token: 'x' })).rejects.toThrow();
+  });
+});
+
+describe('connected machines (#701)', () => {
+  const id = '3f2b8c1e-aaaa-4bbb-8ccc-0123456789ab';
+
+  it('builds the machine’s mount on the page’s own origin', () => {
+    expect(machinePrefix(id)).toBe(`/machines/${id}/`);
+    const machine = { kind: 'ganymede', url: '', token: '', machine: id } as const;
+    expect(serverBase(machine, 'http://127.0.0.1:8123')).toBe(
+      `http://127.0.0.1:8123/machines/${id}/`,
+    );
+    expect(serverBase(machine, 'http://127.0.0.1:8123/')).toBe(
+      `http://127.0.0.1:8123/machines/${id}/`,
+    );
+    // The others are unchanged.
+    expect(serverBase({ kind: 'ganymede', url: '', token: '' }, 'http://h:1')).toBe('http://h:1/');
+    expect(
+      serverBase({ kind: 'ganymede', url: 'https://k.example//', token: '' }, 'http://h:1'),
+    ).toBe('https://k.example/');
+  });
+
+  it('reads the machine from the page URL, and only a well-formed id', () => {
+    expect(machineFromSearch(`?kernels=server&machine=${id}&machine_name=Mac%20mini`)).toEqual({
+      machine: id,
+      machineName: 'Mac mini',
+    });
+    expect(machineFromSearch(`?machine=${id}`)).toEqual({ machine: id });
+    expect(machineFromSearch('?open=a.ipynb')).toBeUndefined();
+    for (const bad of ['', '..', 'a/b', 'a b', '../x', 'a%2Fb', 'x'.repeat(65)]) {
+      expect(machineFromSearch(`?machine=${encodeURIComponent(bad)}`)).toBeUndefined();
+      expect(isMachineId(bad)).toBe(false);
+    }
+    expect(isMachineId('A_b-9')).toBe(true);
+    expect(isMachineId('x'.repeat(64))).toBe(true);
+  });
+
+  it('connects through the mount, with no token and the page’s own cookie', async () => {
+    const { seen } = fakeServer();
+    const backend = keep(
+      await connect({ kind: 'ganymede', url: '', token: '', machine: id, machineName: 'm4mini' }),
+    );
+    const settings = backend.services.serverSettings;
+    expect(settings.baseUrl).toBe(`${window.location.origin}/machines/${id}/`);
+    expect(settings.wsUrl).toBe(`${window.location.origin.replace(/^http/, 'ws')}/machines/${id}/`);
+    expect(settings.init.credentials).toBe('same-origin');
+    expect(backend.detail).toBe('m4mini');
+    expect(seen[0]!.url.split('?')[0]).toBe(`${window.location.origin}/machines/${id}/api/status`);
+    // Every request stays under the mount.
+    expect(seen.every(r => r.url.startsWith(`${window.location.origin}/machines/${id}/api/`))).toBe(
+      true,
+    );
+  });
+
+  it('doesn’t tell the app of renames: a machine may hold a local notebook’s path', async () => {
+    fakeServer();
+    const posted: unknown[] = [];
+    vi.stubGlobal('webkit', {
+      messageHandlers: { kernelRelay: { postMessage: (m: unknown) => posted.push(m) } },
+    });
+    const backend = keep(
+      await connect({ kind: 'ganymede', url: '', token: '', machine: id, machineName: 'm4mini' }),
+    );
+    const contents = backend.services.contents as unknown as {
+      _fileChanged: { emit(change: unknown): void };
+    };
+    contents._fileChanged.emit({
+      type: 'rename',
+      oldValue: { path: 'a.ipynb' },
+      newValue: { path: 'b.ipynb' },
+    });
+    expect(posted).toEqual([]);
+  });
+
+  it('never saves a machine as the page’s next backend', () => {
+    localStorage.clear();
+    sessionStorage.clear();
+    saveConfig({ kind: 'ganymede', url: '', token: '', machine: id });
+    expect(localStorage.getItem('ganymede-ui:backend')).toBeNull();
+    expect(loadConfig()).toBeUndefined();
   });
 });
 

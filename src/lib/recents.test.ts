@@ -21,6 +21,28 @@ beforeEach(() => {
   resetChecked();
 });
 
+describe('recents per place (#701)', () => {
+  const mini = { kind: 'ganymede', url: '', token: '', machine: 'mini-1' } as const;
+  const other = { kind: 'ganymede', url: '', token: '', machine: 'laptop' } as const;
+  const here = { kind: 'ganymede', url: '', token: '' } as const;
+
+  it('keys a machine apart from this device and from other machines', () => {
+    expect(recentsKey(mini)).toBe('machine:mini-1');
+    expect(new Set([recentsKey(mini), recentsKey(other), recentsKey(here)]).size).toBe(3);
+  });
+
+  it('keeps the same path on two places apart', () => {
+    addRecent(recentsKey(here), 'notes/a.ipynb');
+    addRecent(recentsKey(mini), 'notes/a.ipynb');
+    addRecent(recentsKey(mini), 'notes/b.ipynb');
+    expect(loadRecents(recentsKey(here))).toEqual(['notes/a.ipynb']);
+    expect(loadRecents(recentsKey(mini))).toEqual(['notes/b.ipynb', 'notes/a.ipynb']);
+    forgetRecent(recentsKey(mini), 'notes');
+    expect(loadRecents(recentsKey(mini))).toEqual([]);
+    expect(loadRecents(recentsKey(here))).toEqual(['notes/a.ipynb']);
+  });
+});
+
 describe('recents', () => {
   it('records notebooks, not data files (#671)', () => {
     addRecent(KEY, 'a.csv');

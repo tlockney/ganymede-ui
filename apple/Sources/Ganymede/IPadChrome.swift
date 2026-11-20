@@ -46,9 +46,14 @@ struct IPadSidebar: View {
     var showTerminal: (PanelTerminal.ID) -> Void = { _ in }
     /// The selected navigator tab, kept per scene.
     @SceneStorage("navigator.tab") private var tab: NavigatorTab = .files
+    /// Shows a connected machine in the scene (#701); without it the list
+    /// has no places.
+    var onPlace: ((Place) -> Void)? = nil
+    @Environment(AppModel.self) private var model
 
     var body: some View {
         List {
+            placesSection
             if tabbed {
                 navigator
             } else {
@@ -159,6 +164,31 @@ struct IPadSidebar: View {
     /// Kernels and the panel's terminals.
     private var runningCount: Int {
         page.state.sessions.count + panel.terminals.count
+    }
+
+    /// The connected machines, above the files: the iPhone's Places list,
+    /// and the iPad's place switcher (#701). Nothing without a machine.
+    @ViewBuilder
+    private var placesSection: some View {
+        let machines = model.places.filter { $0.place.isMachine }
+        if let onPlace, !machines.isEmpty {
+            Section("Places") {
+                ForEach(machines) { entry in
+                    Button {
+                        onPlace(entry.place)
+                    } label: {
+                        HStack {
+                            Label(entry.title, systemImage: "desktopcomputer")
+                            Spacer()
+                            Circle()
+                                .fill(PlaceReachability.shared.isReachable(entry.place) ? Color.green : Color.red)
+                                .frame(width: 8, height: 8)
+                                .accessibilityLabel(PlaceReachability.shared.isReachable(entry.place) ? "Reachable" : "Offline")
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /// The selected tab's list.
@@ -748,9 +778,13 @@ struct IPadNotebookToolbar: ToolbarContent {
                 } label: {
                     Label(page.state.kernelDisplayName ?? "Kernel", systemImage: "cpu")
                 }
-                // Where every notebook's kernels run (#473).
+                // Where every notebook's kernels run (#473): an advanced
+                // choice, with the connected machines as places (#701).
                 if AppModel.shared.kernelLocations.hasRemotes {
-                    KernelLocationPicker(running: page.state.sessions.count)
+                    Menu("Advanced") {
+                        KernelLocationPicker(running: page.state.sessions.count)
+                            .pickerStyle(.inline)
+                    }
                 }
                 Divider()
                 Button { page.run("save") } label: { Label("Save", systemImage: "square.and.arrow.down") }

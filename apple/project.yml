@@ -592,6 +592,9 @@ targets:
       - path: Sources/Ganymede/Terminal/TerminalHandoff.swift
       - path: Sources/Ganymede/Terminal/JupyterTerminalTransport.swift
       - path: Sources/Ganymede/WindowTarget.swift
+      # Places: connected machines (#701).
+      - path: Sources/Ganymede/Place.swift
+      - path: Sources/Ganymede/PlaceReachability.swift
       - path: Sources/Ganymede/Remote.swift
       - path: Sources/Ganymede/AgentKeys.swift
       - path: Sources/Ganymede/DocumentMessage.swift
@@ -665,6 +668,8 @@ targets:
       - path: Sources/Ganymede/Terminal/OpenTerminals.swift
       - path: Sources/Ganymede/Terminal/JupyterTerminalTransport.swift
       - path: Sources/Ganymede/WindowTarget.swift
+      - path: Sources/Ganymede/Place.swift
+      - path: Sources/Ganymede/PlaceReachability.swift
       - path: Sources/Ganymede/Remote.swift
       - path: Sources/Ganymede/AgentKeys.swift
       - path: Sources/Ganymede/DocumentMessage.swift

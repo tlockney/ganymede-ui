@@ -347,8 +347,9 @@ private struct KernelRow: View {
 }
 
 /// The foot of the navigator sidebar (#246): where kernels run, and how
-/// many kernels and terminals there are. A menu (#473): run kernels on
-/// this Mac or a remote, open a terminal on a remote, manage remotes.
+/// many kernels and terminals there are. A menu: open a terminal on a
+/// remote, manage remotes. Where kernels run (#473) is an advanced choice
+/// in the kernel menu now (#701); connected machines are places instead.
 struct ServerLine: View {
     var page: PageModel
     /// The window's bottom panel, for terminals on remotes.
@@ -359,8 +360,6 @@ struct ServerLine: View {
     var body: some View {
         let locations = model.kernelLocations
         Menu {
-            KernelLocationPicker(model: model, running: page.state.sessions.count)
-                .pickerStyle(.inline)
             let remotes = model.remotes.filter { $0.hasServer || $0.ssh != nil }
             if let panel, !remotes.isEmpty {
                 Section("New Terminal On") {
@@ -413,7 +412,7 @@ struct ServerLine: View {
     private func helpText(_ locations: KernelLocations) -> String {
         var text = "Kernels run on \(locations.title)."
         if page.state.backend == nil { text += " Not connected." }
-        return text + " Click to run them elsewhere or open a terminal on a remote."
+        return text + " Click to open a terminal on a remote."
     }
 }
 
@@ -579,8 +578,8 @@ private struct KernelPopover: View {
                     .disabled(panel == nil || state.kernelID == nil)
             }
             Divider()
-            // Where every notebook's kernels run (#473).
-            KernelLocationPicker(running: state.sessions.count, title: "Runs On")
+            // Where every notebook's kernels run (#473): an advanced choice.
+            KernelLocationPicker(running: state.sessions.count, title: "Runs On (advanced)")
                 .onChange(of: AppModel.shared.kernelRemoteID) { dismiss() }
             if !state.kernels.isEmpty {
                 Picker("Kernel", selection: Binding(
@@ -835,8 +834,13 @@ struct KernelMenu: View {
         Divider()
         // Where kernels run is a setting of the app, not the notebook
         // (#332), chosen here too (#473).
-        KernelLocationPicker(running: page?.state.sessions.count)
-        Button("Manage Remotes…") { SettingsOpener.show(.remotes) }
+        // An advanced choice, since connected machines (places) are the
+        // main way to use another machine (#701).
+        Menu("Advanced") {
+            KernelLocationPicker(running: page?.state.sessions.count)
+                .pickerStyle(.inline)
+            Button("Manage Remotes…") { SettingsOpener.show(.remotes) }
+        }
     }
 }
 #endif

@@ -52,6 +52,49 @@ final class ServerHost: @unchecked Sendable {
         try kernels.register(spec: spec, on: handle, events: events)
     }
 
+    /// Whether this build can mount machines (#701). The C functions
+    /// `ganymede_server_add_machine` and `ganymede_server_remove_machine`
+    /// (ganymede#894) are in the XCFramework only from the Ganymede release
+    /// that has the mount; until `GANYMEDE_REF` is one, the build leaves
+    /// them out, and the app shows no machines. Build with
+    /// `SWIFT_ACTIVE_COMPILATION_CONDITIONS = GANYMEDE_FFI_MACHINES` (in
+    /// project.yml) once it is.
+    #if GANYMEDE_FFI_MACHINES
+    static let machinesSupported = true
+    #else
+    static let machinesSupported = false
+    #endif
+
+    /// Mounts a machine's server under `/machines/{id}/`, replacing one with
+    /// the same id. `token` is the machine's, kept native: the page never
+    /// sees it. Throws when the server refuses the id or URL.
+    func addMachine(id: String, url: String, token: String?) throws {
+        #if GANYMEDE_FFI_MACHINES
+        guard Place.isValidMachineID(id) else {
+            throw StartError(message: "“\(id)” is not a valid machine id")
+        }
+        // The closure's answer is the error text, nil on success.
+        let outcome: String?? = kernels.withHandle { handle in
+            var error: UnsafeMutablePointer<CChar>?
+            guard ganymede_server_add_machine(handle, id, url, token, &error) != 0 else { return nil }
+            let text = error.map { String(cString: $0) } ?? "the server refused the machine"
+            ganymede_string_free(error)
+            return text
+        }
+        guard let outcome else { throw StartError(message: "the server has stopped") }
+        if let text = outcome { throw StartError(message: text) }
+        #else
+        throw StartError(message: "This build's Ganymede server can't mount machines yet.")
+        #endif
+    }
+
+    /// Takes a machine's mount away.
+    func removeMachine(id: String) {
+        #if GANYMEDE_FFI_MACHINES
+        _ = kernels.withHandle { handle in ganymede_server_remove_machine(handle, id) }
+        #endif
+    }
+
     /// Shuts down every kernel and stops the server. Blocks until done.
     /// Registered kernels answer the shutdown through the main thread, so
     /// off the main thread a stop is quick; on it, each waits out the
@@ -100,6 +143,15 @@ final class RegisteredKernels: @unchecked Sendable {
 
     fileprivate func open(_ handle: OpaquePointer) {
         lock.withLock { self.handle = handle }
+    }
+
+    /// Runs `body` with the server's handle, under the lock that keeps the
+    /// server from being freed meanwhile; nil when the server has stopped.
+    fileprivate func withHandle<T>(_ body: (OpaquePointer) -> T) -> T? {
+        lock.withLock {
+            guard let handle else { return nil }
+            return body(handle)
+        }
     }
 
     fileprivate func close() {
