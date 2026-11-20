@@ -1,6 +1,9 @@
 import Foundation
 
-/// One item in a folder, as the native sidebar lists it (#207).
+/// One item in a folder, as the native sidebar lists it (#207). Its `url`
+/// is an opaque location (#737): a file URL on this device, or a machine's
+/// `ganymede-machine://<id>/<path>` (`machineURL`), which nothing hands to
+/// `FileManager`. The `FileSource` of its place reads and changes it.
 struct FolderEntry: Identifiable, Hashable {
     let url: URL
     let isDirectory: Bool
@@ -21,9 +24,64 @@ struct FolderEntry: Identifiable, Hashable {
     var serverPath: String { Self.serverPath(url) }
 
     /// A file's path on a server rooted at `/`: its absolute path without
-    /// the leading slash, as the page and the contents API take it.
+    /// the leading slash, as the page and the contents API take it. For a
+    /// machine's URL, its path on that machine, relative; "" for the root.
     static func serverPath(_ url: URL) -> String {
-        String(url.standardizedFileURL.path.drop { $0 == "/" })
+        if let location = machineLocation(url) { return location.path }
+        return String(url.standardizedFileURL.path.drop { $0 == "/" })
+    }
+
+    // MARK: A machine's items
+
+    /// The scheme of a machine's item URL.
+    static let machineScheme = "ganymede-machine"
+
+    /// The URL of the item at `path` (relative, no leading slash; "" for the
+    /// root) on machine `id`: `ganymede-machine://<id>/<path>`, each segment
+    /// percent-encoded. Nil for a malformed id, so a URL is never built
+    /// from one.
+    static func machineURL(_ id: String, path: String) -> URL? {
+        guard Place.isValidMachineID(id) else { return nil }
+        var parts = URLComponents()
+        parts.scheme = machineScheme
+        parts.host = id
+        // Encoded by hand with a strict set: `URLComponents.path` leaves
+        // `;` and the like as they are, which don't survive a round trip.
+        let segments = path.split(separator: "/", omittingEmptySubsequences: true).map {
+            String($0).addingPercentEncoding(withAllowedCharacters: segmentAllowed) ?? String($0)
+        }
+        parts.percentEncodedPath = "/" + segments.joined(separator: "/")
+        return parts.url
+    }
+
+    /// ASCII letters, digits and `-._~`: what stays in a machine path's segment.
+    static let segmentAllowed = CharacterSet(
+        charactersIn: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~")
+
+    /// The machine and the relative path (decoded; "" for the root) of a
+    /// `machineURL`; nil for any other URL.
+    static func machineLocation(_ url: URL) -> (id: String, path: String)? {
+        guard url.scheme == machineScheme, let id = url.host, Place.isValidMachineID(id) else { return nil }
+        let encoded = URLComponents(url: url, resolvingAgainstBaseURL: false)?.percentEncodedPath ?? ""
+        let segments = encoded.split(separator: "/", omittingEmptySubsequences: true).map {
+            String($0).removingPercentEncoding ?? String($0)
+        }
+        return (id, segments.joined(separator: "/"))
+    }
+
+    /// The path of the folder holding the item at relative `path`; "" for
+    /// the root, which is its own parent.
+    static func parentPath(_ path: String) -> String {
+        var segments = path.split(separator: "/")
+        if !segments.isEmpty { segments.removeLast() }
+        return segments.joined(separator: "/")
+    }
+
+    /// The folder holding the item at `url`: a file URL's parent, or the
+    /// parent of a machine's item; the root is its own parent.
+    static func parent(of url: URL) -> URL {
+        guard let location = machineLocation(url) else { return url.deletingLastPathComponent() }
+        return machineURL(location.id, path: parentPath(location.path)) ?? url
     }
 
     /// A file's path on a server rooted at `root`, as the iPad's is at its
