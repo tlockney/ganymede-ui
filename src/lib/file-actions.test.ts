@@ -306,6 +306,18 @@ describe('fileActions', () => {
     expect(setOpenPath).not.toHaveBeenCalled();
   });
 
+  it('tells nobody of a delete that failed, so the DuckDB console in that folder stays open', async () => {
+    // The page closes the console from `onMoved(path, null)` (#679), so it must not hear it.
+    const { fake, setOpenPath, actions, onMoved } = setup();
+    fake.delete.mockRejectedValueOnce(new Error('Forbidden'));
+    await expect(actions.remove(dir('moons'))).rejects.toThrow('Forbidden');
+    expect(onMoved).not.toHaveBeenCalled();
+    expect(setOpenPath).not.toHaveBeenCalled();
+    // The next delete that works is told.
+    await actions.remove(dir('moons'));
+    expect(onMoved).toHaveBeenCalledWith('moons', null);
+  });
+
   it('makes an untitled folder', async () => {
     const { fake, actions } = setup();
     expect(await actions.newFolder('moons')).toBe('moons/Untitled Folder');
