@@ -5,8 +5,10 @@
 // serve`, with its token added and the page's cookie dropped, and everything
 // else goes to the first server, which serves the build and the login cookie.
 // It also lets a test take the machine away, as a network drop would, and
-// stands in for `GET api/collaboration/rooms` (ganymede#893) when the
-// machine's Ganymede doesn't have it yet.
+// can answer `GET api/collaboration/rooms` (ganymede#893) with a fixed list:
+// the machine lists an agent only while an MCP session holds its room, which
+// this run doesn't start. The machine's own answer is still fetched and kept
+// for the test to check.
 import {
   type IncomingMessage,
   type Server,
@@ -20,6 +22,8 @@ export type MountProxy = {
   url: string;
   /** While down, the machine answers nothing: requests fail and sockets close. */
   setDown(down: boolean): void;
+  /** The machine's own last answer to `api/collaboration/rooms`, before `rooms` replaced it. */
+  machineRooms(): { status: number; body: unknown } | undefined;
   stop(): Promise<void>;
 };
 
@@ -30,7 +34,7 @@ type Options = {
   machineId: string;
   machine: URL;
   machineToken: string;
-  /** Answer `api/collaboration/rooms` with this when the machine has no such route. */
+  /** Answer `api/collaboration/rooms` with this in place of the machine's list. */
   rooms?: unknown;
 };
 
@@ -75,6 +79,7 @@ export function routeAllowed(rest: string): 'ok' | 'malformed' | 'not-allowed' {
 export async function startMountProxy(o: Options): Promise<MountProxy> {
   const prefix = `/machines/${o.machineId}/`;
   let down = false;
+  let machineRooms: { status: number; body: unknown } | undefined;
   const sockets = new Set<Socket>();
 
   /** The path on the machine, or undefined for a path that isn't the mount's. */
@@ -116,9 +121,20 @@ export async function startMountProxy(o: Options): Promise<MountProxy> {
         headers: path === undefined ? req.headers : machineHeaders(req),
       },
       answer => {
-        if (path?.startsWith('/api/collaboration/rooms') && answer.statusCode === 404 && o.rooms) {
-          answer.resume();
-          res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(o.rooms));
+        if (path?.startsWith('/api/collaboration/rooms') && o.rooms) {
+          const chunks: Buffer[] = [];
+          answer.on('data', (c: Buffer) => chunks.push(c));
+          answer.on('error', () => res.headersSent || res.writeHead(502).end());
+          answer.on('end', () => {
+            let body: unknown;
+            try {
+              body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+            } catch {
+              body = undefined;
+            }
+            machineRooms = { status: answer.statusCode ?? 0, body };
+            res.writeHead(200, { 'content-type': 'application/json' }).end(JSON.stringify(o.rooms));
+          });
           return;
         }
         res.writeHead(answer.statusCode ?? 502, answer.headers);
@@ -170,6 +186,7 @@ export async function startMountProxy(o: Options): Promise<MountProxy> {
         for (const s of sockets) s.destroy();
       }
     },
+    machineRooms: () => machineRooms,
     stop: () =>
       new Promise<void>(resolve => {
         for (const s of sockets) s.destroy();

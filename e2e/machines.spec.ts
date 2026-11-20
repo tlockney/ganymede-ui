@@ -62,7 +62,8 @@ test.beforeAll(async () => {
     machineId: ID,
     machine: new URL(`http://127.0.0.1:${MACHINE_PORT}`),
     machineToken: MACHINE_TOKEN,
-    // The rooms list (ganymede#893) isn't in every Ganymede yet.
+    // The machine lists an agent only while an MCP session holds its room;
+    // the test checks the machine's own answer below.
     rooms: {
       rooms: [
         {
@@ -153,6 +154,15 @@ test('lists the journals and opens one', async ({ page }) => {
   await expect(list.getByRole('listitem')).toHaveCount(1);
   await expect(list.getByText('Claude')).toBeVisible();
   await expect(list.getByText('running')).toBeVisible();
+  // The machine's own list came through the mount, with no agent in it.
+  expect(proxy.machineRooms()).toBeDefined();
+  const own = proxy.machineRooms() as {
+    status: number;
+    body: { rooms: { clients: { kind: string }[] }[] };
+  };
+  expect(own.status).toBe(200);
+  expect(Array.isArray(own.body.rooms)).toBe(true);
+  expect(own.body.rooms.flatMap(r => r.clients).filter(c => c.kind === 'agent')).toEqual([]);
   await list.getByRole('button', { name: /Agent day/ }).click();
   await expect(page.locator('.jp-Cell').first()).toBeVisible();
   await expect(page).toHaveTitle(`Agent day · ${NAME}`);

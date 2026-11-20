@@ -54,10 +54,6 @@ tables, so Rust frames show files and lines too.
 
 ## Engine benchmark
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
-
 Settings > Developer (hidden until General's **Show Developer Settings**
 is on, #698) runs the V8 spike's workloads on the V8 in ganymede-ffi and
 on WebKit's Workers ([docs/apps.md](../docs/apps.md#developer-settings)).
