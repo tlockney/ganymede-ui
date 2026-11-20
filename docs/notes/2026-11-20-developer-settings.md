@@ -58,9 +58,15 @@ off screen, so the footer says to keep the screen open, and a run whose
 screen or app left the front is flagged in the UI and as `left_screen` in
 the reports. Copy Results copies the text; Share shares the file.
 
-CI still pins `GANYMEDE_REF: v0.13.1`, whose XCFramework has no
-`ganymede_v8_bench_*` symbols, so the app won't link until the pin moves to
-a ganymede commit with them (ganymede#892).
+CI pins `GANYMEDE_REF` to a ganymede commit with the `ganymede_v8_bench_*`
+symbols until a ganymede release has them (ganymede#892).
+
+rusty_v8's iOS libraries are built without WebAssembly, but its C bindings
+(`v8__WasmModuleCompilation__NEW` and the rest) still call it, so the first
+iOS build failed to link. The macOS library has it. A test bundle and the
+debug dylib export their globals, which keeps those bindings past
+`-dead_strip`; `-Wl,-unexported_symbol,_v8__*` on Ganymede-iOS and
+GanymedeTests-iOS lets the linker drop them. Nothing calls them.
 
 Not compiled or run: the container has no Swift toolchain; CI is the first
 build. The Worker page's script parses (`node --check`), and
