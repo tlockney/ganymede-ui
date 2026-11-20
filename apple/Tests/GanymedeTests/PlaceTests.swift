@@ -54,21 +54,25 @@ final class PlaceTests: XCTestCase {
     func testAMachineWindowGetsNoBridgeGrantsShortcutsEditorKeysOrAppLinks() {
         let machine = Place.machine(id)
         for capability in [
-            Place.Capability.deviceBridge, .openFile, .nativeChrome, .agentKeys, .personName, .appLinks,
+            Place.Capability.deviceBridge, .openFile, .agentKeys, .personName, .appLinks,
         ] {
             XCTAssertFalse(machine.allows(capability), "\(capability)")
         }
         // Only what the machine's own page needs; a new capability must be
         // considered here.
         let allowed = Place.Capability.allCases.filter { machine.allows($0) }
-        XCTAssertEqual(Set(allowed.map { "\($0)" }), ["settings", "switchPlace"])
+        XCTAssertEqual(Set(allowed.map { "\($0)" }), ["settings", "switchPlace", "nativeChrome"])
     }
 
     func testTheWebViewIsMadeFromThePlacesHandlerTable() {
         let machine = Place.machine(id).handlerNames
-        XCTAssertEqual(Set(machine), ["settings", "place"])
-        for name in ["kernelRelay", "deviceRemote", "openFile", "state", "document", "agentKeys"] {
+        // The native window reads a machine's page through `state` and `document` (#740).
+        XCTAssertEqual(Set(machine), ["settings", "place", "state", "document"])
+        for name in ["kernelRelay", "deviceRemote", "openFile", "agentKeys"] {
             XCTAssertFalse(machine.contains(name), name)
+            XCTAssertTrue(Place.thisDevice.handlerNames.contains(name), name)
+        }
+        for name in ["state", "document"] {
             XCTAssertTrue(Place.thisDevice.handlerNames.contains(name), name)
         }
         XCTAssertFalse(Place.thisDevice.handlerNames.contains("place"))
@@ -107,6 +111,8 @@ final class PlaceTests: XCTestCase {
     func testMachineNotebooksStayOutOfNativeRecentsAndSpotlight() {
         XCTAssertTrue(Place.thisDevice.indexesLocally)
         XCTAssertFalse(Place.machine(id).indexesLocally)
+        XCTAssertTrue(Place.thisDevice.isThisDevice)
+        XCTAssertFalse(Place.machine(id).isThisDevice)
     }
 
     // MARK: window targets
@@ -134,7 +140,7 @@ final class PlaceTests: XCTestCase {
             WindowTarget.file(URL(fileURLWithPath: "/tmp/a.ipynb")))
     }
 
-    func testAMachinePageGetsTheMachineAndNoNativeChrome() throws {
+    func testAMachinePageGetsTheMachineAndNativeChrome() throws {
         let target = try XCTUnwrap(WindowTarget.machine(id, path: "/notes/Io & Europa.ipynb", isFolder: false))
         let page = target.pageURL(server: server, kernels: "server", nativeChrome: true, machineName: "m4 mini")
         XCTAssertEqual(page.port, 8123)
@@ -142,11 +148,141 @@ final class PlaceTests: XCTestCase {
             query(page),
             [
                 "token": "abc", "kernels": "server", "open": "/notes/Io & Europa.ipynb",
-                "machine": id, "machine_name": "m4 mini",
+                "machine": id, "machine_name": "m4 mini", "chrome": "native",
             ])
-        // This device's windows still draw the native chrome.
+        // Without it the page draws its own (the iPad's machine screen).
+        XCTAssertNil(query(target.pageURL(server: server, kernels: "server", machineName: "m"))["chrome"])
+        // This device's windows draw the native chrome too.
         let local = WindowTarget.folder(URL(fileURLWithPath: "/tmp", isDirectory: true))
         XCTAssertEqual(query(local.pageURL(server: server, kernels: "server", nativeChrome: true))["chrome"], "native")
+    }
+
+    func testOnlyTheIPadsMachineScreenKeepsThePagesChrome() {
+        XCTAssertTrue(Place.thisDevice.drawsNativeChrome(onMac: true))
+        XCTAssertTrue(Place.machine(id).drawsNativeChrome(onMac: true))
+        XCTAssertTrue(Place.thisDevice.drawsNativeChrome(onMac: false))
+        XCTAssertFalse(Place.machine(id).drawsNativeChrome(onMac: false))
+    }
+
+    func testAMachineTargetsFolderIsItsLocationNotAFileURL() throws {
+        let notebook = try XCTUnwrap(WindowTarget.machine(id, path: "/a b/Io.ipynb", isFolder: false))
+        XCTAssertEqual(notebook.folder, FolderEntry.machineURL(id, path: "a b"))
+        XCTAssertFalse(notebook.folder.isFileURL)
+        let root = try XCTUnwrap(WindowTarget.machine(id, path: "/", isFolder: true))
+        XCTAssertEqual(root.folder, FolderEntry.machineURL(id, path: ""))
+        let inFolder = try XCTUnwrap(WindowTarget.machine(id, path: "/work/x", isFolder: true))
+        XCTAssertEqual(FolderEntry.serverPath(inFolder.folder), "work/x")
+        // A malformed id never becomes a location on this device.
+        let bad = WindowTarget.machineFolder(machine: "../x", path: "/tmp")
+        XCTAssertFalse(bad.folder.isFileURL)
+        XCTAssertNil(FolderEntry.machineLocation(bad.folder))
+    }
+
+    func testAMachineWindowsSavedStateRoundTripsWithItsSidebar() throws {
+        let target = try XCTUnwrap(WindowTarget.machine(id, path: "/a b/Io.ipynb", isFolder: false))
+        XCTAssertEqual(WindowTarget(saved: WindowTarget.saved(target)), target)
+        let sidebar = try XCTUnwrap(FolderEntry.machineURL(id, path: "a b/c;d"))
+        let key = FolderEntry.storageKey(sidebar)
+        XCTAssertEqual(FolderEntry.location(storageKey: key), sidebar)
+        XCTAssertTrue(FolderEntry.isLocation(sidebar, in: .machine(id)))
+        XCTAssertFalse(FolderEntry.isLocation(sidebar, in: .thisDevice))
+        XCTAssertFalse(FolderEntry.isLocation(sidebar, in: .machine("other")))
+        // Case of the id isn't relied on.
+        XCTAssertTrue(FolderEntry.isLocation(sidebar, in: .machine(id.lowercased())))
+        // This device keeps what was saved before: a path.
+        let local = URL(fileURLWithPath: "/Users/me/notes", isDirectory: true)
+        XCTAssertEqual(FolderEntry.storageKey(local), "/Users/me/notes")
+        XCTAssertEqual(FolderEntry.location(storageKey: "/Users/me/notes"), local)
+        XCTAssertTrue(FolderEntry.isLocation(local, in: .thisDevice))
+        XCTAssertFalse(FolderEntry.isLocation(local, in: .machine(id)))
+        XCTAssertNil(FolderEntry.location(storageKey: ""))
+        XCTAssertNil(FolderEntry.location(storageKey: "ganymede-machine://../x/a"))
+    }
+
+    func testTheSameFolderOnThisMacAndAMachineAreExpandedApart() throws {
+        let local = URL(fileURLWithPath: "/work", isDirectory: true)
+        let remote = try XCTUnwrap(FolderEntry.machineURL(id, path: "work"))
+        XCTAssertNotEqual(FolderEntry.storageKey(local), FolderEntry.storageKey(remote))
+        let stored = FolderEntry.expandedPaths("", setting: FolderEntry.storageKey(remote), to: true)
+        XCTAssertFalse(FolderEntry.expandedPaths(stored).contains(FolderEntry.storageKey(local)))
+    }
+
+    func testOpeningAMachinesItemOpensItsTarget() throws {
+        let notebook = FolderEntry(url: try XCTUnwrap(FolderEntry.machineURL(id, path: "a b/Io.ipynb")), isDirectory: false)
+        XCTAssertEqual(WindowTarget(opening: notebook), .machineFile(machine: id, path: "/a b/Io.ipynb"))
+        let folder = FolderEntry(url: try XCTUnwrap(FolderEntry.machineURL(id, path: "work")), isDirectory: true)
+        XCTAssertEqual(WindowTarget(opening: folder), .machineFolder(machine: id, path: "/work"))
+        // A machine URL with a bad id opens nothing, never a local path.
+        let bad = try XCTUnwrap(URL(string: "ganymede-machine://bad!/tmp"))
+        XCTAssertNil(WindowTarget(opening: FolderEntry(url: bad, isDirectory: true)))
+    }
+
+    func testAMachineTargetNeverHasADotSegment() {
+        for bad in ["../x", "a/../../b", "./a", "a/%2e%2E/b", "a\\..\\b"] {
+            XCTAssertNil(WindowTarget.machine(id, path: bad, isFolder: false), bad)
+            XCTAssertNil(WindowTarget.machine(id, path: bad, isFolder: true), bad)
+        }
+        XCTAssertNotNil(WindowTarget.machine(id, path: "a/..b/.c", isFolder: false))
+    }
+
+    func testThePlaceMenuOpensEachPlacesRoot() {
+        let device = URL(fileURLWithPath: "/Users/me", isDirectory: true)
+        XCTAssertEqual(WindowTarget.root(of: .thisDevice, device: device), .folder(device))
+        XCTAssertEqual(WindowTarget.root(of: .machine(id), device: device), .machineFolder(machine: id, path: "/"))
+        XCTAssertNil(WindowTarget.root(of: .machine("../x"), device: device))
+    }
+
+    func testAMachineWindowSubtitleSaysWhereItIs() {
+        XCTAssertEqual(WindowTarget.subtitle(page: "Python 3 · Idle", machineName: "mini"), "on mini · Python 3 · Idle")
+        XCTAssertEqual(WindowTarget.subtitle(page: "", machineName: "mini"), "on mini")
+        XCTAssertEqual(WindowTarget.subtitle(page: "Python 3 · Idle", machineName: nil), "Python 3 · Idle")
+        XCTAssertEqual(WindowTarget.subtitle(page: "", machineName: nil), "")
+    }
+
+    func testOnlyNotebooksAndDataOpenOnAMachine() throws {
+        let note = FolderEntry(url: try XCTUnwrap(FolderEntry.machineURL(id, path: "a.ipynb")), isDirectory: false)
+        let data = FolderEntry(url: try XCTUnwrap(FolderEntry.machineURL(id, path: "a.csv")), isDirectory: false)
+        let text = FolderEntry(url: try XCTUnwrap(FolderEntry.machineURL(id, path: "a.py")), isDirectory: false)
+        for entry in [note, data] { XCTAssertTrue(entry.canOpen(in: .machine(id))) }
+        XCTAssertFalse(text.canOpen(in: .machine(id)))
+        // The text editor reads this Mac's disk.
+        XCTAssertTrue(text.canOpen(in: .thisDevice))
+    }
+
+    func testSearchResultsAreRelativeToTheWindowsFolderOnAMachineToo() throws {
+        let root = try XCTUnwrap(FolderEntry.machineURL(id, path: ""))
+        let work = try XCTUnwrap(FolderEntry.machineURL(id, path: "work"))
+        func item(_ path: String) throws -> URL { try XCTUnwrap(FolderEntry.machineURL(id, path: path)) }
+        XCTAssertEqual(FileSearch.relativeFolder(of: try item("a.ipynb"), in: root), "/")
+        XCTAssertEqual(FileSearch.relativeFolder(of: try item("work/a.ipynb"), in: work), "work")
+        XCTAssertEqual(FileSearch.relativeFolder(of: try item("work/x/y/a.ipynb"), in: work), "work/x/y")
+        XCTAssertEqual(FileSearch.relativeFolder(of: try item("other/a.ipynb"), in: work), "/other")
+        // This device, as before.
+        let base = URL(fileURLWithPath: "/Users/me/work", isDirectory: true)
+        XCTAssertEqual(FileSearch.relativeFolder(of: URL(fileURLWithPath: "/Users/me/work/a.ipynb"), in: base), "work")
+        XCTAssertEqual(FileSearch.relativeFolder(of: URL(fileURLWithPath: "/Users/me/work/x/a.ipynb"), in: base), "work/x")
+        XCTAssertEqual(FileSearch.relativeFolder(of: URL(fileURLWithPath: "/Users/you/a.ipynb"), in: base), "/Users/you")
+    }
+
+    func testAMachinesDocumentIsNeverAFileOnThisMac() throws {
+        let body: [String: Any] = ["path": "notes/Io.ipynb", "dirty": true]
+        let message = try XCTUnwrap(DocumentMessage(body: body, place: .machine(id)))
+        XCTAssertEqual(message.file, FolderEntry.machineURL(id, path: "notes/Io.ipynb"))
+        XCTAssertEqual(message.file?.isFileURL, false)
+        XCTAssertTrue(message.isNotebook)
+        XCTAssertEqual(message.file?.deletingPathExtension().lastPathComponent, "Io")
+        XCTAssertNil(DocumentMessage(body: ["path": "a.ipynb", "dirty": false], place: .machine("../x"))?.file)
+        XCTAssertEqual(DocumentMessage(body: body)?.file, URL(fileURLWithPath: "/notes/Io.ipynb"))
+    }
+
+    func testAMachineTabShowsANotebookBeforeThePageReports() throws {
+        let state = PageState()
+        func shows(_ target: WindowTarget) -> Bool {
+            InspectorController.showsNotebook(state: state, pageReported: false, target: target)
+        }
+        XCTAssertTrue(shows(.machineFile(machine: id, path: "/a.ipynb")))
+        XCTAssertFalse(shows(.machineFile(machine: id, path: "/a.csv")))
+        XCTAssertFalse(shows(.machineFolder(machine: id, path: "/")))
     }
 
     func testAMachinePageURLReadsBackAsTheSameTarget() throws {

@@ -59,6 +59,22 @@ describe('parseRooms', () => {
   });
 });
 
+describe('parseRooms paths (#740)', () => {
+  it('drops a path that climbs out of the place', () => {
+    const body = {
+      rooms: [
+        '../../../api/contents/Users/me/x.ipynb',
+        'a/../../x.ipynb',
+        './a.ipynb',
+        'a/%2e%2e/b.ipynb',
+        'a\\b.ipynb',
+        'ok/a..b.ipynb',
+      ].map(path => ({ path, clients: [] })),
+    };
+    expect(parseRooms(body).map(r => r.path)).toEqual(['ok/a..b.ipynb']);
+  });
+});
+
 describe('journals', () => {
   const person = { at: '2026-11-20T10:00:00Z', by: 'Thomas', person: true };
   const agent = (at: string) => ({ at, by: 'Claude', person: false });

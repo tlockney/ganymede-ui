@@ -128,7 +128,8 @@ struct IPadSidebar: View {
     /// keyboard.
     private var tabStrip: some View {
         HStack(spacing: 0) {
-            ForEach(NavigatorTab.allCases) { item in
+            // Journals are the Mac's tab for now (#705).
+            ForEach(NavigatorTab.allCases.filter { $0 != .journals }) { item in
                 Button {
                     tab = item
                 } label: {
@@ -202,7 +203,7 @@ struct IPadSidebar: View {
     @ViewBuilder
     private var navigator: some View {
         switch tab {
-        case .files:
+        case .files, .journals:
             filesSection
         case .search:
             Section {

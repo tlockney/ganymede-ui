@@ -14,6 +14,9 @@ struct FolderSidebar: View {
     let folder: URL
     /// Where the files are: this Mac's disk, for now (#737).
     var source: any FileSource = LocalFileSource()
+    /// The window's place: a machine's items can't be revealed in the
+    /// Finder or opened in the text editor, which read this Mac's disk (#740).
+    var place: Place = .thisDevice
     var page: PageModel
     let openFile: (String) -> Void
     @Environment(\.openWindow) private var openWindow
@@ -22,10 +25,13 @@ struct FolderSidebar: View {
     /// The expanded folders, kept per window across launches and while
     /// another navigator tab shows (#207).
     @SceneStorage("files.expanded") private var expanded = ""
+    /// A file operation is running: the menu items that change files wait,
+    /// so two quick ones can't take the same name.
+    @State private var busy = false
 
     var body: some View {
         List {
-            Section(folder.lastPathComponent.isEmpty ? folder.path : folder.lastPathComponent) {
+            Section(folder.lastPathComponent.isEmpty ? (place.isMachine ? "/" : folder.path) : folder.lastPathComponent) {
                 FolderContents(folder: folder, source: source, actions: actions, generation: generation)
             }
         }
@@ -33,6 +39,7 @@ struct FolderSidebar: View {
         .contextMenu {
             Button("New Notebook") { page.run("new-notebook", arg: source.serverPath(folder)) }
             Button("New Folder") { newFolder(in: folder) }
+                .disabled(busy)
         }
         // A notebook made or saved by the page shows up, and so do changes
         // made outside the app when it comes back to the front.
@@ -47,32 +54,49 @@ struct FolderSidebar: View {
             openPath: page.state.path,
             isRunning: { page.state.isRunning($0) },
             isExpanded: { url in
-                Binding(
-                    get: { FolderEntry.expandedPaths(expanded).contains(url.path) },
-                    set: { expanded = FolderEntry.expandedPaths(expanded, setting: url.path, to: $0) }
+                // A path for this device (as stored before), the whole URL
+                // for a machine's.
+                let key = FolderEntry.storageKey(url)
+                return Binding(
+                    get: { FolderEntry.expandedPaths(expanded).contains(key) },
+                    set: { expanded = FolderEntry.expandedPaths(expanded, setting: key, to: $0) }
                 )
             },
             open: open,
-            openInNewTab: { openWindow(value: WindowTarget(opening: $0.url)) },
+            openInNewTab: { entry in
+                if let target = WindowTarget(opening: entry) { openWindow(value: target) }
+            },
             newNotebook: { page.run("new-notebook", arg: source.serverPath($0)) },
             newFolder: newFolder(in:),
             reveal: { NSWorkspace.shared.activateFileViewerSelecting([$0.url]) },
             rename: rename,
             duplicate: duplicate,
-            trash: trash
+            trash: trash,
+            place: place,
+            busy: busy
         )
     }
 
     private func open(_ entry: FolderEntry) {
         if entry.opensInPage {
             page.run("open", arg: entry.serverPath)
-        } else {
+        } else if entry.canOpen(in: place) {
             openFile(entry.serverPath)
         }
     }
 
-    private func newFolder(in parent: URL) {
+    /// Runs one file operation at a time.
+    private func exclusively(_ work: @escaping @MainActor () async -> Void) {
+        guard !busy else { return }
+        busy = true
         Task {
+            await work()
+            busy = false
+        }
+    }
+
+    private func newFolder(in parent: URL) {
+        exclusively {
             do {
                 _ = try await source.newFolder(in: parent)
                 generation += 1
@@ -99,7 +123,7 @@ struct FolderSidebar: View {
             return
         }
         guard let name = askName(for: entry.name), name != entry.name, !name.contains("/") else { return }
-        Task {
+        exclusively {
             do {
                 let target = try await source.rename(entry.url, to: name)
                 generation += 1
@@ -116,7 +140,7 @@ struct FolderSidebar: View {
     }
 
     private func duplicate(_ entry: FolderEntry) {
-        Task {
+        exclusively {
             do {
                 _ = try await source.duplicate(entry.url)
                 generation += 1
@@ -142,7 +166,7 @@ struct FolderSidebar: View {
             alert.addButton(withTitle: "Cancel")
             guard alert.runModal() == .alertFirstButtonReturn else { return }
         }
-        Task {
+        exclusively {
             do {
                 try await source.delete(entry.url)
                 generation += 1
@@ -170,6 +194,9 @@ struct FolderActions {
     var rename: (FolderEntry) -> Void
     var duplicate: (FolderEntry) -> Void
     var trash: (FolderEntry) -> Void
+    var place: Place = .thisDevice
+    /// A file operation is running.
+    var busy = false
 }
 
 /// One folder's items; a subfolder lists its own when it is expanded.
@@ -210,6 +237,7 @@ private struct FolderContents: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .disabled(!entry.canOpen(in: actions.place))
                     .padding(.vertical, 1)
                     .listRowBackground(
                         entry.serverPath == actions.openPath
@@ -247,18 +275,28 @@ private struct FolderContents: View {
             Button("Open in New Tab") { actions.openInNewTab(entry) }
             Button("New Notebook Here") { actions.newNotebook(entry.url) }
             Button("New Folder Here") { actions.newFolder(entry.url) }
+                .disabled(actions.busy)
         } else {
             Button("Open") { actions.open(entry) }
+                .disabled(!entry.canOpen(in: actions.place))
             if entry.isNotebook {
                 Button("Open in New Tab") { actions.openInNewTab(entry) }
             }
         }
         Divider()
         Button("Rename…") { actions.rename(entry) }
-        Button("Duplicate") { actions.duplicate(entry) }
-        Button("Show in Finder") { actions.reveal(entry) }
+            .disabled(actions.busy)
+        // A machine's contents API copies files, not folders.
+        if actions.place.isThisDevice || !entry.isDirectory {
+            Button("Duplicate") { actions.duplicate(entry) }
+                .disabled(actions.busy)
+        }
+        if actions.place.isThisDevice {
+            Button("Show in Finder") { actions.reveal(entry) }
+        }
         Divider()
         Button("Move to Trash") { actions.trash(entry) }
+            .disabled(actions.busy)
     }
 }
 
@@ -362,11 +400,15 @@ struct ServerLine: View {
     var page: PageModel
     /// The window's bottom panel, for terminals on remotes.
     var panel: PanelController?
+    /// A connected machine's name, for its window (#740): the kernels run
+    /// there, not where this device's setting says.
+    var machineName: String?
     var model = AppModel.shared
     var terminals = OpenTerminals.shared
 
     var body: some View {
         let locations = model.kernelLocations
+        let location = machineName ?? locations.title
         Menu {
             let remotes = model.remotes.filter { $0.hasServer || $0.ssh != nil }
             if let panel, !remotes.isEmpty {
@@ -391,10 +433,10 @@ struct ServerLine: View {
                     .fill(page.state.backend == nil ? Color.secondary : Color.green)
                     .frame(width: 7, height: 7)
                     .accessibilityHidden(true)
-                Image(systemName: locations.selected == nil ? "laptopcomputer" : "server.rack")
+                Image(systemName: machineName == nil && locations.selected == nil ? "laptopcomputer" : "server.rack")
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
-                Text(locations.title)
+                Text(location)
                     .lineLimit(1)
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.system(size: 8, weight: .semibold))
@@ -414,13 +456,13 @@ struct ServerLine: View {
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .help(helpText(locations))
-        .accessibilityLabel("Kernels run on \(locations.title)")
+        .accessibilityLabel("Kernels run on \(location)")
     }
 
     private func helpText(_ locations: KernelLocations) -> String {
-        var text = "Kernels run on \(locations.title)."
+        var text = "Kernels run on \(machineName ?? locations.title)."
         if page.state.backend == nil { text += " Not connected." }
-        return text + " Click to open a terminal on a remote."
+        return text + (machineName == nil ? " Click to open a terminal on a remote." : "")
     }
 }
 
@@ -642,6 +684,7 @@ struct NewCommands: View {
     var model: AppModel
     @FocusedValue(\.pageModel) private var page
     @FocusedValue(\.windowFolder) private var folder
+    @FocusedValue(\.windowScope) private var scope
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
@@ -652,7 +695,8 @@ struct NewCommands: View {
         let _ = WorkspaceTabs.useOpener { [openWindow] in openWindow(id: $0) }
         Button("New Notebook") {
             if let page {
-                page.run("new-notebook", arg: FolderEntry.serverPath(folder ?? model.root))
+                // The window's folder on its own server: a machine's too.
+                page.run("new-notebook", arg: scope?.serverFolder ?? FolderEntry.serverPath(folder ?? model.root))
             } else {
                 openWindow(value: WindowTarget.folder(model.root))
             }
@@ -669,7 +713,7 @@ struct NewCommands: View {
         // A copy of the example notebooks in a new folder, with the first
         // open (#414).
         Button("Open Example Notebooks") {
-            page?.run("open-examples", arg: FolderEntry.serverPath(folder ?? model.root))
+            page?.run("open-examples", arg: scope?.serverFolder ?? FolderEntry.serverPath(folder ?? model.root))
         }
         .disabled(page == nil)
         // Always a new window, even when one already shows the folder.

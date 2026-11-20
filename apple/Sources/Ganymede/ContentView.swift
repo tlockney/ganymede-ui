@@ -133,22 +133,27 @@ struct ContentView: View {
                 }
             }
         )) {
-            NavigatorSidebar(folder: sidebarRoot, page: pageModel, panel: panel) { path in
-                openWindow(value: EditorRequest(path: path))
-            }
-            .navigationSplitViewColumnWidth(min: 180, ideal: 240, max: 400)
+            sidebar
+                .navigationSplitViewColumnWidth(min: 180, ideal: 240, max: 400)
         } detail: {
             workspace
         }
         .toolbar {
-            NotebookToolbar(page: pageModel, document: document, folder: sidebarRoot, panel: panel)
-            ToolbarItem {
-                Button {
-                    panel.toggle(startingOn: .local(folder: sidebarRoot))
-                } label: {
-                    Label(panel.isShown ? "Hide Terminal Panel" : "Show Terminal Panel", systemImage: "rectangle.bottomthird.inset.filled")
+            // New Notebook takes `sidebarRoot` by its server path, a
+            // machine's too; a machine's window has no panel (#740).
+            NotebookToolbar(
+                page: pageModel, document: document, folder: sidebarRoot,
+                panel: place.isThisDevice ? panel : nil)
+            // The panel's shells are on this Mac: none for a machine's window.
+            if place.isThisDevice {
+                ToolbarItem {
+                    Button {
+                        panel.toggle(startingOn: .local(folder: sidebarRoot))
+                    } label: {
+                        Label(panel.isShown ? "Hide Terminal Panel" : "Show Terminal Panel", systemImage: "rectangle.bottomthird.inset.filled")
+                    }
+                    .help(panel.isShown ? "Hide the terminal panel (⌃`)" : "Show the terminal panel (⌃`)")
                 }
-                .help(panel.isShown ? "Hide the terminal panel (⌃`)" : "Show the terminal panel (⌃`)")
             }
             // Only a tab with a notebook has an inspector (#729).
             if showsNotebook {
@@ -167,17 +172,17 @@ struct ContentView: View {
                 }
             }
         }
-        .navigationSubtitle(pageModel.state.subtitle)
+        .navigationSubtitle(WindowTarget.subtitle(page: pageModel.state.subtitle, machineName: machineName))
         .frame(minWidth: 720, minHeight: 480)
-        .navigationTitle((target ?? loaded).title)
-        .focusedSceneValue(\.windowFolder, sidebarRoot)
+        .navigationTitle((target ?? loaded).displayTitle(machineName: machineName))
+        .modifier(WindowSceneValues(place: place, folder: sidebarRoot, panel: panel))
         // Notebooks opened from the Finder (#228): the first window to see
         // them takes them. Each opens in a new tab (or brings forward
         // the one showing it), except that the window the app opened on
         // nothing at launch shows the first itself. Later, so the change
         // to `pending` is not made while views update.
         .onChange(of: model.openRequests.pending, initial: true) { _, pending in
-            guard !pending.isEmpty else { return }
+            guard !pending.isEmpty, place.isThisDevice else { return }
             DispatchQueue.main.async(execute: takeOpenRequests)
         }
         .onAppear {
@@ -193,13 +198,13 @@ struct ContentView: View {
             if request == nil, WindowTarget(saved: savedTarget) == target {
                 restoreSidebar()
             }
-            savedSidebar = sidebarRoot.path
+            savedSidebar = FolderEntry.storageKey(sidebarRoot)
             savedTarget = WindowTarget.saved(target)
-            model.openRequests.register(windowID, blank: target == nil)
+            noteOpenRequests()
             model.openRequests.openWindow = { [openWindow] in openWindow(value: $0) }
         }
         .onChange(of: target) { _, target in
-            model.openRequests.register(windowID, blank: target == nil)
+            noteOpenRequests()
             // Restored after the view was made, before the page said
             // anything: show it, not what the page was loaded for.
             if let target, !pageReported, target != loaded {
@@ -211,7 +216,7 @@ struct ContentView: View {
             if let window = document.window { noteWindow(window) }
         }
         .onChange(of: sidebarRoot) { _, new in
-            savedSidebar = new.path
+            savedSidebar = FolderEntry.storageKey(new)
             if let window = document.window { noteWindow(window) }
         }
         // Back from Terminal, where a kernelspec may have been installed
@@ -244,7 +249,6 @@ struct ContentView: View {
         })
         .focusedSceneValue(\.pageDocument, document)
         .focusedSceneValue(\.pageModel, pageModel)
-        .focusedSceneValue(\.panelController, panel)
     }
 
     /// `macWindow` with the bottom panel and the keyboard kept in step.
@@ -254,7 +258,7 @@ struct ContentView: View {
             panel.resize(to: panelHeight, available: .infinity)
             // Shells don't outlive the app: a panel that was showing comes
             // back with a new one, as ⌃` would start.
-            if panelShown { panel.show(startingOn: .local(folder: sidebarRoot)) }
+            if panelShown, place.isThisDevice { panel.show(startingOn: .local(folder: sidebarRoot)) }
         }
         .onChange(of: panel.isShown) { _, shown in
             panelShown = shown
@@ -534,7 +538,18 @@ struct ContentView: View {
     }
 
     #if os(macOS)
+    /// Only this device's windows take the Finder's open requests, and only
+    /// they count as blank (#740).
+    private func noteOpenRequests() {
+        if place.isThisDevice {
+            model.openRequests.register(windowID, blank: target == nil)
+        } else {
+            model.openRequests.unregister(windowID)
+        }
+    }
+
     private func takeOpenRequests() {
+        guard place.isThisDevice else { return }
         let (shown, others) = model.openRequests.take(blank: target == nil)
         if let shown { show(shown) }
         for other in others {
@@ -550,9 +565,47 @@ struct ContentView: View {
     }
 
     /// The sidebar's folder as this window last had it, if it was saved.
+    /// Only a location of this window's own place.
     private func restoreSidebar() {
-        guard !savedSidebar.isEmpty else { return }
-        sidebarRoot = URL(fileURLWithPath: savedSidebar, isDirectory: true)
+        guard let saved = FolderEntry.location(storageKey: savedSidebar),
+              FolderEntry.isLocation(saved, in: loaded.place)
+        else { return }
+        sidebarRoot = saved
+    }
+
+    /// The window's place, from what it was loaded for.
+    private var place: Place { loaded.place }
+
+    /// A machine's name, for its window's title and subtitle.
+    private var machineName: String? { place.machineID.flatMap(model.machineName(_:)) }
+
+    /// This window's files: this Mac's disk, or the machine's through the
+    /// app's mount. Nil for a machine until the server listens.
+    private var fileSource: (any FileSource)? {
+        guard let id = place.machineID else { return LocalFileSource() }
+        return model.serverURL.map { MachineFileSource(id: id, server: $0) }
+    }
+
+    private var sidebar: some View {
+        Group {
+            if let source = fileSource {
+                NavigatorSidebar(
+                    folder: sidebarRoot, source: source, place: place, page: pageModel,
+                    panel: place.isThisDevice ? panel : nil
+                ) { path in
+                    openWindow(value: EditorRequest(path: path))
+                }
+                // A restarted server has a new address and token.
+                .id(place.isMachine ? model.serverURL : nil)
+            } else {
+                ProgressView()
+            }
+        }
+    }
+
+    /// A pick in the page's place switcher: that place's window.
+    private func openPlace(_ picked: Place) {
+        if let target = WindowTarget.root(of: picked, device: model.root) { openWindow(value: target) }
     }
 
     /// Its folder, and whether it shows the start screen (no notebook),
@@ -560,10 +613,11 @@ struct ContentView: View {
     private func noteWindow(_ window: NSWindow) {
         var start = true
         switch target ?? loaded {
-        case .file, .console: start = false
+        case .file, .console, .machineFile: start = false
         default: break
         }
-        WorkspaceTabs.note(window, folder: sidebarRoot, start: start)
+        // A machine's folder is no folder for a start window on this Mac.
+        WorkspaceTabs.note(window, folder: place.isThisDevice ? sidebarRoot : nil, start: start)
     }
 
     private func bringForward(_ window: NSWindow) {
@@ -667,23 +721,25 @@ struct ContentView: View {
                             .background(.bar)
                         }
                     }
-                BottomPanel(
-                    panel: panel,
-                    folder: sidebarRoot,
-                    available: area.size.height,
-                    kernelID: pageModel.state.kernelID,
-                    server: model.serverURL.flatMap(ServerEndpoint.init(serverURL:)),
-                    fills: panelFills,
-                    toggleFill: { layout.toggle(.panel) }
-                )
-                    // Top-aligned, so a hidden panel's views (AppKit cursor
-                    // rects included) sit below the window, not over the notebook.
-                    .frame(height: panelShows ? nil : 0, alignment: .top)
-                    .clipped()
-                    .opacity(panelShows ? 1 : 0)
-                    .allowsHitTesting(panelShows)
-                    .accessibilityHidden(!panelShows)
-                if layout.filled == .notebook {
+                if place.isThisDevice {
+                    BottomPanel(
+                        panel: panel,
+                        folder: sidebarRoot,
+                        available: area.size.height,
+                        kernelID: pageModel.state.kernelID,
+                        server: model.serverURL.flatMap(ServerEndpoint.init(serverURL:)),
+                        fills: panelFills,
+                        toggleFill: { layout.toggle(.panel) }
+                    )
+                        // Top-aligned, so a hidden panel's views (AppKit cursor
+                        // rects included) sit below the window, not over the notebook.
+                        .frame(height: panelShows ? nil : 0, alignment: .top)
+                        .clipped()
+                        .opacity(panelShows ? 1 : 0)
+                        .allowsHitTesting(panelShows)
+                        .accessibilityHidden(!panelShows)
+                }
+                if layout.filled == .notebook, place.isThisDevice {
                     Divider()
                     FoldedStrip(
                         items: [.init(title: "Terminal Panel", systemImage: "rectangle.bottomthird.inset.filled") {
@@ -709,8 +765,8 @@ struct ContentView: View {
         if shown?.url.standardizedFileURL.path != loaded.url.standardizedFileURL.path {
             pageReported = true
         }
-        // A local page can't turn itself into a machine's window (#701).
-        guard let shown, shown.place == .thisDevice else { return }
+        // A page can't turn itself into another place's window (#701).
+        guard let shown, shown.place == loaded.place else { return }
         // A console's page reports its folder, not the tab's own id.
         if let target, target.shows(shown) { return }
         // A window opened on nothing stays blank on the folder it loaded,
@@ -972,8 +1028,11 @@ struct ContentView: View {
                 WebView(
                     url: url, onNavigate: follow, document: document, page: pageModel,
                     onOpenTab: openTab,
-                    onOpenFile: { path in openWindow(value: EditorRequest(path: path)) }
+                    onOpenFile: { path in openWindow(value: EditorRequest(path: path)) },
+                    place: place, places: model.places, onOpenPlace: openPlace
                 )
+                // A page loaded for another place gets its own handlers.
+                .id(place)
                 #else
                 WebView(url: url, page: pageModel, onOpenFile: openEditor, store: isPhone ? phonePage : nil)
                 #endif
@@ -1036,6 +1095,27 @@ private struct KeychainAlert: ViewModifier {
 }
 
 #if os(macOS)
+/// The focused window's values for the menus (#740): the folder and the
+/// terminal panel only for a window of this device, whose shells and disk
+/// they are; the place and server folder for every window.
+private struct WindowSceneValues: ViewModifier {
+    var place: Place
+    var folder: URL
+    var panel: PanelController
+
+    func body(content: Content) -> some View {
+        let scope = WindowScope(place: place, serverFolder: FolderEntry.serverPath(folder))
+        if place.isThisDevice {
+            content
+                .focusedSceneValue(\.windowFolder, folder)
+                .focusedSceneValue(\.panelController, panel)
+                .focusedSceneValue(\.windowScope, scope)
+        } else {
+            content.focusedSceneValue(\.windowScope, scope)
+        }
+    }
+}
+
 /// Keeps the inspector in step with whether the tab shows a notebook
 /// (#729): `available` follows it, and an inspector filling the window
 /// that goes away gives the layout back.

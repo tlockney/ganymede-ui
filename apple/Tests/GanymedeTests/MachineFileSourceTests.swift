@@ -118,6 +118,46 @@ final class MachineFileSourceTests: XCTestCase {
 
     // MARK: Operations
 
+    func testNamesThatClimbOutOfTheFolderAreDropped() async throws {
+        let stub = Stub((200, [
+            "type": "directory", "path": "a",
+            "content": [
+                ["name": "a/../../x", "type": "file", "path": "a/a/../../x"],
+                ["name": "..", "type": "directory", "path": "a/.."],
+                ["name": "back\\slash", "type": "file", "path": "a/back\\slash"],
+                ["name": "lies", "type": "file", "path": "other/lies"],
+                ["name": "ok.ipynb", "type": "notebook", "path": "a/ok.ipynb"],
+                ["name": "nopath.txt", "type": "file"],
+            ],
+        ] as [String: Any]))
+        let entries = try await source(stub).list(url("a"))
+        XCTAssertEqual(entries.map(\.name), ["nopath.txt", "ok.ipynb"])
+    }
+
+    func testDotSegmentsMakeNoMachineLocation() throws {
+        XCTAssertNil(FolderEntry.machineURL(id, path: "a/../b"))
+        XCTAssertNil(FolderEntry.machineURL(id, path: ".."))
+        XCTAssertNil(FolderEntry.machineURL(id, path: "./a"))
+        XCTAssertNotNil(FolderEntry.machineURL(id, path: "a/..b/c.d"))
+        let sneaky = try XCTUnwrap(URL(string: "ganymede-machine://\(id)/a/%2E%2E/b"))
+        XCTAssertNil(FolderEntry.machineLocation(sneaky))
+        let slash = try XCTUnwrap(URL(string: "ganymede-machine://\(id)/a%2Fb"))
+        XCTAssertNil(FolderEntry.machineLocation(slash))
+    }
+
+    func testAServerPathWithDotDotIsRefused() async throws {
+        let stub = Stub((201, ["path": "../x", "type": "directory"] as [String: Any]))
+        do {
+            _ = try await source(stub).newFolder(in: url("a"))
+            XCTFail("should throw")
+        } catch let error as FileSourceError {
+            XCTAssertEqual(error, .badResponse("a new folder"))
+        }
+        XCTAssertThrowsError(try source(stub).contentsURL("a/../b"))
+        XCTAssertThrowsError(try source(stub).contentsURL(".."))
+        XCTAssertNoThrow(try source(stub).contentsURL("a/b"))
+    }
+
     func testPathsAreEncodedPerSegmentAndTheTokenStays() async throws {
         let stub = Stub((200, ["type": "directory", "path": "a b", "content": []] as [String: Any]))
         _ = try await source(stub).list(url("Moons & rings/a b"))
