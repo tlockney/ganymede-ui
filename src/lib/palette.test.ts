@@ -85,6 +85,16 @@ describe('paletteEntries', () => {
     expect(find('Show or Hide Live Markdown Preview')!.disabled).toBeFalsy();
   });
 
+  it('offers the journal view as the page command that switches it, named for the view it goes to (#184)', () => {
+    expect(find('View as Journal')).toMatchObject({ id: 'toggle-journal', group: 'View' });
+    expect(find('View as Journal')!.disabled).toBeFalsy();
+    expect(find('Open as Notebook', { ...CONTEXT, journal: true })).toMatchObject({
+      id: 'toggle-journal',
+    });
+    expect(find('View as Journal', { ...CONTEXT, journal: true })).toBeUndefined();
+    expect(find('View as Journal', { ...CONTEXT, path: undefined })?.disabled).toBe(true);
+  });
+
   it('gives each its key and its argument', () => {
     expect(find('Save')).toMatchObject({ id: 'save', keys: expect.stringMatching(/S$/) });
     expect(find('Move cells up')).toMatchObject({ id: 'move-up', group: 'Command mode' });

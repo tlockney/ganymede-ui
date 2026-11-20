@@ -10,6 +10,7 @@ import {
   DownloadIcon,
   ForwardIcon,
   CommandIcon,
+  JournalIcon,
   KeyboardIcon,
   LockIcon,
   MoreIcon,
@@ -32,6 +33,8 @@ type Props = {
   onShowShortcuts?(): void;
   /** Opens the command palette (#211); no button without it. */
   onShowPalette?(): void;
+  /** Switches the notebook to and from its journal view (#184); no button without it. */
+  onToggleJournal?(): void;
   /** Shows or hides the Variables view (#242); no button without it. */
   onToggleVariables?(): void;
   variablesOpen?: boolean;
@@ -89,6 +92,7 @@ export function Toolbar({
   onToggleSidebar,
   onShowShortcuts,
   onShowPalette,
+  onToggleJournal,
   onToggleVariables,
   variablesOpen = false,
   specs,
@@ -299,6 +303,26 @@ export function Toolbar({
           onSelect: () => void c.changeKernel(s.name),
         })),
       ],
+    });
+  }
+  if (onToggleJournal) {
+    const label = c?.journal ? 'Open as Notebook' : 'View as Journal';
+    items.push({
+      key: 'journal',
+      priority: 2.6,
+      node: (
+        <button
+          className="tb-button"
+          title={label}
+          aria-label={label}
+          aria-pressed={!!c?.journal}
+          disabled={disabled}
+          onClick={onToggleJournal}
+        >
+          <JournalIcon />
+        </button>
+      ),
+      menu: [{ label, disabled, onSelect: onToggleJournal }],
     });
   }
   if (onToggleVariables) {

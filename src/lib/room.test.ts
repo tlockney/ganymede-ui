@@ -306,6 +306,48 @@ describe('NotebookRoom connection', () => {
     }
   });
 
+  it('says when it is live: the socket up and synced, and not after it drops (#184)', async () => {
+    const { join } = joining();
+    const ws = await socket();
+    ws.open();
+    ws.sync();
+    const room = (await join)!;
+    const seen: boolean[] = [];
+    const stop = room.watchLive(live => seen.push(live));
+    expect(room.live).toBe(true);
+    ws.serverClose(1006);
+    expect(room.live).toBe(false);
+    expect(seen).toContain(false);
+    const again = await vi.waitFor(() =>
+      FakeSocket.all.length === 2 ? FakeSocket.all[1]! : Promise.reject(new Error('not yet')),
+    );
+    again.open();
+    // Up, but not synced yet: still not live.
+    expect(room.live).toBe(false);
+    again.sync();
+    expect(room.live).toBe(true);
+    expect(seen.at(-1)).toBe(true);
+    stop();
+    const count = seen.length;
+    again.serverClose(1006);
+    expect(seen).toHaveLength(count);
+    room.dispose();
+  });
+
+  it('is not live once the server closed the room for good (#184)', async () => {
+    const { join } = joining();
+    const ws = await socket();
+    ws.open();
+    ws.sync();
+    const room = (await join)!;
+    const seen: boolean[] = [];
+    room.watchLive(live => seen.push(live));
+    ws.serverClose(1003, JSON.stringify({ reason: 'unknown_session', reloadable: true }));
+    expect(room.live).toBe(false);
+    expect(seen.at(-1)).toBe(false);
+    room.dispose();
+  });
+
   it('fails a save whose connection drops before the answer', async () => {
     const { join } = joining();
     const ws = await socket();

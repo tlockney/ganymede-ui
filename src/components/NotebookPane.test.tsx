@@ -264,6 +264,34 @@ const modelOf = () => (fakes.notebooks[0] as { model: NotebookModel }).model;
 const modelOf2 = () => (fakes.notebooks[1] as { model: NotebookModel }).model;
 
 describe('NotebookPane', () => {
+  it('opens a notebook an agent kept as a journal, and switches to the notebook and back (#184)', async () => {
+    const kept = structuredClone(NOTEBOOK);
+    kept.cells[0]!.metadata = {
+      ganymede: { agent: { by: 'claude-code', mode: 'executed', at: '2026-11-20T10:00:00Z' } },
+    };
+    const { latest } = setup(vi.fn(async () => ({ path: 'moons/Io.ipynb', content: kept })));
+    await waitFor(() => expect(latest()?.journal).toBe(true));
+    expect(screen.getByRole('region', { name: 'Journal of Io.ipynb' })).toBeInTheDocument();
+    expect(screen.getByText('Agent ran it')).toBeInTheDocument();
+    // The notebook stays mounted underneath, so its kernel and room go on.
+    expect(document.querySelector('.notebook-page')).toHaveAttribute('hidden');
+
+    act(() => latest()!.toggleJournal());
+    await waitFor(() => expect(latest()!.journal).toBe(false));
+    expect(screen.queryByRole('region', { name: 'Journal of Io.ipynb' })).not.toBeInTheDocument();
+    expect(document.querySelector('.notebook-page')).not.toHaveAttribute('hidden');
+
+    act(() => latest()!.toggleJournal());
+    await waitFor(() => expect(latest()!.journal).toBe(true));
+  });
+
+  it('opens a notebook with no agent cells as a notebook (#184)', async () => {
+    const { latest } = setup();
+    await waitFor(() => expect(latest()).toBeDefined());
+    expect(latest()!.journal).toBe(false);
+    expect(screen.queryByRole('region', { name: /^Journal of/ })).not.toBeInTheDocument();
+  });
+
   it('loads the file and hands the toolbar a clean controller', async () => {
     const { fake, latest } = setup();
     expect(screen.getByText('Opening Io.ipynb…')).toBeInTheDocument();

@@ -544,6 +544,10 @@ export function App() {
       case 'toggle-variables':
         setVariablesOpen(o => !o);
         return true;
+      case 'toggle-journal':
+        if (!c) return false;
+        c.toggleJournal();
+        return true;
       case 'toggle-type-errors':
         setTypeErrorsEnabled(!typeErrorsEnabled());
         return true;
@@ -914,6 +918,7 @@ export function App() {
               onToggleSidebar={() => setSidebarOpen(o => !o)}
               onShowShortcuts={openShortcuts}
               onShowPalette={() => setPaletteOpen(true)}
+              onToggleJournal={() => void runCommand.current('toggle-journal')}
               onToggleVariables={() => setVariablesOpen(o => !o)}
               variablesOpen={variablesOpen}
               specs={specs}
@@ -1035,6 +1040,7 @@ export function App() {
             ),
             kernel: shown?.kernelName,
             recents: backend ? loadRecents(recentsKey(backend.config)) : [],
+            journal: shown?.journal ?? false,
             trusted: shown?.trusted ?? true,
             hostGrants: hostGrantsAvailable(backend),
             publish: publishAvailable(backend),

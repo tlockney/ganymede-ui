@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { SessionContext } from '@jupyterlab/apputils';
 import type * as nbformat from '@jupyterlab/nbformat';
 import { type Notebook, NotebookActions, NotebookModel } from '@jupyterlab/notebook';
-import type { NotebookChange } from '@jupyter/ydoc';
+import type { NotebookChange, YNotebook } from '@jupyter/ydoc';
 import type { Contents, Kernel, KernelSpec } from '@jupyterlab/services';
 import type { IDisposable } from '@lumino/disposable';
 import type { CommandRegistry } from '@lumino/commands';
@@ -16,6 +16,8 @@ import { attachLanguageFeatures, type LanguageFeatures } from '../lib/language-e
 import { installTableOutput } from '../lib/table-output';
 import { CellMenu } from './CellMenu';
 import { KeyboardBar } from './KeyboardBar';
+import { JournalView } from './JournalView';
+import { hasAgentCells } from '../lib/journal';
 import type { Cell, ICodeCellModel } from '@jupyterlab/cells';
 import { downloadFile } from '../lib/download';
 import { PUBLISH_TIMEOUT_MS, type PublishOptions, fetchPublished, pageName } from '../lib/publish';
@@ -165,6 +167,13 @@ export type NotebookController = {
   kernel?: Kernel.IKernelConnection;
   /** The Markdown cells' headings, in order (#212). */
   outline: OutlineItem[];
+  /**
+   * Whether the journal view shows instead of the notebook (#184): on at
+   * open when the notebook has cells an agent wrote.
+   */
+  journal: boolean;
+  /** Switch between the journal view and the notebook, in the same room. */
+  toggleJournal(): void;
   /** Selects the cell at `index` and scrolls it to the top; false when there is none. */
   goToCell(index: number): boolean;
   /**
@@ -187,6 +196,15 @@ type Props = {
   /** The file at `from` was renamed to `to`: open it there, if it is still the one open. */
   onRenamed?(from: string, to: string): void;
 };
+
+/** Whether the cell with `id` is trusted in this page. */
+function cellTrusted(model: NotebookModel, id: string): boolean {
+  for (let i = 0; i < model.cells.length; i++) {
+    const cell = model.cells.get(i);
+    if (cell.id === id) return cell.type === 'code' && cell.trusted;
+  }
+  return false;
+}
 
 const basename = (p: string) => p.split('/').pop() ?? p;
 
@@ -372,6 +390,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
   const [trusted, setTrusted] = useState(true);
   const [cellType, setCellType] = useState<CellType>('code');
   const [outline, setOutline] = useState<OutlineItem[]>([]);
+  /** Whether the journal view is showing (#184); decided when the file opens. */
+  const [journal, setJournal] = useState(false);
   /** Why the last notebook action failed, and what to do next, until dismissed. */
   const [notice, setNoticeState] = useState<Notice>();
   /** A server kernel's `device` call waiting on a click, in a browser. */
@@ -695,6 +715,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       };
       // A file deleted under an earlier open of this pane is back (Reload).
       gone.current = false;
+      // A notebook an agent kept opens as a journal; a person's as a notebook.
+      setJournal(hasAgentCells((model.sharedModel as YNotebook).cells.map(c => c.toJSON())));
       setOpen(current);
       await joining;
       if (cancelled) return;
@@ -1439,6 +1461,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       outline,
       goToDefinition: () => open.language.service.goToDefinition(),
       renameSymbol: newName => open.language.service.rename(newName),
+      journal,
+      toggleJournal: () => setJournal(j => !j),
       goToCell: index => {
         const cell = notebook.widgets[index];
         if (!cell) return false;
@@ -1485,6 +1509,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
     lock,
     cellType,
     outline,
+    journal,
     backend,
     services,
     memory,
@@ -1526,8 +1551,18 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
   }
   return (
     <>
-      <div className="notebook-page" ref={host} />
-      <KeyboardBar notebook={open.notebook} commands={open.commands} />
+      <div className="notebook-page" ref={host} hidden={journal} />
+      {journal && (
+        <JournalView
+          notebook={open.model.sharedModel as YNotebook}
+          rendermime={open.notebook.rendermime}
+          trusted={id => cellTrusted(open.model, id)}
+          room={open.room}
+          name={basename(path)}
+          onOpenAsNotebook={() => setJournal(false)}
+        />
+      )}
+      {!journal && <KeyboardBar notebook={open.notebook} commands={open.commands} />}
       {menu && (
         <CellMenu
           notebook={open.notebook}

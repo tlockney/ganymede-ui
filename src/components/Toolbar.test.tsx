@@ -38,6 +38,8 @@ function controller(over: Partial<NotebookController> = {}): NotebookController 
     discard: vi.fn(() => () => {}),
     moved: vi.fn(async () => {}),
     outline: [],
+    journal: false,
+    toggleJournal: vi.fn(),
     goToCell: vi.fn(() => true),
     goToDefinition: vi.fn(async () => true),
     renameSymbol: vi.fn(async () => true),
@@ -113,6 +115,30 @@ describe('Toolbar', () => {
     const select = screen.getByTitle('Kernel').querySelector('select')!;
     expect(select.value).toBe('');
     expect(select.selectedOptions[0]).toHaveTextContent('Julia (not installed)');
+  });
+
+  it('switches to the journal view and back, named for where it goes (#184)', async () => {
+    const onToggleJournal = vi.fn();
+    const { rerender } = render(
+      <Toolbar
+        sidebarOpen
+        onToggleSidebar={vi.fn()}
+        onToggleJournal={onToggleJournal}
+        controller={controller()}
+      />,
+    );
+    expect(button('View as Journal')).toHaveAttribute('aria-pressed', 'false');
+    await userEvent.click(button('View as Journal'));
+    expect(onToggleJournal).toHaveBeenCalledOnce();
+    rerender(
+      <Toolbar
+        sidebarOpen
+        onToggleSidebar={vi.fn()}
+        onToggleJournal={onToggleJournal}
+        controller={controller({ journal: true })}
+      />,
+    );
+    expect(button('Open as Notebook')).toHaveAttribute('aria-pressed', 'true');
   });
 
   it('toggles the sidebar', async () => {

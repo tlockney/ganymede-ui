@@ -861,6 +861,42 @@ Preview** in the Command Palette turns it on or off for every Markdown
 cell; the app remembers the choice, and other windows of the app follow
 it. There is no View menu item for it yet.
 
+## Journal view
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+A notebook a Claude session keeps through `ganymede mcp` reads better as a
+journal than as cells. **View as Journal** (the toolbar's journal button, or
+the Command Palette) shows the open notebook that way; **Open as Notebook**
+goes back to full editing, in the same live room and on the same kernel.
+A notebook with cells an agent wrote opens as a journal; any other opens as
+a notebook. It works in the browser and in the Mac, iPad and iPhone apps,
+on a Ganymede server, and there is no setting for it. The Mac app's menus
+don't list it yet; use the Command Palette there.
+
+- **Who wrote each cell** is in a left column: _Agent ran it_ (with its
+  execution count), _Recorded step_, _Agent note_, or _Person_ for a cell
+  without agent metadata, with the author and time where the cell has
+  them. A cell the agent revised in place has a **rev N** chip; hover it,
+  or tap it, to read the earlier sources.
+- **Code is folded**, as `▸ first line · N lines`, with its outputs shown;
+  click or tap to unfold. Markdown cells are rendered. Outputs render
+  as in the notebook, from the cell's trust: an HTML output of a cell
+  that isn't trusted is sanitized.
+- **Following along**: new cells at the end scroll into view. Scroll up
+  and it stops, and a **N new cells · Follow** button brings you back.
+- **The status line** names who is in the room and how long ago the
+  notebook last changed. When a client marks a cell as running (JupyterLab
+  does; Ganymede's own runs don't yet), it adds "name is running cell N".
+- **Writing**: the box at the bottom adds your text as a Markdown cell at
+  the end (**Add Note**), or as an `@agent` request (**Ask the agent**),
+  which `ganymede mcp watch` reports to the agent once the text has
+  stayed the same for a few seconds. Everything else is read-only.
+- **Reconnecting…**: when the connection to the server drops, the journal
+  is read-only until it is back.
+
 ## DuckDB console
 
 A DuckDB prompt that opens in the window's page, where a notebook would,

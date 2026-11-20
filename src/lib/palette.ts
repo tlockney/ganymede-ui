@@ -40,6 +40,8 @@ export type PaletteContext = {
   kernel?: string;
   /** Recent notebooks, newest first. */
   recents: string[];
+  /** Whether the open notebook shows as a journal (#184). */
+  journal?: boolean;
   /** Whether the open notebook is trusted. */
   trusted: boolean;
   /** Whether the backend keeps host API grants (a Ganymede server). */
@@ -145,6 +147,9 @@ export function paletteEntries(context: PaletteContext): PaletteEntry[] {
       disabled: !open,
       prompt: 'New name',
       keys: 'F2',
+    }),
+    app('toggle-journal', context.journal ? 'Open as Notebook' : 'View as Journal', 'View', {
+      disabled: !open,
     }),
     app('toggle-variables', 'Show or Hide Variables', 'View', { disabled: !open }),
     // Switches type errors on or off (#669); the page remembers which.

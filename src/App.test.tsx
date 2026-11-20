@@ -493,6 +493,31 @@ describe('App', () => {
     expect(await window.ganymede!.command('rename-symbol', 'x')).toBe(false);
   });
 
+  it('switches the notebook to its journal view from the toolbar and the app (#184)', async () => {
+    const toggleJournal = vi.fn();
+    mocks.controller = {
+      dirty: false,
+      save: vi.fn(async () => true),
+      journal: false,
+      toggleJournal,
+    };
+    const fake = fakeServices({ '': [{ name: 'Io.ipynb', type: 'notebook' }] });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    history.replaceState(null, '', '/?kernels=server&open=Io.ipynb');
+    render(<App />);
+    await screen.findByTestId('pane');
+    await userEvent.click(screen.getByTitle('View as Journal'));
+    expect(toggleJournal).toHaveBeenCalledTimes(1);
+    expect(await window.ganymede!.command('toggle-journal')).toBe(true);
+    expect(toggleJournal).toHaveBeenCalledTimes(2);
+  });
+
+  it('does nothing for toggle-journal with no notebook open (#184)', async () => {
+    render(<App />);
+    await waitFor(() => expect(window.ganymede).toBeDefined());
+    expect(await window.ganymede!.command('toggle-journal')).toBe(false);
+  });
+
   it('turns type errors on and off from the app, and remembers it (#669)', async () => {
     localStorage.removeItem('ganymede-ui:type-errors');
     render(<App />);
