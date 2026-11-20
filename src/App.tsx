@@ -148,13 +148,31 @@ export function App() {
   const pendingConsole = useRef(launch.console === 'duckdb' ? launch.dir : undefined);
   /** The record of the console to show on the first connection: the tab's own id (#735). */
   const pendingSession = useRef(launch.session);
+  const [openPath, setOpenPathState] = useState<string>();
+  /**
+   * The DuckDB console (#679) shows in the page where a notebook would, in
+   * this folder. It has no path: the app's state says no notebook is open,
+   * so its notebook menus disable, as they do for a data file. Opening
+   * anything closes it, except in a console tab (`consoleTab`), where the
+   * app opens a tab for it.
+   */
+  const [duckFolder, setDuckFolder] = useState<string>();
+  /**
+   * Sets the open path; a path opened closes the console, here and now, not
+   * from an effect after the render: an effect could run after a console
+   * shown since and close that one.
+   */
+  const setOpenPath = useCallback((next: SetStateAction<string | undefined>) => {
+    if (typeof next === 'string' && next) setDuckFolder(undefined);
+    setOpenPathState(next);
+  }, []);
   /**
    * Opens a notebook or data file: in the page, or in a tab of its own from a
    * console tab, which keeps its console (#729).
    */
   const openNotebook = useCallback(
     (path: string) => (consoleTab ? openTab({ path }) : setOpenPath(path)),
-    [consoleTab],
+    [consoleTab, setOpenPath],
   );
   /** The folder the sidebar starts in; the server root once the sheet picks a backend. */
   const [sidebarRoot, setSidebarRoot] = useState(launch.dir);
@@ -189,15 +207,6 @@ export function App() {
   const afterPick = useCallback(() => {
     if (narrow) setSidebarOpen(false);
   }, [narrow]);
-  const [openPath, setOpenPathState] = useState<string>();
-  /**
-   * The DuckDB console (#679) shows in the page where a notebook would, in
-   * this folder. It has no path: the app's state says no notebook is open,
-   * so its notebook menus disable, as they do for a data file. Opening
-   * anything closes it, except in a console tab (`consoleTab`), where the
-   * app opens a tab for it.
-   */
-  const [duckFolder, setDuckFolder] = useState<string>();
   /**
    * Bumped by each New DuckDB Console: a new console is a new engine with
    * nothing read, even on the same folder. A move of the folder keeps it.
@@ -206,12 +215,15 @@ export function App() {
   /** The shown console's record (#735): its id, which is the tab's on the Mac, and its name. */
   const [duck, setDuck] = useState<{ id: string; name: string }>();
   /** Shows a console in the page, on `folder`: a fresh engine, for the record `of` names. */
-  const showConsole = useCallback((of: { id: string; name: string }, folder: string) => {
-    setOpenPath(undefined);
-    setDuck({ id: of.id, name: of.name });
-    setDuckFolder(folder);
-    setDuckId(n => n + 1);
-  }, []);
+  const showConsole = useCallback(
+    (of: { id: string; name: string }, folder: string) => {
+      setOpenPath(undefined);
+      setDuck({ id: of.id, name: of.name });
+      setDuckFolder(folder);
+      setDuckId(n => n + 1);
+    },
+    [setOpenPath],
+  );
   /**
    * A move of the console's folder, or one it is in, keeps the console and
    * moves it along; a delete closes it, as it closes an open data file.
@@ -227,15 +239,6 @@ export function App() {
     setDuckFolder(f =>
       f === undefined || !within(f, from) ? f : to === null ? undefined : to + f.slice(from.length),
     );
-  }, []);
-  /**
-   * Sets the open path; a path opened closes the console, here and now, not
-   * from an effect after the render: an effect could run after a console
-   * shown since and close that one.
-   */
-  const setOpenPath = useCallback((next: SetStateAction<string | undefined>) => {
-    if (typeof next === 'string' && next) setDuckFolder(undefined);
-    setOpenPathState(next);
   }, []);
   // Not if another notebook was opened while it renamed.
   // A run going on keeps going through a rename or move (of the notebook
@@ -256,7 +259,7 @@ export function App() {
       setOpenPath(p => (p === from ? to : p));
       followRun(from, to);
     },
-    [followRun],
+    [followRun, setOpenPath],
   );
   const [controller, setController] = useState<NotebookController>();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -375,7 +378,7 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [config]);
+  }, [config, setOpenPath]);
 
   const newNotebook = useCallback(
     /** Resolves true once the new notebook opens, false if it wasn't created. */
