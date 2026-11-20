@@ -17,6 +17,7 @@ globalThis.requestIdleCallback ??= ((cb: () => void) =>
 // CodeMirror measures text; jsdom has no layout.
 Range.prototype.getClientRects ??= () => [] as unknown as DOMRectList;
 Range.prototype.getBoundingClientRect ??= () => new DOMRect();
+Element.prototype.scrollTo ??= () => {};
 
 const jupyterlab = await import('./jupyterlab');
 const { attachEditing, createCommands, createNotebook, createRendermime } = jupyterlab;
@@ -246,29 +247,75 @@ describe('createCommands', () => {
   it('changes and runs nothing while it may not edit, whatever keys are bound', async () => {
     const session = { session: { kernel } } as unknown as ISessionContext;
     const beforeRun = vi.fn(async () => true);
-    let allowed = false;
+    let allowed = true;
     const guarded = createCommands(notebook, session, beforeRun, undefined, () => allowed);
-    const cells = () => notebook.widgets.length;
-    const types = () => notebook.widgets.map(c => c.model.type);
-    for (const id of ['insert-above', 'insert-below', 'delete', 'cut', 'paste', 'undo', 'redo']) {
+    const snapshot = () =>
+      JSON.stringify([notebook.model!.toJSON(), notebook.widgets.map(c => c.inputHidden)]);
+    const select = (i: number) => {
+      notebook.activeCellIndex = i;
+      notebook.deselectAll();
+    };
+
+    // Each command, from a state in which it would change something.
+    const prepare: Record<string, () => Promise<void> | void> = {
+      'insert-above': () => {},
+      'insert-below': () => {},
+      delete: () => {},
+      cut: () => {},
+      'to-markdown': () => select(0),
+      'to-raw': () => select(0),
+      'to-code': () => select(1),
+      'move-up': () => select(1),
+      'move-down': () => select(0),
+      'collapse-code': () => select(0),
+      'collapse-all-code': () => {},
+      'expand-code': () => {
+        select(0);
+        notebook.widgets[0]!.inputHidden = true;
+      },
+      'expand-all-code': () => {
+        notebook.widgets[0]!.inputHidden = true;
+      },
+      paste: async () => {
+        select(0);
+        await guarded.execute('copy');
+      },
+      undo: () => guarded.execute('insert-below'),
+      redo: async () => {
+        await guarded.execute('insert-below');
+        await guarded.execute('undo');
+        expect(notebook.widgets.length).toBe(2);
+      },
+    };
+    notebook.model!.sharedModel.clearUndoHistory();
+    for (const [id, setUp] of Object.entries(prepare)) {
+      allowed = true;
+      select(0);
+      await setUp();
+      const before = snapshot();
+      allowed = false;
       await guarded.execute(id);
-    }
-    for (const id of ['to-markdown', 'to-raw', 'to-code', 'move-up', 'move-down']) {
+      expect(snapshot(), id).toBe(before);
+      // The same command, allowed, does change it (the state is a real one).
+      allowed = true;
       await guarded.execute(id);
+      expect(snapshot(), `${id} when allowed`).not.toBe(before);
+      // Back to the start for the next.
+      notebook.model!.fromJSON(CONTENT);
+      await new Promise(r => setTimeout(r, 0));
+      for (const c of notebook.widgets) c.inputHidden = false;
+      notebook.model!.sharedModel.clearUndoHistory();
     }
+
+    allowed = false;
     for (const id of ['run-cell', 'run-and-advance', 'run-and-insert', 'run-all']) {
       await guarded.execute(id);
     }
-    expect(cells()).toBe(2);
-    expect(types()).toEqual(['code', 'markdown']);
     expect(beforeRun).not.toHaveBeenCalled();
     // Reading still works.
+    select(0);
     await guarded.execute('select-below');
     expect(notebook.activeCellIndex).toBe(1);
-
-    allowed = true;
-    await guarded.execute('insert-below');
-    expect(cells()).toBe(3);
   });
 });
 

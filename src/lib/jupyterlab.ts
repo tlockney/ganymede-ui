@@ -291,10 +291,12 @@ export function createCommands(
     if (active && canCollapse(active)) notebook.mode = 'command';
     action(notebook);
   };
-  add('collapse-code', collapse(NotebookActions.hideCode));
-  add('expand-code', () => expandAll(notebook.widgets.filter(c => notebook.isSelectedOrActive(c))));
-  add('collapse-all-code', collapse(NotebookActions.hideAllCode));
-  add('expand-all-code', () => expandAll(notebook.widgets));
+  mutating('collapse-code', collapse(NotebookActions.hideCode));
+  mutating('expand-code', () =>
+    expandAll(notebook.widgets.filter(c => notebook.isSelectedOrActive(c))),
+  );
+  mutating('collapse-all-code', collapse(NotebookActions.hideAllCode));
+  mutating('expand-all-code', () => expandAll(notebook.widgets));
   mutating('move-up', () => NotebookActions.moveUp(notebook));
   mutating('move-down', () => NotebookActions.moveDown(notebook));
   add('select-all', () => NotebookActions.selectAll(notebook));

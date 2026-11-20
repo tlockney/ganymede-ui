@@ -496,6 +496,8 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         if let target = navigationAction.request.url {
             if isExternal(target) {
                 if place.opensExternally(target) { openExternally(target) }
+            } else if place.isMachine, Self.isWebURL(target), !place.allowsFollowing(target) {
+                // As in `decidePolicyFor`: not one of this device's pages.
             } else {
                 webView.load(navigationAction.request)
             }

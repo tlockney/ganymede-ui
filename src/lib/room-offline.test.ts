@@ -1,6 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
 import { isEditKey, watchOffline } from './room-offline';
 
+const cell = (readOnly: boolean) => ({
+  readOnly,
+  syncEditable: true,
+  syncCollapse: true,
+  loadEditableState() {},
+  loadCollapseState() {},
+});
+
 function setup(connected = true) {
   const state = { connected };
   const listeners = new Set<(c: boolean) => void>();
@@ -13,10 +21,7 @@ function setup(connected = true) {
       return () => void listeners.delete(l);
     },
   };
-  const cells = [
-    { readOnly: false, syncEditable: true },
-    { readOnly: true, syncEditable: true },
-  ];
+  const cells = [cell(false), cell(true)];
   const notebook = { widgets: cells } as unknown as Parameters<typeof watchOffline>[1];
   const model = { readOnly: false };
   const onOffline = vi.fn();

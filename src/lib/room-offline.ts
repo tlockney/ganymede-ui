@@ -1,3 +1,4 @@
+import type { Cell, CodeCell } from '@jupyterlab/cells';
 import type { Notebook, NotebookModel } from '@jupyterlab/notebook';
 import type { NotebookRoom } from './room';
 
@@ -10,6 +11,21 @@ const SAFE_KEYS = /^(Arrow|Page|Home$|End$|Escape$|Tab$|Shift$|Meta$|Control$|Al
  */
 export function isEditKey(e: Pick<KeyboardEvent, 'key' | 'metaKey' | 'ctrlKey' | 'altKey'>) {
   return !(e.metaKey || e.ctrlKey || e.altKey || SAFE_KEYS.test(e.key));
+}
+
+/** Turns on or off the syncing of a cell's view state to its metadata. */
+function setSync(cell: Cell, on: boolean) {
+  const code = 'syncScrolled' in cell ? (cell as CodeCell) : undefined;
+  if (on) {
+    // Read each state back while it still isn't synced: turning the sync
+    // on first would write what was read, as the metadata already says.
+    cell.loadEditableState();
+    cell.loadCollapseState();
+    code?.loadScrolledState();
+  }
+  cell.syncEditable = on;
+  cell.syncCollapse = on;
+  if (code) code.syncScrolled = on;
 }
 
 /**
@@ -36,13 +52,14 @@ export function watchOffline(
         // A cell with `syncEditable` writes its read-only state to its
         // `editable` metadata, which is in the shared notebook: not an
         // edit to make for an outage, nor one to save to the machine.
-        cell.syncEditable = false;
+        // The same for collapsing the input and scrolling the output.
+        setSync(cell, false);
         cell.readOnly = true;
       }
     } else if (locked) {
       locked = false;
       // Turned on again, each cell reads its state back from its metadata.
-      for (const cell of notebook.widgets) cell.syncEditable = true;
+      for (const cell of notebook.widgets) setSync(cell, true);
     }
     // Connected from the start: nothing to do.
   };

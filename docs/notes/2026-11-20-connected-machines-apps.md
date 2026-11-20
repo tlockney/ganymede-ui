@@ -82,3 +82,12 @@ Review follow-ups:
   has no New Terminal; a terminal on a machine is a follow-up.
 - The journal list's classes are `journal-item-agent` and
   `journal-item-status`, apart from the journal view's `journal-status`.
+- **By hand:** in a machine's notebook, a link or `window.open` with
+  `target="_blank"` to this device's server (an absolute same-origin URL
+  outside the machine's mount) loads nothing in the window; one to a web
+  site opens the browser. Check both on the Mac and iPad.
+- **Collapse and scroll don't sync while away.** `watchOffline` turns off
+  `syncCollapse` and `syncScrolled` with `syncEditable`, and reads each
+  state back from the metadata before turning them on again, so neither
+  the outage nor the reconnect writes. The four collapse and expand
+  commands are `mutating` too.

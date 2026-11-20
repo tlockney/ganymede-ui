@@ -14,6 +14,7 @@ import type { NotebookController } from './NotebookPane';
 import { declareDevice } from '../lib/kernel-relay';
 import { attachDevice } from '../lib/device-remote';
 import { NotebookRoom } from '../lib/room';
+import { attachCellControls } from '../lib/cell-controls';
 import type { BackendConfig } from '../lib/backends';
 import { forgetChosenViews } from '../lib/journal';
 
@@ -90,6 +91,10 @@ vi.mock('../lib/jupyterlab', async () => {
   };
 });
 
+// The touch keyboard bar needs a touch device and a focused editor; this
+// stands in to say whether the pane shows it.
+vi.mock('./KeyboardBar', () => ({ KeyboardBar: () => <div data-testid="keyboard-bar" /> }));
+
 // The real `attachDevice`, watched for how the pane attaches it (#701).
 vi.mock('../lib/device-remote', async importOriginal => {
   const actual = await importOriginal<typeof import('../lib/device-remote')>();
@@ -98,12 +103,14 @@ vi.mock('../lib/device-remote', async importOriginal => {
 
 // The touch cell controls need JupyterLab's cells; cell-controls.test.ts
 // covers them.
-vi.mock('../lib/cell-controls', () => ({
+vi.mock('../lib/cell-controls', async importOriginal => ({
+  ...(await importOriginal<typeof import('../lib/cell-controls')>()),
   attachCellControls: vi.fn(() => ({ dispose: vi.fn(), isDisposed: false })),
 }));
 
 // The same for collapsing code (#564); code-collapse.test.ts covers it.
-vi.mock('../lib/code-collapse', () => ({
+vi.mock('../lib/code-collapse', async importOriginal => ({
+  ...(await importOriginal<typeof import('../lib/code-collapse')>()),
   attachCodeCollapse: vi.fn(() => ({ dispose: vi.fn(), isDisposed: false })),
 }));
 
@@ -2441,6 +2448,37 @@ describe('NotebookPane on a connected machine that is away (#701)', () => {
     expect(canEdit()).toBe(false);
     const away = vi.mocked(attachCellControls).mock.lastCall![2] as () => boolean;
     expect(away()).toBe(true);
+  });
+
+  /** Opens the cell menu on the first cell, as the cell's "…" button does. */
+  function openCellMenu() {
+    const onMenu = vi.mocked(attachCellControls).mock.lastCall![1];
+    const nb = fakes.notebooks.at(-1) as { widgets: unknown[] };
+    act(() => onMenu(nb.widgets[0] as never, document.body));
+    return screen.getByRole('menu', { name: 'Cell Actions' });
+  }
+  const menuItems = (menu: HTMLElement) =>
+    Array.from(menu.querySelectorAll<HTMLButtonElement>('[role^="menuitem"]'));
+
+  it('shows no touch keyboard bar while it is away, and does when it is back', async () => {
+    const away = await inRoom(false);
+    await waitFor(() => expect(screen.getByRole('status')).toBeInTheDocument());
+    expect(screen.queryByTestId('keyboard-bar')).toBeNull();
+    away.unmount();
+    await inRoom(true);
+    expect(await screen.findByTestId('keyboard-bar')).toBeInTheDocument();
+  });
+
+  it('disables every item of the cell menu while it is away, and not when it is back', async () => {
+    const away = await inRoom(false);
+    await waitFor(() => expect(screen.getByRole('status')).toBeInTheDocument());
+    const items = menuItems(openCellMenu());
+    expect(items.length).toBeGreaterThan(0);
+    for (const item of items) expect(item, item.textContent ?? '').toBeDisabled();
+    away.unmount();
+    await inRoom(true);
+    const live = menuItems(openCellMenu());
+    expect(live.some(i => !(i as HTMLButtonElement).disabled)).toBe(true);
   });
 
   it('drops edit keys pressed in the notebook, and only those', async () => {

@@ -1,6 +1,7 @@
 import '../test/notebook-env';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type * as nbformat from '@jupyterlab/nbformat';
+import type { CodeCell } from '@jupyterlab/cells';
 import type { Notebook } from '@jupyterlab/notebook';
 import type { YNotebook } from '@jupyter/ydoc';
 import type { Contents } from '@jupyterlab/services';
@@ -99,6 +100,30 @@ describe('watchOffline on a real notebook', () => {
     expect(model.readOnly).toBe(false);
     expect(updates).toBe(0);
     expect(editable()).toEqual([false, undefined]);
+    stop();
+  });
+
+  it('writes nothing when a cell is collapsed or its output scrolled while away', () => {
+    const r = room(true);
+    const stop = watchOffline(r, notebook, model, () => {});
+    const code = notebook.widgets[0] as CodeCell;
+    const text = notebook.widgets[1]!;
+    r.set(false);
+    code.inputHidden = true;
+    code.outputHidden = true;
+    code.outputsScrolled = true;
+    text.inputHidden = true;
+    expect(updates).toBe(0);
+    expect(code.model.sharedModel.getMetadata('jupyter')).toBeUndefined();
+    r.set(true);
+    // Back as the document says, still without a write.
+    expect(code.inputHidden).toBe(false);
+    expect(text.inputHidden).toBe(false);
+    expect(updates).toBe(0);
+    // And syncing works again once it is back.
+    code.inputHidden = true;
+    expect(updates).toBeGreaterThan(0);
+    expect(code.model.sharedModel.getMetadata('jupyter')).toMatchObject({ source_hidden: true });
     stop();
   });
 
