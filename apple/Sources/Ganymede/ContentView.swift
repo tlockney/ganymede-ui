@@ -79,6 +79,9 @@ struct ContentView: View {
     /// This window, in `OpenTextFiles`.
     @State private var windowID = UUID()
     @State private var settings = false
+    /// The connected machine this scene shows, if any (#701): its page
+    /// takes the whole scene, with its own sidebar and toolbar.
+    @State private var place: Place = .thisDevice
     /// What Settings shows over its first screen: the Agent or Keyboard
     /// Shortcuts, when the page asked for them (#332).
     @State private var settingsPath: [SettingsTab] = []
@@ -321,7 +324,9 @@ struct ContentView: View {
         }
         #else
         Group {
-            if isPhone {
+            if let machine = place.machineID {
+                MachineScreen(machine: machine) { place = $0 }
+            } else if isPhone {
                 // The iPhone: the folder list, and the notebook pushed onto
                 // it (#209). The page lives in `phonePage`, so it keeps
                 // running while the list shows and the list can open
@@ -329,7 +334,8 @@ struct ContentView: View {
                 NavigationStack(path: $phonePath) {
                     IPadSidebar(
                         folder: model.root, page: pageModel, openFile: openEditor,
-                        opened: { phonePath = [.notebook] }, panel: panel
+                        opened: { phonePath = [.notebook] }, panel: panel,
+                        onPlace: { place = $0 }
                     )
                     .toolbar {
                         ToolbarItemGroup(placement: .navigationBarLeading) { appButtons }
@@ -378,7 +384,8 @@ struct ContentView: View {
                                 panel.isShown = true
                                 mainFills = false
                                 if portrait { columns = .detailOnly }
-                            }
+                            },
+                            onPlace: { place = $0 }
                         )
                     } detail: {
                         iPadWorkspace
@@ -679,7 +686,8 @@ struct ContentView: View {
         if shown?.url.standardizedFileURL.path != loaded.url.standardizedFileURL.path {
             pageReported = true
         }
-        guard let shown, shown != target else { return }
+        // A local page can't turn itself into a machine's window (#701).
+        guard let shown, shown.place == .thisDevice, shown != target else { return }
         // A window opened on nothing stays blank on the folder it loaded,
         // so it can still take the Finder's files at launch (#228).
         if target == nil, case .folder = shown, shown.url.path == loaded.url.path { return }
@@ -985,6 +993,17 @@ private struct KeychainAlert: ViewModifier {
             Button("OK", role: .cancel) {}
         } message: {
             Text(model.keychainError ?? "")
+        }
+        .alert(
+            "Connected Machine",
+            isPresented: Binding(
+                get: { model.machineError != nil },
+                set: { if !$0 { model.machineError = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(model.machineError ?? "")
         }
     }
 }

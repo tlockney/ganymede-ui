@@ -149,11 +149,13 @@ shown or hidden, its tab and its expanded folders across launches.
 
 - Kernels can run on a remote server instead. Add the remote in
   Settings > Remotes (its editor can switch kernels to it), then pick
-  where kernels run from the foot of the sidebar, the kernel button in
-  the toolbar, or Kernel > Run Kernels On. The sidebar's foot names where
-  they run now ("This Mac" or the remote), and its menu also opens a
-  terminal on a remote. The choice is app-wide, and switching shuts down
-  running kernels, so the Mac asks first while any run.
+  where kernels run from the kernel button in the toolbar or Kernel >
+  Advanced > Run Kernels On. The sidebar's foot names where they run now
+  ("This Mac" or the remote); its menu is where you open a terminal on
+  a remote. The choice is app-wide, and switching shuts down running
+  kernels, so the Mac asks first while any run. To work on another
+  machine's own notebooks, connect it instead
+  ([Connected machines](#connected-machines)).
 
 ### Terminals and the kernel log
 
@@ -751,6 +753,51 @@ app waits up to 5 minutes. Approving on the same iPhone or iPad sends the
 app to the background, which can drop the connection: if the terminal
 says it disconnected, reconnect, and Tailscale lets you in without
 asking again for its check period.
+
+## Connected machines
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release. It also needs a Ganymede server with the machine
+> mount ([ganymede#894](https://github.com/tlockney/ganymede/issues/894)),
+> newer than v0.13.1; a build without it lists no machines.
+
+A connected machine is another computer running `ganymede serve`: a Mac
+mini, a laptop, a cloud box where an agent keeps a journal. Its files, its
+live notebooks and its kernels open in the app next to this device's. Each
+remote in Settings > Remotes that has a server URL is a machine; a remote
+with only SSH stays in Settings for shells.
+
+- **Places.** On the Mac and iPad the top of the sidebar names the place
+  you are in, with a dot for reachable or offline, and lists the others.
+  On the iPhone the folder list starts with a Places section. Picking a
+  machine opens it in its own window (a new tab on the Mac); windows are
+  independent, so one can show the Mac mini while another shows this Mac.
+  On the iPad and iPhone the scene shows one place at a time: the
+  machine's sidebar has the switcher back to this device.
+- **A machine's window** has Files, Journals, Running and Search tabs. Its
+  tab and title carry the machine's name ("Orbits · m4mini"). A notebook
+  opens live in the machine's room, on the machine's kernels, and saves
+  there; Running lists the machine's kernels. Recents are the machine's
+  own: the same path on this device and on a machine stay apart.
+- **Journals** lists the notebooks an agent is in on that machine now, or
+  last changed: the agent's name, "running" while it is there, otherwise
+  when it last wrote. Picking one opens the notebook. It needs a machine
+  whose Ganymede lists open rooms (ganymede#893); an older one says so.
+- **When a machine stops answering,** its open notebooks turn read-only
+  and a banner reads "<machine> went offline · Reconnecting…". They are
+  editable again when it is back. There is no offline editing.
+- **What a machine's window doesn't get.** The device API, Notebook
+  Access, the Shortcuts bridge, the app's editor for text files, the
+  Agent's keys, your name in the notebook's presence and `ganymede://`
+  links are for this device's windows only. Neither Spotlight, File > Open
+  Recent nor the Recents list in the app's sidebar include a machine's
+  notebooks. A machine window's page has no native toolbar: it draws its
+  own, as the web app does.
+
+The app reaches a machine through its own server, which forwards a fixed
+list of routes to the machine with the machine's token, so no token is
+handed to a page.
 
 ## Type errors
 

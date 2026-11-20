@@ -385,8 +385,20 @@ describe('journalHeader', () => {
       ),
     ).toEqual({
       title: 'Trend',
-      details: ['Python 3', 'Started by claude-code 2026-11-18', '3 cells'],
+      details: ['Python 3', 'Started by other 2026-11-18', '3 cells'],
     });
+  });
+
+  it('names the first agent in the notebook when the earliest cell has no agent name', () => {
+    const cells = [
+      { metadata: agent('note', { by: 'alice', at: '2026-11-19T12:00:00Z' }).metadata },
+      { metadata: agent('note', { by: 'bob', at: '2026-11-18T12:00:00Z' }).metadata },
+      { metadata: agent('note', { by: '', at: '2026-11-17T12:00:00Z' }).metadata },
+    ];
+    expect(journalHeader({}, cells, 'x.ipynb', fmt).details).toEqual([
+      'Started by alice 2026-11-17',
+      '3 cells',
+    ]);
   });
 
   it('falls back to the file name, the language, and says nothing of a start with no agent', () => {

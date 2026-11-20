@@ -51,6 +51,10 @@ describe('host grants', () => {
     expect(hostGrantsAvailable(b({ kind: 'ganymede', url: '', token: '', kernels: 'page' }))).toBe(
       false,
     );
+    // Not on a connected machine (#701): the mount doesn't forward api/host.
+    expect(hostGrantsAvailable(b({ kind: 'ganymede', url: '', token: '', machine: 'm1' }))).toBe(
+      false,
+    );
     expect(hostGrantsAvailable(b({ kind: 'browser' }))).toBe(false);
     expect(hostGrantsAvailable(undefined)).toBe(false);
   });

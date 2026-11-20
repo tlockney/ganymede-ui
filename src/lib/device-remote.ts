@@ -23,6 +23,8 @@ import {
 import { browserForward, type Click } from '@tlockney/ganymede-device/browser';
 
 export interface AttachDeviceOptions {
+  /** Answers nothing: a kernel on another machine gets no `device` of this one. */
+  disabled?: boolean;
   /** Whether the page is in the app; `canAnswer()` by default. */
   available?: () => boolean;
   /**
@@ -125,6 +127,7 @@ export function attachDevice(
   session: ISessionContext,
   options: AttachDeviceOptions = {},
 ): IDisposable {
+  if (options.disabled) return { isDisposed: false, dispose() {} };
   const inApp = options.available ?? (() => canAnswer());
   const answer =
     options.answer ??

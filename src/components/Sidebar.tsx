@@ -9,6 +9,8 @@ import { useFileSearch } from '../lib/search';
 import { clearRecents, recentsKey, useRecents } from '../lib/recents';
 import { useFileDrop } from '../lib/file-drop';
 import { ContextMenu, type MenuItem } from './ContextMenu';
+import { type PlaceInfo, useReachable } from '../lib/places';
+import { type Journal, journalStatus, journalsOf, useRooms } from '../lib/journals';
 import { RecentList, SearchField, SearchResults } from './SidebarSearch';
 import type { OutlineItem } from '../lib/outline';
 import { formatMemory, useKernelMemory } from '../lib/kernel-usage';
@@ -51,7 +53,104 @@ type Props = {
   onOutline?(item: OutlineItem): void;
   /** Whether the sidebar shows; kernel memory is asked for only then. */
   visible?: boolean;
+  /** For a connected machine's window: the places to switch to. */
+  places?: PlaceInfo[];
+  /** Opens a place (null: this device) in its own window. */
+  onPlace?(id: string | null): void;
 };
+
+type PlaceTab = 'files' | 'journals' | 'running' | 'search';
+const PLACE_TABS: { id: PlaceTab; label: string }[] = [
+  { id: 'files', label: 'Files' },
+  { id: 'journals', label: 'Journals' },
+  { id: 'running', label: 'Running' },
+  { id: 'search', label: 'Search' },
+];
+
+/** The place's name and reachability dot; opens the list of places. */
+function PlaceSwitcher({
+  id,
+  name,
+  reachable,
+  places,
+  onPlace,
+}: {
+  /** The current place's id, null for this device. */
+  id: string | null;
+  name: string;
+  reachable: boolean;
+  places: PlaceInfo[];
+  onPlace?(id: string | null): void;
+}) {
+  const [at, setAt] = useState<HTMLElement>();
+  return (
+    <>
+      <button
+        type="button"
+        className="place-switcher"
+        aria-label={`Place: ${name}, ${reachable ? 'reachable' : 'offline'}`}
+        aria-haspopup="menu"
+        aria-expanded={!!at}
+        disabled={!onPlace || places.length === 0}
+        onClick={e => setAt(e.currentTarget)}
+      >
+        <span className="place-name">{name}</span>
+        <span className={`status-dot ${reachable ? 's-idle' : 's-dead'}`} aria-hidden />
+        <span aria-hidden>▾</span>
+      </button>
+      {at && (
+        <ContextMenu
+          at={at}
+          label="Places"
+          items={places.map(p => ({
+            label: p.name,
+            checked: p.id === id,
+            onSelect: () => onPlace?.(p.id),
+          }))}
+          onClose={() => setAt(undefined)}
+        />
+      )}
+    </>
+  );
+}
+
+function JournalList({
+  settings,
+  active,
+  onOpen,
+}: {
+  settings: Backend['services']['serverSettings'];
+  active: boolean;
+  onOpen(path: string): void;
+}) {
+  const result = useRooms(settings, active);
+  if (!result) return <div className="source-empty">Looking for journals…</div>;
+  if (result.kind === 'unsupported') {
+    return (
+      <div className="source-empty">
+        This machine’s Ganymede is too old to list journals. Update it to see them here.
+      </div>
+    );
+  }
+  if (result.kind === 'error') return <div className="source-empty">{result.message}</div>;
+  const journals: Journal[] = journalsOf(result.rooms);
+  if (!journals.length) return <div className="source-empty">No agent is in a notebook now.</div>;
+  return (
+    <ul className="source-list" aria-label="Journals">
+      {journals.map(j => (
+        <li key={j.path}>
+          <button className="source-item journal-item" onClick={() => onOpen(j.path)}>
+            <span className="item-name">{j.name}</span>
+            <span className="journal-item-agent">{j.agent ?? 'agent'}</span>
+            <span className={`journal-item-status ${j.running ? 'running' : ''}`}>
+              {journalStatus(j)}
+            </span>
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
 
 /** How long a touch is held to open the file menu. */
 const LONG_PRESS_MS = 500;
@@ -72,8 +171,19 @@ export function Sidebar({
   outline = [],
   onOutline,
   visible = true,
+  places = [],
+  onPlace,
 }: Props) {
   const services = backend?.services;
+  // A connected machine (#701): a place switcher with the machine's name
+  // and reachability, and Files, Journals, Running and Search as tabs.
+  const machine =
+    backend?.config.kind === 'ganymede' && backend.config.machine
+      ? (backend.config.machineName ?? 'Machine')
+      : undefined;
+  const reachable = useReachable(machine ? backend?.services.serverSettings : undefined);
+  const [tab, setTab] = useState<PlaceTab>('files');
+  const inTab = (t: PlaceTab) => !machine || tab === t;
   const [dir, setDir] = useState(root);
   const [items, setItems] = useState<Contents.IModel[]>([]);
   const [error, setError] = useState<string>();
@@ -225,7 +335,7 @@ export function Sidebar({
   const [query, setQuery] = useState('');
   const [withContents, setWithContents] = useState(false);
   const search = useFileSearch(services?.contents, dir, query, withContents);
-  const searching = !!query.trim();
+  const searching = !!query.trim() && inTab('search');
   const recents = useRecents(backend, openPath);
   // Notebooks dropped from Finder or Files are copied into this folder (#216).
   const drop = useFileDrop({ contents: services?.contents, dir, onError: setActionError });
@@ -260,13 +370,42 @@ export function Sidebar({
         )}
       </div>
       <div className="sidebar-scroll">
-        <SearchField
-          query={query}
-          onQuery={setQuery}
-          withContents={withContents}
-          onWithContents={setWithContents}
-          disabled={!services}
-        />
+        {machine && (
+          <>
+            <PlaceSwitcher
+              id={backend?.config.kind === 'ganymede' ? (backend.config.machine ?? null) : null}
+              name={machine}
+              reachable={reachable}
+              places={places}
+              onPlace={onPlace}
+            />
+            <div className="place-tabs" role="tablist" aria-label="Place">
+              {PLACE_TABS.map(t => (
+                <button
+                  key={t.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === t.id}
+                  onClick={() => setTab(t.id)}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+        {machine && tab === 'journals' && services && (
+          <JournalList settings={services.serverSettings} active={visible} onOpen={onOpen} />
+        )}
+        {inTab('search') && (
+          <SearchField
+            query={query}
+            onQuery={setQuery}
+            withContents={withContents}
+            onWithContents={setWithContents}
+            disabled={!services}
+          />
+        )}
         {searching ? (
           <SearchResults
             state={search}
@@ -281,15 +420,15 @@ export function Sidebar({
               else onOpenFile?.(item.path);
             }}
           />
-        ) : (
+        ) : inTab('files') ? (
           <RecentList
             paths={recents}
             openPath={openPath}
             onOpen={onOpen}
             onClear={() => backend && clearRecents(recentsKey(backend.config))}
           />
-        )}
-        <div className="sidebar-section-header" hidden={searching}>
+        ) : null}
+        <div className="sidebar-section-header" hidden={searching || !inTab('files')}>
           {dir ? (
             <button className="link-button" onClick={() => setDir(parentOf(dir))}>
               <ChevronLeftIcon width={14} height={14} />
@@ -307,7 +446,11 @@ export function Sidebar({
             <ComposeIcon width={16} height={16} />
           </button>
         </div>
-        <ul className="source-list folder-list" aria-label="Files" hidden={searching}>
+        <ul
+          className="source-list folder-list"
+          aria-label="Files"
+          hidden={searching || !inTab('files')}
+        >
           {items.map(item => {
             const isNb = item.type === 'notebook';
             const isDir = item.type === 'directory';
@@ -391,7 +534,7 @@ export function Sidebar({
           />
         )}
 
-        {outline.length > 0 && onOutline && !searching && (
+        {outline.length > 0 && onOutline && !searching && inTab('files') && (
           <nav aria-label="Outline">
             <div className="sidebar-section-header">
               <span>Outline</span>
@@ -413,7 +556,11 @@ export function Sidebar({
           </nav>
         )}
 
-        {running.length > 0 && (
+        {machine && tab === 'running' && running.length === 0 && (
+          <div className="source-empty">Nothing is running on {machine}.</div>
+        )}
+
+        {running.length > 0 && inTab('running') && (
           <>
             <div className="sidebar-section-header">
               <span>Running</span>
@@ -454,16 +601,30 @@ export function Sidebar({
       </div>
 
       <div className="sidebar-footer">
-        <button className="backend-chip" onClick={onConnect}>
-          {backend?.config.kind === 'browser' ? <BrowserIcon /> : <ServerIcon />}
-          <span className="chip-text">
-            <span className="chip-title">
-              {connecting ? 'Connecting…' : (backend?.label ?? 'Not connected')}
+        {machine ? (
+          // The machine is the app's to connect; nothing to pick here.
+          <div className="backend-chip" role="status">
+            <ServerIcon />
+            <span className="chip-text">
+              <span className="chip-title">Saved on {machine}</span>
+              <span className="chip-detail">
+                Ganymede · {running.length} {running.length === 1 ? 'kernel' : 'kernels'}
+              </span>
             </span>
-            {backend && !connecting && <span className="chip-detail">{backend.detail}</span>}
-          </span>
-          <span className={`status-dot ${backend && !connecting ? 's-idle' : 's-connecting'}`} />
-        </button>
+            <span className={`status-dot ${reachable ? 's-idle' : 's-dead'}`} />
+          </div>
+        ) : (
+          <button className="backend-chip" onClick={onConnect}>
+            {backend?.config.kind === 'browser' ? <BrowserIcon /> : <ServerIcon />}
+            <span className="chip-text">
+              <span className="chip-title">
+                {connecting ? 'Connecting…' : (backend?.label ?? 'Not connected')}
+              </span>
+              {backend && !connecting && <span className="chip-detail">{backend.detail}</span>}
+            </span>
+            <span className={`status-dot ${backend && !connecting ? 's-idle' : 's-connecting'}`} />
+          </button>
+        )}
         {onSettings && (
           <button
             className="icon-button settings-button"

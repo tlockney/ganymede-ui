@@ -2566,3 +2566,90 @@ button {
     flex: 1;
   }
 }
+
+/* ---------- Connected machines (#701) ---------- */
+
+.machine-banner {
+  position: absolute;
+  z-index: 5;
+  top: var(--toolbar-h);
+  left: 0;
+  right: 0;
+  padding: 6px 12px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--orange);
+}
+
+.place-switcher {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 6px;
+  font: inherit;
+  font-weight: 600;
+  color: var(--text);
+  background: var(--control-bg);
+  cursor: pointer;
+}
+
+.place-switcher:hover {
+  background: var(--control-bg-hover);
+}
+
+.place-switcher .place-name {
+  flex: 1;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.place-tabs {
+  display: flex;
+  gap: 2px;
+  margin: 8px 0 2px;
+  padding: 2px;
+  border-radius: 7px;
+  background: var(--control-bg);
+}
+
+.place-tabs button {
+  flex: 1;
+  padding: 3px 4px;
+  border: 0;
+  border-radius: 5px;
+  font: inherit;
+  font-size: 11px;
+  color: var(--text-2);
+  background: transparent;
+  cursor: pointer;
+}
+
+.place-tabs button[aria-selected='true'] {
+  color: var(--text);
+  background: var(--window-bg);
+  box-shadow: 0 0.5px 1.5px rgba(0, 0, 0, 0.2);
+}
+
+.journal-item-agent,
+.journal-item-status {
+  font-size: 11px;
+  color: var(--text-3);
+}
+
+.journal-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+}
+
+.journal-item-status.running {
+  color: var(--green);
+}

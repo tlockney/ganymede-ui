@@ -226,13 +226,19 @@ export function createCommands(
   beforeRun: (all: boolean) => Promise<boolean> = async () => true,
   /** Where a run command's failure goes: the keyboard has no caller to tell. */
   onError: (e: unknown) => void = e => console.error(e),
+  /** False while the notebook may not be edited or run (a machine that is away, #701). */
+  canEdit: () => boolean = () => true,
 ): CommandRegistry {
   const commands = new CommandRegistry();
   const add = (id: string, execute: () => unknown) =>
     commands.addCommand(id, { execute: () => void execute() });
+  // A command that changes the notebook or runs it.
+  const mutating = (id: string, execute: () => unknown) =>
+    add(id, () => (canEdit() ? execute() : undefined));
   const run =
     (action: () => Promise<unknown>, all = false) =>
     async () => {
+      if (!canEdit()) return;
       try {
         if (await beforeRun(all)) await action();
       } catch (e) {
@@ -265,17 +271,17 @@ export function createCommands(
   add('select-below', () => NotebookActions.selectBelow(notebook));
   add('extend-above', () => NotebookActions.extendSelectionAbove(notebook));
   add('extend-below', () => NotebookActions.extendSelectionBelow(notebook));
-  add('insert-above', () => NotebookActions.insertAbove(notebook));
-  add('insert-below', () => NotebookActions.insertBelow(notebook));
-  add('delete', () => NotebookActions.deleteCells(notebook));
-  add('cut', () => NotebookActions.cut(notebook));
+  mutating('insert-above', () => NotebookActions.insertAbove(notebook));
+  mutating('insert-below', () => NotebookActions.insertBelow(notebook));
+  mutating('delete', () => NotebookActions.deleteCells(notebook));
+  mutating('cut', () => NotebookActions.cut(notebook));
   add('copy', () => NotebookActions.copy(notebook));
-  add('paste', () => NotebookActions.paste(notebook, 'below'));
-  add('undo', () => NotebookActions.undo(notebook));
-  add('redo', () => NotebookActions.redo(notebook));
-  add('to-code', () => NotebookActions.changeCellType(notebook, 'code'));
-  add('to-markdown', () => NotebookActions.changeCellType(notebook, 'markdown'));
-  add('to-raw', () => NotebookActions.changeCellType(notebook, 'raw'));
+  mutating('paste', () => NotebookActions.paste(notebook, 'below'));
+  mutating('undo', () => NotebookActions.undo(notebook));
+  mutating('redo', () => NotebookActions.redo(notebook));
+  mutating('to-code', () => NotebookActions.changeCellType(notebook, 'code'));
+  mutating('to-markdown', () => NotebookActions.changeCellType(notebook, 'markdown'));
+  mutating('to-raw', () => NotebookActions.changeCellType(notebook, 'raw'));
   // Collapsing code (#564): the selected cells, or every code cell.
   // Collapsing the edited code cell takes the notebook to command mode,
   // since its editor goes; expanding covers any type, since a collapsed
@@ -285,12 +291,14 @@ export function createCommands(
     if (active && canCollapse(active)) notebook.mode = 'command';
     action(notebook);
   };
-  add('collapse-code', collapse(NotebookActions.hideCode));
-  add('expand-code', () => expandAll(notebook.widgets.filter(c => notebook.isSelectedOrActive(c))));
-  add('collapse-all-code', collapse(NotebookActions.hideAllCode));
-  add('expand-all-code', () => expandAll(notebook.widgets));
-  add('move-up', () => NotebookActions.moveUp(notebook));
-  add('move-down', () => NotebookActions.moveDown(notebook));
+  mutating('collapse-code', collapse(NotebookActions.hideCode));
+  mutating('expand-code', () =>
+    expandAll(notebook.widgets.filter(c => notebook.isSelectedOrActive(c))),
+  );
+  mutating('collapse-all-code', collapse(NotebookActions.hideAllCode));
+  mutating('expand-all-code', () => expandAll(notebook.widgets));
+  mutating('move-up', () => NotebookActions.moveUp(notebook));
+  mutating('move-down', () => NotebookActions.moveDown(notebook));
   add('select-all', () => NotebookActions.selectAll(notebook));
   add('show-shortcuts', () => window.dispatchEvent(new Event(SHOW_SHORTCUTS_EVENT)));
 

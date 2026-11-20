@@ -29,6 +29,15 @@ function fakeSession() {
 }
 
 describe('attachDevice', () => {
+  it('answers nothing when disabled, as for a machine', () => {
+    const { session, setKernel } = fakeSession();
+    const answer = vi.fn();
+    const attached = attachDevice(session, { available: () => false, answer, disabled: true });
+    setKernel({ id: 1 });
+    expect(answer).not.toHaveBeenCalled();
+    attached.dispose();
+  });
+
   it('answers each kernel the session gets, disposing the last', () => {
     const { session, setKernel } = fakeSession();
     const answered: { kernel: unknown; dispose: ReturnType<typeof vi.fn> }[] = [];

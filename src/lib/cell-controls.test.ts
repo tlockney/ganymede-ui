@@ -187,6 +187,30 @@ describe('attachCellControls', () => {
     expect(seen).toHaveBeenCalledOnce();
   });
 
+  it('adds no cell and starts no drag while the notebook may not be edited', () => {
+    controls.dispose();
+    let away = true;
+    controls = attachCellControls(notebook, onMenu, () => away);
+    buttons('Add Text Cell')[0]!.click();
+    buttons('Add Code Cell')[0]!.click();
+    expect(types()).toEqual(['code', 'code', 'code']);
+    // Its menu still opens: CellMenu says what it may do.
+    buttons('Cell Actions')[0]!.click();
+    expect(onMenu).toHaveBeenCalledOnce();
+    // A press on the drag handle: the notebook's own handling of it is not
+    // the drag's (which would prevent the default).
+    const press = () => {
+      const e = new PointerEvent('pointerdown', { bubbles: true, cancelable: true, button: 0 });
+      cell(0).node.querySelector<HTMLElement>('.gn-cell-drag')!.dispatchEvent(e);
+      return e.defaultPrevented;
+    };
+    expect(press()).toBe(false);
+    away = false;
+    expect(press()).toBe(true);
+    buttons('Add Text Cell')[0]!.click();
+    expect(types()).toEqual(['code', 'markdown', 'code', 'code']);
+  });
+
   it('stops listening when disposed', () => {
     controls.dispose();
     buttons('Cell Actions')[0]!.click();

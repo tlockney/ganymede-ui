@@ -12,6 +12,8 @@ type Props = {
   anchor: HTMLElement;
   /** Runs the active cell, starting a kernel when there is none. */
   run(): Promise<void>;
+  /** A machine that is away: nothing here edits or runs (#701). */
+  away?: boolean;
   onClose(): void;
 };
 
@@ -20,7 +22,7 @@ type Props = {
  * in the shared popup menu (#203), so it is sized for touch and a tap
  * outside it or Escape closes it.
  */
-export function CellMenu({ notebook, cell, anchor, run, onClose }: Props) {
+export function CellMenu({ notebook, cell, anchor, run, away = false, onClose }: Props) {
   const index = notebook.widgets.indexOf(cell);
   const count = notebook.widgets.length;
   const type = cell.model.type;
@@ -36,6 +38,7 @@ export function CellMenu({ notebook, cell, anchor, run, onClose }: Props) {
   }, [notebook, onClose]);
 
   const pick = (action: CellMenuAction) => {
+    if (away) return;
     void applyCellAction(notebook, cell, action, run).finally(() => {
       // Back to the notebook, so its shortcuts work after the menu.
       if (!notebook.isDisposed) notebook.activate();
@@ -48,7 +51,9 @@ export function CellMenu({ notebook, cell, anchor, run, onClose }: Props) {
     checked: isType ? type === action : undefined,
     destructive: action === 'delete',
     disabled:
-      (action === 'move-up' && index <= 0) || (action === 'move-down' && index >= count - 1),
+      away ||
+      (action === 'move-up' && index <= 0) ||
+      (action === 'move-down' && index >= count - 1),
   });
 
   const types = CELL_MENU.filter(i => i.type);
@@ -65,7 +70,9 @@ export function CellMenu({ notebook, cell, anchor, run, onClose }: Props) {
           ? [
               {
                 label: cell.inputHidden ? 'Expand Code' : 'Collapse Code',
+                disabled: away,
                 onSelect: () => {
+                  if (away) return;
                   // Its cell, as the other items act on it (`applyCellAction`).
                   if (selectOnly(notebook, cell)) setCollapsed(cell, !cell.inputHidden, notebook);
                   if (!notebook.isDisposed) notebook.activate();

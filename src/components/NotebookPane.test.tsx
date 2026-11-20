@@ -12,6 +12,10 @@ import '../test/notebook-env';
 import { entry, fakeBackend, fakeServices } from '../test/fakes';
 import type { NotebookController } from './NotebookPane';
 import { declareDevice } from '../lib/kernel-relay';
+import { attachDevice } from '../lib/device-remote';
+import { NotebookRoom } from '../lib/room';
+import { attachCellControls } from '../lib/cell-controls';
+import type { BackendConfig } from '../lib/backends';
 import { forgetChosenViews } from '../lib/journal';
 
 // No kernel and no real notebook widget: the pane's loading, dirty state and
@@ -22,6 +26,8 @@ const fakes = vi.hoisted(() => ({
   notebooks: [] as unknown[],
   widgets: [] as { dispose: () => void; saveState: (m: unknown) => void }[],
   editing: [] as { dispose: () => void }[],
+  /** What a notebook command runs. */
+  execute: vi.fn(async () => {}),
   /** How the next session rejoins; by default at once, finding none. */
   initialize: undefined as undefined | ((session: { session: unknown }) => Promise<boolean>),
 }));
@@ -71,7 +77,12 @@ vi.mock('../lib/jupyterlab', async () => {
       fakes.notebooks.push(w);
       return w;
     }),
-    createCommands: vi.fn(() => ({ processKeydownEvent: vi.fn() })),
+    createCommands: vi.fn(() => ({
+      processKeydownEvent: vi.fn(),
+      hasCommand: () => true,
+      isEnabled: () => true,
+      execute: fakes.execute,
+    })),
     attachEditing: vi.fn(() => {
       const editing = { dispose: vi.fn(), isDisposed: false };
       fakes.editing.push(editing);
@@ -80,14 +91,26 @@ vi.mock('../lib/jupyterlab', async () => {
   };
 });
 
+// The touch keyboard bar needs a touch device and a focused editor; this
+// stands in to say whether the pane shows it.
+vi.mock('./KeyboardBar', () => ({ KeyboardBar: () => <div data-testid="keyboard-bar" /> }));
+
+// The real `attachDevice`, watched for how the pane attaches it (#701).
+vi.mock('../lib/device-remote', async importOriginal => {
+  const actual = await importOriginal<typeof import('../lib/device-remote')>();
+  return { ...actual, attachDevice: vi.fn(actual.attachDevice) };
+});
+
 // The touch cell controls need JupyterLab's cells; cell-controls.test.ts
 // covers them.
-vi.mock('../lib/cell-controls', () => ({
+vi.mock('../lib/cell-controls', async importOriginal => ({
+  ...(await importOriginal<typeof import('../lib/cell-controls')>()),
   attachCellControls: vi.fn(() => ({ dispose: vi.fn(), isDisposed: false })),
 }));
 
 // The same for collapsing code (#564); code-collapse.test.ts covers it.
-vi.mock('../lib/code-collapse', () => ({
+vi.mock('../lib/code-collapse', async importOriginal => ({
+  ...(await importOriginal<typeof import('../lib/code-collapse')>()),
   attachCodeCollapse: vi.fn(() => ({ dispose: vi.fn(), isDisposed: false })),
 }));
 
@@ -215,6 +238,7 @@ let serverSettings: ServerConnection.ISettings | undefined;
 function setup(
   get = vi.fn(async () => ({ path: 'moons/Io.ipynb', content: structuredClone(NOTEBOOK) })),
   path = 'moons/Io.ipynb',
+  config?: BackendConfig,
 ) {
   const fake = fakeServices();
   if (serverSettings) Object.assign(fake.services, { serverSettings });
@@ -224,7 +248,7 @@ function setup(
   const onRenamed = vi.fn();
   const utils = render(
     <NotebookPane
-      backend={fakeBackend(fake.services)}
+      backend={fakeBackend(fake.services, config)}
       path={path}
       onController={onController}
       onRenamed={onRenamed}
@@ -242,6 +266,8 @@ beforeEach(() => {
   fakes.widgets.length = 0;
   fakes.editing.length = 0;
   fakes.initialize = undefined;
+  fakes.execute.mockClear();
+  vi.mocked(attachDevice).mockClear();
   serverSettings = undefined;
 });
 
@@ -2322,5 +2348,166 @@ describe('hasUntrustedOutputs', () => {
   it('is false for trusted cells, cells without output, and other cells', () => {
     expect(hasUntrustedOutputs(load(untrusted(true)))).toBe(false);
     expect(hasUntrustedOutputs(load(NOTEBOOK))).toBe(false);
+  });
+});
+
+describe('NotebookPane on a connected machine that is away (#701)', () => {
+  const MACHINE: BackendConfig = {
+    kind: 'ganymede',
+    url: '',
+    token: '',
+    machine: 'mini',
+    machineName: 'Mini',
+  };
+  const LOCAL: BackendConfig = { kind: 'ganymede', url: '', token: 't' };
+
+  /** A pane in a (fake) room whose connection is `connected`; the room's notebook is a real one. */
+  async function inRoom(connected: boolean, config: BackendConfig = MACHINE) {
+    const content = structuredClone(NOTEBOOK);
+    Object.assign(content.cells[0]!, {
+      execution_count: 3,
+      outputs: [{ output_type: 'stream', name: 'stdout', text: '1\n' }],
+    });
+    const { YNotebook } = await import('@jupyter/ydoc');
+    const shared = new YNotebook();
+    shared.fromJSON(content as never);
+    const room = { notebook: shared, connected, onConnection: () => () => {}, dispose: vi.fn() };
+    vi.spyOn(NotebookRoom, 'join').mockResolvedValue(room as unknown as NotebookRoom);
+    serverSettings = ServerConnection.makeSettings({ baseUrl: 'http://127.0.0.1:1/' });
+    const view = setup(
+      vi.fn(async () => ({ path: 'moons/Io.ipynb', content })),
+      'moons/Io.ipynb',
+      config,
+    );
+    await waitFor(() => expect(view.latest()).toBeDefined());
+    await waitFor(() => expect(fakes.sessions.length).toBeGreaterThan(0));
+    return view;
+  }
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it('does not run a cell: no kernel starts and nothing executes', async () => {
+    const { latest } = await inRoom(false);
+    const session = fakes.sessions[0] as { changeKernel: ReturnType<typeof vi.fn> };
+    const advance = vi.spyOn(NotebookActions, 'runAndAdvance').mockResolvedValue(true);
+    const all = vi.spyOn(NotebookActions, 'runAll').mockResolvedValue(true);
+    await act(() => latest()!.run());
+    await act(() => latest()!.runAll());
+    expect(session.changeKernel).not.toHaveBeenCalled();
+    expect(advance).not.toHaveBeenCalled();
+    expect(all).not.toHaveBeenCalled();
+  });
+
+  it('runs when the machine is answering', async () => {
+    const { latest } = await inRoom(true);
+    const advance = vi.spyOn(NotebookActions, 'runAndAdvance').mockResolvedValue(true);
+    await act(() => latest()!.run());
+    expect(advance).toHaveBeenCalled();
+  });
+
+  it('keeps the outputs when Clear All Outputs runs', async () => {
+    const { latest } = await inRoom(false);
+    const cell = modelOf().cells.get(0) as ICodeCellModel;
+    act(() => latest()!.clearOutputs());
+    expect(cell.outputs.length).toBe(1);
+    expect(cell.executionCount).toBe(3);
+  });
+
+  it('leaves the cell type alone', async () => {
+    const { latest } = await inRoom(false);
+    const change = vi.spyOn(NotebookActions, 'changeCellType').mockImplementation(() => {});
+    act(() => latest()!.changeCellType('markdown'));
+    expect(change).not.toHaveBeenCalled();
+    expect(modelOf().cells.get(0).type).toBe('code');
+  });
+
+  it('adds no cell', async () => {
+    const { latest } = await inRoom(false);
+    const below = vi.spyOn(NotebookActions, 'insertBelow').mockImplementation(() => {});
+    const before = modelOf().cells.length;
+    act(() => latest()!.insert('code'));
+    expect(below).not.toHaveBeenCalled();
+    expect(modelOf().cells.length).toBe(before);
+  });
+
+  it('refuses a notebook command, and runs it when the machine is answering', async () => {
+    const away = await inRoom(false);
+    expect(away.latest()!.command('delete')).toBe(false);
+    expect(fakes.execute).not.toHaveBeenCalled();
+    away.unmount();
+    const up = await inRoom(true);
+    expect(up.latest()!.command('delete')).toBe(true);
+    expect(fakes.execute).toHaveBeenCalledWith('delete');
+  });
+
+  it('gives the notebook’s commands and cell controls a way to ask whether it may edit', async () => {
+    const { createCommands } = await import('../lib/jupyterlab');
+    const { attachCellControls } = await import('../lib/cell-controls');
+    await inRoom(false);
+    const canEdit = vi.mocked(createCommands).mock.lastCall![4] as () => boolean;
+    expect(canEdit()).toBe(false);
+    const away = vi.mocked(attachCellControls).mock.lastCall![2] as () => boolean;
+    expect(away()).toBe(true);
+    const { attachCodeCollapse } = await import('../lib/code-collapse');
+    expect((vi.mocked(attachCodeCollapse).mock.lastCall![1] as () => boolean)()).toBe(true);
+  });
+
+  /** Opens the cell menu on the first cell, as the cell's "…" button does. */
+  function openCellMenu() {
+    const onMenu = vi.mocked(attachCellControls).mock.lastCall![1];
+    const nb = fakes.notebooks.at(-1) as { widgets: unknown[] };
+    act(() => onMenu(nb.widgets[0] as never, document.body));
+    return screen.getByRole('menu', { name: 'Cell Actions' });
+  }
+  const menuItems = (menu: HTMLElement) =>
+    Array.from(menu.querySelectorAll<HTMLButtonElement>('[role^="menuitem"]'));
+
+  it('shows no touch keyboard bar while it is away, and does when it is back', async () => {
+    const away = await inRoom(false);
+    await waitFor(() => expect(screen.getByRole('status')).toBeInTheDocument());
+    expect(screen.queryByTestId('keyboard-bar')).toBeNull();
+    away.unmount();
+    await inRoom(true);
+    expect(await screen.findByTestId('keyboard-bar')).toBeInTheDocument();
+  });
+
+  it('disables every item of the cell menu while it is away, and not when it is back', async () => {
+    const away = await inRoom(false);
+    await waitFor(() => expect(screen.getByRole('status')).toBeInTheDocument());
+    const items = menuItems(openCellMenu());
+    expect(items.length).toBeGreaterThan(0);
+    for (const item of items) expect(item, item.textContent ?? '').toBeDisabled();
+    away.unmount();
+    await inRoom(true);
+    const live = menuItems(openCellMenu());
+    expect(live.some(i => !(i as HTMLButtonElement).disabled)).toBe(true);
+  });
+
+  it('drops edit keys pressed in the notebook, and only those', async () => {
+    const { createCommands } = await import('../lib/jupyterlab');
+    await inRoom(false);
+    const keys = vi.mocked(createCommands).mock.results.at(-1)!.value
+      .processKeydownEvent as ReturnType<typeof vi.fn>;
+    const node = (fakes.notebooks[0] as { node: HTMLElement }).node;
+    const press = (target: HTMLElement, key = 'b') => {
+      const e = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true });
+      target.dispatchEvent(e);
+      return e.defaultPrevented;
+    };
+    expect(press(node)).toBe(true);
+    expect(keys).not.toHaveBeenCalled();
+    // Moving is not editing, and a key elsewhere on the page is not the notebook's.
+    expect(press(node, 'ArrowDown')).toBe(false);
+    expect(keys).toHaveBeenCalledTimes(1);
+    expect(press(document.body)).toBe(false);
+    expect(keys).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows no `device` of this one to a machine’s kernels, and does to a local server’s', async () => {
+    await inRoom(true);
+    expect(vi.mocked(attachDevice).mock.lastCall![1]).toMatchObject({ disabled: true });
+    vi.mocked(attachDevice).mockClear();
+    await inRoom(true, LOCAL);
+    expect(vi.mocked(attachDevice).mock.lastCall![1]?.disabled).toBeFalsy();
   });
 });

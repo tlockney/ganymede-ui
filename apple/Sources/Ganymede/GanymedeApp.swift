@@ -22,9 +22,17 @@ struct GanymedeApp: App {
         // One window per notebook or folder (`WindowTarget`); none shows
         // the last folder. Opening one that is already open brings it front.
         WindowGroup(id: WorkspaceTabs.sceneID, for: WindowTarget.self) { $target in
-            ContentView(target: $target)
-                .environment(model)
-                .settingsOpener()
+            // A connected machine's window has no native sidebar, which
+            // reads this device's files (#701).
+            if let machine = target, machine.place.isMachine {
+                MachineWindow(target: machine) { target = $0 }
+                    .environment(model)
+                    .settingsOpener()
+            } else {
+                ContentView(target: $target)
+                    .environment(model)
+                    .settingsOpener()
+            }
         }
         // Files opened from the Finder go through the app delegate (#228).
         .handlesExternalEvents(matching: [])

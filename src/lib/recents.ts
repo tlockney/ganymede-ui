@@ -21,7 +21,11 @@ type Store = Record<string, string[]>;
 
 /** Which list a backend's notebooks go in: its notebooks' location, not its kernels'. */
 export function recentsKey(config: BackendConfig): string {
-  return config.kind === 'browser' ? 'browser' : `ganymede:${config.url.replace(/\/+$/, '')}`;
+  if (config.kind === 'browser') return 'browser';
+  // A connected machine is reached on the page's own origin (url ''), but
+  // its notebooks are its own: the same path on this device is another file.
+  if (config.machine) return `machine:${config.machine}`;
+  return `ganymede:${config.url.replace(/\/+$/, '')}`;
 }
 
 function read(): Store {

@@ -42,6 +42,14 @@ describe('readLaunch', () => {
   });
 });
 
+describe('titleFor on a machine (#701)', () => {
+  it('names the machine on a notebook’s title and when none is open', () => {
+    expect(titleFor('a/Orbits.ipynb', 'm4mini')).toBe('Orbits · m4mini');
+    expect(titleFor(undefined, 'm4mini')).toBe('m4mini');
+    expect(titleFor('a/Orbits.ipynb')).toBe('Orbits');
+  });
+});
+
 describe('titleFor', () => {
   it("is the notebook's name, or the app's", () => {
     expect(titleFor('a/Orbits.ipynb')).toBe('Orbits');

@@ -30,6 +30,7 @@ import {
   SaveConflict,
   type Saver,
 } from '../lib/saver';
+import { isEditKey, watchOffline } from '../lib/room-offline';
 import { NotebookRoom, RoomSaver, trustFromFile, watchRemoteOutputs } from '../lib/room';
 import {
   type Problem,
@@ -341,6 +342,8 @@ class FileLocked extends Error {}
  * or to the browser's own storage.
  */
 export function NotebookPane({ backend, path, onController, onRenamed }: Props) {
+  // A page for a connected machine (#701).
+  const onMachine = backend.config.kind === 'ganymede' && !!backend.config.machine;
   // A ref, not a dependency of the controller effect: a parent that
   // passes a new function each render would otherwise loop (the effect
   // sets the parent's controller state, which renders it again).
@@ -642,14 +645,22 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         starting ??= startKernel().finally(() => (starting = undefined));
         return starting;
       };
-      const commands = createCommands(notebook, session, ensureKernel, e =>
-        setNotice(runFailed(session, services.kernelspecs, memory, e)),
+      // A connected machine that stopped answering (#701): nothing edits.
+      const down = () => onMachine && !!room && !room.connected;
+      const commands = createCommands(
+        notebook,
+        session,
+        ensureKernel,
+        e => setNotice(runFailed(session, services.kernelspecs, memory, e)),
+        () => !down(),
       );
       const editing = attachEditing(notebook, session, rendermime, commands);
-      const cellControls = attachCellControls(notebook, (cell, anchor) =>
-        setMenu({ cell, anchor }),
+      const cellControls = attachCellControls(
+        notebook,
+        (cell, anchor) => setMenu({ cell, anchor }),
+        down,
       );
-      const codeCollapse = attachCodeCollapse(notebook);
+      const codeCollapse = attachCodeCollapse(notebook, down);
       const typeErrors = attachTypeErrors(notebook, session);
       const language = attachLanguageFeatures(notebook, session, message =>
         setNotice({ kind: 'failed', message, actions: [] }),
@@ -670,7 +681,17 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
             lastModified: file!.last_modified,
             beforeSave,
           });
-      const onKey = (e: KeyboardEvent) => commands.processKeydownEvent(e);
+      const onKey = (e: KeyboardEvent) => {
+        // This listener runs before the notebook's own, so a machine that
+        // is away is stopped here: keys in the notebook edit nothing (#701).
+        // The commands refuse too, whatever keys they are bound to.
+        if (down() && isEditKey(e) && notebook.node.contains(e.target as Node | null)) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+        commands.processKeydownEvent(e);
+      };
       // Capture phase, as a Lumino application does, so a notebook shortcut
       // (Shift+Enter) wins over the editor's own binding for the key.
       document.addEventListener('keydown', onKey, true);
@@ -700,6 +721,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
           // `device` for cells on server kernels (#568): the
           // app's bridge, or in a browser web APIs behind a click.
           attachDevice(session, {
+            // A machine's kernels get no `device` of this device's (#701).
+            disabled: onMachine,
             click: promptClick(setDevicePrompt, () => {
               const kernel = session.kernelDisplayName;
               const file = basename(saver.path);
@@ -795,7 +818,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         teardown();
       }
     };
-  }, [services, rooms, path, attempt, memory, setIntended, backend.config]);
+  }, [services, rooms, path, attempt, memory, setIntended, backend.config, onMachine]);
 
   // Put the Lumino widget in the page. The widget lives in a holder node
   // that moves in and out of the pane: when the pane goes, the holder is
@@ -1242,8 +1265,12 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
     };
     // A run's failure: when the kernel died under it, say that instead.
     // Retry runs it again, on the cells selected then.
+    // A connected machine that stopped answering (#701): the notebook shows
+    // what it had and does nothing that edits or runs until it is back.
+    const away = () => onMachine && !!open.room && !open.room.connected;
     const reportRun = (what: string, action: () => Promise<void>) => {
       const run = async () => {
+        if (away()) return;
         try {
           await action();
         } catch (e) {
@@ -1306,7 +1333,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       trusted,
       cellType,
       changeCellType: type => {
-        if (journal) return;
+        if (journal || away()) return;
         NotebookActions.changeCellType(notebook, type);
         setCellType(activeType(notebook) ?? type);
         // Back to the notebook, so its shortcuts work after the picker.
@@ -1396,7 +1423,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         if (await open.ensureKernel(true)) await NotebookActions.runAll(notebook, session);
       }),
       clearOutputs: () => {
-        if (journal) return;
+        if (journal || away()) return;
         // As NotebookActions.clearAllOutputs, which needs an active cell;
         // like it, not a step for undo.
         for (const cell of model.cells) {
@@ -1406,7 +1433,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         }
       },
       insert: type => {
-        if (journal) return;
+        if (journal || away()) return;
         NotebookActions.insertBelow(notebook);
         if (type !== 'code') NotebookActions.changeCellType(notebook, type);
         notebook.mode = 'edit';
@@ -1428,7 +1455,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       command: id => {
         const { commands } = open;
         // The notebook's own commands act on cells the journal hides.
-        if (journal || !commands.hasCommand(id) || !commands.isEnabled(id)) return false;
+        if (journal || away() || !commands.hasCommand(id) || !commands.isEnabled(id)) return false;
         void commands.execute(id).catch(e => setNotice(failed(id, e)));
         return true;
       },
@@ -1536,6 +1563,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
     outline,
     journal,
     backend,
+    onMachine,
     services,
     memory,
     onController,
@@ -1543,6 +1571,19 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
   ]);
 
   useEffect(() => () => onController(undefined), [onController]);
+
+  // A connected machine that stops answering (#701): its notebook turns
+  // read-only, with a banner, and is editable again when its room is back.
+  const machineName =
+    backend.config.kind === 'ganymede' && backend.config.machine
+      ? (backend.config.machineName ?? 'The machine')
+      : undefined;
+  const [roomOffline, setRoomOffline] = useState(false);
+  useEffect(() => {
+    const room = open?.room;
+    if (!open || !room || !machineName) return setRoomOffline(false);
+    return watchOffline(room, open.notebook, open.model, setRoomOffline);
+  }, [open, machineName]);
 
   if (error) {
     const offline = isUnreachable(error);
@@ -1576,6 +1617,11 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
   }
   return (
     <>
+      {roomOffline && machineName && (
+        <div className="machine-banner" role="status">
+          {machineName} went offline · Reconnecting…
+        </div>
+      )}
       <div className="notebook-page" ref={host} hidden={journal} />
       {journal && (
         <JournalView
@@ -1587,12 +1633,15 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
           onOpenAsNotebook={() => controllerRef.current?.toggleJournal()}
         />
       )}
-      {!journal && <KeyboardBar notebook={open.notebook} commands={open.commands} />}
+      {!journal && !(machineName && roomOffline) && (
+        <KeyboardBar notebook={open.notebook} commands={open.commands} />
+      )}
       {menu && (
         <CellMenu
           notebook={open.notebook}
           cell={menu.cell}
           anchor={menu.anchor}
+          away={!!machineName && roomOffline}
           run={async function run() {
             try {
               if (await open.ensureKernel()) {

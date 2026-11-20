@@ -3,11 +3,13 @@ import {
   type Backend,
   type BackendConfig,
   connect,
-  loadConfig,
   SAME_ORIGIN,
   saveConfig,
   signedInHere,
 } from './lib/backends';
+import { usePlaces } from './lib/places';
+import { initialConfig, isAppServer, sameBackend } from './lib/app-config';
+import { openPlace as postOpenPlace } from './lib/native';
 import { offersDevice } from './lib/kernel-device';
 import { reportMoved } from './lib/kernel-relay';
 import { useColorScheme } from './lib/useColorScheme';
@@ -90,27 +92,6 @@ import { RunSheet } from './components/RunSheet';
 import { runAvailable, runWithParams } from './lib/run';
 import { EXPORT_FORMATS, type ExportFormat } from './lib/export';
 
-/**
- * A token in the page URL, as `ganymede serve` prints it, wins once, and so
- * does `kernels=page`, `kernels=both` or `kernels=server`, which the Apple
- * apps add on every launch (`page` on an iPad without a kernel server,
- * `both` on the Mac). Pure, as React
- * may call a state initializer twice (#60); `stripLaunchParams` takes them
- * out of the URL afterwards.
- */
-function initialConfig(): BackendConfig | undefined {
-  const params = new URLSearchParams(window.location.search);
-  const token = params.get('token');
-  const kernels = params.get('kernels');
-  if (token === null && kernels === null) return loadConfig();
-  return {
-    kind: 'ganymede',
-    url: '',
-    token: token ?? '',
-    ...(kernels === 'page' || kernels === 'both' ? { kernels } : {}),
-  };
-}
-
 /** Keeps the token out of history and the referrer. `open` is kept in step instead. */
 function stripLaunchParams(): void {
   const params = new URLSearchParams(window.location.search);
@@ -120,21 +101,16 @@ function stripLaunchParams(): void {
   history.replaceState(null, '', window.location.pathname + (rest ? `?${rest}` : ''));
 }
 
-/** The Apple app's own server: the one this page came from. */
-function isAppServer(config: BackendConfig): boolean {
-  return config.kind === 'ganymede' && config.url === '';
-}
-
-/** Whether two configs reach the same notebooks, whatever the token. */
-function sameBackend(a: BackendConfig, b: BackendConfig): boolean {
-  if (a.kind !== 'ganymede' || b.kind !== 'ganymede') return a.kind === b.kind;
-  return a.url === b.url && a.kernels === b.kernels;
-}
-
 export function App() {
   const scheme = useColorScheme();
   useJupyterLabTheme(scheme);
   const [config, setConfig] = useState<BackendConfig | undefined>(initialConfig);
+  // A connected machine's window (#701): its name, and the places the app
+  // lists for switching.
+  const machineName =
+    config?.kind === 'ganymede' && config.machine ? (config.machineName ?? 'machine') : undefined;
+  const places = usePlaces();
+  const openPlace = useCallback((id: string | null) => postOpenPlace(id), []);
   // The notebook and folder the URL asks for (`?open=`, `?dir=`): a window
   // the Apple apps open on one file.
   const [launch] = useState<Launch>(() => readLaunch(window.location.search));
@@ -424,13 +400,13 @@ export function App() {
   // (⌘R, or WebKit restarting the page) comes back to both. A launch file
   // not opened yet stays in the URL.
   useEffect(() => {
-    document.title = titleFor(openPath);
+    document.title = titleFor(openPath, machineName);
     if (!openPath && pendingOpen.current) return;
     const search = withDir(withOpen(window.location.search, openPath), folder);
     if (search !== window.location.search) {
       history.replaceState(null, '', window.location.pathname + search);
     }
-  }, [openPath, folder]);
+  }, [openPath, folder, machineName]);
 
   // The Mac app's window: its title bar's edited dot and proxy icon, and
   // its Save, close and quit prompts.
@@ -895,6 +871,8 @@ export function App() {
             onClose={sidebarFloats ? () => setSidebarOpen(false) : undefined}
             onConnect={openConnect}
             onSettings={openSettings}
+            places={places}
+            onPlace={openPlace}
             actions={
               backend &&
               fileActions({

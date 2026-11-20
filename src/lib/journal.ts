@@ -428,8 +428,7 @@ export type JournalHeaderData = {
 /**
  * The header's text: the notebook's `metadata.title` or else the file name
  * without its extension; the kernel (its display name, else its language);
- * who started it (the first agent that wrote a cell) and the earliest time an
- * agent wrote one; and the cell count.
+ * who started it (the agent of the earliest-dated agent cell) and when; and the cell count.
  */
 export function journalHeader(
   metadata: unknown,
@@ -442,13 +441,20 @@ export function journalHeader(
   const kernelspec = isRecord(meta.kernelspec) ? meta.kernelspec : {};
   const info = isRecord(meta.language_info) ? meta.language_info : {};
   const kernel = text(kernelspec.display_name) ?? text(info.name) ?? text(kernelspec.language);
-  const by = agentNames(cells)[0];
+  // The agent and time of the earliest-dated agent cell; with no dates, the
+  // first agent in document order.
+  let by: string | undefined;
   let first: number | undefined;
   for (const c of cells) {
-    const at = text(agentMetadata(c)?.at);
+    const agent = agentMetadata(c);
+    const at = text(agent?.at);
     const t = at ? Date.parse(at) : NaN;
-    if (!Number.isNaN(t) && (first === undefined || t < first)) first = t;
+    if (!Number.isNaN(t) && (first === undefined || t < first)) {
+      first = t;
+      by = text(agent?.by);
+    }
   }
+  by ??= agentNames(cells)[0];
   const details: string[] = [];
   if (kernel) details.push(kernel);
   if (by || first !== undefined) {

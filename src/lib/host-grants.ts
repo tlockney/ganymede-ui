@@ -18,9 +18,17 @@ export type HostDefaults = Required<HostGrant>;
 
 export type HostGrants = { path: string; grant: HostGrant; defaults: HostDefaults };
 
-/** Whether `backend` can keep host API grants: only a Ganymede server can. */
+/**
+ * Whether `backend` can keep host API grants: only a Ganymede server can,
+ * and not a connected machine's (#701): the app's mount doesn't forward
+ * `api/host`, and a machine's own apps decide what its notebooks may reach.
+ */
 export function hostGrantsAvailable(backend: Backend | undefined): boolean {
-  return backend?.config.kind === 'ganymede' && backend.config.kernels !== 'page';
+  return (
+    backend?.config.kind === 'ganymede' &&
+    backend.config.kernels !== 'page' &&
+    !backend.config.machine
+  );
 }
 
 function url(backend: Backend, path: string): [string, ServerConnection.ISettings] {

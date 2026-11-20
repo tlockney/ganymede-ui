@@ -173,7 +173,11 @@ final class Recents {
     static let shared = Recents()
     private(set) var urls = NSDocumentController.shared.recentDocumentURLs
 
-    func note(_ url: URL) {
+    /// Records a notebook opened in `place`. A machine's notebooks are not
+    /// noted: these Recents, File > Open Recent and Spotlight keep local
+    /// file URLs (the page keeps a machine's own Recents, by place).
+    func note(_ url: URL, in place: Place = .thisDevice) {
+        guard place.indexesLocally else { return }
         NSDocumentController.shared.noteNewRecentDocumentURL(url)
         urls = NSDocumentController.shared.recentDocumentURLs
         // Recents are in Spotlight (#305).
