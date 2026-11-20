@@ -440,18 +440,7 @@ private struct KernelSettings: View {
             Section {
                 if let specs {
                     ForEach(specs.specs) { spec in
-                        HStack {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text(spec.displayName)
-                                Text([spec.name, spec.language].compactMap { $0 }.joined(separator: " · "))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            if spec.name == specs.defaultName {
-                                Text("Default").font(.caption).foregroundStyle(.secondary)
-                            }
-                        }
+                        KernelSpecRow(spec: spec, isDefault: spec.name == specs.defaultName)
                     }
                     if specs.specs.isEmpty {
                         // A remote's list comes through the server's gateway,
@@ -506,6 +495,68 @@ private struct KernelSettings: View {
             if Task.isCancelled { return }
             specs = nil
             self.error = "Couldn’t list the kernels: \(error.localizedDescription)"
+        }
+    }
+}
+
+/// One installed kernel: its names, and a disclosure with the fields the
+/// kernelspec sets (#694).
+private struct KernelSpecRow: View {
+    let spec: KernelSpecs.Spec
+    let isDefault: Bool
+
+    private var summary: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(spec.displayName)
+                Text([spec.name, spec.language].compactMap { $0 }.joined(separator: " · "))
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            Spacer()
+            if isDefault {
+                Text("Default").font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    var body: some View {
+        if spec.hasDetails {
+            DisclosureGroup {
+                VStack(alignment: .leading, spacing: 6) {
+                    if let mode = spec.interruptMode { detail("Interrupt mode", mode) }
+                    if let version = spec.protocolVersion { detail("Protocol version", version) }
+                    if let dir = spec.resourceDir { detail("Folder", dir, monospaced: true) }
+                    if !spec.argv.isEmpty {
+                        let command = spec.argv.joined(separator: " ")
+                        HStack(alignment: .firstTextBaseline) {
+                            detail("Command", command, monospaced: true)
+                            Spacer()
+                            Button("Copy") {
+                                NSPasteboard.general.clearContents()
+                                NSPasteboard.general.setString(command, forType: .string)
+                            }
+                            .accessibilityLabel("Copy the command for \(spec.displayName)")
+                        }
+                    }
+                    ForEach(spec.env) { detail("env \($0.key)", $0.value, monospaced: true) }
+                    ForEach(spec.metadata) { detail("metadata \($0.key)", $0.value) }
+                }
+                .padding(.vertical, 4)
+            } label: {
+                summary
+            }
+        } else {
+            summary
+        }
+    }
+
+    private func detail(_ title: String, _ value: String, monospaced: Bool = false) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(title).font(.caption).foregroundStyle(.secondary)
+            Text(value)
+                .font(monospaced ? .system(.caption, design: .monospaced) : .caption)
+                .textSelection(.enabled)
         }
     }
 }
