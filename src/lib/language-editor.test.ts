@@ -100,7 +100,7 @@ const type = (i: number, text: string) => {
 };
 const press = (i: number, key: string, init: KeyboardEventInit = {}) => {
   // Lumino reads `keyCode`, which jsdom leaves at 0 unless given.
-  const keyCode = key === 'Escape' ? 27 : 0;
+  const keyCode = { Escape: 27, F2: 113, F12: 123 }[key] ?? 0;
   const event = new KeyboardEvent('keydown', {
     key,
     keyCode,
@@ -233,6 +233,20 @@ describe('signature help in a cell', () => {
     expect(tooltip()).toBeNull();
   });
 
+  it('consumes Escape only while signature help shows', async () => {
+    const k = (await start())!;
+    // Nothing shows: this keymap leaves Escape to the others.
+    expect(press(2, 'Escape').defaultPrevented).toBe(false);
+    type(2, '(');
+    await settle();
+    k.reply({ signature: SIG });
+    await settle();
+    expect(tooltip()).not.toBeNull();
+    expect(press(2, 'Escape').defaultPrevented).toBe(true);
+    expect(tooltip()).toBeNull();
+    expect(press(2, 'Escape').defaultPrevented).toBe(false);
+  });
+
   it('closes when the cell loses focus', async () => {
     await start({ answer: () => ({ signature: SIG }) });
     type(2, '(');
@@ -285,6 +299,19 @@ describe('definition and rename keys', () => {
     expect(notebook.activeCellIndex).toBe(0);
     expect(view(0).state.sliceDoc(9, 12)).toBe('add');
     expect(view(0).state.selection.main.from).toBe(9);
+  });
+
+  it('follows a rebinding of F12 in the Shortcuts sheet', async () => {
+    const { resetKeys, setKeys } = await import('./shortcuts');
+    const k = (await start({ answer: () => ({ locations: [] }) }))!;
+    try {
+      setKeys('go-to-definition', [['Accel Shift D']]);
+      expect(press(2, 'F12').defaultPrevented).toBe(false);
+      await settle();
+      expect(requests(k)).toEqual([]);
+    } finally {
+      resetKeys();
+    }
   });
 
   it('Ctrl-click asks for the definition at the click, and a plain click does not', async () => {

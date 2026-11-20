@@ -7,8 +7,9 @@
  *
  * Only code cells of a TypeScript or JavaScript kernel are checked. A
  * kernel that doesn't answer the comm closes it, and nothing is shown for
- * that kernel: the in-app kernel, other languages, and a cdp-kernel started
- * with `--no-language-service`. A restart closes the comm without telling
+ * that kernel: other languages, and a cdp-kernel started with
+ * `--no-language-service`. The in-app and browser kernels answer, from the
+ * TypeScript they load (`kernel-typescript.ts`, #684). A restart closes the comm without telling
  * us; it opens again once the kernel is back. The switch ("Show or Hide
  * Type Errors") is the app's, kept in local storage and on by default.
  */

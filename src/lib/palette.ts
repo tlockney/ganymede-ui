@@ -66,6 +66,9 @@ const LEFT_OUT = new Set([
   'command-palette',
   'save',
   'show-shortcuts',
+  // Listed below, one of them with a prompt.
+  'go-to-definition',
+  'rename-symbol',
 ]);
 
 const keysOf = (id: string) => {
@@ -143,13 +146,9 @@ export function paletteEntries(context: PaletteContext): PaletteEntry[] {
       .filter(p => p !== context.path)
       // The folder tells two notebooks of one name apart, and filters.
       .map(p => app('open', `Open ${nameOf(p)}`, recentGroup(p), { arg: p, keys: '' })),
-    // Through the kernel's language service (#676); F12 and F2 in a cell.
-    app('go-to-definition', 'Go to Definition', 'Cell', { disabled: !cells, keys: 'F12' }),
-    app('rename-symbol', 'Rename Symbol…', 'Cell', {
-      disabled: !cells,
-      prompt: 'New name',
-      keys: 'F2',
-    }),
+    // Through the kernel's language service (#676); F12 and F2 in a cell by default.
+    app('go-to-definition', 'Go to Definition', 'Cell', { disabled: !cells }),
+    app('rename-symbol', 'Rename Symbol…', 'Cell', { disabled: !cells, prompt: 'New name' }),
     app('toggle-journal', context.journal ? 'Open as Notebook' : 'View as Journal', 'View', {
       disabled: !open,
     }),

@@ -109,6 +109,9 @@ export function attachKernelComm(session: ISessionContext, options: KernelCommOp
         options.onMessage(msg.content.data);
       };
       c.onClose = () => {
+        // Defensive: `stop` swaps this handler for a no-op, so the close of
+        // a comm that is no longer current should not reach here. If one
+        // ever does, it must not stop the comm that replaced it.
         if (comm !== c) return;
         // A comm that never answered is a refusal: for this kernel, that's
         // all. One that did was closed under us, as when the runtime exits

@@ -824,7 +824,11 @@ browser:
 - **Go to definition.** ⌘-click (Ctrl-click off the Mac) on a name, or F12
   with the cursor in it, jumps to where the notebook declares it and
   selects the name there. A name declared outside the notebook, in a
-  package or in the runtime, does nothing.
+  package or in the runtime, does nothing. In a code cell whose kernel
+  answers, ⌘-click (Ctrl-click elsewhere) goes to the definition instead
+  of adding a cursor, CodeMirror's usual meaning of it; Alt-drag still
+  makes a rectangular selection. Other cells, and the other mouse
+  buttons, keep the usual clicks.
 - **Rename symbol.** F2 with the cursor in a name asks for the new name;
   Enter renames it, Esc cancels. The declaration and its uses change in
   every cell they are in, as one change per cell, so ⌘Z in a cell takes
@@ -843,8 +847,11 @@ the kernel in the browser included; against another kernel, or a
 cdp-kernel started with `--no-language-service`, nothing shows and the
 keys do nothing. They need no setting: nothing runs
 until you press a key or click. A kernel that can't tell yet (TypeScript is
-still loading, or the request took too long) shows no signature and moves
-nowhere; a rename then says the service can't tell. If a cell changes
+still loading, or the kernel's own time budget for the request ran out)
+shows no signature and moves nowhere; a rename then says the service
+can't tell. A kernel that doesn't answer at all within 10 seconds is
+treated as not answering: the request is dropped, and a rename does
+nothing, with no notice. If a cell changes
 while the kernel is answering, the answer is dropped, so a rename never
 lands on text it wasn't made for.
 

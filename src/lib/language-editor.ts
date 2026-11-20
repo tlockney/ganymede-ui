@@ -7,8 +7,11 @@
  *   is typed, asks again as the cursor or text moves while it shows, and
  *   closes on Escape, on losing focus, or when the cursor leaves the call
  *   (the kernel answers null).
- * - Cmd-click (Ctrl-click elsewhere) and F12 go to the definition.
- * - F2 renames the symbol.
+ * - Cmd-click (Ctrl-click elsewhere) and F12 go to the definition. In a
+ *   cell the kernel answers for, the click replaces CodeMirror's
+ *   add-a-cursor click; Alt-drag still selects a rectangle.
+ * - F2 renames the symbol. F12 and F2 are the defaults of the shortcuts
+ *   table's `go-to-definition` and `rename-symbol`, so a rebinding applies.
  */
 import { Prec, StateEffect, StateField } from '@codemirror/state';
 import { EditorView, keymap, showTooltip, type Tooltip } from '@codemirror/view';
@@ -24,8 +27,7 @@ import {
   type LanguageService,
   type SignatureHelp,
 } from './language-service';
-
-const IS_MAC = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform);
+import { IS_MAC, matches } from './shortcuts';
 
 /** The tooltip's content: the label with the active parameter marked, then the documentation. */
 export function signatureDom(sig: SignatureHelp): HTMLElement {
@@ -188,30 +190,27 @@ export function languageExtension(service: LanguageService, cell: Cell) {
         return true;
       },
     }),
+    // The keys' bindings are the shortcuts table's, which a person can change.
     Prec.highest(
-      keymap.of([
-        { key: 'Escape', run: view => hide(view) },
-        {
-          key: 'F12',
-          run: () => {
-            if (!service.available) return false;
+      EditorView.domEventHandlers({
+        keydown: e => {
+          if (!service.available) return false;
+          if (matches(e, 'go-to-definition')) {
             void service.goToDefinition(cell);
             return true;
-          },
-        },
-        {
-          key: 'F2',
-          run: () => {
-            if (!service.available) return false;
+          }
+          if (matches(e, 'rename-symbol')) {
             // After the key's event has bubbled: the notebook's own keydown
             // handler puts the focus back in the editor, which would take it
             // from the input.
             setTimeout(() => void service.rename(undefined, cell), 0);
             return true;
-          },
+          }
+          return false;
         },
-      ]),
+      }),
     ),
+    Prec.highest(keymap.of([{ key: 'Escape', run: view => hide(view) }])),
   ];
 }
 

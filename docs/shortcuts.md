@@ -16,7 +16,8 @@ and the toolbar's cell type picker changes a cell's type with the mouse.
 
 `⇧⌘P` (`Ctrl+Shift+P` on Windows and Linux) opens the command palette:
 every command in the tables below that works outside a cell editor, plus
-New Notebook, Save, Rename…, Download, Publish as Web Page…, Export as
+Go to Definition and Rename Symbol… (the `F12` and `F2` of a code cell,
+[described here](apps.md#signatures-definitions-and-renames)), New Notebook, Save, Rename…, Download, Publish as Web Page…, Export as
 Markdown, Export as Script, Trust, Run All, Run with Parameters…, Clear All
 Outputs, Interrupt,
 Restart, a Change Kernel entry for each kernel, and the notebooks you
@@ -105,6 +106,8 @@ origin across launches, so changes there last.
 | Leave the cell (command mode) | `Esc`, `⌃M` | `Esc`, `Ctrl+M` |
 | Complete                      | `⇥`         | `Tab`           |
 | Show documentation            | `⇧⇥`        | `Shift+Tab`     |
+| Go to Definition              | `F12`       | `F12`           |
+| Rename Symbol…                | `F2`        | `F2`            |
 
 ### App
 

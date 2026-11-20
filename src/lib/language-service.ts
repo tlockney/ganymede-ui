@@ -405,6 +405,10 @@ export function createLanguageService(
       if (disposed) return;
       disposed = true;
       link.dispose();
+      // Defensive: disposing the link normally drops the comm, which calls
+      // `onClosed` and settles these already. Settling here too keeps a
+      // request's timer and promise from outliving the service if the
+      // link does not.
       settleAll();
     },
   };
