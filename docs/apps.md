@@ -116,7 +116,7 @@ shown or hidden, its tab and its expanded folders across launches.
   folder, the command that starts it (with a Copy button), `env` and
   `metadata`. A field the server leaves out or sends empty is not shown.
   The folder appears once the app's bundled server includes
-  [tlockney/ganymede#890](https://github.com/tlockney/ganymede/pull/890),
+  [tlockney/ganymede#890](https://github.com/tlockney/ganymede/issues/890),
   which Ganymede v0.13.1 (the version the app pins) lacks. Kernels on a
   remote, listed through the gateway, don't report it.
 
