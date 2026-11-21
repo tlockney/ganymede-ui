@@ -830,6 +830,12 @@ On the Mac a machine's window is the app's native window: the same
 sidebar (Files, Search, Running, Outline and Journals), toolbar,
 inspector, menus and tabs as for this Mac, listing the machine's files.
 Open, New Notebook, New Folder and Rename work on the machine's files.
+When the machine stops answering, the Files tab shows "_machine_ is
+offline. Reconnecting…" instead of an error per folder, the sidebar's New
+Notebook, New Folder, Rename, Duplicate and Delete are dimmed, and the
+folders list again once it answers. When it doesn't answer, a failed file
+operation says "_machine_ didn't answer" (or "_machine_ isn't connected to
+this Mac" when it isn't connected).
 Delete removes a machine's file for good (its server keeps no Trash), so
 it always asks first. The title is the notebook or folder and the subtitle
 reads "on _machine_". These work on this Mac's disk, so a machine's window

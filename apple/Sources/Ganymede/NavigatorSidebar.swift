@@ -75,7 +75,10 @@ struct NavigatorSidebar: View {
             Divider()
             switch shownTab {
             case .files:
-                FolderSidebar(folder: folder, source: source, place: place, page: page, openFile: openFile)
+                FolderSidebar(
+                    folder: folder, source: source, place: place,
+                    machineName: place.machineID.flatMap(model.machineName(_:)),
+                    page: page, openFile: openFile)
             case .search:
                 SearchNavigator(folder: folder, source: source, place: place, page: page, openFile: openFile)
             case .running:

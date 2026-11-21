@@ -58,6 +58,54 @@ enum FileSourceError: LocalizedError, Equatable {
     static func isValidName(_ name: String) -> Bool {
         !name.isEmpty && !name.contains("/") && name != "." && name != ".."
     }
+
+    /// What a machine's file request failing comes to, in words (#753): the
+    /// mount answers 502 (and a proxy 503 or 504) when the machine doesn't
+    /// answer, and a network error means the same; its 404 "No machine … is
+    /// mounted" means the machine isn't connected here. Any other error
+    /// keeps its own description.
+    /// `machine` nil (no name known) reads "The machine".
+    static func machineMessage(_ error: Error, machine: String?) -> String {
+        let subject = machine.map { "“\($0)”" } ?? "The machine"
+        if let error = error as? FileSourceError, case .server(let status, let message) = error {
+            if [502, 503, 504].contains(status) { return "\(subject) didn’t answer." }
+            if status == 404, isNotMounted(message) { return "\(subject) isn’t connected to this Mac." }
+        } else if let error = error as? URLError, error.code != .cancelled {
+            return "\(subject) didn’t answer."
+        }
+        return error.localizedDescription
+    }
+
+    /// The words for an error from a listing or file operation in `place`:
+    /// a machine's through `machineMessage`, this device's as they are.
+    static func message(_ error: Error, place: Place, machineName: String?) -> String {
+        guard place.isMachine else { return error.localizedDescription }
+        return machineMessage(error, machine: machineName)
+    }
+
+    /// Whether a 404's message is the mount's for a machine it hasn't
+    /// mounted: exactly its form, `No machine "<id>" is mounted`, so a
+    /// contents 404 naming a file that happens to say "no machine" isn't.
+    static func isNotMounted(_ message: String?) -> Bool {
+        guard let text = message?.trimmingCharacters(in: .whitespacesAndNewlines) else { return false }
+        return text.hasPrefix("No machine ") && text.hasSuffix(" is mounted")
+    }
+
+    /// The same for a 404's raw body: its JSON `message`, else its text.
+    static func isNotMounted(body: Data) -> Bool {
+        let json = try? JSONSerialization.jsonObject(with: body) as? [String: Any]
+        return isNotMounted((json?["message"] as? String) ?? String(decoding: body, as: UTF8.self))
+    }
+}
+
+/// Which file operations a machine's sidebar allows (#753).
+enum FileChanges {
+    /// Whether the menu items that change files are enabled: not while one
+    /// is running, and not while a machine doesn't answer. This device is
+    /// always reachable.
+    static func allowed(place: Place, reachable: Bool, busy: Bool) -> Bool {
+        !busy && (reachable || !place.isMachine)
+    }
 }
 
 // MARK: - This device
@@ -288,7 +336,13 @@ struct MachineFileSource: FileSource {
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         let body = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
         guard (200..<300).contains(status) else {
-            throw FileSourceError.server(status: status, message: (body as? [String: Any])?["message"] as? String)
+            var message = (body as? [String: Any])?["message"] as? String
+            // The mount's 404 for an unmounted machine may be plain text.
+            if message == nil, status == 404 {
+                let text = String(decoding: data, as: UTF8.self)
+                if FileSourceError.isNotMounted(text) { message = text }
+            }
+            throw FileSourceError.server(status: status, message: message)
         }
         return body
     }

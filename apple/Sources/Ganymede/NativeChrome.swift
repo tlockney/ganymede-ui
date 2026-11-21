@@ -17,6 +17,8 @@ struct FolderSidebar: View {
     /// The window's place: a machine's items can't be revealed in the
     /// Finder or opened in the text editor, which read this Mac's disk (#740).
     var place: Place = .thisDevice
+    /// The machine's name for words about it, when the window is a machine's.
+    var machineName: String?
     var page: PageModel
     let openFile: (String) -> Void
     @Environment(\.openWindow) private var openWindow
@@ -29,8 +31,15 @@ struct FolderSidebar: View {
     /// so two quick ones can't take the same name.
     @State private var busy = false
 
+    /// Whether the window's machine answers (always true for this device).
+    private var reachable: Bool { PlaceReachability.shared.isReachable(place) }
+
     var body: some View {
         List {
+            if !reachable {
+                Text(machineName.map { "“\($0)” is offline. Reconnecting…" } ?? "The machine is offline. Reconnecting…")
+                    .foregroundStyle(.secondary).font(.caption)
+            }
             Section(folder.lastPathComponent.isEmpty ? (place.isMachine ? "/" : folder.path) : folder.lastPathComponent) {
                 FolderContents(folder: folder, source: source, actions: actions, generation: generation)
             }
@@ -38,15 +47,31 @@ struct FolderSidebar: View {
         .listStyle(.sidebar)
         .contextMenu {
             Button("New Notebook") { page.run("new-notebook", arg: source.serverPath(folder)) }
+                .disabled(!reachable)
             Button("New Folder") { newFolder(in: folder) }
-                .disabled(busy)
+                .disabled(!canChange)
         }
+        // The machine answers again: list everything again.
+        .onChange(of: reachable) { if reachable { generation += 1 } }
         // A notebook made or saved by the page shows up, and so do changes
         // made outside the app when it comes back to the front.
         .onChange(of: page.state.path) { generation += 1 }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             generation += 1
         }
+    }
+
+    private var canChange: Bool { FileChanges.allowed(place: place, reachable: reachable, busy: busy) }
+
+    /// A file operation's error, in words for a machine's window.
+    private func show(_ error: Error) {
+        guard place.isMachine else {
+            NSAlert(error: error).runModal()
+            return
+        }
+        let alert = NSAlert()
+        alert.messageText = FileSourceError.message(error, place: place, machineName: machineName)
+        alert.runModal()
     }
 
     private var actions: FolderActions {
@@ -73,7 +98,9 @@ struct FolderSidebar: View {
             duplicate: duplicate,
             trash: trash,
             place: place,
-            busy: busy
+            canChange: canChange,
+            offline: !reachable,
+            machineName: machineName
         )
     }
 
@@ -87,7 +114,11 @@ struct FolderSidebar: View {
 
     /// Runs one file operation at a time.
     private func exclusively(_ work: @escaping @MainActor () async -> Void) {
-        guard !busy else { return }
+        guard canChange else {
+            // The machine went offline while a dialog asked: say so, not nothing.
+            if !busy, !reachable { show(FileSourceError.server(status: 502, message: nil)) }
+            return
+        }
         busy = true
         Task {
             await work()
@@ -101,7 +132,7 @@ struct FolderSidebar: View {
                 _ = try await source.newFolder(in: parent)
                 generation += 1
             } catch {
-                NSAlert(error: error).runModal()
+                show(error)
             }
         }
     }
@@ -134,7 +165,7 @@ struct FolderSidebar: View {
                     page.run("open", arg: moved)
                 }
             } catch {
-                NSAlert(error: error).runModal()
+                show(error)
             }
         }
     }
@@ -145,7 +176,7 @@ struct FolderSidebar: View {
                 _ = try await source.duplicate(entry.url)
                 generation += 1
             } catch {
-                NSAlert(error: error).runModal()
+                show(error)
             }
         }
     }
@@ -171,7 +202,7 @@ struct FolderSidebar: View {
                 // What the page shows now, not when the person confirmed.
                 if FolderEntry.path(page.state.path, isAt: entry.serverPath) { page.run("close") }
             } catch {
-                NSAlert(error: error).runModal()
+                show(error)
             }
         }
     }
@@ -193,8 +224,12 @@ struct FolderActions {
     var duplicate: (FolderEntry) -> Void
     var trash: (FolderEntry) -> Void
     var place: Place = .thisDevice
-    /// A file operation is running.
-    var busy = false
+    /// Whether the menu items that change files are enabled: not while a
+    /// file operation runs or the machine is offline (#753).
+    var canChange = true
+    /// The window's machine doesn't answer.
+    var offline = false
+    var machineName: String?
 }
 
 /// One folder's items; a subfolder lists its own when it is expanded.
@@ -245,7 +280,10 @@ private struct FolderContents: View {
                 }
             }
             if let error {
-                Text(error).foregroundStyle(.secondary).font(.caption)
+                // The sidebar's offline line says it once for all folders.
+                if !actions.offline {
+                    Text(error).foregroundStyle(.secondary).font(.caption)
+                }
             } else if entries.isEmpty {
                 Text("No files").foregroundStyle(.secondary)
             }
@@ -263,7 +301,7 @@ private struct FolderContents: View {
             error = nil
         } catch {
             guard !Task.isCancelled else { return }
-            self.error = error.localizedDescription
+            self.error = FileSourceError.message(error, place: actions.place, machineName: actions.machineName)
         }
     }
 
@@ -272,8 +310,9 @@ private struct FolderContents: View {
         if entry.isDirectory {
             Button("Open in New Tab") { actions.openInNewTab(entry) }
             Button("New Notebook Here") { actions.newNotebook(entry.url) }
+                .disabled(actions.offline)
             Button("New Folder Here") { actions.newFolder(entry.url) }
-                .disabled(actions.busy)
+                .disabled(!actions.canChange)
         } else {
             Button("Open") { actions.open(entry) }
                 .disabled(!entry.canOpen(in: actions.place))
@@ -283,18 +322,18 @@ private struct FolderContents: View {
         }
         Divider()
         Button("Rename…") { actions.rename(entry) }
-            .disabled(actions.busy)
+            .disabled(!actions.canChange)
         // A machine's contents API copies files, not folders.
         if actions.place.isThisDevice || !entry.isDirectory {
             Button("Duplicate") { actions.duplicate(entry) }
-                .disabled(actions.busy)
+                .disabled(!actions.canChange)
         }
         if actions.place.isThisDevice {
             Button("Show in Finder") { actions.reveal(entry) }
         }
         Divider()
         Button(RemoveAction(place: actions.place).menuTitle) { actions.trash(entry) }
-            .disabled(actions.busy)
+            .disabled(!actions.canChange)
     }
 }
 

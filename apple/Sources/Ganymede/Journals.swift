@@ -183,7 +183,7 @@ enum Journals {
         if status == 404 {
             // The mount's own 404 for a machine it hasn't mounted (yet) isn't
             // an older server, and may be fixed by a reconnect: keep asking.
-            if String(decoding: body, as: UTF8.self).localizedCaseInsensitiveContains("No machine") {
+            if FileSourceError.isNotMounted(body: body) {
                 return .error("This machine isn’t mounted.")
             }
             return .unsupported

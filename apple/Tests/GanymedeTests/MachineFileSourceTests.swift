@@ -329,4 +329,96 @@ final class MachineFileSourceTests: XCTestCase {
         XCTAssertEqual(q.message, "“Io” is open in this window.")
         XCTAssertEqual(q.detail, "Move it to the Trash and close it?")
     }
+
+    // MARK: Words for a machine that doesn't answer (#753)
+
+    func testMachineMessageSaysDidntAnswerForGatewayStatusesAndNetworkErrors() {
+        for status in [502, 503, 504] {
+            XCTAssertEqual(
+                FileSourceError.machineMessage(FileSourceError.server(status: status, message: "Bad Gateway"), machine: "Io"),
+                "“Io” didn’t answer.", "status \(status)")
+        }
+        for code in [URLError.Code.timedOut, .cannotConnectToHost, .networkConnectionLost, .notConnectedToInternet] {
+            XCTAssertEqual(
+                FileSourceError.machineMessage(URLError(code), machine: "Io"), "“Io” didn’t answer.")
+        }
+    }
+
+    func testMachineMessageSaysNotConnectedForTheMountsNotMounted404() {
+        let error = FileSourceError.server(status: 404, message: "No machine abc is mounted")
+        XCTAssertEqual(FileSourceError.machineMessage(error, machine: "Io"), "“Io” isn’t connected to this Mac.")
+    }
+
+    func testOnlyTheMountsOwnFormIsNotMounted() {
+        XCTAssertTrue(FileSourceError.isNotMounted(#"No machine "abc" is mounted"#))
+        XCTAssertTrue(FileSourceError.isNotMounted("No machine abc is mounted\n"))
+        XCTAssertFalse(FileSourceError.isNotMounted("no such file or directory: notes/No machine logs.ipynb"))
+        XCTAssertFalse(FileSourceError.isNotMounted(nil))
+        let missing = FileSourceError.server(status: 404, message: "no such file or directory: No machine logs.ipynb")
+        XCTAssertEqual(
+            FileSourceError.machineMessage(missing, machine: "Io"), missing.localizedDescription)
+        XCTAssertTrue(FileSourceError.isNotMounted(body: Data(#"{"message":"No machine \"abc\" is mounted"}"#.utf8)))
+        XCTAssertFalse(FileSourceError.isNotMounted(body: Data(#"{"message":"Not Found"}"#.utf8)))
+    }
+
+    func testAnUnnamedMachineIsPlainWords() {
+        let error = FileSourceError.server(status: 502, message: nil)
+        XCTAssertEqual(
+            FileSourceError.message(error, place: .machine(id), machineName: nil), "The machine didn’t answer.")
+    }
+
+    func testMachineMessageKeepsOtherErrorsAsTheyAre() {
+        let others: [Error] = [
+            FileSourceError.server(status: 404, message: "No such file or directory"),
+            FileSourceError.server(status: 404, message: nil),
+            FileSourceError.server(status: 403, message: "forbidden"),
+            FileSourceError.server(status: 500, message: nil),
+            FileSourceError.badName("a/b"),
+            FileSourceError.notThisMachine,
+            URLError(.cancelled),
+        ]
+        for error in others {
+            XCTAssertEqual(FileSourceError.machineMessage(error, machine: "Io"), error.localizedDescription)
+        }
+    }
+
+    func testThisDeviceErrorsAreNotRewritten() {
+        let errors: [Error] = [
+            FileSourceError.server(status: 502, message: nil),
+            FileSourceError.server(status: 404, message: "No machine abc is mounted"),
+            URLError(.timedOut),
+        ]
+        for error in errors {
+            XCTAssertEqual(
+                FileSourceError.message(error, place: .thisDevice, machineName: nil), error.localizedDescription)
+        }
+        XCTAssertEqual(
+            FileSourceError.message(FileSourceError.server(status: 502, message: nil), place: .machine(id), machineName: "Io"),
+            "“Io” didn’t answer.")
+        XCTAssertEqual(
+            FileSourceError.message(URLError(.timedOut), place: .machine(id), machineName: nil),
+            "The machine didn’t answer.")
+    }
+
+    func testAPlainTextNotMounted404IsToldApart() async {
+        let source = MachineFileSource(id: id, server: server, send: { request in
+            let response = HTTPURLResponse(url: request.url!, statusCode: 404, httpVersion: nil, headerFields: nil)!
+            return (Data("No machine abc is mounted".utf8), response)
+        })
+        var thrown: Error?
+        do { _ = try await source.list(url("/")) } catch { thrown = error }
+        let message = thrown.map { FileSourceError.machineMessage($0, machine: "Io") }
+        XCTAssertEqual(message, "“Io” isn’t connected to this Mac.")
+    }
+
+    func testFileChangesWaitForABusyOperationAndAnOfflineMachine() {
+        let machine = Place.machine(id)
+        XCTAssertTrue(FileChanges.allowed(place: machine, reachable: true, busy: false))
+        XCTAssertFalse(FileChanges.allowed(place: machine, reachable: false, busy: false))
+        XCTAssertFalse(FileChanges.allowed(place: machine, reachable: true, busy: true))
+        XCTAssertFalse(FileChanges.allowed(place: machine, reachable: false, busy: true))
+        XCTAssertTrue(FileChanges.allowed(place: .thisDevice, reachable: true, busy: false))
+        XCTAssertTrue(FileChanges.allowed(place: .thisDevice, reachable: false, busy: false))
+        XCTAssertFalse(FileChanges.allowed(place: .thisDevice, reachable: true, busy: true))
+    }
 }
