@@ -147,6 +147,19 @@ final class EngineBenchmarkRunTests: XCTestCase {
         XCTAssertNotNil(EngineBenchmark.addressSpaceProblem(bytes: 1 << 60))
     }
 
+    /// The check reserves the 12 GB V8's caged heap first asks for, and a
+    /// failed reservation becomes the reason, not the system's error text.
+    func testTheV8CheckReservesTwelveGigabytesAndExplainsAFailure() throws {
+        var sizes: [Int] = []
+        let problem = EngineBenchmark.v8Problem { bytes in
+            sizes.append(bytes)
+            return "Cannot allocate memory"
+        }
+        XCTAssertEqual(sizes, [12 << 30])
+        XCTAssertTrue(try XCTUnwrap(problem).hasPrefix("V8 can't run here: it needs about 12 GB of address space"))
+        XCTAssertNil(EngineBenchmark.v8Problem { _ in nil })
+    }
+
     func testLeavingTheScreenMarksOnlyThatRun() async throws {
         let probe = Probe()
         let benchmark = model(v8: false, probe: probe)

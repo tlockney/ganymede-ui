@@ -35,6 +35,8 @@ final class EngineBenchmark {
 
         static let live = Engines(
             v8Available: ganymede_v8_bench_available() == 1,
+            // The real check. Tests inject their own, and on the Mac this one
+            // passes, so no test notices if it's dropped.
             v8Blocked: { EngineBenchmark.v8AddressSpaceProblem },
             folder: EngineBenchmark.benchFolder,
             runV8: { await EngineBenchmark.runV8(config: $0) },
@@ -193,11 +195,18 @@ final class EngineBenchmark {
     /// reserve the 12 GB (nothing is committed) and let it go again: a
     /// failure becomes a message instead of a crash. Checked once, before
     /// the first run starts V8; after that V8 holds its own.
-    nonisolated static let v8AddressSpaceProblem: String? =
-        addressSpaceProblem(bytes: 12 << 30).map { _ in
+    nonisolated static let v8AddressSpaceProblem: String? = v8Problem(reserve: addressSpaceProblem)
+
+    /// The address space V8's first caged heap reservation takes.
+    nonisolated static let v8ReservationBytes = 12 << 30
+
+    /// Why V8 can't start, when `reserve` can't reserve what V8 will.
+    nonisolated static func v8Problem(reserve: (Int) -> String?) -> String? {
+        reserve(v8ReservationBytes).map { _ in
             "V8 can't run here: it needs about 12 GB of address space, more than this app gets "
                 + "without the extended virtual addressing entitlement. The WebKit half runs without it."
         }
+    }
 
     /// Reserves `bytes` of address space with no access and nothing
     /// committed, then releases it: nil when that worked, else the reason.

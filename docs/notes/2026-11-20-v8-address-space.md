@@ -14,11 +14,14 @@ aborts the process when the reservation fails. The Mac has no such limit.
 `EngineBenchmark.v8AddressSpaceProblem` now reserves 12 GB (`PROT_NONE`,
 nothing committed) and frees it, once, before the first run starts V8. If
 that fails, the run skips V8 with the reason as its error report
-(`Engines.v8Blocked`, which every `Engines` must pass, so `.live` can't
-drop it unnoticed), the results list shows it, and the WebKit half runs as
-before. `EngineBenchmarkRunTests` covers a blocked V8, the check passing on
-the Mac and the simulator, and an impossible reservation reported as a
-problem. docs/apps.md says what a device without the address space shows.
+(`Engines.v8Blocked`, which every `Engines` must pass), the results list
+shows it, and the WebKit half runs as before. `EngineBenchmarkRunTests`
+covers a blocked V8, the size the check reserves and the reason it gives,
+the check passing on the Mac and the simulator, and an impossible
+reservation reported as a problem. That `.live` passes the real check
+can't be told apart on the Mac, where it passes; a comment there says so.
+The blocked path on a device is a by-hand check on #755. docs/apps.md
+says what a device without the address space shows.
 
 Still to do on #755: the entitlement on Ganymede-iOS, once the App ID has
 the capability and the App Store profile is regenerated, then a re-run on
