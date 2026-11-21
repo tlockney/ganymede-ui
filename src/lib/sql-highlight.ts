@@ -50,11 +50,22 @@ function isSqlTagged(node: SyntaxNodeRef, doc: Read): boolean {
   return lastName(node.node.prevSibling, doc) === 'sql';
 }
 
+/**
+ * The first node at or before `node` that is not a comment: comments are
+ * siblings in the tree, as in `query(\n  // note\n  `…`)` (#766).
+ */
+function beforeComments(node: SyntaxNode | null): SyntaxNode | null {
+  while (node?.name === 'LineComment' || node?.name === 'BlockComment') node = node.prevSibling;
+  return node;
+}
+
 /** Whether a template string is the first argument of `jupyter.sql.query(`…`)`. */
 function isSqlQueryArgument(node: SyntaxNodeRef, doc: Read): boolean {
   const args = node.node.parent;
-  if (args?.name !== 'ArgList' || node.node.prevSibling?.name !== '(') return false;
-  let callee = args.prevSibling;
+  if (args?.name !== 'ArgList') return false;
+  if (beforeComments(node.node.prevSibling)?.name !== '(') return false;
+  let callee = beforeComments(args.prevSibling);
+  if (callee?.name === '?.') callee = beforeComments(callee.prevSibling); // `query?.(`
   if (callee?.name === 'InstantiationExpression') callee = callee.firstChild;
   if (callee?.name !== 'MemberExpression') return false;
   const method = callee.lastChild;
