@@ -92,73 +92,93 @@ struct IPadSidebar: View {
         }
     }
 
+    // `body` is split into steps: as one chain it is too much for the type
+    // checker.
     var body: some View {
-        List {
-            placesSection
-            if tabbed {
-                navigator
-            } else {
-                if query.trimmingCharacters(in: .whitespaces).isEmpty {
-                    // Recents are this device's notebooks, not a machine's.
-                    if place.indexesLocally { recentsSection }
-                    filesSection
-                    journalsSection
-                } else {
-                    searchResults
-                }
-                runningSection
+        watched
+            .alert("Rename", isPresented: renamingShown, presenting: renaming) { entry in
+                TextField("Name", text: $newName)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                Button("Rename") { rename(entry, to: newName) }
+                Button("Cancel", role: .cancel) {}
             }
+            .confirmationDialog(
+                deleteAlert?.title ?? "", isPresented: deletingShown, titleVisibility: .visible, presenting: deleting
+            ) { entry in
+                Button("Delete", role: .destructive) { delete(entry) }
+            } message: { _ in
+                Text(deleteAlert?.message ?? "")
+            }
+            .alert("Couldn't do that", isPresented: failureShown, presenting: failure) { _ in
+                Button("OK", role: .cancel) {}
+            } message: { Text($0) }
+    }
+
+    @ViewBuilder
+    private var listContent: some View {
+        placesSection
+        if tabbed {
+            navigator
+        } else {
+            if query.trimmingCharacters(in: .whitespaces).isEmpty {
+                // Recents are this device's notebooks, not a machine's.
+                if place.indexesLocally { recentsSection }
+                filesSection
+                journalsSection
+            } else {
+                searchResults
+            }
+            runningSection
         }
-        .listStyle(.sidebar)
-        .navigationTitle(tabbed ? shownTab.title : "Notebooks")
-        // The iPad's navigator tabs, as on the Mac (#251).
-        .safeAreaInset(edge: .top, spacing: 0) {
-            if tabbed { tabStrip }
-        }
-        // The page searches (`src/lib/search.ts`), after typing pauses. The
-        // iPad's Search tab has a field of its own.
-        .modifier(SidebarSearch(enabled: !tabbed, query: $query))
-        .onChange(of: query) { search() }
-        .onChange(of: searchContents) { search() }
-        // A reloaded page has no search, and a keystroke before the page
-        // was ready went nowhere: ask again, or it says Searching… for good.
-        .onChange(of: page.state.search == nil && page.state.backend != nil) { _, lost in
-            if lost, !query.trimmingCharacters(in: .whitespaces).isEmpty { search() }
-        }
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) { newMenu }
-        }
-        .refreshable { generation += 1 }
-        // The machine answers again: list everything again (#753). The
-        // Journals tab asks the place's server while it shows (#758).
-        .modifier(SidebarWatchers(
-            reachable: reachable, relist: { generation += 1 },
-            pollID: journalsPollID,
-            poll: pollJournals, shown: $listShown))
-        // The examples show in the app's own folder from the start (#463),
-        // never in a machine's.
-        .modifier(AddsExamples(page: page, enabled: place.isThisDevice) { generation += 1 })
-        .onChange(of: page.state.path) { generation += 1 }
-        .onChange(of: phase) { _, phase in
-            if phase == .active { generation += 1 }
-        }
-        .alert("Rename", isPresented: renamingShown, presenting: renaming) { entry in
-            TextField("Name", text: $newName)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-            Button("Rename") { rename(entry, to: newName) }
-            Button("Cancel", role: .cancel) {}
-        }
-        .confirmationDialog(
-            deleteAlert?.title ?? "", isPresented: deletingShown, titleVisibility: .visible, presenting: deleting
-        ) { entry in
-            Button("Delete", role: .destructive) { delete(entry) }
-        } message: { _ in
-            Text(deleteAlert?.message ?? "")
-        }
-        .alert("Couldn't do that", isPresented: failureShown, presenting: failure) { _ in
-            Button("OK", role: .cancel) {}
-        } message: { Text($0) }
+    }
+
+    private var list: some View {
+        List { listContent }
+            .listStyle(.sidebar)
+            .navigationTitle(tabbed ? shownTab.title : "Notebooks")
+            // The iPad's navigator tabs, as on the Mac (#251).
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if tabbed { tabStrip }
+            }
+    }
+
+    /// A reloaded page has no search, and a keystroke before the page was
+    /// ready went nowhere.
+    private var searchLost: Bool { page.state.search == nil && page.state.backend != nil }
+
+    private var searching: some View {
+        list
+            // The page searches (`src/lib/search.ts`), after typing pauses.
+            // The iPad's Search tab has a field of its own.
+            .modifier(SidebarSearch(enabled: !tabbed, query: $query))
+            .onChange(of: query) { search() }
+            .onChange(of: searchContents) { search() }
+            // Ask again, or it says Searching… for good.
+            .onChange(of: searchLost) { _, lost in
+                if lost, !query.trimmingCharacters(in: .whitespaces).isEmpty { search() }
+            }
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) { newMenu }
+            }
+            .refreshable { generation += 1 }
+    }
+
+    private var watched: some View {
+        searching
+            // The machine answers again: list everything again (#753). The
+            // Journals tab asks the place's server while it shows (#758).
+            .modifier(SidebarWatchers(
+                reachable: reachable, relist: { generation += 1 },
+                pollID: journalsPollID,
+                poll: pollJournals, shown: $listShown))
+            // The examples show in the app's own folder from the start
+            // (#463), never in a machine's.
+            .modifier(AddsExamples(page: page, enabled: place.isThisDevice) { generation += 1 })
+            .onChange(of: page.state.path) { generation += 1 }
+            .onChange(of: phase) { _, phase in
+                if phase == .active { generation += 1 }
+            }
     }
 
     // MARK: Navigator tabs (#251)
