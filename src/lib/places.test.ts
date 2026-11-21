@@ -1,35 +1,11 @@
-import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   FIRST_RETRY_MS,
   MAX_BACKOFF_MS,
   REACHABLE_POLL_MS,
   nextCheckDelay,
-  pagePlaces,
-  usePlaces,
   watchReachable,
 } from './places';
-
-describe('pagePlaces', () => {
-  it('reads the places the app gave the page, dropping the malformed', () => {
-    expect(
-      pagePlaces({
-        ganymedePlaces: [
-          { id: null, name: 'This Mac' },
-          { id: 'mini-1', name: 'm4mini' },
-          { id: '../x', name: 'bad id' },
-          { id: 'ok', name: '' },
-          'nope',
-        ],
-      }),
-    ).toEqual([
-      { id: null, name: 'This Mac' },
-      { id: 'mini-1', name: 'm4mini' },
-    ]);
-    expect(pagePlaces({})).toEqual([]);
-    expect(pagePlaces(null)).toEqual([]);
-  });
-});
 
 describe('reachability backoff', () => {
   it('polls steadily while reachable, then backs off 1s, 2s, 4s… up to 30s', () => {
@@ -88,46 +64,5 @@ describe('reachability backoff', () => {
       expect(seen).toEqual([]);
       expect(check).toHaveBeenCalledTimes(1);
     });
-  });
-});
-
-describe('usePlaces', () => {
-  afterEach(() => {
-    delete (window as { ganymedePlaces?: unknown }).ganymedePlaces;
-  });
-
-  it('follows the list the app sets again, on its ganymede-places event', () => {
-    window.ganymedePlaces = [{ id: null, name: 'This Mac' }];
-    const { result, unmount } = renderHook(() => usePlaces());
-    expect(result.current).toEqual([{ id: null, name: 'This Mac' }]);
-    window.ganymedePlaces = [
-      { id: null, name: 'This Mac' },
-      { id: 'mini-1', name: 'm4mini' },
-    ];
-    // Not until the app says so.
-    expect(result.current).toHaveLength(1);
-    act(() => void window.dispatchEvent(new Event('ganymede-places')));
-    expect(result.current.map(p => p.name)).toEqual(['This Mac', 'm4mini']);
-    const remove = vi.spyOn(window, 'removeEventListener');
-    unmount();
-    expect(remove).toHaveBeenCalledWith('ganymede-places', expect.any(Function));
-    remove.mockRestore();
-  });
-
-  it('catches a change made between its first render and its subscribe', () => {
-    window.ganymedePlaces = [{ id: null, name: 'This Mac' }];
-    let first = true;
-    const { result } = renderHook(() => {
-      const places = usePlaces();
-      if (first) {
-        first = false;
-        window.ganymedePlaces = [
-          { id: null, name: 'This Mac' },
-          { id: 'mini-1', name: 'm4mini' },
-        ];
-      }
-      return places;
-    });
-    expect(result.current.map(p => p.name)).toEqual(['This Mac', 'm4mini']);
   });
 });

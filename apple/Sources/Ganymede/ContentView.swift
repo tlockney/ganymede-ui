@@ -615,11 +615,6 @@ struct ContentView: View {
         }
     }
 
-    /// A pick in the page's place switcher: that place's window.
-    private func openPlace(_ picked: Place) {
-        if let target = WindowTarget.root(of: picked, device: model.root) { openWindow(value: target) }
-    }
-
     /// Its folder, and whether it shows the start screen (no notebook),
     /// for the window that opens after the last one closes (#416).
     private func noteWindow(_ window: NSWindow) {
@@ -1132,7 +1127,7 @@ struct ContentView: View {
                     url: url, onNavigate: follow, document: document, page: pageModel,
                     onOpenTab: openTab,
                     onOpenFile: { path in openWindow(value: EditorRequest(path: path)) },
-                    place: place, places: model.places, onOpenPlace: openPlace
+                    place: place
                 )
                 // A page loaded for another place gets its own handlers.
                 .id(place)
@@ -1141,7 +1136,7 @@ struct ContentView: View {
                 // device's page is not a machine's (#758).
                 WebView(
                     url: url, page: pageModel, onOpenFile: openEditor, store: isPhone ? phonePage : nil,
-                    place: place, places: model.places, onOpenPlace: switchPlace
+                    place: place
                 )
                 .id(place)
                 #endif

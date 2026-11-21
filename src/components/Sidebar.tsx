@@ -9,7 +9,7 @@ import { useFileSearch } from '../lib/search';
 import { clearRecents, recentsKey, useRecents } from '../lib/recents';
 import { useFileDrop } from '../lib/file-drop';
 import { ContextMenu, type MenuItem } from './ContextMenu';
-import { type PlaceInfo, useReachable } from '../lib/places';
+import { useReachable } from '../lib/places';
 import { type Journal, journalStatus, journalsOf, useRooms } from '../lib/journals';
 import { RecentList, SearchField, SearchResults } from './SidebarSearch';
 import type { OutlineItem } from '../lib/outline';
@@ -53,10 +53,6 @@ type Props = {
   onOutline?(item: OutlineItem): void;
   /** Whether the sidebar shows; kernel memory is asked for only then. */
   visible?: boolean;
-  /** For a connected machine's window: the places to switch to. */
-  places?: PlaceInfo[];
-  /** Opens a place (null: this device) in its own window. */
-  onPlace?(id: string | null): void;
 };
 
 type PlaceTab = 'files' | 'journals' | 'running' | 'search';
@@ -67,50 +63,17 @@ const PLACE_TABS: { id: PlaceTab; label: string }[] = [
   { id: 'search', label: 'Search' },
 ];
 
-/** The place's name and reachability dot; opens the list of places. */
-function PlaceSwitcher({
-  id,
-  name,
-  reachable,
-  places,
-  onPlace,
-}: {
-  /** The current place's id, null for this device. */
-  id: string | null;
-  name: string;
-  reachable: boolean;
-  places: PlaceInfo[];
-  onPlace?(id: string | null): void;
-}) {
-  const [at, setAt] = useState<HTMLElement>();
+/** The place's name and reachability dot. */
+function PlaceLabel({ name, reachable }: { name: string; reachable: boolean }) {
   return (
-    <>
-      <button
-        type="button"
-        className="place-switcher"
-        aria-label={`Place: ${name}, ${reachable ? 'reachable' : 'offline'}`}
-        aria-haspopup="menu"
-        aria-expanded={!!at}
-        disabled={!onPlace || places.length === 0}
-        onClick={e => setAt(e.currentTarget)}
-      >
-        <span className="place-name">{name}</span>
-        <span className={`status-dot ${reachable ? 's-idle' : 's-dead'}`} aria-hidden />
-        <span aria-hidden>▾</span>
-      </button>
-      {at && (
-        <ContextMenu
-          at={at}
-          label="Places"
-          items={places.map(p => ({
-            label: p.name,
-            checked: p.id === id,
-            onSelect: () => onPlace?.(p.id),
-          }))}
-          onClose={() => setAt(undefined)}
-        />
-      )}
-    </>
+    <div
+      className="place-label"
+      role="status"
+      aria-label={`Place: ${name}, ${reachable ? 'reachable' : 'offline'}`}
+    >
+      <span className="place-name">{name}</span>
+      <span className={`status-dot ${reachable ? 's-idle' : 's-dead'}`} aria-hidden />
+    </div>
   );
 }
 
@@ -171,11 +134,9 @@ export function Sidebar({
   outline = [],
   onOutline,
   visible = true,
-  places = [],
-  onPlace,
 }: Props) {
   const services = backend?.services;
-  // A connected machine (#701): a place switcher with the machine's name
+  // A connected machine (#701): a place label with the machine's name
   // and reachability, and Files, Journals, Running and Search as tabs.
   const machine =
     backend?.config.kind === 'ganymede' && backend.config.machine
@@ -372,13 +333,7 @@ export function Sidebar({
       <div className="sidebar-scroll">
         {machine && (
           <>
-            <PlaceSwitcher
-              id={backend?.config.kind === 'ganymede' ? (backend.config.machine ?? null) : null}
-              name={machine}
-              reachable={reachable}
-              places={places}
-              onPlace={onPlace}
-            />
+            <PlaceLabel name={machine} reachable={reachable} />
             <div className="place-tabs" role="tablist" aria-label="Place">
               {PLACE_TABS.map(t => (
                 <button

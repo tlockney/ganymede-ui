@@ -109,9 +109,9 @@ async function openMachineWindow(page: import('@playwright/test').Page, open = '
   );
 }
 
-test('lists the machine’s files, not this server’s, under a place switcher', async ({ page }) => {
+test('lists the machine’s files, not this server’s, under a place label', async ({ page }) => {
   await openMachineWindow(page);
-  await expect(page.getByRole('button', { name: `Place: ${NAME}, reachable` })).toBeVisible();
+  await expect(page.getByRole('status', { name: `Place: ${NAME}, reachable` })).toBeVisible();
   await expect(page.getByRole('tablist', { name: 'Place' }).getByRole('tab')).toHaveText([
     'Files',
     'Journals',
@@ -181,7 +181,7 @@ test('goes read-only with a banner while the machine is away, and editable when 
   proxy.setDown(true);
   await expect(banner).toHaveText(`${NAME} went offline · Reconnecting…`);
   // The reachability dot follows (within its backoff).
-  await expect(page.getByRole('button', { name: `Place: ${NAME}, offline` })).toBeVisible({
+  await expect(page.getByRole('status', { name: `Place: ${NAME}, offline` })).toBeVisible({
     timeout: 45_000,
   });
   // The machine's kernel went with it, and JupyterLab says so in a dialog.

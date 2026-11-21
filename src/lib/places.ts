@@ -1,61 +1,12 @@
 /**
  * Places (#701): This Mac, On My iPad, or a connected machine. A machine is
  * reached through the app's own server, which mounts it under
- * `/machines/{id}/`; the pages and Recents of each place stay apart.
+ * `/machines/{id}/`; the pages and Recents of each place stay apart. The
+ * app's native menus switch places; this file only checks whether a
+ * machine answers.
  */
 import { useEffect, useState } from 'react';
 import { ServerConnection } from '@jupyterlab/services';
-import { isMachineId } from './backends';
-
-/** A place the app listed, as it passes them to a machine's page (`ganymedePlaces`). */
-export type PlaceInfo = { id: string | null; name: string };
-
-declare global {
-  interface Window {
-    /**
-     * Set by the Apple apps before a machine window's page loads: the
-     * places the person can switch to (`id` null for this device). Names
-     * only, never an address or a token.
-     */
-    ganymedePlaces?: unknown;
-  }
-}
-
-/**
- * Fired on `window` by the app after it sets `ganymedePlaces` again; the
- * script is `Places.updateScript` (Place.swift), which names it too.
- */
-export const PLACES_EVENT = 'ganymede-places';
-
-/** The places the app lists, kept current as it changes the list. */
-export function usePlaces(): PlaceInfo[] {
-  const [places, setPlaces] = useState(() => pagePlaces());
-  useEffect(() => {
-    const update = () => setPlaces(pagePlaces());
-    window.addEventListener(PLACES_EVENT, update);
-    // A change between the first render and now.
-    update();
-    return () => window.removeEventListener(PLACES_EVENT, update);
-  }, []);
-  return places;
-}
-
-/** The places the app gave the page, dropping anything malformed. */
-export function pagePlaces(
-  win: { ganymedePlaces?: unknown } | null = typeof window === 'undefined' ? null : window,
-): PlaceInfo[] {
-  const raw = win?.ganymedePlaces;
-  if (!Array.isArray(raw)) return [];
-  const out: PlaceInfo[] = [];
-  for (const p of raw) {
-    if (!p || typeof p !== 'object') continue;
-    const { id, name } = p as { id?: unknown; name?: unknown };
-    if (typeof name !== 'string' || !name) continue;
-    if (id === null) out.push({ id: null, name });
-    else if (typeof id === 'string' && isMachineId(id)) out.push({ id, name });
-  }
-  return out;
-}
 
 /** Seconds between reachability checks while the machine answers. */
 export const REACHABLE_POLL_MS = 15_000;

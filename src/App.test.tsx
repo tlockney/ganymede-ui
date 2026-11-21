@@ -1850,12 +1850,8 @@ describe('App', () => {
     expect(container.querySelector('.sidebar-close')).toBeNull();
   });
 
-  it('lists the places the app sets again, on its ganymede-places event (#701)', async () => {
+  it("shows a machine window's place as a label, with no list of places (#773)", async () => {
     history.replaceState(null, '', '/?machine=mini-1&machine_name=m4mini');
-    window.ganymedePlaces = [
-      { id: null, name: 'This Mac' },
-      { id: 'mini-1', name: 'm4mini' },
-    ];
     const fake = fakeServices({ '': [{ name: 'Io.ipynb', type: 'notebook' }] });
     (fake.services as unknown as { serverSettings: unknown }).serverSettings =
       ServerConnection.makeSettings({
@@ -1863,31 +1859,11 @@ describe('App', () => {
         fetch: (async () => new Response('{}')) as unknown as typeof fetch,
       });
     mocks.connect.mockImplementation(async c => fakeBackend(fake.services, c));
-    try {
-      render(<App />);
-      const open = async () => {
-        await userEvent.click(await screen.findByRole('button', { name: /Place: m4mini/ }));
-        return screen.findAllByRole('menuitemradio');
-      };
-      expect((await open()).map(i => i.textContent?.replace('✓', ''))).toEqual([
-        'This Mac',
-        'm4mini',
-      ]);
-      await userEvent.keyboard('{Escape}');
-
-      window.ganymedePlaces = [
-        { id: null, name: 'This Mac' },
-        { id: 'mini-1', name: 'm4mini' },
-        { id: 'laptop-2', name: 'Laptop' },
-      ];
-      act(() => void window.dispatchEvent(new Event('ganymede-places')));
-      expect((await open()).map(i => i.textContent?.replace('✓', ''))).toEqual([
-        'This Mac',
-        'm4mini',
-        'Laptop',
-      ]);
-    } finally {
-      delete window.ganymedePlaces;
-    }
+    render(<App />);
+    expect(
+      await screen.findByRole('status', { name: /Place: m4mini, reachable/ }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Place: m4mini/ })).toBeNull();
+    expect(screen.queryByRole('menuitemradio')).toBeNull();
   });
 });

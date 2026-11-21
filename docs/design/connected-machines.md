@@ -27,9 +27,11 @@ reasons under "How the app reaches a machine".
 
 ## What you see
 
-- The sidebar's top is a place switcher: This Mac (or On My iPad) and
-  each connected machine, with a dot for reachable or offline. Under it
-  are the same tabs for every place: Files, Journals, Running, Search.
+- The app's native menus switch places: This Mac (or On My iPad) and
+  each connected machine, with a dot for reachable or offline. The
+  sidebar shows the open place's name and dot, and under it the same tabs
+  for every place: Files, Journals, Running, Search. The page has no
+  place list of its own (#773).
 - A notebook opened from a machine opens live in that machine's room and
   runs on that machine's kernels. Its tab or title names the machine.
   Windows are independent: one can show the Mac mini while another shows
@@ -161,7 +163,7 @@ designed:
 2. Ganymede: mount a machine under `/machines/{id}/`, with the C
    functions to add and remove one, and the rules under "Who may use the
    mount".
-3. Apps: machines in the place switcher, a window per place, files and
+3. Apps: machines in the native place menus, a window per place, files and
    live notebooks from a machine, read-only while it's unreachable,
    path-keyed state per place, the bridge off in machine windows; Run
    Kernels On moves into the kernel picker. Mac, iPad and iPhone.

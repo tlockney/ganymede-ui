@@ -44,11 +44,10 @@ final class PlaceTests: XCTestCase {
 
     // MARK: what a window of a place gets
 
-    func testThisDeviceGetsEverythingButTheMachineSwitcher() {
-        for capability in Place.Capability.allCases where capability != .switchPlace {
+    func testThisDeviceGetsEveryCapability() {
+        for capability in Place.Capability.allCases {
             XCTAssertTrue(Place.thisDevice.allows(capability), "\(capability)")
         }
-        XCTAssertFalse(Place.thisDevice.allows(.switchPlace))
     }
 
     func testAMachineWindowGetsNoBridgeGrantsShortcutsEditorKeysOrAppLinks() {
@@ -61,7 +60,7 @@ final class PlaceTests: XCTestCase {
         // Only what the machine's own page needs; a new capability must be
         // considered here.
         let allowed = Place.Capability.allCases.filter { machine.allows($0) }
-        XCTAssertEqual(Set(allowed.map { "\($0)" }), ["settings", "switchPlace", "nativeChrome"])
+        XCTAssertEqual(Set(allowed.map { "\($0)" }), ["settings", "nativeChrome"])
     }
 
     func testKernelLocationAndLocalTerminalAreThisDevicesOnly() {
@@ -101,7 +100,8 @@ final class PlaceTests: XCTestCase {
     func testTheWebViewIsMadeFromThePlacesHandlerTable() {
         let machine = Place.machine(id).handlerNames
         // The native window reads a machine's page through `state` and `document` (#740).
-        XCTAssertEqual(Set(machine), ["settings", "place", "state", "document"])
+        XCTAssertEqual(machine.count, 3)
+        XCTAssertEqual(Set(machine), ["settings", "state", "document"])
         for name in ["kernelRelay", "deviceRemote", "openFile", "agentKeys"] {
             XCTAssertFalse(machine.contains(name), name)
             XCTAssertTrue(Place.thisDevice.handlerNames.contains(name), name)
@@ -109,7 +109,6 @@ final class PlaceTests: XCTestCase {
         for name in ["state", "document"] {
             XCTAssertTrue(Place.thisDevice.handlerNames.contains(name), name)
         }
-        XCTAssertFalse(Place.thisDevice.handlerNames.contains("place"))
     }
 
     func testAMachinePageOpensWebLinksButNotAppLinks() throws {
@@ -363,17 +362,6 @@ final class PlaceTests: XCTestCase {
         XCTAssertEqual(Places.entries(remotes: [mini], thisDevice: "This Mac", mounting: false).count, 1)
     }
 
-    func testThePageGetsNamesAndIDsOnly() throws {
-        let mini = Remote(name: "mini", serverURL: "http://mini:8888/?token=secret")
-        let json = Places.pageJSON(Places.entries(remotes: [mini], thisDevice: "This Mac", mounting: true))
-        XCTAssertFalse(json.contains("secret"))
-        XCTAssertFalse(json.contains("8888"))
-        let list = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(json.utf8)) as? [[String: Any]])
-        XCTAssertTrue(list[0]["id"] is NSNull)
-        XCTAssertEqual(list[0]["name"] as? String, "This Mac")
-        XCTAssertEqual(list[1]["id"] as? String, mini.id.uuidString)
-    }
-
     // MARK: reachability
 
     func testReachabilityPollsThenBacksOffTo30Seconds() {
@@ -381,48 +369,6 @@ final class PlaceTests: XCTestCase {
         XCTAssertEqual((1...8).map { ReachabilitySchedule.delay(afterFailures: $0) }, [1, 2, 4, 8, 16, 30, 30, 30])
         // A long outage doesn't overflow the shift.
         XCTAssertEqual(ReachabilitySchedule.delay(afterFailures: 10_000), 30)
-    }
-
-    func testTheUpdateScriptSetsTheListAndFiresThePagesEvent() {
-        let script = Places.updateScript(
-            Places.entries(remotes: [], thisDevice: "This Mac", mounting: true))
-        XCTAssertTrue(script.contains("window.ganymedePlaces = "))
-        XCTAssertTrue(script.contains("'ganymede-places'"))
-        XCTAssertEqual(Places.updateEvent, "ganymede-places")
-    }
-
-    // MARK: a changed list reaching an open page (#716)
-
-    private var lists: (old: [PlaceEntry], new: [PlaceEntry]) {
-        (
-            [PlaceEntry(place: .thisDevice, title: "This Mac")],
-            [
-                PlaceEntry(place: .thisDevice, title: "This Mac"),
-                PlaceEntry(place: .machine(id), title: "mini"),
-            ]
-        )
-    }
-
-    func testAMachineWindowIsToldOfAChangedList() {
-        XCTAssertEqual(
-            Places.changeScript(place: .machine(id), from: lists.old, to: lists.new),
-            Places.updateScript(lists.new))
-    }
-
-    func testAMachineWindowIsToldOfARename() {
-        let renamed = [lists.new[0], PlaceEntry(place: .machine(id), title: "mini 2")]
-        XCTAssertEqual(
-            Places.changeScript(place: .machine(id), from: lists.new, to: renamed),
-            Places.updateScript(renamed))
-    }
-
-    func testAMachineWindowIsToldNothingOfTheSameList() {
-        XCTAssertNil(Places.changeScript(place: .machine(id), from: lists.new, to: lists.new))
-        XCTAssertNil(Places.changeScript(place: .machine(id), from: [], to: []))
-    }
-
-    func testThisDevicesWindowIsToldNothingOfAChangedList() {
-        XCTAssertNil(Places.changeScript(place: .thisDevice, from: lists.old, to: lists.new))
     }
 
     func testStatusIsAskedThroughTheMount() throws {

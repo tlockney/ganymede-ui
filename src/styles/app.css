@@ -2589,26 +2589,19 @@ button {
   background: var(--orange);
 }
 
-.place-switcher {
+.place-label {
   display: flex;
   align-items: center;
   gap: 6px;
   width: 100%;
   padding: 6px 8px;
-  border: 0;
   border-radius: 6px;
-  font: inherit;
   font-weight: 600;
   color: var(--text);
   background: var(--control-bg);
-  cursor: pointer;
 }
 
-.place-switcher:hover {
-  background: var(--control-bg-hover);
-}
-
-.place-switcher .place-name {
+.place-label .place-name {
   flex: 1;
   text-align: left;
   overflow: hidden;
