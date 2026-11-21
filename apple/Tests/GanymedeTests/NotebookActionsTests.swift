@@ -75,6 +75,44 @@ final class NotebookActionsTests: XCTestCase {
 
     private static let stream: [String: Any] = ["output_type": "stream", "name": "stdout", "text": ["hel", "lo\n"]]
 
+    /// A 400 as the server answers it; `error` is its machine-readable kind.
+    private static func refusal(_ message: String, error: String? = nil) -> (Int, Any?) {
+        var body: [String: Any] = ["message": message, "reason": NSNull()]
+        if let error { body["error"] = error }
+        return (400, body)
+    }
+
+    /// The server's answer for an id or tag the room doesn't have.
+    private static func notFound() -> (Int, Any?) {
+        refusal("No code cell has the tag \"x\" in document", error: "cell_not_found")
+    }
+
+    /// What a server from before ganymede#843 (v0.11.0) answers a request with no `source_hash`.
+    private static func needsHash() -> (Int, Any?) {
+        refusal("source_hash is required for cell \"a\"")
+    }
+
+    /// The `cells` of an execute request, as a list of `{cell_id|tag, source_hash?}` entries.
+    private static func entries(_ request: URLRequest) -> [[String: String]]? {
+        body(request)["cells"] as? [[String: String]]
+    }
+
+    private static func hash(_ source: String) -> String {
+        String(NotebookActions.murmur2(Array(source.utf8)))
+    }
+
+    /// A notebook of nbformat 4.4: cells without ids.
+    private func serveWithoutIDs() {
+        fake.on("GET /api/contents/dir/nb.ipynb", ["type": "notebook", "content": [
+            "cells": [["cell_type": "code", "source": "1", "metadata": [:], "outputs": [], "execution_count": NSNull()]],
+            "metadata": ["kernelspec": ["name": "python3"]], "nbformat": 4, "nbformat_minor": 4,
+        ]])
+        fake.on("GET /api/sessions", [Any]())
+        fake.on("POST /api/sessions", status: 201, ["id": "s1", "kernel": ["id": "k1"]])
+        fake.on("POST /api/fileid/index", ["id": "f1"])
+        fake.on("POST /api/kernels/k1/restart", ["id": "k1"])
+    }
+
     /// A server with `cells` in dir/nb.ipynb, no session, and a new one on
     /// kernel k1 when asked.
     private func serve(_ cells: [[String: Any]], kernel: String? = "python3") {
@@ -170,19 +208,54 @@ final class NotebookActionsTests: XCTestCase {
         XCTAssertEqual(refused, .server(status: 400, message: "dir/nb.ipynb has no metadata.kernelspec.name"))
     }
 
-    /// nbformat before 4.5 has no cell ids: an error, not an empty run.
-    func testCellsWithoutIDsAreAnError() async throws {
-        fake.on("GET /api/contents/dir/nb.ipynb", ["type": "notebook", "content": [
-            "cells": [["cell_type": "code", "source": "1", "metadata": [:], "outputs": [], "execution_count": NSNull()]],
-            "metadata": [:], "nbformat": 4, "nbformat_minor": 4,
-        ]])
+    /// nbformat before 4.5 has no cell ids on disk; the room gives them, so
+    /// a run on a server with ganymede#843 needs none.
+    func testCellsWithoutIDsRunByTheRoomsIDs() async throws {
+        serveWithoutIDs()
+        fake.on("POST /api/kernels/k1/execute", ["finished": true, "cells": [Self.code("room-id", "1", count: 1)]])
+        let all = try await actions.notebookRunAll(path: "dir/nb.ipynb", restart: true, timeout: 5)
+        XCTAssertEqual(all.map(\.id), ["room-id"])
+        XCTAssertEqual(fake.calls("POST /api/kernels/k1/restart").count, 1)
+        let one = try await actions.cellRun(path: "dir/nb.ipynb", cell: "room-id", timeout: 5)
+        XCTAssertEqual(one.map(\.id), ["room-id"])
+        XCTAssertEqual(Self.entries(try XCTUnwrap(fake.calls("POST /api/kernels/k1/execute").last)), [["cell_id": "room-id"]])
+    }
+
+    /// A server from before ganymede#843 needs the ids on disk, as before.
+    func testCellsWithoutIDsAreAnErrorOnAnOldServer() async throws {
+        serveWithoutIDs()
+        fake.on("POST /api/kernels/k1/execute") { _ in Self.refusal("cells must be a non-empty list of {cell_id, source_hash}") }
         do {
-            _ = try await actions.notebookRunAll(path: "dir/nb.ipynb", restart: true, timeout: 5)
+            _ = try await actions.notebookRunAll(path: "dir/nb.ipynb", restart: false, timeout: 5)
             XCTFail("no ids")
         } catch {
             XCTAssertEqual(error as? NotebookActionError, .noCellIDs("dir/nb.ipynb"))
         }
-        XCTAssertTrue(fake.calls("POST /api/sessions").isEmpty, "nothing started")
+        // Reading outputs by id still needs them.
+        do {
+            _ = try await actions.notebookRead(path: "dir/nb.ipynb")
+            XCTFail("no ids")
+        } catch {
+            XCTAssertEqual(error as? NotebookActionError, .noCellIDs("dir/nb.ipynb"))
+        }
+    }
+
+    func testOnlyTheOldServersRefusalsMeanNeedsAHash() {
+        for message in [
+            "source_hash is required for cell \"a\"",
+            "cells must be a non-empty list of {cell_id, source_hash}",
+            "Each cell entry must have a cell_id string, got {\"tag\":\"x\"}",
+        ] {
+            XCTAssertTrue(NotebookActions.needsSourceHash(message), message)
+        }
+        for message in [
+            "cells must be \"all\" or a non-empty list of {cell_id, source_hash} or {tag}",
+            "Each cell entry must have a cell_id string or a tag string, not both, got 1",
+            "source_hash must be a string or number for cell \"a\"",
+            "document_id is required",
+        ] {
+            XCTAssertFalse(NotebookActions.needsSourceHash(message), message)
+        }
     }
 
     func testNewNotebookReportsOtherFailures() async throws {
@@ -223,11 +296,10 @@ final class NotebookActionsTests: XCTestCase {
 
     // MARK: Running
 
-    func testRunAllRunsTheCodeCellsWithTheirHashesAndReturnsThem() async throws {
+    func testRunAllAsksForAllCellsAndReturnsThem() async throws {
         serve([
             Self.code("a", "1"),
             ["cell_type": "markdown", "id": "m", "source": "text", "metadata": [:]],
-            Self.code("blank", "  \n"),
             Self.code("c", ["print(", "'hi')"]),
         ])
         fake.on("POST /api/kernels/k1/execute") { _ in
@@ -246,6 +318,11 @@ final class NotebookActionsTests: XCTestCase {
         XCTAssertEqual(session["type"] as? String, "notebook")
         XCTAssertEqual((session["kernel"] as? [String: Any])?["name"] as? String, "python3")
         XCTAssertEqual(fake.calls("POST /api/kernels/k1/restart").count, 1)
+        let keys = fake.requests.map(FakeServer.key)
+        let restarted = try XCTUnwrap(keys.firstIndex(of: "POST /api/kernels/k1/restart"))
+        let ran = try XCTUnwrap(keys.firstIndex(of: "POST /api/kernels/k1/execute"))
+        XCTAssertLessThan(restarted, ran, "restarts before running")
+        XCTAssertEqual(fake.calls("POST /api/kernels/k1/execute").count, 1)
         let request = try XCTUnwrap(fake.calls("POST /api/kernels/k1/execute").first)
         XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "token secret")
         XCTAssertGreaterThan(request.timeoutInterval, 30)
@@ -253,13 +330,25 @@ final class NotebookActionsTests: XCTestCase {
         XCTAssertEqual(body["document_id"] as? String, "json:notebook:f1")
         XCTAssertEqual(body["wait"] as? Int, 30)
         XCTAssertEqual(body["by"] as? String, "Ganymede")
-        let sent = try XCTUnwrap(body["cells"] as? [[String: String]])
-        XCTAssertEqual(sent, [
-            ["cell_id": "a", "source_hash": String(NotebookActions.murmur2(Array("1".utf8)))],
-            ["cell_id": "c", "source_hash": String(NotebookActions.murmur2(Array("print('hi')".utf8)))],
-        ])
+        XCTAssertEqual(body["cells"] as? String, "all", "the room picks the cells, from its own source")
         let index = try XCTUnwrap(fake.calls("POST /api/fileid/index").first?.url)
         XCTAssertEqual(URLComponents(url: index, resolvingAgainstBaseURL: false)?.queryItems?.first?.value, "dir/nb.ipynb")
+    }
+
+    func testRunAllWithoutRestartDoesNotRestart() async throws {
+        serve([Self.code("a", "1")])
+        fake.on("POST /api/kernels/k1/execute", ["finished": true, "cells": [Self.code("a", "1", count: 1)]])
+        _ = try await actions.notebookRunAll(path: "dir/nb.ipynb", restart: false, timeout: 5)
+        XCTAssertTrue(fake.calls("POST /api/kernels/k1/restart").isEmpty)
+    }
+
+    /// The room has no code cells with source: nothing runs, and that isn't an error.
+    func testRunAllOfANotebookWithoutCodeIsEmpty() async throws {
+        serve([["cell_type": "markdown", "id": "m", "source": "text", "metadata": [:]]])
+        fake.on("POST /api/kernels/k1/execute", ["finished": true, "cells": [Any]()])
+        let cells = try await actions.notebookRunAll(path: "dir/nb.ipynb", restart: true, timeout: 5)
+        XCTAssertEqual(cells, [])
+        XCTAssertEqual(fake.calls("POST /api/kernels/k1/restart").count, 1)
     }
 
     func testARunJoinsTheNotebooksSession() async throws {
@@ -271,17 +360,122 @@ final class NotebookActionsTests: XCTestCase {
         XCTAssertTrue(fake.calls("POST /api/kernels/k1/restart").isEmpty)
     }
 
-    func testRunCellTakesAnIdOrATag() async throws {
-        serve([Self.code("a", "1", tags: ["report"]), Self.code("b", "2"), Self.code("c", "3", tags: ["report"])])
-        fake.on("POST /api/kernels/k1/execute") { request in
-            let ids = (Self.body(request)["cells"] as? [[String: String]] ?? []).compactMap { $0["cell_id"] }
-            return (200, ["finished": true, "cells": ids.map { Self.code($0, "", count: 1) }])
+    /// The cell is named by its id, with no hash: the room's source runs.
+    func testRunCellSendsItsIdWithoutAHash() async throws {
+        serve([Self.code("a", "1"), Self.code("b", "2")])
+        fake.on("POST /api/kernels/k1/execute", ["finished": true, "cells": [Self.code("b", "2", count: 1)]])
+        let cells = try await actions.cellRun(path: "dir/nb.ipynb", cell: "b", timeout: 5)
+        XCTAssertEqual(cells.map(\.id), ["b"])
+        let request = try XCTUnwrap(fake.calls("POST /api/kernels/k1/execute").first)
+        XCTAssertEqual(Self.entries(request), [["cell_id": "b"]])
+        let sent = try XCTUnwrap(Self.body(request)["cells"] as? [[String: Any]])
+        XCTAssertNil(sent.first?["source_hash"])
+        XCTAssertEqual(Self.body(request)["by"] as? String, "Ganymede")
+        XCTAssertEqual(fake.calls("POST /api/kernels/k1/execute").count, 1)
+        XCTAssertTrue(fake.calls("POST /api/kernels/k1/restart").isEmpty)
+    }
+
+    /// No cell has the id, so the name is a tag: every cell tagged so.
+    func testRunCellFallsBackToTheTag() async throws {
+        serve([Self.code("a", "1", tags: ["report"]), Self.code("c", "3", tags: ["report"])])
+        fake.on(
+            "POST /api/kernels/k1/execute",
+            { _ in Self.notFound() },
+            { _ in (200, ["finished": true, "cells": [Self.code("a", "1", count: 1), Self.code("c", "3", count: 2)]]) }
+        )
+        let cells = try await actions.cellRun(path: "dir/nb.ipynb", cell: "report", timeout: 5)
+        XCTAssertEqual(cells.map(\.id), ["a", "c"])
+        let sent = fake.calls("POST /api/kernels/k1/execute").compactMap { Self.entries($0) }
+        XCTAssertEqual(sent, [[["cell_id": "report"]], [["tag": "report"]]])
+    }
+
+    func testRunCellWithNeitherAnIdNorATagIsNoCell() async throws {
+        serve([Self.code("a", "1")])
+        fake.on("POST /api/kernels/k1/execute") { _ in Self.notFound() }
+        do {
+            _ = try await actions.cellRun(path: "dir/nb.ipynb", cell: "nothing", timeout: 5)
+            XCTFail("no such cell")
+        } catch {
+            XCTAssertEqual(error as? NotebookActionError, .noCell("nothing"))
         }
+        XCTAssertEqual(fake.calls("POST /api/kernels/k1/execute").count, 2, "the id, then the tag")
+    }
+
+    /// An id that names a markdown cell is no cell, as it always was, and
+    /// isn't tried as a tag.
+    func testRunCellOfANonCodeCellIsNoCell() async throws {
+        serve([["cell_type": "markdown", "id": "m", "source": "text", "metadata": [:]]])
+        fake.on("POST /api/kernels/k1/execute") { _ in Self.refusal("Cell \"m\" is not a code cell") }
+        do {
+            _ = try await actions.cellRun(path: "dir/nb.ipynb", cell: "m", timeout: 5)
+            XCTFail("not code")
+        } catch {
+            XCTAssertEqual(error as? NotebookActionError, .noCell("m"))
+        }
+        XCTAssertEqual(fake.calls("POST /api/kernels/k1/execute").count, 1)
+    }
+
+    /// Other refusals are the server's, reported as they are.
+    func testOtherRefusalsAreReported() async throws {
+        serve([Self.code("a", "1")])
+        fake.on("POST /api/kernels/k1/execute") { _ in Self.refusal("read-only here; run it there") }
+        do {
+            _ = try await actions.cellRun(path: "dir/nb.ipynb", cell: "a", timeout: 5)
+            XCTFail("refused")
+        } catch {
+            XCTAssertEqual(error as? NotebookActionError, .server(status: 400, message: "read-only here; run it there"))
+        }
+    }
+
+    // MARK: A server from before ganymede#843
+
+    /// It answers that every cell needs a hash: read the saved file, select, hash.
+    func testRunAllOnAnOldServerHashesTheSavedCells() async throws {
+        serve([
+            Self.code("a", "1"),
+            ["cell_type": "markdown", "id": "m", "source": "text", "metadata": [:]],
+            Self.code("blank", "  \n"),
+            Self.code("c", ["print(", "'hi')"]),
+        ])
+        fake.on(
+            "POST /api/kernels/k1/execute",
+            { _ in Self.refusal("cells must be a non-empty list of {cell_id, source_hash}") },
+            { _ in (200, ["finished": true, "cells": [Self.code("a", "1", count: 1), Self.code("c", "print('hi')", count: 2)]]) }
+        )
+        let cells = try await actions.notebookRunAll(path: "dir/nb.ipynb", restart: true, timeout: 30)
+        XCTAssertEqual(cells.map(\.id), ["a", "c"])
+        let calls = fake.calls("POST /api/kernels/k1/execute")
+        XCTAssertEqual(calls.count, 2)
+        XCTAssertEqual(Self.body(calls[0])["cells"] as? String, "all")
+        XCTAssertEqual(Self.entries(calls[1]), [
+            ["cell_id": "a", "source_hash": Self.hash("1")],
+            ["cell_id": "c", "source_hash": Self.hash("print('hi')")],
+        ])
+        XCTAssertEqual(Self.body(calls[1])["by"] as? String, "Ganymede")
+        XCTAssertEqual(fake.calls("POST /api/kernels/k1/restart").count, 1, "restarted once, not again")
+    }
+
+    func testRunCellOnAnOldServerHashesTheSavedCell() async throws {
+        serve([Self.code("a", "1", tags: ["report"]), Self.code("b", "2"), Self.code("c", "3", tags: ["report"])])
+        fake.on(
+            "POST /api/kernels/k1/execute",
+            { _ in Self.needsHash() },
+            { _ in (200, ["finished": true, "cells": [Self.code("b", "2", count: 1)]]) },
+            { _ in Self.needsHash() },
+            { _ in (200, ["finished": true, "cells": [Self.code("a", "1", count: 1), Self.code("c", "3", count: 2)]]) }
+        )
         let byID = try await actions.cellRun(path: "dir/nb.ipynb", cell: "b", timeout: 5)
         XCTAssertEqual(byID.map(\.id), ["b"])
         let byTag = try await actions.cellRun(path: "dir/nb.ipynb", cell: "report", timeout: 5)
         XCTAssertEqual(byTag.map(\.id), ["a", "c"])
+        let sent = fake.calls("POST /api/kernels/k1/execute").compactMap { Self.entries($0) }
+        XCTAssertEqual(sent, [
+            [["cell_id": "b"]], [["cell_id": "b", "source_hash": Self.hash("2")]],
+            [["cell_id": "report"]],
+            [["cell_id": "a", "source_hash": Self.hash("1")], ["cell_id": "c", "source_hash": Self.hash("3")]],
+        ])
         do {
+            fake.on("POST /api/kernels/k1/execute") { _ in Self.needsHash() }
             _ = try await actions.cellRun(path: "dir/nb.ipynb", cell: "nothing", timeout: 5)
             XCTFail("no such cell")
         } catch {
@@ -314,25 +508,39 @@ final class NotebookActionsTests: XCTestCase {
         }
     }
 
-    /// The file is older than the window's edits: read again and retry once.
-    func testAStaleSourceIsReadAgainOnce() async throws {
+    /// On a server from before ganymede#843 the file can be older than the
+    /// window's edits: read again and retry once.
+    func testAStaleSourceIsReadAgainOnceOnAnOldServer() async throws {
         serve([Self.code("a", "old")])
         fake.on(
             "GET /api/contents/dir/nb.ipynb",
+            { _ in (200, Self.notebook([Self.code("a", "old")])) },
             { _ in (200, Self.notebook([Self.code("a", "old")])) },
             { _ in (200, Self.notebook([Self.code("a", "new")])) }
         )
         fake.on(
             "POST /api/kernels/k1/execute",
+            { _ in Self.refusal("cells must be a non-empty list of {cell_id, source_hash}") },
             { _ in (409, ["error": "source_mismatch", "cell_id": "a"]) },
             { _ in (200, ["finished": true, "cells": [Self.code("a", "new", count: 1)]]) }
         )
         let cells = try await actions.notebookRunAll(path: "dir/nb.ipynb", restart: false, timeout: 5)
         XCTAssertEqual(cells.first?.source, "new")
-        let hashes = fake.calls("POST /api/kernels/k1/execute").map {
-            (Self.body($0)["cells"] as? [[String: String]])?.first?["source_hash"]
+        let hashes: [String?] = fake.calls("POST /api/kernels/k1/execute").dropFirst().map { Self.entries($0)?.first?["source_hash"] }
+        XCTAssertEqual(hashes, [Self.hash("old") as String?, Self.hash("new") as String?])
+    }
+
+    /// With no hash there is nothing to be stale against: no retry.
+    func testAStaleAnswerToAHashlessRequestIsReported() async throws {
+        serve([Self.code("a", "1")])
+        fake.on("POST /api/kernels/k1/execute", status: 409, ["error": "source_mismatch", "cell_id": "a"])
+        do {
+            _ = try await actions.cellRun(path: "dir/nb.ipynb", cell: "a", timeout: 5)
+            XCTFail("stale")
+        } catch {
+            XCTAssertEqual(error as? NotebookActionError, .changed("a"))
         }
-        XCTAssertEqual(hashes, [String(NotebookActions.murmur2(Array("old".utf8))), String(NotebookActions.murmur2(Array("new".utf8)))])
+        XCTAssertEqual(fake.calls("POST /api/kernels/k1/execute").count, 1)
     }
 
     func testAServerThatDoesNotWaitIsReported() async throws {

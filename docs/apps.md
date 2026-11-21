@@ -292,6 +292,21 @@ kernel with no room, so it names no one.
 > tlockney/ganymede#896 (a Ganymede release after v0.14.0). The latest
 > release and builds of `main` (core v0.14.0) record no runner at all.
 
+Run Notebook and Run Cell (and `ganymede://run`, below) run the
+notebook's current content: when a window has it open, its unsaved edits
+run too, and cells you added since the last save are in Run Notebook, not
+only what the file holds. A notebook of nbformat 4.4 or older, whose
+cells have no ids on disk, can be run too: Run Notebook needs none, and
+Run Cell takes a tag (a cell id works too, but a 4.4 notebook's ids exist
+only while its room is open). Get Notebook Outputs still reads the saved
+file, so it needs the cell ids of a nbformat 4.5 notebook.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release. The latest release runs the saved file's cells, so
+> a run can miss unsaved edits and cells, and it refuses a notebook whose
+> cells have no ids.
+
 The actions use the app's own server, and start it if no window has.
 Runs go through the server, as an agent's do: a window showing the
 notebook sees the outputs arrive, and they are saved with it. They use
