@@ -66,6 +66,11 @@ describe('SQL in template strings', () => {
     ['jupyter.sql.query', 'await jupyter.sql.query(`select a from t`)'],
     ['a type argument', 'await jupyter.sql.query<Row>(`select a from t`)'],
     ['more arguments', 'await jupyter.sql.query(\n  `select a from t`,\n  opts,\n)'],
+    ['a line comment first', 'await jupyter.sql.query(\n  // daily rows\n  `select a from t`,\n)'],
+    ['a block comment first', 'jupyter.sql.query(/* q */ `select a from t`)'],
+    ['an optional call', 'jupyter.sql.query?.(`select a from t`)'],
+    ['a comment before the arguments', 'jupyter.sql.query /* c */ (`select a from t`)'],
+    ['a comment in an optional call', 'jupyter.sql.query /* c */ ?./* d */(`select a from t`)'],
   ])('highlights the first argument of %s', (_, code) => {
     expect(keywords(code)).toEqual(expect.arrayContaining(['select', 'from']));
   });
@@ -76,6 +81,8 @@ describe('SQL in template strings', () => {
     ['another object', 'jupyter.md.query(`select a from t`)'],
     ['a bare query call', 'query(`select a from t`)'],
     ['a template inside an argument', 'jupyter.sql.query(f(`select a from t`))'],
+    ['a later argument after a comment', 'jupyter.sql.query(q, /* q */ `select a from t`)'],
+    ['an optional call on another object', 'jupyter.md.query?.(`select a from t`)'],
   ])('leaves %s of a query call alone', (_, code) => {
     expect(keywords(code)).not.toContain('select');
   });
