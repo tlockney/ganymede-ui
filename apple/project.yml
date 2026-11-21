@@ -585,6 +585,10 @@ targets:
         # Shared with the share extension (#449), registered for the team.
         com.apple.security.application-groups:
           - group.com.ganymede-server.Ganymede
+        # V8 (the engine benchmark) reserves about 12 GB of address space
+        # when it starts, more than an iOS app gets without this (#755).
+        # On for the App ID; release-ios.sh checks the profile has it.
+        com.apple.developer.kernel.extended-virtual-addressing: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.ganymede-server.Ganymede

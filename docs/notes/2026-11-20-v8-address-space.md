@@ -23,6 +23,10 @@ can't be told apart on the Mac, where it passes; a comment there says so.
 The blocked path on a device is a by-hand check on #755. docs/apps.md
 says what a device without the address space shows.
 
-Still to do on #755: the entitlement on Ganymede-iOS, once the App ID has
-the capability and the App Store profile is regenerated, then a re-run on
-the iPhone.
+Thomas turned on Extended Virtual Address Space for the App ID and
+replaced `IOS_PROVISIONING_PROFILE`, so Ganymede-iOS now has the
+entitlement (apple/project.yml), and release-ios.sh fails early when the
+app's profile lacks it, as it does for the App Group. docs/releasing.md's
+setup steps name the capability. With the entitlement in the same build,
+#755's by-hand check of the blocked path is skipped; what's left is the
+re-run on the iPhone, results on ganymede#646.
