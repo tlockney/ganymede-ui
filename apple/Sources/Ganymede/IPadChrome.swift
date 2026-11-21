@@ -23,6 +23,9 @@ var isPhone: Bool { UIDevice.current.userInterfaceIdiom == .phone }
 /// server is rooted.
 struct IPadSidebar: View {
     let folder: URL
+    /// Where the files are (#757). Nil: this device's disk, rooted at
+    /// `folder`, deleting for good.
+    var fileSource: (any FileSource)?
     var page: PageModel
     let openFile: (String) -> Void
     /// After a notebook is opened from the sidebar.
@@ -34,6 +37,8 @@ struct IPadSidebar: View {
     @State private var newName = ""
     @State private var deleting: FolderEntry?
     @State private var failure: String?
+    /// Whether a file operation is running: one at a time, as the Mac's.
+    @State private var busy = false
     /// The search field's text, and whether it reads notebooks too (#240).
     @State private var query = ""
     @State private var searchContents = false
@@ -87,6 +92,7 @@ struct IPadSidebar: View {
                 Menu {
                     Button { newNotebook(in: folder) } label: { Label("New Notebook", systemImage: "doc.badge.plus") }
                     Button { newFolder(in: folder) } label: { Label("New Folder", systemImage: "folder.badge.plus") }
+                        .disabled(busy)
                     // The iPhone has no File menu or welcome screen: the
                     // examples are here (#414).
                     Button { openExamples() } label: { Label("Open Example Notebooks", systemImage: "book") }
@@ -237,7 +243,7 @@ struct IPadSidebar: View {
     /// The folder as a tree.
     private var filesSection: some View {
         Section(folder.lastPathComponent) {
-            IPadFolderContents(folder: folder, root: folder, actions: actions, generation: generation)
+            IPadFolderContents(folder: folder, source: source, actions: actions, generation: generation)
         }
     }
 
@@ -380,6 +386,7 @@ struct IPadSidebar: View {
         IPadFolderActions(
             openPath: page.state.path,
             isRunning: { page.state.isRunning($0) },
+            canChange: FileChanges.allowed(place: .thisDevice, reachable: true, busy: busy),
             open: open,
             newNotebook: newNotebook(in:),
             newFolder: newFolder(in:),
@@ -409,8 +416,14 @@ struct IPadSidebar: View {
         return "Delete “\(deleting.isNotebook ? deleting.title : deleting.name)”?"
     }
 
+    /// The iPad's server is rooted at `folder`, so paths are relative to
+    /// it. Nothing is trashed: the delete alert says it can't be undone.
+    private var source: any FileSource {
+        fileSource ?? LocalFileSource.notebookFolder(folder)
+    }
+
     private func path(_ entry: FolderEntry) -> String {
-        FolderEntry.serverPath(entry.url, root: folder)
+        source.serverPath(entry.url)
     }
 
     private func open(_ entry: FolderEntry) {
@@ -423,7 +436,7 @@ struct IPadSidebar: View {
     }
 
     private func newNotebook(in dir: URL) {
-        page.run("new-notebook", arg: FolderEntry.serverPath(dir, root: folder))
+        page.run("new-notebook", arg: source.serverPath(dir))
         opened()
     }
 
@@ -435,14 +448,8 @@ struct IPadSidebar: View {
     }
 
     private func newFolder(in parent: URL) {
-        let fm = FileManager.default
-        var url = parent.appendingPathComponent("untitled folder")
-        var n = 2
-        while fm.fileExists(atPath: url.path) {
-            url = parent.appendingPathComponent("untitled folder \(n)")
-            n += 1
-        }
-        attempt { try fm.createDirectory(at: url, withIntermediateDirectories: false) }
+        let source = source
+        exclusively { _ = try await source.newFolder(in: parent) }
     }
 
     private func rename(_ entry: FolderEntry, to input: String) {
@@ -460,42 +467,51 @@ struct IPadSidebar: View {
             failure = "Save the open notebook before renaming its folder."
             return
         }
-        let target = entry.url.deletingLastPathComponent().appendingPathComponent(file)
-        attempt {
-            try FileManager.default.moveItem(at: entry.url, to: target)
-            page.run("file-moved", arg: PageState.fileMoved(
-                from: path(entry), to: FolderEntry.serverPath(target, root: folder)))
-            if let moved = FolderEntry.path(
-                page.state.path, movedFrom: path(entry), to: FolderEntry.serverPath(target, root: folder)
-            ) {
+        let source = source
+        let from = path(entry)
+        exclusively {
+            let target = try await source.rename(entry.url, to: file)
+            let to = source.serverPath(target)
+            page.run("file-moved", arg: PageState.fileMoved(from: from, to: to))
+            // From the page's path now, after the move returned.
+            if let moved = FolderEntry.path(page.state.path, movedFrom: from, to: to) {
                 page.run("open", arg: moved)
             }
         }
     }
 
     private func duplicate(_ entry: FolderEntry) {
-        let fm = FileManager.default
-        let target = FolderEntry.duplicateURL(for: entry.url) { fm.fileExists(atPath: $0.path) }
-        attempt { try fm.copyItem(at: entry.url, to: target) }
+        let source = source
+        exclusively { _ = try await source.duplicate(entry.url) }
     }
 
-    /// Deletes, after asking. The open notebook is closed first, or its
+    /// Deletes, after asking. The open notebook is closed after, or its
     /// next save would write it back.
     private func delete(_ entry: FolderEntry) {
-        let holdsOpen = FolderEntry.path(page.state.path, isAt: path(entry))
-        attempt {
-            try FileManager.default.removeItem(at: entry.url)
-            page.run("file-moved", arg: PageState.fileMoved(from: path(entry), to: nil))
-            if holdsOpen { page.run("close") }
+        let source = source
+        let from = path(entry)
+        exclusively {
+            try await source.delete(entry.url)
+            page.run("file-moved", arg: PageState.fileMoved(from: from, to: nil))
+            // What the page shows now, not when the person confirmed.
+            if FolderEntry.path(page.state.path, isAt: from) { page.run("close") }
         }
     }
 
-    private func attempt(_ body: () throws -> Void) {
-        do {
-            try body()
-            generation += 1
-        } catch {
-            failure = error.localizedDescription
+    /// Runs one file operation at a time through the source, then lists the
+    /// folders again; a failure shows in the alert. A call while one is
+    /// running is ignored.
+    private func exclusively(_ work: @escaping @MainActor () async throws -> Void) {
+        guard !busy else { return }
+        busy = true
+        Task {
+            do {
+                try await work()
+                generation += 1
+            } catch {
+                failure = error.localizedDescription
+            }
+            busy = false
         }
     }
 }
@@ -571,6 +587,8 @@ struct IPadFolderActions {
     var openPath: String?
     /// Whether a notebook's kernel is running, by its server path.
     var isRunning: (String) -> Bool = { _ in false }
+    /// Whether the items that change files are enabled: not while one runs.
+    var canChange = true
     var open: (FolderEntry) -> Void
     var newNotebook: (URL) -> Void
     var newFolder: (URL) -> Void
@@ -582,7 +600,7 @@ struct IPadFolderActions {
 /// One folder's items; subfolders list theirs when expanded.
 private struct IPadFolderContents: View {
     let folder: URL
-    let root: URL
+    let source: any FileSource
     let actions: IPadFolderActions
     let generation: Int
     @State private var entries: [FolderEntry] = []
@@ -593,7 +611,7 @@ private struct IPadFolderContents: View {
             ForEach(entries) { entry in
                 if entry.isDirectory {
                     DisclosureGroup {
-                        IPadFolderContents(folder: entry.url, root: root, actions: actions, generation: generation)
+                        IPadFolderContents(folder: entry.url, source: source, actions: actions, generation: generation)
                     } label: {
                         Label(entry.name, systemImage: "folder")
                             .contextMenu { menu(for: entry) }
@@ -605,7 +623,7 @@ private struct IPadFolderContents: View {
                         HStack {
                             Label(entry.title, systemImage: entry.isNotebook ? "book.pages" : "doc.text")
                             Spacer()
-                            if entry.isNotebook, actions.isRunning(FolderEntry.serverPath(entry.url, root: root)) {
+                            if entry.isNotebook, actions.isRunning(source.serverPath(entry.url)) {
                                 // Its kernel is running.
                                 Circle()
                                     .fill(Color.green)
@@ -617,7 +635,7 @@ private struct IPadFolderContents: View {
                         .contentShape(Rectangle())
                     }
                     .listRowBackground(
-                        FolderEntry.serverPath(entry.url, root: root) == actions.openPath
+                        source.serverPath(entry.url) == actions.openPath
                             ? Color.accentColor.opacity(0.18) : nil
                     )
                     .contextMenu { menu(for: entry) }
@@ -629,14 +647,19 @@ private struct IPadFolderContents: View {
                 Text("No files").foregroundStyle(.secondary)
             }
         }
-        .task(id: "\(folder.path)#\(generation)") { load() }
+        .task(id: "\(folder.absoluteString)#\(generation)") { await load() }
     }
 
-    private func load() {
+    /// Runs as the view's task: a newer folder or refresh cancels it, and
+    /// a cancelled listing changes nothing.
+    private func load() async {
         do {
-            entries = try FolderEntry.list(folder)
+            let listed = try await source.list(folder)
+            guard !Task.isCancelled else { return }
+            entries = listed
             error = nil
         } catch {
+            guard !Task.isCancelled else { return }
             self.error = error.localizedDescription
         }
     }
@@ -646,13 +669,17 @@ private struct IPadFolderContents: View {
         if entry.isDirectory {
             Button { actions.newNotebook(entry.url) } label: { Label("New Notebook Here", systemImage: "doc.badge.plus") }
             Button { actions.newFolder(entry.url) } label: { Label("New Folder Here", systemImage: "folder.badge.plus") }
+                .disabled(!actions.canChange)
         } else {
             Button { actions.open(entry) } label: { Label("Open", systemImage: "doc") }
         }
-        Button { actions.rename(entry) } label: { Label("Rename…", systemImage: "pencil") }
-        Button { actions.duplicate(entry) } label: { Label("Duplicate", systemImage: "plus.square.on.square") }
-        Divider()
-        Button(role: .destructive) { actions.delete(entry) } label: { Label("Delete…", systemImage: "trash") }
+        Group {
+            Button { actions.rename(entry) } label: { Label("Rename…", systemImage: "pencil") }
+            Button { actions.duplicate(entry) } label: { Label("Duplicate", systemImage: "plus.square.on.square") }
+            Divider()
+            Button(role: .destructive) { actions.delete(entry) } label: { Label("Delete…", systemImage: "trash") }
+        }
+        .disabled(!actions.canChange)
     }
 }
 
