@@ -13,7 +13,7 @@ and cells.
 "cell_not_found"` it sends `[{"tag": cell}]`, and when that is not found
   either, throws `noCell`. An id that names a markdown or raw cell is
   answered `400 Cell "x" is not a code cell` (no `error` key,
-  execute.rs:454), which maps to `noCell` without trying the tag: what the
+  execute.rs in v0.14.0), which maps to `noCell` without trying the tag: what the
   app did before, but matched on the server's message.
 - `notebookRunAll` restarts as before, then sends `"cells": "all"` (code
   cells with non-blank source). A notebook with none answers
@@ -34,7 +34,8 @@ cell_id string, got …`, all `400`) is detected from those messages
 Tests (`NotebookActionsTests`, with its fake server): no `source_hash` key
 for Run Cell, tag fallback, `noCell` for both missing and for a markdown
 cell, `"all"` after the restart, an empty notebook, a 4.4 notebook running,
-each old-server refusal falling back to hashed requests, and the stale
+the old server's id and `"all"` refusals falling back to hashed requests
+(the tag-entry refusal is matched but an old server never reaches it), and the stale
 retry moved to that path. The docs (apps.md, Shortcuts) carry the
 Unreleased note.
 
