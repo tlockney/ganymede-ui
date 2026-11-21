@@ -7,6 +7,9 @@ import Foundation
 // by (notebook path, capability); a Settings screen lists and revokes
 // them. With no prompter (headless runs), a call with no grant is denied.
 // Pickers, share and dialogs are their own consent and never reach it.
+// Each kept answer carries the stamp (`FileStamp`) of the notebook's file as
+// the app last saw it, and is forgotten when the file no longer matches: it
+// was replaced outside the app. The app's own saves restamp it.
 
 /// What the person answered the app's prompt. Nil (dismissed) denies this
 /// call and records nothing.
@@ -25,11 +28,21 @@ public struct LedgerGrant: Hashable, Sendable {
     public let capability: String
     /// `always` or `deny`.
     public let answer: LedgerAnswer
+    /// What the app last saw of the notebook's file (`FileStamp`); nil
+    /// when the file wasn't there then, or for an answer kept before
+    /// stamps, which take the file's stamp the next time it is there.
+    public let stamp: String?
 
-    public init(notebook: String, capability: String, answer: LedgerAnswer) {
+    public init(notebook: String, capability: String, answer: LedgerAnswer, stamp: String? = nil) {
         self.notebook = notebook
         self.capability = capability
         self.answer = answer
+        self.stamp = stamp
+    }
+
+    /// This answer with `stamp`, or at another `notebook`.
+    func with(stamp: String?, notebook: String? = nil) -> LedgerGrant {
+        LedgerGrant(notebook: notebook ?? self.notebook, capability: capability, answer: answer, stamp: stamp)
     }
 }
 
@@ -41,7 +54,8 @@ public protocol LedgerStore {
     func save(_ grants: [LedgerGrant])
 }
 
-/// UserDefaults, under one key.
+/// UserDefaults, under one key. A row's `stamp` is optional: rows kept
+/// before stamps load with none.
 @MainActor
 public struct UserDefaultsLedgerStore: LedgerStore {
     public let key: String
@@ -58,12 +72,16 @@ public struct UserDefaultsLedgerStore: LedgerStore {
             guard let notebook = row["notebook"], let capability = row["capability"],
                   let answer = row["answer"].flatMap(LedgerAnswer.init(rawValue:)), answer != .once
             else { return nil }
-            return LedgerGrant(notebook: notebook, capability: capability, answer: answer)
+            return LedgerGrant(notebook: notebook, capability: capability, answer: answer, stamp: row["stamp"])
         }
     }
 
     public func save(_ grants: [LedgerGrant]) {
-        defaults.set(grants.map { ["notebook": $0.notebook, "capability": $0.capability, "answer": $0.answer.rawValue] }, forKey: key)
+        defaults.set(grants.map { grant -> [String: String] in
+            var row = ["notebook": grant.notebook, "capability": grant.capability, "answer": grant.answer.rawValue]
+            if let stamp = grant.stamp { row["stamp"] = stamp }
+            return row
+        }, forKey: key)
     }
 }
 
@@ -80,9 +98,21 @@ public protocol LedgerPrompter: AnyObject {
 }
 
 /// The kept answers, and the notebook each kernel runs.
+///
+/// A kept answer is for the file it was given for. Each read compares the
+/// answer's stamp with the notebook's file now: when they differ, the file
+/// was replaced outside the app and the answer is forgotten, so the next
+/// call asks again. When the file isn't there (deleted, or in the middle of
+/// a rename) the answer stays as it is, so `move` can carry it to the new
+/// path; a different file made at that path later has another inode and
+/// forgets it then. The app calls `restamp` after its own saves, so its
+/// edits keep the answers.
 @MainActor
 public final class PermissionLedger {
     private let store: LedgerStore
+    /// The stamp of the file at a notebook's path now, nil when it isn't
+    /// there. `FileStamp.of`; tests pass their own.
+    private let stamp: (String) -> String?
     /// The notebook path each kernel (`owner`) runs, as the host said.
     private var notebooks: [Int: String] = [:]
 
@@ -90,13 +120,51 @@ public final class PermissionLedger {
     /// the store, so an app with a bridge per window, and a Settings
     /// screen with a ledger of its own, see one set of answers. Owners are
     /// per ledger, as they are per page.
-    public init(store: LedgerStore? = nil) {
+    public init(store: LedgerStore? = nil, stamp: @escaping (String) -> String? = FileStamp.of) {
         self.store = store ?? UserDefaultsLedgerStore()
+        self.stamp = stamp
     }
 
-    private var kept: [LedgerGrant] { store.load() }
+    /// The stored answers still good for their files, saving the store
+    /// when that dropped or stamped any.
+    private var kept: [LedgerGrant] { current(notebook: nil) }
 
-    /// The kept answers, for a Settings screen.
+    /// As `kept`, checking only `notebook`'s answers when it is given:
+    /// - a stamp that differs from the file's now: the answer is dropped;
+    /// - no stamp, and the file is there: the answer takes the file's
+    ///   stamp (trust on first use: answers kept before stamps, or while
+    ///   the file wasn't there yet);
+    /// - no file: the answer is left alone.
+    private func current(notebook only: String?) -> [LedgerGrant] {
+        let rows = store.load()
+        let checked = rows.compactMap { row -> LedgerGrant? in
+            if let only, row.notebook != only { return row }
+            guard let now = stamp(row.notebook) else { return row }
+            guard let was = row.stamp else { return row.with(stamp: now) }
+            return was == now ? row : nil
+        }
+        if checked != rows { store.save(checked) }
+        return checked
+    }
+
+    /// Forgets `notebook`'s answers if its file was replaced since they
+    /// were kept. Any read does this too; the app calls it when an edit
+    /// starts, so a change from outside that the notebook's window picked
+    /// up is caught before the app's next save restamps it.
+    public func check(notebook: String) {
+        _ = current(notebook: notebook)
+    }
+
+    /// The app saved `notebook`: its answers are for the file as it is now.
+    /// Does nothing when the file isn't there.
+    public func restamp(notebook: String) {
+        guard let now = stamp(notebook) else { return }
+        let rows = store.load()
+        let restamped = rows.map { $0.notebook == notebook ? $0.with(stamp: now) : $0 }
+        if restamped != rows { store.save(restamped) }
+    }
+
+    /// The kept answers that are still good, for a Settings screen.
     public var grants: [LedgerGrant] { kept }
 
     /// The kept answer for (`notebook`, `capability`): `always`, `deny`, or nil.
@@ -104,12 +172,13 @@ public final class PermissionLedger {
         kept.first { $0.notebook == notebook && $0.capability == capability }?.answer
     }
 
-    /// Keeps `always` or `deny`; `once` keeps nothing.
+    /// Keeps `always` or `deny`, with the notebook's stamp now; `once`
+    /// keeps nothing.
     public func record(_ answer: LedgerAnswer, notebook: String, capability: String) {
         guard answer != .once else { return }
         var rows = kept
         rows.removeAll { $0.notebook == notebook && $0.capability == capability }
-        rows.append(LedgerGrant(notebook: notebook, capability: capability, answer: answer))
+        rows.append(LedgerGrant(notebook: notebook, capability: capability, answer: answer, stamp: stamp(notebook)))
         store.save(rows)
     }
 
@@ -132,7 +201,10 @@ public final class PermissionLedger {
 
     /// A notebook was renamed or moved: its kernels and kept answers
     /// follow, replacing answers left at `new` for the same capabilities
-    /// (by a notebook deleted from there, say).
+    /// (by a notebook deleted from there, say). Each answer keeps its stamp:
+    /// a rename leaves the file's size, mtime and inode as they were. The
+    /// file is usually gone from `old` by now, which leaves its answers
+    /// alone until they are moved.
     public func move(from old: String, to new: String) {
         guard old != new else { return }
         for (owner, path) in notebooks where path == old {
@@ -142,7 +214,7 @@ public final class PermissionLedger {
         let moving = Set(rows.filter { $0.notebook == old }.map(\.capability))
         guard !moving.isEmpty else { return }
         rows.removeAll { $0.notebook == new && moving.contains($0.capability) }
-        rows = rows.map { $0.notebook == old ? LedgerGrant(notebook: new, capability: $0.capability, answer: $0.answer) : $0 }
+        rows = rows.map { $0.notebook == old ? $0.with(stamp: $0.stamp, notebook: new) : $0 }
         store.save(rows)
     }
 

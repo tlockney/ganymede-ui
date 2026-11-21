@@ -51,6 +51,9 @@ struct DocumentEffects: Equatable {
     var noteRecent: URL?
     /// A notebook just saved, for Spotlight to read again.
     var indexSaved: URL?
+    /// A notebook that just went from saved to edited, for the kept
+    /// answers to check it before the next save restamps it (#584).
+    var editStarted: URL?
 
     /// The effects of `message` on a window that showed `file`, with edits
     /// iff `wasDirty`, in `place`.
@@ -66,6 +69,8 @@ struct DocumentEffects: Equatable {
             effects.noteRecent = url
         } else if wasDirty, !message.dirty {
             effects.indexSaved = url
+        } else if !wasDirty, message.dirty {
+            effects.editStarted = url
         }
         return effects
     }

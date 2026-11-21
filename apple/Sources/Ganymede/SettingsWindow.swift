@@ -284,8 +284,10 @@ private struct LinkRunSettings: View {
         } header: {
             Text("Links")
         } footer: {
-            Text("A ganymede://run link, or a Shortcuts action that runs a notebook, asks before it first runs one. These notebooks were allowed with Always; a revoked one asks again.")
+            Text("A ganymede://run link, or a Shortcuts action that runs a notebook, asks before it first runs one. These notebooks were allowed with Always; a revoked one asks again, and so does one that was changed outside Ganymede.")
         }
+        // A notebook replaced since its answer was kept has none to list.
+        .onAppear { permissions.pruneStale() }
     }
 }
 

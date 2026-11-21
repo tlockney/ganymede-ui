@@ -1,3 +1,4 @@
+import DeviceBridge
 import Foundation
 import Observation
 
@@ -338,51 +339,128 @@ enum AppURLError: LocalizedError, Equatable {
 /// reach further than the notebook's own run (a path, a command).
 /// A key is the path, then `separator` and the destination if any, then
 /// `separator` and `withParams` for runs with parameters.
+///
+/// An answer is for the file it was given for (#584). Each key has the
+/// stamp (`FileStamp`) of its file as the app last saw it, and is forgotten
+/// when the file no longer matches: it was replaced outside the app, by
+/// git, Finder, another editor or a sync, and the next run asks again.
+/// The app restamps its keys after its own saves. A key with no stamp
+/// (kept before stamps, or while the file wasn't there) takes the file's
+/// stamp when it is next checked. A file that isn't there leaves the key
+/// alone, so a notebook that is moved back, or still being written, keeps
+/// its answer; a different file made at that path has another inode.
 @MainActor
 @Observable
 final class URLRunPermissions {
     static let shared = URLRunPermissions()
     static let defaultsKey = "urlRunAllowedNotebooks"
+    /// Each key's stamp, `[key: stamp]`, apart from `defaultsKey` so what
+    /// Settings lists, and what older versions stored, stay as they are.
+    static let stampsKey = "urlRunAllowedStamps"
     static let separator: Character = "\u{1F}"
     static let withParams = "+params"
 
     @ObservationIgnored private let defaults: UserDefaults
+    /// The stamp of the file at a path now, nil when it isn't there.
+    /// `FileStamp.of`; tests pass their own.
+    @ObservationIgnored private let stamp: (String) -> String?
+    @ObservationIgnored private var stamps: [String: String]
     private(set) var paths: [String]
 
-    init(defaults: UserDefaults = .standard) {
+    init(defaults: UserDefaults = .standard, stamp: @escaping (String) -> String? = FileStamp.of) {
         self.defaults = defaults
+        self.stamp = stamp
         paths = defaults.stringArray(forKey: Self.defaultsKey) ?? []
+        stamps = defaults.dictionary(forKey: Self.stampsKey) as? [String: String] ?? [:]
     }
 
+    /// Whether the run is allowed: kept, and for the file as it is. A key
+    /// whose file was replaced since is forgotten here, and the run asks.
     func allows(_ url: URL, sendingTo destination: String?, withParameters: Bool = false) -> Bool {
-        paths.contains(Self.key(url, destination, withParameters))
+        holds(Self.key(url, destination, withParameters))
     }
 
     func allow(_ url: URL, sendingTo destination: String?, withParameters: Bool = false) {
         let key = Self.key(url, destination, withParameters)
-        guard !paths.contains(key) else { return }
-        paths.append(key)
-        paths.sort { $0.localizedStandardCompare($1) == .orderedAscending }
+        stamps[key] = stamp(Self.parts(key).path)
+        if !paths.contains(key) {
+            paths.append(key)
+            paths.sort { $0.localizedStandardCompare($1) == .orderedAscending }
+        }
         save()
     }
 
     func revoke(_ path: String) {
         paths.removeAll { $0 == path }
+        stamps[path] = nil
         save()
     }
 
     func revokeAll() {
         paths = []
+        stamps = [:]
         save()
+    }
+
+    /// The app saved `url`: its keys are for the file as it is now. Does
+    /// nothing when the file isn't there.
+    func restamp(_ url: URL) {
+        let file = Self.filePath(url)
+        guard let now = stamp(file) else { return }
+        var changed = false
+        for key in paths where Self.parts(key).path == file && stamps[key] != now {
+            stamps[key] = now
+            changed = true
+        }
+        if changed { save() }
+    }
+
+    /// Forgets `url`'s keys if its file was replaced since they were kept.
+    /// `allows` does this too; the app calls it when an edit starts, so a
+    /// change from outside that the window picked up is caught before the
+    /// app's next save restamps it.
+    func check(_ url: URL) {
+        let file = Self.filePath(url)
+        for key in paths where Self.parts(key).path == file { _ = holds(key) }
+    }
+
+    /// Forgets every key whose file was replaced since it was kept, so
+    /// Settings lists only answers that still hold.
+    func pruneStale() {
+        for key in paths { _ = holds(key) }
+    }
+
+    /// Whether `key` is kept and its file is the one it was kept for:
+    /// - a stamp that differs from the file's now: the key is revoked;
+    /// - no stamp, and the file is there: it takes the file's stamp (trust
+    ///   on first use, for keys kept before stamps);
+    /// - no file: the key stays.
+    private func holds(_ key: String) -> Bool {
+        guard paths.contains(key) else { return false }
+        guard let now = stamp(Self.parts(key).path) else { return true }
+        guard let was = stamps[key] else {
+            stamps[key] = now
+            save()
+            return true
+        }
+        if was == now { return true }
+        revoke(key)
+        return false
     }
 
     private func save() {
         defaults.set(paths, forKey: Self.defaultsKey)
+        defaults.set(stamps, forKey: Self.stampsKey)
+    }
+
+    /// `url`'s path, one spelling per file.
+    private static func filePath(_ url: URL) -> String {
+        url.standardizedFileURL.resolvingSymlinksInPath().path
     }
 
     /// One key per file, however the URL spelled its path, and destination.
     private static func key(_ url: URL, _ destination: String?, _ withParameters: Bool) -> String {
-        let path = url.standardizedFileURL.resolvingSymlinksInPath().path
+        let path = filePath(url)
         return ([path, destination, withParameters ? withParams : nil] as [String?])
             .compactMap { $0 }
             .joined(separator: String(separator))
@@ -395,5 +473,40 @@ final class URLRunPermissions {
         let withParameters = fields.count > 1 && fields.last == withParams
         if withParameters { fields.removeLast() }
         return (fields.first ?? key, fields.count > 1 ? fields[1] : nil, withParameters)
+    }
+}
+
+/// What the app does with kept answers when it sees a notebook's file
+/// change or its own save (#584): the links' "Always allow"
+/// (`URLRunPermissions`) and the device ledger's answers
+/// (`PermissionLedger`). An answer is forgotten when the file is replaced
+/// outside the app; the app's own saves restamp it. Local files only: the
+/// callers skip a machine's notebook.
+enum KeptAnswers {
+    /// The ledger keeps a notebook by its absolute path as the app's root
+    /// gives it, and the server may name the same file by its canonical
+    /// path, as `AppKernels.resolve(_:under:)` says: both spellings.
+    private static func ledgerPaths(_ url: URL) -> [String] {
+        let given = url.standardizedFileURL.path
+        let canonical = AppKernels.canonicalPath(url)
+        return given == canonical ? [given] : [given, canonical]
+    }
+
+    /// An edit of `url` is starting (its window went from clean to dirty).
+    /// An outside change the window loaded is caught here, before the save
+    /// that follows would restamp it.
+    @MainActor
+    static func editing(_ url: URL) {
+        URLRunPermissions.shared.check(url)
+        let ledger = PermissionLedger(store: AppGroup.ledgerStore())
+        for path in ledgerPaths(url) { ledger.check(notebook: path) }
+    }
+
+    /// The app saved `url` (its window went from dirty to clean).
+    @MainActor
+    static func saved(_ url: URL) {
+        URLRunPermissions.shared.restamp(url)
+        let ledger = PermissionLedger(store: AppGroup.ledgerStore())
+        for path in ledgerPaths(url) { ledger.restamp(notebook: path) }
     }
 }

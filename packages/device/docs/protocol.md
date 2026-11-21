@@ -574,7 +574,12 @@ the wire.
   prompt; so does a dismissed prompt, which keeps nothing. Ledgers on
   one store read it on each use, so an app with a bridge per window and
   a Settings screen with a ledger of its own share one set of answers;
-  owners (`setNotebook`) stay per ledger.
+  owners (`setNotebook`) stay per ledger. Each kept answer also holds
+  the notebook's file stamp (`FileStamp`: size, mtime in nanoseconds,
+  inode) as the app last saw it, and a read forgets an answer whose file
+  no longer matches. `restamp(notebook:)` is for the app's own saves and
+  `check(notebook:)` for the start of an edit. A file that isn't there
+  keeps its answers, so `move` can carry them.
   `requestAuthorization()` answers `denied` when the ledger refuses, and
   `authorizationStatus()` reads `denied` for a kernel with no notebook or
   a kept deny. When the system status is already `denied` or

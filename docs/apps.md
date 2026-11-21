@@ -355,6 +355,17 @@ writes into a folder under Settings › General › Spotlight and copies a
 template from one. In those folders its reply, like `open`'s, tells
 the caller whether a name is taken or a template exists.
 
+"Always allow" is for the notebook as Ganymede last saw it. When the
+notebook is changed outside the app (git, Finder, another editor, a
+sync), the answer is forgotten and the next run asks again; Settings ›
+General › Links no longer lists it. Editing and saving in the app keeps
+it. The same goes for Shortcuts actions, which share these answers.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release. The latest release keeps "Always allow" for a path
+> whatever happens to the file.
+
 For a reply, put the route under `x-callback-url/` and add
 [x-callback-url](https://x-callback-url.com) answers:
 

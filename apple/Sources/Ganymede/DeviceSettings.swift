@@ -79,7 +79,7 @@ struct DeviceSettings: View {
     }
 
     private var footer: some View {
-        Text("When a notebook first uses something that needs your permission, such as notifications, Ganymede asks whether to allow it once, always, or never. “Always” and “never” are kept here until you revoke them, as are the folders you picked for a notebook.")
+        Text("When a notebook first uses something that needs your permission, such as notifications, Ganymede asks whether to allow it once, always, or never. “Always” and “never” are kept here until you revoke them, as are the folders you picked for a notebook. A notebook that is changed outside Ganymede loses its answers, and asks again.")
     }
 }
 

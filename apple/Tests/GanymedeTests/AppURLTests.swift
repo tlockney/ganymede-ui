@@ -240,6 +240,180 @@ final class AppURLTests: XCTestCase {
         XCTAssertFalse(URLRunPermissions(defaults: defaults).allows(a, sendingTo: "shortcuts://x-callback-url"))
     }
 
+    // MARK: Always allow follows the file (#584)
+
+    /// The files' stamps, as the test sets them: a path with none has no file.
+    private final class Files {
+        var stamps: [String: String] = [:]
+        func stamp(_ path: String) -> String? { stamps[path] }
+    }
+
+    /// `url`'s path as `URLRunPermissions` keys it.
+    private func pathKey(_ url: URL) -> String {
+        url.standardizedFileURL.resolvingSymlinksInPath().path
+    }
+
+    @MainActor
+    private func makePermissions(_ files: Files, _ defaults: UserDefaults) -> URLRunPermissions {
+        URLRunPermissions(defaults: defaults, stamp: files.stamp)
+    }
+
+    @MainActor
+    func testAnAnswerIsForgottenWhenTheFileChangesOutsideTheApp() throws {
+        let suite = "AppURLTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let files = Files()
+        let a = URL(fileURLWithPath: "/tmp/a.ipynb")
+        files.stamps[pathKey(a)] = "10:1:100"
+        let permissions = makePermissions(files, defaults)
+        permissions.allow(a, sendingTo: nil)
+        XCTAssertTrue(permissions.allows(a, sendingTo: nil))
+        XCTAssertEqual(defaults.dictionary(forKey: URLRunPermissions.stampsKey) as? [String: String], [pathKey(a): "10:1:100"])
+        // Replaced by rename: the same size and time, another inode.
+        files.stamps[pathKey(a)] = "10:1:101"
+        XCTAssertFalse(permissions.allows(a, sendingTo: nil), "asks again")
+        XCTAssertTrue(permissions.paths.isEmpty, "and is no longer listed")
+        XCTAssertEqual(defaults.stringArray(forKey: URLRunPermissions.defaultsKey), [])
+        XCTAssertEqual((defaults.dictionary(forKey: URLRunPermissions.stampsKey) as? [String: String])?.isEmpty, true)
+        // Allowing it again keeps the new file's answer.
+        permissions.allow(a, sendingTo: nil)
+        XCTAssertTrue(permissions.allows(a, sendingTo: nil))
+    }
+
+    @MainActor
+    func testAnUnchangedFileKeepsItsAnswerAcrossLaunches() throws {
+        let suite = "AppURLTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let files = Files()
+        let a = URL(fileURLWithPath: "/tmp/a.ipynb")
+        files.stamps[pathKey(a)] = "10:1:100"
+        makePermissions(files, defaults).allow(a, sendingTo: "shortcuts://x-callback-url", withParameters: true)
+        XCTAssertTrue(makePermissions(files, defaults).allows(a, sendingTo: "shortcuts://x-callback-url", withParameters: true))
+        files.stamps[pathKey(a)] = "11:2:100"
+        XCTAssertFalse(makePermissions(files, defaults).allows(a, sendingTo: "shortcuts://x-callback-url", withParameters: true),
+                       "the stamp was kept with the answer")
+    }
+
+    @MainActor
+    func testTheAppsOwnSaveKeepsTheAnswer() throws {
+        let suite = "AppURLTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let files = Files()
+        let a = URL(fileURLWithPath: "/tmp/a.ipynb")
+        let b = URL(fileURLWithPath: "/tmp/b.ipynb")
+        files.stamps = [pathKey(a): "10:1:100", pathKey(b): "20:1:200"]
+        let permissions = makePermissions(files, defaults)
+        permissions.allow(a, sendingTo: nil)
+        permissions.allow(a, sendingTo: AppURL.shortcutsDestination)
+        permissions.allow(b, sendingTo: nil)
+        // The app saved both: each is a rename over the file.
+        files.stamps = [pathKey(a): "12:5:101", pathKey(b): "22:5:201"]
+        permissions.restamp(a)
+        XCTAssertTrue(permissions.allows(a, sendingTo: nil))
+        XCTAssertTrue(permissions.allows(a, sendingTo: AppURL.shortcutsDestination), "every key of the file")
+        XCTAssertFalse(permissions.allows(b, sendingTo: nil), "b was not restamped: it was changed outside")
+        // An outside change after the save is still seen.
+        files.stamps[pathKey(a)] = "12:6:102"
+        XCTAssertFalse(permissions.allows(a, sendingTo: nil))
+    }
+
+    @MainActor
+    func testRestampOfAFileThatIsNotThereChangesNothing() throws {
+        let suite = "AppURLTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let files = Files()
+        let a = URL(fileURLWithPath: "/tmp/a.ipynb")
+        files.stamps[pathKey(a)] = "10:1:100"
+        let permissions = makePermissions(files, defaults)
+        permissions.allow(a, sendingTo: nil)
+        files.stamps[pathKey(a)] = nil
+        permissions.restamp(a)
+        files.stamps[pathKey(a)] = "10:1:101"
+        XCTAssertFalse(permissions.allows(a, sendingTo: nil), "still the old stamp")
+    }
+
+    /// Answers kept before stamps, and answers kept while the file wasn't
+    /// there, take the file's stamp when they are first checked.
+    @MainActor
+    func testAnAnswerWithNoStampTakesTheFilesOnFirstUse() throws {
+        let suite = "AppURLTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let files = Files()
+        let a = URL(fileURLWithPath: "/tmp/a.ipynb")
+        defaults.set([pathKey(a)], forKey: URLRunPermissions.defaultsKey)
+        let permissions = makePermissions(files, defaults)
+        XCTAssertEqual(permissions.paths, [pathKey(a)], "what an older version stored still loads")
+        XCTAssertTrue(permissions.allows(a, sendingTo: nil), "no file: kept")
+        XCTAssertNil(defaults.dictionary(forKey: URLRunPermissions.stampsKey)?[pathKey(a)])
+        files.stamps[pathKey(a)] = "10:1:100"
+        XCTAssertTrue(permissions.allows(a, sendingTo: nil), "the file appeared: trusted, and stamped")
+        XCTAssertEqual(defaults.dictionary(forKey: URLRunPermissions.stampsKey) as? [String: String], [pathKey(a): "10:1:100"])
+        files.stamps[pathKey(a)] = "10:1:101"
+        XCTAssertFalse(permissions.allows(a, sendingTo: nil))
+    }
+
+    @MainActor
+    func testCheckForgetsOnlyThatFilesStaleAnswers() throws {
+        let suite = "AppURLTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let files = Files()
+        let a = URL(fileURLWithPath: "/tmp/a.ipynb")
+        let b = URL(fileURLWithPath: "/tmp/b.ipynb")
+        files.stamps = [pathKey(a): "1:1:1", pathKey(b): "2:2:2"]
+        let permissions = makePermissions(files, defaults)
+        permissions.allow(a, sendingTo: nil)
+        permissions.allow(a, sendingTo: "shortcuts://x-callback-url")
+        permissions.allow(b, sendingTo: nil)
+        files.stamps = [pathKey(a): "1:1:9", pathKey(b): "2:2:9"]
+        permissions.check(a)
+        XCTAssertEqual(permissions.paths.map { URLRunPermissions.parts($0).path }, [pathKey(b)], "both of a's keys went; b's wasn't looked at")
+    }
+
+    @MainActor
+    func testPruneStaleForgetsEveryChangedFile() throws {
+        let suite = "AppURLTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let files = Files()
+        let a = URL(fileURLWithPath: "/tmp/a.ipynb")
+        let b = URL(fileURLWithPath: "/tmp/b.ipynb")
+        let c = URL(fileURLWithPath: "/tmp/c.ipynb")
+        files.stamps = [pathKey(a): "1:1:1", pathKey(b): "2:2:2", pathKey(c): "3:3:3"]
+        let permissions = makePermissions(files, defaults)
+        for url in [a, b, c] { permissions.allow(url, sendingTo: nil) }
+        files.stamps[pathKey(a)] = "1:1:9"
+        files.stamps[pathKey(b)] = nil
+        permissions.pruneStale()
+        XCTAssertEqual(
+            permissions.paths.map { URLRunPermissions.parts($0).path }, [pathKey(b), pathKey(c)],
+            "a changed; b is not there, which is not a change; c is as it was")
+        XCTAssertEqual(URLRunPermissions(defaults: defaults).paths.count, 2, "kept")
+    }
+
+    @MainActor
+    func testRevokingForgetsTheStampToo() throws {
+        let suite = "AppURLTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let files = Files()
+        let a = URL(fileURLWithPath: "/tmp/a.ipynb")
+        let b = URL(fileURLWithPath: "/tmp/b.ipynb")
+        files.stamps = [pathKey(a): "1:1:1", pathKey(b): "2:2:2"]
+        let permissions = makePermissions(files, defaults)
+        permissions.allow(a, sendingTo: nil)
+        permissions.allow(b, sendingTo: nil)
+        permissions.revoke(try XCTUnwrap(permissions.paths.first))
+        XCTAssertEqual(defaults.dictionary(forKey: URLRunPermissions.stampsKey) as? [String: String], [pathKey(b): "2:2:2"])
+        permissions.revokeAll()
+        XCTAssertEqual((defaults.dictionary(forKey: URLRunPermissions.stampsKey) as? [String: String])?.isEmpty, true)
+    }
+
     // MARK: Asking first (#586)
 
     func testNewAsksOutsideSettingsFolders() {

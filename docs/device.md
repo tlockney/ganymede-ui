@@ -394,6 +394,16 @@ open it rather than in the middle of a run:
 { "metadata": { "ganymede": { "device": ["notifications"] } } }
 ```
 
+A kept answer is for the notebook as the app last saw it. When the
+notebook is changed outside the app (git, Finder, another editor, a
+sync), its "always" and "don’t allow" answers are forgotten, and the
+next call asks again. Editing and saving in the app keeps them.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release. The latest release keeps an answer for a notebook's
+> path whatever happens to the file.
+
 Each namespace with a permission also has `authorizationStatus()` and
 `requestAuthorization()`, to check or ask before the first call. Only
 kernels in the app (TypeScript, in the page) reach these methods. A
