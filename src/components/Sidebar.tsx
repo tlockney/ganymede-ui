@@ -63,16 +63,22 @@ const PLACE_TABS: { id: PlaceTab; label: string }[] = [
   { id: 'search', label: 'Search' },
 ];
 
-/** The place's name and reachability dot. */
+/**
+ * The place's name and reachability dot. A live region whose hidden state
+ * text is what gets announced when reachability changes: screen readers
+ * don't announce a changed `aria-label`.
+ */
 function PlaceLabel({ name, reachable }: { name: string; reachable: boolean }) {
   return (
     <div
       className="place-label"
       role="status"
+      aria-atomic="true"
       aria-label={`Place: ${name}, ${reachable ? 'reachable' : 'offline'}`}
     >
       <span className="place-name">{name}</span>
       <span className={`status-dot ${reachable ? 's-idle' : 's-dead'}`} aria-hidden />
+      <span className="visually-hidden">{reachable ? 'reachable' : 'offline'}</span>
     </div>
   );
 }

@@ -587,6 +587,9 @@ describe('Sidebar on a connected machine (#701)', () => {
     // A plain label, not a menu: the app's native menus switch places.
     const place = await screen.findByRole('status', { name: /Place: m4mini, reachable/ });
     expect(place).toHaveTextContent('m4mini');
+    // The hidden state text is what a screen reader announces on change.
+    expect(place.querySelector('.visually-hidden')).toHaveTextContent('reachable');
+    expect(place).toHaveAttribute('aria-atomic', 'true');
     expect(place.querySelector('.status-dot.s-idle')).not.toBeNull();
     expect(screen.queryByRole('button', { name: /Place: m4mini/ })).toBeNull();
     const tabs = within(screen.getByRole('tablist', { name: 'Place' })).getAllByRole('tab');
