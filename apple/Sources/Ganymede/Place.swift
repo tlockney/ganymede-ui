@@ -200,12 +200,13 @@ enum Places {
     }
 
     /// The JSON a machine's page gets as `window.ganymedePlaces`: names and
-    /// ids, never an address or a token.
+    /// ids, never an address or a token. Keys sorted, so a list always
+    /// gives the same text (#716).
     static func pageJSON(_ entries: [PlaceEntry]) -> String {
         let items: [[String: Any]] = entries.map { entry in
             ["id": entry.place.machineID.map { $0 as Any } ?? NSNull(), "name": entry.title]
         }
-        guard let data = try? JSONSerialization.data(withJSONObject: items) else { return "[]" }
+        guard let data = try? JSONSerialization.data(withJSONObject: items, options: [.sortedKeys]) else { return "[]" }
         return String(decoding: data, as: UTF8.self)
     }
 }

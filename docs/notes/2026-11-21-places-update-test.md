@@ -22,6 +22,10 @@ this device's window gets nothing. The `didSet`'s other half
 (`installPageScripts`, for the next load) stays untested, since the
 coordinator isn't in the test target.
 
+`Places.pageJSON` now sorts its keys: `JSONSerialization` gave the same
+list's keys in a different order from one call to the next (the iOS tests
+failed comparing two scripts for one list).
+
 Finding: the list reaches no visible switcher in the apps today. Only the
 page's own sidebar reads `ganymedePlaces` (`usePlaces`), and the page draws
 it only without `chrome=native`; every app window loads with
