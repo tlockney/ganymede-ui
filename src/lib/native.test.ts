@@ -100,6 +100,8 @@ describe('native', () => {
         },
       ],
       recents: ['Io.ipynb'],
+      console: null,
+      consoles: [],
       search: null,
       outline: [{ level: 1, text: 'Io', cell: 0 }],
       variables: null,

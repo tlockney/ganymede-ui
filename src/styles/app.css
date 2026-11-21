@@ -2659,3 +2659,28 @@ button {
 .journal-item-status.running {
   color: var(--green);
 }
+
+/* The DuckDB console's name, which a click edits (#735). */
+.duck-name {
+  min-width: 0;
+  max-width: 24em;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: text;
+}
+
+.duck-rename {
+  width: 16em;
+}
+
+.duck-recent {
+  width: auto;
+  max-width: 16em;
+}

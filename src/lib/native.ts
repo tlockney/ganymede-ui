@@ -51,6 +51,10 @@ export type NativeHooks = {
  * it takes ('' is the root), and closes the open notebook (#679). In a page
  * that can open tabs (`canOpenTabs`, the Mac app) it asks the app for a new
  * console tab instead (`openTab`, #729) and the page's own content stays.
+ * `open-console` takes the id of a recent console (`PageState.consoles`) and
+ * opens it again, as a tab or in the page (#735); `clear-recent-consoles`
+ * empties that list. `rename` names the console while one shows, as it
+ * renames the open notebook.
  * `toggle-type-errors` turns type errors in TypeScript and JavaScript cells
  * on or off (#669). `toggle-live-markdown` does the same for the live
  * Markdown preview in Markdown cells (#672).
@@ -73,6 +77,8 @@ export const PAGE_COMMANDS = {
   'new-notebook': 'arg',
   'open-examples': 'arg',
   'new-duckdb-console': 'arg',
+  'open-console': 'arg',
+  'clear-recent-consoles': '',
   save: '',
   download: '',
   publish: '',
@@ -201,6 +207,10 @@ export type PageState = {
   running: RunningSession[];
   /** The notebooks opened last on this backend, newest first (#240). */
   recents: string[];
+  /** The DuckDB console the page shows, or null (#735): its record's id and its name. */
+  console: { id: string; name: string } | null;
+  /** The recent DuckDB consoles on this backend, most recent first (#735). */
+  consoles: { id: string; name: string; folder: string }[];
   /** The app's sidebar search and what it found, or null with none (#240). */
   search: PageSearch | null;
   /** The open notebook's headings, for the app's Outline (#212); empty with none. */
@@ -422,11 +432,14 @@ export function canOpenTabs(): boolean {
 
 /**
  * Asks the app for a tab (`openTab`, #729): a notebook or data file at
- * `path` on its server, or a new DuckDB console on `folder` (a server path,
- * '' for the root). The app brings forward the tab that already shows a
- * notebook or file. Nothing without the handler.
+ * `path` on its server, or a DuckDB console on `folder` (a server path,
+ * '' for the root): a new one, or with `session` (the id of a recent
+ * console, #735) that one again. The app brings forward the tab that already
+ * shows a notebook, file or console. Nothing without the handler.
  */
-export function openTab(request: { path: string } | { console: 'duckdb'; folder: string }): void {
+export function openTab(
+  request: { path: string } | { console: 'duckdb'; folder: string; session?: string },
+): void {
   handler('openTab')?.postMessage(request);
 }
 

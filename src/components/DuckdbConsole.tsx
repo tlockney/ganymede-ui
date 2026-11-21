@@ -15,8 +15,18 @@ import {
   statementsOf,
   type Ran,
 } from '../lib/duckdb-console';
+import {
+  MAX_STATEMENTS,
+  clearConsoles,
+  listedConsoles,
+  loadConsoles,
+  releaseConsole,
+  saveConsole,
+  useConsoles,
+} from '../lib/console-recents';
 import { kernelModules } from '../lib/kernel-modules';
 import { messageOf } from '../lib/problems';
+import { recentsKey } from '../lib/recents';
 import { freePath, sampleKernel } from '../lib/sample';
 import { RenderedTable, TABLE_MIME, type TableResource } from '../lib/table-output';
 
@@ -24,6 +34,13 @@ type Props = {
   backend: Backend;
   /** The window's folder, a contents path; '' for the root. */
   folder: string;
+  /** This console's record in the recent consoles (#735): the statements it ran are kept under it. */
+  id: string;
+  /** The console's name, which the header shows and renames. */
+  name: string;
+  onRename(name: string): void;
+  /** Opens another recent console, by its id. */
+  onOpenConsole(id: string): void;
   /** Opens the notebook Export to Notebook wrote. */
   onOpenNotebook(path: string): void;
 };
@@ -31,10 +48,14 @@ type Props = {
 type Entry = {
   id: number;
   sql: string;
-  state: 'running' | 'done' | 'error';
+  /** `restored` is a statement kept from an earlier session, not yet run in this one (#735). */
+  state: 'running' | 'done' | 'error' | 'restored';
   ran?: Ran;
   error?: string;
 };
+
+/** The Recent menu's choice that clears the list. */
+const CLEAR = '\u0000clear';
 
 const count = (n: number) => n.toLocaleString('en-US');
 
@@ -89,8 +110,89 @@ function ResultTable({ resource }: { resource: TableResource }) {
  * with their rows. One DuckDB engine for as long as the console is open;
  * its tables stay between statements, and it ends with the console.
  */
-export function DuckdbConsole({ backend, folder, onOpenNotebook }: Props) {
-  const [entries, setEntries] = useState<Entry[]>([]);
+export function DuckdbConsole({
+  backend,
+  folder,
+  id,
+  name,
+  onRename,
+  onOpenConsole,
+  onOpenNotebook,
+}: Props) {
+  const key = recentsKey(backend.config);
+  // A console opened again shows its saved statements, with no results.
+  const [entries, setEntries] = useState<Entry[]>(() =>
+    (loadConsoles(key).find(r => r.id === id)?.statements ?? []).map((sql, i) => ({
+      id: i + 1,
+      sql,
+      state: 'restored' as const,
+    })),
+  );
+  /** What this console's record holds: the saved statements, then those that ran since. */
+  const saved = useRef<string[]>(entries.map(e => e.sql));
+  const [editing, setEditing] = useState<string>();
+  /** The name's edit has ended (Enter or Esc); the blur that follows ends nothing more. */
+  const editDone = useRef(true);
+  const endEdit = (commit: boolean) => {
+    if (editDone.current || editing === undefined) return;
+    editDone.current = true;
+    // An empty name keeps the old one.
+    const next = editing.trim();
+    setEditing(undefined);
+    if (commit && next && next !== name) onRename(next);
+  };
+  const records = useConsoles(backend);
+  const recent = listedConsoles(records).filter(r => r.id !== id);
+  // A Clear Recent Consoles removes this console's record too: what it has
+  // saved is gone, and its later statements start a record of their own.
+  // Closed unused and unnamed, it gives its name back.
+  // A Mac tab's page is torn down without its effects' cleanups: `pagehide`
+  // is what it gets. A page that comes back from the back/forward cache
+  // reserves its name again.
+  const released = useRef(false);
+  useEffect(() => {
+    const release = () => {
+      released.current = true;
+      releaseConsole(key, id);
+    };
+    const back = (e: PageTransitionEvent) => {
+      if (!e.persisted || !released.current) return;
+      released.current = false;
+      if (loadConsoles(key).some(r => r.id === id)) return;
+      // Only an unused, unnamed record was released: put it back as one.
+      saveConsole(key, {
+        id,
+        name: nameNow.current,
+        folder: folderNow.current,
+        statements: [],
+        used: Date.now(),
+      });
+    };
+    window.addEventListener('pagehide', release);
+    window.addEventListener('pageshow', back);
+    return () => {
+      window.removeEventListener('pagehide', release);
+      window.removeEventListener('pageshow', back);
+      releaseConsole(key, id);
+    };
+  }, [key, id]);
+  const hadRecord = useRef(false);
+  useEffect(() => {
+    if (released.current) return;
+    if (records.some(r => r.id === id)) hadRecord.current = true;
+    else if (hadRecord.current) {
+      hadRecord.current = false;
+      saved.current = [];
+      // Its name stays taken while it is open.
+      saveConsole(key, {
+        id,
+        name: nameNow.current,
+        folder: folderNow.current,
+        statements: [],
+        used: Date.now(),
+      });
+    }
+  }, [records, id, key]);
   const [starting, setStarting] = useState(true);
   const [fatal, setFatal] = useState<string>();
   const [notice, setNotice] = useState<string>();
@@ -99,13 +201,30 @@ export function DuckdbConsole({ backend, folder, onOpenNotebook }: Props) {
   const session = useRef<Promise<ConsoleSession>>(undefined);
   const live = useRef<ConsoleSession | undefined>(undefined);
   const history = useRef(new History());
+  useState(() => entries.forEach(e => history.current.add(e.sql)));
   const input = useRef<HTMLDivElement>(null);
   const view = useRef<EditorView | undefined>(undefined);
   const log = useRef<HTMLDivElement>(null);
-  const nextId = useRef(1);
+  const nextId = useRef(entries.length + 1);
 
   // The folder as it is now: a rename or move of it keeps the console.
   const folderNow = useRef(folder);
+  const nameNow = useRef(name);
+  nameNow.current = name;
+  /** Keeps what ran under this console's record, which comes to the top. */
+  const remember = useCallback(
+    (sql: string) => {
+      saved.current = [...saved.current, sql].slice(-MAX_STATEMENTS);
+      saveConsole(key, {
+        id,
+        name: nameNow.current,
+        folder: folderNow.current,
+        statements: saved.current,
+        used: Date.now(),
+      });
+    },
+    [key, id],
+  );
   useEffect(() => {
     folderNow.current = folder;
     void session.current?.then(
@@ -165,12 +284,13 @@ export function DuckdbConsole({ backend, folder, onOpenNotebook }: Props) {
         // The whole input is one turn on the session: another input waits for it.
         await s.runInput(statements, (i, outcome) => {
           if (session.current !== started) return;
-          const id = mine[i]!.id;
+          const entryId = mine[i]!.id;
           if ('ran' in outcome) {
             setRanCount(s.ran.length);
-            update(id, { state: 'done', ran: outcome.ran });
+            update(entryId, { state: 'done', ran: outcome.ran });
+            remember(statements[i]!);
           } else {
-            update(id, { state: 'error', error: messageOf(outcome.error) });
+            update(entryId, { state: 'error', error: messageOf(outcome.error) });
             // The rest of the input is dropped, as a script stops at its error.
             const rest = new Set(mine.slice(i + 1).map(r => r.id));
             setEntries(all => all.filter(x => !rest.has(x.id)));
@@ -185,10 +305,44 @@ export function DuckdbConsole({ backend, folder, onOpenNotebook }: Props) {
         );
       }
     },
-    [update],
+    [update, remember],
   );
   const submitRef = useRef(submit);
   submitRef.current = submit;
+
+  /** Runs the statements kept from an earlier session, in order, on this engine. */
+  const runAgain = useCallback(async () => {
+    const mine = entries.filter(e => e.state === 'restored');
+    if (mine.length === 0) return;
+    const ids = new Set(mine.map(m => m.id));
+    setEntries(all => all.map(e => (ids.has(e.id) ? { ...e, state: 'running' } : e)));
+    const started = session.current;
+    try {
+      const s = await started;
+      if (!s) throw new Error('The console is closed.');
+      await s.runInput(
+        mine.map(m => m.sql),
+        (i, outcome) => {
+          if (session.current !== started) return;
+          const entryId = mine[i]!.id;
+          if ('ran' in outcome) {
+            setRanCount(s.ran.length);
+            update(entryId, { state: 'done', ran: outcome.ran });
+          } else {
+            update(entryId, { state: 'error', error: messageOf(outcome.error) });
+            // The rest didn't run: they stay to run again.
+            const rest = new Set(mine.slice(i + 1).map(r => r.id));
+            setEntries(all => all.map(x => (rest.has(x.id) ? { ...x, state: 'restored' } : x)));
+          }
+        },
+      );
+    } catch (e) {
+      if (session.current !== started) return;
+      setEntries(all =>
+        all.map(x => (ids.has(x.id) ? { ...x, state: 'error', error: messageOf(e) } : x)),
+      );
+    }
+  }, [entries, update]);
 
   // The input: CodeMirror, with Enter, Shift-Enter and the history keys.
   useEffect(() => {
@@ -310,11 +464,64 @@ export function DuckdbConsole({ backend, folder, onOpenNotebook }: Props) {
   return (
     <div className="duck-console">
       <div className="data-bar">
-        <span className="data-name" title={folder || '/'}>
-          DuckDB Console
-        </span>
+        {editing === undefined ? (
+          <button
+            className="duck-name"
+            title="Rename this console"
+            onClick={() => {
+              editDone.current = false;
+              setEditing(name);
+            }}
+          >
+            {name}
+          </button>
+        ) : (
+          <input
+            className="data-filter duck-rename"
+            aria-label="Console name"
+            autoFocus
+            value={editing}
+            maxLength={80}
+            onChange={e => setEditing(e.target.value)}
+            onFocus={e => e.target.select()}
+            onKeyDown={e => {
+              if (e.key === 'Escape') endEdit(false);
+              else if (e.key === 'Enter') endEdit(true);
+            }}
+            onBlur={() => endEdit(true)}
+          />
+        )}
         <span className="subtle duck-folder">{folder ? `in ${folder}` : 'in the root folder'}</span>
         <span className="data-spacer" />
+        {recent.length > 0 && (
+          <select
+            className="data-filter duck-recent"
+            aria-label="Recent consoles"
+            value=""
+            onChange={e => {
+              const choice = e.target.value;
+              if (choice === CLEAR) clearConsoles(key);
+              else if (choice) onOpenConsole(choice);
+            }}
+          >
+            <option value="">Recent…</option>
+            {recent.map(r => (
+              <option key={r.id} value={r.id}>
+                {r.name} · {r.folder || '/'}
+              </option>
+            ))}
+            <option value={CLEAR}>Clear Recent Consoles</option>
+          </select>
+        )}
+        {entries.some(e => e.state === 'restored') && (
+          <button
+            className="push-button"
+            disabled={starting || !!fatal}
+            onClick={() => void runAgain()}
+          >
+            Run All Again
+          </button>
+        )}
         <button
           className="push-button"
           disabled={exporting || starting || ranCount === 0}
@@ -339,6 +546,9 @@ export function DuckdbConsole({ backend, folder, onOpenNotebook }: Props) {
           <section className="duck-entry" key={e.id} data-state={e.state}>
             <SqlText sql={e.sql} />
             {e.state === 'running' && <p className="subtle duck-status">Running…</p>}
+            {e.state === 'restored' && (
+              <p className="subtle duck-status">Not run in this session</p>
+            )}
             {e.state === 'error' && (
               <p className="duck-error" role="alert">
                 {e.error}

@@ -1062,14 +1062,15 @@ page; the notebook menus are disabled while it shows.
 > the latest release. The latest release opens the console in the
 > window's page on the Mac too, replacing the notebook.
 
-On the Mac it opens as a tab of its own, titled "DuckDB · " and the
-folder's name, for the window's folder. The notebook in the tab you were
+On the Mac it opens as a tab of its own, titled with the console's name
+(see [Names and recent consoles](#names-and-recent-consoles)), for the
+window's folder. The notebook in the tab you were
 on stays open, and each New DuckDB Console is another tab with a new
 engine. File > Close (⌘W) closes it like any tab. Opening a notebook or
 data file from the console, or from the sidebar, opens it in another tab
 (or brings forward the tab that shows it), and the console keeps running.
-A console tab comes back on relaunch for the same folder, with a new
-engine and nothing read. The notebook menus are disabled and the
+A console tab comes back on relaunch as the same console (its name and
+statements), with a new engine and nothing read. The notebook menus are disabled and the
 inspector hidden while it shows.
 
 Type SQL in the box at the bottom. **Enter** runs it when it ends with a
@@ -1103,7 +1104,46 @@ DuckDB wasm is the build SQL in a notebook uses, in a worker of its own: the
 first console fetches it (36 MB, once, then kept), and later ones run offline.
 There is one DuckDB for as long as the console is open, so the tables you
 create stay between statements, and its worker ends when the console
-closes. Nothing is saved when it closes.
+closes. Its tables and results aren't saved when it closes; the statements
+that ran are (see below).
+
+### Names and recent consoles
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release. The latest release has no console names and keeps
+> no recent consoles.
+
+Each console has a name, "Console 1", "Console 2" and so on, the lowest
+number no recent console on that server has. Click the name in the
+console's header to change it: **Enter** keeps the new name, **Esc** or an
+empty name leaves it as it was. On the Mac, File > Rename… does the same
+for the console tab, and the tab's title shows the name.
+
+Once a statement has run in a console, or you have renamed it, the page
+keeps it as a recent console, per server, in the browser's local storage:
+its name, folder, the statements and dot commands that ran without an error
+(each as typed, in order), and when it was last used. A statement that
+failed isn't kept. The 20 most recently used consoles are kept, with the
+last 200 statements of each; results aren't. A console shown but never used
+or renamed only holds its name while it is open, and isn't listed (closing it frees the name; on the Mac that relies on the page getting `pagehide` as its tab closes, and otherwise the name is freed after a day). Open one again from the **Recent…** menu in the
+console's header (it lists the other recent consoles by name and folder),
+**Open Recent Console: …** in the Command Palette, or File > Open Recent
+Console on the Mac, which opens a tab. **Clear Recent Consoles** (that menu,
+the palette and the File menu) empties the list; a console that is open then
+starts its record over with only what you run after that.
+
+A console opened again has its name and folder and shows its statements
+without results, each marked "Not run in this session", on a new engine with
+nothing read. **Run All Again** runs them in order, stopping at the first
+error; the statements you run after that are added to the same record, not
+a copy. On the Mac, opening a console that already has a tab brings that tab
+forward; in the browser and on the iPad, the page's console is replaced by
+the one you open, and opening the one that shows changes nothing. A console
+whose folder you rename or move in the app follows it; deleting the folder
+removes its recent consoles. A tab restored on relaunch is the same console,
+but the recent list lives in the page's storage: clearing the app's website
+data, or a private window, leaves only the folder.
 
 A statement that names a CSV, TSV, JSON or Parquet file in the window's
 folder (`select * from 'data/moons.csv'`) has the file read through the

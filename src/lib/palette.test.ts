@@ -147,6 +147,38 @@ describe('paletteEntries', () => {
     expect(find('Rename Notebook…')).toMatchObject({ prompt: 'New name', initial: 'Io' });
   });
 
+  it('lists recent consoles by name and folder, and clears them (#735)', () => {
+    const consoles = [
+      { id: 'a', name: 'Orbits', folder: 'moons' },
+      { id: 'b', name: 'Console 2', folder: '' },
+    ];
+    const withConsoles = { ...CONTEXT, consoles };
+    expect(find('Open Recent Console: Orbits', withConsoles)).toMatchObject({
+      id: 'open-console',
+      arg: 'a',
+      group: 'Console · moons',
+      disabled: false,
+    });
+    expect(find('Open Recent Console: Console 2', withConsoles)).toMatchObject({
+      arg: 'b',
+      group: 'Console · /',
+    });
+    expect(find('Clear Recent Consoles', withConsoles)).toMatchObject({
+      id: 'clear-recent-consoles',
+    });
+    // Typing the console's name or folder finds it.
+    expect(
+      filterEntries(paletteEntries(withConsoles), 'orbits')
+        .map(e => e.label)
+        .includes('Open Recent Console: Orbits'),
+    ).toBe(true);
+    // None, none listed; and not without a connection.
+    expect(find('Clear Recent Consoles')).toBeUndefined();
+    expect(
+      find('Open Recent Console: Orbits', { ...withConsoles, connected: false })?.disabled,
+    ).toBe(true);
+  });
+
   it('disables the DuckDB console without a connection', () => {
     expect(find('New DuckDB Console', { ...CONTEXT, connected: false })?.disabled).toBe(true);
   });

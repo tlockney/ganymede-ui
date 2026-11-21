@@ -174,6 +174,36 @@ final class PageStateTests: XCTestCase {
         XCTAssertNil(PageState(body: body)?.variables)
     }
 
+    func testReadsTheConsoleAndRecentConsoles() throws {
+        var body: [String: Any] = [
+            "path": NSNull(), "dirty": false, "status": NSNull(), "kernel": NSNull(),
+            "kernelDisplayName": NSNull(), "kernelMissing": false, "trusted": true,
+            "cellType": NSNull(), "kernels": [Any](), "backend": NSNull(), "running": [Any](),
+        ]
+        // A page older than #735 posts neither: nothing to rename.
+        XCTAssertNil(PageState(body: body)?.console)
+        XCTAssertNil(PageState(body: body)?.consoles)
+        XCTAssertEqual(PageState(body: body)?.canRename, false)
+
+        body["console"] = ["id": "0f8fad5b-d9cb-469f-a165-70867728950e", "name": "Orbits"]
+        body["consoles"] = [
+            ["id": "a", "name": "Orbits", "folder": "moons"],
+            ["id": "b", "name": "Console 2", "folder": ""],
+        ]
+        let state = PageState(body: body)
+        XCTAssertEqual(state?.console?.name, "Orbits")
+        // File > Rename… names the console though no notebook is open.
+        XCTAssertEqual(state?.hasNotebook, false)
+        XCTAssertEqual(state?.canRename, true)
+        XCTAssertEqual(state?.consoles?.map(\.menuTitle), ["Orbits · moons", "Console 2 · /"])
+        XCTAssertEqual(state?.consoles?.map(\.id), ["a", "b"])
+
+        body["console"] = NSNull()
+        XCTAssertNil(PageState(body: body)?.console)
+        body["path"] = "Io.ipynb"
+        XCTAssertEqual(PageState(body: body)?.canRename, true)
+    }
+
     func testReadsTheSearchAndRecents() throws {
         let body: [String: Any] = [
             "path": NSNull(), "dirty": false, "status": NSNull(), "kernel": NSNull(),

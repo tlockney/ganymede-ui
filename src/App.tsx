@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type SetStateAction } from 'react';
 import {
   type Backend,
   type BackendConfig,
@@ -19,6 +19,15 @@ import { Sidebar } from './components/Sidebar';
 import { Toolbar } from './components/Toolbar';
 import { DataPane } from './components/DataPane';
 import { DuckdbConsole } from './components/DuckdbConsole';
+import {
+  clearConsoles,
+  listedConsoles,
+  loadConsoles,
+  moveConsoleFolders,
+  renameConsole,
+  startConsole,
+  useConsoles,
+} from './lib/console-recents';
 import { NotebookPane, type NotebookController } from './components/NotebookPane';
 import { dataKind } from './lib/data-files';
 import { ConnectSheet } from './components/ConnectSheet';
@@ -137,13 +146,33 @@ export function App() {
   const [consoleTab] = useState(() => launch.console === 'duckdb' && canOpenTabs());
   /** The folder of the console to show on the first connection. */
   const pendingConsole = useRef(launch.console === 'duckdb' ? launch.dir : undefined);
+  /** The record of the console to show on the first connection: the tab's own id (#735). */
+  const pendingSession = useRef(launch.session);
+  const [openPath, setOpenPathState] = useState<string>();
+  /**
+   * The DuckDB console (#679) shows in the page where a notebook would, in
+   * this folder. It has no path: the app's state says no notebook is open,
+   * so its notebook menus disable, as they do for a data file. Opening
+   * anything closes it, except in a console tab (`consoleTab`), where the
+   * app opens a tab for it.
+   */
+  const [duckFolder, setDuckFolder] = useState<string>();
+  /**
+   * Sets the open path; a path opened closes the console, here and now, not
+   * from an effect after the render: an effect could run after a console
+   * shown since and close that one.
+   */
+  const setOpenPath = useCallback((next: SetStateAction<string | undefined>) => {
+    if (typeof next === 'string' && next) setDuckFolder(undefined);
+    setOpenPathState(next);
+  }, []);
   /**
    * Opens a notebook or data file: in the page, or in a tab of its own from a
    * console tab, which keeps its console (#729).
    */
   const openNotebook = useCallback(
     (path: string) => (consoleTab ? openTab({ path }) : setOpenPath(path)),
-    [consoleTab],
+    [consoleTab, setOpenPath],
   );
   /** The folder the sidebar starts in; the server root once the sheet picks a backend. */
   const [sidebarRoot, setSidebarRoot] = useState(launch.dir);
@@ -178,20 +207,23 @@ export function App() {
   const afterPick = useCallback(() => {
     if (narrow) setSidebarOpen(false);
   }, [narrow]);
-  const [openPath, setOpenPath] = useState<string>();
-  /**
-   * The DuckDB console (#679) shows in the page where a notebook would, in
-   * this folder. It has no path: the app's state says no notebook is open,
-   * so its notebook menus disable, as they do for a data file. Opening
-   * anything closes it, except in a console tab (`consoleTab`), where the
-   * app opens a tab for it.
-   */
-  const [duckFolder, setDuckFolder] = useState<string>();
   /**
    * Bumped by each New DuckDB Console: a new console is a new engine with
    * nothing read, even on the same folder. A move of the folder keeps it.
    */
   const [duckId, setDuckId] = useState(0);
+  /** The shown console's record (#735): its id, which is the tab's on the Mac, and its name. */
+  const [duck, setDuck] = useState<{ id: string; name: string }>();
+  /** Shows a console in the page, on `folder`: a fresh engine, for the record `of` names. */
+  const showConsole = useCallback(
+    (of: { id: string; name: string }, folder: string) => {
+      setOpenPath(undefined);
+      setDuck({ id: of.id, name: of.name });
+      setDuckFolder(folder);
+      setDuckId(n => n + 1);
+    },
+    [setOpenPath],
+  );
   /**
    * A move of the console's folder, or one it is in, keeps the console and
    * moves it along; a delete closes it, as it closes an open data file.
@@ -199,14 +231,15 @@ export function App() {
   const followFolder = useCallback((from: string, to: string | null) => {
     // The view chosen for a notebook goes with it.
     const b = backendRef.current;
-    if (b) moveChosenViews(recentsKey(b.config), from, to);
+    if (b) {
+      moveChosenViews(recentsKey(b.config), from, to);
+      // The recent consoles in it follow, as the one shown does (#735).
+      moveConsoleFolders(recentsKey(b.config), from, to);
+    }
     setDuckFolder(f =>
       f === undefined || !within(f, from) ? f : to === null ? undefined : to + f.slice(from.length),
     );
   }, []);
-  useEffect(() => {
-    if (openPath) setDuckFolder(undefined);
-  }, [openPath]);
   // Not if another notebook was opened while it renamed.
   // A run going on keeps going through a rename or move (of the notebook
   // or a folder it's in): its sheet and parameters follow the name.
@@ -226,7 +259,7 @@ export function App() {
       setOpenPath(p => (p === from ? to : p));
       followRun(from, to);
     },
-    [followRun],
+    [followRun, setOpenPath],
   );
   const [controller, setController] = useState<NotebookController>();
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
@@ -323,9 +356,18 @@ export function App() {
           setOpenPath(pendingOpen.current);
           pendingOpen.current = undefined;
         } else if (pendingConsole.current !== undefined) {
-          setDuckFolder(pendingConsole.current);
+          // A tab's own record, if it has one (a restored tab, a reopened
+          // console), else a new console with the tab's id (#735).
+          const c = startConsole(
+            recentsKey(b.config),
+            pendingSession.current,
+            pendingConsole.current,
+          );
+          setDuck({ id: c.id, name: c.name });
+          setDuckFolder(c.folder);
         }
         pendingConsole.current = undefined;
+        pendingSession.current = undefined;
       })
       .catch(e => {
         if (cancelled) return;
@@ -336,7 +378,7 @@ export function App() {
     return () => {
       cancelled = true;
     };
-  }, [config]);
+  }, [config, setOpenPath]);
 
   const newNotebook = useCallback(
     /** Resolves true once the new notebook opens, false if it wasn't created. */
@@ -459,10 +501,40 @@ export function App() {
           return true;
         }
         // A notebook open goes the way another notebook's opening takes it.
-        setOpenPath(undefined);
-        setDuckFolder(clean(arg ?? folder));
-        setDuckId(n => n + 1);
+        {
+          const dir = clean(arg ?? folder);
+          showConsole(startConsole(recentsKey(backend.config), undefined, dir), dir);
+        }
         return true;
+      case 'open-console': {
+        // A recent console again (#735): a tab on the Mac, else in the page.
+        const found = backend
+          ? loadConsoles(recentsKey(backend.config)).find(r => r.id === arg)
+          : undefined;
+        if (!backend || !found) return false;
+        if (canOpenTabs()) {
+          openTab({ console: 'duckdb', folder: found.folder, session: found.id });
+          return true;
+        }
+        // Already the one shown: it keeps its engine and scrollback.
+        if (duck?.id === found.id && !openPath && duckFolder !== undefined) return true;
+        showConsole(found, found.folder);
+        return true;
+      }
+      case 'clear-recent-consoles':
+        if (!backend) return false;
+        clearConsoles(recentsKey(backend.config));
+        return true;
+      case 'rename':
+        // The shown console's name; a notebook's is below.
+        if (backend && duck && !openPath && duckFolder !== undefined) {
+          const name = arg?.trim();
+          if (!name) return false;
+          renameConsole(recentsKey(backend.config), duck.id, name, duckFolder);
+          setDuck({ ...duck, name });
+          return true;
+        }
+        break;
       case 'close':
         // The tab's console stays until the tab closes.
         if (consoleTab) return false;
@@ -784,6 +856,13 @@ export function App() {
   );
   const recents = useRecents(native ? backend : undefined, openPath);
   const recentsKeyed = JSON.stringify(recents);
+  // The recent consoles (#735): for the app's File > Open Recent Console and the palette.
+  const consoles = listedConsoles(useConsoles(backend));
+  const consolesKeyed = JSON.stringify(
+    consoles.map(c => ({ id: c.id, name: c.name, folder: c.folder })),
+  );
+  const consoleShown = !!backend && !openPath && duckFolder !== undefined && !!duck;
+  const consoleKeyed = JSON.stringify(consoleShown && duck ? duck : null);
   useEffect(() => {
     const kernel = shown?.kernelName ?? null;
     postState({
@@ -809,6 +888,8 @@ export function App() {
       backend: backend ? { label: backend.label, detail: backend.detail } : null,
       running: JSON.parse(runningKey) as RunningSession[],
       recents: JSON.parse(recentsKeyed) as string[],
+      console: JSON.parse(consoleKeyed) as PageState['console'],
+      consoles: native ? (JSON.parse(consolesKeyed) as PageState['consoles']) : [],
       search: JSON.parse(searchKey) as PageState['search'],
       outline: shown?.outline ?? [],
       variables: JSON.parse(variablesKey) as PageState['variables'],
@@ -821,6 +902,9 @@ export function App() {
     backend,
     runningKey,
     recentsKeyed,
+    consoleKeyed,
+    consolesKeyed,
+    native,
     searchKey,
     variablesKey,
     accessKey,
@@ -968,11 +1052,15 @@ export function App() {
                 onOpenAsText={editsFiles ? () => openFile(openPath) : undefined}
                 onOpenNotebook={setOpenPath}
               />
-            ) : backend && duckFolder !== undefined ? (
+            ) : backend && duckFolder !== undefined && duck ? (
               <DuckdbConsole
                 key={`${backend.config.kind}:duck:${duckId}`}
                 backend={backend}
                 folder={duckFolder}
+                id={duck.id}
+                name={duck.name}
+                onRename={name => void runCommand.current('rename', name)}
+                onOpenConsole={id => void runCommand.current('open-console', id)}
                 onOpenNotebook={openNotebook}
               />
             ) : backend && openPath ? (
@@ -1058,6 +1146,7 @@ export function App() {
             ),
             kernel: shown?.kernelName,
             recents: backend ? loadRecents(recentsKey(backend.config)) : [],
+            consoles: consoles.filter(c => !(consoleShown && c.id === duck?.id)),
             journal: shown?.journal ?? false,
             trusted: shown?.trusted ?? true,
             hostGrants: hostGrantsAvailable(backend),

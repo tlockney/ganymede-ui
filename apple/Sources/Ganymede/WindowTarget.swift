@@ -16,7 +16,9 @@ enum WindowTarget: Codable, Hashable {
     /// A DuckDB console on a folder (#729), in a tab of its own. The id
     /// makes each New DuckDB Console a window of its own: opening by value
     /// brings forward a window that has the value, and each console has a
-    /// new engine.
+    /// new engine. It is also the id of the console's record in the page's
+    /// recent consoles (`session=` in its URL, #735), so a restored tab, or
+    /// a recent console opened again, comes back as the same console.
     case console(folder: URL, id: UUID)
     /// A notebook or folder on a connected machine (#701), by its path on
     /// that machine, from its root, `/`-led. The machine is a `Place` id.
@@ -59,8 +61,10 @@ enum WindowTarget: Codable, Hashable {
     /// with its `dir=`, #729), or the notebook its `open=` names,
     /// or else the folder its `dir=` names (the sidebar's folder, #220), or
     /// else the server's root. The paths are from the server's root, `/`,
-    /// form-encoded as URLSearchParams writes them. A console is read with a
-    /// new id: compare it with `shows(_:)`, not `==`. Nil for a URL that
+    /// form-encoded as URLSearchParams writes them. A console is read with
+    /// its `session=` as the id, so it equals the tab's own target; with no
+    /// `session` it has a new id, and only `shows(_:)` matches it to the
+    /// tab, not `==`. Nil for a URL that
     /// isn't the app's page, which is served at the server's root: a file
     /// the page linked to, or an error page.
     init?(page: URL) {
@@ -90,7 +94,8 @@ enum WindowTarget: Codable, Hashable {
             self = .file(URL(fileURLWithPath: "/" + file, isDirectory: false).standardizedFileURL)
         } else if items.first(where: { $0.name == "console" })?.value == "duckdb" {
             let folder = path("dir").map { "/" + $0 } ?? "/"
-            self = .console(folder: URL(fileURLWithPath: folder, isDirectory: true), id: UUID())
+            let session = items.first { $0.name == "session" }?.value.flatMap(UUID.init(uuidString:))
+            self = .console(folder: URL(fileURLWithPath: folder, isDirectory: true), id: session ?? UUID())
         } else {
             let folder = path("dir").map { "/" + $0 } ?? "/"
             self = .folder(URL(fileURLWithPath: folder, isDirectory: true))
@@ -197,6 +202,15 @@ enum WindowTarget: Codable, Hashable {
 
     var title: String { displayTitle() }
 
+    /// The tab's title: a console shows the name the page reports (#735),
+    /// the rest their usual title.
+    func tabTitle(consoleName: String?, machineName: String? = nil) -> String {
+        if case .console = self, let name = consoleName?.trimmingCharacters(in: .whitespaces), !name.isEmpty {
+            return name
+        }
+        return displayTitle(machineName: machineName)
+    }
+
     /// Whether this window already shows `page`, a target read from its
     /// page's URL (`init?(page:)`): the same, but a console is the console
     /// of that folder whatever its id.
@@ -223,7 +237,9 @@ enum WindowTarget: Codable, Hashable {
             case .file(let url): [("kernels", kernels), ("open", url.path)]
             case .folder(let url): [("kernels", kernels), ("dir", url.path)]
             // The page keeps `console` in its URL, so a reload keeps the console.
-            case .console(let url, _): [("kernels", kernels), ("dir", url.path), ("console", "duckdb")]
+            case .console(let url, let id):
+                [("kernels", kernels), ("dir", url.path), ("console", "duckdb"),
+                 ("session", id.uuidString.lowercased())]
             case .machineFile(_, let path): [("kernels", kernels), ("open", path)]
             case .machineFolder(_, let path): [("kernels", kernels), ("dir", path)]
             }
@@ -364,16 +380,20 @@ final class OpenRequests {
 enum TabRequest: Equatable {
     /// A notebook or data file.
     case file(path: String)
-    /// A new DuckDB console on a folder; "" is the root.
-    case duckdbConsole(folder: String)
+    /// A DuckDB console on a folder; "" is the root. With a `session`, the
+    /// recent console that id names (#735), else a new one.
+    case duckdbConsole(folder: String, session: UUID? = nil)
 
-    /// From the message body: `{ path }`, or `{ console: "duckdb", folder }`.
-    /// Nil for anything else.
+    /// From the message body: `{ path }`, or `{ console: "duckdb", folder,
+    /// session? }`. Nil for anything else; a `session` that isn't a UUID
+    /// is ignored.
     init?(body: Any) {
         guard let fields = body as? [String: Any] else { return nil }
         if let console = fields["console"] as? String {
             guard console == "duckdb" else { return nil }
-            self = .duckdbConsole(folder: fields["folder"] as? String ?? "")
+            self = .duckdbConsole(
+                folder: fields["folder"] as? String ?? "",
+                session: (fields["session"] as? String).flatMap(UUID.init(uuidString:)))
         } else if let path = fields["path"] as? String, !path.isEmpty {
             self = .file(path: path)
         } else {
@@ -383,15 +403,16 @@ enum TabRequest: Equatable {
 
     /// The window that opens it, on a server rooted at `root`. A notebook,
     /// data file or folder opens as `WindowTarget(opening:)` would, which
-    /// brings forward a window already showing it; each console gets a new
-    /// `id`.
+    /// brings forward a window already showing it; a console is the
+    /// request's `session`, so a window already showing that console (on
+    /// the same folder) comes forward, else a new `id`.
     func target(root: URL, id: UUID = UUID()) -> WindowTarget {
         switch self {
         case .file(let path):
             return WindowTarget(opening: root.appendingPathComponent(path, isDirectory: false))
-        case .duckdbConsole(let folder):
+        case .duckdbConsole(let folder, let session):
             let url = folder.isEmpty ? root : root.appendingPathComponent(folder, isDirectory: true)
-            return .console(folder: url.standardizedFileURL, id: id)
+            return .console(folder: url.standardizedFileURL, id: session ?? id)
         }
     }
 }
