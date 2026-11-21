@@ -387,6 +387,30 @@ final class LinkOpenerTests: XCTestCase {
     }
 
     @MainActor
+    func testAParkedLinkWaitsForThisDeviceWhileAMachineShows() throws {
+        let f = try fixture(granting: false)
+        try file("a.ipynb", in: f.root)
+        let machine = Place.machine("3F2B8C1E-AAAA-4BBB-8CCC-0123456789AB")
+        // The server is restarting (nothing served): the link is parked.
+        f.opener.handle(try link("open", ["path": "a.ipynb"]), root: f.root, served: nil, openFiles: { [] }) { _ in }
+        XCTAssertNotNil(f.opener.pending)
+        XCTAssertTrue(f.opener.waitsForThisDevice(showing: machine))
+        XCTAssertFalse(f.opener.waitsForThisDevice(showing: .thisDevice))
+    }
+
+    @MainActor
+    func testALinkShownAtOnceWaitsForNothing() throws {
+        let f = try fixture(granting: false)
+        try file("a.ipynb", in: f.root)
+        let machine = Place.machine("3F2B8C1E-AAAA-4BBB-8CCC-0123456789AB")
+        var shown: [String] = []
+        f.opener.handle(try link("open", ["path": "a.ipynb"]), root: f.root, served: f.root, openFiles: { [] }) { shown.append($0) }
+        XCTAssertEqual(shown, ["a.ipynb"])
+        XCTAssertFalse(f.opener.waitsForThisDevice(showing: machine))
+        XCTAssertFalse(f.opener.waitsForThisDevice(showing: .thisDevice))
+    }
+
+    @MainActor
     func testANewLinkCancelsTheWaitingNotebook() throws {
         let f = try fixture(granting: true)
         f.opener.handle(try link("open", ["folder": "Vault", "file": "n/a.ipynb"]), root: f.root, served: f.root, openFiles: { [] }) { _ in }

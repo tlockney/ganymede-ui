@@ -93,7 +93,7 @@ struct ContentView: View {
     /// What the page shows, for the native toolbar and menus (#205).
     @State private var pageModel = PageModel()
     /// The iPad's sidebar and notebook columns (#208).
-    @State private var columns = NavigationSplitViewVisibility.automatic
+    @State private var columns = SidebarColumns.automatic
     /// The iPhone's page, kept while the folder list shows (#209). A store
     /// is for one place: `switchPlace` makes another.
     @State private var phonePage = WebViewStore()
@@ -111,6 +111,11 @@ struct ContentView: View {
     @State private var panelFills = false
     /// Whether the iPad's window is taller than wide.
     @State private var portrait = false
+    #if os(iOS)
+    /// Compact in Split View, Slide Over or a narrow window, where the
+    /// split view is one stack (#762).
+    @Environment(\.horizontalSizeClass) private var sizeClass
+    #endif
     /// The ⋯ menu's Rename… is asking for a name (#209).
     @State private var renaming = false
     @State private var newName = ""
@@ -378,21 +383,23 @@ struct ContentView: View {
                 // The iPad draws the sidebar and toolbar; the page shows the
                 // notebook (#208).
                 GeometryReader { window in
-                    NavigationSplitView(columnVisibility: $columns) {
+                    NavigationSplitView(columnVisibility: Binding(
+                        get: { columns.visibility }, set: { columns = SidebarColumns($0) })
+                    ) {
                         sidebar(
                             opened: {
                                 openFiles.showNotebook()
                                 panelFills = false
                                 // In portrait the sidebar covers the notebook:
                                 // it gets out of the way once one is opened.
-                                if portrait { columns = .detailOnly }
+                                if portrait { columns = .hidden }
                             },
                             tabbed: true,
                             showTerminal: { id in
                                 panel.selection = id
                                 panel.isShown = true
                                 mainFills = false
-                                if portrait { columns = .detailOnly }
+                                if portrait { columns = .hidden }
                             })
                     } detail: {
                         iPadWorkspace
@@ -453,6 +460,7 @@ struct ContentView: View {
                 // Nothing closes for a link: it may be from any web page,
                 // and a shell, an SSH session or an edit would be lost.
                 links.handle(url, root: model.serverRootFolder, served: model.servedRoot, openFiles: { OpenTextFiles.shared.all }, show: showNotebook)
+                showThisDeviceForParkedLink()
             }
         }
         // A notebook waiting for another folder's server (#640).
@@ -812,7 +820,10 @@ struct ContentView: View {
             IPadSidebar(
                 folder: scope.folder, fileSource: scope.source, place: place, page: pageModel,
                 openFile: openEditor, opened: opened, tabbed: tabbed, panel: panel,
-                showTerminal: showTerminal, onPlace: switchPlace
+                showTerminal: showTerminal,
+                columnShown: NavigatorTab.sidebarColumnShown(
+                    columns, portrait: portrait, compact: sizeClass == .compact),
+                onPlace: switchPlace
             )
             // Another place is another list, and a restarted server has a
             // new address and token (the split view and its panel stay).
@@ -891,7 +902,7 @@ struct ContentView: View {
     /// The detail area fills the screen, or goes back to how it was.
     private func toggleMainFill() {
         mainFills.toggle()
-        columns = mainFills || portrait ? .detailOnly : .automatic
+        columns = mainFills || portrait ? .hidden : .automatic
     }
 
     /// The page with its navigation bar: one title, the notebook's, and the
@@ -1020,7 +1031,7 @@ struct ContentView: View {
         } else {
             openFiles.open(path)
             panelFills = false
-            if portrait { columns = .detailOnly }
+            if portrait { columns = .hidden }
         }
     }
 
@@ -1044,7 +1055,7 @@ struct ContentView: View {
         } else if drawsNativeChrome {
             openFiles.showNotebook()
             panelFills = false
-            if portrait { columns = .detailOnly }
+            if portrait { columns = .hidden }
         }
     }
 
@@ -1067,6 +1078,15 @@ struct ContentView: View {
     /// The folder picker answered for a link, wherever it was shown.
     private func linkFolderPicked(_ result: Result<URL, Error>) {
         links.picked(result, root: model.serverRootFolder, served: model.servedRoot, openFiles: { OpenTextFiles.shared.all }, show: showNotebook)
+        showThisDeviceForParkedLink()
+    }
+
+    /// A link parked for this device's server while a machine shows (#762):
+    /// show this device, whose page opens it once ready. The switch makes
+    /// the page not ready (`PageModel.forgetPage`), so this device's page
+    /// becoming ready is a transition that `pageReady` sees.
+    private func showThisDeviceForParkedLink() {
+        if links.waitsForThisDevice(showing: place) { switchPlace(.thisDevice) }
     }
 
     /// Whether a terminal or editor is over the window, and the sheet.
