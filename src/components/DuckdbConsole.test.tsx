@@ -698,6 +698,19 @@ describe('DuckdbConsole', () => {
       expect(startConsole(storeKey, 'c2', '').name).not.toBe(a.name);
     });
 
+    it('keeps its name taken after a clear once its page is back from the back/forward cache', async () => {
+      engineFor();
+      const a = startConsole(storeKey, 'c1', '');
+      setup({}, '', 'c1');
+      act(() => void window.dispatchEvent(new Event('pagehide')));
+      const back = new Event('pageshow') as PageTransitionEvent;
+      Object.defineProperty(back, 'persisted', { value: true });
+      act(() => void window.dispatchEvent(back));
+      act(() => clearConsoles(storeKey));
+      expect(loadConsoles(storeKey)).toMatchObject([{ id: 'c1', name: a.name, statements: [] }]);
+      expect(startConsole(storeKey, 'c2', '').name).not.toBe(a.name);
+    });
+
     it('keeps a used console’s record through pagehide and a back/forward cache restore', async () => {
       engineFor();
       saveConsole(storeKey, record('c1', 'Console 1', ['select 1', 'select 2']));
