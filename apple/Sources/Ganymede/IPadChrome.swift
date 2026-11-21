@@ -385,8 +385,8 @@ struct IPadSidebar: View {
     private var actions: IPadFolderActions {
         IPadFolderActions(
             openPath: page.state.path,
-            canChange: FileChanges.allowed(place: .thisDevice, reachable: true, busy: busy),
             isRunning: { page.state.isRunning($0) },
+            canChange: FileChanges.allowed(place: .thisDevice, reachable: true, busy: busy),
             open: open,
             newNotebook: newNotebook(in:),
             newFolder: newFolder(in:),
