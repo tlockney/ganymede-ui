@@ -35,6 +35,7 @@ final class EngineBenchmarkRunTests: XCTestCase {
         let configs = Configs()
         let model = EngineBenchmark(engines: .init(
             v8Available: v8,
+            v8Blocked: { nil },
             folder: { folder },
             runV8: { config in
                 configs.append(config)
@@ -105,6 +106,60 @@ final class EngineBenchmarkRunTests: XCTestCase {
         XCTAssertTrue(try XCTUnwrap(benchmark.resultsText).hasPrefix("[null,"))
     }
 
+    func testABlockedV8IsSkippedWithItsReasonAndTheWorkersStillRun() async throws {
+        let probe = Probe()
+        let configs = Configs()
+        let folder = folder!
+        let benchmark = EngineBenchmark(engines: .init(
+            v8Available: true,
+            v8Blocked: { "no address space" },
+            folder: { folder },
+            runV8: { config in
+                configs.append(config)
+                return "{}"
+            },
+            runWorkers: { _, _ in #"{"engine": "worker", "workloads": [{"name": "start", "cold_ms": 4, "steady_ms": 3}]}"# },
+            write: { text in
+                probe.written.append(text)
+                return URL(fileURLWithPath: "/dev/null")
+            }
+        ))
+        await benchmark.run()
+
+        XCTAssertTrue(configs.all.isEmpty, "V8 started although it was blocked")
+        XCTAssertEqual(benchmark.v8Report?.error, "no address space")
+        XCTAssertEqual(benchmark.problems, ["V8: no address space"])
+        XCTAssertEqual(benchmark.workerReport?.engine, "worker")
+        XCTAssertEqual(probe.written.count, 1)
+        XCTAssertNil(benchmark.failure)
+    }
+
+    /// The Mac and the simulator have the address space V8's caged heap
+    /// takes, so the check passes there; on an iPhone without the
+    /// entitlement it doesn't.
+    func testThisProcessHasTheAddressSpaceV8Reserves() {
+        XCTAssertNil(EngineBenchmark.v8AddressSpaceProblem)
+    }
+
+    /// More address space than any process has: the reservation fails, and
+    /// the check says so instead of reporting success.
+    func testAnImpossibleReservationIsAProblem() {
+        XCTAssertNotNil(EngineBenchmark.addressSpaceProblem(bytes: 1 << 60))
+    }
+
+    /// The check reserves the 12 GB V8's caged heap first asks for, and a
+    /// failed reservation becomes the reason, not the system's error text.
+    func testTheV8CheckReservesTwelveGigabytesAndExplainsAFailure() throws {
+        var sizes: [Int] = []
+        let problem = EngineBenchmark.v8Problem { bytes in
+            sizes.append(bytes)
+            return "Cannot allocate memory"
+        }
+        XCTAssertEqual(sizes, [12 << 30])
+        XCTAssertTrue(try XCTUnwrap(problem).hasPrefix("V8 can't run here: it needs about 12 GB of address space"))
+        XCTAssertNil(EngineBenchmark.v8Problem { _ in nil })
+    }
+
     func testLeavingTheScreenMarksOnlyThatRun() async throws {
         let probe = Probe()
         let benchmark = model(v8: false, probe: probe)
@@ -147,6 +202,7 @@ final class EngineBenchmarkRunTests: XCTestCase {
     func testAMissingBenchFolderEndsTheRunWithAFailure() async {
         let benchmark = EngineBenchmark(engines: .init(
             v8Available: true,
+            v8Blocked: { nil },
             folder: { throw EngineBench.Failure("no files") },
             runV8: { _ in XCTFail("V8 ran without files"); return "{}" },
             runWorkers: { _, _ in XCTFail("the Workers ran without files"); return "{}" },

@@ -302,6 +302,8 @@ Set up once, outside the repo:
    Certificates, Identifiers & Profiles, and the App Group
    `group.com.ganymede-server.Ganymede`. Turn on App Groups for each App
    ID, with that group: the app and its extensions share it (#449, #436).
+   Also turn on Extended Virtual Address Space for
+   `com.ganymede-server.Ganymede`: V8 needs it (#755).
 2. Create an Apple Distribution certificate, export it with its private
    key from Keychain Access as a .p12, and store it with `base64 -i
 cert.p12 | pbcopy` as `IOS_CERTIFICATE_P12`.
@@ -309,7 +311,8 @@ cert.p12 | pbcopy` as `IOS_CERTIFICATE_P12`.
    each App ID with that certificate, and store them the same way as
    `IOS_PROVISIONING_PROFILE`, `IOS_SHARE_PROFILE` and
    `IOS_WIDGETS_PROFILE`. The job checks
-   each one names its App ID and the App Group. Each lasts a year, as
+   each one names its App ID and the App Group, and that the app's has
+   Extended Virtual Address Space. Each lasts a year, as
    the certificate does; the job prints their expiry dates.
 4. Create the app in App Store Connect (iOS platform, that bundle ID) and
    an internal testing group under TestFlight.

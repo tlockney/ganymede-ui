@@ -1234,7 +1234,9 @@ It is off by default, and turning it off hides the tab again. It holds:
   the device, the OS and the app's peak memory footprint. V8 starts once
   per process, so quit and relaunch the app between runs for steady
   numbers. A build whose library has no V8 says so and runs only the
-  WebKit half. **Share Results** shares a
+  WebKit half, and so does a device that doesn't give the app the address
+  space V8 needs (an iPhone or iPad build without the extended virtual
+  addressing entitlement): the results give that reason for V8. **Share Results** shares a
   `results-<time>.json` file, and **Copy Results** copies its text; `node
 bench/report.mjs` in that folder turns the file into tables.
 - **Crash Report Tests.** Buttons that send a test error or crash the app

@@ -20,6 +20,9 @@ final class EngineBenchmark {
     struct Engines {
         /// Whether this build of the library has V8.
         var v8Available: Bool
+        /// Why V8 can't start in this process, or nil when it can. Asked
+        /// before each V8 run; the V8 half is skipped with this as its error.
+        var v8Blocked: () -> String?
         /// The bench folder.
         var folder: () throws -> URL
         /// Runs the V8 config; returns the report.
@@ -32,6 +35,9 @@ final class EngineBenchmark {
 
         static let live = Engines(
             v8Available: ganymede_v8_bench_available() == 1,
+            // The real check. Tests inject their own, and on the Mac this one
+            // passes, so no test notices if it's dropped.
+            v8Blocked: { EngineBenchmark.v8AddressSpaceProblem },
             folder: EngineBenchmark.benchFolder,
             runV8: { await EngineBenchmark.runV8(config: $0) },
             runWorkers: { folder, show in
@@ -123,7 +129,10 @@ final class EngineBenchmark {
 
         var v8Text: String?
         let before = Self.footprintNow()
-        if v8Available {
+        if v8Available, let blocked = engines.v8Blocked() {
+            v8Text = EngineBench.errorReport(blocked)
+            v8Report = EngineBench.Report(json: v8Text)
+        } else if v8Available {
             step = "Running V8 (jitless)…"
             do {
                 let config = try EngineBench.config(manifest: manifest) { path in
@@ -174,6 +183,40 @@ final class EngineBenchmark {
             thread.qualityOfService = .userInitiated
             thread.start()
         }
+    }
+
+    /// When V8 starts it reserves Oilpan's caged heap: 4 GB of address
+    /// space aligned to 4 GB, first tried as an 8 GB reservation aligned to
+    /// 4 GB, which takes about 12 GB of contiguous address space for a
+    /// moment (rusty_v8's library has no pointer compression cage, and jitless
+    /// V8 no code range). An iOS app without the extended virtual addressing
+    /// entitlement gets less address space than that, and V8 aborts the
+    /// process when the reservation fails (#755). So before V8 first starts,
+    /// reserve the 12 GB (nothing is committed) and let it go again: a
+    /// failure becomes a message instead of a crash. Checked once, before
+    /// the first run starts V8; after that V8 holds its own.
+    nonisolated static let v8AddressSpaceProblem: String? = v8Problem(reserve: addressSpaceProblem)
+
+    /// The address space V8's first caged heap reservation takes.
+    nonisolated static let v8ReservationBytes = 12 << 30
+
+    /// Why V8 can't start, when `reserve` can't reserve what V8 will.
+    nonisolated static func v8Problem(reserve: (Int) -> String?) -> String? {
+        reserve(v8ReservationBytes).map { _ in
+            "V8 can't run here: it needs about 12 GB of address space, more than this app gets "
+                + "without the extended virtual addressing entitlement. The WebKit half runs without it."
+        }
+    }
+
+    /// Reserves `bytes` of address space with no access and nothing
+    /// committed, then releases it: nil when that worked, else the reason.
+    nonisolated static func addressSpaceProblem(bytes: Int) -> String? {
+        let region = mmap(nil, bytes, PROT_NONE, MAP_PRIVATE | MAP_ANON, -1, 0)
+        guard let region, region != UnsafeMutableRawPointer(bitPattern: -1) else {
+            return String(cString: strerror(errno))
+        }
+        munmap(region, bytes)
+        return nil
     }
 
     /// The reports as a results-<time>.json file, the name `report.mjs`'s
