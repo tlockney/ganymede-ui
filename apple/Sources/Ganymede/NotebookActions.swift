@@ -13,7 +13,12 @@ import Foundation
 /// Cells run through the execute endpoint (ganymede#244) with `wait`
 /// (ganymede#566): the server runs them into the notebook's room, so a
 /// window showing the notebook sees the outputs arrive, and they are saved
-/// with it as the room autosaves.
+/// with it as the room autosaves. The request names cells without a source
+/// hash (`{"cell_id"}`, `{"tag"}`, `"cells": "all"`; ganymede#843), so the
+/// room resolves them against its own current source: unsaved edits run,
+/// and a notebook with no cell ids on disk (nbformat 4.4) runs by the ids
+/// its room gave. A server from before that answers that it needs a
+/// `source_hash`; the run then reads the saved file and hashes its cells.
 struct NotebookActions: Sendable {
     typealias Send = @Sendable (URLRequest) async throws -> (Data, URLResponse)
 
@@ -67,9 +72,11 @@ struct NotebookActions: Sendable {
               let content = model["content"] as? [String: Any]
         else { throw NotebookActionError.notANotebook(path) }
         let notebook = Notebook(path: path, json: content)
-        // Before nbformat 4.5 cells have no ids, which every operation
-        // here names them by. A room gives them ids in memory only: it
-        // saves a 4.4 notebook without them.
+        // Before nbformat 4.5 cells have no ids, which the operations that
+        // read the file name them by (outputs by id, and runs on a server
+        // from before ganymede#843). A room gives them ids in memory only:
+        // it saves a 4.4 notebook without them. Runs on a newer server
+        // pass `requireIDs: false` and use the room's ids.
         if requireIDs && notebook.cellsWithoutIDs > 0 { throw NotebookActionError.noCellIDs(path) }
         return notebook
     }
@@ -106,20 +113,50 @@ struct NotebookActions: Sendable {
 
     /// Runs the code cell with id `cell`, or else every code cell tagged
     /// `cell`, and returns them with their outputs. MCP's `cell_run` runs new
-    /// code; this runs cells already in the notebook, as a window does.
+    /// code; this runs cells already in the notebook, as a window does, from
+    /// the room's current source. An id that names a markdown or raw cell is
+    /// no cell, as is one no cell has.
     func cellRun(path: String, cell: String, timeout: Int) async throws -> [NotebookCell] {
-        try await run(path: path, timeout: timeout) { notebook in
-            let cells = notebook.cells(matching: cell).filter { $0.kind == "code" }
-            if cells.isEmpty { throw NotebookActionError.noCell(cell) }
-            return cells
+        let room = try await prepare(path: path, restart: false)
+        for selector in [["cell_id": cell], ["tag": cell]] {
+            switch try await execute(room, cells: [selector], timeout: timeout) {
+            case .ran(let ran, let finished):
+                return try Self.finish(ran, finished: finished, timeout: timeout)
+            case .notFound:
+                continue
+            case .notCode:
+                throw NotebookActionError.noCell(cell)
+            case .stale(let id):
+                throw NotebookActionError.changed(id)
+            case .needsHash:
+                // A server from before ganymede#843.
+                return try await runHashed(path: path, target: room, timeout: timeout) { notebook in
+                    let cells = notebook.cells(matching: cell).filter { $0.kind == "code" }
+                    if cells.isEmpty { throw NotebookActionError.noCell(cell) }
+                    return cells
+                }
+            }
         }
+        throw NotebookActionError.noCell(cell)
     }
 
-    /// Runs every code cell in order, after restarting the kernel if
-    /// `restart`, and returns them (MCP `notebook_run_all`).
+    /// Runs every code cell with source in order, after restarting the
+    /// kernel if `restart`, and returns them (MCP `notebook_run_all`).
     func notebookRunAll(path: String, restart: Bool, timeout: Int) async throws -> [NotebookCell] {
-        try await run(path: path, timeout: timeout, restart: restart) { notebook in
-            notebook.cells.filter { $0.kind == "code" && !$0.source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        let room = try await prepare(path: path, restart: restart)
+        switch try await execute(room, cells: "all", timeout: timeout) {
+        case .ran(let ran, let finished):
+            return try Self.finish(ran, finished: finished, timeout: timeout)
+        case .stale(let id):
+            throw NotebookActionError.changed(id)
+        case .notFound, .notCode:
+            // "all" names no id or tag; the server has no such refusal.
+            throw NotebookActionError.badResponse("a run")
+        case .needsHash:
+            // A server from before ganymede#843.
+            return try await runHashed(path: path, target: room, timeout: timeout) { notebook in
+                notebook.cells.filter { $0.kind == "code" && !$0.source.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            }
         }
     }
 
@@ -205,53 +242,88 @@ struct NotebookActions: Sendable {
 
     // MARK: Running
 
-    private func run(
-        path: String, timeout: Int, restart: Bool = false,
-        select: (Notebook) throws -> [NotebookCell]
-    ) async throws -> [NotebookCell] {
-        var notebook = try await notebookRead(path: path)
-        var cells = try select(notebook)
+    /// A notebook's kernel and its room, ready to run cells in.
+    private struct Target {
+        var kernel: String
+        var document: String
+    }
+
+    /// The notebook's kernel (restarted if `restart`) and room. The file is
+    /// read only for its kernelspec, so cells without ids don't matter.
+    private func prepare(path: String, restart: Bool) async throws -> Target {
+        let notebook = try await notebookRead(path: path, requireIDs: false)
         let kernel = try await kernel(for: path, spec: notebook.kernelName)
         if restart {
             try await expectOK(request("api/kernels/\(kernel)/restart", method: "POST"))
         }
+        return Target(kernel: kernel, document: try await documentID(path))
+    }
+
+    /// The fallback for a server that needs a `source_hash` for every cell
+    /// (before ganymede#843): reads the saved file, selects cells in it and
+    /// hashes their sources. A cell with edits the file doesn't yet have is
+    /// refused as stale; the room saves a second after its last edit, so
+    /// this reads again once and tries again.
+    private func runHashed(
+        path: String, target: Target, timeout: Int,
+        select: (Notebook) throws -> [NotebookCell]
+    ) async throws -> [NotebookCell] {
+        var notebook = try await notebookRead(path: path)
+        var cells = try select(notebook)
         if cells.isEmpty { return [] }
-        let document = try await documentID(path)
-        var result = try await execute(kernel: kernel, document: document, cells: cells, timeout: timeout)
+        var result = try await execute(target, cells: Self.hashed(cells), timeout: timeout)
         if case .stale = result {
-            // The window has edits the file doesn't yet: read again once
-            // the room has saved them.
             try await Task.sleep(for: settle)
             notebook = try await notebookRead(path: path)
             cells = try select(notebook)
             if cells.isEmpty { return [] }
-            result = try await execute(kernel: kernel, document: document, cells: cells, timeout: timeout)
+            result = try await execute(target, cells: Self.hashed(cells), timeout: timeout)
         }
         switch result {
         case .stale(let id):
             throw NotebookActionError.changed(id)
         case .ran(let ran, let finished):
-            if let failed = ran.first(where: { $0.error != nil }), let error = failed.error {
-                throw NotebookActionError.cellFailed(cell: failed.id, name: error.name, value: error.value)
-            }
-            if !finished { throw NotebookActionError.timedOut(timeout) }
-            return ran
+            return try Self.finish(ran, finished: finished, timeout: timeout)
+        case .notFound(let message), .notCode(let message), .needsHash(let message):
+            throw NotebookActionError.server(status: 400, message: message)
         }
+    }
+
+    /// `{cell_id, source_hash}` entries for `cells`.
+    private static func hashed(_ cells: [NotebookCell]) -> [[String: String]] {
+        cells.map { ["cell_id": $0.id, "source_hash": String(murmur2(Array($0.source.utf8)))] }
+    }
+
+    /// The cells a run ended with, or why it failed.
+    private static func finish(_ ran: [NotebookCell], finished: Bool, timeout: Int) throws -> [NotebookCell] {
+        if let failed = ran.first(where: { $0.error != nil }), let error = failed.error {
+            throw NotebookActionError.cellFailed(cell: failed.id, name: error.name, value: error.value)
+        }
+        if !finished { throw NotebookActionError.timedOut(timeout) }
+        return ran
     }
 
     private enum Executed {
         case ran([NotebookCell], finished: Bool)
-        /// A cell's source differs from the room's.
+        /// A cell's source differs from the room's (only with a hash).
         case stale(String)
+        /// The room has no cell with that id or tag (`cell_not_found`); the server's message.
+        case notFound(String)
+        /// The id names a cell that isn't code; the server's message.
+        case notCode(String)
+        /// A server from before ganymede#843, which needs a `source_hash` for every cell; its message.
+        case needsHash(String)
     }
 
     /// The runner's name the server shows in the room as `execution_by` while the cells run (ganymede#908); servers before it ignore the field.
     static let runnerName = "Ganymede"
 
-    private func execute(kernel: String, document: String, cells: [NotebookCell], timeout: Int) async throws -> Executed {
-        var post = try request("api/kernels/\(kernel)/execute", method: "POST", body: [
-            "document_id": "json:notebook:\(document)",
-            "cells": cells.map { ["cell_id": $0.id, "source_hash": String(Self.murmur2(Array($0.source.utf8)))] },
+    /// Asks the room to run `cells`: a JSON list of `{cell_id, source_hash?}`
+    /// and `{tag}` entries, or `"all"`.
+    private func execute(_ target: Target, cells: Any, timeout: Int) async throws -> Executed {
+        var post = try request("api/kernels/\(target.kernel)/execute", method: "POST", body: [
+            "document_id": "json:notebook:\(target.document)",
+            "cells": cells,
             "wait": max(1, timeout),
             "by": Self.runnerName,
         ])
@@ -262,6 +334,12 @@ struct NotebookActions: Sendable {
         if status == 409, object?["error"] as? String == "source_mismatch" {
             return .stale(object?["cell_id"] as? String ?? "")
         }
+        if status == 400 {
+            let message = Self.message(body)
+            if object?["error"] as? String == "cell_not_found" { return .notFound(message) }
+            if Self.needsSourceHash(message) { return .needsHash(message) }
+            if message.hasSuffix("is not a code cell") { return .notCode(message) }
+        }
         guard (200..<300).contains(status) else {
             throw NotebookActionError.server(status: status, message: Self.message(body))
         }
@@ -270,6 +348,15 @@ struct NotebookActions: Sendable {
             throw NotebookActionError.oldServer
         }
         return .ran(list.compactMap(NotebookCell.init(json:)), finished: finished)
+    }
+
+    /// Whether a 400's message is a server from before ganymede#843
+    /// (v0.11.0 and earlier) refusing a request with no `source_hash`: for a
+    /// cell with none, for `"cells": "all"`, and for a `{tag}` entry.
+    static func needsSourceHash(_ message: String) -> Bool {
+        message.hasPrefix("source_hash is required for cell")
+            || message.hasPrefix("cells must be a non-empty list of {cell_id, source_hash}")
+            || message.hasPrefix("Each cell entry must have a cell_id string, got")
     }
 
     /// The notebook's file id, for its room's `json:notebook:<id>`.
