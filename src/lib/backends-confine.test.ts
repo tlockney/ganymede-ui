@@ -7,6 +7,7 @@ import {
   machinePrefix,
   settingsFor,
 } from './backends';
+import { createMixedServices } from './mixed';
 
 const ORIGIN = 'http://localhost:8123';
 const ID = 'm-1';
@@ -69,6 +70,17 @@ describe('confinedFetch', () => {
     await f(`${ORIGIN}${P}api/status`);
     await f(new Request(`${ORIGIN}${P}api/status`));
     expect(under).toHaveBeenCalledTimes(2);
+  });
+
+  it('passes an allowed URL input to fetch', async () => {
+    const seen: string[] = [];
+    const under = vi.fn(async (input: RequestInfo | URL) => {
+      seen.push(input instanceof URL ? input.href : String(input));
+      return new Response('{}');
+    });
+    const f = confinedFetch(ORIGIN, ID, under as unknown as typeof fetch);
+    await f(new URL(`${ORIGIN}${P}api/status`) as unknown as string);
+    expect(seen).toEqual([`${ORIGIN}${P}api/status`]);
   });
 });
 
@@ -167,5 +179,37 @@ describe('confinedWebSocket', () => {
     expect(made).toEqual([]);
     new WS(`ws://localhost:8123${P}api/events/subscribe`);
     expect(made).toEqual([`ws://localhost:8123${P}api/events/subscribe`]);
+  });
+});
+
+describe('createMixedServices on a machine', () => {
+  it('keeps the machine confinement on non-page sockets', async () => {
+    const answer = (url: string) => {
+      if (url.includes('/api/kernelspecs')) return { default: '', kernelspecs: {} };
+      return [];
+    };
+    const fake = vi.fn(
+      async (input: RequestInfo | URL) =>
+        new Response(JSON.stringify(answer(input instanceof Request ? input.url : String(input))), {
+          headers: { 'Content-Type': 'application/json' },
+        }),
+    );
+    vi.stubGlobal('fetch', fake);
+    let services: Awaited<ReturnType<typeof createMixedServices>> | undefined;
+    try {
+      const config = { kind: 'ganymede', url: '', token: '', machine: ID } as const;
+      services = await createMixedServices(settingsFor(config, ORIGIN));
+      const WS = services.serverSettings.WebSocket;
+      // A kernel id no page owns, so the socket goes to the machine's own class.
+      expect(() => new WS(`${ORIGIN.replace(/^http/, 'ws')}/api/kernels/k-1/channels`)).toThrow(
+        /outside the machine/,
+      );
+      expect(() => new WS(`ws://evil.example${P}api/kernels/k-1/channels`)).toThrow(
+        /outside the machine/,
+      );
+    } finally {
+      services?.dispose();
+      vi.unstubAllGlobals();
+    }
   });
 });
