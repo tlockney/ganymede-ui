@@ -2589,7 +2589,7 @@ button {
   background: var(--orange);
 }
 
-.place-switcher {
+.place-label {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -2601,7 +2601,7 @@ button {
   background: var(--control-bg);
 }
 
-.place-switcher .place-name {
+.place-label .place-name {
   flex: 1;
   text-align: left;
   overflow: hidden;

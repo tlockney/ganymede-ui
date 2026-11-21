@@ -67,7 +67,7 @@ const PLACE_TABS: { id: PlaceTab; label: string }[] = [
 function PlaceLabel({ name, reachable }: { name: string; reachable: boolean }) {
   return (
     <div
-      className="place-switcher"
+      className="place-label"
       role="status"
       aria-label={`Place: ${name}, ${reachable ? 'reachable' : 'offline'}`}
     >
@@ -136,7 +136,7 @@ export function Sidebar({
   visible = true,
 }: Props) {
   const services = backend?.services;
-  // A connected machine (#701): a place switcher with the machine's name
+  // A connected machine (#701): a place label with the machine's name
   // and reachability, and Files, Journals, Running and Search as tabs.
   const machine =
     backend?.config.kind === 'ganymede' && backend.config.machine
