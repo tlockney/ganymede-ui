@@ -79,8 +79,9 @@ struct ContentView: View {
     /// This window, in `OpenTextFiles`.
     @State private var windowID = UUID()
     @State private var settings = false
-    /// The connected machine this scene shows, if any (#701): its page
-    /// takes the whole scene, with its own sidebar and toolbar.
+    /// The place this scene shows (#701): this device, or a connected
+    /// machine, whose files and notebooks come through the app's mount. Both
+    /// have the app's own sidebar and toolbar (#758); `switchPlace` changes it.
     @State private var place: Place = .thisDevice
     /// What Settings shows over its first screen: the Agent or Keyboard
     /// Shortcuts, when the page asked for them (#332).
@@ -93,7 +94,8 @@ struct ContentView: View {
     @State private var pageModel = PageModel()
     /// The iPad's sidebar and notebook columns (#208).
     @State private var columns = NavigationSplitViewVisibility.automatic
-    /// The iPhone's page, kept while the folder list shows (#209).
+    /// The iPhone's page, kept while the folder list shows (#209). A store
+    /// is for one place: `switchPlace` makes another.
     @State private var phonePage = WebViewStore()
     /// The iPhone's screens over the folder list: the notebook, or none.
     @State private var phonePath: [PhoneScreen] = []
@@ -334,19 +336,13 @@ struct ContentView: View {
         }
         #else
         Group {
-            if let machine = place.machineID {
-                MachineScreen(machine: machine) { place = $0 }
-            } else if isPhone {
+            if isPhone {
                 // The iPhone: the folder list, and the notebook pushed onto
                 // it (#209). The page lives in `phonePage`, so it keeps
                 // running while the list shows and the list can open
                 // notebooks in it.
                 NavigationStack(path: $phonePath) {
-                    IPadSidebar(
-                        folder: model.root, page: pageModel, openFile: openEditor,
-                        opened: { phonePath = [.notebook] }, panel: panel,
-                        onPlace: { place = $0 }
-                    )
+                    sidebar(opened: { phonePath = [.notebook] })
                     .toolbar {
                         ToolbarItemGroup(placement: .navigationBarLeading) { appButtons }
                     }
@@ -362,11 +358,13 @@ struct ContentView: View {
                     .onAppear { phonePage.park() }
                     .navigationDestination(for: PhoneScreen.self) { _ in notebook }
                 }
+                // Another place is another page, and another list (#758).
+                .id(place)
                 .task { model.startIfNeeded() }
                 // Each start too: a quick restart can bring the same URL
                 // back without `url` being seen to go nil (#640).
-                .task(id: "\(model.serverStart) \(model.url?.absoluteString ?? "")") {
-                    if let url = model.url {
+                .task(id: "\(model.serverStart) \(page?.absoluteString ?? "") \(place.mountPath)") {
+                    if let url = page {
                         phonePage.load(url, page: pageModel, onOpenFile: openEditor)
                     } else {
                         // Stopped, to restart (Open Folder, Try Again,
@@ -379,8 +377,7 @@ struct ContentView: View {
                 // notebook (#208).
                 GeometryReader { window in
                     NavigationSplitView(columnVisibility: $columns) {
-                        IPadSidebar(
-                            folder: model.root, page: pageModel, openFile: openEditor,
+                        sidebar(
                             opened: {
                                 openFiles.showNotebook()
                                 panelFills = false
@@ -388,15 +385,13 @@ struct ContentView: View {
                                 // it gets out of the way once one is opened.
                                 if portrait { columns = .detailOnly }
                             },
-                            tabbed: true, panel: panel,
+                            tabbed: true,
                             showTerminal: { id in
                                 panel.selection = id
                                 panel.isShown = true
                                 mainFills = false
                                 if portrait { columns = .detailOnly }
-                            },
-                            onPlace: { place = $0 }
-                        )
+                            })
                     } detail: {
                         iPadWorkspace
                     }
@@ -407,7 +402,11 @@ struct ContentView: View {
                         if !tall, !mainFills { columns = .automatic }
                     }
                 }
-                .focusedSceneValue(\.iPadPanel, IPadPanelToggle(shown: panelShown, toggle: togglePanel))
+                // The terminal panel's shells are this device's.
+                .focusedSceneValue(
+                    \.iPadPanel,
+                    place.allows(.localTerminal) ? IPadPanelToggle(shown: panelShown, toggle: togglePanel) : nil
+                )
                 .onAppear { panel.resize(to: panelHeight, available: .infinity) }
                 .onChange(of: panel.height) { _, new in panelHeight = new }
                 // However the last terminal closed, the next one opens
@@ -420,6 +419,7 @@ struct ContentView: View {
             }
         }
         .focusedSceneValue(\.pageModel, pageModel)
+        .focusedSceneValue(\.iPadPlace, place)
         .modifier(KeychainAlert(model: model))
         // A link's alert shows on the topmost thing presented: the window,
         // the Settings sheet, or a cover. Only one of them takes it.
@@ -430,12 +430,13 @@ struct ContentView: View {
         // its entry, and a result opens here.
         .onChange(of: pageModel.state.recents, initial: true) { _, recents in
             // nil until the page reports: syncing then would drop every
-            // entry, to index them all again a moment later.
-            guard recents != nil else { return }
+            // entry, to index them all again a moment later. A machine's
+            // notebooks have no files here: not in Spotlight (#758).
+            guard recents != nil, place.indexesLocally else { return }
             SpotlightSettings.shared.sync(recents: recentFiles)
         }
         .onChange(of: pageModel.state.dirty) { was, now in
-            guard was, !now, let path = pageModel.state.path else { return }
+            guard was, !now, place.indexesLocally, let path = pageModel.state.path else { return }
             SpotlightSettings.shared.saved(model.serverRootFolder.appendingPathComponent(path, isDirectory: false))
         }
         .onContinueUserActivity(CSSearchableItemActionType) { activity in
@@ -457,7 +458,8 @@ struct ContentView: View {
         // started on. Only on the transition: a page from before the
         // restart isn't the new folder's.
         .onChange(of: pageModel.ready) { _, ready in
-            if ready { links.pageReady(served: model.servedRoot, show: showNotebook) }
+            // This device's page: a machine's is not the folder's server.
+            if ready, place.isThisDevice { links.pageReady(served: model.servedRoot, show: showNotebook) }
         }
         // The page goes with its server, on every layout: commands and a
         // waiting notebook wait for the next page's state, not the old
@@ -775,7 +777,68 @@ struct ContentView: View {
         target = shown
     }
     #else
-    private var page: URL? { model.url }
+    /// The page this scene loads: the app's own, or the machine's (#701),
+    /// with the app's chrome around either (#758). Nil until the server
+    /// listens.
+    private var page: URL? {
+        guard let id = place.machineID else { return model.url }
+        return WindowTarget.machine(id, path: "/", isFolder: true).flatMap { model.page(for: $0) }
+    }
+
+    /// A machine's name, for the title and the subtitle.
+    private var machineName: String? { place.machineID.flatMap(model.machineName(_:)) }
+
+    /// The sidebar's folder and files (#758): this device's notebook folder
+    /// (its source is the sidebar's own default), or a machine's root through
+    /// `MachineFileSource`. Nil for a machine until the server listens.
+    private var sidebarScope: (folder: URL, source: (any FileSource)?)? {
+        guard let id = place.machineID else { return (model.root, nil) }
+        guard let root = WindowTarget.machine(id, path: "/", isFolder: true)?.folder,
+              let server = model.serverURL
+        else { return nil }
+        return (root, MachineFileSource(id: id, server: server))
+    }
+
+    /// The sidebar of both layouts; a progress view for a machine until the
+    /// server listens, as the Mac's.
+    @ViewBuilder
+    private func sidebar(
+        opened: @escaping () -> Void, tabbed: Bool = false,
+        showTerminal: @escaping (PanelTerminal.ID) -> Void = { _ in }
+    ) -> some View {
+        if let scope = sidebarScope {
+            IPadSidebar(
+                folder: scope.folder, fileSource: scope.source, place: place, page: pageModel,
+                openFile: openEditor, opened: opened, tabbed: tabbed, panel: panel,
+                showTerminal: showTerminal, onPlace: switchPlace
+            )
+            // Another place is another list, and a restarted server has a
+            // new address and token (the split view and its panel stay).
+            .id("\(place.mountPath)|\(place.isMachine ? model.serverURL?.absoluteString ?? "" : "")")
+        } else {
+            ProgressView()
+        }
+    }
+
+    /// Shows `new` in this scene (#758): the page for that place loads,
+    /// with its own handlers (a coordinator's place is fixed, so the
+    /// iPad's web view is made again, and the iPhone's store replaced). What
+    /// the old place had open, and the old page's state, are dropped first:
+    /// the shared `pageModel` must not carry its notebook into the new place
+    /// (it forgets the page before the new one loads).
+    private func switchPlace(_ new: Place) {
+        guard new != place else { return }
+        // Text files saved on the way, as when the notebook comes back.
+        openFiles.showNotebook()
+        phonePath = []
+        panelFills = false
+        if isPhone {
+            phonePage.retire()
+            phonePage = WebViewStore(place: new)
+        }
+        pageModel.forgetPage()
+        place = new
+    }
 
     /// The iPhone's screens over its folder list (#209).
     enum PhoneScreen: Hashable { case notebook }
@@ -818,7 +881,7 @@ struct ContentView: View {
     }
 
     /// Whether the iPad's bottom panel is on screen.
-    private var panelShown: Bool { panel.isShown && !mainFills }
+    private var panelShown: Bool { panel.isShown && !mainFills && place.allows(.localTerminal) }
 
     /// Whether the panel fills the detail area over the notebook.
     private var notebookHidden: Bool { panelFills && panelShown }
@@ -845,15 +908,18 @@ struct ContentView: View {
                     ToolbarItem(placement: .principal) {
                         VStack(spacing: 0) {
                             Text(title).font(.headline).lineLimit(1)
-                            if !pageModel.state.subtitle.isEmpty {
-                                Text(pageModel.state.subtitle)
+                            // "on <machine>" first for a machine's scene.
+                            let subtitle = WindowTarget.subtitle(
+                                page: pageModel.state.subtitle, machineName: machineName)
+                            if !subtitle.isEmpty {
+                                Text(subtitle)
                                     .font(.caption)
                                     .foregroundStyle(pageModel.state.kernelMissing ? AnyShapeStyle(Color.red) : AnyShapeStyle(.secondary))
                                     .lineLimit(1)
                             }
                         }
                     }
-                    IPadNotebookToolbar(page: pageModel, bottom: isPhone) {
+                    IPadNotebookToolbar(page: pageModel, place: place, bottom: isPhone) {
                         newName = title
                         renaming = true
                     }
@@ -879,21 +945,27 @@ struct ContentView: View {
             }
     }
 
-    /// The app's own buttons: terminals, Settings, the notebook folder.
+    /// The app's own buttons: terminals, Settings, the notebook folder. A
+    /// machine's scene has no terminals (their shells are on this device) and
+    /// no folder to open (#758).
     @ViewBuilder
     private var appButtons: some View {
-        TerminalMenu(model: model) { request in
-            // In the bottom panel on iPad (#251), full screen on iPhone.
-            if isPhone {
-                terminal = request
-            } else {
-                panel.add(request.target)
-                mainFills = false
+        if place.allows(.localTerminal) {
+            TerminalMenu(model: model) { request in
+                // In the bottom panel on iPad (#251), full screen on iPhone.
+                if isPhone {
+                    terminal = request
+                } else {
+                    panel.add(request.target)
+                    mainFills = false
+                }
             }
         }
         if !isPhone {
-            Button(action: togglePanel) {
-                Label(panelShown ? "Hide Terminal Panel" : "Show Terminal Panel", systemImage: "rectangle.bottomthird.inset.filled")
+            if place.allows(.localTerminal) {
+                Button(action: togglePanel) {
+                    Label(panelShown ? "Hide Terminal Panel" : "Show Terminal Panel", systemImage: "rectangle.bottomthird.inset.filled")
+                }
             }
             Button(action: toggleMainFill) {
                 Label(
@@ -908,11 +980,13 @@ struct ContentView: View {
             Label("Settings", systemImage: "gearshape")
         }
         .keyboardShortcut(",")
-        Button {
-            pickPurpose = .openFolder
-            picking = true
-        } label: {
-            Label("Open Folder", systemImage: "folder")
+        if place.isThisDevice {
+            Button {
+                pickPurpose = .openFolder
+                picking = true
+            } label: {
+                Label("Open Folder", systemImage: "folder")
+            }
         }
     }
 
@@ -920,12 +994,13 @@ struct ContentView: View {
         if drawsNativeChrome, let path = pageModel.state.path {
             return URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
         }
-        return model.root.lastPathComponent
+        return place.isMachine ? (machineName ?? "Machine") : model.root.lastPathComponent
     }
 
     /// Shows or hides the iPad's bottom panel. Shown, it leaves a filled
     /// screen, so it can be seen.
     private func togglePanel() {
+        guard place.allows(.localTerminal) else { return }
         if panelShown {
             panel.isShown = false
             panelFills = false
@@ -957,6 +1032,9 @@ struct ContentView: View {
     /// Opens the notebook at `path` in the folder the server serves, and
     /// shows it: from Spotlight (#305) or a link (#640).
     private func showNotebook(apiPath path: String) {
+        // A notebook of this device, whichever place the scene shows (#758):
+        // a machine's page would look for it on the machine.
+        switchPlace(.thisDevice)
         pageModel.run("open", arg: path)
         if isPhone {
             // Behind a cover, if one is up: there when it closes.
@@ -999,6 +1077,9 @@ struct ContentView: View {
 
     /// The person said yes to switching folders for a link.
     private func changeFolder(_ change: LinkOpener.FolderSwitch) {
+        // The link's notebook is this device's: show this device's page, so
+        // it opens in context and not in a machine's.
+        switchPlace(.thisDevice)
         links.confirm(change) { model.open(folder: $0) }
     }
 
@@ -1034,7 +1115,13 @@ struct ContentView: View {
                 // A page loaded for another place gets its own handlers.
                 .id(place)
                 #else
-                WebView(url: url, page: pageModel, onOpenFile: openEditor, store: isPhone ? phonePage : nil)
+                // A page loaded for another place gets its own handlers: this
+                // device's page is not a machine's (#758).
+                WebView(
+                    url: url, page: pageModel, onOpenFile: openEditor, store: isPhone ? phonePage : nil,
+                    place: place, places: model.places, onOpenPlace: switchPlace
+                )
+                .id(place)
                 #endif
             } else if model.error != nil {
                 startProblem

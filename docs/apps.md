@@ -634,6 +634,15 @@ keys are kept in the keychain too.
   and comes back with a swipe from the edge. It has the Mac's navigator
   tabs (⌘1 to ⌘5 with a keyboard): Files, Search, Running (kernels and
   the panel's terminals), Outline and Recents.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release.
+
+  The sidebar also has a Journals tab (⌘6), for this iPad and for every
+  connected machine, and the iPhone's list a Journals section when there
+  are journals ([Connected machines](#connected-machines)).
+
 - Files lists the notebook folder as a tree; long-press an item to
   rename, duplicate or delete it, or make a notebook or folder in it. A
   dot marks notebooks whose kernel is running. Search finds files by name
@@ -801,8 +810,8 @@ with only SSH stays in Settings for shells.
   independent, so one can show the Mac mini while another shows this Mac.
   On the iPad and iPhone the scene shows one place at a time: the
   machine's sidebar has the switcher back to this device.
-- **A machine's window** (on the iPad and iPhone, the machine's page with
-  its own sidebar) has Files, Journals, Running and Search tabs. Its tab
+- **A machine's window** (the app's native sidebar and toolbar on the
+  Mac, iPad and iPhone alike) has Files, Journals, Running and Search tabs. Its tab
   and title carry the machine's name ("Orbits · m4mini"). A notebook
   opens live in the machine's room, on the machine's kernels, and saves
   there; Running lists the machine's kernels. Recents are the machine's
@@ -850,6 +859,19 @@ start a shell on this Mac, so they are dimmed there (New Terminal On
 still works). The sidebar's place
 menu shows the machine as the current place, and picking another opens
 its window. Its Journals tab lists that machine's journals.
+
+The iPad and iPhone show a machine the same way: the app's own sidebar,
+toolbar and notebook screen in place of the machine page's, listing the
+machine's files, with the same offline line, dimmed file operations,
+error words and Delete that always asks. The iPad's sidebar has the
+Files, Search, Running, Outline and Journals tabs (Journals for this
+device too), and the iPhone's list a Journals section when there are
+journals. The scene shows one place at a time: the place menu (the iPad) or
+the Places section (the iPhone) switches to this device or another
+machine, and loads that place's page. A machine's scene has no terminals,
+panel, Recents, Open Example Notebooks, New DuckDB Console, Open Folder
+or kernel location choice, and non-page files aren't opened in the app's
+editor.
 
 The app reaches a machine through its own server, which forwards a fixed
 list of routes to the machine with the machine's token, so no token is

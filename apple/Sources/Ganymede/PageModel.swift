@@ -29,11 +29,16 @@ final class PageModel {
     /// Commands run before then: the iPhone's list can be tapped while the
     /// page is still loading (#209).
     @ObservationIgnored private var pending: [String] = []
+    /// How many commands wait for the page (for tests).
+    var pendingCount: Int { pending.count }
 
     /// Views that want the kernels' memory (#241).
     @ObservationIgnored private var memoryWatch = MemoryWatch()
 
     func update(_ state: PageState) {
+        // After `forgetPage` until the new page's load commits: a page the
+        // scene has dropped may still post.
+        guard pageStart >= 0 else { return }
         if state != self.state { self.state = state }
         // Ready once it is connected: before that, `open` and
         // `new-notebook` have no backend to act on.
@@ -73,6 +78,21 @@ final class PageModel {
     func reset(forStart start: Int) {
         ready = false
         awaitedStart = max(awaitedStart, start)
+    }
+
+    /// The scene shows another place's page (#758): the old page's state,
+    /// queued commands and load are forgotten, and nothing counts as ready
+    /// until the app's own load of the new page commits (`pageStart` is below
+    /// every start until then), so what a page of the old place posts
+    /// meanwhile makes nothing ready. The views watching memory stay: the
+    /// next page is told on its first state. The caller drops the old
+    /// page's web view, and calls this before it loads the new page.
+    func forgetPage() {
+        state = PageState()
+        ready = false
+        pending = []
+        started = nil
+        pageStart = -1
     }
 
     /// The app started loading its page for server start `start`;

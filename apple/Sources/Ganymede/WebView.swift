@@ -68,6 +68,13 @@ struct WebView: UIViewRepresentable {
     /// A stored page goes back to its parking place once its screen has
     /// let it go.
     static func dismantleUIView(_ view: WKWebView, coordinator: WebViewCoordinator) {
+        // A page the scene dropped (another place, #758) must not write into
+        // the shared `PageModel`. A stored page (the iPhone's) is only
+        // parked: its coordinator keeps its model.
+        if coordinator.park == nil {
+            coordinator.page = nil
+            coordinator.onOpenPlace = nil
+        }
         // After SwiftUI has taken the screen's views out of the window, and
         // again once a pop's animation is surely over; the list's
         // `onAppear` parks it too.
@@ -96,12 +103,27 @@ struct WebView: UIViewRepresentable {
 /// `parking`, a hidden view behind the list (`ParkedPage`).
 @MainActor
 final class WebViewStore {
+    /// Where the page's notebooks live (#701, #758). Fixed, as the
+    /// coordinator's: another place gets a store of its own.
+    let place: Place
+
+    init(place: Place = .thisDevice) {
+        self.place = place
+    }
+
     private(set) lazy var coordinator: WebViewCoordinator = {
-        let coordinator = WebViewCoordinator()
+        let coordinator = WebViewCoordinator(place: place)
         coordinator.park = { [weak self] in self?.park() }
         return coordinator
     }()
-    private(set) lazy var webView: WKWebView = coordinator.makeWebView(keepRunning: true)
+    /// Made on first use; `retire` leaves one that was never made alone.
+    private var made: WKWebView?
+    var webView: WKWebView {
+        if let made { return made }
+        let view = coordinator.makeWebView(keepRunning: true)
+        made = view
+        return view
+    }
     /// Holds the web view while no screen shows it. Lazy, like the rest:
     /// `@State` makes a store on every `ContentView` init and keeps only
     /// the first (#357).
@@ -127,6 +149,19 @@ final class WebViewStore {
     /// window's `PageModel.reset(forStart:)` makes its commands wait.
     func forget() {
         coordinator.forget()
+    }
+
+    /// The scene shows another place (#758): this store's page stops, and
+    /// nothing it posts reaches the window's `PageModel` any more. The
+    /// store is dropped by the caller.
+    func retire() {
+        // A store whose page was never made has nothing to stop.
+        guard let view = made else { return }
+        coordinator.page = nil
+        coordinator.onOpenFile = nil
+        coordinator.onOpenPlace = nil
+        view.stopLoading()
+        view.removeFromSuperview()
     }
 
     /// Puts the web view back in `parking` when no screen in the window

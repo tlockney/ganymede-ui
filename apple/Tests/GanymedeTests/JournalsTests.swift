@@ -122,4 +122,19 @@ final class JournalsTests: XCTestCase {
         let rooms = (bad + ["ok/a..b.ipynb"]).map { ["path": $0, "clients": []] as [String: Any] }
         XCTAssertEqual(Journals.parseRooms(["rooms": rooms]).map(\.path), ["ok/a..b.ipynb"])
     }
+
+    // MARK: What the tab says instead of rows (#758)
+
+    func testTheTabSaysWhyItHasNoRows() {
+        XCTAssertNil(Journals.statusMessage(nil, journalCount: 0), "still asking")
+        XCTAssertEqual(
+            Journals.statusMessage(.unsupported, journalCount: 0), "This server is too old to list journals.")
+        XCTAssertEqual(
+            Journals.statusMessage(.error("The server answered 500."), journalCount: 0),
+            "Couldn’t list journals: The server answered 500.")
+        XCTAssertEqual(
+            Journals.statusMessage(.rooms([]), journalCount: 0),
+            "No journals yet. A notebook an agent works in shows here.")
+        XCTAssertNil(Journals.statusMessage(.rooms([]), journalCount: 2), "rows show")
+    }
 }

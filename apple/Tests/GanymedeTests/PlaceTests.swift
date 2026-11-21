@@ -184,18 +184,19 @@ final class PlaceTests: XCTestCase {
                 "token": "abc", "kernels": "server", "open": "/notes/Io & Europa.ipynb",
                 "machine": id, "machine_name": "m4 mini", "chrome": "native",
             ])
-        // Without it the page draws its own (the iPad's machine screen).
+        // Without it the page draws its own chrome.
         XCTAssertNil(query(target.pageURL(server: server, kernels: "server", machineName: "m"))["chrome"])
         // This device's windows draw the native chrome too.
         let local = WindowTarget.folder(URL(fileURLWithPath: "/tmp", isDirectory: true))
         XCTAssertEqual(query(local.pageURL(server: server, kernels: "server", nativeChrome: true))["chrome"], "native")
     }
 
-    func testOnlyTheIPadsMachineScreenKeepsThePagesChrome() {
-        XCTAssertTrue(Place.thisDevice.drawsNativeChrome(onMac: true))
-        XCTAssertTrue(Place.machine(id).drawsNativeChrome(onMac: true))
-        XCTAssertTrue(Place.thisDevice.drawsNativeChrome(onMac: false))
-        XCTAssertFalse(Place.machine(id).drawsNativeChrome(onMac: false))
+    func testEveryPlaceDrawsNativeChromeOnTheMacAndWhereTheIOSIdiomDoes() {
+        for place in [Place.thisDevice, .machine(id)] {
+            XCTAssertTrue(place.drawsNativeChrome(onMac: true, iosDraws: false), "\(place)")
+            XCTAssertTrue(place.drawsNativeChrome(onMac: false, iosDraws: true), "\(place) on the iPad or iPhone")
+            XCTAssertFalse(place.drawsNativeChrome(onMac: false, iosDraws: false), "\(place)")
+        }
     }
 
     func testAMachineTargetsFolderIsItsLocationNotAFileURL() throws {

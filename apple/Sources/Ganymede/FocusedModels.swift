@@ -11,6 +11,10 @@ extension FocusedValues {
     @Entry var pageDocument: PageDocument?
     @Entry var windowScope: WindowScope?
     #endif
+    #if os(iOS)
+    /// The iPad's scene's place, for the commands of this device's own (#758).
+    @Entry var iPadPlace: Place?
+    #endif
 }
 
 #if os(macOS)

@@ -642,6 +642,7 @@ targets:
       - path: Sources/Ganymede/KernelLog.swift
       - path: Sources/Ganymede/FolderEntry.swift
       - path: Sources/Ganymede/FileSource.swift
+      - path: Sources/Ganymede/NavigatorTab.swift
       - path: Sources/Ganymede/WorkspaceTabs.swift
       - path: Sources/Ganymede/FileSearch.swift
       - path: Sources/Ganymede/Terminal/SSHKey.swift
@@ -726,6 +727,7 @@ targets:
       - path: Sources/Ganymede/KernelLog.swift
       - path: Sources/Ganymede/FolderEntry.swift
       - path: Sources/Ganymede/FileSource.swift
+      - path: Sources/Ganymede/NavigatorTab.swift
       - path: Sources/Ganymede/WorkspaceTabs.swift
       - path: Sources/Ganymede/FileSearch.swift
       - path: Sources/Ganymede/Terminal/SSHKey.swift
