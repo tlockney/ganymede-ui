@@ -47,17 +47,28 @@ final class NavigatorTabTests: XCTestCase {
     }
 
     func testTheIPadsSidebarColumnIsHiddenWhenCollapsedOrAutomaticInPortrait() {
-        XCTAssertFalse(NavigatorTab.sidebarColumnShown(.detailOnly, portrait: false, compact: false))
-        XCTAssertFalse(NavigatorTab.sidebarColumnShown(.detailOnly, portrait: true, compact: false))
+        XCTAssertFalse(NavigatorTab.sidebarColumnShown(.hidden, portrait: false, compact: false))
+        XCTAssertFalse(NavigatorTab.sidebarColumnShown(.hidden, portrait: true, compact: false))
         XCTAssertFalse(NavigatorTab.sidebarColumnShown(.automatic, portrait: true, compact: false))
         XCTAssertTrue(NavigatorTab.sidebarColumnShown(.automatic, portrait: false, compact: false))
-        XCTAssertTrue(NavigatorTab.sidebarColumnShown(.all, portrait: true, compact: false))
-        XCTAssertTrue(NavigatorTab.sidebarColumnShown(.doubleColumn, portrait: false, compact: false))
+        XCTAssertTrue(NavigatorTab.sidebarColumnShown(.shown, portrait: true, compact: false))
+        XCTAssertTrue(NavigatorTab.sidebarColumnShown(.shown, portrait: false, compact: false))
     }
 
     func testACompactIPadWindowLeavesItToTheSidebar() {
         // One stack: the sidebar's own appear and disappear say whether it shows.
-        XCTAssertTrue(NavigatorTab.sidebarColumnShown(.detailOnly, portrait: true, compact: true))
+        XCTAssertTrue(NavigatorTab.sidebarColumnShown(.hidden, portrait: true, compact: true))
         XCTAssertTrue(NavigatorTab.sidebarColumnShown(.automatic, portrait: true, compact: true))
+    }
+
+    func testTheSplitViewsShowAndHideAreReadBack() {
+        XCTAssertEqual(SidebarColumns(.all), .shown)
+        XCTAssertEqual(SidebarColumns(.doubleColumn), .shown)
+        XCTAssertEqual(SidebarColumns(.detailOnly), .hidden)
+        XCTAssertEqual(SidebarColumns.shown.visibility, .all)
+        XCTAssertEqual(SidebarColumns.hidden.visibility, .detailOnly)
+        // On iPadOS `.automatic == .detailOnly` holds, so only the Mac's
+        // run of this test tells these two apart.
+        XCTAssertEqual(SidebarColumns.automatic.visibility, .automatic)
     }
 }

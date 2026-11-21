@@ -64,7 +64,43 @@ enum NavigatorTab: String, CaseIterable, Identifiable {
     /// Slide Over, a narrow window) makes the split view one stack, where
     /// the sidebar's own appear and disappear (`listShown`) say whether it
     /// shows, so the column counts as shown there.
-    static func sidebarColumnShown(_ columns: NavigationSplitViewVisibility, portrait: Bool, compact: Bool) -> Bool {
-        compact || !(columns == .detailOnly || (portrait && columns == .automatic))
+    static func sidebarColumnShown(_ columns: SidebarColumns, portrait: Bool, compact: Bool) -> Bool {
+        switch columns {
+        case .hidden: compact
+        case .automatic: compact || !portrait
+        case .shown: true
+        }
+    }
+}
+
+/// The iPad's split view columns, as `ContentView` keeps them (#762).
+/// Its own type because `NavigationSplitViewVisibility` can't be told
+/// apart by `==` on iPadOS: on the iPad simulator `.automatic ==
+/// .detailOnly` held (#772's CI).
+enum SidebarColumns: Equatable {
+    /// The system's choice: the sidebar in landscape, the notebook alone
+    /// in portrait.
+    case automatic
+    /// The notebook alone (`.detailOnly`).
+    case hidden
+    /// The sidebar beside the notebook.
+    case shown
+
+    /// What the split view is given.
+    var visibility: NavigationSplitViewVisibility {
+        switch self {
+        case .automatic: .automatic
+        case .hidden: .detailOnly
+        case .shown: .all
+        }
+    }
+
+    /// What the split view sets when the person shows or hides the
+    /// sidebar: `.all` or `.doubleColumn` to show it, `.detailOnly` to
+    /// hide it. CI showed `.automatic == .detailOnly` on iPadOS, so
+    /// anything but the two that show counts as hidden
+    /// (`NavigatorTabTests.testTheSplitViewsShowAndHideAreReadBack`).
+    init(_ visibility: NavigationSplitViewVisibility) {
+        self = visibility == .all || visibility == .doubleColumn ? .shown : .hidden
     }
 }

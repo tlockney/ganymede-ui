@@ -17,7 +17,7 @@ Two Lows from #761's review.
   sidebar's own `listShown` didn't help: it follows the sidebar's appear and
   disappear, and a collapsed split-view column stays in the view tree. So
   `ContentView`, which owns the split view's `columns`, passes
-  `columnShown` (`NavigatorTab.sidebarColumnShown`: not `.detailOnly`, and
+  `columnShown` (`NavigatorTab.sidebarColumnShown`: not hidden, and
   not `.automatic` in portrait, which shows the notebook alone). A compact
   window (Split View, Slide Over, a narrow window) makes the split view one
   stack, where `listShown` does follow the sidebar, so the column counts as
@@ -25,6 +25,10 @@ Two Lows from #761's review.
   needs both on the iPad and only `listShown` on the iPhone; a change makes
   the poll's id change and its task end. The rules sit on `NavigatorTab`,
   not in `IPadChrome` (iOS-only), so both test targets compile them.
+- `ContentView` keeps the columns as `SidebarColumns` (automatic, hidden,
+  shown) and maps them to and from `NavigationSplitViewVisibility`. On the
+  iPad simulator `.automatic == .detailOnly` held, so a rule that compared
+  the SwiftUI values read landscape's `.automatic` as collapsed (iOS CI).
 
 Tests: `LinkOpenerTests` (a parked link waits for this device while a
 machine shows and not while this device shows; a link shown at once waits

@@ -93,7 +93,7 @@ struct ContentView: View {
     /// What the page shows, for the native toolbar and menus (#205).
     @State private var pageModel = PageModel()
     /// The iPad's sidebar and notebook columns (#208).
-    @State private var columns = NavigationSplitViewVisibility.automatic
+    @State private var columns = SidebarColumns.automatic
     /// The iPhone's page, kept while the folder list shows (#209). A store
     /// is for one place: `switchPlace` makes another.
     @State private var phonePage = WebViewStore()
@@ -383,21 +383,23 @@ struct ContentView: View {
                 // The iPad draws the sidebar and toolbar; the page shows the
                 // notebook (#208).
                 GeometryReader { window in
-                    NavigationSplitView(columnVisibility: $columns) {
+                    NavigationSplitView(columnVisibility: Binding(
+                        get: { columns.visibility }, set: { columns = SidebarColumns($0) })
+                    ) {
                         sidebar(
                             opened: {
                                 openFiles.showNotebook()
                                 panelFills = false
                                 // In portrait the sidebar covers the notebook:
                                 // it gets out of the way once one is opened.
-                                if portrait { columns = .detailOnly }
+                                if portrait { columns = .hidden }
                             },
                             tabbed: true,
                             showTerminal: { id in
                                 panel.selection = id
                                 panel.isShown = true
                                 mainFills = false
-                                if portrait { columns = .detailOnly }
+                                if portrait { columns = .hidden }
                             })
                     } detail: {
                         iPadWorkspace
@@ -900,7 +902,7 @@ struct ContentView: View {
     /// The detail area fills the screen, or goes back to how it was.
     private func toggleMainFill() {
         mainFills.toggle()
-        columns = mainFills || portrait ? .detailOnly : .automatic
+        columns = mainFills || portrait ? .hidden : .automatic
     }
 
     /// The page with its navigation bar: one title, the notebook's, and the
@@ -1029,7 +1031,7 @@ struct ContentView: View {
         } else {
             openFiles.open(path)
             panelFills = false
-            if portrait { columns = .detailOnly }
+            if portrait { columns = .hidden }
         }
     }
 
@@ -1053,7 +1055,7 @@ struct ContentView: View {
         } else if drawsNativeChrome {
             openFiles.showNotebook()
             panelFills = false
-            if portrait { columns = .detailOnly }
+            if portrait { columns = .hidden }
         }
     }
 
