@@ -372,18 +372,24 @@ struct TerminalCommands: View {
     @Environment(\.openWindow) private var openWindow
     var model: AppModel
     @FocusedValue(\.windowFolder) private var folder
+    @FocusedValue(\.windowScope) private var scope
     /// The front notebook window's bottom panel, where new terminals go
     /// (#248); a window of their own when no notebook window is in front.
     @FocusedValue(\.panelController) private var panel
 
     var body: some View {
+        // A shell on this Mac: not offered in a machine's window (#741),
+        // which has no `windowFolder` to start in.
+        let local = scope?.place.allows(.localTerminal) ?? true
         Button("New Terminal") {
             open(.local(folder: folder ?? model.root))
         }
         .keyboardShortcut("`", modifiers: [.control, .shift])
+        .disabled(!local)
         Button("New Terminal Tab") {
             openWindow(value: TerminalRequest(target: .local(folder: folder ?? model.root)))
         }
+        .disabled(!local)
         // One item per way in: a remote with both a server and SSH gets two.
         Menu("New Terminal On") {
             ForEach(model.remotes) { remote in

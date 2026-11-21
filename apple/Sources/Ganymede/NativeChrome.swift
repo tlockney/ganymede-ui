@@ -478,6 +478,8 @@ struct NotebookToolbar: ToolbarContent {
     let folder: URL
     /// The window's bottom panel, for the kernel popover's Kernel Log.
     var panel: PanelController?
+    /// The window's place: a machine's kernel popover has no Runs On.
+    var place: Place = .thisDevice
 
     var body: some ToolbarContent {
         ToolbarItem(placement: .navigation) {
@@ -542,7 +544,7 @@ struct NotebookToolbar: ToolbarContent {
             .disabled(!page.state.editsCells)
         }
         ToolbarItem {
-            KernelPicker(page: page, panel: panel)
+            KernelPicker(page: page, panel: panel, place: place)
         }
         // Download, Export As and Publish, as in the File menu (#620): the
         // web toolbar that has them is hidden under native chrome.
@@ -590,6 +592,7 @@ struct NotebookToolbar: ToolbarContent {
 struct KernelPicker: View {
     var page: PageModel
     var panel: PanelController?
+    var place: Place = .thisDevice
     @State private var shown = false
 
     var body: some View {
@@ -601,7 +604,7 @@ struct KernelPicker: View {
         .help(page.state.kernelVersionLine ?? "The notebook's kernel")
         .disabled(!page.state.hasNotebook)
         .popover(isPresented: $shown, arrowEdge: .bottom) {
-            KernelPopover(page: page, panel: panel) { shown = false }
+            KernelPopover(page: page, panel: panel, place: place) { shown = false }
         }
     }
 }
@@ -609,6 +612,7 @@ struct KernelPicker: View {
 private struct KernelPopover: View {
     var page: PageModel
     let panel: PanelController?
+    let place: Place
     let dismiss: () -> Void
 
     var body: some View {
@@ -633,10 +637,13 @@ private struct KernelPopover: View {
                 Button("Kernel Log") { panel?.showLog(); dismiss() }
                     .disabled(panel == nil || state.kernelID == nil)
             }
-            Divider()
-            // Where every notebook's kernels run (#473): an advanced choice.
-            KernelLocationPicker(running: state.sessions.count, title: "Runs On (advanced)")
-                .onChange(of: AppModel.shared.kernelRemoteID) { dismiss() }
+            // Where every notebook's kernels run (#473): an advanced choice,
+            // and this Mac's: not offered in a machine's window (#741).
+            if place.allows(.kernelLocation) {
+                Divider()
+                KernelLocationPicker(running: state.sessions.count, title: "Runs On (advanced)")
+                    .onChange(of: AppModel.shared.kernelRemoteID) { dismiss() }
+            }
             if !state.kernels.isEmpty {
                 Picker("Kernel", selection: Binding(
                     get: { state.kernel ?? "" },
@@ -685,6 +692,11 @@ struct NewCommands: View {
     @FocusedValue(\.windowScope) private var scope
     @Environment(\.openWindow) private var openWindow
 
+    /// What New Tab and New Window open: the front window's own place.
+    private var newTarget: WindowTarget {
+        WindowTarget.newTab(place: scope?.place, folder: folder, root: model.root)
+    }
+
     var body: some View {
         // The menus exist before any window, so their `openWindow` lets
         // files opened at a cold launch get a window when SwiftUI made
@@ -716,12 +728,12 @@ struct NewCommands: View {
         .disabled(page == nil)
         // Always a new window, even when one already shows the folder.
         Button("New Tab") {
-            WorkspaceTabs.open(folder: folder ?? model.root, alone: false) { openWindow(id: $0) }
+            WorkspaceTabs.open(target: newTarget, alone: false) { openWindow(id: $0) }
         }
         .keyboardShortcut("t")
         Button("New Window") {
             // A window of its own, not a tab of the front one (#247).
-            WorkspaceTabs.open(folder: folder ?? model.root, alone: true) { openWindow(id: $0) }
+            WorkspaceTabs.open(target: newTarget, alone: true) { openWindow(id: $0) }
         }
         .keyboardShortcut("n", modifiers: [.command, .option])
     }
@@ -878,6 +890,7 @@ struct CellMenu: View {
 /// The Kernel menu.
 struct KernelMenu: View {
     @FocusedValue(\.pageModel) private var page
+    @FocusedValue(\.windowScope) private var scope
 
     var body: some View {
         // Which kernel runs, from its own reply (#693).
@@ -909,15 +922,18 @@ struct KernelMenu: View {
         // page's sheet.
         Button("Notebook Access…") { page?.run("notebook-access") }
             .disabled(page?.state.hasNotebook != true || page?.state.hostGrants != true)
-        Divider()
         // Where kernels run is a setting of the app, not the notebook
         // (#332), chosen here too (#473).
         // An advanced choice, since connected machines (places) are the
-        // main way to use another machine (#701).
-        Menu("Advanced") {
-            KernelLocationPicker(running: page?.state.sessions.count)
-                .pickerStyle(.inline)
-            Button("Manage Remotes…") { SettingsOpener.show(.remotes) }
+        // main way to use another machine (#701). It sets this Mac's
+        // kernels, so a machine's window has no Advanced menu (#741).
+        if scope?.place.allows(.kernelLocation) ?? true {
+            Divider()
+            Menu("Advanced") {
+                KernelLocationPicker(running: page?.state.sessions.count)
+                    .pickerStyle(.inline)
+                Button("Manage Remotes…") { SettingsOpener.show(.remotes) }
+            }
         }
     }
 }

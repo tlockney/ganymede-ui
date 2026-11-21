@@ -836,7 +836,12 @@ reads "on _machine_". These work on this Mac's disk, so a machine's window
 doesn't have them: Show in Finder, Duplicate on a folder (a machine copies
 files only), the Recents tab, File > Open Recent, the terminal panel and
 its shells, and opening a text file in the app's editor (notebooks and
-data files open in the page; other files are dimmed). The sidebar's place
+data files open in the page; other files are dimmed). File > New Tab and
+New Window open on the same machine, not on this Mac. Kernel > Advanced
+and Runs On in the kernel popover set where this Mac's kernels run, so a
+machine's window hides them; File > New Terminal and New Terminal Tab
+start a shell on this Mac, so they are dimmed there (New Terminal On
+still works). The sidebar's place
 menu shows the machine as the current place, and picking another opens
 its window. Its Journals tab lists that machine's journals.
 

@@ -157,6 +157,23 @@ enum WindowTarget: Codable, Hashable {
         }
     }
 
+    /// What a new window shows: its own value, else what New Tab or New
+    /// Window asked for (a machine's root too, #741), else `root`.
+    static func opening(_ target: WindowTarget?, requested: WindowTarget?, root: URL) -> WindowTarget {
+        target ?? requested ?? .folder(root)
+    }
+
+    /// What File > New Tab and New Window open from a window of `place`: a
+    /// machine's window opens that machine's root, so the new window is on
+    /// the same machine (#741); this device's, `folder` (the window's own)
+    /// or else `root`. A nil `place` (no window) is this device.
+    static func newTab(place: Place?, folder: URL?, root: URL) -> WindowTarget {
+        if let place, place.isMachine, let target = Self.root(of: place, device: root) {
+            return target
+        }
+        return .folder(folder ?? root)
+    }
+
     /// The window subtitle: "on <machine>" for a machine's window, then the
     /// page's own (the kernel and its state, when a notebook is open).
     static func subtitle(page: String, machineName: String?) -> String {
