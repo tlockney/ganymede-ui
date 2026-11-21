@@ -78,16 +78,16 @@ export function agentsAt(result: RoomsResult | undefined, path: string): string[
 }
 
 /**
- * What the journal's composer says about who is there to see a request
- * (#724): the agents in the room, or that none is. A request is saved in
- * the notebook either way, and `ganymede mcp watch` reports the open
- * notebook's requests to an agent watching its folder. Nothing while it
- * isn't known.
+ * What the journal's composer says about who is there to see a note or
+ * request (#724, #726): the agents in the room, or that none is. A note or
+ * request is saved in the notebook either way and waits for the next agent
+ * that reads it, and `ganymede mcp watch` reports the open notebook's
+ * requests to an agent watching its folder. Nothing while it isn't known.
  */
 export function composerHint(agents: readonly string[] | undefined): string | undefined {
   if (!agents) return undefined;
   if (agents.length === 0) {
-    return 'No agent is in the room. A request is saved in the notebook; an agent watching this folder is told while the notebook stays open.';
+    return 'No agent is in the room. Notes and requests are saved in the notebook for the next agent that reads it; an agent watching this folder is told of a request while the notebook stays open.';
   }
   return `${agents.join(', ')} ${agents.length === 1 ? 'is' : 'are'} in the room.`;
 }

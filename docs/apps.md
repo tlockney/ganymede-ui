@@ -1030,11 +1030,11 @@ on a Ganymede server, and there is no setting for it.
   the end (**Add Note**), or as an `@agent` request (**Ask the agent**),
   which `ganymede mcp watch` reports to the agent once the text has
   stayed the same for a few seconds. Above the buttons, a line names the
-  agents in the room, or says none is. A request is saved in the notebook
-  either way. While the notebook stays open, an agent running `ganymede
-mcp watch` on its folder is told about it, in the room or not; after
-  that it waits until an agent reads the notebook. Everything else is
-  read-only.
+  agents in the room, or says none is. A note or request is saved in the
+  notebook either way. While the notebook stays open, an agent running
+  `ganymede mcp watch` on its folder is told about a request, in the room
+  or not; a note, or a request after that, waits until an agent reads the
+  notebook. Everything else is read-only.
 - **Reconnecting…**: when the connection to the server drops, the journal
   is read-only until it is back.
 

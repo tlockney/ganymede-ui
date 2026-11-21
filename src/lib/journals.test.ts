@@ -179,7 +179,9 @@ describe('agents at a path (#724)', () => {
 
   it('words the composer line', () => {
     expect(composerHint(undefined)).toBeUndefined();
-    expect(composerHint([])).toMatch(/^No agent is in the room\./);
+    expect(composerHint([])).toBe(
+      'No agent is in the room. Notes and requests are saved in the notebook for the next agent that reads it; an agent watching this folder is told of a request while the notebook stays open.',
+    );
     expect(composerHint(['claude-code'])).toBe('claude-code is in the room.');
     expect(composerHint(['a', 'b'])).toBe('a, b are in the room.');
   });
