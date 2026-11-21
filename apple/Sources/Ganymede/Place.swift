@@ -79,8 +79,6 @@ enum Place: Hashable, Codable {
         case appLinks
         /// The page's Settings tab messages.
         case settings
-        /// Switching to another place, from a machine window's own sidebar.
-        case switchPlace
         /// Where this Mac's kernels run (Runs On, Kernel > Advanced): a
         /// setting of this device, not of a machine's window.
         case kernelLocation
@@ -91,13 +89,13 @@ enum Place: Hashable, Codable {
     func allows(_ capability: Capability) -> Bool {
         switch self {
         case .thisDevice:
-            capability != .switchPlace
+            true
         case .machine:
             // `nativeChrome`: the Mac draws a machine's sidebar and toolbar
             // too (#740), from the page's `state`. Its `document` message
             // never reaches native Recents, Spotlight or the proxy icon
             // (`indexesLocally`).
-            capability == .settings || capability == .switchPlace || capability == .nativeChrome
+            capability == .settings || capability == .nativeChrome
         }
     }
 
@@ -112,7 +110,6 @@ enum Place: Hashable, Codable {
         if allows(.nativeChrome) { names += ["state", "document"] }
         if allows(.agentKeys) { names.append("agentKeys") }
         if allows(.settings) { names.append("settings") }
-        if allows(.switchPlace) { names.append("place") }
         return names
     }
 
@@ -177,37 +174,6 @@ enum Places {
             Place(remote: remote).map { PlaceEntry(place: $0, title: remote.title) }
         }
         return list
-    }
-
-    /// The page's event for a changed list (`PLACES_EVENT` in places.ts).
-    static let updateEvent = "ganymede-places"
-
-    /// The script that gives a loaded machine page a new list: sets the
-    /// global and tells the page.
-    static func updateScript(_ entries: [PlaceEntry]) -> String {
-        "window.ganymedePlaces = \(pageJSON(entries));"
-            + "window.dispatchEvent(new Event('\(updateEvent)'));"
-    }
-
-    /// What a window of `place` runs in its page when its list goes from
-    /// `old` to `new` (`WebViewCoordinator.places`, #716): `updateScript`
-    /// for a machine's window and a list that changed, otherwise nil. A
-    /// window of this device has no switcher, and the same list needs no
-    /// event.
-    static func changeScript(place: Place, from old: [PlaceEntry], to new: [PlaceEntry]) -> String? {
-        guard place.allows(.switchPlace), old != new else { return nil }
-        return updateScript(new)
-    }
-
-    /// The JSON a machine's page gets as `window.ganymedePlaces`: names and
-    /// ids, never an address or a token. Keys sorted, so a list always
-    /// gives the same text (#716).
-    static func pageJSON(_ entries: [PlaceEntry]) -> String {
-        let items: [[String: Any]] = entries.map { entry in
-            ["id": entry.place.machineID.map { $0 as Any } ?? NSNull(), "name": entry.title]
-        }
-        guard let data = try? JSONSerialization.data(withJSONObject: items, options: [.sortedKeys]) else { return "[]" }
-        return String(decoding: data, as: UTF8.self)
     }
 }
 

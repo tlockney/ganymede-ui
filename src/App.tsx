@@ -7,9 +7,7 @@ import {
   saveConfig,
   signedInHere,
 } from './lib/backends';
-import { usePlaces } from './lib/places';
 import { initialConfig, isAppServer, sameBackend } from './lib/app-config';
-import { openPlace as postOpenPlace } from './lib/native';
 import { offersDevice } from './lib/kernel-device';
 import { reportMoved } from './lib/kernel-relay';
 import { useColorScheme } from './lib/useColorScheme';
@@ -116,12 +114,10 @@ export function App() {
   const scheme = useColorScheme();
   useJupyterLabTheme(scheme);
   const [config, setConfig] = useState<BackendConfig | undefined>(initialConfig);
-  // A connected machine's window (#701): its name, and the places the app
-  // lists for switching.
+  // A connected machine's window (#701): its name. The app's native menus
+  // switch places (the page's sidebar is not drawn there, `chrome=native`).
   const machineName =
     config?.kind === 'ganymede' && config.machine ? (config.machineName ?? 'machine') : undefined;
-  const places = usePlaces();
-  const openPlace = useCallback((id: string | null) => postOpenPlace(id), []);
   // The notebook and folder the URL asks for (`?open=`, `?dir=`): a window
   // the Apple apps open on one file.
   const [launch] = useState<Launch>(() => readLaunch(window.location.search));
@@ -989,8 +985,6 @@ export function App() {
             onClose={sidebarFloats ? () => setSidebarOpen(false) : undefined}
             onConnect={openConnect}
             onSettings={openSettings}
-            places={places}
-            onPlace={openPlace}
             actions={
               backend &&
               fileActions({

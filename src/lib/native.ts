@@ -385,15 +385,6 @@ export function showAppSettings(tab: SettingsTab): boolean {
   return true;
 }
 
-/**
- * Asks the app to open a place (a connected machine's id, or null for this
- * device) in its own window (#701). Only a machine's window has the
- * handler: it is the one with a place switcher of its own.
- */
-export function openPlace(id: string | null): void {
-  handler('place')?.postMessage({ id });
-}
-
 /** Tells the app what it shows: see `PageState`. */
 export function postState(state: PageState): void {
   handler('state')?.postMessage(state);

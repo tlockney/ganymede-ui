@@ -570,7 +570,6 @@ describe('Sidebar on a connected machine (#701)', () => {
         }) as unknown as typeof fetch,
       });
     const onOpen = vi.fn();
-    const onPlace = vi.fn();
     render(
       <Sidebar
         backend={fakeBackend(fake.services, config)}
@@ -578,32 +577,24 @@ describe('Sidebar on a connected machine (#701)', () => {
         onOpen={onOpen}
         onNew={vi.fn()}
         onConnect={vi.fn()}
-        places={[
-          { id: null, name: 'This Mac' },
-          { id: 'mini-1', name: 'm4mini' },
-        ]}
-        onPlace={onPlace}
       />,
     );
-    return { onOpen, onPlace, requested };
+    return { onOpen, requested };
   }
 
   it('names the place with its reachability, and lists Files, Journals, Running and Search', async () => {
     renderMachine();
-    expect(await screen.findByRole('button', { name: /Place: m4mini, reachable/ })).toBeEnabled();
+    // A plain label, not a menu: the app's native menus switch places.
+    const place = await screen.findByRole('status', { name: /Place: m4mini, reachable/ });
+    expect(place).toHaveTextContent('m4mini');
+    expect(place.querySelector('.status-dot.s-idle')).not.toBeNull();
+    expect(screen.queryByRole('button', { name: /Place: m4mini/ })).toBeNull();
     const tabs = within(screen.getByRole('tablist', { name: 'Place' })).getAllByRole('tab');
     expect(tabs.map(t => t.textContent)).toEqual(['Files', 'Journals', 'Running', 'Search']);
     expect(screen.getByText('Saved on m4mini')).toBeInTheDocument();
     // Files: the machine's folder, no search field until Search.
     expect(await screen.findByText('Saturn')).toBeInTheDocument();
     expect(screen.queryByRole('searchbox')).toBeNull();
-  });
-
-  it('switches place from the switcher', async () => {
-    const { onPlace } = renderMachine();
-    await userEvent.click(await screen.findByRole('button', { name: /Place: m4mini/ }));
-    await userEvent.click(await screen.findByRole('menuitemradio', { name: 'This Mac' }));
-    expect(onPlace).toHaveBeenCalledWith(null);
   });
 
   it('lists the journals among the rooms, and opens one', async () => {
