@@ -17,13 +17,15 @@ export function isEditKey(e: Pick<KeyboardEvent, 'key' | 'metaKey' | 'ctrlKey' |
 function setSync(cell: Cell, on: boolean) {
   const code = 'syncScrolled' in cell ? (cell as CodeCell) : undefined;
   if (on) {
-    // The sync setters read the metadata when turned on, but after setting
-    // the flag, so a state that differs from what the cell shows is written
-    // straight back: a Y-doc update on reconnect. That happens for a
-    // collapsed cell (the cell was collapsed while away, the metadata
-    // says it isn't) and for `scrolled: "auto"`, which loads as false and
-    // is saved as such. Reading first, while the sync is still off, writes
-    // nothing (a test of a real notebook counts the updates).
+    // The sync setters read the metadata after setting the flag, so a
+    // state that differs from what the cell shows is written straight back
+    // as a Y-doc update on reconnect. That happens for a collapsed cell
+    // (collapsed while away, the metadata says it isn't). Reading first,
+    // while the sync is still off, writes nothing (a test of a real
+    // notebook counts the updates). The editable and scrolled loads are
+    // the same step for the other two flags; `scrolled: "auto"` is already
+    // normalized when the notebook creates the cell, so it needs no reload
+    // here.
     cell.loadEditableState();
     cell.loadCollapseState();
     code?.loadScrolledState();

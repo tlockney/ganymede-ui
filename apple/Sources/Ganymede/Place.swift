@@ -189,13 +189,24 @@ enum Places {
             + "window.dispatchEvent(new Event('\(updateEvent)'));"
     }
 
+    /// What a window of `place` runs in its page when its list goes from
+    /// `old` to `new` (`WebViewCoordinator.places`, #716): `updateScript`
+    /// for a machine's window and a list that changed, otherwise nil. A
+    /// window of this device has no switcher, and the same list needs no
+    /// event.
+    static func changeScript(place: Place, from old: [PlaceEntry], to new: [PlaceEntry]) -> String? {
+        guard place.allows(.switchPlace), old != new else { return nil }
+        return updateScript(new)
+    }
+
     /// The JSON a machine's page gets as `window.ganymedePlaces`: names and
-    /// ids, never an address or a token.
+    /// ids, never an address or a token. Keys sorted, so a list always
+    /// gives the same text (#716).
     static func pageJSON(_ entries: [PlaceEntry]) -> String {
         let items: [[String: Any]] = entries.map { entry in
             ["id": entry.place.machineID.map { $0 as Any } ?? NSNull(), "name": entry.title]
         }
-        guard let data = try? JSONSerialization.data(withJSONObject: items) else { return "[]" }
+        guard let data = try? JSONSerialization.data(withJSONObject: items, options: [.sortedKeys]) else { return "[]" }
         return String(decoding: data, as: UTF8.self)
     }
 }

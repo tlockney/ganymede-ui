@@ -391,6 +391,40 @@ final class PlaceTests: XCTestCase {
         XCTAssertEqual(Places.updateEvent, "ganymede-places")
     }
 
+    // MARK: a changed list reaching an open page (#716)
+
+    private var lists: (old: [PlaceEntry], new: [PlaceEntry]) {
+        (
+            [PlaceEntry(place: .thisDevice, title: "This Mac")],
+            [
+                PlaceEntry(place: .thisDevice, title: "This Mac"),
+                PlaceEntry(place: .machine(id), title: "mini"),
+            ]
+        )
+    }
+
+    func testAMachineWindowIsToldOfAChangedList() {
+        XCTAssertEqual(
+            Places.changeScript(place: .machine(id), from: lists.old, to: lists.new),
+            Places.updateScript(lists.new))
+    }
+
+    func testAMachineWindowIsToldOfARename() {
+        let renamed = [lists.new[0], PlaceEntry(place: .machine(id), title: "mini 2")]
+        XCTAssertEqual(
+            Places.changeScript(place: .machine(id), from: lists.new, to: renamed),
+            Places.updateScript(renamed))
+    }
+
+    func testAMachineWindowIsToldNothingOfTheSameList() {
+        XCTAssertNil(Places.changeScript(place: .machine(id), from: lists.new, to: lists.new))
+        XCTAssertNil(Places.changeScript(place: .machine(id), from: [], to: []))
+    }
+
+    func testThisDevicesWindowIsToldNothingOfAChangedList() {
+        XCTAssertNil(Places.changeScript(place: .thisDevice, from: lists.old, to: lists.new))
+    }
+
     func testStatusIsAskedThroughTheMount() throws {
         let url = try XCTUnwrap(PlaceReachability.statusURL(id, server: server))
         XCTAssertEqual(url.path, "/machines/\(id)/api/status")

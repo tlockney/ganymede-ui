@@ -217,17 +217,20 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// machine's page shares with this device's (#701).
     let place: Place
     /// The places a machine's page offers, given to it as
-    /// `window.ganymedePlaces`.
-    /// Kept current by the view (`updateNSView`), so a machine added or
-    /// renamed while the window is open reaches the page's switcher: the
-    /// global is set again and the page is told with a `ganymede-places`
-    /// event (`Places.updateScript`), and the next load gets the current
-    /// list. The open machine's own label in the window comes from
+    /// `window.ganymedePlaces`. Kept current by the view (`updateNSView`):
+    /// a machine added or renamed while the window is open sets the global
+    /// again and tells the page with a `ganymede-places` event
+    /// (`Places.changeScript`, tested in `PlaceTests`, #716), and the next
+    /// load gets the current list. Only the page's own sidebar shows them,
+    /// which a page without `chrome=native` draws; the app's windows load
+    /// with `chrome=native` since #740 and #761, and their place menus read
+    /// `AppModel.places` instead. The open machine's own label comes from
     /// `machine_name` in its URL and isn't changed by a rename.
     var places: [PlaceEntry] {
         didSet {
-            guard place.allows(.switchPlace), oldValue != places, let webView else { return }
-            webView.evaluateJavaScript(Places.updateScript(places), completionHandler: nil)
+            guard let script = Places.changeScript(place: place, from: oldValue, to: places),
+                  let webView else { return }
+            webView.evaluateJavaScript(script, completionHandler: nil)
             Self.installPageScripts(on: webView, loaded: loaded, place: place, places: places)
         }
     }
