@@ -97,7 +97,7 @@ struct NavigatorSidebar: View {
 
     /// The tabs: not Recents for a machine, whose notebooks aren't in them.
     private var tabs: [NavigatorTab] {
-        NavigatorTab.allCases.filter { $0 != .recents || place.indexesLocally }
+        NavigatorTab.tabs(for: place)
     }
 
     /// The selected tab, or Files when a machine's window has Recents kept.
@@ -312,15 +312,10 @@ private struct JournalsNavigator: View {
 
     @ViewBuilder
     private func status(_ journals: [Journals.Journal]) -> some View {
-        switch result {
-        case nil:
+        if result == nil {
             ProgressView()
-        case .unsupported?:
-            message("This server is too old to list journals.")
-        case .error(let text)?:
-            message("Couldn’t list journals: \(text)")
-        case .rooms?:
-            if journals.isEmpty { message("No journals yet. A notebook an agent works in shows here.") }
+        } else if let text = Journals.statusMessage(result, journalCount: journals.count) {
+            message(text)
         }
     }
 

@@ -39,10 +39,11 @@ enum Place: Hashable, Codable {
     var isMachine: Bool { machineID != nil }
 
     /// Whether the app draws the sidebar and toolbar of a window of this
-    /// place (the page loads with `chrome=native`): every Mac window, and on
-    /// iOS this device's only, since the iPad's machine screen shows the
-    /// page's own chrome (#701, until #741).
-    func drawsNativeChrome(onMac: Bool) -> Bool { onMac || !isMachine }
+    /// place (the page loads with `chrome=native`): on the Mac every
+    /// window's, and on iOS wherever the idiom does (`iosDraws`: the iPad
+    /// and iPhone), a machine's scene included (#758). The place makes no
+    /// difference.
+    func drawsNativeChrome(onMac: Bool, iosDraws: Bool) -> Bool { onMac || iosDraws }
 
     /// This device's own disk and shells: what Reveal in Finder, the
     /// terminal panel and local Recents work on.

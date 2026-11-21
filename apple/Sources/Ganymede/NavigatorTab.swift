@@ -41,4 +41,11 @@ enum NavigatorTab: String, CaseIterable, Identifiable {
         case .journals: "6"
         }
     }
+
+    /// The tabs a window of `place` shows, the same on the Mac and the iPad
+    /// (#758): every tab, but not Recents for a machine, whose notebooks
+    /// aren't in them (`Place.indexesLocally`). Journals is for every place.
+    static func tabs(for place: Place) -> [NavigatorTab] {
+        allCases.filter { $0 != .recents || place.indexesLocally }
+    }
 }

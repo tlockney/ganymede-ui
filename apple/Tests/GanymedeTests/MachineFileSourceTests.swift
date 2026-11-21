@@ -320,6 +320,29 @@ final class MachineFileSourceTests: XCTestCase {
         XCTAssertTrue(open.detail.contains("unsaved changes. Delete and close it without saving?"))
     }
 
+    // The iPad's and iPhone's alert (#758): its local words stay, a machine's are the Mac's.
+    func testTheIPadsDeleteAlertKeepsThisDevicesWordsAndUsesTheMachinesOwn() throws {
+        let note = FolderEntry(url: URL(fileURLWithPath: "/tmp/Io.ipynb"), isDirectory: false)
+        let local = RemoveAction.deleteAlert(place: .thisDevice, for: note, holdsOpen: true, dirty: true)
+        XCTAssertEqual(local.title, "Delete “Io”?")
+        XCTAssertEqual(local.message, "This can't be undone.")
+        let folder = FolderEntry(url: URL(fileURLWithPath: "/tmp/data", isDirectory: true), isDirectory: true)
+        XCTAssertEqual(
+            RemoveAction.deleteAlert(place: .thisDevice, for: folder, holdsOpen: false, dirty: false).title,
+            "Delete “data”?")
+
+        let file = try XCTUnwrap(FolderEntry.machineURL(id, path: "a/Io.ipynb"))
+        let machine = RemoveAction.deleteAlert(
+            place: .machine(id), for: FolderEntry(url: file, isDirectory: false), holdsOpen: false, dirty: false)
+        XCTAssertEqual(machine.title, "Delete “Io”?")
+        XCTAssertEqual(machine.message, "The machine deletes it for good. This can’t be undone.")
+        let dir = try XCTUnwrap(FolderEntry.machineURL(id, path: "a"))
+        let open = RemoveAction.deleteAlert(
+            place: .machine(id), for: FolderEntry(url: dir, isDirectory: true), holdsOpen: true, dirty: true)
+        XCTAssertEqual(open.title, "“a” holds the open notebook.")
+        XCTAssertTrue(open.message.contains("unsaved changes. Delete and close it without saving?"))
+    }
+
     func testThisDeviceMovesToTheTrashAndAsksOnlyForTheOpenNotebook() throws {
         let action = RemoveAction(place: .thisDevice)
         XCTAssertEqual(action.menuTitle, "Move to Trash")

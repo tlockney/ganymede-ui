@@ -20,12 +20,17 @@ var isPhone: Bool { UIDevice.current.userInterfaceIdiom == .phone }
 
 /// The notebook folder as a tree: notebooks open in the page, other files
 /// in the app's editor. Paths are relative to `folder`, where the iPad's
-/// server is rooted.
+/// server is rooted. For a connected machine (#758) the folder is the
+/// machine's root and its files come through `fileSource`; there is no
+/// editor for its non-page files, and the items that belong to this device
+/// are off, as in the Mac's machine windows.
 struct IPadSidebar: View {
     let folder: URL
     /// Where the files are (#757). Nil: this device's disk, rooted at
     /// `folder`, deleting for good.
     var fileSource: (any FileSource)?
+    /// The scene's place (#758): a machine's gets the Mac's gates.
+    var place: Place = .thisDevice
     var page: PageModel
     let openFile: (String) -> Void
     /// After a notebook is opened from the sidebar.
@@ -51,81 +56,129 @@ struct IPadSidebar: View {
     var showTerminal: (PanelTerminal.ID) -> Void = { _ in }
     /// The selected navigator tab, kept per scene.
     @SceneStorage("navigator.tab") private var tab: NavigatorTab = .files
+    /// The journals of the place, while the Journals tab shows (#758).
+    @State private var journals: Journals.Result?
+    /// Whether the list shows (the iPhone's goes under the notebook).
+    @State private var listShown = true
     /// Shows a connected machine in the scene (#701); without it the list
     /// has no places.
     var onPlace: ((Place) -> Void)? = nil
     @Environment(AppModel.self) private var model
 
+    /// The Journals poll restarts on a new server or when the list shows or
+    /// hides it. Its own property: inline, it is too much for the type
+    /// checker in `body`.
+    private var journalsPollID: String {
+        let server: String = model.serverURL?.absoluteString ?? ""
+        return server + "|" + String(showsJournals)
+    }
+
+    /// The toolbar's New menu.
+    private var newMenu: some View {
+        Menu {
+            Button { newNotebook(in: folder) } label: { Label("New Notebook", systemImage: "doc.badge.plus") }
+                .disabled(!reachable)
+            Button { newFolder(in: folder) } label: { Label("New Folder", systemImage: "folder.badge.plus") }
+                .disabled(!canChange)
+            // The iPhone has no File menu or welcome screen: the
+            // examples are here (#414). They are copied to this
+            // device's folder, so a machine has none.
+            if place.isThisDevice {
+                Button { openExamples() } label: { Label("Open Example Notebooks", systemImage: "book") }
+                    .disabled(page.state.backend == nil)
+            }
+        } label: {
+            Label("New", systemImage: "plus")
+        }
+    }
+
+    // `body` is split into steps: as one chain it is too much for the type
+    // checker.
     var body: some View {
-        List {
-            placesSection
-            if tabbed {
-                navigator
+        watched
+            .alert("Rename", isPresented: renamingShown, presenting: renaming) { entry in
+                TextField("Name", text: $newName)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                Button("Rename") { rename(entry, to: newName) }
+                Button("Cancel", role: .cancel) {}
+            }
+            .confirmationDialog(
+                deleteAlert?.title ?? "", isPresented: deletingShown, titleVisibility: .visible, presenting: deleting
+            ) { entry in
+                Button("Delete", role: .destructive) { delete(entry) }
+            } message: { _ in
+                Text(deleteAlert?.message ?? "")
+            }
+            .alert("Couldn't do that", isPresented: failureShown, presenting: failure) { _ in
+                Button("OK", role: .cancel) {}
+            } message: { Text($0) }
+    }
+
+    @ViewBuilder
+    private var listContent: some View {
+        placesSection
+        if tabbed {
+            navigator
+        } else {
+            if query.trimmingCharacters(in: .whitespaces).isEmpty {
+                // Recents are this device's notebooks, not a machine's.
+                if place.indexesLocally { recentsSection }
+                filesSection
+                journalsSection
             } else {
-                if query.trimmingCharacters(in: .whitespaces).isEmpty {
-                    recentsSection
-                    filesSection
-                } else {
-                    searchResults
-                }
-                runningSection
+                searchResults
             }
+            runningSection
         }
-        .listStyle(.sidebar)
-        .navigationTitle(tabbed ? tab.title : "Notebooks")
-        // The iPad's navigator tabs, as on the Mac (#251).
-        .safeAreaInset(edge: .top, spacing: 0) {
-            if tabbed { tabStrip }
-        }
-        // The page searches (`src/lib/search.ts`), after typing pauses. The
-        // iPad's Search tab has a field of its own.
-        .modifier(SidebarSearch(enabled: !tabbed, query: $query))
-        .onChange(of: query) { search() }
-        .onChange(of: searchContents) { search() }
-        // A reloaded page has no search, and a keystroke before the page
-        // was ready went nowhere: ask again, or it says Searching… for good.
-        .onChange(of: page.state.search == nil && page.state.backend != nil) { _, lost in
-            if lost, !query.trimmingCharacters(in: .whitespaces).isEmpty { search() }
-        }
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    Button { newNotebook(in: folder) } label: { Label("New Notebook", systemImage: "doc.badge.plus") }
-                    Button { newFolder(in: folder) } label: { Label("New Folder", systemImage: "folder.badge.plus") }
-                        .disabled(busy)
-                    // The iPhone has no File menu or welcome screen: the
-                    // examples are here (#414).
-                    Button { openExamples() } label: { Label("Open Example Notebooks", systemImage: "book") }
-                        .disabled(page.state.backend == nil)
-                } label: {
-                    Label("New", systemImage: "plus")
-                }
+    }
+
+    private var list: some View {
+        List { listContent }
+            .listStyle(.sidebar)
+            .navigationTitle(tabbed ? shownTab.title : "Notebooks")
+            // The iPad's navigator tabs, as on the Mac (#251).
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if tabbed { tabStrip }
             }
-        }
-        .refreshable { generation += 1 }
-        // The examples show in the app's own folder from the start (#463).
-        .modifier(AddsExamples(page: page) { generation += 1 })
-        .onChange(of: page.state.path) { generation += 1 }
-        .onChange(of: phase) { _, phase in
-            if phase == .active { generation += 1 }
-        }
-        .alert("Rename", isPresented: renamingShown, presenting: renaming) { entry in
-            TextField("Name", text: $newName)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-            Button("Rename") { rename(entry, to: newName) }
-            Button("Cancel", role: .cancel) {}
-        }
-        .confirmationDialog(
-            deletingTitle, isPresented: deletingShown, titleVisibility: .visible, presenting: deleting
-        ) { entry in
-            Button("Delete", role: .destructive) { delete(entry) }
-        } message: { _ in
-            Text("This can't be undone.")
-        }
-        .alert("Couldn't do that", isPresented: failureShown, presenting: failure) { _ in
-            Button("OK", role: .cancel) {}
-        } message: { Text($0) }
+    }
+
+    /// A reloaded page has no search, and a keystroke before the page was
+    /// ready went nowhere.
+    private var searchLost: Bool { page.state.search == nil && page.state.backend != nil }
+
+    private var searching: some View {
+        list
+            // The page searches (`src/lib/search.ts`), after typing pauses.
+            // The iPad's Search tab has a field of its own.
+            .modifier(SidebarSearch(enabled: !tabbed, query: $query))
+            .onChange(of: query) { search() }
+            .onChange(of: searchContents) { search() }
+            // Ask again, or it says Searching… for good.
+            .onChange(of: searchLost) { _, lost in
+                if lost, !query.trimmingCharacters(in: .whitespaces).isEmpty { search() }
+            }
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) { newMenu }
+            }
+            .refreshable { generation += 1 }
+    }
+
+    private var watched: some View {
+        searching
+            // The machine answers again: list everything again (#753). The
+            // Journals tab asks the place's server while it shows (#758).
+            .modifier(SidebarWatchers(
+                reachable: reachable, relist: { generation += 1 },
+                pollID: journalsPollID,
+                poll: pollJournals, shown: $listShown))
+            // The examples show in the app's own folder from the start
+            // (#463), never in a machine's.
+            .modifier(AddsExamples(page: page, enabled: place.isThisDevice) { generation += 1 })
+            .onChange(of: page.state.path) { generation += 1 }
+            .onChange(of: phase) { _, phase in
+                if phase == .active { generation += 1 }
+            }
     }
 
     // MARK: Navigator tabs (#251)
@@ -134,20 +187,19 @@ struct IPadSidebar: View {
     /// keyboard.
     private var tabStrip: some View {
         HStack(spacing: 0) {
-            // Journals are the Mac's tab for now (#705).
-            ForEach(NavigatorTab.allCases.filter { $0 != .journals }) { item in
+            ForEach(tabs) { item in
                 Button {
                     tab = item
                 } label: {
                     Image(systemName: item.symbol)
-                        .symbolVariant(tab == item ? .fill : .none)
+                        .symbolVariant(shownTab == item ? .fill : .none)
                         .frame(maxWidth: .infinity, minHeight: 44)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(tab == item ? Color.accentColor : Color.secondary)
+                .foregroundStyle(shownTab == item ? Color.accentColor : Color.secondary)
                 .accessibilityLabel(item.title)
-                .accessibilityAddTraits(tab == item ? .isSelected : [])
+                .accessibilityAddTraits(shownTab == item ? .isSelected : [])
                 .keyboardShortcut(item.shortcut, modifiers: .command)
                 .hoverEffect()
                 .overlay(alignment: .top) {
@@ -168,38 +220,131 @@ struct IPadSidebar: View {
         .overlay(alignment: .bottom) { Divider() }
     }
 
-    /// Kernels and the panel's terminals.
+    /// The tabs of the place, as the Mac's (#251, #758): Journals for every
+    /// place, no Recents for a machine.
+    private var tabs: [NavigatorTab] { NavigatorTab.tabs(for: place) }
+
+    /// The selected tab, or Files when the place has no such tab (Recents,
+    /// kept from this device's, in a machine's scene).
+    private var shownTab: NavigatorTab { tabs.contains(tab) ? tab : .files }
+
+    /// Kernels, and the panel's terminals, which are this device's.
     private var runningCount: Int {
-        page.state.sessions.count + panel.terminals.count
+        page.state.sessions.count + (place.allows(.localTerminal) ? panel.terminals.count : 0)
+    }
+
+    // MARK: Journals (#758)
+
+    /// Whether the journals are wanted now: the iPad's tab shows, or the
+    /// iPhone's list does (its Journals section).
+    private var showsJournals: Bool { tabbed ? shownTab == .journals : listShown }
+
+    /// Asks the place's server for its rooms every few seconds while they
+    /// show, and not again once it says it is too old; cancelled when the
+    /// tab hides or the server (its address and token) changes.
+    private func pollJournals() async {
+        guard showsJournals, let server = model.serverURL else { return }
+        while !Task.isCancelled {
+            let answer = await Journals.fetch(place: place, server: server)
+            guard !Task.isCancelled else { return }
+            journals = answer
+            if answer == .unsupported { return }
+            try? await Task.sleep(for: .seconds(Journals.pollSeconds))
+        }
+    }
+
+    /// The notebooks an agent is in or last wrote.
+    private var journalList: [Journals.Journal] {
+        if case .rooms(let rooms)? = journals { Journals.journalsOf(rooms) } else { [] }
+    }
+
+    /// The iPad's Journals tab.
+    @ViewBuilder
+    private var journalsTab: some View {
+        let list = journalList
+        journalRows(list)
+        if journals == nil {
+            HStack(spacing: 8) {
+                ProgressView()
+                Text("Loading…").foregroundStyle(.secondary)
+            }
+        } else if let text = Journals.statusMessage(journals, journalCount: list.count) {
+            Text(text).foregroundStyle(.secondary)
+        }
+    }
+
+    /// The iPhone's list: a Journals section when there are any.
+    @ViewBuilder
+    private var journalsSection: some View {
+        let list = journalList
+        if !list.isEmpty {
+            Section("Journals") { journalRows(list) }
+        }
+    }
+
+    @ViewBuilder
+    private func journalRows(_ list: [Journals.Journal]) -> some View {
+        ForEach(list) { journal in
+            Button {
+                page.run("open", arg: journal.path)
+                opened()
+            } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Label(journal.name, systemImage: "book.pages").lineLimit(1)
+                        Text([journal.agent, Journals.status(journal)].compactMap { $0 }.joined(separator: " · "))
+                            .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    }
+                    Spacer()
+                    if journal.running {
+                        Circle().fill(Color.green).frame(width: 6, height: 6)
+                            .accessibilityLabel("An agent is in it")
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .listRowBackground(journal.path == page.state.path ? Color.accentColor.opacity(0.18) : nil)
+        }
     }
 
     /// The connected machines, above the files: the iPhone's Places list,
-    /// and the iPad's place switcher (#701). Nothing without a machine.
+    /// and the iPad's place switcher (#701). Nothing without a machine. A
+    /// machine's scene has it even when the machine was removed meanwhile,
+    /// so the way back to this device stays.
     @ViewBuilder
     private var placesSection: some View {
         let machines = model.places.filter { $0.place.isMachine }
-        if let onPlace, !machines.isEmpty, tabbed {
+        if let onPlace, !machines.isEmpty || place.isMachine, tabbed {
             // The iPad: the current place's name, with a dot, as the Mac's.
             Section {
                 PlaceMenu(
-                    entries: model.places, current: .thisDevice, reachability: .shared, pick: onPlace)
+                    entries: model.places, current: place, reachability: .shared, pick: onPlace)
             }
-        } else if let onPlace, !machines.isEmpty {
+        } else if let onPlace, !machines.isEmpty || place.isMachine {
             Section("Places") {
-                Label(Places.deviceName, systemImage: "checkmark")
-                ForEach(machines) { entry in
-                    Button {
-                        onPlace(entry.place)
-                    } label: {
-                        HStack {
-                            Label(entry.title, systemImage: "desktopcomputer")
-                            Spacer()
-                            Circle()
-                                .fill(PlaceReachability.shared.isReachable(entry.place) ? Color.green : Color.red)
-                                .frame(width: 8, height: 8)
-                                .accessibilityLabel(PlaceReachability.shared.isReachable(entry.place) ? "Reachable" : "Offline")
-                        }
-                    }
+                placeRow(PlaceEntry(place: .thisDevice, title: Places.deviceName), onPlace)
+                ForEach(machines) { entry in placeRow(entry, onPlace) }
+            }
+        }
+    }
+
+    /// One place of the iPhone's list: the current one has a checkmark.
+    @ViewBuilder
+    private func placeRow(_ entry: PlaceEntry, _ onPlace: @escaping (Place) -> Void) -> some View {
+        if entry.place == place {
+            Label(entry.title, systemImage: "checkmark")
+        } else {
+            Button {
+                onPlace(entry.place)
+            } label: {
+                HStack {
+                    Label(entry.title, systemImage: entry.place.isMachine ? "desktopcomputer" : "iphone")
+                    Spacer()
+                    Circle()
+                        .fill(PlaceReachability.shared.isReachable(entry.place) ? Color.green : Color.red)
+                        .frame(width: 8, height: 8)
+                        .accessibilityLabel(PlaceReachability.shared.isReachable(entry.place) ? "Reachable" : "Offline")
                 }
             }
         }
@@ -208,9 +353,11 @@ struct IPadSidebar: View {
     /// The selected tab's list.
     @ViewBuilder
     private var navigator: some View {
-        switch tab {
-        case .files, .journals:
+        switch shownTab {
+        case .files:
             filesSection
+        case .journals:
+            journalsTab
         case .search:
             Section {
                 TextField("Find files", text: $query)
@@ -225,7 +372,10 @@ struct IPadSidebar: View {
             }
         case .running:
             runningSection
-            IPadPanelTerminalRows(panel: panel, show: showTerminal)
+            // The panel's shells are on this device.
+            if place.allows(.localTerminal) {
+                IPadPanelTerminalRows(panel: panel, show: showTerminal)
+            }
             if runningCount == 0 {
                 Text("No kernels or terminals running").foregroundStyle(.secondary)
             }
@@ -240,9 +390,14 @@ struct IPadSidebar: View {
         }
     }
 
-    /// The folder as a tree.
+    /// The folder as a tree, under the machine's offline line (#753).
+    @ViewBuilder
     private var filesSection: some View {
-        Section(folder.lastPathComponent) {
+        if !reachable {
+            Text(machineName.map { "“\($0)” is offline. Reconnecting…" } ?? "The machine is offline. Reconnecting…")
+                .foregroundStyle(.secondary).font(.caption)
+        }
+        Section(folder.lastPathComponent.isEmpty ? "/" : folder.lastPathComponent) {
             IPadFolderContents(folder: folder, source: source, actions: actions, generation: generation)
         }
     }
@@ -338,7 +493,7 @@ struct IPadSidebar: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .contentShape(Rectangle())
                     }
-                    .disabled(!search.opens(match))
+                    .disabled(!search.opens(match) || (!match.opensInPage && !place.allows(.openFile)))
                 }
                 if search.searching {
                     searchingRow
@@ -371,7 +526,7 @@ struct IPadSidebar: View {
         if match.opensInPage {
             page.run("open", arg: match.path)
             opened()
-        } else if page.state.search?.opens(match) == true {
+        } else if place.allows(.openFile), page.state.search?.opens(match) == true {
             openFile(match.path)
         }
     }
@@ -386,7 +541,10 @@ struct IPadSidebar: View {
         IPadFolderActions(
             openPath: page.state.path,
             isRunning: { page.state.isRunning($0) },
-            canChange: FileChanges.allowed(place: .thisDevice, reachable: true, busy: busy),
+            canChange: canChange,
+            offline: !reachable,
+            place: place,
+            machineName: machineName,
             open: open,
             newNotebook: newNotebook(in:),
             newFolder: newFolder(in:),
@@ -411,9 +569,30 @@ struct IPadSidebar: View {
         Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })
     }
 
-    private var deletingTitle: String {
-        guard let deleting else { return "" }
-        return "Delete “\(deleting.isNotebook ? deleting.title : deleting.name)”?"
+    /// The delete alert's words for the item being deleted: this device's
+    /// "This can't be undone.", or a machine's (#758).
+    private var deleteAlert: (title: String, message: String)? {
+        guard let deleting else { return nil }
+        return RemoveAction.deleteAlert(
+            place: place, for: deleting,
+            holdsOpen: FolderEntry.path(page.state.path, isAt: path(deleting)), dirty: page.state.dirty)
+    }
+
+    // MARK: A machine's gates (#758)
+
+    /// Whether the window's machine answers (always true for this device).
+    private var reachable: Bool { PlaceReachability.shared.isReachable(place) }
+
+    /// Whether the items that change files are enabled: not while one runs,
+    /// and not while a machine doesn't answer (#753).
+    private var canChange: Bool { FileChanges.allowed(place: place, reachable: reachable, busy: busy) }
+
+    /// The machine's name, for words about it.
+    private var machineName: String? { place.machineID.flatMap(model.machineName(_:)) }
+
+    /// A file operation's or listing's error, in words for the place.
+    private func words(_ error: Error) -> String {
+        FileSourceError.message(error, place: place, machineName: machineName)
     }
 
     /// The iPad's server is rooted at `folder`, so paths are relative to
@@ -430,7 +609,8 @@ struct IPadSidebar: View {
         if entry.opensInPage {
             page.run("open", arg: path(entry))
             opened()
-        } else {
+        } else if entry.canOpen(in: place) {
+            // The app's editor reads this device's disk: never a machine's file.
             openFile(path(entry))
         }
     }
@@ -502,17 +682,39 @@ struct IPadSidebar: View {
     /// folders again; a failure shows in the alert. A call while one is
     /// running is ignored.
     private func exclusively(_ work: @escaping @MainActor () async throws -> Void) {
-        guard !busy else { return }
+        guard canChange else {
+            // The machine went offline while a dialog asked: say so, not nothing.
+            if !busy, !reachable { failure = words(FileSourceError.server(status: 502, message: nil)) }
+            return
+        }
         busy = true
         Task {
             do {
                 try await work()
                 generation += 1
             } catch {
-                failure = error.localizedDescription
+                failure = words(error)
             }
             busy = false
         }
+    }
+}
+
+/// What the sidebar watches: the machine answering again, the Journals poll
+/// and whether the list shows. A modifier of its own for the type checker.
+private struct SidebarWatchers: ViewModifier {
+    var reachable: Bool
+    let relist: @MainActor () -> Void
+    var pollID: String
+    let poll: @MainActor () async -> Void
+    @Binding var shown: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .onChange(of: reachable) { if reachable { relist() } }
+            .task(id: pollID) { await poll() }
+            .onAppear { shown = true }
+            .onDisappear { shown = false }
     }
 }
 
@@ -521,12 +723,14 @@ struct IPadSidebar: View {
 /// A modifier of its own: the sidebar's chain is long for the type checker.
 private struct AddsExamples: ViewModifier {
     var page: PageModel
+    /// Only this device's page: the examples are copied to its folder.
+    var enabled = true
     let copied: () -> Void
 
     func body(content: Content) -> some View {
         content
             .task(id: page.ready) {
-                if page.ready { await AppModel.shared.addExamplesIfNeeded(page: page) }
+                if enabled, page.ready { await AppModel.shared.addExamplesIfNeeded(page: page) }
             }
             .onChange(of: AppModel.shared.examplesCopied) { copied() }
     }
@@ -587,8 +791,14 @@ struct IPadFolderActions {
     var openPath: String?
     /// Whether a notebook's kernel is running, by its server path.
     var isRunning: (String) -> Bool = { _ in false }
-    /// Whether the items that change files are enabled: not while one runs.
+    /// Whether the items that change files are enabled: not while one runs
+    /// or the machine is offline (#753).
     var canChange = true
+    /// The machine doesn't answer: its listing errors are said once, by the
+    /// sidebar's offline line.
+    var offline = false
+    var place: Place = .thisDevice
+    var machineName: String?
     var open: (FolderEntry) -> Void
     var newNotebook: (URL) -> Void
     var newFolder: (URL) -> Void
@@ -634,6 +844,7 @@ private struct IPadFolderContents: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .contentShape(Rectangle())
                     }
+                    .disabled(!entry.canOpen(in: actions.place))
                     .listRowBackground(
                         source.serverPath(entry.url) == actions.openPath
                             ? Color.accentColor.opacity(0.18) : nil
@@ -642,7 +853,10 @@ private struct IPadFolderContents: View {
                 }
             }
             if let error {
-                Text(error).foregroundStyle(.secondary).font(.caption)
+                // The sidebar's offline line says it once for all folders.
+                if !actions.offline {
+                    Text(error).foregroundStyle(.secondary).font(.caption)
+                }
             } else if entries.isEmpty {
                 Text("No files").foregroundStyle(.secondary)
             }
@@ -660,7 +874,7 @@ private struct IPadFolderContents: View {
             error = nil
         } catch {
             guard !Task.isCancelled else { return }
-            self.error = error.localizedDescription
+            self.error = FileSourceError.message(error, place: actions.place, machineName: actions.machineName)
         }
     }
 
@@ -668,14 +882,19 @@ private struct IPadFolderContents: View {
     private func menu(for entry: FolderEntry) -> some View {
         if entry.isDirectory {
             Button { actions.newNotebook(entry.url) } label: { Label("New Notebook Here", systemImage: "doc.badge.plus") }
+                .disabled(actions.offline)
             Button { actions.newFolder(entry.url) } label: { Label("New Folder Here", systemImage: "folder.badge.plus") }
                 .disabled(!actions.canChange)
         } else {
             Button { actions.open(entry) } label: { Label("Open", systemImage: "doc") }
+                .disabled(!entry.canOpen(in: actions.place))
         }
         Group {
             Button { actions.rename(entry) } label: { Label("Rename…", systemImage: "pencil") }
-            Button { actions.duplicate(entry) } label: { Label("Duplicate", systemImage: "plus.square.on.square") }
+            // A machine's contents API copies files, not folders.
+            if actions.place.isThisDevice || !entry.isDirectory {
+                Button { actions.duplicate(entry) } label: { Label("Duplicate", systemImage: "plus.square.on.square") }
+            }
             Divider()
             Button(role: .destructive) { actions.delete(entry) } label: { Label("Delete…", systemImage: "trash") }
         }
@@ -748,6 +967,9 @@ struct PhoneOutlineMenu: View {
 /// on their own, the rest in a menu.
 struct IPadNotebookToolbar: ToolbarContent {
     var page: PageModel
+    /// The scene's place (#758): where kernels run is this device's setting,
+    /// not a machine's.
+    var place: Place = .thisDevice
     /// In the bottom toolbar, in thumb reach: the iPhone (#209).
     var bottom = false
     /// Asks for the notebook's new name (#209).
@@ -819,7 +1041,7 @@ struct IPadNotebookToolbar: ToolbarContent {
                 }
                 // Where every notebook's kernels run (#473): an advanced
                 // choice, with the connected machines as places (#701).
-                if AppModel.shared.kernelLocations.hasRemotes {
+                if place.allows(.kernelLocation), AppModel.shared.kernelLocations.hasRemotes {
                     Menu("Advanced") {
                         KernelLocationPicker(running: page.state.sessions.count)
                             .pickerStyle(.inline)
@@ -939,20 +1161,24 @@ private struct IPadPanelButton: View {
 }
 
 /// File › New Notebook (⌘N) and Open Example Notebooks, in the notebook
-/// folder's top level.
+/// folder's top level. A machine's scene (#758) has the notebook only, as
+/// the Mac's machine windows: the console and the examples are this
+/// device's.
 private struct IPadNewNotebook: View {
     @FocusedValue(\.pageModel) private var page
+    @FocusedValue(\.iPadPlace) private var place
 
     var body: some View {
+        let local = place?.isThisDevice ?? true
         Button("New Notebook") { page?.run("new-notebook", arg: "") }
             .keyboardShortcut("n")
             .disabled(page == nil)
         // A DuckDB prompt in the page, for the notebook folder (#679).
         Button("New DuckDB Console") { page?.run("new-duckdb-console", arg: "") }
-            .disabled(page == nil)
+            .disabled(page == nil || !local)
         // A copy of the example notebooks in a new folder (#414).
         Button("Open Example Notebooks") { page?.run("open-examples", arg: "") }
-            .disabled(page == nil)
+            .disabled(page == nil || !local)
     }
 }
 

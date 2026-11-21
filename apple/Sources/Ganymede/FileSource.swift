@@ -424,4 +424,19 @@ struct RemoveAction: Equatable {
         }
         return (message, detail.joined(separator: " "))
     }
+
+    /// The iPad's and iPhone's delete confirmation in `place` (#758): the
+    /// title, and the message under it. It always asks (nothing is
+    /// trashed there). This device keeps its own words, which say the
+    /// delete can't be undone; a machine's are `question`'s, which also
+    /// say when the item holds the open notebook.
+    static func deleteAlert(
+        place: Place, for entry: FolderEntry, holdsOpen: Bool, dirty: Bool
+    ) -> (title: String, message: String) {
+        if place.isMachine,
+           let question = RemoveAction(place: place).question(for: entry, holdsOpen: holdsOpen, dirty: dirty) {
+            return (question.message, question.detail)
+        }
+        return ("Delete “\(entry.isNotebook ? entry.title : entry.name)”?", "This can't be undone.")
+    }
 }

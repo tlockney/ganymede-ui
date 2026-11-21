@@ -148,6 +148,18 @@ enum Journals {
         return "\(round(Double(hours) / 24)) d ago"
     }
 
+    /// What the tab says in place of rows (#758, shared by the Mac's and the
+    /// iPad's): why there are none; nil while the first answer is awaited or
+    /// when there are `journalCount` rows to show.
+    static func statusMessage(_ result: Result?, journalCount: Int) -> String? {
+        switch result {
+        case nil: nil
+        case .unsupported?: "This server is too old to list journals."
+        case .error(let text)?: "Couldn’t list journals: \(text)"
+        case .rooms?: journalCount == 0 ? "No journals yet. A notebook an agent works in shows here." : nil
+        }
+    }
+
     // MARK: Fetching
 
     /// The rooms URL of `place` on the app's server, which keeps its token

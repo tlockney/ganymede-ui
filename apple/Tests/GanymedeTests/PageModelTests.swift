@@ -46,6 +46,69 @@ final class PageModelTests: XCTestCase {
         XCTAssertTrue(page.ready, "the new start's page is")
     }
 
+    func testForgettingThePageDropsItsStateAndWaitsForTheNewPagesCommit() {
+        let page = PageModel()
+        let first = NSObject()
+        page.loadStarted(first, start: 1)
+        page.committed(first)
+        var shown = connected
+        shown.path = "old/Io.ipynb"
+        page.update(shown)
+        XCTAssertTrue(page.ready)
+        XCTAssertEqual(page.state.path, "old/Io.ipynb")
+        // The scene switches place: the old place's notebook is gone, and
+        // the old page, still posting, makes nothing ready.
+        page.forgetPage()
+        XCTAssertNil(page.state.path)
+        XCTAssertFalse(page.ready)
+        page.update(shown)
+        XCTAssertFalse(page.ready, "the old place's page makes nothing ready")
+        let second = NSObject()
+        page.loadStarted(second, start: 1)
+        page.committed(second)
+        page.update(connected)
+        XCTAssertTrue(page.ready, "the new place's page, once it commits and reports")
+    }
+
+    func testForgettingThePageDropsTheLoadThatWasUnderWay() {
+        let page = PageModel()
+        let old = NSObject()
+        page.loadStarted(old, start: 1)
+        page.forgetPage()
+        page.committed(old)
+        page.update(connected)
+        XCTAssertFalse(page.ready, "the old place's load committing late is not the new page")
+    }
+
+    func testForgettingThePageDropsCommandsWaitingForTheOldPage() {
+        let page = PageModel()
+        page.run("open", arg: "old/Io.ipynb")
+        XCTAssertEqual(page.pendingCount, 1)
+        page.forgetPage()
+        XCTAssertEqual(page.pendingCount, 0)
+        let new = NSObject()
+        page.loadStarted(new, start: 0)
+        page.committed(new)
+        page.update(connected)
+        XCTAssertTrue(page.ready)
+        XCTAssertEqual(page.pendingCount, 0, "the old command was not kept for the new page")
+    }
+
+    func testAStatePostedAfterForgettingThePageIsIgnoredUntilTheNewPageCommits() {
+        let page = PageModel()
+        page.forgetPage()
+        var stale = connected
+        stale.path = "old/Io.ipynb"
+        page.update(stale)
+        XCTAssertNil(page.state.path, "the dropped page can't write the shared model")
+        XCTAssertFalse(page.ready)
+        let new = NSObject()
+        page.loadStarted(new, start: 0)
+        page.committed(new)
+        page.update(connected)
+        XCTAssertTrue(page.ready)
+    }
+
     func testALoadForTheOldServerThatCommitsLateDoesNotCount() {
         let page = PageModel()
         // The old server's page is still loading when the restart begins.

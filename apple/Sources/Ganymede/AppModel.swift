@@ -376,13 +376,13 @@ final class AppModel {
     /// page reaches the machine through the mount.
     func page(for target: WindowTarget) -> URL? {
         guard let serverURL else { return nil }
-        // The Mac window draws the sidebar, toolbar and menus (#206, #207),
-        // a machine's too (#740). The iPad's machine screen still shows the
-        // page's own chrome (#701).
+        // The app draws the sidebar, toolbar and menus (#206, #207) of every
+        // window, a machine's too (#740, #758): the Mac's, and the iPad's
+        // and iPhone's scene.
         #if os(macOS)
-        let native = target.place.drawsNativeChrome(onMac: true)
+        let native = target.place.drawsNativeChrome(onMac: true, iosDraws: false)
         #else
-        let native = target.place.drawsNativeChrome(onMac: false)
+        let native = target.place.drawsNativeChrome(onMac: false, iosDraws: drawsNativeChrome)
         #endif
         return target.pageURL(
             server: serverURL, kernels: kernels, nativeChrome: native,
