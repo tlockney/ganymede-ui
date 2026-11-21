@@ -205,6 +205,14 @@ final class LinkOpener {
         show(waiting.apiPath)
     }
 
+    /// Whether a link waits for this device's server while the scene shows
+    /// `place` (#762). A machine's page never reports this device's
+    /// readiness (`pageReady`), so the scene should switch to this device,
+    /// whose page opens the link once ready.
+    func waitsForThisDevice(showing place: Place) -> Bool {
+        pending != nil && place.isMachine
+    }
+
     /// The folder the app serves changed: a notebook waiting for another
     /// folder's server won't open.
     func rootChanged(to root: URL) {

@@ -60,6 +60,9 @@ struct IPadSidebar: View {
     @State private var journals: Journals.Result?
     /// Whether the list shows (the iPhone's goes under the notebook).
     @State private var listShown = true
+    /// Whether the iPad's split view shows the sidebar column, which
+    /// `ContentView` owns (`NavigatorTab.sidebarColumnShown`, #762).
+    var columnShown = true
     /// Shows a connected machine in the scene (#701); without it the list
     /// has no places.
     var onPlace: ((Place) -> Void)? = nil
@@ -236,8 +239,12 @@ struct IPadSidebar: View {
     // MARK: Journals (#758)
 
     /// Whether the journals are wanted now: the iPad's tab shows, or the
-    /// iPhone's list does (its Journals section).
-    private var showsJournals: Bool { tabbed ? shownTab == .journals : listShown }
+    /// iPhone's list does (its Journals section); not while the list is
+    /// hidden, nor while the iPad's split view hides the sidebar column
+    /// (`columnShown`, #762).
+    private var showsJournals: Bool {
+        NavigatorTab.showsJournals(tabbed: tabbed, tab: shownTab, listShown: listShown, columnShown: columnShown)
+    }
 
     /// Asks the place's server for its rooms every few seconds while they
     /// show, and not again once it says it is too old; cancelled when the
