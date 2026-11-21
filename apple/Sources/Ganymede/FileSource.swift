@@ -18,8 +18,9 @@ protocol FileSource: Sendable {
     /// contents API copies files only, so a folder there throws
     /// `FileSourceError.foldersCantBeDuplicated`.
     func duplicate(_ url: URL) async throws -> URL
-    /// Removes the item: the Trash on this device. Returns where it went,
-    /// when the source can say (the Trash's copy).
+    /// Removes the item: the Trash on this device (the iPad's source deletes
+    /// for good). Returns where it went, when the source can say (the
+    /// Trash's copy).
     @discardableResult
     func delete(_ url: URL) async throws -> URL?
     /// The text of the file, or nil when it holds none. A notebook's is its
@@ -112,7 +113,25 @@ enum FileChanges {
 
 /// The device's disk, through `FileManager`.
 struct LocalFileSource: FileSource {
-    init() {}
+    /// The folder the app's server is rooted at, when it isn't `/`: the
+    /// iPad's is its notebook folder (#208), so server paths are relative
+    /// to it. Nil: the Mac's, rooted at `/`.
+    let root: URL?
+    /// Whether `delete` removes the item for good instead of moving it to
+    /// the Trash: the iPad's sidebar always has, and its alert says "This
+    /// can't be undone".
+    let deletesForGood: Bool
+
+    init(root: URL? = nil, deletesForGood: Bool = false) {
+        self.root = root
+        self.deletesForGood = deletesForGood
+    }
+
+    /// The iPad's and iPhone's: its server is rooted at the notebook folder,
+    /// and nothing is trashed (#757).
+    static func notebookFolder(_ folder: URL) -> LocalFileSource {
+        LocalFileSource(root: folder, deletesForGood: true)
+    }
 
     func list(_ folder: URL) async throws -> [FolderEntry] {
         try FolderEntry.list(folder)
@@ -146,7 +165,11 @@ struct LocalFileSource: FileSource {
 
     @discardableResult
     func delete(_ url: URL) async throws -> URL? {
-        try trash(url)
+        if deletesForGood {
+            try FileManager.default.removeItem(at: url)
+            return nil
+        }
+        return try trash(url)
     }
 
     /// Moves the item to the Trash and returns where it went, when the
@@ -162,7 +185,8 @@ struct LocalFileSource: FileSource {
     }
 
     func serverPath(_ url: URL) -> String {
-        FolderEntry.serverPath(url)
+        guard let root else { return FolderEntry.serverPath(url) }
+        return FolderEntry.serverPath(url, root: root)
     }
 }
 

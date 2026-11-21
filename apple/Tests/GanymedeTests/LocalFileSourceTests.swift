@@ -125,4 +125,51 @@ final class LocalFileSourceTests: XCTestCase {
         XCTAssertEqual(source.serverPath(file), FolderEntry.serverPath(file))
         XCTAssertEqual(source.serverPath(URL(fileURLWithPath: "/Users/me/Io.ipynb")), "Users/me/Io.ipynb")
     }
+
+    /// The iPad's server is rooted at its notebook folder (#757).
+    func testServerPathsWithARootAreRelativeToIt() {
+        let rooted = LocalFileSource(root: root)
+        XCTAssertEqual(rooted.serverPath(root.appendingPathComponent("Io.ipynb")), "Io.ipynb")
+        XCTAssertEqual(rooted.serverPath(root.appendingPathComponent("moons/Europa.ipynb")), "moons/Europa.ipynb")
+        XCTAssertEqual(rooted.serverPath(root), "", "the root itself")
+        // Not under the root, nor merely sharing its prefix: the absolute form.
+        XCTAssertEqual(rooted.serverPath(URL(fileURLWithPath: "/Users/me/Io.ipynb")), "Users/me/Io.ipynb")
+        let sibling = root.deletingLastPathComponent().appendingPathComponent(root.lastPathComponent + "2/a.txt")
+        XCTAssertEqual(rooted.serverPath(sibling), FolderEntry.serverPath(sibling))
+        // Without a root, as before.
+        XCTAssertEqual(source.serverPath(root.appendingPathComponent("Io.ipynb")),
+                       FolderEntry.serverPath(root.appendingPathComponent("Io.ipynb")))
+    }
+
+    func testARootedSourceStillOperatesOnTheURLsItIsGiven() async throws {
+        let rooted = LocalFileSource(root: root)
+        let folder = try await rooted.newFolder(in: root)
+        XCTAssertEqual(rooted.serverPath(folder), "untitled folder")
+        let listed = try await rooted.list(root)
+        XCTAssertEqual(listed.map(\.name), ["untitled folder"])
+    }
+
+    /// The iPad deletes for good: its alert says it can't be undone.
+    func testDeletingForGoodRemovesTheItemAndReturnsNoTrashCopy() async throws {
+        let file = root.appendingPathComponent("Io.ipynb")
+        try Data("x".utf8).write(to: file)
+        let deleter = LocalFileSource(root: root, deletesForGood: true)
+        let trashed = try await deleter.delete(file)
+        XCTAssertNil(trashed)
+        XCTAssertFalse(exists("Io.ipynb"))
+        try FileManager.default.createDirectory(at: root.appendingPathComponent("moons/inner"), withIntermediateDirectories: true)
+        try await deleter.delete(root.appendingPathComponent("moons"))
+        XCTAssertFalse(exists("moons"), "a folder with its contents")
+    }
+
+    /// The sidebar's default on the iPad and iPhone: rooted, and deletes for good.
+    func testTheNotebookFolderSourceIsRootedAndDeletesForGood() async throws {
+        let source = LocalFileSource.notebookFolder(root)
+        XCTAssertEqual(source.serverPath(root.appendingPathComponent("Io.ipynb")), "Io.ipynb")
+        let file = root.appendingPathComponent("Io.ipynb")
+        try Data("x".utf8).write(to: file)
+        let trashed = try await source.delete(file)
+        XCTAssertNil(trashed)
+        XCTAssertFalse(exists("Io.ipynb"))
+    }
 }
