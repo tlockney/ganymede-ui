@@ -84,10 +84,6 @@ shown or hidden, its tab and its expanded folders across launches.
 - **Outline** lists the open notebook's headings; click one to go to its
   cell.
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
-
 - **Journals** (⌘6) lists the notebooks an agent is in or last wrote, in
   this window's place: the notebook, the agent's name and "running" while
   the agent is in it, otherwise when it last wrote ("2 min ago"). Click
@@ -194,10 +190,6 @@ value; objects expand a level at a time), read again after each run from
 a kernel that speaks the debugger protocol. Drag its left edge to resize
 it. The window keeps whether it shows, its tab and its width.
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
-
 On the Mac the inspector is only for a tab that shows a notebook. A DuckDB
 console, a data file and the start screen have no Outline or Variables, so
 they show no inspector, no toolbar button, and a disabled View > Show
@@ -287,11 +279,6 @@ notebook's room (`execution_by`) while its cells run, for a view that
 shows who runs a cell (#702). Run Notebook with Parameters runs in a new
 kernel with no room, so it names no one.
 
-> [!NOTE]
-> **Unreleased.** Needs an app whose built-in Ganymede core includes
-> tlockney/ganymede#896 (a Ganymede release after v0.14.0). The latest
-> release and builds of `main` (core v0.14.0) record no runner at all.
-
 Run Notebook and Run Cell (and `ganymede://run`, below) run the
 notebook's current content: when a window has it open, its unsaved edits
 run too, and cells you added since the last save are in Run Notebook, not
@@ -300,12 +287,6 @@ cells have no ids on disk, can be run too: Run Notebook needs none, and
 Run Cell takes a tag (a cell id works too, but a 4.4 notebook's ids exist
 only while its room is open). Get Notebook Outputs still reads the saved
 file, so it needs the cell ids of a nbformat 4.5 notebook.
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release. The latest release runs the saved file's cells, so
-> a run can miss unsaved edits and cells, and it refuses a notebook whose
-> cells have no ids.
 
 The actions use the app's own server, and start it if no window has.
 Runs go through the server, as an agent's do: a window showing the
@@ -556,10 +537,6 @@ On the Mac, the remote editor's **Tailnet Device** menu lists the other
 devices on your tailnet and fills in `https://<device>.<tailnet>.ts.net/`;
 picking a different device clears the token.
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
-
 On iPhone and iPad there is no device menu: type
 `https://<device>.<tailnet>.ts.net/` in the URL field, with the Tailscale
 app connected. The full name is in the Tailscale app. On every platform,
@@ -649,10 +626,6 @@ keys are kept in the keychain too.
   and comes back with a swipe from the edge. It has the Mac's navigator
   tabs (⌘1 to ⌘5 with a keyboard): Files, Search, Running (kernels and
   the panel's terminals), Outline and Recents.
-
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release.
 
   The sidebar also has a Journals tab (⌘6), for this iPad and for every
   connected machine, and the iPhone's list a Journals section when there
@@ -845,10 +818,6 @@ with only SSH stays in Settings for shells.
   links are for this device's windows only. Neither Spotlight, File > Open
   Recent nor the Recents list in the app's sidebar include a machine's
   notebooks.
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
 
 On the Mac a machine's window is the app's native window: the same
 sidebar (Files, Search, Running, Outline and Journals), toolbar,
@@ -1079,11 +1048,6 @@ On the iPad, iPhone and in a browser it opens in the window's page, where
 a notebook would. Opening a notebook or file closes it, as it closes any
 page; the notebook menus are disabled while it shows.
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release. The latest release opens the console in the
-> window's page on the Mac too, replacing the notebook.
-
 On the Mac it opens as a tab of its own, titled with the console's name
 (see [Names and recent consoles](#names-and-recent-consoles)), for the
 window's folder. The notebook in the tab you were
@@ -1130,11 +1094,6 @@ closes. Its tables and results aren't saved when it closes; the statements
 that ran are (see below).
 
 ### Names and recent consoles
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release. The latest release has no console names and keeps
-> no recent consoles.
 
 Each console has a name, "Console 1", "Console 2" and so on, the lowest
 number no recent console on that server has. Click the name in the
