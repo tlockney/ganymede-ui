@@ -65,6 +65,33 @@ struct IPadSidebar: View {
     var onPlace: ((Place) -> Void)? = nil
     @Environment(AppModel.self) private var model
 
+    /// The Journals poll restarts on a new server or when the list shows or
+    /// hides it. Its own property: inline, it is too much for the type
+    /// checker in `body`.
+    private var journalsPollID: String {
+        let server: String = model.serverURL?.absoluteString ?? ""
+        return server + "|" + String(showsJournals)
+    }
+
+    /// The toolbar's New menu.
+    private var newMenu: some View {
+        Menu {
+            Button { newNotebook(in: folder) } label: { Label("New Notebook", systemImage: "doc.badge.plus") }
+                .disabled(!reachable)
+            Button { newFolder(in: folder) } label: { Label("New Folder", systemImage: "folder.badge.plus") }
+                .disabled(!canChange)
+            // The iPhone has no File menu or welcome screen: the
+            // examples are here (#414). They are copied to this
+            // device's folder, so a machine has none.
+            if place.isThisDevice {
+                Button { openExamples() } label: { Label("Open Example Notebooks", systemImage: "book") }
+                    .disabled(page.state.backend == nil)
+            }
+        } label: {
+            Label("New", systemImage: "plus")
+        }
+    }
+
     var body: some View {
         List {
             placesSection
@@ -99,30 +126,14 @@ struct IPadSidebar: View {
             if lost, !query.trimmingCharacters(in: .whitespaces).isEmpty { search() }
         }
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                Menu {
-                    Button { newNotebook(in: folder) } label: { Label("New Notebook", systemImage: "doc.badge.plus") }
-                        .disabled(!reachable)
-                    Button { newFolder(in: folder) } label: { Label("New Folder", systemImage: "folder.badge.plus") }
-                        .disabled(!canChange)
-                    // The iPhone has no File menu or welcome screen: the
-                    // examples are here (#414). They are copied to this
-                    // device's folder, so a machine has none.
-                    if place.isThisDevice {
-                        Button { openExamples() } label: { Label("Open Example Notebooks", systemImage: "book") }
-                            .disabled(page.state.backend == nil)
-                    }
-                } label: {
-                    Label("New", systemImage: "plus")
-                }
-            }
+            ToolbarItem(placement: .primaryAction) { newMenu }
         }
         .refreshable { generation += 1 }
         // The machine answers again: list everything again (#753). The
         // Journals tab asks the place's server while it shows (#758).
         .modifier(SidebarWatchers(
             reachable: reachable, relist: { generation += 1 },
-            pollID: "\(model.serverURL?.absoluteString ?? "")|\(showsJournals)",
+            pollID: journalsPollID,
             poll: pollJournals, shown: $listShown))
         // The examples show in the app's own folder from the start (#463),
         // never in a machine's.
