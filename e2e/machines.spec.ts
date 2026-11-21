@@ -111,7 +111,9 @@ async function openMachineWindow(page: import('@playwright/test').Page, open = '
 
 test('lists the machine’s files, not this server’s, under a place label', async ({ page }) => {
   await openMachineWindow(page);
-  await expect(page.getByRole('status', { name: `Place: ${NAME}, reachable` })).toBeVisible();
+  const place = page.getByRole('status', { name: `Place: ${NAME}, reachable` });
+  await expect(place).toBeVisible();
+  await expect(place.locator('.visually-hidden')).toHaveText('reachable');
   await expect(page.getByRole('tablist', { name: 'Place' }).getByRole('tab')).toHaveText([
     'Files',
     'Journals',
@@ -181,9 +183,10 @@ test('goes read-only with a banner while the machine is away, and editable when 
   proxy.setDown(true);
   await expect(banner).toHaveText(`${NAME} went offline · Reconnecting…`);
   // The reachability dot follows (within its backoff).
-  await expect(page.getByRole('status', { name: `Place: ${NAME}, offline` })).toBeVisible({
-    timeout: 45_000,
-  });
+  const offline = page.getByRole('status', { name: `Place: ${NAME}, offline` });
+  await expect(offline).toBeVisible({ timeout: 45_000 });
+  // The hidden state text is what a screen reader announces (#775).
+  await expect(offline.locator('.visually-hidden')).toHaveText('offline');
   // The machine's kernel went with it, and JupyterLab says so in a dialog.
   const dialog = page.locator('dialog.jp-Dialog');
   await dialog
