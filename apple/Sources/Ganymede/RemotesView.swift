@@ -186,9 +186,7 @@ struct RemoteEditor: View {
                             ForEach(peers) { peer in
                                 Button(peer.online ? peer.name : "\(peer.name) (offline)") {
                                     // Another server's token isn't for this one.
-                                    if remote.serverURL.trimmingCharacters(in: .whitespaces) != peer.serverURL {
-                                        token = ""
-                                    }
+                                    token = RecentHosts.tokenAfterPicking(peer.serverURL, field: remote.serverURL, token: token)
                                     remote.serverURL = peer.serverURL
                                     if remote.name.trimmingCharacters(in: .whitespaces).isEmpty || remote.name == pickedName {
                                         remote.name = peer.name
@@ -205,9 +203,7 @@ struct RemoteEditor: View {
                             ForEach(recent, id: \.self) { url in
                                 Button(url) {
                                     // Another server's token isn't for this one.
-                                    if remote.serverURL.trimmingCharacters(in: .whitespaces) != url {
-                                        token = ""
-                                    }
+                                    token = RecentHosts.tokenAfterPicking(url, field: remote.serverURL, token: token)
                                     remote.serverURL = url
                                 }
                             }
