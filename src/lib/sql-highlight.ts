@@ -1,7 +1,7 @@
 import { LRLanguage, LanguageSupport } from '@codemirror/language';
 import { PostgreSQL, SQLDialect, sql } from '@codemirror/lang-sql';
 import { parseMixed } from '@lezer/common';
-import type { NestedParse, Parser, SyntaxNodeRef } from '@lezer/common';
+import type { NestedParse, Parser, SyntaxNode, SyntaxNodeRef } from '@lezer/common';
 import { highlightCode } from '@lezer/highlight';
 import { jupyterHighlightStyle } from '@jupyterlab/codemirror';
 
@@ -35,27 +35,45 @@ export function duckdbSql(): LanguageSupport {
   return sql({ dialect: duckdbDialect });
 }
 
-/** The tag of a template string, if it ends in an identifier: `sql`, `sql<Row>`, `a.b.sql`. */
-function tagName(node: SyntaxNodeRef, doc: (from: number, to: number) => string): string | null {
-  let tag = node.node.prevSibling;
-  if (!tag) return null;
-  if (tag.name === 'InstantiationExpression') tag = tag.firstChild;
-  if (!tag) return null;
-  if (tag.name === 'MemberExpression') tag = tag.lastChild;
-  if (!tag || (tag.name !== 'VariableName' && tag.name !== 'PropertyName')) return null;
-  return doc(tag.from, tag.to);
+type Read = (from: number, to: number) => string;
+
+/** The identifier an expression ends in: `sql` for `sql`, `sql<Row>` and `a.b.sql`. */
+function lastName(expr: SyntaxNode | null, doc: Read): string | null {
+  if (expr?.name === 'InstantiationExpression') expr = expr.firstChild;
+  if (expr?.name === 'MemberExpression') expr = expr.lastChild;
+  if (!expr || (expr.name !== 'VariableName' && expr.name !== 'PropertyName')) return null;
+  return doc(expr.from, expr.to);
+}
+
+/** Whether a template string is tagged `sql`: `sql`…``, `jupyter.sql`…``. */
+function isSqlTagged(node: SyntaxNodeRef, doc: Read): boolean {
+  return lastName(node.node.prevSibling, doc) === 'sql';
+}
+
+/** Whether a template string is the first argument of `jupyter.sql.query(`…`)`. */
+function isSqlQueryArgument(node: SyntaxNodeRef, doc: Read): boolean {
+  const args = node.node.parent;
+  if (args?.name !== 'ArgList' || node.node.prevSibling?.name !== '(') return false;
+  let callee = args.prevSibling;
+  if (callee?.name === 'InstantiationExpression') callee = callee.firstChild;
+  if (callee?.name !== 'MemberExpression') return false;
+  const method = callee.lastChild;
+  if (method?.name !== 'PropertyName' || doc(method.from, method.to) !== 'query') return false;
+  return lastName(callee.firstChild, doc) === 'sql';
 }
 
 /**
  * A JavaScript or TypeScript language whose template strings tagged `sql`
- * (`jupyter.sql`…``) are parsed as DuckDB SQL, `${…}` left to JavaScript.
+ * (`jupyter.sql`…``), or passed first to `jupyter.sql.query(`…`)`, are
+ * parsed as DuckDB SQL, `${…}` left to JavaScript.
  */
 export function withSqlTemplates(support: LanguageSupport): LanguageSupport {
   const sqlParser: Parser = duckdbSql().language.parser;
   const language = (support.language as LRLanguage).configure({
     wrap: parseMixed((node, input): NestedParse | null => {
       if (node.name !== 'TemplateString') return null;
-      if (tagName(node, (from, to) => input.read(from, to)) !== 'sql') return null;
+      const doc: Read = (from, to) => input.read(from, to);
+      if (!isSqlTagged(node, doc) && !isSqlQueryArgument(node, doc)) return null;
       const closed = node.to - node.from > 1 && input.read(node.to - 1, node.to) === '`';
       const end = closed ? node.to - 1 : node.to;
       const overlay: { from: number; to: number }[] = [];
