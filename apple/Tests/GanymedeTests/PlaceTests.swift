@@ -393,13 +393,15 @@ final class PlaceTests: XCTestCase {
 
     // MARK: a changed list reaching an open page (#716)
 
-    private let lists: (old: [PlaceEntry], new: [PlaceEntry]) = (
-        [PlaceEntry(place: .thisDevice, title: "This Mac")],
-        [
-            PlaceEntry(place: .thisDevice, title: "This Mac"),
-            PlaceEntry(place: .machine(id), title: "mini"),
-        ]
-    )
+    private var lists: (old: [PlaceEntry], new: [PlaceEntry]) {
+        (
+            [PlaceEntry(place: .thisDevice, title: "This Mac")],
+            [
+                PlaceEntry(place: .thisDevice, title: "This Mac"),
+                PlaceEntry(place: .machine(id), title: "mini"),
+            ]
+        )
+    }
 
     func testAMachineWindowIsToldOfAChangedList() {
         XCTAssertEqual(
