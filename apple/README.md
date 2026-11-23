@@ -67,10 +67,11 @@ XCFramework doesn't link.
 V8 is linked into every build of the apps for this benchmark. The spike
 measured +18.7 MB in the iOS binary, +6.9 MB compressed. The ganymede#646
 engine decision (2026-11-20) kept the in-app kernel on WebKit's Worker,
-so #765 removes V8, the benchmark and its entitlement from the apps once a
-ganymede release without them is pinned in `GANYMEDE_REF`. Until then the
-by-hand checks are in #273 (iPad and iPhone) and #399 (Mac: run it once
-from a hardened-runtime build, since the macOS V8 library has the JIT
+so #765 removes V8, the benchmark and the extended virtual addressing
+entitlement from the apps once a ganymede release without them is pinned
+in `GANYMEDE_REF`. Until then the by-hand checks are in #273 (iPad and
+iPhone) and #399 (Mac: run it once from a hardened-runtime build, since
+the macOS V8 library has the JIT
 built in and only turns it off at run time).
 
 ## TestFlight
