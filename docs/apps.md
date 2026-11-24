@@ -1084,12 +1084,8 @@ the notebook's editor colors (light and dark). In a notebook, the text of a
 template string tagged `sql` (`` jupyter.sql`select …` ``, `` sql`…` ``) in a
 JavaScript or TypeScript cell is highlighted as DuckDB SQL too, with `${…}`
 left as JavaScript, and a Markdown fence marked `duckdb` is highlighted the
-same way.
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release: the first argument of ``jupyter.sql.query(`…`)``
-> is highlighted as DuckDB SQL too, as a `sql` tag is.
+same way. The first argument of ``jupyter.sql.query(`…`)`` is
+highlighted as DuckDB SQL too, as a `sql` tag is.
 
 DuckDB wasm is the build SQL in a notebook uses, in a worker of its own: the
 first console fetches it (36 MB, once, then kept), and later ones run offline.
