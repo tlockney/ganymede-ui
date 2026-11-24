@@ -13,8 +13,6 @@ CHANGELOG.md
 docs/notes/archive.md
 *.ipynb
 apple/build
-# The engine benchmark's vendored files (apple/scripts/update-bench.sh).
-apple/Resources/Bench
 .ganymede
 # Notebook sources (#414): their cells are formatted by hand, in the
 # notebooks' own style.
