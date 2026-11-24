@@ -1266,9 +1266,3 @@ It is off by default, and turning it off hides the tab again. It holds:
   They are off while crash reports are, and the report of a crash goes out
   the next time the app launches. They were in General's crash report
   section.
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release. The latest release also has an engine benchmark
-> here, which ran the V8 spike's workloads on V8 and WebKit; `main`
-> removes it and V8 with it (#765).
