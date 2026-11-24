@@ -60,10 +60,6 @@ Ganymede v0.16.0 ganymede-ffi has none, and #765 removed the engine
 benchmark that used it from Settings > Developer, with the extended
 virtual addressing entitlement it needed on iOS.
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release, which still links V8 for the engine benchmark.
-
 ## TestFlight
 
 Each ganymede-ui release uploads the iPad and iPhone app to TestFlight for
