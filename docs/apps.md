@@ -1261,23 +1261,14 @@ iPhone, that stays hidden until **Show Developer Settings** is turned on
 at the bottom of General (on iPad and iPhone, in Settings, above Help).
 It is off by default, and turning it off hides the tab again. It holds:
 
-- **Engine Benchmark.** **Run Benchmark** runs the workloads of the
-  engine benchmark (ganymede's `spikes/v8-engine`: a start, CPU work,
-  TypeScript stripping, large output and memory) on the V8 inside the app
-  (jitless) and on WebKit's Workers, the engine of today's in-app kernel.
-  It takes under a minute: keep that screen open and the app in front until it's
-  done; the results say if you left. Each
-  workload shows cold and steady times in milliseconds for each engine,
-  the device, the OS and the app's peak memory footprint. V8 starts once
-  per process, so quit and relaunch the app between runs for steady
-  numbers. A build whose library has no V8 says so and runs only the
-  WebKit half, and so does a device that doesn't give the app the address
-  space V8 needs (an iPhone or iPad build without the extended virtual
-  addressing entitlement): the results give that reason for V8. **Share Results** shares a
-  `results-<time>.json` file, and **Copy Results** copies its text; `node
-bench/report.mjs` in that folder turns the file into tables.
 - **Crash Report Tests.** Buttons that send a test error or crash the app
   with a Swift crash or a Rust panic, to check what a real failure sends.
   They are off while crash reports are, and the report of a crash goes out
   the next time the app launches. They were in General's crash report
   section.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release. The latest release also has an engine benchmark
+> here, which ran the V8 spike's workloads on V8 and WebKit; `main`
+> removes it and V8 with it (#765).
