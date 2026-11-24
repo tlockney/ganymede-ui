@@ -36,7 +36,7 @@ struct SettingsWindow: View {
             DeviceSettings()
                 .tabItem { Label("Device", systemImage: "hand.raised") }
                 .tag(SettingsTab.device)
-            // The engine benchmark and the crash report tests (#698).
+            // The crash report tests (#698).
             if developer {
                 DeveloperSettings()
                     .padding()

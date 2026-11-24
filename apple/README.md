@@ -52,27 +52,17 @@ Release builds upload the archive's dSYMs to Sentry
 TestFlight-only runs. ganymede-ffi's static library keeps its line
 tables, so Rust frames show files and lines too.
 
-## Engine benchmark
+## In-app engine
 
-Settings > Developer (hidden until General's **Show Developer Settings**
-is on, #698) runs the V8 spike's workloads on the V8 in ganymede-ffi and
-on WebKit's Workers ([docs/apps.md](../docs/apps.md#developer-settings)).
-The workloads, the Worker page and the TypeScript stripper it loads are
-in `apple/Resources/Bench`, bundled in the Mac and iOS apps (not the
-extensions); `apple/scripts/update-bench.sh [ganymede checkout]` refreshes
-them from ganymede's `spikes/v8-engine/bench`. It needs a ganymede-ffi
-with the `ganymede_v8_bench_*` functions: a build against an older
-XCFramework doesn't link.
+The in-app TypeScript kernel runs on WebKit's Worker: the ganymede#646
+engine decision (2026-11-20) kept it there. The apps link no V8. From
+Ganymede v0.16.0 ganymede-ffi has none, and #765 removed the engine
+benchmark that used it from Settings > Developer, with the extended
+virtual addressing entitlement it needed on iOS.
 
-V8 is linked into every build of the apps for this benchmark. The spike
-measured +18.7 MB in the iOS binary, +6.9 MB compressed. The ganymede#646
-engine decision (2026-11-20) kept the in-app kernel on WebKit's Worker,
-so #765 removes V8, the benchmark and the extended virtual addressing
-entitlement from the apps once a ganymede release without them is pinned
-in `GANYMEDE_REF`. Until then the by-hand checks are in #273 (iPad and
-iPhone) and #399 (Mac: run it once from a hardened-runtime build, since
-the macOS V8 library has the JIT
-built in and only turns it off at run time).
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, which still links V8 for the engine benchmark.
 
 ## TestFlight
 
