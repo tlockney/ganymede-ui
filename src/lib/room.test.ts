@@ -498,16 +498,75 @@ describe('trust in a room', () => {
     stop();
   });
 
+  /** The file as the contents API serves it: cell `a`, trusted, with `outputs`. */
+  const savedWith = (outputs: unknown[]) =>
+    ({
+      get: vi.fn(async () => ({
+        content: {
+          cells: [{ cell_type: 'code', id: 'a', metadata: { trusted: true }, outputs }],
+        },
+      })),
+    }) as never;
+  const io = { output_type: 'display_data', data: { 'text/html': '<b>Io</b>' }, metadata: {} };
+
   it('drops a read the outputs changed during', async () => {
     const { model, cell } = shared();
-    const file = {
-      get: vi.fn(async () => ({
-        content: { cells: [{ cell_type: 'code', id: 'a', metadata: { trusted: true } }] },
-      })),
-    } as never;
+    const file = savedWith([io]);
     expect(await trustFromFile(file, 'Io.ipynb', model, () => true)).toBe(false);
     expect(cell.trusted).toBe(false);
     expect(await trustFromFile(file, 'Io.ipynb', model)).toBe(true);
     expect(cell.trusted).toBe(true);
+  });
+
+  it('keeps a signed output’s trust off different live output in the cell (#793)', async () => {
+    const { model, cell } = shared();
+    // The file is behind the room: it signed `<b>Io</b>`, the room now
+    // holds another output in the same cell.
+    cell.sharedModel.setOutputs([
+      {
+        output_type: 'display_data',
+        data: { 'text/html': '<script>steal()</script>' },
+        metadata: {},
+      },
+    ]);
+    expect(cell.trusted).toBe(false);
+    expect(await trustFromFile(savedWith([io]), 'Io.ipynb', model)).toBe(false);
+    expect(cell.trusted).toBe(false);
+    expect(cell.outputs.get(0).trusted).toBe(false);
+    // Fewer or more outputs than the file's don't match either.
+    expect(await trustFromFile(savedWith([io, io]), 'Io.ipynb', model)).toBe(false);
+    expect(await trustFromFile(savedWith([]), 'Io.ipynb', model)).toBe(false);
+    expect(cell.trusted).toBe(false);
+    // Once the file signs the live output, the next read trusts it.
+    const live = cell.outputs.toJSON();
+    expect(await trustFromFile(savedWith(live), 'Io.ipynb', model)).toBe(true);
+    expect(cell.trusted).toBe(true);
+    expect(cell.outputs.get(0).trusted).toBe(true);
+  });
+
+  it('still trusts live output the file holds, as the file writes it (#793)', async () => {
+    const { model, cell } = shared();
+    // Keys in another order and the HTML split into lines, as a file may
+    // store them; an output's `transient` is never saved.
+    cell.sharedModel.setOutputs([
+      {
+        output_type: 'display_data',
+        data: { 'text/html': '<b>Io</b>\n<i>moon</i>' },
+        metadata: {},
+        transient: { display_id: 'd1' },
+      } as never,
+      { output_type: 'stream', name: 'stdout', text: 'one\ntwo\n' },
+    ]);
+    const file = savedWith([
+      {
+        metadata: {},
+        data: { 'text/html': ['<b>Io</b>\n', '<i>moon</i>'] },
+        output_type: 'display_data',
+      },
+      { text: ['one\n', 'two\n'], name: 'stdout', output_type: 'stream' },
+    ]);
+    expect(await trustFromFile(file, 'Io.ipynb', model)).toBe(true);
+    expect(cell.trusted).toBe(true);
+    expect(cell.outputs.get(0).trusted).toBe(true);
   });
 });

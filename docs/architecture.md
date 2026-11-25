@@ -275,7 +275,10 @@ as a deleted file does.
 Trust: the server doesn't put `trusted` marks in the room; it decides
 trust when it saves. So on open the pane reads the file through the
 contents API, as the server marks it, and trusts each code cell it marks
-trusted, by id (`trustFromFile`). It sets that trust in this page only
+trusted, by id, when the cell's outputs here are the ones the file holds
+(`trustFromFile`, compared by `sameOutputs` with lines joined and key
+order ignored): the file can be behind the room, and its trust is for
+its own outputs, not whatever the cell shows now. It sets that trust in this page only
 (`trustHere`): JupyterLab's own way writes into the shared document and
 would mark the notebook edited for everyone. Outputs another client
 writes into a cell this page has (an agent's run through the server, or
