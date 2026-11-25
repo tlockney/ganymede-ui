@@ -6,9 +6,20 @@ type Props = {
   initial?: BackendConfig;
   error?: string;
   connecting: boolean;
+  /** The open notebook is saving before the switch (#792). */
+  saving?: boolean;
+  /**
+   * The name of the open notebook whose save failed before the switch
+   * (#792): the sheet asks what to do with its edits instead of connecting.
+   */
+  unsaved?: string;
   canCancel: boolean;
   onCancel(): void;
   onConnect(config: BackendConfig): void;
+  /** Download the unsaved notebook as it is, edits included. */
+  onDownloadCopy?(): void;
+  /** Connect anyway; the notebook closes without its edits. */
+  onSwitchAnyway?(): void;
 };
 
 /** A macOS-style sheet: pick where kernels run. */
@@ -16,9 +27,13 @@ export function ConnectSheet({
   initial,
   error,
   connecting,
+  saving = false,
+  unsaved,
   canCancel,
   onCancel,
   onConnect,
+  onDownloadCopy,
+  onSwitchAnyway,
 }: Props) {
   const [kind, setKind] = useState<BackendConfig['kind']>(initial?.kind ?? 'ganymede');
   const [url, setUrl] = useState(initial?.kind === 'ganymede' ? initial.url : '');
@@ -30,6 +45,7 @@ export function ConnectSheet({
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (unsaved !== undefined || saving || connecting) return;
     onConnect(
       kind === 'ganymede'
         ? {
@@ -111,16 +127,36 @@ export function ConnectSheet({
 
         {error && <p className="sheet-error">{error}</p>}
 
-        <div className="sheet-buttons">
-          {canCancel && (
-            <button type="button" className="push-button" onClick={onCancel}>
-              Cancel
+        {unsaved !== undefined ? (
+          <div className="sheet-unsaved" role="alert">
+            <p className="sheet-error">
+              Couldn’t save “{unsaved}”. Switching closes it, and its unsaved edits would be lost.
+              Keep editing to see why and try again.
+            </p>
+            <div className="sheet-buttons">
+              <button type="button" className="push-button" onClick={onSwitchAnyway}>
+                Switch Without Saving
+              </button>
+              <button type="button" className="push-button" onClick={onDownloadCopy}>
+                Download a Copy
+              </button>
+              <button type="button" className="push-button primary" onClick={onCancel}>
+                Keep Editing
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="sheet-buttons">
+            {canCancel && (
+              <button type="button" className="push-button" onClick={onCancel}>
+                Cancel
+              </button>
+            )}
+            <button type="submit" className="push-button primary" disabled={connecting || saving}>
+              {saving ? 'Saving…' : connecting ? 'Connecting…' : 'Connect'}
             </button>
-          )}
-          <button type="submit" className="push-button primary" disabled={connecting}>
-            {connecting ? 'Connecting…' : 'Connect'}
-          </button>
-        </div>
+          </div>
+        )}
       </form>
     </div>
   );

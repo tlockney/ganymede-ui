@@ -136,4 +136,33 @@ describe('ConnectSheet', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(onCancel).toHaveBeenCalledOnce();
   });
+
+  it('asks about a notebook that could not save, and Enter doesn’t connect meanwhile (#792)', async () => {
+    const onDownloadCopy = vi.fn();
+    const onSwitchAnyway = vi.fn();
+    const { onConnect, onCancel } = renderSheet({
+      canCancel: true,
+      unsaved: 'Orbits.ipynb',
+      onDownloadCopy,
+      onSwitchAnyway,
+    });
+    expect(screen.getByRole('alert')).toHaveTextContent('Couldn’t save “Orbits.ipynb”');
+    expect(screen.queryByRole('button', { name: /Connect/ })).toBeNull();
+    await userEvent.type(server(), 'https://kernels.example{Enter}');
+    expect(onConnect).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Download a Copy' }));
+    expect(onDownloadCopy).toHaveBeenCalledOnce();
+    await userEvent.click(screen.getByRole('button', { name: 'Switch Without Saving' }));
+    expect(onSwitchAnyway).toHaveBeenCalledOnce();
+    await userEvent.click(screen.getByRole('button', { name: 'Keep Editing' }));
+    expect(onCancel).toHaveBeenCalledOnce();
+  });
+
+  it('says it is saving, and Enter doesn’t connect, while the notebook saves (#792)', async () => {
+    const { onConnect } = renderSheet({ saving: true });
+    expect(screen.getByRole('button', { name: 'Saving…' })).toBeDisabled();
+    await userEvent.type(server(), 'https://kernels.example{Enter}');
+    expect(onConnect).not.toHaveBeenCalled();
+  });
 });
