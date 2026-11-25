@@ -222,15 +222,13 @@ export function Toolbar({
     },
   };
 
-  // A menu whose opener has gone (the notebook closed) or that has nothing
-  // in it closes, so it doesn't open again by itself when the opener comes
-  // back (#801).
-  const openItems = open ? menus[open].items.length : 0;
+  // A menu whose opener has gone (the notebook closed) closes, so it doesn't
+  // open again by itself when the opener comes back (#801).
   useEffect(() => {
-    if (open && (!anchors[open].current || openItems === 0)) setOpen(undefined);
+    if (open && !anchors[open].current) setOpen(undefined);
     // The status opener comes and goes with the notebook (`c`); the others stay.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, c, openItems]);
+  }, [open, c]);
 
   return (
     <header className="toolbar">
