@@ -33,43 +33,48 @@ test.describe('on a phone', () => {
 
   test('cells are added, retyped, moved, run and deleted by touch', async ({ page }) => {
     await newBrowserNotebook(page);
-    const more = page.getByRole('button', { name: 'Cell Actions' });
+    // Compact (#813): the active cell's menu is in the line above it, and one
+    // Add cell control is under the active cell.
+    const active = page.locator('.jp-Cell.jp-mod-active');
+    const more = active.getByRole('button', { name: 'Cell Actions' });
     await expect(more).toHaveCount(1);
-    // The new notebook's first cell: its add-cell bar is under its editor.
     const first = page.locator('.jp-Cell').first();
     const editor = (await first.locator('.jp-InputArea-editor').boundingBox())!;
     const bar = (await first.locator('.gn-add-cell').boundingBox())!;
     expect(bar.y).toBeGreaterThanOrEqual(editor.y + editor.height);
-    const box = (await more.first().boundingBox())!;
+    const box = (await more.boundingBox())!;
     expect(box.height).toBeGreaterThanOrEqual(44);
     expect(box.width).toBeGreaterThanOrEqual(44);
 
-    // A text cell after the first, then a code cell after that.
-    await page.getByRole('button', { name: 'Add Text Cell' }).first().tap();
+    // A cell after the first, made Markdown from its menu, then a code cell after that.
+    await page.getByRole('button', { name: 'Add Cell Below', exact: true }).tap();
+    await more.tap();
+    await page.getByRole('menuitemradio', { name: 'Markdown' }).tap();
     await page.keyboard.type('# Moons');
-    await page.getByRole('button', { name: 'Add Code Cell' }).nth(1).tap();
+    await page.getByRole('button', { name: 'Add Cell Below', exact: true }).tap();
     await page.keyboard.type('6 * 7');
     expect(await cellTypes(page)).toEqual(['code', 'markdown', 'code']);
 
     // Run from the menu.
-    await more.nth(2).tap();
-    await page.getByRole('menuitem', { name: 'Run' }).tap();
+    await more.tap();
+    await page.getByRole('menuitem', { name: 'Run', exact: true }).tap();
     await expect(outputs(page).filter({ hasText: '42' })).toBeVisible({ timeout: 60_000 });
 
-    // Retype the first cell, move the last one up, delete the new first.
-    await more.nth(0).tap();
+    // Move the last one up, then retype and delete the first by making it active.
+    await more.tap();
+    await page.getByRole('menuitem', { name: 'Move Up' }).tap();
+    expect(await cellTypes(page)).toEqual(['code', 'code', 'markdown']);
+    await page.locator('.jp-Cell').first().locator('.jp-InputArea-editor').tap();
+    await more.tap();
     await expect(page.getByRole('menuitem', { name: 'Move Up' })).toBeDisabled();
     await page.getByRole('menuitemradio', { name: 'Raw' }).tap();
-    expect(await cellTypes(page)).toEqual(['raw', 'markdown', 'code']);
-    await more.nth(2).tap();
-    await page.getByRole('menuitem', { name: 'Move Up' }).tap();
     expect(await cellTypes(page)).toEqual(['raw', 'code', 'markdown']);
-    await more.nth(0).tap();
-    await page.getByRole('menuitem', { name: 'Delete' }).tap();
-    expect(await cellTypes(page)).toEqual(['code', 'markdown']);
-    await more.nth(0).tap();
+    await more.tap();
     await page.getByRole('menuitem', { name: 'Duplicate' }).tap();
-    expect(await cellTypes(page)).toEqual(['code', 'code', 'markdown']);
+    expect(await cellTypes(page)).toEqual(['raw', 'raw', 'code', 'markdown']);
+    await more.tap();
+    await page.getByRole('menuitem', { name: 'Delete' }).tap();
+    expect(await cellTypes(page)).toEqual(['raw', 'code', 'markdown']);
     await expect(page.getByRole('menu')).toHaveCount(0);
   });
 });

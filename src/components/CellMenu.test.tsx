@@ -13,6 +13,7 @@ vi.mock('../lib/cell-controls', async importOriginal => ({
 }));
 
 const { CellMenu } = await import('./CellMenu');
+const { resetWrapCodeForTests, wrapCodeEnabled } = await import('../lib/wrap-code');
 const { Signal } = await import('@lumino/signaling');
 
 function setup(index: number, type = 'code', away = false) {
@@ -105,6 +106,8 @@ describe('CellMenu', () => {
     await userEvent.keyboard('{ArrowDown}');
     expect(screen.getByRole('menuitem', { name: 'Collapse Code' })).toHaveFocus();
     await userEvent.keyboard('{ArrowDown}');
+    expect(screen.getByRole('menuitemcheckbox', { name: 'Wrap Code' })).toHaveFocus();
+    await userEvent.keyboard('{ArrowDown}');
     expect(screen.getByRole('menuitemradio', { name: /Code/ })).toHaveFocus();
   });
 
@@ -121,6 +124,17 @@ describe('CellMenu', () => {
     // Its own cell becomes the active one, as for the other items.
     expect(n.activeCellIndex).toBe(1);
     expect(notebook.activate).toHaveBeenCalled();
+  });
+
+  it('toggles Wrap Code (#813), a view setting for every cell', async () => {
+    resetWrapCodeForTests();
+    const { notebook } = setup(1);
+    const item = screen.getByRole('menuitemcheckbox', { name: 'Wrap Code' });
+    expect(item).toHaveAttribute('aria-checked', 'false');
+    await userEvent.click(item);
+    expect(wrapCodeEnabled()).toBe(true);
+    expect(notebook.activate).toHaveBeenCalled();
+    resetWrapCodeForTests();
   });
 
   it('has no Collapse Code for a Markdown cell', () => {

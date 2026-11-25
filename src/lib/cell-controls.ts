@@ -11,10 +11,11 @@
  * touch screens and narrow windows (app.css, "Cell controls"); a desktop
  * window keeps the toolbar and JupyterLab's cell toolbar as they were.
  */
-import type { Cell } from '@jupyterlab/cells';
+import { type Cell, CodeCell } from '@jupyterlab/cells';
 import { type Notebook, NotebookActions } from '@jupyterlab/notebook';
 import { DisposableDelegate, type IDisposable } from '@lumino/disposable';
 import { dragCell } from './cell-drag';
+import { isInterrupt } from './output-labels';
 
 export type CellMenuAction =
   'run' | 'code' | 'markdown' | 'raw' | 'move-up' | 'move-down' | 'duplicate' | 'delete';
@@ -34,6 +35,49 @@ export const CELL_MENU: readonly { action: CellMenuAction; label: string; type?:
 const MORE = 'gn-cell-more';
 const ADD = 'gn-add-cell';
 const DRAG = 'gn-cell-drag';
+const META = 'gn-cell-meta';
+const LAST = 'gn-last-cell';
+
+/** What a cell's gutter says about its run, in words: not by color alone (#813). */
+export type CellRunState = 'Running' | 'Queued' | 'Stopped';
+
+/** The cell's run state: running or queued (run-status.ts marks them), or stopped by an interrupt. */
+export function cellRunState(cell: Cell): CellRunState | undefined {
+  if (cell.hasClass('gn-mod-running')) return 'Running';
+  if (cell.hasClass('gn-mod-queued')) return 'Queued';
+  if (!(cell instanceof CodeCell)) return undefined;
+  const outputs = cell.model.outputs;
+  for (let i = outputs.length - 1; i >= 0; i--) {
+    const out = outputs.get(i).toJSON();
+    if (out.output_type === 'error') return isInterrupt(out.ename) ? 'Stopped' : undefined;
+  }
+  return undefined;
+}
+
+/** The short line above a cell on compact screens: "In [3]", "Code", and the run state. */
+export function describeCell(cell: Cell): { count: string; type: string; state?: CellRunState } {
+  const type = cell.model.type;
+  const state = cellRunState(cell);
+  let count = '';
+  if (cell instanceof CodeCell) {
+    const n = cell.model.executionCount;
+    count = n == null ? 'Not run' : `In [${n}]`;
+  }
+  return {
+    count,
+    type: type === 'code' ? 'Code' : type === 'markdown' ? 'Markdown' : 'Raw',
+    state,
+  };
+}
+
+/** The compact Add cell control's name, by where it adds (#813). */
+function addLabel(cell: Cell): 'Add Cell Below' | 'Add Cell at End' {
+  // Only the active cell and the last one show it; when they are the same
+  // cell, it adds below.
+  return cell.hasClass('jp-mod-active') || !cell.hasClass(LAST)
+    ? 'Add Cell Below'
+    : 'Add Cell at End';
+}
 
 /** Six dots, the usual grip. */
 const GRIP =
@@ -90,6 +134,20 @@ export function addCellAfter(notebook: Notebook, cell: Cell, type: 'code' | 'mar
   notebook.mode = 'edit';
 }
 
+/** Fill the meta line; the run state is text in the cell, for assistive
+ * technology on every width (jupyter.css keeps it in the accessibility tree). */
+function refreshMeta(cell: Cell, meta: HTMLElement): void {
+  const { count, type, state } = describeCell(cell);
+  const set = (cls: string, text: string) => {
+    const el = meta.querySelector<HTMLElement>(`.${cls}`)!;
+    if (el.textContent !== text) el.textContent = text;
+    el.hidden = !text;
+  };
+  set('gn-meta-count', count);
+  set('gn-meta-type', type);
+  set('gn-meta-state', state ?? '');
+}
+
 function button(className: string, label: string, text: string, data: string): HTMLButtonElement {
   const b = document.createElement('button');
   b.type = 'button';
@@ -121,21 +179,65 @@ function decorate(cell: Cell): void {
   drag.setAttribute('aria-hidden', 'true');
   const bar = document.createElement('div');
   bar.className = ADD;
+  // The one control on compact screens; its cell menu changes the type,
+  // and its name says where it adds.
+  const main = button('gn-add-button gn-add-main', addLabel(cell), 'Add cell', 'add');
   bar.append(
-    button('gn-add-button', 'Add Code Cell', '+ Code', 'code'),
-    button('gn-add-button', 'Add Text Cell', '+ Text', 'markdown'),
+    button('gn-add-button gn-add-typed', 'Add Code Cell', '+ Code', 'code'),
+    button('gn-add-button gn-add-typed', 'Add Text Cell', '+ Text', 'markdown'),
+    main,
   );
-  node.append(more, drag, bar);
+  // Compact screens (#813): execution count, type and options in a line above the cell.
+  const meta = document.createElement('div');
+  meta.className = META;
+  for (const cls of ['gn-meta-count', 'gn-meta-type', 'gn-meta-state']) {
+    const span = document.createElement('span');
+    span.className = cls;
+    meta.append(span);
+  }
+  meta.append(more);
+  node.append(drag, bar);
+  node.prepend(meta);
+  const refreshAdd = () => {
+    const label = addLabel(cell);
+    if (main.getAttribute('aria-label') !== label) {
+      main.setAttribute('aria-label', label);
+      main.title = label;
+    }
+  };
+  refreshAdd();
+  refreshMeta(cell, meta);
+  const refresh = () => {
+    if (!cell.isDisposed) {
+      refreshMeta(cell, meta);
+      refreshAdd();
+    }
+  };
+  cell.model.stateChanged.connect(refresh);
+  const outputs = cell instanceof CodeCell ? cell.model.outputs : undefined;
+  outputs?.changed.connect(refresh);
+  // run-status.ts marks running and queued cells with classes.
+  const classes = new MutationObserver(refresh);
+  classes.observe(node, { attributes: true, attributeFilter: ['class'] });
   // The cell adds its input and output areas when it is first attached,
   // which for a new notebook's first cell can be after `ready`: whenever
   // its children change, the bar goes back to the end.
   const keepLast = new MutationObserver(() => {
-    if (!cell.isDisposed && node.lastElementChild !== bar) node.append(bar);
+    if (cell.isDisposed) return;
+    if (node.lastElementChild !== bar) node.append(bar);
+    if (node.firstElementChild !== meta) node.prepend(meta);
   });
   keepLast.observe(node, { childList: true });
-  cell.disposed.connect(() => keepLast.disconnect());
+  cell.disposed.connect(() => {
+    keepLast.disconnect();
+    classes.disconnect();
+    cell.model.stateChanged.disconnect(refresh);
+    outputs?.changed.disconnect(refresh);
+  });
   void cell.ready.then(() => {
-    if (!cell.isDisposed && node.lastElementChild !== bar) node.append(bar);
+    if (cell.isDisposed) return;
+    if (node.lastElementChild !== bar) node.append(bar);
+    refresh();
   });
 }
 
@@ -153,6 +255,9 @@ export function attachCellControls(
   const sync = () => {
     if (disposed || notebook.isDisposed) return;
     notebook.widgets.forEach(decorate);
+    // The end of the notebook keeps an Add cell control on compact screens.
+    const last = notebook.widgets.length - 1;
+    notebook.widgets.forEach((w, i) => w.toggleClass(LAST, i === last));
   };
   // The notebook makes the widgets for new cells in its own handler for
   // the same signal, which may run after this one: sync again after it.
@@ -174,8 +279,8 @@ export function attachCellControls(
     e.stopPropagation();
     const what = target.dataset.gnControl;
     if (what === 'menu') onMenu(cell, target);
-    else if ((what === 'code' || what === 'markdown') && !away())
-      addCellAfter(notebook, cell, what);
+    else if ((what === 'code' || what === 'markdown' || what === 'add') && !away())
+      addCellAfter(notebook, cell, what === 'markdown' ? 'markdown' : 'code');
   };
   // The notebook takes a mousedown in a cell to select it, drag it or
   // focus its editor, and a double click to edit Markdown; a tap on a
@@ -194,6 +299,16 @@ export function attachCellControls(
   node.addEventListener('mousedown', onDown, true);
   node.addEventListener('pointerdown', onDown, true);
   node.addEventListener('dblclick', onDown, true);
+  // A tap on a control focuses it, and the notebook takes that focus as a
+  // tap on the cell: it makes the cell the active one while the tap is
+  // still going, and the meta line the active cell then grows on a phone
+  // (#813) moves the control under the finger, so the tap's click never
+  // comes. The focus itself is wanted — it takes the editor's, leaving
+  // edit mode — so only the notebook is kept from hearing of it.
+  const onFocus = (e: Event) => {
+    if ((e.target as Element | null)?.closest('[data-gn-control]')) e.stopPropagation();
+  };
+  node.addEventListener('focusin', onFocus, true);
 
   return new DisposableDelegate(() => {
     disposed = true;
@@ -202,5 +317,6 @@ export function attachCellControls(
     node.removeEventListener('mousedown', onDown, true);
     node.removeEventListener('pointerdown', onDown, true);
     node.removeEventListener('dblclick', onDown, true);
+    node.removeEventListener('focusin', onFocus, true);
   });
 }

@@ -3,6 +3,7 @@ import type { Cell } from '@jupyterlab/cells';
 import type { Notebook } from '@jupyterlab/notebook';
 import { CELL_MENU, type CellMenuAction, applyCellAction, selectOnly } from '../lib/cell-controls';
 import { canCollapse, setCollapsed } from '../lib/code-collapse';
+import { setWrapCodeEnabled, wrapCodeEnabled } from '../lib/wrap-code';
 import { ContextMenu, type MenuItem } from './ContextMenu';
 
 type Props = {
@@ -80,6 +81,18 @@ export function CellMenu({ notebook, cell, anchor, run, away = false, onClose }:
               },
             ]
           : []),
+        // A view setting (#813): wraps long lines in every cell, for touch.
+        {
+          label: 'Wrap Code',
+          checked: wrapCodeEnabled(),
+          toggle: true,
+          disabled: away,
+          onSelect: () => {
+            if (away) return;
+            setWrapCodeEnabled(!wrapCodeEnabled());
+            if (!notebook.isDisposed) notebook.activate();
+          },
+        },
         'separator',
         { heading: 'Cell Type' },
         ...types.map(item),

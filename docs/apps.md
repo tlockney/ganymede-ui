@@ -1362,8 +1362,9 @@ export replaces nothing, the sheet refuses its page the same way.
 ## Running with parameters
 
 > [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
+> **Unreleased.** In the latest release, Run with Parameters… is in the
+> ⋯ menu on the iPad and iPhone, and in the browser in the Command
+> Palette and, in a narrow window, the toolbar's More menu.
 
 **Run with Parameters…** (Cell menu on the Mac, the Run Cell menu on the iPad
 and iPhone, the Command Palette and the toolbar in the browser) runs the notebook as a program, the way `ganymede execute -p

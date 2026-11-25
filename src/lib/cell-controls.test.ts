@@ -14,7 +14,7 @@ Range.prototype.getClientRects ??= () => [] as unknown as DOMRectList;
 Range.prototype.getBoundingClientRect ??= () => new DOMRect();
 
 const { createNotebook, createRendermime } = await import('./jupyterlab');
-const { attachCellControls, applyCellAction, addCellAfter, CELL_MENU } =
+const { attachCellControls, applyCellAction, addCellAfter, cellRunState, describeCell, CELL_MENU } =
   await import('./cell-controls');
 const { NotebookModel } = await import('@jupyterlab/notebook');
 const { Widget } = await import('@lumino/widgets');
@@ -175,7 +175,7 @@ describe('attachCellControls', () => {
   it('keeps controls on a cell whose type changed', async () => {
     await applyCellAction(notebook, cell(2), 'markdown', run);
     await Promise.resolve();
-    expect(cell(2).node.querySelector(':scope > .gn-cell-more')).not.toBeNull();
+    expect(cell(2).node.querySelector(':scope > .gn-cell-meta > .gn-cell-more')).not.toBeNull();
   });
 
   it('keeps the notebook from seeing a double tap on a control', () => {
@@ -215,5 +215,166 @@ describe('attachCellControls', () => {
     controls.dispose();
     buttons('Cell Actions')[0]!.click();
     expect(onMenu).not.toHaveBeenCalled();
+  });
+});
+
+describe('the compact layout (#813)', () => {
+  const buttons = (label: string) => [
+    ...notebook.node.querySelectorAll<HTMLButtonElement>(`button[aria-label="${label}"]`),
+  ];
+  const meta = (i: number) => cell(i).node.querySelector<HTMLElement>(':scope > .gn-cell-meta')!;
+
+  it('puts a meta line first in each cell, with the count, type and the … button', () => {
+    for (let i = 0; i < 3; i++) {
+      expect(cell(i).node.firstElementChild).toBe(meta(i));
+      expect(meta(i).querySelector('.gn-cell-more')).not.toBeNull();
+    }
+    expect(meta(0).querySelector('.gn-meta-count')!.textContent).toBe('Not run');
+    expect(meta(0).querySelector('.gn-meta-type')!.textContent).toBe('Code');
+  });
+
+  it('keeps the meta line first when the cell adds parts later', async () => {
+    const early = document.createElement('div');
+    cell(0).node.prepend(early);
+    await new Promise(r => setTimeout(r, 0));
+    expect(cell(0).node.firstElementChild).toBe(meta(0));
+  });
+
+  it('shows the execution count, as the cell runs', () => {
+    const model = cell(0).model as unknown as { executionCount: number | null };
+    model.executionCount = 7;
+    expect(describeCell(cell(0)).count).toBe('In [7]');
+    expect(meta(0).querySelector('.gn-meta-count')!.textContent).toBe('In [7]');
+  });
+
+  it('names a Markdown cell’s type and has no count for it', async () => {
+    await applyCellAction(notebook, cell(1), 'markdown', run);
+    await Promise.resolve();
+    expect(describeCell(cell(1))).toMatchObject({ count: '', type: 'Markdown' });
+    expect(meta(1).querySelector<HTMLElement>('.gn-meta-count')!.hidden).toBe(true);
+  });
+
+  it('has one Add cell control per cell, named by where it adds', async () => {
+    // The active cell and any cell but the last say Below; the last cell,
+    // when it isn't the active one, says At End.
+    expect(buttons('Add Cell Below')).toHaveLength(2);
+    expect(buttons('Add Cell at End')).toHaveLength(1);
+    buttons('Add Cell Below')[1]!.click();
+    expect(types()).toEqual(['code', 'code', 'code', 'code']);
+    expect(notebook.activeCellIndex).toBe(2);
+    await Promise.resolve();
+    expect(buttons('Add Cell Below')).toHaveLength(3);
+    expect(buttons('Add Cell at End')).toHaveLength(1);
+  });
+
+  it('names the last cell’s control Add Cell Below when it is active', async () => {
+    const main = (i: number) => cell(i).node.querySelector<HTMLElement>('.gn-add-main')!;
+    expect(main(2).getAttribute('aria-label')).toBe('Add Cell at End');
+    notebook.activeCellIndex = 2;
+    await Promise.resolve();
+    expect(main(2).getAttribute('aria-label')).toBe('Add Cell Below');
+    expect(main(2).title).toBe('Add Cell Below');
+  });
+
+  it('adds nothing from Add cell while the notebook may not be edited', () => {
+    controls.dispose();
+    controls = attachCellControls(notebook, onMenu, () => true);
+    buttons('Add Cell Below')[0]!.click();
+    expect(types()).toEqual(['code', 'code', 'code']);
+  });
+
+  it('marks the last cell, so the end of the notebook has its control', async () => {
+    const marked = () => notebook.widgets.map(w => w.hasClass('gn-last-cell'));
+    expect(marked()).toEqual([false, false, true]);
+    addCellAfter(notebook, cell(2), 'code');
+    await Promise.resolve();
+    expect(marked()).toEqual([false, false, false, true]);
+  });
+
+  it('says Queued, Running and Stopped in words, in the meta line', async () => {
+    const state = () => meta(0).querySelector<HTMLElement>('.gn-meta-state')!;
+    expect(cellRunState(cell(0))).toBeUndefined();
+
+    cell(0).addClass('gn-mod-queued');
+    await Promise.resolve();
+    expect(cellRunState(cell(0))).toBe('Queued');
+    // Text in the cell, not a colour: with touch-ui, jupyter.css keeps it in
+    // the accessibility tree on a wide screen too, where the line doesn't
+    // show (without touch-ui the line is display: none).
+    expect(state().textContent).toBe('Queued');
+    expect(state().hidden).toBe(false);
+
+    cell(0).removeClass('gn-mod-queued');
+    cell(0).addClass('gn-mod-running');
+    await Promise.resolve();
+    expect(state().textContent).toBe('Running');
+
+    cell(0).removeClass('gn-mod-running');
+    (cell(0).model as unknown as { outputs: { add(o: unknown): void } }).outputs.add({
+      output_type: 'error',
+      ename: 'KeyboardInterrupt',
+      evalue: '',
+      traceback: [],
+    });
+    await Promise.resolve();
+    expect(cellRunState(cell(0))).toBe('Stopped');
+    expect(state().textContent).toBe('Stopped');
+  });
+
+  it('says nothing for a cell whose last error was an ordinary one', () => {
+    (cell(0).model as unknown as { outputs: { add(o: unknown): void } }).outputs.add({
+      output_type: 'error',
+      ename: 'ValueError',
+      evalue: 'bad',
+      traceback: [],
+    });
+    expect(cellRunState(cell(0))).toBeUndefined();
+    expect(meta(0).querySelector<HTMLElement>('.gn-meta-state')!.hidden).toBe(true);
+  });
+
+  it('says Stopped for this app’s own interrupt name too', async () => {
+    // cdp-kernel's kernels interrupt with `Interrupted: Execution
+    // interrupted`, not `KeyboardInterrupt`.
+    (cell(0).model as unknown as { outputs: { add(o: unknown): void } }).outputs.add({
+      output_type: 'error',
+      ename: 'Interrupted',
+      evalue: 'Execution interrupted',
+      traceback: [],
+    });
+    await Promise.resolve();
+    expect(cellRunState(cell(0))).toBe('Stopped');
+    expect(meta(0).querySelector('.gn-meta-state')!.textContent).toBe('Stopped');
+  });
+
+  it('clears Stopped when the outputs are cleared', async () => {
+    const outputs = (
+      cell(0).model as unknown as {
+        outputs: { add(o: unknown): void; clear(): void };
+      }
+    ).outputs;
+    outputs.add({ output_type: 'error', ename: 'KeyboardInterrupt', evalue: '', traceback: [] });
+    await Promise.resolve();
+    expect(cellRunState(cell(0))).toBe('Stopped');
+    expect(meta(0).querySelector('.gn-meta-state')!.textContent).toBe('Stopped');
+    // Clearing the outputs is the only change: no run-status class moves.
+    outputs.clear();
+    await Promise.resolve();
+    expect(cellRunState(cell(0))).toBeUndefined();
+    expect(meta(0).querySelector('.gn-meta-state')!.textContent).toBe('');
+  });
+  it('says Stopped when an interrupt follows output the cell already had', async () => {
+    // The output list never goes empty, so jp-mod-noOutputs doesn't change.
+    // JupyterLab still rewrites the class attribute (same value) here, so the
+    // class observer refreshes too; outputs.changed is the direct route.
+    const outputs = (cell(0).model as unknown as { outputs: { add(o: unknown): void } }).outputs;
+    outputs.add({ output_type: 'stream', name: 'stdout', text: 'step 1\n' });
+    await Promise.resolve();
+    expect(cellRunState(cell(0))).toBeUndefined();
+    const before = cell(0).node.className;
+    outputs.add({ output_type: 'error', ename: 'KeyboardInterrupt', evalue: '', traceback: [] });
+    await Promise.resolve();
+    expect(cell(0).node.className).toBe(before);
+    expect(cellRunState(cell(0))).toBe('Stopped');
+    expect(meta(0).querySelector('.gn-meta-state')!.textContent).toBe('Stopped');
   });
 });

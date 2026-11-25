@@ -57,7 +57,8 @@ export type NativeHooks = {
  * renames the open notebook.
  * `toggle-type-errors` turns type errors in TypeScript and JavaScript cells
  * on or off (#669). `toggle-live-markdown` does the same for the live
- * Markdown preview in Markdown cells (#672).
+ * Markdown preview in Markdown cells (#672). `toggle-wrap-code` turns the
+ * wrapping of long lines in cells on or off (#813).
  * `restart-run-all` restarts the kernel, then runs every cell (#812).
  * `toggle-journal` switches the open notebook between the journal view and
  * the notebook (#184); `PageState.journal` says which shows (#724).
@@ -106,6 +107,7 @@ export const PAGE_COMMANDS = {
   'go-to-definition': '',
   'rename-symbol': 'arg',
   'toggle-live-markdown': '',
+  'toggle-wrap-code': '',
   connect: '',
   search: 'arg',
   'clear-recents': '',

@@ -20,6 +20,11 @@
   --text: #1d1d1f;
   --text-2: rgba(60, 60, 67, 0.72);
   --text-3: rgba(60, 60, 67, 0.45);
+  /* Metadata text, the status line and a cell's meta line: darker than
+   * --text-2, which in light reads 4.36:1 on a selected cell's
+   * --accent-soft and 4.47:1 on the status line's hover fill (#814,
+   * src/styles/contrast.test.ts). */
+  --meta-color: rgba(60, 60, 67, 0.78);
   --separator: rgba(0, 0, 0, 0.1);
   --hover: rgba(0, 0, 0, 0.05);
   --selected: rgba(0, 0, 0, 0.08);
@@ -64,6 +69,7 @@
     --text: #f5f5f7;
     --text-2: rgba(235, 235, 245, 0.66);
     --text-3: rgba(235, 235, 245, 0.36);
+    --meta-color: var(--text-2);
     --separator: rgba(255, 255, 255, 0.1);
     --hover: rgba(255, 255, 255, 0.06);
     --selected: rgba(255, 255, 255, 0.1);
@@ -422,7 +428,7 @@ button {
   border: 0;
   border-radius: 5px;
   background: transparent;
-  color: var(--text-2);
+  color: var(--meta-color);
   font: 11px var(--font-ui);
   white-space: nowrap;
   cursor: default;
@@ -600,7 +606,11 @@ button {
     display: none;
   }
   .title-block {
-    min-width: 120px;
+    /* The floor gives the status line room (#801) unless the window is too
+     * narrow for it and the buttons both: below ~350px the title takes what
+     * is left past the buttons and the sidebar toggle (~230px below 720px,
+     * where the labels are gone), instead of running under Run Cell. */
+    min-width: min(120px, calc(100vw - 230px));
   }
 }
 

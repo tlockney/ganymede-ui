@@ -115,6 +115,21 @@ vi.mock('../lib/cell-controls', async importOriginal => ({
   attachCellControls: vi.fn(() => ({ dispose: vi.fn(), isDisposed: false })),
 }));
 
+// The output labels need JupyterLab's cells too; output-labels.test.ts covers
+// what a pass does. Here stands what the pane wires to them: whether a kernel
+// is attached, and a look again when that changes (#813).
+const outputLabels = vi.hoisted(() => ({
+  options: undefined as { hasKernel(): boolean } | undefined,
+  refresh: vi.fn(),
+}));
+vi.mock('../lib/output-labels', async importOriginal => ({
+  ...(await importOriginal<typeof import('../lib/output-labels')>()),
+  attachOutputLabels: vi.fn((_notebook: unknown, options: { hasKernel(): boolean }) => {
+    outputLabels.options = options;
+    return { dispose: vi.fn(), isDisposed: false, refresh: outputLabels.refresh };
+  }),
+}));
+
 // The same for collapsing code (#564); code-collapse.test.ts covers it.
 vi.mock('../lib/code-collapse', async importOriginal => ({
   ...(await importOriginal<typeof import('../lib/code-collapse')>()),
@@ -276,6 +291,8 @@ beforeEach(() => {
   fakes.execute.mockClear();
   vi.mocked(attachDevice).mockClear();
   serverSettings = undefined;
+  outputLabels.options = undefined;
+  outputLabels.refresh.mockClear();
 });
 
 /** A notebook with HTML output, as read from a file nobody signed. */
@@ -885,6 +902,29 @@ describe('NotebookPane', () => {
     expect(cell.outputs.length).toBe(0);
     expect(cell.executionCount).toBeNull();
     expect(modelOf().dirty).toBe(true);
+  });
+
+  it('looks at the outputs again when a kernel attaches, so Saved output goes (#813)', async () => {
+    const withOutput = structuredClone(NOTEBOOK);
+    Object.assign(withOutput.cells[0]!, {
+      execution_count: 3,
+      outputs: [{ output_type: 'stream', name: 'stdout', text: '1\n' }],
+    });
+    const { latest } = setup(vi.fn(async () => ({ path: 'moons/Io.ipynb', content: withOutput })));
+    await waitFor(() => expect(latest()).toBeDefined());
+    // The session has no kernel: what the labels read to say "Saved output".
+    expect(outputLabels.options).toBeDefined();
+    expect(outputLabels.options!.hasKernel()).toBe(false);
+    const session = fakes.sessions[0] as {
+      session: unknown;
+      kernelChanged: { emit(v: unknown): void };
+    };
+    session.session = { kernel: { name: 'python3' } };
+    act(() => session.kernelChanged.emit(null));
+    // The kernel is attached now, and the pane had the labels look again:
+    // the cell's "Saved output" is gone (output-labels.test.ts covers how).
+    expect(outputLabels.options!.hasKernel()).toBe(true);
+    expect(outputLabels.refresh).toHaveBeenCalled();
   });
 
   it('only picks the kernel for the first run while none is running', async () => {

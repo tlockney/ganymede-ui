@@ -132,10 +132,11 @@
     0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
+/* An editor with focus has a 2px focus ring on its box, so it reads
+ * differently from selection: the selected cell keeps its rail and has no
+ * ring while its editor is not focused (#814, e2e/selection-focus.spec.ts). */
 .notebook-page .jp-Notebook.jp-mod-editMode .jp-Cell.jp-mod-active .jp-InputArea-editor {
-  box-shadow:
-    0 0 0 2px var(--accent-soft),
-    0 0 0 1px var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
 }
 
 .notebook-page .cm-editor {
@@ -167,6 +168,15 @@
 
 .notebook-page .jp-Cell .jp-Collapser:hover {
   background: var(--text-3);
+}
+
+/* A Markdown cell taller than about twelve lines of prose keeps only a
+ * short marker at the rail's top (#814, src/lib/markdown-rail.ts): a
+ * full-height bar down screens of prose read as a selection of all of
+ * it. A shorter cell keeps the rail, and a code cell keeps it always. */
+.notebook-page .jp-Cell.gn-mod-tall.jp-mod-active::before {
+  bottom: auto;
+  height: 28px;
 }
 
 /* Markdown reads like a document. */
@@ -210,6 +220,45 @@
 
 .notebook-page .jp-OutputArea-child {
   padding-top: 4px;
+}
+
+/* A chart or table wider than the prose column (#814,
+ * src/lib/output-labels.ts, which sets gn-mod-wide and --gn-pane) spans the
+ * pane, past the column on both sides: the column is what
+ * `.jp-WindowedPanel-inner` holds (max-width 920px, centred, 32px side
+ * padding — above), while the pane is the notebook's scroll area here,
+ * `.jp-WindowedPanel-outer`, less the same 32px gutter on each side, which
+ * output-labels.ts keeps in `--gn-pane`. The output is centred on the pane
+ * by its margins, past the prompt beside it; the cell, the editor and the
+ * prose keep the column, and the pane never scrolls sideways: the span is
+ * capped inside it. Only on the wide layout; the compact one has no
+ * column to spare. JupyterLab gives the output area `overflow-y: auto`,
+ * which clips sideways too, and its row `overflow: hidden`: both give
+ * where a wide output is, or it would be clipped at the column's edge.
+ * A scrolled cell keeps its cap and its column's width: its area scrolls,
+ * and it can't scroll to an output that starts left of it. */
+@media (min-width: 720px) {
+  .notebook-page
+    .jp-CodeCell:not(.jp-mod-outputsScrolled)
+    .jp-OutputArea:has(> .jp-OutputArea-child > .jp-OutputArea-output.gn-mod-wide),
+  .notebook-page .jp-OutputArea-child:has(> .jp-OutputArea-output.gn-mod-wide) {
+    overflow: visible;
+  }
+
+  .notebook-page .jp-CodeCell:not(.jp-mod-outputsScrolled) .jp-OutputArea-output.gn-mod-wide {
+    flex: none;
+    width: var(--gn-pane, 100%);
+    /* Half the row, less half the span, less the prompt beside it. */
+    margin-left: calc(50% - var(--gn-pane, 100%) / 2 - var(--jp-cell-prompt-width));
+  }
+}
+
+/* JupyterLab stacks the prompt above the output at 760px and under: there
+ * is no prompt beside the output to span past. */
+@media (min-width: 720px) and (width <= 760px) {
+  .notebook-page .jp-CodeCell:not(.jp-mod-outputsScrolled) .jp-OutputArea-output.gn-mod-wide {
+    margin-left: calc(50% - var(--gn-pane, 100%) / 2);
+  }
 }
 
 /* A long stream (a loop's prints, a training log) or traceback scrolls in
@@ -389,6 +438,211 @@
   }
   .touch-ui .notebook-page .gn-cell-drag {
     top: 79px;
+  }
+}
+
+/* Compact layout (#813): under the phone breakpoint (app.css) the active
+ * cell has a short line above it with its execution count, type, run state
+ * and "…" button, so code and output get the cell's whole width. Wider, the
+ * line is not shown and its button sits in the gutter as before. */
+.notebook-page .gn-cell-meta {
+  display: none;
+}
+
+.touch-ui .notebook-page .gn-cell-meta {
+  display: contents;
+  /* Metadata text, like the status line and the prompts: --meta-color
+   * reads at 4.5:1 or more in both themes, on the page and on a
+   * selected cell's --accent-soft (#814, src/styles/contrast.test.ts). */
+  color: var(--meta-color);
+}
+
+/* The run state is text in the cell, so a screen reader finds it on a wide
+ * screen too, where the line's other parts don't show: the same clip as
+ * `.visually-hidden` (app.css), undone under the phone breakpoint below. */
+.touch-ui .notebook-page .gn-meta-state {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.notebook-page .gn-cell-meta > span:not(.gn-meta-state),
+.notebook-page .gn-add-main {
+  display: none;
+}
+
+@media (max-width: 719.98px) {
+  .touch-ui .notebook-page .jp-Cell {
+    padding-right: 0 !important;
+  }
+
+  /* The line above the active cell only: a tap on another cell makes it active. */
+  .touch-ui .notebook-page .jp-Cell > .gn-cell-meta {
+    display: none;
+  }
+
+  .touch-ui .notebook-page .jp-Cell.jp-mod-active > .gn-cell-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 36px;
+    /* Clear of the code toggle, which starts the cell's first row. */
+    padding-left: 32px;
+    font: 12px var(--font-ui);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .touch-ui .notebook-page .gn-cell-meta > span:not([hidden]) {
+    display: inline;
+  }
+
+  .touch-ui .notebook-page .gn-meta-count {
+    font-family: var(--font-mono);
+  }
+
+  .touch-ui .notebook-page .gn-meta-type::before {
+    content: '·';
+    margin-right: 8px;
+  }
+
+  .touch-ui .notebook-page .gn-meta-state {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip-path: none;
+    padding: 1px 8px;
+    border: 1px solid var(--text-2);
+    border-radius: 9px;
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  .touch-ui .notebook-page .gn-cell-meta > .gn-cell-more {
+    position: static;
+    margin: -4px 0 -4px auto;
+    /* The ellipsis sits on the baseline: lift it to the line's middle. */
+    padding-bottom: 12px;
+  }
+
+  /* The code toggle's chevron on the meta line's middle. */
+  .touch-ui .notebook-page .jp-Cell.jp-mod-active > .gn-code-toggle {
+    top: 6px;
+    height: 36px;
+  }
+
+  /* The prompt column goes: the meta line says it, and the state in words. */
+  .touch-ui .notebook-page .jp-InputPrompt,
+  .touch-ui .notebook-page .jp-OutputPrompt {
+    display: none;
+  }
+
+  .touch-ui .notebook-page .gn-cell-drag {
+    display: none;
+  }
+
+  /* One Add cell control, under the active cell and the last one. */
+  .touch-ui .notebook-page .gn-add-cell {
+    display: none;
+    margin: 2px 0 -4px;
+  }
+
+  .touch-ui .notebook-page .jp-Cell.jp-mod-active .gn-add-cell,
+  .touch-ui .notebook-page .jp-Cell.gn-last-cell .gn-add-cell {
+    display: flex;
+  }
+
+  .touch-ui .notebook-page .gn-add-typed {
+    display: none;
+  }
+
+  .touch-ui .notebook-page .gn-add-main {
+    display: block;
+  }
+}
+
+/* What an output is, before its text (#813, src/lib/output-labels.ts). */
+.notebook-page .gn-output-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 8px;
+  margin-bottom: 4px;
+  padding: 2px 8px;
+  border-left: 3px solid var(--text-2);
+  background: var(--window-bg);
+  color: var(--text);
+  font: 12px var(--font-ui);
+}
+
+.notebook-page .gn-output-bar[data-kind='error'] {
+  border-left-color: var(--red);
+}
+
+.notebook-page .gn-output-bar[data-kind='warning'] {
+  border-left-color: var(--orange);
+}
+
+.notebook-page .gn-output-label {
+  font-weight: 600;
+}
+
+.notebook-page .gn-output-summary {
+  min-width: 0;
+  font-family: var(--jp-code-font-family);
+  overflow-wrap: anywhere;
+}
+
+.notebook-page .gn-output-toggle {
+  margin-left: auto;
+  padding: 2px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--control-bg);
+  color: var(--accent-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.notebook-page .gn-output-toggle:hover {
+  background: var(--control-bg-hover);
+}
+
+@media (hover: none), (pointer: coarse) {
+  .notebook-page .gn-output-toggle {
+    min-height: 36px;
+    padding: 0 14px;
+  }
+}
+
+/* A long log shows its last lines; "View full log" opens all of it. The bar
+ * is its own row above the text: the text, not the output, scrolls, in whole
+ * lines (the lines are 1.5em apart, `pre` has no padding of its own). */
+.notebook-page .jp-OutputArea-output.gn-log-tail,
+.notebook-page .jp-OutputArea-output.gn-log-full {
+  max-height: none;
+  overflow-y: visible;
+}
+
+.notebook-page .jp-OutputArea-output.gn-log-tail pre {
+  max-height: calc(10 * 1.5em);
+  padding-block: 0;
+  overflow-y: auto;
+}
+
+.notebook-page .gn-saved-output {
+  margin: 2px 0 0 var(--jp-cell-collapser-width, 8px);
+  padding-left: var(--jp-cell-prompt-width, 64px);
+  color: var(--text-2);
+  font: 12px var(--font-ui);
+}
+
+@media (max-width: 719.98px) {
+  .notebook-page .gn-saved-output {
+    padding-left: 8px;
   }
 }
 

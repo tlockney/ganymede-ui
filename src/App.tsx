@@ -90,6 +90,7 @@ import {
 } from './lib/recents';
 import { paletteEntries } from './lib/palette';
 import { liveMarkdownEnabled, setLiveMarkdownEnabled } from './lib/markdown-preview';
+import { setWrapCodeEnabled, wrapCodeEnabled } from './lib/wrap-code';
 import { setTypeErrorsEnabled, typeErrorsEnabled } from './lib/type-errors';
 import { CommandPalette } from './components/CommandPalette';
 import { VariablesPanel } from './components/VariablesPanel';
@@ -786,6 +787,9 @@ export function App() {
         return c ? c.renameSymbol(arg) : false;
       case 'toggle-live-markdown':
         setLiveMarkdownEnabled(!liveMarkdownEnabled());
+        return true;
+      case 'toggle-wrap-code':
+        setWrapCodeEnabled(!wrapCodeEnabled());
         return true;
       case 'watch-memory':
         if (arg !== 'on' && arg !== 'off') return false;
