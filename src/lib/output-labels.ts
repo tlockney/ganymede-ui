@@ -13,8 +13,9 @@
  *
  * JupyterLab renders each output into a widget it replaces when a stream
  * grows, so the labels are plain DOM added to the rendered output and put
- * back whenever the notebook's DOM changes. Each pass changes nothing when
- * the labels are already right, so it ends.
+ * back whenever the cell's DOM changes: only the cell whose subtree changed
+ * is looked at again. Each pass changes nothing when the labels are already
+ * right, so it ends.
  */
 import { type Cell, CodeCell } from '@jupyterlab/cells';
 import type * as nbformat from '@jupyterlab/nbformat';
@@ -56,9 +57,14 @@ export function streamText(output: nbformat.IStream | nbformat.IUnrecognizedOutp
   return Array.isArray(output.text) ? output.text.join('') : String(output.text ?? '');
 }
 
-/** What the label above one output says, or undefined for an output with none. */
+/**
+ * What the label above one output says, or undefined for an output with none.
+ * `counted` is the stream's line count when it was already taken, so a long
+ * log isn't counted again on every pass.
+ */
 export function labelFor(
   output: nbformat.IOutput,
+  counted?: number,
 ): { label: string; kind: string; summary?: string; lines?: number } | undefined {
   if (output.output_type === 'error') {
     const summary = `${output.ename}: ${output.evalue}`.replace(/\s+/g, ' ').trim();
@@ -67,7 +73,7 @@ export function labelFor(
       : { label: 'Execution failed', kind: 'error', summary };
   }
   if (output.output_type === 'stream') {
-    const lines = streamText(output).replace(/\n$/, '').split('\n').length;
+    const lines = counted ?? streamText(output).replace(/\n$/, '').split('\n').length;
     return output.name === 'stderr'
       ? { label: 'Warning', kind: 'warning', lines }
       : // The bar of a collapsed log says what it holds, not just "…".
@@ -81,8 +87,23 @@ export function attachOutputLabels(notebook: Notebook, { hasKernel }: Options): 
   let scheduled = false;
   /** Output indexes a person opened to the full log, by cell model. */
   const opened = new WeakMap<object, Set<number>>();
+  /** Stream line counts, by output model until its text's length changes. */
+  const lineCounts = new WeakMap<object, { len: number; lines: number }>();
   /** Outputs lists already wired to forget `opened` when they are cleared. */
   const wired = new WeakSet<object>();
+  /** Cells whose DOM changed, for the next pass to look at; `all` is all of them. */
+  const dirty = new Set<CodeCell>();
+  let all = false;
+
+  /** A stream's line count, counted only when its text's length changed. */
+  const countedLines = (item: object, output: nbformat.IStream | nbformat.IUnrecognizedOutput) => {
+    const len = streamText(output).length;
+    const hit = lineCounts.get(item);
+    if (hit && hit.len === len) return hit.lines;
+    const lines = streamText(output).replace(/\n$/, '').split('\n').length;
+    lineCounts.set(item, { len, lines });
+    return lines;
+  };
 
   const decorateCell = (cell: CodeCell) => {
     const area = cell.outputArea;
@@ -112,7 +133,12 @@ export function attachOutputLabels(notebook: Notebook, { hasKernel }: Options): 
     for (let i = 0; i < model.length; i++) {
       const out = area.widgets[i]?.node.querySelector<HTMLElement>('.jp-OutputArea-output');
       if (!out) continue;
-      const info = labelFor(model.get(i).toJSON());
+      const item = model.get(i);
+      const json = item.toJSON();
+      const info = labelFor(
+        json,
+        json.output_type === 'stream' ? countedLines(item, json) : undefined,
+      );
       const open = opened.get(cell.model)?.has(i) ?? false;
       const long = (info?.lines ?? 0) > LOG_LINES;
       const key = info ? [info.kind, info.label, info.summary, long, open].join('|') : '';
@@ -167,20 +193,47 @@ export function attachOutputLabels(notebook: Notebook, { hasKernel }: Options): 
     }
   };
 
-  const scan = () => {
+  /** Look again at `everything`, at the cells whose DOM changed, or at all of them. */
+  const scan = (everything = false) => {
     scheduled = false;
-    if (disposed || notebook.isDisposed) return;
-    notebook.widgets.forEach((cell: Cell) => {
-      if (cell instanceof CodeCell && !cell.isDisposed) decorateCell(cell);
-    });
+    const every = everything || all;
+    all = false;
+    if (disposed || notebook.isDisposed) {
+      dirty.clear();
+      return;
+    }
+    if (every) {
+      dirty.clear();
+      notebook.widgets.forEach((cell: Cell) => {
+        if (cell instanceof CodeCell && !cell.isDisposed) decorateCell(cell);
+      });
+    } else {
+      dirty.forEach(cell => {
+        if (!cell.isDisposed) decorateCell(cell);
+      });
+      dirty.clear();
+    }
   };
   const schedule = () => {
     if (scheduled || disposed) return;
     scheduled = true;
-    queueMicrotask(scan);
+    queueMicrotask(() => scan());
   };
 
-  const observer = new MutationObserver(schedule);
+  // A change inside one cell puts only that cell back on the list; a change
+  // at the notebook's own level (a cell added, removed or moved) puts them
+  // all on it.
+  const observer = new MutationObserver(records => {
+    for (const record of records) {
+      const node = (
+        record.target instanceof Element ? record.target : record.target.parentElement
+      )?.closest('.jp-Cell');
+      const cell = notebook.widgets.find(w => w.node === node);
+      if (cell instanceof CodeCell && !cell.isDisposed) dirty.add(cell);
+      else all = true;
+    }
+    schedule();
+  });
   observer.observe(notebook.node, { childList: true, subtree: true });
 
   const onClick = (e: MouseEvent) => {
@@ -195,7 +248,7 @@ export function attachOutputLabels(notebook: Notebook, { hasKernel }: Options): 
     const set = opened.get(cell.model) ?? new Set<number>();
     if (!set.delete(index)) set.add(index);
     opened.set(cell.model, set);
-    scan();
+    scan(true);
   };
   // The notebook takes a press in a cell to select it or focus its editor.
   const onDown = (e: Event) => {
@@ -204,13 +257,13 @@ export function attachOutputLabels(notebook: Notebook, { hasKernel }: Options): 
   notebook.node.addEventListener('click', onClick);
   notebook.node.addEventListener('mousedown', onDown, true);
   notebook.node.addEventListener('pointerdown', onDown, true);
-  scan();
+  scan(true);
 
   return {
     get isDisposed() {
       return disposed;
     },
-    refresh: scan,
+    refresh: () => scan(true),
     dispose() {
       if (disposed) return;
       disposed = true;

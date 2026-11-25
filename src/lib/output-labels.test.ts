@@ -165,6 +165,17 @@ describe('attachOutputLabels (#813)', () => {
     expect(bars()[0]!.querySelector('button')!.textContent).toBe('View full log');
   });
 
+  it('keeps counting a stream as it grows', async () => {
+    open([cellWith('a', [stream('stdout', lines(LOG_LINES + 5))])]);
+    await settle();
+    expect(bars()[0]!.textContent).toContain(`Log, ${LOG_LINES + 5} lines`);
+    // Contiguous streams combine into one output, whose text grows.
+    const cell = notebook.model!.cells.get(0) as ICodeCellModel;
+    cell.outputs.add(stream('stdout', 'one more line\n'));
+    await settle();
+    expect(bars()[0]!.textContent).toContain(`Log, ${LOG_LINES + 6} lines`);
+  });
+
   it('collapses a long stream to its tail and opens it with View full log', async () => {
     open([cellWith('a', [stream('stdout', lines(LOG_LINES + 5))])]);
     await settle();
