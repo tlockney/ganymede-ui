@@ -403,8 +403,10 @@ open it rather than in the middle of a run:
 A kept answer is for the notebook as the app last saw it. When the
 notebook's file is changed by anything but the app's own server (git,
 Finder, another editor, a download, a sync), its "always" and "don’t
-allow" answers are forgotten, and the next call asks again. A "don’t
-allow" that is forgotten costs only that question. The folders the
+allow" answers are forgotten, and the next call asks again; in a
+headless run (Shortcuts, the share sheet), which can't ask, the call is
+denied instead. A "don’t allow" that is forgotten costs only that
+question. The folders the
 notebook was given (`device.folders`) are forgotten the same way. What
 the app's own server writes keeps them: saving in a window, a run saving
 its outputs, a room's autosave and an MCP agent connected to the app's

@@ -30,9 +30,13 @@ but the app's own server.
   alone, so `move` and `notebookMoved`, which the app calls after the server
   renamed the file, still find the old path's rows and carry their stamps. A
   different file made at a missing notebook's path has another inode and drops
-  them then. A dropped "deny" only means the next call asks again; a dropped "always" in a headless run means the call is denied. The stores
+  them then. A dropped "deny" only means the next call asks again; a dropped "always" in a
+  headless run means the call is denied. The stores
   are written only when a check changed something. Settings lists only live
-  answers: Links prunes on appear and when the app becomes active, Device reads again at the same moments and through the same checks.
+  answers: Links prunes on appear and when the app becomes active, and Device reads
+  again at the same moments through the same checks. On the Mac the scene
+  stays active when the app is switched away from, so both also listen for
+  `NSApplication.didBecomeActiveNotification`.
 - **The server's own writes keep the answers.** Ganymede v0.16.0
   (`GANYMEDE_REF`) has `ganymede_server_set_write_observer`, which reports
   every write the server makes of a file under its root (REST save, a room's
@@ -97,12 +101,25 @@ a different one is kept only when the log leads there) and `FileStamp.moved`
 `URLRunPermissions`, `PermissionLedger` and `FolderGrants`. `FileStamp.canonical`
 is also what `AppKernels.canonicalPath` calls.
 
+**A swap while a prompt is up.** The person answers a question about the
+file as it was when they were asked. `AppURLHandler.confirmRun` reads the
+stamp before its dialog and calls `URLRunPermissions.allowUnlessChanged`,
+which keeps "Always allow" only if the file's stamp is still that one; when
+it isn't, the run goes ahead once and nothing is kept, so the next run asks.
+The ledger does the same: `DeviceBridge.checkLedger` reads the stamp before
+it shows the prompt and records the answer with
+`record(_:notebook:capability:unlessChangedSince:)`, so "Always" or "Deny"
+for a notebook swapped meanwhile covers that call only. When several calls
+join one prompt, the first call's stamp is the one used. Folder picks have
+no prompt of this kind: the picker is the consent and the grant is stamped
+when it is kept.
+
 Tests: `FileStampTests` (the format against `stat`'s numbers, pre-epoch as 0,
 `canonical` through a link, same file, rewrite in place by size and by time,
 replace by rename with equal size and mtime, move, missing, link);
 `ServerWriteLogTests` (single, chain, gap, created file, cycle, the 32 and
 256 limits, threads); `LedgerTests`, `FolderStampTests` and `AppURLTests` with
-injected stamps and logs (change drops always and deny and the next call asks;
+injected stamps and logs (change drops always and deny and the next call asks; a file swapped while the dialog or prompt is up isn't kept;
 unchanged keeps and saves nothing; the server's write keeps that notebook's
 answers only; a check before the hop keeps via the log; a chain A to B to C;
 reports out of order; a server write after an outside change drops; a file
@@ -112,8 +129,14 @@ defaults round trip; `KeptAnswers.serverWrote` moving all three stores; the
 stores defaulting to `ServerWriteLog.shared`); `FoldersTests` for a call failing `denied` after an
 outside change; `ServerHostTests` against the real server at `GANYMEDE_REF`
 (a PUT reports the canonical path and stamps equal to `FileStamp.of` before
-and after, `KeptAnswers.watch` puts it in the shared log, and its main-actor hop moves a suite-backed link, ledger and folder row to the stamp after a PUT, which fails without the hop). The `KeptAnswers.watch(host)` call in `AppModel` is covered only by the by-hand check below: `AppModel` is a singleton with no tests. Swift can't build in the container; CI's macos-app job is the
-first compile.
+and after; `KeptAnswers.watch` puts it in the shared log; and its main-actor
+hop moves a suite-backed link, ledger and folder row to the stamp after a
+PUT, which fails without the hop). The `KeptAnswers.watch(host)` call in `AppModel` is covered only by the
+by-hand check below: `AppModel` is a singleton with no tests. So is the
+default closure of `watch`, which wires a report to the app's real stores
+(`URLRunPermissions.shared`, `AppGroup.ledgerStore()`, `FolderGrants()`).
+Swift can't build in the container; CI's macos-app job is the first
+compile.
 
 **By-hand check for #399** (posted on #399 as "Kept answers follow the file (#584)"; for a Mac with a build of `main`):
 
@@ -132,5 +155,7 @@ first compile.
 4. Repeat step 3 with the app open and the notebook open in a window.
 5. Answer "Don't allow" for a capability, change the notebook outside the app:
    the capability asks again (a forgotten deny only costs that question).
-6. Rename the notebook in the sidebar: its answers follow, none asks.
+6. Rename the notebook in the sidebar: its capability answers and folders
+   follow, none asks. A link's "Always allow" names the old path and
+   doesn't follow a rename, so that link asks again.
 7. Touch the file with `chmod` or a Finder tag only: nothing is forgotten.

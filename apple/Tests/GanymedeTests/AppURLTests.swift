@@ -566,6 +566,35 @@ final class AppURLTests: XCTestCase {
         XCTAssertEqual((defaults.dictionary(forKey: URLRunPermissions.stampsKey) as? [String: String])?.isEmpty, true)
     }
 
+    /// The person answers a question about the file as it was when they were
+    /// asked (`confirmRun` reads the stamp before its dialog): a file swapped
+    /// while it was up gets no "Always allow".
+    @MainActor
+    func testAlwaysAllowIsNotKeptWhenTheFileIsSwappedWhileTheDialogIsUp() throws {
+        let suite = "AppURLTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let files = Files()
+        let a = URL(fileURLWithPath: "/tmp/a.ipynb")
+        files.stamps[pathKey(a)] = "10:1:100"
+        let permissions = makePermissions(files, defaults)
+        // Unchanged while the dialog was up: kept, with the stamp it was shown.
+        var seen = permissions.currentStamp(a)
+        XCTAssertEqual(seen, "10:1:100")
+        XCTAssertTrue(permissions.allowUnlessChanged(a, sendingTo: nil, since: seen))
+        XCTAssertTrue(permissions.allows(a, sendingTo: nil))
+        permissions.revokeAll()
+        // Swapped while it was up: not kept, so the next run asks.
+        seen = permissions.currentStamp(a)
+        files.stamps[pathKey(a)] = "10:1:101"
+        XCTAssertFalse(permissions.allowUnlessChanged(a, sendingTo: nil, since: seen))
+        XCTAssertTrue(permissions.paths.isEmpty)
+        XCTAssertFalse(permissions.allows(a, sendingTo: nil))
+        // An answer given with the stamp it was shown is for that file, not the swapped one.
+        permissions.allow(a, sendingTo: nil, stamp: "10:1:100")
+        XCTAssertFalse(permissions.allows(a, sendingTo: nil))
+    }
+
     /// `KeptAnswers.serverWrote` is what the app's observer calls: the links,
     /// the ledger and the folder grants all move to the file's new stamp.
     @MainActor

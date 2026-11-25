@@ -194,6 +194,21 @@ public final class PermissionLedger {
         store.save(rows)
     }
 
+    /// The stamp of `notebook`'s file now, nil when it isn't there: what an
+    /// answer asked for is for, to be passed to `record(_:...:unlessChangedSince:)`.
+    public func currentStamp(ofNotebook notebook: String) -> String? {
+        stamp(notebook)
+    }
+
+    /// As `record`, unless the notebook's file is no longer the one the
+    /// person was asked about (`seen`, read before the prompt was shown):
+    /// it was swapped while the prompt was up, so the answer covers this
+    /// call only and is not kept.
+    public func record(_ answer: LedgerAnswer, notebook: String, capability: String, unlessChangedSince seen: String?) {
+        guard stamp(notebook) == seen else { return }
+        record(answer, notebook: notebook, capability: capability)
+    }
+
     /// Forgets the answer for (`notebook`, `capability`), or every
     /// capability's for `notebook` when `capability` is nil. The next call
     /// asks again.

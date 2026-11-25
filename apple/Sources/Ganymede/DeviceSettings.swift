@@ -1,3 +1,6 @@
+#if os(macOS)
+import AppKit
+#endif
 import DeviceBridge
 import SwiftUI
 import UniformTypeIdentifiers
@@ -75,6 +78,13 @@ struct DeviceSettings: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { model.reload() }
         }
+        // On the Mac the scene stays active when the app is switched away
+        // from, so the app becoming active is the moment.
+        #if os(macOS)
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            model.reload()
+        }
+        #endif
         // A prompt in a notebook window may keep an answer while this
         // stays open; the ledger's store is UserDefaults.
         .task {

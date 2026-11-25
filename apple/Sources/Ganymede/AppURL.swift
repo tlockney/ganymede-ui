@@ -348,11 +348,11 @@ enum AppURLError: LocalizedError, Equatable {
 /// saving its outputs, a room's autosave, an MCP agent connected to the
 /// app's server) keep it: the server reports each one (`KeptAnswers.watch`)
 /// and `serverWrote` moves the stamp along. A save from `ganymede serve`,
-/// `ganymede mcp`'s own server or JupyterLab is outside. A key with no stamp (kept before stamps, or while the file wasn't
-/// there) takes the file's stamp when it is next checked. A file that isn't
-/// there leaves the key alone, so a notebook that is moved back, or still
-/// being written, keeps its answer; a different file made at that path has
-/// another inode.
+/// `ganymede mcp`'s own server or JupyterLab is outside. A key with no
+/// stamp (kept before stamps, or while the file wasn't there) takes the
+/// file's stamp when it is next checked. A file that isn't there leaves the
+/// key alone, so a notebook that is moved back, or still being written,
+/// keeps its answer; a different file made at that path has another inode.
 @MainActor
 @Observable
 final class URLRunPermissions {
@@ -391,9 +391,29 @@ final class URLRunPermissions {
         holds(Self.key(url, destination, withParameters))
     }
 
-    func allow(_ url: URL, sendingTo destination: String?, withParameters: Bool = false) {
+    /// The stamp of `url`'s file now, nil when it isn't there: what the
+    /// person is shown a question for, to be passed to `allowUnlessChanged`.
+    func currentStamp(_ url: URL) -> String? {
+        stamp(Self.filePath(url))
+    }
+
+    /// Keeps the answer for the file as it was when the person was asked
+    /// (`seen`, from `currentStamp` before the dialog). When the file was
+    /// swapped while the dialog was up, nothing is kept: this run goes
+    /// ahead once, and the next asks again. Whether it was kept.
+    @discardableResult
+    func allowUnlessChanged(
+        _ url: URL, sendingTo destination: String?, withParameters: Bool = false, since seen: String?
+    ) -> Bool {
+        guard currentStamp(url) == seen else { return false }
+        allow(url, sendingTo: destination, withParameters: withParameters, stamp: seen)
+        return true
+    }
+
+    /// `stamp` is the file's stamp the answer is for; nil reads it now.
+    func allow(_ url: URL, sendingTo destination: String?, withParameters: Bool = false, stamp known: String? = nil) {
         let key = Self.key(url, destination, withParameters)
-        stamps[key] = stamp(Self.parts(key).path)
+        stamps[key] = known ?? stamp(Self.parts(key).path)
         if !paths.contains(key) {
             paths.append(key)
             paths.sort { $0.localizedStandardCompare($1) == .orderedAscending }
@@ -507,9 +527,8 @@ enum KeptAnswers {
     /// app's stores by default, tests' own.
     static func watch(
         _ host: ServerHost,
-        serverWrote: @escaping @MainActor @Sendable (String, String?, String?) -> Void = { path, before, after in
-            KeptAnswers.serverWrote(path: path, before: before, after: after)
-        }
+        serverWrote: @escaping @MainActor @Sendable (String, String?, String?) -> Void =
+            { KeptAnswers.serverWrote(path: $0, before: $1, after: $2) }
     ) {
         host.setWriteObserver { path, before, after in
             ServerWriteLog.shared.record(path: path, before: before, after: after)

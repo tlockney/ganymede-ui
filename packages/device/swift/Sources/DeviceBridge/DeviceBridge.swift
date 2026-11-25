@@ -682,8 +682,11 @@ public final class DeviceBridge: NSObject, WKScriptMessageHandlerWithReply {
                 refused("\(method): \(notebook) has no \(namespace) grant, and no one can be asked")
                 return
             }
+            // The file as the person is asked about it: an answer is kept
+            // only if it is still that file when they answer (#584).
+            let seen = ledger.currentStamp(ofNotebook: notebook)
             ledgerRequests.ask(namespace, notebook: notebook, call: token.id, prompter: prompter, record: { [weak self] answer, notebook in
-                self?.ledger.record(answer, notebook: notebook, capability: namespace)
+                self?.ledger.record(answer, notebook: notebook, capability: namespace, unlessChangedSince: seen)
             }) { [weak self] answer in
                 guard let self, self.pending.isWaiting(token) else { return }
                 if answer == .once || answer == .always {

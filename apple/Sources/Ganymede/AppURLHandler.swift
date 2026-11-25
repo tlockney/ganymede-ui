@@ -134,6 +134,9 @@ enum AppURLHandler {
     static func confirmRun(_ url: URL, cell: String?, params: String?, sendingTo destination: String?, from source: RunSource) throws {
         let permissions = URLRunPermissions.shared
         if permissions.allows(url, sendingTo: destination, withParameters: params != nil) { return }
+        // The notebook as the question is asked about it (#584): if it is
+        // swapped while the dialog is up, "Always allow" isn't kept.
+        let seen = permissions.currentStamp(url)
         NSApp.activate()
         let alert = NSAlert()
         let what = cell.map { "the cell “\($0)” of" } ?? "every code cell of"
@@ -168,7 +171,7 @@ enum AppURLHandler {
         }
         guard alert.runModal() == .alertFirstButtonReturn else { throw AppURLError.cancelled }
         if alert.suppressionButton?.state == .on {
-            permissions.allow(url, sendingTo: destination, withParameters: params != nil)
+            permissions.allowUnlessChanged(url, sendingTo: destination, withParameters: params != nil, since: seen)
         }
     }
 

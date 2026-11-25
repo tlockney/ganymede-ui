@@ -293,6 +293,13 @@ private struct LinkRunSettings: View {
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { permissions.pruneStale() }
         }
+        // On the Mac the scene stays active when the app is switched away
+        // from, so the app becoming active is the moment.
+        #if os(macOS)
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            permissions.pruneStale()
+        }
+        #endif
     }
 }
 

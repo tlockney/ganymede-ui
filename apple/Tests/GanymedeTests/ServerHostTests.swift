@@ -300,7 +300,9 @@ final class ServerHostTests: XCTestCase {
         let path = notebook.resolvingSymlinksInPath().path
         let host = try ServerHost(config: config(["root_dir": "/"]))
         defer { host.stop() }
-        KeptAnswers.watch(host)
+        // A no-op for the main actor: this test is about the shared log, and
+        // leaves the app's real stores alone.
+        KeptAnswers.watch(host) { _, _, _ in }
         let before = try XCTUnwrap(FileStamp.of(path))
         let content = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(text.utf8)))
         let body = String(decoding: try JSONSerialization.data(withJSONObject: [
