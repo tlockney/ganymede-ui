@@ -7,6 +7,12 @@
 
   --accent: #007aff;
   --accent-soft: rgba(0, 122, 255, 0.12);
+  /* The accent under white text (buttons, highlighted rows) and as text
+   * on the page (links, insert buttons, text buttons): darker than
+   * --accent, so each reads at 4.5:1 or more (#799,
+   * src/styles/contrast.test.ts). */
+  --accent-fill: #0062cc;
+  --accent-text: #0058b8;
   --window-bg: #ffffff;
   --sidebar-bg: rgba(236, 236, 240, 0.72);
   --sidebar-solid: #ececf0;
@@ -49,6 +55,8 @@
   :root {
     --accent: #0a84ff;
     --accent-soft: rgba(10, 132, 255, 0.2);
+    --accent-fill: #0068d9;
+    --accent-text: #5eacff;
     --window-bg: #1e1e20;
     --sidebar-bg: rgba(40, 40, 44, 0.7);
     --sidebar-solid: #2a2a2e;
@@ -695,7 +703,7 @@ button {
 }
 
 .push-button.primary {
-  background: var(--accent);
+  background: var(--accent-fill);
   color: #fff;
   box-shadow:
     0 1px 2px rgba(0, 0, 0, 0.15),
@@ -1170,7 +1178,7 @@ button {
   border: 0;
   border-radius: 6px;
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-text);
   font: inherit;
   cursor: pointer;
 }
@@ -1207,7 +1215,7 @@ button {
   padding: 3px 10px;
   border: 0;
   border-radius: 6px;
-  background: var(--accent);
+  background: var(--accent-fill);
   color: #fff;
   font: inherit;
   cursor: pointer;
@@ -1217,7 +1225,7 @@ button {
   padding: 3px 8px;
   border: 0;
   border-radius: 6px;
-  background: var(--accent);
+  background: var(--accent-fill);
   color: #fff;
   font: inherit;
 }
@@ -1365,7 +1373,7 @@ button {
 
 .popup-menu-item:hover:not(:disabled),
 .popup-menu-item:focus-visible {
-  background: var(--accent);
+  background: var(--accent-fill);
   color: #fff;
   outline: none;
 }
@@ -1732,7 +1740,7 @@ button {
 }
 
 .keyboard-bar-key.primary {
-  background: var(--accent);
+  background: var(--accent-fill);
   color: #fff;
   font-weight: 600;
 }
@@ -1789,7 +1797,7 @@ button {
 }
 
 .palette-item.active {
-  background: var(--accent);
+  background: var(--accent-fill);
   color: #fff;
 }
 
@@ -2302,7 +2310,7 @@ button {
 
 .journal-running {
   flex: 1;
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .journal button,
@@ -2509,7 +2517,7 @@ button {
   padding: 0 16px;
   border: 0;
   border-radius: 22px;
-  background: var(--accent);
+  background: var(--accent-fill);
   color: #fff;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
   cursor: pointer;
