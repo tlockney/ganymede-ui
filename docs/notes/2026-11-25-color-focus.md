@@ -38,7 +38,10 @@ the two kinds of attention a cell can have.
   area by every scan and moved by a ResizeObserver, which the sidebar
   opening and closing over the pane moves as well as the window. The
   output area and its row get `overflow: visible` there or they clip
-  the span at the column's edge (a scrolled cell keeps its cap); the
+  the span at the column's edge. A scrolled cell (`metadata.scrolled`)
+  keeps its height cap and gets none of this: its wide output stays in
+  the column and its area scrolls sideways, because an area can't
+  scroll to anything left of it, so a span would cut off the left part. The
   cell, the editor and the prose keep the column, and the pane never
   scrolls sideways: the span is capped inside it. The prose column is
   measured on the output row rather than the output, so it is the

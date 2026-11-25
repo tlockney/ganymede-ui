@@ -210,7 +210,10 @@ test('a wide chart or table spans the pane; what fits and streams stay put', asy
 // and its scroll: it doesn't span the pane, since its area would clip the
 // part left of the column, where no scroll reaches. Both edges of each wide
 // output show, the far one after scrolling the area to it.
-test('a wide output in a scrolled cell stays in its column', async ({ page }) => {
+/** Opens the fixture with every cell scrolled and checks the wide image's
+ * and the wide table's edges. Run at a wide window and in the 720–760px band
+ * where JupyterLab stacks the prompt, since each has its own margin rule. */
+async function scrolledCellStaysInColumn(page: Page) {
   const scrolled = {
     ...NOTEBOOK,
     cells: NOTEBOOK.cells.map(c => ({ ...c, metadata: { scrolled: true } })),
@@ -250,6 +253,18 @@ test('a wide output in a scrolled cell stays in its column', async ({ page }) =>
     });
     expect(hits).toEqual([true, true]);
   }
+}
+
+test('a wide output in a scrolled cell stays in its column', async ({ page }) => {
+  await scrolledCellStaysInColumn(page);
+});
+
+test.describe('at 740px, with the prompt stacked above the output', () => {
+  test.use({ viewport: { width: 740, height: 900 } });
+
+  test('a wide output in a scrolled cell stays in its column', async ({ page }) => {
+    await scrolledCellStaysInColumn(page);
+  });
 });
 
 test.describe('at 390px', () => {
