@@ -14,6 +14,12 @@ using the per-window stored expansion; the iPad's tree, which used
 folder view so the label can toggle it. Like before, that state lasts
 only while the view does.
 
+Nothing here is built or run in CI beyond compiling, and SwiftUI view
+wiring has no unit test, so the by-hand checks are on #399 (Mac) and
+#273 (iPad, iPhone): click or tap toggles, the arrow still does, the
+Mac keeps expanded folders across launches, the context menu still
+opens, and VoiceOver reads the state.
+
 Keyboard navigation (arrow keys, Right/Left to expand and collapse)
 needs the sidebar list to take a selection, which changes how file rows
 open; it is #787.

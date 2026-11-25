@@ -17,6 +17,7 @@ struct FolderRowLabel: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityValue(isExpanded ? "Expanded" : "Collapsed")
         .accessibilityHint(isExpanded ? "Collapses the folder" : "Expands the folder")
     }
 }
