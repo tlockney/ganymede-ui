@@ -3,14 +3,13 @@
 // long line doesn't push the page sideways, Wrap Code wraps it, and outputs
 // say what they are.
 import { expect, type Page, test } from '@playwright/test';
-import { outputs } from './helpers';
+import { outputs, useThisBrowser } from './helpers';
 
 test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
 
 async function newBrowserNotebook(page: Page) {
   await page.goto('/');
-  await page.getByRole('radio', { name: /This browser/ }).click();
-  await page.getByRole('button', { name: 'Connect', exact: true }).click();
+  await useThisBrowser(page);
   await expect(page.getByRole('button', { name: /This browser/ })).toBeAttached({
     timeout: 60_000,
   });
@@ -253,4 +252,32 @@ test('a long log shows its tail, and View full log opens it', async ({ page }) =
   await expect(page.getByRole('button', { name: 'Show last lines' })).toBeVisible();
   const { scroll, client } = await pageOverflow(page);
   expect(scroll).toBeLessThanOrEqual(client);
+});
+
+test('tapping View full log leaves the active cell and the editor alone', async ({ page }) => {
+  await newBrowserNotebook(page);
+  // The log goes in a second cell, so its toggle is not in the active one's.
+  await page.getByRole('button', { name: 'Add Cell Below', exact: true }).tap();
+  const cells = page.locator('.jp-Cell');
+  await expect(cells).toHaveCount(2);
+  await runCell(page, 'for (let i = 0; i < 60; i++) console.log(`step ${i}`);');
+  await expect(page.getByRole('button', { name: 'View full log' })).toBeVisible({
+    timeout: 60_000,
+  });
+  // The first cell, made the active one by a tap on its code.
+  await cells.nth(0).locator('.cm-content').tap();
+  await expect(cells.nth(0)).toHaveClass(/jp-mod-active/);
+  // The toggle is in the second cell's output; a tap on it opens the log
+  // without the notebook taking the tap as one on the cell.
+  await page.getByRole('button', { name: 'View full log' }).tap();
+  await expect(page.locator('.jp-OutputArea-output.gn-log-full')).toBeVisible();
+  await expect(cells.nth(0)).toHaveClass(/jp-mod-active/);
+  await expect(cells.nth(1)).not.toHaveClass(/jp-mod-active/);
+  const editorFocused = await page.evaluate(
+    () =>
+      !!document.activeElement &&
+      !!document.activeElement.closest &&
+      document.activeElement.closest('.cm-editor') !== null,
+  );
+  expect(editorFocused).toBe(false);
 });
