@@ -1,8 +1,8 @@
 # Keyboard shortcuts
 
 The app binds JupyterLab's notebook shortcuts plus a few of its own. To
-see them in the app, press `H` in command mode, click the keyboard button
-in the toolbar, or choose Help › Keyboard Shortcuts in the Mac app.
+see them in the app, press `H` in command mode, choose Keyboard Shortcuts
+in the toolbar's ⋯ menu, or choose Help › Keyboard Shortcuts in the Mac app.
 In the Mac, iPad and iPhone apps they are in Settings › Shortcuts, where
 `H` and Help › Keyboard Shortcuts take you.
 
@@ -10,7 +10,12 @@ Command mode is when a cell is selected but not being edited (press `Esc`
 to get there); edit mode is when the cursor is in a cell (press `Enter`).
 Single-letter shortcuts such as `M` (make the cell Markdown) work only in
 command mode; in edit mode they type the letter. The sheet says this too,
-and the toolbar's cell type picker changes a cell's type with the mouse.
+and the ⋯ menu's Cell Type changes a cell's type with the mouse.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, where the toolbar has a keyboard button and a cell
+> type picker instead of these menu items.
 
 ## Command palette
 
@@ -23,11 +28,16 @@ Markdown, Export as Script, Trust, Run All, Run with Parameters…, Clear
 All Outputs, Interrupt, Restart, a Change Kernel entry for each kernel,
 and the notebooks you opened recently. Type to filter, use `↑` and `↓` to pick, `↩` to run, and
 `Esc` to close. Rename… asks for the new name in the same field. The
-toolbar's command button opens it too (handy on a touch screen), and the
+Command Palette… item in the toolbar's ⋯ menu opens it too (handy on a touch screen), and the
 Mac app has View › Command Palette…. Firefox keeps `Ctrl+Shift+P` (`⇧⌘P`)
-for a private window, so there use the toolbar button or rebind the
+for a private window, so there use the menu item or rebind the
 palette in the Shortcuts sheet. In the Mac app the menu's `⇧⌘P` stays as
 it is when you rebind it.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, where the browser toolbar has a command button for
+> this.
 
 ## On a touch screen
 

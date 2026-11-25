@@ -157,9 +157,14 @@ shown or hidden, its tab and its expanded folders across launches.
   node 24.11.0" (the name and version the kernel reports, and the
   runtime when its banner names one; "ipython 8.20.0" for IPython): at
   the top of the Mac's Kernel menu, in the kernel popover and the
-  button's help tag, in the iPad's kernel menu, and as the tooltip of
-  the browser toolbar's kernel label and picker. Nothing shows while no
-  kernel runs or before it has replied.
+  button's help tag, in the iPad's kernel menu, and in the menu the
+  browser's status line opens. Nothing shows while no kernel runs or
+  before it has replied.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release, where the browser shows it as the tooltip of the
+  > toolbar's kernel label and picker.
 
 - Kernels can run on a remote server instead. Add the remote in
   Settings > Remotes (its editor can switch kernels to it), then pick
@@ -1048,7 +1053,7 @@ it. There is no View menu item for it yet.
 
 A notebook a Claude session keeps through `ganymede mcp` reads better as a
 journal than as cells. **View as Journal** shows the open notebook that
-way: the toolbar's journal button, View › View as Journal in the Mac app,
+way: the toolbar in the browser, View › View as Journal in the Mac app,
 the notebook's More menu on the iPad and iPhone, or the Command Palette.
 **Open as Notebook** goes back to full editing, in the same live room and on the same kernel.
 A notebook with cells an agent wrote opens as a journal; any other opens as
@@ -1253,9 +1258,12 @@ export replaces nothing, the sheet refuses its page the same way.
 
 ## Running with parameters
 
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
 **Run with Parameters…** (Cell menu on the Mac, the ⋯ menu on the iPad
-and iPhone, the Command Palette in the browser, and its toolbar's More
-menu in a narrow window) runs the notebook as a program, the way `ganymede execute -p
+and iPhone, the Command Palette and the toolbar in the browser) runs the notebook as a program, the way `ganymede execute -p
 --results` does ([Programs](https://ganymede-server.com/docs/programs)):
 top to bottom in a new kernel on the server, with the parameters you
 type (a JSON object, such as `{"day": "mon"}`) in `jupyter.params`. The
@@ -1273,7 +1281,7 @@ has no such run.
 
 **Export As › Markdown** and **Script** (File menu and the toolbar's
 Share button on the Mac, the ⋯ menu
-on the iPad and iPhone, the Command Palette and the toolbar's More menu
+on the iPad and iPhone, the Command Palette and the toolbar
 in the browser) save the notebook as a Markdown file or as its code in
 the kernel's language (`.ts`, `.py`, …), as JupyterLab's Save and Export
 Notebook As does. Markdown with images arrives as a zip of the text and

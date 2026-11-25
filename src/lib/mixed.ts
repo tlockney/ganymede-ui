@@ -14,6 +14,7 @@ import {
 } from '@jupyterlab/services';
 import { WebSocket as PageSocket } from 'mock-socket';
 import { CDP_KERNEL_NAME } from './cdp-kernel';
+import { PAGE_SPEC_KEY } from './kernel-device';
 import { createLiteParts, type LiteParts } from './lite';
 
 /**
@@ -202,7 +203,11 @@ export class MixedKernelSpecClient implements KernelSpec.IKernelSpecAPIClient {
     this._owners.pageSpecs.clear();
     for (const [name, spec] of Object.entries(page.kernelspecs)) {
       if (!spec || !PAGE_SPECS.has(name) || name in kernelspecs) continue;
-      kernelspecs[name] = { ...spec, display_name: inApp(spec.display_name) };
+      kernelspecs[name] = {
+        ...spec,
+        display_name: inApp(spec.display_name),
+        metadata: { ...spec.metadata, [PAGE_SPEC_KEY]: true },
+      };
       this._owners.pageSpecs.add(name);
     }
     const fallback = this._owners.pageSpecs.values().next().value;

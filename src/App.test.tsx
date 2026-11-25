@@ -501,13 +501,37 @@ describe('App', () => {
     expect(runAll).toHaveBeenCalled();
     expect(palette).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByTitle('Command Palette'));
+    await userEvent.click(screen.getByTitle('More'));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Command Palette…' }));
     expect(await screen.findByRole('dialog', { name: 'Command palette' })).toBeInTheDocument();
     await userEvent.keyboard('{Escape}');
     expect(screen.queryByRole('dialog', { name: 'Command palette' })).not.toBeInTheDocument();
 
     expect(await window.ganymede!.command('command-palette')).toBe(true);
     expect(await screen.findByRole('dialog', { name: 'Command palette' })).toBeInTheDocument();
+  });
+
+  it('names where the notebook is saved and runs in the toolbar’s status line (#801)', async () => {
+    mocks.controller = {
+      dirty: false,
+      save: vi.fn(async () => true),
+      kernelName: 'python3',
+      name: 'Io.ipynb',
+      path: 'Io.ipynb',
+      status: 'idle',
+    };
+    const fake = fakeServices({ '': [{ name: 'Io.ipynb', type: 'notebook' }] });
+    mocks.connect.mockResolvedValue(
+      fakeBackend(fake.services, { kind: 'ganymede', url: 'https://lab.example.com', token: 't' }),
+    );
+    history.replaceState(null, '', '/?kernels=server&open=Io.ipynb');
+    render(<App />);
+    await screen.findByTestId('pane');
+    expect(
+      await screen.findByRole('button', {
+        name: /^Saved on lab\.example\.com · Runs on lab\.example\.com · /,
+      }),
+    ).toBeInTheDocument();
   });
 
   it('shows the Variables view from the toolbar and the app (#242)', async () => {
@@ -517,11 +541,13 @@ describe('App', () => {
     history.replaceState(null, '', '/?kernels=server&open=Io.ipynb');
     render(<App />);
     await screen.findByTestId('pane');
-    await userEvent.click(screen.getByTitle('Show Variables'));
+    await userEvent.click(screen.getByTitle('More'));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Show Variables' }));
     const view = screen.getByRole('complementary', { name: 'Variables' });
     // No kernel yet in this fake.
     expect(view).toHaveTextContent('Run a cell to see its variables.');
-    await userEvent.click(screen.getByTitle('Hide Variables'));
+    await userEvent.click(screen.getByTitle('More'));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Hide Variables' }));
     expect(screen.queryByRole('complementary', { name: 'Variables' })).not.toBeInTheDocument();
     expect(await window.ganymede!.command('toggle-variables')).toBe(true);
     expect(await screen.findByRole('complementary', { name: 'Variables' })).toBeInTheDocument();
@@ -547,7 +573,8 @@ describe('App', () => {
     history.replaceState(null, '', '/?kernels=server&open=Io.ipynb');
     render(<App />);
     await screen.findByTestId('pane');
-    await userEvent.click(screen.getByTitle('View as Journal'));
+    await userEvent.click(screen.getByTitle('More'));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'View as Journal' }));
     expect(toggleJournal).toHaveBeenCalledTimes(1);
     expect(await window.ganymede!.command('toggle-journal')).toBe(true);
     expect(toggleJournal).toHaveBeenCalledTimes(2);
