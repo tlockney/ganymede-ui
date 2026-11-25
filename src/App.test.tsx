@@ -606,6 +606,16 @@ describe('App', () => {
     expect(localStorage.getItem('ganymede-ui:live-markdown')).toBeNull();
   });
 
+  it('turns Wrap Code on and off from the app, and remembers it (#813)', async () => {
+    localStorage.removeItem('ganymede-ui:wrap-code');
+    render(<App />);
+    await waitFor(() => expect(window.ganymede).toBeDefined());
+    expect(await window.ganymede!.command('toggle-wrap-code')).toBe(true);
+    expect(localStorage.getItem('ganymede-ui:wrap-code')).toBe('on');
+    expect(await window.ganymede!.command('toggle-wrap-code')).toBe(true);
+    expect(localStorage.getItem('ganymede-ui:wrap-code')).toBeNull();
+  });
+
   it('reads the variables for the app’s inspector and expands them for it (#249)', async () => {
     const states: Record<string, unknown>[] = [];
     vi.stubGlobal('webkit', {

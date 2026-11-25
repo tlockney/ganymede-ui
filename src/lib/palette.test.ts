@@ -42,6 +42,7 @@ describe('paletteEntries', () => {
         'Keyboard Shortcuts',
         'Show or Hide Type Errors',
         'Show or Hide Live Markdown Preview',
+        'Wrap Code',
       ]),
     );
     // Only in a cell editor, or the palette itself.
@@ -49,6 +50,11 @@ describe('paletteEntries', () => {
     expect(labels).not.toContain('Command palette');
     // The open notebook isn't offered again.
     expect(labels).not.toContain('Open Io');
+  });
+
+  it('offers Wrap Code as the page command that runs it (#813)', () => {
+    expect(find('Wrap Code')).toMatchObject({ id: 'toggle-wrap-code', group: 'View' });
+    expect(find('Wrap Code')!.disabled).toBeFalsy();
   });
 
   it('offers the type errors switch as the page command that runs it (#669)', () => {

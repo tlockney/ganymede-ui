@@ -287,6 +287,40 @@ every code cell; the command palette has all four, and on a phone the
 cell's … menu has Collapse Code. A collapsed cell is saved that way in the
 notebook (`metadata.jupyter.source_hidden`, as JupyterLab saves it).
 
+### Cells on a phone
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+Under 720px wide on a touch screen, the active cell has a short line above
+it with its execution count (`In [3]`, or `Not run`), its type, and its …
+menu, so code and output get the whole width: there is no prompt column.
+The line also says **Queued**, **Running** or **Stopped** in words, and
+those words are the prompt's accessible name too. One **Add cell** button
+sits under the active cell and under the last cell, and adds a code cell;
+the … menu changes its type, moves it up or down, and has **Wrap Code**. A
+wider window or an iPad keeps the gutter buttons and the + Code and + Text
+bar.
+
+**Wrap Code** wraps long lines in every cell's editor instead of scrolling
+them sideways. It is in the cell's … menu and the command palette, applies
+to all cells, and is remembered in this browser's local storage.
+
+### Reading outputs
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+An error output starts with **Execution failed** and its exception
+summary (`ZeroDivisionError: division by zero`), above the traceback; a
+cell stopped with Interrupt says **Execution stopped**. Text on stderr is
+marked **Warning**. A stream longer than 20 lines shows its last lines;
+**View full log** opens all of it and **Show last lines** goes back. When
+no kernel is attached, outputs the notebook was saved with say **Saved
+output**.
+
 ### Running cells and errors
 
 The cell the kernel is running says so under its input, with how long it

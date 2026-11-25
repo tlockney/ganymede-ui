@@ -91,6 +91,7 @@ import '@jupyterlab/cell-toolbar/style/index.js';
 
 import { liveMarkdownPreview } from './markdown-preview';
 import { withDuckdbSql } from './sql-languages';
+import { wrapCode } from './wrap-code';
 
 const languages = new EditorLanguageRegistry();
 for (const language of withDuckdbSql(EditorLanguageRegistry.getDefaultLanguages())) {
@@ -126,6 +127,12 @@ extensions.addExtension({
     (options.model.sharedModel as { cell_type?: string }).cell_type === 'markdown'
       ? EditorExtensionRegistry.createImmutableExtension(liveMarkdownPreview())
       : null,
+});
+
+// Wrap Code (#813): every editor follows the switch.
+extensions.addExtension({
+  name: 'wrap-code',
+  factory: () => EditorExtensionRegistry.createImmutableExtension(wrapCode()),
 });
 
 const editorServices = {

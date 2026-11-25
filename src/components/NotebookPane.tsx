@@ -11,6 +11,7 @@ import { type Backend, trustNotebook } from '../lib/backends';
 import { attachEditing, createCommands, createNotebook, createRendermime } from '../lib/jupyterlab';
 import { attachCellControls } from '../lib/cell-controls';
 import { attachCodeCollapse } from '../lib/code-collapse';
+import { attachOutputLabels } from '../lib/output-labels';
 import { attachTypeErrors } from '../lib/type-errors';
 import { attachLanguageFeatures, type LanguageFeatures } from '../lib/language-editor';
 import { installTableOutput } from '../lib/table-output';
@@ -676,6 +677,11 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
             ?.interrupt()
             .catch(e => setNotice(failed('interrupt the kernel', e))),
       });
+      const outputLabels = attachOutputLabels(notebook, {
+        hasKernel: () => !!session.session?.kernel,
+      });
+      // A kernel starting or going away changes what the outputs are: saved, or live.
+      session.kernelChanged.connect(outputLabels.refresh);
       const beforeSave = () => notebookWidgets.saveState(model);
       const saver: Saver = room
         ? new RoomSaver({ room, path, model, beforeSave })
@@ -722,6 +728,11 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
           typeErrors,
           language,
           runStatus,
+          outputLabels,
+          {
+            dispose: () => session.kernelChanged.disconnect(outputLabels.refresh),
+            isDisposed: false,
+          },
           notebookWidgets,
           // `device` for cells on server kernels (#568): the
           // app's bridge, or in a browser web APIs behind a click.
