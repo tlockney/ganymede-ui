@@ -13,7 +13,16 @@ Range.prototype.getClientRects ??= () => [] as unknown as DOMRectList;
 Range.prototype.getBoundingClientRect ??= () => new DOMRect();
 
 const { createNotebook, createRendermime } = await import('./jupyterlab');
-const { attachOutputLabels, labelFor, isInterrupt, LOG_LINES } = await import('./output-labels');
+const {
+  attachOutputLabels,
+  labelFor,
+  isInterrupt,
+  LOG_LINES,
+  PANE_GUTTER,
+  pastColumn,
+  WIDE,
+  WIDE_SLACK,
+} = await import('./output-labels');
 const { NotebookModel } = await import('@jupyterlab/notebook');
 const { Widget } = await import('@lumino/widgets');
 
@@ -220,5 +229,136 @@ describe('attachOutputLabels (#813)', () => {
     kernel = true;
     labels!.refresh();
     expect(saved()).toHaveLength(0);
+  });
+});
+
+// Wide charts and tables (#814): an image's own width or a table's content
+// past the column the cell's outputs sit in goes wide; a stream never does.
+const image: nbformat.IDisplayData = {
+  output_type: 'display_data',
+  data: { 'image/png': 'iVBORw0KGgo=' },
+  metadata: {},
+};
+const table = (names: string[], rows: string[][]): nbformat.IDisplayData => ({
+  output_type: 'display_data',
+  data: {
+    'application/vnd.dataresource+json': {
+      schema: { fields: names.map(name => ({ name })) },
+      data: rows,
+    },
+  },
+  metadata: {},
+});
+
+describe('pastColumn', () => {
+  it('goes wide past the column and back under it, both with slack', () => {
+    const column = 800;
+    expect(pastColumn(column + WIDE_SLACK, column, false)).toBe(false);
+    expect(pastColumn(column + WIDE_SLACK + 1, column, false)).toBe(true);
+    expect(pastColumn(column - WIDE_SLACK, column, true)).toBe(true);
+    expect(pastColumn(column - WIDE_SLACK - 1, column, true)).toBe(false);
+  });
+
+  it('keeps what it has within the slack, and never widens nothing measured', () => {
+    const column = 800;
+    expect(pastColumn(column, column, true)).toBe(true);
+    expect(pastColumn(column, column, false)).toBe(false);
+    expect(pastColumn(0, column, true)).toBe(false);
+    expect(pastColumn(-1, column, true)).toBe(false);
+  });
+});
+
+describe('wide outputs', () => {
+  const outs = () => [...notebook.node.querySelectorAll<HTMLElement>('.jp-OutputArea-output')];
+
+  /** Lay each output out in a row 800px wide, past a 56px prompt. */
+  const layout = () => {
+    for (const out of outs()) {
+      const child = out.closest<HTMLElement>('.jp-OutputArea-child');
+      const prompt = child?.querySelector<HTMLElement>('.jp-OutputPrompt');
+      if (!child || !prompt) throw new Error('no output row');
+      Object.defineProperty(child, 'clientWidth', { value: 800, configurable: true });
+      Object.defineProperty(prompt, 'clientWidth', { value: 56, configurable: true });
+    }
+  };
+
+  it('marks an image or table wider than the column, and not what fits or a stream', async () => {
+    open([
+      cellWith('img', [image]),
+      cellWith('table', [table(['a', 'b'], [['one', 'two']])]),
+      cellWith('log', [stream('stdout', lines(2))]),
+    ]);
+    await settle();
+    layout();
+    const [img, tbl, log] = outs();
+    Object.defineProperty(img.querySelector('img')!, 'naturalWidth', {
+      value: 900,
+      configurable: true,
+    });
+    Object.defineProperty(tbl.querySelector('.gm-table-scroll table')!, 'scrollWidth', {
+      value: 400,
+      configurable: true,
+    });
+    labels!.refresh();
+    await settle();
+    expect(img.classList.contains(WIDE)).toBe(true);
+    expect(tbl.classList.contains(WIDE)).toBe(false);
+    expect(log.classList.contains(WIDE)).toBe(false);
+  });
+
+  it('waits for an image that has not loaded, and widens it when it has', async () => {
+    open([cellWith('img', [image])]);
+    await settle();
+    layout();
+    labels!.refresh();
+    await settle();
+    const [img] = outs();
+    expect(img.classList.contains(WIDE)).toBe(false);
+    const el = img.querySelector('img')!;
+    Object.defineProperty(el, 'naturalWidth', { value: 1200, configurable: true });
+    el.dispatchEvent(new Event('load'));
+    await settle();
+    expect(img.classList.contains(WIDE)).toBe(true);
+  });
+
+  it('keeps a wide output within the slack of the column, and drops it past it', async () => {
+    open([cellWith('img', [image])]);
+    await settle();
+    layout();
+    const [img] = outs();
+    Object.defineProperty(img.querySelector('img')!, 'naturalWidth', {
+      value: 900,
+      configurable: true,
+    });
+    labels!.refresh();
+    await settle();
+    expect(img.classList.contains(WIDE)).toBe(true);
+    // The window widens: 895 is within the slack of 900, so the class stays;
+    // 1000 is past it, so it goes. The resize is what brings the new column.
+    for (const [row, expectWide] of [
+      [951, true],
+      [1056, false],
+    ] as const) {
+      Object.defineProperty(img.closest('.jp-OutputArea-child')!, 'clientWidth', {
+        value: row,
+        configurable: true,
+      });
+      window.dispatchEvent(new Event('resize'));
+      await settle();
+      expect(img.classList.contains(WIDE)).toBe(expectWide);
+    }
+  });
+
+  it('tells jupyter.css how wide the pane a wide output spans is', async () => {
+    open([cellWith('img', [image])]);
+    await settle();
+    // The notebook's scroll area carries the span jupyter.css gives a wide
+    // output, as a custom property: its client width, less the gutter.
+    const outer = notebook.node.querySelector<HTMLElement>('.jp-WindowedPanel-outer')!;
+    expect(outer).toBeTruthy();
+    Object.defineProperty(outer, 'clientWidth', { value: 1000, configurable: true });
+    labels!.refresh();
+    await settle();
+    expect(outer.style.getPropertyValue('--gn-pane')).toBe(`${1000 - 2 * PANE_GUTTER}px`);
   });
 });
