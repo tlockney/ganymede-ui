@@ -1,0 +1,77 @@
+import { describe, expect, it } from 'vitest';
+import { containTab, tabbables } from './modal-focus';
+
+function sheet(html: string): HTMLElement {
+  const root = document.createElement('div');
+  root.innerHTML = html;
+  document.body.replaceChildren(root);
+  return root;
+}
+
+const tab = (shiftKey = false) =>
+  new KeyboardEvent('keydown', { key: 'Tab', shiftKey, cancelable: true });
+
+describe('tabbables', () => {
+  it('lists the Tab stops in order, skipping what Tab skips', () => {
+    const root = sheet(`
+      <button id="a">a</button>
+      <button id="disabled" disabled>x</button>
+      <div role="radio" tabindex="-1" id="roving">x</div>
+      <input id="b" />
+      <input type="hidden" id="hidden" />
+      <div hidden><button id="in-hidden">x</button></div>
+      <div inert><button id="in-inert">x</button></div>
+      <a id="no-href">x</a>
+      <a href="#" id="c">c</a>
+      <div tabindex="0" id="d">d</div>
+    `);
+    expect(tabbables(root).map(el => el.id)).toEqual(['a', 'b', 'c', 'd']);
+  });
+});
+
+describe('containTab', () => {
+  it('wraps from the last stop to the first and back', () => {
+    const root = sheet('<button id="a">a</button><button id="b">b</button>');
+    const [a, b] = tabbables(root);
+    b.focus();
+    const forward = tab();
+    containTab(forward, root);
+    expect(forward.defaultPrevented).toBe(true);
+    expect(a).toHaveFocus();
+    const back = tab(true);
+    containTab(back, root);
+    expect(back.defaultPrevented).toBe(true);
+    expect(b).toHaveFocus();
+  });
+
+  it('lets Tab move between stops inside', () => {
+    const root = sheet('<button id="a">a</button><button id="b">b</button>');
+    tabbables(root)[0].focus();
+    const e = tab();
+    containTab(e, root);
+    expect(e.defaultPrevented).toBe(false);
+  });
+
+  it('brings focus in from outside', () => {
+    const root = sheet('<button id="a">a</button><button id="b">b</button>');
+    const outside = document.createElement('button');
+    document.body.prepend(outside);
+    outside.focus();
+    containTab(tab(), root);
+    expect(document.activeElement?.id).toBe('a');
+    outside.focus();
+    containTab(tab(true), root);
+    expect(document.activeElement?.id).toBe('b');
+  });
+
+  it('ignores other keys and modified Tab', () => {
+    const root = sheet('<button id="a">a</button>');
+    tabbables(root)[0].focus();
+    const other = new KeyboardEvent('keydown', { key: 'Enter', cancelable: true });
+    containTab(other, root);
+    expect(other.defaultPrevented).toBe(false);
+    const ctrl = new KeyboardEvent('keydown', { key: 'Tab', ctrlKey: true, cancelable: true });
+    containTab(ctrl, root);
+    expect(ctrl.defaultPrevented).toBe(false);
+  });
+});

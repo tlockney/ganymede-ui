@@ -121,7 +121,7 @@ describe('ConnectSheet', () => {
 
   it('shows the last error', () => {
     renderSheet({ error: 'The server refused the token.' });
-    expect(screen.getByText('The server refused the token.')).toBeInTheDocument();
+    expect(screen.getByRole('alert')).toHaveTextContent('The server refused the token.');
   });
 
   it('cannot connect twice while connecting', () => {
@@ -135,5 +135,130 @@ describe('ConnectSheet', () => {
     rerender(<ConnectSheet connecting={false} canCancel onCancel={onCancel} onConnect={vi.fn()} />);
     await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(onCancel).toHaveBeenCalledOnce();
+  });
+});
+
+const radio = (name: RegExp) => screen.getByRole('radio', { name });
+
+describe('ConnectSheet keyboard and focus (#797)', () => {
+  it('is a modal dialog named by its heading', () => {
+    renderSheet();
+    const dialog = screen.getByRole('dialog', { name: 'Where should kernels run?' });
+    expect(dialog).toHaveAttribute('aria-modal', 'true');
+    expect(screen.getByRole('radiogroup', { name: 'Where should kernels run?' })).toBeVisible();
+  });
+
+  it('focuses the chosen kind on open', () => {
+    renderSheet({ initial: { kind: 'browser' } });
+    expect(radio(/This browser/)).toHaveFocus();
+  });
+
+  it('moves and selects with the arrow keys, wrapping', async () => {
+    renderSheet();
+    expect(radio(/Ganymede server/)).toHaveFocus();
+    await userEvent.keyboard('{ArrowRight}');
+    expect(radio(/This browser/)).toHaveAttribute('aria-checked', 'true');
+    expect(radio(/This browser/)).toHaveFocus();
+    expect(screen.queryByPlaceholderText('From ganymede serve')).not.toBeInTheDocument();
+    await userEvent.keyboard('{ArrowRight}');
+    expect(radio(/Ganymede server/)).toHaveAttribute('aria-checked', 'true');
+    expect(radio(/Ganymede server/)).toHaveFocus();
+    await userEvent.keyboard('{ArrowUp}');
+    expect(radio(/This browser/)).toHaveFocus();
+    await userEvent.keyboard('{ArrowLeft}');
+    expect(radio(/Ganymede server/)).toHaveFocus();
+    await userEvent.keyboard('{ArrowDown}');
+    expect(radio(/This browser/)).toHaveAttribute('aria-checked', 'true');
+    await userEvent.keyboard('{Home}');
+    expect(radio(/Ganymede server/)).toHaveAttribute('aria-checked', 'true');
+    await userEvent.keyboard('{End}');
+    expect(radio(/This browser/)).toHaveAttribute('aria-checked', 'true');
+    expect(radio(/This browser/)).toHaveFocus();
+  });
+
+  it('is one Tab stop: only the chosen kind is tabbable', async () => {
+    renderSheet();
+    expect(radio(/Ganymede server/)).toHaveAttribute('tabindex', '0');
+    expect(radio(/This browser/)).toHaveAttribute('tabindex', '-1');
+    await userEvent.tab();
+    expect(server()).toHaveFocus();
+  });
+
+  it('keeps Tab inside the sheet', async () => {
+    render(
+      <>
+        <button>Behind</button>
+        <ConnectSheet connecting={false} canCancel onCancel={vi.fn()} onConnect={vi.fn()} />
+      </>,
+    );
+    await userEvent.keyboard('{ArrowRight}');
+    await userEvent.tab();
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveFocus();
+    await userEvent.tab();
+    expect(connectButton()).toHaveFocus();
+    await userEvent.tab();
+    expect(radio(/This browser/)).toHaveFocus();
+    await userEvent.tab({ shift: true });
+    expect(connectButton()).toHaveFocus();
+  });
+
+  it('brings focus back in from the page, past a disabled Connect', async () => {
+    const sheet = (connecting: boolean) => (
+      <>
+        <button>Before</button>
+        <ConnectSheet
+          connecting={connecting}
+          canCancel={false}
+          onCancel={vi.fn()}
+          onConnect={vi.fn()}
+        />
+        <button>After</button>
+      </>
+    );
+    const { rerender } = render(sheet(false));
+    connectButton().focus();
+    rerender(sheet(true));
+    // As Chrome does when the focused button is disabled.
+    (document.activeElement as HTMLElement).blur();
+    expect(document.body).toHaveFocus();
+    await userEvent.tab({ shift: true });
+    expect(screen.getByRole('checkbox', { name: /Run kernels in this page/ })).toHaveFocus();
+    (document.activeElement as HTMLElement).blur();
+    await userEvent.tab();
+    expect(radio(/Ganymede server/)).toHaveFocus();
+  });
+
+  it('cancels on Escape when it can', async () => {
+    const { onCancel } = renderSheet({ canCancel: true });
+    await userEvent.keyboard('{Escape}');
+    expect(onCancel).toHaveBeenCalledOnce();
+  });
+
+  it('stays on Escape when there is nothing to go back to', async () => {
+    const { onCancel } = renderSheet();
+    await userEvent.keyboard('{Escape}');
+    expect(onCancel).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+  });
+
+  it('gives focus back to the control that opened it', () => {
+    const opener = document.createElement('button');
+    document.body.append(opener);
+    opener.focus();
+    const { unmount } = renderSheet({ canCancel: true });
+    expect(radio(/Ganymede server/)).toHaveFocus();
+    unmount();
+    expect(opener).toHaveFocus();
+    opener.remove();
+  });
+
+  it('leaves focus alone when the opener is gone', () => {
+    const opener = document.createElement('button');
+    document.body.append(opener);
+    opener.focus();
+    const { unmount } = renderSheet();
+    opener.remove();
+    expect(() => unmount()).not.toThrow();
+    expect(document.body).toHaveFocus();
   });
 });
