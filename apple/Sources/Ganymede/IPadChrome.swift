@@ -50,6 +50,9 @@ struct IPadSidebar: View {
     /// The expanded folders of the Files tree, by file URL; here, not per
     /// folder, so the keys can expand any of them (#787).
     @State private var expandedFolders: Set<URL> = []
+    /// The Files rows listed so far, by folder: Left finds a row's parent
+    /// here, and a reload that drops the selected row clears it (#791).
+    @State private var tree = SidebarTree()
     /// The search field's text, and whether it reads notebooks too (#240).
     @State private var query = ""
     @State private var searchContents = false
@@ -152,13 +155,18 @@ struct IPadSidebar: View {
                     if expanded { expandedFolders.insert(entry.url) } else { expandedFolders.remove(entry.url) }
                 },
                 canOpen: { $0.canOpen(in: place) },
-                open: open
+                open: open,
+                parent: { tree.parent(of: $0, root: folder) },
+                select: { if filesShown { selection = $0 } }
             ))
             // The list is shared by every tab: a selection made in Files
             // mustn't take Return in Search or Running.
             .onChange(of: shownTab) { selection = nil }
             // Another folder: the old one's rows are gone.
-            .onChange(of: folder) { selection = nil }
+            .onChange(of: folder) {
+                selection = nil
+                tree = SidebarTree()
+            }
             .navigationTitle(tabbed ? shownTab.title : "Notebooks")
             // The iPad's navigator tabs, as on the Mac (#251).
             .safeAreaInset(edge: .top, spacing: 0) {
@@ -596,7 +604,15 @@ struct IPadSidebar: View {
                 )
             },
             select: { if filesShown { selection = $0 } },
+            listed: listed(_:in:),
             open: open,
+            openByTap: { entry in
+                open(entry)
+                // The tap left a hardware keyboard in the list; a notebook
+                // it opened should have it, so ↓ and Return go to the page
+                // (#791), as the Mac's click does.
+                if tabbed, entry.opensInPage { returnKeyboardToPage() }
+            },
             newNotebook: newNotebook(in:),
             newFolder: newFolder(in:),
             rename: { entry in
@@ -660,6 +676,25 @@ struct IPadSidebar: View {
     /// or deleted folder's rows go.
     private func dropSelection(at entry: FolderEntry) {
         if let selected = selection, selected.isAtOrInside(entry) { selection = nil }
+    }
+
+    /// A folder's contents listed `entries` (#791): a selected row the
+    /// listing no longer has is cleared (`SidebarTree.listed`).
+    private func listed(_ entries: [FolderEntry], in dir: URL) {
+        let kept = tree.listed(entries, in: dir, keeping: selection, root: folder)
+        if kept != selection { selection = kept }
+    }
+
+    /// Gives a hardware keyboard to the page's web view (#791), as the
+    /// Mac's `returnKeyboardToPage` does, on the next turn of the run loop
+    /// as `TerminalSurface` does: the tap is still being handled, and
+    /// `opened` has only just asked for the notebook to show. Nothing
+    /// when the page isn't on screen.
+    private func returnKeyboardToPage() {
+        DispatchQueue.main.async {
+            guard let webView = page.webView, webView.window != nil, !webView.isHidden else { return }
+            _ = webView.becomeFirstResponder()
+        }
     }
 
     private func open(_ entry: FolderEntry) {
@@ -863,7 +898,12 @@ struct IPadFolderActions {
     var isExpanded: (URL) -> Binding<Bool>
     /// A tap made this row the list's selection (#787).
     var select: (FolderEntry) -> Void
+    /// A folder's contents were listed: the folder's URL as the contents
+    /// were given it, and its rows (#791).
+    var listed: ([FolderEntry], URL) -> Void
     var open: (FolderEntry) -> Void
+    /// A tap opened the file: `open`, then the keyboard goes to the page (#791).
+    var openByTap: (FolderEntry) -> Void
     var newNotebook: (URL) -> Void
     var newFolder: (URL) -> Void
     var rename: (FolderEntry) -> Void
@@ -918,7 +958,7 @@ private struct IPadFolderContents: View {
                     .simultaneousGesture(
                         TapGesture().onEnded {
                             actions.select(entry)
-                            if canOpen { actions.open(entry) }
+                            if canOpen { actions.openByTap(entry) }
                         }
                     )
                     .accessibilityElement(children: .combine)
@@ -953,6 +993,7 @@ private struct IPadFolderContents: View {
             guard !Task.isCancelled else { return }
             entries = listed
             error = nil
+            actions.listed(listed, folder)
         } catch {
             guard !Task.isCancelled else { return }
             self.error = FileSourceError.message(error, place: actions.place, machineName: actions.machineName)

@@ -241,12 +241,12 @@ The page fetches them the first time one of these is used, a cell that
 names `sql` included, and keeps them in the browser, so later kernels run
 SQL offline. A visit that doesn't use DuckDB fetches nothing. A fetch that
 fails, such as one made offline, is tried again on the next use. When the
-browser has no room to keep them, it doesn't try again on its own: in a
-browser it waits for Try Again in Settings, and the apps' kernel page
-tries again when it next loads. Meanwhile SQL and the data views load
-DuckDB from jsDelivr each time. The
-kernel that ran the first SQL loads DuckDB from jsDelivr itself; kernels
-started after the files are kept use the browser's copy.
+browser has no room to keep them, the page doesn't try again until it
+loads again, when the first SQL cell tries again; in a browser, Try Again
+in Settings tries at once. Meanwhile SQL and the data views load DuckDB
+from jsDelivr each time. The kernel that ran the first SQL loads DuckDB
+from jsDelivr itself; kernels started after the files are kept use the
+browser's copy.
 
 In a browser, Settings > Offline SQL > Download DuckDB fetches them now,
 with progress, and offers Try Again if the download fails. The Mac and
