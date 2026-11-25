@@ -243,7 +243,7 @@ SQL offline. A visit that doesn't use DuckDB fetches nothing. A fetch that
 fails, such as one made offline, is tried again on the next use. When the
 browser has no room to keep them, it doesn't try again on its own: in a
 browser it waits for Try Again in Settings, and the apps' kernel page
-tries again when it next loads. Meanwhile SQL and the data views load
+tries again on the first SQL cell after it loads again. Meanwhile SQL and the data views load
 DuckDB from jsDelivr each time. The
 kernel that ran the first SQL loads DuckDB from jsDelivr itself; kernels
 started after the files are kept use the browser's copy.
