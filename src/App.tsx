@@ -78,7 +78,7 @@ import { agentCall } from './lib/native-agent';
 import { sendTestReport } from './lib/crash-reports';
 import { useSignals } from './lib/useSignal';
 import { fileActions, within } from './lib/file-actions';
-import { moveChosenViews } from './lib/journal';
+import { moveChosenViews, movePositions } from './lib/journal';
 import { useFileSearch } from './lib/search';
 import {
   clearRecents,
@@ -245,6 +245,7 @@ export function App() {
     const b = backendRef.current;
     if (b) {
       moveChosenViews(recentsKey(b.config), from, to);
+      movePositions(recentsKey(b.config), from, to);
       // The recent consoles in it follow, as the one shown does (#735).
       moveConsoleFolders(recentsKey(b.config), from, to);
     }
@@ -267,7 +268,10 @@ export function App() {
   const followRename = useCallback(
     (from: string, to: string) => {
       const b = backendRef.current;
-      if (b) moveChosenViews(recentsKey(b.config), from, to);
+      if (b) {
+        moveChosenViews(recentsKey(b.config), from, to);
+        movePositions(recentsKey(b.config), from, to);
+      }
       setOpenPath(p => (p === from ? to : p));
       followRun(from, to);
     },

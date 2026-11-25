@@ -1,11 +1,12 @@
 import '../test/notebook-env';
-import { act, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Widget } from '@lumino/widgets';
 import { ServerConnection } from '@jupyterlab/services';
 import { YNotebook } from '@jupyter/ydoc';
 import * as Y from 'yjs';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { forgetPositions, movePositions, readPosition, savePosition } from '../lib/journal';
 import type { NotebookRoom } from '../lib/room';
 import { JournalView } from './JournalView';
 
@@ -49,10 +50,22 @@ function journal() {
   return nb;
 }
 
+/** Mark a cell as running, so the journal is live work. */
+function running(nb: YNotebook, index = 1) {
+  (nb.cells[index] as unknown as { executionState: string }).executionState = 'running';
+}
+
 function show(
   nb: YNotebook,
   room?: Partial<NotebookRoom>,
-  more: { rendermime?: unknown; trusted?: string[]; path?: string; roomSettings?: unknown } = {},
+  more: {
+    rendermime?: unknown;
+    trusted?: string[];
+    path?: string;
+    roomSettings?: unknown;
+    positionKey?: { server: string; path: string };
+    startAt?: number;
+  } = {},
 ) {
   const onOpenAsNotebook = vi.fn();
   const view = render(
@@ -63,6 +76,8 @@ function show(
       room={room as NotebookRoom}
       path={more.path}
       roomSettings={more.roomSettings as never}
+      positionKey={more.positionKey}
+      startAt={more.startAt}
       name="Trend.ipynb"
       onOpenAsNotebook={onOpenAsNotebook}
     />,
@@ -308,6 +323,8 @@ describe('JournalView', () => {
 
   it('stops following when scrolled up and offers Follow with the count', async () => {
     const nb = journal();
+    // A cell running: the journal is live work, so it opens following.
+    running(nb);
     show(nb);
     const scroller = document.querySelector('.journal-scroll') as HTMLElement;
     // jsdom has no layout: say the view is long and scrolled to the top.
@@ -317,12 +334,12 @@ describe('JournalView', () => {
     act(() => {
       scroller.dispatchEvent(new Event('scroll'));
     });
-    expect(screen.queryByRole('button', { name: /new cells? · Follow/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Follow live' })).toBeInTheDocument();
     act(() => {
       nb.addCell({ cell_type: 'markdown', source: 'one', metadata: agent('note') });
       nb.addCell({ cell_type: 'markdown', source: 'two', metadata: agent('note') });
     });
-    const follow = await screen.findByRole('button', { name: '2 new cells · Follow' });
+    const follow = await screen.findByRole('button', { name: '2 new · Follow live' });
     await userEvent.click(follow);
     expect(scroller.scrollTop).toBe(2000);
     expect(screen.queryByRole('button', { name: /Follow/ })).not.toBeInTheDocument();
@@ -330,6 +347,7 @@ describe('JournalView', () => {
 
   it('keeps the end in view while following', async () => {
     const nb = journal();
+    running(nb);
     show(nb);
     const scroller = document.querySelector('.journal-scroll') as HTMLElement;
     Object.defineProperty(scroller, 'scrollHeight', { value: 3000, configurable: true });
@@ -517,5 +535,686 @@ describe('JournalView', () => {
       show(journal());
       expect(screen.queryByText(/is in the room\.|No agent is in the room/)).toBeNull();
     });
+  });
+});
+
+/** A notebook of `n` cells with ids c0, c1, ... each 100 px tall in the stubbed layout. */
+function cellsOf(n: number) {
+  const nb = new YNotebook();
+  for (let i = 0; i < n; i++) {
+    // Cell 1 is code, which can be the one running.
+    nb.addCell({
+      id: `c${i}`,
+      cell_type: i === 1 ? 'code' : 'markdown',
+      source: `cell ${i}`,
+      metadata: agent(i === 1 ? 'executed' : 'note'),
+    });
+  }
+  return nb;
+}
+
+const VIEW = 400;
+const CELL = 100;
+/** Content that renders above every cell but the first, as an output does: it moves them down. */
+let layoutShift = 0;
+
+/**
+ * jsdom has no layout: the scroll area is 400 px tall, and cell i is 100 px
+ * tall, laid out from the scroll area's scrollTop (as the browser would).
+ */
+function stubLayout(cells: () => number) {
+  const scroller = () => document.querySelector('.journal-scroll') as HTMLElement | null;
+  const box = (top: number, bottom: number) =>
+    ({ top, bottom, left: 0, right: 100, width: 100, height: bottom - top }) as DOMRect;
+  vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+    if (this.classList.contains('journal-scroll')) return box(0, VIEW);
+    const i = this.getAttribute('data-cell-index');
+    if (i === null) return box(0, 0);
+    const top = Number(i) * CELL + (Number(i) > 0 ? layoutShift : 0) - (scroller()?.scrollTop ?? 0);
+    return box(top, top + CELL);
+  });
+  vi.spyOn(Element.prototype, 'scrollHeight', 'get').mockImplementation(function (this: Element) {
+    return this.classList.contains('journal-scroll') ? cells() * CELL : 0;
+  });
+  vi.spyOn(Element.prototype, 'clientHeight', 'get').mockImplementation(function (this: Element) {
+    return this.classList.contains('journal-scroll') ? VIEW : 0;
+  });
+}
+
+const scrollArea = () => document.querySelector('.journal-scroll') as HTMLElement;
+
+/** The reader scrolls: the position is set, and the scroll event follows. */
+function scrollTo(top: number) {
+  // A real reader: input first, then the scroll it makes.
+  fireEvent.wheel(scrollArea());
+  act(() => {
+    scrollArea().scrollTop = top;
+    scrollArea().dispatchEvent(new Event('scroll'));
+  });
+}
+
+const KEY = { server: 'http://s', path: 'Trend.ipynb' };
+
+describe('where the journal opens (#816)', () => {
+  beforeEach(() => {
+    forgetPositions();
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    forgetPositions();
+  });
+
+  it('opens an inactive journal at its start, with no Follow button', () => {
+    stubLayout(() => 12);
+    show(cellsOf(12), undefined, { positionKey: KEY });
+    expect(scrollArea().scrollTop).toBe(0);
+    expect(screen.queryByRole('button', { name: /Follow/ })).not.toBeInTheDocument();
+  });
+
+  it('restores the position the reader left, and counts the cells added since', () => {
+    stubLayout(() => 12);
+    savePosition(KEY.server, KEY.path, { cell: 'c3', offset: 30, cells: 10 });
+    show(cellsOf(12), undefined, { positionKey: KEY });
+    expect(scrollArea().scrollTop).toBe(3 * CELL + 30);
+    expect(screen.getByRole('button', { name: '2 new · Follow live' })).toBeInTheDocument();
+  });
+
+  it('opens at the start when the saved cell is gone', () => {
+    stubLayout(() => 12);
+    savePosition(KEY.server, KEY.path, { cell: 'deleted', offset: 30, cells: 4 });
+    show(cellsOf(12), undefined, { positionKey: KEY });
+    expect(scrollArea().scrollTop).toBe(0);
+  });
+
+  it('opens at the cell the reader switched from, ahead of the saved position', () => {
+    stubLayout(() => 12);
+    savePosition(KEY.server, KEY.path, { cell: 'c1', offset: 0, cells: 12 });
+    show(cellsOf(12), undefined, { positionKey: KEY, startAt: 4 });
+    expect(scrollArea().scrollTop).toBe(4 * CELL);
+  });
+
+  it('follows from the cell switched from when that is the end', () => {
+    stubLayout(() => 12);
+    // The last cell: scrolling it to the top is as far as the area goes.
+    show(cellsOf(12), undefined, { positionKey: KEY, startAt: 11 });
+    expect(scrollArea().scrollTop).toBe(12 * CELL);
+    expect(screen.queryByRole('button', { name: /Follow/ })).not.toBeInTheDocument();
+  });
+
+  it('follows at the end when a cell is running', () => {
+    stubLayout(() => 12);
+    const nb = cellsOf(12);
+    running(nb, 1);
+    show(nb, undefined, { positionKey: KEY });
+    expect(scrollArea().scrollTop).toBe(12 * CELL);
+  });
+
+  it('follows at the end when an agent is in the room at the start', async () => {
+    stubLayout(() => 12);
+    show(cellsOf(12), undefined, { path: 'Trend.ipynb', roomSettings: roomsWith(['claude-code']) });
+    await vi.waitFor(() => expect(scrollArea().scrollTop).toBe(12 * CELL));
+  });
+
+  describe('when the rooms list arrives after the journal opened', () => {
+    it('follows if the reader has not scrolled', async () => {
+      stubLayout(() => 12);
+      const gate = deferred<void>();
+      show(cellsOf(12), undefined, {
+        path: 'Trend.ipynb',
+        roomSettings: roomsWith(['claude-code'], gate.promise),
+      });
+      expect(scrollArea().scrollTop).toBe(0);
+      gate.resolve();
+      await vi.waitFor(() => expect(scrollArea().scrollTop).toBe(12 * CELL));
+    });
+
+    it('keeps the reader’s place if they scrolled first', async () => {
+      stubLayout(() => 12);
+      const gate = deferred<void>();
+      show(cellsOf(12), undefined, {
+        path: 'Trend.ipynb',
+        roomSettings: roomsWith(['claude-code'], gate.promise),
+      });
+      scrollTo(120);
+      gate.resolve();
+      expect(await screen.findByText('claude-code is in the room.')).toBeInTheDocument();
+      expect(scrollArea().scrollTop).toBe(120);
+      // An active journal offers to follow, with no new cells to count.
+      expect(screen.getByRole('button', { name: 'Follow live' })).toBeInTheDocument();
+    });
+  });
+
+  it('offers Follow live while paused in an active journal, and counts new cells', async () => {
+    stubLayout(() => 12);
+    const nb = cellsOf(12);
+    running(nb, 1);
+    show(nb, undefined, { positionKey: KEY });
+    scrollTo(100);
+    expect(screen.getByRole('button', { name: 'Follow live' })).toBeInTheDocument();
+    act(() => {
+      nb.addCell({ cell_type: 'markdown', source: 'x', metadata: agent('note') });
+      nb.addCell({ cell_type: 'markdown', source: 'y', metadata: agent('note') });
+    });
+    expect(await screen.findByRole('button', { name: '2 new · Follow live' })).toBeInTheDocument();
+  });
+
+  it('counts one new cell without a plural', async () => {
+    stubLayout(() => 12);
+    const nb = cellsOf(12);
+    show(nb, undefined, { positionKey: KEY });
+    act(() => {
+      nb.addCell({ cell_type: 'markdown', source: 'x', metadata: agent('note') });
+    });
+    expect(await screen.findByRole('button', { name: '1 new · Follow live' })).toBeInTheDocument();
+  });
+
+  it('keeps the reader’s position as they scroll, and when the journal goes away', async () => {
+    stubLayout(() => 12);
+    const view = show(cellsOf(12), undefined, { positionKey: KEY });
+    scrollTo(250);
+    await vi.waitFor(() => expect(readPosition(KEY.server, KEY.path)).toBeDefined(), {
+      timeout: 2000,
+    });
+    expect(readPosition(KEY.server, KEY.path)).toEqual({ cell: 'c2', offset: 50, cells: 12 });
+    act(() => {
+      scrollArea().scrollTop = 410;
+    });
+    view.unmount();
+    expect(readPosition(KEY.server, KEY.path)).toEqual({ cell: 'c4', offset: 10, cells: 12 });
+  });
+
+  it('does not keep a position without a key', async () => {
+    stubLayout(() => 12);
+    const view = show(cellsOf(12));
+    scrollTo(250);
+    view.unmount();
+    expect(readPosition(KEY.server, KEY.path)).toBeUndefined();
+  });
+});
+
+/** A rooms answer with `agents` in Trend.ipynb, after `gate` if given. */
+function roomsWith(agents: string[], gate?: Promise<void>) {
+  return ServerConnection.makeSettings({
+    baseUrl: 'http://127.0.0.1:1/',
+    fetch: (async () => {
+      await gate;
+      return new Response(
+        JSON.stringify({
+          rooms: [
+            {
+              path: 'Trend.ipynb',
+              clients: agents.map(name => ({ name, kind: 'agent' })),
+            },
+          ],
+        }),
+      );
+    }) as unknown as typeof fetch,
+  });
+}
+
+function deferred<T>() {
+  let resolve!: (v: T) => void;
+  const promise = new Promise<T>(r => (resolve = r));
+  return { promise, resolve };
+}
+
+describe('the composer on a phone (#816)', () => {
+  beforeEach(() => {
+    vi.spyOn(window, 'matchMedia').mockImplementation(
+      q =>
+        ({
+          media: q,
+          matches: true,
+          addEventListener() {},
+          removeEventListener() {},
+          addListener() {},
+          removeListener() {},
+        }) as unknown as MediaQueryList,
+    );
+  });
+  afterEach(() => vi.restoreAllMocks());
+
+  it('is two buttons until one is used', () => {
+    show(journal());
+    expect(screen.getByRole('button', { name: 'Add note' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Ask the agent' })).toBeEnabled();
+    expect(screen.queryByRole('textbox', { name: 'Write to the journal' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument();
+  });
+
+  it('opens a note: the field with focus, its placeholder, Add note and Cancel', async () => {
+    const nb = journal();
+    show(nb);
+    await userEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    const field = screen.getByRole('textbox', { name: 'Write to the journal' });
+    expect(field).toHaveFocus();
+    expect(field).toHaveAttribute('placeholder', 'A note for the journal');
+    expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument();
+    await userEvent.type(field, 'Flat after 2019');
+    await userEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    expect(nb.cells.slice(3).map(c => c.toJSON().source)).toEqual(['Flat after 2019']);
+    // Back to the two buttons, with the text sent.
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    expect(screen.getByRole('textbox', { name: 'Write to the journal' })).toHaveValue('');
+  });
+
+  it('opens a request, and sends it to the agent', async () => {
+    const nb = journal();
+    show(nb);
+    await userEvent.click(screen.getByRole('button', { name: 'Ask the agent' }));
+    const field = screen.getByRole('textbox', { name: 'Write to the journal' });
+    expect(field).toHaveAttribute('placeholder', 'A request for the agent');
+    expect(screen.queryByRole('button', { name: 'Add note' })).not.toBeInTheDocument();
+    await userEvent.type(field, 'does 2019 matter?');
+    await userEvent.click(screen.getByRole('button', { name: 'Ask the agent' }));
+    expect(nb.cells.slice(3).map(c => c.toJSON().source)).toEqual(['@agent does 2019 matter?']);
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+  });
+
+  it('keeps the draft when cancelled', async () => {
+    show(journal());
+    await userEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    await userEvent.type(screen.getByRole('textbox', { name: 'Write to the journal' }), 'half a');
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    expect(screen.getByRole('textbox', { name: 'Write to the journal' })).toHaveValue('half a');
+  });
+
+  it('collapses on Escape, keeping the draft', async () => {
+    const nb = journal();
+    show(nb);
+    await userEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    await userEvent.type(
+      screen.getByRole('textbox', { name: 'Write to the journal' }),
+      'draft{Escape}',
+    );
+    expect(screen.queryByRole('textbox')).not.toBeInTheDocument();
+    expect(nb.cells).toHaveLength(3);
+    await userEvent.click(screen.getByRole('button', { name: 'Add note' }));
+    expect(screen.getByRole('textbox', { name: 'Write to the journal' })).toHaveValue('draft');
+  });
+
+  it('keeps the hint above the two buttons', async () => {
+    show(journal(), undefined, { path: 'Trend.ipynb', roomSettings: roomsWith(['claude-code']) });
+    expect(await screen.findByText('claude-code is in the room.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Add note' })).toBeInTheDocument();
+  });
+
+  it('disables both buttons while reconnecting', () => {
+    let notify: (live: boolean) => void = () => {};
+    show(journal(), {
+      live: true,
+      watchLive: (cb: (live: boolean) => void) => {
+        notify = cb;
+        return () => {};
+      },
+    });
+    act(() => notify(false));
+    expect(screen.getByRole('button', { name: 'Add note' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Ask the agent' })).toBeDisabled();
+  });
+});
+
+describe('what happens to a request (#816)', () => {
+  const ask = async (nb: YNotebook, room: Partial<NotebookRoom>) => {
+    show(nb, { live: true, watchLive: () => () => {}, ...room });
+    const before = nb.cells.length;
+    await userEvent.type(
+      screen.getByRole('textbox', { name: 'Write to the journal' }),
+      'does 2019 matter?',
+    );
+    await userEvent.click(screen.getByRole('button', { name: 'Ask the agent' }));
+    await vi.waitFor(() => expect(screen.getAllByRole('article')).toHaveLength(before + 1));
+    return screen.getAllByRole('article')[before]!;
+  };
+
+  it('says saving, then saved', async () => {
+    const save = deferred<string>();
+    const article = await ask(journal(), { save: () => save.promise } as never);
+    expect(within(article).getByText('request · saving…')).toBeInTheDocument();
+    await act(async () => save.resolve('success'));
+    expect(within(article).getByText('request · saved')).toBeInTheDocument();
+  });
+
+  it('counts a save the server skipped as saved', async () => {
+    const article = await ask(journal(), { save: async () => 'skipped' } as never);
+    expect(await within(article).findByText('request · saved')).toBeInTheDocument();
+  });
+
+  it('says not saved when the server says the save failed', async () => {
+    const save = deferred<string>();
+    const article = await ask(journal(), { save: () => save.promise } as never);
+    expect(within(article).getByText('request · saving…')).toBeInTheDocument();
+    await act(async () => save.resolve('failed'));
+    expect(within(article).getByText('request · not saved')).toBeInTheDocument();
+  });
+
+  it('says not saved when the save is rejected', async () => {
+    const article = await ask(journal(), {
+      save: async () => {
+        throw new Error('no connection');
+      },
+    } as never);
+    expect(await within(article).findByText('request · not saved')).toBeInTheDocument();
+  });
+
+  it('saves nothing for a note, and shows a plain request without a room', async () => {
+    const save = vi.fn(async () => 'success');
+    show(journal(), { live: true, watchLive: () => () => {}, save } as never);
+    await userEvent.type(screen.getByRole('textbox', { name: 'Write to the journal' }), 'a note');
+    await userEvent.click(screen.getByRole('button', { name: 'Add Note' }));
+    await screen.findAllByRole('article');
+    expect(save).not.toHaveBeenCalled();
+  });
+
+  it('shows just request on a request that was open when the journal opened', async () => {
+    const nb = cellsOf(1);
+    nb.addCell({ id: 'q', cell_type: 'markdown', source: '@agent why?', metadata: {} });
+    show(nb);
+    const articles = await screen.findAllByRole('article');
+    expect(within(articles[1]!).getByText('request')).toBeInTheDocument();
+  });
+
+  describe('an answered request', () => {
+    afterEach(() => vi.restoreAllMocks());
+    const answered = (answer: string) => {
+      const nb = cellsOf(12);
+      nb.insertCell(2, {
+        id: 'q',
+        cell_type: 'markdown',
+        source: '@agent why?',
+        metadata: { ganymede: { request: { done: 't', answer, id: 'q' } } },
+      });
+      nb.insertCell(3, {
+        id: 'r1',
+        cell_type: 'markdown',
+        source: 'because',
+        metadata: agent('note'),
+      });
+      return nb;
+    };
+
+    it('goes to the reply, and stops following', async () => {
+      stubLayout(() => 14);
+      const nb = answered('r1');
+      running(nb, 1);
+      show(nb);
+      // Opened following, at the end.
+      expect(scrollArea().scrollTop).toBe(14 * CELL);
+      const chip = await screen.findByRole('button', { name: 'request · answered · Go to reply' });
+      expect(chip).toHaveTextContent('request · answered · Go to reply');
+      await userEvent.click(chip);
+      expect(scrollArea().scrollTop).toBe(3 * CELL);
+      // Scrolled away from the end, the journal is paused: it offers to follow.
+      expect(screen.getByRole('button', { name: 'Follow live' })).toBeInTheDocument();
+    });
+
+    it('is a plain chip when the reply is not in the notebook', async () => {
+      show(answered('gone'));
+      const articles = await screen.findAllByRole('article');
+      expect(within(articles[2]!).getByText('request · answered')).toBeInTheDocument();
+      expect(
+        screen.queryByRole('button', { name: 'request · answered · Go to reply' }),
+      ).not.toBeInTheDocument();
+    });
+  });
+});
+
+describe('opening, input and position keeping (#816, review)', () => {
+  beforeEach(() => {
+    forgetPositions();
+    layoutShift = 0;
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+    layoutShift = 0;
+    forgetPositions();
+  });
+  const saved = { cell: 'c3', offset: 30, cells: 10 };
+
+  it('follows live work ahead of the saved position', () => {
+    stubLayout(() => 12);
+    savePosition(KEY.server, KEY.path, saved);
+    const nb = cellsOf(12);
+    running(nb, 1);
+    show(nb, undefined, { positionKey: KEY });
+    expect(scrollArea().scrollTop).toBe(12 * CELL);
+  });
+
+  it('follows when an agent turns up after a saved place was restored, if untouched', async () => {
+    stubLayout(() => 12);
+    savePosition(KEY.server, KEY.path, saved);
+    const gate = deferred<void>();
+    show(cellsOf(12), undefined, {
+      positionKey: KEY,
+      path: 'Trend.ipynb',
+      roomSettings: roomsWith(['claude-code'], gate.promise),
+    });
+    expect(scrollArea().scrollTop).toBe(3 * CELL + 30);
+    gate.resolve();
+    await vi.waitFor(() => expect(scrollArea().scrollTop).toBe(12 * CELL));
+  });
+
+  it('keeps the place of a switch from the notebook when an agent turns up', async () => {
+    stubLayout(() => 12);
+    const gate = deferred<void>();
+    show(cellsOf(12), undefined, {
+      positionKey: KEY,
+      startAt: 4,
+      path: 'Trend.ipynb',
+      roomSettings: roomsWith(['claude-code'], gate.promise),
+    });
+    gate.resolve();
+    expect(await screen.findByText('claude-code is in the room.')).toBeInTheDocument();
+    expect(scrollArea().scrollTop).toBe(4 * CELL);
+  });
+
+  it.each([
+    ['a wheel', () => fireEvent.wheel(scrollArea())],
+    ['a touch', () => fireEvent.touchStart(scrollArea())],
+    ['a pointer press', () => fireEvent.pointerDown(scrollArea())],
+    ['a key', () => fireEvent.keyDown(scrollArea(), { key: 'PageDown' })],
+  ])('does not jump to the end for an agent after %s', async (_name, input) => {
+    stubLayout(() => 12);
+    const gate = deferred<void>();
+    show(cellsOf(12), undefined, {
+      positionKey: KEY,
+      path: 'Trend.ipynb',
+      roomSettings: roomsWith(['claude-code'], gate.promise),
+    });
+    input();
+    gate.resolve();
+    expect(await screen.findByText('claude-code is in the room.')).toBeInTheDocument();
+    expect(scrollArea().scrollTop).toBe(0);
+    expect(screen.getByRole('button', { name: 'Follow live' })).toBeInTheDocument();
+  });
+
+  it('holds the opening cell until the reader’s own input, not a scroll the browser made', () => {
+    stubLayout(() => 12);
+    savePosition(KEY.server, KEY.path, saved);
+    show(cellsOf(12), undefined, { positionKey: KEY });
+    // The browser moves the scroll (anchoring) and says so: still the opening's.
+    act(() => {
+      scrollArea().scrollTop = 500;
+      scrollArea().dispatchEvent(new Event('scroll'));
+    });
+    expect(scrollArea()).toHaveAttribute('data-anchored');
+    fireEvent.wheel(scrollArea());
+    expect(scrollArea()).not.toHaveAttribute('data-anchored');
+  });
+
+  it('puts the opening cell back when content above it changes size, until the reader acts', () => {
+    stubLayout(() => 12);
+    const observed: (() => void)[] = [];
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(cb: () => void) {
+          observed.push(cb);
+        }
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    savePosition(KEY.server, KEY.path, saved);
+    show(cellsOf(12), undefined, { positionKey: KEY });
+    expect(scrollArea().scrollTop).toBe(3 * CELL + 30);
+    layoutShift = 50;
+    // A scroll the browser reports changes nothing about what is held.
+    act(() => {
+      scrollArea().dispatchEvent(new Event('scroll'));
+      observed.forEach(cb => cb());
+    });
+    expect(scrollArea().scrollTop).toBe(3 * CELL + 30 + 50);
+    fireEvent.wheel(scrollArea());
+    layoutShift = 90;
+    act(() => observed.forEach(cb => cb()));
+    expect(scrollArea().scrollTop).toBe(3 * CELL + 30 + 50);
+  });
+
+  it('keeps the position when the page is hidden, without unmounting', () => {
+    stubLayout(() => 12);
+    show(cellsOf(12), undefined, { positionKey: KEY });
+    scrollArea().scrollTop = 250;
+    expect(readPosition(KEY.server, KEY.path)).toBeUndefined();
+    window.dispatchEvent(new Event('pagehide'));
+    expect(readPosition(KEY.server, KEY.path)).toEqual({ cell: 'c2', offset: 50, cells: 12 });
+  });
+
+  it('keeps the held cell by id when a cell is inserted above it', async () => {
+    stubLayout(() => 13);
+    const observed: (() => void)[] = [];
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(cb: () => void) {
+          observed.push(cb);
+        }
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    savePosition(KEY.server, KEY.path, saved);
+    const nb = cellsOf(12);
+    show(nb, undefined, { positionKey: KEY });
+    expect(scrollArea().scrollTop).toBe(3 * CELL + 30);
+    // Someone adds a cell at the top: the held cell, c3, is now the fifth.
+    act(() => {
+      nb.insertCell(0, { cell_type: 'markdown', source: 'new', metadata: agent('note') });
+    });
+    await vi.waitFor(() =>
+      expect(document.querySelector('.journal-cell')?.getAttribute('data-cell-id')).not.toBe('c0'),
+    );
+    act(() => observed.forEach(cb => cb()));
+    expect(scrollArea().scrollTop).toBe(4 * CELL + 30);
+  });
+
+  it('keeps positions again on a path that was renamed away from, once a journal opens there', async () => {
+    stubLayout(() => 12);
+    // A → B earlier in the page's life, then a journal opens at A again.
+    movePositions(KEY.server, KEY.path, 'B.ipynb');
+    const view = show(cellsOf(12), undefined, { positionKey: KEY });
+    scrollTo(250);
+    await vi.waitFor(() => expect(readPosition(KEY.server, KEY.path)).toBeDefined(), {
+      timeout: 2000,
+    });
+    act(() => {
+      scrollArea().scrollTop = 410;
+    });
+    view.unmount();
+    expect(readPosition(KEY.server, KEY.path)).toEqual({ cell: 'c4', offset: 10, cells: 12 });
+  });
+
+  it('writes nothing back under a path that was renamed while the journal was open', async () => {
+    stubLayout(() => 12);
+    const view = show(cellsOf(12), undefined, { positionKey: KEY });
+    scrollTo(250);
+    await vi.waitFor(() => expect(readPosition(KEY.server, KEY.path)).toBeDefined(), {
+      timeout: 2000,
+    });
+    movePositions(KEY.server, KEY.path, 'Moved.ipynb');
+    act(() => {
+      scrollArea().scrollTop = 410;
+    });
+    view.unmount();
+    expect(readPosition(KEY.server, KEY.path)).toBeUndefined();
+    expect(readPosition(KEY.server, 'Moved.ipynb')).toEqual({ cell: 'c2', offset: 50, cells: 12 });
+  });
+
+  it('writes nothing back for a file that was deleted while the journal was open', async () => {
+    stubLayout(() => 12);
+    const view = show(cellsOf(12), undefined, { positionKey: KEY });
+    scrollTo(250);
+    await vi.waitFor(() => expect(readPosition(KEY.server, KEY.path)).toBeDefined(), {
+      timeout: 2000,
+    });
+    movePositions(KEY.server, KEY.path, null);
+    view.unmount();
+    expect(readPosition(KEY.server, KEY.path)).toBeUndefined();
+  });
+
+  describe('what counts as live', () => {
+    it('is not a change to the notebook’s metadata, as a kernel starting makes', async () => {
+      stubLayout(() => 12);
+      const nb = new YNotebook();
+      nb.fromJSON({
+        nbformat: 4,
+        nbformat_minor: 5,
+        metadata: { kernelspec: { name: 'cdp-node', display_name: 'Node' } },
+        cells: cellsOf(12).cells.map(c => c.toJSON()),
+      } as never);
+      show(nb);
+      // The server writes it into the notebook's own metadata map.
+      const copy = new Y.Doc();
+      Y.applyUpdate(copy, Y.encodeStateAsUpdate(nb.ydoc));
+      (copy.getMap('meta').get('metadata') as Y.Map<unknown>).set('language_info', {
+        name: 'typescript',
+      });
+      Y.applyUpdate(nb.ydoc, Y.encodeStateAsUpdate(copy, Y.encodeStateVector(nb.ydoc)));
+      expect(await screen.findByText(/changed just now/)).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Follow/ })).not.toBeInTheDocument();
+    });
+
+    it('is a change by someone else to a cell’s source', async () => {
+      stubLayout(() => 12);
+      const nb = cellsOf(12);
+      show(nb);
+      changedElsewhere(nb, other => other.cells[2]!.setSource('edited elsewhere'));
+      expect(await screen.findByRole('button', { name: 'Follow live' })).toBeInTheDocument();
+    });
+
+    it('is a cell added by someone else', async () => {
+      stubLayout(() => 12);
+      const nb = cellsOf(12);
+      show(nb);
+      changedElsewhere(nb, other =>
+        other.addCell({ cell_type: 'markdown', source: 'x', metadata: {} }),
+      );
+      expect(
+        await screen.findByRole('button', { name: '1 new · Follow live' }),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it('pauses following when the reply is the last cell', async () => {
+    stubLayout(() => 14);
+    const nb = cellsOf(12);
+    nb.addCell({ id: 'q', cell_type: 'markdown', source: '@agent why?', metadata: {} });
+    nb.addCell({ id: 'r1', cell_type: 'markdown', source: 'because', metadata: agent('note') });
+    (nb.cells[12]!.setMetadata as (m: unknown) => void)({
+      ganymede: { request: { done: 't', answer: 'r1', id: 'q' } },
+    });
+    running(nb, 1);
+    show(nb);
+    expect(scrollArea().scrollTop).toBe(14 * CELL);
+    await userEvent.click(
+      await screen.findByRole('button', { name: 'request · answered · Go to reply' }),
+    );
+    expect(await screen.findByRole('button', { name: 'Follow live' })).toBeInTheDocument();
   });
 });

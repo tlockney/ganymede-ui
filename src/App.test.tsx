@@ -7,7 +7,14 @@ import { ServerConnection } from '@jupyterlab/services';
 import type { Backend, BackendConfig } from './lib/backends';
 import { entry, fakeBackend, fakeServices } from './test/fakes';
 import { debugKernel } from './test/debug-kernel';
-import { chooseView, chosenView, forgetChosenViews } from './lib/journal';
+import {
+  chooseView,
+  chosenView,
+  forgetChosenViews,
+  forgetPositions,
+  readPosition,
+  savePosition,
+} from './lib/journal';
 import { recentsKey } from './lib/recents';
 import { loadConsoles, saveConsole } from './lib/console-recents';
 import { handOff } from './lib/rename';
@@ -889,9 +896,14 @@ describe('App', () => {
     const sheet = await screen.findByRole('dialog', { name: /with Parameters/ });
     const move = { from: 'Io.ipynb', to: 'moons/Europa.ipynb' };
     chooseView(recentsKey(backend.config), 'Io.ipynb', false);
+    const place = { cell: 'c1', offset: 4, cells: 3 };
+    savePosition(recentsKey(backend.config), 'Io.ipynb', place);
     expect(await run('file-moved', JSON.stringify(move))).toBe(true);
     expect(chosenView(recentsKey(backend.config), 'moons/Europa.ipynb')).toBe(false);
+    expect(readPosition(recentsKey(backend.config), 'moons/Europa.ipynb')).toEqual(place);
+    expect(readPosition(recentsKey(backend.config), 'Io.ipynb')).toBeUndefined();
     forgetChosenViews();
+    forgetPositions();
     // The app sends the two as separate tasks: a render can land between.
     await act(() => new Promise(r => setTimeout(r, 100)));
     expect(await run('open', 'moons/Europa.ipynb')).toBe(true);
@@ -1832,7 +1844,12 @@ describe('App', () => {
     const server = recentsKey(backend.config);
     chooseView(server, 'work/Orbits.ipynb', false);
     chooseView('another server', 'work/Orbits.ipynb', true);
+    const place = { cell: 'c1', offset: 4, cells: 3 };
+    savePosition(server, 'work/Orbits.ipynb', place);
     act(() => mocks.onRenamed!('work/Orbits.ipynb', 'work/Kepler.ipynb'));
+    expect(readPosition(server, 'work/Kepler.ipynb')).toEqual(place);
+    expect(readPosition(server, 'work/Orbits.ipynb')).toBeUndefined();
+    forgetPositions();
     expect(chosenView(server, 'work/Orbits.ipynb')).toBeUndefined();
     expect(chosenView(server, 'work/Kepler.ipynb')).toBe(false);
     // Only this server's choices move.
