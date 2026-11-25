@@ -9,10 +9,15 @@ read starts: a cell whose saved, signed output differed from what it now
 shows had that trust promoted onto the new output.
 
 - `trustFromFile` now keeps each trusted cell's outputs from the file
-  and trusts a cell here only when its live outputs match them
+  and trusts a cell here only when the room's outputs for it match them
   (`sameOutputs` in `src/lib/trust.ts`). Everything else keeps the
   untrusted rendering path. The next read after the server saves the
   new output trusts it, as before.
+- It compares the room's outputs (`sharedModel.getOutputs()`), which
+  hold the outputs as they came, as the file does, not the output
+  area's `outputs.toJSON()`: that view merges consecutive stream chunks
+  and resolves `\r` and `\b`, so a signed cell with chunked stdout or a
+  progress bar would never match.
 - The comparison is on content, not a hash: the outputs in the same
   order, each as canonical JSON (keys sorted, keys set to `undefined`
   left out), multi-line strings joined as the contents API serves them
@@ -22,8 +27,10 @@ shows had that trust promoted onto the new output.
   order or the number of outputs) leaves the cell untrusted.
 - Tests: `src/lib/room.test.ts` covers a cell whose live output differs
   from the signed one (stays untrusted, renders untrusted, then trusted
-  once the file holds it), and live output equal to the file's but
-  stored with lines split and keys reordered (still trusted).
+  once the file holds it), live output equal to the file's but stored
+  with lines split and keys reordered (still trusted), and saved output
+  with two stdout chunks, or a `\r` progress bar, before HTML (still
+  trusted).
   `src/lib/trust.test.ts` covers `sameOutputs`' cases. Against the real
   server, `e2e/examples.spec.ts` ("signed on a server, so they stay
   trusted") reads the examples' saved outputs back through a room and

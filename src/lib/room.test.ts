@@ -4,6 +4,7 @@ import { NotebookModel } from '@jupyterlab/notebook';
 import { ServerConnection } from '@jupyterlab/services';
 import * as encoding from 'lib0/encoding';
 import type { ICodeCellModel } from '@jupyterlab/cells';
+import type * as nbformat from '@jupyterlab/nbformat';
 import * as Y from 'yjs';
 import {
   awarenessUser,
@@ -432,18 +433,14 @@ function answerSave(ws: FakeSocket, id: number, status: string) {
 
 describe('trust in a room', () => {
   /** A collaborative model on a shared notebook, as the pane builds it. */
-  function shared() {
+  function shared(
+    outputs: nbformat.IOutput[] = [
+      { output_type: 'display_data', data: { 'text/html': '<b>Io</b>' }, metadata: {} },
+    ],
+  ) {
     const model = new NotebookModel({ collaborationEnabled: true });
     model.sharedModel.insertCells(0, [
-      {
-        cell_type: 'code',
-        id: 'a',
-        source: 'show()',
-        metadata: {},
-        outputs: [
-          { output_type: 'display_data', data: { 'text/html': '<b>Io</b>' }, metadata: {} },
-        ],
-      },
+      { cell_type: 'code', id: 'a', source: 'show()', metadata: {}, outputs },
     ]);
     model.dirty = false;
     const ydoc = (model.sharedModel as unknown as { ydoc: Y.Doc }).ydoc;
@@ -538,10 +535,29 @@ describe('trust in a room', () => {
     expect(await trustFromFile(savedWith([]), 'Io.ipynb', model)).toBe(false);
     expect(cell.trusted).toBe(false);
     // Once the file signs the live output, the next read trusts it.
-    const live = cell.outputs.toJSON();
+    const live = cell.sharedModel.getOutputs();
     expect(await trustFromFile(savedWith(live), 'Io.ipynb', model)).toBe(true);
     expect(cell.trusted).toBe(true);
     expect(cell.outputs.get(0).trusted).toBe(true);
+  });
+
+  it.each([
+    [
+      'stdout in two chunks',
+      [
+        { output_type: 'stream', name: 'stdout', text: 'one\n' },
+        { output_type: 'stream', name: 'stdout', text: 'two\n' },
+      ],
+    ],
+    ['a progress bar', [{ output_type: 'stream', name: 'stdout', text: '10%\r50%\r100%\n' }]],
+  ])('trusts saved output with %s, which the room keeps as saved (#793)', async (_, streams) => {
+    // The room holds the outputs as the file does; the output area merges
+    // the chunks and resolves `\r`.
+    const outputs = [...streams, io] as nbformat.IOutput[];
+    const { model, cell } = shared(outputs);
+    expect(cell.outputs.toJSON()).not.toEqual(outputs);
+    expect(await trustFromFile(savedWith(outputs), 'Io.ipynb', model)).toBe(true);
+    expect(cell.trusted).toBe(true);
   });
 
   it('still trusts live output the file holds, as the file writes it (#793)', async () => {

@@ -275,26 +275,26 @@ as a deleted file does.
 Trust: the server doesn't put `trusted` marks in the room; it decides
 trust when it saves. So on open the pane reads the file through the
 contents API, as the server marks it, and trusts each code cell it marks
-trusted, by id, when the cell's outputs here are the ones the file holds
-(`trustFromFile`, compared by `sameOutputs` with lines joined and key
-order ignored): the file can be behind the room, and its trust is for
-its own outputs, not whatever the cell shows now. It sets that trust in this page only
-(`trustHere`): JupyterLab's own way writes into the shared document and
-would mark the notebook edited for everyone. Outputs another client
-writes into a cell this page has (an agent's run through the server, or
-a change on disk the server merged) take that cell's trust away here
-(`watchRemoteOutputs`); a cell another client inserts keeps its shared
-`metadata.trusted` mark, described below. While some outputs are untrusted, the pane reads
-the file again two seconds after the room's saves settle, since the
-server trusts outputs from its own runs, and drops a read that outputs
-changed during. The other way, a room does share trust:
-JupyterLab's cell model writes `metadata.trusted` into the shared cell
-when a cell is trusted (this page ran it, or Trust Notebook), and every
-client of the room reads it there. So a cell trusted in one window is
-trusted in the others, even one holding an unsigned file's outputs the
-server wouldn't trust. The server ignores the mark when it signs the
-file. A new notebook's room has no cells, so the pane adds an empty code
-cell, as `fromJSON` does for a file.
+trusted, by id, when the cell's outputs in the room are the ones the
+file holds (`trustFromFile`, compared by `sameOutputs` with lines joined
+and key order ignored): the file can be behind the room, and its trust
+is for its own outputs, not whatever the cell shows now. It sets that
+trust in this page only (`trustHere`): JupyterLab's own way writes into
+the shared document and would mark the notebook edited for everyone.
+Outputs another client writes into a cell this page has (an agent's run
+through the server, or a change on disk the server merged) take that
+cell's trust away here (`watchRemoteOutputs`); a cell another client
+inserts keeps its shared `metadata.trusted` mark, described below. While
+some outputs are untrusted, the pane reads the file again two seconds
+after the room's saves settle, since the server trusts outputs from its
+own runs, and drops a read that outputs changed during. The other way, a
+room does share trust: JupyterLab's cell model writes `metadata.trusted`
+into the shared cell when a cell is trusted (this page ran it, or Trust
+Notebook), and every client of the room reads it there. So a cell
+trusted in one window is trusted in the others, even one holding an
+unsigned file's outputs the server wouldn't trust. The server ignores
+the mark when it signs the file. A new notebook's room has no cells, so
+the pane adds an empty code cell, as `fromJSON` does for a file.
 
 Inside JupyterLab, the editor, renderers and commands come from plugins.
 `jupyterlab.ts` builds them once and shares them across notebooks: the

@@ -503,7 +503,9 @@ export async function trustFromFile(
     if (cell.type !== 'code' || cell.trusted) continue;
     const saved = trusted.get(cell.id);
     // The file can be behind the room: trust only the outputs it signed.
-    const outputs = (cell as ICodeCellModel).outputs.toJSON();
+    // Compare the room's outputs as saved, not the output area's view,
+    // which merges stream chunks and resolves `\r` and `\b`.
+    const outputs = (cell as ICodeCellModel).sharedModel.getOutputs();
     if (saved && sameOutputs(outputs, saved)) {
       changed = trustHere(cell as ICodeCellModel, true) || changed;
     }
