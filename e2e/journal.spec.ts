@@ -691,7 +691,8 @@ test('keeps the cell in view going to the notebook and back (#816)', async ({ pa
   // Under the toolbar, not further down the page.
   await expect.poll(async () => Math.abs(await near())).toBeLessThan(150);
 
-  await page.getByRole('button', { name: 'View as Journal' }).click();
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'View as Journal' }).click();
   await expect(journal).toBeVisible();
   await expect.poll(async () => Math.abs(await topOf(page, SECTION_4))).toBeLessThan(4);
   await expect(journal.getByRole('heading', { name: '4. Workdays and weekends' })).toBeInViewport();
