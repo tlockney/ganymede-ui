@@ -11,6 +11,7 @@ import { type Backend, trustNotebook } from '../lib/backends';
 import { attachEditing, createCommands, createNotebook, createRendermime } from '../lib/jupyterlab';
 import { attachCellControls } from '../lib/cell-controls';
 import { attachCodeCollapse } from '../lib/code-collapse';
+import { attachMarkdownRail } from '../lib/markdown-rail';
 import { attachOutputLabels } from '../lib/output-labels';
 import { attachTypeErrors } from '../lib/type-errors';
 import { attachLanguageFeatures, type LanguageFeatures } from '../lib/language-editor';
@@ -716,6 +717,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       });
       // A kernel starting or going away changes what the outputs are: saved, or live.
       session.kernelChanged.connect(outputLabels.refresh);
+      const markdownRail = attachMarkdownRail(notebook);
       const beforeSave = () => notebookWidgets.saveState(model);
       const saver: Saver = room
         ? new RoomSaver({ room, path, model, beforeSave })
@@ -763,6 +765,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
           language,
           runStatus,
           outputLabels,
+          markdownRail,
           {
             dispose: () => session.kernelChanged.disconnect(outputLabels.refresh),
             isDisposed: false,

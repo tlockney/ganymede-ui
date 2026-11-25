@@ -18,6 +18,13 @@ the two kinds of attention a cell can have.
   selected cell without editor focus has no ring, so selection and
   focus look different; `e2e/selection-focus.spec.ts` proves each state
   by its computed shadow, in both directions.
+- **Long Markdown cells.** A Markdown cell taller than twelve of its own
+  lines keeps a short marker at the rail's top instead of the bar down
+  all of it, which read as a selection of everything
+  (`src/lib/markdown-rail.ts` watches each Markdown cell with a
+  ResizeObserver and sets `gn-mod-tall`; jupyter.css caps the active
+  cell's `::before` at 28px). A shorter cell keeps the rail, and a code
+  cell keeps it always. `e2e/markdown-rail.spec.ts` proves both by the
+  marker's computed height.
 
-Not done: the short marker for a long Markdown cell, and wide charts and
-tables past the prose column.
+Not done: wide charts and tables past the prose column.

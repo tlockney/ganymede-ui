@@ -170,6 +170,15 @@
   background: var(--text-3);
 }
 
+/* A Markdown cell taller than about twelve lines of prose keeps only a
+ * short marker at the rail's top (#814, src/lib/markdown-rail.ts): a
+ * full-height bar down screens of prose read as a selection of all of
+ * it. A shorter cell keeps the rail, and a code cell keeps it always. */
+.notebook-page .jp-Cell.gn-mod-tall.jp-mod-active::before {
+  bottom: auto;
+  height: 28px;
+}
+
 /* Markdown reads like a document. */
 .notebook-page .jp-MarkdownOutput {
   padding: 2px 8px;
