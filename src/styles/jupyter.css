@@ -402,6 +402,10 @@
 
 .touch-ui .notebook-page .gn-cell-meta {
   display: contents;
+  /* Metadata text, like the status line and the prompts: --meta-color
+   * reads at 4.5:1 or more in both themes, on the page and on a
+   * selected cell's --accent-soft (#814, src/styles/contrast.test.ts). */
+  color: var(--meta-color);
 }
 
 /* The run state is text in the cell, so a screen reader finds it on a wide
@@ -438,7 +442,6 @@
     min-height: 36px;
     /* Clear of the code toggle, which starts the cell's first row. */
     padding-left: 32px;
-    color: var(--text-2);
     font: 12px var(--font-ui);
     font-variant-numeric: tabular-nums;
   }

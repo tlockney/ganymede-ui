@@ -302,3 +302,43 @@ describe('text contrast (#799)', () => {
     expect(contrast(white, color('#ff9f0a'))).toBeLessThan(AA);
   });
 });
+
+describe('secondary metadata text (#814)', () => {
+  // The status line in the toolbar (Toolbar.tsx) and a cell's meta line
+  // (cell-controls.ts): --meta-color, as strong as the prompts (#799). The
+  // --text-2 they used before fails here in light: 4.36:1 on a selected
+  // cell's --accent-soft and 4.47:1 on the status line's hover fill.
+  const status = '.status-line';
+  const meta = '.touch-ui .notebook-page .gn-cell-meta';
+
+  for (const theme of themes) {
+    it(`the status line reads at ${AA}:1 in ${theme}, still and on hover`, () => {
+      const vars = variables(theme);
+      const page = color(resolve('var(--window-bg)', vars));
+      const bar = over(color(resolve('var(--toolbar-bg)', vars)), page);
+      const text = color(resolve(decl(app, status, 'color', theme)!, vars));
+      const ratio = contrast(over(text, bar), bar);
+      expect(ratio, ratio.toFixed(2)).toBeGreaterThanOrEqual(AA);
+      // The toolbar is translucent, and the line's hover fill sits on it.
+      const hover = over(
+        color(resolve(decl(app, '.status-line:hover', 'background', theme)!, vars)),
+        bar,
+      );
+      const onHover = contrast(over(text, hover), hover);
+      expect(onHover, onHover.toFixed(2)).toBeGreaterThanOrEqual(AA);
+    });
+
+    it(`the cell meta line reads at ${AA}:1 in ${theme}, on the page and on a selected cell`, () => {
+      const vars = variables(theme);
+      const page = color(resolve('var(--window-bg)', vars));
+      // The line shows on the active cell, which a multiselect fills as
+      // any other selected cell.
+      const selected = over(color(resolve('var(--jp-notebook-multiselected-color)', vars)), page);
+      const text = color(resolve(decl(jupyter, meta, 'color', theme)!, vars));
+      for (const bg of [page, selected]) {
+        const ratio = contrast(over(text, bg), bg);
+        expect(ratio, ratio.toFixed(2)).toBeGreaterThanOrEqual(AA);
+      }
+    });
+  }
+});
