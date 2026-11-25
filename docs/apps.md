@@ -1301,7 +1301,7 @@ export replaces nothing, the sheet refuses its page the same way.
 > **Unreleased.** Available only from a build of `main` (HEAD), not in
 > the latest release.
 
-**Run with Parameters…** (Cell menu on the Mac, the Run Cell or ⋯ menu on the iPad
+**Run with Parameters…** (Cell menu on the Mac, the Run Cell menu on the iPad
 and iPhone, the Command Palette and the toolbar in the browser) runs the notebook as a program, the way `ganymede execute -p
 --results` does ([Programs](https://ganymede-server.com/docs/programs)):
 top to bottom in a new kernel on the server, with the parameters you
