@@ -7,8 +7,10 @@ import { DEVICE_LABEL, isPageSpec, offersDevice, pickerLabel } from '../lib/kern
 import { type Place, shortStatusText, statusText } from '../lib/header-status';
 import {
   ChevronDownIcon,
+  JournalIcon,
   MoreIcon,
   LockIcon,
+  NotebookIcon,
   PlayIcon,
   PublishIcon,
   ShieldIcon,
@@ -244,12 +246,48 @@ export function Toolbar({
           <SidebarIcon />
         </button>
         <div className="title-block">
-          <NotebookTitle
-            // A fresh field for each notebook.
-            key={c?.path}
-            name={c ? c.name.replace(/\.ipynb$/, '') : 'Ganymede'}
-            onRename={c?.rename}
-          />
+          <div className="title-row">
+            <NotebookTitle
+              // A fresh field for each notebook.
+              key={c?.path}
+              name={c ? c.name.replace(/\.ipynb$/, '') : 'Ganymede'}
+              onRename={c?.rename}
+            />
+            {c && onToggleJournal && (
+              // The header names which view shows (#819); the other part calls
+              // the same toggle as the More menu item, which keeps the cell.
+              <div
+                className="mode-switch"
+                role="group"
+                aria-label={`View: ${c.journal ? 'Journal' : 'Notebook'}`}
+              >
+                <button
+                  type="button"
+                  aria-label="Notebook"
+                  title="Notebook"
+                  aria-pressed={!c.journal}
+                  onClick={() => {
+                    if (c.journal) onToggleJournal();
+                  }}
+                >
+                  <NotebookIcon />
+                  <span className="mode-label">Notebook</span>
+                </button>
+                <button
+                  type="button"
+                  aria-label="Journal"
+                  title="Journal"
+                  aria-pressed={c.journal}
+                  onClick={() => {
+                    if (!c.journal) onToggleJournal();
+                  }}
+                >
+                  <JournalIcon />
+                  <span className="mode-label">Journal</span>
+                </button>
+              </div>
+            )}
+          </div>
           {c && (
             <button
               type="button"

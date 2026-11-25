@@ -28,13 +28,15 @@ test.describe('portrait phone', () => {
     await openBrowserNotebook(page, { top: 59, right: 0, bottom: 34, left: 0 });
     const toolbar = await box(page, '.toolbar');
     expect(toolbar.y).toBe(0);
-    expect(toolbar.height).toBe(52 + 59);
+    // The toolbar holds the Notebook | Journal control's row too (#819):
+    // its 52px plus the control's 44px, plus the status bar's inset.
+    expect(toolbar.height).toBe(52 + 44 + 59);
     // The title is in the part below the inset.
     const title = await box(page, '.toolbar .title');
     expect(title.y).toBeGreaterThanOrEqual(59);
     const outer = page.locator('.jp-WindowedPanel-outer');
     // A phone's 8px gap above the first cell (#263), under the toolbar.
-    await expect(outer).toHaveCSS('padding-top', `${52 + 59 + 8}px`);
+    await expect(outer).toHaveCSS('padding-top', `${52 + 44 + 59 + 8}px`);
     // 30vh (255.6px), plus the home indicator.
     await expect(outer).toHaveCSS('padding-bottom', '289.6px');
   });

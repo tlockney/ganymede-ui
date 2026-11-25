@@ -589,10 +589,11 @@ struct ServerLine: View {
 ///
 /// In a fixed order, so no control moves under the pointer: New Notebook;
 /// Trust and Notebook Access, which are there only while they apply and so
-/// come first; Run Cell with its run menu; Interrupt, always there and
-/// enabled while the kernel is busy; the status button (the kernel's name,
-/// whose popover has the file, the kernel and where it runs); Share; and
-/// More. That is eight items, under the ten a ToolbarContentBuilder takes.
+/// come first; Notebook | Journal, there while a notebook is open (#819);
+/// Run Cell with its run menu; Interrupt, always there and enabled while
+/// the kernel is busy; the status button (the kernel's name, whose popover
+/// has the file, the kernel and where it runs); Share; and More. That is
+/// nine items, under the ten a ToolbarContentBuilder takes.
 struct NotebookToolbar: ToolbarContent {
     var page: PageModel
     /// Saved as File > Save saves it, and enabled when that is.
@@ -628,6 +629,12 @@ struct NotebookToolbar: ToolbarContent {
             ToolbarItem {
                 Button { page.run("notebook-access") } label: { Label("Access", systemImage: "lock.shield") }
                     .help("Notebook Access: this notebook asks for \(wanted.joined(separator: ", "))")
+            }
+        }
+        // The view the header names (#819), only while a notebook is open.
+        if page.state.hasNotebook {
+            ToolbarItem {
+                JournalViewPicker(page: page)
             }
         }
         ToolbarItem {

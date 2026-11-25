@@ -1233,6 +1233,12 @@ struct IPadNotebookToolbar: ToolbarContent {
                 Button { page.run("notebook-access") } label: { Label("Notebook Access", systemImage: "lock.shield") }
                     .accessibilityHint("Asks for \(wanted.joined(separator: ", "))")
             }
+            // The view the header names (#819), only while a notebook is
+            // open; the iPhone keeps the ⋯ item, its bar being the run
+            // actions in thumb reach.
+            if page.state.hasNotebook {
+                JournalViewPicker(page: page)
+            }
             RunCellMenu(page: page)
             interruptButton
                 .labelStyle(.titleAndIcon)

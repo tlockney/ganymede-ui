@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { KernelSpec } from '@jupyterlab/services';
@@ -352,6 +352,39 @@ describe('Toolbar', () => {
     rerender(bar({ onToggleJournal, controller: controller({ journal: true }) }));
     await userEvent.click(named('More'));
     expect(menuItem('Open as Notebook')).toBeEnabled();
+  });
+
+  it('shows Notebook | Journal beside the title only with a journal toggle (#819)', () => {
+    const { rerender } = render(bar());
+    expect(screen.queryByRole('group', { name: /^View/ })).not.toBeInTheDocument();
+    rerender(bar({ onToggleJournal: vi.fn() }));
+    // The control's name says which mode shows; each part says which it is.
+    const view = screen.getByRole('group', { name: 'View: Notebook' });
+    expect(within(view).getByRole('button', { name: 'Notebook' })).toHaveAttribute(
+      'aria-pressed',
+      'true',
+    );
+    expect(within(view).getByRole('button', { name: 'Journal' })).toHaveAttribute(
+      'aria-pressed',
+      'false',
+    );
+  });
+
+  it('switches the view from the header, as the More menu item does (#819)', async () => {
+    const onToggleJournal = vi.fn();
+    const { rerender } = render(bar({ onToggleJournal }));
+    await userEvent.click(named('Journal'));
+    expect(onToggleJournal).toHaveBeenCalledOnce();
+    // The part that already shows switches nothing.
+    await userEvent.click(named('Notebook'));
+    expect(onToggleJournal).toHaveBeenCalledOnce();
+    rerender(bar({ onToggleJournal, controller: controller({ journal: true }) }));
+    expect(screen.getByRole('group', { name: 'View: Journal' })).toBeInTheDocument();
+    expect(named('Journal')).toHaveAttribute('aria-pressed', 'true');
+    await userEvent.click(named('Notebook'));
+    expect(onToggleJournal).toHaveBeenCalledTimes(2);
+    await userEvent.click(named('Journal'));
+    expect(onToggleJournal).toHaveBeenCalledTimes(2);
   });
 
   it('disables what runs or edits cells while the journal shows them hidden (#184)', async () => {

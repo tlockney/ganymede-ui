@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { crc32, deflateSync } from 'node:zlib';
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { APP_URL, ROOT_DIR } from './env';
-import { openWithToken, removeFromServer, sidebarItem } from './helpers';
+import { openWithToken, removeFromServer, sidebarItem, waitForReady } from './helpers';
 
 const FREMONT = 'Fremont Bridge.ipynb';
 /** The first cell of "4. Workdays and weekends", in the Fremont Bridge journal. */
@@ -696,4 +696,91 @@ test('keeps the cell in view going to the notebook and back (#816)', async ({ pa
   await expect(journal).toBeVisible();
   await expect.poll(async () => Math.abs(await topOf(page, SECTION_4))).toBeLessThan(4);
   await expect(journal.getByRole('heading', { name: '4. Workdays and weekends' })).toBeInViewport();
+});
+
+test('names the view in the header, and switching from it keeps the cell (#819)', async ({
+  page,
+}) => {
+  writeFremont();
+  const journal = await openFremont(page);
+  await settled(page);
+  await scrollToCell(page, SECTION_4);
+  await expect.poll(() => topOf(page, SECTION_4)).toBeLessThan(2);
+
+  // The header names the mode; the other part switches, as the ⋯ item does.
+  const view = page.getByRole('group', { name: 'View: Journal' });
+  await expect(view.getByRole('button', { name: 'Notebook' })).toHaveAttribute(
+    'aria-pressed',
+    'false',
+  );
+  // Beside the title, not at the far end of the status line.
+  const [titleBox, viewBox] = await Promise.all([
+    page.locator('.toolbar .title-button').boundingBox(),
+    view.boundingBox(),
+  ]);
+  expect(viewBox!.x - (titleBox!.x + titleBox!.width)).toBeLessThan(20);
+  // With room in the toolbar the title shows whole: its box is not clipped.
+  expect(
+    await page.locator('.toolbar .title-button').evaluate(el => el.scrollWidth - el.clientWidth),
+  ).toBeLessThanOrEqual(0);
+  await view.getByRole('button', { name: 'Notebook' }).click();
+  await expect(journal).toBeHidden();
+  const heading = page.locator('.jp-Cell').filter({ hasText: '4. Workdays and weekends' });
+  await expect(heading).toBeInViewport();
+  await expect(heading).toHaveClass(/jp-mod-active/);
+
+  await page
+    .getByRole('group', { name: 'View: Notebook' })
+    .getByRole('button', { name: 'Journal' })
+    .click();
+  await expect(journal).toBeVisible();
+  await expect.poll(async () => Math.abs(await topOf(page, SECTION_4))).toBeLessThan(4);
+  await expect(journal.getByRole('heading', { name: '4. Workdays and weekends' })).toBeInViewport();
+});
+
+test('fits the header control on a phone, which still switches (#819)', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 800 });
+  await openWithToken(page);
+  await page.getByRole('button', { name: 'Show Sidebar' }).click();
+  await sidebarItem(page, 'Journal e2e').click();
+  const journal = page.getByRole('region', { name: `Journal of ${FILE}` });
+  await expect(journal).toBeVisible();
+
+  const view = page.getByRole('group', { name: 'View: Journal' });
+  await expect(view).toBeVisible();
+  // The title and its status line still fit: no sideways scroll.
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+  ).toBeLessThanOrEqual(0);
+  // And they show whole, as they do without the control: neither the title
+  // nor the visible status line is clipped to its box.
+  await waitForReady(page);
+  const title = page.locator('.toolbar .title');
+  await expect(title).toHaveText('Journal e2e');
+  const status = page.locator('.toolbar .status-text');
+  await expect(status).toContainText('Runs');
+  for (const part of [page.locator('.toolbar .title-button'), status]) {
+    const clipped = await part.evaluate(
+      n => n.scrollWidth - n.clientWidth > 1 || n.scrollHeight - n.clientHeight > 1,
+    );
+    expect(clipped).toBe(false);
+  }
+  // A touch screen: targets of 44px, and the box ends at its buttons, which
+  // share its width.
+  for (const name of ['Notebook', 'Journal']) {
+    const box = await view.getByRole('button', { name }).boundingBox();
+    expect(box!.height).toBeGreaterThanOrEqual(44);
+    expect(box!.width).toBeGreaterThanOrEqual(44);
+  }
+  const switchBox = (await view.boundingBox())!;
+  const [first, second] = await Promise.all([
+    view.getByRole('button', { name: 'Notebook' }).boundingBox(),
+    view.getByRole('button', { name: 'Journal' }).boundingBox(),
+  ]);
+  expect(first!.x - switchBox.x).toBeLessThanOrEqual(2);
+  expect(switchBox.x + switchBox.width - (second!.x + second!.width)).toBeLessThanOrEqual(2);
+  expect(first!.width + second!.width).toBeGreaterThanOrEqual(switchBox.width - 4);
+  await view.getByRole('button', { name: 'Notebook' }).click();
+  await expect(page.getByRole('group', { name: 'View: Notebook' })).toBeVisible();
+  await expect(page.locator('.jp-Cell')).toHaveCount(3);
 });
