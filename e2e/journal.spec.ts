@@ -223,7 +223,8 @@ function richJournal() {
     '</tr></thead><tbody><tr>' +
     columns.map((_, i) => `<td>${123456 + i}</td>`).join('') +
     '</tr></tbody></table>';
-  const longWord = 'https://data.seattle.gov/' + 'fremont-bridge-bicycle-counter-'.repeat(12);
+  // No hyphens or other break points: only overflow-wrap can break it.
+  const longWord = 'https://data.seattle.gov/' + 'fremontbridgebicyclecounter'.repeat(14);
   const chart = png(1600, 60);
   const cells = [
     { cell_type: 'markdown', id: 'r0', source: '# Fremont Bridge', metadata: agent('note') },
@@ -379,6 +380,10 @@ for (const { name, width, height } of [
     }
     // The long equation scrolls in its own box too.
     expect(await equation.evaluate(el => el.scrollWidth - el.clientWidth)).toBeGreaterThan(0);
+    // ...sideways only. MathJax overhangs its box by a pixel or two
+    // (scrollHeight stays above clientHeight whatever overflow-y is), so
+    // what keeps it from scrolling vertically is overflow-y: hidden.
+    expect(await equation.evaluate(el => getComputedStyle(el).overflowY)).toBe('hidden');
     const eqBox = (await equation.boundingBox())!;
     expect(eqBox.x + eqBox.width).toBeLessThanOrEqual(column.right + 0.5);
 

@@ -27,7 +27,7 @@ sideways, that each cell stays in the column, that images keep their
 shape inside it, that both wide tables and the equation scroll in a box
 of their own no wider than the column, and that the narrow table keeps
 its content's width and stays centered. Without the CSS it fails with
-2,137 px of overflow on the phone and 1,715 px on the desktop.
+2,478 px of overflow on the phone and 2,056 px on the desktop.
 
 `display: block` on a table can drop its table role in WebKit's
 accessibility tree, so VoiceOver in the apps might read a Markdown

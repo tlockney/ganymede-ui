@@ -2515,11 +2515,19 @@ button {
   overflow-x: auto;
 }
 
-.journal-rendered .jp-RenderedMarkdown pre,
+.journal-rendered .jp-RenderedMarkdown pre {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* overflow-x: auto alone makes overflow-y auto too, and MathJax's box
+   overhangs it by a pixel or two, so the equation would scroll
+   vertically. */
 .journal-rendered .jp-RenderedMarkdown mjx-container[display='true'] {
   display: block;
   max-width: 100%;
   overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .journal-follow {
