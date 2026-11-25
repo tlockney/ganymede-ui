@@ -46,9 +46,10 @@ nothing, and having a parent changes no other key. The `SidebarTree`
 tests cover the parent of rows at each depth, none at the top or for an
 unlisted row (or the same URL as a folder), a reload dropping a file, a
 reload dropping a folder with rows nested two deep, a folder renamed
-outside the app, the same listing recorded again, and URLs that form a
-loop. The views' wiring (the `listed` calls, the selection setter, the
-web view focus) has no unit tests; Swift doesn't build here.
+outside the app, the same listing recorded again, URLs that form a
+loop, the root never being a parent, and `listed` keeping the selection
+only while a reload still lists it. The views' wiring (the `listed`
+calls, the selection setter, the web view focus) has no unit tests; Swift doesn't build here.
 
 By-hand checks, for #399 (Mac) and #273 (iPad):
 

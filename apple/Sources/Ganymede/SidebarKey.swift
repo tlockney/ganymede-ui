@@ -105,8 +105,9 @@ struct SidebarTree {
     /// `folder` listed `entries` (a folder's contents loaded or reloaded),
     /// and the selection to keep: `selection`, or nil when the tree no
     /// longer lists it (a file deleted or renamed outside the app), so
-    /// Return can't act on it. A listing equal to the last one changes
-    /// nothing.
+    /// Return can't act on it. (A listing equal to the last one returns
+    /// `selection` at once: a shortcut, since recording it again would
+    /// keep the same rows.)
     mutating func listed(
         _ entries: [FolderEntry], in folder: URL, keeping selection: FolderEntry?, root: URL
     ) -> FolderEntry? {

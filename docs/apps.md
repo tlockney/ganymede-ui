@@ -678,8 +678,8 @@ keys are kept in the keychain too.
 
   With a hardware keyboard, the Files tab takes the Mac's keys: ↑ and ↓
   move the selection, → and ← expand and collapse the selected folder,
-  ← on a file or a collapsed folder selects the folder holding it, and
-  Return opens the selected file or toggles the selected folder. Tapping
+  ← on a file or a collapsed folder selects the folder holding it (at
+  the top level it does nothing), and Return opens the selected file or toggles the selected folder. Tapping
   a notebook or data file gives the keyboard to the page.
 
   > [!NOTE]
