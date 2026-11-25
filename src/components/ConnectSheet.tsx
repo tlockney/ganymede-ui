@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import type { BackendConfig } from '../lib/backends';
+import { useModalFocus } from '../lib/modal-focus';
 import { BrowserIcon, ServerIcon } from './Icons';
 
 type Props = {
@@ -24,7 +25,31 @@ type Props = {
   onSwitchAnyway?(): void;
 };
 
-/** A macOS-style sheet: pick where kernels run. */
+const KINDS = ['ganymede', 'browser'] as const;
+
+/** Where an arrow key, Home or End moves in the choices, wrapping. */
+function step(key: string, at: number, count: number): number | undefined {
+  switch (key) {
+    case 'ArrowRight':
+    case 'ArrowDown':
+      return (at + 1) % count;
+    case 'ArrowLeft':
+    case 'ArrowUp':
+      return (at - 1 + count) % count;
+    case 'Home':
+      return 0;
+    case 'End':
+      return count - 1;
+  }
+  return undefined;
+}
+
+/**
+ * A macOS-style sheet: pick where kernels run. A modal dialog: focus starts
+ * on the chosen kind, Tab stays in the sheet, and closing gives focus back
+ * to the control that opened it. The kinds are a radio group: arrows move
+ * and select, Tab leaves the group.
+ */
 export function ConnectSheet({
   initial,
   error,
@@ -45,6 +70,33 @@ export function ConnectSheet({
   // and is kept as it is.
   const initialKernels = initial?.kind === 'ganymede' ? initial.kernels : undefined;
   const [pageKernels, setPageKernels] = useState(initialKernels !== undefined);
+  const headingId = useId();
+  const sheet = useRef<HTMLFormElement>(null);
+  const choices = useRef<Partial<Record<BackendConfig['kind'], HTMLButtonElement | null>>>({});
+  useModalFocus(sheet, () => sheet.current?.querySelector<HTMLElement>('[aria-checked="true"]'));
+
+  useEffect(() => {
+    if (!canCancel) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.isComposing) return;
+      e.preventDefault();
+      // Only the sheet closes, not whatever listens for Escape behind it.
+      e.stopPropagation();
+      onCancel();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [canCancel, onCancel]);
+
+  const onChoiceKey = (e: React.KeyboardEvent) => {
+    // Modified arrows are the system's (Cmd+Left, Alt+Arrow), not a choice.
+    if (e.altKey || e.ctrlKey || e.metaKey) return;
+    const next = step(e.key, KINDS.indexOf(kind), KINDS.length);
+    if (next === undefined) return;
+    e.preventDefault();
+    setKind(KINDS[next]);
+    choices.current[KINDS[next]]?.focus();
+  };
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -62,17 +114,37 @@ export function ConnectSheet({
   };
 
   return (
-    <div className="sheet-backdrop">
-      <form className="sheet" onSubmit={submit}>
-        <h2>Where should kernels run?</h2>
+    <div
+      className="sheet-backdrop"
+      // A click on the dimmed page keeps focus in the sheet.
+      onMouseDown={e => e.target === e.currentTarget && e.preventDefault()}
+    >
+      <form
+        ref={sheet}
+        className="sheet"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={headingId}
+        onSubmit={submit}
+      >
+        <h2 id={headingId}>Where should kernels run?</h2>
         {/* Fixed while the sheet asks about unsaved edits: Switch Without
             Saving goes where Connect was asked to. */}
         <fieldset className="connect-fields" disabled={unsaved !== undefined}>
-          <div className="choice-grid" role="radiogroup">
+          <div
+            className="choice-grid"
+            role="radiogroup"
+            aria-labelledby={headingId}
+            onKeyDown={onChoiceKey}
+          >
             <button
+              ref={el => {
+                choices.current.ganymede = el;
+              }}
               type="button"
               role="radio"
               aria-checked={kind === 'ganymede'}
+              tabIndex={kind === 'ganymede' ? 0 : -1}
               className={`choice ${kind === 'ganymede' ? 'selected' : ''}`}
               onClick={() => setKind('ganymede')}
             >
@@ -81,9 +153,13 @@ export function ConnectSheet({
               <span className="choice-detail">Any installed kernel; files on disk.</span>
             </button>
             <button
+              ref={el => {
+                choices.current.browser = el;
+              }}
               type="button"
               role="radio"
               aria-checked={kind === 'browser'}
+              tabIndex={kind === 'browser' ? 0 : -1}
               className={`choice ${kind === 'browser' ? 'selected' : ''}`}
               onClick={() => setKind('browser')}
             >
@@ -132,7 +208,11 @@ export function ConnectSheet({
           )}
         </fieldset>
 
-        {error && <p className="sheet-error">{error}</p>}
+        {error && (
+          <p className="sheet-error" role="alert">
+            {error}
+          </p>
+        )}
 
         {unsaved !== undefined ? (
           <div className="sheet-unsaved" role="alert">
