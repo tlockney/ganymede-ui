@@ -3,8 +3,9 @@ import { describe, expect, it } from 'vitest';
 
 /*
  * Text contrast computed from the stylesheets themselves (#799): white on
- * the filled accent, execution prompts, and the insert buttons, in light
- * and dark, each at WCAG AA's 4.5:1 for text. A later change to a token,
+ * the filled accent, the accent as text (links, insert and text buttons),
+ * and execution prompts, in light and dark, each at WCAG AA's 4.5:1 for
+ * text. A later change to a token,
  * a color or an opacity in these rules fails here.
  */
 
@@ -48,8 +49,9 @@ function parseRules(css: string): Rule[] {
   return rules;
 }
 
-const app = parseRules(readFileSync('src/styles/app.css', 'utf8'));
-const jupyter = parseRules(readFileSync('src/styles/jupyter.css', 'utf8'));
+const sheet = (name: string) => parseRules(readFileSync(new URL(name, import.meta.url), 'utf8'));
+const app = sheet('./app.css');
+const jupyter = sheet('./jupyter.css');
 
 const DARK = '@media (prefers-color-scheme: dark)';
 type Theme = 'light' | 'dark';
@@ -147,11 +149,36 @@ describe('text contrast (#799)', () => {
   // Every rule that puts white text on an accent fill: the primary
   // buttons, notice actions, highlighted menu and palette rows, the
   // keyboard bar's primary key, the journal's follow button.
-  const filled = app.filter(
+  const fillOf = (r: Rule) => r.decls.get('background') ?? r.decls.get('background-color');
+  const filled = [...app, ...jupyter].filter(
     r =>
       /^(#fff|#ffffff|white)$/i.test(r.decls.get('color') ?? '') &&
-      /^var\(--accent/.test(r.decls.get('background') ?? ''),
+      /^var\(--accent/.test(fillOf(r) ?? ''),
   );
+
+  // The accent as text color. Plain --accent is for icons only (the
+  // sources list's tint, a selected choice's icon), where 3:1 is enough;
+  // text takes --accent-text.
+  const accentText = [...app, ...jupyter].filter(r =>
+    /^var\(--accent(-text)?\)$/.test(r.decls.get('color') ?? ''),
+  );
+  const ICONS = ['.source-item .tint', '.choice.selected svg'];
+
+  it('uses plain --accent as a text color only on icons', () => {
+    const plain = accentText
+      .filter(r => r.decls.get('color') === 'var(--accent)')
+      .map(r => r.selector);
+    expect(plain.sort()).toEqual([...ICONS].sort());
+    const text = accentText.map(r => r.selector);
+    for (const s of [
+      '.pane-notice-dismiss',
+      '.journal-running',
+      '.notebook-page .cm-md-live .cm-md-link',
+      '.touch-ui .notebook-page .gn-add-button',
+    ]) {
+      expect(text).toContain(s);
+    }
+  });
 
   it('finds the filled accent rules, the primary button among them', () => {
     expect(filled.map(r => r.selector)).toContain('.push-button.primary');
@@ -162,20 +189,43 @@ describe('text contrast (#799)', () => {
     it(`white on every accent fill reads at ${AA}:1 in ${theme}`, () => {
       const vars = variables(theme);
       for (const r of filled) {
-        const bg = color(resolve(r.decls.get('background')!, vars));
+        const bg = color(resolve(fillOf(r)!, vars));
         expect(bg[3], r.selector).toBe(1);
         const ratio = contrast(color('#fff'), bg);
         expect(ratio, `${r.selector} ${ratio.toFixed(2)}`).toBeGreaterThanOrEqual(AA);
       }
     });
 
-    it(`execution prompts read at ${AA}:1 in ${theme}, active or not`, () => {
+    it(`the accent as text reads at ${AA}:1 in ${theme}`, () => {
       const vars = variables(theme);
-      const bg = color(resolve('var(--window-bg)', vars));
-      for (const selector of [
-        '.notebook-page .jp-InputPrompt',
-        '.notebook-page .jp-OutputPrompt',
-      ]) {
+      const page = color(resolve('var(--window-bg)', vars));
+      const cell = over(color(resolve('var(--cell-bg)', vars)), page);
+      for (const r of accentText) {
+        if (ICONS.includes(r.selector)) continue;
+        const own = fillOf(r);
+        const bg = own ? over(color(resolve(own, vars)), page) : page;
+        const text = color(resolve(r.decls.get('color')!, vars));
+        const ratio = contrast(over(text, bg), bg);
+        expect(ratio, `${r.selector} ${ratio.toFixed(2)}`).toBeGreaterThanOrEqual(AA);
+      }
+      // Links: rendered Markdown on the page, live Markdown on a cell.
+      for (const bg of [page, cell]) {
+        for (const v of ['var(--jp-content-link-color)', 'var(--accent-text)']) {
+          const ratio = contrast(over(color(resolve(v, vars)), bg), bg);
+          expect(ratio, `${v} ${ratio.toFixed(2)}`).toBeGreaterThanOrEqual(AA);
+        }
+      }
+    });
+
+    it(`execution prompts read at ${AA}:1 in ${theme}, active, inactive or selected`, () => {
+      const vars = variables(theme);
+      const page = color(resolve('var(--window-bg)', vars));
+      // JupyterLab fills selected cells with this in command mode.
+      const selected = over(color(resolve('var(--jp-notebook-multiselected-color)', vars)), page);
+      const prompts = ['.notebook-page .jp-InputPrompt', '.notebook-page .jp-OutputPrompt'];
+      for (const [bg, selector] of [page, selected].flatMap(bg =>
+        prompts.map(s => [bg, s] as const),
+      )) {
         const own = opacity(decl(jupyter, selector, 'opacity', theme), vars);
         const cases = [
           ['--jp-cell-inprompt-font-color', '--jp-cell-prompt-opacity'],
@@ -217,6 +267,9 @@ describe('text contrast (#799)', () => {
     expect(contrast(white, color('#0a84ff'))).toBeLessThan(AA);
     const light = color('#ffffff');
     expect(contrast(over(color('#616161'), light, 0.5), light)).toBeLessThan(AA);
+    expect(contrast(color('#007aff'), light)).toBeLessThan(AA);
+    const soft = over(color('rgba(0, 122, 255, 0.12)'), light);
+    expect(contrast(over(color('rgba(60, 60, 67, 0.72)'), soft), soft)).toBeLessThan(AA);
     const dark = color('#1e1e20');
     expect(contrast(over(color('#0a84ff'), dark, 0.55), dark)).toBeLessThan(AA);
   });

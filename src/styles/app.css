@@ -8,8 +8,9 @@
   --accent: #007aff;
   --accent-soft: rgba(0, 122, 255, 0.12);
   /* The accent under white text (buttons, highlighted rows) and as text
-   * on --window-bg (insert buttons): darker than --accent, so each reads
-   * at 4.5:1 or more (#799, src/styles/contrast.test.ts). */
+   * on the page (links, insert buttons, text buttons): darker than
+   * --accent, so each reads at 4.5:1 or more (#799,
+   * src/styles/contrast.test.ts). */
   --accent-fill: #0062cc;
   --accent-text: #0058b8;
   --window-bg: #ffffff;
@@ -1177,7 +1178,7 @@ button {
   border: 0;
   border-radius: 6px;
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-text);
   font: inherit;
   cursor: pointer;
 }
@@ -2309,7 +2310,7 @@ button {
 
 .journal-running {
   flex: 1;
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .journal button,

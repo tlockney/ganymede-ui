@@ -23,20 +23,22 @@
   --jp-cell-editor-border-color: transparent;
   --jp-cell-editor-active-background: var(--cell-bg);
   --jp-cell-editor-active-border-color: transparent;
-  /* Execution prompts in --text-2, at full opacity on every cell, so
-   * they read at 4.5:1 or more in both themes; JupyterLab's light theme
-   * draws inactive ones grey at half opacity (#799,
-   * src/styles/contrast.test.ts). */
-  --jp-cell-inprompt-font-color: var(--text-2);
-  --jp-cell-outprompt-font-color: var(--text-2);
-  --jp-cell-prompt-not-active-font-color: var(--text-2);
+  /* Execution prompts at full opacity on every cell, so they read at
+   * 4.5:1 or more in both themes, on the page and on a selected cell's
+   * --accent-soft; JupyterLab's light theme draws inactive ones grey at
+   * half opacity (#799, src/styles/contrast.test.ts). A little darker
+   * than --text-2 in light, which is 4.36:1 on --accent-soft. */
+  --prompt-color: rgba(60, 60, 67, 0.78);
+  --jp-cell-inprompt-font-color: var(--prompt-color);
+  --jp-cell-outprompt-font-color: var(--prompt-color);
+  --jp-cell-prompt-not-active-font-color: var(--prompt-color);
   --jp-cell-prompt-opacity: 1;
   --jp-cell-prompt-not-active-opacity: 1;
   --jp-notebook-multiselected-color: var(--accent-soft);
   --jp-rendermime-error-background: rgba(255, 59, 48, 0.08);
   --jp-content-font-color1: var(--text);
   --jp-ui-font-color1: var(--text);
-  --jp-content-link-color: var(--accent);
+  --jp-content-link-color: var(--accent-text);
 
   --cell-bg: #f5f5f7;
   --cell-border: rgba(0, 0, 0, 0.06);
@@ -57,6 +59,7 @@
   .notebook-page {
     --cell-bg: #2a2a2d;
     --cell-border: rgba(255, 255, 255, 0.06);
+    --prompt-color: var(--text-2);
   }
 }
 
@@ -641,7 +644,7 @@
   text-decoration: line-through;
 }
 .notebook-page .cm-md-live .cm-md-link {
-  color: var(--accent);
+  color: var(--accent-text);
   text-decoration: underline;
 }
 
