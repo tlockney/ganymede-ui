@@ -299,6 +299,16 @@ export function attachCellControls(
   node.addEventListener('mousedown', onDown, true);
   node.addEventListener('pointerdown', onDown, true);
   node.addEventListener('dblclick', onDown, true);
+  // A tap on a control focuses it, and the notebook takes that focus as a
+  // tap on the cell: it makes the cell the active one while the tap is
+  // still going, and the meta line the active cell then grows on a phone
+  // (#813) moves the control under the finger, so the tap's click never
+  // comes. The focus itself is wanted — it takes the editor's, leaving
+  // edit mode — so only the notebook is kept from hearing of it.
+  const onFocus = (e: Event) => {
+    if ((e.target as Element | null)?.closest('[data-gn-control]')) e.stopPropagation();
+  };
+  node.addEventListener('focusin', onFocus, true);
 
   return new DisposableDelegate(() => {
     disposed = true;
@@ -307,5 +317,6 @@ export function attachCellControls(
     node.removeEventListener('mousedown', onDown, true);
     node.removeEventListener('pointerdown', onDown, true);
     node.removeEventListener('dblclick', onDown, true);
+    node.removeEventListener('focusin', onFocus, true);
   });
 }
