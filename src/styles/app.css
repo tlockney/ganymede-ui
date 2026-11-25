@@ -600,7 +600,11 @@ button {
     display: none;
   }
   .title-block {
-    min-width: 120px;
+    /* The floor gives the status line room (#801) unless the window is too
+     * narrow for it and the buttons both: below ~350px the title takes what
+     * is left past the buttons and the sidebar toggle (~230px below 720px,
+     * where the labels are gone), instead of running under Run Cell. */
+    min-width: min(120px, calc(100vw - 230px));
   }
 }
 

@@ -16,7 +16,7 @@ async function newBrowserNotebook(page: Page) {
   await expect(page.locator('.jp-Cell').first()).toBeVisible({ timeout: 60_000 });
 }
 
-for (const width of [393, 507, 820, 1280]) {
+for (const width of [320, 393, 507, 820, 1280]) {
   test(`fits at ${width}px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 800 });
     await newBrowserNotebook(page);
