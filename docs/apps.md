@@ -127,8 +127,8 @@ shown or hidden, its tab and its expanded folders across launches.
   **Interrupt**, always there and enabled while the kernel runs; the
   kernel button; Share (download, export, publish); and ⋯, which has View
   as Journal, Insert Code Cell, Insert Markdown Cell, Cell Type and Save.
-  Run Cell and Interrupt show their words, so Run Cell and Run All can't
-  be mistaken for each other. Everything in them is also in the menu bar.
+  Run All is only in Run Cell's menu, so the two can't be mistaken for
+  each other. Everything in these menus is also in the menu bar.
 
   > [!NOTE]
   > **Unreleased.** Available only from a build of `main` (HEAD), not in
