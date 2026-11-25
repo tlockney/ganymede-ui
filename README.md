@@ -172,6 +172,15 @@ Outline tab.
 A notebook with unsaved edits saves itself every two minutes, when the
 page is hidden, and when you open another file, and the browser asks before a tab with unsaved edits
 closes. A failed save or kernel action shows its error above the notebook.
+In a browser, switching where kernels run in the connect sheet saves the
+open notebook first; if that save fails or the server doesn't answer, the
+switch stops and asks: keep editing, download a copy, or switch without
+saving.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release. The latest release switches at once, and the
+> notebook's last save can be cut off.
 
 ### Live editing on a Ganymede server
 

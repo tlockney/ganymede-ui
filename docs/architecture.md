@@ -102,11 +102,29 @@ comes back to both. New notebooks go in the sidebar's folder. Picking
 another backend in the connect sheet drops both; retrying the same server
 there (say with a corrected token) keeps them. The page title is the open notebook's name.
 
-Switching backends disposes the old `ServiceManager`. A server's kernels
-keep running, as they do when a notebook closes, and show under Running
-when the app connects to that server again. Kernels in the page have
-nowhere to come back to, so the in-page manager shuts them down first,
-which terminates their Workers.
+Before the connect sheet switches backends, it saves the open notebook
+(#792): it connects only once the save went through, and says "Saving…"
+meanwhile. A save that fails (the pane says why), or that the server
+doesn't answer within `SERVER_TIMEOUT_MS` (the sheet says so), stops the
+switch, and the sheet, its fields fixed, offers Keep Editing, Download a
+Copy (the controller's `download`) and Switch Without Saving (its
+`discard`, so the pane's teardown doesn't save). Cancel during the save
+drops the switch.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, as is the wait for the last saves below. The
+> latest release switches at once and disposes the old services then.
+
+Switching backends disposes the old `ServiceManager`, once the last
+saves of the panes that closed on it (`pendingHandoffs` in
+`src/lib/rename.ts`) are done, or after `SERVER_TIMEOUT_MS`: they save
+through its contents manager. An effect on `backend` does it, after the
+commit that shows the new one, so those panes have handed their saves
+off by then. A server's kernels keep running, as they do when a notebook
+closes, and show under Running when the app connects to that server
+again. Kernels in the page have nowhere to come back to, so the in-page
+manager shuts them down first, which terminates their Workers.
 
 ## In-page server and kernels
 

@@ -137,6 +137,56 @@ describe('ConnectSheet', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(onCancel).toHaveBeenCalledOnce();
   });
+
+  it('asks about a notebook that could not save, with its fields fixed and no submit meanwhile (#792)', async () => {
+    const onDownloadCopy = vi.fn();
+    const onSwitchAnyway = vi.fn();
+    const { onConnect, onCancel } = renderSheet({
+      canCancel: true,
+      unsaved: 'Orbits.ipynb',
+      onDownloadCopy,
+      onSwitchAnyway,
+    });
+    expect(screen.getByRole('alert')).toHaveTextContent('Couldn’t save “Orbits.ipynb”');
+    expect(screen.queryByRole('button', { name: /Connect/ })).toBeNull();
+    // Fixed: Switch Without Saving goes where Connect was asked to.
+    expect(server()).toBeDisabled();
+    expect(token()).toBeDisabled();
+    expect(screen.getByRole('radio', { name: /This browser/ })).toBeDisabled();
+    fireEvent.submit(server().form!);
+    expect(onConnect).not.toHaveBeenCalled();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Download a Copy' }));
+    expect(onDownloadCopy).toHaveBeenCalledOnce();
+    await userEvent.click(screen.getByRole('button', { name: 'Switch Without Saving' }));
+    expect(onSwitchAnyway).toHaveBeenCalledOnce();
+    await userEvent.click(screen.getByRole('button', { name: 'Keep Editing' }));
+    expect(onCancel).toHaveBeenCalledOnce();
+  });
+
+  it('says it is saving, with no submit, while the notebook saves (#792)', async () => {
+    const { onConnect } = renderSheet({ saving: true });
+    expect(screen.getByRole('button', { name: 'Saving…' })).toBeDisabled();
+    // The switch goes where Connect was asked to, so the pick is fixed.
+    expect(server()).toBeDisabled();
+    expect(radio(/This browser/)).toBeDisabled();
+    fireEvent.submit(server().form!);
+    expect(onConnect).not.toHaveBeenCalled();
+  });
+
+  it('ignores a submit while connecting', () => {
+    const { onConnect } = renderSheet({ connecting: true });
+    fireEvent.submit(server().form!);
+    expect(onConnect).not.toHaveBeenCalled();
+  });
+
+  it('says why a save timed out, as the pane can’t (#792)', () => {
+    renderSheet({ unsaved: 'Orbits.ipynb', unsavedWhy: 'The server didn’t answer in time.' });
+    expect(screen.getByRole('alert')).toHaveTextContent(
+      'Couldn’t save “Orbits.ipynb”. The server didn’t answer in time. Switching closes it',
+    );
+    expect(screen.getByRole('alert')).toHaveTextContent('Keep editing to try again.');
+  });
 });
 
 const radio = (name: RegExp) => screen.getByRole('radio', { name });
