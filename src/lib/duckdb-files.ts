@@ -41,8 +41,12 @@ export type DuckdbFilesState =
   | { state: 'loading'; received: number; total: number | null }
   /** Cached and mapped: kernels started from now on run SQL offline. */
   | { state: 'ready' }
-  /** The last load didn't get them; the next use tries again. */
-  | { state: 'failed'; message: string }
+  /**
+   * The last load didn't get them; the next use tries again, except after
+   * `noRoom` (the browser wouldn't keep them), which only the person's
+   * Download or Try Again retries, as each try fetches 36 MB to fail.
+   */
+  | { state: 'failed'; message: string; noRoom?: true }
   /** No Cache Storage (an insecure origin): kernels use jsDelivr. */
   | { state: 'unsupported' };
 
@@ -76,11 +80,13 @@ export function duckdbModules(): { [specifier: string]: string } {
  * when they aren't all there, fetches them first. Kernels that start
  * before it settles go on without them. Calls while one runs share it;
  * once the files are mapped it does nothing more, and after a load that
- * didn't get them the next call tries again (#794). Never rejects:
- * without the files, SQL loads them from jsDelivr.
+ * didn't get them the next call tries again (#794), unless the browser
+ * had no room for them: then only a call with `asked` (Download or Try
+ * Again in Settings) does. Never rejects: without the files, SQL and the
+ * data views load them from jsDelivr.
  */
-export function loadDuckdbFiles(): Promise<void> {
-  return run(true);
+export function loadDuckdbFiles({ asked = false }: { asked?: boolean } = {}): Promise<void> {
+  return run(true, asked);
 }
 
 /**
@@ -93,12 +99,16 @@ export function readCachedDuckdbFiles(): Promise<void> {
 
 let loading: { promise: Promise<void>; fetches: boolean } | null = null;
 
-function run(fetches: boolean): Promise<void> {
+function run(fetches: boolean, asked = false): Promise<void> {
   // Mapped: nothing more to read or fetch.
   if (status.state === 'ready') return Promise.resolve();
+  // No room: another try would fetch 36 MB to fail the same way.
+  if (status.state === 'failed' && status.noRoom && !asked) return Promise.resolve();
   if (loading) {
     // A read of the cache alone doesn't do for a use: fetch after it.
-    return loading.fetches || !fetches ? loading.promise : loading.promise.then(() => run(true));
+    return loading.fetches || !fetches
+      ? loading.promise
+      : loading.promise.then(() => run(true, asked));
   }
   const before = status;
   const promise = load(fetches)
@@ -107,7 +117,12 @@ function run(fetches: boolean): Promise<void> {
       if (err instanceof Unsupported) return setStatus({ state: 'unsupported' });
       if (err instanceof NotCached) return setStatus(before);
       console.warn('DuckDB files: not cached', err);
-      setStatus({ state: 'failed', message: err instanceof Error ? err.message : String(err) });
+      const message = err instanceof Error ? err.message : String(err);
+      setStatus(
+        err instanceof NoRoom
+          ? { state: 'failed', message, noRoom: true }
+          : { state: 'failed', message },
+      );
     })
     .finally(() => {
       loading = null;
@@ -141,6 +156,7 @@ export function noteKernelRequest(msg: {
 
 class Unsupported extends Error {}
 class NotCached extends Error {}
+class NoRoom extends Error {}
 
 /**
  * Maps the files, fetching what the cache lacks when `fetches`; throws
@@ -234,7 +250,7 @@ async function prefetch(cache: Cache): Promise<void> {
     } catch (err) {
       failure ??=
         err instanceof DOMException && err.name === 'QuotaExceededError'
-          ? new Error('This browser has no room to keep DuckDB.', { cause: err })
+          ? new NoRoom('This browser has no room to keep DuckDB.', { cause: err })
           : new Error(`The download from ${host} stopped.`, { cause: err });
     }
   }

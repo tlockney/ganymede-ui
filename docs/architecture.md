@@ -143,6 +143,12 @@ Two kernels are registered:
   cdp-kernel's specifiers to them with the kernel's `modules` option, so
   charts draw offline. The apps' kernel page does the same.
 
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release, where the page fetches DuckDB's wasm and worker
+  > on its first visit online, whether or not anything uses it, and a
+  > failed fetch isn't tried again until the page reloads.
+
   `jupyter.sql` works the same way for DuckDB's module, which is served
   from `kernel-modules/` too. DuckDB's wasm and worker are 36 MB, so
   they don't ship in the app. Instead,
@@ -151,7 +157,10 @@ Two kernels are registered:
   an `execute_request` whose code names `sql` (seen by the in-page kernel
   and the apps' kernel page), the DuckDB console, a Parquet file, or
   Settings > Offline SQL. A visit that uses none fetches nothing, and a
-  fetch that fails is tried again on the next use. As the page loads it
+  fetch that fails is tried again on the next use, except when the
+  browser had no room to keep the files: then only Download or Try Again
+  in Settings tries again, and the data views go on without the cache.
+  As the page loads it
   reads what an earlier visit kept, without fetching. Kernels started
   after the files are mapped get them as blob URLs, so SQL runs offline.
   Until then, the kernel loads them from jsDelivr.

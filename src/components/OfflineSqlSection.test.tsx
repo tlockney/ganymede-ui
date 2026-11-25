@@ -19,7 +19,7 @@ function fakeCaches(store = new Map<string, Response>()) {
     has: async (name: string) => names.has(name),
     delete: async (name: string) => names.delete(name),
   });
-  return { store, names };
+  return { store, names, cache };
 }
 
 describe('Offline SQL in Settings (#794)', () => {
@@ -82,6 +82,25 @@ describe('Offline SQL in Settings (#794)', () => {
     );
 
     status = 200;
+    await userEvent.click(screen.getByRole('button', { name: 'Try Again' }));
+    expect(await screen.findByText(/SQL works offline/)).toBeInTheDocument();
+  });
+
+  it('tries again after the browser had no room, when asked', async () => {
+    const { cache } = fakeCaches();
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const put = cache.put;
+    cache.put = async () => {
+      throw new DOMException('q', 'QuotaExceededError');
+    };
+    vi.stubGlobal('fetch', async (url: string) => new Response(url));
+    render(<OfflineSqlSection />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Download DuckDB' }));
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'DuckDB didn’t download: This browser has no room to keep DuckDB.',
+    );
+
+    cache.put = put;
     await userEvent.click(screen.getByRole('button', { name: 'Try Again' }));
     expect(await screen.findByText(/SQL works offline/)).toBeInTheDocument();
   });

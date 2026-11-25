@@ -36,7 +36,7 @@ export function OfflineSqlSection() {
               type="button"
               className="push-button"
               disabled={state.state === 'loading'}
-              onClick={() => void loadDuckdbFiles()}
+              onClick={() => void loadDuckdbFiles({ asked: true })}
             >
               {state.state === 'failed' ? 'Try Again' : 'Download DuckDB'}
             </button>

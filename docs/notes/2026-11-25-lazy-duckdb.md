@@ -29,7 +29,18 @@ store (#557), so it fills on its first SQL.
 
 A kernel's `modules` map is fixed when it starts, so the kernel that ran
 the first SQL still loads DuckDB from jsDelivr itself; kernels started
-after the files are cached use them. Found while writing the e2e test:
+after the files are cached use them. The cost: on that first SQL cell
+the page's download runs while the kernel fetches the same two files
+itself, about 72 MB at once unless the browser's HTTP cache serves the
+second request from the first (both ask the same jsDelivr URLs).
+
+A failure because the browser has no room (`QuotaExceededError` from
+`cache.put`) is kept, marked `noRoom`, until the person presses Download
+or Try Again (`loadDuckdbFiles({ asked: true })`): otherwise every SQL
+cell would fetch 36 MB again in the background, and every Parquet view or
+console open would wait for that download to fail before going on from
+jsDelivr. The apps' kernel page has no Settings, so there it lasts until
+the page loads again. Network failures still retry on the next use. Found while writing the e2e test:
 with jsDelivr unreachable, cdp-kernel's `jupyter.sql` prints DuckDB's
 worker error but the cell never ends (the engine waits on a worker that
 failed to load), so a new kernel is needed after going back online.

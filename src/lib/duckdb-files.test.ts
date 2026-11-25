@@ -13,6 +13,7 @@ import {
   resetDuckdbFiles,
   usesSql,
 } from './duckdb-files';
+import { openEngine } from './parquet';
 
 /** A Cache Storage with one cache, as Map. */
 function fakeCaches() {
@@ -304,17 +305,57 @@ describe('DuckDB files', () => {
   });
 
   it('says when the browser has no room to keep the files', async () => {
-    const { cache } = fakeCaches();
+    const { cache, store } = fakeCaches();
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     cache.put = async () => {
       throw new DOMException('q', 'QuotaExceededError');
     };
-    vi.stubGlobal('fetch', async (url: string) => new Response(url));
+    const fetch = vi.fn(async (url: string) => new Response(url));
+    vi.stubGlobal('fetch', fetch);
     await loadDuckdbFiles();
     expect(duckdbFilesState()).toEqual({
       state: 'failed',
       message: 'This browser has no room to keep DuckDB.',
+      noRoom: true,
     });
+    expect(fetch).toHaveBeenCalledTimes(2);
+
+    // Uses don't fetch 36 MB again to fail the same way: a SQL cell, and a
+    // Parquet view or console, which goes on without the cache.
+    noteKernelRequest({
+      header: { msg_type: 'execute_request' },
+      content: { code: 'await jupyter.sql`select 1`' },
+    });
+    await loadDuckdbFiles();
+    await expect(openEngine(() => ({}))).rejects.toThrow(/isn’t part of this build/);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(duckdbFilesState()).toMatchObject({ noRoom: true });
+
+    // Try Again in Settings does, and room made since lets it through.
+    cache.put = async (url: string, res: Response) =>
+      void store.set(url, new Response(await res.arrayBuffer()));
+    await loadDuckdbFiles({ asked: true });
+    expect(fetch).toHaveBeenCalledTimes(4);
+    expect(duckdbFilesState()).toEqual({ state: 'ready' });
+  });
+
+  it('tries again on the next use after a network failure, asked or not', async () => {
+    fakeCaches();
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    let up = false;
+    const fetch = vi.fn(async (url: string) => {
+      if (!up) throw new TypeError('Failed to fetch');
+      return new Response(url);
+    });
+    vi.stubGlobal('fetch', fetch);
+    await loadDuckdbFiles();
+    expect(duckdbFilesState()).not.toHaveProperty('noRoom');
+    up = true;
+    noteKernelRequest({
+      header: { msg_type: 'execute_request' },
+      content: { code: 'await jupyter.sql`select 1`' },
+    });
+    await vi.waitFor(() => expect(duckdbFilesState()).toEqual({ state: 'ready' }));
   });
 
   it('fails, not ready, when the cache doesn’t keep what it was given', async () => {
