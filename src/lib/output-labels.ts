@@ -254,9 +254,18 @@ export function attachOutputLabels(notebook: Notebook, { hasKernel }: Options): 
   const onDown = (e: Event) => {
     if ((e.target as Element | null)?.closest('[data-gn-output]')) e.stopPropagation();
   };
+  // A tap on the toggle focuses it, and the notebook takes that focus as a
+  // tap on the cell: it makes the cell the active one while the tap is
+  // still going, and the meta line the active cell then grows on a phone
+  // (#813) moves the toggle under the finger, so the tap's click never
+  // comes. The focus itself is wanted — it takes the editor's — so only
+  // the notebook is kept from hearing of it.
+  const onFocus = (e: Event) => {
+    if ((e.target as Element | null)?.closest('[data-gn-output]')) e.stopPropagation();
+  };
   notebook.node.addEventListener('click', onClick);
   notebook.node.addEventListener('mousedown', onDown, true);
-  notebook.node.addEventListener('pointerdown', onDown, true);
+  notebook.node.addEventListener('focusin', onFocus, true);
   scan(true);
 
   return {
@@ -270,7 +279,7 @@ export function attachOutputLabels(notebook: Notebook, { hasKernel }: Options): 
       observer.disconnect();
       notebook.node.removeEventListener('click', onClick);
       notebook.node.removeEventListener('mousedown', onDown, true);
-      notebook.node.removeEventListener('pointerdown', onDown, true);
+      notebook.node.removeEventListener('focusin', onFocus, true);
     },
   };
 }
