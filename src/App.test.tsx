@@ -17,6 +17,8 @@ import {
 } from './lib/journal';
 import { recentsKey } from './lib/recents';
 import { loadConsoles, saveConsole } from './lib/console-recents';
+import { handOff } from './lib/rename';
+import { SERVER_TIMEOUT_MS } from './lib/server-request';
 
 // The shell's wiring: which backend it connects to, the sheet, and new
 // notebooks. The backends and the notebook pane are tested on their own.
@@ -29,6 +31,8 @@ const mocks = vi.hoisted(() => ({
   loadHostGrants: vi.fn(),
   /** The last pane's `onRenamed`. */
   onRenamed: undefined as undefined | ((from: string, to: string) => void),
+  /** The last pane's `onController`. */
+  onController: undefined as undefined | ((c: unknown) => void),
   /** Stands in for the examples' copy when a test sets it. */
   copyExamples: undefined as undefined | (() => Promise<string>),
 }));
@@ -116,6 +120,7 @@ vi.mock('./components/NotebookPane', async () => {
       onRenamed?(from: string, to: string): void;
     }) => {
       mocks.onRenamed = onRenamed;
+      mocks.onController = onController;
       useEffect(() => {
         if (mocks.controller) {
           const name = path.split('/').pop();
@@ -503,13 +508,37 @@ describe('App', () => {
     expect(runAll).toHaveBeenCalled();
     expect(palette).not.toBeInTheDocument();
 
-    await userEvent.click(screen.getByTitle('Command Palette'));
+    await userEvent.click(screen.getByTitle('More'));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Command Palette…' }));
     expect(await screen.findByRole('dialog', { name: 'Command palette' })).toBeInTheDocument();
     await userEvent.keyboard('{Escape}');
     expect(screen.queryByRole('dialog', { name: 'Command palette' })).not.toBeInTheDocument();
 
     expect(await window.ganymede!.command('command-palette')).toBe(true);
     expect(await screen.findByRole('dialog', { name: 'Command palette' })).toBeInTheDocument();
+  });
+
+  it('names where the notebook is saved and runs in the toolbar’s status line (#801)', async () => {
+    mocks.controller = {
+      dirty: false,
+      save: vi.fn(async () => true),
+      kernelName: 'python3',
+      name: 'Io.ipynb',
+      path: 'Io.ipynb',
+      status: 'idle',
+    };
+    const fake = fakeServices({ '': [{ name: 'Io.ipynb', type: 'notebook' }] });
+    mocks.connect.mockResolvedValue(
+      fakeBackend(fake.services, { kind: 'ganymede', url: 'https://lab.example.com', token: 't' }),
+    );
+    history.replaceState(null, '', '/?kernels=server&open=Io.ipynb');
+    render(<App />);
+    await screen.findByTestId('pane');
+    expect(
+      await screen.findByRole('button', {
+        name: /^Saved on lab\.example\.com · Runs on lab\.example\.com · /,
+      }),
+    ).toBeInTheDocument();
   });
 
   it('shows the Variables view from the toolbar and the app (#242)', async () => {
@@ -519,11 +548,13 @@ describe('App', () => {
     history.replaceState(null, '', '/?kernels=server&open=Io.ipynb');
     render(<App />);
     await screen.findByTestId('pane');
-    await userEvent.click(screen.getByTitle('Show Variables'));
+    await userEvent.click(screen.getByTitle('More'));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Show Variables' }));
     const view = screen.getByRole('complementary', { name: 'Variables' });
     // No kernel yet in this fake.
     expect(view).toHaveTextContent('Run a cell to see its variables.');
-    await userEvent.click(screen.getByTitle('Hide Variables'));
+    await userEvent.click(screen.getByTitle('More'));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Hide Variables' }));
     expect(screen.queryByRole('complementary', { name: 'Variables' })).not.toBeInTheDocument();
     expect(await window.ganymede!.command('toggle-variables')).toBe(true);
     expect(await screen.findByRole('complementary', { name: 'Variables' })).toBeInTheDocument();
@@ -549,7 +580,8 @@ describe('App', () => {
     history.replaceState(null, '', '/?kernels=server&open=Io.ipynb');
     render(<App />);
     await screen.findByTestId('pane');
-    await userEvent.click(screen.getByTitle('View as Journal'));
+    await userEvent.click(screen.getByTitle('More'));
+    await userEvent.click(screen.getByRole('menuitem', { name: 'View as Journal' }));
     expect(toggleJournal).toHaveBeenCalledTimes(1);
     expect(await window.ganymede!.command('toggle-journal')).toBe(true);
     expect(toggleJournal).toHaveBeenCalledTimes(2);
@@ -1479,6 +1511,257 @@ describe('App', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
     await waitFor(() => expect(mocks.connect).toHaveBeenLastCalledWith({ kind: 'browser' }));
     await waitFor(() => expect(screen.queryByTestId('duck-console')).toBeNull());
+  });
+
+  describe('switching backends with unsaved edits (#792)', () => {
+    /** Opens Orbits on a fake server, with the stand-in controller `controller`. */
+    const openOnServer = async (controller: NonNullable<typeof mocks.controller>) => {
+      mocks.controller = controller;
+      const first = fakeServices({ '': [], work: [{ name: 'Orbits.ipynb', type: 'notebook' }] });
+      const dispose = vi.fn();
+      Object.assign(first.services, { dispose });
+      const second = fakeServices({ '': [] });
+      mocks.connect
+        .mockResolvedValueOnce(fakeBackend(first.services))
+        .mockResolvedValue(fakeBackend(second.services, { kind: 'browser' }));
+      history.replaceState(null, '', '/?kernels=server&open=work/Orbits.ipynb');
+      render(<App />);
+      expect(await screen.findByTestId('pane')).toHaveTextContent('work/Orbits.ipynb');
+      expect(await window.ganymede!.command('connect')).toBe(true);
+      await userEvent.click(await screen.findByRole('radio', { name: /This browser/ }));
+      return { dispose };
+    };
+
+    it('saves the open notebook first, and connects once it is saved', async () => {
+      let saved!: (ok: boolean) => void;
+      const save = vi.fn(() => new Promise<boolean>(r => (saved = r)));
+      await openOnServer({ dirty: true, save });
+      await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
+
+      expect(save).toHaveBeenCalledTimes(1);
+      // Still on the first backend, with the notebook open, while it saves.
+      expect(await screen.findByRole('button', { name: 'Saving…' })).toBeDisabled();
+      expect(mocks.connect).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId('pane')).toBeInTheDocument();
+
+      await act(async () => saved(true));
+      await waitFor(() => expect(mocks.connect).toHaveBeenLastCalledWith({ kind: 'browser' }));
+      await waitFor(() => expect(screen.queryByTestId('pane')).toBeNull());
+      // The sheet opened again asks nothing, and connects.
+      expect(await window.ganymede!.command('connect')).toBe(true);
+      expect(await screen.findByRole('button', { name: 'Connect' })).toBeEnabled();
+      expect(screen.queryByRole('alert')).toBeNull();
+    });
+
+    it('connects at once when nothing is unsaved', async () => {
+      const save = vi.fn(async () => true);
+      await openOnServer({ dirty: false, save });
+      await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
+      await waitFor(() => expect(mocks.connect).toHaveBeenLastCalledWith({ kind: 'browser' }));
+      expect(save).not.toHaveBeenCalled();
+    });
+
+    it('blocks the switch when the save fails, and keeps editing on Keep Editing', async () => {
+      const save = vi.fn(async () => false);
+      await openOnServer({ dirty: true, save, download: vi.fn(), discard: vi.fn() });
+      await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
+
+      const alert = await screen.findByRole('alert');
+      expect(alert).toHaveTextContent('Couldn’t save “Orbits.ipynb”');
+      expect(mocks.connect).toHaveBeenCalledTimes(1);
+      await userEvent.click(within(alert).getByRole('button', { name: 'Keep Editing' }));
+
+      expect(screen.queryByText('Where should kernels run?')).toBeNull();
+      expect(screen.getByTestId('pane')).toHaveTextContent('work/Orbits.ipynb');
+      expect(mocks.connect).toHaveBeenCalledTimes(1);
+      expect(mocks.controller!.discard).not.toHaveBeenCalled();
+    });
+
+    it('downloads a copy, then switches without saving when asked', async () => {
+      const save = vi.fn(async () => false);
+      const download = vi.fn();
+      const undo = vi.fn();
+      const discard = vi.fn(() => undo);
+      await openOnServer({ dirty: true, save, download, discard });
+      await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
+
+      const alert = await screen.findByRole('alert');
+      await userEvent.click(within(alert).getByRole('button', { name: 'Download a Copy' }));
+      expect(download).toHaveBeenCalledTimes(1);
+      // Still asking: a copy saved is not a choice to switch.
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+      expect(mocks.connect).toHaveBeenCalledTimes(1);
+
+      await userEvent.click(within(alert).getByRole('button', { name: 'Switch Without Saving' }));
+      expect(discard).toHaveBeenCalledTimes(1);
+      await waitFor(() => expect(mocks.connect).toHaveBeenLastCalledWith({ kind: 'browser' }));
+      await waitFor(() => expect(screen.queryByTestId('pane')).toBeNull());
+      expect(undo).not.toHaveBeenCalled();
+      // The sheet opened again asks nothing, and connects.
+      expect(await window.ganymede!.command('connect')).toBe(true);
+      expect(await screen.findByRole('button', { name: 'Connect' })).toBeEnabled();
+      expect(screen.queryByRole('alert')).toBeNull();
+    });
+
+    it('stops the saves of the pane’s controller even after the pane rebuilt it', async () => {
+      const discard = vi.fn(() => () => {});
+      await openOnServer({
+        dirty: true,
+        save: vi.fn(async () => false),
+        download: vi.fn(),
+        discard,
+      });
+      await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
+      const alert = await screen.findByRole('alert');
+      // The kernel went idle, say: the pane hands over a new controller.
+      const rebuilt = vi.fn(() => () => {});
+      act(() =>
+        mocks.onController!({
+          ...mocks.controller,
+          name: 'Orbits.ipynb',
+          path: 'work/Orbits.ipynb',
+          status: 'idle',
+          trusted: true,
+          hostWants: () => [],
+          recordedParams: () => '{}',
+          discard: rebuilt,
+        }),
+      );
+      await userEvent.click(within(alert).getByRole('button', { name: 'Switch Without Saving' }));
+      // The one the save failed on: the pane's controllers share what it sets.
+      expect(discard).toHaveBeenCalledTimes(1);
+      await waitFor(() => expect(mocks.connect).toHaveBeenLastCalledWith({ kind: 'browser' }));
+    });
+
+    it('drops a switch cancelled while the notebook saves', async () => {
+      let saved!: (ok: boolean) => void;
+      const save = vi.fn(() => new Promise<boolean>(r => (saved = r)));
+      await openOnServer({ dirty: true, save });
+      await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
+      await screen.findByRole('button', { name: 'Saving…' });
+      await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+      await act(async () => saved(true));
+      expect(screen.queryByText('Where should kernels run?')).toBeNull();
+      expect(mocks.connect).toHaveBeenCalledTimes(1);
+      expect(screen.getByTestId('pane')).toBeInTheDocument();
+      // The sheet opened again connects, not still saving.
+      expect(await window.ganymede!.command('connect')).toBe(true);
+      expect(await screen.findByRole('button', { name: 'Connect' })).toBeEnabled();
+    });
+
+    it('stops the switch with the choice when the save doesn’t answer in time', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        const save = vi.fn(() => new Promise<boolean>(() => {}));
+        await openOnServer({ dirty: true, save, download: vi.fn(), discard: vi.fn() });
+        await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
+        await screen.findByRole('button', { name: 'Saving…' });
+
+        // Real time passes too (`shouldAdvanceTime`): well short of the limit.
+        await act(async () => vi.advanceTimersByTime(SERVER_TIMEOUT_MS - 10_000));
+        expect(screen.queryByRole('alert')).toBeNull();
+        expect(screen.getByRole('button', { name: 'Saving…' })).toBeInTheDocument();
+        await act(async () => vi.advanceTimersByTime(10_000));
+        const alert = await screen.findByRole('alert');
+        expect(alert).toHaveTextContent('The server didn’t answer in time.');
+        expect(alert).toHaveTextContent('Keep editing to try again.');
+        expect(mocks.connect).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('connects without saving when the notebook’s pane is gone (a data file is open)', async () => {
+      const save = vi.fn(async () => true);
+      mocks.controller = { dirty: true, save };
+      const first = fakeServices({
+        '': [],
+        work: [
+          { name: 'Orbits.ipynb', type: 'notebook' },
+          { name: 'moons.csv', type: 'file' },
+        ],
+      });
+      Object.assign(first.services, { dispose: vi.fn() });
+      mocks.connect
+        .mockResolvedValueOnce(fakeBackend(first.services))
+        .mockResolvedValue(fakeBackend(fakeServices({ '': [] }).services, { kind: 'browser' }));
+      history.replaceState(null, '', '/?kernels=server&open=work/Orbits.ipynb');
+      render(<App />);
+      expect(await screen.findByTestId('pane')).toBeInTheDocument();
+      // The data view takes the notebook's place; its controller stays behind.
+      expect(await window.ganymede!.command('open', 'work/moons.csv')).toBe(true);
+      expect(await screen.findByTestId('data-pane')).toBeInTheDocument();
+
+      expect(await window.ganymede!.command('connect')).toBe(true);
+      await userEvent.click(await screen.findByRole('radio', { name: /This browser/ }));
+      await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
+      await waitFor(() => expect(mocks.connect).toHaveBeenLastCalledWith({ kind: 'browser' }));
+      expect(save).not.toHaveBeenCalled();
+    });
+
+    it('keeps the live backend through StrictMode and unmount', async () => {
+      // A backend for each connect: StrictMode's first one is dropped (and disposed).
+      const disposes: ReturnType<typeof vi.fn>[] = [];
+      mocks.connect.mockImplementation(async () => {
+        const fake = fakeServices({ '': [] });
+        const dispose = vi.fn();
+        disposes.push(dispose);
+        Object.assign(fake.services, { dispose });
+        return fakeBackend(fake.services);
+      });
+      history.replaceState(null, '', '/?kernels=server');
+      const { unmount } = render(
+        <StrictMode>
+          <App />
+        </StrictMode>,
+      );
+      await waitFor(() => expect(window.ganymede).toBeDefined());
+      await waitFor(() => expect(screen.queryByText('Where should kernels run?')).toBeNull());
+      const live = disposes.at(-1)!;
+      await act(async () => new Promise(r => setTimeout(r, 10)));
+      expect(live).not.toHaveBeenCalled();
+      unmount();
+      // Past the settling of any pending saves, which comes before a dispose.
+      await act(async () => new Promise(r => setTimeout(r, 10)));
+      expect(live).not.toHaveBeenCalled();
+    });
+
+    it('disposes the old backend only once the closed notebook’s last save is done', async () => {
+      const { dispose } = await openOnServer({ dirty: false, save: vi.fn(async () => true) });
+      // The pane's teardown save, still going (the real pane hands it off).
+      let lastSave!: (failed: string | undefined) => void;
+      handOff('work/Orbits.ipynb', new Promise(r => (lastSave = r)));
+      await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
+      await waitFor(() => expect(mocks.connect).toHaveBeenLastCalledWith({ kind: 'browser' }));
+      await waitFor(() => expect(screen.queryByText('Where should kernels run?')).toBeNull());
+
+      expect(dispose).not.toHaveBeenCalled();
+      await act(async () => lastSave(undefined));
+      await waitFor(() => expect(dispose).toHaveBeenCalledTimes(1));
+    });
+
+    it('disposes the old backend after SERVER_TIMEOUT_MS when a last save never ends', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      let lastSave!: (failed: string | undefined) => void;
+      try {
+        const { dispose } = await openOnServer({ dirty: false, save: vi.fn(async () => true) });
+        handOff('work/Orbits.ipynb', new Promise(r => (lastSave = r)));
+        await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
+        await waitFor(() => expect(mocks.connect).toHaveBeenLastCalledWith({ kind: 'browser' }));
+        await waitFor(() => expect(screen.queryByText('Where should kernels run?')).toBeNull());
+
+        // Real time passes too (`shouldAdvanceTime`): well short of the limit.
+        await act(async () => vi.advanceTimersByTime(SERVER_TIMEOUT_MS - 10_000));
+        expect(dispose).not.toHaveBeenCalled();
+        await act(async () => vi.advanceTimersByTime(10_000));
+        await waitFor(() => expect(dispose).toHaveBeenCalledTimes(1));
+      } finally {
+        vi.useRealTimers();
+        // Out of the pending saves, for the tests after this one.
+        lastSave(undefined);
+      }
+    });
   });
 
   it('keeps the sidebar open when a page with a notebook open is reloaded', async () => {

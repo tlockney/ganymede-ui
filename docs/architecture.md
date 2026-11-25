@@ -102,11 +102,29 @@ comes back to both. New notebooks go in the sidebar's folder. Picking
 another backend in the connect sheet drops both; retrying the same server
 there (say with a corrected token) keeps them. The page title is the open notebook's name.
 
-Switching backends disposes the old `ServiceManager`. A server's kernels
-keep running, as they do when a notebook closes, and show under Running
-when the app connects to that server again. Kernels in the page have
-nowhere to come back to, so the in-page manager shuts them down first,
-which terminates their Workers.
+Before the connect sheet switches backends, it saves the open notebook
+(#792): it connects only once the save went through, and says "Saving…"
+meanwhile. A save that fails (the pane says why), or that the server
+doesn't answer within `SERVER_TIMEOUT_MS` (the sheet says so), stops the
+switch, and the sheet, its fields fixed, offers Keep Editing, Download a
+Copy (the controller's `download`) and Switch Without Saving (its
+`discard`, so the pane's teardown doesn't save). Cancel during the save
+drops the switch.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, as is the wait for the last saves below. The
+> latest release switches at once and disposes the old services then.
+
+Switching backends disposes the old `ServiceManager`, once the last
+saves of the panes that closed on it (`pendingHandoffs` in
+`src/lib/rename.ts`) are done, or after `SERVER_TIMEOUT_MS`: they save
+through its contents manager. An effect on `backend` does it, after the
+commit that shows the new one, so those panes have handed their saves
+off by then. A server's kernels keep running, as they do when a notebook
+closes, and show under Running when the app connects to that server
+again. Kernels in the page have nowhere to come back to, so the in-page
+manager shuts them down first, which terminates their Workers.
 
 ## In-page server and kernels
 
@@ -143,13 +161,27 @@ Two kernels are registered:
   cdp-kernel's specifiers to them with the kernel's `modules` option, so
   charts draw offline. The apps' kernel page does the same.
 
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release, where the page fetches DuckDB's wasm and worker
+  > on its first visit online, whether or not anything uses it, and a
+  > failed fetch isn't tried again until the page reloads.
+
   `jupyter.sql` works the same way for DuckDB's module, which is served
   from `kernel-modules/` too. DuckDB's wasm and worker are 36 MB, so
   they don't ship in the app. Instead,
   [`src/lib/duckdb-files.ts`](../src/lib/duckdb-files.ts) fetches them
-  from jsDelivr into the page's Cache Storage the first time the page is
-  online. Kernels started after that get them as blob URLs, so SQL runs
-  offline. Until then, the kernel loads them from jsDelivr.
+  from jsDelivr into the page's Cache Storage when DuckDB is first used:
+  an `execute_request` whose code names `sql` (seen by the in-page kernel
+  and the apps' kernel page), the DuckDB console, a Parquet file, or
+  Settings > Offline SQL. A visit that uses none fetches nothing, and a
+  fetch that fails is tried again on the next use, except when the
+  browser had no room to keep the files: then only Download or Try Again
+  in Settings tries again, and the data views go on without the cache.
+  As the page loads it
+  reads what an earlier visit kept, without fetching. Kernels started
+  after the files are mapped get them as blob URLs, so SQL runs offline.
+  Until then, the kernel loads them from jsDelivr.
 
   Typed help (completion, tooltips, type errors, signatures, definition
   and rename) comes from TypeScript 6, which cdp-kernel's language
@@ -194,19 +226,24 @@ JupyterLite's service worker, adapted.
 
 ## Notebook
 
+> [!NOTE]
+> **Unreleased.** The status line under the title and restart and run all
+> are available only from a build of `main` (HEAD), not in the latest
+> release.
+
 `NotebookPane` shows one file. It holds JupyterLab's `Notebook` widget,
 its `NotebookModel`, and a `SessionContext`, which rejoins the kernel
 already running for the file but starts none on open: reading a notebook
 shouldn't start a kernel. The first run (toolbar, Shift+Enter, any run
 command) starts the kernel the file names, or the default when it names
-none; until then the toolbar says the kernel "Starts when you run a cell",
+none; until then the status line under the title shows no kernel state,
 and picking another kernel only changes which one that is. A kernel the
 file names that isn't installed here (a Python notebook with no Python) is
-not swapped for another: the toolbar shows it as not installed, and a run
+not swapped for another: the status line shows it as not installed, and a run
 asks for a kernel to be picked. It loads and saves nbformat
 through the backend's contents API and gives the toolbar a
-`NotebookController` (run, interrupt, restart, change kernel, save,
-download, trust). A failed action shows its error in the pane.
+`NotebookController` (run, interrupt, restart, restart and run all,
+change kernel, save, download, trust). A failed action shows its error in the pane.
 
 `problems.ts` turns failures into what the pane's notice says: what
 happened, and the next step as a button (Restart for a dead kernel,
@@ -275,23 +312,26 @@ as a deleted file does.
 Trust: the server doesn't put `trusted` marks in the room; it decides
 trust when it saves. So on open the pane reads the file through the
 contents API, as the server marks it, and trusts each code cell it marks
-trusted, by id (`trustFromFile`). It sets that trust in this page only
-(`trustHere`): JupyterLab's own way writes into the shared document and
-would mark the notebook edited for everyone. Outputs another client
-writes into a cell this page has (an agent's run through the server, or
-a change on disk the server merged) take that cell's trust away here
-(`watchRemoteOutputs`); a cell another client inserts keeps its shared
-`metadata.trusted` mark, described below. While some outputs are untrusted, the pane reads
-the file again two seconds after the room's saves settle, since the
-server trusts outputs from its own runs, and drops a read that outputs
-changed during. The other way, a room does share trust:
-JupyterLab's cell model writes `metadata.trusted` into the shared cell
-when a cell is trusted (this page ran it, or Trust Notebook), and every
-client of the room reads it there. So a cell trusted in one window is
-trusted in the others, even one holding an unsigned file's outputs the
-server wouldn't trust. The server ignores the mark when it signs the
-file. A new notebook's room has no cells, so the pane adds an empty code
-cell, as `fromJSON` does for a file.
+trusted, by id, when the cell's outputs in the room are the ones the
+file holds (`trustFromFile`, compared by `sameOutputs` with lines joined
+and key order ignored): the file can be behind the room, and its trust
+is for its own outputs, not whatever the cell shows now. It sets that
+trust in this page only (`trustHere`): JupyterLab's own way writes into
+the shared document and would mark the notebook edited for everyone.
+Outputs another client writes into a cell this page has (an agent's run
+through the server, or a change on disk the server merged) take that
+cell's trust away here (`watchRemoteOutputs`); a cell another client
+inserts keeps its shared `metadata.trusted` mark, described below. While
+some outputs are untrusted, the pane reads the file again two seconds
+after the room's saves settle, since the server trusts outputs from its
+own runs, and drops a read that outputs changed during. The other way, a
+room does share trust: JupyterLab's cell model writes `metadata.trusted`
+into the shared cell when a cell is trusted (this page ran it, or Trust
+Notebook), and every client of the room reads it there. So a cell
+trusted in one window is trusted in the others, even one holding an
+unsigned file's outputs the server wouldn't trust. The server ignores
+the mark when it signs the file. A new notebook's room has no cells, so
+the pane adds an empty code cell, as `fromJSON` does for a file.
 
 Inside JupyterLab, the editor, renderers and commands come from plugins.
 `jupyterlab.ts` builds them once and shares them across notebooks: the

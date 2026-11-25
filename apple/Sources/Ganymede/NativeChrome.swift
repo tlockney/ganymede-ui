@@ -33,6 +33,9 @@ struct FolderSidebar: View {
     /// The selected row, which Up and Down move and Return, Right and Left
     /// act on (#787). Only files and folders are selectable.
     @State private var selection: FolderEntry?
+    /// The rows listed so far, by folder: Left finds a row's parent here,
+    /// and a reload that drops the selected row clears it (#791).
+    @State private var tree = SidebarTree()
 
     /// Whether the window's machine answers (always true for this device).
     private var reachable: Bool { PlaceReachability.shared.isReachable(place) }
@@ -53,7 +56,9 @@ struct FolderSidebar: View {
             isExpanded: { actions.isExpanded($0.url).wrappedValue },
             setExpanded: { actions.isExpanded($0.url).wrappedValue = $1 },
             canOpen: { $0.canOpen(in: place) },
-            open: open
+            open: open,
+            parent: { tree.parent(of: $0, root: folder) },
+            select: { selection = $0 }
         ))
         .contextMenu {
             Button("New Notebook") { page.run("new-notebook", arg: source.serverPath(folder)) }
@@ -64,7 +69,10 @@ struct FolderSidebar: View {
         // The machine answers again: list everything again.
         .onChange(of: reachable) { if reachable { generation += 1 } }
         // Another folder in this window: the old one's rows are gone.
-        .onChange(of: folder) { selection = nil }
+        .onChange(of: folder) {
+            selection = nil
+            tree = SidebarTree()
+        }
         // A notebook made or saved by the page shows up, and so do changes
         // made outside the app when it comes back to the front.
         .onChange(of: page.state.path) { old, _ in
@@ -105,6 +113,7 @@ struct FolderSidebar: View {
                 )
             },
             select: { selection = $0 },
+            listed: listed(_:in:),
             open: open,
             openByClick: { entry in
                 open(entry)
@@ -136,6 +145,13 @@ struct FolderSidebar: View {
     /// or deleted folder's rows go.
     private func dropSelection(at entry: FolderEntry) {
         if let selected = selection, selected.isAtOrInside(entry) { selection = nil }
+    }
+
+    /// A folder's contents listed `entries` (#791): a selected row the
+    /// listing no longer has is cleared (`SidebarTree.listed`).
+    private func listed(_ entries: [FolderEntry], in dir: URL) {
+        let kept = tree.listed(entries, in: dir, keeping: selection, root: folder)
+        if kept != selection { selection = kept }
     }
 
     private func open(_ entry: FolderEntry) {
@@ -254,6 +270,9 @@ struct FolderActions {
     var isExpanded: (URL) -> Binding<Bool>
     /// A click made this row the list's selection (#787).
     var select: (FolderEntry) -> Void
+    /// A folder's contents were listed: the folder's URL as the contents
+    /// were given it, and its rows (#791).
+    var listed: ([FolderEntry], URL) -> Void
     var open: (FolderEntry) -> Void
     /// A click opened the file: `open`, then the keyboard goes back to the page.
     var openByClick: (FolderEntry) -> Void
@@ -356,6 +375,7 @@ private struct FolderContents: View {
             guard !Task.isCancelled else { return }
             entries = listed
             error = nil
+            actions.listed(listed, folder)
         } catch {
             guard !Task.isCancelled else { return }
             self.error = FileSourceError.message(error, place: actions.place, machineName: actions.machineName)

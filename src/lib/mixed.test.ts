@@ -1,5 +1,6 @@
 import type { Kernel, KernelSpec, ServerConnection, Session } from '@jupyterlab/services';
 import { describe, expect, it, vi } from 'vitest';
+import { isPageSpec } from './kernel-device';
 import {
   MixedKernelClient,
   MixedKernelSpecClient,
@@ -57,6 +58,9 @@ describe('MixedKernelSpecClient', () => {
     // The page's Web Worker kernel stays out; the server's keeps its name.
     expect(merged.kernelspecs.javascript!.display_name).toBe('JavaScript (Node)');
     expect([...owners.pageSpecs]).toEqual(['cdp-browser']);
+    // Marked, so the header can say it runs here (#801); the server's aren't.
+    expect(isPageSpec(merged.kernelspecs['cdp-browser'])).toBe(true);
+    expect(isPageSpec(merged.kernelspecs['cdp-node'])).toBe(false);
   });
 });
 

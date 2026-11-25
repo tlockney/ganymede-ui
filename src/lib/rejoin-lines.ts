@@ -34,10 +34,15 @@ export function rejoinLines(content: nbformat.INotebookContent): nbformat.INoteb
       for (const bundle of Object.values(cell.attachments)) rejoinBundle(bundle);
     }
     if (cell.cell_type !== 'code' || !Array.isArray(cell.outputs)) continue;
-    for (const output of cell.outputs as unknown as Record<string, unknown>[]) {
-      if ('text' in output) output.text = joined(output.text);
-      rejoinBundle(output.data);
-    }
+    for (const output of cell.outputs as nbformat.IOutput[]) rejoinOutput(output);
   }
   return content;
+}
+
+/** {@link rejoinLines} for one output: its stream text and its data's values. */
+export function rejoinOutput(output: nbformat.IOutput): nbformat.IOutput {
+  const o = output as unknown as Record<string, unknown>;
+  if ('text' in o) o.text = joined(o.text);
+  rejoinBundle(o.data);
+  return output;
 }

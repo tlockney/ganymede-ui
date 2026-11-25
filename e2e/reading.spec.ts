@@ -5,7 +5,7 @@
 // runs: the outputs are the ones saved in the files.
 import { expect, test } from '@playwright/test';
 import { TOKEN } from './env';
-import { screenshot, waitForReady } from './helpers';
+import { screenshot, statusLine, waitForReady } from './helpers';
 
 const FIXTURES = [
   'Data frames',
@@ -73,6 +73,6 @@ test('renders saved widgets without a kernel', async ({ page }, testInfo) => {
   await expect(page.locator('.widget-checkbox input')).toBeChecked();
   await expect(page.locator('.widget-dropdown select')).toHaveValue('Jupiter');
   // Still no kernel.
-  await expect(page.getByText(/ · Starts when you run a cell$/)).toBeVisible();
+  await expect(statusLine(page).locator('.status-dot')).toHaveClass(/\bs-none\b/);
   await screenshot(page, testInfo, 'reading-widgets-trusted-light');
 });

@@ -5,7 +5,15 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 import { FIXTURE, GANYMEDE_URL, ROOT_DIR, TOKEN } from './env';
-import { notebookName, openNotebook, openWithToken, outputs, sidebarItem } from './helpers';
+import {
+  notebookName,
+  openNotebook,
+  openWithToken,
+  outputs,
+  runAll,
+  sidebarItem,
+  statusLine,
+} from './helpers';
 
 // Put the fixture back after each test, so the edit test leaves later ones
 // (and the screenshots) the notebook as committed.
@@ -21,7 +29,7 @@ test('lists the notebook, runs all cells, and shows stream, result and HTML outp
   await expect(sidebarItem(page, notebookName(FIXTURE))).toBeVisible();
   await openNotebook(page, FIXTURE);
 
-  await page.getByRole('button', { name: 'Run All' }).click();
+  await runAll(page);
 
   // stdout from console.log
   await expect(
@@ -75,11 +83,11 @@ test('saves an edit with the keyboard, and it survives a reload and is on disk',
   await page.keyboard.press('ControlOrMeta+End');
   await page.keyboard.type(`\n// ${stamp}`);
   await expect(editor).toContainText(stamp);
-  await expect(page.getByText('— Edited')).toBeVisible();
+  await expect(statusLine(page)).toHaveAccessibleName(/^Edited/);
 
   // The app binds ⌘S on macOS and Ctrl+S elsewhere.
   await page.keyboard.press('ControlOrMeta+s');
-  await expect(page.getByText('— Edited')).toBeHidden({ timeout: 10_000 });
+  await expect(statusLine(page)).toHaveAccessibleName(/^Saved on /, { timeout: 10_000 });
 
   const onDisk = JSON.parse(readFileSync(join(ROOT_DIR, FIXTURE), 'utf8'));
   const source = [onDisk.cells[1].source].flat().join('');
@@ -135,7 +143,7 @@ test('takes in a change on disk live, keeping edits here (#183)', async ({ page 
   await expect(editors.nth(1)).toContainText(theirs, { timeout: 15_000 });
   await expect(editors.first()).toContainText(stamp);
   await expect(page.getByRole('alert')).toBeHidden();
-  await expect(page.getByText('— Locked')).toBeHidden();
+  await expect(statusLine(page)).not.toHaveAccessibleName(/^Locked/);
 
   // And the server saves both to the file.
   await expect.poll(() => readFileSync(file, 'utf8'), { timeout: 15_000 }).toContain(stamp);
@@ -175,7 +183,7 @@ test('asks before the tab closes with unsaved edits', async ({ page }) => {
   await editor.click();
   await page.keyboard.press('ControlOrMeta+End');
   await page.keyboard.type('\n// not saved');
-  await expect(page.getByText('— Edited')).toBeVisible();
+  await expect(statusLine(page)).toHaveAccessibleName(/^Edited/);
 
   const asked = page.waitForEvent('dialog');
   await page.close({ runBeforeUnload: true });

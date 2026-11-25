@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { FIXTURE } from './env';
-import { openNotebook, openWithToken } from './helpers';
+import { openNotebook, openWithToken, toolbarMenu } from './helpers';
 
 test('downloads the open notebook', async ({ page }) => {
   await openWithToken(page);
@@ -10,7 +10,7 @@ test('downloads the open notebook', async ({ page }) => {
 
   const [download] = await Promise.all([
     page.waitForEvent('download'),
-    page.getByRole('button', { name: 'Download Notebook' }).click(),
+    toolbarMenu(page, 'Share', 'Download Notebook'),
   ]);
   expect(download.suggestedFilename()).toBe(FIXTURE);
   const notebook = JSON.parse(readFileSync(await download.path(), 'utf8'));

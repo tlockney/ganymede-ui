@@ -15,6 +15,7 @@ import { TOUCH_QUERY, useMedia, useNarrow } from './lib/useNarrow';
 import { useJupyterLabTheme } from './lib/theme';
 import { Sidebar } from './components/Sidebar';
 import { Toolbar } from './components/Toolbar';
+import { placeOf } from './lib/header-status';
 import { DataPane } from './components/DataPane';
 import { DuckdbConsole } from './components/DuckdbConsole';
 import {
@@ -96,6 +97,8 @@ import { useKernelMemory } from './lib/kernel-usage';
 import { nodeAt, useVariables } from './lib/useVariables';
 import { useFileDrop } from './lib/file-drop';
 import { copySample } from './lib/sample';
+import { pendingHandoffs } from './lib/rename';
+import { SERVER_TIMEOUT_MS } from './lib/server-request';
 import { refreshKernelsOnReturn } from './lib/kernel-refresh';
 import { RunSheet } from './components/RunSheet';
 import { runAvailable, runWithParams } from './lib/run';
@@ -347,10 +350,9 @@ export function App() {
           return;
         }
         saveConfig(config);
-        setBackend(prev => {
-          prev?.services.dispose();
-          return b;
-        });
+        // The old backend's services go once the panes closed on it are
+        // done with them (the effect on `backend` below).
+        setBackend(b);
         setSheetOpen(false);
         if (pendingOpen.current) {
           setOpenPath(pendingOpen.current);
@@ -379,6 +381,30 @@ export function App() {
       cancelled = true;
     };
   }, [config, setOpenPath]);
+
+  // A backend another took the place of is disposed once the last saves
+  // of the panes that closed on it are done (#792): they save through its
+  // services. The cleanup runs after the commit that showed the new
+  // backend, so those panes have handed off their saves by then. Not on
+  // unmount, or StrictMode's second run, where the backend is still the
+  // current one.
+  useEffect(() => {
+    const b = backend;
+    if (!b) return;
+    return () => {
+      if (backendRef.current === b) return;
+      // Not forever: a save the server never answers would keep the old
+      // services polling it.
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const late = new Promise<void>(resolve => {
+        timer = setTimeout(resolve, SERVER_TIMEOUT_MS);
+      });
+      void Promise.race([Promise.allSettled(pendingHandoffs()), late]).then(() => {
+        clearTimeout(timer);
+        b.services.dispose();
+      });
+    };
+  }, [backend]);
 
   const newNotebook = useCallback(
     /** Resolves true once the new notebook opens, false if it wasn't created. */
@@ -478,6 +504,68 @@ export function App() {
   // its Save, close and quit prompts.
   const controllerRef = useRef(controller);
   controllerRef.current = controller;
+  /**
+   * Connect to what the sheet picked. The launch file and folder belong to
+   * the first backend: kept for a retry there (a corrected token) or when
+   * this is the first pick, dropped for another.
+   */
+  const switchBackend = (c: BackendConfig) => {
+    if (config && !sameBackend(c, config)) {
+      pendingOpen.current = undefined;
+      setSidebarRoot('');
+      history.replaceState(
+        null,
+        '',
+        window.location.pathname + withDir(withOpen(window.location.search, undefined), ''),
+      );
+    }
+    setConfig({ ...c });
+  };
+  /** Bumped by each Connect and Cancel in the sheet: a save that ends after either is stale. */
+  const switchTry = useRef(0);
+  /** The open notebook is saving before the sheet connects (#792). */
+  const [savingForSwitch, setSavingForSwitch] = useState(false);
+  /**
+   * A connect the open notebook's save didn't let through (#792): the
+   * sheet asks to keep editing, download a copy, or switch without saving.
+   * `why` when the pane can't say: the save didn't finish in time.
+   */
+  const [blockedSwitch, setBlockedSwitch] = useState<{
+    config: BackendConfig;
+    controller: NotebookController;
+    why?: string;
+  }>();
+  /**
+   * Connecting closes the open notebook, and its services with the old
+   * backend, so its edits are saved first (#792): only once they are does
+   * the sheet connect. A failed save (the pane says why), or one the
+   * server doesn't answer in time, leaves the choice to the person.
+   */
+  const connectFromSheet = async (c: BackendConfig) => {
+    const attempt = ++switchTry.current;
+    const open = controllerRef.current;
+    // The controller outlives its pane: a data file or console opened since has none.
+    if (open && open.path === openPath && open.dirty) {
+      setSavingForSwitch(true);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const late = new Promise<'late'>(resolve => {
+        timer = setTimeout(() => resolve('late'), SERVER_TIMEOUT_MS);
+      });
+      const saved = await Promise.race([open.save(), late]).finally(() => clearTimeout(timer));
+      if (switchTry.current !== attempt) return;
+      setSavingForSwitch(false);
+      if (saved !== true) {
+        setBlockedSwitch({
+          config: c,
+          controller: open,
+          why: saved === 'late' ? 'The server didn’t answer in time.' : undefined,
+        });
+        return;
+      }
+    }
+    switchBackend(c);
+  };
+
   // The app's menus and toolbar run the page's commands (#205); a ref, so
   // the hooks stay put while what they act on changes.
   const runCommand = useRef<(id: string, arg?: string) => Promise<boolean>>(async () => false);
@@ -1022,6 +1110,7 @@ export function App() {
               onToggleVariables={() => setVariablesOpen(o => !o)}
               variablesOpen={variablesOpen}
               specs={specs}
+              place={backend ? placeOf(backend.config) : undefined}
               accessMissing={accessMissing}
               onNotebookAccess={() => void runCommand.current('notebook-access')}
               onPublish={
@@ -1116,21 +1205,26 @@ export function App() {
           error={error}
           connecting={connecting}
           canCancel={!!backend}
-          onCancel={() => setSheetOpen(false)}
-          onConnect={c => {
-            // The launch file and folder belong to the first backend: keep
-            // them for a retry there (a corrected token) or when this is
-            // the first pick, drop them for another.
-            if (config && !sameBackend(c, config)) {
-              pendingOpen.current = undefined;
-              setSidebarRoot('');
-              history.replaceState(
-                null,
-                '',
-                window.location.pathname + withDir(withOpen(window.location.search, undefined), ''),
-              );
-            }
-            setConfig({ ...c });
+          saving={savingForSwitch}
+          unsaved={blockedSwitch?.controller.name}
+          unsavedWhy={blockedSwitch?.why}
+          onCancel={() => {
+            switchTry.current++;
+            setSavingForSwitch(false);
+            setBlockedSwitch(undefined);
+            setSheetOpen(false);
+          }}
+          onConnect={c => void connectFromSheet(c)}
+          onDownloadCopy={() => blockedSwitch?.controller.download()}
+          onSwitchAnyway={() => {
+            if (!blockedSwitch) return;
+            const { config: next, controller: c } = blockedSwitch;
+            setBlockedSwitch(undefined);
+            // Stops its saves, so the teardown lets the edits go. Any of
+            // the pane's controllers will do: the pane rebuilds it on each
+            // change of state, and they share what `discard` sets.
+            c.discard();
+            switchBackend(next);
           }}
         />
       )}

@@ -1228,6 +1228,41 @@ describe('NotebookPane', () => {
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });
 
+    it('restarts the kernel, then runs every cell (#801)', async () => {
+      const { latest, session } = await running();
+      const order: string[] = [];
+      const restart = vi.fn(async () => void order.push('restart'));
+      Object.assign(session.session!.kernel, { restart });
+      const all = vi
+        .spyOn(NotebookActions, 'runAll')
+        .mockImplementation(async () => (order.push('run all'), true));
+      await act(() => latest()!.restartAndRunAll());
+      expect(order).toEqual(['restart', 'run all']);
+      all.mockRestore();
+    });
+
+    it('does nothing from the journal (#801)', async () => {
+      const { latest } = await journalWithOutput();
+      const session = fakes.sessions[0] as { changeKernel: ReturnType<typeof vi.fn> };
+      const all = vi.spyOn(NotebookActions, 'runAll').mockResolvedValue(true);
+      await act(() => latest()!.restartAndRunAll());
+      expect(session.changeKernel).not.toHaveBeenCalled();
+      expect(all).not.toHaveBeenCalled();
+      all.mockRestore();
+    });
+
+    it('does not run the cells when the restart fails (#801)', async () => {
+      const { latest, session } = await running();
+      const restart = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+      Object.assign(session.session!.kernel, { restart });
+      const all = vi.spyOn(NotebookActions, 'runAll').mockResolvedValue(true);
+      await act(() => latest()!.restartAndRunAll());
+      expect(restart).toHaveBeenCalledOnce();
+      expect(all).not.toHaveBeenCalled();
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+      all.mockRestore();
+    });
+
     it('says when a run can’t reach the server, and Retry runs again', async () => {
       const { latest } = await running();
       const run = vi

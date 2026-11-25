@@ -6,7 +6,7 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { ROOT_DIR } from './env';
-import { openNotebook, openWithToken, removeFromServer, waitForIdle } from './helpers';
+import { openNotebook, openWithToken, removeFromServer, runAll, waitForIdle } from './helpers';
 
 // Chromium for tests hides scrollbars unless told not to. launchOptions
 // replaces the config's, so the executable comes along again.
@@ -87,7 +87,7 @@ test('a framed output just over the cap keeps a steady scrollbar', async ({ page
     });
   });
   await openNotebook(page, FILE);
-  await page.getByRole('button', { name: 'Run All' }).click();
+  await runAll(page);
   await waitForIdle(page);
 
   const frame = page.locator('[data-mime-type="text/html"] iframe');

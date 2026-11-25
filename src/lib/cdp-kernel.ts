@@ -3,11 +3,12 @@ import type { IKernel } from '@jupyterlite/services';
 import { Signal } from '@lumino/signaling';
 import { startBrowserKernel, type BrowserKernel } from '@tlockney/cdp-kernel/browser';
 import workerUrl from '@tlockney/cdp-kernel/browser/worker?worker&url';
+import { noteKernelRequest } from './duckdb-files';
 import { kernelModules } from './kernel-modules';
 import { kernelTypescript } from './kernel-typescript';
+import { CDP_KERNEL_NAME } from './kernel-device';
 
-/** The kernelspec name, as cdp-kernel names its kernelspecs (`cdp-node`, …). */
-export const CDP_KERNEL_NAME = 'cdp-browser';
+export { CDP_KERNEL_NAME };
 
 export const CDP_KERNEL_SPEC = {
   name: CDP_KERNEL_NAME,
@@ -61,6 +62,8 @@ export class CdpBrowserKernel implements IKernel {
   async handleMessage(msg: KernelMessage.IMessage): Promise<void> {
     if (msg.channel === 'iopub') return;
     this._lastSession = msg.header.session;
+    // A cell that may run SQL fetches DuckDB's files for later kernels (#794).
+    noteKernelRequest(msg as Parameters<typeof noteKernelRequest>[0]);
     this._kernel.send(msg.channel, msg as unknown as Parameters<BrowserKernel['send']>[1]);
   }
 

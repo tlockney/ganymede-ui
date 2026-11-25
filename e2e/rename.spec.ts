@@ -2,7 +2,7 @@
 // backend's contents API: the sidebar, the window title, `?open=` and the
 // running kernel follow the new name; a taken name is refused.
 import { expect, type Page, test } from '@playwright/test';
-import { outputs, waitForReady } from './helpers';
+import { outputs, waitForIdle, waitForReady } from './helpers';
 
 async function newNotebook(page: Page) {
   await page.getByRole('button', { name: 'New Notebook' }).first().click();
@@ -47,7 +47,7 @@ test('renames the open notebook from its title', async ({ page }) => {
   ).toHaveCount(1);
   await expect(sidebar.getByRole('button', { name: /^Galilean moons\s*cdp-/ })).toBeVisible();
   await expect(outputs(page).filter({ hasText: '42' })).toBeVisible();
-  await expect(page.getByText(/ · Idle$/)).toBeVisible();
+  await waitForIdle(page);
 
   // A name that is taken is refused, and the field stays open to fix it.
   await newNotebook(page);

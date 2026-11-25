@@ -173,3 +173,8 @@ export const MoreIcon = (p: P) => (
     <circle cx="15" cy="10" r="1.5" />
   </svg>
 );
+export const ChevronDownIcon = (p: P) => (
+  <svg {...base({ width: 12, height: 12, ...p })}>
+    <path d="m5 7.5 5 5 5-5" />
+  </svg>
+);
