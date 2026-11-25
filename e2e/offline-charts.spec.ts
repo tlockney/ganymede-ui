@@ -32,7 +32,8 @@ test('a chart draws with the CDN unreachable', async ({ page }) => {
   expect(cdn).toEqual([]);
 });
 
-// #794: the page used to fetch DuckDB's 36 MB from jsDelivr on every load.
+// #794: the page used to fetch DuckDB's 36 MB from jsDelivr on its first visit
+// online, whether or not anything used it.
 test('TypeScript and a chart run with no network, and nothing asks for DuckDB', async ({
   page,
 }) => {

@@ -1,9 +1,10 @@
 ## 2026-11-25, DuckDB loads on first use (#794)
 
 `kernel-modules.ts` called `loadDuckdbFiles()` as it was imported, so
-every visit fetched DuckDB's wasm and worker (36 MB) from jsDelivr, even
-one that only ran arithmetic, and a load that failed (offline) was kept
-as the page's answer until a reload.
+the first visit online (and any visit until both files were cached)
+fetched DuckDB's wasm and worker (36 MB) from jsDelivr, whether or not
+anything used it, even one that only ran arithmetic; and a load that
+failed (offline) was kept as the page's answer until a reload.
 
 Now the page fetches them on the first use of DuckDB: an
 `execute_request` whose code names `sql` as a word (`noteKernelRequest`,
@@ -37,7 +38,10 @@ That is cdp-kernel#539.
 Tests: `duckdb-files.test.ts` (nothing more once mapped: no cache read,
 blob URL, fetch or state change; retry after a failed fetch and after
 offline; only the missing file on a retry; a body that stops partway
-fails with its message and keeps the other file; cached files map
+fails with its message and keeps the other file; the first file's
+failure is the one reported; a full cache and a cache that drops what
+it was given fail, not succeed; a failure survives a start-up read that
+finds nothing; cached files map
 offline; one load shared; progress with a known total, with no length
 and when compressed; the start-up read fetches nothing; a use during it
 fetches; `usesSql` cases), `OfflineSqlSection.test.tsx`,
@@ -45,7 +49,7 @@ fetches; `usesSql` cases), `OfflineSqlSection.test.tsx`,
 a chart with every off-machine request refused, and no DuckDB cache) and
 `offline-sql.spec.ts` (Download in Settings, then offline; SQL tried
 offline, then online in a new kernel without a reload, then offline
-again; a failed download's message at phone width with Try Again on one
+again; a failed download's message with Try Again's label on one
 line). The new e2e tests fail against the old page.
 
 By hand, as CI can't run them:

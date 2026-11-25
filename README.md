@@ -223,7 +223,8 @@ storage); the Mac and iPad apps keep their own, in their Settings.
 
 > [!NOTE]
 > **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release, where the page fetches DuckDB on every visit.
+> the latest release, where the page fetches DuckDB on its first visit
+> online, whether or not anything uses it.
 
 `jupyter.sql` in the browser's kernels, the DuckDB console and Parquet
 files run on DuckDB, whose wasm and worker (36 MB) come from jsDelivr.

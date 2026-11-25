@@ -32,7 +32,7 @@ function fakeCaches() {
     has: async (name: string) => names.has(name),
     delete: async (name: string) => names.delete(name),
   });
-  return { store, opened, names, reads: () => reads };
+  return { store, cache, opened, names, reads: () => reads };
 }
 
 describe('DuckDB files', () => {
@@ -284,6 +284,64 @@ describe('DuckDB files', () => {
     expect(fetch).not.toHaveBeenCalled();
     expect(Object.keys(duckdbModules())).toHaveLength(2);
     expect(duckdbFilesState()).toEqual({ state: 'ready' });
+  });
+
+  it('keeps a failure through a start-up read that finds nothing', async () => {
+    const { names } = fakeCaches();
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubGlobal('fetch', async () => new Response('', { status: 503 }));
+    await loadDuckdbFiles();
+    expect(duckdbFilesState()).toEqual({
+      state: 'failed',
+      message: 'cdn.jsdelivr.net answered 503.',
+    });
+    names.delete(CACHE);
+    await readCachedDuckdbFiles();
+    expect(duckdbFilesState()).toEqual({
+      state: 'failed',
+      message: 'cdn.jsdelivr.net answered 503.',
+    });
+  });
+
+  it('says when the browser has no room to keep the files', async () => {
+    const { cache } = fakeCaches();
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    cache.put = async () => {
+      throw new DOMException('q', 'QuotaExceededError');
+    };
+    vi.stubGlobal('fetch', async (url: string) => new Response(url));
+    await loadDuckdbFiles();
+    expect(duckdbFilesState()).toEqual({
+      state: 'failed',
+      message: 'This browser has no room to keep DuckDB.',
+    });
+  });
+
+  it('fails, not ready, when the cache doesn’t keep what it was given', async () => {
+    const { cache } = fakeCaches();
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    cache.put = async (_url: string, res: Response) => void (await res.arrayBuffer());
+    vi.stubGlobal('fetch', async (url: string) => new Response(url));
+    await loadDuckdbFiles();
+    expect(duckdbFilesState()).toEqual({
+      state: 'failed',
+      message: 'DuckDB’s files aren’t in the cache.',
+    });
+    expect(duckdbModules()).toEqual({});
+  });
+
+  it('reports the first file’s failure when both fail', async () => {
+    fakeCaches();
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubGlobal('fetch', async (url: string) => {
+      if (url === FILES[0].url) throw new TypeError('Failed to fetch');
+      return new Response('', { status: 503 });
+    });
+    await loadDuckdbFiles();
+    expect(duckdbFilesState()).toEqual({
+      state: 'failed',
+      message: 'Couldn’t reach cdn.jsdelivr.net.',
+    });
   });
 
   it('fetches for a use that comes while the start-up read runs', async () => {
