@@ -37,9 +37,12 @@ rows of + Code / + Text buttons took width and height from the code.
   cell's outputs while the session has no kernel.
 - **Run states.** `cellRunState` reads the classes `run-status.ts` sets
   (Running, Queued) and a last error of `KeyboardInterrupt` (Stopped), and
-  puts the words in the meta line, which stays in the accessibility tree on
-  a wide screen as visually hidden text (its other parts don't show there;
-  the prompt keeps no title).
+  puts the words in the meta line. With `touch-ui` (a touch screen, or a
+  narrow browser window) the line stays in the accessibility tree on a wide
+  screen as visually hidden text (its other parts don't show there; the
+  prompt keeps no title). Without `touch-ui` (a wide desktop browser, the
+  Mac app) the line is `display: none`; the run status line and the
+  "Execution stopped" bar give the state in words there.
 - **Taps on a control in an inactive cell.** A tap's mousedown gives the
   control focus, JupyterLab's notebook takes that focus as a tap on the
   cell and makes it the active one mid-tap, and the meta line the new

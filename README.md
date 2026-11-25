@@ -330,9 +330,10 @@ In a window narrower than 720px — a phone, iPad Split View, a narrow
 browser window — the active cell has a short line above
 it with its execution count (`In [3]`, or `Not run`), its type, and its …
 menu, so code and output get the whole width: there is no prompt column.
-The line also says **Queued**, **Running** or **Stopped** in words, and
-those words stay in the cell as visually hidden text where the window is
-too wide for the line. One **Add Cell Below**
+The line also says **Queued**, **Running** or **Stopped** in words. On a
+touch screen, those words stay in the cell as visually hidden text where
+the window is too wide for the line; elsewhere the run status line and
+the **Execution stopped** bar say the same. One **Add Cell Below**
 button sits under the active cell, and **Add Cell at End** under the last
 cell — the same button, named **Add Cell Below**, when the active cell is
 the last. It adds a code cell; the … menu changes its type, moves it up

@@ -298,8 +298,9 @@ describe('the compact layout (#813)', () => {
     cell(0).addClass('gn-mod-queued');
     await Promise.resolve();
     expect(cellRunState(cell(0))).toBe('Queued');
-    // Text in the cell, not a colour: jupyter.css keeps it in the
-    // accessibility tree on a wide screen too, where the line doesn't show.
+    // Text in the cell, not a colour: with touch-ui, jupyter.css keeps it in
+    // the accessibility tree on a wide screen too, where the line doesn't
+    // show (without touch-ui the line is display: none).
     expect(state().textContent).toBe('Queued');
     expect(state().hidden).toBe(false);
 
@@ -345,7 +346,7 @@ describe('the compact layout (#813)', () => {
     expect(meta(0).querySelector('.gn-meta-state')!.textContent).toBe('Stopped');
   });
 
-  it('clears Stopped when the outputs are cleared, with no class change', async () => {
+  it('clears Stopped when the outputs are cleared', async () => {
     const outputs = (
       cell(0).model as unknown as {
         outputs: { add(o: unknown): void; clear(): void };
@@ -360,5 +361,20 @@ describe('the compact layout (#813)', () => {
     await Promise.resolve();
     expect(cellRunState(cell(0))).toBeUndefined();
     expect(meta(0).querySelector('.gn-meta-state')!.textContent).toBe('');
+  });
+  it('says Stopped when an interrupt follows output the cell already had', async () => {
+    // The output list never goes empty, so jp-mod-noOutputs doesn't change.
+    // JupyterLab still rewrites the class attribute (same value) here, so the
+    // class observer refreshes too; outputs.changed is the direct route.
+    const outputs = (cell(0).model as unknown as { outputs: { add(o: unknown): void } }).outputs;
+    outputs.add({ output_type: 'stream', name: 'stdout', text: 'step 1\n' });
+    await Promise.resolve();
+    expect(cellRunState(cell(0))).toBeUndefined();
+    const before = cell(0).node.className;
+    outputs.add({ output_type: 'error', ename: 'KeyboardInterrupt', evalue: '', traceback: [] });
+    await Promise.resolve();
+    expect(cell(0).node.className).toBe(before);
+    expect(cellRunState(cell(0))).toBe('Stopped');
+    expect(meta(0).querySelector('.gn-meta-state')!.textContent).toBe('Stopped');
   });
 });

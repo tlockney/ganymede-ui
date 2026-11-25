@@ -162,6 +162,19 @@ test('a wide chart or table spans the pane; what fits and streams stay put', asy
   await spansPane(wide);
   await spansPane(table);
 
+  // Shown, not only measured: past the column on both sides, the point just
+  // inside each edge of the wide image and table hits the output, so no
+  // ancestor clips it at the column (jupyter.css's overflow: visible).
+  for (const out of [wide, table]) {
+    const hits = await out.evaluate(el => {
+      const r = el.getBoundingClientRect();
+      const y = r.top + Math.min(20, r.height / 2);
+      const at = (x: number) => el.contains(document.elementFromPoint(x, y));
+      return [at(r.left + 5), at(r.right - 5)];
+    });
+    expect(hits).toEqual([true, true]);
+  }
+
   // Wider than the whole 920px column, and past it on both sides.
   const wideBox = (await wide.boundingBox())!;
   expect(wideBox.width).toBeGreaterThan(920);
