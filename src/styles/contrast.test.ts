@@ -4,9 +4,9 @@ import { describe, expect, it } from 'vitest';
 /*
  * Text contrast computed from the stylesheets themselves (#799): white on
  * the filled accent, the accent as text (links, insert and text buttons),
- * execution prompts, and text on the orange fill (#802), in light and dark, each at WCAG AA's 4.5:1 for
- * text. A later change to a token,
- * a color or an opacity in these rules fails here.
+ * execution prompts, and text on the orange fill (#802), in light and
+ * dark, each at WCAG AA's 4.5:1 for text. A later change to a token, a
+ * color or an opacity in these rules fails here.
  */
 
 const AA = 4.5;
@@ -204,7 +204,8 @@ describe('text contrast (#799)', () => {
         if (ICONS.includes(r.selector)) continue;
         const own = fillOf(r);
         const bg = own ? over(color(resolve(own, vars)), page) : page;
-        const text = color(resolve(r.decls.get('color')!, vars));
+        // The text color as this theme draws it: a dark-only override counts.
+        const text = color(resolve(decl([...app, ...jupyter], r.selector, 'color', theme)!, vars));
         const ratio = contrast(over(text, bg), bg);
         expect(ratio, `${r.selector} ${ratio.toFixed(2)}`).toBeGreaterThanOrEqual(AA);
       }
@@ -276,7 +277,8 @@ describe('text contrast (#799)', () => {
       for (const r of onOrange) {
         const bg = color(resolve(fillOf(r)!, vars));
         expect(bg[3], r.selector).toBe(1);
-        const text = color(resolve(r.decls.get('color')!, vars));
+        // The text color as this theme draws it: a dark-only override counts.
+        const text = color(resolve(decl([...app, ...jupyter], r.selector, 'color', theme)!, vars));
         const ratio = contrast(over(text, bg), bg);
         expect(ratio, `${r.selector} ${ratio.toFixed(2)}`).toBeGreaterThanOrEqual(AA);
       }
