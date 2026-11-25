@@ -172,9 +172,10 @@ Outline tab.
 A notebook with unsaved edits saves itself every two minutes, when the
 page is hidden, and when you open another file, and the browser asks before a tab with unsaved edits
 closes. A failed save or kernel action shows its error above the notebook.
-Switching where kernels run saves the open notebook first; if that save
-fails, the switch waits, and you can keep editing, download a copy, or
-switch without saving.
+In a browser, switching where kernels run in the connect sheet saves the
+open notebook first; if that save fails or the server doesn't answer, the
+switch waits, and you can keep editing, download a copy, or switch
+without saving.
 
 > [!NOTE]
 > **Unreleased.** Available only from a build of `main` (HEAD), not in

@@ -97,6 +97,7 @@ import { nodeAt, useVariables } from './lib/useVariables';
 import { useFileDrop } from './lib/file-drop';
 import { copySample } from './lib/sample';
 import { pendingHandoffs } from './lib/rename';
+import { SERVER_TIMEOUT_MS } from './lib/server-request';
 import { refreshKernelsOnReturn } from './lib/kernel-refresh';
 import { RunSheet } from './components/RunSheet';
 import { runAvailable, runWithParams } from './lib/run';
@@ -513,28 +514,38 @@ export function App() {
   /**
    * A connect the open notebook's save didn't let through (#792): the
    * sheet asks to keep editing, download a copy, or switch without saving.
+   * `why` when the pane can't say: the save didn't finish in time.
    */
   const [blockedSwitch, setBlockedSwitch] = useState<{
     config: BackendConfig;
     controller: NotebookController;
+    why?: string;
   }>();
   /**
    * Connecting closes the open notebook, and its services with the old
    * backend, so its edits are saved first (#792): only once they are does
-   * the sheet connect. A failed save (the pane says why) leaves the
-   * choice to the person.
+   * the sheet connect. A failed save (the pane says why), or one the
+   * server doesn't answer in time, leaves the choice to the person.
    */
   const connectFromSheet = async (c: BackendConfig) => {
     const attempt = ++switchTry.current;
-    setBlockedSwitch(undefined);
     const open = controllerRef.current;
+    // The controller outlives its pane: a data file or console opened since has none.
     if (open && open.path === openPath && open.dirty) {
       setSavingForSwitch(true);
-      const saved = await open.save().catch(() => false);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const late = new Promise<'late'>(resolve => {
+        timer = setTimeout(() => resolve('late'), SERVER_TIMEOUT_MS);
+      });
+      const saved = await Promise.race([open.save(), late]).finally(() => clearTimeout(timer));
       if (switchTry.current !== attempt) return;
       setSavingForSwitch(false);
-      if (!saved) {
-        setBlockedSwitch({ config: c, controller: open });
+      if (saved !== true) {
+        setBlockedSwitch({
+          config: c,
+          controller: open,
+          why: saved === 'late' ? 'The server didn’t answer in time.' : undefined,
+        });
         return;
       }
     }
@@ -1181,6 +1192,7 @@ export function App() {
           canCancel={!!backend}
           saving={savingForSwitch}
           unsaved={blockedSwitch?.controller.name}
+          unsavedWhy={blockedSwitch?.why}
           onCancel={() => {
             switchTry.current++;
             setSavingForSwitch(false);

@@ -104,10 +104,12 @@ there (say with a corrected token) keeps them. The page title is the open notebo
 
 Before the connect sheet switches backends, it saves the open notebook
 (#792): it connects only once the save went through, and says "Saving…"
-meanwhile. A save that fails (the pane says why) stops the switch, and
-the sheet offers Keep Editing, Download a Copy (the controller's
-`download`) and Switch Without Saving (its `discard`, so the pane's
-teardown doesn't save). Cancel during the save drops the switch.
+meanwhile. A save that fails (the pane says why), or that the server
+doesn't answer within `SERVER_TIMEOUT_MS` (the sheet says so), stops the
+switch, and the sheet, its fields fixed, offers Keep Editing, Download a
+Copy (the controller's `download`) and Switch Without Saving (its
+`discard`, so the pane's teardown doesn't save). Cancel during the save
+drops the switch.
 
 Switching backends disposes the old `ServiceManager`, once the last
 saves of the panes that closed on it (`pendingHandoffs` in

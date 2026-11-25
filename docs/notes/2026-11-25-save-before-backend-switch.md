@@ -10,7 +10,10 @@ backend.
 
 - The connect sheet saves the open notebook (the controller's `save`)
   before it connects, and shows "Saving…" meanwhile. A failed save (the
-  pane's notice says why) stops the switch, and the sheet asks: Keep
+  pane's notice says why), or one that doesn't answer within
+  `SERVER_TIMEOUT_MS` (the sheet says so, as the pane can't), stops the
+  switch, and the sheet asks, with its choices and fields disabled so
+  the switch goes where Connect was asked to: Keep
   Editing, Download a Copy (the controller's `download`, edits
   included), or Switch Without Saving (the controller's `discard`, so
   the teardown doesn't save either). Cancel during the save drops the
@@ -21,18 +24,22 @@ backend.
   the closed panes handed off their saves; it skips unmount and
   StrictMode's second run, where the backend is still the current one.
 - Tests: `App.test.tsx` (saves first, connects at once when clean, a
-  failed save blocks with the choice, each choice, cancel mid-save,
-  dispose after the handed-off save; five of the six fail on `main`),
-  `ConnectSheet.test.tsx` (the choice and Saving…, and Enter doesn't
-  connect meanwhile), and `e2e/switch-backend.spec.ts` through the
+  failed save blocks with the choice, each choice, cancel mid-save and
+  the sheet reopened after, a save that times out (fake timers), a stale
+  controller after a data file opened, dispose after the handed-off save,
+  and the live backend kept through StrictMode and unmount; each fails
+  with its part of the change reverted), `ConnectSheet.test.tsx` (the
+  choice with its fields disabled, the timeout's reason, Saving…, and a
+  submit ignored while asking, saving or connecting), and `e2e/switch-backend.spec.ts` through the
   contents API with rooms turned away (an edit just before switching is
   on disk; a save the server fails stops the switch, Keep Editing keeps
   the edit, and the next switch saves it). The second fails on `main`;
   the first passes there too, as the teardown save beats the dispose
   over loopback, and so does a run in a room, which holds the edit live.
 
-Not in this change, from the issue: the iPad and iPhone place switch,
-WebKit process replacement and backgrounding (Swift, `ContentView`
-`switchPlace` and `WebView`), the local recovery copy, and the document
-states (Saved, Saving, Offline edits, Save needs attention, Save
-unconfirmed), whose placement waits on the notebook header redesign.
+Not in this change, from the issue, and moved to #808: the iPad and
+iPhone place switch, WebKit process replacement and backgrounding
+(Swift, `ContentView` `switchPlace` and `WebView`), the local recovery
+copy, and the document states (Saved, Saving, Offline edits, Save needs
+attention, Save unconfirmed), whose placement waits on the notebook
+header redesign, and the apps' Settings › Kernels switch.

@@ -11,6 +11,7 @@ import { chooseView, chosenView, forgetChosenViews } from './lib/journal';
 import { recentsKey } from './lib/recents';
 import { loadConsoles, saveConsole } from './lib/console-recents';
 import { handOff } from './lib/rename';
+import { SERVER_TIMEOUT_MS } from './lib/server-request';
 
 // The shell's wiring: which backend it connects to, the sheet, and new
 // notebooks. The backends and the notebook pane are tested on their own.
@@ -1564,6 +1565,86 @@ describe('App', () => {
       expect(screen.queryByText('Where should kernels run?')).toBeNull();
       expect(mocks.connect).toHaveBeenCalledTimes(1);
       expect(screen.getByTestId('pane')).toBeInTheDocument();
+      // The sheet opened again connects, not still saving.
+      expect(await window.ganymede!.command('connect')).toBe(true);
+      expect(await screen.findByRole('button', { name: 'Connect' })).toBeEnabled();
+    });
+
+    it('stops the switch with the choice when the save doesn’t answer in time', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        const save = vi.fn(() => new Promise<boolean>(() => {}));
+        await openOnServer({ dirty: true, save, download: vi.fn(), discard: vi.fn() });
+        await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
+        await screen.findByRole('button', { name: 'Saving…' });
+
+        // Real time passes too (`shouldAdvanceTime`): well short of the limit.
+        await act(async () => vi.advanceTimersByTime(SERVER_TIMEOUT_MS - 10_000));
+        expect(screen.queryByRole('alert')).toBeNull();
+        expect(screen.getByRole('button', { name: 'Saving…' })).toBeInTheDocument();
+        await act(async () => vi.advanceTimersByTime(10_000));
+        const alert = await screen.findByRole('alert');
+        expect(alert).toHaveTextContent('The server didn’t answer in time.');
+        expect(alert).toHaveTextContent('Keep editing to try again.');
+        expect(mocks.connect).toHaveBeenCalledTimes(1);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('connects without saving when the notebook’s pane is gone (a data file is open)', async () => {
+      const save = vi.fn(async () => true);
+      mocks.controller = { dirty: true, save };
+      const first = fakeServices({
+        '': [],
+        work: [
+          { name: 'Orbits.ipynb', type: 'notebook' },
+          { name: 'moons.csv', type: 'file' },
+        ],
+      });
+      Object.assign(first.services, { dispose: vi.fn() });
+      mocks.connect
+        .mockResolvedValueOnce(fakeBackend(first.services))
+        .mockResolvedValue(fakeBackend(fakeServices({ '': [] }).services, { kind: 'browser' }));
+      history.replaceState(null, '', '/?kernels=server&open=work/Orbits.ipynb');
+      render(<App />);
+      expect(await screen.findByTestId('pane')).toBeInTheDocument();
+      // The data view takes the notebook's place; its controller stays behind.
+      expect(await window.ganymede!.command('open', 'work/moons.csv')).toBe(true);
+      expect(await screen.findByTestId('data-pane')).toBeInTheDocument();
+
+      expect(await window.ganymede!.command('connect')).toBe(true);
+      await userEvent.click(await screen.findByRole('radio', { name: /This browser/ }));
+      await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
+      await waitFor(() => expect(mocks.connect).toHaveBeenLastCalledWith({ kind: 'browser' }));
+      expect(save).not.toHaveBeenCalled();
+    });
+
+    it('keeps the live backend through StrictMode and unmount', async () => {
+      // A backend for each connect: StrictMode's first one is dropped (and disposed).
+      const disposes: ReturnType<typeof vi.fn>[] = [];
+      mocks.connect.mockImplementation(async () => {
+        const fake = fakeServices({ '': [] });
+        const dispose = vi.fn();
+        disposes.push(dispose);
+        Object.assign(fake.services, { dispose });
+        return fakeBackend(fake.services);
+      });
+      history.replaceState(null, '', '/?kernels=server');
+      const { unmount } = render(
+        <StrictMode>
+          <App />
+        </StrictMode>,
+      );
+      await waitFor(() => expect(window.ganymede).toBeDefined());
+      await waitFor(() => expect(screen.queryByText('Where should kernels run?')).toBeNull());
+      const live = disposes.at(-1)!;
+      await act(async () => new Promise(r => setTimeout(r, 10)));
+      expect(live).not.toHaveBeenCalled();
+      unmount();
+      // Past the settling of any pending saves, which comes before a dispose.
+      await act(async () => new Promise(r => setTimeout(r, 10)));
+      expect(live).not.toHaveBeenCalled();
     });
 
     it('disposes the old backend only once the closed notebook’s last save is done', async () => {
