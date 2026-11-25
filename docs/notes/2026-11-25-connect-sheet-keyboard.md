@@ -49,3 +49,9 @@ the keyboard only: from clean storage, ArrowRight to **This browser**,
 Tab round the sheet checking focus never leaves it, Connect, a notebook
 from the command palette, then opens the sheet from the backend chip and
 closes it with Escape and with Cancel, checking focus is back on the chip.
+
+Not checked here: WebKit. The unit tests run in jsdom and the e2e in
+Chromium, so Tab staying in the sheet in Safari, the Mac app and on an
+iPad with a keyboard is a by-hand check, on ui#399 (Safari and the Mac
+app after a failed connection) and ui#273 (iPad with a hardware
+keyboard).
