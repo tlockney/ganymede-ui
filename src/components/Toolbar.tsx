@@ -1,9 +1,9 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type { KernelSpec } from '@jupyterlab/services';
 import type { CellType, NotebookController } from './NotebookPane';
 import { NotebookTitle } from './NotebookTitle';
 import { ContextMenu, type MenuItem } from './ContextMenu';
-import { pickerLabel } from '../lib/kernel-device';
+import { DEVICE_LABEL, isPageSpec, offersDevice, pickerLabel } from '../lib/kernel-device';
 import { type Place, shortStatusText, statusText } from '../lib/header-status';
 import {
   ChevronDownIcon,
@@ -117,6 +117,7 @@ export function Toolbar({
     kernelDisplay,
     missingKernel: c.missingKernel,
     status: c.status,
+    pageKernel: isPageSpec(c.kernelName ? specs?.kernelspecs[c.kernelName] : undefined),
   };
   const status = statusInput && statusText(statusInput);
 
@@ -132,6 +133,7 @@ export function Toolbar({
               ...kernels.map(s => ({
                 label: pickerLabel(s).text,
                 ariaLabel: pickerLabel(s).label,
+                title: offersDevice(s) ? DEVICE_LABEL : undefined,
                 checked: c.kernelName === s.name,
                 onSelect: () => void c.changeKernel(s.name),
               })),
@@ -177,6 +179,14 @@ export function Toolbar({
     more: {
       label: 'More',
       items: [
+        // Shown as buttons too, except on a phone, where the title needs the room (#801).
+        ...(c && !c.trusted ? [{ label: 'Trust Notebook…', onSelect: trust }] : []),
+        ...(c && onNotebookAccess && accessMissing.length > 0
+          ? [{ label: 'Notebook Access…', onSelect: onNotebookAccess }]
+          : []),
+        ...((c && !c.trusted) || (c && onNotebookAccess && accessMissing.length > 0)
+          ? ['separator' as const]
+          : []),
         ...(onToggleJournal
           ? [
               {
@@ -211,6 +221,16 @@ export function Toolbar({
       ],
     },
   };
+
+  // A menu whose opener has gone (the notebook closed) or that has nothing
+  // in it closes, so it doesn't open again by itself when the opener comes
+  // back (#801).
+  const openItems = open ? menus[open].items.length : 0;
+  useEffect(() => {
+    if (open && (!anchors[open].current || openItems === 0)) setOpen(undefined);
+    // The status opener comes and goes with the notebook (`c`); the others stay.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, c, openItems]);
 
   return (
     <header className="toolbar">
@@ -251,13 +271,13 @@ export function Toolbar({
 
       <div className="toolbar-trailing">
         {c && !c.trusted && (
-          <button className="tb-button" title="Trust Notebook" onClick={trust}>
+          <button className="tb-button tb-decision" title="Trust Notebook" onClick={trust}>
             <ShieldIcon />
           </button>
         )}
         {c && onNotebookAccess && accessMissing.length > 0 && (
           <button
-            className="tb-button"
+            className="tb-button tb-decision"
             title={`Notebook Access: asks for ${accessMissing.join(', ')}`}
             onClick={onNotebookAccess}
           >
@@ -309,6 +329,8 @@ export function Toolbar({
       </div>
       {open && anchors[open].current && menus[open].items.length > 0 && (
         <ContextMenu
+          // A new menu for each opener, so focus and Escape follow it.
+          key={open}
           at={anchors[open].current}
           label={menus[open].label}
           items={menus[open].items}

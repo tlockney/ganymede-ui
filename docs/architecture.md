@@ -194,6 +194,11 @@ JupyterLite's service worker, adapted.
 
 ## Notebook
 
+> [!NOTE]
+> **Unreleased.** The status line under the title and restart and run all
+> are available only from a build of `main` (HEAD), not in the latest
+> release.
+
 `NotebookPane` shows one file. It holds JupyterLab's `Notebook` widget,
 its `NotebookModel`, and a `SessionContext`, which rejoins the kernel
 already running for the file but starts none on open: reading a notebook

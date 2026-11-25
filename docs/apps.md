@@ -1254,6 +1254,10 @@ export replaces nothing, the sheet refuses its page the same way.
 
 ## Running with parameters
 
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
 **Run with Parameters…** (Cell menu on the Mac, the ⋯ menu on the iPad
 and iPhone, the Command Palette and the toolbar in the browser) runs the notebook as a program, the way `ganymede execute -p
 --results` does ([Programs](https://ganymede-server.com/docs/programs)):

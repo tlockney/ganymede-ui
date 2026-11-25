@@ -3,7 +3,8 @@
 // the title and status line never run under the buttons, and the status
 // line says where the notebook is saved and runs.
 import { expect, type Page, test } from '@playwright/test';
-import { statusLine } from './helpers';
+import { TOKEN } from './env';
+import { statusLine, waitForReady } from './helpers';
 
 async function newBrowserNotebook(page: Page) {
   await page.goto('/');
@@ -51,7 +52,10 @@ for (const width of [393, 507, 820, 1280]) {
     const shown = await statusLine(page).evaluate(b => (b as HTMLElement).innerText);
     if (width < 720) {
       expect(shown).toContain('Runs here');
-      expect(shown).not.toContain('Python');
+      // The short form leaves out the kernel the full line names.
+      const kernel = (await statusLine(page).getAttribute('aria-label'))!.split(' · ')[2]!;
+      expect(kernel).toBeTruthy();
+      expect(shown).not.toContain(kernel);
     } else {
       expect(shown).toMatch(/^Saved in this browser · Runs here · /);
     }
@@ -84,4 +88,25 @@ test('keeps Interrupt where it is while a cell runs', async ({ page }) => {
   await expect(interrupt).toBeDisabled({ timeout: 30_000 });
   const after = (await interrupt.boundingBox())!;
   expect(after.x).toBe(before.x);
+});
+
+// An untrusted notebook on a server at phone width: Trust moves into "⋯", so
+// the title keeps room and the status line still says where it runs (#801).
+test('keeps room for the status line with Trust Notebook at 375px', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 800 });
+  await page.goto(
+    `/?token=${TOKEN}&kernels=server&open=${encodeURIComponent('reading/Data frames.ipynb')}`,
+  );
+  await waitForReady(page);
+  // Untrusted: the button is in the page, hidden at this width.
+  await expect(page.getByTitle('Trust Notebook')).toBeAttached();
+  await expect(page.getByTitle('Trust Notebook')).toBeHidden();
+  const title = (await page.locator('.toolbar .title-block').boundingBox())!;
+  expect(title.width).toBeGreaterThanOrEqual(120);
+  const text = statusLine(page).locator('.status-text');
+  await expect(text).toContainText('Runs on');
+  // Nothing is cut by the two-row clamp.
+  expect(await text.evaluate(el => el.scrollHeight - el.clientHeight)).toBeLessThanOrEqual(1);
+  await page.locator('.toolbar').getByRole('button', { name: 'More', exact: true }).click();
+  await expect(page.getByRole('menuitem', { name: 'Trust Notebook…' })).toBeVisible();
 });

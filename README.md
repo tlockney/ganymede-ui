@@ -127,8 +127,10 @@ a network connection. [examples/README.md](examples/README.md) says how
 they are built.
 
 Open a notebook from the sidebar, which also lists running kernels. The
-toolbar runs, interrupts and restarts the kernel, switches kernels, trusts
-the notebook, downloads it, and saves (⌘S). Keyboard shortcuts follow
+toolbar runs cells (Run Cell, with Run All and restarts in its menu),
+interrupts the kernel, shares (download, export, publish) and holds the
+rest in its ⋯ menu; the status line under the title switches kernels.
+Save with ⌘S. Keyboard shortcuts follow
 JupyterLab's; press `H` in command mode for the
 full list. Every shortcut can be rebound there, and changes stay in this
 browser. [docs/shortcuts.md](docs/shortcuts.md) lists the defaults.

@@ -10,6 +10,8 @@ export type MenuItem =
       checked?: boolean;
       /** The accessible name, when it differs from the label (a mark in the label). */
       ariaLabel?: string;
+      /** A tooltip (what a mark in the label means). */
+      title?: string;
     }
   | 'separator'
   /** A label over the items after it. */
@@ -125,7 +127,7 @@ export function ContextMenu({ at, label, items, onClose }: Props) {
           item === 'separator' ? (
             <div key={i} className="popup-menu-separator" role="separator" />
           ) : 'note' in item ? (
-            <div key={i} id={`${noteId}-${i}`} className="popup-menu-note">
+            <div key={i} id={`${noteId}-${i}`} className="popup-menu-note" role="none">
               {item.note}
             </div>
           ) : 'heading' in item ? (
@@ -139,6 +141,7 @@ export function ContextMenu({ at, label, items, onClose }: Props) {
               role={item.checked === undefined ? 'menuitem' : 'menuitemradio'}
               aria-checked={item.checked}
               aria-label={item.ariaLabel}
+              title={item.title}
               className={`popup-menu-item ${item.destructive ? 'destructive' : ''}`}
               disabled={item.disabled}
               onClick={() => {

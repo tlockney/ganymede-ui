@@ -1,6 +1,18 @@
 /** The page's own kernelspec name (cdp-kernel's browser kernel); kept here so light code can name it. */
 export const CDP_KERNEL_NAME = 'cdp-browser';
 
+/**
+ * The metadata key `MixedKernelSpecClient` sets on a kernel spec that runs
+ * in the page, with `kernels: 'both'`: the server's spec of the same name
+ * wins, so the name alone doesn't say where a kernel runs (#801).
+ */
+export const PAGE_SPEC_KEY = 'ganymede_page_kernel';
+
+/** Whether a kernel spec is one that runs in this page (see {@link PAGE_SPEC_KEY}). */
+export function isPageSpec(spec: { metadata?: Record<string, unknown> } | undefined): boolean {
+  return spec?.metadata?.[PAGE_SPEC_KEY] === true;
+}
+
 /** The mark the kernel picker puts after a kernel that offers `device`. */
 export const DEVICE_MARK = '◆';
 

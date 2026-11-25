@@ -594,6 +594,14 @@ button {
   .toolbar-leading {
     gap: 4px;
   }
+  /* Trust and Notebook Access move to the ⋯ menu, so the title keeps room
+   * for its status line (#801). */
+  .tb-decision {
+    display: none;
+  }
+  .title-block {
+    min-width: 120px;
+  }
 }
 
 .status-dot {

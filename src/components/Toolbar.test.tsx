@@ -266,7 +266,8 @@ describe('Toolbar', () => {
       name: 'TypeScript (cdp-kernel, in app), offers the device API',
     });
     expect(item).toHaveTextContent('TypeScript (cdp-kernel, in app) ◆');
-    expect(screen.getByRole('menuitemradio', { name: 'Python 3' })).toBeInTheDocument();
+    expect(item).toHaveAttribute('title', 'offers the device API');
+    expect(screen.getByRole('menuitemradio', { name: 'Python 3' })).not.toHaveAttribute('title');
   });
 
   it('runs the cell, and interrupts only a busy kernel, from visible buttons', async () => {
@@ -442,6 +443,51 @@ describe('Toolbar', () => {
     rerender(bar({ accessMissing: ['notebooks.run'], onNotebookAccess: open }));
     await userEvent.click(screen.getByTitle('Notebook Access: asks for notebooks.run'));
     expect(open).toHaveBeenCalledOnce();
+  });
+
+  it('also puts Trust Notebook and Notebook Access in More, for a phone', async () => {
+    const c = controller({ trusted: false });
+    const open = vi.fn();
+    const confirm = vi.fn(() => true);
+    vi.stubGlobal('confirm', confirm);
+    render(bar({ controller: c, accessMissing: ['notebooks.run'], onNotebookAccess: open }));
+    // The buttons carry the class a phone hides (app.css), so the menu is their way in there.
+    expect(screen.getByTitle('Trust Notebook')).toHaveClass('tb-decision');
+    expect(screen.getByTitle(/^Notebook Access/)).toHaveClass('tb-decision');
+    await pick('More', 'Trust Notebook…');
+    expect(c.trust).toHaveBeenCalledOnce();
+    await pick('More', 'Notebook Access…');
+    expect(open).toHaveBeenCalledOnce();
+    vi.unstubAllGlobals();
+  });
+
+  it("leaves Trust Notebook and Notebook Access out of More when they don't apply", async () => {
+    render(bar());
+    await userEvent.click(named('More'));
+    expect(screen.queryByRole('menuitem', { name: 'Trust Notebook…' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Notebook Access…' })).not.toBeInTheDocument();
+  });
+
+  it('does not reopen a menu by itself after its notebook closes and another opens', async () => {
+    const { rerender } = render(bar({ controller: controller() }));
+    await userEvent.click(status());
+    expect(screen.getByRole('menu')).toBeInTheDocument();
+    rerender(bar({ controller: undefined }));
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    rerender(bar({ controller: controller() }));
+    rerender(bar({ controller: controller() }));
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(status()).toHaveAttribute('aria-expanded', 'false');
+  });
+
+  it('moves to the other menu when one opener follows another', async () => {
+    render(bar());
+    await userEvent.click(named('Share'));
+    expect(screen.getByRole('menu', { name: 'Share' })).toBeInTheDocument();
+    await userEvent.click(named('More'));
+    expect(screen.getByRole('menu', { name: 'More' })).toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
+    expect(named('More')).toHaveFocus();
   });
 
   it('closes a menu with Escape and opens one at a time', async () => {

@@ -54,8 +54,12 @@ describe('statusText (#801)', () => {
 
   it('tells a page kernel from a server kernel when both are listed', () => {
     const both: BackendConfig = { ...LOCAL, kernels: 'both' };
-    expect(statusText(base(both, { kernelName: 'cdp-browser' }))).toBe(
+    expect(statusText(base(both, { kernelName: 'cdp-browser', pageKernel: true }))).toBe(
       'Saved on local server · Runs here · TypeScript',
+    );
+    // The server's own spec of that name wins over the page's, and runs there.
+    expect(statusText(base(both, { kernelName: 'cdp-browser' }))).toBe(
+      'Saved on local server · Runs on local server · TypeScript',
     );
     expect(statusText(base(both, { kernelName: 'python3', kernelDisplay: 'Python 3' }))).toBe(
       'Saved on local server · Runs on local server · Python 3',
