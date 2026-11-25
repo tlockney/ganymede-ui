@@ -157,6 +157,8 @@ struct IPadSidebar: View {
             // The list is shared by every tab: a selection made in Files
             // mustn't take Return in Search or Running.
             .onChange(of: shownTab) { selection = nil }
+            // Another folder: the old one's rows are gone.
+            .onChange(of: folder) { selection = nil }
             .navigationTitle(tabbed ? shownTab.title : "Notebooks")
             // The iPad's navigator tabs, as on the Mac (#251).
             .safeAreaInset(edge: .top, spacing: 0) {

@@ -63,6 +63,8 @@ struct FolderSidebar: View {
         }
         // The machine answers again: list everything again.
         .onChange(of: reachable) { if reachable { generation += 1 } }
+        // Another folder in this window: the old one's rows are gone.
+        .onChange(of: folder) { selection = nil }
         // A notebook made or saved by the page shows up, and so do changes
         // made outside the app when it comes back to the front.
         .onChange(of: page.state.path) { old, _ in

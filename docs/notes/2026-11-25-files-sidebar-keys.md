@@ -35,7 +35,8 @@ selection when it is the renamed or deleted row or inside it (a path
 prefix with a `/` boundary). A reload that no longer lists the selected
 row does not clear it; Return on it then does what a stale row does.
 The selection is also cleared when the page's open path changes away
-from it (the page renamed or moved the open notebook). A file that can't
+from it (the page opened another notebook, or renamed or moved this
+one), and when the window opens another folder. A file that can't
 open in this place is dimmed (the others keep the list's own colours),
 reads "Can't open here" to VoiceOver and isn't a button there.
 
