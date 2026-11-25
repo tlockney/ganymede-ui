@@ -26,9 +26,11 @@ rows of + Code / + Text buttons took width and height from the code.
 - **Output hierarchy.** `output-labels.ts` adds a bar to the rendered
   output from the output model (JupyterLab renders an error as a stderr
   stream, so the DOM can't tell them apart): "Execution failed" plus
-  `ename: evalue` for an error ("Execution stopped" for `KeyboardInterrupt`),
-  "Warning" for stderr, and for a stream over 20 lines a bar with "View full log"
-  above a 10-line tail, scrolled to the end on a whole line. It re-adds the bar
+  `ename: evalue` for an error ("Execution stopped" for an interrupt:
+  Jupyter's `KeyboardInterrupt` or cdp-kernel's `Interrupted`),
+  "Warning" for stderr, and for a stream over 20 lines a bar labelled
+  "Log, N lines" with "View full log" above a 10-line tail, scrolled to
+  the end on a whole line. It re-adds the bar
   when JupyterLab replaces an output widget (a growing stream does), and
   is idempotent so its own changes don't loop. "Saved output" shows above a
   cell's outputs while the session has no kernel.

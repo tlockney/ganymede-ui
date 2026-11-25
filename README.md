@@ -349,8 +349,9 @@ to all cells, and is remembered in this browser's local storage.
 An error output starts with **Execution failed** and its exception
 summary (`ZeroDivisionError: division by zero`), above the traceback; a
 cell stopped with Interrupt says **Execution stopped**. Text on stderr is
-marked **Warning**. A stream longer than 20 lines shows its last lines;
-**View full log** opens all of it and **Show last lines** goes back. When
+marked **Warning**. A stream longer than 20 lines is collapsed to its last
+lines under a bar that says **Log, N lines**; **View full log** opens all
+of it and **Show last lines** goes back. When
 no kernel is attached, outputs the notebook was saved with say **Saved
 output**.
 

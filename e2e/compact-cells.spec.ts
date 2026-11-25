@@ -134,7 +134,9 @@ test('an interrupt on this browser says Execution stopped and Stopped', async ({
   await newBrowserNotebook(page);
   await runCell(page, 'while (true) {}');
   // The toolbar's Interrupt, not the running cell's own button.
-  const interrupt = page.locator('.toolbar').getByRole('button', { name: 'Interrupt', exact: true });
+  const interrupt = page
+    .locator('.toolbar')
+    .getByRole('button', { name: 'Interrupt', exact: true });
   await expect(interrupt).toBeEnabled({ timeout: 60_000 });
   await interrupt.tap();
   // cdp-kernel ends the cell with `Interrupted: Execution interrupted`,
@@ -154,18 +156,48 @@ test('a long log shows its tail, and View full log opens it', async ({ page }) =
   const button = page.getByRole('button', { name: 'View full log' });
   await expect(button).toBeVisible({ timeout: 60_000 });
   const out = page.locator('.jp-OutputArea-output.gn-log-tail');
-  // The last line is in view in the collapsed box, the first is not.
-  await expect(out).toContainText('step 59');
+  // The bar names what it holds.
+  await expect(page.locator('.gn-output-bar .gn-output-label')).toHaveText('Log, 60 lines');
   // The bar is its own row above the text, and the tail starts at a whole line.
   const barBox = (await page.locator('.gn-output-bar').boundingBox())!;
   const pre = out.locator('pre');
   const preBox = (await pre.boundingBox())!;
   expect(barBox.y + barBox.height).toBeLessThanOrEqual(preBox.y + 1);
-  const rest = await pre.evaluate(p => {
+  // What is visible, not what the text says: the tail is at its end, on a
+  // whole line, and the last line is in view.
+  const tail = await pre.evaluate(p => {
     const line = parseFloat(getComputedStyle(p).lineHeight);
-    return (p.scrollHeight - p.clientHeight) % line;
+    return {
+      fromEnd: Math.abs(p.scrollTop + p.clientHeight - p.scrollHeight),
+      rest: p.scrollTop % line,
+      line,
+    };
   });
-  expect(Math.min(rest, 1 - rest, Math.abs(rest - 1))).toBeLessThan(1);
+  expect(tail.fromEnd).toBeLessThanOrEqual(1);
+  expect(tail.rest < 1 || tail.line - tail.rest < 1).toBe(true);
+  const lastLine = await pre.evaluate(p => {
+    const preBox = p.getBoundingClientRect();
+    const walker = document.createTreeWalker(p, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const at = (node as Text).data.indexOf('step 59');
+      if (at < 0) continue;
+      const range = document.createRange();
+      range.setStart(node, at);
+      range.setEnd(node, at + 'step 59'.length);
+      const line = range.getBoundingClientRect();
+      return {
+        top: line.top,
+        bottom: line.bottom,
+        preTop: preBox.top,
+        preBottom: preBox.bottom,
+      };
+    }
+    return null;
+  });
+  // The "step 59" line's rect is inside the `pre`'s: it is on screen.
+  expect(lastLine).not.toBeNull();
+  expect(lastLine!.top).toBeGreaterThanOrEqual(lastLine!.preTop - 1);
+  expect(lastLine!.bottom).toBeLessThanOrEqual(lastLine!.preBottom + 1);
   const h = (await out.boundingBox())!.height;
   await button.tap();
   const full = page.locator('.jp-OutputArea-output.gn-log-full');

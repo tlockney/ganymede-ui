@@ -90,13 +90,11 @@ describe('labelFor', () => {
   it('calls this app’s own interrupts stopped too', () => {
     // cdp-kernel's kernels (this browser, the apps' in-app kernel) say
     // `Interrupted: Execution interrupted`, not `KeyboardInterrupt`.
-    expect(labelFor({ ...error, ename: 'Interrupted', evalue: 'Execution interrupted' })).toEqual(
-      {
-        label: 'Execution stopped',
-        kind: 'stopped',
-        summary: 'Interrupted: Execution interrupted',
-      },
-    );
+    expect(labelFor({ ...error, ename: 'Interrupted', evalue: 'Execution interrupted' })).toEqual({
+      label: 'Execution stopped',
+      kind: 'stopped',
+      summary: 'Interrupted: Execution interrupted',
+    });
     expect(isInterrupt('KeyboardInterrupt')).toBe(true);
     expect(isInterrupt('Interrupted')).toBe(true);
     expect(isInterrupt('ValueError')).toBe(false);
@@ -107,6 +105,13 @@ describe('labelFor', () => {
     expect(labelFor(stream('stderr', 'careful\n'))).toMatchObject({ label: 'Warning' });
     expect(labelFor(stream('stdout', 'hi\n'))).toMatchObject({ label: '' });
     expect(labelFor({ output_type: 'display_data', data: {}, metadata: {} })).toBeUndefined();
+  });
+
+  it('labels a long stdout log by its line count', () => {
+    // The bar of a collapsed log says what it holds, not just a border.
+    expect(labelFor(stream('stdout', lines(LOG_LINES + 5)))!.label).toBe(
+      `Log, ${LOG_LINES + 5} lines`,
+    );
   });
 
   it('counts a stream’s lines, accepting a list of lines', () => {

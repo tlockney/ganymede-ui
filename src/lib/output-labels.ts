@@ -7,8 +7,8 @@
  *   `KeyboardInterrupt`, or cdp-kernel's `Interrupted`.
  * - A `stderr` stream gets a "Warning" label.
  * - A long stream (a loop's prints, a training log) shows its last lines,
- *   with a "View full log" button that opens all of it and "Show last lines"
- *   to go back.
+ *   with a "Log, N lines" label and a "View full log" button that opens
+ *   all of it and "Show last lines" to go back.
  * - Outputs with no kernel to have made them say "Saved output".
  *
  * JupyterLab renders each output into a widget it replaces when a stream
@@ -48,6 +48,14 @@ export function isInterrupt(ename: string | PartialJSONValue | undefined): boole
   return ename === 'KeyboardInterrupt' || ename === 'Interrupted';
 }
 
+/**
+ * A stream's text, however it was saved: a string or a list of lines. The
+ * output's type is loose: an unrecognized output's fields are JSON.
+ */
+export function streamText(output: nbformat.IStream | nbformat.IUnrecognizedOutput): string {
+  return Array.isArray(output.text) ? output.text.join('') : String(output.text ?? '');
+}
+
 /** What the label above one output says, or undefined for an output with none. */
 export function labelFor(
   output: nbformat.IOutput,
@@ -59,11 +67,11 @@ export function labelFor(
       : { label: 'Execution failed', kind: 'error', summary };
   }
   if (output.output_type === 'stream') {
-    const text = Array.isArray(output.text) ? output.text.join('') : String(output.text ?? '');
-    const lines = text.replace(/\n$/, '').split('\n').length;
+    const lines = streamText(output).replace(/\n$/, '').split('\n').length;
     return output.name === 'stderr'
       ? { label: 'Warning', kind: 'warning', lines }
-      : { label: '', kind: 'stream', lines };
+      : // The bar of a collapsed log says what it holds, not just "…".
+        { label: lines > LOG_LINES ? `Log, ${lines} lines` : '', kind: 'stream', lines };
   }
   return undefined;
 }
