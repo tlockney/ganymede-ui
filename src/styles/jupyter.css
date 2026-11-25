@@ -132,10 +132,11 @@
     0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
+/* An editor with focus has a 2px focus ring on its box, so it reads
+ * differently from selection: the selected cell keeps its rail and has no
+ * ring while its editor is not focused (#814, e2e/selection-focus.spec.ts). */
 .notebook-page .jp-Notebook.jp-mod-editMode .jp-Cell.jp-mod-active .jp-InputArea-editor {
-  box-shadow:
-    0 0 0 2px var(--accent-soft),
-    0 0 0 1px var(--accent);
+  box-shadow: 0 0 0 2px var(--accent);
 }
 
 .notebook-page .cm-editor {
