@@ -1075,6 +1075,11 @@ button {
   margin-left: 66px;
 }
 
+/* The status beside it wraps; the button keeps its label on one line. */
+.settings-test > .push-button {
+  flex: none;
+}
+
 .settings-test .test-ok {
   color: var(--green);
 }

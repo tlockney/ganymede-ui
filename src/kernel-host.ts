@@ -21,6 +21,7 @@ import {
   messageHandler,
   type ToKernel,
 } from './lib/kernel-relay';
+import { noteKernelRequest } from './lib/duckdb-files';
 import { kernelModules } from './lib/kernel-modules';
 import { kernelTypescript } from './lib/kernel-typescript';
 
@@ -142,6 +143,8 @@ export function deliver(m: ToKernel): void {
     // On either channel: the kernel ends once it answers, which is asked
     // for, not a crash.
     if (msg.header?.msg_type === 'shutdown_request') shutDown.add(running.kernel);
+    // A cell that may run SQL fetches DuckDB's files for later kernels (#794).
+    noteKernelRequest(msg);
     running.kernel.send(m.channel as Parameters<BrowserKernel['send']>[0], msg as never);
   }
 }
