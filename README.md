@@ -172,6 +172,15 @@ Outline tab.
 A notebook with unsaved edits saves itself every two minutes, when the
 page is hidden, and when you open another file, and the browser asks before a tab with unsaved edits
 closes. A failed save or kernel action shows its error above the notebook.
+In a browser, switching where kernels run in the connect sheet saves the
+open notebook first; if that save fails or the server doesn't answer, the
+switch stops and asks: keep editing, download a copy, or switch without
+saving.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release. The latest release switches at once, and the
+> notebook's last save can be cut off.
 
 ### Live editing on a Ganymede server
 
@@ -218,6 +227,31 @@ font of pages from `ganymede nb publish`), or Monospace (the code font).
 
 Both choices stay in this browser (`ganymede-ui:code-font` in local
 storage); the Mac and iPad apps keep their own, in their Settings.
+
+### Offline SQL
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, where the page fetches DuckDB on its first visit
+> online, whether or not anything uses it.
+
+`jupyter.sql` in the browser's kernels, the DuckDB console and Parquet
+files run on DuckDB, whose wasm and worker (36 MB) come from jsDelivr.
+The page fetches them the first time one of these is used, a cell that
+names `sql` included, and keeps them in the browser, so later kernels run
+SQL offline. A visit that doesn't use DuckDB fetches nothing. A fetch that
+fails, such as one made offline, is tried again on the next use. When the
+browser has no room to keep them, it doesn't try again on its own: in a
+browser it waits for Try Again in Settings, and the apps' kernel page
+tries again when it next loads. Meanwhile SQL and the data views load
+DuckDB from jsDelivr each time. The
+kernel that ran the first SQL loads DuckDB from jsDelivr itself; kernels
+started after the files are kept use the browser's copy.
+
+In a browser, Settings > Offline SQL > Download DuckDB fetches them now,
+with progress, and offers Try Again if the download fails. The Mac and
+iPad apps have no such button: their kernels run in a page with its own
+data store, which fetches DuckDB the first time a cell uses SQL there.
 
 ### Collapsing code
 
@@ -282,6 +316,16 @@ covers tokens, cookies and cross-origin access on the server side.
   file opened from the notebook folder doesn't count, since Ganymede
   sandboxes `/files`. The key is sent only to the provider you picked,
   straight from the page.
+- **DuckDB:** once SQL, the DuckDB console, a Parquet file or Settings >
+  Offline SQL has fetched it, DuckDB's wasm and worker stay in the
+  browser's Cache Storage (`duckdb-wasm-<version>`) until you clear the
+  site's data.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release, which keeps them in the same place but fetches
+  > them on its first visit online, whether or not anything uses them.
+
 - **Error reports:** off by default. In a browser, Settings > "Send
   error reports" (kept in local storage, `ganymede-ui:crash-reports`); in
   the Mac and iPad apps, the app's own setting. When on, an unhandled
