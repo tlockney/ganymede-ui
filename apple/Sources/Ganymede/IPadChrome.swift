@@ -146,13 +146,17 @@ struct IPadSidebar: View {
         List(selection: selectionBinding) { listContent }
             .listStyle(.sidebar)
             .modifier(SidebarKeys(
-                selection: selection,
+                selection: filesShown ? selection : nil,
                 isExpanded: { expandedFolders.contains($0.url) },
                 setExpanded: { entry, expanded in
                     if expanded { expandedFolders.insert(entry.url) } else { expandedFolders.remove(entry.url) }
                 },
+                canOpen: { $0.canOpen(in: place) },
                 open: open
             ))
+            // The list is shared by every tab: a selection made in Files
+            // mustn't take Return in Search or Running.
+            .onChange(of: shownTab) { selection = nil }
             .navigationTitle(tabbed ? shownTab.title : "Notebooks")
             // The iPad's navigator tabs, as on the Mac (#251).
             .safeAreaInset(edge: .top, spacing: 0) {
@@ -160,12 +164,15 @@ struct IPadSidebar: View {
             }
     }
 
-    /// The list's selection. The iPhone's list has none: there a row only
+    /// Whether the Files tab shows in the iPad's tabbed list: the only
+    /// list with a selection. The iPhone's has none: there a row only
     /// opens, and nothing stays highlighted.
+    private var filesShown: Bool { tabbed && shownTab == .files }
+
     private var selectionBinding: Binding<FolderEntry?> {
         Binding(
-            get: { tabbed ? selection : nil },
-            set: { if tabbed { selection = $0 } }
+            get: { filesShown ? selection : nil },
+            set: { if filesShown { selection = $0 } }
         )
     }
 
@@ -581,7 +588,7 @@ struct IPadSidebar: View {
                     set: { if $0 { expandedFolders.insert(url) } else { expandedFolders.remove(url) } }
                 )
             },
-            select: { if tabbed { selection = $0 } },
+            select: { if filesShown { selection = $0 } },
             open: open,
             newNotebook: newNotebook(in:),
             newFolder: newFolder(in:),
@@ -642,6 +649,12 @@ struct IPadSidebar: View {
         source.serverPath(entry.url)
     }
 
+    /// Clears the selection when it is `entry` or inside it, as a renamed
+    /// or deleted folder's rows go.
+    private func dropSelection(at entry: FolderEntry) {
+        if let selected = selection, selected.isAtOrInside(entry) { selection = nil }
+    }
+
     private func open(_ entry: FolderEntry) {
         if entry.opensInPage {
             page.run("open", arg: path(entry))
@@ -688,8 +701,8 @@ struct IPadSidebar: View {
         let from = path(entry)
         exclusively {
             let target = try await source.rename(entry.url, to: file)
-            // Its row is gone under the old name.
-            if selection == entry { selection = nil }
+            // Its row, and any inside it, is gone under the old name.
+            dropSelection(at: entry)
             let to = source.serverPath(target)
             page.run("file-moved", arg: PageState.fileMoved(from: from, to: to))
             // From the page's path now, after the move returned.
@@ -711,7 +724,7 @@ struct IPadSidebar: View {
         let from = path(entry)
         exclusively {
             try await source.delete(entry.url)
-            if selection == entry { selection = nil }
+            dropSelection(at: entry)
             page.run("file-moved", arg: PageState.fileMoved(from: from, to: nil))
             // What the page shows now, not when the person confirmed.
             if FolderEntry.path(page.state.path, isAt: from) { page.run("close") }

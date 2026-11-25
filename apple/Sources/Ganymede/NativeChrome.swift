@@ -52,6 +52,7 @@ struct FolderSidebar: View {
             selection: selection,
             isExpanded: { actions.isExpanded($0.url).wrappedValue },
             setExpanded: { actions.isExpanded($0.url).wrappedValue = $1 },
+            canOpen: { $0.canOpen(in: place) },
             open: open
         ))
         .contextMenu {
@@ -98,6 +99,16 @@ struct FolderSidebar: View {
             },
             select: { selection = $0 },
             open: open,
+            openByClick: { entry in
+                open(entry)
+                // The click left the list the keyboard; a notebook it
+                // opened should have it, so Down and Return go to the page.
+                if entry.opensInPage {
+                    DispatchQueue.main.async {
+                        if let window = NSApp.keyWindow { returnKeyboardToPage(in: window) }
+                    }
+                }
+            },
             openInNewTab: { entry in
                 if let target = WindowTarget(opening: entry) { openWindow(value: target) }
             },
@@ -112,6 +123,12 @@ struct FolderSidebar: View {
             offline: !reachable,
             machineName: machineName
         )
+    }
+
+    /// Clears the selection when it is `entry` or inside it, as a renamed
+    /// or deleted folder's rows go.
+    private func dropSelection(at entry: FolderEntry) {
+        if let selected = selection, selected.isAtOrInside(entry) { selection = nil }
     }
 
     private func open(_ entry: FolderEntry) {
@@ -168,8 +185,8 @@ struct FolderSidebar: View {
             do {
                 let target = try await source.rename(entry.url, to: name)
                 generation += 1
-                // Its row is gone under the old name.
-                if selection == entry { selection = nil }
+                // Its row, and any inside it, is gone under the old name.
+                dropSelection(at: entry)
                 // From the page's path now, after the move returned.
                 if let moved = FolderEntry.path(
                     page.state.path, movedFrom: entry.serverPath, to: source.serverPath(target)
@@ -211,7 +228,7 @@ struct FolderSidebar: View {
             do {
                 try await source.delete(entry.url)
                 generation += 1
-                if selection == entry { selection = nil }
+                dropSelection(at: entry)
                 // What the page shows now, not when the person confirmed.
                 if FolderEntry.path(page.state.path, isAt: entry.serverPath) { page.run("close") }
             } catch {
@@ -231,6 +248,8 @@ struct FolderActions {
     /// A click made this row the list's selection (#787).
     var select: (FolderEntry) -> Void
     var open: (FolderEntry) -> Void
+    /// A click opened the file: `open`, then the keyboard goes back to the page.
+    var openByClick: (FolderEntry) -> Void
     var openInNewTab: (FolderEntry) -> Void
     var newNotebook: (URL) -> Void
     var newFolder: (URL) -> Void
@@ -292,7 +311,7 @@ private struct FolderContents: View {
                     .simultaneousGesture(
                         TapGesture().onEnded {
                             actions.select(entry)
-                            if canOpen { actions.open(entry) }
+                            if canOpen { actions.openByClick(entry) }
                         }
                     )
                     .accessibilityElement(children: .combine)

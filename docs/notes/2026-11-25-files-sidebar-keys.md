@@ -6,18 +6,21 @@ a single optional `FolderEntry` selection, with `.tag(entry)` on each file
 row and on each folder's label row (only entries are selectable; the
 offline line, "No files" and errors are not). Up and Down are the list's
 own and only move the selection. Return, Right and Left are ours
-(`SidebarKeys`, an `onKeyPress` on the list, key-down only, no modifiers):
+(`SidebarKeys`, an `onKeyPress` on the list, key-down only; ⌘, ⌥, ⌃ and ⇧
+make a press not ours, but Caps Lock and the keypad and function flags
+the arrow keys carry don't):
 
-- Return opens the selected file (if this place can open it) or toggles
-  the selected folder.
+- Return opens the selected file (if this place can open it; otherwise it
+  is left alone) or toggles the selected folder.
 - Right expands a collapsed folder, Left collapses an expanded one. Both
   set a definite value, never toggle, so the list's own handling of the
   arrows can't undo them. On anything else they return `.ignored`.
 
 `SidebarKeyAction.action(for:selected:isExpanded:)` makes the decision as
 a pure function (`SidebarKey.swift`, in both test targets in
-`project.yml`); `SidebarKeyTests` covers every key against a file, an
-expanded and a collapsed folder and no selection.
+`project.yml`), with `SidebarKey(key:modifiers:)` for which presses count;
+`SidebarKeyTests` covers every key against a file (openable or not), an
+expanded and a collapsed folder and no selection, and the modifier cases.
 
 Rows stopped being `Button`s: a button inside a selectable list can keep
 the click from selecting the row. A file row and `FolderRowLabel` are now
@@ -25,13 +28,18 @@ the row's content with a tap gesture running along with the list's, which
 selects the row and opens the file or toggles the folder. A file that
 can't open in this place can still be selected. Both keep a button's
 accessibility (the trait and a default action; a folder's Expanded or
-Collapsed value and hint). Selection also follows a rename or delete of
-the selected row by clearing.
+Collapsed value and hint). On the Mac a click that opens a notebook or data file hands the keyboard
+back to the page (`returnKeyboardToPage`, as the bottom panel does), so
+Down and Return then act in the notebook. A rename or delete clears the
+selection when it is the renamed or deleted row or inside it (a path
+prefix with a `/` boundary). A reload that no longer lists the selected
+row does not clear it; Return on it then does what a stale row does.
 
 The iPad kept each folder's expansion in `IPadFolderContents`; it is now
 one `Set<URL>` in `IPadSidebar`, handed down in `IPadFolderActions` as the
-Mac's `isExpanded`, so the key handler can reach any folder. Expansion
-now also survives switching navigator tabs, not only while the folder's
+Mac's `isExpanded`, so the key handler can reach any folder. The iPad's list is shared by
+every navigator tab, so it has a selection and keys only while Files
+shows, and a tab change clears the selection. Expansion now also survives switching navigator tabs, not only while the folder's
 view lives. The iPhone's list shares the code but has no selection (its
 binding reads nil and ignores writes): a row there only opens or toggles.
 
@@ -59,3 +67,10 @@ by-hand checks are for #399 (Mac) and #273 (iPad):
 8. iPad: tap a file and a folder, and use the long-press menu: as before.
 9. iPhone: tap a file (opens, no row stays highlighted) and a folder
    (toggles).
+10. Mac: click a notebook in the sidebar, then press Down or Return: they
+    act in the notebook, not the sidebar.
+11. iPad: a tap on a folder toggles it exactly once.
+12. iPad: select a file in Files, switch to Search or Running, press
+    Return: nothing opens. In Search, ← and → move the caret in the Find
+    files field.
+13. Mac and iPad: with Caps Lock on, → and ← still expand and collapse.
