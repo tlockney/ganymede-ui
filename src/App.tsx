@@ -803,6 +803,9 @@ export function App() {
       case 'restart':
         await c.restart();
         return true;
+      case 'restart-run-all':
+        await c.restartAndRunAll();
+        return true;
       case 'insert-code':
         c.insert('code');
         return true;
@@ -959,6 +962,7 @@ export function App() {
         (kernel ? (specs?.kernelspecs[kernel]?.display_name ?? kernel) : null),
       kernelVersionLine: shown?.kernelVersionLine ?? null,
       kernelMissing: !!shown?.missingKernel,
+      locked: shown?.locked ?? false,
       trusted: shown?.trusted ?? true,
       hostGrants: hostGrantsAvailable(backend),
       publish: publishAvailable(backend),

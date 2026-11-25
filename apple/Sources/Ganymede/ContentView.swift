@@ -150,7 +150,7 @@ struct ContentView: View {
             // machine's too; a machine's window has no panel (#740).
             NotebookToolbar(
                 page: pageModel, document: document, folder: sidebarRoot,
-                panel: place.isThisDevice ? panel : nil, place: place)
+                panel: place.isThisDevice ? panel : nil, place: place, header: headerStatus)
             // The panel's shells are on this Mac: none for a machine's window.
             if place.isThisDevice {
                 ToolbarItem {
@@ -179,7 +179,9 @@ struct ContentView: View {
                 }
             }
         }
-        .navigationSubtitle(WindowTarget.subtitle(page: pageModel.state.subtitle, machineName: machineName))
+        // The status line (#812). The system draws it and it isn't
+        // clickable: the kernel button's popover opens the details.
+        .navigationSubtitle(WindowTarget.subtitle(header: headerStatus, machineName: machineName))
         .frame(minWidth: 720, minHeight: 480)
         // A console's tab is titled with its name (#735).
         .navigationTitle((target ?? loaded).tabTitle(
@@ -591,6 +593,18 @@ struct ContentView: View {
     /// A machine's name, for its window's title and subtitle.
     private var machineName: String? { place.machineID.flatMap(model.machineName(_:)) }
 
+    /// The notebook's status line (#812): where it is saved and runs, from
+    /// the window's place and the kernel location setting, not the page's
+    /// own words; nil with no notebook open.
+    private var headerStatus: HeaderStatus? {
+        let locations = model.kernelLocations
+        let remote = place.allows(.kernelLocation) && locations.selected != nil ? locations.title : nil
+        let names = HeaderStatus.places(
+            machineName: machineName, isMachine: place.isMachine,
+            deviceName: Places.deviceName, kernelLocation: remote)
+        return HeaderStatus.make(state: pageModel.state, savedOn: names.savedOn, runsOn: names.runsOn)
+    }
+
     /// This window's files: this Mac's disk, or the machine's through the
     /// app's mount. Nil for a machine until the server listens.
     private var fileSource: (any FileSource)? {
@@ -793,6 +807,18 @@ struct ContentView: View {
     /// A machine's name, for the title and the subtitle.
     private var machineName: String? { place.machineID.flatMap(model.machineName(_:)) }
 
+    /// The notebook's status line (#812): where it is saved and runs, from
+    /// the window's place and the kernel location setting, not the page's
+    /// own words; nil with no notebook open.
+    private var headerStatus: HeaderStatus? {
+        let locations = model.kernelLocations
+        let remote = place.allows(.kernelLocation) && locations.selected != nil ? locations.title : nil
+        let names = HeaderStatus.places(
+            machineName: machineName, isMachine: place.isMachine,
+            deviceName: Places.deviceName, kernelLocation: remote)
+        return HeaderStatus.make(state: pageModel.state, savedOn: names.savedOn, runsOn: names.runsOn)
+    }
+
     /// The sidebar's folder and files (#758): this device's notebook folder
     /// (its source is the sidebar's own default), or a machine's root through
     /// `MachineFileSource`. Nil for a machine until the server listens.
@@ -911,23 +937,14 @@ struct ContentView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 if drawsNativeChrome {
-                    // The title over the kernel and its state, which the
-                    // page's own toolbar showed (the Mac's window subtitle).
+                    // The title over the status line (#812); tapping the line
+                    // opens the file, kernel and where kernels run.
                     ToolbarItem(placement: .principal) {
-                        VStack(spacing: 0) {
-                            Text(title).font(.headline).lineLimit(1)
-                            // "on <machine>" first for a machine's scene.
-                            let subtitle = WindowTarget.subtitle(
-                                page: pageModel.state.subtitle, machineName: machineName)
-                            if !subtitle.isEmpty {
-                                Text(subtitle)
-                                    .font(.caption)
-                                    .foregroundStyle(pageModel.state.kernelMissing ? AnyShapeStyle(Color.red) : AnyShapeStyle(.secondary))
-                                    .lineLimit(1)
-                            }
-                        }
+                        NotebookTitle(
+                            title: title, header: headerStatus, machineName: machineName,
+                            page: pageModel, place: place, phone: isPhone)
                     }
-                    IPadNotebookToolbar(page: pageModel, place: place, bottom: isPhone) {
+                    IPadNotebookToolbar(page: pageModel, bottom: isPhone) {
                         newName = title
                         renaming = true
                     }
