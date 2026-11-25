@@ -45,8 +45,11 @@ export const FRAME_CSP = [
   "form-action 'none'",
 ].join('; ');
 
-/** Frames taller than this scroll; keeps a runaway output from growing forever. */
-const MAX_HEIGHT = 20_000;
+/**
+ * The tallest a frame grows, so a runaway output can't grow the page
+ * forever. Content past it scrolls inside the frame (#795).
+ */
+export const MAX_HEIGHT = 20_000;
 
 /** Theme values the frame's body copies from the page when it renders. */
 const THEME_VARS: [string, string][] = [
@@ -60,7 +63,12 @@ function colorScheme(): 'dark' | 'light' {
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
-/** The frame document: the policy, the page's text style, a sizer, then the content. */
+/**
+ * The frame document: the policy, the page's text style, a sizer, then the
+ * content. The document hides overflow, so an output that fits shows no
+ * scrollbar; once the content is taller than `MAX_HEIGHT`, the sizer lets
+ * it scroll vertically, since the frame stops growing there.
+ */
 export function frameDocument(body: string): string {
   const style = getComputedStyle(document.body);
   const theme = THEME_VARS.map(([prop, v]) => {
@@ -76,7 +84,9 @@ export function frameDocument(body: string): string {
 addEventListener('DOMContentLoaded', function () {
   var root = document.getElementById('root');
   var post = function () {
-    parent.postMessage({ ganymedeFrame: 'height', height: Math.ceil(root.getBoundingClientRect().height) }, '*');
+    var height = Math.ceil(root.getBoundingClientRect().height);
+    document.documentElement.style.overflowY = height > ${MAX_HEIGHT} ? 'auto' : 'hidden';
+    parent.postMessage({ ganymedeFrame: 'height', height: height }, '*');
   };
   new ResizeObserver(post).observe(root);
   addEventListener('load', post);
