@@ -123,7 +123,9 @@ struct SidebarTree {
         // The root is never a parent, even if some listing had its row.
         guard let folder = folders[entry], folder != root else { return nil }
         let parent = FolderEntry(url: folder, isDirectory: true)
-        return folders[parent] == nil ? nil : parent
+        // Listed all the way up: a folder a reload dropped may still be
+        // recorded as holding its rows.
+        return lists(parent, root: root) ? parent : nil
     }
 
     /// Whether `entry` is still listed under `root`: its folder, and each
