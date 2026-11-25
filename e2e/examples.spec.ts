@@ -7,7 +7,9 @@ import {
   outputs,
   removeFromServer,
   sidebarItem,
+  statusLine,
   useThisBrowser,
+  waitForIdle,
   waitForReady,
 } from './helpers';
 
@@ -43,9 +45,8 @@ test('the examples open, trusted, and run in this browser', async ({ page }) => 
   // The first code cell runs on the in-page kernel it asks for.
   await page.locator('.jp-CodeCell').first().click();
   await page.keyboard.press('Shift+Enter');
-  await expect(page.getByText(/TypeScript \(cdp-kernel\) · Idle$/)).toBeVisible({
-    timeout: 60_000,
-  });
+  await waitForIdle(page);
+  await expect(statusLine(page)).toHaveAccessibleName(/ · TypeScript \(cdp-kernel\)$/);
   await expect(
     outputs(page).filter({ hasText: "[ 'Io', 'Europa', 'Ganymede', 'Callisto' ]" }),
   ).toBeVisible();

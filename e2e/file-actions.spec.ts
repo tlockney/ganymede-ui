@@ -2,7 +2,7 @@
 // duplicate, delete with confirmation, and new folder; deleting the open
 // notebook closes it, renaming it keeps it open.
 import { expect, type Page, test } from '@playwright/test';
-import { outputs, useThisBrowser, waitForReady } from './helpers';
+import { outputs, useThisBrowser, waitForIdle, waitForReady } from './helpers';
 
 async function connect(page: Page) {
   await page.goto('/');
@@ -87,7 +87,7 @@ test('moving the folder that holds the open notebook keeps its kernel', async ({
   await cell.click();
   await page.keyboard.type('var moon = 41');
   await page.keyboard.press('Shift+Enter');
-  await expect(page.getByText(/ · Idle$/)).toBeVisible({ timeout: 60_000 });
+  await waitForIdle(page);
   // An edit not yet saved goes along too.
   await page.locator('.jp-Cell .cm-content').last().click();
   await page.keyboard.type('moon + 1');

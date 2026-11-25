@@ -4,7 +4,7 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { ROOT_DIR } from './env';
-import { openNotebook, openWithToken, removeFromServer, screenshot } from './helpers';
+import { openNotebook, openWithToken, removeFromServer, screenshot, toolbarMenu } from './helpers';
 
 const FILE = 'Greeting.ipynb';
 
@@ -39,7 +39,7 @@ test('runs the notebook with parameters and shows its results', async ({ page },
   );
   await openWithToken(page);
   await openNotebook(page, FILE);
-  await page.getByTitle('Command Palette').click();
+  await toolbarMenu(page, 'More', 'Command Palette…');
   const palette = page.getByRole('dialog', { name: 'Command palette' });
   await palette.getByRole('combobox', { name: 'Command' }).fill('run with');
   await palette.getByRole('option', { name: /Run with Parameters/ }).click();

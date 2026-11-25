@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 
 export type MenuItem =
   | {
@@ -10,10 +10,14 @@ export type MenuItem =
       checked?: boolean;
       /** The accessible name, when it differs from the label (a mark in the label). */
       ariaLabel?: string;
+      /** A tooltip (what a mark in the label means). */
+      title?: string;
     }
   | 'separator'
   /** A label over the items after it. */
-  | { heading: string };
+  | { heading: string }
+  /** A line of information, not an action (a file's path). */
+  | { note: string };
 
 type Props = {
   /** Where it opens: a point (right-click, long-press) or under an element. */
@@ -32,6 +36,7 @@ const MARGIN = 8;
  */
 export function ContextMenu({ at, label, items, onClose }: Props) {
   const menu = useRef<HTMLDivElement>(null);
+  const noteId = useId();
   const [place, setPlace] = useState<{ top: number; left: number }>();
 
   useLayoutEffect(() => {
@@ -107,12 +112,24 @@ export function ContextMenu({ at, label, items, onClose }: Props) {
         className={`popup-menu ${checks ? 'with-checks' : ''}`}
         role="menu"
         aria-label={label}
+        // Notes aren't items; the menu's description has them, for a screen reader.
+        aria-describedby={
+          items
+            .flatMap((item, i) =>
+              typeof item === 'object' && 'note' in item ? [`${noteId}-${i}`] : [],
+            )
+            .join(' ') || undefined
+        }
         style={place ?? { visibility: 'hidden' }}
         onPointerDown={e => e.stopPropagation()}
       >
         {items.map((item, i) =>
           item === 'separator' ? (
             <div key={i} className="popup-menu-separator" role="separator" />
+          ) : 'note' in item ? (
+            <div key={i} id={`${noteId}-${i}`} className="popup-menu-note" role="none">
+              {item.note}
+            </div>
           ) : 'heading' in item ? (
             <div key={i} className="popup-menu-heading" role="presentation">
               {item.heading}
@@ -124,6 +141,7 @@ export function ContextMenu({ at, label, items, onClose }: Props) {
               role={item.checked === undefined ? 'menuitem' : 'menuitemradio'}
               aria-checked={item.checked}
               aria-label={item.ariaLabel}
+              title={item.title}
               className={`popup-menu-item ${item.destructive ? 'destructive' : ''}`}
               disabled={item.disabled}
               onClick={() => {

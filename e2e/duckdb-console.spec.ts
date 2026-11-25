@@ -5,7 +5,7 @@ import { copyFileSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { ROOT_DIR } from './env';
-import { openWithToken, removeFromServer, sidebarItem } from './helpers';
+import { openWithToken, removeFromServer, sidebarItem, toolbarMenu } from './helpers';
 
 const DIST = join(process.cwd(), 'node_modules/@duckdb/duckdb-wasm/dist');
 const JSDELIVR =
@@ -30,7 +30,7 @@ async function serveDuckdb(page: Page) {
 
 async function openConsole(page: Page) {
   await openWithToken(page);
-  await page.getByTitle('Command Palette').click();
+  await toolbarMenu(page, 'More', 'Command Palette…');
   const palette = page.getByRole('dialog', { name: 'Command palette' });
   await palette.getByRole('combobox', { name: 'Command' }).fill('duckdb');
   await expect(palette.getByRole('option', { name: /New DuckDB Console/ })).toBeVisible();

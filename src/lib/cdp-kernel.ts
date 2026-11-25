@@ -6,9 +6,9 @@ import workerUrl from '@tlockney/cdp-kernel/browser/worker?worker&url';
 import { noteKernelRequest } from './duckdb-files';
 import { kernelModules } from './kernel-modules';
 import { kernelTypescript } from './kernel-typescript';
+import { CDP_KERNEL_NAME } from './kernel-device';
 
-/** The kernelspec name, as cdp-kernel names its kernelspecs (`cdp-node`, …). */
-export const CDP_KERNEL_NAME = 'cdp-browser';
+export { CDP_KERNEL_NAME };
 
 export const CDP_KERNEL_SPEC = {
   name: CDP_KERNEL_NAME,

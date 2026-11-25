@@ -45,8 +45,7 @@ test('TypeScript and a chart run with no network, and nothing asks for DuckDB', 
     },
   );
   await page.goto('/');
-  await page.getByRole('radio', { name: /This browser/ }).click();
-  await page.getByRole('button', { name: 'Connect', exact: true }).click();
+  await useThisBrowser(page);
   await expect(page.getByRole('button', { name: /This browser/ })).toBeVisible({
     timeout: 60_000,
   });

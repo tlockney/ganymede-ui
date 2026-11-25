@@ -7,7 +7,7 @@ import { copyFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
 import { FIXTURE, ROOT_DIR } from './env';
-import { openNotebook, openWithToken, removeFromServer } from './helpers';
+import { openNotebook, openWithToken, removeFromServer, statusLine } from './helpers';
 
 const FILE = 'Switch with edits.ipynb';
 const onDisk = () => readFileSync(join(ROOT_DIR, FILE), 'utf8');
@@ -23,7 +23,7 @@ async function edit(page: Page, marker: string) {
   await page.locator('.jp-CodeCell .cm-content').first().click();
   await page.keyboard.press('ControlOrMeta+End');
   await page.keyboard.type(`\n${marker}`);
-  await expect(page.getByText('— Edited')).toBeVisible();
+  await expect(statusLine(page)).toHaveAccessibleName(/^Edited · /);
 }
 
 /** The sidebar's backend button, then the browser's kernels. */

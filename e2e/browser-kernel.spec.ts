@@ -2,7 +2,14 @@
 // browser kernel (the default) and the JavaScript kernel, cells in Web
 // Workers. Needs no server, only the production build.
 import { expect, test } from '@playwright/test';
-import { outputs, screenshot, useThisBrowser, waitForReady } from './helpers';
+import {
+  outputs,
+  screenshot,
+  statusLine,
+  toolbarMenu,
+  useThisBrowser,
+  waitForReady,
+} from './helpers';
 
 test.use({ deviceScaleFactor: 2 });
 
@@ -44,8 +51,8 @@ for (const colorScheme of ['light', 'dark'] as const) {
 
     // Saved, out of edit mode, and cropped to the content for the README.
     await page.keyboard.press('Escape');
-    await page.getByRole('button', { name: /^Save/ }).click();
-    await expect(page.getByText('— Edited')).toHaveCount(0);
+    await toolbarMenu(page, 'More', 'Save');
+    await expect(statusLine(page)).toHaveAccessibleName(/^Saved in this browser/);
     await page.setViewportSize({ width: 1280, height: 520 });
     await screenshot(page, testInfo, `browser-kernel-${colorScheme}`);
   });

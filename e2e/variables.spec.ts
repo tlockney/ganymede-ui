@@ -3,7 +3,7 @@
 // A row with children starts with its ▸ toggle, so names match after it.
 import { expect, test } from '@playwright/test';
 import { FIXTURE } from './env';
-import { openNotebook, openWithToken, outputs, waitForIdle } from './helpers';
+import { openNotebook, openWithToken, outputs, runAll, toolbarMenu, waitForIdle } from './helpers';
 
 test('lists the variables after a run and expands an object', async ({ page }) => {
   // The debug requests the view sends (#485): each read of the variables.
@@ -15,11 +15,11 @@ test('lists the variables after a run and expands an object', async ({ page }) =
   );
   await openWithToken(page);
   await openNotebook(page, FIXTURE);
-  await page.getByTitle('Run All').click();
+  await runAll(page);
   await expect(outputs(page).first()).toBeVisible({ timeout: 60_000 });
   await waitForIdle(page);
 
-  await page.getByTitle('Show Variables').click();
+  await toolbarMenu(page, 'More', 'Show Variables');
   const view = page.getByRole('complementary', { name: 'Variables' });
   const moons = view.getByRole('row').filter({ hasText: /^▸?moons/ });
   await expect(moons).toBeVisible({ timeout: 30_000 });
