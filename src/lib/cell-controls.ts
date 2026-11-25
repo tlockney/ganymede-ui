@@ -134,7 +134,8 @@ export function addCellAfter(notebook: Notebook, cell: Cell, type: 'code' | 'mar
   notebook.mode = 'edit';
 }
 
-/** Fill the meta line, and give the prompt the run state as text for assistive technology. */
+/** Fill the meta line; the run state is text in the cell, for assistive
+ * technology on every width (jupyter.css keeps it in the accessibility tree). */
 function refreshMeta(cell: Cell, meta: HTMLElement): void {
   const { count, type, state } = describeCell(cell);
   const set = (cls: string, text: string) => {
@@ -145,15 +146,6 @@ function refreshMeta(cell: Cell, meta: HTMLElement): void {
   set('gn-meta-count', count);
   set('gn-meta-type', type);
   set('gn-meta-state', state ?? '');
-  for (const prompt of cell.node.querySelectorAll<HTMLElement>('.jp-InputPrompt')) {
-    if (state) {
-      prompt.title = state;
-      prompt.setAttribute('aria-label', `${state} ${prompt.textContent ?? ''}`.trim());
-    } else {
-      prompt.removeAttribute('title');
-      prompt.removeAttribute('aria-label');
-    }
-  }
 }
 
 function button(className: string, label: string, text: string, data: string): HTMLButtonElement {

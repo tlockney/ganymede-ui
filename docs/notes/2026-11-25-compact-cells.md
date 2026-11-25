@@ -37,7 +37,9 @@ rows of + Code / + Text buttons took width and height from the code.
   cell's outputs while the session has no kernel.
 - **Run states.** `cellRunState` reads the classes `run-status.ts` sets
   (Running, Queued) and a last error of `KeyboardInterrupt` (Stopped), and
-  sets `title` and `aria-label` on the prompt and the words in the meta line.
+  puts the words in the meta line, which stays in the accessibility tree on
+  a wide screen as visually hidden text (its other parts don't show there;
+  the prompt keeps no title).
 
 Not done: "Source changed since run" (waits on ganymede#943); a link to the
 failing line; an Expand for table outputs (their 32em box still scrolls);

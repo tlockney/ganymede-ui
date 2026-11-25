@@ -291,21 +291,22 @@ describe('the compact layout (#813)', () => {
     expect(marked()).toEqual([false, false, false, true]);
   });
 
-  it('says Queued, Running and Stopped in words, on the prompt and in the meta line', async () => {
-    const prompt = cell(0).node.querySelector<HTMLElement>('.jp-InputPrompt')!;
+  it('says Queued, Running and Stopped in words, in the meta line', async () => {
+    const state = () => meta(0).querySelector<HTMLElement>('.gn-meta-state')!;
     expect(cellRunState(cell(0))).toBeUndefined();
 
     cell(0).addClass('gn-mod-queued');
     await Promise.resolve();
     expect(cellRunState(cell(0))).toBe('Queued');
-    expect(prompt.title).toBe('Queued');
-    expect(prompt.getAttribute('aria-label')).toMatch(/^Queued/);
-    expect(meta(0).querySelector('.gn-meta-state')!.textContent).toBe('Queued');
+    // Text in the cell, not a colour: jupyter.css keeps it in the
+    // accessibility tree on a wide screen too, where the line doesn't show.
+    expect(state().textContent).toBe('Queued');
+    expect(state().hidden).toBe(false);
 
     cell(0).removeClass('gn-mod-queued');
     cell(0).addClass('gn-mod-running');
     await Promise.resolve();
-    expect(prompt.title).toBe('Running');
+    expect(state().textContent).toBe('Running');
 
     cell(0).removeClass('gn-mod-running');
     (cell(0).model as unknown as { outputs: { add(o: unknown): void } }).outputs.add({
@@ -316,8 +317,7 @@ describe('the compact layout (#813)', () => {
     });
     await Promise.resolve();
     expect(cellRunState(cell(0))).toBe('Stopped');
-    expect(prompt.title).toBe('Stopped');
-    expect(meta(0).querySelector('.gn-meta-state')!.textContent).toBe('Stopped');
+    expect(state().textContent).toBe('Stopped');
   });
 
   it('says nothing for a cell whose last error was an ordinary one', () => {
@@ -328,7 +328,7 @@ describe('the compact layout (#813)', () => {
       traceback: [],
     });
     expect(cellRunState(cell(0))).toBeUndefined();
-    expect(cell(0).node.querySelector('.jp-InputPrompt')!.hasAttribute('title')).toBe(false);
+    expect(meta(0).querySelector<HTMLElement>('.gn-meta-state')!.hidden).toBe(true);
   });
 
   it('says Stopped for this app’s own interrupt name too', async () => {

@@ -404,7 +404,19 @@
   display: contents;
 }
 
-.notebook-page .gn-cell-meta > span,
+/* The run state is text in the cell, so a screen reader finds it on a wide
+ * screen too, where the line's other parts don't show: the same clip as
+ * `.visually-hidden` (app.css), undone under the phone breakpoint below. */
+.touch-ui .notebook-page .gn-meta-state {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.notebook-page .gn-cell-meta > span:not(.gn-meta-state),
 .notebook-page .gn-add-main {
   display: none;
 }
@@ -445,6 +457,11 @@
   }
 
   .touch-ui .notebook-page .gn-meta-state {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip-path: none;
     padding: 1px 8px;
     border: 1px solid var(--text-2);
     border-radius: 9px;
