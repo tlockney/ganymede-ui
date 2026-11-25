@@ -40,6 +40,16 @@ rows of + Code / + Text buttons took width and height from the code.
   puts the words in the meta line, which stays in the accessibility tree on
   a wide screen as visually hidden text (its other parts don't show there;
   the prompt keeps no title).
+- **Taps on a control in an inactive cell.** A tap's mousedown gives the
+  control focus, JupyterLab's notebook takes that focus as a tap on the
+  cell and makes it the active one mid-tap, and the meta line the new
+  active cell grows moves the control under the finger — so the tap's
+  mouseup and click never arrive and the control does nothing. The focus
+  itself is right (it blurs the editor); only the notebook is kept from
+  hearing of it: `cell-controls.ts` and `output-labels.ts` stop the
+  `focusin` of their controls in the capture phase, next to their press
+  guards. `output-labels.ts` needed no `pointerdown` guard after that and
+  dropped it; `cell-controls.ts` keeps its pointerdown (the drag handle).
 
 Not done: "Source changed since run" (waits on ganymede#943); a link to the
 failing line; an Expand for table outputs (their 32em box still scrolls);
