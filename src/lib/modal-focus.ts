@@ -38,16 +38,17 @@ export function containTab(e: KeyboardEvent, root: HTMLElement): void {
       s => !!(active.compareDocumentPosition(s) & Node.DOCUMENT_POSITION_FOLLOWING),
     );
     if (e.shiftKey) next = (after < 0 ? stops.length : after) - 1;
-    else next = after;
+    else next = after < 0 ? 0 : after;
   } else next = e.shiftKey ? stops.length - 1 : 0;
   stops[(next + stops.length) % stops.length].focus();
 }
 
 /**
- * Modal focus for a sheet: focuses `initial()` on mount, keeps Tab inside
- * `ref`, and on unmount gives focus back to the element that had it before
- * the sheet opened, unless something else has taken focus since (focusing
- * an opener that left the page does nothing).
+ * Modal focus for a sheet: focuses `initial()` on mount (when it gives
+ * nothing, the first Tab brings focus in), keeps Tab inside `ref`, and on
+ * unmount gives focus back to the element that had it before the sheet
+ * opened, unless something else has taken focus since (focusing an opener
+ * that left the page does nothing).
  */
 export function useModalFocus(
   ref: RefObject<HTMLElement | null>,
@@ -57,7 +58,7 @@ export function useModalFocus(
     const root = ref.current;
     const before = document.activeElement;
     const opener = before instanceof HTMLElement ? before : undefined;
-    (initial() ?? root)?.focus();
+    initial()?.focus();
 
     const onKey = (e: KeyboardEvent) => {
       if (ref.current) containTab(e, ref.current);

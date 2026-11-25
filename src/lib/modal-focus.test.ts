@@ -74,6 +74,13 @@ describe('containTab', () => {
     end.querySelector<HTMLElement>('#x')!.focus();
     containTab(tab(), end);
     expect(document.activeElement?.id).toBe('a');
+    // Past the last of two stops: the first, not the last.
+    const two = sheet(
+      '<button id="a">a</button><button id="b">b</button><div tabindex="-1" id="x">x</div>',
+    );
+    two.querySelector<HTMLElement>('#x')!.focus();
+    containTab(tab(), two);
+    expect(document.activeElement?.id).toBe('a');
     // Back from past the last stop: the last one.
     const tail = sheet(
       '<button id="a">a</button><button id="b">b</button><div tabindex="-1" id="x">x</div>',
