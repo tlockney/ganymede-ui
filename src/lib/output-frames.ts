@@ -67,7 +67,11 @@ function colorScheme(): 'dark' | 'light' {
  * The frame document: the policy, the page's text style, a sizer, then the
  * content. The document hides overflow, so an output that fits shows no
  * scrollbar; once the content is taller than `MAX_HEIGHT`, the sizer lets
- * it scroll vertically, since the frame stops growing there.
+ * it scroll vertically, since the frame stops growing there. It stays
+ * scrollable: content whose height follows its width (an aspect-ratio box)
+ * can be over the cap without a classic scrollbar and under it with one,
+ * and switching back would flip the scrollbar on and off for good. Content
+ * that fits again shows no scrollbar anyway.
  */
 export function frameDocument(body: string): string {
   const style = getComputedStyle(document.body);
@@ -83,9 +87,13 @@ export function frameDocument(body: string): string {
 <script>
 addEventListener('DOMContentLoaded', function () {
   var root = document.getElementById('root');
+  var scrolls = false;
   var post = function () {
     var height = Math.ceil(root.getBoundingClientRect().height);
-    document.documentElement.style.overflowY = height > ${MAX_HEIGHT} ? 'auto' : 'hidden';
+    if (!scrolls && height > ${MAX_HEIGHT}) {
+      scrolls = true;
+      document.documentElement.style.overflowY = 'auto';
+    }
     parent.postMessage({ ganymedeFrame: 'height', height: height }, '*');
   };
   new ResizeObserver(post).observe(root);
