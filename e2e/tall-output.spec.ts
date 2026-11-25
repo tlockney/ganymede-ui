@@ -5,7 +5,7 @@ import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Locator } from '@playwright/test';
 import { ROOT_DIR } from './env';
-import { openNotebook, openWithToken, removeFromServer, waitForIdle } from './helpers';
+import { openNotebook, openWithToken, removeFromServer, runAll, waitForIdle } from './helpers';
 
 const FILE = 'Tall output.ipynb';
 const CAP = 20_000;
@@ -57,7 +57,7 @@ test('a framed output past the height cap scrolls to its last line', async ({ pa
   );
   await openWithToken(page);
   await openNotebook(page, FILE);
-  await page.getByRole('button', { name: 'Run All' }).click();
+  await runAll(page);
   await waitForIdle(page);
 
   const frames = page.locator('[data-mime-type="text/html"] iframe');
