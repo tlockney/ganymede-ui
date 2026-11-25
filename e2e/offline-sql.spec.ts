@@ -115,8 +115,8 @@ test('SQL tried offline fetches DuckDB once the network is back, without a reloa
   await openApp(page, true);
   await newNotebook(page);
   // The kernel can't reach jsDelivr, nor can the page. (DuckDB's worker
-  // fails to load, and the cell waits on it for good: a new kernel is
-  // needed either way.)
+  // fails to load, and the cell waits on it for good, cdp-kernel#539: a
+  // new kernel is needed either way.)
   const cell = await runSql(page);
   await expect(cell.locator('.jp-OutputArea-output')).toContainText('failed to load', {
     timeout: 60_000,
@@ -135,4 +135,24 @@ test('SQL tried offline fetches DuckDB once the network is back, without a reloa
   await newNotebook(page);
   await answer(await runSql(page));
   expect(cdn).toEqual([]);
+});
+
+test('a failed download says why, and Try Again stays one line beside it', async ({ page }) => {
+  await offline(page);
+  await openApp(page, true);
+  await page.getByRole('button', { name: 'Settings' }).click();
+  await page.getByRole('button', { name: 'Download DuckDB' }).click();
+  const section = page.locator('section', { hasText: 'Offline SQL' });
+  await expect(section.getByRole('status')).toHaveText(
+    'DuckDB didn’t download: Couldn’t reach cdn.jsdelivr.net.',
+  );
+  // The message wraps; the button's label doesn't (the button's height
+  // is fixed, so count the label's lines).
+  const lines = await page.getByRole('button', { name: 'Try Again' }).evaluate(button => {
+    const range = document.createRange();
+    range.selectNodeContents(button);
+    return new Set([...range.getClientRects()].map(r => Math.round(r.top))).size;
+  });
+  expect(lines).toBe(1);
+  expect(await cached(page)).toBe(0);
 });

@@ -94,7 +94,8 @@ export function readCachedDuckdbFiles(): Promise<void> {
 let loading: { promise: Promise<void>; fetches: boolean } | null = null;
 
 function run(fetches: boolean): Promise<void> {
-  if (status.state === 'ready' || status.state === 'unsupported') return Promise.resolve();
+  // Mapped: nothing more to read or fetch.
+  if (status.state === 'ready') return Promise.resolve();
   if (loading) {
     // A read of the cache alone doesn't do for a use: fetch after it.
     return loading.fetches || !fetches ? loading.promise : loading.promise.then(() => run(true));
@@ -159,6 +160,7 @@ async function load(fetches: boolean): Promise<void> {
     if (name.startsWith(PREFIX) && name !== CACHE) await caches.delete(name);
   }
   const cache = await caches.open(CACHE);
+  // Cached but not yet mapped: no network needed, even offline.
   if (await read(cache)) return;
   await prefetch(cache);
   if (!(await read(cache))) throw new Error('DuckDB’s files aren’t in the cache.');
@@ -193,6 +195,7 @@ async function prefetch(cache: Cache): Promise<void> {
   // length isn't what reading it counts.
   let total: number | null = 0;
   for (const a of answers) {
+    // No header reads as 0: unknown.
     const length = a.status === 'fulfilled' ? Number(a.value.headers.get('content-length')) : 0;
     const encoded = a.status === 'fulfilled' && a.value.headers.has('content-encoding');
     total = total !== null && length > 0 && !encoded ? total + length : null;
@@ -212,23 +215,28 @@ async function prefetch(cache: Cache): Promise<void> {
       void res.body?.cancel();
       continue;
     }
-    const chunks: Uint8Array[] = [];
-    try {
-      const reader = (res.body ?? new Response(await res.arrayBuffer()).body)!.getReader();
-      for (;;) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        chunks.push(value);
-        received += value.byteLength;
+    // Streamed into the cache, counting the bytes on the way, so the
+    // 36 MB never sit in the page's memory.
+    const counter = new TransformStream<Uint8Array, Uint8Array>({
+      transform(chunk, out) {
+        received += chunk.byteLength;
         setStatus({ state: 'loading', received, total });
-      }
+        out.enqueue(chunk);
+      },
+    });
+    try {
+      await cache.put(
+        f.url,
+        new Response(res.body?.pipeThrough(counter) ?? null, {
+          headers: { 'content-type': f.type },
+        }),
+      );
     } catch (err) {
-      failure ??= new Error(`The download from ${host} stopped.`, { cause: err });
-      continue;
+      failure ??=
+        err instanceof DOMException && err.name === 'QuotaExceededError'
+          ? new Error('This browser has no room to keep DuckDB.', { cause: err })
+          : new Error(`The download from ${host} stopped.`, { cause: err });
     }
-    const bytes = new Uint8Array(chunks.reduce((n, c) => n + c.byteLength, 0));
-    chunks.reduce((at, c) => (bytes.set(c, at), at + c.byteLength), 0);
-    await cache.put(f.url, new Response(bytes, { headers: { 'content-type': f.type } }));
   }
   if (failure) throw failure;
 }

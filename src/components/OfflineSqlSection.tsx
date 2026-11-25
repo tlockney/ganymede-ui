@@ -1,7 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useSyncExternalStore } from 'react';
 import { megabytes } from '../lib/data-read';
 import {
-  type DuckdbFilesState,
   duckdbFilesState,
   loadDuckdbFiles,
   onDuckdbFilesState,
@@ -15,17 +14,12 @@ import {
  * file. Hidden where the page has no Cache Storage to keep them in.
  */
 export function OfflineSqlSection() {
-  const [state, setState] = useState<DuckdbFilesState>(duckdbFilesState);
+  const state = useSyncExternalStore(onDuckdbFilesState, duckdbFilesState);
 
-  useEffect(() => {
-    const stop = onDuckdbFilesState(setState);
-    setState(duckdbFilesState());
-    // Whether an earlier visit has them; fetches nothing.
-    void readCachedDuckdbFiles();
-    return stop;
-  }, []);
+  // Whether an earlier visit has them; fetches nothing.
+  useEffect(() => void readCachedDuckdbFiles(), []);
 
-  if (state.state === 'unsupported' || typeof caches === 'undefined') return null;
+  if (typeof caches === 'undefined') return null;
 
   return (
     <section>
@@ -52,7 +46,7 @@ export function OfflineSqlSection() {
               <progress
                 aria-label="DuckDB download"
                 max={state.total ?? undefined}
-                value={state.total ? Math.min(state.received, state.total) : undefined}
+                value={state.total ? state.received : undefined}
               />
               <span role="status">
                 {state.received === 0

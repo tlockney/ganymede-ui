@@ -9,7 +9,9 @@ function fakeCaches(store = new Map<string, Response>()) {
   const names = new Set<string>();
   const cache = {
     match: async (url: string) => store.get(url)?.clone(),
-    put: async (url: string, res: Response) => void store.set(url, res),
+    // As Cache Storage does: reads the body to its end, or rejects.
+    put: async (url: string, res: Response) =>
+      void store.set(url, new Response(await res.arrayBuffer())),
   };
   vi.stubGlobal('caches', {
     open: async (name: string) => (names.add(name), cache),

@@ -17,9 +17,12 @@ import {
 /** A Cache Storage with one cache, as Map. */
 function fakeCaches() {
   const store = new Map<string, Response>();
+  let reads = 0;
   const cache = {
-    match: async (url: string) => store.get(url)?.clone(),
-    put: async (url: string, res: Response) => void store.set(url, res),
+    match: async (url: string) => (reads++, store.get(url)?.clone()),
+    // As Cache Storage does: reads the body to its end, or rejects.
+    put: async (url: string, res: Response) =>
+      void store.set(url, new Response(await res.arrayBuffer())),
   };
   const opened: string[] = [];
   const names = new Set(['duckdb-wasm-1.0.0', 'workbox-precache']);
@@ -29,7 +32,7 @@ function fakeCaches() {
     has: async (name: string) => names.has(name),
     delete: async (name: string) => names.delete(name),
   });
-  return { store, opened, names };
+  return { store, opened, names, reads: () => reads };
 }
 
 describe('DuckDB files', () => {
@@ -67,9 +70,69 @@ describe('DuckDB files', () => {
     expect(fetched).toEqual([]);
     expect(Object.keys(duckdbModules())).toHaveLength(2);
     expect(duckdbFilesState()).toEqual({ state: 'ready' });
-    // Mapped: later calls do nothing.
+  });
+
+  it('does nothing more once the files are mapped', async () => {
+    const { opened, reads } = fakeCaches();
+    vi.stubGlobal('fetch', async (url: string) => new Response(url));
     await loadDuckdbFiles();
-    expect(fetched).toEqual([]);
+    const before = { opened: opened.length, reads: reads() };
+    const blobs = vi.spyOn(URL, 'createObjectURL');
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    const seen: DuckdbFilesState[] = [];
+    onDuckdbFilesState(s => seen.push(s));
+    await loadDuckdbFiles();
+    await readCachedDuckdbFiles();
+    expect({ opened: opened.length, reads: reads() }).toEqual(before);
+    expect(blobs).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+    expect(seen).toEqual([]);
+  });
+
+  it('maps files already cached with the browser offline', async () => {
+    const { store } = fakeCaches();
+    for (const f of FILES) store.set(f.url, new Response(f.url));
+    vi.stubGlobal('navigator', { onLine: false });
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    await loadDuckdbFiles();
+    expect(fetch).not.toHaveBeenCalled();
+    expect(duckdbFilesState()).toEqual({ state: 'ready' });
+    expect(Object.keys(duckdbModules())).toHaveLength(2);
+  });
+
+  it('fetches only the file a failed try left out', async () => {
+    const { store } = fakeCaches();
+    store.set(FILES[0].url, new Response('worker'));
+    const fetched: string[] = [];
+    vi.stubGlobal('fetch', async (url: string) => (fetched.push(url), new Response(url)));
+    await loadDuckdbFiles();
+    expect(fetched).toEqual([FILES[1].url]);
+    expect(duckdbFilesState()).toEqual({ state: 'ready' });
+  });
+
+  it('says when a download stops partway, and keeps the file that came', async () => {
+    const { store } = fakeCaches();
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubGlobal('fetch', async (url: string) => {
+      if (url !== FILES[0].url) return new Response(url);
+      const body = new ReadableStream<Uint8Array>({
+        start(c) {
+          c.enqueue(new Uint8Array(4));
+          c.error(new TypeError('network error'));
+        },
+      });
+      return new Response(body);
+    });
+    await loadDuckdbFiles();
+    expect(duckdbFilesState()).toEqual({
+      state: 'failed',
+      message: 'The download from cdn.jsdelivr.net stopped.',
+    });
+    // The worker came first and failed; the wasm after it is kept.
+    expect([...store.keys()]).toEqual([FILES[1].url]);
+    expect(duckdbModules()).toEqual({});
   });
 
   it('maps nothing while a fetch fails, and keeps what it got', async () => {
@@ -166,6 +229,28 @@ describe('DuckDB files', () => {
     expect(loading.at(-1)).toEqual({ state: 'loading', received: 8, total: 8 });
     expect(loading.every(s => s.state === 'loading' && s.total === 8)).toBe(true);
     expect(seen.at(-1)).toEqual({ state: 'ready' });
+  });
+
+  it('leaves the total unknown for an answer with no length', async () => {
+    fakeCaches();
+    vi.stubGlobal(
+      'fetch',
+      async () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start(c) {
+              c.enqueue(new Uint8Array(3));
+              c.close();
+            },
+          }),
+        ),
+    );
+    const seen: DuckdbFilesState[] = [];
+    onDuckdbFilesState(s => seen.push(s));
+    await loadDuckdbFiles();
+    const loading = seen.filter(s => s.state === 'loading');
+    expect(loading.at(-1)).toMatchObject({ received: 6 });
+    expect(loading.every(s => s.total === null)).toBe(true);
   });
 
   it('leaves the total unknown for a compressed answer', async () => {

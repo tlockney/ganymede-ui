@@ -234,8 +234,10 @@ fails, such as one made offline, is tried again on the next use. The
 kernel that ran the first SQL loads DuckDB from jsDelivr itself; kernels
 started after the files are kept use the browser's copy.
 
-Settings > Offline SQL > Download DuckDB fetches them now, with progress,
-and offers Try Again if the download fails.
+In a browser, Settings > Offline SQL > Download DuckDB fetches them now,
+with progress, and offers Try Again if the download fails. The Mac and
+iPad apps have no such button: their kernels run in a page with its own
+data store, which fetches DuckDB the first time a cell uses SQL there.
 
 ### Collapsing code
 
@@ -300,8 +302,8 @@ covers tokens, cookies and cross-origin access on the server side.
   file opened from the notebook folder doesn't count, since Ganymede
   sandboxes `/files`. The key is sent only to the provider you picked,
   straight from the page.
-- **DuckDB:** once SQL or Settings > Offline SQL has fetched it, DuckDB's
-  wasm and worker stay in the browser's Cache Storage
+- **DuckDB:** once SQL, the DuckDB console, a Parquet file or Settings >
+  Offline SQL has fetched it, DuckDB's wasm and worker stay in the browser's Cache Storage
   (`duckdb-wasm-<version>`) until you clear the site's data.
 - **Error reports:** off by default. In a browser, Settings > "Send
   error reports" (kept in local storage, `ganymede-ui:crash-reports`); in
