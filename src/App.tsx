@@ -388,7 +388,16 @@ export function App() {
     if (!b) return;
     return () => {
       if (backendRef.current === b) return;
-      void Promise.allSettled(pendingHandoffs()).then(() => b.services.dispose());
+      // Not forever: a save the server never answers would keep the old
+      // services polling it.
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const late = new Promise<void>(resolve => {
+        timer = setTimeout(resolve, SERVER_TIMEOUT_MS);
+      });
+      void Promise.race([Promise.allSettled(pendingHandoffs()), late]).then(() => {
+        clearTimeout(timer);
+        b.services.dispose();
+      });
     };
   }, [backend]);
 
@@ -1205,8 +1214,10 @@ export function App() {
             if (!blockedSwitch) return;
             const { config: next, controller: c } = blockedSwitch;
             setBlockedSwitch(undefined);
-            // Stops its saves, so the teardown lets the edits go.
-            if (controllerRef.current === c) c.discard();
+            // Stops its saves, so the teardown lets the edits go. Any of
+            // the pane's controllers will do: the pane rebuilds it on each
+            // change of state, and they share what `discard` sets.
+            c.discard();
             switchBackend(next);
           }}
         />

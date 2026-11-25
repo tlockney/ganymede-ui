@@ -174,8 +174,8 @@ page is hidden, and when you open another file, and the browser asks before a ta
 closes. A failed save or kernel action shows its error above the notebook.
 In a browser, switching where kernels run in the connect sheet saves the
 open notebook first; if that save fails or the server doesn't answer, the
-switch waits, and you can keep editing, download a copy, or switch
-without saving.
+switch stops and asks: keep editing, download a copy, or switch without
+saving.
 
 > [!NOTE]
 > **Unreleased.** Available only from a build of `main` (HEAD), not in

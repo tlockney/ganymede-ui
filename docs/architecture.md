@@ -111,15 +111,20 @@ Copy (the controller's `download`) and Switch Without Saving (its
 `discard`, so the pane's teardown doesn't save). Cancel during the save
 drops the switch.
 
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, as is the wait for the last saves below. The
+> latest release switches at once and disposes the old services then.
+
 Switching backends disposes the old `ServiceManager`, once the last
 saves of the panes that closed on it (`pendingHandoffs` in
-`src/lib/rename.ts`) are done: they save through its contents manager.
-An effect on `backend` does it, after the commit that shows the new one,
-so those panes have handed their saves off by then. A server's kernels
-keep running, as they do when a notebook closes, and show under Running
-when the app connects to that server again. Kernels in the page have
-nowhere to come back to, so the in-page manager shuts them down first,
-which terminates their Workers.
+`src/lib/rename.ts`) are done, or after `SERVER_TIMEOUT_MS`: they save
+through its contents manager. An effect on `backend` does it, after the
+commit that shows the new one, so those panes have handed their saves
+off by then. A server's kernels keep running, as they do when a notebook
+closes, and show under Running when the app connects to that server
+again. Kernels in the page have nowhere to come back to, so the in-page
+manager shuts them down first, which terminates their Workers.
 
 ## In-page server and kernels
 

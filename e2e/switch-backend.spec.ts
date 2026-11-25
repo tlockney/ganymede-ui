@@ -60,6 +60,37 @@ test('a save that fails stops the switch until the person chooses', async ({ pag
   await switchToBrowser(page);
   const alert = page.getByRole('alert').filter({ hasText: 'Switching closes it' });
   await expect(alert).toBeVisible();
+
+  // On a phone the three choices wrap inside the sheet, each on one line,
+  // and the disabled fields draw no fieldset border.
+  await page.setViewportSize({ width: 375, height: 760 });
+  const layout = await page.evaluate(() => {
+    const sheet = document.querySelector('.sheet')!.getBoundingClientRect();
+    const fields = getComputedStyle(document.querySelector('.connect-fields')!);
+    const buttons = [...document.querySelectorAll('.sheet-unsaved button')].map(b => {
+      const box = b.getBoundingClientRect();
+      // The label's lines: one rect per line box (push buttons are a fixed
+      // height, so a wrapped label shows in its lines, not the button's).
+      const range = document.createRange();
+      range.selectNodeContents(b);
+      const lines = new Set([...range.getClientRects()].map(r => Math.round(r.top))).size;
+      return {
+        label: b.textContent,
+        inside: box.left >= sheet.left && box.right <= sheet.right,
+        oneLine: lines === 1 && b.scrollWidth <= b.clientWidth,
+      };
+    });
+    return { border: fields.borderTopWidth, buttons };
+  });
+  expect(layout.border).toBe('0px');
+  expect(layout.buttons).toEqual(
+    ['Switch Without Saving', 'Download a Copy', 'Keep Editing'].map(label => ({
+      label,
+      inside: true,
+      oneLine: true,
+    })),
+  );
+  await page.setViewportSize({ width: 1280, height: 720 });
   await alert.getByRole('button', { name: 'Keep Editing' }).click();
 
   // Still on the server, with the edit and why the save failed.

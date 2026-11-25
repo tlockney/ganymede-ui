@@ -24,6 +24,8 @@ const mocks = vi.hoisted(() => ({
   loadHostGrants: vi.fn(),
   /** The last pane's `onRenamed`. */
   onRenamed: undefined as undefined | ((from: string, to: string) => void),
+  /** The last pane's `onController`. */
+  onController: undefined as undefined | ((c: unknown) => void),
   /** Stands in for the examples' copy when a test sets it. */
   copyExamples: undefined as undefined | (() => Promise<string>),
 }));
@@ -111,6 +113,7 @@ vi.mock('./components/NotebookPane', async () => {
       onRenamed?(from: string, to: string): void;
     }) => {
       mocks.onRenamed = onRenamed;
+      mocks.onController = onController;
       useEffect(() => {
         if (mocks.controller) {
           const name = path.split('/').pop();
@@ -1505,6 +1508,10 @@ describe('App', () => {
       await act(async () => saved(true));
       await waitFor(() => expect(mocks.connect).toHaveBeenLastCalledWith({ kind: 'browser' }));
       await waitFor(() => expect(screen.queryByTestId('pane')).toBeNull());
+      // The sheet opened again asks nothing, and connects.
+      expect(await window.ganymede!.command('connect')).toBe(true);
+      expect(await screen.findByRole('button', { name: 'Connect' })).toBeEnabled();
+      expect(screen.queryByRole('alert')).toBeNull();
     });
 
     it('connects at once when nothing is unsaved', async () => {
@@ -1551,6 +1558,40 @@ describe('App', () => {
       await waitFor(() => expect(mocks.connect).toHaveBeenLastCalledWith({ kind: 'browser' }));
       await waitFor(() => expect(screen.queryByTestId('pane')).toBeNull());
       expect(undo).not.toHaveBeenCalled();
+      // The sheet opened again asks nothing, and connects.
+      expect(await window.ganymede!.command('connect')).toBe(true);
+      expect(await screen.findByRole('button', { name: 'Connect' })).toBeEnabled();
+      expect(screen.queryByRole('alert')).toBeNull();
+    });
+
+    it('stops the saves of the pane’s controller even after the pane rebuilt it', async () => {
+      const discard = vi.fn(() => () => {});
+      await openOnServer({
+        dirty: true,
+        save: vi.fn(async () => false),
+        download: vi.fn(),
+        discard,
+      });
+      await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
+      const alert = await screen.findByRole('alert');
+      // The kernel went idle, say: the pane hands over a new controller.
+      const rebuilt = vi.fn(() => () => {});
+      act(() =>
+        mocks.onController!({
+          ...mocks.controller,
+          name: 'Orbits.ipynb',
+          path: 'work/Orbits.ipynb',
+          status: 'idle',
+          trusted: true,
+          hostWants: () => [],
+          recordedParams: () => '{}',
+          discard: rebuilt,
+        }),
+      );
+      await userEvent.click(within(alert).getByRole('button', { name: 'Switch Without Saving' }));
+      // The one the save failed on: the pane's controllers share what it sets.
+      expect(discard).toHaveBeenCalledTimes(1);
+      await waitFor(() => expect(mocks.connect).toHaveBeenLastCalledWith({ kind: 'browser' }));
     });
 
     it('drops a switch cancelled while the notebook saves', async () => {
@@ -1659,6 +1700,28 @@ describe('App', () => {
       expect(dispose).not.toHaveBeenCalled();
       await act(async () => lastSave(undefined));
       await waitFor(() => expect(dispose).toHaveBeenCalledTimes(1));
+    });
+
+    it('disposes the old backend after SERVER_TIMEOUT_MS when a last save never ends', async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      let lastSave!: (failed: string | undefined) => void;
+      try {
+        const { dispose } = await openOnServer({ dirty: false, save: vi.fn(async () => true) });
+        handOff('work/Orbits.ipynb', new Promise(r => (lastSave = r)));
+        await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
+        await waitFor(() => expect(mocks.connect).toHaveBeenLastCalledWith({ kind: 'browser' }));
+        await waitFor(() => expect(screen.queryByText('Where should kernels run?')).toBeNull());
+
+        // Real time passes too (`shouldAdvanceTime`): well short of the limit.
+        await act(async () => vi.advanceTimersByTime(SERVER_TIMEOUT_MS - 10_000));
+        expect(dispose).not.toHaveBeenCalled();
+        await act(async () => vi.advanceTimersByTime(10_000));
+        await waitFor(() => expect(dispose).toHaveBeenCalledTimes(1));
+      } finally {
+        vi.useRealTimers();
+        // Out of the pending saves, for the tests after this one.
+        lastSave(undefined);
+      }
     });
   });
 
