@@ -186,6 +186,9 @@ struct PageState: Decodable, Equatable {
     /// a page older than #693.
     var kernelVersionLine: String?
     var kernelMissing = false
+    /// Saving is locked because the file changed on disk (#367), for the
+    /// status line's "Locked" (#812); absent from a page older than that.
+    var locked: Bool?
     var trusted = true
     /// Whether Notebook Access works on this backend; absent before #479.
     var hostGrants: Bool?
@@ -265,14 +268,6 @@ struct PageState: Decodable, Equatable {
     /// journal shows, otherwise the journal (#724).
     var journalToggleTitle: String { journal == true ? "Open as Notebook" : "View as Journal" }
     var journalToggleSymbol: String { journal == true ? "square.grid.2x2" : "text.page" }
-
-    /// The window's subtitle: the kernel and what it is doing, as the
-    /// page's own toolbar showed it.
-    var subtitle: String {
-        guard hasNotebook else { return "" }
-        let kernel = kernelDisplayName.map { kernelMissing ? "\($0) (not installed)" : $0 } ?? "No kernel"
-        return "\(kernel) · \(Self.statusLabel(status))"
-    }
 
     static func statusLabel(_ status: String?) -> String {
         switch status {

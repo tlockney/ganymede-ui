@@ -582,10 +582,17 @@ struct ServerLine: View {
 
 // MARK: - Toolbar
 
-/// The notebook's controls, in the window's toolbar. Not customizable:
+/// The notebook's controls, in the window's toolbar (#812). Not customizable:
 /// a customizable toolbar (`.toolbar(id:)`) joins every window's toolbar
 /// into one AppKit family, and AppKit threw while syncing a new window's
 /// items into the others when a notebook opened from the Finder (#226).
+///
+/// In a fixed order, so no control moves under the pointer: New Notebook;
+/// Trust and Notebook Access, which are there only while they apply and so
+/// come first; Run Cell with its run menu; Interrupt, always there and
+/// enabled while the kernel is busy; the status button (the kernel's name,
+/// whose popover has the file, the kernel and where it runs); Share; and
+/// More. That is eight items, under the ten a ToolbarContentBuilder takes.
 struct NotebookToolbar: ToolbarContent {
     var page: PageModel
     /// Saved as File > Save saves it, and enabled when that is.
@@ -596,6 +603,8 @@ struct NotebookToolbar: ToolbarContent {
     var panel: PanelController?
     /// The window's place: a machine's kernel popover has no Runs On.
     var place: Place = .thisDevice
+    /// The status line the window's subtitle shows, for the popover.
+    var header: HeaderStatus?
 
     var body: some ToolbarContent {
         ToolbarItem(placement: .navigation) {
@@ -606,61 +615,32 @@ struct NotebookToolbar: ToolbarContent {
             }
             .help("New Notebook (⌘N)")
         }
-        ToolbarItem {
-            Button { Task { await document.save() } } label: { Label("Save", systemImage: "square.and.arrow.down") }
-                .help("Save (⌘S)")
-                .disabled(document.file == nil)
-        }
-        ToolbarItem {
-            ControlGroup {
-                Button { page.run("run") } label: { Label("Run", systemImage: "play.fill") }
-                    .help("Run the selected cell and select the next (⇧↩)")
-                Button { page.run("run-all") } label: { Label("Run All", systemImage: "forward.fill") }
-                    .help("Run all cells")
-            }
-            .disabled(!page.state.editsCells)
-        }
-        ToolbarItem {
-            ControlGroup {
-                Button { page.run("interrupt") } label: { Label("Interrupt", systemImage: "stop.fill") }
-                    .help("Interrupt the kernel (⌘.)")
-                    .disabled(!page.state.isBusy)
-                Button { page.run("restart") } label: {
-                    Label("Restart", systemImage: "arrow.clockwise")
-                }
-                .help("Restart the kernel")
-                .disabled(!page.state.hasKernel)
+        // Only while the notebook isn't trusted.
+        if !page.state.trusted {
+            ToolbarItem {
+                Button { confirmTrust(page) } label: { Label("Trust", systemImage: "checkmark.shield") }
+                    .help("Trust this notebook's HTML and JavaScript outputs")
+                    .disabled(!page.state.hasNotebook)
             }
         }
-        // One group, not two items: a ToolbarContentBuilder takes at most
-        // ten. The journal toggle (#724) is first: the page's own button
-        // is under the app's chrome.
-        ToolbarItemGroup {
-            Button { page.run("toggle-journal") } label: {
-                Label(page.state.journalToggleTitle, systemImage: page.state.journalToggleSymbol)
+        // Only while the notebook asks for something its grant doesn't give.
+        if let wanted = page.state.accessWanted, !wanted.isEmpty {
+            ToolbarItem {
+                Button { page.run("notebook-access") } label: { Label("Access", systemImage: "lock.shield") }
+                    .help("Notebook Access: this notebook asks for \(wanted.joined(separator: ", "))")
             }
-            .help(page.state.journalToggleTitle)
-            .disabled(!page.state.hasNotebook)
-            Menu {
-                Button("Code Cell") { page.run("insert-code") }
-                Button("Markdown Cell") { page.run("insert-markdown") }
-            } label: {
-                Label("Insert Cell", systemImage: "plus.rectangle")
-            }
-            .help("Insert a cell below")
-            .disabled(!page.state.editsCells)
         }
         ToolbarItem {
-            Picker("Cell Type", selection: cellType) {
-                Text("Code").tag("code")
-                Text("Markdown").tag("markdown")
-                Text("Raw").tag("raw")
-            }
-            .help("The selected cell's type")
-            .disabled(!page.state.editsCells)
+            RunCellMenu(page: page)
         }
         ToolbarItem {
-            KernelPicker(page: page, panel: panel, place: place)
+            Button { page.run("interrupt") } label: { Label("Interrupt", systemImage: "stop.fill") }
+                .labelStyle(.titleAndIcon)
+                .help("Interrupt the kernel (⌘.)")
+                .disabled(!page.state.isBusy)
+        }
+        ToolbarItem {
+            KernelPicker(page: page, panel: panel, place: place, header: header)
         }
         // Download, Export As and Publish, as in the File menu (#620): the
         // web toolbar that has them is hidden under native chrome.
@@ -681,17 +661,38 @@ struct NotebookToolbar: ToolbarContent {
             .disabled(!page.state.hasNotebook)
         }
         ToolbarItem {
-            Button { confirmTrust(page) } label: { Label("Trust", systemImage: "checkmark.shield") }
-                .help("Trust this notebook's HTML and JavaScript outputs")
-                .disabled(!page.state.hasNotebook || page.state.trusted)
+            moreMenu
         }
-        // Only while the notebook asks for something its grant doesn't give.
-        if let wanted = page.state.accessWanted, !wanted.isEmpty {
-            ToolbarItem {
-                Button { page.run("notebook-access") } label: { Label("Access", systemImage: "lock.shield") }
-                    .help("Notebook Access: this notebook asks for \(wanted.joined(separator: ", "))")
+    }
+
+    /// The rest, in a fixed order. The journal toggle (#724) is first: the
+    /// page's own button is under the app's chrome. Everything here is
+    /// also in the menu bar, and Save is ⌘S.
+    private var moreMenu: some View {
+        Menu {
+            Button { page.run("toggle-journal") } label: {
+                Label(page.state.journalToggleTitle, systemImage: page.state.journalToggleSymbol)
             }
+            .disabled(!page.state.hasNotebook)
+            Divider()
+            Button("Insert Code Cell") { page.run("insert-code") }
+                .disabled(!page.state.editsCells)
+            Button("Insert Markdown Cell") { page.run("insert-markdown") }
+                .disabled(!page.state.editsCells)
+            Picker("Cell Type", selection: cellType) {
+                Text("Code").tag("code")
+                Text("Markdown").tag("markdown")
+                Text("Raw").tag("raw")
+            }
+            .pickerStyle(.inline)
+            .disabled(!page.state.editsCells)
+            Divider()
+            Button("Save") { Task { await document.save() } }
+                .disabled(document.file == nil)
+        } label: {
+            Label("More", systemImage: "ellipsis.circle")
         }
+        .help("View as journal, insert a cell, change its type, save")
     }
 
     private var cellType: Binding<String> {
@@ -702,25 +703,34 @@ struct NotebookToolbar: ToolbarContent {
     }
 }
 
-/// The notebook's kernel (#241): its name in the toolbar, and a popover
-/// with its state and memory, Interrupt, Restart, the Kernel Log and the
-/// kernels to change to.
+/// The status button (#241, #812): the kernel's name in the toolbar, or
+/// "Choose Kernel" when the notebook's isn't installed, and a popover with
+/// the status line's full text, the file, the kernel's state and memory,
+/// Interrupt, Restart, the Kernel Log, where kernels run and the kernels to
+/// change to. The window's subtitle is drawn by the system and can't be
+/// clicked, so the details open from here.
 struct KernelPicker: View {
     var page: PageModel
     var panel: PanelController?
     var place: Place = .thisDevice
+    var header: HeaderStatus?
     @State private var shown = false
 
     var body: some View {
         Button {
             shown.toggle()
         } label: {
-            Label(page.state.kernelDisplayName ?? "Kernel", systemImage: "cpu")
+            if page.state.kernelMissing {
+                Label("Choose Kernel", systemImage: "exclamationmark.triangle")
+            } else {
+                Label(page.state.kernelDisplayName ?? "Kernel", systemImage: "cpu")
+            }
         }
+        .labelStyle(.titleAndIcon)
         .help(page.state.kernelVersionLine ?? "The notebook's kernel")
         .disabled(!page.state.hasNotebook)
         .popover(isPresented: $shown, arrowEdge: .bottom) {
-            KernelPopover(page: page, panel: panel, place: place) { shown = false }
+            KernelPopover(page: page, panel: panel, place: place, header: header) { shown = false }
         }
     }
 }
@@ -729,12 +739,44 @@ private struct KernelPopover: View {
     var page: PageModel
     let panel: PanelController?
     let place: Place
+    let header: HeaderStatus?
     let dismiss: () -> Void
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            statusSection
+            kernelSection
+        }
+        .padding()
+        .frame(minWidth: 260, maxWidth: 380, alignment: .leading)
+        // The kernels' memory is read only while this shows.
+        .onAppear { page.watchMemory(true) }
+        .onDisappear { page.watchMemory(false) }
+    }
+
+    /// The status line in full, and the file it is about (#812).
+    @ViewBuilder
+    private var statusSection: some View {
+        if let header {
+            Text(header.full)
+                .foregroundStyle(header.needsAttention ? Color.red : Color.primary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        if let path = page.state.path {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("File").font(.caption).foregroundStyle(.secondary)
+                Text(path).textSelection(.enabled)
+            }
+        }
+        if header != nil || page.state.path != nil {
+            Divider()
+        }
+    }
+
+    private var kernelSection: some View {
         let state = page.state
         let session = state.sessions.first { $0.path == state.path }
-        VStack(alignment: .leading, spacing: 10) {
+        return VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(state.kernelDisplayName ?? "No kernel").font(.headline)
                 Text(PageState.statusLabel(state.status)).foregroundStyle(.secondary)
@@ -776,11 +818,6 @@ private struct KernelPopover: View {
                 }
             }
         }
-        .padding()
-        .frame(minWidth: 260)
-        // The kernels' memory is read only while this shows.
-        .onAppear { page.watchMemory(true) }
-        .onDisappear { page.watchMemory(false) }
     }
 }
 
@@ -1019,6 +1056,8 @@ struct KernelMenu: View {
             .disabled(page?.state.isBusy != true)
         Button("Restart") { page?.run("restart") }
             .disabled(page?.state.hasKernel != true)
+        Button("Restart & Run All") { page?.run("restart-run-all") }
+            .disabled(page?.state.editsCells != true)
         Button("Shut Down Other Kernels") { page?.run("shutdown-others") }
             .disabled(page?.state.otherSessions.isEmpty ?? true)
         Divider()

@@ -333,6 +333,7 @@ describe('App', () => {
     });
     const runAll = vi.fn(async () => {});
     const clearOutputs = vi.fn();
+    const restartAndRunAll = vi.fn(async () => {});
     const exportAs = vi.fn(async () => {});
     const changeCellType = vi.fn();
     const command = vi.fn((id: string) => id === 'move-up');
@@ -352,6 +353,7 @@ describe('App', () => {
       save: vi.fn(async () => true),
       runAll,
       clearOutputs,
+      restartAndRunAll,
       exportAs,
       changeCellType,
       command,
@@ -359,6 +361,7 @@ describe('App', () => {
       kernelVersionLine: 'cdp-kernel 0.14.0 · node 24.11.0',
       cellType: 'code',
       journal: true,
+      locked: true,
     };
     const fake = fakeServices({
       '': [
@@ -387,6 +390,8 @@ describe('App', () => {
         cellType: 'code',
         // Which view shows, for the app's View as Journal (#724).
         journal: true,
+        // Saving locked by a change on disk, for the status line (#812).
+        locked: true,
         kernels: [
           { name: 'python3', displayName: 'Python 3', device: false },
           { name: 'cdp-browser', displayName: 'TypeScript (in app)', device: true },
@@ -415,6 +420,9 @@ describe('App', () => {
     expect(runAll).toHaveBeenCalled();
     expect(await run('clear-outputs')).toBe(true);
     expect(clearOutputs).toHaveBeenCalledOnce();
+    // The app's Restart & Run All (#812).
+    expect(await run('restart-run-all')).toBe(true);
+    expect(restartAndRunAll).toHaveBeenCalledOnce();
     expect(await run('export', 'markdown')).toBe(true);
     expect(exportAs).toHaveBeenCalledWith('markdown');
     expect(await run('export', 'pdf')).toBe(false);

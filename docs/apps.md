@@ -109,11 +109,33 @@ shown or hidden, its tab and its expanded folders across launches.
 
 ### Toolbar and menus
 
-- The toolbar saves, runs cells, interrupts and restarts the kernel,
-  inserts cells, sets the cell type and trusts the notebook. Its Share
-  button downloads, exports or publishes the notebook. Its kernel
-  button opens a popover with the kernel's state and memory, Interrupt,
-  Restart, Kernel Log and the kernels to change to.
+- The window's title has a status line under it, as the browser's has:
+  where the notebook is saved, where it runs, the kernel and what it is
+  doing, as in "Saved on This Mac · Runs on This Mac · TypeScript", or
+  "Edited · Runs on Studio Mac · Python 3 · Running". "Saved" becomes
+  "Edited" with unsaved changes and "Locked: changed on disk" while the
+  file changed under you, and a kernel that isn't installed reads "julia
+  (not installed) · Choose kernel". The system draws the line, so it
+  isn't clickable: the toolbar's kernel button, which reads "Choose
+  Kernel" for a missing kernel, opens a popover with the same text, the
+  file's path, the kernel's state and memory, Interrupt, Restart, Kernel
+  Log, where kernels run and the kernels to change to.
+- The toolbar's controls stay in one order, so none moves under the
+  pointer: New Notebook; Trust and Notebook Access, which are there only
+  while they apply; **Run Cell**, whose menu has Run All, Run with
+  Parameters…, Clear All Outputs, Restart Kernel and Restart & Run All;
+  **Interrupt**, always there and enabled while the kernel runs; the
+  kernel button; Share (download, export, publish); and ⋯, which has View
+  as Journal, Insert Code Cell, Insert Markdown Cell, Cell Type and Save.
+  Run All is only in Run Cell's menu, so the two can't be mistaken for
+  each other. Everything in these menus is also in the menu bar.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release, whose toolbar has buttons for Save, Run, Run All,
+  > Interrupt, Restart, the journal, Insert Cell and Cell Type, and a
+  > kernel and state line under the title.
+
 - The Cell menu runs, runs with parameters, inserts, moves and deletes
   cells, clears all outputs, collapses and expands code, goes to a definition and renames a symbol (see
   [Signatures, definitions and renames](#signatures-definitions-and-renames)), and opens Find; the Kernel menu interrupts (⌘.),
@@ -157,8 +179,8 @@ shown or hidden, its tab and its expanded folders across launches.
   node 24.11.0" (the name and version the kernel reports, and the
   runtime when its banner names one; "ipython 8.20.0" for IPython): at
   the top of the Mac's Kernel menu, in the kernel popover and the
-  button's help tag, in the iPad's kernel menu, and in the menu the
-  browser's status line opens. Nothing shows while no kernel runs or
+  button's help tag, in the iPad's and iPhone's status menu, and in the
+  menu the browser's status line opens. Nothing shows while no kernel runs or
   before it has replied.
 
   > [!NOTE]
@@ -692,15 +714,25 @@ keys are kept in the keychain too.
   > the latest release, where only a folder's chevron expands it and the
   > Files tab has no keyboard navigation.
 
-- The navigation bar runs cells and interrupts the kernel, and its ⋯ menu
-  inserts cells, sets the cell type, runs with parameters, clears all
-  outputs, restarts or
-  changes the kernel, shuts down other kernels, saves, renames,
-  downloads, exports and trusts. With a
-  keyboard, hold ⌘ to see the commands: New Notebook ⌘N, Save ⌘S, Run All
-  ⇧⌘↩, Interrupt ⌘., Find ⌘F.
-- Once a remote has a server, the ⋯ menu also picks where kernels run,
-  as Settings does.
+- The title has the Mac's status line under it, and tapping it opens a
+  menu with the file's path, the kernel's version, the kernels to change
+  to and, once a remote has a server, where kernels run, as Settings
+  does. It turns red while the kernel is missing or saving is locked.
+- The navigation bar's controls stay in one order: Trust and Notebook
+  Access while they apply; **Run Cell**, whose menu has Run All, Run with
+  Parameters…, Clear All Outputs, Restart Kernel and Restart & Run All;
+  **Interrupt**, always there and enabled while the kernel runs; Share
+  (download, export, publish); and ⋯, which has View as Journal, Insert
+  Code Cell, Insert Markdown Cell, Cell Type, Shut Down Other Kernels,
+  Save, Rename…, Trust Notebook, Notebook Access…, Keyboard Shortcuts and
+  Settings. With a keyboard, hold ⌘ to see the commands: New Notebook ⌘N,
+  Save ⌘S, Run All ⇧⌘↩, Interrupt ⌘., Find ⌘F.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release, whose navigation bar has Run, Run All and
+  > Interrupt buttons and a ⋯ menu with the run, kernel and sharing
+  > commands, and a kernel and state line under the title.
 
 - A text file opens over the notebook, one at a time; Close (which asks to
   save) or opening a notebook from the sidebar goes back to it, saving
@@ -722,14 +754,21 @@ The first screen lists the notebook folder, with the same long-press
 actions and Running section as the iPad's sidebar, and the terminal,
 Settings and folder buttons. Tapping a notebook opens it, and tapping a
 folder expands or collapses it; swipe from the left edge or tap Back to
-return to the list. The notebook's run controls
-and its ⋯ menu are in the bottom toolbar. Terminals and text files cover
-the screen. The bottom toolbar's Outline menu lists the notebook's
-headings; pick one to go to its cell.
+return to the list. The notebook's title has a status line under it, in
+a short form ("Saved · Runs on Studio Mac"); tapping it opens the file,
+the kernel and where kernels run, and VoiceOver reads it in full. The
+bottom toolbar has Interrupt, the Outline menu and Run Cell, whose menu
+has Run All, Run with Parameters…, Clear All Outputs, Restart Kernel
+and Restart & Run All; the ⋯ menu at the top has the rest, including
+Share, Trust Notebook and Notebook Access…. Terminals and text files
+cover the screen. The Outline menu lists the notebook's headings; pick
+one to go to its cell.
 
 > [!NOTE]
 > **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release, where only a folder's chevron expands it.
+> the latest release, where only a folder's chevron expands it, the run
+> controls and ⋯ menu are in the bottom toolbar, and the title has a
+> kernel and state line.
 
 ### On both
 
@@ -1232,7 +1271,7 @@ name, as for New Notebook from File.
 ## Publishing a notebook
 
 **Publish as Web Page…** (File menu and the toolbar's Share button on
-the Mac, the ⋯ menu on the iPad
+the Mac, the Share or ⋯ menu on the iPad
 and iPhone, the toolbar and the Command Palette in the browser) saves
 the notebook as one self-contained `.html` page to read and share: the
 page `ganymede nb publish` writes, with prose, charts and tables, light
@@ -1262,7 +1301,7 @@ export replaces nothing, the sheet refuses its page the same way.
 > **Unreleased.** Available only from a build of `main` (HEAD), not in
 > the latest release.
 
-**Run with Parameters…** (Cell menu on the Mac, the ⋯ menu on the iPad
+**Run with Parameters…** (Cell menu on the Mac, the Run Cell menu on the iPad
 and iPhone, the Command Palette and the toolbar in the browser) runs the notebook as a program, the way `ganymede execute -p
 --results` does ([Programs](https://ganymede-server.com/docs/programs)):
 top to bottom in a new kernel on the server, with the parameters you
@@ -1280,7 +1319,7 @@ has no such run.
 ## Exporting a notebook
 
 **Export As › Markdown** and **Script** (File menu and the toolbar's
-Share button on the Mac, the ⋯ menu
+Share button on the Mac, the Share or ⋯ menu
 on the iPad and iPhone, the Command Palette and the toolbar
 in the browser) save the notebook as a Markdown file or as its code in
 the kernel's language (`.ts`, `.py`, …), as JupyterLab's Save and Export

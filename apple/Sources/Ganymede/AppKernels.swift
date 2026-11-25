@@ -23,11 +23,15 @@ final class AppKernels: NSObject {
 
     static let hostHandler = "kernelHost"
 
+    /// The in-app kernel's name: it runs in this app whichever server the
+    /// other kernels run on (the header's "Runs on", #812).
+    nonisolated static let inAppKernelName = "cdp-browser"
+
     /// The kernelspec the app registers: the TypeScript kernel the notebook
     /// page used to run itself, under the same name. Interrupts go over the
     /// control channel, which the server sets for every registered kernel.
     static let spec: [String: Any] = [
-        "name": "cdp-browser",
+        "name": inAppKernelName,
         "display_name": "TypeScript (cdp-kernel, in app)",
         "language": "typescript",
         "argv": [] as [String],

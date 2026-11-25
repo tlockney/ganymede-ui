@@ -1085,124 +1085,258 @@ struct PhoneOutlineMenu: View {
     }
 }
 
-/// The notebook's controls in the navigation bar: run and kernel controls
-/// on their own, the rest in a menu.
+/// The title and, under it, the status line (#812): where the file is
+/// saved, where it runs and the kernel. Without a notebook, the title alone,
+/// with "on <machine>" for a machine's scene.
+struct NotebookTitle: View {
+    let title: String
+    let header: HeaderStatus?
+    let machineName: String?
+    var page: PageModel
+    var place: Place = .thisDevice
+    var phone = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Text(title).font(.headline).lineLimit(1)
+            if let header {
+                NotebookStatusMenu(header: header, page: page, place: place, phone: phone)
+            } else if let machineName, !machineName.isEmpty {
+                Text("on \(machineName)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+    }
+}
+
+/// The status line as a menu (#812): tapping it shows the file, the kernel's
+/// version, the kernels to change to and where kernels run. The iPad shows
+/// the line in full and the iPhone its short form; the accessibility label
+/// is the full text on both. It is red while the kernel is missing or saving
+/// is locked.
+struct NotebookStatusMenu: View {
+    let header: HeaderStatus
+    var page: PageModel
+    var place: Place = .thisDevice
+    var phone = false
+
+    var body: some View {
+        Menu {
+            fileSection
+            kernelSection
+        } label: {
+            HStack(spacing: 2) {
+                Text(phone ? header.short : header.full)
+                    .font(.caption)
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .imageScale(.small)
+            }
+            .foregroundStyle(header.needsAttention ? Color.red : Color.secondary)
+        }
+        .accessibilityLabel(header.full)
+        .accessibilityHint("Shows the file and the kernel")
+    }
+
+    @ViewBuilder
+    private var fileSection: some View {
+        if let path = page.state.path {
+            Section("File") {
+                Text(path)
+            }
+        }
+    }
+
+    private var kernelSection: some View {
+        Section("Kernel") {
+            // Which kernel runs, from its own reply (#693).
+            if let version = page.state.kernelVersionLine {
+                Text(version)
+            }
+            ForEach(page.state.kernels, id: \.name) { kernel in
+                kernelChoice(kernel)
+            }
+            // Where every notebook's kernels run (#473), with the connected
+            // machines as places (#701).
+            if place.allows(.kernelLocation), AppModel.shared.kernelLocations.hasRemotes {
+                KernelLocationPicker(running: page.state.sessions.count)
+                    .pickerStyle(.inline)
+            }
+        }
+    }
+
+    private func kernelChoice(_ kernel: PageState.Kernel) -> some View {
+        Button {
+            page.run("change-kernel", arg: kernel.name)
+        } label: {
+            if kernel.name == page.state.kernel {
+                Label(kernel.pickerName, systemImage: "checkmark")
+            } else {
+                Text(kernel.pickerName)
+            }
+        }
+        .accessibilityLabel(kernel.pickerLabel)
+    }
+}
+
+/// The notebook's controls in the navigation bar (#812), in a fixed order.
+/// The iPad's trailing items: Trust and Notebook Access while they apply
+/// (they come first, so the rest never move), Run Cell with its run menu,
+/// Interrupt (always there, enabled while busy), Share and More. The
+/// iPhone's: More at the top, and the run bar at the bottom (Interrupt,
+/// Outline, Run Cell), in thumb reach (#209); Share, Trust and Notebook
+/// Access are in its More menu.
 struct IPadNotebookToolbar: ToolbarContent {
     var page: PageModel
-    /// The scene's place (#758): where kernels run is this device's setting,
-    /// not a machine's.
-    var place: Place = .thisDevice
     /// In the bottom toolbar, in thumb reach: the iPhone (#209).
     var bottom = false
     /// Asks for the notebook's new name (#209).
     var rename: () -> Void = {}
 
     var body: some ToolbarContent {
-        ToolbarItemGroup(placement: bottom ? .bottomBar : .navigationBarTrailing) {
-            Button { page.run("run") } label: { Label("Run", systemImage: "play.fill") }
-                .disabled(!page.state.editsCells)
-            Button { page.run("run-all") } label: { Label("Run All", systemImage: "forward.fill") }
-                .disabled(!page.state.editsCells)
-            Button { page.run("interrupt") } label: { Label("Interrupt", systemImage: "stop.fill") }
-                .disabled(!page.state.isBusy)
+        if bottom {
+            phoneItems
+        }
+        if !bottom {
+            padItems
+        }
+    }
+
+    // MARK: iPhone
+
+    @ToolbarContentBuilder
+    private var phoneItems: some ToolbarContent {
+        ToolbarItem(placement: .navigationBarTrailing) {
+            moreMenu
+        }
+        ToolbarItemGroup(placement: .bottomBar) {
+            // Icon only: the bar is narrow, and the label is its name.
+            interruptButton
+            PhoneOutlineMenu(page: page)
+            RunCellMenu(page: page)
+        }
+    }
+
+    // MARK: iPad
+
+    @ToolbarContentBuilder
+    private var padItems: some ToolbarContent {
+        ToolbarItemGroup(placement: .navigationBarTrailing) {
+            // Only while the notebook isn't trusted.
+            if !page.state.trusted {
+                Button { page.run("trust") } label: { Label("Trust Notebook", systemImage: "checkmark.shield") }
+            }
             // Only while the notebook asks for something its grant doesn't give.
             if let wanted = page.state.accessWanted, !wanted.isEmpty {
                 Button { page.run("notebook-access") } label: { Label("Notebook Access", systemImage: "lock.shield") }
                     .accessibilityHint("Asks for \(wanted.joined(separator: ", "))")
             }
-            // The iPad has the sidebar's Outline tab.
-            if bottom {
-                PhoneOutlineMenu(page: page)
-            }
-            Menu {
-                Button { page.run("insert-code") } label: { Label("Insert Code Cell", systemImage: "plus.rectangle") }
-                Button { page.run("insert-markdown") } label: { Label("Insert Markdown Cell", systemImage: "text.badge.plus") }
-                Picker("Cell Type", selection: cellType) {
-                    Text("Code").tag("code")
-                    Text("Markdown").tag("markdown")
-                    Text("Raw").tag("raw")
-                }
-                Button { page.run("run-with-params") } label: {
-                    Label("Run with Parameters…", systemImage: "slider.horizontal.3")
-                }
-                .disabled(page.state.runParams != true)
-                Button { page.run("clear-outputs") } label: {
-                    Label("Clear All Outputs", systemImage: "eraser")
-                }
-                // The journal view and back (#724).
-                Button { page.run("toggle-journal") } label: {
-                    Label(page.state.journalToggleTitle, systemImage: page.state.journalToggleSymbol)
-                }
-                Divider()
-                Button { page.run("restart") } label: { Label("Restart Kernel", systemImage: "arrow.clockwise") }
-                    .disabled(!page.state.hasKernel)
-                Button { page.run("shutdown-others") } label: {
-                    Label("Shut Down Other Kernels", systemImage: "power")
-                }
-                .disabled(page.state.otherSessions.isEmpty)
-                Menu {
-                    // Which kernel runs, from its own reply (#693).
-                    if let version = page.state.kernelVersionLine {
-                        Text(version)
-                        Divider()
-                    }
-                    ForEach(page.state.kernels, id: \.name) { kernel in
-                        Button {
-                            page.run("change-kernel", arg: kernel.name)
-                        } label: {
-                            if kernel.name == page.state.kernel {
-                                Label(kernel.pickerName, systemImage: "checkmark")
-                            } else {
-                                Text(kernel.pickerName)
-                            }
-                        }
-                        .accessibilityLabel(kernel.pickerLabel)
-                    }
-                } label: {
-                    Label(page.state.kernelDisplayName ?? "Kernel", systemImage: "cpu")
-                }
-                // Where every notebook's kernels run (#473): an advanced
-                // choice, with the connected machines as places (#701).
-                if place.allows(.kernelLocation), AppModel.shared.kernelLocations.hasRemotes {
-                    Menu("Advanced") {
-                        KernelLocationPicker(running: page.state.sessions.count)
-                            .pickerStyle(.inline)
-                    }
-                }
-                Divider()
-                Button { page.run("save") } label: { Label("Save", systemImage: "square.and.arrow.down") }
-                    .disabled(!page.state.dirty)
-                Button(action: rename) { Label("Rename…", systemImage: "pencil") }
-                Button { page.run("download") } label: { Label("Download", systemImage: "arrow.down.doc") }
-                Menu {
-                    Button("Markdown") { page.run("export", arg: "markdown") }
-                    Button("Script") { page.run("export", arg: "script") }
-                } label: {
-                    Label("Export As", systemImage: "square.and.arrow.up.on.square")
-                }
-                .disabled(page.state.publish != true)
-                Button { page.run("publish") } label: {
-                    Label("Publish as Web Page…", systemImage: "globe")
-                }
-                .disabled(page.state.publish != true)
-                Button { page.run("trust") } label: { Label("Trust Notebook", systemImage: "checkmark.shield") }
-                    .disabled(page.state.trusted)
-                Button { page.run("notebook-access") } label: {
-                    Label("Notebook Access…", systemImage: "lock.shield")
-                }
-                .disabled(page.state.hostGrants != true)
-                Divider()
-                Button { page.run("show-shortcuts") } label: { Label("Keyboard Shortcuts", systemImage: "keyboard") }
-                Button {
-                    NotificationCenter.default.post(name: .showAppSettings, object: page)
-                } label: {
-                    Label("Settings", systemImage: "gearshape")
-                }
-            } label: {
-                Label("More", systemImage: "ellipsis.circle")
-            }
-            .disabled(!page.state.hasNotebook)
+            RunCellMenu(page: page)
+            interruptButton
+                .labelStyle(.titleAndIcon)
+            shareMenu
+            moreMenu
         }
+    }
+
+    // MARK: Pieces
+
+    /// Always there, enabled only while the kernel is busy.
+    private var interruptButton: some View {
+        Button { page.run("interrupt") } label: { Label("Interrupt", systemImage: "stop.fill") }
+            .disabled(!page.state.isBusy)
+    }
+
+    private var shareMenu: some View {
+        Menu {
+            shareItems
+        } label: {
+            Label("Share", systemImage: "square.and.arrow.up")
+        }
+        .disabled(!page.state.hasNotebook)
+    }
+
+    @ViewBuilder
+    private var shareItems: some View {
+        Button { page.run("download") } label: { Label("Download", systemImage: "arrow.down.doc") }
+        Menu {
+            Button("Markdown") { page.run("export", arg: "markdown") }
+            Button("Script") { page.run("export", arg: "script") }
+        } label: {
+            Label("Export As", systemImage: "square.and.arrow.up.on.square")
+        }
+        .disabled(page.state.publish != true)
+        Button { page.run("publish") } label: {
+            Label("Publish as Web Page…", systemImage: "globe")
+        }
+        .disabled(page.state.publish != true)
+    }
+
+    /// The rest, in a fixed order.
+    private var moreMenu: some View {
+        Menu {
+            editItems
+            Divider()
+            Button { page.run("shutdown-others") } label: {
+                Label("Shut Down Other Kernels", systemImage: "power")
+            }
+            .disabled(page.state.otherSessions.isEmpty)
+            Divider()
+            fileItems
+            Divider()
+            Button { page.run("show-shortcuts") } label: { Label("Keyboard Shortcuts", systemImage: "keyboard") }
+            Button {
+                NotificationCenter.default.post(name: .showAppSettings, object: page)
+            } label: {
+                Label("Settings", systemImage: "gearshape")
+            }
+        } label: {
+            Label("More", systemImage: "ellipsis.circle")
+        }
+        .disabled(!page.state.hasNotebook)
+    }
+
+    @ViewBuilder
+    private var editItems: some View {
+        // The journal view and back (#724).
+        Button { page.run("toggle-journal") } label: {
+            Label(page.state.journalToggleTitle, systemImage: page.state.journalToggleSymbol)
+        }
+        Button { page.run("insert-code") } label: { Label("Insert Code Cell", systemImage: "plus.rectangle") }
+            .disabled(!page.state.editsCells)
+        Button { page.run("insert-markdown") } label: { Label("Insert Markdown Cell", systemImage: "text.badge.plus") }
+            .disabled(!page.state.editsCells)
+        Picker("Cell Type", selection: cellType) {
+            Text("Code").tag("code")
+            Text("Markdown").tag("markdown")
+            Text("Raw").tag("raw")
+        }
+        .disabled(!page.state.editsCells)
+    }
+
+    /// Save and Rename, then what the iPhone's bar has no room for: Share,
+    /// Trust and Notebook Access (the iPad has them as buttons while they
+    /// apply, and here always).
+    @ViewBuilder
+    private var fileItems: some View {
+        Button { page.run("save") } label: { Label("Save", systemImage: "square.and.arrow.down") }
+            .disabled(!page.state.dirty)
+        Button(action: rename) { Label("Rename…", systemImage: "pencil") }
+        if bottom {
+            Menu {
+                shareItems
+            } label: {
+                Label("Share", systemImage: "square.and.arrow.up")
+            }
+        }
+        Button { page.run("trust") } label: { Label("Trust Notebook", systemImage: "checkmark.shield") }
+            .disabled(page.state.trusted)
+        Button { page.run("notebook-access") } label: {
+            Label("Notebook Access…", systemImage: "lock.shield")
+        }
+        .disabled(page.state.hostGrants != true)
     }
 
     private var cellType: Binding<String> {
@@ -1246,6 +1380,7 @@ struct IPadCommands: Commands {
         CommandMenu("Kernel") {
             IPadPageButton("Interrupt", "interrupt", key: ".")
             IPadPageButton("Restart", "restart")
+            IPadPageButton("Restart & Run All", "restart-run-all") { $0.editsCells }
             IPadPageButton("Shut Down Other Kernels", "shutdown-others") { !$0.otherSessions.isEmpty }
         }
         // The iPadOS 26 menu bar's Help menu (#409).

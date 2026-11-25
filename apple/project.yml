@@ -598,6 +598,7 @@ targets:
       - path: Sources/Ganymede/Terminal/TerminalHandoff.swift
       - path: Sources/Ganymede/Terminal/JupyterTerminalTransport.swift
       - path: Sources/Ganymede/WindowTarget.swift
+      - path: Sources/Ganymede/HeaderStatus.swift
       # Places: connected machines (#701).
       - path: Sources/Ganymede/Place.swift
       - path: Sources/Ganymede/PlaceReachability.swift
@@ -679,6 +680,7 @@ targets:
       - path: Sources/Ganymede/Terminal/OpenTerminals.swift
       - path: Sources/Ganymede/Terminal/JupyterTerminalTransport.swift
       - path: Sources/Ganymede/WindowTarget.swift
+      - path: Sources/Ganymede/HeaderStatus.swift
       - path: Sources/Ganymede/Place.swift
       - path: Sources/Ganymede/PlaceReachability.swift
       - path: Sources/Ganymede/Journals.swift
