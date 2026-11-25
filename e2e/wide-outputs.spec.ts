@@ -82,8 +82,8 @@ const NOTEBOOK = {
 /** The saved notebook, opened and ready to look at. At phone width the
  * sidebar starts closed and floats over the notebook: it is shown before
  * the item in it is clicked, as e2e/journal.spec.ts does. */
-async function openSaved(page: Page) {
-  writeFileSync(join(ROOT_DIR, FILE), JSON.stringify(NOTEBOOK));
+async function openSaved(page: Page, notebook: object = NOTEBOOK) {
+  writeFileSync(join(ROOT_DIR, FILE), JSON.stringify(notebook));
   await openWithToken(page);
   const sidebar = page.getByRole('button', { name: 'Show Sidebar' });
   if ((page.viewportSize()?.width ?? 1280) < 600) await sidebar.click();
@@ -204,6 +204,52 @@ test('a wide chart or table spans the pane; what fits and streams stay put', asy
   await page.setViewportSize({ width: 1200, height: 800 });
   await spansPane(wide);
   await spansPane(table);
+});
+
+// A cell with scrolled outputs (`metadata.scrolled`) keeps its area's cap
+// and its scroll: it doesn't span the pane, since its area would clip the
+// part left of the column, where no scroll reaches. Both edges of each wide
+// output show, the far one after scrolling the area to it.
+test('a wide output in a scrolled cell stays in its column', async ({ page }) => {
+  const scrolled = {
+    ...NOTEBOOK,
+    cells: NOTEBOOK.cells.map(c => ({ ...c, metadata: { scrolled: true } })),
+  };
+  await openSaved(page, scrolled);
+  const cells = page.locator('.jp-Cell');
+  await expect(cells.nth(0)).toHaveClass(/jp-mod-outputsScrolled/);
+  await expect
+    .poll(async () =>
+      cells
+        .nth(0)
+        .locator('.jp-OutputArea-output img')
+        .evaluate(el => (el as HTMLImageElement).naturalWidth),
+    )
+    .toBeGreaterThan(900);
+  for (const i of [0, 2]) {
+    const out = cellOutput(cells.nth(i));
+    await expect(out).toBeVisible();
+    await out.scrollIntoViewIfNeeded();
+    const hits = await out.evaluate(el => {
+      const area = el.closest('.jp-OutputArea') as HTMLElement;
+      const hit = (atRight: boolean) => {
+        const r = el.getBoundingClientRect();
+        const a = area.getBoundingClientRect();
+        const x = atRight ? Math.min(r.right, a.right) - 5 : Math.max(r.left, a.left) + 5;
+        const y = r.top + Math.min(20, r.height / 2);
+        // The edge is in the area's view, not past it, and nothing covers it.
+        const inView = atRight ? r.right <= a.right + 1 : r.left >= a.left - 1;
+        return inView && el.contains(document.elementFromPoint(x, y));
+      };
+      area.scrollLeft = 0;
+      const left = hit(false);
+      area.scrollLeft = area.scrollWidth;
+      const right = hit(true);
+      area.scrollLeft = 0;
+      return [left, right];
+    });
+    expect(hits).toEqual([true, true]);
+  }
 });
 
 test.describe('at 390px', () => {

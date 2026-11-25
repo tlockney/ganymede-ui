@@ -235,7 +235,8 @@
  * column to spare. JupyterLab gives the output area `overflow-y: auto`,
  * which clips sideways too, and its row `overflow: hidden`: both give
  * where a wide output is, or it would be clipped at the column's edge.
- * A scrolled cell keeps its cap (its area scrolls). */
+ * A scrolled cell keeps its cap and its column's width: its area scrolls,
+ * and it can't scroll to an output that starts left of it. */
 @media (min-width: 720px) {
   .notebook-page
     .jp-CodeCell:not(.jp-mod-outputsScrolled)
@@ -244,7 +245,7 @@
     overflow: visible;
   }
 
-  .notebook-page .jp-OutputArea-output.gn-mod-wide {
+  .notebook-page .jp-CodeCell:not(.jp-mod-outputsScrolled) .jp-OutputArea-output.gn-mod-wide {
     flex: none;
     width: var(--gn-pane, 100%);
     /* Half the row, less half the span, less the prompt beside it. */
@@ -255,7 +256,7 @@
 /* JupyterLab stacks the prompt above the output at 760px and under: there
  * is no prompt beside the output to span past. */
 @media (min-width: 720px) and (width <= 760px) {
-  .notebook-page .jp-OutputArea-output.gn-mod-wide {
+  .notebook-page .jp-CodeCell:not(.jp-mod-outputsScrolled) .jp-OutputArea-output.gn-mod-wide {
     margin-left: calc(50% - var(--gn-pane, 100%) / 2);
   }
 }

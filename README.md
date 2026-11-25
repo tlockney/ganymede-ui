@@ -326,7 +326,7 @@ notebook (`metadata.jupyter.source_hidden`, as JupyterLab saves it).
 > **Unreleased.** Available only from a build of `main` (HEAD), not in
 > the latest release.
 
-In a window narrower than 720px — a phone, iPad Split View, a narrow
+In a window narrower than 720px (not the Mac app) — a phone, iPad Split View, a narrow
 browser window — the active cell has a short line above
 it with its execution count (`In [3]`, or `Not run`), its type, and its …
 menu, so code and output get the whole width: there is no prompt column.
