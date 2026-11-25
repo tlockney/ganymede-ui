@@ -27,4 +27,27 @@ the two kinds of attention a cell can have.
   cell keeps it always. `e2e/markdown-rail.spec.ts` proves both by the
   marker's computed height.
 
-Not done: wide charts and tables past the prose column.
+- **Wide charts and tables.** An image or table wider than the column
+  the cell's outputs sit in goes wide (`gn-mod-wide`, set in
+  `src/lib/output-labels.ts`'s per-output pass from the image's
+  `naturalWidth` or the table's content width): jupyter.css, on a
+  window 720px or wider, spans the pane with it, past the column on
+  both sides — the notebook's scroll area
+  (`.jp-WindowedPanel-outer`), less the same 32px gutter the column
+  has, which output-labels.ts keeps in `--gn-pane`, set on the scroll
+  area by every scan and moved by a ResizeObserver, which the sidebar
+  opening and closing over the pane moves as well as the window. The
+  output area and its row get `overflow: visible` there or they clip
+  the span at the column's edge (a scrolled cell keeps its cap); the
+  cell, the editor and the prose keep the column, and the pane never
+  scrolls sideways: the span is capped inside it. The prose column is
+  measured on the output row rather than the output, so it is the
+  same however the class has the output laid out, and the class is
+  kept within 8px of the line, so a resize that lands an output on it
+  doesn't flip the class back and forth. An image that hasn't loaded
+  yet is listened for once and decides when it has; a stream never
+  widens — its text has nothing to measure, and scrolls in its own
+  box (#133). The compact layout has no column to spare, so there
+  nothing extends. `e2e/wide-outputs.spec.ts` proves the geometry at
+  1600px — with the sidebar open and closed, and the window resized —
+  and the cap at 390px, on saved outputs.
