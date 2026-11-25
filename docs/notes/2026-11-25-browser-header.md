@@ -40,6 +40,12 @@ query; the accessible names stay. On a phone the line takes two rows and shows a
 `--accent-fill`, the filled-button colour #799 introduced (4.5:1 or more
 under white text, checked by `src/styles/contrast.test.ts`).
 
+Below 720px, Trust Notebook and Notebook Access leave the toolbar for the
+⋯ menu, so the title keeps its room for the status line. This departs
+from #801's "stay as visible buttons when they apply, since they ask for
+a decision": on a phone the two decisions cannot stay visible and leave
+the title anything, and the ⋯ menu keeps them one tap away.
+
 Restart & Run All is `restartAndRunAll` on the controller: the restart and
 the run are one action, so a restart that fails is reported and the cells
 don't run (Retry repeats both). It runs through `reportRun`, so a failed
