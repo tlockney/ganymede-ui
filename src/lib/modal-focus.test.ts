@@ -64,6 +64,17 @@ describe('containTab', () => {
     expect(document.activeElement?.id).toBe('b');
   });
 
+  it('keeps Tab in a sheet with no Tab stops', () => {
+    const root = sheet('<button disabled>a</button>');
+    const outside = document.createElement('button');
+    document.body.append(outside);
+    outside.focus();
+    const e = tab();
+    containTab(e, root);
+    expect(e.defaultPrevented).toBe(true);
+    expect(outside).toHaveFocus();
+  });
+
   it('ignores other keys and modified Tab', () => {
     const root = sheet('<button id="a">a</button>');
     tabbables(root)[0].focus();

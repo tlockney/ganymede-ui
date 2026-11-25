@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { ConnectSheet } from './ConnectSheet';
@@ -252,13 +252,61 @@ describe('ConnectSheet keyboard and focus (#797)', () => {
     opener.remove();
   });
 
-  it('leaves focus alone when the opener is gone', () => {
+  it('leaves focus where something else put it while open', () => {
     const opener = document.createElement('button');
-    document.body.append(opener);
+    const elsewhere = document.createElement('input');
+    document.body.append(opener, elsewhere);
     opener.focus();
-    const { unmount } = renderSheet();
+    const { unmount } = renderSheet({ canCancel: true });
+    expect(radio(/Ganymede server/)).toHaveFocus();
+    elsewhere.focus();
+    unmount();
+    expect(elsewhere).toHaveFocus();
     opener.remove();
-    expect(() => unmount()).not.toThrow();
-    expect(document.body).toHaveFocus();
+    elsewhere.remove();
+  });
+
+  it('keeps focus in the sheet on a click on the dimmed page', () => {
+    const { container } = renderSheet();
+    const backdrop = container.querySelector('.sheet-backdrop')!;
+    expect(fireEvent.mouseDown(backdrop)).toBe(false);
+    expect(radio(/Ganymede server/)).toHaveFocus();
+    // A press inside the sheet does what it always does.
+    expect(fireEvent.mouseDown(screen.getByRole('dialog'))).toBe(true);
+    expect(fireEvent.mouseDown(server())).toBe(true);
+  });
+
+  it('keeps Escape from what is behind the sheet', async () => {
+    const behind = vi.fn();
+    window.addEventListener('keydown', behind);
+    try {
+      const { onCancel } = renderSheet({ canCancel: true });
+      await userEvent.keyboard('{Escape}');
+      expect(onCancel).toHaveBeenCalledOnce();
+      expect(behind).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener('keydown', behind);
+    }
+  });
+
+  it('ignores Escape while composing text', () => {
+    const { onCancel } = renderSheet({ canCancel: true });
+    fireEvent.keyDown(server(), { key: 'Escape', isComposing: true });
+    expect(onCancel).not.toHaveBeenCalled();
+    fireEvent.keyDown(server(), { key: 'Escape' });
+    expect(onCancel).toHaveBeenCalledOnce();
+  });
+
+  it('leaves modified arrows alone', async () => {
+    renderSheet();
+    for (const key of [
+      '{Alt>}{ArrowRight}{/Alt}',
+      '{Control>}{ArrowRight}{/Control}',
+      '{Meta>}{ArrowRight}{/Meta}',
+    ]) {
+      await userEvent.keyboard(key);
+      expect(radio(/Ganymede server/)).toHaveAttribute('aria-checked', 'true');
+      expect(radio(/Ganymede server/)).toHaveFocus();
+    }
   });
 });

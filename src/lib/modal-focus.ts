@@ -21,6 +21,7 @@ export function tabbables(root: HTMLElement): HTMLElement[] {
 export function containTab(e: KeyboardEvent, root: HTMLElement): void {
   if (e.key !== 'Tab' || e.altKey || e.ctrlKey || e.metaKey) return;
   const stops = tabbables(root);
+  // Nothing to stop at (every control disabled): Tab still mustn't leave.
   if (stops.length === 0) {
     e.preventDefault();
     return;
@@ -40,8 +41,8 @@ export function containTab(e: KeyboardEvent, root: HTMLElement): void {
 /**
  * Modal focus for a sheet: focuses `initial()` on mount, keeps Tab inside
  * `ref`, and on unmount gives focus back to the element that had it before
- * the sheet opened, if that element is still in the page and nothing else
- * has taken focus since.
+ * the sheet opened, unless something else has taken focus since (focusing
+ * an opener that left the page does nothing).
  */
 export function useModalFocus(
   ref: RefObject<HTMLElement | null>,
@@ -50,10 +51,7 @@ export function useModalFocus(
   useEffect(() => {
     const root = ref.current;
     const before = document.activeElement;
-    const opener =
-      before instanceof HTMLElement && before !== document.body && !root?.contains(before)
-        ? before
-        : undefined;
+    const opener = before instanceof HTMLElement ? before : undefined;
     (initial() ?? root)?.focus();
 
     const onKey = (e: KeyboardEvent) => {
@@ -63,8 +61,9 @@ export function useModalFocus(
     return () => {
       window.removeEventListener('keydown', onKey, true);
       const now = document.activeElement;
+      // Focus left with the sheet (it was inside), or nothing has it.
       const free = !now || now === document.body || !!root?.contains(now);
-      if (opener?.isConnected && free) opener.focus();
+      if (free) opener?.focus();
     };
     // Mount and unmount only: the sheet's first focus and its opener.
     // eslint-disable-next-line react-hooks/exhaustive-deps

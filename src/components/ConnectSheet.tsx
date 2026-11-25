@@ -60,8 +60,9 @@ export function ConnectSheet({
   useEffect(() => {
     if (!canCancel) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
+      if (e.key !== 'Escape' || e.isComposing) return;
       e.preventDefault();
+      // Only the sheet closes, not whatever listens for Escape behind it.
       e.stopPropagation();
       onCancel();
     };
@@ -70,6 +71,7 @@ export function ConnectSheet({
   }, [canCancel, onCancel]);
 
   const onChoiceKey = (e: React.KeyboardEvent) => {
+    // Modified arrows are the system's (Cmd+Left, Alt+Arrow), not a choice.
     if (e.altKey || e.ctrlKey || e.metaKey) return;
     const next = step(e.key, KINDS.indexOf(kind), KINDS.length);
     if (next === undefined) return;
