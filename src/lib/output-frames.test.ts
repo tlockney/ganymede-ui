@@ -9,7 +9,7 @@ import type { IRenderMime } from '@jupyterlab/rendermime-interfaces';
 // does once loaded is left to the end-to-end suite.
 
 const { createRendermime } = await import('./jupyterlab');
-const { FRAME_CSP, javascriptBody, withTextColor } = await import('./output-frames');
+const { FRAME_CSP, MAX_HEIGHT, javascriptBody, withTextColor } = await import('./output-frames');
 
 const contents = {
   getDownloadUrl: async (path: string) => `/files/${path}`,
@@ -138,6 +138,6 @@ describe('output frames', () => {
     post(frame.contentWindow, { ganymedeFrame: 'height', height: 120 });
     expect(frame.style.height).toBe('120px');
     post(frame.contentWindow, { ganymedeFrame: 'height', height: 1e9 });
-    expect(frame.style.height).toBe('20000px');
+    expect(frame.style.height).toBe(`${MAX_HEIGHT}px`);
   });
 });
