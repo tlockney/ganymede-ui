@@ -87,7 +87,17 @@ Where the app connects is decided in this order (`App.tsx`):
    goes in `localStorage`.
 3. A login cookie for this page's server: when `api/status` answers, the
    app connects to its own origin with no token.
-4. Otherwise the connect sheet asks.
+4. Otherwise the start screen (`StartScreen`, shown by `EmptyState`) offers
+   Try a Notebook, Open a Notebook… and Connect to a Server…; only the last
+   opens the connect sheet. The first two set a pending start in `App`
+   (the sample, or the picked file), connect the browser backend, and run it
+   once that backend is up; the sheet picking a backend, or a failed
+   connection, drops it. The Apple apps always arrive with a config, so
+   they never show it.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
 
 The URL can also say what to open, as an Apple app window opened on one
 file does: `?open=<path>` opens that notebook once connected, with the

@@ -95,11 +95,12 @@ import { CommandPalette } from './components/CommandPalette';
 import { VariablesPanel } from './components/VariablesPanel';
 import { useKernelMemory } from './lib/kernel-usage';
 import { nodeAt, useVariables } from './lib/useVariables';
-import { useFileDrop } from './lib/file-drop';
+import { copyIntoFolder, useFileDrop } from './lib/file-drop';
 import { copySample } from './lib/sample';
 import { pendingHandoffs } from './lib/rename';
 import { SERVER_TIMEOUT_MS } from './lib/server-request';
 import { refreshKernelsOnReturn } from './lib/kernel-refresh';
+import { StorageNotice } from './components/StorageNotice';
 import { RunSheet } from './components/RunSheet';
 import { runAvailable, runWithParams } from './lib/run';
 import { EXPORT_FORMATS, type ExportFormat } from './lib/export';
@@ -112,6 +113,8 @@ function stripLaunchParams(): void {
   const rest = params.toString();
   history.replaceState(null, '', window.location.pathname + (rest ? `?${rest}` : ''));
 }
+
+type PendingStart = { kind: 'try' } | { kind: 'open'; file: File };
 
 export function App() {
   const scheme = useColorScheme();
@@ -184,9 +187,19 @@ export function App() {
   backendRef.current = backend;
   const [error, setError] = useState<string>();
   const [connecting, setConnecting] = useState(false);
-  const [sheetOpen, setSheetOpen] = useState(() => !config);
+  // Never open at the start: with nothing saved, the start screen offers
+  // Try a Notebook, Open a Notebook… and Connect to a Server… (#815), and
+  // the sheet opens behind the last. The Apple apps always have a config.
+  const [sheetOpen, setSheetOpen] = useState(false);
+  /**
+   * What the start screen asked for, to run once its browser backend
+   * connects: the sample, or a notebook file the person picked. Dropped when
+   * the sheet picks a backend (a retry after a failed connection too), so a
+   * later connection never runs a start nobody is waiting for.
+   */
+  const pendingStart = useRef<PendingStart | undefined>(undefined);
   // With nothing to connect to yet, first check whether this page's server
-  // has us signed in; the sheet waits for the answer.
+  // has us signed in; the start screen waits for the answer.
   const [probing, setProbing] = useState(() => !config);
   // A window opened on one notebook starts on the notebook alone; a reload
   // of any page keeps the usual layout.
@@ -378,6 +391,44 @@ export function App() {
     };
   }, [config, setOpenPath]);
 
+  // The start screen's pick, once its browser backend is up (#815). An
+  // effect on the backend rather than a step of the connection's success
+  // path: it runs once per backend whatever the connection effect's
+  // StrictMode reruns or cancellations did, and a backend replaced while
+  // the copy runs (the cleanup) drops the notebook it would open. The copy
+  // is async, so a failure is set after the effect that clears the last
+  // notice has run. A failed connection leaves the pick in place: the next
+  // connection comes from the start screen (a new pick) or the sheet
+  // (`switchBackend`, which drops it).
+  useEffect(() => {
+    const start = pendingStart.current;
+    if (!backend || !start) return;
+    pendingStart.current = undefined;
+    let current = true;
+    const { contents, kernelspecs } = backend.services;
+    void (async () => {
+      try {
+        if (start.kind === 'try') {
+          const path = await copySample(contents, '', kernelspecs.specs);
+          if (current) openNotebook(path);
+        } else {
+          const { paths, errors } = await copyIntoFolder(contents, '', [start.file]);
+          if (!current) return;
+          if (errors.length) setNewError(errors.join('\n'));
+          if (paths.length) openNotebook(paths[0]);
+        }
+      } catch (e) {
+        if (current) {
+          const what = start.kind === 'try' ? 'the sample notebook' : `“${start.file.name}”`;
+          setNewError(`Couldn’t start with ${what}: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
+    })();
+    return () => {
+      current = false;
+    };
+  }, [backend, openNotebook]);
+
   // A backend another took the place of is disposed once the last saves
   // of the panes that closed on it are done (#792): they save through its
   // services. The cleanup runs after the commit that showed the new
@@ -506,6 +557,8 @@ export function App() {
    * this is the first pick, dropped for another.
    */
   const switchBackend = (c: BackendConfig) => {
+    // The sheet's pick replaces a start screen pick still connecting (#815).
+    pendingStart.current = undefined;
     if (config && !sameBackend(c, config)) {
       pendingOpen.current = undefined;
       setSidebarRoot('');
@@ -1164,6 +1217,21 @@ export function App() {
                 onNew={() => void newNotebook(folder)}
                 onOpenExamples={() => void openExamples(folder)}
                 onConnect={openConnect}
+                native={native}
+                onTry={() => {
+                  // As the sheet does for another backend: a launch file or
+                  // console belongs to the first one.
+                  pendingOpen.current = undefined;
+                  pendingConsole.current = undefined;
+                  pendingStart.current = { kind: 'try' };
+                  setConfig({ kind: 'browser' });
+                }}
+                onOpenFile={file => {
+                  pendingOpen.current = undefined;
+                  pendingConsole.current = undefined;
+                  pendingStart.current = { kind: 'open', file };
+                  setConfig({ kind: 'browser' });
+                }}
                 folder={folder}
                 onShowFolder={native || sidebarOpen ? undefined : () => setSidebarOpen(true)}
                 onOpenSample={
@@ -1184,6 +1252,18 @@ export function App() {
                 onClose={() => setVariablesOpen(false)}
               />
             )}
+            {
+              // Where browser work is kept, before the first edit (#815): for
+              // a notebook, once its pane's controller is in (a data file or
+              // the console has none), and not in the Apple apps, which keep
+              // notebooks on their server.
+              !native &&
+                backend?.config.kind === 'browser' &&
+                openPath &&
+                controller?.path === openPath && (
+                  <StorageNotice key={openPath} onDownload={() => controller.download()} />
+                )
+            }
             {newError && (
               <div className="pane-notice" role="alert">
                 <span>{newError}</span>
@@ -1200,7 +1280,10 @@ export function App() {
           initial={config}
           error={error}
           connecting={connecting}
-          canCancel={!!backend}
+          // Without a backend, Cancel goes back to the start screen. The
+          // Apple apps never show it (they always have a config), so a
+          // failed connection there keeps the sheet.
+          canCancel={!!backend || !native}
           saving={savingForSwitch}
           unsaved={blockedSwitch?.controller.name}
           unsavedWhy={blockedSwitch?.why}

@@ -8,6 +8,7 @@ import {
   removeFromServer,
   sidebarItem,
   statusLine,
+  useThisBrowser,
   waitForIdle,
   waitForReady,
 } from './helpers';
@@ -31,8 +32,7 @@ async function expectTrustedOutputs(page: Page) {
 
 test('the examples open, trusted, and run in this browser', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('radio', { name: /This browser/ }).click();
-  await page.getByRole('button', { name: 'Connect', exact: true }).click();
+  await useThisBrowser(page);
   await expect(page.getByRole('button', { name: /This browser/ })).toBeVisible({
     timeout: 60_000,
   });

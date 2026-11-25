@@ -3,7 +3,7 @@
 // (scripts/kernel-modules.ts) and maps cdp-kernel's specifiers to them.
 // And nothing fetches DuckDB until something uses it (#794).
 import { expect, test } from '@playwright/test';
-import { waitForReady } from './helpers';
+import { useThisBrowser, waitForReady } from './helpers';
 
 test('a chart draws with the CDN unreachable', async ({ page }) => {
   const cdn: string[] = [];
@@ -12,8 +12,7 @@ test('a chart draws with the CDN unreachable', async ({ page }) => {
     return route.abort();
   });
   await page.goto('/');
-  await page.getByRole('radio', { name: /This browser/ }).click();
-  await page.getByRole('button', { name: 'Connect', exact: true }).click();
+  await useThisBrowser(page);
   await expect(page.getByRole('button', { name: /This browser/ })).toBeVisible({
     timeout: 60_000,
   });
@@ -46,8 +45,7 @@ test('TypeScript and a chart run with no network, and nothing asks for DuckDB', 
     },
   );
   await page.goto('/');
-  await page.getByRole('radio', { name: /This browser/ }).click();
-  await page.getByRole('button', { name: 'Connect', exact: true }).click();
+  await useThisBrowser(page);
   await expect(page.getByRole('button', { name: /This browser/ })).toBeVisible({
     timeout: 60_000,
   });

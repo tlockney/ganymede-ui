@@ -2852,3 +2852,156 @@ button {
   width: auto;
   max-width: 16em;
 }
+
+/* ---------- First open (#815) ---------- */
+
+/* The start screen, in the empty state: three ways in, each a push button
+   with a line under it, and the browser-storage note between the two that
+   keep work in the browser. */
+.start-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: min(360px, calc(100% - 32px));
+}
+
+.start-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin-top: 12px;
+}
+
+.start-actions .push-button {
+  min-width: 200px;
+  height: 32px;
+  justify-content: center;
+  margin-top: 10px;
+}
+
+.start-actions .push-button:first-child {
+  margin-top: 0;
+}
+
+.start-detail,
+.start-note {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 13px;
+  text-wrap: balance;
+}
+
+.empty-state .start-detail,
+.empty-state .start-note {
+  margin: 0;
+}
+
+.start-note {
+  margin-top: 14px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: var(--control-bg);
+}
+
+.empty-state .start-note {
+  margin-top: 14px;
+  margin-bottom: 4px;
+}
+
+.start-error {
+  margin: 14px 0 0;
+  text-align: center;
+}
+
+/* Where browser work is kept, floating over the foot of the notebook until
+   dismissed. */
+.storage-notice {
+  position: absolute;
+  bottom: calc(12px + var(--safe-bottom));
+  left: 50%;
+  z-index: 9;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: min(600px, calc(100% - 32px - var(--safe-left) - var(--safe-right)));
+  padding: 6px 8px 6px 14px;
+  border: 1px solid var(--separator);
+  border-radius: 10px;
+  background: var(--window-bg);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  font-size: 13px;
+  transform: translateX(-50%);
+}
+
+.storage-notice-text {
+  min-width: 0;
+}
+
+.storage-notice .push-button {
+  flex: none;
+  height: 26px;
+}
+
+.storage-notice-dismiss {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.storage-notice-dismiss:hover {
+  background: var(--control-bg-hover);
+}
+
+/* A touch screen: targets of 44px. */
+.touch-ui .storage-notice .push-button,
+.touch-ui .storage-notice-dismiss,
+.touch-ui .start-actions .push-button {
+  min-height: 44px;
+}
+
+.touch-ui .storage-notice-dismiss {
+  min-width: 44px;
+}
+
+/* A short window (a phone on its side) scrolls the start screen rather than
+   cutting off its last button: auto margins centre it when it fits and
+   start it at the top when it doesn't. The window's one row is the window's
+   height: with the default `auto` row it grew to the start screen's height,
+   below the visible window, out of reach of any scrolling. */
+.window {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.empty-state:has(.start-screen) {
+  justify-content: flex-start;
+  overflow-y: auto;
+}
+
+.empty-state:has(.start-screen) > .app-mark {
+  margin-top: auto;
+}
+
+.start-screen {
+  margin-bottom: auto;
+}
+
+@media (max-height: 520px) {
+  .empty-state:has(.start-screen) .app-mark img {
+    width: 48px;
+    height: 48px;
+  }
+}
