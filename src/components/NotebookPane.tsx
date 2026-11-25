@@ -141,6 +141,11 @@ export type NotebookController = {
   changeCellType(type: CellType): void;
   interrupt(): Promise<void>;
   restart(): Promise<void>;
+  /**
+   * Restart the kernel, then run every cell (#801). A restart that fails
+   * is reported and the cells don't run.
+   */
+  restartAndRunAll(): Promise<void>;
   changeKernel(name: string): Promise<void>;
   /**
    * Runs one of the notebook's commands by its id in the shortcuts table
@@ -1294,10 +1299,6 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       }
       open.runStatus.clear();
     };
-    const runAll = async () => {
-      if (journal) return;
-      if (await open.ensureKernel(true)) await NotebookActions.runAll(notebook, session);
-    };
     const reportRun = (what: string, action: () => Promise<void>) => {
       const run = async () => {
         if (away()) return;
@@ -1311,6 +1312,24 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         }
       };
       return run;
+    };
+    const runAll = async () => {
+      if (journal) return;
+      if (await open.ensureKernel(true)) await NotebookActions.runAll(notebook, session);
+    };
+    // Restart & Run All, from the run menu and the state-reset notice.
+    // A failed restart leaves the cells alone: its notice says so and
+    // Retry does both. Once the restart is done, Retry only runs the cells.
+    const restartAndRunAll = () => {
+      let restarted = false;
+      return reportRun('restart the kernel and run all cells', async () => {
+        if (journal) return;
+        if (!restarted) {
+          await restartKernel();
+          restarted = true;
+        }
+        await runAll();
+      })();
     };
     // Move the file to `to` with `rename` (the file's own rename, or its
     // folder's in the sidebar), taking the saves and the kernel along.
@@ -1469,6 +1488,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         await session.session?.kernel?.interrupt();
       }),
       restart: report('restart the kernel', restartKernel),
+      restartAndRunAll,
       command: id => {
         const { commands } = open;
         // The notebook's own commands act on cells the journal hides.
@@ -1564,18 +1584,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       }),
     };
     controllerRef.current = controller;
-    // A failed restart stops there: its notice says so and Retry does both.
-    // Once the restart is done, Retry only runs the cells again.
-    restartRunAll.current = () => {
-      let restarted = false;
-      return reportRun('restart the kernel and run all cells', async () => {
-        if (!restarted) {
-          await restartKernel();
-          restarted = true;
-        }
-        await runAll();
-      })();
-    };
+    restartRunAll.current = restartAndRunAll;
     onController(controller);
   }, [
     open,

@@ -5,7 +5,7 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { FIXTURE, GANYMEDE_URL, ROOT_DIR, TOKEN } from './env';
-import { openNotebook, openWithToken } from './helpers';
+import { openNotebook, openWithToken, toolbarMenu } from './helpers';
 
 test('publishes the open notebook as one web page', async ({ page }) => {
   // Whether the server under test takes the options: its page names the mode.
@@ -18,7 +18,7 @@ test('publishes the open notebook as one web page', async ({ page }) => {
 
   await openWithToken(page);
   await openNotebook(page, FIXTURE);
-  await page.getByRole('button', { name: 'Publish as Web Page' }).click();
+  await toolbarMenu(page, 'Share', 'Publish as Web Page…');
   const sheet = page.getByRole('dialog', { name: `Publish ${FIXTURE}` });
   await expect(sheet).toBeVisible();
   await sheet.getByRole('combobox').selectOption('hidden');

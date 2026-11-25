@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { DEVICE_LABEL, DEVICE_MARK, offersDevice, pickerLabel } from './kernel-device';
+import {
+  DEVICE_LABEL,
+  DEVICE_MARK,
+  isPageSpec,
+  offersDevice,
+  PAGE_SPEC_KEY,
+  pickerLabel,
+} from './kernel-device';
 
 describe('offersDevice', () => {
   it('is true for the shape the app registers', () => {
@@ -53,5 +60,14 @@ describe('pickerLabel', () => {
       text: 'Python 3',
       label: 'Python 3',
     });
+  });
+});
+
+describe('isPageSpec', () => {
+  it("is true only for a spec the mixed client marked as the page's", () => {
+    expect(isPageSpec({ metadata: { [PAGE_SPEC_KEY]: true } })).toBe(true);
+    expect(isPageSpec({ metadata: {} })).toBe(false);
+    expect(isPageSpec({})).toBe(false);
+    expect(isPageSpec(undefined)).toBe(false);
   });
 });

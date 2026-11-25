@@ -10,6 +10,10 @@ struct SidebarKeys: ViewModifier {
     /// Whether this place can open the file (`FolderEntry.canOpen(in:)`).
     let canOpen: (FolderEntry) -> Bool
     let open: (FolderEntry) -> Void
+    /// The folder row holding a row; nil at the top level (#791).
+    let parent: (FolderEntry) -> FolderEntry?
+    /// Makes a row the list's selection (#791).
+    let select: (FolderEntry) -> Void
 
     func body(content: Content) -> some View {
         // `.down` only: a held Return would otherwise toggle again and again.
@@ -20,8 +24,10 @@ struct SidebarKeys: ViewModifier {
                 return .ignored
             }
             let expanded = entry.isDirectory && isExpanded(entry)
+            let parent = self.parent(entry)
             guard let action = SidebarKeyAction.action(
-                for: key, selected: entry, isExpanded: expanded, canOpen: canOpen(entry)
+                for: key, selected: entry, isExpanded: expanded, canOpen: canOpen(entry),
+                hasParent: parent != nil
             ) else {
                 return .ignored
             }
@@ -30,6 +36,7 @@ struct SidebarKeys: ViewModifier {
             case .toggle: withAnimation { setExpanded(entry, !expanded) }
             case .expand: withAnimation { setExpanded(entry, true) }
             case .collapse: withAnimation { setExpanded(entry, false) }
+            case .selectParent: if let parent { select(parent) }
             }
             return .handled
         }

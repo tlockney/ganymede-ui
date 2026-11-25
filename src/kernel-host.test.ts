@@ -30,6 +30,13 @@ vi.mock('@tlockney/cdp-kernel/browser', async importOriginal => ({
   },
 }));
 
+// The real one, watched: which requests it sees.
+vi.mock('./lib/duckdb-files', async importOriginal => {
+  const real = await importOriginal<typeof import('./lib/duckdb-files')>();
+  return { ...real, noteKernelRequest: vi.fn(real.noteKernelRequest) };
+});
+const { noteKernelRequest } = await import('./lib/duckdb-files');
+
 const posted: FromKernel[] = [];
 const stubWebkit = () =>
   vi.stubGlobal('webkit', {
@@ -214,5 +221,18 @@ describe('kernel host page', () => {
         header: expect.objectContaining({ msg_type: 'shutdown_request' }),
       }),
     );
+  });
+
+  // #794: a cell that may use SQL starts the page's DuckDB download.
+  it('shows each request it passes on to DuckDB’s loader', () => {
+    deliver({ kernel: 's1', op: 'start', run: 1 });
+    vi.mocked(noteKernelRequest).mockClear();
+    const execute = {
+      header: { msg_type: 'execute_request' },
+      content: { code: 'await jupyter.sql`select 1`' },
+    };
+    deliver({ kernel: 's1', op: 'send', channel: 'shell', json: json(execute) });
+    deliver({ kernel: 's1', op: 'send', channel: 'iopub', json: json(execute) });
+    expect(vi.mocked(noteKernelRequest).mock.calls).toEqual([[execute]]);
   });
 });

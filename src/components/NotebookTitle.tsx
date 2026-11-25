@@ -3,9 +3,6 @@ import { useEffect, useRef, useState } from 'react';
 type Props = {
   /** The notebook's name, without `.ipynb`. */
   name: string;
-  dirty: boolean;
-  /** Saving is locked: the file changed on disk (#367). */
-  locked?: boolean;
   /**
    * Renames the notebook to what was typed; false keeps the field open to
    * try again. Without it the title is plain text.
@@ -15,9 +12,10 @@ type Props = {
 
 /**
  * The toolbar's title (#202). A click or tap edits it in place: Enter (or
- * leaving the field) renames the notebook, Escape cancels.
+ * leaving the field) renames the notebook, Escape cancels. Whether the
+ * notebook is edited or locked is in the status line under it (#801).
  */
-export function NotebookTitle({ name, dirty, locked, onRename }: Props) {
+export function NotebookTitle({ name, onRename }: Props) {
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
   const input = useRef<HTMLInputElement>(null);
@@ -34,19 +32,7 @@ export function NotebookTitle({ name, dirty, locked, onRename }: Props) {
     input.current?.select();
   }, [editing]);
 
-  const edited = locked ? (
-    <span className="edited locked"> — {dirty ? 'Edited, locked' : 'Locked'}</span>
-  ) : (
-    dirty && <span className="edited"> — Edited</span>
-  );
-  if (!onRename) {
-    return (
-      <div className="title">
-        {name}
-        {edited}
-      </div>
-    );
-  }
+  if (!onRename) return <div className="title">{name}</div>;
 
   /** After Enter a failed rename stays open to fix; after a blur it doesn't. */
   const commit = async (retry: boolean) => {
@@ -109,7 +95,6 @@ export function NotebookTitle({ name, dirty, locked, onRename }: Props) {
       >
         {name}
       </button>
-      {edited}
     </div>
   );
 }

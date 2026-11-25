@@ -169,7 +169,7 @@ export type PageState = {
   /** The open notebook's server path, or null. */
   path: string | null;
   dirty: boolean;
-  /** The kernel's state, as the toolbar's subtitle shows it; null with no notebook open. */
+  /** The kernel's state (`idle`, `busy`, `none`, …); null with no notebook open. */
   status: string | null;
   /** The running kernel or the one the first run starts, by name. */
   kernel: string | null;

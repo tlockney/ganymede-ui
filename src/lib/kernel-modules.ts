@@ -1,8 +1,10 @@
 import modules from 'virtual:kernel-modules';
-import { duckdbModules, loadDuckdbFiles } from './duckdb-files';
+import { duckdbModules, readCachedDuckdbFiles } from './duckdb-files';
 
-// As the page loads, so the first kernel usually finds them mapped.
-void loadDuckdbFiles();
+// What an earlier visit cached, as the page loads, so the first kernel
+// usually finds the files mapped. It fetches nothing: the first use of
+// DuckDB does (#794).
+void readCachedDuckdbFiles();
 
 /**
  * The browser kernel's `modules` option: the chart libraries jupyter.chart

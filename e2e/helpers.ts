@@ -47,17 +47,26 @@ export async function openWithToken(page: Page) {
 export const sidebarItem = (page: Page, name: string) =>
   page.locator('.sidebar .folder-list').getByRole('button', { name, exact: true });
 
-/** The toolbar subtitle: "<kernel> · Idle". */
+/**
+ * The toolbar's status line (#801): "<saved> · <runs> · <kernel>", with the
+ * kernel's state at the end only while it is not idle. Its dot carries
+ * the state: `s-idle`, `s-busy`, `s-none` (no kernel started yet)...
+ */
+export const statusLine = (page: Page) => page.locator('.toolbar .status-line');
+
+/** The kernel is idle: the status line has no state and its dot is green. */
 export async function waitForIdle(page: Page, timeout = 60_000) {
-  await expect(page.getByText(/ · Idle$/)).toBeVisible({ timeout });
+  await expect(statusLine(page).locator('.status-dot')).toHaveClass(/\bs-idle\b/, { timeout });
 }
 
 /**
  * The notebook is ready to run: its kernel is idle, or none is running yet
- * and the first run starts one ("<kernel> · Starts when you run a cell").
+ * and the first run starts one.
  */
 export async function waitForReady(page: Page, timeout = 60_000) {
-  await expect(page.getByText(/ · (Idle|Starts when you run a cell)$/)).toBeVisible({ timeout });
+  await expect(statusLine(page).locator('.status-dot')).toHaveClass(/\bs-(idle|none)\b/, {
+    timeout,
+  });
 }
 
 export async function openNotebook(page: Page, file: string) {
@@ -80,3 +89,12 @@ export async function screenshot(page: Page, testInfo: TestInfo, name: string) {
   await page.screenshot({ path });
   await testInfo.attach(name, { path, contentType: 'image/png' });
 }
+
+/** Pick an item from one of the toolbar's menus: "More run actions", "Share" or "More". */
+export async function toolbarMenu(page: Page, button: string, item: string | RegExp) {
+  await page.getByRole('button', { name: button, exact: true }).click();
+  await page.getByRole('menuitem', { name: item, exact: typeof item === 'string' }).click();
+}
+
+/** Run All, from the toolbar's run menu. */
+export const runAll = (page: Page) => toolbarMenu(page, 'More run actions', 'Run All');
