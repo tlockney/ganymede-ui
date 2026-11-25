@@ -44,12 +44,36 @@ describe('containTab', () => {
     expect(b).toHaveFocus();
   });
 
-  it('lets Tab move between stops inside', () => {
-    const root = sheet('<button id="a">a</button><button id="b">b</button>');
-    tabbables(root)[0].focus();
-    const e = tab();
-    containTab(e, root);
-    expect(e.defaultPrevented).toBe(false);
+  it('moves focus itself between stops inside', () => {
+    const root = sheet('<button id="a">a</button><input id="b" /><button id="c">c</button>');
+    root.querySelector<HTMLElement>('#b')!.focus();
+    const forward = tab();
+    containTab(forward, root);
+    expect(forward.defaultPrevented).toBe(true);
+    expect(document.activeElement?.id).toBe('c');
+    root.querySelector<HTMLElement>('#b')!.focus();
+    const back = tab(true);
+    containTab(back, root);
+    expect(back.defaultPrevented).toBe(true);
+    expect(document.activeElement?.id).toBe('a');
+  });
+
+  it('goes to the stop nearest a focused element that is not one', () => {
+    const root = sheet(
+      '<button id="a">a</button><div tabindex="-1" id="x">x</div><button id="b">b</button>',
+    );
+    const x = root.querySelector<HTMLElement>('#x')!;
+    x.focus();
+    containTab(tab(), root);
+    expect(document.activeElement?.id).toBe('b');
+    x.focus();
+    containTab(tab(true), root);
+    expect(document.activeElement?.id).toBe('a');
+    // Past the last stop, wrapping.
+    const end = sheet('<button id="a">a</button><div tabindex="-1" id="x">x</div>');
+    end.querySelector<HTMLElement>('#x')!.focus();
+    containTab(tab(), end);
+    expect(document.activeElement?.id).toBe('a');
   });
 
   it('brings focus in from outside', () => {
@@ -81,8 +105,10 @@ describe('containTab', () => {
     const other = new KeyboardEvent('keydown', { key: 'Enter', cancelable: true });
     containTab(other, root);
     expect(other.defaultPrevented).toBe(false);
-    const ctrl = new KeyboardEvent('keydown', { key: 'Tab', ctrlKey: true, cancelable: true });
-    containTab(ctrl, root);
-    expect(ctrl.defaultPrevented).toBe(false);
+    for (const mod of ['altKey', 'ctrlKey', 'metaKey']) {
+      const e = new KeyboardEvent('keydown', { key: 'Tab', [mod]: true, cancelable: true });
+      containTab(e, root);
+      expect(e.defaultPrevented).toBe(false);
+    }
   });
 });

@@ -297,6 +297,20 @@ describe('ConnectSheet keyboard and focus (#797)', () => {
     expect(onCancel).toHaveBeenCalledOnce();
   });
 
+  it('takes the arrows, Home and End from the page', () => {
+    renderSheet();
+    for (const key of ['ArrowRight', 'ArrowLeft', 'ArrowDown', 'ArrowUp', 'Home', 'End']) {
+      expect(fireEvent.keyDown(document.activeElement!, { key })).toBe(false);
+    }
+    expect(fireEvent.keyDown(document.activeElement!, { key: 'a' })).toBe(true);
+  });
+
+  it('takes Escape from the page when it cancels', () => {
+    const { onCancel } = renderSheet({ canCancel: true });
+    expect(fireEvent.keyDown(server(), { key: 'Escape' })).toBe(false);
+    expect(onCancel).toHaveBeenCalledOnce();
+  });
+
   it('leaves modified arrows alone', async () => {
     renderSheet();
     for (const key of [

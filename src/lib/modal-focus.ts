@@ -14,28 +14,33 @@ export function tabbables(root: HTMLElement): HTMLElement[] {
 }
 
 /**
- * Keeps Tab inside `root`: wraps from the last stop to the first (Shift+Tab
- * the other way), and brings focus back in from anywhere outside, such as
- * the body after a focused button was disabled.
+ * Keeps Tab inside `root` by moving focus itself, every time: to the next
+ * stop (Shift+Tab the previous), wrapping at the ends, and in from anywhere
+ * outside, such as the body after a focused button was disabled. Leaving
+ * any Tab to the browser isn't enough: WebKit (Safari, the Mac and iPad
+ * apps), with its default settings, skips buttons and checkboxes, so from
+ * the Token field its next stop is the page behind.
  */
 export function containTab(e: KeyboardEvent, root: HTMLElement): void {
   if (e.key !== 'Tab' || e.altKey || e.ctrlKey || e.metaKey) return;
+  e.preventDefault();
   const stops = tabbables(root);
   // Nothing to stop at (every control disabled): Tab still mustn't leave.
-  if (stops.length === 0) {
-    e.preventDefault();
-    return;
-  }
-  const first = stops[0];
-  const last = stops[stops.length - 1];
+  if (stops.length === 0) return;
   const active = document.activeElement;
-  let next: HTMLElement | undefined;
-  if (!(active instanceof Node) || !root.contains(active)) next = e.shiftKey ? last : first;
-  else if (!e.shiftKey && active === last) next = first;
-  else if (e.shiftKey && active === first) next = last;
-  if (!next) return;
-  e.preventDefault();
-  next.focus();
+  const at = active instanceof HTMLElement ? stops.indexOf(active) : -1;
+  let next: number;
+  if (at >= 0) next = at + (e.shiftKey ? -1 : 1);
+  else if (active instanceof Node && root.contains(active)) {
+    // Inside but not a stop (the sheet itself, a clicked radio that isn't
+    // chosen): the stop after it in document order, or before it.
+    const after = stops.findIndex(
+      s => !!(active.compareDocumentPosition(s) & Node.DOCUMENT_POSITION_FOLLOWING),
+    );
+    if (e.shiftKey) next = (after < 0 ? stops.length : after) - 1;
+    else next = after;
+  } else next = e.shiftKey ? stops.length - 1 : 0;
+  stops[(next + stops.length) % stops.length].focus();
 }
 
 /**
@@ -61,7 +66,9 @@ export function useModalFocus(
     return () => {
       window.removeEventListener('keydown', onKey, true);
       const now = document.activeElement;
-      // Focus left with the sheet (it was inside), or nothing has it.
+      // Nothing has focus (the sheet took it away with it). Focus still
+      // inside the sheet happens only in a StrictMode remount, where the
+      // sheet stays in the page between cleanup and setup.
       const free = !now || now === document.body || !!root?.contains(now);
       if (free) opener?.focus();
     };

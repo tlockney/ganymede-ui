@@ -12,10 +12,14 @@ patterns:
 - Focus starts on the chosen kind.
 - The kinds are one Tab stop (roving `tabIndex`). Arrow keys move and
   select, wrapping, and Home and End go to the first and last.
-- Tab and Shift+Tab wrap inside the sheet. A Tab from outside it, such as
-  from the body after Chrome drops focus from Connect when it is disabled
-  while connecting, comes back in. A click on the dimmed backdrop keeps
-  focus where it was.
+- Tab and Shift+Tab move between the sheet's controls and wrap at the
+  ends. The sheet moves focus itself on every Tab rather than leaving
+  the middle ones to the browser: WebKit (Safari, the Mac and iPad apps)
+  with default settings skips buttons and checkboxes, so its next stop
+  from the Token field, or from the chosen kind, is the page behind. A
+  Tab from outside the sheet, such as from the body after Chrome drops
+  focus from Connect when it is disabled while connecting, comes back
+  in. A click on the dimmed backdrop keeps focus where it was.
 - Escape cancels when Cancel is offered (there is a backend to go back
   to), and does nothing on the first connection or while an input method
   is composing text. It stops there, so nothing behind the sheet also
@@ -29,14 +33,17 @@ The focus handling is `useModalFocus` and `containTab` in
 their own focus code for now.
 
 Tests: `ConnectSheet.test.tsx` covers the dialog name, initial focus,
-arrows (and modified arrows left alone), the single Tab stop, Tab
-wrapping with controls behind the sheet, re-entry from the body past a
-disabled Connect, the backdrop mousedown, Escape with and without
-Cancel, while composing, and kept from listeners behind, and focus
-return, including when something else took focus. Each fails with its
-part of the change removed, except Escape without Cancel, which checks
-that nothing changed. `modal-focus.test.ts` covers which elements count
-as Tab stops, the wrap, entry from outside, and a sheet with no stops.
+arrows (taken from the page, and modified arrows left alone), the single
+Tab stop, Tab wrapping with controls behind the sheet, re-entry from the
+body past a disabled Connect, the backdrop mousedown, Escape with and
+without Cancel, while composing, taken from the page and kept from
+listeners behind, and focus return, including when something else took
+focus. Each fails with its part of the change removed, except Escape
+without Cancel, which checks that nothing changed.
+`modal-focus.test.ts` covers which elements count
+as Tab stops, moving from a middle stop both ways, the wrap, the stop
+nearest a focused element that isn't one, entry from outside, modified
+Tab left alone, and a sheet with no stops.
 `e2e/connect-sheet-keyboard.spec.ts` does the issue's scenario with
 the keyboard only: from clean storage, ArrowRight to **This browser**,
 Tab round the sheet checking focus never leaves it, Connect, a notebook
