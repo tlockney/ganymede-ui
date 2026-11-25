@@ -221,6 +221,28 @@ final class SidebarKeyTests: XCTestCase {
         XCTAssertEqual(m.tree.parent(of: m.io, root: root), m.moons)
     }
 
+    /// A reload that drops the selected row clears the selection; one
+    /// that keeps it, or lists the same rows again, keeps it (#791).
+    func testAListingKeepsTheSelectionOnlyWhileItIsListed() {
+        var m = moonsTree()
+        XCTAssertEqual(m.tree.listed([m.deep, m.io], in: m.moons.url, keeping: m.io, root: root), m.io)
+        XCTAssertEqual(m.tree.listed([m.io], in: m.moons.url, keeping: m.io, root: root), m.io)
+        XCTAssertNil(m.tree.listed([m.deep], in: m.moons.url, keeping: m.io, root: root))
+        XCTAssertEqual(m.tree.entries(in: m.moons.url), [m.deep])
+        // A folder dropped above takes a selection inside it.
+        XCTAssertNil(m.tree.listed([m.titan], in: root, keeping: m.europa, root: root))
+        XCTAssertEqual(m.tree.listed([m.titan], in: root, keeping: m.titan, root: root), m.titan)
+        XCTAssertNil(m.tree.listed([m.titan], in: root, keeping: nil, root: root))
+    }
+
+    /// Even a tree that lists the root's own row gives a top row no parent.
+    func testTheRootIsNoParent() {
+        var m = moonsTree()
+        let rootRow = FolderEntry(url: root, isDirectory: true)
+        m.tree.record([rootRow], in: URL(fileURLWithPath: "/tmp", isDirectory: true))
+        XCTAssertNil(m.tree.parent(of: m.titan, root: root))
+    }
+
     func testNothingBeforeAListing() {
         XCTAssertNil(SidebarTree().entries(in: root))
         XCTAssertEqual(moonsTree().tree.entries(in: root)?.count, 2)

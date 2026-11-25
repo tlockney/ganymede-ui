@@ -148,12 +148,10 @@ struct FolderSidebar: View {
     }
 
     /// A folder's contents listed `entries` (#791): a selected row the
-    /// listing no longer has (a file deleted or renamed outside the app)
-    /// is cleared, so Return can't act on it.
+    /// listing no longer has is cleared (`SidebarTree.listed`).
     private func listed(_ entries: [FolderEntry], in dir: URL) {
-        guard tree.entries(in: dir) != entries else { return }
-        tree.record(entries, in: dir)
-        if let selected = selection, !tree.lists(selected, root: folder) { selection = nil }
+        let kept = tree.listed(entries, in: dir, keeping: selection, root: folder)
+        if kept != selection { selection = kept }
     }
 
     private func open(_ entry: FolderEntry) {

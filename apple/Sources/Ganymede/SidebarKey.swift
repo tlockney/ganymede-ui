@@ -91,6 +91,8 @@ struct SidebarTree {
     /// `folder` now lists `entries`: the rows it listed before and doesn't
     /// now are no longer in it.
     mutating func record(_ entries: [FolderEntry], in folder: URL) {
+        // Defensive: a URL names one folder, so a row is never listed
+        // under two, but never forget a row another folder lists.
         for old in listings[folder] ?? [] where folders[old] == folder {
             folders[old] = nil
         }
@@ -100,9 +102,24 @@ struct SidebarTree {
         }
     }
 
+    /// `folder` listed `entries` (a folder's contents loaded or reloaded),
+    /// and the selection to keep: `selection`, or nil when the tree no
+    /// longer lists it (a file deleted or renamed outside the app), so
+    /// Return can't act on it. A listing equal to the last one changes
+    /// nothing.
+    mutating func listed(
+        _ entries: [FolderEntry], in folder: URL, keeping selection: FolderEntry?, root: URL
+    ) -> FolderEntry? {
+        guard listings[folder] != entries else { return selection }
+        record(entries, in: folder)
+        guard let selection, lists(selection, root: root) else { return nil }
+        return selection
+    }
+
     /// The folder row holding `entry`, or nil for a row at the top (in
     /// `root`), one not listed, or one whose folder row is no longer listed.
     func parent(of entry: FolderEntry, root: URL) -> FolderEntry? {
+        // The root is never a parent, even if some listing had its row.
         guard let folder = folders[entry], folder != root else { return nil }
         let parent = FolderEntry(url: folder, isDirectory: true)
         return folders[parent] == nil ? nil : parent
