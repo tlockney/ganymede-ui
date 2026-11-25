@@ -5,6 +5,7 @@ import { NotebookTitle } from './NotebookTitle';
 import { ContextMenu, type MenuItem } from './ContextMenu';
 import { DEVICE_LABEL, isPageSpec, offersDevice, pickerLabel } from '../lib/kernel-device';
 import { type Place, shortStatusText, statusText } from '../lib/header-status';
+import { useNarrow } from '../lib/useNarrow';
 import {
   ChevronDownIcon,
   JournalIcon,
@@ -97,6 +98,7 @@ export function Toolbar({
   const kernels = Object.values(specs?.kernelspecs ?? {}).flatMap(s => (s ? [s] : []));
 
   const [open, setOpen] = useState<MenuName>();
+  const narrow = useNarrow();
   const anchors = {
     status: useRef<HTMLButtonElement>(null),
     run: useRef<HTMLButtonElement>(null),
@@ -253,9 +255,11 @@ export function Toolbar({
               name={c ? c.name.replace(/\.ipynb$/, '') : 'Ganymede'}
               onRename={c?.rename}
             />
-            {c && onToggleJournal && (
+            {c && onToggleJournal && (!narrow || c.journal) && (
               // The header names which view shows (#819); the other part calls
               // the same toggle as the More menu item, which keeps the cell.
+              // On a phone it takes a row of its own, so only the journal
+              // view shows it; the notebook keeps the ⋯ item and its height.
               <div
                 className="mode-switch"
                 role="group"

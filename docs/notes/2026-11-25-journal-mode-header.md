@@ -18,8 +18,9 @@ Notebook or Journal, instead of the toggle living only under "⋯".
   when the toolbar really runs out of room. A touch screen
   (`title-row` is `display: contents`) spans the control over the title
   and the status line, so its 44px targets still fit the toolbar's 52px.
-  A phone has no room beside the title, so there the control gets a slim
-  row of its own under the status line and `--toolbar-h` grows by its
+  A phone has no room beside the title, so there the control shows only
+  in the journal view (`useNarrow`), so a notebook keeps its 52px header,
+  and it gets a slim row of its own under the status line and `--toolbar-h` grows by its
   44px (`:root.touch-ui:has(.toolbar .mode-switch)` under 720px), the
   title and status line keeping the width they have without the control;
   the row's two buttons share its width, so the box ends at them and
@@ -33,7 +34,8 @@ Notebook or Journal, instead of the toggle living only under "⋯".
   that, its bar being the run actions in thumb reach (#209).
 - Tests: `Toolbar.test.tsx` (the control shows only with a journal
   toggle, its name and `aria-pressed` say the mode, clicking the other
-  part toggles and the showing part doesn't), `e2e/journal.spec.ts`
+  part toggles and the showing part doesn't, on a phone only in the
+  journal view), `e2e/journal.spec.ts`
   (switching from the header keeps the cell, reusing the #816 pattern;
   the name shows whole beside the control while the toolbar has room;
   at 375px the control fits, its two buttons filling its width as 44px

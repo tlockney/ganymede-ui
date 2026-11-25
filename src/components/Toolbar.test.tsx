@@ -6,6 +6,17 @@ import type { NotebookController } from './NotebookPane';
 import { Toolbar } from './Toolbar';
 import { placeOf } from '../lib/header-status';
 
+// jsdom has no matchMedia: a wide window unless a test says otherwise.
+window.matchMedia ??= (media: string) =>
+  ({
+    media,
+    matches: false,
+    addEventListener() {},
+    removeEventListener() {},
+    addListener() {},
+    removeListener() {},
+  }) as unknown as MediaQueryList;
+
 function controller(over: Partial<NotebookController> = {}): NotebookController {
   return {
     path: 'moons/Io.ipynb',
@@ -385,6 +396,29 @@ describe('Toolbar', () => {
     expect(onToggleJournal).toHaveBeenCalledTimes(2);
     await userEvent.click(named('Journal'));
     expect(onToggleJournal).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows Notebook | Journal on a phone only in the journal view (#819)', () => {
+    const narrow = vi.spyOn(window, 'matchMedia').mockImplementation(
+      q =>
+        ({
+          media: q,
+          matches: true,
+          addEventListener() {},
+          removeEventListener() {},
+          addListener() {},
+          removeListener() {},
+        }) as unknown as MediaQueryList,
+    );
+    try {
+      const onToggleJournal = vi.fn();
+      const { rerender } = render(bar({ onToggleJournal }));
+      expect(screen.queryByRole('group', { name: /^View/ })).not.toBeInTheDocument();
+      rerender(bar({ onToggleJournal, controller: controller({ journal: true }) }));
+      expect(screen.getByRole('group', { name: 'View: Journal' })).toBeInTheDocument();
+    } finally {
+      narrow.mockRestore();
+    }
   });
 
   it('disables what runs or edits cells while the journal shows them hidden (#184)', async () => {

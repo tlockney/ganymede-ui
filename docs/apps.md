@@ -1100,8 +1100,9 @@ the notebook's More menu on the iPad and iPhone, or the Command Palette.
 > **Unreleased.** Available only from a build of `main` (HEAD), not in
 > the latest release. The header names which view shows: a
 > **Notebook | Journal** control beside the title, in the browser and in
-> the Mac and iPad apps' toolbars. Picking the other part switches,
-> keeping your place by cell, and the ways above still work.
+> the Mac and iPad apps' toolbars. On a phone-width browser it shows only
+> in the journal view, on a row under the title. Picking the other part
+> switches, keeping your place by cell, and the ways above still work.
 
 A notebook with cells an agent wrote opens as a journal; any other opens as
 a notebook. Your choice for a file holds until you close the app or page,

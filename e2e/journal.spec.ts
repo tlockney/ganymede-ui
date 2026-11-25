@@ -781,6 +781,8 @@ test('fits the header control on a phone, which still switches (#819)', async ({
   expect(switchBox.x + switchBox.width - (second!.x + second!.width)).toBeLessThanOrEqual(2);
   expect(first!.width + second!.width).toBeGreaterThanOrEqual(switchBox.width - 4);
   await view.getByRole('button', { name: 'Notebook' }).click();
-  await expect(page.getByRole('group', { name: 'View: Notebook' })).toBeVisible();
   await expect(page.locator('.jp-Cell')).toHaveCount(3);
+  // The notebook on a phone keeps its header height: the view is in ⋯.
+  await expect(page.getByRole('group', { name: /^View/ })).toHaveCount(0);
+  expect((await page.locator('.toolbar').boundingBox())!.height).toBe(52);
 });
