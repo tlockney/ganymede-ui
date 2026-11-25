@@ -9,8 +9,6 @@ type Props = {
   onOpen(file: File): void;
   /** Connect to a Server…: the connection sheet. */
   onConnect(): void;
-  /** Why the last start failed, shown here. */
-  error?: string;
 };
 
 const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -21,7 +19,7 @@ const messageOf = (e: unknown) => (e instanceof Error ? e.message : String(e));
  * sheet behind Connect to a Server…. Focus isn't moved on mount: Tab brings
  * it to Try a Notebook first.
  */
-export function StartScreen({ onTry, onOpen, onConnect, error }: Props) {
+export function StartScreen({ onTry, onOpen, onConnect }: Props) {
   const input = useRef<HTMLInputElement>(null);
   const [openError, setOpenError] = useState<string>();
   const ids = [useId(), useId(), useId()];
@@ -42,8 +40,6 @@ export function StartScreen({ onTry, onOpen, onConnect, error }: Props) {
     setOpenError(undefined);
     onOpen(file);
   };
-
-  const shown = openError ?? error;
 
   return (
     <div className="start-screen">
@@ -98,9 +94,9 @@ export function StartScreen({ onTry, onOpen, onConnect, error }: Props) {
         aria-label="Notebook file"
         onChange={e => void pick(e.target.files?.[0])}
       />
-      {shown && (
+      {openError && (
         <p className="sheet-error start-error" role="alert">
-          {shown}
+          {openError}
         </p>
       )}
     </div>

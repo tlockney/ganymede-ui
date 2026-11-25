@@ -11,19 +11,14 @@ const RESULT = 'Ganymede is the largest moon in the solar system.';
 const NOTE = 'Saved in this browser. Download a copy to keep it elsewhere.';
 const SAMPLE = 'Ganymede Tour';
 
-const DUCKDB_PREFETCH =
-  /^https:\/\/cdn\.jsdelivr\.net\/npm\/@duckdb\/duckdb-wasm@[\d.]+\/dist\/duckdb-(browser-eh\.worker\.js|eh\.wasm)$/;
-
 /** Aborts every request to an origin other than the app's, and says which were tried. */
 async function blockOtherOrigins(page: Page, baseURL: string | undefined) {
   const own = new URL(baseURL!).origin;
   const attempted: string[] = [];
   await page.route('**/*', route => {
     if (new URL(route.request().url()).origin === own) return route.continue();
-    // The browser kernel warms DuckDB's files from jsDelivr in the
-    // background when its first kernel starts (duckdb-files.ts); the sample
-    // doesn't use SQL and the run doesn't wait for it, so it isn't counted.
-    if (!DUCKDB_PREFETCH.test(route.request().url())) attempted.push(route.request().url());
+    // None at all: DuckDB's files load on first use (#794), and the sample has no SQL.
+    attempted.push(route.request().url());
     return route.abort();
   });
   return attempted;

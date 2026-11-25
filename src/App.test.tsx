@@ -2326,6 +2326,71 @@ describe('App start screen (#815)', () => {
     expect(screen.getByRole('button', { name: 'Try a Notebook' })).toBeInTheDocument();
   });
 
+  it('Open a Notebook… says so when the file can’t be saved', async () => {
+    const fake = fakeServices({ '': [] });
+    fake.contents.save.mockRejectedValue(new Error('Storage is full.'));
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services, browser));
+    render(<App />);
+    const file = new File([JSON.stringify({ nbformat: 4, cells: [] })], 'Mine.ipynb');
+    await userEvent.upload(await screen.findByLabelText('Notebook file'), file);
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Mine.ipynb');
+    expect(alert).toHaveTextContent('Storage is full.');
+    expect(screen.queryByTestId('pane')).not.toBeInTheDocument();
+  });
+
+  for (const how of ['Try', 'Open'] as const) {
+    it(`${how} drops the launch file and console the link asked for`, async () => {
+      // A link with no saved connection: its file and console are the
+      // first backend's, not the browser's the start screen connects.
+      history.replaceState(null, '', '/?open=Io.ipynb&console=duckdb&dir=data');
+      const fake = fakeServices({ '': [] });
+      let finish!: () => void;
+      fake.contents.save.mockImplementation(
+        path =>
+          new Promise(resolve => (finish = () => resolve(entry({ name: path, type: 'notebook' })))),
+      );
+      mocks.connect.mockResolvedValue(fakeBackend(fake.services, browser));
+      render(<App />);
+      if (how === 'Try') {
+        await tryNotebook();
+      } else {
+        const file = new File([JSON.stringify({ nbformat: 4, cells: [] })], 'Mine.ipynb');
+        await userEvent.upload(await screen.findByLabelText('Notebook file'), file);
+      }
+      await waitFor(() => expect(fake.contents.save).toHaveBeenCalled());
+      // Connected, the copy still running: neither the link's file nor its console.
+      expect(screen.queryByTestId('pane')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('duck-console')).not.toBeInTheDocument();
+      finish();
+      const name = how === 'Try' ? 'Ganymede Tour.ipynb' : 'Mine.ipynb';
+      await waitFor(() => expect(screen.getByTestId('pane')).toHaveTextContent(name));
+    });
+  }
+
+  it('hides the notice until the open notebook’s own controller is in', async () => {
+    // Between opening another notebook and its pane handing over its
+    // controller, Download a Copy would download the previous one.
+    const download = vi.fn();
+    mocks.controller = { dirty: false, save: async () => true, download };
+    const fake = fakeServices({
+      '': [
+        { name: 'Io.ipynb', type: 'notebook' },
+        { name: 'Europa.ipynb', type: 'notebook' },
+      ],
+    });
+    localStorage.setItem('ganymede-ui:backend', JSON.stringify(browser));
+    history.replaceState(null, '', '/?open=Io.ipynb');
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services, browser));
+    render(<App />);
+    await screen.findByRole('note');
+    // The next pane never reports a controller.
+    mocks.controller = undefined;
+    await userEvent.click(await screen.findByText('Europa'));
+    await waitFor(() => expect(screen.getByTestId('pane')).toHaveTextContent('Europa.ipynb'));
+    expect(screen.queryByRole('note')).not.toBeInTheDocument();
+  });
+
   it('shows where browser work is kept above a notebook, and Download a Copy downloads it', async () => {
     const download = vi.fn();
     mocks.controller = { dirty: false, save: async () => true, download };

@@ -54,11 +54,15 @@ Decisions:
   start screen scrolls when it doesn't fit (`e2e/first-open.spec.ts`, and
   the landscape cases of `e2e/safe-area.spec.ts` that caught it).
 
-Known: the browser kernel warms DuckDB's files from jsDelivr in the
-background when its first kernel starts (`duckdb-files.ts`, ganymede#747).
-That is not part of the sample, and the run doesn't wait for it, so the
-e2e test blocks it and doesn't count it, but "no CDN" holds for the cell,
-not for that prefetch.
+No CDN: since #794 the browser kernel fetches DuckDB's files only when
+SQL or Parquet is first used, so Try makes no request outside the app's
+origin; the e2e test aborts and counts every one.
+
+Action names: the browser's **Open a Notebook…** and **Connect to a
+Server…** are the start screen's own; the apps never show it (they always
+arrive with a backend), open files with their File menu's **Open…**, and
+pick kernels in Settings › Kernels, so there is no matching app action to
+rename here.
 
 Tests: `StartScreen.test.tsx` (the three actions and their order, no focus
 taken, the hidden file input, valid and invalid files, the error cleared),

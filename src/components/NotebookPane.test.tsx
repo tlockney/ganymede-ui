@@ -457,6 +457,20 @@ describe('NotebookPane', () => {
     activate.mockRestore();
   });
 
+  it('leaves focus to the Apple apps with native chrome (#815)', async () => {
+    const { Widget } = await import('@lumino/widgets');
+    const activate = vi.spyOn(Widget.prototype, 'activate');
+    document.documentElement.classList.add('chrome-native');
+    try {
+      const { latest } = setup();
+      await waitFor(() => expect(latest()).toBeDefined());
+      expect(activate.mock.contexts).not.toContain(fakes.notebooks[0]);
+    } finally {
+      document.documentElement.classList.remove('chrome-native');
+      activate.mockRestore();
+    }
+  });
+
   it('takes focus out of the hidden notebook when the journal shows (#184)', async () => {
     const { latest } = setup();
     await waitFor(() => expect(latest()).toBeDefined());

@@ -839,9 +839,11 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       // Nothing has focus (the start screen's Try a Notebook button went
       // when the notebook came, #815): take it in command mode, so
       // Shift-Enter runs the first cell. A notebook opened from a control
-      // that keeps focus leaves it there.
+      // that keeps focus leaves it there, and so do the Apple apps
+      // (`chrome-native`), whose own sidebar keeps the keyboard.
       const active = document.activeElement;
-      if (!active || active === document.body) open.notebook.activate();
+      const native = document.documentElement.classList.contains('chrome-native');
+      if (!native && (!active || active === document.body)) open.notebook.activate();
     }
     const observer = new ResizeObserver(() => open.notebook.update());
     observer.observe(node);

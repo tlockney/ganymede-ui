@@ -102,11 +102,6 @@ describe('StartScreen', () => {
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
-  it('shows an error it is given', () => {
-    render(<StartScreen onTry={vi.fn()} onOpen={vi.fn()} onConnect={vi.fn()} error="It broke." />);
-    expect(screen.getByRole('alert')).toHaveTextContent('It broke.');
-  });
-
   it('does nothing when the picker is dismissed', async () => {
     const props = setup();
     input().dispatchEvent(new Event('change', { bubbles: true }));
