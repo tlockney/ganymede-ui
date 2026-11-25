@@ -310,7 +310,9 @@ time they run a notebook, as [links](#links) do, with "Always allow"
 kept per notebook and listed under Settings › General › Links. A run
 with parameters asks on its own. The question is a dialog on the Mac, so a
 Shortcut run by an automation waits for an answer the first time: run it
-once by hand and choose "Always allow" before automating it.
+once by hand and choose "Always allow" before automating it. If the
+notebook is changed outside the app after that (git, iCloud from another
+Mac), the next automated run asks again.
 
 ### Links
 
@@ -359,9 +361,11 @@ the caller whether a name is taken or a template exists.
 notebook's file is changed by anything but Ganymede's own server (git,
 Finder, another editor, a download, a sync), the answer is forgotten and
 the next run asks again; Settings › General › Links no longer lists it.
-What the server writes keeps it: saving in a window, a run saving its
-outputs, a room's autosave and an agent working through MCP. The same goes
-for Shortcuts actions, which share these answers.
+What the app's own server writes keeps it: saving in a window, a run
+saving its outputs, a room's autosave and an MCP agent connected to the
+app's server. A save from `ganymede serve`, `ganymede mcp`'s own server
+or JupyterLab counts as outside. The same goes for Shortcuts actions,
+which share these answers.
 
 > [!NOTE]
 > **Unreleased.** Available only from a build of `main` (HEAD), not in

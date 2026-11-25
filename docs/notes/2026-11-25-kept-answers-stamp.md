@@ -30,9 +30,9 @@ but the app's own server.
   alone, so `move` and `notebookMoved`, which the app calls after the server
   renamed the file, still find the old path's rows and carry their stamps. A
   different file made at a missing notebook's path has another inode and drops
-  them then. A dropped "deny" only means the next call asks again. The stores
+  them then. A dropped "deny" only means the next call asks again; a dropped "always" in a headless run means the call is denied. The stores
   are written only when a check changed something. Settings lists only live
-  answers: Links prunes on appear, Device reads through the same checks.
+  answers: Links prunes on appear and when the app becomes active, Device reads again at the same moments and through the same checks.
 - **The server's own writes keep the answers.** Ganymede v0.16.0
   (`GANYMEDE_REF`) has `ganymede_server_set_write_observer`, which reports
   every write the server makes of a file under its root (REST save, a room's
@@ -77,11 +77,25 @@ app asks again, which is the safe way to be wrong. Other things kept per
 notebook path (published widgets, notebook secrets) are not stamped; they
 are not kept answers about what the notebook may do.
 
-Two more limits, both failing safe (the next call asks again): iCloud
+Two more limits, both failing safe in the sense that no answer is wrongly
+kept: the next call asks again, and in a headless run (Shortcuts, the share
+sheet), which can't ask, a dropped "always" means the call is denied. iCloud
 evicting a file and downloading it again can give it a new inode, which
-forgets its answers; and the server reports a write only after it finishes,
+forgets its answers. And the server reports a write only after it finishes,
 after it has restamped its own database, so a check in that short window
-sees a stamp the log doesn't know yet. The second is a follow-up issue.
+sees a stamp the log doesn't know yet. The second is tlockney/ganymede#942.
+
+Only writes by the app's own server count as the app's: a window's save, a
+run, a room's autosave, an MCP agent connected to the app's server. A save
+from `ganymede serve`, `ganymede mcp`'s own server or JupyterLab is outside
+and forgets the answers.
+
+The shared rules live once in DeviceBridge: `FileStamp.verdict` (keep,
+restamp or drop: no file keeps, no stamp takes the file's, the same keeps,
+a different one is kept only when the log leads there) and `FileStamp.moved`
+(the stamp a row takes when the server wrote its file), used by
+`URLRunPermissions`, `PermissionLedger` and `FolderGrants`. `FileStamp.canonical`
+is also what `AppKernels.canonicalPath` calls.
 
 Tests: `FileStampTests` (the format against `stat`'s numbers, pre-epoch as 0,
 `canonical` through a link, same file, rewrite in place by size and by time,
@@ -98,10 +112,10 @@ defaults round trip; `KeptAnswers.serverWrote` moving all three stores; the
 stores defaulting to `ServerWriteLog.shared`); `FoldersTests` for a call failing `denied` after an
 outside change; `ServerHostTests` against the real server at `GANYMEDE_REF`
 (a PUT reports the canonical path and stamps equal to `FileStamp.of` before
-and after, and `KeptAnswers.watch` puts it in the shared log). Swift can't build in the container; CI's macos-app job is the
+and after, `KeptAnswers.watch` puts it in the shared log, and its main-actor hop moves a suite-backed link, ledger and folder row to the stamp after a PUT, which fails without the hop). The `KeptAnswers.watch(host)` call in `AppModel` is covered only by the by-hand check below: `AppModel` is a singleton with no tests. Swift can't build in the container; CI's macos-app job is the
 first compile.
 
-**By-hand check for #399** (on a Mac with a build of `main`):
+**By-hand check for #399** (posted on #399 as "Kept answers follow the file (#584)"; for a Mac with a build of `main`):
 
 1. Make a notebook that uses a ledger capability (a cell calling
    `device.location.current()`) and open it from a `ganymede://run` link or

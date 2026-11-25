@@ -350,11 +350,7 @@ final class AppKernels: NSObject {
     /// `url`'s path with every link resolved, as the server's root is.
     /// Not `resolvingSymlinksInPath`, which drops a leading `/private`.
     nonisolated static func canonicalPath(_ url: URL) -> String {
-        url.withUnsafeFileSystemRepresentation { path in
-            guard let path, let real = realpath(path, nil) else { return nil }
-            defer { free(real) }
-            return String(cString: real)
-        } ?? url.standardizedFileURL.path
+        FileStamp.canonical(url)
     }
 
     /// Once a kernel's notebook and owner are both known, the bridge

@@ -51,6 +51,31 @@ final class FileStampTests: XCTestCase {
         XCTAssertEqual(FileStamp.canonical(missing), URL(fileURLWithPath: missing).standardizedFileURL.path)
     }
 
+    func testTheVerdictOfACheck() {
+        let log = ServerWriteLog()
+        log.record(path: "/n/a.ipynb", before: "1:1:1", after: "2:2:2")
+        func verdict(_ was: String?, _ now: String?, log: ServerWriteLog? = nil) -> FileStamp.Verdict {
+            FileStamp.verdict(was: was, now: now, path: "/n/a.ipynb", log: log)
+        }
+        XCTAssertEqual(verdict("1:1:1", nil), .keep, "no file")
+        XCTAssertEqual(verdict(nil, nil), .keep, "no file and no stamp")
+        XCTAssertEqual(verdict(nil, "1:1:1"), .restamp("1:1:1"), "trust on first use")
+        XCTAssertEqual(verdict("1:1:1", "1:1:1"), .keep)
+        XCTAssertEqual(verdict("1:1:1", "2:2:2"), .drop, "no log")
+        XCTAssertEqual(verdict("1:1:1", "2:2:2", log: log), .restamp("2:2:2"), "the server wrote it")
+        XCTAssertEqual(verdict("1:1:1", "3:3:3", log: log), .drop, "not what the log says")
+    }
+
+    func testTheStampAServerWriteMovesAnAnswerTo() {
+        XCTAssertEqual(FileStamp.moved(was: "1:1:1", before: "1:1:1", after: "2:2:2"), "2:2:2")
+        XCTAssertEqual(FileStamp.moved(was: nil, before: "1:1:1", after: "2:2:2"), "2:2:2", "no stamp yet")
+        XCTAssertEqual(FileStamp.moved(was: nil, before: nil, after: "2:2:2"), "2:2:2")
+        XCTAssertNil(FileStamp.moved(was: "9:9:9", before: "1:1:1", after: "2:2:2"), "changed by something else first")
+        XCTAssertNil(FileStamp.moved(was: "1:1:1", before: nil, after: "2:2:2"), "the server made the file")
+        XCTAssertNil(FileStamp.moved(was: "1:1:1", before: "1:1:1", after: nil))
+        XCTAssertNil(FileStamp.moved(was: "2:2:2", before: "1:1:1", after: "2:2:2"), "already there")
+    }
+
     func testTheSameFileHasTheSameStamp() throws {
         let path = try write("{}", to: "a.ipynb")
         let stamp = try XCTUnwrap(FileStamp.of(path))

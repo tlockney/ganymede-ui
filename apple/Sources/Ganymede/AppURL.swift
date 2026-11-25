@@ -344,10 +344,11 @@ enum AppURLError: LocalizedError, Equatable {
 /// stamp (`FileStamp`) of its file as the app last saw it, and is forgotten
 /// when the file no longer matches: it was changed by something other than
 /// the app's server (git, Finder, another editor, a sync), and the next run
-/// asks again. The server's own writes (a window's save, a run saving its
-/// outputs, a room's autosave, an agent over MCP) keep it: the server
-/// reports each one (`KeptAnswers.watch`) and `serverWrote` moves the stamp
-/// along. A key with no stamp (kept before stamps, or while the file wasn't
+/// asks again. The writes of the app's own server (a window's save, a run
+/// saving its outputs, a room's autosave, an MCP agent connected to the
+/// app's server) keep it: the server reports each one (`KeptAnswers.watch`)
+/// and `serverWrote` moves the stamp along. A save from `ganymede serve`,
+/// `ganymede mcp`'s own server or JupyterLab is outside. A key with no stamp (kept before stamps, or while the file wasn't
 /// there) takes the file's stamp when it is next checked. A file that isn't
 /// there leaves the key alone, so a notebook that is moved back, or still
 /// being written, keeps its answer; a different file made at that path has
@@ -421,14 +422,12 @@ final class URLRunPermissions {
     /// key is for `path`, and nothing moves when `after` is nil (the server
     /// couldn't read the file again).
     func serverWrote(path: String, before: String?, after: String?) {
-        guard let after else { return }
         var changed = false
         for key in paths {
-            let was = stamps[key]
-            guard was == nil || was == before, was != after,
+            guard let moved = FileStamp.moved(was: stamps[key], before: before, after: after),
                   FileStamp.canonical(Self.parts(key).path) == path
             else { continue }
-            stamps[key] = after
+            stamps[key] = moved
             changed = true
         }
         if changed { save() }
@@ -450,20 +449,18 @@ final class URLRunPermissions {
     /// - no file: the key stays.
     private func holds(_ key: String) -> Bool {
         guard paths.contains(key) else { return false }
-        guard let now = stamp(Self.parts(key).path) else { return true }
-        guard let was = stamps[key] else {
+        let file = Self.parts(key).path
+        switch FileStamp.verdict(was: stamps[key], now: stamp(file), path: file, log: log) {
+        case .keep:
+            return true
+        case .restamp(let now):
             stamps[key] = now
             save()
             return true
+        case .drop:
+            revoke(key)
+            return false
         }
-        if was == now { return true }
-        if log?.leads(path: FileStamp.canonical(Self.parts(key).path), from: was, to: now) == true {
-            stamps[key] = now
-            save()
-            return true
-        }
-        revoke(key)
-        return false
     }
 
     private func save() {
@@ -506,12 +503,19 @@ enum KeptAnswers {
     /// of a kept answer that runs before the main-actor hop below can
     /// still tell the server's write from an outside change; then to the
     /// stores on the main actor.
-    static func watch(_ host: ServerHost) {
+    /// `serverWrote` is what the main actor runs for each report: the
+    /// app's stores by default, tests' own.
+    static func watch(
+        _ host: ServerHost,
+        serverWrote: @escaping @MainActor @Sendable (String, String?, String?) -> Void = { path, before, after in
+            KeptAnswers.serverWrote(path: path, before: before, after: after)
+        }
+    ) {
         host.setWriteObserver { path, before, after in
             ServerWriteLog.shared.record(path: path, before: before, after: after)
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
-                    KeptAnswers.serverWrote(path: path, before: before, after: after)
+                    serverWrote(path, before, after)
                 }
             }
         }

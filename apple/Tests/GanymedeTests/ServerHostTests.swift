@@ -315,6 +315,58 @@ final class ServerHostTests: XCTestCase {
         }
     }
 
+    /// The stores hear of the server's write through the main-actor hop in
+    /// `KeptAnswers.watch`, and their stamps move with the file's. The
+    /// stores have no log, so only the hop can move them. The main thread
+    /// must keep running for the hop, so this polls the run loop.
+    @MainActor
+    func testWatchMovesTheStoresStampsThroughTheMainActor() throws {
+        let notebook = dir.appendingPathComponent("Himalia.ipynb")
+        let text = #"{"cells": [], "metadata": {}, "nbformat": 4, "nbformat_minor": 5}"#
+        try text.write(to: notebook, atomically: true, encoding: .utf8)
+        let path = notebook.resolvingSymlinksInPath().path
+        let before = try XCTUnwrap(FileStamp.of(path))
+        let suite = "ServerHostTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let links = URLRunPermissions(defaults: defaults, log: nil)
+        links.allow(URL(fileURLWithPath: path), sendingTo: nil)
+        let ledgerStore = UserDefaultsLedgerStore(key: "ledger", defaults: defaults)
+        let ledger = PermissionLedger(store: ledgerStore, log: nil)
+        ledger.record(.always, notebook: path, capability: "location")
+        let folderStore = UserDefaultsFolderStore(key: "folders", defaults: defaults)
+        folderStore.save([FolderGrant(id: "F1", notebook: path, name: "Data", writable: false, bookmark: Data([1]), stamp: before)])
+        let folders = FolderGrants(store: folderStore, log: nil)
+        XCTAssertEqual(ledgerStore.load().map(\.stamp), [before], "stamped with the file as it is")
+
+        let host = try ServerHost(config: config(["root_dir": "/"]))
+        defer { host.stop() }
+        KeptAnswers.watch(host) { path, before, after in
+            KeptAnswers.serverWrote(
+                path: path, before: before, after: after, links: links, ledger: ledger, folders: folders)
+        }
+        let content = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(text.utf8)))
+        let body = String(decoding: try JSONSerialization.data(withJSONObject: [
+            "type": "notebook", "format": "json", "content": content,
+        ]), as: UTF8.self)
+        let (status, reply) = try request(host, "PUT", "/api/contents" + path, body)
+        XCTAssertTrue((200..<300).contains(status), reply)
+
+        let after = try XCTUnwrap(FileStamp.of(path))
+        XCTAssertNotEqual(after, before)
+        let moved = {
+            ledgerStore.load().map(\.stamp) == [after] && folderStore.load().map(\.stamp) == [after]
+                && (defaults.dictionary(forKey: URLRunPermissions.stampsKey) as? [String: String])?.values.sorted() == [after]
+        }
+        let deadline = Date().addingTimeInterval(20)
+        while Date() < deadline, !moved() {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        }
+        XCTAssertEqual(ledgerStore.load().map(\.stamp), [after], "the ledger")
+        XCTAssertEqual(folderStore.load().map(\.stamp), [after], "the folders")
+        XCTAssertEqual((defaults.dictionary(forKey: URLRunPermissions.stampsKey) as? [String: String])?.values.sorted(), [after], "the links")
+    }
+
     func testFailureThrowsTheServersMessage() {
         XCTAssertThrowsError(try ServerHost(config: config(["root_dir": "/no/such/dir"]))) { error in
             XCTAssertTrue(error.localizedDescription.contains("/no/such/dir"), "\(error)")

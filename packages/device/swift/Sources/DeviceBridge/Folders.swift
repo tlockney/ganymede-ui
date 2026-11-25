@@ -123,13 +123,11 @@ public final class FolderGrants {
     public var grants: [FolderGrant] {
         let rows = store.load()
         let checked = rows.compactMap { row -> FolderGrant? in
-            guard let now = stamp(row.notebook) else { return row }
-            guard let was = row.stamp else { return row.with(stamp: now) }
-            if was == now { return row }
-            if log?.leads(path: FileStamp.canonical(row.notebook), from: was, to: now) == true {
-                return row.with(stamp: now)
+            switch FileStamp.verdict(was: row.stamp, now: stamp(row.notebook), path: row.notebook, log: log) {
+            case .keep: return row
+            case .restamp(let now): return row.with(stamp: now)
+            case .drop: return nil
             }
-            return nil
         }
         if checked != rows { store.save(checked) }
         return checked
@@ -137,16 +135,15 @@ public final class FolderGrants {
 
     /// The server wrote the file at `path` (canonical), which had stamp
     /// `before` and now has `after`: the grants of that notebook move to
-    /// `after`, when they were for the file as it was or have no stamp
-    /// yet, as `PermissionLedger.serverWrote` does for answers.
+    /// `after` by `FileStamp.moved`, as `PermissionLedger.serverWrote` does
+    /// for answers.
     public func serverWrote(path: String, before: String?, after: String?) {
-        guard let after else { return }
         let rows = store.load()
         let moved = rows.map { row -> FolderGrant in
-            guard row.stamp == nil || row.stamp == before, row.stamp != after,
+            guard let stamp = FileStamp.moved(was: row.stamp, before: before, after: after),
                   FileStamp.canonical(row.notebook) == path
             else { return row }
-            return row.with(stamp: after)
+            return row.with(stamp: stamp)
         }
         if moved != rows { store.save(moved) }
     }

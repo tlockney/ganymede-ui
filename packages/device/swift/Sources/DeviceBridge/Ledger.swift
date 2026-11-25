@@ -103,9 +103,11 @@ public protocol LedgerPrompter: AnyObject {
 /// A kept answer is for the file it was given for. Each read compares the
 /// answer's stamp with the notebook's file now: when they differ, the file
 /// was changed by something other than the app's server, and the answer is
-/// forgotten, so the next call asks again. The server's own writes (a
-/// window's save, a run saving its outputs, a room's autosave, an agent
-/// over MCP) are reported to `serverWrote`, which moves the stamp along.
+/// forgotten, so the next call asks again. The writes of the app's own
+/// server (a window's save, a run saving its outputs, a room's autosave, an
+/// MCP agent connected to the app's server) are reported to `serverWrote`,
+/// which moves the stamp along. A save from `ganymede serve`, `ganymede
+/// mcp`'s own server or JupyterLab is outside.
 /// When the file isn't there (deleted, or in the middle of a rename) the
 /// answer stays as it is, so `move` can carry it to the new path; a
 /// different file made at that path later has another inode and forgets it
@@ -148,13 +150,11 @@ public final class PermissionLedger {
     private var kept: [LedgerGrant] {
         let rows = store.load()
         let checked = rows.compactMap { row -> LedgerGrant? in
-            guard let now = stamp(row.notebook) else { return row }
-            guard let was = row.stamp else { return row.with(stamp: now) }
-            if was == now { return row }
-            if log?.leads(path: FileStamp.canonical(row.notebook), from: was, to: now) == true {
-                return row.with(stamp: now)
+            switch FileStamp.verdict(was: row.stamp, now: stamp(row.notebook), path: row.notebook, log: log) {
+            case .keep: return row
+            case .restamp(let now): return row.with(stamp: now)
+            case .drop: return nil
             }
-            return nil
         }
         if checked != rows { store.save(checked) }
         return checked
@@ -162,20 +162,16 @@ public final class PermissionLedger {
 
     /// The server wrote the file at `path` (canonical), which had stamp
     /// `before` and now has `after`: the answers for that notebook move to
-    /// `after`, when they were for the file as it was (`before`) or have
-    /// no stamp yet. An answer for some other stamp stays, and is dropped
-    /// by the next read: the file was changed by something else first, and
-    /// the server's write doesn't make that one the app's. Nothing is
-    /// saved when no answer is for `path`, and nothing moves when `after`
-    /// is nil (the server couldn't read the file again).
+    /// `after` by `FileStamp.moved`. An answer for some other stamp stays,
+    /// and is dropped by the next read. Nothing is saved when no answer is
+    /// for `path`.
     public func serverWrote(path: String, before: String?, after: String?) {
-        guard let after else { return }
         let rows = store.load()
         let moved = rows.map { row -> LedgerGrant in
-            guard row.stamp == nil || row.stamp == before, row.stamp != after,
+            guard let stamp = FileStamp.moved(was: row.stamp, before: before, after: after),
                   FileStamp.canonical(row.notebook) == path
             else { return row }
-            return row.with(stamp: after)
+            return row.with(stamp: stamp)
         }
         if moved != rows { store.save(moved) }
     }
