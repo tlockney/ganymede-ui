@@ -1056,6 +1056,8 @@ struct KernelMenu: View {
             .disabled(page?.state.isBusy != true)
         Button("Restart") { page?.run("restart") }
             .disabled(page?.state.hasKernel != true)
+        Button("Restart & Run All") { page?.run("restart-run-all") }
+            .disabled(page?.state.editsCells != true)
         Button("Shut Down Other Kernels") { page?.run("shutdown-others") }
             .disabled(page?.state.otherSessions.isEmpty ?? true)
         Divider()

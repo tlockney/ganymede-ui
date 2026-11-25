@@ -597,11 +597,9 @@ struct ContentView: View {
     /// the window's place and the kernel location setting, not the page's
     /// own words; nil with no notebook open.
     private var headerStatus: HeaderStatus? {
-        let locations = model.kernelLocations
-        let remote = place.allows(.kernelLocation) && locations.selected != nil ? locations.title : nil
         let names = HeaderStatus.places(
-            machineName: machineName, isMachine: place.isMachine,
-            deviceName: Places.deviceName, kernelLocation: remote)
+            place: place, machineName: machineName, deviceName: Places.deviceName,
+            locations: model.kernelLocations, kernel: pageModel.state.kernel)
         return HeaderStatus.make(state: pageModel.state, savedOn: names.savedOn, runsOn: names.runsOn)
     }
 
@@ -811,11 +809,9 @@ struct ContentView: View {
     /// the window's place and the kernel location setting, not the page's
     /// own words; nil with no notebook open.
     private var headerStatus: HeaderStatus? {
-        let locations = model.kernelLocations
-        let remote = place.allows(.kernelLocation) && locations.selected != nil ? locations.title : nil
         let names = HeaderStatus.places(
-            machineName: machineName, isMachine: place.isMachine,
-            deviceName: Places.deviceName, kernelLocation: remote)
+            place: place, machineName: machineName, deviceName: Places.deviceName,
+            locations: model.kernelLocations, kernel: pageModel.state.kernel)
         return HeaderStatus.make(state: pageModel.state, savedOn: names.savedOn, runsOn: names.runsOn)
     }
 

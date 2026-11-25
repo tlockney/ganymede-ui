@@ -1380,6 +1380,7 @@ struct IPadCommands: Commands {
         CommandMenu("Kernel") {
             IPadPageButton("Interrupt", "interrupt", key: ".")
             IPadPageButton("Restart", "restart")
+            IPadPageButton("Restart & Run All", "restart-run-all") { $0.editsCells }
             IPadPageButton("Shut Down Other Kernels", "shutdown-others") { !$0.otherSessions.isEmpty }
         }
         // The iPadOS 26 menu bar's Help menu (#409).

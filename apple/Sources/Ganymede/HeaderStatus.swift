@@ -103,4 +103,20 @@ struct HeaderStatus: Equatable {
         }
         return (deviceName, kernelLocation ?? deviceName)
     }
+
+    /// The place words for a window: `place` and its machine's name, the
+    /// app's kernel location setting, and the notebook's kernel by name.
+    /// The location counts only where this device chooses it (not a
+    /// machine's window), and never for the in-app kernel, which runs in
+    /// this app whatever the setting (#812).
+    static func places(
+        place: Place, machineName: String?, deviceName: String,
+        locations: KernelLocations, kernel: String?
+    ) -> (savedOn: String, runsOn: String) {
+        let remote = place.allows(.kernelLocation) && locations.selected != nil
+            && kernel != AppKernels.inAppKernelName
+        return places(
+            machineName: machineName, isMachine: place.isMachine,
+            deviceName: deviceName, kernelLocation: remote ? locations.title : nil)
+    }
 }

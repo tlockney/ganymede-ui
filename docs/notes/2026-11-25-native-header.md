@@ -46,9 +46,15 @@ mockups) in the Mac, iPad and iPhone chrome.
   `@ToolbarContentBuilder` properties, chosen by two `if`s, so neither is a
   long conditional chain for the type checker. `RunMenu.swift` holds the
   run menu both platforms share.
+- **The in-app kernel.** It runs in the app whatever the kernel location
+  says: the app registers it with its own server in front of the
+  gateway's kernels. So with a remote chosen, the line says "Runs on This
+  iPad" for it (`AppKernels.inAppKernelName`), as the browser's
+  `pageKernel` does for its own kernel.
 - **New command.** `restart-run-all` (`PAGE_COMMANDS`, `App.tsx`) runs
   the controller's `restartAndRunAll`, which the browser's run menu
-  already used (#801).
+  already used (#801). It is also in the Mac and iPad Kernel menus, so
+  everything in the toolbar's menus is in the menu bar.
 
 Unsure, because there is no Swift toolchain here: `.labelStyle(.titleAndIcon)`
 on a Mac toolbar item may still draw an icon only, depending on the

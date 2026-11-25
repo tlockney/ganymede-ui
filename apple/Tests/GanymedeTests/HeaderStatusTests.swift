@@ -130,4 +130,25 @@ final class HeaderStatusTests: XCTestCase {
             XCTAssertNil(HeaderStatus.make(state: state, savedOn: "This Mac", runsOn: "This Mac"), path)
         }
     }
+
+    /// The kernel location counts for this device's windows, except for the
+    /// in-app kernel, which runs in the app whatever the setting; a
+    /// machine's window saves and runs on the machine (#812).
+    func testWindowPlacesFollowTheKernelLocation() {
+        let studio = Remote(name: "Studio Mac", serverURL: "http://studio:8888")
+        let remote = KernelLocations(remotes: [studio], selected: studio.id)
+        let here = KernelLocations(remotes: [studio], selected: nil)
+        func places(_ place: Place, _ locations: KernelLocations, _ kernel: String?) -> String {
+            let names = HeaderStatus.places(
+                place: place, machineName: "mini", deviceName: "This iPad",
+                locations: locations, kernel: kernel)
+            return "\(names.savedOn) / \(names.runsOn)"
+        }
+        XCTAssertEqual(places(.thisDevice, here, "python3"), "This iPad / This iPad")
+        XCTAssertEqual(places(.thisDevice, remote, "python3"), "This iPad / Studio Mac")
+        XCTAssertEqual(places(.thisDevice, remote, nil), "This iPad / Studio Mac")
+        XCTAssertEqual(places(.thisDevice, remote, AppKernels.inAppKernelName), "This iPad / This iPad")
+        XCTAssertEqual(places(.machine("m1"), remote, "python3"), "mini / mini")
+        XCTAssertEqual(AppKernels.inAppKernelName, "cdp-browser")
+    }
 }
