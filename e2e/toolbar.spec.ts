@@ -46,6 +46,20 @@ for (const width of [393, 507, 820, 1280]) {
     await expect(page.getByRole('button', { name: 'More', exact: true })).toBeVisible();
 
     await expect(statusLine(page)).toHaveAccessibleName(/^Saved in this browser · Runs here · /);
+    // What shows of the line: the phone's short form keeps where it runs;
+    // with room, nothing is clipped (the line's box allows for its margins).
+    const shown = await statusLine(page).evaluate(b => (b as HTMLElement).innerText);
+    if (width < 720) {
+      expect(shown).toContain('Runs here');
+      expect(shown).not.toContain('Python');
+    } else {
+      expect(shown).toMatch(/^Saved in this browser · Runs here · /);
+    }
+    if (width >= 1280) {
+      const text = statusLine(page).locator('.status-text');
+      const [scroll, client] = await text.evaluate(e => [e.scrollWidth, e.clientWidth]);
+      expect(scroll).toBeLessThanOrEqual(client!);
+    }
     await page.getByRole('button', { name: 'Share', exact: true }).click();
     await expect(page.getByRole('menuitem', { name: 'Download Notebook' })).toBeVisible();
     await page.keyboard.press('Escape');

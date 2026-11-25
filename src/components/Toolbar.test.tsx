@@ -176,7 +176,9 @@ describe('Toolbar', () => {
     expect(screen.getByRole('button', { name: 'Edited · Runs here · Python 3' })).toBeVisible();
     rerender(bar({ controller: controller({ dirty: true, locked: true }) }));
     expect(
-      screen.getByRole('button', { name: 'Locked: changed on disk · Runs here · Python 3' }),
+      screen.getByRole('button', {
+        name: 'Edited · Locked: changed on disk · Runs here · Python 3',
+      }),
     ).toBeVisible();
     // Not in the title any more.
     expect(screen.queryByText(/— /)).not.toBeInTheDocument();
@@ -201,12 +203,33 @@ describe('Toolbar', () => {
     expect(document.querySelector('.status-dot')).toHaveClass('s-idle');
   });
 
+  it('has a short form that keeps where it runs, for a phone, with a long host (#801)', () => {
+    render(
+      bar({
+        place: placeOf({
+          kind: 'ganymede',
+          url: 'https://a-rather-long-hostname.lab.example.com:8888',
+          token: '',
+        }),
+      }),
+    );
+    // The CSS shows one of the two by width; the name has the whole line.
+    expect(document.querySelector('.status-short')).toHaveTextContent(
+      'Saved · Runs on a-rather-long-hostname.lab.example.com:8888',
+    );
+    expect(document.querySelector('.status-full')).toHaveTextContent(
+      /^Saved on a-rather-long-hostname.* · Python 3$/,
+    );
+  });
+
   it('opens the file, the kernel version and the kernel picker from the status line', async () => {
     const c = controller({ kernelVersionLine: 'cdp-kernel 0.14.0 · node 24.11.0' });
     render(bar({ controller: c }));
     await userEvent.click(status());
     const menu = screen.getByRole('menu', { name: 'Notebook and Kernel' });
     expect(menu).toHaveTextContent('moons/Io.ipynb');
+    // The notes aren't items, so the menu describes itself with them.
+    expect(menu).toHaveAccessibleDescription('moons/Io.ipynb cdp-kernel 0.14.0 · node 24.11.0');
     expect(menu).toHaveTextContent('cdp-kernel 0.14.0 · node 24.11.0');
     const python = screen.getByRole('menuitemradio', { name: 'Python 3' });
     expect(python).toHaveAttribute('aria-checked', 'true');

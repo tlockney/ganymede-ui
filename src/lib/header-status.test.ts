@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { BackendConfig } from './backends';
-import { hostOf, placeOf, statusText, type StatusInput } from './header-status';
+import { hostOf, placeOf, shortStatusText, statusText, type StatusInput } from './header-status';
 
 const base = (config: BackendConfig, over: Partial<StatusInput> = {}): StatusInput => ({
   place: placeOf(config),
@@ -69,10 +69,39 @@ describe('statusText (#801)', () => {
     expect(statusText(base(BROWSER, { dirty: true }))).toBe('Edited · Runs here · TypeScript');
   });
 
-  it('says Locked when the file changed on disk, edited or not', () => {
-    const locked = 'Locked: changed on disk · Runs here · TypeScript';
-    expect(statusText(base(BROWSER, { locked: true }))).toBe(locked);
-    expect(statusText(base(BROWSER, { locked: true, dirty: true }))).toBe(locked);
+  it('says Locked when the file changed on disk, and Edited too when it was', () => {
+    expect(statusText(base(BROWSER, { locked: true }))).toBe(
+      'Locked: changed on disk · Runs here · TypeScript',
+    );
+    expect(statusText(base(BROWSER, { locked: true, dirty: true }))).toBe(
+      'Edited · Locked: changed on disk · Runs here · TypeScript',
+    );
+  });
+
+  describe('shortStatusText, the phone form', () => {
+    const LONG: BackendConfig = {
+      kind: 'ganymede',
+      url: 'https://a-rather-long-hostname.lab.example.com:8888',
+      token: '',
+    };
+    it('keeps the save state and where it runs, and drops the kernel', () => {
+      expect(shortStatusText(base(BROWSER))).toBe('Saved · Runs here');
+      expect(shortStatusText(base(LONG))).toBe(
+        'Saved · Runs on a-rather-long-hostname.lab.example.com:8888',
+      );
+      expect(shortStatusText(base(MACHINE, { status: 'busy' }))).toBe('Saved · Runs on Studio Mac');
+    });
+    it('says Edited and Locked', () => {
+      expect(shortStatusText(base(BROWSER, { dirty: true }))).toBe('Edited · Runs here');
+      expect(shortStatusText(base(BROWSER, { locked: true }))).toBe('Locked · Runs here');
+      expect(shortStatusText(base(BROWSER, { locked: true, dirty: true }))).toBe(
+        'Edited · Locked · Runs here',
+      );
+    });
+    it('leaves out where it runs when the page cannot tell', () => {
+      const both: BackendConfig = { ...LOCAL, kernels: 'both' };
+      expect(shortStatusText(base(both, { kernelName: undefined }))).toBe('Saved');
+    });
   });
 
   it('asks to choose a kernel that is not installed, and leaves out where it runs', () => {

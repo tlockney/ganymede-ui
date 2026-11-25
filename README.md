@@ -129,7 +129,7 @@ they are built.
 Open a notebook from the sidebar, which also lists running kernels. The
 toolbar runs, interrupts and restarts the kernel, switches kernels, trusts
 the notebook, downloads it, and saves (⌘S). Keyboard shortcuts follow
-JupyterLab's; press `H` in command mode (or the keyboard button) for the
+JupyterLab's; press `H` in command mode for the
 full list. Every shortcut can be rebound there, and changes stay in this
 browser. [docs/shortcuts.md](docs/shortcuts.md) lists the defaults.
 
@@ -158,11 +158,11 @@ Notebook, the export formats and Publish as Web Page…; "⋯" has View as
 Journal, Variables, Insert Code Cell and Insert Text Cell, Cell Type, Save,
 the Command Palette and Keyboard Shortcuts. Nothing moves with the width.
 
-`⇧⌘P` (`Ctrl+Shift+P`), or the toolbar's command button, opens a command
+`⇧⌘P` (`Ctrl+Shift+P`), or Command Palette… in the toolbar's ⋯ menu, opens a command
 palette: type to find any command, kernel or recent notebook, and press
 `↩` to run it.
 
-The toolbar's Variables button shows what the cells defined, beside the
+Show Variables in the toolbar's ⋯ menu shows what the cells defined, beside the
 notebook: name, type and a short value, read again after each run, with
 objects that expand a level at a time. It needs a kernel that speaks the
 Jupyter debugger protocol (cdp-kernel's Node and Deno kernels, ipykernel);

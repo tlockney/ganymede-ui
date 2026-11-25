@@ -80,8 +80,26 @@ export type StatusInput = {
 
 /** The save part: Saved in this browser, Saved on <host>, Edited, or Locked. */
 export function saveText({ place, dirty, locked }: StatusInput): string {
-  if (locked) return 'Locked: changed on disk';
+  if (locked) return dirty ? 'Edited · Locked: changed on disk' : 'Locked: changed on disk';
   return dirty ? 'Edited' : `Saved ${place.saved}`;
+}
+
+/**
+ * The phone's form: the save state as one word, then where it runs, with
+ * no kernel (the dot shows its state; the full line is the button's name
+ * and the menu has the kernel), so a long host doesn't push the runs part
+ * out of the two rows the line has.
+ */
+export function shortStatusText(input: StatusInput): string {
+  const save = input.locked
+    ? input.dirty
+      ? 'Edited · Locked'
+      : 'Locked'
+    : input.dirty
+      ? 'Edited'
+      : 'Saved';
+  const runs = input.place.runs(input.missingKernel ? undefined : input.kernelName);
+  return [save, runs && `Runs ${runs}`].filter(Boolean).join(' · ');
 }
 
 /** The kernel part: its name, or "<name> (not installed) · Choose kernel". */

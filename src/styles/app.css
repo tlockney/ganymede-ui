@@ -7,7 +7,7 @@
 
   --accent: #007aff;
   --accent-soft: rgba(0, 122, 255, 0.12);
-  /* Filled buttons: white text on it is 5.9:1 or better in both themes (#799). */
+  /* Filled buttons: white text on it is 6.1:1 in both themes (#799). */
   --primary: #1f5fbf;
   --primary-hover: #194f9f;
   --window-bg: #ffffff;
@@ -408,7 +408,8 @@ button {
   display: flex;
   align-items: center;
   gap: 5px;
-  max-width: 100%;
+  /* The -5px margins widen the box by 10px: the cap has to allow for them. */
+  max-width: calc(100% + 10px);
   min-width: 0;
   height: 18px;
   margin: 0 -5px;
@@ -438,6 +439,10 @@ button {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.status-short {
+  display: none;
 }
 
 .status-caret {
@@ -560,6 +565,13 @@ button {
     text-align: left;
     line-height: 1.15;
     font-size: 10.5px;
+  }
+  /* The short form: where it is saved and where it runs, not the kernel. */
+  .status-full {
+    display: none;
+  }
+  .status-short {
+    display: inline;
   }
   .status-text {
     display: -webkit-box;

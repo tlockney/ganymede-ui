@@ -1095,6 +1095,16 @@ describe('NotebookPane', () => {
       all.mockRestore();
     });
 
+    it('does nothing from the journal (#801)', async () => {
+      const { latest } = await journalWithOutput();
+      const session = fakes.sessions[0] as { changeKernel: ReturnType<typeof vi.fn> };
+      const all = vi.spyOn(NotebookActions, 'runAll').mockResolvedValue(true);
+      await act(() => latest()!.restartAndRunAll());
+      expect(session.changeKernel).not.toHaveBeenCalled();
+      expect(all).not.toHaveBeenCalled();
+      all.mockRestore();
+    });
+
     it('does not run the cells when the restart fails (#801)', async () => {
       const { latest, session } = await running();
       const restart = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));

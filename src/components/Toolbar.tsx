@@ -4,7 +4,7 @@ import type { CellType, NotebookController } from './NotebookPane';
 import { NotebookTitle } from './NotebookTitle';
 import { ContextMenu, type MenuItem } from './ContextMenu';
 import { pickerLabel } from '../lib/kernel-device';
-import { type Place, statusText } from '../lib/header-status';
+import { type Place, shortStatusText, statusText } from '../lib/header-status';
 import {
   ChevronDownIcon,
   MoreIcon,
@@ -109,17 +109,16 @@ export function Toolbar({
     onClick: () => toggle(name),
   });
 
-  const status = c
-    ? statusText({
-        place,
-        dirty: c.dirty,
-        locked: c.locked,
-        kernelName: c.kernelName,
-        kernelDisplay,
-        missingKernel: c.missingKernel,
-        status: c.status,
-      })
-    : undefined;
+  const statusInput = c && {
+    place,
+    dirty: c.dirty,
+    locked: c.locked,
+    kernelName: c.kernelName,
+    kernelDisplay,
+    missingKernel: c.missingKernel,
+    status: c.status,
+  };
+  const status = statusInput && statusText(statusInput);
 
   const menus: Record<MenuName, { label: string; items: MenuItem[] }> = {
     status: {
@@ -240,7 +239,10 @@ export function Toolbar({
               {...popup('status')}
             >
               <span className={`status-dot s-${c.status}`} />
-              <span className="status-text">{status}</span>
+              <span className="status-text">
+                <span className="status-full">{status}</span>
+                <span className="status-short">{shortStatusText(statusInput!)}</span>
+              </span>
               <ChevronDownIcon className="status-caret" />
             </button>
           )}

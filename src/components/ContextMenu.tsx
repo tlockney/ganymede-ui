@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 
 export type MenuItem =
   | {
@@ -34,6 +34,7 @@ const MARGIN = 8;
  */
 export function ContextMenu({ at, label, items, onClose }: Props) {
   const menu = useRef<HTMLDivElement>(null);
+  const noteId = useId();
   const [place, setPlace] = useState<{ top: number; left: number }>();
 
   useLayoutEffect(() => {
@@ -109,6 +110,14 @@ export function ContextMenu({ at, label, items, onClose }: Props) {
         className={`popup-menu ${checks ? 'with-checks' : ''}`}
         role="menu"
         aria-label={label}
+        // Notes aren't items; the menu's description has them, for a screen reader.
+        aria-describedby={
+          items
+            .flatMap((item, i) =>
+              typeof item === 'object' && 'note' in item ? [`${noteId}-${i}`] : [],
+            )
+            .join(' ') || undefined
+        }
         style={place ?? { visibility: 'hidden' }}
         onPointerDown={e => e.stopPropagation()}
       >
@@ -116,7 +125,7 @@ export function ContextMenu({ at, label, items, onClose }: Props) {
           item === 'separator' ? (
             <div key={i} className="popup-menu-separator" role="separator" />
           ) : 'note' in item ? (
-            <div key={i} className="popup-menu-note" role="presentation">
+            <div key={i} id={`${noteId}-${i}`} className="popup-menu-note">
               {item.note}
             </div>
           ) : 'heading' in item ? (
