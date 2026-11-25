@@ -333,7 +333,9 @@ they do in JupyterLab: `output-frames.ts` swaps their renderers for ones
 that put each output in an iframe with `sandbox` minus `allow-same-origin`
 (an opaque origin: no cookies, storage or app DOM), a meta CSP, and the content
 in `srcdoc`. The frame's one message out is its height, accepted only
-from that frame's window. Untrusted HTML still renders in the page
+from that frame's window. A frame grows to fit its content up to
+20,000 px; past that it stops growing and the content scrolls inside
+it. Untrusted HTML still renders in the page
 through JupyterLab's sanitizer; Markdown outputs are always sanitized,
 since trusted Markdown would run its HTML's scripts in the page; SVG
 renders as an `<img>`, untrusted too (JupyterLab refuses untrusted SVG,
