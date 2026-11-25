@@ -23,8 +23,15 @@
   --jp-cell-editor-border-color: transparent;
   --jp-cell-editor-active-background: var(--cell-bg);
   --jp-cell-editor-active-border-color: transparent;
-  --jp-cell-inprompt-font-color: var(--text-3);
-  --jp-cell-outprompt-font-color: var(--text-3);
+  /* Execution prompts in --text-2, at full opacity on every cell, so
+   * they read at 4.5:1 or more in both themes; JupyterLab's light theme
+   * draws inactive ones grey at half opacity (#799,
+   * src/styles/contrast.test.ts). */
+  --jp-cell-inprompt-font-color: var(--text-2);
+  --jp-cell-outprompt-font-color: var(--text-2);
+  --jp-cell-prompt-not-active-font-color: var(--text-2);
+  --jp-cell-prompt-opacity: 1;
+  --jp-cell-prompt-not-active-opacity: 1;
   --jp-notebook-multiselected-color: var(--accent-soft);
   --jp-rendermime-error-background: rgba(255, 59, 48, 0.08);
   --jp-content-font-color1: var(--text);
@@ -50,9 +57,6 @@
   .notebook-page {
     --cell-bg: #2a2a2d;
     --cell-border: rgba(255, 255, 255, 0.06);
-    /* --text-3 is too faint for prompts on the dark background. */
-    --jp-cell-inprompt-font-color: var(--text-2);
-    --jp-cell-outprompt-font-color: var(--text-2);
   }
 }
 
@@ -109,7 +113,6 @@
 .notebook-page .jp-OutputPrompt {
   font: 11px/1 var(--font-mono);
   padding-top: 11px;
-  opacity: 0.8;
 }
 
 /* Code cells as rounded cards. */
@@ -319,7 +322,9 @@
   gap: 8px;
   /* Under the cell's content, clear of the gutter. */
   margin: 2px -44px -4px 0;
-  opacity: 0.55;
+  /* Quiet until the cell is active, but its text still reads at 4.5:1
+   * (#799, src/styles/contrast.test.ts). */
+  opacity: 0.85;
   transition: opacity 0.15s ease;
 }
 
@@ -335,7 +340,7 @@
   border: 0.5px solid var(--cell-border);
   border-radius: 18px;
   background: var(--window-bg);
-  color: var(--accent);
+  color: var(--accent-text);
   font: 500 13px var(--font-ui);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
