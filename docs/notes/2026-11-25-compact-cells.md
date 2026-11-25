@@ -44,3 +44,6 @@ rows of + Code / + Text buttons took width and height from the code.
 Not done: "Source changed since run" (waits on ganymede#943); a link to the
 failing line; an Expand for table outputs (their 32em box still scrolls);
 a drag handle under 720px.
+
+By-hand checks are on #273 (iPad, iPhone). Follow-up: #822, an expanded
+view for long source and tables.
