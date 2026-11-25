@@ -461,6 +461,31 @@ final class LedgerTests: XCTestCase {
         XCTAssertEqual(prompter.asked.count, 2, "an answer for the file as it is now is kept")
     }
 
+    /// The server autosaves while the prompt is up (Run All: a room saves
+    /// outputs a second after they change): its write is in the log, so it
+    /// is not a swap, and the answer is kept with the file's stamp now.
+    func testAnAnswerIsKeptWhenTheServerWritesTheFileWhileThePromptIsUp() {
+        let files = Files()
+        let log = ServerWriteLog()
+        files.stamps["/notes/walk.ipynb"] = "5:1:7"
+        let bridge = DeviceBridge(clipboard: nil, ledger: makeLedger(files, log: log), appVersion: "")
+        bridge.ledgerPrompter = prompter
+        bridge.setNotebook("/notes/walk.ipynb", for: 1)
+        bridge.addPermission("location", system)
+        bridge.addMethod("location.current", permission: "location") { _, reply in
+            reply(.success("here"))
+            return nil
+        }
+        let replies = Replies()
+        call(bridge, id: 1, into: replies)
+        files.stamps["/notes/walk.ipynb"] = "6:2:8"
+        log.record(path: "/notes/walk.ipynb", before: "5:1:7", after: "6:2:8")
+        prompter.answer(.always)
+        XCTAssertEqual(store.saved.map(\.stamp), ["6:2:8"], "kept, for the file as it is now")
+        call(bridge, id: 2, into: replies)
+        XCTAssertEqual(prompter.asked.count, 1, "not asked again")
+    }
+
     func testAnUnchangedFileKeepsItsAnswers() {
         let files = Files()
         files.stamps["/n.ipynb"] = "1:10:100"

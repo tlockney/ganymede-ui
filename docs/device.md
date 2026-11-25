@@ -411,7 +411,7 @@ notebook was given (`device.folders`) are forgotten the same way. What
 the app's own server writes keeps them: saving in a window, a run saving
 its outputs, a room's autosave and an MCP agent connected to the app's
 server. A save from `ganymede serve`, `ganymede mcp`'s own server or
-JupyterLab counts as outside.
+JupyterLab on its own server counts as outside.
 
 > [!NOTE]
 > **Unreleased.** Available only from a build of `main` (HEAD), not in

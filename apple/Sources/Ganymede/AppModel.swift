@@ -277,8 +277,6 @@ final class AppModel {
             switch result {
             case .success(let host):
                 server = host
-                // A new server has no observer: set it again each start.
-                KeptAnswers.watch(host)
                 // Before the page loads, so its first kernel list has it.
                 AppKernels.shared.notebookRoot = serverRootFolder
                 do {
@@ -325,10 +323,17 @@ final class AppModel {
     private nonisolated static func launch(
         _ config: [String: any Sendable], _ saved: Int
     ) throws -> ServerHost {
-        if saved > 0, let host = try? ServerHost(config: config.merging(["port": saved]) { $1 }) {
-            return host
+        let host: ServerHost
+        if saved > 0, let onSaved = try? ServerHost(config: config.merging(["port": saved]) { $1 }) {
+            host = onSaved
+        } else {
+            host = try ServerHost(config: config.merging(["port": 0]) { $1 })
         }
-        return try ServerHost(config: config.merging(["port": 0]) { $1 })
+        // A new server has no observer, so each start sets it, here and
+        // not after the host is handed back: nothing has opened the page
+        // yet, so no write can slip by unreported.
+        KeptAnswers.watch(host)
+        return host
     }
 
     /// Runs `work` after whatever start is already queued.

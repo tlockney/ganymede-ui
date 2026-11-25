@@ -348,7 +348,7 @@ enum AppURLError: LocalizedError, Equatable {
 /// saving its outputs, a room's autosave, an MCP agent connected to the
 /// app's server) keep it: the server reports each one (`KeptAnswers.watch`)
 /// and `serverWrote` moves the stamp along. A save from `ganymede serve`,
-/// `ganymede mcp`'s own server or JupyterLab is outside. A key with no
+/// `ganymede mcp`'s own server or JupyterLab on its own server is outside. A key with no
 /// stamp (kept before stamps, or while the file wasn't there) takes the
 /// file's stamp when it is next checked. A file that isn't there leaves the
 /// key alone, so a notebook that is moved back, or still being written,
@@ -400,13 +400,15 @@ final class URLRunPermissions {
     /// Keeps the answer for the file as it was when the person was asked
     /// (`seen`, from `currentStamp` before the dialog). When the file was
     /// swapped while the dialog was up, nothing is kept: this run goes
-    /// ahead once, and the next asks again. Whether it was kept.
+    /// ahead once, and the next asks again. The server's own writes meanwhile
+    /// (`FileStamp.verdict`) don't count as a swap. Whether it was kept.
     @discardableResult
     func allowUnlessChanged(
         _ url: URL, sendingTo destination: String?, withParameters: Bool = false, since seen: String?
     ) -> Bool {
-        guard currentStamp(url) == seen else { return false }
-        allow(url, sendingTo: destination, withParameters: withParameters, stamp: seen)
+        let now = currentStamp(url)
+        guard FileStamp.verdict(was: seen, now: now, path: Self.filePath(url), log: log) != .drop else { return false }
+        allow(url, sendingTo: destination, withParameters: withParameters, stamp: now)
         return true
     }
 

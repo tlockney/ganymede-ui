@@ -202,13 +202,16 @@ final class KernelHost: NSObject {
             // answered: the prompt already up or waiting covers it.
             let key = OpenAsk(notebook: notebook, capability: capability)
             guard openAsks.insert(key).inserted else { continue }
+            // The file as the person is asked about it: an answer is kept
+            // only if it is still that file when they answer (#584).
+            let seen = device.ledger.currentStamp(ofNotebook: notebook)
             prompter.askAtOpen(capability, notebook: notebook) { [weak self] answer in
                 self?.openAsks.remove(key)
                 guard let self, let answer, answer != .once,
                       // Answered meanwhile, by a call's prompt.
                       self.device.ledger.answer(notebook: notebook, capability: capability) == nil
                 else { return }
-                self.device.ledger.record(answer, notebook: notebook, capability: capability)
+                self.device.ledger.record(answer, notebook: notebook, capability: capability, unlessChangedSince: seen)
             }
         }
     }

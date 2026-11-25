@@ -107,7 +107,7 @@ public protocol LedgerPrompter: AnyObject {
 /// server (a window's save, a run saving its outputs, a room's autosave, an
 /// MCP agent connected to the app's server) are reported to `serverWrote`,
 /// which moves the stamp along. A save from `ganymede serve`, `ganymede
-/// mcp`'s own server or JupyterLab is outside.
+/// mcp`'s own server or JupyterLab on its own server is outside.
 /// When the file isn't there (deleted, or in the middle of a rename) the
 /// answer stays as it is, so `move` can carry it to the new path; a
 /// different file made at that path later has another inode and forgets it
@@ -203,9 +203,11 @@ public final class PermissionLedger {
     /// As `record`, unless the notebook's file is no longer the one the
     /// person was asked about (`seen`, read before the prompt was shown):
     /// it was swapped while the prompt was up, so the answer covers this
-    /// call only and is not kept.
+    /// call only and is not kept. The check is `FileStamp.verdict`'s, so the
+    /// server's own writes meanwhile (a room's autosave, a run) don't count
+    /// as a swap.
     public func record(_ answer: LedgerAnswer, notebook: String, capability: String, unlessChangedSince seen: String?) {
-        guard stamp(notebook) == seen else { return }
+        guard FileStamp.verdict(was: seen, now: stamp(notebook), path: notebook, log: log) != .drop else { return }
         record(answer, notebook: notebook, capability: capability)
     }
 

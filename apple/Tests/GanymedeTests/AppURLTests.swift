@@ -595,6 +595,51 @@ final class AppURLTests: XCTestCase {
         XCTAssertFalse(permissions.allows(a, sendingTo: nil))
     }
 
+    @MainActor
+    func testAlwaysAllowIsKeptWhenTheServerWritesTheFileWhileTheDialogIsUp() throws {
+        let suite = "AppURLTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let files = Files()
+        let log = ServerWriteLog()
+        let a = URL(fileURLWithPath: "/tmp/a.ipynb")
+        files.stamps[pathKey(a)] = "10:1:100"
+        let permissions = makePermissions(files, defaults, log: log)
+        let seen = permissions.currentStamp(a)
+        // A room's autosave while the dialog is up.
+        files.stamps[pathKey(a)] = "12:2:101"
+        log.record(path: serverPath(a), before: "10:1:100", after: "12:2:101")
+        XCTAssertTrue(permissions.allowUnlessChanged(a, sendingTo: nil, since: seen))
+        XCTAssertEqual(defaults.dictionary(forKey: URLRunPermissions.stampsKey) as? [String: String], [pathKey(a): "12:2:101"], "stamped as the file is now")
+        XCTAssertTrue(permissions.allows(a, sendingTo: nil))
+    }
+
+    /// The default `KeptAnswers.serverWrote` reaches the app's real stores.
+    /// A throwaway notebook path, and its rows removed afterwards, leave the
+    /// test host's stores as they were.
+    @MainActor
+    func testTheDefaultServerWroteMovesTheRowsInTheAppsOwnStores() throws {
+        let a = URL(fileURLWithPath: "/tmp/\(UUID().uuidString).ipynb")
+        let notebook = pathKey(a)
+        let ledgerStore: LedgerStore = AppGroup.ledgerStore() ?? UserDefaultsLedgerStore()
+        let folderStore = UserDefaultsFolderStore()
+        let links = URLRunPermissions.shared
+        defer {
+            ledgerStore.save(ledgerStore.load().filter { $0.notebook != notebook })
+            folderStore.save(folderStore.load().filter { $0.notebook != notebook })
+            for key in links.paths where URLRunPermissions.parts(key).path == notebook { links.revoke(key) }
+        }
+        links.allow(a, sendingTo: nil, stamp: "A")
+        ledgerStore.save(ledgerStore.load() + [LedgerGrant(notebook: notebook, capability: "location", answer: .always, stamp: "A")])
+        folderStore.save(folderStore.load() + [FolderGrant(id: UUID().uuidString, notebook: notebook, name: "Data", writable: false, bookmark: Data([1]), stamp: "A")])
+
+        KeptAnswers.serverWrote(path: serverPath(a), before: "A", after: "B")
+        let key = try XCTUnwrap(links.paths.first { URLRunPermissions.parts($0).path == notebook })
+        XCTAssertEqual((UserDefaults.standard.dictionary(forKey: URLRunPermissions.stampsKey) as? [String: String])?[key], "B", "the links")
+        XCTAssertEqual(ledgerStore.load().filter { $0.notebook == notebook }.map(\.stamp), ["B"], "the ledger")
+        XCTAssertEqual(folderStore.load().filter { $0.notebook == notebook }.map(\.stamp), ["B"], "the folders")
+    }
+
     /// `KeptAnswers.serverWrote` is what the app's observer calls: the links,
     /// the ledger and the folder grants all move to the file's new stamp.
     @MainActor

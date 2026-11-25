@@ -91,8 +91,8 @@ sees a stamp the log doesn't know yet. The second is tlockney/ganymede#942.
 
 Only writes by the app's own server count as the app's: a window's save, a
 run, a room's autosave, an MCP agent connected to the app's server. A save
-from `ganymede serve`, `ganymede mcp`'s own server or JupyterLab is outside
-and forgets the answers.
+from `ganymede serve`, `ganymede mcp`'s own server or JupyterLab on its own
+server is outside and forgets the answers.
 
 The shared rules live once in DeviceBridge: `FileStamp.verdict` (keep,
 restamp or drop: no file keeps, no stamp takes the file's, the same keeps,
@@ -109,8 +109,12 @@ it isn't, the run goes ahead once and nothing is kept, so the next run asks.
 The ledger does the same: `DeviceBridge.checkLedger` reads the stamp before
 it shows the prompt and records the answer with
 `record(_:notebook:capability:unlessChangedSince:)`, so "Always" or "Deny"
-for a notebook swapped meanwhile covers that call only. When several calls
-join one prompt, the first call's stamp is the one used. Folder picks have
+for a notebook swapped meanwhile covers that call only; so does
+`KernelHost.askAtOpen` for the open-time prompt ("Don't Allow Any
+Shortcuts" records its deny as before). Both use `FileStamp.verdict`, not a
+plain comparison: the server's own writes while the prompt is up (a room's
+autosave after Run All) are in the log and don't count as a swap. When
+several calls join one prompt, the first call's stamp is the one used. Folder picks have
 no prompt of this kind: the picker is the consent and the grant is stamped
 when it is kept.
 
@@ -131,12 +135,14 @@ outside change; `ServerHostTests` against the real server at `GANYMEDE_REF`
 (a PUT reports the canonical path and stamps equal to `FileStamp.of` before
 and after; `KeptAnswers.watch` puts it in the shared log; and its main-actor
 hop moves a suite-backed link, ledger and folder row to the stamp after a
-PUT, which fails without the hop). The `KeptAnswers.watch(host)` call in `AppModel` is covered only by the
-by-hand check below: `AppModel` is a singleton with no tests. So is the
-default closure of `watch`, which wires a report to the app's real stores
-(`URLRunPermissions.shared`, `AppGroup.ledgerStore()`, `FolderGrants()`).
-Swift can't build in the container; CI's macos-app job is the first
-compile.
+PUT, which fails without the hop); `AppURLTests` runs the default
+`KeptAnswers.serverWrote(path:before:after:)` against the real stores
+(`URLRunPermissions.shared`, `AppGroup.ledgerStore()`, `FolderGrants()`'s
+default) with a throwaway notebook path, and removes its rows afterwards.
+`AppModel` is a singleton with no tests, so the `KeptAnswers.watch(host)` call
+in `AppModel.launch` (set before the server is handed back, so no write slips
+past) is covered only by the by-hand check below. Swift can't build in the
+container; CI's macos-app job is the first compile.
 
 **By-hand check for #399** (posted on #399 as "Kept answers follow the file (#584)"; for a Mac with a build of `main`):
 
@@ -148,14 +154,16 @@ compile.
 2. Run the link again, and edit and save the notebook in its window, and run a
    Shortcuts action that saves outputs. None asks again, and Settings still
    lists all three.
-3. Quit the app. In a terminal, `git checkout` another version of the
+3. Quit and reopen the app. Run the link and the cell again: neither asks,
+   and Settings still lists all three.
+4. Quit the app. In a terminal, `git checkout` another version of the
    notebook (or `mv` a copy over it). Open the app: the link asks again;
    the capability asks again; `device.folders.list()` is empty; Settings
    lists none of the three for that notebook.
-4. Repeat step 3 with the app open and the notebook open in a window.
-5. Answer "Don't allow" for a capability, change the notebook outside the app:
+5. Repeat step 4 with the app open and the notebook open in a window.
+6. Answer "Don't allow" for a capability, change the notebook outside the app:
    the capability asks again (a forgotten deny only costs that question).
-6. Rename the notebook in the sidebar: its capability answers and folders
+7. Rename the notebook in the sidebar: its capability answers and folders
    follow, none asks. A link's "Always allow" names the old path and
    doesn't follow a rename, so that link asks again.
-7. Touch the file with `chmod` or a Finder tag only: nothing is forgotten.
+8. Touch the file with `chmod` or a Finder tag only: nothing is forgotten.
