@@ -128,9 +128,9 @@ export function ConnectSheet({
         onSubmit={submit}
       >
         <h2 id={headingId}>Where should kernels run?</h2>
-        {/* Fixed while the sheet asks about unsaved edits: Switch Without
-            Saving goes where Connect was asked to. */}
-        <fieldset className="connect-fields" disabled={unsaved !== undefined}>
+        {/* Fixed while the notebook saves and while the sheet asks about
+            unsaved edits: the switch goes where Connect was asked to. */}
+        <fieldset className="connect-fields" disabled={unsaved !== undefined || saving}>
           <div
             className="choice-grid"
             role="radiogroup"

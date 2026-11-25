@@ -167,6 +167,9 @@ describe('ConnectSheet', () => {
   it('says it is saving, with no submit, while the notebook saves (#792)', async () => {
     const { onConnect } = renderSheet({ saving: true });
     expect(screen.getByRole('button', { name: 'Saving…' })).toBeDisabled();
+    // The switch goes where Connect was asked to, so the pick is fixed.
+    expect(server()).toBeDisabled();
+    expect(radio(/This browser/)).toBeDisabled();
     fireEvent.submit(server().form!);
     expect(onConnect).not.toHaveBeenCalled();
   });
