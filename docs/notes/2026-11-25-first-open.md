@@ -27,10 +27,10 @@ Decisions:
   rather than in the connection's success path. The effect runs once per
   backend whatever a StrictMode rerun or a cancelled connection did, and
   its cleanup drops the notebook it would open if the backend is replaced
-  during the copy. A failed connection drops the pending start. The sheet
-  can't pick a backend while Try connects (its button is disabled), and
-  when it does later, it drops the start too, so no later connection copies
-  a sample nobody asked for. A reload restores the saved browser backend
+  during the copy. The sheet can't pick a backend while Try connects (its
+  button is disabled); every pick it makes, including a retry after a
+  failed connection, drops the pending start, so no later connection
+  copies a sample nobody asked for. A reload restores the saved browser backend
   and the `?open=` notebook and copies nothing.
 - A failure of the copy shows in the pane notice. A file that isn't a
   notebook (the name, invalid JSON, JSON without `nbformat`) is refused on

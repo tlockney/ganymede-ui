@@ -193,8 +193,8 @@ export function App() {
   /**
    * What the start screen asked for, to run once its browser backend
    * connects: the sample, or a notebook file the person picked. Dropped when
-   * the connection fails or the sheet picks a backend, so a later connection
-   * never runs a start nobody is waiting for.
+   * the sheet picks a backend (a retry after a failed connection too), so a
+   * later connection never runs a start nobody is waiting for.
    */
   const pendingStart = useRef<PendingStart | undefined>(undefined);
   // With nothing to connect to yet, first check whether this page's server
