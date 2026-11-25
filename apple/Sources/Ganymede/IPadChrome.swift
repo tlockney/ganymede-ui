@@ -822,15 +822,21 @@ private struct IPadFolderContents: View {
     let generation: Int
     @State private var entries: [FolderEntry] = []
     @State private var error: String?
+    /// This folder's expanded subfolders, by file URL.
+    @State private var expanded: Set<URL> = []
 
     var body: some View {
         Group {
             ForEach(entries) { entry in
                 if entry.isDirectory {
-                    DisclosureGroup {
+                    let isExpanded = Binding(
+                        get: { expanded.contains(entry.url) },
+                        set: { if $0 { expanded.insert(entry.url) } else { expanded.remove(entry.url) } }
+                    )
+                    DisclosureGroup(isExpanded: isExpanded) {
                         IPadFolderContents(folder: entry.url, source: source, actions: actions, generation: generation)
                     } label: {
-                        Label(entry.name, systemImage: "folder")
+                        FolderRowLabel(name: entry.name, isExpanded: isExpanded)
                             .contextMenu { menu(for: entry) }
                     }
                 } else {

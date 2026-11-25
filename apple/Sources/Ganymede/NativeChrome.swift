@@ -245,10 +245,11 @@ private struct FolderContents: View {
         Group {
             ForEach(entries) { entry in
                 if entry.isDirectory {
-                    DisclosureGroup(isExpanded: actions.isExpanded(entry.url)) {
+                    let isExpanded = actions.isExpanded(entry.url)
+                    DisclosureGroup(isExpanded: isExpanded) {
                         FolderContents(folder: entry.url, source: source, actions: actions, generation: generation)
                     } label: {
-                        Label(entry.name, systemImage: "folder")
+                        FolderRowLabel(name: entry.name, isExpanded: isExpanded)
                             .contextMenu { menu(for: entry) }
                     }
                 } else {

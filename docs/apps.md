@@ -67,10 +67,16 @@ On first launch the app asks once whether to send crash reports
 The sidebar has six tabs (⌘1 to ⌘6). Each window keeps its sidebar
 shown or hidden, its tab and its expanded folders across launches.
 
-- **Files** lists the window's folder as a tree. Right-click an item to
+- **Files** lists the window's folder as a tree. Click a folder's name
+  to expand or collapse it. Right-click an item to
   open it in a new tab, show it in the Finder, make a notebook or folder
   there, or move it to the Trash. A dot marks notebooks whose kernel is
   running.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release, where only a folder's arrow expands it.
+
 - **Search** finds file and folder names under the window's folder and,
   with "Search notebook contents" ticked, the text of its notebooks,
   showing the matching line.
@@ -631,11 +637,17 @@ keys are kept in the keychain too.
   connected machine, and the iPhone's list a Journals section when there
   are journals ([Connected machines](#connected-machines)).
 
-- Files lists the notebook folder as a tree; long-press an item to
+- Files lists the notebook folder as a tree; tap a folder to expand or
+  collapse it, and long-press an item to
   rename, duplicate or delete it, or make a notebook or folder in it. A
   dot marks notebooks whose kernel is running. Search finds files by name
   in the folder and below it (and, switched on, in what notebooks say).
   In Running, swipe or long-press a kernel to shut it down.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release, where only a folder's chevron expands it.
+
 - The navigation bar runs cells and interrupts the kernel, and its ⋯ menu
   inserts cells, sets the cell type, runs with parameters, clears all
   outputs, restarts or
