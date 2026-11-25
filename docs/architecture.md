@@ -102,11 +102,29 @@ comes back to both. New notebooks go in the sidebar's folder. Picking
 another backend in the connect sheet drops both; retrying the same server
 there (say with a corrected token) keeps them. The page title is the open notebook's name.
 
-Switching backends disposes the old `ServiceManager`. A server's kernels
-keep running, as they do when a notebook closes, and show under Running
-when the app connects to that server again. Kernels in the page have
-nowhere to come back to, so the in-page manager shuts them down first,
-which terminates their Workers.
+Before the connect sheet switches backends, it saves the open notebook
+(#792): it connects only once the save went through, and says "Saving…"
+meanwhile. A save that fails (the pane says why), or that the server
+doesn't answer within `SERVER_TIMEOUT_MS` (the sheet says so), stops the
+switch, and the sheet, its fields fixed, offers Keep Editing, Download a
+Copy (the controller's `download`) and Switch Without Saving (its
+`discard`, so the pane's teardown doesn't save). Cancel during the save
+drops the switch.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, as is the wait for the last saves below. The
+> latest release switches at once and disposes the old services then.
+
+Switching backends disposes the old `ServiceManager`, once the last
+saves of the panes that closed on it (`pendingHandoffs` in
+`src/lib/rename.ts`) are done, or after `SERVER_TIMEOUT_MS`: they save
+through its contents manager. An effect on `backend` does it, after the
+commit that shows the new one, so those panes have handed their saves
+off by then. A server's kernels keep running, as they do when a notebook
+closes, and show under Running when the app connects to that server
+again. Kernels in the page have nowhere to come back to, so the in-page
+manager shuts them down first, which terminates their Workers.
 
 ## In-page server and kernels
 
@@ -280,23 +298,26 @@ as a deleted file does.
 Trust: the server doesn't put `trusted` marks in the room; it decides
 trust when it saves. So on open the pane reads the file through the
 contents API, as the server marks it, and trusts each code cell it marks
-trusted, by id (`trustFromFile`). It sets that trust in this page only
-(`trustHere`): JupyterLab's own way writes into the shared document and
-would mark the notebook edited for everyone. Outputs another client
-writes into a cell this page has (an agent's run through the server, or
-a change on disk the server merged) take that cell's trust away here
-(`watchRemoteOutputs`); a cell another client inserts keeps its shared
-`metadata.trusted` mark, described below. While some outputs are untrusted, the pane reads
-the file again two seconds after the room's saves settle, since the
-server trusts outputs from its own runs, and drops a read that outputs
-changed during. The other way, a room does share trust:
-JupyterLab's cell model writes `metadata.trusted` into the shared cell
-when a cell is trusted (this page ran it, or Trust Notebook), and every
-client of the room reads it there. So a cell trusted in one window is
-trusted in the others, even one holding an unsigned file's outputs the
-server wouldn't trust. The server ignores the mark when it signs the
-file. A new notebook's room has no cells, so the pane adds an empty code
-cell, as `fromJSON` does for a file.
+trusted, by id, when the cell's outputs in the room are the ones the
+file holds (`trustFromFile`, compared by `sameOutputs` with lines joined
+and key order ignored): the file can be behind the room, and its trust
+is for its own outputs, not whatever the cell shows now. It sets that
+trust in this page only (`trustHere`): JupyterLab's own way writes into
+the shared document and would mark the notebook edited for everyone.
+Outputs another client writes into a cell this page has (an agent's run
+through the server, or a change on disk the server merged) take that
+cell's trust away here (`watchRemoteOutputs`); a cell another client
+inserts keeps its shared `metadata.trusted` mark, described below. While
+some outputs are untrusted, the pane reads the file again two seconds
+after the room's saves settle, since the server trusts outputs from its
+own runs, and drops a read that outputs changed during. The other way, a
+room does share trust: JupyterLab's cell model writes `metadata.trusted`
+into the shared cell when a cell is trusted (this page ran it, or Trust
+Notebook), and every client of the room reads it there. So a cell
+trusted in one window is trusted in the others, even one holding an
+unsigned file's outputs the server wouldn't trust. The server ignores
+the mark when it signs the file. A new notebook's room has no cells, so
+the pane adds an empty code cell, as `fromJSON` does for a file.
 
 Inside JupyterLab, the editor, renderers and commands come from plugins.
 `jupyterlab.ts` builds them once and shares them across notebooks: the
