@@ -19,6 +19,7 @@ import { KeyboardBar } from './KeyboardBar';
 import { JournalView } from './JournalView';
 import { recentsKey } from '../lib/recents';
 import {
+  SLIVER_PX,
   chooseView,
   chosenView,
   firstVisibleJournalCell,
@@ -283,7 +284,7 @@ function visibleNotebookCell(notebook: Notebook): number | undefined {
     const w = notebook.widgets[i];
     if (!w?.node.isConnected) return false;
     const r = w.node.getBoundingClientRect();
-    return r.height > 0 && r.bottom > view.top && r.top < view.bottom;
+    return r.height > 0 && r.bottom > view.top + SLIVER_PX && r.top < view.bottom - SLIVER_PX;
   };
   const active = notebook.activeCellIndex;
   if (active >= 0 && shown(active)) return active;

@@ -522,6 +522,15 @@ describe('the reading position', () => {
     });
   });
 
+  it('skips a sub-pixel sliver of the cell above the one at the top', () => {
+    const boxes = [
+      { id: 'a', top: -226.4, bottom: 1.6 },
+      { id: 'b', top: 1.6, bottom: 400 },
+    ];
+    expect(readingPosition(0, boxes)).toEqual({ cell: 'b', offset: 0, cells: 2 });
+    expect(firstVisibleIndex(0, boxes)).toBe(1);
+  });
+
   it('is none for a cell without an id, or when every cell is above', () => {
     expect(readingPosition(0, [{ top: -5, bottom: 50 }])).toBeUndefined();
     expect(readingPosition(100, [{ id: 'a', top: 0, bottom: 50 }])).toBeUndefined();

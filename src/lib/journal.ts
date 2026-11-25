@@ -275,6 +275,13 @@ export function followsLate(opening: Opening['reason'], touched: boolean): boole
   return (opening === 'start' || opening === 'saved') && !touched;
 }
 
+/**
+ * A cell showing less than this much at the top doesn't count as the one
+ * being read: a cell scrolled to the top can leave a sub-pixel sliver of
+ * the one above it when text heights are fractional (#816).
+ */
+export const SLIVER_PX = 2;
+
 /** One cell's box, as the scroller sees it. */
 export type CellBox = { id?: string; top: number; bottom: number };
 
@@ -286,7 +293,7 @@ export function readingPosition(
   scrollerTop: number,
   boxes: readonly CellBox[],
 ): ReadingPosition | undefined {
-  const first = boxes.find(b => b.bottom > scrollerTop);
+  const first = boxes.find(b => b.bottom > scrollerTop + SLIVER_PX);
   if (!first?.id) return undefined;
   return {
     cell: first.id,
@@ -295,13 +302,13 @@ export function readingPosition(
   };
 }
 
-/** The index of the first box whose bottom is below `top` (the last one when all are above). */
+/** The index of the first box showing more than a sliver below `top` (the last one when all are above). */
 export function firstVisibleIndex(
   top: number,
   boxes: readonly { bottom: number }[],
 ): number | undefined {
   if (boxes.length === 0) return undefined;
-  const i = boxes.findIndex(b => b.bottom > top);
+  const i = boxes.findIndex(b => b.bottom > top + SLIVER_PX);
   return i < 0 ? boxes.length - 1 : i;
 }
 
