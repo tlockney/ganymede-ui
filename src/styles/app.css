@@ -2623,7 +2623,9 @@ button {
   text-align: center;
   font-size: 12px;
   font-weight: 600;
-  color: #fff;
+  /* Dark text in both themes: white on the orange reads at about 2:1,
+   * this at 7.6:1 or more (#802, src/styles/contrast.test.ts). */
+  color: #1d1d1f;
   background: var(--orange);
 }
 

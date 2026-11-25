@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 /*
  * Text contrast computed from the stylesheets themselves (#799): white on
  * the filled accent, the accent as text (links, insert and text buttons),
- * and execution prompts, in light and dark, each at WCAG AA's 4.5:1 for
+ * execution prompts, and text on the orange fill (#802), in light and dark, each at WCAG AA's 4.5:1 for
  * text. A later change to a token,
  * a color or an opacity in these rules fails here.
  */
@@ -260,6 +260,29 @@ describe('text contrast (#799)', () => {
     });
   }
 
+  // Text on the orange fill: the machine banner (#802), and any later
+  // rule that sets a text color over var(--orange).
+  const onOrange = [...app, ...jupyter].filter(
+    r => fillOf(r) === 'var(--orange)' && r.decls.has('color'),
+  );
+
+  it('finds the text on an orange fill, the machine banner among it', () => {
+    expect(onOrange.map(r => r.selector)).toContain('.machine-banner');
+  });
+
+  for (const theme of themes) {
+    it(`text on the orange fill reads at ${AA}:1 in ${theme} (#802)`, () => {
+      const vars = variables(theme);
+      for (const r of onOrange) {
+        const bg = color(resolve(fillOf(r)!, vars));
+        expect(bg[3], r.selector).toBe(1);
+        const text = color(resolve(r.decls.get('color')!, vars));
+        const ratio = contrast(over(text, bg), bg);
+        expect(ratio, `${r.selector} ${ratio.toFixed(2)}`).toBeGreaterThanOrEqual(AA);
+      }
+    });
+  }
+
   it('fails the colors the issue measured', () => {
     // The checks above can fail: the old values, through the same math.
     const white = color('#fff');
@@ -272,5 +295,8 @@ describe('text contrast (#799)', () => {
     expect(contrast(over(color('rgba(60, 60, 67, 0.72)'), soft), soft)).toBeLessThan(AA);
     const dark = color('#1e1e20');
     expect(contrast(over(color('#0a84ff'), dark, 0.55), dark)).toBeLessThan(AA);
+    // #802: white on the orange, light and dark.
+    expect(contrast(white, color('#ff9500'))).toBeLessThan(AA);
+    expect(contrast(white, color('#ff9f0a'))).toBeLessThan(AA);
   });
 });
