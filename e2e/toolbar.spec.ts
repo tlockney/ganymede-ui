@@ -4,12 +4,11 @@
 // line says where the notebook is saved and runs.
 import { expect, type Page, test } from '@playwright/test';
 import { TOKEN } from './env';
-import { statusLine, waitForReady } from './helpers';
+import { statusLine, useThisBrowser, waitForReady } from './helpers';
 
 async function newBrowserNotebook(page: Page) {
   await page.goto('/');
-  await page.getByRole('radio', { name: /This browser/ }).click();
-  await page.getByRole('button', { name: 'Connect', exact: true }).click();
+  await useThisBrowser(page);
   await expect(page.getByRole('button', { name: /This browser/ })).toBeAttached({
     timeout: 60_000,
   });

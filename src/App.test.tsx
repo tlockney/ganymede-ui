@@ -7,7 +7,14 @@ import { ServerConnection } from '@jupyterlab/services';
 import type { Backend, BackendConfig } from './lib/backends';
 import { entry, fakeBackend, fakeServices } from './test/fakes';
 import { debugKernel } from './test/debug-kernel';
-import { chooseView, chosenView, forgetChosenViews } from './lib/journal';
+import {
+  chooseView,
+  chosenView,
+  forgetChosenViews,
+  forgetPositions,
+  readPosition,
+  savePosition,
+} from './lib/journal';
 import { recentsKey } from './lib/recents';
 import { loadConsoles, saveConsole } from './lib/console-recents';
 import { handOff } from './lib/rename';
@@ -135,6 +142,7 @@ vi.mock('./components/NotebookPane', async () => {
 
 const { App } = await import('./App');
 const { resetOnboardingForTests } = await import('./lib/onboarding');
+const { resetStorageNoticeForTests } = await import('./lib/storage-notice');
 
 beforeEach(() => {
   mocks.controller = undefined;
@@ -142,6 +150,7 @@ beforeEach(() => {
   mocks.signedInHere.mockReset().mockResolvedValue(false);
   localStorage.clear();
   resetOnboardingForTests();
+  resetStorageNoticeForTests();
   sessionStorage.clear();
   history.replaceState(null, '', '/');
   document.title = 'Ganymede';
@@ -153,11 +162,31 @@ beforeEach(() => {
 });
 
 describe('App', () => {
-  it('asks where kernels run on first start', async () => {
+  it('shows the start screen, not the sheet, on first start (#815)', async () => {
     render(<App />);
+    expect(await screen.findByRole('button', { name: 'Try a Notebook' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Open a Notebook…' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Connect to a Server…' })).toBeInTheDocument();
+    expect(screen.queryByText('Where should kernels run?')).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(mocks.connect).not.toHaveBeenCalled();
+  });
+
+  it('opens the sheet from Connect to a Server…, and Cancel goes back to the start screen', async () => {
+    render(<App />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Connect to a Server…' }));
     expect(await screen.findByText('Where should kernels run?')).toBeInTheDocument();
-    // Nothing to go back to yet.
-    expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByText('Where should kernels run?')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Try a Notebook' })).toBeInTheDocument();
+    // Escape too, and the focus goes back to the button that opened it.
+    const connect = screen.getByRole('button', { name: 'Connect to a Server…' });
+    connect.focus();
+    await userEvent.keyboard('{Enter}');
+    expect(await screen.findByText('Where should kernels run?')).toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByText('Where should kernels run?')).not.toBeInTheDocument();
+    expect(connect).toHaveFocus();
     expect(mocks.connect).not.toHaveBeenCalled();
   });
 
@@ -311,6 +340,7 @@ describe('App', () => {
     });
     const runAll = vi.fn(async () => {});
     const clearOutputs = vi.fn();
+    const restartAndRunAll = vi.fn(async () => {});
     const exportAs = vi.fn(async () => {});
     const changeCellType = vi.fn();
     const command = vi.fn((id: string) => id === 'move-up');
@@ -330,6 +360,7 @@ describe('App', () => {
       save: vi.fn(async () => true),
       runAll,
       clearOutputs,
+      restartAndRunAll,
       exportAs,
       changeCellType,
       command,
@@ -337,6 +368,7 @@ describe('App', () => {
       kernelVersionLine: 'cdp-kernel 0.14.0 · node 24.11.0',
       cellType: 'code',
       journal: true,
+      locked: true,
     };
     const fake = fakeServices({
       '': [
@@ -365,6 +397,8 @@ describe('App', () => {
         cellType: 'code',
         // Which view shows, for the app's View as Journal (#724).
         journal: true,
+        // Saving locked by a change on disk, for the status line (#812).
+        locked: true,
         kernels: [
           { name: 'python3', displayName: 'Python 3', device: false },
           { name: 'cdp-browser', displayName: 'TypeScript (in app)', device: true },
@@ -393,6 +427,9 @@ describe('App', () => {
     expect(runAll).toHaveBeenCalled();
     expect(await run('clear-outputs')).toBe(true);
     expect(clearOutputs).toHaveBeenCalledOnce();
+    // The app's Restart & Run All (#812).
+    expect(await run('restart-run-all')).toBe(true);
+    expect(restartAndRunAll).toHaveBeenCalledOnce();
     expect(await run('export', 'markdown')).toBe(true);
     expect(exportAs).toHaveBeenCalledWith('markdown');
     expect(await run('export', 'pdf')).toBe(false);
@@ -869,9 +906,14 @@ describe('App', () => {
     const sheet = await screen.findByRole('dialog', { name: /with Parameters/ });
     const move = { from: 'Io.ipynb', to: 'moons/Europa.ipynb' };
     chooseView(recentsKey(backend.config), 'Io.ipynb', false);
+    const place = { cell: 'c1', offset: 4, cells: 3 };
+    savePosition(recentsKey(backend.config), 'Io.ipynb', place);
     expect(await run('file-moved', JSON.stringify(move))).toBe(true);
     expect(chosenView(recentsKey(backend.config), 'moons/Europa.ipynb')).toBe(false);
+    expect(readPosition(recentsKey(backend.config), 'moons/Europa.ipynb')).toEqual(place);
+    expect(readPosition(recentsKey(backend.config), 'Io.ipynb')).toBeUndefined();
     forgetChosenViews();
+    forgetPositions();
     // The app sends the two as separate tasks: a render can land between.
     await act(() => new Promise(r => setTimeout(r, 100)));
     expect(await run('open', 'moons/Europa.ipynb')).toBe(true);
@@ -1812,7 +1854,12 @@ describe('App', () => {
     const server = recentsKey(backend.config);
     chooseView(server, 'work/Orbits.ipynb', false);
     chooseView('another server', 'work/Orbits.ipynb', true);
+    const place = { cell: 'c1', offset: 4, cells: 3 };
+    savePosition(server, 'work/Orbits.ipynb', place);
     act(() => mocks.onRenamed!('work/Orbits.ipynb', 'work/Kepler.ipynb'));
+    expect(readPosition(server, 'work/Kepler.ipynb')).toEqual(place);
+    expect(readPosition(server, 'work/Orbits.ipynb')).toBeUndefined();
+    forgetPositions();
     expect(chosenView(server, 'work/Orbits.ipynb')).toBeUndefined();
     expect(chosenView(server, 'work/Kepler.ipynb')).toBe(false);
     // Only this server's choices move.
@@ -1856,6 +1903,7 @@ describe('App', () => {
     mocks.connect.mockResolvedValue(fakeBackend(fake.services, { kind: 'browser' }));
     render(<App />);
 
+    await userEvent.click(await screen.findByRole('button', { name: 'Connect to a Server…' }));
     expect(await screen.findByText('Where should kernels run?')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('radio', { name: /This browser/ }));
     await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
@@ -1905,9 +1953,15 @@ describe('App', () => {
   it('shows a failed connection in the sheet', async () => {
     mocks.connect.mockRejectedValue(new Error('The server refused the token.'));
     render(<App />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Connect to a Server…' }));
     await userEvent.click(await screen.findByRole('button', { name: 'Connect' }));
     expect(await screen.findByText('The server refused the token.')).toBeInTheDocument();
     expect(localStorage.getItem('ganymede-ui:backend')).toBeNull();
+    // Cancel goes back to the start screen, which isn't "Connecting…".
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByText('The server refused the token.')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Try a Notebook' })).toBeInTheDocument();
+    expect(screen.queryByText('Connecting…')).not.toBeInTheDocument();
   });
 
   it('creates a notebook with the default kernel and opens it', async () => {
@@ -2158,5 +2212,335 @@ describe('App', () => {
     ).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Place: m4mini/ })).toBeNull();
     expect(screen.queryByRole('menuitemradio')).toBeNull();
+  });
+});
+
+describe('App start screen (#815)', () => {
+  const browser: BackendConfig = { kind: 'browser' };
+  const tryNotebook = async () =>
+    userEvent.click(await screen.findByRole('button', { name: 'Try a Notebook' }));
+  const saved = (fake: ReturnType<typeof fakeServices>) =>
+    fake.contents.save.mock.calls.map(([path]) => path);
+  /** Runs the palette command that matches `query`. */
+  async function openPalette(query: string) {
+    fireEvent.keyDown(window, {
+      key: 'P',
+      code: 'KeyP',
+      keyCode: 80,
+      ctrlKey: true,
+      shiftKey: true,
+    });
+    await screen.findByRole('dialog', { name: 'Command palette' });
+    await userEvent.keyboard(`${query}{Enter}`);
+  }
+  beforeEach(() => {
+    // Not what an earlier test left queued.
+    mocks.connect.mockReset();
+  });
+  /** A connection the test settles by hand. */
+  function deferred() {
+    let resolve!: (b: Backend) => void;
+    const promise = new Promise<Backend>(r => (resolve = r));
+    return { promise, resolve };
+  }
+
+  it('Try a Notebook connects the browser backend, copies the sample and opens it', async () => {
+    const fake = fakeServices({ '': [] });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services, browser));
+    render(<App />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Try a Notebook' }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('pane')).toHaveTextContent('Ganymede Tour.ipynb'),
+    );
+    expect(mocks.connect).toHaveBeenCalledWith(browser);
+    expect(saved(fake)).toEqual(['Ganymede Tour.ipynb']);
+    // The first cell is the one that runs.
+    const nb = fake.contents.save.mock.calls[0][1] as { content: { cells: { source: string }[] } };
+    expect(nb.content.cells[0].source).toMatch(/Shift-Enter/);
+    // Remembered, so a reload comes back to the browser backend.
+    expect(JSON.parse(localStorage.getItem('ganymede-ui:backend')!)).toEqual(browser);
+    expect(screen.queryByText('Where should kernels run?')).not.toBeInTheDocument();
+  });
+
+  it('copies the sample once under StrictMode, whose first connection is cancelled', async () => {
+    const fake = fakeServices({ '': [] });
+    mocks.connect.mockImplementation(async () => fakeBackend(fake.services, browser));
+    render(
+      <StrictMode>
+        <App />
+      </StrictMode>,
+    );
+    await tryNotebook();
+    await waitFor(() => expect(screen.getByTestId('pane')).toBeInTheDocument());
+    expect(saved(fake)).toEqual(['Ganymede Tour.ipynb']);
+  });
+
+  it('keeps the start when the sheet is opened and cancelled while Try connects', async () => {
+    const fake = fakeServices({ '': [] });
+    const trying = deferred();
+    mocks.connect.mockReturnValueOnce(trying.promise);
+    render(<App />);
+    await tryNotebook();
+    // The palette can open the sheet meanwhile; it can't pick another backend.
+    await openPalette('Connect to');
+    const sheet = await screen.findByRole('dialog', { name: 'Where should kernels run?' });
+    expect(within(sheet).getByRole('button', { name: 'Connecting…' })).toBeDisabled();
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Cancel' }));
+    expect(mocks.connect).toHaveBeenCalledTimes(1);
+    trying.resolve(fakeBackend(fake.services, browser));
+    await waitFor(() =>
+      expect(screen.getByTestId('pane')).toHaveTextContent('Ganymede Tour.ipynb'),
+    );
+    expect(saved(fake)).toEqual(['Ganymede Tour.ipynb']);
+  });
+
+  it('does not open the sample in a backend that replaced the one it was copied to', async () => {
+    // The browser backend is replaced (the sheet, from the palette) while
+    // the copy runs: the notebook isn't opened in the new one.
+    const fake = fakeServices({ '': [] });
+    let finish!: () => void;
+    fake.contents.save.mockImplementation(
+      path =>
+        new Promise(resolve => (finish = () => resolve(entry({ name: path, type: 'notebook' })))),
+    );
+    const other = fakeServices({ '': [{ name: 'Io.ipynb', type: 'notebook' }] });
+    Object.assign(fake.services, { dispose: vi.fn() });
+    mocks.connect
+      .mockResolvedValueOnce(fakeBackend(fake.services, browser))
+      .mockResolvedValue(fakeBackend(other.services));
+    render(<App />);
+    await tryNotebook();
+    await waitFor(() => expect(fake.contents.save).toHaveBeenCalled());
+    await openPalette('Connect to');
+    const sheet = await screen.findByRole('dialog', { name: 'Where should kernels run?' });
+    await userEvent.click(within(sheet).getByRole('radio', { name: /Ganymede server/ }));
+    await userEvent.click(within(sheet).getByRole('button', { name: 'Connect' }));
+    await screen.findByText('Io');
+    finish();
+    await act(async () => {});
+    expect(screen.queryByTestId('pane')).not.toBeInTheDocument();
+  });
+
+  it('shows a failed browser connection in the sheet, and a retry from it starts nothing', async () => {
+    const fake = fakeServices({ '': [] });
+    mocks.connect
+      .mockRejectedValueOnce(new Error('IndexedDB is off.'))
+      .mockResolvedValue(fakeBackend(fake.services, browser));
+    render(<App />);
+    await tryNotebook();
+    expect(await screen.findByText('IndexedDB is off.')).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Where should kernels run?' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Connect' }));
+    await screen.findByText('This browser');
+    // The sample isn't copied by a later connection nobody asked it of.
+    expect(saved(fake)).toEqual([]);
+    expect(screen.queryByTestId('pane')).not.toBeInTheDocument();
+  });
+
+  it('Cancel after a failed Try goes back to the start screen, and Try works again', async () => {
+    const fake = fakeServices({ '': [] });
+    mocks.connect
+      .mockRejectedValueOnce(new Error('IndexedDB is off.'))
+      .mockResolvedValue(fakeBackend(fake.services, browser));
+    render(<App />);
+    await tryNotebook();
+    await userEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
+    await tryNotebook();
+    await waitFor(() =>
+      expect(screen.getByTestId('pane')).toHaveTextContent('Ganymede Tour.ipynb'),
+    );
+    expect(saved(fake)).toEqual(['Ganymede Tour.ipynb']);
+  });
+
+  it('says so when the sample can’t be copied', async () => {
+    const fake = fakeServices({ '': [] });
+    fake.contents.save.mockRejectedValue(new Error('Storage is full.'));
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services, browser));
+    render(<App />);
+    await tryNotebook();
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Couldn’t start with the sample notebook: Storage is full.');
+    expect(screen.queryByTestId('pane')).not.toBeInTheDocument();
+    // Still usable: the connected empty state.
+    expect(screen.getAllByRole('button', { name: /New Notebook/ }).length).toBeGreaterThan(0);
+  });
+
+  it('Open a Notebook… saves the file in the browser and opens it', async () => {
+    const fake = fakeServices({ '': [] });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services, browser));
+    render(<App />);
+    const file = new File([JSON.stringify({ nbformat: 4, cells: [] })], 'Mine.ipynb');
+    await userEvent.upload(await screen.findByLabelText('Notebook file'), file);
+    await waitFor(() => expect(screen.getByTestId('pane')).toHaveTextContent('Mine.ipynb'));
+    expect(mocks.connect).toHaveBeenCalledWith(browser);
+    expect(saved(fake)).toEqual(['Mine.ipynb']);
+  });
+
+  it('Open a Notebook… with something else says so and connects nothing', async () => {
+    render(<App />);
+    const input = await screen.findByLabelText('Notebook file');
+    await userEvent.upload(input, new File(['{"hello": 1}'], 'Mine.ipynb'));
+    expect(await screen.findByRole('alert')).toHaveTextContent('no nbformat');
+    await userEvent.upload(input, new File(['hello'], 'notes.txt'), { applyAccept: false });
+    expect(await screen.findByRole('alert')).toHaveTextContent('notes.txt');
+    expect(mocks.connect).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: 'Try a Notebook' })).toBeInTheDocument();
+  });
+
+  it('Open a Notebook… says so when the file can’t be saved', async () => {
+    const fake = fakeServices({ '': [] });
+    fake.contents.save.mockRejectedValue(new Error('Storage is full.'));
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services, browser));
+    render(<App />);
+    const file = new File([JSON.stringify({ nbformat: 4, cells: [] })], 'Mine.ipynb');
+    await userEvent.upload(await screen.findByLabelText('Notebook file'), file);
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('Mine.ipynb');
+    expect(alert).toHaveTextContent('Storage is full.');
+    expect(screen.queryByTestId('pane')).not.toBeInTheDocument();
+  });
+
+  for (const how of ['Try', 'Open'] as const) {
+    it(`${how} drops the launch file and console the link asked for`, async () => {
+      // A link with no saved connection: its file and console are the
+      // first backend's, not the browser's the start screen connects.
+      history.replaceState(null, '', '/?open=Io.ipynb&console=duckdb&dir=data');
+      const fake = fakeServices({ '': [] });
+      let finish!: () => void;
+      fake.contents.save.mockImplementation(
+        path =>
+          new Promise(resolve => (finish = () => resolve(entry({ name: path, type: 'notebook' })))),
+      );
+      mocks.connect.mockResolvedValue(fakeBackend(fake.services, browser));
+      render(<App />);
+      if (how === 'Try') {
+        await tryNotebook();
+      } else {
+        const file = new File([JSON.stringify({ nbformat: 4, cells: [] })], 'Mine.ipynb');
+        await userEvent.upload(await screen.findByLabelText('Notebook file'), file);
+      }
+      await waitFor(() => expect(fake.contents.save).toHaveBeenCalled());
+      // Connected, the copy still running: neither the link's file nor its console.
+      expect(screen.queryByTestId('pane')).not.toBeInTheDocument();
+      expect(screen.queryByTestId('duck-console')).not.toBeInTheDocument();
+      finish();
+      const name = how === 'Try' ? 'Ganymede Tour.ipynb' : 'Mine.ipynb';
+      await waitFor(() => expect(screen.getByTestId('pane')).toHaveTextContent(name));
+    });
+  }
+
+  it('hides the notice until the open notebook’s own controller is in', async () => {
+    // Between opening another notebook and its pane handing over its
+    // controller, Download a Copy would download the previous one.
+    const download = vi.fn();
+    mocks.controller = { dirty: false, save: async () => true, download };
+    const fake = fakeServices({
+      '': [
+        { name: 'Io.ipynb', type: 'notebook' },
+        { name: 'Europa.ipynb', type: 'notebook' },
+      ],
+    });
+    localStorage.setItem('ganymede-ui:backend', JSON.stringify(browser));
+    history.replaceState(null, '', '/?open=Io.ipynb');
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services, browser));
+    render(<App />);
+    await screen.findByRole('note');
+    // The next pane never reports a controller.
+    mocks.controller = undefined;
+    await userEvent.click(await screen.findByText('Europa'));
+    await waitFor(() => expect(screen.getByTestId('pane')).toHaveTextContent('Europa.ipynb'));
+    expect(screen.queryByRole('note')).not.toBeInTheDocument();
+  });
+
+  it('shows where browser work is kept above a notebook, and Download a Copy downloads it', async () => {
+    const download = vi.fn();
+    mocks.controller = { dirty: false, save: async () => true, download };
+    const fake = fakeServices({ '': [] });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services, browser));
+    render(<App />);
+    await tryNotebook();
+    const note = await screen.findByRole('note');
+    expect(note).toHaveTextContent('Saved in this browser. Download a copy to keep it elsewhere.');
+    await userEvent.click(within(note).getByRole('button', { name: 'Download a Copy' }));
+    expect(download).toHaveBeenCalledOnce();
+    await userEvent.click(within(note).getByRole('button', { name: 'Dismiss' }));
+    expect(screen.queryByRole('note')).not.toBeInTheDocument();
+    expect(localStorage.getItem('ganymede-ui:storage-notice')).toBe('dismissed');
+  });
+
+  it('shows no storage notice for a server, in the apps, or for a data file', async () => {
+    mocks.controller = { dirty: false, save: async () => true, download: vi.fn() };
+    const fake = fakeServices({ '': [] });
+    history.replaceState(null, '', '/?token=abc&open=Io.ipynb');
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    const server = render(<App />);
+    await screen.findByTestId('pane');
+    expect(screen.queryByRole('note')).not.toBeInTheDocument();
+    server.unmount();
+
+    // The Mac app, on its own server: browser kind is never used there, but
+    // the page must not draw its note even if it were.
+    history.replaceState(null, '', '/?kernels=page&chrome=native&open=Io.ipynb');
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services, browser));
+    render(<App />);
+    await screen.findByTestId('pane');
+    expect(screen.queryByRole('note')).not.toBeInTheDocument();
+  });
+
+  it('keeps the notice off a data file in the browser backend', async () => {
+    mocks.controller = { dirty: false, save: async () => true, download: vi.fn() };
+    const fake = fakeServices({ '': [] });
+    localStorage.setItem('ganymede-ui:backend', JSON.stringify(browser));
+    history.replaceState(null, '', '/?open=data.csv');
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services, browser));
+    render(<App />);
+    await screen.findByTestId('data-pane');
+    expect(screen.queryByRole('note')).not.toBeInTheDocument();
+  });
+
+  it('a reload after Try restores the browser backend and copies no second sample', async () => {
+    const fake = fakeServices({ '': [{ name: 'Ganymede Tour.ipynb', type: 'notebook' }] });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services, browser));
+    localStorage.setItem('ganymede-ui:backend', JSON.stringify(browser));
+    history.replaceState(null, '', '/?open=Ganymede%20Tour.ipynb');
+    render(<App />);
+    await waitFor(() =>
+      expect(screen.getByTestId('pane')).toHaveTextContent('Ganymede Tour.ipynb'),
+    );
+    expect(mocks.connect).toHaveBeenCalledWith(browser);
+    expect(saved(fake)).toEqual([]);
+    expect(screen.queryByRole('button', { name: 'Try a Notebook' })).not.toBeInTheDocument();
+  });
+
+  it('never shows the start screen in the Apple apps, even after a failed connection', async () => {
+    history.replaceState(null, '', '/?kernels=server&chrome=native');
+    mocks.connect.mockRejectedValue(new Error('The app’s server is not running.'));
+    render(<App />);
+    expect(await screen.findByText('The app’s server is not running.')).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Where should kernels run?' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Try a Notebook' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Open a Notebook…' })).not.toBeInTheDocument();
+  });
+
+  it('opens the sheet from the command palette’s Connect to a Server… with nothing connected', async () => {
+    render(<App />);
+    await screen.findByRole('button', { name: 'Try a Notebook' });
+    await openPalette('Connect to');
+    expect(await screen.findByText('Where should kernels run?')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.getByRole('button', { name: 'Try a Notebook' })).toBeInTheDocument();
+  });
+
+  it('opens the sheet from the toolbar’s backend button, and Onboarding’s Change…, once connected', async () => {
+    const fake = fakeServices({ '': [] });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services, browser));
+    localStorage.setItem('ganymede-ui:backend', JSON.stringify(browser));
+    render(<App />);
+    await userEvent.click(await screen.findByRole('button', { name: 'Change where kernels run' }));
+    expect(await screen.findByText('Where should kernels run?')).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByText('Where should kernels run?')).not.toBeInTheDocument();
   });
 });

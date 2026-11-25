@@ -1,6 +1,6 @@
 import { mkdirSync, readdirSync, rmSync, statSync } from 'node:fs';
 import { join, relative } from 'node:path';
-import { expect, type Page, type TestInfo } from '@playwright/test';
+import { expect, type Locator, type Page, type TestInfo } from '@playwright/test';
 import { GANYMEDE_URL, ROOT_DIR, TOKEN } from './env';
 
 /** Selectors and steps the specs share. UI-level only: roles, visible text,
@@ -88,6 +88,42 @@ export async function screenshot(page: Page, testInfo: TestInfo, name: string) {
   await page.waitForTimeout(300);
   await page.screenshot({ path });
   await testInfo.attach(name, { path, contentType: 'image/png' });
+}
+
+/** The first screen with no saved connection (#815): three ways in, no sheet. */
+export const tryButton = (page: Page) => page.getByRole('button', { name: 'Try a Notebook' });
+
+/**
+ * From the start screen, open the connection sheet ("Where should kernels
+ * run?") with Connect to a Server…, as the first screen no longer opens it.
+ */
+export async function openConnectSheet(page: Page) {
+  await page.getByRole('button', { name: 'Connect to a Server…' }).click();
+  await expect(page.getByRole('dialog', { name: 'Where should kernels run?' })).toBeVisible();
+}
+
+/**
+ * From the start screen, pick This browser in the sheet and connect: the
+ * browser backend with no sample or notebook opened, for specs that make
+ * their own notebooks.
+ */
+export async function useThisBrowser(page: Page) {
+  await openConnectSheet(page);
+  await page.getByRole('radio', { name: /This browser/ }).click();
+  await page.getByRole('button', { name: 'Connect', exact: true }).click();
+}
+
+/**
+ * Tab from the top of the page until `target` has focus: the sidebar and
+ * toolbar come before the start screen in the tab order. Fails if it isn't
+ * reached within `max` presses.
+ */
+export async function tabTo(page: Page, target: Locator, max = 20) {
+  for (let i = 0; i < max; i++) {
+    await page.keyboard.press('Tab');
+    if (await target.evaluate(el => el === document.activeElement)) return;
+  }
+  await expect(target).toBeFocused({ timeout: 1000 });
 }
 
 /** Pick an item from one of the toolbar's menus: "More run actions", "Share" or "More". */

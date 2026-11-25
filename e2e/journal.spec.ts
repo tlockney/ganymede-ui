@@ -4,9 +4,13 @@
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { crc32, deflateSync } from 'node:zlib';
-import { expect, test } from '@playwright/test';
-import { ROOT_DIR } from './env';
+import { expect, test, type Browser, type Page } from '@playwright/test';
+import { APP_URL, ROOT_DIR } from './env';
 import { openWithToken, removeFromServer, sidebarItem } from './helpers';
+
+const FREMONT = 'Fremont Bridge.ipynb';
+/** The first cell of "4. Workdays and weekends", in the Fremont Bridge journal. */
+const SECTION_4 = '57ee196d3903';
 
 const FILE = 'Journal e2e.ipynb';
 
@@ -45,7 +49,7 @@ test.beforeEach(() => {
 });
 
 test.afterEach(async () => {
-  await removeFromServer(FILE);
+  await removeFromServer(FILE, FREMONT);
 });
 
 test('opens an agent’s notebook as a journal, and writes a note and a request', async ({
@@ -175,10 +179,43 @@ test('fits a phone: no sideways scroll and 44 px buttons', async ({ page }) => {
     await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
   ).toBeLessThanOrEqual(0);
   await journal.getByRole('button', { name: /Revision 2/ }).click();
-  for (const name of ['Add Note', 'Ask the agent', 'Open as Notebook']) {
+  // The composer is two buttons until one is used (#816).
+  await expect(journal.getByRole('textbox', { name: 'Write to the journal' })).toHaveCount(0);
+  for (const name of ['Add note', 'Ask the agent', 'Open as Notebook']) {
     const box = await journal.getByRole('button', { name }).boundingBox();
     expect(box!.height).toBeGreaterThanOrEqual(44);
   }
+});
+
+test('writes a note from the phone composer, which collapses again (#816)', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 800 });
+  await openWithToken(page);
+  await page.getByRole('button', { name: 'Show Sidebar' }).click();
+  await sidebarItem(page, 'Journal e2e').click();
+  const journal = page.getByRole('region', { name: `Journal of ${FILE}` });
+  const add = journal.getByRole('button', { name: 'Add note' });
+  const ask = journal.getByRole('button', { name: 'Ask the agent' });
+  // Side by side, across the width.
+  const [a, b] = [(await add.boundingBox())!, (await ask.boundingBox())!];
+  expect(Math.abs(a.y - b.y)).toBeLessThan(1);
+  expect(a.width + b.width).toBeGreaterThan(390 * 0.8);
+
+  await add.click();
+  const field = journal.getByRole('textbox', { name: 'Write to the journal' });
+  await expect(field).toBeFocused();
+  await expect(field).toHaveAttribute('placeholder', 'A note for the journal');
+  await field.fill('Saw it on the phone');
+  // Cancel keeps the draft for the next time.
+  await journal.getByRole('button', { name: 'Cancel' }).click();
+  await expect(field).toHaveCount(0);
+  await add.click();
+  await expect(field).toHaveValue('Saw it on the phone');
+  await journal.getByRole('button', { name: 'Add Note' }).click();
+  const cells = journal.getByRole('article');
+  await expect(cells).toHaveCount(4);
+  await expect(cells.nth(3)).toContainText('Saw it on the phone');
+  await expect(field).toHaveCount(0);
+  await expect(add).toBeVisible();
 });
 
 /** A solid gray PNG, `width` × `height`, base64: a wide chart's stand-in. */
@@ -456,4 +493,207 @@ test("sanitizes an untrusted cell's HTML output: no script runs, event attribute
       }),
   );
   expect(await page.evaluate(() => (window as { __pwned?: number }).__pwned)).toBeUndefined();
+});
+
+// Where a journal opens, and following it live (#816), with the real Fremont
+// Bridge journal an agent kept: 29 cells, six sections.
+
+/** Put the Fremont Bridge journal in the server's folder. */
+function writeFremont() {
+  writeFileSync(
+    join(ROOT_DIR, FREMONT),
+    readFileSync(new URL('./fixtures/journal/Fremont Bridge.ipynb', import.meta.url)),
+  );
+}
+
+const journalOf = (page: Page) => page.getByRole('region', { name: `Journal of ${FREMONT}` });
+
+async function openFremont(page: Page) {
+  await openWithToken(page);
+  await sidebarItem(page, 'Fremont Bridge').click();
+  const journal = journalOf(page);
+  await expect(journal).toBeVisible();
+  await expect(journal.getByRole('article')).toHaveCount(29);
+  return journal;
+}
+
+/** How far a cell's top is below the top of the journal's scroll area, in px. */
+const topOf = (page: Page, id: string) =>
+  page.evaluate((cell: string) => {
+    const scroller = document.querySelector('.journal-scroll')!;
+    const article = [...scroller.querySelectorAll<HTMLElement>('.journal-cell')].find(
+      a => a.dataset.cellId === cell,
+    )!;
+    return article.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+  }, id);
+
+/** How far the scroll area is from its end, in px. */
+const fromEnd = (page: Page) =>
+  page.evaluate(() => {
+    const s = document.querySelector('.journal-scroll')!;
+    return s.scrollHeight - s.scrollTop - s.clientHeight;
+  });
+
+const scrollTop = (page: Page) =>
+  page.evaluate(() => document.querySelector('.journal-scroll')!.scrollTop);
+
+/**
+ * Wait until the journal's content stops changing height: framed outputs
+ * (the plots) load after the cells, and on a slow machine a scroll made
+ * before they settle lands somewhere else.
+ */
+async function settled(page: Page) {
+  let last = -1;
+  await expect
+    .poll(
+      async () => {
+        const h = await page.evaluate(
+          () => document.querySelector('.journal-scroll')!.scrollHeight,
+        );
+        const same = h === last;
+        last = h;
+        return same;
+      },
+      { intervals: [500], timeout: 20_000 },
+    )
+    .toBe(true);
+}
+
+/** Scroll a cell to the top of the journal. */
+const scrollToCell = (page: Page, id: string) =>
+  page.evaluate((cell: string) => {
+    document
+      .querySelector(`.journal-cell[data-cell-id="${cell}"]`)!
+      .scrollIntoView({ block: 'start' });
+  }, id);
+
+/** Another person in the same room: a second browser opening the journal. */
+async function someoneElse(browser: Browser) {
+  const context = await browser.newContext({
+    baseURL: APP_URL,
+    viewport: { width: 1280, height: 820 },
+  });
+  const page = await context.newPage();
+  await openFremont(page);
+  const note = async (text: string) => {
+    const journal = journalOf(page);
+    const before = await journal.getByRole('article').count();
+    await journal.getByRole('textbox', { name: 'Write to the journal' }).fill(text);
+    await journal.getByRole('button', { name: 'Add Note' }).click();
+    await expect(journal.getByRole('article')).toHaveCount(before + 1);
+  };
+  return { note, close: () => context.close() };
+}
+
+test('opens a finished journal at its start, with no Follow button (#816)', async ({ page }) => {
+  writeFremont();
+  const journal = await openFremont(page);
+  const question = journal.getByRole('heading', {
+    name: 'Have bike commutes over the Fremont Bridge come back since 2019?',
+  });
+  await expect(question).toBeVisible();
+  expect(await scrollTop(page)).toBe(0);
+  const top = await question.evaluate(
+    el =>
+      el.getBoundingClientRect().top -
+      document.querySelector('.journal-scroll')!.getBoundingClientRect().top,
+  );
+  expect(top).toBeLessThan(120);
+  // The server writes the notebook's metadata a moment after it opens (the kernel
+  // starting); that is not live work.
+  await page.waitForTimeout(3000);
+  await expect(journal.getByRole('button', { name: /Follow live/ })).toHaveCount(0);
+});
+
+test('reopens at the cell the reader left (#816)', async ({ page }) => {
+  writeFremont();
+  const journal = await openFremont(page);
+  await settled(page);
+  await scrollToCell(page, SECTION_4);
+  await expect.poll(() => topOf(page, SECTION_4)).toBeLessThan(2);
+  // Kept as they read, at most twice a second.
+  await expect
+    .poll(() => page.evaluate(() => localStorage.getItem('ganymede.journal.positions') ?? ''))
+    .toContain(SECTION_4);
+
+  // Leave for another file, and come back.
+  await sidebarItem(page, 'Journal e2e').click();
+  await expect(page.getByRole('region', { name: `Journal of ${FILE}` })).toBeVisible();
+  await sidebarItem(page, 'Fremont Bridge').click();
+  await expect(journal).toBeVisible();
+  await expect(journal.getByRole('heading', { name: '4. Workdays and weekends' })).toBeInViewport();
+  await expect.poll(async () => Math.abs(await topOf(page, SECTION_4))).toBeLessThan(4);
+  // Nothing new since: no button.
+  await expect(journal.getByRole('button', { name: /Follow live/ })).toHaveCount(0);
+});
+
+test('keeps the end in view while following, and says what is new once paused (#816)', async ({
+  page,
+  browser,
+}) => {
+  writeFremont();
+  const journal = await openFremont(page);
+  const other = await someoneElse(browser);
+  try {
+    // A change from someone else, read from the start: offered, not followed.
+    await other.note('First note from elsewhere');
+    const follow = journal.getByRole('button', { name: '1 new · Follow live' });
+    await expect(follow).toBeVisible();
+    expect(await scrollTop(page)).toBe(0);
+    await follow.click();
+    await expect.poll(() => fromEnd(page)).toBeLessThan(4);
+    await expect(journal.getByRole('button', { name: /Follow live/ })).toHaveCount(0);
+
+    // Following: more cells arrive, and the end stays in view.
+    await other.note('Second note from elsewhere');
+    await expect(journal.getByRole('article').last()).toContainText('Second note from elsewhere');
+    await expect.poll(() => fromEnd(page)).toBeLessThan(4);
+    await expect(journal.getByRole('article').last()).toBeInViewport();
+    await expect(journal.getByRole('button', { name: /Follow live/ })).toHaveCount(0);
+
+    // Scrolled up: paused, the place is kept and the count says what came.
+    await page.locator('.journal-scroll').hover();
+    await page.mouse.wheel(0, -1500);
+    await expect.poll(() => fromEnd(page)).toBeGreaterThan(500);
+    const held = await scrollTop(page);
+    await other.note('Third note from elsewhere');
+    await other.note('Fourth note from elsewhere');
+    const count = journal.getByRole('button', { name: '2 new · Follow live' });
+    await expect(count).toBeVisible();
+    expect(Math.abs((await scrollTop(page)) - held)).toBeLessThan(4);
+    await count.click();
+    await expect.poll(() => fromEnd(page)).toBeLessThan(4);
+    await expect(journal.getByRole('article').last()).toContainText('Fourth note from elsewhere');
+    await expect(journal.getByRole('button', { name: /Follow live/ })).toHaveCount(0);
+  } finally {
+    await other.close();
+  }
+});
+
+test('keeps the cell in view going to the notebook and back (#816)', async ({ page }) => {
+  writeFremont();
+  const journal = await openFremont(page);
+  await settled(page);
+  await scrollToCell(page, SECTION_4);
+  await expect.poll(() => topOf(page, SECTION_4)).toBeLessThan(2);
+
+  await journal.getByRole('button', { name: 'Open as Notebook' }).click();
+  await expect(journal).toBeHidden();
+  const heading = page.locator('.jp-Cell').filter({ hasText: '4. Workdays and weekends' });
+  await expect(heading).toBeInViewport();
+  await expect(heading).toHaveClass(/jp-mod-active/);
+  // At the top of the notebook, as the journal had it.
+  const near = () =>
+    heading.evaluate(el => {
+      const outer = el.closest('.jp-WindowedPanel-outer') ?? el.closest('.jp-Notebook')!;
+      return el.getBoundingClientRect().top - outer.getBoundingClientRect().top;
+    });
+  // Under the toolbar, not further down the page.
+  await expect.poll(async () => Math.abs(await near())).toBeLessThan(150);
+
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'View as Journal' }).click();
+  await expect(journal).toBeVisible();
+  await expect.poll(async () => Math.abs(await topOf(page, SECTION_4))).toBeLessThan(4);
+  await expect(journal.getByRole('heading', { name: '4. Workdays and weekends' })).toBeInViewport();
 });

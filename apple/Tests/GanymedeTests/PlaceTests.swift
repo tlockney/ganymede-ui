@@ -266,11 +266,16 @@ final class PlaceTests: XCTestCase {
         XCTAssertNil(WindowTarget.root(of: .machine("../x"), device: device))
     }
 
-    func testAMachineWindowSubtitleSaysWhereItIs() {
-        XCTAssertEqual(WindowTarget.subtitle(page: "Python 3 · Idle", machineName: "mini"), "on mini · Python 3 · Idle")
-        XCTAssertEqual(WindowTarget.subtitle(page: "", machineName: "mini"), "on mini")
-        XCTAssertEqual(WindowTarget.subtitle(page: "Python 3 · Idle", machineName: nil), "Python 3 · Idle")
-        XCTAssertEqual(WindowTarget.subtitle(page: "", machineName: nil), "")
+    func testAWindowSubtitleIsTheStatusLineOrWhereTheMachineIs() {
+        let header = HeaderStatus(
+            savedOn: "mini", runsOn: "mini", dirty: false, locked: false,
+            kernel: "Python 3", kernelMissing: false, status: "idle")
+        XCTAssertEqual(
+            WindowTarget.subtitle(header: header, machineName: "mini"),
+            "Saved on mini · Runs on mini · Python 3")
+        XCTAssertEqual(WindowTarget.subtitle(header: nil, machineName: "mini"), "on mini")
+        XCTAssertEqual(WindowTarget.subtitle(header: nil, machineName: ""), "")
+        XCTAssertEqual(WindowTarget.subtitle(header: nil, machineName: nil), "")
     }
 
     func testOnlyNotebooksAndDataOpenOnAMachine() throws {

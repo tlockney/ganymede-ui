@@ -1,11 +1,11 @@
 // Collapsing code cells (#564): the disclosure button beside a code cell,
 // the keyboard, and the first line shown in place of the code.
 import { expect, type Page, test } from '@playwright/test';
+import { useThisBrowser } from './helpers';
 
 async function newBrowserNotebook(page: Page) {
   await page.goto('/');
-  await page.getByRole('radio', { name: /This browser/ }).click();
-  await page.getByRole('button', { name: 'Connect', exact: true }).click();
+  await useThisBrowser(page);
   await expect(page.getByRole('button', { name: /This browser/ })).toBeAttached({
     timeout: 60_000,
   });

@@ -59,11 +59,18 @@ vi.mock('../lib/jupyterlab', async () => {
         scrollToCell(cell: unknown, align?: string): Promise<void>;
       };
       // Its cells, with the active one selected, for what a run needs.
+      // Each cell has a node in the notebook's, which a test can give a layout.
+      const cellNodes: HTMLElement[] = [];
       Object.defineProperty(w, 'widgets', {
         get: () =>
-          Array.from({ length: w.model!.cells.length }, (_, i) => ({
-            model: w.model!.cells.get(i),
-          })),
+          Array.from({ length: w.model!.cells.length }, (_, i) => {
+            if (!cellNodes[i]) {
+              cellNodes[i] = document.createElement('div');
+              cellNodes[i]!.dataset.notebookCell = String(i);
+              w.node.append(cellNodes[i]!);
+            }
+            return { model: w.model!.cells.get(i), node: cellNodes[i] };
+          }),
       });
       w.isSelectedOrActive = cell =>
         (cell as { model: unknown }).model === w.model!.cells.get(w.activeCellIndex ?? 0);
@@ -431,6 +438,46 @@ describe('NotebookPane', () => {
     change.mockRestore();
   });
 
+  it('takes focus in command mode when it opens with nothing focused, as after Try a Notebook (#815)', async () => {
+    const { Widget } = await import('@lumino/widgets');
+    const activate = vi.spyOn(Widget.prototype, 'activate');
+    (document.activeElement as HTMLElement | null)?.blur();
+    expect(document.activeElement).toBe(document.body);
+    const { latest } = setup();
+    await waitFor(() => expect(latest()).toBeDefined());
+    expect(activate).toHaveBeenCalledWith();
+    expect(activate.mock.contexts).toContain(fakes.notebooks[0]);
+    activate.mockRestore();
+  });
+
+  it('leaves focus where it is when it opens from a control that keeps it (#815)', async () => {
+    const { Widget } = await import('@lumino/widgets');
+    const activate = vi.spyOn(Widget.prototype, 'activate');
+    const sidebarButton = document.createElement('button');
+    document.body.append(sidebarButton);
+    sidebarButton.focus();
+    const { latest } = setup();
+    await waitFor(() => expect(latest()).toBeDefined());
+    expect(activate.mock.contexts).not.toContain(fakes.notebooks[0]);
+    expect(document.activeElement).toBe(sidebarButton);
+    sidebarButton.remove();
+    activate.mockRestore();
+  });
+
+  it('leaves focus to the Apple apps with native chrome (#815)', async () => {
+    const { Widget } = await import('@lumino/widgets');
+    const activate = vi.spyOn(Widget.prototype, 'activate');
+    document.documentElement.classList.add('chrome-native');
+    try {
+      const { latest } = setup();
+      await waitFor(() => expect(latest()).toBeDefined());
+      expect(activate.mock.contexts).not.toContain(fakes.notebooks[0]);
+    } finally {
+      document.documentElement.classList.remove('chrome-native');
+      activate.mockRestore();
+    }
+  });
+
   it('takes focus out of the hidden notebook when the journal shows (#184)', async () => {
     const { latest } = setup();
     await waitFor(() => expect(latest()).toBeDefined());
@@ -470,6 +517,145 @@ describe('NotebookPane', () => {
     expect(scrollIntoView).toHaveBeenCalledOnce();
     expect(notebook.scrollToCell).not.toHaveBeenCalled();
     expect(latest()!.goToCell(7)).toBe(false);
+  });
+
+  describe('keeps the cell in view across the two views (#816)', () => {
+    const CELL = 100;
+    const VIEW = 400;
+    afterEach(() => vi.restoreAllMocks());
+
+    /** Eight cells an agent wrote; each 100 px tall in a 400 px view, in both views. */
+    function eightCells() {
+      const nb = structuredClone(NOTEBOOK);
+      nb.cells = Array.from({ length: 8 }, (_, i) => ({
+        cell_type: 'markdown',
+        id: `m${i}`,
+        source: `cell ${i}`,
+        metadata: { ganymede: { agent: { by: 'claude-code', mode: 'note' } } },
+      })) as nbformat.INotebookContent['cells'];
+      return nb;
+    }
+
+    /** jsdom has no layout: say where each cell is, from each view's scroll position. */
+    function layout() {
+      const state = { notebookTop: 0 };
+      const journal = () => document.querySelector('.journal-scroll') as HTMLElement | null;
+      const box = (top: number) =>
+        ({ top, bottom: top + CELL, height: CELL, left: 0, right: 100, width: 100 }) as DOMRect;
+      vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (
+        this: Element,
+      ) {
+        const el = this as HTMLElement;
+        if (el.classList.contains('journal-scroll') || el.classList.contains('lm-Widget')) {
+          return { top: 0, bottom: VIEW, height: VIEW, left: 0, right: 100, width: 100 } as DOMRect;
+        }
+        if (el.dataset.cellIndex !== undefined) {
+          return box(Number(el.dataset.cellIndex) * CELL - (journal()?.scrollTop ?? 0));
+        }
+        if (el.dataset.notebookCell !== undefined) {
+          return box(Number(el.dataset.notebookCell) * CELL - state.notebookTop);
+        }
+        return { top: 0, bottom: 0, height: 0, left: 0, right: 0, width: 0 } as DOMRect;
+      });
+      vi.spyOn(Element.prototype, 'scrollHeight', 'get').mockImplementation(function (
+        this: Element,
+      ) {
+        return this.classList.contains('journal-scroll') ? 20 * CELL : 0;
+      });
+      vi.spyOn(Element.prototype, 'clientHeight', 'get').mockImplementation(function (
+        this: Element,
+      ) {
+        return this.classList.contains('journal-scroll') ? VIEW : 0;
+      });
+      return state;
+    }
+
+    it('opens the journal at the cell the notebook showed at its top', async () => {
+      const state = layout();
+      const { latest } = setup(
+        vi.fn(async () => ({ path: 'moons/Io.ipynb', content: eightCells() })),
+      );
+      await waitFor(() => expect(latest()?.journal).toBe(true));
+      act(() => latest()!.toggleJournal());
+      await waitFor(() => expect(latest()!.journal).toBe(false));
+      // The notebook is scrolled so that cell 3's top is just above the view.
+      state.notebookTop = 3 * CELL + 20;
+      act(() => latest()!.toggleJournal());
+      await waitFor(() => expect(latest()!.journal).toBe(true));
+      const scroller = document.querySelector('.journal-scroll') as HTMLElement;
+      expect(scroller.scrollTop).toBe(3 * CELL);
+    });
+
+    it('carries the active cell when it shows, though another is first in view', async () => {
+      const state = layout();
+      const { latest } = setup(
+        vi.fn(async () => ({ path: 'moons/Io.ipynb', content: eightCells() })),
+      );
+      await waitFor(() => expect(latest()?.journal).toBe(true));
+      act(() => latest()!.toggleJournal());
+      await waitFor(() => expect(latest()!.journal).toBe(false));
+      // Cell 3 is first in view; cell 5 is active and in view too.
+      state.notebookTop = 3 * CELL + 10;
+      (fakes.notebooks[0] as { activeCellIndex: number }).activeCellIndex = 5;
+      act(() => latest()!.toggleJournal());
+      await waitFor(() => expect(latest()!.journal).toBe(true));
+      expect((document.querySelector('.journal-scroll') as HTMLElement).scrollTop).toBe(5 * CELL);
+    });
+
+    it('shows the cell the journal was at when switching back to the notebook', async () => {
+      layout();
+      const { latest } = setup(
+        vi.fn(async () => ({ path: 'moons/Io.ipynb', content: eightCells() })),
+      );
+      await waitFor(() => expect(latest()?.journal).toBe(true));
+      const scroller = document.querySelector('.journal-scroll') as HTMLElement;
+      // Reading cell 5: its top is a little above the top of the view.
+      act(() => {
+        scroller.scrollTop = 5 * CELL + 30;
+      });
+      const notebook = fakes.notebooks[0] as {
+        activeCellIndex: number;
+        scrollToCell: ReturnType<typeof vi.fn>;
+        model: NotebookModel;
+      };
+      act(() => latest()!.toggleJournal());
+      await waitFor(() => expect(notebook.scrollToCell).toHaveBeenCalledOnce());
+      expect(notebook.activeCellIndex).toBe(5);
+      const [cell, align] = notebook.scrollToCell.mock.calls[0] as unknown as [
+        { model: unknown },
+        string,
+      ];
+      expect(cell.model).toBe(notebook.model.cells.get(5));
+      expect(align).toBe('start');
+    });
+
+    it('lands on the same cell going notebook, journal, notebook', async () => {
+      const state = layout();
+      const { latest } = setup(
+        vi.fn(async () => ({ path: 'moons/Io.ipynb', content: eightCells() })),
+      );
+      await waitFor(() => expect(latest()?.journal).toBe(true));
+      const notebook = fakes.notebooks[0] as {
+        activeCellIndex: number;
+        scrollToCell: ReturnType<typeof vi.fn>;
+        model: NotebookModel;
+      };
+      // Scrolling the notebook to a cell moves it there.
+      notebook.scrollToCell.mockImplementation(async (cell: { node: HTMLElement }) => {
+        state.notebookTop = Number(cell.node.dataset.notebookCell) * CELL;
+      });
+      act(() => latest()!.toggleJournal());
+      await waitFor(() => expect(latest()!.journal).toBe(false));
+      state.notebookTop = 4 * CELL + 10;
+      notebook.activeCellIndex = 0;
+      act(() => latest()!.toggleJournal());
+      await waitFor(() => expect(latest()!.journal).toBe(true));
+      const scroller = document.querySelector('.journal-scroll') as HTMLElement;
+      expect(scroller.scrollTop).toBe(4 * CELL);
+      act(() => latest()!.toggleJournal());
+      await waitFor(() => expect(notebook.activeCellIndex).toBe(4));
+      await waitFor(() => expect(state.notebookTop).toBe(4 * CELL));
+    });
   });
 
   it('opens a notebook with no agent cells as a notebook (#184)', async () => {
@@ -912,6 +1098,199 @@ describe('NotebookPane', () => {
         await waitFor(() => expect(line(s)).toBeUndefined());
         k.reply(info('ipython', '8.20.0'));
         expect(line(s)).toBeUndefined();
+      });
+    });
+
+    describe('an interrupt that reset the kernel’s state (#796)', () => {
+      /** A kernel that announces messages as the library's connection does. */
+      const withMessages = (over: Partial<FakeKernel> = {}) => {
+        const anyMessage = new Signal<unknown, { msg: unknown; direction: string }>({});
+        const k = { ...kernel(over), anyMessage, info: new Promise<never>(() => {}) };
+        /** The stderr note cdp-kernel prints when the runtime ends, with `meta` as its metadata. */
+        const note = (meta?: unknown, direction = 'recv', type = 'stream') =>
+          act(() =>
+            anyMessage.emit({
+              msg: {
+                header: { msg_type: type },
+                content: { name: 'stderr', text: '\n[cdp-kernel] restarting on next cell\n' },
+                metadata: meta ?? {},
+              },
+              direction,
+            }),
+          );
+        return Object.assign(k, { note });
+      };
+      const reset = (reason = 'interrupt') => ({
+        cdp_kernel: { state_reset: true, reason, runtime: 'browser' },
+      });
+      const show = async (k: FakeKernel, s: Awaited<ReturnType<typeof running>>) => {
+        s.session.session = { kernel: k };
+        act(() => s.session.kernelChanged.emit(null));
+        await waitFor(() => expect(s.latest()?.kernelName).toBe(k.name));
+      };
+      const notice = () => screen.queryByRole('alert');
+
+      it('says so, and Restart & Run All restarts the kernel and then runs every cell', async () => {
+        const s = await running();
+        const order: string[] = [];
+        const k = withMessages();
+        Object.assign(k, { restart: vi.fn(async () => void order.push('restart')) });
+        const all = vi
+          .spyOn(NotebookActions, 'runAll')
+          .mockImplementation(async () => (order.push('run all'), true));
+        await show(k, s);
+        k.note(reset());
+        expect(await screen.findByRole('alert')).toHaveTextContent(
+          'Kernel state was reset by the interrupt.',
+        );
+        expect(notice()).toHaveClass('problem-state-reset');
+        // Nothing runs until the person asks.
+        expect(order).toEqual([]);
+        await userEvent.click(screen.getByRole('button', { name: 'Restart & Run All' }));
+        await waitFor(() => expect(order).toEqual(['restart', 'run all']));
+        expect(notice()).not.toBeInTheDocument();
+        all.mockRestore();
+      });
+
+      it('runs nothing when the restart fails, and Retry does both', async () => {
+        const s = await running();
+        const k = withMessages();
+        const restart = vi
+          .fn()
+          .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+          .mockResolvedValue(undefined);
+        Object.assign(k, { restart });
+        const all = vi.spyOn(NotebookActions, 'runAll').mockResolvedValue(true);
+        await show(k, s);
+        k.note(reset());
+        await userEvent.click(await screen.findByRole('button', { name: 'Restart & Run All' }));
+        expect(await screen.findByRole('alert')).toHaveTextContent(
+          'Couldn’t reach the server to restart the kernel and run all cells.',
+        );
+        expect(all).not.toHaveBeenCalled();
+        await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+        await waitFor(() => expect(all).toHaveBeenCalledOnce());
+        expect(restart).toHaveBeenCalledTimes(2);
+        all.mockRestore();
+      });
+
+      it('says nothing for an interrupt that kept the state, another end, or an older kernel', async () => {
+        const s = await running();
+        const k = withMessages();
+        await show(k, s);
+        // An older cdp-kernel's note, or an interrupt a waiting cell answered.
+        k.note();
+        // The runtime crashed: its note in the output says so.
+        k.note(reset('exit'));
+        // Not a message the kernel sent, or not a stream.
+        k.note(reset(), 'send');
+        k.note(reset(), 'recv', 'execute_reply');
+        expect(notice()).not.toBeInTheDocument();
+        // The same kernel's reset does show: the cases above were refused.
+        k.note(reset());
+        expect(await screen.findByRole('alert')).toHaveTextContent('Kernel state was reset');
+      });
+
+      it.each(['restarting', 'autorestarting'])(
+        'goes away on %s, and a note from then on is ignored',
+        async state => {
+          const s = await running();
+          const k = withMessages();
+          await show(k, s);
+          k.note(reset());
+          expect(await screen.findByRole('alert')).toBeInTheDocument();
+          k.status = state;
+          act(() => s.session.statusChanged.emit(state));
+          await waitFor(() => expect(notice()).not.toBeInTheDocument());
+          k.note(reset());
+          expect(notice()).not.toBeInTheDocument();
+        },
+      );
+
+      it('goes away when the kernel changes, and the old one’s late note is ignored', async () => {
+        const s = await running();
+        const a = withMessages({ name: 'a' });
+        await show(a, s);
+        a.note(reset());
+        expect(await screen.findByRole('alert')).toBeInTheDocument();
+        const b = withMessages({ name: 'b' });
+        await show(b, s);
+        await waitFor(() => expect(notice()).not.toBeInTheDocument());
+        a.note(reset());
+        expect(notice()).not.toBeInTheDocument();
+      });
+
+      it('keeps another problem’s notice when the kernel changes', async () => {
+        const s = await running();
+        const a = withMessages({ name: 'a' });
+        await show(a, s);
+        a.connectionStatus = 'disconnected';
+        act(() => s.session.connectionStatusChanged.emit('disconnected'));
+        expect(await screen.findByRole('alert')).toHaveTextContent('Lost the connection');
+        // A kernel whose connection is down too, so the lost notice stays for it.
+        await show(withMessages({ name: 'b', connectionStatus: 'disconnected' }), s);
+        expect(screen.getByRole('alert')).toHaveTextContent('Lost the connection');
+      });
+
+      it('offers no Restart & Run All in the journal, and does once it shows the notebook', async () => {
+        const s = await running(vi.fn(async () => ({ path: 'moons/Io.ipynb', content: kept() })));
+        expect(s.latest()?.journal).toBe(true);
+        const k = withMessages();
+        const restart = vi.fn(async () => {});
+        Object.assign(k, { restart });
+        await show(k, s);
+        k.note(reset());
+        expect(await screen.findByRole('alert')).toHaveTextContent(
+          'Kernel state was reset by the interrupt.',
+        );
+        expect(notice()).toHaveTextContent('Choose Open as Notebook');
+        expect(screen.queryByRole('button', { name: 'Restart & Run All' })).not.toBeInTheDocument();
+        act(() => s.latest()!.toggleJournal());
+        await userEvent.click(await screen.findByRole('button', { name: 'Restart & Run All' }));
+        await waitFor(() => expect(restart).toHaveBeenCalledOnce());
+      });
+
+      it('goes away when the kernel is shut down', async () => {
+        const s = await running();
+        const k = withMessages();
+        await show(k, s);
+        k.note(reset());
+        expect(await screen.findByRole('alert')).toBeInTheDocument();
+        s.session.session = null;
+        act(() => s.session.kernelChanged.emit(null));
+        await waitFor(() => expect(s.latest()?.status).toBe('none'));
+        expect(notice()).not.toBeInTheDocument();
+      });
+
+      it('does not restart again when Retry follows a failed Run All', async () => {
+        const s = await running();
+        const k = withMessages();
+        const restart = vi.fn(async () => {});
+        Object.assign(k, { restart });
+        const all = vi
+          .spyOn(NotebookActions, 'runAll')
+          .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+          .mockResolvedValue(true);
+        await show(k, s);
+        k.note(reset());
+        await userEvent.click(await screen.findByRole('button', { name: 'Restart & Run All' }));
+        await userEvent.click(await screen.findByRole('button', { name: 'Retry' }));
+        await waitFor(() => expect(all).toHaveBeenCalledTimes(2));
+        expect(restart).toHaveBeenCalledOnce();
+        // A new press restarts again.
+        k.note(reset());
+        await userEvent.click(await screen.findByRole('button', { name: 'Restart & Run All' }));
+        await waitFor(() => expect(restart).toHaveBeenCalledTimes(2));
+        all.mockRestore();
+      });
+
+      it('Dismiss hides it', async () => {
+        const s = await running();
+        const k = withMessages();
+        await show(k, s);
+        k.note(reset());
+        await userEvent.click(await screen.findByRole('button', { name: 'Dismiss' }));
+        expect(notice()).not.toBeInTheDocument();
       });
     });
 

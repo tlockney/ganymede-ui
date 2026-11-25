@@ -28,15 +28,28 @@ const CDP_BROWSER: Kernelspec = {
 
 export type Cell = { cell_type: 'markdown' | 'code'; source: string };
 
+/**
+ * The first cell is one short line of code that needs no package and no
+ * network, so Try a Notebook (#815) can end in a result on a first press of
+ * Shift-Enter or a tap on the toolbar's Run (▶) button.
+ */
+export const FIRST_CELL = [
+  '// Press Shift-Enter to run this cell,',
+  '// or tap ▶ in the toolbar.',
+  'const moon = "Ganymede";',
+  '`${moon} is the largest moon in the solar system.`;',
+].join('\n');
+
 const CELLS: Cell[] = [
+  { cell_type: 'code', source: FIRST_CELL },
   {
     cell_type: 'markdown',
     source: [
       '# A tour of Ganymede',
       '',
-      'This notebook runs TypeScript on cdp-kernel. Select a code cell and press',
-      '**Shift-Enter** to run it, or use **Run All** to run them all. Edit any',
-      'cell and run it again: the notebook is yours.',
+      'This notebook runs TypeScript on cdp-kernel. Select any other code cell',
+      'and press **Shift-Enter** to run it, or use **Run All** to run them all.',
+      'Edit any cell and run it again: the notebook is yours.',
     ].join('\n'),
   },
   {

@@ -92,6 +92,28 @@ describe('sampleNotebook', () => {
   });
 });
 
+describe('the first cell (#815)', () => {
+  it('is a short code cell that needs no package and no network', () => {
+    const [first, second] = sampleNotebook().cells;
+    expect(first.cell_type).toBe('code');
+    expect(second.cell_type).toBe('markdown');
+    const source = first.source as string;
+    expect(source.split('\n').length).toBeLessThanOrEqual(4);
+    expect(source).not.toMatch(/import|require|fetch|https?:|jupyter\./);
+    // The comment names both ways to run it, and the last line is the result.
+    expect(source).toMatch(/Shift-Enter/);
+    expect(source).toMatch(/▶/);
+    expect(source.trimEnd().split('\n').pop()).toContain('${moon}');
+    expect(first).toMatchObject({ outputs: [], execution_count: null });
+  });
+
+  it('is followed by an intro that reads right after it', () => {
+    const intro = sampleNotebook().cells[1].source as string;
+    expect(intro).toMatch(/^# A tour of Ganymede/);
+    expect(intro).toMatch(/any other code cell/);
+  });
+});
+
 describe('copySample', () => {
   it('saves the sample into the folder through the contents API', async () => {
     const c = contents();

@@ -2,7 +2,7 @@
 // backend's contents API: the sidebar, the window title, `?open=` and the
 // running kernel follow the new name; a taken name is refused.
 import { expect, type Page, test } from '@playwright/test';
-import { outputs, waitForIdle, waitForReady } from './helpers';
+import { outputs, useThisBrowser, waitForIdle, waitForReady } from './helpers';
 
 async function newNotebook(page: Page) {
   await page.getByRole('button', { name: 'New Notebook' }).first().click();
@@ -16,8 +16,7 @@ const field = (page: Page) => page.getByRole('textbox', { name: 'Notebook Name' 
 
 test('renames the open notebook from its title', async ({ page }) => {
   await page.goto('/');
-  await page.getByRole('radio', { name: /This browser/ }).click();
-  await page.getByRole('button', { name: 'Connect', exact: true }).click();
+  await useThisBrowser(page);
   await expect(page.getByRole('button', { name: /This browser/ })).toBeVisible({
     timeout: 60_000,
   });

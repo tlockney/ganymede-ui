@@ -1,0 +1,49 @@
+import SwiftUI
+
+/// The notebook's run menu (#812), under Run Cell's split button on the Mac,
+/// iPad and iPhone: the same items in the same order everywhere. Each item
+/// enables on its own; the button carrying the menu is enabled while a
+/// notebook is open.
+struct RunMenuItems: View {
+    var page: PageModel
+
+    var body: some View {
+        Button { page.run("run-all") } label: { Label("Run All", systemImage: "forward.fill") }
+            .disabled(!page.state.editsCells)
+        Button { page.run("run-with-params") } label: {
+            Label("Run with Parameters…", systemImage: "slider.horizontal.3")
+        }
+        .disabled(!page.state.hasNotebook || page.state.runParams != true)
+        Button { page.run("clear-outputs") } label: { Label("Clear All Outputs", systemImage: "eraser") }
+            .disabled(!page.state.editsCells)
+        Divider()
+        Button { page.run("restart") } label: { Label("Restart Kernel", systemImage: "arrow.clockwise") }
+            .disabled(!page.state.hasKernel)
+        Button { page.run("restart-run-all") } label: {
+            Label("Restart & Run All", systemImage: "arrow.clockwise.circle")
+        }
+        .disabled(!page.state.editsCells)
+    }
+}
+
+/// Run Cell with its run menu (#812): pressing the button runs the selected
+/// cell and selects the next; the arrow opens the menu. A menu's `.disabled`
+/// would disable the primary action along with its items, so the button
+/// stays enabled with a notebook open and does nothing in the journal view,
+/// which has no cell to run.
+struct RunCellMenu: View {
+    var page: PageModel
+
+    var body: some View {
+        Menu {
+            RunMenuItems(page: page)
+        } label: {
+            Label("Run Cell", systemImage: "play.fill")
+        } primaryAction: {
+            if page.state.editsCells { page.run("run") }
+        }
+        .labelStyle(.titleAndIcon)
+        .help("Run the selected cell and select the next (⇧↩)")
+        .disabled(!page.state.hasNotebook)
+    }
+}

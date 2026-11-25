@@ -174,11 +174,13 @@ enum WindowTarget: Codable, Hashable {
         return .folder(folder ?? root)
     }
 
-    /// The window subtitle: "on <machine>" for a machine's window, then the
-    /// page's own (the kernel and its state, when a notebook is open).
-    static func subtitle(page: String, machineName: String?) -> String {
-        let machine = machineName.flatMap { $0.isEmpty ? nil : "on \($0)" }
-        return [machine, page.isEmpty ? nil : page].compactMap { $0 }.joined(separator: " · ")
+    /// The window subtitle (#812): the notebook's status line, which names
+    /// where it is saved ("Saved on <machine>"); without a notebook, "on
+    /// <machine>" for a machine's window and nothing otherwise.
+    static func subtitle(header: HeaderStatus?, machineName: String?) -> String {
+        if let header { return header.full }
+        guard let machineName, !machineName.isEmpty else { return "" }
+        return "on \(machineName)"
     }
 
     /// The window title. A machine's window adds its name, so its tab
