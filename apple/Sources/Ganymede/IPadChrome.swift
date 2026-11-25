@@ -208,7 +208,12 @@ struct IPadSidebar: View {
             // The examples show in the app's own folder from the start
             // (#463), never in a machine's.
             .modifier(AddsExamples(page: page, enabled: place.isThisDevice) { generation += 1 })
-            .onChange(of: page.state.path) { generation += 1 }
+            .onChange(of: page.state.path) { old, _ in
+                generation += 1
+                // The page renamed or moved the open notebook: the row
+                // selected under its old path is gone.
+                if let old, let selected = selection, FolderEntry.path(path(selected), isAt: old) { selection = nil }
+            }
             .onChange(of: phase) { _, phase in
                 if phase == .active { generation += 1 }
             }
@@ -905,7 +910,9 @@ private struct IPadFolderContents: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
-                    .foregroundStyle(canOpen ? Color.primary : Color.secondary)
+                    // Only a file that can't open here is dimmed: the rest keeps
+                    // the list's own tint and selected-row colour.
+                    .opacity(canOpen ? 1 : 0.5)
                     .simultaneousGesture(
                         TapGesture().onEnded {
                             actions.select(entry)
@@ -913,7 +920,8 @@ private struct IPadFolderContents: View {
                         }
                     )
                     .accessibilityElement(children: .combine)
-                    .accessibilityAddTraits(.isButton)
+                    .accessibilityAddTraits(canOpen ? .isButton : [])
+                    .accessibilityHint(canOpen ? "" : "Can't open here")
                     .accessibilityAction { if canOpen { actions.open(entry) } }
                     .listRowBackground(
                         source.serverPath(entry.url) == actions.openPath

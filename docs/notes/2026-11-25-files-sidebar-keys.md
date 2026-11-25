@@ -34,6 +34,14 @@ Down and Return then act in the notebook. A rename or delete clears the
 selection when it is the renamed or deleted row or inside it (a path
 prefix with a `/` boundary). A reload that no longer lists the selected
 row does not clear it; Return on it then does what a stale row does.
+The selection is also cleared when the page's open path changes away
+from it (the page renamed or moved the open notebook). A file that can't
+open in this place is dimmed (the others keep the list's own colours),
+reads "Can't open here" to VoiceOver and isn't a button there.
+
+On the iPad a tap that opens a notebook does not hand the keyboard back
+to the page: the app has no existing way to do it there (the Mac's
+`returnKeyboardToPage` is AppKit), so it is a by-hand check below.
 
 The iPad kept each folder's expansion in `IPadFolderContents`; it is now
 one `Set<URL>` in `IPadSidebar`, handed down in `IPadFolderActions` as the
@@ -74,3 +82,8 @@ by-hand checks are for #399 (Mac) and #273 (iPad):
     Return: nothing opens. In Search, ← and → move the caret in the Find
     files field.
 13. Mac and iPad: with Caps Lock on, → and ← still expand and collapse.
+14. iPad with a hardware keyboard: tap a notebook, press Down: the
+    notebook moves, not the sidebar.
+15. Mac: rename the open notebook from the page: the sidebar keeps no
+    stale selection. A machine's text file is dimmed and VoiceOver reads
+    "Can't open here".

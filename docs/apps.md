@@ -76,6 +76,9 @@ shown or hidden, its tab and its expanded folders across launches.
   With the sidebar focused, ↑ and ↓ move the selection, → expands and
   ← collapses the selected folder, and Return opens the selected file or
   expands or collapses the selected folder. Clicking a row selects it.
+  Clicking a notebook or data file sends the keyboard back to the page;
+  clicking a folder, or pressing Tab into the sidebar, keeps it in the
+  sidebar.
 
   > [!NOTE]
   > **Unreleased.** Available only from a build of `main` (HEAD), not in
