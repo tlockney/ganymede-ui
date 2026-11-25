@@ -241,10 +241,12 @@ picker when the notebook's kernel isn't installed here.
 Some kernels can't stop a busy cell in place: cdp-kernel's browser
 kernel (this browser, kernels in the page, and the apps' in-app kernel)
 ends the cells' Worker instead, and a new one starts on the next cell
-without the earlier cells' variables. When the kernel says so, the notice
-says **Kernel state was reset by the interrupt** and offers **Restart &
-Run All**, which restarts the kernel and runs every cell again; nothing
-runs until you press it. An interrupt that stops the cell in place keeps
+without the earlier cells' variables. Its Bun, workerd and celld runtimes
+on a server do the same with their process. When the kernel says so, the
+notice says **Kernel state was reset by the interrupt** and offers
+**Restart & Run All**, which restarts the kernel and runs every cell
+again; nothing runs until you press it. The journal view runs no cells,
+so there the notice points to **Open as Notebook** instead. An interrupt that stops the cell in place keeps
 the variables and shows no notice.
 
 > [!NOTE]

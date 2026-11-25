@@ -62,14 +62,18 @@ test('a busy cell’s interrupt says the state is gone, and Restart & Run All re
   page,
 }) => {
   await withMoon(page);
-  // Busy for 4 s: interrupted at once now, run to the end by Run All.
-  await runAndInterrupt(page, 1, 'const end = Date.now() + 4000;\nwhile (Date.now() < end) {}');
+  // Busy for good, so the interrupt always finds it running.
+  await runAndInterrupt(page, 1, 'while (true) {}');
   await expect(notice(page)).toContainText('Kernel state was reset by the interrupt.');
   await waitForIdle(page);
   // The variable is gone, as the notice says.
   await typeIn(page, 2, 'moon');
   await page.keyboard.press('Shift+Enter');
   await expect(outputs(page).filter({ hasText: /moon is not defined/ })).toBeVisible();
+  // The loop is fixed, as a person would before running every cell again.
+  await page.locator('.jp-Cell .cm-content').nth(1).click();
+  await page.keyboard.press('ControlOrMeta+a');
+  await page.keyboard.type('const busy = false;');
 
   await notice(page).getByRole('button', { name: 'Restart & Run All' }).click();
   await expect(notice(page)).toHaveCount(0);

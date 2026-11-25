@@ -117,6 +117,9 @@ describe('problems', () => {
       actions: ['restart-run-all'],
     });
     expect(ACTION_LABEL['restart-run-all']).toBe('Restart & Run All');
+    // The journal runs no cells: no button, and the hint says where it is.
+    expect(stateReset(true)).toMatchObject({ kind: 'state-reset', actions: [] });
+    expect(stateReset(true).hint).toMatch(/Open as Notebook/);
   });
 
   it('offers Retry when the connection is lost', () => {

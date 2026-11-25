@@ -1046,6 +1046,58 @@ describe('NotebookPane', () => {
         expect(screen.getByRole('alert')).toHaveTextContent('Lost the connection');
       });
 
+      it('offers no Restart & Run All in the journal, and does once it shows the notebook', async () => {
+        const s = await running(vi.fn(async () => ({ path: 'moons/Io.ipynb', content: kept() })));
+        expect(s.latest()?.journal).toBe(true);
+        const k = withMessages();
+        const restart = vi.fn(async () => {});
+        Object.assign(k, { restart });
+        await show(k, s);
+        k.note(reset());
+        expect(await screen.findByRole('alert')).toHaveTextContent(
+          'Kernel state was reset by the interrupt.',
+        );
+        expect(notice()).toHaveTextContent('Choose Open as Notebook');
+        expect(screen.queryByRole('button', { name: 'Restart & Run All' })).not.toBeInTheDocument();
+        act(() => s.latest()!.toggleJournal());
+        await userEvent.click(await screen.findByRole('button', { name: 'Restart & Run All' }));
+        await waitFor(() => expect(restart).toHaveBeenCalledOnce());
+      });
+
+      it('goes away when the kernel is shut down', async () => {
+        const s = await running();
+        const k = withMessages();
+        await show(k, s);
+        k.note(reset());
+        expect(await screen.findByRole('alert')).toBeInTheDocument();
+        s.session.session = null;
+        act(() => s.session.kernelChanged.emit(null));
+        await waitFor(() => expect(s.latest()?.status).toBe('none'));
+        expect(notice()).not.toBeInTheDocument();
+      });
+
+      it('does not restart again when Retry follows a failed Run All', async () => {
+        const s = await running();
+        const k = withMessages();
+        const restart = vi.fn(async () => {});
+        Object.assign(k, { restart });
+        const all = vi
+          .spyOn(NotebookActions, 'runAll')
+          .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+          .mockResolvedValue(true);
+        await show(k, s);
+        k.note(reset());
+        await userEvent.click(await screen.findByRole('button', { name: 'Restart & Run All' }));
+        await userEvent.click(await screen.findByRole('button', { name: 'Retry' }));
+        await waitFor(() => expect(all).toHaveBeenCalledTimes(2));
+        expect(restart).toHaveBeenCalledOnce();
+        // A new press restarts again.
+        k.note(reset());
+        await userEvent.click(await screen.findByRole('button', { name: 'Restart & Run All' }));
+        await waitFor(() => expect(restart).toHaveBeenCalledTimes(2));
+        all.mockRestore();
+      });
+
       it('Dismiss hides it', async () => {
         const s = await running();
         const k = withMessages();

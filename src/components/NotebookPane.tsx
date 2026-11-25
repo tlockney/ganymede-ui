@@ -927,6 +927,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       const restartingNow = kernel?.status === 'restarting' || kernel?.status === 'autorestarting';
       if (!kernel || kernel.isDisposed || kernel.status === 'dead') {
         unwatch();
+        // Shut down or gone: there is no reset state to restore.
+        clearNotice('state-reset');
         versionOf = null;
         setKernelVersion(undefined);
       } else if (versionOf !== kernel) {
@@ -1563,10 +1565,17 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
     };
     controllerRef.current = controller;
     // A failed restart stops there: its notice says so and Retry does both.
-    restartRunAll.current = reportRun('restart the kernel and run all cells', async () => {
-      await restartKernel();
-      await runAll();
-    });
+    // Once the restart is done, Retry only runs the cells again.
+    restartRunAll.current = () => {
+      let restarted = false;
+      return reportRun('restart the kernel and run all cells', async () => {
+        if (!restarted) {
+          await restartKernel();
+          restarted = true;
+        }
+        await runAll();
+      })();
+    };
     onController(controller);
   }, [
     open,
@@ -1682,7 +1691,10 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       {devicePrompt && <DevicePrompt prompt={devicePrompt} />}
       {notice && (
         <ProblemNotice
-          problem={notice.problem}
+          problem={
+            // The journal runs no cells: the notice says where Restart & Run All is.
+            journal && notice.problem.kind === 'state-reset' ? stateReset(true) : notice.problem
+          }
           specs={services.kernelspecs.specs}
           onDismiss={() => clearNotice(notice.problem.kind)}
           onPickKernel={name => void controllerRef.current?.changeKernel(name)}

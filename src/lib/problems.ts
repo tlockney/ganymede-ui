@@ -129,14 +129,18 @@ export function kernelDead(kernel?: string, outOfMemory = false): Problem {
  * An interrupt couldn't stop a busy cell in place, so the kernel ended its
  * runtime and starts a new one on the next cell, without the earlier
  * cells' variables (#796). Restart & Run All runs them again; it is only
- * ever the person's choice.
+ * ever the person's choice. `inJournal`: the journal view shows, which
+ * runs no cells, so there is no button, only where to find it.
  */
-export function stateReset(): Problem {
+export function stateReset(inJournal = false): Problem {
+  const gone = 'The cell couldn’t be stopped in place, so variables from earlier cells are gone.';
   return {
     kind: 'state-reset',
     message: 'Kernel state was reset by the interrupt.',
-    hint: 'The cell couldn’t be stopped in place, so variables from earlier cells are gone. Restart & Run All runs every cell again.',
-    actions: ['restart-run-all'],
+    hint: inJournal
+      ? `${gone} Choose Open as Notebook, then Restart & Run All runs every cell again.`
+      : `${gone} Restart & Run All runs every cell again.`,
+    actions: inJournal ? [] : ['restart-run-all'],
   };
 }
 
