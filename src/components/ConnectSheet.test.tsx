@@ -1,5 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { StrictMode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { ConnectSheet } from './ConnectSheet';
 
@@ -202,6 +203,25 @@ describe('ConnectSheet keyboard and focus (#797)', () => {
     expect(connectButton()).toHaveFocus();
   });
 
+  it('keeps Tab inside even when a control stops the keydown', async () => {
+    render(
+      <>
+        <ConnectSheet connecting={false} canCancel={false} onCancel={vi.fn()} onConnect={vi.fn()} />
+        <button>After</button>
+      </>,
+    );
+    // A bubbling handler inside the sheet doesn't get ahead of the
+    // window's capture-phase one.
+    screen.getByRole('dialog').addEventListener('keydown', e => {
+      if (e.key === 'Tab') e.stopPropagation();
+    });
+    await userEvent.keyboard('{ArrowRight}');
+    await userEvent.tab();
+    expect(connectButton()).toHaveFocus();
+    await userEvent.tab();
+    expect(radio(/This browser/)).toHaveFocus();
+  });
+
   it('brings focus back in from the page, past a disabled Connect', async () => {
     const sheet = (connecting: boolean) => (
       <>
@@ -246,6 +266,21 @@ describe('ConnectSheet keyboard and focus (#797)', () => {
     document.body.append(opener);
     opener.focus();
     const { unmount } = renderSheet({ canCancel: true });
+    expect(radio(/Ganymede server/)).toHaveFocus();
+    unmount();
+    expect(opener).toHaveFocus();
+    opener.remove();
+  });
+
+  it('gives focus back to the opener under StrictMode', () => {
+    const opener = document.createElement('button');
+    document.body.append(opener);
+    opener.focus();
+    const { unmount } = render(
+      <StrictMode>
+        <ConnectSheet connecting={false} canCancel onCancel={vi.fn()} onConnect={vi.fn()} />
+      </StrictMode>,
+    );
     expect(radio(/Ganymede server/)).toHaveFocus();
     unmount();
     expect(opener).toHaveFocus();

@@ -74,6 +74,13 @@ describe('containTab', () => {
     end.querySelector<HTMLElement>('#x')!.focus();
     containTab(tab(), end);
     expect(document.activeElement?.id).toBe('a');
+    // Back from past the last stop: the last one.
+    const tail = sheet(
+      '<button id="a">a</button><button id="b">b</button><div tabindex="-1" id="x">x</div>',
+    );
+    tail.querySelector<HTMLElement>('#x')!.focus();
+    containTab(tab(true), tail);
+    expect(document.activeElement?.id).toBe('b');
   });
 
   it('brings focus in from outside', () => {
