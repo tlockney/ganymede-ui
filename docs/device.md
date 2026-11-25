@@ -341,7 +341,13 @@ outside it, through `..` or a symlink, is refused. Writing and removing
 need `write: true` at the pick, and the picker then says the notebook
 may change and delete files there (on iPad and iPhone, an alert before
 it). The picker is your consent, so there is no permission prompt; Settings › Device lists each notebook's folders
-with Revoke. It works only in kernels in the app.
+with Revoke. It works only in kernels in the app. A notebook changed
+outside the app loses its folders (see Permissions and the ledger, below).
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release. The latest release keeps a notebook's folders
+> whatever happens to the file.
 
 ```ts
 const folder = await device.folders.pick({ write: true });
@@ -393,6 +399,25 @@ open it rather than in the middle of a run:
 ```json
 { "metadata": { "ganymede": { "device": ["notifications"] } } }
 ```
+
+A kept answer is for the notebook as the app last saw it. When the
+notebook's file is changed by anything but the app's own server (git,
+Finder, another editor, a download, a sync), its "always" and "don’t
+allow" answers are forgotten, and the next call asks again; in a
+headless run (Shortcuts), which can't ask, the call is denied instead. The
+share sheet's extension can't see the notebook's original file, so it
+doesn't check stamps; the app does, the next time it reads the answer. A
+"don’t allow" that is forgotten costs only that question. The folders the
+notebook was given (`device.folders`) are forgotten the same way. What
+the app's own server writes keeps them: saving in a window, a run saving
+its outputs, a room's autosave and an MCP agent connected to the app's
+server. A save from `ganymede serve`, `ganymede mcp`'s own server or
+JupyterLab on its own server counts as outside.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release. The latest release keeps an answer for a notebook's
+> path whatever happens to the file.
 
 Each namespace with a permission also has `authorizationStatus()` and
 `requestAuthorization()`, to check or ask before the first call. Only

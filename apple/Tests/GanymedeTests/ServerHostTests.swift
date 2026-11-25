@@ -1,3 +1,4 @@
+import DeviceBridge
 import XCTest
 
 /// ServerHost against the real static library: start, serve, stop.
@@ -254,6 +255,118 @@ final class ServerHostTests: XCTestCase {
         XCTAssertFalse(host.kernels.isLive(id))
         XCTAssertFalse(host.kernels.deliver(id, run: second, channel: "iopub", message: FakeAppKernel.status(id, "idle")),
                        "a stopped kernel takes nothing more")
+    }
+
+    /// The server reports each write it makes (ganymede v0.16.0), with the
+    /// file's canonical path and its stamps in `FileStamp`'s format, which
+    /// is what keeps a kept answer through the app's own saves (#584).
+    func testReportsItsWritesWithStampsInFileStampsFormat() throws {
+        let notebook = dir.appendingPathComponent("Callisto.ipynb")
+        let text = #"{"cells": [], "metadata": {}, "nbformat": 4, "nbformat_minor": 5}"#
+        try text.write(to: notebook, atomically: true, encoding: .utf8)
+        let path = notebook.resolvingSymlinksInPath().path
+        let host = try ServerHost(config: config(["root_dir": "/"]))
+        defer { host.stop() }
+        final class Reports: @unchecked Sendable {
+            private let lock = NSLock()
+            private var items: [(path: String, before: String?, after: String?)] = []
+            var all: [(path: String, before: String?, after: String?)] { lock.withLock { items } }
+            func add(_ path: String, _ before: String?, _ after: String?) { lock.withLock { items.append((path, before, after)) } }
+        }
+        let reports = Reports()
+        host.setWriteObserver { reports.add($0, $1, $2) }
+        let before = try XCTUnwrap(FileStamp.of(path))
+        let content = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(text.utf8)))
+        let body = String(decoding: try JSONSerialization.data(withJSONObject: [
+            "type": "notebook", "format": "json", "content": content,
+        ]), as: UTF8.self)
+        let (status, reply) = try request(host, "PUT", "/api/contents" + path, body)
+        XCTAssertTrue((200..<300).contains(status), reply)
+        try eventually("the write report") { !reports.all.isEmpty }
+        let report = try XCTUnwrap(reports.all.first)
+        XCTAssertEqual(report.path, FileStamp.canonical(path), "the canonical path")
+        XCTAssertEqual(report.before, before, "the stamp before, as FileStamp makes it")
+        XCTAssertEqual(report.after, FileStamp.of(path), "the stamp after, as FileStamp makes it")
+        XCTAssertNotEqual(report.before, report.after)
+    }
+
+    /// `KeptAnswers.watch` sets the observer the app uses: a write the
+    /// server makes lands in `ServerWriteLog.shared`, which is what lets a
+    /// kept answer's check follow the stamp.
+    func testWatchRecordsTheServersWritesInTheSharedLog() throws {
+        let notebook = dir.appendingPathComponent("Ganymede.ipynb")
+        let text = #"{"cells": [], "metadata": {}, "nbformat": 4, "nbformat_minor": 5}"#
+        try text.write(to: notebook, atomically: true, encoding: .utf8)
+        let path = notebook.resolvingSymlinksInPath().path
+        let host = try ServerHost(config: config(["root_dir": "/"]))
+        defer { host.stop() }
+        // A no-op for the main actor: this test is about the shared log, and
+        // leaves the app's real stores alone.
+        KeptAnswers.watch(host) { _, _, _ in }
+        let before = try XCTUnwrap(FileStamp.of(path))
+        let content = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(text.utf8)))
+        let body = String(decoding: try JSONSerialization.data(withJSONObject: [
+            "type": "notebook", "format": "json", "content": content,
+        ]), as: UTF8.self)
+        let (status, reply) = try request(host, "PUT", "/api/contents" + path, body)
+        XCTAssertTrue((200..<300).contains(status), reply)
+        let canonical = FileStamp.canonical(path)
+        try eventually("the write in the shared log") {
+            guard let after = FileStamp.of(path), after != before else { return false }
+            return ServerWriteLog.shared.leads(path: canonical, from: before, to: after)
+        }
+    }
+
+    /// The stores hear of the server's write through the main-actor hop in
+    /// `KeptAnswers.watch`, and their stamps move with the file's. The
+    /// stores have no log, so only the hop can move them. The main thread
+    /// must keep running for the hop, so this polls the run loop.
+    @MainActor
+    func testWatchMovesTheStoresStampsThroughTheMainActor() throws {
+        let notebook = dir.appendingPathComponent("Himalia.ipynb")
+        let text = #"{"cells": [], "metadata": {}, "nbformat": 4, "nbformat_minor": 5}"#
+        try text.write(to: notebook, atomically: true, encoding: .utf8)
+        let path = notebook.resolvingSymlinksInPath().path
+        let before = try XCTUnwrap(FileStamp.of(path))
+        let suite = "ServerHostTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let links = URLRunPermissions(defaults: defaults, log: nil)
+        links.allow(URL(fileURLWithPath: path), sendingTo: nil)
+        let ledgerStore = UserDefaultsLedgerStore(key: "ledger", defaults: defaults)
+        let ledger = PermissionLedger(store: ledgerStore, log: nil)
+        ledger.record(.always, notebook: path, capability: "location")
+        let folderStore = UserDefaultsFolderStore(key: "folders", defaults: defaults)
+        folderStore.save([FolderGrant(id: "F1", notebook: path, name: "Data", writable: false, bookmark: Data([1]), stamp: before)])
+        let folders = FolderGrants(store: folderStore, log: nil)
+        XCTAssertEqual(ledgerStore.load().map(\.stamp), [before], "stamped with the file as it is")
+
+        let host = try ServerHost(config: config(["root_dir": "/"]))
+        defer { host.stop() }
+        KeptAnswers.watch(host) { path, before, after in
+            KeptAnswers.serverWrote(
+                path: path, before: before, after: after, links: links, ledger: ledger, folders: folders)
+        }
+        let content = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(text.utf8)))
+        let body = String(decoding: try JSONSerialization.data(withJSONObject: [
+            "type": "notebook", "format": "json", "content": content,
+        ]), as: UTF8.self)
+        let (status, reply) = try request(host, "PUT", "/api/contents" + path, body)
+        XCTAssertTrue((200..<300).contains(status), reply)
+
+        let after = try XCTUnwrap(FileStamp.of(path))
+        XCTAssertNotEqual(after, before)
+        let moved = {
+            ledgerStore.load().map(\.stamp) == [after] && folderStore.load().map(\.stamp) == [after]
+                && (defaults.dictionary(forKey: URLRunPermissions.stampsKey) as? [String: String])?.values.sorted() == [after]
+        }
+        let deadline = Date().addingTimeInterval(20)
+        while Date() < deadline, !moved() {
+            RunLoop.main.run(until: Date().addingTimeInterval(0.05))
+        }
+        XCTAssertEqual(ledgerStore.load().map(\.stamp), [after], "the ledger")
+        XCTAssertEqual(folderStore.load().map(\.stamp), [after], "the folders")
+        XCTAssertEqual((defaults.dictionary(forKey: URLRunPermissions.stampsKey) as? [String: String])?.values.sorted(), [after], "the links")
     }
 
     func testFailureThrowsTheServersMessage() {

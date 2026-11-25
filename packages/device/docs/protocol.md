@@ -391,6 +391,11 @@ shares the bridge's store.
   may change and delete files, then the picker. A grant is a bookmark kept per notebook
   path (`UserDefaultsFolderStore`); `notebookMoved` carries it. Picking a
   folder the notebook already has replaces that grant and keeps its id.
+  A grant also holds the notebook's file stamp, as a ledger answer does
+  (see Permissions below), and is forgotten when something other than the
+  app's server changes that file; its calls then fail `denied`. The stamp
+  is read before the picker shows, and a pick of a notebook whose file was
+  changed by something else meanwhile fails `failed` and keeps nothing.
 - Every call needs the notebook (`setNotebook`); without it, or for a
   grant another notebook holds or one revoked, it fails `denied`.
   `write` and `remove` on a grant picked without `write: true` fail
@@ -574,7 +579,18 @@ the wire.
   prompt; so does a dismissed prompt, which keeps nothing. Ledgers on
   one store read it on each use, so an app with a bridge per window and
   a Settings screen with a ledger of its own share one set of answers;
-  owners (`setNotebook`) stay per ledger.
+  owners (`setNotebook`) stay per ledger. Each kept answer also holds
+  the notebook's file stamp (`FileStamp`: `size:mtime-ns:inode`, the
+  string the Ganymede server makes) as the app last saw it, and a read
+  forgets an answer whose file no longer matches, for `always` and `deny`
+  alike (a forgotten `deny` only means the next call asks). An app whose
+  server reports its writes (`ganymede_server_set_write_observer`) calls
+  `serverWrote(path:before:after:)` for each, which moves the stamp of
+  the answers that were for `before` (or had none) to `after`; a
+  `ServerWriteLog` given to the ledger lets a read that comes before that
+  call tell the server's write from an outside change. A file that isn't
+  there keeps its answers, so `move` can carry them. `FolderGrants` keeps
+  the same stamp per grant and applies the same rules.
   `requestAuthorization()` answers `denied` when the ledger refuses, and
   `authorizationStatus()` reads `denied` for a kernel with no notebook or
   a kept deny. When the system status is already `denied` or
