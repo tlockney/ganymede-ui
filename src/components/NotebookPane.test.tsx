@@ -431,6 +431,32 @@ describe('NotebookPane', () => {
     change.mockRestore();
   });
 
+  it('takes focus in command mode when it opens with nothing focused, as after Try a Notebook (#815)', async () => {
+    const { Widget } = await import('@lumino/widgets');
+    const activate = vi.spyOn(Widget.prototype, 'activate');
+    (document.activeElement as HTMLElement | null)?.blur();
+    expect(document.activeElement).toBe(document.body);
+    const { latest } = setup();
+    await waitFor(() => expect(latest()).toBeDefined());
+    expect(activate).toHaveBeenCalledWith();
+    expect(activate.mock.contexts).toContain(fakes.notebooks[0]);
+    activate.mockRestore();
+  });
+
+  it('leaves focus where it is when it opens from a control that keeps it (#815)', async () => {
+    const { Widget } = await import('@lumino/widgets');
+    const activate = vi.spyOn(Widget.prototype, 'activate');
+    const sidebarButton = document.createElement('button');
+    document.body.append(sidebarButton);
+    sidebarButton.focus();
+    const { latest } = setup();
+    await waitFor(() => expect(latest()).toBeDefined());
+    expect(activate.mock.contexts).not.toContain(fakes.notebooks[0]);
+    expect(document.activeElement).toBe(sidebarButton);
+    sidebarButton.remove();
+    activate.mockRestore();
+  });
+
   it('takes focus out of the hidden notebook when the journal shows (#184)', async () => {
     const { latest } = setup();
     await waitFor(() => expect(latest()).toBeDefined());

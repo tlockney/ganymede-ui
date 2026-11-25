@@ -76,10 +76,16 @@ npm run dev                                 # http://localhost:5173/?token=test
 
 The dev server proxies `/api` to `GANYMEDE_URL` (default
 `http://127.0.0.1:8888`), so the page and the server share an origin. A token
-in the page URL connects at once; otherwise a sheet asks where kernels run.
-"This browser" needs no server at all. `npm run build && npm run preview`
+in the page URL connects at once; otherwise the page shows a start screen
+(see [First open](#first-open-in-the-browser)), and **Connect to a Server…**
+opens the sheet that asks where kernels run. "This browser" needs no server
+at all. `npm run build && npm run preview`
 (same proxy, port 4173) runs the production build, with offline use and
 Workbox's service worker.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
 
 To use the app for real, have Ganymede serve the built app
 (`ganymede serve --static-dir dist`, or a release), or host it anywhere
@@ -93,7 +99,34 @@ features such as the clipboard; [docs/device.md](docs/device.md) lists them.
 
 ## Using it
 
-On a first run, the empty window says where notebooks live and where
+### First open in the browser
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+With no saved connection, no token in the URL and no login on the page's own
+server, the page shows three actions, and no sheet:
+
+- **Try a Notebook** runs the sample in this browser: a short TypeScript tour
+  whose first cell is one line of code, run with Shift-Enter or the ▶ button
+  in the toolbar. No server and no network are needed.
+- **Open a Notebook…** picks a `.ipynb` file from the device and opens it in
+  this browser. A file that isn't a notebook is refused, with the reason, and
+  nothing is connected.
+- **Connect to a Server…** opens the sheet that asks where kernels run, with
+  the server's URL, token and placement.
+
+Work in the browser is stored in the browser, not on the device's disk: a
+note above the notebook says "Saved in this browser. Download a copy to keep
+it elsewhere." and offers **Download a Copy**. **Dismiss** hides it for this
+origin (`ganymede-ui:storage-notice` in local storage). A reload comes back
+to the same notebook in this browser. The Apple apps always open on a
+connection, so they never show the start screen.
+
+### The first-run welcome
+
+Once connected, the empty window says where notebooks live and where
 kernels run, with buttons to show the folder and to change where kernels
 run, and offers a sample notebook: a short TypeScript tour with
 Markdown, a table and a plot, copied into the folder the sidebar shows

@@ -1,12 +1,11 @@
 // anywidget views (#417): cdp-kernel's `jupyter.widget` draws in a sandboxed
 // frame and syncs both ways with the kernel, from the saved state too.
 import { expect, type Page, test } from '@playwright/test';
-import { outputs, waitForReady } from './helpers';
+import { outputs, useThisBrowser, waitForReady } from './helpers';
 
 async function connectBrowser(page: Page) {
   await page.goto('/');
-  await page.getByRole('radio', { name: /This browser/ }).click();
-  await page.getByRole('button', { name: 'Connect', exact: true }).click();
+  await useThisBrowser(page);
   await expect(page.getByRole('button', { name: /This browser/ })).toBeVisible({
     timeout: 60_000,
   });

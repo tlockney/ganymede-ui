@@ -94,11 +94,12 @@ import { CommandPalette } from './components/CommandPalette';
 import { VariablesPanel } from './components/VariablesPanel';
 import { useKernelMemory } from './lib/kernel-usage';
 import { nodeAt, useVariables } from './lib/useVariables';
-import { useFileDrop } from './lib/file-drop';
+import { copyIntoFolder, useFileDrop } from './lib/file-drop';
 import { copySample } from './lib/sample';
 import { pendingHandoffs } from './lib/rename';
 import { SERVER_TIMEOUT_MS } from './lib/server-request';
 import { refreshKernelsOnReturn } from './lib/kernel-refresh';
+import { StorageNotice } from './components/StorageNotice';
 import { RunSheet } from './components/RunSheet';
 import { runAvailable, runWithParams } from './lib/run';
 import { EXPORT_FORMATS, type ExportFormat } from './lib/export';
@@ -111,6 +112,8 @@ function stripLaunchParams(): void {
   const rest = params.toString();
   history.replaceState(null, '', window.location.pathname + (rest ? `?${rest}` : ''));
 }
+
+type PendingStart = { kind: 'try' } | { kind: 'open'; file: File };
 
 export function App() {
   const scheme = useColorScheme();
@@ -183,9 +186,19 @@ export function App() {
   backendRef.current = backend;
   const [error, setError] = useState<string>();
   const [connecting, setConnecting] = useState(false);
-  const [sheetOpen, setSheetOpen] = useState(() => !config);
+  // Never open at the start: with nothing saved, the start screen offers
+  // Try a Notebook, Open a Notebook… and Connect to a Server… (#815), and
+  // the sheet opens behind the last. The Apple apps always have a config.
+  const [sheetOpen, setSheetOpen] = useState(false);
+  /**
+   * What the start screen asked for, to run once its browser backend
+   * connects: the sample, or a notebook file the person picked. Dropped when
+   * the connection fails or the sheet picks a backend, so a later connection
+   * never runs a start nobody is waiting for.
+   */
+  const pendingStart = useRef<PendingStart | undefined>(undefined);
   // With nothing to connect to yet, first check whether this page's server
-  // has us signed in; the sheet waits for the answer.
+  // has us signed in; the start screen waits for the answer.
   const [probing, setProbing] = useState(() => !config);
   // A window opened on one notebook starts on the notebook alone; a reload
   // of any page keeps the usual layout.
@@ -368,6 +381,7 @@ export function App() {
       })
       .catch(e => {
         if (cancelled) return;
+        pendingStart.current = undefined;
         setError(e instanceof Error ? e.message : String(e));
         setSheetOpen(true);
       })
@@ -1162,6 +1176,21 @@ export function App() {
                 onNew={() => void newNotebook(folder)}
                 onOpenExamples={() => void openExamples(folder)}
                 onConnect={openConnect}
+                native={native}
+                onTry={() => {
+                  // As the sheet does for another backend: a launch file or
+                  // console belongs to the first one.
+                  pendingOpen.current = undefined;
+                  pendingConsole.current = undefined;
+                  pendingStart.current = { kind: 'try' };
+                  setConfig({ kind: 'browser' });
+                }}
+                onOpenFile={file => {
+                  pendingOpen.current = undefined;
+                  pendingConsole.current = undefined;
+                  pendingStart.current = { kind: 'open', file };
+                  setConfig({ kind: 'browser' });
+                }}
                 folder={folder}
                 onShowFolder={native || sidebarOpen ? undefined : () => setSidebarOpen(true)}
                 onOpenSample={
@@ -1182,6 +1211,18 @@ export function App() {
                 onClose={() => setVariablesOpen(false)}
               />
             )}
+            {
+              // Where browser work is kept, before the first edit (#815): for
+              // a notebook, not a data file or the console, and not in the
+              // Apple apps, which keep notebooks on their server.
+              !native &&
+                backend?.config.kind === 'browser' &&
+                openPath &&
+                !dataKind(openPath) &&
+                controller?.path === openPath && (
+                  <StorageNotice key={openPath} onDownload={() => controller.download()} />
+                )
+            }
             {newError && (
               <div className="pane-notice" role="alert">
                 <span>{newError}</span>

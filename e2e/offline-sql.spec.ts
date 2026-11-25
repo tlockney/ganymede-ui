@@ -7,7 +7,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Locator, type Page } from '@playwright/test';
-import { waitForReady } from './helpers';
+import { useThisBrowser, waitForReady } from './helpers';
 
 const DIST = join(process.cwd(), 'node_modules/@duckdb/duckdb-wasm/dist');
 const JSDELIVR =
@@ -45,8 +45,7 @@ async function offline(page: Page): Promise<string[]> {
 async function openApp(page: Page, first: boolean) {
   await page.goto('/');
   if (first) {
-    await page.getByRole('radio', { name: /This browser/ }).click();
-    await page.getByRole('button', { name: 'Connect', exact: true }).click();
+    await useThisBrowser(page);
   }
   await expect(page.getByRole('button', { name: /This browser/ })).toBeVisible({
     timeout: 60_000,

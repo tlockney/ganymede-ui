@@ -836,6 +836,12 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       Widget.attach(open.notebook, holder);
       // Start with the first cell active, ready for the keyboard.
       open.notebook.activeCellIndex = 0;
+      // Nothing has focus (the start screen's Try a Notebook button went
+      // when the notebook came, #815): take it in command mode, so
+      // Shift-Enter runs the first cell. A notebook opened from a control
+      // that keeps focus leaves it there.
+      const active = document.activeElement;
+      if (!active || active === document.body) open.notebook.activate();
     }
     const observer = new ResizeObserver(() => open.notebook.update());
     observer.observe(node);
