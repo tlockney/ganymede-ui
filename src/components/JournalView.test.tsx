@@ -1085,6 +1085,51 @@ describe('opening, input and position keeping (#816, review)', () => {
     expect(readPosition(KEY.server, KEY.path)).toEqual({ cell: 'c2', offset: 50, cells: 12 });
   });
 
+  it('keeps the held cell by id when a cell is inserted above it', async () => {
+    stubLayout(() => 13);
+    const observed: (() => void)[] = [];
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(cb: () => void) {
+          observed.push(cb);
+        }
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    savePosition(KEY.server, KEY.path, saved);
+    const nb = cellsOf(12);
+    show(nb, undefined, { positionKey: KEY });
+    expect(scrollArea().scrollTop).toBe(3 * CELL + 30);
+    // Someone adds a cell at the top: the held cell, c3, is now the fifth.
+    act(() => {
+      nb.insertCell(0, { cell_type: 'markdown', source: 'new', metadata: agent('note') });
+    });
+    await vi.waitFor(() =>
+      expect(document.querySelector('.journal-cell')?.getAttribute('data-cell-id')).not.toBe('c0'),
+    );
+    act(() => observed.forEach(cb => cb()));
+    expect(scrollArea().scrollTop).toBe(4 * CELL + 30);
+  });
+
+  it('keeps positions again on a path that was renamed away from, once a journal opens there', async () => {
+    stubLayout(() => 12);
+    // A → B earlier in the page's life, then a journal opens at A again.
+    movePositions(KEY.server, KEY.path, 'B.ipynb');
+    const view = show(cellsOf(12), undefined, { positionKey: KEY });
+    scrollTo(250);
+    await vi.waitFor(() => expect(readPosition(KEY.server, KEY.path)).toBeDefined(), {
+      timeout: 2000,
+    });
+    act(() => {
+      scrollArea().scrollTop = 410;
+    });
+    view.unmount();
+    expect(readPosition(KEY.server, KEY.path)).toEqual({ cell: 'c4', offset: 10, cells: 12 });
+  });
+
   it('writes nothing back under a path that was renamed while the journal was open', async () => {
     stubLayout(() => 12);
     const view = show(cellsOf(12), undefined, { positionKey: KEY });
