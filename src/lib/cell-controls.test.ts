@@ -317,4 +317,18 @@ describe('the compact layout (#813)', () => {
     expect(cellRunState(cell(0))).toBeUndefined();
     expect(cell(0).node.querySelector('.jp-InputPrompt')!.hasAttribute('title')).toBe(false);
   });
+
+  it('says Stopped for this app’s own interrupt name too', async () => {
+    // cdp-kernel's kernels interrupt with `Interrupted: Execution
+    // interrupted`, not `KeyboardInterrupt`.
+    (cell(0).model as unknown as { outputs: { add(o: unknown): void } }).outputs.add({
+      output_type: 'error',
+      ename: 'Interrupted',
+      evalue: 'Execution interrupted',
+      traceback: [],
+    });
+    await Promise.resolve();
+    expect(cellRunState(cell(0))).toBe('Stopped');
+    expect(meta(0).querySelector('.gn-meta-state')!.textContent).toBe('Stopped');
+  });
 });

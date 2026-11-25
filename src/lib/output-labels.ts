@@ -3,7 +3,8 @@
  *
  * - An error output gets an "Execution failed" label and its exception
  *   summary (`ename: evalue`) above the traceback, which is long and ends
- *   with that line. A `KeyboardInterrupt` says "Execution stopped".
+ *   with that line. An interrupt says "Execution stopped": Jupyter's
+ *   `KeyboardInterrupt`, or cdp-kernel's `Interrupted`.
  * - A `stderr` stream gets a "Warning" label.
  * - A long stream (a loop's prints, a training log) shows its last lines,
  *   with a "View full log" button that opens all of it and "Show last lines"
@@ -18,6 +19,7 @@
 import { type Cell, CodeCell } from '@jupyterlab/cells';
 import type * as nbformat from '@jupyterlab/nbformat';
 import type { Notebook } from '@jupyterlab/notebook';
+import type { PartialJSONValue } from '@lumino/coreutils';
 import type { IDisposable } from '@lumino/disposable';
 
 /** A stream longer than this many lines shows only its tail until opened. */
@@ -36,13 +38,23 @@ export type OutputLabels = IDisposable & {
   refresh(): void;
 };
 
+/**
+ * An error output from an interrupt: Jupyter's `KeyboardInterrupt`, or
+ * cdp-kernel's `Interrupted` (`Execution interrupted`), as this app's own
+ * kernels say it. Shared by the output label and the cell's run state.
+ * The name's type is loose: an unrecognized output's fields are JSON.
+ */
+export function isInterrupt(ename: string | PartialJSONValue | undefined): boolean {
+  return ename === 'KeyboardInterrupt' || ename === 'Interrupted';
+}
+
 /** What the label above one output says, or undefined for an output with none. */
 export function labelFor(
   output: nbformat.IOutput,
 ): { label: string; kind: string; summary?: string; lines?: number } | undefined {
   if (output.output_type === 'error') {
     const summary = `${output.ename}: ${output.evalue}`.replace(/\s+/g, ' ').trim();
-    return output.ename === 'KeyboardInterrupt'
+    return isInterrupt(output.ename)
       ? { label: 'Execution stopped', kind: 'stopped', summary }
       : { label: 'Execution failed', kind: 'error', summary };
   }

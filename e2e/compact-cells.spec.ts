@@ -130,6 +130,24 @@ test('a failing cell says Execution failed with the exception summary first', as
   await expect(page.locator('.jp-Cell.jp-mod-active .gn-cell-meta')).toBeVisible();
 });
 
+test('an interrupt on this browser says Execution stopped and Stopped', async ({ page }) => {
+  await newBrowserNotebook(page);
+  await runCell(page, 'while (true) {}');
+  // The toolbar's Interrupt, not the running cell's own button.
+  const interrupt = page.locator('.toolbar').getByRole('button', { name: 'Interrupt', exact: true });
+  await expect(interrupt).toBeEnabled({ timeout: 60_000 });
+  await interrupt.tap();
+  // cdp-kernel ends the cell with `Interrupted: Execution interrupted`,
+  // which is a stop, not a failure.
+  const bar = page.locator('.gn-output-bar[data-kind="stopped"]');
+  await expect(bar).toBeVisible({ timeout: 60_000 });
+  await expect(bar.locator('.gn-output-label')).toHaveText('Execution stopped');
+  await expect(bar.locator('.gn-output-summary')).toHaveText('Interrupted: Execution interrupted');
+  await expect(page.locator('.jp-Cell.jp-mod-active .gn-cell-meta .gn-meta-state')).toHaveText(
+    'Stopped',
+  );
+});
+
 test('a long log shows its tail, and View full log opens it', async ({ page }) => {
   await newBrowserNotebook(page);
   await runCell(page, 'for (let i = 0; i < 60; i++) console.log(`step ${i}`);');

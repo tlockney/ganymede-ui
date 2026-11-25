@@ -12,7 +12,7 @@ Range.prototype.getClientRects ??= () => [] as unknown as DOMRectList;
 Range.prototype.getBoundingClientRect ??= () => new DOMRect();
 
 const { createNotebook, createRendermime } = await import('./jupyterlab');
-const { attachOutputLabels, labelFor, LOG_LINES } = await import('./output-labels');
+const { attachOutputLabels, labelFor, isInterrupt, LOG_LINES } = await import('./output-labels');
 const { NotebookModel } = await import('@jupyterlab/notebook');
 const { Widget } = await import('@lumino/widgets');
 
@@ -85,6 +85,22 @@ describe('labelFor', () => {
       label: 'Execution stopped',
       summary: 'KeyboardInterrupt:',
     });
+  });
+
+  it('calls this app’s own interrupts stopped too', () => {
+    // cdp-kernel's kernels (this browser, the apps' in-app kernel) say
+    // `Interrupted: Execution interrupted`, not `KeyboardInterrupt`.
+    expect(labelFor({ ...error, ename: 'Interrupted', evalue: 'Execution interrupted' })).toEqual(
+      {
+        label: 'Execution stopped',
+        kind: 'stopped',
+        summary: 'Interrupted: Execution interrupted',
+      },
+    );
+    expect(isInterrupt('KeyboardInterrupt')).toBe(true);
+    expect(isInterrupt('Interrupted')).toBe(true);
+    expect(isInterrupt('ValueError')).toBe(false);
+    expect(isInterrupt(undefined)).toBe(false);
   });
 
   it('labels stderr a warning, and stdout nothing', () => {

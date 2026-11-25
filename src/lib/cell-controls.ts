@@ -15,6 +15,7 @@ import { type Cell, CodeCell } from '@jupyterlab/cells';
 import { type Notebook, NotebookActions } from '@jupyterlab/notebook';
 import { DisposableDelegate, type IDisposable } from '@lumino/disposable';
 import { dragCell } from './cell-drag';
+import { isInterrupt } from './output-labels';
 
 export type CellMenuAction =
   'run' | 'code' | 'markdown' | 'raw' | 'move-up' | 'move-down' | 'duplicate' | 'delete';
@@ -48,8 +49,7 @@ export function cellRunState(cell: Cell): CellRunState | undefined {
   const outputs = cell.model.outputs;
   for (let i = outputs.length - 1; i >= 0; i--) {
     const out = outputs.get(i).toJSON();
-    if (out.output_type === 'error')
-      return out.ename === 'KeyboardInterrupt' ? 'Stopped' : undefined;
+    if (out.output_type === 'error') return isInterrupt(out.ename) ? 'Stopped' : undefined;
   }
   return undefined;
 }
