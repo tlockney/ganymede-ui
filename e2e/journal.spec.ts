@@ -537,6 +537,28 @@ const fromEnd = (page: Page) =>
 const scrollTop = (page: Page) =>
   page.evaluate(() => document.querySelector('.journal-scroll')!.scrollTop);
 
+/**
+ * Wait until the journal's content stops changing height: framed outputs
+ * (the plots) load after the cells, and on a slow machine a scroll made
+ * before they settle lands somewhere else.
+ */
+async function settled(page: Page) {
+  let last = -1;
+  await expect
+    .poll(
+      async () => {
+        const h = await page.evaluate(
+          () => document.querySelector('.journal-scroll')!.scrollHeight,
+        );
+        const same = h === last;
+        last = h;
+        return same;
+      },
+      { intervals: [500], timeout: 20_000 },
+    )
+    .toBe(true);
+}
+
 /** Scroll a cell to the top of the journal. */
 const scrollToCell = (page: Page, id: string) =>
   page.evaluate((cell: string) => {
@@ -586,6 +608,7 @@ test('opens a finished journal at its start, with no Follow button (#816)', asyn
 test('reopens at the cell the reader left (#816)', async ({ page }) => {
   writeFremont();
   const journal = await openFremont(page);
+  await settled(page);
   await scrollToCell(page, SECTION_4);
   await expect.poll(() => topOf(page, SECTION_4)).toBeLessThan(2);
   // Kept as they read, at most twice a second.
@@ -650,6 +673,7 @@ test('keeps the end in view while following, and says what is new once paused (#
 test('keeps the cell in view going to the notebook and back (#816)', async ({ page }) => {
   writeFremont();
   const journal = await openFremont(page);
+  await settled(page);
   await scrollToCell(page, SECTION_4);
   await expect.poll(() => topOf(page, SECTION_4)).toBeLessThan(2);
 
