@@ -94,6 +94,47 @@ final class ServerHost: @unchecked Sendable {
         #endif
     }
 
+    /// Calls `handler(path, before, after)` after each write the server
+    /// makes of a file under its root (`ganymede_server_set_write_observer`,
+    /// in the XCFramework from Ganymede v0.16.0): a REST save, a room's
+    /// autosave, a run saving its outputs, MCP, a checkpoint restore. `path`
+    /// is the file's canonical path; `before` and `after` are its stamps
+    /// (`FileStamp`'s format, nil when the file wasn't there or couldn't be
+    /// read). It runs on one of the server's threads, maybe for several
+    /// files at once, and must not block. Replaces the handler set before;
+    /// a server that has stopped takes none.
+    func setWriteObserver(_ handler: @escaping @Sendable (String, String?, String?) -> Void) {
+        let context = Unmanaged.passRetained(WriteObserver(handler))
+        let set: Void? = kernels.withHandle { handle in
+            ganymede_server_set_write_observer(
+                handle,
+                { ctx, path, before, after in
+                    guard let ctx, let path else { return }
+                    let observer = Unmanaged<WriteObserver>.fromOpaque(ctx).takeUnretainedValue()
+                    observer.handler(
+                        String(cString: path),
+                        before.map { String(cString: $0) },
+                        after.map { String(cString: $0) })
+                },
+                { ctx in
+                    guard let ctx else { return }
+                    Unmanaged<WriteObserver>.fromOpaque(ctx).release()
+                },
+                context.toOpaque())
+        }
+        // The server keeps nothing and never calls `release`.
+        if set == nil { context.release() }
+    }
+
+    /// What the write callback reaches through `ctx`, retained until the
+    /// server's `release`.
+    private final class WriteObserver: @unchecked Sendable {
+        let handler: @Sendable (String, String?, String?) -> Void
+        init(_ handler: @escaping @Sendable (String, String?, String?) -> Void) {
+            self.handler = handler
+        }
+    }
+
     /// Shuts down every kernel and stops the server. Blocks until done.
     /// Registered kernels answer the shutdown through the main thread, so
     /// off the main thread a stop is quick; on it, each waits out the

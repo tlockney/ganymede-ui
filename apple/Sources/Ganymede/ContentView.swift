@@ -444,17 +444,9 @@ struct ContentView: View {
             guard recents != nil, place.indexesLocally else { return }
             SpotlightSettings.shared.sync(recents: recentFiles)
         }
-        // The kept answers follow the file too (#584): an edit starting
-        // checks it, and a save restamps it.
         .onChange(of: pageModel.state.dirty) { was, now in
-            guard was != now, place.indexesLocally, let path = pageModel.state.path else { return }
-            let file = model.serverRootFolder.appendingPathComponent(path, isDirectory: false)
-            if was {
-                SpotlightSettings.shared.saved(file)
-                if file.pathExtension.lowercased() == "ipynb" { KeptAnswers.saved(file) }
-            } else if file.pathExtension.lowercased() == "ipynb" {
-                KeptAnswers.editing(file)
-            }
+            guard was, !now, place.indexesLocally, let path = pageModel.state.path else { return }
+            SpotlightSettings.shared.saved(model.serverRootFolder.appendingPathComponent(path, isDirectory: false))
         }
         .onContinueUserActivity(CSSearchableItemActionType) { activity in
             _ = SpotlightSettings.shared.open(activity, with: openFromSpotlight)

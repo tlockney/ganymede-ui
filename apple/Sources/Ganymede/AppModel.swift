@@ -277,6 +277,8 @@ final class AppModel {
             switch result {
             case .success(let host):
                 server = host
+                // A new server has no observer: set it again each start.
+                KeptAnswers.watch(host)
                 // Before the page loads, so its first kernel list has it.
                 AppKernels.shared.notebookRoot = serverRootFolder
                 do {

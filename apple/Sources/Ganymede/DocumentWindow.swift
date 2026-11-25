@@ -34,11 +34,7 @@ final class PageDocument {
     func update(_ message: DocumentMessage, in place: Place = .thisDevice) {
         let effects = DocumentEffects.of(message, previousFile: file, wasDirty: dirty, in: place)
         if let opened = effects.noteRecent { Recents.shared.note(opened, in: place) }
-        if let saved = effects.indexSaved {
-            SpotlightSettings.shared.saved(saved)
-            KeptAnswers.saved(saved)
-        }
-        if let editing = effects.editStarted { KeptAnswers.editing(editing) }
+        if let saved = effects.indexSaved { SpotlightSettings.shared.saved(saved) }
         self.place = place
         file = message.file
         dirty = message.dirty

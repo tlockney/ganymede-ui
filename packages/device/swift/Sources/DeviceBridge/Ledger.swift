@@ -9,7 +9,8 @@ import Foundation
 // Pickers, share and dialogs are their own consent and never reach it.
 // Each kept answer carries the stamp (`FileStamp`) of the notebook's file as
 // the app last saw it, and is forgotten when the file no longer matches: it
-// was replaced outside the app. The app's own saves restamp it.
+// was changed by something other than the app's server, whose own writes
+// restamp it (`serverWrote`).
 
 /// What the person answered the app's prompt. Nil (dismissed) denies this
 /// call and records nothing.
@@ -101,18 +102,23 @@ public protocol LedgerPrompter: AnyObject {
 ///
 /// A kept answer is for the file it was given for. Each read compares the
 /// answer's stamp with the notebook's file now: when they differ, the file
-/// was replaced outside the app and the answer is forgotten, so the next
-/// call asks again. When the file isn't there (deleted, or in the middle of
-/// a rename) the answer stays as it is, so `move` can carry it to the new
-/// path; a different file made at that path later has another inode and
-/// forgets it then. The app calls `restamp` after its own saves, so its
-/// edits keep the answers.
+/// was changed by something other than the app's server, and the answer is
+/// forgotten, so the next call asks again. The server's own writes (a
+/// window's save, a run saving its outputs, a room's autosave, an agent
+/// over MCP) are reported to `serverWrote`, which moves the stamp along.
+/// When the file isn't there (deleted, or in the middle of a rename) the
+/// answer stays as it is, so `move` can carry it to the new path; a
+/// different file made at that path later has another inode and forgets it
+/// then.
 @MainActor
 public final class PermissionLedger {
     private let store: LedgerStore
     /// The stamp of the file at a notebook's path now, nil when it isn't
     /// there. `FileStamp.of`; tests pass their own.
     private let stamp: (String) -> String?
+    /// The server's reported writes, which explain a stamp that moved
+    /// before `serverWrote` caught up; nil for none.
+    private let log: ServerWriteLog?
     /// The notebook path each kernel (`owner`) runs, as the host said.
     private var notebooks: [Int: String] = [:]
 
@@ -120,48 +126,58 @@ public final class PermissionLedger {
     /// the store, so an app with a bridge per window, and a Settings
     /// screen with a ledger of its own, see one set of answers. Owners are
     /// per ledger, as they are per page.
-    public init(store: LedgerStore? = nil, stamp: @escaping (String) -> String? = FileStamp.of) {
+    public init(
+        store: LedgerStore? = nil, stamp: @escaping (String) -> String? = FileStamp.of,
+        log: ServerWriteLog? = ServerWriteLog.shared
+    ) {
         self.store = store ?? UserDefaultsLedgerStore()
         self.stamp = stamp
+        self.log = log
     }
 
     /// The stored answers still good for their files, saving the store
-    /// when that dropped or stamped any.
-    private var kept: [LedgerGrant] { current(notebook: nil) }
-
-    /// As `kept`, checking only `notebook`'s answers when it is given:
-    /// - a stamp that differs from the file's now: the answer is dropped;
+    /// when that dropped or stamped any:
+    /// - a stamp that differs from the file's now: the answer is dropped,
+    ///   unless the server's reported writes lead from it to the file's
+    ///   (the server wrote the file and the app hasn't restamped yet), in
+    ///   which case it takes the file's stamp;
     /// - no stamp, and the file is there: the answer takes the file's
     ///   stamp (trust on first use: answers kept before stamps, or while
     ///   the file wasn't there yet);
     /// - no file: the answer is left alone.
-    private func current(notebook only: String?) -> [LedgerGrant] {
+    private var kept: [LedgerGrant] {
         let rows = store.load()
         let checked = rows.compactMap { row -> LedgerGrant? in
-            if let only, row.notebook != only { return row }
             guard let now = stamp(row.notebook) else { return row }
             guard let was = row.stamp else { return row.with(stamp: now) }
-            return was == now ? row : nil
+            if was == now { return row }
+            if log?.leads(path: FileStamp.canonical(row.notebook), from: was, to: now) == true {
+                return row.with(stamp: now)
+            }
+            return nil
         }
         if checked != rows { store.save(checked) }
         return checked
     }
 
-    /// Forgets `notebook`'s answers if its file was replaced since they
-    /// were kept. Any read does this too; the app calls it when an edit
-    /// starts, so a change from outside that the notebook's window picked
-    /// up is caught before the app's next save restamps it.
-    public func check(notebook: String) {
-        _ = current(notebook: notebook)
-    }
-
-    /// The app saved `notebook`: its answers are for the file as it is now.
-    /// Does nothing when the file isn't there.
-    public func restamp(notebook: String) {
-        guard let now = stamp(notebook) else { return }
+    /// The server wrote the file at `path` (canonical), which had stamp
+    /// `before` and now has `after`: the answers for that notebook move to
+    /// `after`, when they were for the file as it was (`before`) or have
+    /// no stamp yet. An answer for some other stamp stays, and is dropped
+    /// by the next read: the file was changed by something else first, and
+    /// the server's write doesn't make that one the app's. Nothing is
+    /// saved when no answer is for `path`, and nothing moves when `after`
+    /// is nil (the server couldn't read the file again).
+    public func serverWrote(path: String, before: String?, after: String?) {
+        guard let after else { return }
         let rows = store.load()
-        let restamped = rows.map { $0.notebook == notebook ? $0.with(stamp: now) : $0 }
-        if restamped != rows { store.save(restamped) }
+        let moved = rows.map { row -> LedgerGrant in
+            guard row.stamp == nil || row.stamp == before, row.stamp != after,
+                  FileStamp.canonical(row.notebook) == path
+            else { return row }
+            return row.with(stamp: after)
+        }
+        if moved != rows { store.save(moved) }
     }
 
     /// The kept answers that are still good, for a Settings screen.

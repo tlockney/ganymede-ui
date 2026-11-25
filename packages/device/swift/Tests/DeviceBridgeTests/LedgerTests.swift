@@ -386,8 +386,9 @@ final class LedgerTests: XCTestCase {
 
     // MARK: Answers follow the file (#584)
 
-    private func makeLedger(_ files: Files, store: LedgerStore? = nil) -> PermissionLedger {
-        PermissionLedger(store: store ?? self.store, stamp: files.stamp)
+    /// Without a log, unless the test gives one: tests don't share the app's.
+    private func makeLedger(_ files: Files, store: LedgerStore? = nil, log: ServerWriteLog? = nil) -> PermissionLedger {
+        PermissionLedger(store: store ?? self.store, stamp: files.stamp, log: log)
     }
 
     func testAnAnswerIsForgottenWhenTheFileChangesOutsideTheApp() {
@@ -445,44 +446,140 @@ final class LedgerTests: XCTestCase {
         XCTAssertEqual(store.saved, [LedgerGrant(notebook: "/n.ipynb", capability: "location", answer: .always, stamp: "1:10:100")])
     }
 
-    func testTheAppsOwnSaveKeepsTheAnswers() {
+    // MARK: The server's writes keep the answers (#584)
+
+    func testTheServersWriteKeepsTheAnswersOfThatNotebookOnly() {
         let files = Files()
-        files.stamps["/n.ipynb"] = "1:10:100"
-        files.stamps["/other.ipynb"] = "9:9:9"
+        files.stamps = ["/n.ipynb": "1:10:100", "/other.ipynb": "9:9:9"]
         let ledger = makeLedger(files)
         ledger.record(.always, notebook: "/n.ipynb", capability: "location")
+        ledger.record(.deny, notebook: "/n.ipynb", capability: "contacts")
         ledger.record(.deny, notebook: "/other.ipynb", capability: "location")
-        // The app saved (a rename over the file): restamp.
+        // The server saved n (a rename over the file) and reported it.
         files.stamps["/n.ipynb"] = "2:20:101"
-        ledger.restamp(notebook: "/n.ipynb")
-        XCTAssertEqual(ledger.answer(notebook: "/n.ipynb", capability: "location"), .always)
-        XCTAssertEqual(store.saved.first { $0.notebook == "/n.ipynb" }?.stamp, "2:20:101")
+        ledger.serverWrote(path: "/n.ipynb", before: "1:10:100", after: "2:20:101")
+        XCTAssertEqual(store.saved.filter { $0.notebook == "/n.ipynb" }.map(\.stamp), ["2:20:101", "2:20:101"])
         XCTAssertEqual(store.saved.first { $0.notebook == "/other.ipynb" }?.stamp, "9:9:9", "other notebooks are left alone")
+        XCTAssertEqual(ledger.answer(notebook: "/n.ipynb", capability: "location"), .always)
+        XCTAssertEqual(ledger.answer(notebook: "/n.ipynb", capability: "contacts"), .deny)
         // Then it is replaced from outside.
         files.stamps["/n.ipynb"] = "3:30:102"
         XCTAssertNil(ledger.answer(notebook: "/n.ipynb", capability: "location"))
         XCTAssertEqual(ledger.answer(notebook: "/other.ipynb", capability: "location"), .deny)
     }
 
-    func testRestampWithNoFileLeavesTheAnswers() {
+    func testACheckBeforeTheMainActorHearsOfTheServersWriteKeepsTheAnswers() {
         let files = Files()
+        let log = ServerWriteLog()
         files.stamps["/n.ipynb"] = "1:10:100"
-        let ledger = makeLedger(files)
+        let ledger = makeLedger(files, log: log)
         ledger.record(.always, notebook: "/n.ipynb", capability: "location")
-        files.stamps["/n.ipynb"] = nil
-        ledger.restamp(notebook: "/n.ipynb")
-        XCTAssertEqual(store.saved.first?.stamp, "1:10:100")
+        files.stamps["/n.ipynb"] = "2:20:101"
+        log.record(path: "/n.ipynb", before: "1:10:100", after: "2:20:101")
+        XCTAssertEqual(ledger.answer(notebook: "/n.ipynb", capability: "location"), .always, "the log explains it")
+        XCTAssertEqual(store.saved.first?.stamp, "2:20:101", "and the row is restamped")
+        // A change the log doesn't explain is still seen.
+        files.stamps["/n.ipynb"] = "3:30:102"
+        XCTAssertNil(ledger.answer(notebook: "/n.ipynb", capability: "location"))
     }
 
-    func testCheckForgetsOnlyThatNotebooksStaleAnswers() {
+    func testAnAlwaysAnswerSurvivesARunOfServerWritesInARow() {
         let files = Files()
-        files.stamps = ["/a.ipynb": "1:1:1", "/b.ipynb": "2:2:2"]
+        let log = ServerWriteLog()
+        files.stamps["/n.ipynb"] = "1:1:1"
+        let ledger = makeLedger(files, log: log)
+        ledger.record(.always, notebook: "/n.ipynb", capability: "location")
+        log.record(path: "/n.ipynb", before: "1:1:1", after: "2:2:2")
+        log.record(path: "/n.ipynb", before: "2:2:2", after: "3:3:3")
+        files.stamps["/n.ipynb"] = "3:3:3"
+        XCTAssertEqual(ledger.answer(notebook: "/n.ipynb", capability: "location"), .always, "A to B to C, the row at A")
+        // The main actor hears them late, the second first: the row is at C.
+        ledger.serverWrote(path: "/n.ipynb", before: "2:2:2", after: "3:3:3")
+        ledger.serverWrote(path: "/n.ipynb", before: "1:1:1", after: "2:2:2")
+        XCTAssertEqual(store.saved.first?.stamp, "3:3:3")
+    }
+
+    func testAServerWriteAfterAnOutsideChangeDoesNotRestamp() {
+        let files = Files()
+        let log = ServerWriteLog()
+        files.stamps["/n.ipynb"] = "1:1:1"
+        let ledger = makeLedger(files, log: log)
+        ledger.record(.always, notebook: "/n.ipynb", capability: "location")
+        // git replaced the file (9), then the server autosaved it (8).
+        files.stamps["/n.ipynb"] = "8:8:8"
+        log.record(path: "/n.ipynb", before: "9:9:9", after: "8:8:8")
+        ledger.serverWrote(path: "/n.ipynb", before: "9:9:9", after: "8:8:8")
+        XCTAssertEqual(store.saved.first?.stamp, "1:1:1", "not restamped")
+        XCTAssertNil(ledger.answer(notebook: "/n.ipynb", capability: "location"))
+        XCTAssertTrue(store.saved.isEmpty)
+    }
+
+    func testAFileTheServerCreatedDoesNotKeepAStampedAnswer() {
+        let files = Files()
+        let log = ServerWriteLog()
+        files.stamps["/n.ipynb"] = "1:1:1"
+        let ledger = makeLedger(files, log: log)
+        ledger.record(.deny, notebook: "/n.ipynb", capability: "location")
+        files.stamps["/n.ipynb"] = "5:5:5"
+        log.record(path: "/n.ipynb", before: nil, after: "5:5:5")
+        ledger.serverWrote(path: "/n.ipynb", before: nil, after: "5:5:5")
+        XCTAssertNil(ledger.answer(notebook: "/n.ipynb", capability: "location"), "a deny follows the same rule; the call asks again")
+    }
+
+    func testAServerWriteGivesAnAnswerWithNoStampTheNewOne() {
+        let files = Files()
+        store.saved = [LedgerGrant(notebook: "/n.ipynb", capability: "location", answer: .always)]
         let ledger = makeLedger(files)
-        ledger.record(.always, notebook: "/a.ipynb", capability: "location")
-        ledger.record(.always, notebook: "/b.ipynb", capability: "location")
-        files.stamps = ["/a.ipynb": "1:1:9", "/b.ipynb": "2:2:9"]
-        ledger.check(notebook: "/a.ipynb")
-        XCTAssertEqual(store.saved.map(\.notebook), ["/b.ipynb"], "a's is gone from the store; b's is not looked at")
+        ledger.serverWrote(path: "/n.ipynb", before: nil, after: "5:5:5")
+        XCTAssertEqual(store.saved.first?.stamp, "5:5:5")
+        files.stamps["/n.ipynb"] = "5:5:5"
+        XCTAssertEqual(ledger.answer(notebook: "/n.ipynb", capability: "location"), .always)
+    }
+
+    func testACallIsNotAskedAgainAfterTheServersWriteButIsAfterAnOutsideOne() {
+        let files = Files()
+        let log = ServerWriteLog()
+        files.stamps["/notes/walk.ipynb"] = "5:1:7"
+        let bridge = DeviceBridge(clipboard: nil, ledger: makeLedger(files, log: log), appVersion: "")
+        bridge.ledgerPrompter = prompter
+        bridge.setNotebook("/notes/walk.ipynb", for: 1)
+        bridge.addPermission("location", system)
+        bridge.addMethod("location.current", permission: "location") { _, reply in
+            reply(.success("here"))
+            return nil
+        }
+        let replies = Replies()
+        call(bridge, id: 1, into: replies)
+        prompter.answer(.always)
+        // A run saved its outputs: the server wrote the file.
+        files.stamps["/notes/walk.ipynb"] = "9:2:8"
+        log.record(path: "/notes/walk.ipynb", before: "5:1:7", after: "9:2:8")
+        call(bridge, id: 2, into: replies)
+        XCTAssertEqual(prompter.asked.count, 1, "the server's own write: not asked")
+        // git replaced it.
+        files.stamps["/notes/walk.ipynb"] = "9:3:9"
+        call(bridge, id: 3, into: replies)
+        XCTAssertEqual(prompter.asked.count, 2, "an outside change: asked again")
+    }
+
+    /// The row spells the notebook as the app's root does; the server
+    /// reports the file by `realpath`. Real files, for the links.
+    func testAReportIsMatchedToARowWhateverTheLinksSpelling() throws {
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("LedgerTests-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let real = folder.appendingPathComponent("real.ipynb").path
+        try Data("{}".utf8).write(to: URL(fileURLWithPath: real))
+        let link = folder.appendingPathComponent("link.ipynb").path
+        try FileManager.default.createSymbolicLink(atPath: link, withDestinationPath: real)
+        let files = Files()
+        files.stamps[link] = "1:1:1"
+        let ledger = makeLedger(files)
+        ledger.record(.always, notebook: link, capability: "location")
+        files.stamps[link] = "2:2:2"
+        ledger.serverWrote(path: FileStamp.canonical(real), before: "1:1:1", after: "2:2:2")
+        XCTAssertEqual(ledger.answer(notebook: link, capability: "location"), .always)
+        XCTAssertEqual(store.saved.first?.stamp, "2:2:2")
     }
 
     func testAMissingFileKeepsItsAnswersAndARenameCarriesThemWithTheirStamp() {
@@ -563,8 +660,8 @@ final class LedgerTests: XCTestCase {
         XCTAssertEqual(counting.saves, 1)
         _ = ledger.grants
         _ = ledger.answer(notebook: "/n.ipynb", capability: "location")
-        ledger.check(notebook: "/n.ipynb")
-        ledger.restamp(notebook: "/n.ipynb")
+        ledger.serverWrote(path: "/other.ipynb", before: "1:10:100", after: "2:20:200")
+        ledger.serverWrote(path: "/n.ipynb", before: "1:10:100", after: nil)
         XCTAssertEqual(counting.saves, 1, "nothing changed, nothing saved")
         files.stamps["/n.ipynb"] = "1:10:101"
         _ = ledger.grants

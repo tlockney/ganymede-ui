@@ -25,6 +25,32 @@ final class FileStampTests: XCTestCase {
         return url.path
     }
 
+    /// The server's `file_stamp` (ganymede `fileid.rs`) makes this exact
+    /// string, and the app compares its write reports with it.
+    func testTheFormatIsSizeMtimeNanosecondsInode() throws {
+        let path = try write("{}", to: "a.ipynb", modified: fixed)
+        let attributes = try FileManager.default.attributesOfItem(atPath: path)
+        let inode = try XCTUnwrap((attributes[.systemFileNumber] as? NSNumber)?.uint64Value)
+        XCTAssertEqual(FileStamp.of(path), "2:1700000000000000000:\(inode)")
+    }
+
+    func testATimeBeforeTheEpochIsZeroAsTheServerHasIt() throws {
+        let path = try write("{}", to: "a.ipynb", modified: Date(timeIntervalSince1970: -100))
+        let fields = try XCTUnwrap(FileStamp.of(path)).split(separator: ":").map(String.init)
+        XCTAssertEqual(fields.count, 3)
+        XCTAssertEqual(fields[1], "0")
+    }
+
+    func testCanonicalResolvesLinksAndKeepsAMissingPathAsGiven() throws {
+        let path = try write("{}", to: "a.ipynb")
+        let link = folder.appendingPathComponent("link.ipynb").path
+        try FileManager.default.createSymbolicLink(atPath: link, withDestinationPath: path)
+        XCTAssertEqual(FileStamp.canonical(link), FileStamp.canonical(path))
+        XCTAssertTrue(FileStamp.canonical(link).hasSuffix("/a.ipynb"), "the link is gone from the name")
+        let missing = folder.appendingPathComponent("none.ipynb").path
+        XCTAssertEqual(FileStamp.canonical(missing), URL(fileURLWithPath: missing).standardizedFileURL.path)
+    }
+
     func testTheSameFileHasTheSameStamp() throws {
         let path = try write("{}", to: "a.ipynb")
         let stamp = try XCTUnwrap(FileStamp.of(path))

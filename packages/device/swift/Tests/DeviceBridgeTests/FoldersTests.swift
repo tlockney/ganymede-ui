@@ -201,6 +201,32 @@ final class FoldersTests: XCTestCase {
         XCTAssertEqual(store.saved.count, 1, "a drive or share may come back")
     }
 
+    /// A notebook replaced outside the app loses the folders it was given
+    /// (#584): its calls fail `denied`, as after a revoke.
+    func testACallFailsDeniedAfterTheNotebooksFileChangesOutsideTheApp() async throws {
+        final class Stamps {
+            var all = ["/n/a.ipynb": "1:1:1"]
+            func stamp(_ path: String) -> String? { all[path] }
+        }
+        let stamps = Stamps()
+        let grants = FolderGrants(store: MemoryFolderStore(), stamp: stamps.stamp, log: nil)
+        let own = DeviceBridge(clipboard: nil, presenter: picker, ledger: PermissionLedger(store: MemoryLedgerStore()), appVersion: "")
+        own.addFolders(grants)
+        own.setNotebook("/n/a.ipynb", for: 1)
+        let earlier = bridge
+        bridge = own
+        defer { bridge = earlier }
+        let picked = await pick()
+        let id = try XCTUnwrap(picked)
+        let first = await call("folders.read", ["folder": id, "path": "a.txt"])
+        XCTAssertEqual(text(first), "hi")
+        stamps.all["/n/a.ipynb"] = "1:1:2"
+        let listed = await call("folders.list")
+        XCTAssertEqual((listed["result"] as? [[String: Any]])?.count, 0)
+        let second = await call("folders.read", ["folder": id, "path": "a.txt"])
+        XCTAssertEqual(code(second), "denied")
+    }
+
     func testAnUnusableBookmarkIsDropped() async throws {
         let picked = await pick()
         let id = try XCTUnwrap(picked)

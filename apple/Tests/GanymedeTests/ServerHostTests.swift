@@ -1,3 +1,4 @@
+import DeviceBridge
 import XCTest
 
 /// ServerHost against the real static library: start, serve, stop.
@@ -254,6 +255,39 @@ final class ServerHostTests: XCTestCase {
         XCTAssertFalse(host.kernels.isLive(id))
         XCTAssertFalse(host.kernels.deliver(id, run: second, channel: "iopub", message: FakeAppKernel.status(id, "idle")),
                        "a stopped kernel takes nothing more")
+    }
+
+    /// The server reports each write it makes (ganymede v0.16.0), with the
+    /// file's canonical path and its stamps in `FileStamp`'s format, which
+    /// is what keeps a kept answer through the app's own saves (#584).
+    func testReportsItsWritesWithStampsInFileStampsFormat() throws {
+        let notebook = dir.appendingPathComponent("Callisto.ipynb")
+        let text = #"{"cells": [], "metadata": {}, "nbformat": 4, "nbformat_minor": 5}"#
+        try text.write(to: notebook, atomically: true, encoding: .utf8)
+        let path = notebook.resolvingSymlinksInPath().path
+        let host = try ServerHost(config: config(["root_dir": "/"]))
+        defer { host.stop() }
+        final class Reports: @unchecked Sendable {
+            private let lock = NSLock()
+            private var items: [(path: String, before: String?, after: String?)] = []
+            var all: [(path: String, before: String?, after: String?)] { lock.withLock { items } }
+            func add(_ path: String, _ before: String?, _ after: String?) { lock.withLock { items.append((path, before, after)) } }
+        }
+        let reports = Reports()
+        host.setWriteObserver { reports.add($0, $1, $2) }
+        let before = try XCTUnwrap(FileStamp.of(path))
+        let content = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(text.utf8)))
+        let body = String(decoding: try JSONSerialization.data(withJSONObject: [
+            "type": "notebook", "format": "json", "content": content,
+        ]), as: UTF8.self)
+        let (status, reply) = try request(host, "PUT", "/api/contents" + path, body)
+        XCTAssertTrue((200..<300).contains(status), reply)
+        try eventually("the write report") { !reports.all.isEmpty }
+        let report = try XCTUnwrap(reports.all.first)
+        XCTAssertEqual(report.path, FileStamp.canonical(path), "the canonical path")
+        XCTAssertEqual(report.before, before, "the stamp before, as FileStamp makes it")
+        XCTAssertEqual(report.after, FileStamp.of(path), "the stamp after, as FileStamp makes it")
+        XCTAssertNotEqual(report.before, report.after)
     }
 
     func testFailureThrowsTheServersMessage() {

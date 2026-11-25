@@ -356,15 +356,18 @@ template from one. In those folders its reply, like `open`'s, tells
 the caller whether a name is taken or a template exists.
 
 "Always allow" is for the notebook as Ganymede last saw it. When the
-notebook is changed outside the app (git, Finder, another editor, a
-sync), the answer is forgotten and the next run asks again; Settings ›
-General › Links no longer lists it. Editing and saving in the app keeps
-it. The same goes for Shortcuts actions, which share these answers.
+notebook's file is changed by anything but Ganymede's own server (git,
+Finder, another editor, a download, a sync), the answer is forgotten and
+the next run asks again; Settings › General › Links no longer lists it.
+What the server writes keeps it: saving in a window, a run saving its
+outputs, a room's autosave and an agent working through MCP. The same goes
+for Shortcuts actions, which share these answers.
 
 > [!NOTE]
 > **Unreleased.** Available only from a build of `main` (HEAD), not in
 > the latest release. The latest release keeps "Always allow" for a path
-> whatever happens to the file.
+> whatever happens to the file. It needs the server in a build from
+> v0.16.0 on, which the apps in a build of `main` have.
 
 For a reply, put the route under `x-callback-url/` and add
 [x-callback-url](https://x-callback-url.com) answers:

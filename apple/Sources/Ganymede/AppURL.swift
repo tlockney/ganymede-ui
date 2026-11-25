@@ -342,13 +342,16 @@ enum AppURLError: LocalizedError, Equatable {
 ///
 /// An answer is for the file it was given for (#584). Each key has the
 /// stamp (`FileStamp`) of its file as the app last saw it, and is forgotten
-/// when the file no longer matches: it was replaced outside the app, by
-/// git, Finder, another editor or a sync, and the next run asks again.
-/// The app restamps its keys after its own saves. A key with no stamp
-/// (kept before stamps, or while the file wasn't there) takes the file's
-/// stamp when it is next checked. A file that isn't there leaves the key
-/// alone, so a notebook that is moved back, or still being written, keeps
-/// its answer; a different file made at that path has another inode.
+/// when the file no longer matches: it was changed by something other than
+/// the app's server (git, Finder, another editor, a sync), and the next run
+/// asks again. The server's own writes (a window's save, a run saving its
+/// outputs, a room's autosave, an agent over MCP) keep it: the server
+/// reports each one (`KeptAnswers.watch`) and `serverWrote` moves the stamp
+/// along. A key with no stamp (kept before stamps, or while the file wasn't
+/// there) takes the file's stamp when it is next checked. A file that isn't
+/// there leaves the key alone, so a notebook that is moved back, or still
+/// being written, keeps its answer; a different file made at that path has
+/// another inode.
 @MainActor
 @Observable
 final class URLRunPermissions {
@@ -364,18 +367,25 @@ final class URLRunPermissions {
     /// The stamp of the file at a path now, nil when it isn't there.
     /// `FileStamp.of`; tests pass their own.
     @ObservationIgnored private let stamp: (String) -> String?
+    /// The server's reported writes, which explain a stamp that moved
+    /// before `serverWrote` caught up; nil for none.
+    @ObservationIgnored private let log: ServerWriteLog?
     @ObservationIgnored private var stamps: [String: String]
     private(set) var paths: [String]
 
-    init(defaults: UserDefaults = .standard, stamp: @escaping (String) -> String? = FileStamp.of) {
+    init(
+        defaults: UserDefaults = .standard, stamp: @escaping (String) -> String? = FileStamp.of,
+        log: ServerWriteLog? = ServerWriteLog.shared
+    ) {
         self.defaults = defaults
         self.stamp = stamp
+        self.log = log
         paths = defaults.stringArray(forKey: Self.defaultsKey) ?? []
         stamps = defaults.dictionary(forKey: Self.stampsKey) as? [String: String] ?? [:]
     }
 
     /// Whether the run is allowed: kept, and for the file as it is. A key
-    /// whose file was replaced since is forgotten here, and the run asks.
+    /// whose file was changed since is forgotten here, and the run asks.
     func allows(_ url: URL, sendingTo destination: String?, withParameters: Bool = false) -> Bool {
         holds(Self.key(url, destination, withParameters))
     }
@@ -402,36 +412,39 @@ final class URLRunPermissions {
         save()
     }
 
-    /// The app saved `url`: its keys are for the file as it is now. Does
-    /// nothing when the file isn't there.
-    func restamp(_ url: URL) {
-        let file = Self.filePath(url)
-        guard let now = stamp(file) else { return }
+    /// The server wrote the file at `path` (canonical), which had stamp
+    /// `before` and now has `after`: the keys of that file move to `after`,
+    /// when they were for the file as it was (`before`) or have no stamp
+    /// yet. A key for some other stamp stays, and the next check forgets
+    /// it: the file was changed by something else first, and the server's
+    /// write doesn't make that change the app's. Nothing is saved when no
+    /// key is for `path`, and nothing moves when `after` is nil (the server
+    /// couldn't read the file again).
+    func serverWrote(path: String, before: String?, after: String?) {
+        guard let after else { return }
         var changed = false
-        for key in paths where Self.parts(key).path == file && stamps[key] != now {
-            stamps[key] = now
+        for key in paths {
+            let was = stamps[key]
+            guard was == nil || was == before, was != after,
+                  FileStamp.canonical(Self.parts(key).path) == path
+            else { continue }
+            stamps[key] = after
             changed = true
         }
         if changed { save() }
     }
 
-    /// Forgets `url`'s keys if its file was replaced since they were kept.
-    /// `allows` does this too; the app calls it when an edit starts, so a
-    /// change from outside that the window picked up is caught before the
-    /// app's next save restamps it.
-    func check(_ url: URL) {
-        let file = Self.filePath(url)
-        for key in paths where Self.parts(key).path == file { _ = holds(key) }
-    }
-
-    /// Forgets every key whose file was replaced since it was kept, so
+    /// Forgets every key whose file was changed since it was kept, so
     /// Settings lists only answers that still hold.
     func pruneStale() {
         for key in paths { _ = holds(key) }
     }
 
     /// Whether `key` is kept and its file is the one it was kept for:
-    /// - a stamp that differs from the file's now: the key is revoked;
+    /// - a stamp that differs from the file's now: the key is revoked,
+    ///   unless the server's reported writes lead from it to the file's
+    ///   (the server wrote the file and `serverWrote` hasn't run yet), in
+    ///   which case it takes the file's stamp;
     /// - no stamp, and the file is there: it takes the file's stamp (trust
     ///   on first use, for keys kept before stamps);
     /// - no file: the key stays.
@@ -444,6 +457,11 @@ final class URLRunPermissions {
             return true
         }
         if was == now { return true }
+        if log?.leads(path: FileStamp.canonical(Self.parts(key).path), from: was, to: now) == true {
+            stamps[key] = now
+            save()
+            return true
+        }
         revoke(key)
         return false
     }
@@ -476,37 +494,36 @@ final class URLRunPermissions {
     }
 }
 
-/// What the app does with kept answers when it sees a notebook's file
-/// change or its own save (#584): the links' "Always allow"
-/// (`URLRunPermissions`) and the device ledger's answers
-/// (`PermissionLedger`). An answer is forgotten when the file is replaced
-/// outside the app; the app's own saves restamp it. Local files only: the
-/// callers skip a machine's notebook.
+/// What the app does with kept answers when the server writes a notebook
+/// (#584): the links' "Always allow" (`URLRunPermissions`), the device
+/// ledger's answers (`PermissionLedger`) and the folders notebooks were
+/// given (`FolderGrants`) follow the file. A change by anything but the
+/// server forgets them; the server's own writes keep them.
 enum KeptAnswers {
-    /// The ledger keeps a notebook by its absolute path as the app's root
-    /// gives it, and the server may name the same file by its canonical
-    /// path, as `AppKernels.resolve(_:under:)` says: both spellings.
-    private static func ledgerPaths(_ url: URL) -> [String] {
-        let given = url.standardizedFileURL.path
-        let canonical = AppKernels.canonicalPath(url)
-        return given == canonical ? [given] : [given, canonical]
+    /// Has `host` report each write it makes. Called for every server
+    /// start, since a new server has no observer. A report goes to
+    /// `ServerWriteLog.shared` at once, on the server's thread, so a check
+    /// of a kept answer that runs before the main-actor hop below can
+    /// still tell the server's write from an outside change; then to the
+    /// stores on the main actor.
+    static func watch(_ host: ServerHost) {
+        host.setWriteObserver { path, before, after in
+            ServerWriteLog.shared.record(path: path, before: before, after: after)
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    KeptAnswers.serverWrote(path: path, before: before, after: after)
+                }
+            }
+        }
     }
 
-    /// An edit of `url` is starting (its window went from clean to dirty).
-    /// An outside change the window loaded is caught here, before the save
-    /// that follows would restamp it.
+    /// The server wrote the file at `path` (canonical): each kept answer
+    /// for it moves to the file's new stamp. Local files only: the server
+    /// reports files under its own root, never a machine's.
     @MainActor
-    static func editing(_ url: URL) {
-        URLRunPermissions.shared.check(url)
-        let ledger = PermissionLedger(store: AppGroup.ledgerStore())
-        for path in ledgerPaths(url) { ledger.check(notebook: path) }
-    }
-
-    /// The app saved `url` (its window went from dirty to clean).
-    @MainActor
-    static func saved(_ url: URL) {
-        URLRunPermissions.shared.restamp(url)
-        let ledger = PermissionLedger(store: AppGroup.ledgerStore())
-        for path in ledgerPaths(url) { ledger.restamp(notebook: path) }
+    static func serverWrote(path: String, before: String?, after: String?) {
+        URLRunPermissions.shared.serverWrote(path: path, before: before, after: after)
+        PermissionLedger(store: AppGroup.ledgerStore()).serverWrote(path: path, before: before, after: after)
+        FolderGrants().serverWrote(path: path, before: before, after: after)
     }
 }

@@ -77,42 +77,6 @@ final class DocumentMessageTests: XCTestCase {
             DocumentEffects())
     }
 
-    /// The kept answers check a notebook when an edit starts (#584), so an
-    /// outside change the window loaded is seen before the app's next save.
-    func testAnEditStartingIsNotedOnlyForTheSameLocalNotebook() {
-        let edited = message(.thisDevice, dirty: true)
-        XCTAssertEqual(
-            DocumentEffects.of(edited, previousFile: edited.file, wasDirty: false, in: .thisDevice),
-            DocumentEffects(editStarted: edited.file))
-        // Already edited: the check was made when the first edit came.
-        XCTAssertEqual(
-            DocumentEffects.of(edited, previousFile: edited.file, wasDirty: true, in: .thisDevice), DocumentEffects())
-        // A notebook just opened that already has edits is a new file: noted for Recents only.
-        XCTAssertEqual(
-            DocumentEffects.of(edited, previousFile: nil, wasDirty: false, in: .thisDevice),
-            DocumentEffects(noteRecent: edited.file))
-        let other = URL(fileURLWithPath: "/elsewhere/Europa.ipynb")
-        XCTAssertEqual(
-            DocumentEffects.of(edited, previousFile: other, wasDirty: false, in: .thisDevice),
-            DocumentEffects(noteRecent: edited.file))
-        // A saved notebook is not an edit starting.
-        let saved = message(.thisDevice, dirty: false)
-        XCTAssertNil(DocumentEffects.of(saved, previousFile: saved.file, wasDirty: false, in: .thisDevice).editStarted)
-        XCTAssertNil(DocumentEffects.of(saved, previousFile: saved.file, wasDirty: true, in: .thisDevice).editStarted)
-        // A data file isn't a notebook.
-        let data = message(.thisDevice, path: "a.csv", dirty: true)
-        XCTAssertEqual(
-            DocumentEffects.of(data, previousFile: data.file, wasDirty: false, in: .thisDevice), DocumentEffects())
-        // A machine's notebook isn't a file here.
-        let machine = message(.machine("m1"), dirty: true)
-        XCTAssertEqual(
-            DocumentEffects.of(machine, previousFile: machine.file, wasDirty: false, in: .machine("m1")),
-            DocumentEffects())
-        XCTAssertEqual(
-            DocumentEffects.of(machine, previousFile: machine.file, wasDirty: false, in: .thisDevice),
-            DocumentEffects())
-    }
-
     func testOnlyAFileOnThisDeviceHasAProxyIcon() {
         let local = message(.thisDevice)
         XCTAssertEqual(DocumentEffects.representedURL(for: local.file, in: .thisDevice), local.file)
