@@ -19,6 +19,7 @@ import {
 } from '../lib/crash-reports';
 import { codeFontSetting, saveCodeFont } from '../lib/code-font';
 import { CodeFontSection } from './CodeFontSection';
+import { OfflineSqlSection } from './OfflineSqlSection';
 
 /** The agent's runtime: pi-ai and its providers, loaded only once the agent is on. */
 export type AgentModels = typeof import('@ganymede-ui/agent/models');
@@ -39,8 +40,8 @@ type Test = { state: 'running' } | { state: 'done'; ok: boolean; message: string
 
 /**
  * App settings: the optional agent (ganymede-ui#123), off or a provider,
- * model and key; and, in a browser, the code font (#354) and error
- * reports (#319).
+ * model and key; DuckDB for offline SQL (#794); and, in a browser, the
+ * code font (#354) and error reports (#319).
  */
 export function SettingsSheet({
   onClose,
@@ -329,6 +330,8 @@ export function SettingsSheet({
         </section>
 
         {loadedFont.owner === 'page' && <CodeFontSection value={codeFont} onChange={setCodeFont} />}
+
+        <OfflineSqlSection />
 
         {reports.owner === 'page' && (
           <section>
