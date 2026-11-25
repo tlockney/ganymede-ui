@@ -75,7 +75,9 @@ shown or hidden, its tab and its expanded folders across launches.
 
   With the sidebar focused, ↑ and ↓ move the selection, → expands and
   ← collapses the selected folder, and Return opens the selected file or
-  expands or collapses the selected folder. Clicking a row selects it.
+  expands or collapses the selected folder. On a file or a collapsed
+  folder, ← selects the folder holding it, as in the Finder; at the top
+  level it does nothing. Clicking a row selects it.
   Clicking a notebook or data file sends the keyboard back to the page;
   clicking a folder, or pressing Tab into the sidebar, keeps it in the
   sidebar.
@@ -676,7 +678,9 @@ keys are kept in the keychain too.
 
   With a hardware keyboard, the Files tab takes the Mac's keys: ↑ and ↓
   move the selection, → and ← expand and collapse the selected folder,
-  and Return opens the selected file or toggles the selected folder.
+  ← on a file or a collapsed folder selects the folder holding it, and
+  Return opens the selected file or toggles the selected folder. Tapping
+  a notebook or data file gives the keyboard to the page.
 
   > [!NOTE]
   > **Unreleased.** Available only from a build of `main` (HEAD), not in
