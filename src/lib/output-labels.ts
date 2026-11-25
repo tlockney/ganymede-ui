@@ -10,6 +10,10 @@
  *   with a "Log, N lines" label and a "View full log" button that opens
  *   all of it and "Show last lines" to go back.
  * - Outputs with no kernel to have made them say "Saved output".
+ * - A chart or table wider than the prose column goes wide: the class
+ *   `gn-mod-wide` has jupyter.css span the pane with it, past the column
+ *   on both sides, capped inside the pane. A stream never does (its text
+ *   has no image or table to measure; it scrolls in its own box, #133).
  *
  * JupyterLab renders each output into a widget it replaces when a stream
  * grows, so the labels are plain DOM added to the rendered output and put
@@ -25,6 +29,19 @@ import type { IDisposable } from '@lumino/disposable';
 
 /** A stream longer than this many lines shows only its tail until opened. */
 export const LOG_LINES = 20;
+
+/** The class of an output wider than the prose column: jupyter.css spans
+ * the pane with it, past the column on both sides (#814). */
+export const WIDE = 'gn-mod-wide';
+
+/** The gutter a wide output leaves around the pane it spans: the column's
+ * own side padding (jupyter.css). `--gn-pane`, set on the notebook's scroll
+ * area, is the pane's client width less this on each side. */
+export const PANE_GUTTER = 32;
+
+/** Slack (px) around the prose column, so a window resized onto the line
+ * doesn't flip an output's class back and forth. */
+export const WIDE_SLACK = 8;
 
 const BAR = 'gn-output-bar';
 const SAVED = 'gn-saved-output';
@@ -55,6 +72,36 @@ export function isInterrupt(ename: string | PartialJSONValue | undefined): boole
  */
 export function streamText(output: nbformat.IStream | nbformat.IUnrecognizedOutput): string {
   return Array.isArray(output.text) ? output.text.join('') : String(output.text ?? '');
+}
+
+/**
+ * The width of the column a cell's outputs sit in, past the prompt: the
+ * output row's width, less a prompt beside it. Measured on the row rather
+ * than the output, so it is the same however `gn-mod-wide` has the output
+ * laid out. A prompt stacked above the output (JupyterLab's own narrow
+ * layout) or hidden (the compact one) gives the output the row's whole
+ * width: its width is the row's, or nothing.
+ */
+function columnOf(out: HTMLElement): number {
+  const child = out.closest<HTMLElement>('.jp-OutputArea-child');
+  const row = child?.clientWidth ?? out.clientWidth;
+  const prompt = child?.querySelector<HTMLElement>('.jp-OutputPrompt');
+  const side =
+    prompt && prompt.clientWidth > 0 && prompt.clientWidth < row ? prompt.clientWidth : 0;
+  return row - side;
+}
+
+/**
+ * Whether an image or table `measure` px wide is past the `column` px prose
+ * column (#814): past it with `WIDE_SLACK` it goes wide, back under it with
+ * slack it stops, and in between it keeps the class it has, so a resize
+ * that lands it on the line doesn't flip it back and forth. Nothing
+ * measured — an image that hasn't loaded, or no image or table at all,
+ * a stream — is never wide.
+ */
+export function pastColumn(measure: number, column: number, wide: boolean): boolean {
+  if (measure <= 0) return false;
+  return measure > column + WIDE_SLACK ? true : measure < column - WIDE_SLACK ? false : wide;
 }
 
 /**
@@ -91,6 +138,8 @@ export function attachOutputLabels(notebook: Notebook, { hasKernel }: Options): 
   const lineCounts = new WeakMap<object, { len: number; lines: number }>();
   /** Outputs lists already wired to forget `opened` when they are cleared. */
   const wired = new WeakSet<object>();
+  /** Images already given a load listener, so it is given only once. */
+  const loads = new WeakSet<HTMLImageElement>();
   /** Cells whose DOM changed, for the next pass to look at; `all` is all of them. */
   const dirty = new Set<CodeCell>();
   let all = false;
@@ -135,6 +184,33 @@ export function attachOutputLabels(notebook: Notebook, { hasKernel }: Options): 
       if (!out) continue;
       const item = model.get(i);
       const json = item.toJSON();
+      // Wide charts and tables (#814): an image's own width, or a table's
+      // content, past the column the cell's outputs sit in, has jupyter.css
+      // span the pane with the output, past the column on both sides, capped
+      // inside the pane. An image that hasn't loaded yet is listened for
+      // once, and decides then; a stream has no image or table to measure,
+      // so it never goes wide. The class is kept within WIDE_SLACK of the
+      // column, so a resize onto the line doesn't flip it back and forth.
+      const images = [...out.querySelectorAll<HTMLImageElement>('img')];
+      for (const image of images) {
+        if (image.naturalWidth > 0 || loads.has(image)) continue;
+        loads.add(image);
+        image.addEventListener('load', rescan, { once: true });
+      }
+      out.classList.toggle(
+        WIDE,
+        pastColumn(
+          Math.max(
+            -1,
+            ...images.map(image => image.naturalWidth),
+            ...[...out.querySelectorAll<HTMLElement>('.gm-table-scroll table')].map(
+              table => table.scrollWidth,
+            ),
+          ),
+          columnOf(out),
+          out.classList.contains(WIDE),
+        ),
+      );
       const info = labelFor(
         json,
         json.output_type === 'stream' ? countedLines(item, json) : undefined,
@@ -202,6 +278,7 @@ export function attachOutputLabels(notebook: Notebook, { hasKernel }: Options): 
       dirty.clear();
       return;
     }
+    setPane();
     if (every) {
       dirty.clear();
       notebook.widgets.forEach((cell: Cell) => {
@@ -218,6 +295,12 @@ export function attachOutputLabels(notebook: Notebook, { hasKernel }: Options): 
     if (scheduled || disposed) return;
     scheduled = true;
     queueMicrotask(() => scan());
+  };
+  /** Look at every output again: an image loaded, or the window was resized
+   *  and the column with it. */
+  const rescan = () => {
+    all = true;
+    schedule();
   };
 
   // A change inside one cell puts only that cell back on the list; a change
@@ -266,6 +349,22 @@ export function attachOutputLabels(notebook: Notebook, { hasKernel }: Options): 
   notebook.node.addEventListener('click', onClick);
   notebook.node.addEventListener('mousedown', onDown, true);
   notebook.node.addEventListener('focusin', onFocus, true);
+  // The pane a wide output spans (#814): the notebook's scroll area, whose
+  // client width less `PANE_GUTTER` on each side is the span jupyter.css
+  // gives it, as `--gn-pane`, kept by every scan. The window resizes it,
+  // and so does the sidebar opening and closing over the notebook —
+  // neither of which the notebook's own DOM shows — so the scroll area is
+  // watched, not only the window's resize.
+  const paneEl = notebook.node.querySelector<HTMLElement>('.jp-WindowedPanel-outer');
+  const setPane = () => {
+    if (!paneEl) return;
+    paneEl.style.setProperty('--gn-pane', `${Math.max(paneEl.clientWidth - 2 * PANE_GUTTER, 0)}px`);
+  };
+  const paneMoved = new ResizeObserver(rescan);
+  if (paneEl) paneMoved.observe(paneEl);
+
+  // The column an output is measured against moves with the window.
+  window.addEventListener('resize', rescan);
   scan(true);
 
   return {
@@ -277,6 +376,8 @@ export function attachOutputLabels(notebook: Notebook, { hasKernel }: Options): 
       if (disposed) return;
       disposed = true;
       observer.disconnect();
+      paneMoved.disconnect();
+      window.removeEventListener('resize', rescan);
       notebook.node.removeEventListener('click', onClick);
       notebook.node.removeEventListener('mousedown', onDown, true);
       notebook.node.removeEventListener('focusin', onFocus, true);
