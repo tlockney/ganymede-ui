@@ -184,9 +184,250 @@ export function newCellCount(state: Follow, cells: number): number {
   return state.following ? 0 : Math.max(0, cells - state.pausedAt);
 }
 
-/** "3 new cells · Follow". */
+/**
+ * The Follow button's text: "3 new · Follow live" when cells came while
+ * paused, "Follow live" when none did but the journal is active.
+ */
 export function followLabel(count: number): string {
-  return `${count} new ${count === 1 ? 'cell' : 'cells'} · Follow`;
+  return count > 0 ? `${count} new · Follow live` : 'Follow live';
+}
+
+/**
+ * Whether the Follow button shows: while paused, when cells were added
+ * since or the journal is active (a cell running, an agent in the room, a
+ * change from someone else). A finished journal read from the start has none.
+ */
+export function showFollow(state: Follow, cells: number, active: boolean): boolean {
+  return !state.following && (newCellCount(state, cells) > 0 || active);
+}
+
+// Where reading starts ------------------------------------------------------
+
+/** Where a person was reading a journal: a cell, and how far into it. */
+export type ReadingPosition = {
+  /** The cell's id. */
+  cell: string;
+  /** Pixels from the cell's top to the scroller's top, 0 or more. */
+  offset: number;
+  /** How many cells the journal had then. */
+  cells: number;
+};
+
+/** How a journal opens, and what it says of why (a late agent may change it). */
+export type Opening = {
+  follow: Follow;
+  /** Where to scroll: a cell (by index) and the offset into it, the start, or the end. */
+  scroll: { to: 'cell'; index: number; offset: number } | { to: 'start' } | { to: 'end' };
+  /**
+   * Why: `from-notebook` (the reader switched from the notebook), `saved`
+   * (the reader's last position), `active` (work is going on), `start`.
+   */
+  reason: 'from-notebook' | 'saved' | 'active' | 'start';
+};
+
+/**
+ * How a journal opens, decided once when it shows: at the cell the reader
+ * switched from (`startAt`, an index), else at the end, following, when the
+ * journal is active (live work is what to watch), else where the reader was
+ * last (`saved`, when its cell is still there), else at the start. Paused
+ * openings count new cells from `pausedAt`: the cells there were when the
+ * reader left (at most as many as there are now), or now.
+ */
+export function initialFollow(input: {
+  /** The cells' ids, in order; undefined for a cell without one. */
+  ids: readonly (string | undefined)[];
+  startAt?: number;
+  saved?: ReadingPosition;
+  active: boolean;
+}): Opening {
+  const { ids, startAt, saved, active } = input;
+  const total = ids.length;
+  if (startAt !== undefined && Number.isInteger(startAt) && startAt >= 0 && startAt < total) {
+    return {
+      follow: { following: false, pausedAt: total },
+      scroll: { to: 'cell', index: startAt, offset: 0 },
+      reason: 'from-notebook',
+    };
+  }
+  if (active) return { follow: FOLLOWING, scroll: { to: 'end' }, reason: 'active' };
+  const at = saved ? ids.indexOf(saved.cell) : -1;
+  if (saved && at >= 0) {
+    return {
+      follow: { following: false, pausedAt: Math.min(Math.max(0, saved.cells), total) },
+      scroll: { to: 'cell', index: at, offset: Math.max(0, saved.offset) },
+      reason: 'saved',
+    };
+  }
+  return {
+    follow: { following: false, pausedAt: total },
+    scroll: { to: 'start' },
+    reason: 'start',
+  };
+}
+
+/**
+ * Whether a journal that opened at the start or at the reader's saved place,
+ * and then learned an agent is in its room, should follow after all: only
+ * when the reader has not scrolled or done anything since it opened. A
+ * journal opened from the notebook stays where the reader asked.
+ */
+export function followsLate(opening: Opening['reason'], touched: boolean): boolean {
+  return (opening === 'start' || opening === 'saved') && !touched;
+}
+
+/** One cell's box, as the scroller sees it. */
+export type CellBox = { id?: string; top: number; bottom: number };
+
+/**
+ * The first cell whose bottom is below the scroller's top, as a reading
+ * position; undefined when there is none or it has no id.
+ */
+export function readingPosition(
+  scrollerTop: number,
+  boxes: readonly CellBox[],
+): ReadingPosition | undefined {
+  const first = boxes.find(b => b.bottom > scrollerTop);
+  if (!first?.id) return undefined;
+  return {
+    cell: first.id,
+    offset: Math.max(0, Math.round(scrollerTop - first.top)),
+    cells: boxes.length,
+  };
+}
+
+/** The index of the first box whose bottom is below `top` (the last one when all are above). */
+export function firstVisibleIndex(
+  top: number,
+  boxes: readonly { bottom: number }[],
+): number | undefined {
+  if (boxes.length === 0) return undefined;
+  const i = boxes.findIndex(b => b.bottom > top);
+  return i < 0 ? boxes.length - 1 : i;
+}
+
+/** A journal scroll area's top, and its cells' boxes. */
+function journalBoxes(scroller: Element): { top: number; boxes: CellBox[] } {
+  const boxes = [...scroller.querySelectorAll<HTMLElement>('.journal-cell')].map(a => {
+    const r = a.getBoundingClientRect();
+    return { id: a.dataset.cellId, top: r.top, bottom: r.bottom };
+  });
+  return { top: scroller.getBoundingClientRect().top, boxes };
+}
+
+/** The first journal cell showing at the top of the journal's scroll area, by index. */
+export function firstVisibleJournalCell(root: ParentNode = document): number | undefined {
+  const scroller = root.querySelector('.journal-scroll');
+  if (!scroller) return undefined;
+  const { top, boxes } = journalBoxes(scroller);
+  return firstVisibleIndex(top, boxes);
+}
+
+/** Where the reader is in a journal's scroll area. */
+export function positionIn(scroller: Element): ReadingPosition | undefined {
+  const { top, boxes } = journalBoxes(scroller);
+  return readingPosition(top, boxes);
+}
+
+const POSITIONS_KEY = 'ganymede.journal.positions';
+/** How many journals' positions are kept; the oldest go first. */
+export const MAX_POSITIONS = 200;
+
+type StoredPosition = ReadingPosition & { server: string; path: string };
+
+/** The stored positions, oldest first; none when unreadable. */
+function loadPositions(): StoredPosition[] {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(POSITIONS_KEY) ?? '[]');
+    if (!Array.isArray(parsed)) return [];
+    return parsed.flatMap(e =>
+      isRecord(e) &&
+      typeof e.server === 'string' &&
+      typeof e.path === 'string' &&
+      typeof e.cell === 'string' &&
+      typeof e.offset === 'number' &&
+      Number.isFinite(e.offset) &&
+      typeof e.cells === 'number' &&
+      Number.isFinite(e.cells)
+        ? [{ server: e.server, path: e.path, cell: e.cell, offset: e.offset, cells: e.cells }]
+        : [],
+    );
+  } catch {
+    return [];
+  }
+}
+
+/** Store the list; false when the browser wouldn't (private mode, no room). */
+function storePositions(list: readonly StoredPosition[]): boolean {
+  try {
+    localStorage.setItem(POSITIONS_KEY, JSON.stringify(list.slice(-MAX_POSITIONS)));
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Where the reader was in `path` on `server` the last time, if known. */
+export function readPosition(server: string, path: string): ReadingPosition | undefined {
+  const e = loadPositions().find(p => p.server === server && p.path === path);
+  return e ? { cell: e.cell, offset: e.offset, cells: e.cells } : undefined;
+}
+
+/**
+ * Remember where the reader is. A convenience: false when it could not be
+ * stored, which the view does not report (it works the same without).
+ */
+export function savePosition(server: string, path: string, pos: ReadingPosition): boolean {
+  const list = loadPositions().filter(p => !(p.server === server && p.path === path));
+  list.push({ server, path, cell: pos.cell, offset: pos.offset, cells: pos.cells });
+  return storePositions(list);
+}
+
+/** Paths moved or deleted from, whose open view must not save under them again. */
+const retired: { server: string; from: string }[] = [];
+
+const covers = (from: string, path: string) => path === from || path.startsWith(`${from}/`);
+
+/**
+ * Whether `path` on `server` was renamed, moved or deleted since a view
+ * last claimed it: the view still open on it saves nothing under it.
+ */
+export function positionRetired(server: string, path: string): boolean {
+  return retired.some(r => r.server === server && covers(r.from, path));
+}
+
+/** A view opens on `path`: what was moved from it earlier no longer bars it. */
+export function claimPosition(server: string, path: string): void {
+  for (let i = retired.length - 1; i >= 0; i--) {
+    if (retired[i]!.server === server && covers(retired[i]!.from, path)) retired.splice(i, 1);
+  }
+}
+
+/**
+ * The positions follow a file or folder moved from `from` to `to`, or go
+ * when it was deleted (`to` null). A view still open on the old path
+ * doesn't write its position back there ({@link positionRetired}).
+ */
+export function movePositions(server: string, from: string, to: string | null): void {
+  retired.push({ server, from });
+  if (retired.length > 50) retired.shift();
+  const list = loadPositions();
+  let changed = false;
+  const next = list.flatMap(p => {
+    if (p.server !== server || (p.path !== from && !p.path.startsWith(`${from}/`))) return [p];
+    changed = true;
+    return to === null ? [] : [{ ...p, path: to + p.path.slice(from.length) }];
+  });
+  if (changed) storePositions(next);
+}
+
+/** Forget every position (tests). */
+export function forgetPositions(): void {
+  retired.length = 0;
+  try {
+    localStorage.removeItem(POSITIONS_KEY);
+  } catch {
+    // Nothing stored that could be forgotten.
+  }
 }
 
 // The status line -----------------------------------------------------------
@@ -329,6 +570,26 @@ export function requestState(
     return word === client || word === client.split(/[-_ ]/)[0];
   };
   return word === 'agent' || clients.some(asked) ? 'open' : undefined;
+}
+
+/**
+ * The id of the cell that answered a request (`metadata.ganymede.request.answer`,
+ * which the server writes with `done`), when the request is answered.
+ */
+export function requestAnswer(cell: JournalCellData): string | undefined {
+  if (requestState(cell) !== 'answered') return undefined;
+  const ganymede = isRecord(cell.metadata) ? cell.metadata.ganymede : undefined;
+  const request = isRecord(ganymede) ? ganymede.request : undefined;
+  return isRecord(request) ? text(request.answer) : undefined;
+}
+
+/** What saving a request came to: the chip says it. */
+export type RequestSave = 'saving' | 'saved' | 'not saved';
+
+/** The chip's text for a request: `request`, `request · saving…`, `request · saved`, ... */
+export function requestChip(state: 'open' | 'answered', save?: RequestSave): string {
+  if (state === 'answered') return 'request · answered';
+  return save ? `request · ${save === 'saving' ? 'saving…' : save}` : 'request';
 }
 
 // Trust ---------------------------------------------------------------------

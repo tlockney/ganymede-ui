@@ -1069,8 +1069,9 @@ on a Ganymede server, and there is no setting for it.
   images. Outputs render
   as in the notebook, from the cell's trust: an HTML output of a cell
   that isn't trusted is sanitized.
-- **Following along**: new cells at the end scroll into view. Scroll up
-  and it stops, and a **N new cells · Follow** button brings you back.
+- **Following along**: a journal being worked on follows its end, and one
+  you read opens where you were. See
+  [Where it opens, and following live](#where-it-opens-and-following-live).
 - **The status line** names who is in the room ("Only you are here" when
   no one else is) and how long ago someone else last changed the
   notebook; your own edits don't count. It lists the people with
@@ -1086,9 +1087,72 @@ on a Ganymede server, and there is no setting for it.
   notebook either way. While the notebook stays open, an agent running
   `ganymede mcp watch` on its folder is told about a request, in the room
   or not; a note, or a request after that, waits until an agent reads the
-  notebook. Everything else is read-only.
+  notebook. Everything else is read-only. On a phone the box is two buttons, as
+  [Writing on a phone, and requests](#writing-on-a-phone-and-requests)
+  says.
 - **Reconnecting…**: when the connection to the server drops, the journal
   is read-only until it is back.
+
+### Where it opens, and following live
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+A journal opens where you would want it, the first of these that applies:
+
+- At the cell you switched from, when you got here from the notebook with
+  **View as Journal**. **Open as Notebook** takes the cell at the top of
+  the journal back with it and makes it the active cell, so notebook,
+  journal and notebook again lands on the same cell each way.
+- At the end, following, when work is going on: a cell is running, or the
+  server's rooms list says an agent is in the notebook's room.
+- Where you stopped reading it last time, on this server (the browser or
+  app keeps the last 200 such places; a rename or move carries a place
+  along, and a delete drops it). The button then counts the cells added
+  since you left.
+- At the start, so a finished journal reads from its question down, with
+  no button.
+
+If the rooms list answers after the journal opened with an agent in the
+room, and you haven't scrolled, pressed, touched or typed since, a journal
+that opened at the start or at your last place starts following then (one
+opened from the notebook stays where you asked). Only your own input counts
+as acting, not the page's own scrolling while content above renders; until
+you act, the opening cell stays put as that content settles.
+
+While following, new cells and outputs that finish rendering keep the end in
+view. Scroll up and it pauses; reaching the end again, or the button,
+resumes. While paused, **N new · Follow live** shows when cells were added
+since, and a plain **Follow live** when the journal is active (a cell
+running, an agent in the room, or someone else added, removed or edited
+cells since it opened; a kernel starting and writing the notebook's
+metadata doesn't count) and nothing new has come. A finished journal read
+from the start has no button.
+
+### Writing on a phone, and requests
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+Below 720 px wide the box at the bottom is two full-width buttons, **Add
+note** and **Ask the agent** (the agent line stays above them). Tap one and
+the box opens with its field focused, a submit button (**Add note** or
+**Ask the agent**) and **Cancel**. Sending, Cancel and Escape close it again; Cancel keeps what you
+typed for the next time. The buttons are off while the journal
+reconnects. Wider windows show the field and both buttons, as before.
+
+A request cell shows what became of it. Right after you ask, its chip says
+`request · saving…` while the room saves the notebook, then `request ·
+saved`, or `request · not saved` when the server's save failed or never
+answered (the request is still in the notebook; the chip is for this
+session only, and a request that was open when the journal opened just says
+`request`). That is the notebook saved, not the agent having read it: the
+agent sends no acknowledgement yet. Once the agent answers, the chip is
+**request · answered · Go to reply**, a button that scrolls to the reply
+(and pauses following), or the plain `request · answered` when the reply
+isn't in the notebook.
 
 ## DuckDB console
 

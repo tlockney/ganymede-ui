@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   agentNames,
   chooseView,
@@ -12,7 +12,21 @@ import {
   FOLLOWING,
   atBottom,
   classifyProvenance,
+  MAX_POSITIONS,
+  firstVisibleIndex,
   followLabel,
+  followsLate,
+  forgetPositions,
+  initialFollow,
+  claimPosition,
+  movePositions,
+  positionRetired,
+  readPosition,
+  readingPosition,
+  requestAnswer,
+  requestChip,
+  savePosition,
+  showFollow,
   foldLabel,
   foldSummary,
   hasAgentCells,
@@ -168,8 +182,9 @@ describe('following along', () => {
     expect(newCellCount({ following: false, pausedAt: 5 }, 8)).toBe(3);
     // A deletion never makes it negative.
     expect(newCellCount({ following: false, pausedAt: 5 }, 4)).toBe(0);
-    expect(followLabel(1)).toBe('1 new cell · Follow');
-    expect(followLabel(3)).toBe('3 new cells · Follow');
+    expect(followLabel(1)).toBe('1 new · Follow live');
+    expect(followLabel(3)).toBe('3 new · Follow live');
+    expect(followLabel(0)).toBe('Follow live');
   });
 });
 
@@ -406,5 +421,227 @@ describe('journalHeader', () => {
       journalHeader({ language_info: { name: 'python' } }, [{ metadata: {} }], 'Io moons.ipynb'),
     ).toEqual({ title: 'Io moons', details: ['python', '1 cell'] });
     expect(journalHeader({}, [], 'x.ipynb').details).toEqual(['0 cells']);
+  });
+});
+
+describe('the Follow button', () => {
+  const paused = { following: false, pausedAt: 4 } as const;
+
+  it('shows for new cells, or for an active journal, only while paused', () => {
+    expect(showFollow(paused, 6, false)).toBe(true);
+    expect(showFollow(paused, 4, true)).toBe(true);
+    // A finished journal read from the start has none.
+    expect(showFollow(paused, 4, false)).toBe(false);
+    expect(showFollow(FOLLOWING, 9, true)).toBe(false);
+  });
+});
+
+describe('how a journal opens', () => {
+  const ids = ['a', 'b', 'c', 'd'];
+  const saved = { cell: 'c', offset: 30, cells: 3 };
+
+  it('follows at the end when it is active and the reader has no position', () => {
+    expect(initialFollow({ ids, active: true })).toEqual({
+      follow: FOLLOWING,
+      scroll: { to: 'end' },
+      reason: 'active',
+    });
+  });
+
+  it('opens an inactive journal at the start, paused at the cells there are', () => {
+    expect(initialFollow({ ids, active: false })).toEqual({
+      follow: { following: false, pausedAt: 4 },
+      scroll: { to: 'start' },
+      reason: 'start',
+    });
+  });
+
+  it('restores the saved position, counting new cells from when the reader left', () => {
+    expect(initialFollow({ ids, saved, active: false })).toEqual({
+      follow: { following: false, pausedAt: 3 },
+      scroll: { to: 'cell', index: 2, offset: 30 },
+      reason: 'saved',
+    });
+  });
+
+  it('follows live work at the end ahead of the saved position', () => {
+    expect(initialFollow({ ids, saved, active: true })).toEqual({
+      follow: FOLLOWING,
+      scroll: { to: 'end' },
+      reason: 'active',
+    });
+  });
+
+  it('clamps the cells counted when the journal has fewer now', () => {
+    const open = initialFollow({ ids: ['a', 'c'], saved: { ...saved, cells: 9 }, active: false });
+    expect(open.follow).toEqual({ following: false, pausedAt: 2 });
+  });
+
+  it('falls through when the saved cell is gone', () => {
+    const gone = { cell: 'zz', offset: 5, cells: 4 };
+    expect(initialFollow({ ids, saved: gone, active: false }).reason).toBe('start');
+    expect(initialFollow({ ids, saved: gone, active: true }).reason).toBe('active');
+  });
+
+  it('opens at the cell the reader switched from, ahead of the saved position', () => {
+    expect(initialFollow({ ids, startAt: 1, saved, active: true })).toEqual({
+      follow: { following: false, pausedAt: 4 },
+      scroll: { to: 'cell', index: 1, offset: 0 },
+      reason: 'from-notebook',
+    });
+  });
+
+  it('ignores a startAt that is not a cell', () => {
+    expect(initialFollow({ ids, startAt: 4, active: false }).reason).toBe('start');
+    expect(initialFollow({ ids, startAt: -1, active: false }).reason).toBe('start');
+  });
+
+  it('follows late from the start or a saved place, and only when untouched', () => {
+    expect(followsLate('start', false)).toBe(true);
+    expect(followsLate('start', true)).toBe(false);
+    expect(followsLate('saved', false)).toBe(true);
+    expect(followsLate('saved', true)).toBe(false);
+    expect(followsLate('from-notebook', false)).toBe(false);
+    expect(followsLate('active', false)).toBe(false);
+  });
+});
+
+describe('the reading position', () => {
+  it('is the first cell whose bottom is below the top, and how far in', () => {
+    const boxes = [
+      { id: 'a', top: -300, bottom: -100 },
+      { id: 'b', top: -100, bottom: 200 },
+      { id: 'c', top: 200, bottom: 500 },
+    ];
+    expect(readingPosition(0, boxes)).toEqual({ cell: 'b', offset: 100, cells: 3 });
+    // A cell whose top is still below the scroller's top has no offset.
+    expect(readingPosition(0, [{ id: 'a', top: 12, bottom: 100 }])).toEqual({
+      cell: 'a',
+      offset: 0,
+      cells: 1,
+    });
+  });
+
+  it('is none for a cell without an id, or when every cell is above', () => {
+    expect(readingPosition(0, [{ top: -5, bottom: 50 }])).toBeUndefined();
+    expect(readingPosition(100, [{ id: 'a', top: 0, bottom: 50 }])).toBeUndefined();
+  });
+
+  it('finds the first visible index, the last when all are above, none when empty', () => {
+    expect(firstVisibleIndex(0, [{ bottom: -4 }, { bottom: 3 }, { bottom: 90 }])).toBe(1);
+    expect(firstVisibleIndex(500, [{ bottom: 10 }, { bottom: 90 }])).toBe(1);
+    expect(firstVisibleIndex(0, [])).toBeUndefined();
+  });
+});
+
+describe('the stored reading positions', () => {
+  beforeEach(forgetPositions);
+  afterEach(() => vi.restoreAllMocks());
+  const pos = (cell: string) => ({ cell, offset: 12, cells: 5 });
+
+  it('round-trips per server and path', () => {
+    expect(readPosition('a', 'x.ipynb')).toBeUndefined();
+    expect(savePosition('a', 'x.ipynb', pos('c1'))).toBe(true);
+    expect(readPosition('a', 'x.ipynb')).toEqual(pos('c1'));
+    expect(readPosition('b', 'x.ipynb')).toBeUndefined();
+    expect(readPosition('a', 'y.ipynb')).toBeUndefined();
+    savePosition('a', 'x.ipynb', pos('c2'));
+    expect(readPosition('a', 'x.ipynb')).toEqual(pos('c2'));
+  });
+
+  it('keeps the newest MAX_POSITIONS and drops the oldest', () => {
+    for (let i = 0; i < MAX_POSITIONS + 5; i++) savePosition('a', `n${i}.ipynb`, pos(`c${i}`));
+    expect(readPosition('a', 'n0.ipynb')).toBeUndefined();
+    expect(readPosition('a', 'n4.ipynb')).toBeUndefined();
+    expect(readPosition('a', 'n5.ipynb')).toEqual(pos('c5'));
+    expect(readPosition('a', `n${MAX_POSITIONS + 4}.ipynb`)).toBeDefined();
+    // Saving again makes it the newest.
+    savePosition('a', 'n5.ipynb', pos('again'));
+    savePosition('a', 'last.ipynb', pos('l'));
+    expect(readPosition('a', 'n5.ipynb')).toEqual(pos('again'));
+    expect(readPosition('a', 'n6.ipynb')).toBeUndefined();
+  });
+
+  it('reads nothing from corrupt storage, and saves over it', () => {
+    for (const bad of ['{not json', '{"a":1}', '[1,"x",{"server":"a"}]']) {
+      localStorage.setItem('ganymede.journal.positions', bad);
+      expect(readPosition('a', 'x.ipynb')).toBeUndefined();
+    }
+    expect(savePosition('a', 'x.ipynb', pos('c1'))).toBe(true);
+    expect(readPosition('a', 'x.ipynb')).toEqual(pos('c1'));
+  });
+
+  it('works without storage: a failed read is no position, a failed write is false', () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('quota');
+    });
+    expect(readPosition('a', 'x.ipynb')).toBeUndefined();
+    expect(savePosition('a', 'x.ipynb', pos('c1'))).toBe(false);
+    expect(() => movePositions('a', 'x.ipynb', 'y.ipynb')).not.toThrow();
+    expect(() => forgetPositions()).not.toThrow();
+  });
+
+  it('follows a rename and a folder move, and goes with a delete, on its server only', () => {
+    savePosition('a', 'w/x.ipynb', pos('1'));
+    savePosition('a', 'w2/x.ipynb', pos('2'));
+    savePosition('b', 'w/x.ipynb', pos('3'));
+    movePositions('a', 'w/x.ipynb', 'w/y.ipynb');
+    expect(readPosition('a', 'w/y.ipynb')).toEqual(pos('1'));
+    expect(readPosition('a', 'w/x.ipynb')).toBeUndefined();
+    movePositions('a', 'w', 'v');
+    expect(readPosition('a', 'v/y.ipynb')).toEqual(pos('1'));
+    // A folder named like a prefix isn't inside it.
+    expect(readPosition('a', 'w2/x.ipynb')).toEqual(pos('2'));
+    expect(readPosition('b', 'w/x.ipynb')).toEqual(pos('3'));
+    movePositions('a', 'v', null);
+    expect(readPosition('a', 'v/y.ipynb')).toBeUndefined();
+  });
+});
+
+describe('a moved or deleted path', () => {
+  beforeEach(forgetPositions);
+
+  it('is retired for the view still open on it, and a view that opens there claims it again', () => {
+    expect(positionRetired('a', 'w/x.ipynb')).toBe(false);
+    movePositions('a', 'w/x.ipynb', 'w/y.ipynb');
+    expect(positionRetired('a', 'w/x.ipynb')).toBe(true);
+    expect(positionRetired('b', 'w/x.ipynb')).toBe(false);
+    expect(positionRetired('a', 'w/y.ipynb')).toBe(false);
+    movePositions('a', 'f', null);
+    expect(positionRetired('a', 'f/z.ipynb')).toBe(true);
+    expect(positionRetired('a', 'f2/z.ipynb')).toBe(false);
+    claimPosition('a', 'f/z.ipynb');
+    expect(positionRetired('a', 'f/z.ipynb')).toBe(false);
+  });
+});
+
+describe('who answered a request', () => {
+  const md = (request: unknown, id = 'q') => ({
+    id,
+    cell_type: 'markdown',
+    source: '@agent why?',
+    metadata: { ganymede: { request } },
+  });
+
+  it('is the answer cell of an answered request', () => {
+    expect(requestAnswer(md({ done: 't', answer: 'r1', id: 'q' }))).toBe('r1');
+  });
+
+  it('is none when it is done without an answer, or the metadata is a copy’s', () => {
+    expect(requestAnswer(md({ done: 't', id: 'q' }))).toBeUndefined();
+    expect(requestAnswer(md({ done: 't', answer: 'r1', id: 'other' }))).toBeUndefined();
+    expect(requestAnswer(md({ answer: 'r1', id: 'q' }))).toBeUndefined();
+    expect(requestAnswer({ cell_type: 'markdown', source: 'x', metadata: {} })).toBeUndefined();
+  });
+
+  it('words the chip by what is known', () => {
+    expect(requestChip('open')).toBe('request');
+    expect(requestChip('open', 'saving')).toBe('request · saving…');
+    expect(requestChip('open', 'saved')).toBe('request · saved');
+    expect(requestChip('open', 'not saved')).toBe('request · not saved');
+    expect(requestChip('answered', 'saving')).toBe('request · answered');
   });
 });

@@ -2593,6 +2593,17 @@ button {
   justify-content: flex-end;
 }
 
+/* While the opening's cell is held in place, the browser doesn't move the
+   scroll to keep what it thinks is in view when content above renders. */
+.journal-scroll[data-anchored] {
+  overflow-anchor: none;
+}
+
+/* A phone's composer, collapsed: two buttons side by side, full width. */
+.journal-actions-collapsed button {
+  flex: 1;
+}
+
 @media (max-width: 480px) {
   .journal-cell {
     grid-template-columns: minmax(0, 1fr);

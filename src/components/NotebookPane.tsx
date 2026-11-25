@@ -18,7 +18,13 @@ import { CellMenu } from './CellMenu';
 import { KeyboardBar } from './KeyboardBar';
 import { JournalView } from './JournalView';
 import { recentsKey } from '../lib/recents';
-import { chooseView, chosenView, hasAgentCells, trustedCellIds } from '../lib/journal';
+import {
+  chooseView,
+  chosenView,
+  firstVisibleJournalCell,
+  hasAgentCells,
+  trustedCellIds,
+} from '../lib/journal';
 import type { Cell, ICodeCellModel } from '@jupyterlab/cells';
 import { downloadFile } from '../lib/download';
 import { PUBLISH_TIMEOUT_MS, type PublishOptions, fetchPublished, pageName } from '../lib/publish';
@@ -261,6 +267,25 @@ type Open = {
   disposables: IDisposable[];
 };
 
+/**
+ * The cell to carry into the journal: the active one when it shows, else the
+ * first whose bottom is below the top of the notebook's scroll area.
+ */
+function visibleNotebookCell(notebook: Notebook): number | undefined {
+  const outer = notebook.node.querySelector('.jp-WindowedPanel-outer') ?? notebook.node;
+  const view = outer.getBoundingClientRect();
+  const shown = (i: number) => {
+    const w = notebook.widgets[i];
+    if (!w?.node.isConnected) return false;
+    const r = w.node.getBoundingClientRect();
+    return r.height > 0 && r.bottom > view.top && r.top < view.bottom;
+  };
+  const active = notebook.activeCellIndex;
+  if (active >= 0 && shown(active)) return active;
+  for (let i = 0; i < notebook.widgets.length; i++) if (shown(i)) return i;
+  return active >= 0 ? active : undefined;
+}
+
 function activeType(notebook: Notebook): CellType | undefined {
   const cells = notebook.model?.cells;
   const i = notebook.activeCellIndex;
@@ -389,6 +414,10 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
   const [journal, setJournal] = useState(false);
   const journalRef = useRef(false);
   journalRef.current = journal;
+  /** The notebook's cell the journal opens at, when the person switched from the notebook. */
+  const startAtRef = useRef<number>(undefined);
+  /** The journal's cell the notebook scrolls to when the person switched back. */
+  const returnToRef = useRef<number>(undefined);
   // Leaving the notebook for the journal: no focus stays in the hidden
   // cells, where a command-mode key (a, b, dd) would edit them.
   useEffect(() => {
@@ -745,6 +774,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         chosenView(recentsKey(backend.config), path) ??
         hasAgentCells((model.sharedModel as YNotebook).cells.map(c => c.toJSON()));
       journalRef.current = isJournal;
+      startAtRef.current = undefined;
+      returnToRef.current = undefined;
       setJournal(isJournal);
       setOpen(current);
       await joining;
@@ -1505,6 +1536,13 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       journal,
       toggleJournal: () => {
         const next = !journalRef.current;
+        // The cell in view goes along: the journal opens at it, and the
+        // notebook shows the journal's cell again.
+        if (next) startAtRef.current = visibleNotebookCell(notebook);
+        else {
+          startAtRef.current = undefined;
+          returnToRef.current = firstVisibleJournalCell();
+        }
         journalRef.current = next;
         chooseView(recentsKey(backend.config), path, next);
         setJournal(next);
@@ -1572,6 +1610,17 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
 
   useEffect(() => () => onController(undefined), [onController]);
 
+  // Back from the journal: the notebook shows the cell the journal was at.
+  const showing = !!open;
+  useEffect(() => {
+    const cell = returnToRef.current;
+    if (journal || !showing || cell === undefined) return;
+    returnToRef.current = undefined;
+    // After the notebook is laid out again.
+    const frame = requestAnimationFrame(() => controllerRef.current?.goToCell(cell));
+    return () => cancelAnimationFrame(frame);
+  }, [journal, showing]);
+
   // A connected machine that stops answering (#701): its notebook turns
   // read-only, with a banner, and is editable again when its room is back.
   const machineName =
@@ -1632,6 +1681,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
           name={basename(path)}
           path={path}
           roomSettings={rooms ? services.serverSettings : undefined}
+          positionKey={{ server: recentsKey(backend.config), path }}
+          startAt={startAtRef.current}
           onOpenAsNotebook={() => controllerRef.current?.toggleJournal()}
         />
       )}

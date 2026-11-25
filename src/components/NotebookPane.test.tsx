@@ -59,11 +59,18 @@ vi.mock('../lib/jupyterlab', async () => {
         scrollToCell(cell: unknown, align?: string): Promise<void>;
       };
       // Its cells, with the active one selected, for what a run needs.
+      // Each cell has a node in the notebook's, which a test can give a layout.
+      const cellNodes: HTMLElement[] = [];
       Object.defineProperty(w, 'widgets', {
         get: () =>
-          Array.from({ length: w.model!.cells.length }, (_, i) => ({
-            model: w.model!.cells.get(i),
-          })),
+          Array.from({ length: w.model!.cells.length }, (_, i) => {
+            if (!cellNodes[i]) {
+              cellNodes[i] = document.createElement('div');
+              cellNodes[i]!.dataset.notebookCell = String(i);
+              w.node.append(cellNodes[i]!);
+            }
+            return { model: w.model!.cells.get(i), node: cellNodes[i] };
+          }),
       });
       w.isSelectedOrActive = cell =>
         (cell as { model: unknown }).model === w.model!.cells.get(w.activeCellIndex ?? 0);
@@ -470,6 +477,145 @@ describe('NotebookPane', () => {
     expect(scrollIntoView).toHaveBeenCalledOnce();
     expect(notebook.scrollToCell).not.toHaveBeenCalled();
     expect(latest()!.goToCell(7)).toBe(false);
+  });
+
+  describe('keeps the cell in view across the two views (#816)', () => {
+    const CELL = 100;
+    const VIEW = 400;
+    afterEach(() => vi.restoreAllMocks());
+
+    /** Eight cells an agent wrote; each 100 px tall in a 400 px view, in both views. */
+    function eightCells() {
+      const nb = structuredClone(NOTEBOOK);
+      nb.cells = Array.from({ length: 8 }, (_, i) => ({
+        cell_type: 'markdown',
+        id: `m${i}`,
+        source: `cell ${i}`,
+        metadata: { ganymede: { agent: { by: 'claude-code', mode: 'note' } } },
+      })) as nbformat.INotebookContent['cells'];
+      return nb;
+    }
+
+    /** jsdom has no layout: say where each cell is, from each view's scroll position. */
+    function layout() {
+      const state = { notebookTop: 0 };
+      const journal = () => document.querySelector('.journal-scroll') as HTMLElement | null;
+      const box = (top: number) =>
+        ({ top, bottom: top + CELL, height: CELL, left: 0, right: 100, width: 100 }) as DOMRect;
+      vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (
+        this: Element,
+      ) {
+        const el = this as HTMLElement;
+        if (el.classList.contains('journal-scroll') || el.classList.contains('lm-Widget')) {
+          return { top: 0, bottom: VIEW, height: VIEW, left: 0, right: 100, width: 100 } as DOMRect;
+        }
+        if (el.dataset.cellIndex !== undefined) {
+          return box(Number(el.dataset.cellIndex) * CELL - (journal()?.scrollTop ?? 0));
+        }
+        if (el.dataset.notebookCell !== undefined) {
+          return box(Number(el.dataset.notebookCell) * CELL - state.notebookTop);
+        }
+        return { top: 0, bottom: 0, height: 0, left: 0, right: 0, width: 0 } as DOMRect;
+      });
+      vi.spyOn(Element.prototype, 'scrollHeight', 'get').mockImplementation(function (
+        this: Element,
+      ) {
+        return this.classList.contains('journal-scroll') ? 20 * CELL : 0;
+      });
+      vi.spyOn(Element.prototype, 'clientHeight', 'get').mockImplementation(function (
+        this: Element,
+      ) {
+        return this.classList.contains('journal-scroll') ? VIEW : 0;
+      });
+      return state;
+    }
+
+    it('opens the journal at the cell the notebook showed at its top', async () => {
+      const state = layout();
+      const { latest } = setup(
+        vi.fn(async () => ({ path: 'moons/Io.ipynb', content: eightCells() })),
+      );
+      await waitFor(() => expect(latest()?.journal).toBe(true));
+      act(() => latest()!.toggleJournal());
+      await waitFor(() => expect(latest()!.journal).toBe(false));
+      // The notebook is scrolled so that cell 3's top is just above the view.
+      state.notebookTop = 3 * CELL + 20;
+      act(() => latest()!.toggleJournal());
+      await waitFor(() => expect(latest()!.journal).toBe(true));
+      const scroller = document.querySelector('.journal-scroll') as HTMLElement;
+      expect(scroller.scrollTop).toBe(3 * CELL);
+    });
+
+    it('carries the active cell when it shows, though another is first in view', async () => {
+      const state = layout();
+      const { latest } = setup(
+        vi.fn(async () => ({ path: 'moons/Io.ipynb', content: eightCells() })),
+      );
+      await waitFor(() => expect(latest()?.journal).toBe(true));
+      act(() => latest()!.toggleJournal());
+      await waitFor(() => expect(latest()!.journal).toBe(false));
+      // Cell 3 is first in view; cell 5 is active and in view too.
+      state.notebookTop = 3 * CELL + 10;
+      (fakes.notebooks[0] as { activeCellIndex: number }).activeCellIndex = 5;
+      act(() => latest()!.toggleJournal());
+      await waitFor(() => expect(latest()!.journal).toBe(true));
+      expect((document.querySelector('.journal-scroll') as HTMLElement).scrollTop).toBe(5 * CELL);
+    });
+
+    it('shows the cell the journal was at when switching back to the notebook', async () => {
+      layout();
+      const { latest } = setup(
+        vi.fn(async () => ({ path: 'moons/Io.ipynb', content: eightCells() })),
+      );
+      await waitFor(() => expect(latest()?.journal).toBe(true));
+      const scroller = document.querySelector('.journal-scroll') as HTMLElement;
+      // Reading cell 5: its top is a little above the top of the view.
+      act(() => {
+        scroller.scrollTop = 5 * CELL + 30;
+      });
+      const notebook = fakes.notebooks[0] as {
+        activeCellIndex: number;
+        scrollToCell: ReturnType<typeof vi.fn>;
+        model: NotebookModel;
+      };
+      act(() => latest()!.toggleJournal());
+      await waitFor(() => expect(notebook.scrollToCell).toHaveBeenCalledOnce());
+      expect(notebook.activeCellIndex).toBe(5);
+      const [cell, align] = notebook.scrollToCell.mock.calls[0] as unknown as [
+        { model: unknown },
+        string,
+      ];
+      expect(cell.model).toBe(notebook.model.cells.get(5));
+      expect(align).toBe('start');
+    });
+
+    it('lands on the same cell going notebook, journal, notebook', async () => {
+      const state = layout();
+      const { latest } = setup(
+        vi.fn(async () => ({ path: 'moons/Io.ipynb', content: eightCells() })),
+      );
+      await waitFor(() => expect(latest()?.journal).toBe(true));
+      const notebook = fakes.notebooks[0] as {
+        activeCellIndex: number;
+        scrollToCell: ReturnType<typeof vi.fn>;
+        model: NotebookModel;
+      };
+      // Scrolling the notebook to a cell moves it there.
+      notebook.scrollToCell.mockImplementation(async (cell: { node: HTMLElement }) => {
+        state.notebookTop = Number(cell.node.dataset.notebookCell) * CELL;
+      });
+      act(() => latest()!.toggleJournal());
+      await waitFor(() => expect(latest()!.journal).toBe(false));
+      state.notebookTop = 4 * CELL + 10;
+      notebook.activeCellIndex = 0;
+      act(() => latest()!.toggleJournal());
+      await waitFor(() => expect(latest()!.journal).toBe(true));
+      const scroller = document.querySelector('.journal-scroll') as HTMLElement;
+      expect(scroller.scrollTop).toBe(4 * CELL);
+      act(() => latest()!.toggleJournal());
+      await waitFor(() => expect(notebook.activeCellIndex).toBe(4));
+      await waitFor(() => expect(state.notebookTop).toBe(4 * CELL));
+    });
   });
 
   it('opens a notebook with no agent cells as a notebook (#184)', async () => {

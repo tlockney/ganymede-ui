@@ -15,23 +15,34 @@ import {
   FOLLOWING,
   type Follow,
   type JournalCellData,
+  type RequestSave,
   agentNames,
   atBottom,
   attachmentDataUrl,
   classifyProvenance,
   followLabel,
+  followsLate,
   foldLabel,
+  initialFollow,
   journalHeader,
   latestAgentTime,
   newCellCount,
   nextFollow,
   noteCell,
   presenceNames,
+  claimPosition,
+  positionIn,
+  positionRetired,
+  readPosition,
+  requestAnswer,
   requestCell,
+  requestChip,
   requestState,
   revisionNumber,
   revisionsOf,
   runningLine,
+  savePosition,
+  showFollow,
   sourceOf,
   timeAgo,
   type NewCell,
@@ -39,6 +50,7 @@ import {
 } from '../lib/journal';
 import { agentsAt, composerHint, useRooms } from '../lib/journals';
 import type { NotebookRoom } from '../lib/room';
+import { useNarrow } from '../lib/useNarrow';
 
 type Props = {
   notebook: YNotebook;
@@ -51,15 +63,49 @@ type Props = {
   /** The notebook's path, and the server to ask which agents are in its room (#724). */
   path?: string;
   roomSettings?: ServerConnection.ISettings;
+  /**
+   * Which server and path the reader's position is kept under; without it
+   * the position isn't kept or restored.
+   */
+  positionKey?: { server: string; path: string };
+  /** The cell (an index) the reader switched here from in the notebook: where to open. */
+  startAt?: number;
   onOpenAsNotebook(): void;
 };
 
+/** How often the reading position is saved while scrolling, at most. */
+const SAVE_EVERY_MS = 500;
+
 type Cell = JournalCellData & { running: boolean };
+
+/**
+ * Whether a transaction added or removed cells, or changed a cell's type,
+ * source or outputs: the notebook's own metadata (a kernel's language_info)
+ * and cell metadata alone are not.
+ */
+function cellsChanged(
+  notebook: YNotebook,
+  tr: { changed: Map<unknown, unknown>; changedParentTypes: Map<unknown, unknown> },
+): boolean {
+  if (tr.changed.has(notebook.ydoc.getArray('cells'))) return true;
+  for (const c of notebook.cells) {
+    const y = (c as unknown as { ymodel: { get(k: string): unknown } }).ymodel;
+    const keys = tr.changed.get(y) as Set<string> | undefined;
+    if (keys && ['source', 'outputs', 'cell_type'].some(k => keys.has(k))) return true;
+    for (const k of ['source', 'outputs']) {
+      const inner = y.get(k);
+      if (inner && typeof inner === 'object' && tr.changedParentTypes.has(inner)) return true;
+    }
+  }
+  return false;
+}
 
 /** The cells as plain data, and a counter that moves when the document changes. */
 function useCells(notebook: YNotebook) {
   const [version, setVersion] = useState(0);
   const [changedAt, setChangedAt] = useState<number>();
+  /** Someone else changed the cells themselves (not just the notebook's metadata). */
+  const [othersChangedCells, setOthersChangedCells] = useState(false);
   /** The cells' Y.Maps changed since the cells were last read. */
   const touched = useRef(new Set<object>());
   useEffect(() => {
@@ -78,7 +124,10 @@ function useCells(notebook: YNotebook) {
       }
       // "Changed N ago" is about the others: a change made here (the
       // composer, this page's own runs) is not news.
-      if (!tr.local) setChangedAt(Date.now());
+      if (!tr.local) {
+        setChangedAt(Date.now());
+        if (cellsChanged(notebook, tr)) setOthersChangedCells(true);
+      }
       if (frame) return;
       frame = requestAnimationFrame(() => {
         frame = 0;
@@ -113,7 +162,7 @@ function useCells(notebook: YNotebook) {
     // `version` is what says the document changed.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [notebook, version]);
-  return { cells, changedAt };
+  return { cells, changedAt, othersChangedCells };
 }
 
 /** The notebook's metadata, read again when it changes. */
@@ -356,12 +405,20 @@ const JournalCell = memo(function JournalCell({
   rendermime,
   trusted,
   request,
+  requestSave,
+  reply,
+  onGoToReply,
 }: {
   cell: Cell;
   index: number;
   rendermime: IRenderMimeRegistry;
   trusted: boolean;
   request: 'open' | 'answered' | undefined;
+  /** What saving the request this view just added came to. */
+  requestSave: RequestSave | undefined;
+  /** The id of the answering cell, when it is in the notebook. */
+  reply: string | undefined;
+  onGoToReply(id: string): void;
 }) {
   const [unfolded, setUnfolded] = useState(false);
   const p = classifyProvenance(cell);
@@ -373,6 +430,7 @@ const JournalCell = memo(function JournalCell({
       className={`journal-cell journal-${p.kind}`}
       aria-label={`Cell ${index + 1}, ${p.label}`}
       data-cell-index={index}
+      data-cell-id={cell.id}
     >
       <div className="journal-gutter">
         <span className="journal-prov">
@@ -387,11 +445,16 @@ const JournalCell = memo(function JournalCell({
           </span>
         )}
         {revisions.length > 0 && <RevisionChip revisions={revisions} />}
-        {request && (
-          <span className="journal-chip journal-chip-static">
-            {request === 'answered' ? 'request · answered' : 'request'}
-          </span>
-        )}
+        {request &&
+          (reply ? (
+            <button type="button" className="journal-chip" onClick={() => onGoToReply(reply)}>
+              {requestChip('answered')} · Go to reply
+            </button>
+          ) : (
+            <span className="journal-chip journal-chip-static">
+              {requestChip(request, requestSave)}
+            </span>
+          ))}
         {cell.running && <span className="journal-chip journal-chip-static">running</span>}
       </div>
       <div className="journal-body">
@@ -444,9 +507,11 @@ export function JournalView({
   name,
   path,
   roomSettings,
+  positionKey,
+  startAt,
   onOpenAsNotebook,
 }: Props) {
-  const { cells, changedAt } = useCells(notebook);
+  const { cells, changedAt, othersChangedCells } = useCells(notebook);
   const people = usePresence(notebook);
   // Agents hold the room on the server, not through its awareness, so
   // the server's rooms list says which are here (#724).
@@ -461,15 +526,75 @@ export function JournalView({
 
   const scroller = useRef<HTMLDivElement>(null);
   const content = useRef<HTMLDivElement>(null);
-  const [follow, setFollow] = useState<Follow>(FOLLOWING);
+  const running = runningLine(cells);
+  // How it opens, decided once: where the reader was, or the end of live
+  // work, or the start (see `initialFollow`).
+  const [opening] = useState(() =>
+    initialFollow({
+      ids: cells.map(c => c.id),
+      startAt,
+      saved: positionKey ? readPosition(positionKey.server, positionKey.path) : undefined,
+      active: running !== undefined || (agents?.length ?? 0) > 0,
+    }),
+  );
+  const [follow, setFollow] = useState<Follow>(opening.follow);
   const followRef = useRef(follow);
   followRef.current = follow;
   const cellCount = useRef(cells.length);
   cellCount.current = cells.length;
+  /** The reader scrolled, or did anything else, since this opened. */
+  const touched = useRef(false);
+  /** The cell the opening put at the top: put back while content settles under it. */
+  const anchor = useRef<{ id?: string; index: number; offset: number } | undefined>(undefined);
 
   const toEnd = useCallback(() => {
     const s = scroller.current;
-    if (s) s.scrollTop = s.scrollHeight;
+    if (!s) return;
+    s.scrollTop = s.scrollHeight;
+  }, []);
+  /** Scroll a cell's top (plus `offset`) to the scroller's top. */
+  const placeCell = useCallback((at: { id?: string; index: number; offset: number }) => {
+    const s = scroller.current;
+    if (!s) return false;
+    const articles = [...s.querySelectorAll<HTMLElement>('.journal-cell')];
+    const article =
+      (at.id !== undefined ? articles.find(a => a.dataset.cellId === at.id) : undefined) ??
+      articles[at.index];
+    if (!article) return false;
+    s.scrollTop += article.getBoundingClientRect().top - s.getBoundingClientRect().top + at.offset;
+    return true;
+  }, []);
+  /** The opening's cell is held in place, or let go (the browser may then keep what is in view). */
+  const hold = useCallback((at: { id?: string; index: number; offset: number } | undefined) => {
+    anchor.current = at;
+    const s = scroller.current;
+    if (!s) return;
+    if (at) s.dataset.anchored = '';
+    else delete s.dataset.anchored;
+  }, []);
+  /** The reader did something: the opening's place is theirs now. */
+  const touch = useCallback(() => {
+    touched.current = true;
+    hold(undefined);
+  }, [hold]);
+
+  // Open where decided: the cell the reader was at, the end, or the start.
+  useLayoutEffect(() => {
+    const at = opening.scroll;
+    if (at.to === 'end') toEnd();
+    else if (at.to === 'start') {
+      const s = scroller.current;
+      if (s) s.scrollTop = 0;
+    } else {
+      const spot = { id: cells[at.index]?.id, index: at.index, offset: at.offset };
+      placeCell(spot);
+      hold(spot);
+      // From the notebook, a cell at the very end follows (the end is where it is).
+      const s = scroller.current;
+      if (opening.reason === 'from-notebook' && s && atBottom(s)) setFollow(FOLLOWING);
+    }
+    // Once, when it shows.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   // New cells, and outputs that render later, keep the end in view while following.
   useLayoutEffect(() => {
@@ -480,10 +605,61 @@ export function JournalView({
     if (!node || typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(() => {
       if (followRef.current.following) toEnd();
+      else if (anchor.current) placeCell(anchor.current);
     });
     observer.observe(node);
     return () => observer.disconnect();
-  }, [toEnd]);
+  }, [toEnd, placeCell]);
+
+  // An agent turns up after the journal opened at its start, and the reader
+  // hasn't touched it: it is live work, so follow it.
+  const agentCount = agents?.length ?? 0;
+  useEffect(() => {
+    if (agentCount > 0 && followsLate(opening.reason, touched.current)) {
+      hold(undefined);
+      setFollow(FOLLOWING);
+    }
+  }, [agentCount, opening.reason, hold]);
+
+  // The reader's position, kept as they read: at most every SAVE_EVERY_MS
+  // while scrolling, and when the view goes away.
+  const key = positionKey && `${positionKey.server}\n${positionKey.path}`;
+  const keepRef = useRef<() => void>(() => {});
+  const lastPosition = useRef<ReturnType<typeof positionIn>>(undefined);
+  useLayoutEffect(() => {
+    const node = scroller.current;
+    if (!positionKey || !node) {
+      keepRef.current = () => {};
+      return;
+    }
+    const { server, path: file } = positionKey;
+    claimPosition(server, file);
+    const keep = () => {
+      // The file was renamed, moved or deleted: nothing to keep under its old path.
+      if (positionRetired(server, file)) return;
+      // A node already out of the page has no layout: keep the last one seen.
+      const pos = node.isConnected ? positionIn(node) : lastPosition.current;
+      if (!pos) return;
+      lastPosition.current = pos;
+      // A convenience: when the browser won't store it, reading goes on.
+      savePosition(server, file, pos);
+    };
+    keepRef.current = keep;
+    window.addEventListener('pagehide', keep);
+    return () => {
+      window.removeEventListener('pagehide', keep);
+      keep();
+    };
+    // `key` stands for the position key's two strings.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  useEffect(
+    () => () => {
+      if (saveTimer.current) clearTimeout(saveTimer.current);
+    },
+    [],
+  );
 
   const onScroll = () => {
     const s = scroller.current;
@@ -491,30 +667,82 @@ export function JournalView({
     setFollow(f =>
       nextFollow(f, { type: 'scroll', atBottom: atBottom(s), cells: cellCount.current }),
     );
+    if (!saveTimer.current) {
+      saveTimer.current = setTimeout(() => {
+        saveTimer.current = undefined;
+        keepRef.current();
+      }, SAVE_EVERY_MS);
+    }
   };
   const resume = () => {
     setFollow(f => nextFollow(f, { type: 'resume' }));
     toEnd();
   };
+  /** The reply to a request: its cell at the top. A scroll, so it stops following. */
+  const goToReply = useCallback(
+    (id: string) => {
+      const s = scroller.current;
+      const index = cellIds.current.indexOf(id);
+      if (!s || index < 0) return;
+      touch();
+      placeCell({ id, index, offset: 0 });
+      // Paused even when the reply is the last cell and the view stays at the end.
+      setFollow(f => (f.following ? { following: false, pausedAt: cellCount.current } : f));
+    },
+    [placeCell, touch],
+  );
 
   const last = changedAt ?? latestAgentTime(cells);
-  const running = runningLine(cells);
   const unseen = newCellCount(follow, cells.length);
+  // Live work: a cell running, an agent in the room, or others changing the cells.
+  const activeNow = running !== undefined || agentCount > 0 || othersChangedCells;
   const trust = trustedIds();
   const clients = useMemo(() => agentNames(cells), [cells]);
+  const cellIds = useRef<(string | undefined)[]>([]);
+  cellIds.current = cells.map(c => c.id);
 
+  const narrow = useNarrow();
   const [text, setText] = useState('');
+  /** On a phone: which composer is open, if any. */
+  const [intent, setIntent] = useState<'note' | 'request'>();
+  const field = useRef<HTMLTextAreaElement>(null);
+  useEffect(() => {
+    if (intent) field.current?.focus();
+  }, [intent]);
+  /** What saving the requests added here came to, by cell id. */
+  const [saves, setSaves] = useState<Record<string, RequestSave>>({});
   const add = (make: (t: string) => NewCell | undefined) => {
     const cell = make(text);
     if (!cell || !live) return;
-    notebook.addCell(cell);
+    const added = notebook.addCell(cell);
     setText('');
+    setIntent(undefined);
     resume();
+    // The agent sends no acknowledgement of a request today; when it does, this is where it shows.
+    if (make === requestCell && room) {
+      const id = added.getId();
+      const set = (state: RequestSave) => setSaves(m => ({ ...m, [id]: state }));
+      set('saving');
+      room.save().then(
+        status => set(status === 'failed' ? 'not saved' : 'saved'),
+        () => set('not saved'),
+      );
+    }
   };
   const blank = text.trim() === '';
+  const collapsed = narrow && !intent;
+  const submitRequest = narrow && intent === 'request';
 
   return (
-    <section className="journal" aria-label={`Journal of ${name}`}>
+    <section
+      className="journal"
+      aria-label={`Journal of ${name}`}
+      // The reader's own input, not a scroll: what makes the opening theirs.
+      onWheel={touch}
+      onTouchStart={touch}
+      onPointerDown={touch}
+      onKeyDown={touch}
+    >
       <header className="journal-header">
         <h1 className="journal-title">{header.title}</h1>
         <p className="journal-meta">{header.details.join(' · ')}</p>
@@ -549,11 +777,14 @@ export function JournalView({
               rendermime={rendermime}
               trusted={!!cell.id && trust.has(cell.id)}
               request={requestState(cell, clients)}
+              requestSave={cell.id ? saves[cell.id] : undefined}
+              reply={replyIn(cell, cellIds.current)}
+              onGoToReply={goToReply}
             />
           ))}
         </div>
       </div>
-      {unseen > 0 && (
+      {showFollow(follow, cells.length, activeNow) && (
         <button type="button" className="journal-follow" onClick={resume}>
           {followLabel(unseen)}
         </button>
@@ -562,35 +793,84 @@ export function JournalView({
         className="journal-composer"
         onSubmit={e => {
           e.preventDefault();
-          add(noteCell);
+          add(submitRequest ? requestCell : noteCell);
         }}
       >
-        <label className="journal-label" htmlFor="journal-text">
-          Write to the journal
-        </label>
-        <textarea
-          id="journal-text"
-          className="journal-text"
-          rows={2}
-          value={text}
-          placeholder="A note, or a request for the agent"
-          disabled={!live}
-          onChange={e => setText(e.target.value)}
-        />
-        {hint && (
-          <p className="journal-hint" role="status">
-            {hint}
-          </p>
+        {collapsed ? (
+          <>
+            {hint && (
+              <p className="journal-hint" role="status">
+                {hint}
+              </p>
+            )}
+            <div className="journal-actions journal-actions-collapsed">
+              <button type="button" disabled={!live} onClick={() => setIntent('note')}>
+                Add note
+              </button>
+              <button type="button" disabled={!live} onClick={() => setIntent('request')}>
+                Ask the agent
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <label className="journal-label" htmlFor="journal-text">
+              Write to the journal
+            </label>
+            <textarea
+              id="journal-text"
+              ref={field}
+              className="journal-text"
+              rows={2}
+              value={text}
+              placeholder={
+                !narrow
+                  ? 'A note, or a request for the agent'
+                  : submitRequest
+                    ? 'A request for the agent'
+                    : 'A note for the journal'
+              }
+              disabled={!live}
+              onChange={e => setText(e.target.value)}
+              onKeyDown={e => {
+                if (narrow && e.key === 'Escape') setIntent(undefined);
+              }}
+            />
+            {hint && (
+              <p className="journal-hint" role="status">
+                {hint}
+              </p>
+            )}
+            <div className="journal-actions">
+              {narrow ? (
+                <>
+                  <button type="button" onClick={() => setIntent(undefined)}>
+                    Cancel
+                  </button>
+                  <button type="submit" disabled={!live || blank}>
+                    {submitRequest ? 'Ask the agent' : 'Add note'}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button type="submit" disabled={!live || blank}>
+                    Add Note
+                  </button>
+                  <button type="button" disabled={!live || blank} onClick={() => add(requestCell)}>
+                    Ask the agent
+                  </button>
+                </>
+              )}
+            </div>
+          </>
         )}
-        <div className="journal-actions">
-          <button type="submit" disabled={!live || blank}>
-            Add Note
-          </button>
-          <button type="button" disabled={!live || blank} onClick={() => add(requestCell)}>
-            Ask the agent
-          </button>
-        </div>
       </form>
     </section>
   );
+}
+
+/** The id of the cell answering `cell`, when that cell is in the journal. */
+function replyIn(cell: Cell, ids: readonly (string | undefined)[]): string | undefined {
+  const answer = requestAnswer(cell);
+  return answer !== undefined && ids.includes(answer) ? answer : undefined;
 }
