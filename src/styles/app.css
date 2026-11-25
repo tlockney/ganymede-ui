@@ -2504,9 +2504,9 @@ button {
 }
 
 /* Wide content scrolls in its own box, not the journal (#798). Outputs
-   already do (.journal-output); a Markdown table or code block, which has
-   no box of its own, becomes one. A narrow table keeps its width and stays
-   centered. Images and SVG already shrink to the column (JupyterLab's
+   already do (.journal-output); a Markdown table, code block or display
+   equation, which has no box of its own, becomes one. A narrow table
+   keeps its width and stays centered. Images and SVG already shrink to the column (JupyterLab's
    max-width: 100%). */
 .journal-rendered .jp-RenderedMarkdown table {
   display: block;
@@ -2515,7 +2515,9 @@ button {
   overflow-x: auto;
 }
 
-.journal-rendered .jp-RenderedMarkdown pre {
+.journal-rendered .jp-RenderedMarkdown pre,
+.journal-rendered .jp-RenderedMarkdown mjx-container[display='true'] {
+  display: block;
   max-width: 100%;
   overflow-x: auto;
 }

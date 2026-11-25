@@ -272,6 +272,18 @@ function richJournal() {
         { output_type: 'display_data', data: { 'image/png': chart }, metadata: {} },
       ],
     },
+    {
+      cell_type: 'markdown',
+      id: 'r6',
+      source: '| a | b |\n| --- | --- |\n| 1 | 2 |',
+      metadata: agent('note'),
+    },
+    {
+      cell_type: 'markdown',
+      id: 'r7',
+      source: '$$' + Array.from({ length: 60 }, (_, i) => `x_{${i}}`).join('+') + '$$',
+      metadata: agent('note'),
+    },
   ];
   return {
     nbformat: 4,
@@ -294,10 +306,13 @@ for (const { name, width, height } of [
     await sidebarItem(page, 'Journal e2e').click();
     const journal = page.getByRole('region', { name: `Journal of ${FILE}` });
     const cells = journal.getByRole('article');
-    await expect(cells).toHaveCount(6);
-    // Everything has rendered: both tables and all three images.
-    const tables = journal.locator('table');
+    await expect(cells).toHaveCount(8);
+    // Everything has rendered: the tables, both images and the equation.
+    await expect(journal.locator('table')).toHaveCount(3);
+    const tables = journal.locator('table').filter({ hasText: 'Counter column 12' });
     await expect(tables).toHaveCount(2);
+    const equation = cells.nth(7).locator("mjx-container[display='true']");
+    await expect(equation).toHaveCount(1);
     const images = journal.locator('img');
     await expect(images).toHaveCount(2);
     await expect(cells.nth(5).locator('img')).toHaveCount(1);
@@ -362,6 +377,32 @@ for (const { name, width, height } of [
       expect(local!.right).toBeLessThanOrEqual(column.right + 0.5);
       expect(local!.after).toBeGreaterThan(local!.before);
     }
+    // The long equation scrolls in its own box too.
+    expect(await equation.evaluate(el => el.scrollWidth - el.clientWidth)).toBeGreaterThan(0);
+    const eqBox = (await equation.boundingBox())!;
+    expect(eqBox.x + eqBox.width).toBeLessThanOrEqual(column.right + 0.5);
+
+    // A narrow table keeps its own width and stays centered in the
+    // Markdown's content box (JupyterLab pads its right side).
+    const narrow = await cells
+      .nth(6)
+      .locator('.jp-RenderedMarkdown')
+      .evaluate(el => {
+        const r = el.getBoundingClientRect();
+        const s = getComputedStyle(el);
+        const left = r.left + parseFloat(s.paddingLeft);
+        const right = r.right - parseFloat(s.paddingRight);
+        const table = el.querySelector('table')!.getBoundingClientRect();
+        const row = el.querySelector('tr')!.getBoundingClientRect();
+        return {
+          table: table.width,
+          row: row.width,
+          offset: table.left + table.width / 2 - (left + right) / 2,
+        };
+      });
+    expect(narrow.row).toBeGreaterThan(0);
+    expect(Math.abs(narrow.table - narrow.row)).toBeLessThan(2);
+    expect(Math.abs(narrow.offset)).toBeLessThan(1);
     // Long text wraps rather than widening the Markdown.
     const markdown = cells.nth(2).locator('.journal-rendered').first();
     expect(await markdown.evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
