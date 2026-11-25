@@ -81,10 +81,22 @@ export function attachOutputLabels(notebook: Notebook, { hasKernel }: Options): 
   let scheduled = false;
   /** Output indexes a person opened to the full log, by cell model. */
   const opened = new WeakMap<object, Set<number>>();
+  /** Outputs lists already wired to forget `opened` when they are cleared. */
+  const wired = new WeakSet<object>();
 
   const decorateCell = (cell: CodeCell) => {
     const area = cell.outputArea;
     const model = cell.model.outputs;
+    // A cleared output area is a re-run: what a person opened to the full
+    // log belonged to the outputs that are gone, so a re-run opens at the
+    // tail again. The signal, not the DOM, says it: the DOM may not change
+    // between the clear and the first new output.
+    if (!wired.has(model)) {
+      wired.add(model);
+      model.changed.connect(sender => {
+        if (sender.length === 0) opened.delete(cell.model);
+      });
+    }
     // Saved output: shown once above the cell's outputs.
     let saved = area.node.querySelector<HTMLElement>(`:scope > .${SAVED}`);
     if (!hasKernel() && model.length > 0) {

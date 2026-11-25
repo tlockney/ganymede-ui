@@ -1,5 +1,6 @@
 import '../test/notebook-env';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import type { ICodeCellModel } from '@jupyterlab/cells';
 import type * as nbformat from '@jupyterlab/nbformat';
 import type { Notebook } from '@jupyterlab/notebook';
 import type { Contents } from '@jupyterlab/services';
@@ -143,6 +144,25 @@ describe('attachOutputLabels (#813)', () => {
     ]);
     await settle();
     expect(bars().map(b => b.textContent)).toEqual(['Warning']);
+  });
+
+  it('opens a re-run at its tail again once the outputs are cleared', async () => {
+    open([cellWith('a', [stream('stdout', lines(LOG_LINES + 5))])]);
+    await settle();
+    bars()[0]!.querySelector<HTMLButtonElement>('button')!.click();
+    await settle();
+    expect(
+      notebook.node.querySelector('.jp-OutputArea-output')!.classList.contains('gn-log-full'),
+    ).toBe(true);
+    // A re-run clears the cell's outputs, then adds the new one: what was
+    // opened to the full log belonged to the outputs that are gone.
+    const cell = notebook.model!.cells.get(0) as ICodeCellModel;
+    cell.outputs.clear();
+    cell.outputs.add(stream('stdout', lines(LOG_LINES + 3)));
+    await settle();
+    const rerun = notebook.node.querySelector<HTMLElement>('.jp-OutputArea-output')!;
+    expect(rerun.classList.contains('gn-log-tail')).toBe(true);
+    expect(bars()[0]!.querySelector('button')!.textContent).toBe('View full log');
   });
 
   it('collapses a long stream to its tail and opens it with View full log', async () => {
