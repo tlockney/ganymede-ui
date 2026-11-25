@@ -2506,6 +2506,36 @@ button {
   min-width: 0;
   user-select: text;
   -webkit-user-select: text;
+  /* A long word or link wraps rather than widening the journal (#798).
+     Not `anywhere`: that would let a table's columns shrink to a letter. */
+  overflow-wrap: break-word;
+}
+
+/* Wide content scrolls in its own box, not the journal (#798). Outputs
+   already do (.journal-output); a Markdown table, code block or display
+   equation, which has no box of its own, becomes one. A narrow table
+   keeps its width and stays centered. Images and SVG already shrink to the column (JupyterLab's
+   max-width: 100%). */
+.journal-rendered .jp-RenderedMarkdown table {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.journal-rendered .jp-RenderedMarkdown pre {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* overflow-x: auto alone makes overflow-y auto too, and MathJax's box
+   overhangs it by a pixel or two, so the equation would scroll
+   vertically. */
+.journal-rendered .jp-RenderedMarkdown mjx-container[display='true'] {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .journal-follow {
