@@ -211,9 +211,19 @@ download, trust). A failed action shows its error in the pane.
 `problems.ts` turns failures into what the pane's notice says: what
 happened, and the next step as a button (Restart for a dead kernel,
 Retry for an unreachable server, a lost kernel connection or a failed
-save, a kernel picker for a missing kernelspec). Restarting a dead
+save, a kernel picker for a missing kernelspec, Restart & Run All when
+an interrupt reset the kernel's state). Restarting a dead
 kernel starts a new one of the same kind, since a dead kernel's
-connection can't restart it. `run-status.ts` shows, on the cells, which
+connection can't restart it. cdp-kernel marks a reset with
+`cdp_kernel.state_reset` metadata on the stderr note it prints
+(`state-reset.ts`); a kernel without it shows no notice.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release. The metadata comes in the cdp-kernel release after
+> 0.15.0.
+
+`run-status.ts` shows, on the cells, which
 one the kernel is running (with its time and an Interrupt button) and
 which are queued behind it. JupyterLab marks every cell sent to the
 kernel as running, and a kernel runs them in order, so the first one

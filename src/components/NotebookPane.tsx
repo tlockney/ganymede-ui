@@ -45,8 +45,10 @@ import {
   openFailure,
   roomClosed,
   saveFailed,
+  stateReset,
   unreachable,
 } from '../lib/problems';
+import { interruptResetState } from '../lib/state-reset';
 import { type RunStatus, attachRunStatus } from '../lib/run-status';
 import { ProblemNotice } from './ProblemNotice';
 import { useSignals } from '../lib/useSignal';
@@ -437,6 +439,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
   }, []);
   /** The latest controller, for the notice's buttons. */
   const controllerRef = useRef<NotebookController>(undefined);
+  /** Restart the kernel, then run every cell: the state-reset notice's button (#796). */
+  const restartRunAll = useRef<() => Promise<void>>(undefined);
   /** Whether the session has rejoined the file's running kernel, if any. */
   const [joined, setJoined] = useState(false);
   /** Set once the file is deleted from under the notebook: no save may put it back. */
@@ -867,8 +871,13 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
     let sawDown = false;
     const watchVersion = (kernel: Kernel.IKernelConnection) => {
       const onMessage = (_: unknown, { msg, direction }: Kernel.IAnyMessageArgs) => {
-        if (direction !== 'recv' || msg.header.msg_type !== 'kernel_info_reply') return;
-        if (waiting || kernel.isDisposed) return;
+        if (direction !== 'recv' || waiting || kernel.isDisposed) return;
+        // An interrupt ended the runtime, and its variables with it (#796).
+        if (interruptResetState(msg)) {
+          setNotice(stateReset(), () => void restartRunAll.current?.());
+          return;
+        }
+        if (msg.header.msg_type !== 'kernel_info_reply') return;
         replied = true;
         setKernelVersion(kernelVersionLine(msg.content));
       };
@@ -922,6 +931,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         setKernelVersion(undefined);
       } else if (versionOf !== kernel) {
         unwatch();
+        // Another kernel: an earlier one's reset isn't this one's.
+        clearNotice('state-reset');
         versionOf = kernel;
         replied = false;
         waiting = restartingNow;
@@ -937,6 +948,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
           () => {},
         );
       } else if (restartingNow && !waiting) {
+        // A restart clears the state anyway.
+        clearNotice('state-reset');
         waiting = true;
         sawDown = false;
         setKernelVersion(undefined);
@@ -1268,6 +1281,21 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
     // A connected machine that stopped answering (#701): the notebook shows
     // what it had and does nothing that edits or runs until it is back.
     const away = () => onMachine && !!open.room && !open.room.connected;
+    const restartKernel = async () => {
+      const kernel = session.session?.kernel;
+      // A dead kernel can't restart (it disposed its connection): start
+      // a new one of the same kind in its place.
+      if (kernel && (kernel.status === 'dead' || kernel.isDisposed)) {
+        await open.track(session.changeKernel({ name: kernel.name }));
+      } else {
+        await kernel?.restart();
+      }
+      open.runStatus.clear();
+    };
+    const runAll = async () => {
+      if (journal) return;
+      if (await open.ensureKernel(true)) await NotebookActions.runAll(notebook, session);
+    };
     const reportRun = (what: string, action: () => Promise<void>) => {
       const run = async () => {
         if (away()) return;
@@ -1418,10 +1446,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         if (journal) return;
         if (await open.ensureKernel()) await NotebookActions.runAndAdvance(notebook, session);
       }),
-      runAll: reportRun('run all cells', async () => {
-        if (journal) return;
-        if (await open.ensureKernel(true)) await NotebookActions.runAll(notebook, session);
-      }),
+      runAll: reportRun('run all cells', runAll),
       clearOutputs: () => {
         if (journal || away()) return;
         // As NotebookActions.clearAllOutputs, which needs an active cell;
@@ -1441,17 +1466,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       interrupt: report('interrupt the kernel', async () => {
         await session.session?.kernel?.interrupt();
       }),
-      restart: report('restart the kernel', async () => {
-        const kernel = session.session?.kernel;
-        // A dead kernel can't restart (it disposed its connection): start
-        // a new one of the same kind in its place.
-        if (kernel && (kernel.status === 'dead' || kernel.isDisposed)) {
-          await open.track(session.changeKernel({ name: kernel.name }));
-        } else {
-          await kernel?.restart();
-        }
-        open.runStatus.clear();
-      }),
+      restart: report('restart the kernel', restartKernel),
       command: id => {
         const { commands } = open;
         // The notebook's own commands act on cells the journal hides.
@@ -1547,6 +1562,11 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       }),
     };
     controllerRef.current = controller;
+    // A failed restart stops there: its notice says so and Retry does both.
+    restartRunAll.current = reportRun('restart the kernel and run all cells', async () => {
+      await restartKernel();
+      await runAll();
+    });
     onController(controller);
   }, [
     open,

@@ -1230,8 +1230,10 @@ button {
   font: inherit;
 }
 
-/* A kernel that is only missing, not broken, is a warning. */
+/* A kernel that is only missing, not broken, is a warning, as is one
+   whose state an interrupt reset (#796). */
 .pane-notice.problem-missing-kernel,
+.pane-notice.problem-state-reset,
 .pane-notice.problem-save-conflict {
   border-color: var(--orange);
 }

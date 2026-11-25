@@ -12,6 +12,8 @@ import {
   missingKernel,
   roomClosed,
   saveFailed,
+  stateReset,
+  ACTION_LABEL,
 } from './problems';
 
 describe('hidden paths (#337)', () => {
@@ -106,6 +108,15 @@ describe('problems', () => {
       actions: ['restart'],
     });
     expect(kernelDead().message).toMatch(/^The kernel stopped\./);
+  });
+
+  it('offers Restart & Run All when an interrupt reset the kernel’s state (#796)', () => {
+    expect(stateReset()).toMatchObject({
+      kind: 'state-reset',
+      message: 'Kernel state was reset by the interrupt.',
+      actions: ['restart-run-all'],
+    });
+    expect(ACTION_LABEL['restart-run-all']).toBe('Restart & Run All');
   });
 
   it('offers Retry when the connection is lost', () => {

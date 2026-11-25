@@ -6,11 +6,14 @@
 import { ServerConnection } from '@jupyterlab/services';
 
 /** The next steps a notice offers, besides Dismiss. */
-export type ProblemAction = 'restart' | 'retry' | 'pick-kernel' | 'save' | 'reload' | 'unlock';
+export type ProblemAction =
+  'restart' | 'restart-run-all' | 'retry' | 'pick-kernel' | 'save' | 'reload' | 'unlock';
 
 export type ProblemKind =
   /** The kernel died: it crashed, ran out of memory, or was shut down. */
   | 'kernel-dead'
+  /** An interrupt stopped the kernel's runtime, so its variables are gone (#796). */
+  | 'state-reset'
   /** The kernel's websocket closed and stopped trying to reconnect. */
   | 'connection-lost'
   /** A request never reached the server. */
@@ -36,6 +39,7 @@ export type Problem = {
 /** The buttons' labels. */
 export const ACTION_LABEL: Record<ProblemAction, string> = {
   restart: 'Restart',
+  'restart-run-all': 'Restart & Run All',
   retry: 'Retry',
   'pick-kernel': 'Pick a Kernel',
   save: 'Save',
@@ -118,6 +122,21 @@ export function kernelDead(kernel?: string, outOfMemory = false): Problem {
       : `${name} stopped. It may have crashed or run out of memory.`,
     hint: 'Restart it to keep working. Variables from before are gone; run the cells again.',
     actions: ['restart'],
+  };
+}
+
+/**
+ * An interrupt couldn't stop a busy cell in place, so the kernel ended its
+ * runtime and starts a new one on the next cell, without the earlier
+ * cells' variables (#796). Restart & Run All runs them again; it is only
+ * ever the person's choice.
+ */
+export function stateReset(): Problem {
+  return {
+    kind: 'state-reset',
+    message: 'Kernel state was reset by the interrupt.',
+    hint: 'The cell couldn’t be stopped in place, so variables from earlier cells are gone. Restart & Run All runs every cell again.',
+    actions: ['restart-run-all'],
   };
 }
 

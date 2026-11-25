@@ -238,6 +238,21 @@ what happened and offers the next step: Restart when the kernel died,
 Retry when the server couldn't be reached or a save failed, and a kernel
 picker when the notebook's kernel isn't installed here.
 
+Some kernels can't stop a busy cell in place: cdp-kernel's browser
+kernel (this browser, kernels in the page, and the apps' in-app kernel)
+ends the cells' Worker instead, and a new one starts on the next cell
+without the earlier cells' variables. When the kernel says so, the notice
+says **Kernel state was reset by the interrupt** and offers **Restart &
+Run All**, which restarts the kernel and runs every cell again; nothing
+runs until you press it. An interrupt that stops the cell in place keeps
+the variables and shows no notice.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release. The kernel says so from the cdp-kernel release
+> after 0.15.0; with 0.15.0, the version the app bundles today, only the
+> cell's output says the state is gone.
+
 When a Ganymede server reports memory use and the kernel's last reading,
 taken in the few seconds before it died, had the machine nearly out of
 memory (under 5% available) or the kernel holding over 90% of it, the
