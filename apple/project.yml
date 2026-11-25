@@ -615,6 +615,7 @@ targets:
       - path: Sources/Ganymede/ShortcutsPane.swift
       - path: Sources/Ganymede/KernelLog.swift
       - path: Sources/Ganymede/FolderEntry.swift
+      - path: Sources/Ganymede/SidebarKey.swift
       - path: Sources/Ganymede/FileSource.swift
       - path: Sources/Ganymede/NavigatorTab.swift
       - path: Sources/Ganymede/WorkspaceTabs.swift
@@ -694,6 +695,7 @@ targets:
       - path: Sources/Ganymede/ShortcutsPane.swift
       - path: Sources/Ganymede/KernelLog.swift
       - path: Sources/Ganymede/FolderEntry.swift
+      - path: Sources/Ganymede/SidebarKey.swift
       - path: Sources/Ganymede/FileSource.swift
       - path: Sources/Ganymede/NavigatorTab.swift
       - path: Sources/Ganymede/WorkspaceTabs.swift

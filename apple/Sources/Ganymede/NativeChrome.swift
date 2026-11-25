@@ -30,12 +30,15 @@ struct FolderSidebar: View {
     /// A file operation is running: the menu items that change files wait,
     /// so two quick ones can't take the same name.
     @State private var busy = false
+    /// The selected row, which Up and Down move and Return, Right and Left
+    /// act on (#787). Only files and folders are selectable.
+    @State private var selection: FolderEntry?
 
     /// Whether the window's machine answers (always true for this device).
     private var reachable: Bool { PlaceReachability.shared.isReachable(place) }
 
     var body: some View {
-        List {
+        List(selection: $selection) {
             if !reachable {
                 Text(machineName.map { "“\($0)” is offline. Reconnecting…" } ?? "The machine is offline. Reconnecting…")
                     .foregroundStyle(.secondary).font(.caption)
@@ -45,6 +48,12 @@ struct FolderSidebar: View {
             }
         }
         .listStyle(.sidebar)
+        .modifier(SidebarKeys(
+            selection: selection,
+            isExpanded: { actions.isExpanded($0.url).wrappedValue },
+            setExpanded: { actions.isExpanded($0.url).wrappedValue = $1 },
+            open: open
+        ))
         .contextMenu {
             Button("New Notebook") { page.run("new-notebook", arg: source.serverPath(folder)) }
                 .disabled(!reachable)
@@ -87,6 +96,7 @@ struct FolderSidebar: View {
                     set: { expanded = FolderEntry.expandedPaths(expanded, setting: key, to: $0) }
                 )
             },
+            select: { selection = $0 },
             open: open,
             openInNewTab: { entry in
                 if let target = WindowTarget(opening: entry) { openWindow(value: target) }
@@ -158,6 +168,8 @@ struct FolderSidebar: View {
             do {
                 let target = try await source.rename(entry.url, to: name)
                 generation += 1
+                // Its row is gone under the old name.
+                if selection == entry { selection = nil }
                 // From the page's path now, after the move returned.
                 if let moved = FolderEntry.path(
                     page.state.path, movedFrom: entry.serverPath, to: source.serverPath(target)
@@ -199,6 +211,7 @@ struct FolderSidebar: View {
             do {
                 try await source.delete(entry.url)
                 generation += 1
+                if selection == entry { selection = nil }
                 // What the page shows now, not when the person confirmed.
                 if FolderEntry.path(page.state.path, isAt: entry.serverPath) { page.run("close") }
             } catch {
@@ -215,6 +228,8 @@ struct FolderActions {
     var isRunning: (String) -> Bool
     /// Whether a folder, by file URL, is expanded.
     var isExpanded: (URL) -> Binding<Bool>
+    /// A click made this row the list's selection (#787).
+    var select: (FolderEntry) -> Void
     var open: (FolderEntry) -> Void
     var openInNewTab: (FolderEntry) -> Void
     var newNotebook: (URL) -> Void
@@ -249,35 +264,47 @@ private struct FolderContents: View {
                     DisclosureGroup(isExpanded: isExpanded) {
                         FolderContents(folder: entry.url, source: source, actions: actions, generation: generation)
                     } label: {
-                        FolderRowLabel(name: entry.name, isExpanded: isExpanded)
+                        FolderRowLabel(name: entry.name, isExpanded: isExpanded, select: { actions.select(entry) })
                             .contextMenu { menu(for: entry) }
+                            // The label's row is the folder's selectable
+                            // row (#787).
+                            .tag(entry)
                     }
                 } else {
-                    Button {
-                        actions.open(entry)
-                    } label: {
-                        HStack {
-                            Label(entry.title, systemImage: entry.isNotebook ? "book.pages" : "doc.text")
-                            Spacer()
-                            if entry.isNotebook, actions.isRunning(entry.serverPath) {
-                                // Its kernel is running.
-                                Circle()
-                                    .fill(Color.green)
-                                    .frame(width: 6, height: 6)
-                                    .accessibilityLabel("Kernel running")
-                            }
+                    let canOpen = entry.canOpen(in: actions.place)
+                    // Not a `Button`: in a list with a selection it can keep
+                    // the click from selecting the row (#787). A tap gesture
+                    // alongside the list's own selects the row and opens it.
+                    HStack {
+                        Label(entry.title, systemImage: entry.isNotebook ? "book.pages" : "doc.text")
+                        Spacer()
+                        if entry.isNotebook, actions.isRunning(entry.serverPath) {
+                            // Its kernel is running.
+                            Circle()
+                                .fill(Color.green)
+                                .frame(width: 6, height: 6)
+                                .accessibilityLabel("Kernel running")
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
-                    .disabled(!entry.canOpen(in: actions.place))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .foregroundStyle(canOpen ? Color.primary : Color.secondary)
+                    .simultaneousGesture(
+                        TapGesture().onEnded {
+                            actions.select(entry)
+                            if canOpen { actions.open(entry) }
+                        }
+                    )
+                    .accessibilityElement(children: .combine)
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityAction { if canOpen { actions.open(entry) } }
                     .padding(.vertical, 1)
                     .listRowBackground(
                         entry.serverPath == actions.openPath
                             ? Color.accentColor.opacity(0.18) : Color.clear
                     )
                     .contextMenu { menu(for: entry) }
+                    .tag(entry)
                 }
             }
             if let error {

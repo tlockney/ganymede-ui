@@ -44,6 +44,12 @@ struct IPadSidebar: View {
     @State private var failure: String?
     /// Whether a file operation is running: one at a time, as the Mac's.
     @State private var busy = false
+    /// The selected Files row, which the arrow keys of a hardware keyboard
+    /// move and Return, Right and Left act on (#787).
+    @State private var selection: FolderEntry?
+    /// The expanded folders of the Files tree, by file URL; here, not per
+    /// folder, so the keys can expand any of them (#787).
+    @State private var expandedFolders: Set<URL> = []
     /// The search field's text, and whether it reads notebooks too (#240).
     @State private var query = ""
     @State private var searchContents = false
@@ -137,13 +143,30 @@ struct IPadSidebar: View {
     }
 
     private var list: some View {
-        List { listContent }
+        List(selection: selectionBinding) { listContent }
             .listStyle(.sidebar)
+            .modifier(SidebarKeys(
+                selection: selection,
+                isExpanded: { expandedFolders.contains($0.url) },
+                setExpanded: { entry, expanded in
+                    if expanded { expandedFolders.insert(entry.url) } else { expandedFolders.remove(entry.url) }
+                },
+                open: open
+            ))
             .navigationTitle(tabbed ? shownTab.title : "Notebooks")
             // The iPad's navigator tabs, as on the Mac (#251).
             .safeAreaInset(edge: .top, spacing: 0) {
                 if tabbed { tabStrip }
             }
+    }
+
+    /// The list's selection. The iPhone's list has none: there a row only
+    /// opens, and nothing stays highlighted.
+    private var selectionBinding: Binding<FolderEntry?> {
+        Binding(
+            get: { tabbed ? selection : nil },
+            set: { if tabbed { selection = $0 } }
+        )
     }
 
     /// A reloaded page has no search, and a keystroke before the page was
@@ -552,6 +575,13 @@ struct IPadSidebar: View {
             offline: !reachable,
             place: place,
             machineName: machineName,
+            isExpanded: { url in
+                Binding(
+                    get: { expandedFolders.contains(url) },
+                    set: { if $0 { expandedFolders.insert(url) } else { expandedFolders.remove(url) } }
+                )
+            },
+            select: { if tabbed { selection = $0 } },
             open: open,
             newNotebook: newNotebook(in:),
             newFolder: newFolder(in:),
@@ -658,6 +688,8 @@ struct IPadSidebar: View {
         let from = path(entry)
         exclusively {
             let target = try await source.rename(entry.url, to: file)
+            // Its row is gone under the old name.
+            if selection == entry { selection = nil }
             let to = source.serverPath(target)
             page.run("file-moved", arg: PageState.fileMoved(from: from, to: to))
             // From the page's path now, after the move returned.
@@ -679,6 +711,7 @@ struct IPadSidebar: View {
         let from = path(entry)
         exclusively {
             try await source.delete(entry.url)
+            if selection == entry { selection = nil }
             page.run("file-moved", arg: PageState.fileMoved(from: from, to: nil))
             // What the page shows now, not when the person confirmed.
             if FolderEntry.path(page.state.path, isAt: from) { page.run("close") }
@@ -806,6 +839,10 @@ struct IPadFolderActions {
     var offline = false
     var place: Place = .thisDevice
     var machineName: String?
+    /// Whether a folder, by file URL, is expanded: the sidebar's one set.
+    var isExpanded: (URL) -> Binding<Bool>
+    /// A tap made this row the list's selection (#787).
+    var select: (FolderEntry) -> Void
     var open: (FolderEntry) -> Void
     var newNotebook: (URL) -> Void
     var newFolder: (URL) -> Void
@@ -822,47 +859,55 @@ private struct IPadFolderContents: View {
     let generation: Int
     @State private var entries: [FolderEntry] = []
     @State private var error: String?
-    /// This folder's expanded subfolders, by file URL.
-    @State private var expanded: Set<URL> = []
 
     var body: some View {
         Group {
             ForEach(entries) { entry in
                 if entry.isDirectory {
-                    let isExpanded = Binding(
-                        get: { expanded.contains(entry.url) },
-                        set: { if $0 { expanded.insert(entry.url) } else { expanded.remove(entry.url) } }
-                    )
+                    let isExpanded = actions.isExpanded(entry.url)
                     DisclosureGroup(isExpanded: isExpanded) {
                         IPadFolderContents(folder: entry.url, source: source, actions: actions, generation: generation)
                     } label: {
-                        FolderRowLabel(name: entry.name, isExpanded: isExpanded)
+                        FolderRowLabel(name: entry.name, isExpanded: isExpanded, select: { actions.select(entry) })
                             .contextMenu { menu(for: entry) }
+                            // The label's row is the folder's selectable
+                            // row (#787).
+                            .tag(entry)
                     }
                 } else {
-                    Button {
-                        actions.open(entry)
-                    } label: {
-                        HStack {
-                            Label(entry.title, systemImage: entry.isNotebook ? "book.pages" : "doc.text")
-                            Spacer()
-                            if entry.isNotebook, actions.isRunning(source.serverPath(entry.url)) {
-                                // Its kernel is running.
-                                Circle()
-                                    .fill(Color.green)
-                                    .frame(width: 6, height: 6)
-                                    .accessibilityLabel("Kernel running")
-                            }
+                    let canOpen = entry.canOpen(in: actions.place)
+                    // Not a `Button`: in a list with a selection it can keep
+                    // the tap from selecting the row (#787). A tap gesture
+                    // alongside the list's own selects the row and opens it.
+                    HStack {
+                        Label(entry.title, systemImage: entry.isNotebook ? "book.pages" : "doc.text")
+                        Spacer()
+                        if entry.isNotebook, actions.isRunning(source.serverPath(entry.url)) {
+                            // Its kernel is running.
+                            Circle()
+                                .fill(Color.green)
+                                .frame(width: 6, height: 6)
+                                .accessibilityLabel("Kernel running")
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
                     }
-                    .disabled(!entry.canOpen(in: actions.place))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .foregroundStyle(canOpen ? Color.primary : Color.secondary)
+                    .simultaneousGesture(
+                        TapGesture().onEnded {
+                            actions.select(entry)
+                            if canOpen { actions.open(entry) }
+                        }
+                    )
+                    .accessibilityElement(children: .combine)
+                    .accessibilityAddTraits(.isButton)
+                    .accessibilityAction { if canOpen { actions.open(entry) } }
                     .listRowBackground(
                         source.serverPath(entry.url) == actions.openPath
                             ? Color.accentColor.opacity(0.18) : nil
                     )
                     .contextMenu { menu(for: entry) }
+                    .tag(entry)
                 }
             }
             if let error {

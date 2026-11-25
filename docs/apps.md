@@ -73,9 +73,14 @@ shown or hidden, its tab and its expanded folders across launches.
   there, or move it to the Trash. A dot marks notebooks whose kernel is
   running.
 
+  With the sidebar focused, ↑ and ↓ move the selection, → expands and
+  ← collapses the selected folder, and Return opens the selected file or
+  expands or collapses the selected folder. Clicking a row selects it.
+
   > [!NOTE]
   > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release, where only a folder's arrow expands it.
+  > the latest release, where only a folder's arrow expands it and the
+  > sidebar has no keyboard navigation.
 
 - **Search** finds file and folder names under the window's folder and,
   with "Search notebook contents" ticked, the text of its notebooks,
@@ -644,9 +649,14 @@ keys are kept in the keychain too.
   in the folder and below it (and, switched on, in what notebooks say).
   In Running, swipe or long-press a kernel to shut it down.
 
+  With a hardware keyboard, the Files tab takes the Mac's keys: ↑ and ↓
+  move the selection, → and ← expand and collapse the selected folder,
+  and Return opens the selected file or toggles the selected folder.
+
   > [!NOTE]
   > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release, where only a folder's chevron expands it.
+  > the latest release, where only a folder's chevron expands it and the
+  > Files tab has no keyboard navigation.
 
 - The navigation bar runs cells and interrupts the kernel, and its ⋯ menu
   inserts cells, sets the cell type, runs with parameters, clears all
@@ -676,11 +686,16 @@ keys are kept in the keychain too.
 
 The first screen lists the notebook folder, with the same long-press
 actions and Running section as the iPad's sidebar, and the terminal,
-Settings and folder buttons. Tapping a notebook opens it; swipe from the
-left edge or tap Back to return to the list. The notebook's run controls
+Settings and folder buttons. Tapping a notebook opens it, and tapping a
+folder expands or collapses it; swipe from the left edge or tap Back to
+return to the list. The notebook's run controls
 and its ⋯ menu are in the bottom toolbar. Terminals and text files cover
 the screen. The bottom toolbar's Outline menu lists the notebook's
 headings; pick one to go to its cell.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, where only a folder's chevron expands it.
 
 ### On both
 
