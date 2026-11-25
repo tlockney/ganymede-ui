@@ -222,6 +222,44 @@
   padding-top: 4px;
 }
 
+/* A chart or table wider than the prose column (#814,
+ * src/lib/output-labels.ts, which sets gn-mod-wide and --gn-pane) spans the
+ * pane, past the column on both sides: the column is what
+ * `.jp-WindowedPanel-inner` holds (max-width 920px, centred, 32px side
+ * padding — above), while the pane is the notebook's scroll area here,
+ * `.jp-WindowedPanel-outer`, less the same 32px gutter on each side, which
+ * output-labels.ts keeps in `--gn-pane`. The output is centred on the pane
+ * by its margins, past the prompt beside it; the cell, the editor and the
+ * prose keep the column, and the pane never scrolls sideways: the span is
+ * capped inside it. Only on the wide layout; the compact one has no
+ * column to spare. JupyterLab gives the output area `overflow-y: auto`,
+ * which clips sideways too, and its row `overflow: hidden`: both give
+ * where a wide output is, or it would be clipped at the column's edge.
+ * A scrolled cell keeps its cap (its area scrolls). */
+@media (min-width: 720px) {
+  .notebook-page
+    .jp-CodeCell:not(.jp-mod-outputsScrolled)
+    .jp-OutputArea:has(> .jp-OutputArea-child > .jp-OutputArea-output.gn-mod-wide),
+  .notebook-page .jp-OutputArea-child:has(> .jp-OutputArea-output.gn-mod-wide) {
+    overflow: visible;
+  }
+
+  .notebook-page .jp-OutputArea-output.gn-mod-wide {
+    flex: none;
+    width: var(--gn-pane, 100%);
+    /* Half the row, less half the span, less the prompt beside it. */
+    margin-left: calc(50% - var(--gn-pane, 100%) / 2 - var(--jp-cell-prompt-width));
+  }
+}
+
+/* JupyterLab stacks the prompt above the output at 760px and under: there
+ * is no prompt beside the output to span past. */
+@media (min-width: 720px) and (width <= 760px) {
+  .notebook-page .jp-OutputArea-output.gn-mod-wide {
+    margin-left: calc(50% - var(--gn-pane, 100%) / 2);
+  }
+}
+
 /* A long stream (a loop's prints, a training log) or traceback scrolls in
  * its own box instead of pushing the rest of the notebook away (#133). */
 .notebook-page .jp-OutputArea-output[data-mime-type='application/vnd.jupyter.stdout'],
