@@ -187,10 +187,14 @@ public final class PermissionLedger {
     /// Keeps `always` or `deny`, with the notebook's stamp now; `once`
     /// keeps nothing.
     public func record(_ answer: LedgerAnswer, notebook: String, capability: String) {
+        record(answer, notebook: notebook, capability: capability, stamp: stamp(notebook))
+    }
+
+    private func record(_ answer: LedgerAnswer, notebook: String, capability: String, stamp now: String?) {
         guard answer != .once else { return }
         var rows = kept
         rows.removeAll { $0.notebook == notebook && $0.capability == capability }
-        rows.append(LedgerGrant(notebook: notebook, capability: capability, answer: answer, stamp: stamp(notebook)))
+        rows.append(LedgerGrant(notebook: notebook, capability: capability, answer: answer, stamp: now))
         store.save(rows)
     }
 
@@ -207,8 +211,9 @@ public final class PermissionLedger {
     /// server's own writes meanwhile (a room's autosave, a run) don't count
     /// as a swap.
     public func record(_ answer: LedgerAnswer, notebook: String, capability: String, unlessChangedSince seen: String?) {
-        guard FileStamp.verdict(was: seen, now: stamp(notebook), path: notebook, log: log) != .drop else { return }
-        record(answer, notebook: notebook, capability: capability)
+        let now = stamp(notebook)
+        guard FileStamp.verdict(was: seen, now: now, path: notebook, log: log) != .drop else { return }
+        record(answer, notebook: notebook, capability: capability, stamp: now)
     }
 
     /// Forgets the answer for (`notebook`, `capability`), or every

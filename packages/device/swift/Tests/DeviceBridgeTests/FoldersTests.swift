@@ -13,9 +13,12 @@ final class MemoryFolderStore: FolderStore {
 private final class Picker: DialogPresenter {
     var shown: [Dialog] = []
     var folder: URL?
+    /// What happens while the picker is up, before it answers.
+    var whileShown: (() -> Void)?
 
     func present(_ dialog: Dialog, on host: DialogHost?, done: @escaping (DialogResult) -> Void) throws -> Close {
         shown.append(dialog)
+        whileShown?()
         done(folder.map { .folder($0) } ?? .dismissed)
         return { gone in gone() }
     }
@@ -225,6 +228,41 @@ final class FoldersTests: XCTestCase {
         XCTAssertEqual((listed["result"] as? [[String: Any]])?.count, 0)
         let second = await call("folders.read", ["folder": id, "path": "a.txt"])
         XCTAssertEqual(code(second), "denied")
+    }
+
+    /// The picker is the consent for the notebook as it was when it showed
+    /// (#584): swapped while it is up, the pick fails and keeps nothing;
+    /// written by the server meanwhile (in the log), it is kept.
+    func testAPickIsKeptOnlyForTheFileThePersonWasAskedAbout() async throws {
+        final class Stamps {
+            var all = ["/n/a.ipynb": "1:1:1"]
+            func stamp(_ path: String) -> String? { all[path] }
+        }
+        let stamps = Stamps()
+        let log = ServerWriteLog()
+        let grantStore = MemoryFolderStore()
+        let own = DeviceBridge(clipboard: nil, presenter: picker, ledger: PermissionLedger(store: MemoryLedgerStore()), appVersion: "")
+        own.addFolders(FolderGrants(store: grantStore, stamp: stamps.stamp, log: log))
+        own.setNotebook("/n/a.ipynb", for: 1)
+        let earlier = bridge
+        bridge = own
+        defer {
+            bridge = earlier
+            picker.whileShown = nil
+        }
+
+        picker.whileShown = { stamps.all["/n/a.ipynb"] = "1:1:2" }
+        let swapped = await call("folders.pick")
+        XCTAssertEqual(code(swapped), "failed")
+        XCTAssertTrue(grantStore.saved.isEmpty, "nothing kept")
+
+        picker.whileShown = {
+            stamps.all["/n/a.ipynb"] = "1:1:3"
+            log.record(path: FileStamp.canonical("/n/a.ipynb"), before: "1:1:2", after: "1:1:3")
+        }
+        let written = await call("folders.pick")
+        XCTAssertNotNil((written["result"] as? [String: Any])?["id"])
+        XCTAssertEqual(grantStore.saved.map(\.stamp), ["1:1:3"], "kept, for the file as it is now")
     }
 
     func testAnUnusableBookmarkIsDropped() async throws {

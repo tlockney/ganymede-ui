@@ -329,9 +329,10 @@ final class AppModel {
         } else {
             host = try ServerHost(config: config.merging(["port": 0]) { $1 })
         }
-        // A new server has no observer, so each start sets it, here and
-        // not after the host is handed back: nothing has opened the page
-        // yet, so no write can slip by unreported.
+        // A new server has no observer, so each start sets it. The server
+        // listens from `ServerHost(config:)`, so a client on the saved port
+        // could write before this line: that write isn't reported, and it
+        // fails safe, since its answers are asked again.
         KeptAnswers.watch(host)
         return host
     }

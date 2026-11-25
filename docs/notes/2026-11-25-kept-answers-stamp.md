@@ -30,9 +30,8 @@ but the app's own server.
   alone, so `move` and `notebookMoved`, which the app calls after the server
   renamed the file, still find the old path's rows and carry their stamps. A
   different file made at a missing notebook's path has another inode and drops
-  them then. A dropped "deny" only means the next call asks again; a dropped "always" in a
-  headless run means the call is denied. The stores
-  are written only when a check changed something. Settings lists only live
+  them then. A dropped "deny" only means the next call asks again; a dropped
+  "always" in a headless run means the call is denied. The stores are written only when a check changed something. Settings lists only live
   answers: Links prunes on appear and when the app becomes active, and Device reads
   again at the same moments through the same checks. On the Mac the scene
   stays active when the app is switched away from, so both also listen for
@@ -75,15 +74,18 @@ Shortcuts run. The server's report covers all of them, and the window hooks
 
 What it can't see: a rewrite in place that keeps the size and sets the mtime
 back; and a notebook on a machine, which has no file here (the server
-reports files under its own root only). The share extension has its own
-process and an empty log, so a check there that races a server write in the
-app asks again, which is the safe way to be wrong. Other things kept per
+reports files under its own root only). The share extension keys the
+ledger by the notebook's original path, which its sandbox likely can't
+`stat`: `FileStamp.of` is nil there, so it keeps the answer and doesn't
+check stamps, and a row recorded there carries none (the app stamps it at
+its next read, by trust on first use). The app checks the next time it
+reads the answer. Other things kept per
 notebook path (published widgets, notebook secrets) are not stamped; they
 are not kept answers about what the notebook may do.
 
 Two more limits, both failing safe in the sense that no answer is wrongly
-kept: the next call asks again, and in a headless run (Shortcuts, the share
-sheet), which can't ask, a dropped "always" means the call is denied. iCloud
+kept: the next call asks again, and in a headless run (Shortcuts), which
+can't ask, a dropped "always" means the call is denied. iCloud
 evicting a file and downloading it again can give it a new inode, which
 forgets its answers. And the server reports a write only after it finishes,
 after it has restamped its own database, so a check in that short window
@@ -114,9 +116,14 @@ for a notebook swapped meanwhile covers that call only; so does
 Shortcuts" records its deny as before). Both use `FileStamp.verdict`, not a
 plain comparison: the server's own writes while the prompt is up (a room's
 autosave after Run All) are in the log and don't count as a swap. When
-several calls join one prompt, the first call's stamp is the one used. Folder picks have
-no prompt of this kind: the picker is the consent and the grant is stamped
-when it is kept.
+several calls join one prompt, the first call's stamp is the one used.
+`device.folders.pick()` does the same with the picker: `folders.pick` reads
+the stamp before the write alert and the picker show, and keeps the grant
+only if `FileStamp.verdict` doesn't say drop when it is picked. A pick for a
+notebook swapped meanwhile fails `failed` ("the notebook changed while the
+picker was up, so the folder isn't kept; pick it again") and keeps nothing,
+rather than return a folder id no later call could use. `KernelHostTests`
+covers the open-time prompt, `FoldersTests` the pick.
 
 Tests: `FileStampTests` (the format against `stat`'s numbers, pre-epoch as 0,
 `canonical` through a link, same file, rewrite in place by size and by time,
@@ -156,14 +163,17 @@ container; CI's macos-app job is the first compile.
    lists all three.
 3. Quit and reopen the app. Run the link and the cell again: neither asks,
    and Settings still lists all three.
-4. Quit the app. In a terminal, `git checkout` another version of the
+4. With the link's dialog up (run the link for a second notebook), replace
+   that notebook in Terminal, then choose "Always allow": the run goes ahead
+   once and the next run asks again.
+5. Quit the app. In a terminal, `git checkout` another version of the
    notebook (or `mv` a copy over it). Open the app: the link asks again;
    the capability asks again; `device.folders.list()` is empty; Settings
    lists none of the three for that notebook.
-5. Repeat step 4 with the app open and the notebook open in a window.
-6. Answer "Don't allow" for a capability, change the notebook outside the app:
+6. Repeat step 5 with the app open and the notebook open in a window.
+7. Answer "Don't allow" for a capability, change the notebook outside the app:
    the capability asks again (a forgotten deny only costs that question).
-7. Rename the notebook in the sidebar: its capability answers and folders
+8. Rename the notebook in the sidebar: its capability answers and folders
    follow, none asks. A link's "Always allow" names the old path and
    doesn't follow a rename, so that link asks again.
-8. Touch the file with `chmod` or a Finder tag only: nothing is forgotten.
+9. Touch the file with `chmod` or a Finder tag only: nothing is forgotten.

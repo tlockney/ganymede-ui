@@ -178,6 +178,24 @@ public final class FolderGrants {
         grants.first { $0.id == id && $0.notebook == notebook }
     }
 
+    /// The stamp of `notebook`'s file now, nil when it isn't there: what a
+    /// pick is for, to be passed to `keep(_:unlessChangedSince:)`.
+    func currentStamp(ofNotebook notebook: String) -> String? {
+        stamp(notebook)
+    }
+
+    /// As `keep(_:)`, unless the notebook's file is no longer the one the
+    /// person was asked about (`seen`, read before the picker was shown),
+    /// by `FileStamp.verdict`: the server's own writes meanwhile don't
+    /// count as a swap. Whether it was kept.
+    func keep(_ grant: FolderGrant, unlessChangedSince seen: String?) -> Bool {
+        guard FileStamp.verdict(was: seen, now: stamp(grant.notebook), path: grant.notebook, log: log) != .drop else {
+            return false
+        }
+        keep(grant)
+        return true
+    }
+
     /// Keeps `grant`, in place of one with its id, with the notebook's
     /// stamp now when it has none.
     func keep(_ grant: FolderGrant) {
@@ -446,12 +464,16 @@ extension DeviceBridge {
         let grants = grants ?? FolderGrants()
         folderGrants = grants
         addDialog("folders.pick", prepare: { context in
-            _ = try Self.notebook(context, "folders.pick")
-        }, finish: { answer, params, context in
+            // The notebook's file as the person is asked about it: the
+            // pick is kept only if it is still that file when they pick.
+            let notebook = try Self.notebook(context, "folders.pick")
+            return Seen(stamp: grants.currentStamp(ofNotebook: notebook))
+        }, finish: { answer, params, context, prepared in
             guard case let .folder(url) = answer else { return NSNull() }
             let notebook = try Self.notebook(context, "folders.pick")
             let writable = params["write"] as? Bool ?? false
-            return Self.folderReply(try Self.keep(url, writable: writable, notebook: notebook, grants: grants))
+            let seen = (prepared as? Seen)?.stamp
+            return Self.folderReply(try Self.keep(url, writable: writable, notebook: notebook, grants: grants, unlessChangedSince: seen))
         })
         addMethod("folders.list", contextHandler: { _, context, reply in
             do {
@@ -577,7 +599,9 @@ extension DeviceBridge {
 
     /// Keeps the picked `url` for `notebook`, in place of the notebook's
     /// earlier grant of the same folder, which keeps its id.
-    private static func keep(_ url: URL, writable: Bool, notebook: String, grants: FolderGrants) throws -> FolderGrant {
+    private static func keep(
+        _ url: URL, writable: Bool, notebook: String, grants: FolderGrants, unlessChangedSince seen: String?
+    ) throws -> FolderGrant {
         let bookmark: Data
         do {
             bookmark = try FolderAccess.bookmark(url)
@@ -592,8 +616,15 @@ extension DeviceBridge {
         let grant = FolderGrant(
             id: earlier?.id ?? UUID().uuidString, notebook: notebook, name: url.lastPathComponent,
             writable: writable, bookmark: bookmark)
-        grants.keep(grant)
+        guard grants.keep(grant, unlessChangedSince: seen) else {
+            throw DeviceCallError("failed", "folders.pick: the notebook changed while the picker was up, so the folder isn't kept; pick it again")
+        }
         return grant
+    }
+
+    /// The notebook's stamp when a pick began, carried to its answer.
+    private struct Seen {
+        let stamp: String?
     }
 
     /// The notebook a folder call's kernel runs; without one, nothing to

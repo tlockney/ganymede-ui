@@ -202,12 +202,13 @@ public final class DeviceBridge: NSObject, WKScriptMessageHandlerWithReply {
 
     /// Adds a dialog method whose answer needs the caller, such as
     /// `folders.pick`, which keeps what was picked for the notebook:
-    /// `prepare` runs before the dialog shows and may refuse the call, and
-    /// `finish` turns the person's answer, with the call's params, into
-    /// the reply. Both throw a `DeviceCallError` to reject it.
+    /// `prepare` runs before the dialog shows and may refuse the call; what
+    /// it returns (nil for nothing) is handed to `finish`, which turns the
+    /// person's answer, with the call's params, into the reply. Both throw
+    /// a `DeviceCallError` to reject it.
     func addDialog(
-        _ method: String, prepare: @escaping @MainActor (CallContext) throws -> Void,
-        finish: @escaping @MainActor (_ answer: DialogResult, _ params: [String: Any], CallContext) throws -> Any
+        _ method: String, prepare: @escaping @MainActor (CallContext) throws -> Any?,
+        finish: @escaping @MainActor (_ answer: DialogResult, _ params: [String: Any], CallContext, _ prepared: Any?) throws -> Any
     ) {
         addedDialogs[method] = AddedDialog(permission: nil, prepare: prepare, finish: finish)
     }
@@ -591,10 +592,11 @@ public final class DeviceBridge: NSObject, WKScriptMessageHandlerWithReply {
         } else if let entry = addedDialogs[method] {
             // A bad call fails before the permission prompt.
             let dialog: Dialog
+            var prepared: Any?
             let context = CallContext(owner: owner, notebook: ledger.notebook(for: owner), call: id)
             do {
                 dialog = try Dialog(method: method, params: params)
-                try entry.prepare?(context)
+                if let prepare = entry.prepare { prepared = try prepare(context) }
             } catch let error as DeviceCallError {
                 pending.answer(token, Self.error(error.code, error.message))
                 return
@@ -603,12 +605,13 @@ public final class DeviceBridge: NSObject, WKScriptMessageHandlerWithReply {
                 return
             }
             weak var weakHost = host
+            let carried = prepared
             authorize(method, entry.permission, call: token, owner: owner) { [weak self] in
                 self?.showDialog(dialog, method, call: token, on: weakHost) { result, answer in
                     guard let finish = entry.finish else { return result }
                     // The notebook as it is now: it may have moved while
                     // the dialog showed.
-                    return try finish(answer, params, CallContext(owner: owner, notebook: self?.ledger.notebook(for: owner), call: id))
+                    return try finish(answer, params, CallContext(owner: owner, notebook: self?.ledger.notebook(for: owner), call: id), carried)
                 }
             }
         } else if let entry = methods[method] {
@@ -1136,6 +1139,6 @@ public struct SystemDeviceState: DeviceState {
 /// A dialog method a namespace added: see `addDialog`.
 struct AddedDialog {
     var permission: String?
-    var prepare: (@MainActor (CallContext) throws -> Void)?
-    var finish: (@MainActor (DialogResult, [String: Any], CallContext) throws -> Any)?
+    var prepare: (@MainActor (CallContext) throws -> Any?)?
+    var finish: (@MainActor (DialogResult, [String: Any], CallContext, Any?) throws -> Any)?
 }

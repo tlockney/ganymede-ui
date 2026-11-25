@@ -439,6 +439,66 @@ final class KernelHostTests: XCTestCase {
         XCTAssertEqual(ledger.answer(notebook: "/root/New.ipynb", capability: "location"), .deny)
     }
 
+    /// The open-time prompt (#383) is about the file as it was when it was
+    /// shown (#584): swapped meanwhile, "Allow" is not kept; written by the
+    /// server meanwhile (in the log), it is.
+    @MainActor
+    func testAnAnswerAtOpenIsKeptOnlyForTheFileThePersonWasAskedAbout() async throws {
+        let server = try server()
+        defer { server.stop() }
+
+        final class Stamp {
+            var value: String? = "1:1:1"
+        }
+        let stamp = Stamp()
+        let log = ServerWriteLog()
+        let store = MemoryLedgerStore()
+        let ledger = PermissionLedger(store: store, stamp: { _ in stamp.value }, log: log)
+        let device = DeviceBridge(presenter: SilentPresenter(), ledger: ledger)
+        device.addPermission("location", AlwaysGranted())
+        let folders = FolderGrants(store: MemoryFolderStore())
+        let kernels = AppKernels(device: DeviceBridge(presenter: SilentPresenter(), ledger: PermissionLedger(store: MemoryLedgerStore())))
+        kernels.notebookRoot = URL(fileURLWithPath: "/root", isDirectory: true)
+        let prompts = RecordingPresenter()
+        let host = KernelHost(device: device, prompts: prompts, folders: folders, kernels: kernels)
+        host.notebookRoot = URL(fileURLWithPath: "/root", isDirectory: true)
+        let ui = uiView()
+        host.attach(to: ui)
+        host.uiWillLoad(server.url)
+        ui.load(URLRequest(url: server.url))
+        try await waitFor(ui, "document.title === 'ui' && document.readyState === 'complete'")
+
+        func declare(_ path: String) async throws {
+            _ = try await eval(ui, """
+                webkit.messageHandlers.kernelRelay.postMessage(
+                  { op: 'declared', path: '\(path)', capabilities: ['location'] }); true
+                """)
+        }
+        func shown(_ count: Int) async throws {
+            let deadline = Date().addingTimeInterval(20)
+            while prompts.shown.count < count, Date() < deadline { try await Task.sleep(nanoseconds: 50_000_000) }
+            XCTAssertEqual(prompts.shown.count, count)
+        }
+
+        // A.ipynb is swapped while the prompt is up: "Allow" covers nothing.
+        try await declare("A.ipynb")
+        try await shown(1)
+        stamp.value = "2:2:2"
+        prompts.answer(.option(0))
+        try await Task.sleep(nanoseconds: 200_000_000)
+        XCTAssertTrue(store.saved.isEmpty, "not kept")
+
+        // B.ipynb is written by the server while the prompt is up.
+        try await declare("B.ipynb")
+        try await shown(2)
+        stamp.value = "4:4:4"
+        log.record(path: FileStamp.canonical("/root/B.ipynb"), before: "2:2:2", after: "4:4:4")
+        prompts.answer(.option(0))
+        try await eventually("the answer kept") { !store.saved.isEmpty }
+        XCTAssertEqual(store.saved.map(\.notebook), ["/root/B.ipynb"])
+        XCTAssertEqual(store.saved.map(\.stamp), ["4:4:4"], "stamped as the file is now")
+    }
+
     func testReadsTheParametersFromTheLaunch() {
         XCTAssertEqual(AppKernels.params(in: #"{"env": {"GANYMEDE_PARAMS": "{\"a\":1}"}}"#), #"{"a":1}"#)
         XCTAssertNil(AppKernels.params(in: #"{"env": {}}"#))

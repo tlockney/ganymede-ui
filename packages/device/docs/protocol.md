@@ -393,7 +393,9 @@ shares the bridge's store.
   folder the notebook already has replaces that grant and keeps its id.
   A grant also holds the notebook's file stamp, as a ledger answer does
   (see Permissions below), and is forgotten when something other than the
-  app's server changes that file; its calls then fail `denied`.
+  app's server changes that file; its calls then fail `denied`. The stamp
+  is read before the picker shows, and a pick of a notebook whose file was
+  changed by something else meanwhile fails `failed` and keeps nothing.
 - Every call needs the notebook (`setNotebook`); without it, or for a
   grant another notebook holds or one revoked, it fails `denied`.
   `write` and `remove` on a grant picked without `write: true` fail

@@ -40,11 +40,14 @@ public final class ServerWriteLog: @unchecked Sendable {
     /// has `after` (nil: it couldn't be read).
     public func record(path: String, before: String?, after: String?) {
         lock.withLock {
-            if transitions[path] == nil {
-                order.append(path)
-                if order.count > Self.paths {
-                    transitions[order.removeFirst()] = nil
-                }
+            // The last file reported goes to the end, so the one reported
+            // longest ago is dropped past the limit.
+            if transitions[path] != nil, let index = order.lastIndex(of: path) {
+                order.remove(at: index)
+            }
+            order.append(path)
+            if order.count > Self.paths {
+                transitions[order.removeFirst()] = nil
             }
             var list = transitions[path] ?? []
             list.append(Transition(before: before, after: after))

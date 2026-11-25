@@ -76,6 +76,18 @@ final class ServerWriteLogTests: XCTestCase {
         XCTAssertTrue(log.leads(path: "/n/\(ServerWriteLog.paths).ipynb", from: "1", to: "2"))
     }
 
+    func testTheFileReportedLongestAgoIsTheOneDropped() {
+        let log = ServerWriteLog()
+        for index in 0..<ServerWriteLog.paths {
+            log.record(path: "/n/\(index).ipynb", before: "1", after: "2")
+        }
+        log.record(path: "/n/0.ipynb", before: "2", after: "3")
+        log.record(path: "/n/\(ServerWriteLog.paths).ipynb", before: "1", after: "2")
+        XCTAssertTrue(log.leads(path: "/n/0.ipynb", from: "1", to: "3"), "reported again, so kept")
+        XCTAssertFalse(log.leads(path: "/n/1.ipynb", from: "1", to: "2"), "reported longest ago")
+        XCTAssertTrue(log.leads(path: "/n/2.ipynb", from: "1", to: "2"))
+    }
+
     /// `record` runs on the server's threads and `leads` on the main actor.
     func testRecordingFromManyThreadsLosesNothing() {
         let log = ServerWriteLog()
