@@ -344,4 +344,21 @@ describe('the compact layout (#813)', () => {
     expect(cellRunState(cell(0))).toBe('Stopped');
     expect(meta(0).querySelector('.gn-meta-state')!.textContent).toBe('Stopped');
   });
+
+  it('clears Stopped when the outputs are cleared, with no class change', async () => {
+    const outputs = (
+      cell(0).model as unknown as {
+        outputs: { add(o: unknown): void; clear(): void };
+      }
+    ).outputs;
+    outputs.add({ output_type: 'error', ename: 'KeyboardInterrupt', evalue: '', traceback: [] });
+    await Promise.resolve();
+    expect(cellRunState(cell(0))).toBe('Stopped');
+    expect(meta(0).querySelector('.gn-meta-state')!.textContent).toBe('Stopped');
+    // Clearing the outputs is the only change: no run-status class moves.
+    outputs.clear();
+    await Promise.resolve();
+    expect(cellRunState(cell(0))).toBeUndefined();
+    expect(meta(0).querySelector('.gn-meta-state')!.textContent).toBe('');
+  });
 });

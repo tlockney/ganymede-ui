@@ -46,6 +46,8 @@ test('the meta line is above the active cell and the page never scrolls sideways
   // No prompt column: the editor has the cell's width, less the page gutters.
   expect(editorBox.width).toBeGreaterThan(330);
   await expect(cell.locator('.jp-InputPrompt')).toBeHidden();
+  // No room for the drag handle; only a wider touch window shows it.
+  await expect(page.locator('.gn-cell-drag').first()).toBeHidden();
   // The line is short, and its button is a touch target.
   expect(metaBox.height).toBeLessThanOrEqual(48);
   const more = (await meta.getByRole('button', { name: 'Cell Actions' }).boundingBox())!;
@@ -158,6 +160,21 @@ test('a failing cell says Execution failed with the exception summary first', as
   const pre = (await outputs(page).locator('pre').first().boundingBox())!;
   expect(barBox.y).toBeLessThanOrEqual(pre.y);
   await expect(page.locator('.jp-Cell.jp-mod-active .gn-cell-meta')).toBeVisible();
+});
+
+test('a long unbroken error value does not push the page sideways', async ({ page }) => {
+  await newBrowserNotebook(page);
+  // A 200-character path, with no space or break in it.
+  const path = `/${'lava-tube/'.repeat(19)}entry.txt`;
+  expect(path).toHaveLength(200);
+  await runCell(page, `throw new Error("no such path: ${path}");`);
+  const bar = page.locator('.gn-output-bar[data-kind="error"]');
+  await expect(bar).toBeVisible({ timeout: 60_000 });
+  await expect(bar.locator('.gn-output-summary')).toContainText('no such path:');
+  // The summary wraps and the traceback scrolls in its own box; the page
+  // doesn't scroll sideways for either.
+  const { scroll, client } = await pageOverflow(page);
+  expect(scroll).toBeLessThanOrEqual(client);
 });
 
 test('an interrupt on this browser says Execution stopped and Stopped', async ({ page }) => {
