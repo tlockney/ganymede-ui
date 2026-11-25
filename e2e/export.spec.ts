@@ -3,7 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { expect, test } from '@playwright/test';
 import { FIXTURE } from './env';
-import { openNotebook, openWithToken, screenshot } from './helpers';
+import { openNotebook, openWithToken, screenshot, toolbarMenu } from './helpers';
 
 for (const [label, extension, text] of [
   ['Export as Script', /\.(ts|js|txt)$/, 'const moons'],
@@ -12,7 +12,7 @@ for (const [label, extension, text] of [
   test(`${label} from the command palette`, async ({ page }, testInfo) => {
     await openWithToken(page);
     await openNotebook(page, FIXTURE);
-    await page.getByTitle('Command Palette').click();
+    await toolbarMenu(page, 'More', 'Command Palette…');
     const palette = page.getByRole('dialog', { name: 'Command palette' });
     await palette.getByRole('combobox', { name: 'Command' }).fill('export');
     await expect(palette.getByRole('option', { name: new RegExp(label) })).toBeVisible();

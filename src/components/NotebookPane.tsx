@@ -139,6 +139,11 @@ export type NotebookController = {
   changeCellType(type: CellType): void;
   interrupt(): Promise<void>;
   restart(): Promise<void>;
+  /**
+   * Restart the kernel, then run every cell (#801). A restart that fails
+   * is reported and the cells don't run.
+   */
+  restartAndRunAll(): Promise<void>;
   changeKernel(name: string): Promise<void>;
   /**
    * Runs one of the notebook's commands by its id in the shortcuts table
@@ -1268,6 +1273,17 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
     // A connected machine that stopped answering (#701): the notebook shows
     // what it had and does nothing that edits or runs until it is back.
     const away = () => onMachine && !!open.room && !open.room.connected;
+    const restartKernel = async () => {
+      const kernel = session.session?.kernel;
+      // A dead kernel can't restart (it disposed its connection): start
+      // a new one of the same kind in its place.
+      if (kernel && (kernel.status === 'dead' || kernel.isDisposed)) {
+        await open.track(session.changeKernel({ name: kernel.name }));
+      } else {
+        await kernel?.restart();
+      }
+      open.runStatus.clear();
+    };
     const reportRun = (what: string, action: () => Promise<void>) => {
       const run = async () => {
         if (away()) return;
@@ -1441,16 +1457,12 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       interrupt: report('interrupt the kernel', async () => {
         await session.session?.kernel?.interrupt();
       }),
-      restart: report('restart the kernel', async () => {
-        const kernel = session.session?.kernel;
-        // A dead kernel can't restart (it disposed its connection): start
-        // a new one of the same kind in its place.
-        if (kernel && (kernel.status === 'dead' || kernel.isDisposed)) {
-          await open.track(session.changeKernel({ name: kernel.name }));
-        } else {
-          await kernel?.restart();
-        }
-        open.runStatus.clear();
+      restart: report('restart the kernel', restartKernel),
+      restartAndRunAll: reportRun('restart the kernel and run all cells', async () => {
+        if (journal) return;
+        // A restart that throws leaves the cells alone.
+        await restartKernel();
+        if (await open.ensureKernel(true)) await NotebookActions.runAll(notebook, session);
       }),
       command: id => {
         const { commands } = open;

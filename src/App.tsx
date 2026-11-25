@@ -15,6 +15,7 @@ import { TOUCH_QUERY, useMedia, useNarrow } from './lib/useNarrow';
 import { useJupyterLabTheme } from './lib/theme';
 import { Sidebar } from './components/Sidebar';
 import { Toolbar } from './components/Toolbar';
+import { placeOf } from './lib/header-status';
 import { DataPane } from './components/DataPane';
 import { DuckdbConsole } from './components/DuckdbConsole';
 import {
@@ -1018,6 +1019,7 @@ export function App() {
               onToggleVariables={() => setVariablesOpen(o => !o)}
               variablesOpen={variablesOpen}
               specs={specs}
+              place={backend ? placeOf(backend.config) : undefined}
               accessMissing={accessMissing}
               onNotebookAccess={() => void runCommand.current('notebook-access')}
               onPublish={

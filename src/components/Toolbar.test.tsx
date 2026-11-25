@@ -1,10 +1,10 @@
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { KernelSpec } from '@jupyterlab/services';
 import type { NotebookController } from './NotebookPane';
 import { Toolbar } from './Toolbar';
-import { overflowing } from '../lib/overflow';
+import { placeOf } from '../lib/header-status';
 
 function controller(over: Partial<NotebookController> = {}): NotebookController {
   return {
@@ -30,6 +30,7 @@ function controller(over: Partial<NotebookController> = {}): NotebookController 
     insert: vi.fn(),
     interrupt: vi.fn(async () => {}),
     restart: vi.fn(async () => {}),
+    restartAndRunAll: vi.fn(async () => {}),
     changeKernel: vi.fn(async () => {}),
     cellType: 'code',
     changeCellType: vi.fn(),
@@ -67,135 +68,118 @@ const SPECS: KernelSpec.ISpecModels = {
   },
 };
 
-const button = (title: string) => screen.getByTitle(title) as HTMLButtonElement;
-const ACTIONS = [
-  'Run Cell (⇧↩)',
-  'Run All',
-  'Interrupt',
-  'Restart Kernel',
-  'Insert Code Cell',
-  'Insert Text Cell',
-  'Download Notebook',
-  'Save (⌘S)',
-];
+const BROWSER = placeOf({ kind: 'browser' });
+
+function bar(over: Partial<Parameters<typeof Toolbar>[0]> = {}) {
+  return (
+    <Toolbar
+      controller={controller()}
+      specs={SPECS}
+      place={BROWSER}
+      sidebarOpen
+      onToggleSidebar={vi.fn()}
+      {...over}
+    />
+  );
+}
+
+const named = (name: string | RegExp) => screen.getByRole('button', { name });
+const menuItem = (name: string | RegExp) => screen.getByRole('menuitem', { name });
+const status = () => screen.getByRole('button', { name: /^(Saved|Edited|Locked)/ });
+
+async function pick(menu: string, item: string | RegExp) {
+  await userEvent.click(named(menu));
+  await userEvent.click(menuItem(item));
+}
 
 describe('Toolbar', () => {
-  it('disables every notebook action with no notebook open', () => {
+  it('disables every notebook action with no notebook open', async () => {
     render(<Toolbar sidebarOpen onToggleSidebar={vi.fn()} />);
     expect(screen.getByText('Ganymede')).toBeInTheDocument();
-    for (const title of ACTIONS) expect(button(title)).toBeDisabled();
-    expect(screen.getByLabelText('Cell Type')).toBeDisabled();
-    expect(screen.queryByTitle('Kernel')).not.toBeInTheDocument();
-  });
-
-  it('shows a kernel that starts on the first run', () => {
-    render(
-      <Toolbar
-        controller={controller({ status: 'none' })}
-        specs={SPECS}
-        sidebarOpen
-        onToggleSidebar={vi.fn()}
-      />,
-    );
-    expect(screen.getByText(/Python 3 · Starts when you run a cell/)).toBeInTheDocument();
-    expect(button('Run Cell (⇧↩)')).toBeEnabled();
-    expect(button('Restart Kernel')).toBeDisabled();
-  });
-
-  it("names a notebook's kernel that isn't installed", () => {
-    render(
-      <Toolbar
-        controller={controller({ status: 'none', kernelName: undefined, missingKernel: 'Julia' })}
-        specs={SPECS}
-        sidebarOpen
-        onToggleSidebar={vi.fn()}
-      />,
-    );
-    expect(screen.getByText(/Julia \(not installed\) · Starts/)).toBeInTheDocument();
-    const select = screen.getByTitle('Kernel').querySelector('select')!;
-    expect(select.value).toBe('');
-    expect(select.selectedOptions[0]).toHaveTextContent('Julia (not installed)');
-  });
-
-  it('switches to the journal view and back, named for where it goes (#184)', async () => {
-    const onToggleJournal = vi.fn();
-    const { rerender } = render(
-      <Toolbar
-        sidebarOpen
-        onToggleSidebar={vi.fn()}
-        onToggleJournal={onToggleJournal}
-        controller={controller()}
-      />,
-    );
-    expect(button('View as Journal')).toHaveAttribute('aria-pressed', 'false');
-    await userEvent.click(button('View as Journal'));
-    expect(onToggleJournal).toHaveBeenCalledOnce();
-    rerender(
-      <Toolbar
-        sidebarOpen
-        onToggleSidebar={vi.fn()}
-        onToggleJournal={onToggleJournal}
-        controller={controller({ journal: true })}
-      />,
-    );
-    expect(button('Open as Notebook')).toHaveAttribute('aria-pressed', 'true');
-  });
-
-  it('disables what runs or edits cells while the journal shows them hidden (#184)', async () => {
-    const c = controller({ journal: true });
-    render(<Toolbar sidebarOpen onToggleSidebar={vi.fn()} controller={c} />);
-    for (const title of ['Run Cell (⇧↩)', 'Run All', 'Insert Code Cell', 'Insert Text Cell']) {
-      expect(button(title), title).toBeDisabled();
+    expect(named('Run Cell')).toBeDisabled();
+    expect(named('Interrupt')).toBeDisabled();
+    expect(screen.queryByRole('button', { name: /^Saved/ })).not.toBeInTheDocument();
+    await userEvent.click(named('More run actions'));
+    for (const name of ['Run All', 'Clear All Outputs', 'Restart Kernel', 'Restart & Run All']) {
+      expect(menuItem(name), name).toBeDisabled();
     }
-    expect(screen.getByLabelText('Cell Type')).toBeDisabled();
-    // The kernel and the file go on working.
-    expect(button('Restart Kernel')).toBeEnabled();
-    await userEvent.click(button('Run Cell (⇧↩)'));
-    expect(c.run).not.toHaveBeenCalled();
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(named('Share'));
+    expect(menuItem('Download Notebook')).toBeDisabled();
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(named('More'));
+    for (const name of ['Insert Code Cell', 'Insert Text Cell', 'Save']) {
+      expect(menuItem(name), name).toBeDisabled();
+    }
+    expect(screen.getByRole('menuitemradio', { name: 'Code' })).toBeDisabled();
   });
 
-  it('toggles the sidebar', async () => {
-    const onToggle = vi.fn();
-    const { rerender } = render(<Toolbar sidebarOpen onToggleSidebar={onToggle} />);
-    expect(button('Hide Sidebar')).toHaveAttribute('aria-pressed', 'true');
-    await userEvent.click(button('Hide Sidebar'));
-    expect(onToggle).toHaveBeenCalledOnce();
-    rerender(<Toolbar sidebarOpen={false} onToggleSidebar={onToggle} />);
-    expect(button('Show Sidebar')).toHaveAttribute('aria-pressed', 'false');
+  it('keeps Run Cell, its menu, Interrupt, Share and More in view, in that order', () => {
+    render(bar());
+    const names = screen
+      .getAllByRole('button')
+      .map(b => b.getAttribute('aria-label'))
+      .filter(Boolean);
+    expect(names.slice(-5)).toEqual(['Run Cell', 'More run actions', 'Interrupt', 'Share', 'More']);
+    expect(named('Run Cell')).toHaveTextContent('Run Cell');
+    expect(named('Run Cell')).toHaveAttribute('title', 'Run Cell (⇧↩)');
+    expect(named('More run actions')).toHaveAttribute('aria-haspopup', 'menu');
   });
 
-  it('shows the notebook, its kernel and status', () => {
+  it('shows a kernel that starts on the first run, without a state', () => {
+    render(bar({ controller: controller({ status: 'none' }) }));
+    expect(status()).toHaveAccessibleName('Saved in this browser · Runs here · Python 3');
+    expect(named('Run Cell')).toBeEnabled();
+  });
+
+  it("names a notebook's kernel that isn't installed, and offers the picker", async () => {
     render(
-      <Toolbar controller={controller()} specs={SPECS} sidebarOpen onToggleSidebar={vi.fn()} />,
+      bar({
+        controller: controller({ status: 'none', kernelName: undefined, missingKernel: 'Julia' }),
+      }),
     );
-    expect(screen.getByText('Io')).toBeInTheDocument();
-    expect(screen.queryByText(/Edited/)).not.toBeInTheDocument();
-    expect(screen.getByText('Python 3 · Idle')).toBeInTheDocument();
-    expect(document.querySelector('.status-dot')).toHaveClass('s-idle');
+    expect(status()).toHaveAccessibleName(
+      'Saved in this browser · Runs here · Julia (not installed) · Choose kernel',
+    );
+    await userEvent.click(status());
+    expect(screen.getByRole('menuitemradio', { name: 'Python 3' })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
   });
 
-  it('shows the kernel’s implementation and version as a tooltip, only when known', () => {
+  it('says where the notebook is saved and runs, for each backend (#801)', () => {
     const { rerender } = render(
-      <Toolbar
-        controller={controller({ kernelVersionLine: 'cdp-kernel 0.14.0 · node 24.11.0' })}
-        specs={SPECS}
-        sidebarOpen
-        onToggleSidebar={vi.fn()}
-      />,
+      bar({
+        place: placeOf({ kind: 'ganymede', url: 'https://lab.example.com', token: '' }),
+      }),
     );
-    expect(screen.getByText('Python 3 · Idle')).toHaveAttribute(
-      'title',
-      'cdp-kernel 0.14.0 · node 24.11.0',
-    );
-    expect(screen.getByLabelText('Kernel').closest('label')).toHaveAttribute(
-      'title',
-      'Kernel: cdp-kernel 0.14.0 · node 24.11.0',
+    expect(status()).toHaveAccessibleName(
+      'Saved on lab.example.com · Runs on lab.example.com · Python 3',
     );
     rerender(
-      <Toolbar controller={controller()} specs={SPECS} sidebarOpen onToggleSidebar={vi.fn()} />,
+      bar({
+        place: placeOf({
+          kind: 'ganymede',
+          url: '',
+          token: '',
+          machine: 'm1',
+          machineName: 'Studio Mac',
+        }),
+      }),
     );
-    expect(screen.getByText('Python 3 · Idle')).not.toHaveAttribute('title');
-    expect(screen.getByLabelText('Kernel').closest('label')).toHaveAttribute('title', 'Kernel');
+    expect(status()).toHaveAccessibleName('Saved on Studio Mac · Runs on Studio Mac · Python 3');
+  });
+
+  it('says Edited for unsaved edits and Locked when the file changed on disk', () => {
+    const { rerender } = render(bar({ controller: controller({ dirty: true }) }));
+    expect(screen.getByRole('button', { name: 'Edited · Runs here · Python 3' })).toBeVisible();
+    rerender(bar({ controller: controller({ dirty: true, locked: true }) }));
+    expect(
+      screen.getByRole('button', { name: 'Locked: changed on disk · Runs here · Python 3' }),
+    ).toBeVisible();
+    // Not in the title any more.
+    expect(screen.queryByText(/— /)).not.toBeInTheDocument();
   });
 
   it.each([
@@ -203,141 +187,42 @@ describe('Toolbar', () => {
     ['connecting', 'Connecting'],
     ['dead', 'Stopped'],
     ['autorestarting', 'Restarting'],
-  ] as const)('labels status %s as %s', (status, label) => {
-    render(
-      <Toolbar
-        controller={controller({ status })}
-        specs={SPECS}
-        sidebarOpen
-        onToggleSidebar={vi.fn()}
-      />,
+  ] as const)('adds the kernel state %s as %s', (kernelStatus, label) => {
+    render(bar({ controller: controller({ status: kernelStatus }) }));
+    expect(status()).toHaveAccessibleName(
+      `Saved in this browser · Runs here · Python 3 · ${label}`,
     );
-    expect(screen.getByText(`Python 3 · ${label}`)).toBeInTheDocument();
+    expect(document.querySelector('.status-dot')).toHaveClass(`s-${kernelStatus}`);
   });
 
-  it('falls back to the kernel name, or none', () => {
-    const { rerender } = render(
-      <Toolbar
-        controller={controller({ kernelName: 'rust' })}
-        sidebarOpen
-        onToggleSidebar={vi.fn()}
-      />,
-    );
-    expect(screen.getByText('rust · Idle')).toBeInTheDocument();
-    rerender(
-      <Toolbar
-        controller={controller({ kernelName: undefined })}
-        sidebarOpen
-        onToggleSidebar={vi.fn()}
-      />,
-    );
-    expect(screen.getByText('No kernel · Idle')).toBeInTheDocument();
+  it('leaves the state out while idle', () => {
+    render(bar());
+    expect(status()).toHaveAccessibleName('Saved in this browser · Runs here · Python 3');
+    expect(document.querySelector('.status-dot')).toHaveClass('s-idle');
   });
 
-  it('calls the controller from each button', async () => {
-    const c = controller({ status: 'busy', dirty: true });
-    render(<Toolbar controller={c} specs={SPECS} sidebarOpen onToggleSidebar={vi.fn()} />);
-    expect(screen.getByText(/Edited/)).toBeInTheDocument();
-    for (const title of ACTIONS) expect(button(title)).toBeEnabled();
-
-    await userEvent.click(button('Run Cell (⇧↩)'));
-    await userEvent.click(button('Run All'));
-    await userEvent.click(button('Interrupt'));
-    await userEvent.click(button('Restart Kernel'));
-    await userEvent.click(button('Insert Code Cell'));
-    await userEvent.click(button('Insert Text Cell'));
-    await userEvent.click(button('Download Notebook'));
-    await userEvent.click(button('Save (⌘S)'));
-    expect(c.run).toHaveBeenCalledOnce();
-    expect(c.runAll).toHaveBeenCalledOnce();
-    expect(c.interrupt).toHaveBeenCalledOnce();
-    expect(c.restart).toHaveBeenCalledOnce();
-    expect(c.insert).toHaveBeenNthCalledWith(1, 'code');
-    expect(c.insert).toHaveBeenNthCalledWith(2, 'markdown');
-    expect(c.download).toHaveBeenCalledOnce();
-    expect(c.save).toHaveBeenCalledOnce();
-  });
-
-  it('only interrupts a busy kernel and only saves a dirty notebook', () => {
-    render(
-      <Toolbar controller={controller()} specs={SPECS} sidebarOpen onToggleSidebar={vi.fn()} />,
-    );
-    expect(button('Interrupt')).toBeDisabled();
-    expect(button('Save (⌘S)')).toBeDisabled();
-    expect(button('Run All')).toBeEnabled();
-  });
-
-  it('shows the active cell type and changes it', async () => {
-    const c = controller({ cellType: 'markdown' });
-    render(<Toolbar controller={c} sidebarOpen onToggleSidebar={vi.fn()} />);
-    const picker = screen.getByLabelText('Cell Type') as HTMLSelectElement;
-    expect(picker).toBeEnabled();
-    expect(picker.value).toBe('markdown');
-    await userEvent.selectOptions(picker, 'Code');
-    expect(c.changeCellType).toHaveBeenCalledWith('code');
-  });
-
-  it('offers Trust Notebook only while outputs are untrusted', () => {
-    const { rerender } = render(
-      <Toolbar controller={controller()} sidebarOpen onToggleSidebar={vi.fn()} />,
-    );
-    expect(screen.queryByTitle('Trust Notebook')).not.toBeInTheDocument();
-    rerender(
-      <Toolbar controller={controller({ trusted: false })} sidebarOpen onToggleSidebar={vi.fn()} />,
-    );
-    expect(button('Trust Notebook')).toBeEnabled();
-    render(<Toolbar sidebarOpen onToggleSidebar={vi.fn()} />);
-    expect(screen.getAllByTitle('Trust Notebook')).toHaveLength(1);
-  });
-
-  it('offers Notebook Access only while the notebook asks for more', async () => {
-    const open = vi.fn();
-    const { rerender } = render(
-      <Toolbar
-        controller={controller()}
-        sidebarOpen
-        onToggleSidebar={vi.fn()}
-        onNotebookAccess={open}
-      />,
-    );
-    expect(screen.queryByTitle(/^Notebook Access/)).not.toBeInTheDocument();
-    rerender(
-      <Toolbar
-        controller={controller()}
-        sidebarOpen
-        onToggleSidebar={vi.fn()}
-        accessMissing={['notebooks.run']}
-        onNotebookAccess={open}
-      />,
-    );
-    await userEvent.click(button('Notebook Access: asks for notebooks.run'));
-    expect(open).toHaveBeenCalledOnce();
-  });
-
-  it('trusts the notebook after confirmation', async () => {
-    const c = controller({ trusted: false });
-    const confirm = vi.fn(() => false);
-    vi.stubGlobal('confirm', confirm);
-    render(<Toolbar controller={c} sidebarOpen onToggleSidebar={vi.fn()} />);
-    await userEvent.click(button('Trust Notebook'));
-    expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/^Trust this notebook\?/));
-    expect(c.trust).not.toHaveBeenCalled();
-    confirm.mockReturnValue(true);
-    await userEvent.click(button('Trust Notebook'));
-    expect(c.trust).toHaveBeenCalledOnce();
-  });
-
-  it('changes the kernel from the popup', async () => {
-    const c = controller();
-    render(<Toolbar controller={c} specs={SPECS} sidebarOpen onToggleSidebar={vi.fn()} />);
-    const select = screen.getByRole('combobox', { name: 'Kernel' }) as HTMLSelectElement;
-    expect(select.value).toBe('python3');
-    expect([...select.options].map(o => o.text)).toEqual(['Python 3', 'JavaScript']);
-    await userEvent.selectOptions(select, 'javascript');
+  it('opens the file, the kernel version and the kernel picker from the status line', async () => {
+    const c = controller({ kernelVersionLine: 'cdp-kernel 0.14.0 · node 24.11.0' });
+    render(bar({ controller: c }));
+    await userEvent.click(status());
+    const menu = screen.getByRole('menu', { name: 'Notebook and Kernel' });
+    expect(menu).toHaveTextContent('moons/Io.ipynb');
+    expect(menu).toHaveTextContent('cdp-kernel 0.14.0 · node 24.11.0');
+    const python = screen.getByRole('menuitemradio', { name: 'Python 3' });
+    expect(python).toHaveAttribute('aria-checked', 'true');
+    await userEvent.click(screen.getByRole('menuitemradio', { name: 'JavaScript' }));
     expect(c.changeKernel).toHaveBeenCalledWith('javascript');
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
   });
 
-  it('marks a kernel that offers the device API (#648)', () => {
+  it('leaves out the kernel version line when it is unknown', async () => {
+    render(bar());
+    await userEvent.click(status());
+    expect(screen.getByRole('menu')).not.toHaveTextContent('cdp-kernel');
+    expect(screen.getByRole('menu')).toHaveTextContent('Kernel');
+  });
+
+  it('marks a kernel that offers the device API (#648)', async () => {
     const specs: KernelSpec.ISpecModels = {
       default: 'python3',
       kernelspecs: {
@@ -352,286 +237,196 @@ describe('Toolbar', () => {
         },
       },
     };
-    render(
-      <Toolbar controller={controller()} specs={specs} sidebarOpen onToggleSidebar={vi.fn()} />,
-    );
-    const select = screen.getByRole('combobox', { name: 'Kernel' }) as HTMLSelectElement;
-    expect([...select.options].map(o => o.text)).toEqual([
-      'Python 3',
-      'JavaScript',
-      'TypeScript (cdp-kernel, in app) ◆',
-    ]);
-    expect(
-      screen.getByRole('option', {
-        name: 'TypeScript (cdp-kernel, in app), offers the device API',
-      }),
-    ).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: 'Python 3' })).toBeInTheDocument();
-    expect(screen.getByRole('option', { name: /offers the device API/ })).toHaveAttribute(
-      'title',
-      'offers the device API',
-    );
-  });
-});
-
-describe('overflowing', () => {
-  const items = [
-    { key: 'run', priority: Infinity, width: 28 },
-    { key: 'insert', priority: 4, width: 60 },
-    { key: 'kernel', priority: 2, width: 120 },
-    { key: 'download', priority: 0, width: 28 },
-    { key: 'save', priority: 5, width: 28 },
-  ];
-  // 28 + 60 + 120 + 28 + 28, and four 8px gaps.
-  const all = 264 + 32;
-
-  it('hides nothing when everything fits', () => {
-    expect(overflowing(items, all)).toEqual(new Set());
-  });
-
-  it('hides the lowest priority first, leaving room for the "…" button', () => {
-    // Without Download: 236 and three gaps, plus 8 + 28 for "…": 296.
-    expect(overflowing(items, all - 1)).toEqual(new Set(['download', 'kernel']));
-    expect(overflowing(items, 300)).toEqual(new Set());
-    expect(overflowing(items, 200)).toEqual(new Set(['download', 'kernel']));
-    expect(overflowing(items, 160)).toEqual(new Set(['download', 'kernel', 'insert']));
-  });
-
-  it('never hides what has no priority (Run)', () => {
-    expect(overflowing(items, 10)).toEqual(new Set(['download', 'kernel', 'insert', 'save']));
-  });
-});
-
-describe('Toolbar overflow (#201)', () => {
-  /** A toolbar `width` wide, each item 28px but the pickers 110px and the groups 60–90px. */
-  function layout(width: number) {
-    const sizes: Record<string, number> = {
-      'run-more': 90,
-      insert: 60,
-      'cell-type': 110,
-      kernel: 110,
-    };
-    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function (
-      this: HTMLElement,
-    ) {
-      return this.classList.contains('toolbar') ? width : 0;
-    });
-    // The title is wider than the room it keeps (120px).
-    vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockImplementation(function (
-      this: HTMLElement,
-    ) {
-      return this.classList.contains('title') ? 200 : 0;
-    });
-    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (
-      this: HTMLElement,
-    ) {
-      const w = sizes[this.dataset.key ?? ''] ?? 28;
-      return { width: w, height: 28, top: 0, left: 0, right: w, bottom: 28, x: 0, y: 0 } as DOMRect;
-    });
-  }
-
-  afterEach(() => vi.restoreAllMocks());
-
-  it('does not reopen the menu after the window widens and narrows', async () => {
-    layout(393);
-    const c = controller({ dirty: true });
-    const bar = (status: NotebookController['status']) => (
-      <Toolbar
-        controller={{ ...c, status }}
-        sidebarOpen={false}
-        onToggleSidebar={() => {}}
-        specs={SPECS}
-      />
-    );
-    const { rerender } = render(bar('idle'));
-    await userEvent.click(screen.getByTitle('More'));
-    vi.restoreAllMocks();
-    layout(1280);
-    rerender(bar('busy'));
-    expect(screen.queryByTitle('More')).not.toBeInTheDocument();
-    vi.restoreAllMocks();
-    layout(393);
-    rerender(bar('idle'));
-    rerender(bar('busy'));
-    expect(screen.queryByRole('menu', { name: 'More' })).not.toBeInTheDocument();
-  });
-
-  const shown = () =>
-    [...document.querySelectorAll<HTMLElement>('.toolbar-trailing .tb-item')].map(
-      i => i.dataset.key,
-    );
-
-  it('keeps everything on a wide window, with no "…"', () => {
-    layout(1280);
-    render(
-      <Toolbar controller={controller()} sidebarOpen onToggleSidebar={() => {}} specs={SPECS} />,
-    );
-    expect(shown()).toEqual([
-      'run',
-      'run-more',
-      'insert',
-      'cell-type',
-      'kernel',
-      'shortcuts',
-      'download',
-      'save',
-    ]);
-    expect(screen.queryByTitle('More')).not.toBeInTheDocument();
-  });
-
-  it('keeps the run controls and Save on a phone, with the rest in the menu by name', async () => {
-    layout(393);
-    const c = controller({ dirty: true });
-    render(<Toolbar controller={c} sidebarOpen={false} onToggleSidebar={() => {}} specs={SPECS} />);
-    expect(shown()).toEqual(['run', 'run-more', 'save']);
-    await userEvent.click(screen.getByTitle('More'));
-    const menu = screen.getByRole('menu', { name: 'More' });
-    expect([...menu.querySelectorAll('button')].map(b => b.textContent)).toEqual([
-      'Insert Code Cell',
-      'Insert Text Cell',
-      // The checked one is marked.
-      '✓Code',
-      'Markdown',
-      'Raw',
-      '✓Python 3',
-      'JavaScript',
-      'Download Notebook',
-    ]);
-    await userEvent.click(screen.getByRole('menuitemradio', { name: 'Markdown' }));
-    expect(c.changeCellType).toHaveBeenCalledWith('markdown');
-    await userEvent.click(screen.getByTitle('More'));
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Download Notebook' }));
-    expect(c.download).toHaveBeenCalled();
-  });
-
-  it('marks a device kernel in More, with its accessible name (#648)', async () => {
-    layout(393);
-    const specs: KernelSpec.ISpecModels = {
-      default: 'python3',
-      kernelspecs: {
-        ...SPECS.kernelspecs,
-        'cdp-browser': {
-          name: 'cdp-browser',
-          display_name: 'TypeScript (in app)',
-          language: 'typescript',
-          argv: [],
-          resources: {},
-          metadata: { capabilities: { device: true } },
-        },
-      },
-    };
-    render(
-      <Toolbar
-        controller={controller()}
-        sidebarOpen={false}
-        onToggleSidebar={() => {}}
-        specs={specs}
-      />,
-    );
-    await userEvent.click(screen.getByTitle('More'));
+    render(bar({ specs }));
+    await userEvent.click(status());
     const item = screen.getByRole('menuitemradio', {
-      name: 'TypeScript (in app), offers the device API',
+      name: 'TypeScript (cdp-kernel, in app), offers the device API',
     });
-    expect(item).toHaveTextContent('TypeScript (in app) ◆');
+    expect(item).toHaveTextContent('TypeScript (cdp-kernel, in app) ◆');
     expect(screen.getByRole('menuitemradio', { name: 'Python 3' })).toBeInTheDocument();
   });
 
-  it('lists the exports under Download in More, only where the app can export', async () => {
-    layout(320);
-    const c = controller();
-    const onExport = vi.fn();
-    const { rerender } = render(
-      <Toolbar controller={c} sidebarOpen={false} onToggleSidebar={() => {}} specs={SPECS} />,
-    );
-    await userEvent.click(screen.getByTitle('More'));
-    expect(screen.getByRole('menuitem', { name: 'Download Notebook' })).toBeInTheDocument();
-    expect(screen.queryByRole('menuitem', { name: 'Export as Script' })).toBeNull();
-    await userEvent.keyboard('{Escape}');
-    rerender(
-      <Toolbar
-        controller={c}
-        sidebarOpen={false}
-        onToggleSidebar={() => {}}
-        specs={SPECS}
-        onExport={onExport}
-      />,
-    );
-    await userEvent.click(screen.getByTitle('More'));
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Export as Script' }));
-    expect(onExport).toHaveBeenCalledWith('script');
+  it('runs the cell, and interrupts only a busy kernel, from visible buttons', async () => {
+    const c = controller({ status: 'busy' });
+    const { rerender } = render(bar({ controller: c }));
+    await userEvent.click(named('Run Cell'));
+    await userEvent.click(named('Interrupt'));
+    expect(c.run).toHaveBeenCalledOnce();
+    expect(c.interrupt).toHaveBeenCalledOnce();
+    rerender(bar({ controller: controller() }));
+    expect(named('Interrupt')).toBeDisabled();
   });
 
-  it('lists Run with Parameters in More, only where the app can run it', async () => {
-    layout(320);
+  it('keeps Interrupt in the same place before, during and after a run', () => {
+    const { rerender } = render(bar());
+    const before = named('Interrupt');
+    const order = () => [...before.parentElement!.children].indexOf(before);
+    const at = order();
+    rerender(bar({ controller: controller({ status: 'busy' }) }));
+    expect(named('Interrupt')).toBe(before);
+    expect(order()).toBe(at);
+    rerender(bar());
+    expect(named('Interrupt')).toBe(before);
+  });
+
+  it('calls the controller from the run menu', async () => {
     const c = controller();
+    render(bar({ controller: c }));
+    await pick('More run actions', 'Run All');
+    await pick('More run actions', 'Clear All Outputs');
+    await pick('More run actions', 'Restart Kernel');
+    await pick('More run actions', 'Restart & Run All');
+    expect(c.runAll).toHaveBeenCalledOnce();
+    expect(c.clearOutputs).toHaveBeenCalledOnce();
+    expect(c.restart).toHaveBeenCalledOnce();
+    expect(c.restartAndRunAll).toHaveBeenCalledOnce();
+    // Restart & Run All is the controller's one call, not a restart and a run from here.
+    expect(c.restart).toHaveBeenCalledOnce();
+  });
+
+  it('only restarts a kernel that has started', async () => {
+    render(bar({ controller: controller({ status: 'none' }) }));
+    await userEvent.click(named('More run actions'));
+    expect(menuItem('Restart Kernel')).toBeDisabled();
+    expect(menuItem('Restart & Run All')).toBeEnabled();
+  });
+
+  it('lists Run with Parameters only where the app can run it', async () => {
     const onRunWithParams = vi.fn();
-    const { rerender } = render(
-      <Toolbar controller={c} sidebarOpen={false} onToggleSidebar={() => {}} specs={SPECS} />,
-    );
-    await userEvent.click(screen.getByTitle('More'));
+    const { rerender } = render(bar());
+    await userEvent.click(named('More run actions'));
     expect(screen.queryByRole('menuitem', { name: 'Run with Parameters…' })).toBeNull();
     await userEvent.keyboard('{Escape}');
-    rerender(
-      <Toolbar
-        controller={c}
-        sidebarOpen={false}
-        onToggleSidebar={() => {}}
-        specs={SPECS}
-        onRunWithParams={onRunWithParams}
-      />,
-    );
-    await userEvent.click(screen.getByTitle('More'));
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Run with Parameters…' }));
+    rerender(bar({ onRunWithParams }));
+    await pick('More run actions', 'Run with Parameters…');
     expect(onRunWithParams).toHaveBeenCalledOnce();
   });
 
-  it('keeps Run and "…" on the narrowest phone', async () => {
-    layout(320);
-    const c = controller({ dirty: true });
-    render(<Toolbar controller={c} sidebarOpen={false} onToggleSidebar={() => {}} specs={SPECS} />);
-    expect(shown()).toEqual(['run']);
-    await userEvent.click(screen.getByTitle('More'));
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Run All' }));
-    expect(c.runAll).toHaveBeenCalled();
-    await userEvent.click(screen.getByTitle('More'));
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Clear All Outputs' }));
-    expect(c.clearOutputs).toHaveBeenCalled();
-    await userEvent.click(screen.getByTitle('More'));
-    await userEvent.click(screen.getByRole('menuitem', { name: 'Save' }));
-    expect(c.save).toHaveBeenCalled();
-  });
-
-  it('moves the least needed first as the window narrows', () => {
-    layout(700);
-    render(
-      <Toolbar controller={controller()} sidebarOpen onToggleSidebar={() => {}} specs={SPECS} />,
-    );
-    const kept = shown();
-    expect(kept).toContain('run');
-    expect(kept).toContain('save');
-    expect(kept).not.toContain('download');
-    expect(screen.getByTitle('More')).toBeInTheDocument();
-  });
-});
-
-describe('Toolbar publish', () => {
-  it('offers Publish as Web Page only when the app can publish', async () => {
+  it('downloads, exports and publishes from Share, only where the app can', async () => {
     const c = controller();
+    const onExport = vi.fn();
     const onPublish = vi.fn();
-    const { rerender } = render(
-      <Toolbar controller={c} specs={SPECS} sidebarOpen onToggleSidebar={vi.fn()} />,
-    );
-    expect(screen.queryByTitle('Publish as Web Page')).toBeNull();
-    rerender(
-      <Toolbar
-        controller={c}
-        specs={SPECS}
-        sidebarOpen
-        onToggleSidebar={vi.fn()}
-        onPublish={onPublish}
-      />,
-    );
-    await userEvent.click(screen.getByTitle('Publish as Web Page'));
+    const { rerender } = render(bar({ controller: c }));
+    await userEvent.click(named('Share'));
+    expect(menuItem('Download Notebook')).toBeEnabled();
+    expect(screen.queryByRole('menuitem', { name: 'Export as Script' })).toBeNull();
+    expect(screen.queryByRole('menuitem', { name: /Publish/ })).toBeNull();
+    await userEvent.click(menuItem('Download Notebook'));
+    expect(c.download).toHaveBeenCalledOnce();
+    rerender(bar({ controller: c, onExport, onPublish }));
+    await pick('Share', 'Export as Script');
+    expect(onExport).toHaveBeenCalledWith('script');
+    await pick('Share', 'Publish as Web Page…');
     expect(onPublish).toHaveBeenCalledOnce();
+  });
+
+  it('switches to the journal view and back, named for where it goes (#184)', async () => {
+    const onToggleJournal = vi.fn();
+    const { rerender } = render(bar({ onToggleJournal }));
+    await pick('More', 'View as Journal');
+    expect(onToggleJournal).toHaveBeenCalledOnce();
+    rerender(bar({ onToggleJournal, controller: controller({ journal: true }) }));
+    await userEvent.click(named('More'));
+    expect(menuItem('Open as Notebook')).toBeEnabled();
+  });
+
+  it('disables what runs or edits cells while the journal shows them hidden (#184)', async () => {
+    const c = controller({ journal: true });
+    render(bar({ controller: c }));
+    expect(named('Run Cell')).toBeDisabled();
+    await userEvent.click(named('More run actions'));
+    expect(menuItem('Run All')).toBeDisabled();
+    expect(menuItem('Restart & Run All')).toBeDisabled();
+    // The kernel and the file go on working.
+    expect(menuItem('Restart Kernel')).toBeEnabled();
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(named('More'));
+    expect(menuItem('Insert Code Cell')).toBeDisabled();
+    expect(menuItem('Insert Text Cell')).toBeDisabled();
+    expect(screen.getByRole('menuitemradio', { name: 'Markdown' })).toBeDisabled();
+  });
+
+  it('shows and hides the Variables view from More', async () => {
+    const onToggleVariables = vi.fn();
+    const { rerender } = render(bar({ onToggleVariables }));
+    await pick('More', 'Show Variables');
+    expect(onToggleVariables).toHaveBeenCalledOnce();
+    rerender(bar({ onToggleVariables, variablesOpen: true }));
+    await userEvent.click(named('More'));
+    expect(menuItem('Hide Variables')).toBeEnabled();
+  });
+
+  it('inserts cells, changes the cell type, saves and opens the sheets from More', async () => {
+    const c = controller({ cellType: 'markdown', dirty: true });
+    const onShowPalette = vi.fn();
+    const onShowShortcuts = vi.fn();
+    render(bar({ controller: c, onShowPalette, onShowShortcuts }));
+    await pick('More', 'Insert Code Cell');
+    await pick('More', 'Insert Text Cell');
+    expect(c.insert).toHaveBeenNthCalledWith(1, 'code');
+    expect(c.insert).toHaveBeenNthCalledWith(2, 'markdown');
+    await userEvent.click(named('More'));
+    expect(screen.getByRole('menuitemradio', { name: 'Markdown' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    await userEvent.click(screen.getByRole('menuitemradio', { name: 'Raw' }));
+    expect(c.changeCellType).toHaveBeenCalledWith('raw');
+    await pick('More', 'Save');
+    expect(c.save).toHaveBeenCalledOnce();
+    await pick('More', 'Command Palette…');
+    await pick('More', 'Keyboard Shortcuts');
+    expect(onShowPalette).toHaveBeenCalledOnce();
+    expect(onShowShortcuts).toHaveBeenCalledOnce();
+  });
+
+  it('only saves a dirty notebook', async () => {
+    render(bar());
+    await userEvent.click(named('More'));
+    expect(menuItem('Save')).toBeDisabled();
+  });
+
+  it('toggles the sidebar', async () => {
+    const onToggle = vi.fn();
+    const { rerender } = render(<Toolbar sidebarOpen onToggleSidebar={onToggle} />);
+    expect(screen.getByTitle('Hide Sidebar')).toHaveAttribute('aria-pressed', 'true');
+    await userEvent.click(screen.getByTitle('Hide Sidebar'));
+    expect(onToggle).toHaveBeenCalledOnce();
+    rerender(<Toolbar sidebarOpen={false} onToggleSidebar={onToggle} />);
+    expect(screen.getByTitle('Show Sidebar')).toHaveAttribute('aria-pressed', 'false');
+  });
+
+  it('offers Trust Notebook only while outputs are untrusted', async () => {
+    const c = controller({ trusted: false });
+    const confirm = vi.fn(() => false);
+    vi.stubGlobal('confirm', confirm);
+    const { rerender } = render(bar());
+    expect(screen.queryByTitle('Trust Notebook')).not.toBeInTheDocument();
+    rerender(bar({ controller: c }));
+    await userEvent.click(screen.getByTitle('Trust Notebook'));
+    expect(confirm).toHaveBeenCalledWith(expect.stringMatching(/^Trust this notebook\?/));
+    expect(c.trust).not.toHaveBeenCalled();
+    confirm.mockReturnValue(true);
+    await userEvent.click(screen.getByTitle('Trust Notebook'));
+    expect(c.trust).toHaveBeenCalledOnce();
+    vi.unstubAllGlobals();
+  });
+
+  it('offers Notebook Access only while the notebook asks for more', async () => {
+    const open = vi.fn();
+    const { rerender } = render(bar({ onNotebookAccess: open }));
+    expect(screen.queryByTitle(/^Notebook Access/)).not.toBeInTheDocument();
+    rerender(bar({ accessMissing: ['notebooks.run'], onNotebookAccess: open }));
+    await userEvent.click(screen.getByTitle('Notebook Access: asks for notebooks.run'));
+    expect(open).toHaveBeenCalledOnce();
+  });
+
+  it('closes a menu with Escape and opens one at a time', async () => {
+    render(bar());
+    await userEvent.click(named('Share'));
+    expect(screen.getByRole('menu', { name: 'Share' })).toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('menu')).not.toBeInTheDocument();
+    expect(named('Share')).toHaveAttribute('aria-expanded', 'false');
   });
 });

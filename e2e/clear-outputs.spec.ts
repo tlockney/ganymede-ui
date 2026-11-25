@@ -2,17 +2,25 @@
 // execution count goes, and the notebook is unsaved.
 import { expect, test } from '@playwright/test';
 import { FIXTURE } from './env';
-import { openNotebook, openWithToken, outputs, screenshot, waitForIdle } from './helpers';
+import {
+  openNotebook,
+  openWithToken,
+  outputs,
+  runAll,
+  screenshot,
+  toolbarMenu,
+  waitForIdle,
+} from './helpers';
 
 test('clears all outputs from the command palette', async ({ page }, testInfo) => {
   await openWithToken(page);
   await openNotebook(page, FIXTURE);
-  await page.getByRole('button', { name: 'Run All' }).click();
+  await runAll(page);
   await expect(outputs(page).filter({ hasText: 'largest moon' })).toBeVisible();
   await waitForIdle(page);
   await expect(page.locator('.jp-CodeCell .jp-InputPrompt').first()).toHaveText(/\[\d+\]/);
 
-  await page.getByTitle('Command Palette').click();
+  await toolbarMenu(page, 'More', 'Command Palette…');
   const palette = page.getByRole('dialog', { name: 'Command palette' });
   await palette.getByRole('combobox', { name: 'Command' }).fill('clear all');
   await expect(palette.getByRole('option', { name: /Clear All Outputs/ })).toBeVisible();

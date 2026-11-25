@@ -1,3 +1,6 @@
+/** The page's own kernelspec name (cdp-kernel's browser kernel); kept here so light code can name it. */
+export const CDP_KERNEL_NAME = 'cdp-browser';
+
 /** The mark the kernel picker puts after a kernel that offers `device`. */
 export const DEVICE_MARK = '◆';
 

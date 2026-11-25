@@ -7,22 +7,20 @@ const field = () => screen.getByRole('textbox', { name: 'Notebook Name' });
 
 describe('NotebookTitle', () => {
   it('is plain text with nothing to rename', () => {
-    render(<NotebookTitle name="Ganymede" dirty={false} />);
+    render(<NotebookTitle name="Ganymede" />);
     expect(screen.getByText('Ganymede')).toBeInTheDocument();
     expect(screen.queryByRole('button')).not.toBeInTheDocument();
   });
 
-  it('says when saving is locked', () => {
-    const { rerender } = render(<NotebookTitle name="Io" dirty={false} locked />);
-    expect(screen.getByText('— Locked')).toBeInTheDocument();
-    rerender(<NotebookTitle name="Io" dirty locked />);
-    expect(screen.getByText('— Edited, locked')).toBeInTheDocument();
+  it('leaves Edited and Locked to the status line (#801)', () => {
+    render(<NotebookTitle name="Io" onRename={vi.fn(async () => true)} />);
+    expect(screen.getByRole('button', { name: 'Io' })).toBeInTheDocument();
+    expect(screen.queryByText(/Edited|Locked/)).not.toBeInTheDocument();
   });
 
   it('edits in place and renames on Enter', async () => {
     const onRename = vi.fn(async () => true);
-    render(<NotebookTitle name="Untitled" dirty onRename={onRename} />);
-    expect(screen.getByText('— Edited')).toBeInTheDocument();
+    render(<NotebookTitle name="Untitled" onRename={onRename} />);
     await userEvent.click(screen.getByRole('button', { name: 'Untitled' }));
     expect(field()).toHaveFocus();
     expect(field()).toHaveValue('Untitled');
@@ -35,7 +33,7 @@ describe('NotebookTitle', () => {
 
   it('cancels on Escape without renaming', async () => {
     const onRename = vi.fn(async () => true);
-    render(<NotebookTitle name="Untitled" dirty={false} onRename={onRename} />);
+    render(<NotebookTitle name="Untitled" onRename={onRename} />);
     await userEvent.click(screen.getByRole('button', { name: 'Untitled' }));
     await userEvent.type(field(), 'x{Escape}');
     expect(onRename).not.toHaveBeenCalled();
@@ -44,7 +42,7 @@ describe('NotebookTitle', () => {
 
   it('stays open after a failed Enter, to try another name', async () => {
     const onRename = vi.fn(async () => false);
-    render(<NotebookTitle name="Untitled" dirty={false} onRename={onRename} />);
+    render(<NotebookTitle name="Untitled" onRename={onRename} />);
     await userEvent.click(screen.getByRole('button', { name: 'Untitled' }));
     await userEvent.type(field(), '2{Enter}');
     expect(onRename).toHaveBeenCalledOnce();
@@ -59,7 +57,7 @@ describe('NotebookTitle', () => {
     const onKey = vi.fn();
     window.addEventListener('keydown', onKey);
     try {
-      render(<NotebookTitle name="Untitled" dirty onRename={vi.fn(async () => true)} />);
+      render(<NotebookTitle name="Untitled" onRename={vi.fn(async () => true)} />);
       await userEvent.click(screen.getByRole('button', { name: 'Untitled' }));
       await userEvent.keyboard('{Meta>}s{/Meta}');
       expect(onKey).toHaveBeenCalledWith(expect.objectContaining({ key: 's', metaKey: true }));
@@ -72,7 +70,7 @@ describe('NotebookTitle', () => {
     const onRename = vi.fn(async () => true);
     render(
       <>
-        <NotebookTitle name="Untitled" dirty={false} onRename={onRename} />
+        <NotebookTitle name="Untitled" onRename={onRename} />
         <button>elsewhere</button>
       </>,
     );
@@ -88,7 +86,7 @@ describe('NotebookTitle', () => {
     const onRename = vi.fn(() => new Promise<boolean>(r => (fail = () => r(false))));
     render(
       <>
-        <NotebookTitle name="Untitled" dirty={false} onRename={onRename} />
+        <NotebookTitle name="Untitled" onRename={onRename} />
         <button>elsewhere</button>
       </>,
     );

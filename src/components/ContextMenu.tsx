@@ -13,7 +13,9 @@ export type MenuItem =
     }
   | 'separator'
   /** A label over the items after it. */
-  | { heading: string };
+  | { heading: string }
+  /** A line of information, not an action (a file's path). */
+  | { note: string };
 
 type Props = {
   /** Where it opens: a point (right-click, long-press) or under an element. */
@@ -113,6 +115,10 @@ export function ContextMenu({ at, label, items, onClose }: Props) {
         {items.map((item, i) =>
           item === 'separator' ? (
             <div key={i} className="popup-menu-separator" role="separator" />
+          ) : 'note' in item ? (
+            <div key={i} className="popup-menu-note" role="presentation">
+              {item.note}
+            </div>
           ) : 'heading' in item ? (
             <div key={i} className="popup-menu-heading" role="presentation">
               {item.heading}

@@ -1,28 +1,19 @@
-import { type ReactNode, useLayoutEffect, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import type { KernelSpec } from '@jupyterlab/services';
 import type { CellType, NotebookController } from './NotebookPane';
 import { NotebookTitle } from './NotebookTitle';
 import { ContextMenu, type MenuItem } from './ContextMenu';
-import { GAP, MORE_WIDTH, overflowing } from '../lib/overflow';
-import { DEVICE_LABEL, offersDevice, pickerLabel } from '../lib/kernel-device';
+import { pickerLabel } from '../lib/kernel-device';
+import { type Place, statusText } from '../lib/header-status';
 import {
-  CodeIcon,
-  DownloadIcon,
-  ForwardIcon,
-  CommandIcon,
-  JournalIcon,
-  KeyboardIcon,
-  LockIcon,
+  ChevronDownIcon,
   MoreIcon,
+  LockIcon,
   PlayIcon,
   PublishIcon,
-  RestartIcon,
-  SaveIcon,
   ShieldIcon,
   SidebarIcon,
   StopIcon,
-  TextIcon,
-  VariablesIcon,
 } from './Icons';
 import { EXPORT_FORMATS, EXPORT_LABELS, type ExportFormat } from '../lib/export';
 
@@ -39,6 +30,8 @@ type Props = {
   onToggleVariables?(): void;
   variablesOpen?: boolean;
   specs?: KernelSpec.ISpecModels;
+  /** Where the notebooks are saved and the kernels run (#801); the status line names it. */
+  place?: Place;
   /** What the notebook asks for that its grant doesn't give (host API). */
   accessMissing?: string[];
   /** Opens Notebook Access; shown while `accessMissing` has anything. */
@@ -62,30 +55,17 @@ const CELL_TYPES: readonly [CellType, string][] = [
   ['raw', 'Raw'],
 ];
 
-const STATUS_LABEL: Record<string, string> = {
-  idle: 'Idle',
-  busy: 'Running',
-  starting: 'Starting',
-  restarting: 'Restarting',
-  autorestarting: 'Restarting',
-  connecting: 'Connecting',
-  dead: 'Stopped',
-  unknown: 'Unknown',
-  terminating: 'Stopping',
-  none: 'Starts when you run a cell',
-};
+/** A page with no backend yet (a test): saved and run in the page. */
+const HERE: Place = { saved: 'in this browser', runs: () => 'here' };
+
+type MenuName = 'status' | 'run' | 'share' | 'more';
 
 /**
- * One toolbar item: what it shows, what it becomes in the "…" menu when
- * it doesn't fit, and how readily it goes there (lower goes first). Run
- * never goes, so a phone keeps Run and "…".
+ * The unified titlebar and toolbar, as in a macOS document window (#801):
+ * the title with a status line under it (where the file is saved, where it
+ * runs, the kernel), Run Cell and Interrupt always in view, and the rest in
+ * the Share and "⋯" menus, in a fixed order whatever the width.
  */
-type Item = { key: string; priority: number; node: ReactNode; menu: MenuItem[] };
-
-/** Room the title keeps before items move into the menu. */
-const TITLE_MIN = 120;
-
-/** The unified titlebar and toolbar, as in a macOS document window. */
 export function Toolbar({
   controller: c,
   sidebarOpen,
@@ -96,6 +76,7 @@ export function Toolbar({
   onToggleVariables,
   variablesOpen = false,
   specs,
+  place = HERE,
   accessMissing = [],
   onNotebookAccess,
   onPublish,
@@ -106,288 +87,83 @@ export function Toolbar({
   // The journal view hides the cells: what runs or edits them waits for the notebook.
   const noCells = !c || c.journal;
   const kernelDisplay = c?.missingKernel
-    ? `${c.missingKernel} (not installed)`
+    ? undefined
     : (c?.kernelName && specs?.kernelspecs[c.kernelName]?.display_name) || c?.kernelName;
   const trust = () => {
     if (c && window.confirm(TRUST_PROMPT)) void c.trust();
   };
   const kernels = Object.values(specs?.kernelspecs ?? {}).flatMap(s => (s ? [s] : []));
 
-  const items: Item[] = [
-    {
-      key: 'run',
-      priority: Infinity,
-      node: (
-        <button
-          className="tb-button"
-          title="Run Cell (⇧↩)"
-          disabled={noCells}
-          onClick={() => void c?.run()}
-        >
-          <PlayIcon />
-        </button>
-      ),
-      menu: [],
+  const [open, setOpen] = useState<MenuName>();
+  const anchors = {
+    status: useRef<HTMLButtonElement>(null),
+    run: useRef<HTMLButtonElement>(null),
+    share: useRef<HTMLButtonElement>(null),
+    more: useRef<HTMLButtonElement>(null),
+  };
+  const toggle = (name: MenuName) => setOpen(o => (o === name ? undefined : name));
+  const popup = (name: MenuName) => ({
+    ref: anchors[name],
+    'aria-haspopup': 'menu' as const,
+    'aria-expanded': open === name,
+    onClick: () => toggle(name),
+  });
+
+  const status = c
+    ? statusText({
+        place,
+        dirty: c.dirty,
+        locked: c.locked,
+        kernelName: c.kernelName,
+        kernelDisplay,
+        missingKernel: c.missingKernel,
+        status: c.status,
+      })
+    : undefined;
+
+  const menus: Record<MenuName, { label: string; items: MenuItem[] }> = {
+    status: {
+      label: 'Notebook and Kernel',
+      items: [
+        ...(c ? [{ heading: 'File' }, { note: c.path }] : []),
+        ...(c && specs
+          ? [
+              { heading: 'Kernel' },
+              ...(c.kernelVersionLine ? [{ note: c.kernelVersionLine }] : []),
+              ...kernels.map(s => ({
+                label: pickerLabel(s).text,
+                ariaLabel: pickerLabel(s).label,
+                checked: c.kernelName === s.name,
+                onSelect: () => void c.changeKernel(s.name),
+              })),
+            ]
+          : []),
+      ],
     },
-    {
-      key: 'run-more',
-      priority: 7,
-      node: (
-        <div className="segmented" role="group" aria-label="Run">
-          <button
-            className="tb-button"
-            title="Run All"
-            disabled={noCells}
-            onClick={() => void c?.runAll()}
-          >
-            <ForwardIcon />
-          </button>
-          <button
-            className="tb-button"
-            title="Interrupt"
-            disabled={disabled || c?.status !== 'busy'}
-            onClick={() => void c?.interrupt()}
-          >
-            <StopIcon />
-          </button>
-          <button
-            className="tb-button"
-            title="Restart Kernel"
-            disabled={disabled || c?.status === 'none'}
-            onClick={() => void c?.restart()}
-          >
-            <RestartIcon />
-          </button>
-        </div>
-      ),
-      menu: [
+    run: {
+      label: 'More run actions',
+      items: [
         { label: 'Run All', disabled: noCells, onSelect: () => void c?.runAll() },
         ...(onRunWithParams
           ? [{ label: 'Run with Parameters…', disabled, onSelect: onRunWithParams }]
           : []),
         { label: 'Clear All Outputs', disabled: noCells, onSelect: () => c?.clearOutputs() },
-        {
-          label: 'Interrupt',
-          disabled: disabled || c?.status !== 'busy',
-          onSelect: () => void c?.interrupt(),
-        },
+        'separator',
         {
           label: 'Restart Kernel',
           disabled: disabled || c?.status === 'none',
           onSelect: () => void c?.restart(),
         },
-      ],
-    },
-    {
-      key: 'insert',
-      priority: 4,
-      node: (
-        <div className="segmented" role="group" aria-label="Insert">
-          <button
-            className="tb-button"
-            title="Insert Code Cell"
-            disabled={noCells}
-            onClick={() => c?.insert('code')}
-          >
-            <CodeIcon />
-          </button>
-          <button
-            className="tb-button"
-            title="Insert Text Cell"
-            disabled={noCells}
-            onClick={() => c?.insert('markdown')}
-          >
-            <TextIcon />
-          </button>
-        </div>
-      ),
-      menu: [
-        { label: 'Insert Code Cell', disabled: noCells, onSelect: () => c?.insert('code') },
-        { label: 'Insert Text Cell', disabled: noCells, onSelect: () => c?.insert('markdown') },
-      ],
-    },
-    {
-      key: 'cell-type',
-      priority: 3,
-      node: (
-        <label className="popup-button" title="Cell Type">
-          <select
-            aria-label="Cell Type"
-            disabled={noCells}
-            value={c?.cellType ?? 'code'}
-            onChange={e => c?.changeCellType(e.target.value as CellType)}
-          >
-            {CELL_TYPES.map(([type, label]) => (
-              <option key={type} value={type}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-      ),
-      menu: [
-        { heading: 'Cell Type' },
-        ...CELL_TYPES.map(([type, label]) => ({
-          label,
-          disabled: noCells,
-          checked: c?.cellType === type,
-          onSelect: () => c?.changeCellType(type),
-        })),
-      ],
-    },
-  ];
-  if (c && !c.trusted) {
-    items.push({
-      key: 'trust',
-      priority: 6,
-      node: (
-        <button className="tb-button" title="Trust Notebook" onClick={trust}>
-          <ShieldIcon />
-        </button>
-      ),
-      menu: [{ label: 'Trust Notebook…', onSelect: trust }],
-    });
-  }
-  if (c && onNotebookAccess && accessMissing.length) {
-    const title = `Notebook Access: asks for ${accessMissing.join(', ')}`;
-    items.push({
-      key: 'access',
-      priority: 6,
-      node: (
-        <button className="tb-button" title={title} onClick={onNotebookAccess}>
-          <LockIcon />
-        </button>
-      ),
-      menu: [{ label: 'Notebook Access…', onSelect: onNotebookAccess }],
-    });
-  }
-  if (specs && c) {
-    items.push({
-      key: 'kernel',
-      priority: 2,
-      node: (
-        <label
-          className="popup-button"
-          title={c.kernelVersionLine ? `Kernel: ${c.kernelVersionLine}` : 'Kernel'}
-        >
-          <select
-            aria-label="Kernel"
-            value={c.kernelName ?? ''}
-            onChange={e => void c.changeKernel(e.target.value)}
-          >
-            {!c.kernelName && (
-              <option value="" disabled>
-                {c.missingKernel ? `${c.missingKernel} (not installed)` : 'Pick a kernel'}
-              </option>
-            )}
-            {kernels.map(s => {
-              const { text, label } = pickerLabel(s);
-              return (
-                <option
-                  key={s.name}
-                  value={s.name}
-                  aria-label={offersDevice(s) ? label : undefined}
-                  title={offersDevice(s) ? DEVICE_LABEL : undefined}
-                >
-                  {text}
-                </option>
-              );
-            })}
-          </select>
-        </label>
-      ),
-      menu: [
-        { heading: 'Kernel' },
-        ...kernels.map(s => ({
-          label: pickerLabel(s).text,
-          ariaLabel: pickerLabel(s).label,
-          checked: c.kernelName === s.name,
-          onSelect: () => void c.changeKernel(s.name),
-        })),
-      ],
-    });
-  }
-  if (onToggleJournal) {
-    const label = c?.journal ? 'Open as Notebook' : 'View as Journal';
-    items.push({
-      key: 'journal',
-      priority: 2.6,
-      node: (
-        <button
-          className="tb-button"
-          title={label}
-          aria-label={label}
-          aria-pressed={!!c?.journal}
-          disabled={disabled}
-          onClick={onToggleJournal}
-        >
-          <JournalIcon />
-        </button>
-      ),
-      menu: [{ label, disabled, onSelect: onToggleJournal }],
-    });
-  }
-  if (onToggleVariables) {
-    items.push({
-      key: 'variables',
-      priority: 2.5,
-      node: (
-        <button
-          className="tb-button"
-          title={variablesOpen ? 'Hide Variables' : 'Show Variables'}
-          aria-pressed={variablesOpen}
-          disabled={disabled}
-          onClick={onToggleVariables}
-        >
-          <VariablesIcon />
-        </button>
-      ),
-      menu: [
         {
-          label: variablesOpen ? 'Hide Variables' : 'Show Variables',
-          disabled,
-          onSelect: onToggleVariables,
+          label: 'Restart & Run All',
+          disabled: noCells,
+          onSelect: () => void c?.restartAndRunAll(),
         },
       ],
-    });
-  }
-  if (onShowPalette) {
-    items.push({
-      key: 'palette',
-      priority: 1,
-      node: (
-        <button className="tb-button" title="Command Palette" onClick={onShowPalette}>
-          <CommandIcon />
-        </button>
-      ),
-      menu: [{ label: 'Command Palette…', onSelect: onShowPalette }],
-    });
-  }
-  items.push(
-    {
-      key: 'shortcuts',
-      priority: 1,
-      node: (
-        <button className="tb-button" title="Keyboard Shortcuts" onClick={onShowShortcuts}>
-          <KeyboardIcon />
-        </button>
-      ),
-      menu: onShowShortcuts ? [{ label: 'Keyboard Shortcuts', onSelect: onShowShortcuts }] : [],
     },
-    {
-      key: 'download',
-      priority: 0,
-      node: (
-        <button
-          className="tb-button"
-          title="Download Notebook"
-          disabled={disabled}
-          onClick={() => c?.download()}
-        >
-          <DownloadIcon />
-        </button>
-      ),
-      menu: [
+    share: {
+      label: 'Share',
+      items: [
         { label: 'Download Notebook', disabled, onSelect: () => c?.download() },
         ...(onExport
           ? EXPORT_FORMATS.map(f => ({
@@ -396,121 +172,50 @@ export function Toolbar({
               onSelect: () => onExport(f),
             }))
           : []),
+        ...(onPublish ? [{ label: 'Publish as Web Page…', disabled, onSelect: onPublish }] : []),
       ],
     },
-    ...(onPublish
-      ? [
-          {
-            key: 'publish',
-            priority: 0,
-            node: (
-              <button
-                className="tb-button"
-                title="Publish as Web Page"
-                disabled={disabled}
-                onClick={onPublish}
-              >
-                <PublishIcon />
-              </button>
-            ),
-            menu: [{ label: 'Publish as Web Page…', disabled, onSelect: onPublish }],
-          },
-        ]
-      : []),
-    {
-      key: 'save',
-      priority: 5,
-      node: (
-        <button
-          className="tb-button"
-          title="Save (⌘S)"
-          disabled={disabled || !c?.dirty}
-          onClick={() => void c?.save()}
-        >
-          <SaveIcon />
-        </button>
-      ),
-      menu: [{ label: 'Save', disabled: disabled || !c?.dirty, onSelect: () => void c?.save() }],
+    more: {
+      label: 'More',
+      items: [
+        ...(onToggleJournal
+          ? [
+              {
+                label: c?.journal ? 'Open as Notebook' : 'View as Journal',
+                disabled,
+                onSelect: onToggleJournal,
+              },
+            ]
+          : []),
+        ...(onToggleVariables
+          ? [
+              {
+                label: variablesOpen ? 'Hide Variables' : 'Show Variables',
+                disabled,
+                onSelect: onToggleVariables,
+              },
+            ]
+          : []),
+        { label: 'Insert Code Cell', disabled: noCells, onSelect: () => c?.insert('code') },
+        { label: 'Insert Text Cell', disabled: noCells, onSelect: () => c?.insert('markdown') },
+        { heading: 'Cell Type' },
+        ...CELL_TYPES.map(([type, label]) => ({
+          label,
+          disabled: noCells,
+          checked: c?.cellType === type,
+          onSelect: () => c?.changeCellType(type),
+        })),
+        'separator',
+        { label: 'Save', disabled: disabled || !c?.dirty, onSelect: () => void c?.save() },
+        ...(onShowPalette ? [{ label: 'Command Palette…', onSelect: onShowPalette }] : []),
+        ...(onShowShortcuts ? [{ label: 'Keyboard Shortcuts', onSelect: onShowShortcuts }] : []),
+      ],
     },
-  );
-
-  // What doesn't fit goes into the "…" menu (#201). Each item's width is
-  // read while it shows (all show at first) and kept for when it doesn't;
-  // the toolbar's width and the title's room give the space.
-  const toolbar = useRef<HTMLElement>(null);
-  const leading = useRef<HTMLDivElement>(null);
-  const trailing = useRef<HTMLDivElement>(null);
-  const more = useRef<HTMLButtonElement>(null);
-  const widths = useRef(new Map<string, number>());
-  const [hidden, setHidden] = useState<Set<string>>(new Set());
-  const [width, setWidth] = useState(0);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const keys = items.map(i => i.key).join(' ');
-
-  useLayoutEffect(() => {
-    const bar = toolbar.current;
-    if (!bar || typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver(() => setWidth(bar.clientWidth));
-    observer.observe(bar);
-    return () => observer.disconnect();
-  }, []);
-
-  useLayoutEffect(() => {
-    const bar = toolbar.current;
-    if (!bar || !leading.current || !trailing.current) return;
-    // No layout (a test without one): show everything.
-    if (bar.clientWidth === 0) return setHidden(h => (h.size ? new Set() : h));
-    for (const child of trailing.current.querySelectorAll<HTMLElement>('.tb-item')) {
-      widths.current.set(child.dataset.key!, child.getBoundingClientRect().width);
-    }
-    const style = getComputedStyle(bar);
-    const padding = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight) || 0;
-    const barGap = parseFloat(style.columnGap) || 12;
-    const sidebarButton = leading.current.firstElementChild?.getBoundingClientRect().width ?? 0;
-    // The title's and subtitle's full widths (they clip, so scrollWidth is
-    // the text's, not the room it has now).
-    const title = Math.max(
-      0,
-      ...[...leading.current.querySelectorAll<HTMLElement>('.title, .subtitle-text')].map(
-        e => e.scrollWidth + (e.classList.contains('subtitle-text') ? 12 : 0),
-      ),
-    );
-    const room =
-      bar.clientWidth - padding - barGap - sidebarButton - GAP - Math.min(title, TITLE_MIN);
-    const next = overflowing(
-      items.map(i => ({
-        key: i.key,
-        priority: i.priority,
-        width: widths.current.get(i.key) ?? MORE_WIDTH,
-      })),
-      room,
-      more.current?.getBoundingClientRect().width || MORE_WIDTH,
-    );
-    setHidden(h => (sameSet(h, next) ? h : next));
-    // `items` is new every render; its keys, the width and what changes
-    // an item's width are what count.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    keys,
-    width,
-    c?.name,
-    c?.status,
-    kernelDisplay,
-    c?.trusted,
-    c?.cellType,
-    accessMissing.length,
-  ]);
-
-  const menu = items
-    .filter(i => hidden.has(i.key) && i.menu.length)
-    .flatMap((i, n) => (n ? ['separator' as const, ...i.menu] : i.menu));
-  // Everything fits again: the menu closes, so it doesn't reopen by
-  // itself when the window narrows later.
-  if (menuOpen && !menu.length) setMenuOpen(false);
+  };
 
   return (
-    <header className="toolbar" ref={toolbar}>
-      <div className="toolbar-leading" ref={leading}>
+    <header className="toolbar">
+      <div className="toolbar-leading">
         <button
           className="tb-button"
           title={sidebarOpen ? 'Hide Sidebar' : 'Show Sidebar'}
@@ -524,54 +229,90 @@ export function Toolbar({
             // A fresh field for each notebook.
             key={c?.path}
             name={c ? c.name.replace(/\.ipynb$/, '') : 'Ganymede'}
-            dirty={!!c?.dirty}
-            locked={!!c?.locked}
             onRename={c?.rename}
           />
           {c && (
-            <div className="subtitle">
+            <button
+              type="button"
+              className={`status-line${c.locked ? ' locked' : ''}`}
+              aria-label={status}
+              title={status}
+              {...popup('status')}
+            >
               <span className={`status-dot s-${c.status}`} />
-              <span className="subtitle-text" title={c.kernelVersionLine}>
-                {kernelDisplay ?? 'No kernel'} · {STATUS_LABEL[c.status] ?? c.status}
-              </span>
-            </div>
+              <span className="status-text">{status}</span>
+              <ChevronDownIcon className="status-caret" />
+            </button>
           )}
         </div>
       </div>
 
-      <div className="toolbar-trailing" ref={trailing}>
-        {items
-          .filter(i => !hidden.has(i.key))
-          .map(i => (
-            <span key={i.key} className="tb-item" data-key={i.key}>
-              {i.node}
-            </span>
-          ))}
-        {menu.length > 0 && (
-          <button
-            ref={more}
-            className="tb-button"
-            title="More"
-            aria-haspopup="menu"
-            aria-expanded={menuOpen}
-            onClick={() => setMenuOpen(o => !o)}
-          >
-            <MoreIcon />
+      <div className="toolbar-trailing">
+        {c && !c.trusted && (
+          <button className="tb-button" title="Trust Notebook" onClick={trust}>
+            <ShieldIcon />
           </button>
         )}
+        {c && onNotebookAccess && accessMissing.length > 0 && (
+          <button
+            className="tb-button"
+            title={`Notebook Access: asks for ${accessMissing.join(', ')}`}
+            onClick={onNotebookAccess}
+          >
+            <LockIcon />
+          </button>
+        )}
+        <div className="run-group" role="group" aria-label="Run">
+          <button
+            className="run-button"
+            title="Run Cell (⇧↩)"
+            aria-label="Run Cell"
+            disabled={noCells}
+            onClick={() => void c?.run()}
+          >
+            <PlayIcon />
+            <span className="tb-label">Run Cell</span>
+          </button>
+          <button
+            className="run-menu-button"
+            title="More run actions"
+            aria-label="More run actions"
+            {...popup('run')}
+          >
+            <ChevronDownIcon />
+          </button>
+        </div>
+        <button
+          className="tb-button tb-labeled"
+          title="Interrupt"
+          aria-label="Interrupt"
+          disabled={disabled || c?.status !== 'busy'}
+          onClick={() => void c?.interrupt()}
+        >
+          <StopIcon />
+          <span className="tb-label">Interrupt</span>
+        </button>
+        <button
+          className="tb-button tb-labeled"
+          title="Share"
+          aria-label="Share"
+          {...popup('share')}
+        >
+          <PublishIcon />
+          <span className="tb-label">Share</span>
+        </button>
+        <button className="tb-button" title="More" aria-label="More" {...popup('more')}>
+          <MoreIcon />
+        </button>
       </div>
-      {menuOpen && more.current && menu.length > 0 && (
+      {open && anchors[open].current && menus[open].items.length > 0 && (
         <ContextMenu
-          at={more.current}
-          label="More"
-          items={menu}
-          onClose={() => setMenuOpen(false)}
+          at={anchors[open].current}
+          label={menus[open].label}
+          items={menus[open].items}
+          onClose={() => setOpen(undefined)}
         />
       )}
     </header>
   );
-}
-
-function sameSet(a: Set<string>, b: Set<string>): boolean {
-  return a.size === b.size && [...a].every(k => b.has(k));
 }

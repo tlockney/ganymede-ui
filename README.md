@@ -133,8 +133,30 @@ JupyterLab's; press `H` in command mode (or the keyboard button) for the
 full list. Every shortcut can be rebound there, and changes stay in this
 browser. [docs/shortcuts.md](docs/shortcuts.md) lists the defaults.
 
-In a narrow window, toolbar buttons that don't fit move into a "…" menu
-at the toolbar's end, listed by name. Run always stays.
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, whose toolbar is a row of icon buttons with the
+> kernel in a picker and a "…" menu for what doesn't fit a narrow window.
+
+The title has a status line under it: where the notebook is saved, where
+it runs, and the kernel, as in "Saved in this browser · Runs here ·
+TypeScript". With a Ganymede server it reads "Saved on _host_ · Runs on
+_host_" (a connected machine's name in place of the host; "Runs here"
+when the kernels are in the page). It says "Edited" while there are
+unsaved edits and "Locked: changed on disk" when saving is locked, and
+adds the kernel's state (Running, Starting, Restarting, Stopped) only
+when it isn't idle. A kernel the file names that isn't installed reads
+"_name_ (not installed) · Choose kernel". The line is a button: it opens
+the file's path, the kernel's version and the kernel picker.
+
+Run Cell (⇧↩) and Interrupt are always in view, whatever the width: Run
+Cell has a ▾ button for Run All, Run with Parameters…, Clear All Outputs,
+Restart Kernel and Restart & Run All, and Interrupt is lit only while the
+kernel is busy. Their labels give way to icons in a narrow window. Trust
+Notebook and Notebook Access show when they apply. Share has Download
+Notebook, the export formats and Publish as Web Page…; "⋯" has View as
+Journal, Variables, Insert Code Cell and Insert Text Cell, Cell Type, Save,
+the Command Palette and Keyboard Shortcuts. Nothing moves with the width.
 
 `⇧⌘P` (`Ctrl+Shift+P`), or the toolbar's command button, opens a command
 palette: type to find any command, kernel or recent notebook, and press

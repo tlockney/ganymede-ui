@@ -2,7 +2,15 @@
 // the first opens, and their saved outputs show as trusted, with no Trust
 // Notebook, in the browser's storage and on a server, which signs them.
 import { expect, type Page, test } from '@playwright/test';
-import { openWithToken, outputs, removeFromServer, sidebarItem, waitForReady } from './helpers';
+import {
+  openWithToken,
+  outputs,
+  removeFromServer,
+  sidebarItem,
+  statusLine,
+  waitForIdle,
+  waitForReady,
+} from './helpers';
 
 async function openExamples(page: Page) {
   await page.getByRole('button', { name: 'Open Example Notebooks' }).click();
@@ -37,9 +45,8 @@ test('the examples open, trusted, and run in this browser', async ({ page }) => 
   // The first code cell runs on the in-page kernel it asks for.
   await page.locator('.jp-CodeCell').first().click();
   await page.keyboard.press('Shift+Enter');
-  await expect(page.getByText(/TypeScript \(cdp-kernel\) · Idle$/)).toBeVisible({
-    timeout: 60_000,
-  });
+  await waitForIdle(page);
+  await expect(statusLine(page)).toHaveAccessibleName(/ · TypeScript \(cdp-kernel\)$/);
   await expect(
     outputs(page).filter({ hasText: "[ 'Io', 'Europa', 'Ganymede', 'Callisto' ]" }),
   ).toBeVisible();
