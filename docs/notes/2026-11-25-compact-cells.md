@@ -14,9 +14,10 @@ rows of + Code / + Text buttons took width and height from the code.
 - **Add cell.** Each cell's bar has a third button, "Add cell" (code cell;
   the menu changes the type). Under 720px only it shows, and only on the
   active cell and the last one (`gn-last-cell`, kept by `sync`), so there is
-  one at the active boundary and one at the end. Wider, + Code and + Text
-  are unchanged. Move Up and Down were already in the cell menu, and the
-  keyboard bar is untouched.
+  one at the active boundary and one at the end: named "Add Cell Below" on
+  the active cell and "Add Cell at End" on the last, "Add Cell Below" when
+  they are the same cell. Wider, + Code and + Text are unchanged. Move Up
+  and Down were already in the cell menu, and the keyboard bar is untouched.
 - **Wrap Code.** `wrap-code.ts` is `markdown-preview.ts`'s mechanism: a
   local-storage switch (`ganymede-ui:wrap-code`, off by default), a
   CodeMirror compartment per editor that follows it, a palette command and

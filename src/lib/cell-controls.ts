@@ -70,6 +70,15 @@ export function describeCell(cell: Cell): { count: string; type: string; state?:
   };
 }
 
+/** The compact Add cell control's name, by where it adds (#813). */
+function addLabel(cell: Cell): 'Add Cell Below' | 'Add Cell at End' {
+  // Only the active cell and the last one show it; when they are the same
+  // cell, it adds below.
+  return cell.hasClass('jp-mod-active') || !cell.hasClass(LAST)
+    ? 'Add Cell Below'
+    : 'Add Cell at End';
+}
+
 /** Six dots, the usual grip. */
 const GRIP =
   '<svg viewBox="0 0 12 18" width="12" height="18" aria-hidden="true" fill="currentColor">' +
@@ -178,11 +187,13 @@ function decorate(cell: Cell): void {
   drag.setAttribute('aria-hidden', 'true');
   const bar = document.createElement('div');
   bar.className = ADD;
+  // The one control on compact screens; its cell menu changes the type,
+  // and its name says where it adds.
+  const main = button('gn-add-button gn-add-main', addLabel(cell), 'Add cell', 'add');
   bar.append(
     button('gn-add-button gn-add-typed', 'Add Code Cell', '+ Code', 'code'),
     button('gn-add-button gn-add-typed', 'Add Text Cell', '+ Text', 'markdown'),
-    // The one control on compact screens; its cell menu changes the type.
-    button('gn-add-button gn-add-main', 'Add Cell', 'Add cell', 'add'),
+    main,
   );
   // Compact screens (#813): execution count, type and options in a line above the cell.
   const meta = document.createElement('div');
@@ -195,9 +206,20 @@ function decorate(cell: Cell): void {
   meta.append(more);
   node.append(drag, bar);
   node.prepend(meta);
+  const refreshAdd = () => {
+    const label = addLabel(cell);
+    if (main.getAttribute('aria-label') !== label) {
+      main.setAttribute('aria-label', label);
+      main.title = label;
+    }
+  };
+  refreshAdd();
   refreshMeta(cell, meta);
   const refresh = () => {
-    if (!cell.isDisposed) refreshMeta(cell, meta);
+    if (!cell.isDisposed) {
+      refreshMeta(cell, meta);
+      refreshAdd();
+    }
   };
   cell.model.stateChanged.connect(refresh);
   const outputs = cell instanceof CodeCell ? cell.model.outputs : undefined;

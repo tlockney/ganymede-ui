@@ -47,11 +47,11 @@ test.describe('on a phone', () => {
     expect(box.width).toBeGreaterThanOrEqual(44);
 
     // A cell after the first, made Markdown from its menu, then a code cell after that.
-    await page.getByRole('button', { name: 'Add Cell', exact: true }).tap();
+    await page.getByRole('button', { name: 'Add Cell Below', exact: true }).tap();
     await more.tap();
     await page.getByRole('menuitemradio', { name: 'Markdown' }).tap();
     await page.keyboard.type('# Moons');
-    await page.getByRole('button', { name: 'Add Cell', exact: true }).tap();
+    await page.getByRole('button', { name: 'Add Cell Below', exact: true }).tap();
     await page.keyboard.type('6 * 7');
     expect(await cellTypes(page)).toEqual(['code', 'markdown', 'code']);
 

@@ -326,15 +326,17 @@ notebook (`metadata.jupyter.source_hidden`, as JupyterLab saves it).
 > **Unreleased.** Available only from a build of `main` (HEAD), not in
 > the latest release.
 
-Under 720px wide on a touch screen, the active cell has a short line above
+In a window narrower than 720px — a phone, iPad Split View, a narrow
+browser window — the active cell has a short line above
 it with its execution count (`In [3]`, or `Not run`), its type, and its …
 menu, so code and output get the whole width: there is no prompt column.
 The line also says **Queued**, **Running** or **Stopped** in words, and
-those words are the prompt's accessible name too. One **Add cell** button
-sits under the active cell and under the last cell, and adds a code cell;
-the … menu changes its type, moves it up or down, and has **Wrap Code**. A
-wider window or an iPad keeps the gutter buttons and the + Code and + Text
-bar.
+those words are the prompt's accessible name too. One **Add Cell Below**
+button sits under the active cell, and **Add Cell at End** under the last
+cell — the same button, named **Add Cell Below**, when the active cell is
+the last. It adds a code cell; the … menu changes its type, moves it up
+or down, and has **Wrap Code**. A wider window keeps the gutter buttons
+and the + Code and + Text bar.
 
 **Wrap Code** wraps long lines in every cell's editor instead of scrolling
 them sideways. It is in the cell's … menu and the command palette, applies

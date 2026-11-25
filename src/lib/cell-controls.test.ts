@@ -254,19 +254,32 @@ describe('the compact layout (#813)', () => {
     expect(meta(1).querySelector<HTMLElement>('.gn-meta-count')!.hidden).toBe(true);
   });
 
-  it('has one Add cell control per cell, which adds a code cell', async () => {
-    expect(buttons('Add Cell')).toHaveLength(3);
-    buttons('Add Cell')[1]!.click();
+  it('has one Add cell control per cell, named by where it adds', async () => {
+    // The active cell and any cell but the last say Below; the last cell,
+    // when it isn't the active one, says At End.
+    expect(buttons('Add Cell Below')).toHaveLength(2);
+    expect(buttons('Add Cell at End')).toHaveLength(1);
+    buttons('Add Cell Below')[1]!.click();
     expect(types()).toEqual(['code', 'code', 'code', 'code']);
     expect(notebook.activeCellIndex).toBe(2);
     await Promise.resolve();
-    expect(buttons('Add Cell')).toHaveLength(4);
+    expect(buttons('Add Cell Below')).toHaveLength(3);
+    expect(buttons('Add Cell at End')).toHaveLength(1);
+  });
+
+  it('names the last cell’s control Add Cell Below when it is active', async () => {
+    const main = (i: number) => cell(i).node.querySelector<HTMLElement>('.gn-add-main')!;
+    expect(main(2).getAttribute('aria-label')).toBe('Add Cell at End');
+    notebook.activeCellIndex = 2;
+    await Promise.resolve();
+    expect(main(2).getAttribute('aria-label')).toBe('Add Cell Below');
+    expect(main(2).title).toBe('Add Cell Below');
   });
 
   it('adds nothing from Add cell while the notebook may not be edited', () => {
     controls.dispose();
     controls = attachCellControls(notebook, onMenu, () => true);
-    buttons('Add Cell')[0]!.click();
+    buttons('Add Cell Below')[0]!.click();
     expect(types()).toEqual(['code', 'code', 'code']);
   });
 

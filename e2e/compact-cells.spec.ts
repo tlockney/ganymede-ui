@@ -101,8 +101,11 @@ test('Wrap Code wraps a long line in the editor', async ({ page }) => {
 
 test('one Add cell control, under the active cell and at the end', async ({ page }) => {
   await newBrowserNotebook(page);
-  const add = page.getByRole('button', { name: 'Add Cell', exact: true });
+  // The only cell is both the active one and the last: one control, and it
+  // says where it adds.
+  const add = page.getByRole('button', { name: 'Add Cell Below', exact: true });
   await expect(add).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Add Cell at End' })).toHaveCount(0);
   await expect(page.getByRole('button', { name: 'Add Code Cell' })).toBeHidden();
   await expect(page.getByRole('button', { name: 'Add Text Cell' })).toBeHidden();
   await add.tap();
@@ -114,6 +117,33 @@ test('one Add cell control, under the active cell and at the end', async ({ page
   await page.locator('.jp-Cell.jp-mod-active').getByRole('button', { name: 'Cell Actions' }).tap();
   await expect(page.getByRole('menuitem', { name: 'Move Up' })).toBeEnabled();
   await expect(page.getByRole('menuitem', { name: 'Move Down' })).toBeDisabled();
+});
+
+test('three cells show Add Cell Below under the active cell and Add Cell at End at the end', async ({
+  page,
+}) => {
+  await newBrowserNotebook(page);
+  const below = page.getByRole('button', { name: 'Add Cell Below', exact: true });
+  await below.tap();
+  await expect(page.locator('.jp-Cell')).toHaveCount(2);
+  await below.tap();
+  await expect(page.locator('.jp-Cell')).toHaveCount(3);
+  // The first cell is the active one again.
+  await page.locator('.jp-Cell').first().locator('.cm-content').tap();
+  const cells = page.locator('.jp-Cell');
+  await expect(cells.first()).toHaveClass(/jp-mod-active/);
+  // Exactly two visible: under the active cell and under the last one; the
+  // middle cell shows none.
+  await expect(page.getByRole('button', { name: 'Add Cell Below', exact: true })).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Add Cell at End', exact: true })).toHaveCount(1);
+  await expect(cells.nth(0).locator('.gn-add-cell')).toBeVisible();
+  await expect(cells.nth(1).locator('.gn-add-cell')).toBeHidden();
+  await expect(cells.nth(2).locator('.gn-add-cell')).toBeVisible();
+  // They add where they say.
+  await page.getByRole('button', { name: 'Add Cell at End', exact: true }).tap();
+  await expect(page.locator('.jp-Cell')).toHaveCount(4);
+  await expect(page.locator('.jp-Cell').last()).toHaveClass(/jp-mod-active/);
+  await expect(page.locator('.jp-Cell').last()).toHaveClass(/gn-last-cell/);
 });
 
 test('a failing cell says Execution failed with the exception summary first', async ({ page }) => {
