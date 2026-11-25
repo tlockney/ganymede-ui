@@ -36,10 +36,9 @@ gone: Trust and Notebook Access when they apply, the Run Cell button
 Parameters…, Clear All Outputs, Restart Kernel, Restart & Run All),
 Interrupt (always there, disabled unless busy), Share, and "⋯". Labels hide
 below 720 px, and below 1020 px while the sidebar takes room, by media
-query; the accessible names stay. On a phone the line takes two rows and shows a short form, `shortStatusText`: the save word (Saved, Edited, Locked) and where it runs, without the kernel, so a long host can't push the runs part out; the accessible name and the menu keep everything. Locked with unsaved edits says both. Menu notes (the path, the version line) aren't items, so the menu's `aria-describedby` points at them. Run Cell's blue is `--primary`
-(#1f5fbf, 6.1:1 against white in light and dark), which is what #799
-found short; other filled buttons still use `--accent` and are left to
-that issue.
+query; the accessible names stay. On a phone the line takes two rows and shows a short form, `shortStatusText`: the save word (Saved, Edited, Locked) and where it runs, without the kernel, so a long host can't push the runs part out; the accessible name and the menu keep everything. Locked with unsaved edits says both. Menu notes (the path, the version line) aren't items, so the menu's `aria-describedby` points at them. Run Cell's blue is
+`--accent-fill`, the filled-button colour #799 introduced (4.5:1 or more
+under white text, checked by `src/styles/contrast.test.ts`).
 
 Restart & Run All is `restartAndRunAll` on the controller: the restart and
 the run are one action, so a restart that fails is reported and the cells

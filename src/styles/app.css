@@ -7,9 +7,12 @@
 
   --accent: #007aff;
   --accent-soft: rgba(0, 122, 255, 0.12);
-  /* Filled buttons: white text on it is 6.1:1 in both themes (#799). */
-  --primary: #1f5fbf;
-  --primary-hover: #194f9f;
+  /* The accent under white text (buttons, highlighted rows) and as text
+   * on the page (links, insert buttons, text buttons): darker than
+   * --accent, so each reads at 4.5:1 or more (#799,
+   * src/styles/contrast.test.ts). */
+  --accent-fill: #0062cc;
+  --accent-text: #0058b8;
   --window-bg: #ffffff;
   --sidebar-bg: rgba(236, 236, 240, 0.72);
   --sidebar-solid: #ececf0;
@@ -52,6 +55,8 @@
   :root {
     --accent: #0a84ff;
     --accent-soft: rgba(10, 132, 255, 0.2);
+    --accent-fill: #0068d9;
+    --accent-text: #5eacff;
     --window-bg: #1e1e20;
     --sidebar-bg: rgba(40, 40, 44, 0.7);
     --sidebar-solid: #2a2a2e;
@@ -498,7 +503,7 @@ button {
   flex: none;
   border-radius: 6px;
   overflow: hidden;
-  background: var(--primary);
+  background: var(--accent-fill);
 }
 
 .run-button,
@@ -526,7 +531,7 @@ button {
 
 .run-button:hover:not(:disabled),
 .run-menu-button:hover:not(:disabled) {
-  background: var(--primary-hover);
+  background: rgba(0, 0, 0, 0.12);
 }
 
 .run-button:disabled {
@@ -787,7 +792,7 @@ button {
 }
 
 .push-button.primary {
-  background: var(--accent);
+  background: var(--accent-fill);
   color: #fff;
   box-shadow:
     0 1px 2px rgba(0, 0, 0, 0.15),
@@ -1262,7 +1267,7 @@ button {
   border: 0;
   border-radius: 6px;
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-text);
   font: inherit;
   cursor: pointer;
 }
@@ -1299,7 +1304,7 @@ button {
   padding: 3px 10px;
   border: 0;
   border-radius: 6px;
-  background: var(--accent);
+  background: var(--accent-fill);
   color: #fff;
   font: inherit;
   cursor: pointer;
@@ -1309,7 +1314,7 @@ button {
   padding: 3px 8px;
   border: 0;
   border-radius: 6px;
-  background: var(--accent);
+  background: var(--accent-fill);
   color: #fff;
   font: inherit;
 }
@@ -1457,7 +1462,7 @@ button {
 
 .popup-menu-item:hover:not(:disabled),
 .popup-menu-item:focus-visible {
-  background: var(--accent);
+  background: var(--accent-fill);
   color: #fff;
   outline: none;
 }
@@ -1836,7 +1841,7 @@ button {
 }
 
 .keyboard-bar-key.primary {
-  background: var(--accent);
+  background: var(--accent-fill);
   color: #fff;
   font-weight: 600;
 }
@@ -1893,7 +1898,7 @@ button {
 }
 
 .palette-item.active {
-  background: var(--accent);
+  background: var(--accent-fill);
   color: #fff;
 }
 
@@ -2406,7 +2411,7 @@ button {
 
 .journal-running {
   flex: 1;
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .journal button,
@@ -2602,6 +2607,36 @@ button {
   min-width: 0;
   user-select: text;
   -webkit-user-select: text;
+  /* A long word or link wraps rather than widening the journal (#798).
+     Not `anywhere`: that would let a table's columns shrink to a letter. */
+  overflow-wrap: break-word;
+}
+
+/* Wide content scrolls in its own box, not the journal (#798). Outputs
+   already do (.journal-output); a Markdown table, code block or display
+   equation, which has no box of its own, becomes one. A narrow table
+   keeps its width and stays centered. Images and SVG already shrink to the column (JupyterLab's
+   max-width: 100%). */
+.journal-rendered .jp-RenderedMarkdown table {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.journal-rendered .jp-RenderedMarkdown pre {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* overflow-x: auto alone makes overflow-y auto too, and MathJax's box
+   overhangs it by a pixel or two, so the equation would scroll
+   vertically. */
+.journal-rendered .jp-RenderedMarkdown mjx-container[display='true'] {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .journal-follow {
@@ -2613,7 +2648,7 @@ button {
   padding: 0 16px;
   border: 0;
   border-radius: 22px;
-  background: var(--accent);
+  background: var(--accent-fill);
   color: #fff;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
   cursor: pointer;
