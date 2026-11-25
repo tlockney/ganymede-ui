@@ -259,6 +259,7 @@ private struct CommandLineToolSettings: View {
 /// each with Revoke.
 private struct LinkRunSettings: View {
     private let permissions = URLRunPermissions.shared
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         Section {
@@ -288,6 +289,10 @@ private struct LinkRunSettings: View {
         }
         // A notebook replaced since its answer was kept has none to list.
         .onAppear { permissions.pruneStale() }
+        // And when the app comes back from a change made outside it.
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { permissions.pruneStale() }
+        }
     }
 }
 

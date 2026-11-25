@@ -290,6 +290,31 @@ final class ServerHostTests: XCTestCase {
         XCTAssertNotEqual(report.before, report.after)
     }
 
+    /// `KeptAnswers.watch` sets the observer the app uses: a write the
+    /// server makes lands in `ServerWriteLog.shared`, which is what lets a
+    /// kept answer's check follow the stamp.
+    func testWatchRecordsTheServersWritesInTheSharedLog() throws {
+        let notebook = dir.appendingPathComponent("Ganymede.ipynb")
+        let text = #"{"cells": [], "metadata": {}, "nbformat": 4, "nbformat_minor": 5}"#
+        try text.write(to: notebook, atomically: true, encoding: .utf8)
+        let path = notebook.resolvingSymlinksInPath().path
+        let host = try ServerHost(config: config(["root_dir": "/"]))
+        defer { host.stop() }
+        KeptAnswers.watch(host)
+        let before = try XCTUnwrap(FileStamp.of(path))
+        let content = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(text.utf8)))
+        let body = String(decoding: try JSONSerialization.data(withJSONObject: [
+            "type": "notebook", "format": "json", "content": content,
+        ]), as: UTF8.self)
+        let (status, reply) = try request(host, "PUT", "/api/contents" + path, body)
+        XCTAssertTrue((200..<300).contains(status), reply)
+        let canonical = FileStamp.canonical(path)
+        try eventually("the write in the shared log") {
+            guard let after = FileStamp.of(path), after != before else { return false }
+            return ServerWriteLog.shared.leads(path: canonical, from: before, to: after)
+        }
+    }
+
     func testFailureThrowsTheServersMessage() {
         XCTAssertThrowsError(try ServerHost(config: config(["root_dir": "/no/such/dir"]))) { error in
             XCTAssertTrue(error.localizedDescription.contains("/no/such/dir"), "\(error)")

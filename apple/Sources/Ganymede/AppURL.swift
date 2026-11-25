@@ -522,8 +522,19 @@ enum KeptAnswers {
     /// reports files under its own root, never a machine's.
     @MainActor
     static func serverWrote(path: String, before: String?, after: String?) {
-        URLRunPermissions.shared.serverWrote(path: path, before: before, after: after)
-        PermissionLedger(store: AppGroup.ledgerStore()).serverWrote(path: path, before: before, after: after)
-        FolderGrants().serverWrote(path: path, before: before, after: after)
+        serverWrote(
+            path: path, before: before, after: after,
+            links: .shared, ledger: PermissionLedger(store: AppGroup.ledgerStore()), folders: FolderGrants())
+    }
+
+    /// As above, on the stores given: tests pass their own.
+    @MainActor
+    static func serverWrote(
+        path: String, before: String?, after: String?,
+        links: URLRunPermissions, ledger: PermissionLedger, folders: FolderGrants
+    ) {
+        links.serverWrote(path: path, before: before, after: after)
+        ledger.serverWrote(path: path, before: before, after: after)
+        folders.serverWrote(path: path, before: before, after: after)
     }
 }

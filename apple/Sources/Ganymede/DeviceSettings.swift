@@ -12,6 +12,7 @@ import WidgetKit
 struct DeviceSettings: View {
     /// A ledger of its own on the shared store (ganymede-device#86).
     @State private var model = DeviceGrants()
+    @Environment(\.scenePhase) private var scenePhase
     /// Shortcuts' "Run Script on Device" (#434), off by default.
     @AppStorage(RunScriptIntent.enabledKey) private var shortcutRuns = false
 
@@ -69,6 +70,11 @@ struct DeviceSettings: View {
         }
         .formStyle(.grouped)
         .onAppear { model.reload() }
+        // A notebook may have been changed outside the app while it was in
+        // the background: reading again drops what no longer holds (#584).
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { model.reload() }
+        }
         // A prompt in a notebook window may keep an answer while this
         // stays open; the ledger's store is UserDefaults.
         .task {

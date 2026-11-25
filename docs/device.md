@@ -344,6 +344,11 @@ it). The picker is your consent, so there is no permission prompt; Settings › 
 with Revoke. It works only in kernels in the app. A notebook changed
 outside the app loses its folders (see Permissions and the ledger, below).
 
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release. The latest release keeps a notebook's folders
+> whatever happens to the file.
+
 ```ts
 const folder = await device.folders.pick({ write: true });
 if (folder) {

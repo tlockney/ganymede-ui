@@ -77,6 +77,12 @@ app asks again, which is the safe way to be wrong. Other things kept per
 notebook path (published widgets, notebook secrets) are not stamped; they
 are not kept answers about what the notebook may do.
 
+Two more limits, both failing safe (the next call asks again): iCloud
+evicting a file and downloading it again can give it a new inode, which
+forgets its answers; and the server reports a write only after it finishes,
+after it has restamped its own database, so a check in that short window
+sees a stamp the log doesn't know yet. The second is a follow-up issue.
+
 Tests: `FileStampTests` (the format against `stat`'s numbers, pre-epoch as 0,
 `canonical` through a link, same file, rewrite in place by size and by time,
 replace by rename with equal size and mtime, move, missing, link);
@@ -88,10 +94,11 @@ answers only; a check before the hop keeps via the log; a chain A to B to C;
 reports out of order; a server write after an outside change drops; a file
 the server created drops a stamped row; a row with no stamp takes it; a move
 carries the stamp; a link's spelling matches the canonical report; the
-defaults round trip); `FoldersTests` for a call failing `denied` after an
+defaults round trip; `KeptAnswers.serverWrote` moving all three stores; the
+stores defaulting to `ServerWriteLog.shared`); `FoldersTests` for a call failing `denied` after an
 outside change; `ServerHostTests` against the real server at `GANYMEDE_REF`
 (a PUT reports the canonical path and stamps equal to `FileStamp.of` before
-and after). Swift can't build in the container; CI's macos-app job is the
+and after, and `KeptAnswers.watch` puts it in the shared log). Swift can't build in the container; CI's macos-app job is the
 first compile.
 
 **By-hand check for #399** (on a Mac with a build of `main`):

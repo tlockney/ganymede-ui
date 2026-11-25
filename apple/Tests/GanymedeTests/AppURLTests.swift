@@ -304,44 +304,6 @@ final class AppURLTests: XCTestCase {
     }
 
     @MainActor
-    func testAnAnswerIsForgottenWhenTheFileChangesOutsideTheApp() throws {
-        let suite = "AppURLTests-\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
-        let files = Files()
-        let a = URL(fileURLWithPath: "/tmp/a.ipynb")
-        files.stamps[pathKey(a)] = "10:1:100"
-        let permissions = makePermissions(files, defaults)
-        permissions.allow(a, sendingTo: nil)
-        XCTAssertTrue(permissions.allows(a, sendingTo: nil))
-        XCTAssertEqual(defaults.dictionary(forKey: URLRunPermissions.stampsKey) as? [String: String], [pathKey(a): "10:1:100"])
-        // Replaced by rename: the same size and time, another inode.
-        files.stamps[pathKey(a)] = "10:1:101"
-        XCTAssertFalse(permissions.allows(a, sendingTo: nil), "asks again")
-        XCTAssertTrue(permissions.paths.isEmpty, "and is no longer listed")
-        XCTAssertEqual(defaults.stringArray(forKey: URLRunPermissions.defaultsKey), [])
-        XCTAssertEqual((defaults.dictionary(forKey: URLRunPermissions.stampsKey) as? [String: String])?.isEmpty, true)
-        // Allowing it again keeps the new file's answer.
-        permissions.allow(a, sendingTo: nil)
-        XCTAssertTrue(permissions.allows(a, sendingTo: nil))
-    }
-
-    @MainActor
-    func testAnUnchangedFileKeepsItsAnswerAcrossLaunches() throws {
-        let suite = "AppURLTests-\(UUID().uuidString)"
-        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
-        defer { defaults.removePersistentDomain(forName: suite) }
-        let files = Files()
-        let a = URL(fileURLWithPath: "/tmp/a.ipynb")
-        files.stamps[pathKey(a)] = "10:1:100"
-        makePermissions(files, defaults).allow(a, sendingTo: "shortcuts://x-callback-url", withParameters: true)
-        XCTAssertTrue(makePermissions(files, defaults).allows(a, sendingTo: "shortcuts://x-callback-url", withParameters: true))
-        files.stamps[pathKey(a)] = "11:2:100"
-        XCTAssertFalse(makePermissions(files, defaults).allows(a, sendingTo: "shortcuts://x-callback-url", withParameters: true),
-                       "the stamp was kept with the answer")
-    }
-
-    @MainActor
     func testTheServersWriteKeepsTheAnswersOfThatFileOnly() throws {
         let suite = "AppURLTests-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
@@ -602,6 +564,66 @@ final class AppURLTests: XCTestCase {
         XCTAssertEqual(defaults.dictionary(forKey: URLRunPermissions.stampsKey) as? [String: String], [pathKey(b): "2:2:2"])
         permissions.revokeAll()
         XCTAssertEqual((defaults.dictionary(forKey: URLRunPermissions.stampsKey) as? [String: String])?.isEmpty, true)
+    }
+
+    /// `KeptAnswers.serverWrote` is what the app's observer calls: the links,
+    /// the ledger and the folder grants all move to the file's new stamp.
+    @MainActor
+    func testTheServersWriteMovesTheStampInTheLinksTheLedgerAndTheFolders() throws {
+        let suite = "AppURLTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let files = Files()
+        let a = URL(fileURLWithPath: "/tmp/a.ipynb")
+        let notebook = pathKey(a)
+        files.stamps[notebook] = "1:1:1"
+        let links = makePermissions(files, defaults)
+        links.allow(a, sendingTo: nil)
+        let ledgerStore = UserDefaultsLedgerStore(key: "ledger", defaults: defaults)
+        let ledger = PermissionLedger(store: ledgerStore, stamp: files.stamp, log: nil)
+        ledger.record(.always, notebook: notebook, capability: "location")
+        let folderStore = UserDefaultsFolderStore(key: "folders", defaults: defaults)
+        folderStore.save([FolderGrant(id: "F1", notebook: notebook, name: "Data", writable: false, bookmark: Data([1]), stamp: "1:1:1")])
+        let folders = FolderGrants(store: folderStore, stamp: files.stamp, log: nil)
+
+        files.stamps[notebook] = "2:2:2"
+        KeptAnswers.serverWrote(
+            path: serverPath(a), before: "1:1:1", after: "2:2:2", links: links, ledger: ledger, folders: folders)
+        XCTAssertEqual(defaults.dictionary(forKey: URLRunPermissions.stampsKey) as? [String: String], [notebook: "2:2:2"])
+        XCTAssertEqual(ledgerStore.load().map(\.stamp), ["2:2:2"])
+        XCTAssertEqual(folderStore.load().map(\.stamp), ["2:2:2"])
+        // A report for another file moves none of them.
+        KeptAnswers.serverWrote(
+            path: "/tmp/other.ipynb", before: "2:2:2", after: "3:3:3", links: links, ledger: ledger, folders: folders)
+        XCTAssertEqual(ledgerStore.load().map(\.stamp), ["2:2:2"])
+        XCTAssertEqual(folderStore.load().map(\.stamp), ["2:2:2"])
+    }
+
+    /// The app's stores are made with the default log, which is the one the
+    /// server's observer records into.
+    @MainActor
+    func testTheStoresDefaultToTheSharedLog() throws {
+        let suite = "AppURLTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let files = Files()
+        let a = URL(fileURLWithPath: "/tmp/\(UUID().uuidString).ipynb")
+        let notebook = pathKey(a)
+        files.stamps[notebook] = "1:1:1"
+        let links = URLRunPermissions(defaults: defaults, stamp: files.stamp)
+        links.allow(a, sendingTo: nil)
+        let ledgerStore = UserDefaultsLedgerStore(key: "ledger", defaults: defaults)
+        let ledger = PermissionLedger(store: ledgerStore, stamp: files.stamp)
+        ledger.record(.always, notebook: notebook, capability: "location")
+        let folderStore = UserDefaultsFolderStore(key: "folders", defaults: defaults)
+        folderStore.save([FolderGrant(id: "F1", notebook: notebook, name: "Data", writable: false, bookmark: Data([1]), stamp: "1:1:1")])
+        let folders = FolderGrants(store: folderStore, stamp: files.stamp)
+
+        files.stamps[notebook] = "2:2:2"
+        ServerWriteLog.shared.record(path: serverPath(a), before: "1:1:1", after: "2:2:2")
+        XCTAssertTrue(links.allows(a, sendingTo: nil))
+        XCTAssertEqual(ledger.answer(notebook: notebook, capability: "location"), .always)
+        XCTAssertEqual(folders.grants.map(\.id), ["F1"])
     }
 
     // MARK: Asking first (#586)
