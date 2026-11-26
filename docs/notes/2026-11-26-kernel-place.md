@@ -31,9 +31,11 @@ from the released server, so every change is a no-op without them.
 - `reachable: false` with no error is before the server's first check:
   the page and the apps say nothing then, rather than call a remote that
   may be fine down.
-- Settings > Remotes shows the line under Where Kernels Run, asking the
-  kernelspecs every 15 s while a remote is chosen; Settings > Kernels
-  marks each remote kernel's row and ends with the same line.
+- Settings > Kernels on the Mac, and Settings > Remotes on the iPad and
+  iPhone, show the line under Where Kernels Run, asking the kernelspecs
+  every 15 s while a remote is chosen; the installed kernels' list on the
+  Mac marks each remote kernel's row and ends with the same line, naming
+  the remote as the app does.
 - SwiftUI: the line is a computed view in each place, and the row's name a
   computed property, rather than a longer modifier chain (iOS CI has
   timed out type-checking those).
@@ -41,4 +43,28 @@ from the released server, so every change is a no-op without them.
 Left undone: the app passes no `gateway_name` to the server's config yet.
 It uses `deny_unknown_fields`, and the released XCFramework (`GANYMEDE_REF`)
 doesn't know the key, so the server would refuse to start. Pass it once
-`GANYMEDE_REF` has ganymede#969.
+`GANYMEDE_REF` has ganymede#969 (#851).
+
+## Pre-push review round
+
+- Where Kernels Run keeps the server's answer with the remote it was
+  fetched for: switching to This Mac or to another remote drops the last
+  one's line, and a failed load doesn't leave another remote's standing.
+- Settings > Kernels names a remote with the app's title, as Where Kernels
+  Run does, in the rows and in the line.
+- `PageState` and `KernelSpecs` share one `KernelsRemote.notAnswering`, so
+  the line has one implementation.
+- The problem notice's kernel picker ends with the not-answering line, as
+  the docs and this log say; its test asserts that order.
+- `useKernelPlaces` tests: a late answer for a server the page has left is
+  ignored, a failed ask while a remote was named asks again, nothing is
+  asked while the page is hidden, and a `focus` or `visibilitychange`
+  asks.
+- An App test posts a remote's `kernels[].gateway` and `kernelsRemote`,
+  and finds both the mark and the line in the toolbar's kernel menu.
+- `PageStateTests`' bodies include the keys `PageState` requires, so its
+  nil-line check can fail; `XCTUnwrap` holds the state it asks.
+- docs/apps.md's two notes say what the apps show and what the server
+  needs: ganymede#969, and `GANYMEDE_REF` for the apps (#851). They, and
+  the Mac's and the iPad's and iPhone's Settings screens above, are named
+  apart.

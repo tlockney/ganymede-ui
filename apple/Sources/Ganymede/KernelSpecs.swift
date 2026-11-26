@@ -44,12 +44,7 @@ struct KernelSpecs: Equatable {
     /// `gateway` (ganymede#969, #832): its name, whether it answers, and why
     /// it doesn't. Absent from a server older than that, and one whose
     /// kernels run here.
-    struct Remote: Equatable {
-        var name: String
-        var reachable: Bool
-        /// An empty error is no more than a missing one.
-        var error: String?
-    }
+    typealias Remote = KernelsRemote
 
     /// A JSON value as text: strings, numbers and booleans plainly, null as
     /// "null", arrays and objects as compact JSON with sorted keys.
@@ -141,9 +136,7 @@ struct KernelSpecs: Equatable {
     /// naming it by `name` when the app has its own for it; nil while it
     /// answers, before the server's first check, or without a remote.
     func notAnswering(name: String? = nil) -> String? {
-        guard let remote, !remote.reachable, let error = remote.error, !error.isEmpty
-        else { return nil }
-        return "\(name ?? remote.name) isn’t answering: \(error)"
+        remote?.notAnswering(name: name)
     }
 
     /// Asks `server` for its kernels.

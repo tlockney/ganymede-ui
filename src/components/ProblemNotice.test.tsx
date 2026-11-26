@@ -64,9 +64,9 @@ describe('ProblemNotice kernel picker where kernels run (#832)', () => {
     const select = screen.getByRole('combobox', { name: 'Pick a Kernel' }) as HTMLSelectElement;
     expect([...select.options].map(o => o.text)).toEqual([
       'Pick a Kernel…',
-      'workmbp isn’t answering: gateway: error sending request',
       'Python 3',
       'TypeScript (in app) · workmbp ◆',
+      'workmbp isn’t answering: gateway: error sending request',
     ]);
     expect(
       screen.getByRole('option', {

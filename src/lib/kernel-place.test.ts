@@ -177,6 +177,104 @@ describe('useKernelPlaces', () => {
     expect(none.asked).toHaveLength(1);
   });
 
+  it('ignores an answer for a server the page has left', async () => {
+    // The first server answers once, then holds its next answer.
+    const held: Array<(response: Response) => void> = [];
+    let hold = false;
+    const first = server(() =>
+      hold
+        ? new Promise<Response>(resolve => held.push(resolve))
+        : answer({ kernelspecs: { py: { gateway: true } }, gateway: down }),
+    );
+    const never = server(() => new Promise<Response>(() => {}));
+    const { result, rerender } = renderHook(({ settings }) => useKernelPlaces(settings), {
+      initialProps: { settings: first.settings },
+    });
+    await waitFor(() => expect(result.current.remote).toEqual(down));
+
+    hold = true;
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    await waitFor(() => expect(held).toHaveLength(1));
+
+    // The second server hasn't answered: the first's answer is gone.
+    rerender({ settings: never.settings });
+    expect(result.current.remote).toBeNull();
+    expect(result.current.gateway).toEqual([]);
+
+    // The first server's answer, arriving late, isn't the second's.
+    await act(async () => {
+      held[0](
+        answer({
+          kernelspecs: { py: { gateway: true } },
+          gateway: { ...down, reachable: true, error: null },
+        }),
+      );
+    });
+    expect(result.current.remote).toBeNull();
+    expect(result.current.gateway).toEqual([]);
+  });
+
+  it('asks again after a failed ask while a remote was named', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let failing = false;
+    const { settings, asked } = server(() =>
+      failing ? new Response('', { status: 503 }) : answer({ kernelspecs: {}, gateway: down }),
+    );
+    const { result } = renderHook(() => useKernelPlaces(settings));
+    await waitFor(() => expect(result.current.remote).toEqual(down));
+    expect(asked).toHaveLength(1);
+
+    // The remote coming back is what the page waits for: a failed ask keeps
+    // the last answer, and asks again on the next tick.
+    failing = true;
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(PLACES_POLL_MS);
+    });
+    await waitFor(() => expect(asked).toHaveLength(2));
+    expect(result.current.remote).toEqual(down);
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(PLACES_POLL_MS);
+    });
+    await waitFor(() => expect(asked).toHaveLength(3));
+  });
+
+  it('asks nothing while the page is hidden', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+    try {
+      const { settings, asked } = server(() => answer({ kernelspecs: {} }));
+      const { result } = renderHook(() => useKernelPlaces(settings));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(PLACES_POLL_MS * 2);
+      });
+      expect(asked).toHaveLength(0);
+      expect(result.current.remote).toBeNull();
+    } finally {
+      Object.defineProperty(document, 'visibilityState', {
+        configurable: true,
+        get: () => 'visible',
+      });
+    }
+  });
+
+  it('asks when the page comes to the front', async () => {
+    const { settings, asked } = server(() => answer({ kernelspecs: {} }));
+    renderHook(() => useKernelPlaces(settings));
+    await waitFor(() => expect(asked).toHaveLength(1));
+
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    await waitFor(() => expect(asked).toHaveLength(2));
+
+    await act(async () => {
+      document.dispatchEvent(new Event('visibilitychange'));
+    });
+    await waitFor(() => expect(asked).toHaveLength(3));
+  });
+
   it('asks nothing without a backend, and asks the next one afresh', async () => {
     const { result } = renderHook(() => useKernelPlaces(undefined));
     expect(result.current.remote).toBeNull();

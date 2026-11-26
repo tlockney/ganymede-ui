@@ -124,16 +124,21 @@ final class PageStateTests: XCTestCase {
         XCTAssertEqual(state?.notAnswering(machine: ""), "workmbp isn’t answering: gateway: error sending request")
     }
 
-    func testNoRemoteLineWithoutARemoteOrAnError() {
-        let local: [String: Any] = ["path": "Io.ipynb", "kernels": [Any]()]
-        XCTAssertNil(PageState(body: local)?.notAnswering(), "a page whose kernels run here, or older than #832")
+    func testNoRemoteLineWithoutARemoteOrAnError() throws {
+        let local: [String: Any] = [
+            "path": "Io.ipynb", "dirty": false, "kernelMissing": false,
+            "trusted": true, "kernels": [Any](),
+        ]
+        let here = try XCTUnwrap(PageState(body: local))
+        XCTAssertNil(here.notAnswering(), "a page whose kernels run here, or older than #832")
         for remote in [
             ["name": "workmbp", "reachable": false],
             ["name": "workmbp", "reachable": false, "error": ""],
-            ["reachable": false, "error": "gateway: error sending request"],
         ] as [[String: Any]] {
-            let body: [String: Any] = ["path": "Io.ipynb", "kernels": [Any](), "kernelsRemote": remote]
-            XCTAssertNil(PageState(body: body)?.notAnswering(), "\(remote)")
+            var body = local
+            body["kernelsRemote"] = remote
+            let state = try XCTUnwrap(PageState(body: body), "\(remote)")
+            XCTAssertNil(state.notAnswering(), "\(remote)")
         }
     }
 

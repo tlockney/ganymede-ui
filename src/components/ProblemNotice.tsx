@@ -56,11 +56,6 @@ export function ProblemNotice({
                   <option value="" disabled>
                     {ACTION_LABEL[action]}…
                   </option>
-                  {notAnswering && (
-                    <option value="" disabled>
-                      {notAnswering}
-                    </option>
-                  )}
                   {kernels.map(s => {
                     const { text, label } = pickerLabel({
                       ...s,
@@ -77,6 +72,11 @@ export function ProblemNotice({
                       </option>
                     );
                   })}
+                  {notAnswering && (
+                    <option value="" disabled>
+                      {notAnswering}
+                    </option>
+                  )}
                 </select>
               </label>
             )

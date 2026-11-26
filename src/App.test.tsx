@@ -782,6 +782,61 @@ describe('App', () => {
     vi.unstubAllGlobals();
   });
 
+  it('tells the app where kernels run, and when that remote isn’t answering (#832)', async () => {
+    const states: Record<string, unknown>[] = [];
+    vi.stubGlobal('webkit', {
+      messageHandlers: {
+        state: { postMessage: (m: Record<string, unknown>) => states.push(m) },
+      },
+    });
+    mocks.controller = { dirty: false, save: vi.fn(async () => true) };
+    const fake = fakeServices({ '': [{ name: 'Io.ipynb', type: 'notebook' }] });
+    // What the server says of the remote kernels run on: JupyterLab's
+    // kernelspec manager drops these keys, so the page asks itself.
+    (fake.services as unknown as { serverSettings: unknown }).serverSettings =
+      ServerConnection.makeSettings({
+        baseUrl: 'http://server/',
+        fetch: (async () =>
+          new Response(
+            JSON.stringify({
+              kernelspecs: { python3: { name: 'python3', gateway: true } },
+              gateway: {
+                name: 'workmbp',
+                reachable: false,
+                error: 'gateway: error sending request',
+              },
+            }),
+          )) as unknown as typeof fetch,
+      });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    history.replaceState(null, '', '/?kernels=server&open=Io.ipynb');
+    render(<App />);
+    await waitFor(() =>
+      expect(states.at(-1)).toMatchObject({
+        kernels: [{ name: 'python3', displayName: 'Python 3', device: false, gateway: 'workmbp' }],
+        kernelsRemote: {
+          name: 'workmbp',
+          reachable: false,
+          error: 'gateway: error sending request',
+        },
+      }),
+    );
+
+    // The toolbar's kernel menu names where a kernel runs, and says when
+    // that remote isn't answering.
+    await userEvent.click(screen.getByRole('button', { name: /^(Saved|Edited|Locked)/ }));
+    const menu = await screen.findByRole('menu', { name: 'Notebook and Kernel' });
+    expect(
+      within(menu).getByRole('menuitemradio', { name: 'Python 3 · workmbp' }),
+    ).toBeInTheDocument();
+    expect(
+      within(menu).getByRole('menuitem', {
+        name: 'workmbp isn’t answering: gateway: error sending request',
+      }),
+    ).toBeDisabled();
+    vi.unstubAllGlobals();
+  });
+
   it('reads the kernels’ memory while the app’s Running list asks for it (#241)', async () => {
     const states: Record<string, unknown>[] = [];
     vi.stubGlobal('webkit', {

@@ -30,12 +30,15 @@ struct InstalledKernelsSection: View {
     var body: some View {
         Section {
             if let specs {
+                // The app's name for the remote (#832), as Where Kernels Run
+                // has it; the server's own when the app has no remote by it.
+                let remote = specs.remote.map { model.kernelRemote?.title ?? $0.name }
                 ForEach(specs.specs) { spec in
-                    KernelSpecRow(spec: spec, isDefault: spec.name == specs.defaultName, remote: specs.remote?.name)
+                    KernelSpecRow(spec: spec, isDefault: spec.name == specs.defaultName, remote: remote)
                 }
                 // The remote isn't answering (#832): the line that says so
                 // stands in for "no kernels" when the list is empty too.
-                if let line = specs.notAnswering() {
+                if let line = specs.notAnswering(name: remote) {
                     Text(line).font(.caption).foregroundStyle(.secondary)
                 } else if specs.specs.isEmpty {
                     // A remote's list comes through the server's gateway,

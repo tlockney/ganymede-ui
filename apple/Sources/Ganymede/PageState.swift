@@ -1,5 +1,30 @@
 import Foundation
 
+/// The remote a server runs kernels on, from `/api/kernelspecs`
+/// (ganymede#969, #832): its name, whether it answers, and why it doesn't.
+/// Absent from a server older than that, and one whose kernels run here.
+struct KernelsRemote: Decodable, Equatable {
+    var name: String
+    var reachable: Bool
+    /// An empty error is no more than a missing one.
+    var error: String?
+
+    /// The one line a kernel list shows when the remote isn't answering
+    /// (#832), or nil while it answers, before the server's first check, or
+    /// without one. `name` is the app's own name for the remote, where it
+    /// has one; in a machine's window `machine` names the machine whose
+    /// kernels those are: "m5air runs kernels on workmbp, which isn't
+    /// answering".
+    func notAnswering(name: String? = nil, machine: String? = nil) -> String? {
+        guard !reachable, let error, !error.isEmpty else { return nil }
+        let remote = name ?? self.name
+        if let machine, !machine.isEmpty {
+            return "\(machine) runs kernels on \(remote), which isn’t answering"
+        }
+        return "\(remote) isn’t answering: \(error)"
+    }
+}
+
 /// What the page posts to the app's `state` message handler whenever it
 /// changes (ganymede-ui's `src/lib/native.ts`, `PageState`, #205): enough
 /// for native toolbars and menus to show and enable themselves.
@@ -26,12 +51,7 @@ struct PageState: Decodable, Equatable {
     /// The remote kernels run on, from `/api/kernelspecs` (ganymede#969):
     /// its name, whether it answers, and why it doesn't (#832). Absent from
     /// a page older than that, and one whose kernels run here.
-    struct Remote: Decodable, Equatable {
-        var name: String
-        var reachable: Bool
-        /// An empty error is no more than a missing one.
-        var error: String?
-    }
+    typealias Remote = KernelsRemote
 
     struct Backend: Decodable, Equatable {
         var label: String
@@ -312,13 +332,7 @@ struct PageState: Decodable, Equatable {
     /// names the machine whose kernels those are: "m5air runs kernels on
     /// workmbp, which isn't answering".
     func notAnswering(machine: String? = nil) -> String? {
-        guard let remote = kernelsRemote, !remote.reachable,
-              let error = remote.error, !error.isEmpty
-        else { return nil }
-        if let machine, !machine.isEmpty {
-            return "\(machine) runs kernels on \(remote.name), which isn’t answering"
-        }
-        return "\(remote.name) isn’t answering: \(error)"
+        kernelsRemote?.notAnswering(machine: machine)
     }
 }
 
