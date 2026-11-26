@@ -14,10 +14,11 @@ words.
   `.navigationTitle` stays, so the window's tab still gets the display
   title. One `.navigation` item draws the block in their place
   (`NotebookToolbar`): the notebook's display title in `.headline`, on one
-  line, truncated in the middle, and under it, one point away, the
-  kernel's chip. A console's or a folder's window keeps the system title,
-  and its chip beside it, as before.
-- Beside the chip the save part shows only where "Saved on …" would say
+  line, truncated in the middle, and under it, one point away, the save
+  part when there is one. The kernel's chip is its own `.navigation`
+  item beside the title, so a console's or a folder's window, which
+  keeps the system title, has it in the same place.
+- Under the title the save part shows only where "Saved on …" would say
   nothing new: `HeaderStatus.saveNote` gives "Edited", "Locked: changed
   on disk" or "Edited · Locked: changed on disk", in `.secondary` caption,
   and nothing while the file is saved. The whole status line
@@ -25,11 +26,16 @@ words.
   `HeaderStatus.save` remains `saveNote` or "Saved on <place>", so the
   subtitle of a machine's window with no notebook open still says
   "on _machine_".
-- The chip is borderless now (`ChipButtonStyle`): words rather than a
-  toolbar capsule, the dot and a `.caption` lead in `.secondary`. The
-  pointer fills a quiet rounded background under the words, stronger
-  while pressed. It opens the same popover, with the same accessibility
-  label and value.
+- The chip is a toolbar button on the toolbar's own capsule, ending in a
+  chevron that says it opens a menu. An earlier draft put it under the
+  title as borderless caption words; in use, choosing a kernel there was
+  hard to find and to hit, so it stands on its own. It opens the same
+  popover, with the same accessibility label and value; the chevron is
+  hidden from VoiceOver.
+- The title block hides the toolbar's shared glass behind it
+  (`.sharedBackgroundVisibility(.hidden)`), so it reads as a plain title,
+  and keeps 8pt either side so the glass's edge doesn't clip its first
+  letter.
 - Where it runs, the language and what the kernel is doing are the chip,
   as "Python · This Mac · Idle": the notebook's language, its place and
   its state. `HeaderStatus.chipLead` gives the language and the place (no
@@ -74,8 +80,8 @@ words.
   font at 13pt: it is what the chip reserves.
 - Hovering the chip shows the whole status line (`HeaderStatus.full`), as
   the popover's first line does. The popover is otherwise unchanged.
-- The order is now: the title with its chip and save part under and beside
-  it (`.navigation`, in the system title's place); Trust and Notebook
+- The order is now: the title with its save part under it, then the
+  kernel's chip (both `.navigation`, in the system title's place); Trust and Notebook
   Access, while they apply; Notebook | Journal; Run Cell with its run menu
   and Interrupt, in one `ToolbarItemGroup`, so the pair reads as one
   control; Share; More. New Notebook's item is gone, and `NotebookToolbar`

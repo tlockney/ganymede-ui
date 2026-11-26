@@ -61,10 +61,11 @@ The iPad and iPhone app is on TestFlight for internal testers.
 [docs/apps.md](docs/apps.md) is the apps' user guide;
 [apple/README.md](apple/README.md) has how to build them.
 
-A notebook's window shows its title in the toolbar, with a chip under it:
-"Python · This Mac · Idle" — the notebook's language, where its kernel runs
-and what it is doing, behind a solid blue dot while the kernel waits and a
-small spinner while it works. Beside the chip it says "Edited" with
+A notebook's window shows its title in the toolbar, with the kernel's
+button beside it: "Python · This Mac · Idle" — the notebook's language,
+where its kernel runs and what it is doing, behind a solid blue dot while
+the kernel waits and a small spinner while it works. Click it to change
+or restart the kernel. Under the title it says "Edited" with
 unsaved changes, or "Locked: changed on disk" while the file changed under
 you; a saved file adds nothing there.
 

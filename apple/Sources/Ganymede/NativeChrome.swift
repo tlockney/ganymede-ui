@@ -613,13 +613,13 @@ struct NotebookToolbar: ToolbarContent {
     var title: String?
 
     var body: some ToolbarContent {
-        // The title and, under it, the kernel's chip (#867): a notebook
-        // window's toolbar has no system title or subtitle
-        // (`.toolbar(removing: .title)` in `ContentView`), so this one
-        // item draws the title, the chip, and beside the chip the save
-        // part only where there is something to say ("Edited", "Locked:
-        // changed on disk"). The full status line stays in the chip's
-        // help and popover.
+        // The title, and beside it the kernel's own button (#867): a
+        // notebook window's toolbar has no system title or subtitle
+        // (`.toolbar(removing: .title)` in `ContentView`), so this item
+        // draws the title, with the save part under it only where there is
+        // something to say ("Edited", "Locked: changed on disk"). The
+        // kernel's state is on its button, not repeated here, and the full
+        // status line stays in the button's help and popover.
         if let title {
             ToolbarItem(placement: .navigation) {
                 VStack(alignment: .leading, spacing: 1) {
@@ -627,14 +627,11 @@ struct NotebookToolbar: ToolbarContent {
                         .font(.headline)
                         .lineLimit(1)
                         .truncationMode(.middle)
-                    HStack(spacing: 6) {
-                        KernelPicker(page: page, panel: panel, place: place, header: header)
-                        if let note = header?.saveNote {
-                            Text(note)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                        }
+                    if let note = header?.saveNote {
+                        Text(note)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
                     }
                 }
                 // The toolbar's glass clips its item at the edge: room so
@@ -644,12 +641,13 @@ struct NotebookToolbar: ToolbarContent {
             // A plain title over a caption, not two lines squeezed into the
             // toolbar's glass capsule.
             .sharedBackgroundVisibility(.hidden)
-        } else {
-            // A console or a folder keeps the system's title, and its chip
-            // stands beside it where it was.
-            ToolbarItem(placement: .navigation) {
-                KernelPicker(page: page, panel: panel, place: place, header: header)
-            }
+        }
+        // The kernel's button: a toolbar button of its own, with a chevron,
+        // so choosing a kernel is a plain target rather than small words
+        // under the title (#867). A console or a folder keeps the system's
+        // title, with the button beside it.
+        ToolbarItem(placement: .navigation) {
+            KernelPicker(page: page, panel: panel, place: place, header: header)
         }
         // Only while the notebook isn't trusted.
         if !page.state.trusted {
@@ -755,8 +753,6 @@ struct KernelPicker: View {
     var place: Place = .thisDevice
     var header: HeaderStatus?
     @State private var shown = false
-    /// The pointer is over the chip, which takes a quiet highlight.
-    @State private var hovering = false
 
     /// The widest state word, whose width the state part holds: a chip
     /// that grows with "Running" and shrinks to "Idle" would shift every
@@ -770,10 +766,6 @@ struct KernelPicker: View {
         } label: {
             chip
         }
-        // No capsule or border: the chip is one piece with the title above
-        // it, and reads as words until the pointer finds it (#867).
-        .buttonStyle(ChipButtonStyle(hovering: hovering))
-        .onHover { hovering = $0 }
         .help(header?.full ?? page.state.kernelVersionLine ?? "The notebook's kernel")
         .accessibilityLabel(chipText)
         // The mark's words are the button's value, so the whole chip reads
@@ -787,7 +779,8 @@ struct KernelPicker: View {
         }
     }
 
-    /// The mark, then the words, in the quiet secondary style.
+    /// The mark, the words, then a chevron that says the button opens the
+    /// kernel's choices.
     private var chip: some View {
         HStack(spacing: 5) {
             mark
@@ -805,9 +798,11 @@ struct KernelPicker: View {
                     }
                 }
             }
-            .foregroundStyle(.secondary)
+            Image(systemName: "chevron.down")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
         }
-        .font(.caption)
     }
 
     /// The chip's mark in a fixed 10pt frame (#867): a 7pt dot while the
@@ -852,24 +847,6 @@ struct KernelPicker: View {
     private var markKind: HeaderStatus.ChipKind {
         if page.state.kernelMissing { return .missing }
         return header?.chipKind ?? .stopped
-    }
-}
-
-/// The chip's button (#867): no capsule or border, so it reads as words
-/// with the title above it. Under the pointer they take a quiet fill, and
-/// a stronger one while pressed.
-private struct ChipButtonStyle: ButtonStyle {
-    var hovering: Bool
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .padding(.horizontal, 5)
-            .padding(.vertical, 2)
-            .background(
-                RoundedRectangle(cornerRadius: 5)
-                    .fill(Color.primary.opacity(configuration.isPressed ? 0.12 : hovering ? 0.06 : 0))
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 5))
     }
 }
 

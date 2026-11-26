@@ -104,27 +104,26 @@ shown or hidden, its tab and its expanded folders across launches.
 
 ### Toolbar and menus
 
-- A notebook's window has its title in the toolbar, with the kernel chip
-  right under it. The title is the notebook's own (`metadata.title`) or
-  its file's name, and under it the chip reads "Python · This Mac · Idle":
+- A notebook's window has its title in the toolbar, with the kernel's
+  button beside it. The title is the notebook's own (`metadata.title`) or
+  its file's name, and the button reads "Python · This Mac · Idle ⌄":
   the notebook's language, where its kernel runs, and what the kernel is
   doing — Idle, Running, Starting, Restarting, Stopped, or Connecting while
-  it reaches a kernel that runs on a remote. Beside the chip, when there
+  it reaches a kernel that runs on a remote. Under the title, when there
   is something to say, it says where the notebook stands: "Edited" with
   unsaved changes, and "Locked: changed on disk" while the file changed
   under you. A saved file adds nothing there, since "Saved on This Mac" is
   what the window says anyway. A kernel that isn't installed reads "julia
-  not installed · Choose Kernel" beside a warning triangle. The chip's
+  not installed · Choose Kernel" beside a warning triangle. The button's
   mark is a solid blue dot while the kernel waits, a small spinner while
-  it starts, runs or restarts, and a grey dot once it has stopped. The
-  chip is plain words, not a button on a capsule: it takes a quiet fill
-  under the pointer. It opens a popover with the whole status line, the
+  it starts, runs or restarts, and a grey dot once it has stopped. It
+  opens a popover with the whole status line, the
   file's path, the kernel's state and memory, Interrupt, Restart, Kernel
   Log, where kernels run and the kernels to change to, and hovering it
   shows the whole status line. A console's or a folder's window keeps the
-  system's own title, with the chip beside it.
+  system's own title, with the kernel's button beside it.
 - The toolbar's controls stay in one order, so none moves under the
-  pointer: the title with its kernel chip; Trust and Notebook Access, which
+  pointer: the title and the kernel's button; Trust and Notebook Access, which
   are there only while they apply; Notebook | Journal, the notebook's two
   views, there while a notebook is open; **Run Cell**, whose menu has Run
   All, Run with Parameters…, Clear All Outputs, Restart Kernel and Restart
@@ -199,7 +198,7 @@ shown or hidden, its tab and its expanded folders across launches.
 
 - Kernels can run on a remote server instead. Add the remote in
   Settings > Remotes (its editor can switch kernels to it), then pick
-  where kernels run from the kernel chip in the toolbar or Kernel >
+  where kernels run from the kernel's button in the toolbar or Kernel >
   Advanced > Run Kernels On. The sidebar's foot names where they run now
   ("This Mac" or the remote); its menu is where you open a terminal on
   a remote. The choice is app-wide, and switching shuts down running
@@ -963,7 +962,7 @@ with only SSH stays in Settings for shells.
 > (New Terminal On already works there). The Kernel Log tab is in this
 > device's window only: a machine's kernel runs on the machine, and this
 > Mac's server keeps no log of it. A notebook's window has its title in
-> the toolbar with the kernel chip under it, where the release's has the
+> the toolbar with the kernel's button beside it, where the release's has the
 > whole status line under the title.
 
 On the Mac a machine's window is the app's native window: the same
@@ -977,8 +976,8 @@ folders list again once it answers. When it doesn't answer, a failed file
 operation says "_machine_ didn't answer" (or "_machine_ isn't connected to
 this Mac" when it isn't connected).
 Delete removes a machine's file for good (its server keeps no Trash), so
-it always asks first. The title is the notebook or folder, with the kernel
-chip under it and the save part beside the chip for a notebook, and with
+it always asks first. The title is the notebook or folder, with the kernel's
+button beside it and the save part under the title for a notebook, and with
 no notebook open the subtitle reads "on _machine_". A machine's text file
 opens in the app's editor as this Mac's do, read and saved through the
 machine's mount: its window's title is the file and the machine
