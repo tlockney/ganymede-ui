@@ -51,12 +51,17 @@ export const DEFAULT_SETTINGS: AgentSettings = {
 const SETTINGS_KEY = 'ganymede-ui:agent';
 const KEY_PREFIX = 'ganymede-ui:agent-key:';
 
-/** The browser's storage, or undefined where it throws (blocked storage, some private modes). */
-function storage(kind: 'localStorage' | 'sessionStorage'): Storage | undefined {
+/**
+ * The page's storage of that kind, or `null` where reading it throws
+ * (blocked storage, some private modes) or the global is missing.
+ * Callers pass `null` for "no storage": `undefined` would take the default
+ * parameter and read the real globals, which Node 25 and later may also have.
+ */
+function storage(kind: 'localStorage' | 'sessionStorage'): Storage | null {
   try {
-    return globalThis[kind] ?? undefined;
+    return globalThis[kind] ?? null;
   } catch {
-    return undefined;
+    return null;
   }
 }
 
@@ -65,7 +70,7 @@ function isProvider(value: unknown): value is ProviderId {
 }
 
 /** The saved settings, with defaults for anything missing or malformed. */
-export function loadAgentSettings(store = storage('localStorage')): AgentSettings {
+export function loadAgentSettings(store: Storage | null = storage('localStorage')): AgentSettings {
   let raw: Record<string, unknown> = {};
   try {
     const parsed: unknown = JSON.parse(store?.getItem(SETTINGS_KEY) ?? '{}');
@@ -86,7 +91,10 @@ export function loadAgentSettings(store = storage('localStorage')): AgentSetting
 const listeners = new Set<() => void>();
 
 /** Saves the settings. They hold no secrets, so they go in `localStorage`. */
-export function saveAgentSettings(settings: AgentSettings, store = storage('localStorage')): void {
+export function saveAgentSettings(
+  settings: AgentSettings,
+  store: Storage | null = storage('localStorage'),
+): void {
   try {
     store?.setItem(SETTINGS_KEY, JSON.stringify(settings));
   } catch {
@@ -129,11 +137,11 @@ export class BrowserCredentialStore implements KeyStore {
   private chains = new Map<string, Promise<unknown>>();
 
   constructor(
-    private session = storage('sessionStorage'),
-    private local = storage('localStorage'),
+    private session: Storage | null = storage('sessionStorage'),
+    private local: Storage | null = storage('localStorage'),
   ) {}
 
-  private get(store: Storage | undefined, providerId: string): Credential | undefined {
+  private get(store: Storage | null, providerId: string): Credential | undefined {
     try {
       const raw = store?.getItem(KEY_PREFIX + providerId);
       if (!raw) return undefined;
@@ -145,12 +153,12 @@ export class BrowserCredentialStore implements KeyStore {
   }
 
   /** Throws when the storage is missing or refuses the write, so a key is never lost silently. */
-  private put(store: Storage | undefined, providerId: string, credential: Credential): void {
+  private put(store: Storage | null, providerId: string, credential: Credential): void {
     if (!store) throw new Error('this browser blocks storage for this page');
     store.setItem(KEY_PREFIX + providerId, JSON.stringify(credential));
   }
 
-  private remove(store: Storage | undefined, providerId: string): void {
+  private remove(store: Storage | null, providerId: string): void {
     try {
       store?.removeItem(KEY_PREFIX + providerId);
     } catch {
