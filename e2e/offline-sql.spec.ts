@@ -113,13 +113,14 @@ test('SQL tried offline fetches DuckDB once the network is back, without a reloa
   await offline(page);
   await openApp(page, true);
   await newNotebook(page);
-  // The kernel can't reach jsDelivr, nor can the page. (DuckDB's worker
-  // fails to load, and the cell waits on it for good, cdp-kernel#539: a
-  // new kernel is needed either way.)
+  // The kernel can't reach jsDelivr, nor can the page. DuckDB's worker
+  // fails to load, and since cdp-kernel 0.16.0 (cdp-kernel#539) the cell
+  // fails with that error instead of waiting for good. The kernel may also
+  // write a warning naming the load failure, so either output will do.
   const cell = await runSql(page);
-  await expect(cell.locator('.jp-OutputArea-output')).toContainText('failed to load', {
-    timeout: 60_000,
-  });
+  await expect(
+    cell.locator('.jp-OutputArea-output').filter({ hasText: 'failed to load' }).first(),
+  ).toBeVisible({ timeout: 60_000 });
   expect(await cached(page)).toBe(0);
 
   // Back online: SQL in a new kernel fetches DuckDB, for the page as well
