@@ -456,6 +456,11 @@ export function NotebookPane({ backend, path, places, native, onController, onRe
    * keeps: its language and the day it was started. Empty otherwise.
    */
   const [eyebrow, setEyebrow] = useState('');
+  /**
+   * The notebook's `metadata.title` (#867), so a live room's change to it
+   * reaches the app's window title; undefined for a notebook without one.
+   */
+  const [title, setTitle] = useState<string>();
   /** Whether the journal view is showing (#184); decided when the file opens. */
   const [journal, setJournal] = useState(false);
   const journalRef = useRef(false);
@@ -1140,6 +1145,9 @@ export function NotebookPane({ backend, path, places, native, onController, onRe
       });
       const next = outlineOf(cells);
       const key = JSON.stringify(next);
+      // The notebook's title (#867), as the metadata has it: a live room
+      // changes it without reopening the file.
+      setTitle(notebookTitle(model.metadata));
       // The journal's eyebrow above the title (#852), for a notebook an agent
       // keeps: its language and the day it was started. Only the cells'
       // metadata is read, not their code.
@@ -1504,7 +1512,7 @@ export function NotebookPane({ backend, path, places, native, onController, onRe
     const controller: NotebookController = {
       path,
       name: basename(path),
-      title: notebookTitle(model.metadata),
+      title,
       status,
       kernelName: kernelName ?? intended.name,
       missingKernel: kernelName ? undefined : intended.missing,
@@ -1749,6 +1757,7 @@ export function NotebookPane({ backend, path, places, native, onController, onRe
     cellType,
     outline,
     eyebrow,
+    title,
     journal,
     backend,
     onMachine,

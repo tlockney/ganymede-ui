@@ -349,6 +349,22 @@ const modelOf = () => (fakes.notebooks[0] as { model: NotebookModel }).model;
 const modelOf2 = () => (fakes.notebooks[1] as { model: NotebookModel }).model;
 
 describe('NotebookPane', () => {
+  it('reports the notebook’s metadata title, and a change to it (#867)', async () => {
+    const named = structuredClone(NOTEBOOK);
+    named.metadata.title = 'Io moons';
+    const { latest } = setup(vi.fn(async () => ({ path: 'moons/Io.ipynb', content: named })));
+    await waitFor(() => expect(latest()?.title).toBe('Io moons'));
+    // A live room changes the title in the file's metadata, without a reload.
+    act(() => modelOf().setMetadata('title', 'Europa'));
+    await waitFor(() => expect(latest()?.title).toBe('Europa'));
+  });
+
+  it('reports no title when the notebook’s metadata has none (#867)', async () => {
+    const { latest } = setup();
+    await waitFor(() => expect(latest()).toBeDefined());
+    expect(latest()!.title).toBeUndefined();
+  });
+
   it('opens a notebook an agent kept as a journal, and switches to the notebook and back (#184)', async () => {
     const kept = structuredClone(NOTEBOOK);
     kept.cells[0]!.metadata = {
