@@ -146,10 +146,8 @@ struct ContentView: View {
             workspace
         }
         .toolbar {
-            // New Notebook takes `sidebarRoot` by its server path, a
-            // machine's too (#740).
             NotebookToolbar(
-                page: pageModel, document: document, folder: sidebarRoot,
+                page: pageModel, document: document,
                 // The kernel popover's Kernel Log is this device's window's
                 // alone (#858), so a machine's window passes no panel to it.
                 panel: place.isThisDevice ? panel : nil, place: place, header: headerStatus)

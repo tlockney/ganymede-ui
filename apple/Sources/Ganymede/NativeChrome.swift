@@ -591,17 +591,16 @@ struct ServerLine: View {
 /// In a fixed order, so no control moves under the pointer: the kernel's
 /// chip, beside the title (its dot, the kernel's name, where it runs and
 /// what it is doing; its popover has the file and the kernels to change
-/// to); New Notebook; Trust and Notebook Access, which are there only
-/// while they apply; Notebook | Journal, there while a notebook is open
-/// (#819); Run Cell with its run menu; Interrupt, always there and enabled
-/// while the kernel is busy; Share; and More. That is nine items, under
-/// the ten a ToolbarContentBuilder takes.
+/// to); Trust and Notebook Access, which are there only while they apply;
+/// Notebook | Journal, there while a notebook is open (#819); Run Cell with
+/// its run menu and Interrupt, in one group, always there and enabled while
+/// the kernel is busy; Share; and More. That is seven items, under the ten
+/// a ToolbarContentBuilder takes. New Notebook is File > New Notebook
+/// (⌘N), not a toolbar button (#867).
 struct NotebookToolbar: ToolbarContent {
     var page: PageModel
     /// Saved as File > Save saves it, and enabled when that is.
     var document: PageDocument
-    /// Where New Notebook puts it: the window's folder.
-    let folder: URL
     /// The window's bottom panel, for the kernel popover's Kernel Log.
     var panel: PanelController?
     /// The window's place: a machine's kernel popover has no Runs On.
@@ -614,14 +613,6 @@ struct NotebookToolbar: ToolbarContent {
         // it used to say all of this (#867).
         ToolbarItem(placement: .navigation) {
             KernelPicker(page: page, panel: panel, place: place, header: header)
-        }
-        ToolbarItem(placement: .navigation) {
-            Button {
-                page.run("new-notebook", arg: FolderEntry.serverPath(folder))
-            } label: {
-                Label("New Notebook", systemImage: "square.and.pencil")
-            }
-            .help("New Notebook (⌘N)")
         }
         // Only while the notebook isn't trusted.
         if !page.state.trusted {
@@ -644,10 +635,10 @@ struct NotebookToolbar: ToolbarContent {
                 JournalViewPicker(page: page)
             }
         }
-        ToolbarItem {
+        // Run Cell with its run menu, and Interrupt: one group, so the pair
+        // reads as one control and neither drifts from the other (#867).
+        ToolbarItemGroup {
             RunCellMenu(page: page)
-        }
-        ToolbarItem {
             Button { page.run("interrupt") } label: { Label("Interrupt", systemImage: "stop.fill") }
                 .labelStyle(.titleAndIcon)
                 .help("Interrupt the kernel (⌘.)")
