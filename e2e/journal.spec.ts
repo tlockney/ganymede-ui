@@ -115,9 +115,11 @@ test('says what the notebook is above its first cell with the native chrome (#86
 });
 
 // A phone has no room for the line, an iPad does (#867): the CSS hides it
-// at the phone's width, as `.touch-ui` is on both.
+// at the phone's width, as `.touch-ui` is on both. A phone on its side is
+// wider than a phone and shorter than an iPad, so its height hides it too.
 for (const { name, width, height, shows } of [
   { name: 'a phone', width: 375, height: 800, shows: false },
+  { name: 'a phone on its side', width: 852, height: 393, shows: false },
   { name: 'an iPad', width: 820, height: 1180, shows: true },
 ]) {
   test.describe(`the page eyebrow with the native chrome on ${name}`, () => {

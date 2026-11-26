@@ -14,7 +14,10 @@ journal's window was titled with its file's name — the day it started,
   apps' page has no `.touch-ui`; an iPad's does, and keeps the line,
   where a phone has no room for it: `.touch-ui` at the phone's width
   (719.98px, the width the rest of the CSS calls a phone) hides it, as
-  the toolbar's `.touch-ui` hides its eyebrow on both.
+  the toolbar's `.touch-ui` hides its eyebrow on both. A phone on its
+  side is 852px wide, so the height says it too: `.touch-ui` in a window
+  520px tall or less hides it, the height the start screen already calls
+  short.
 - The line sits in the cells' column, and the column's edge is two
   paddings in: the notebook's own 32px inside the 1064px measure, then
   JupyterLab's `--jp-notebook-padding` (10px) on the cells' viewport. The
@@ -22,8 +25,8 @@ journal's window was titled with its file's name — the day it started,
   the cards. It uses the variable, so a theme's padding carries.
 - `.notebook-page` fills `.content`, so the scroll area would cover a line
   in the flow above it: it starts 30px down (6px + 16px of line, 8px of
-  margin) while the line is there, and none of that on a phone, which
-  hides the line.
+  margin) while the line is there, and none of that where the line is
+  hidden: on a phone, upright or on its side.
 - `PageState.title` (the page's post to the app, `src/lib/native.ts`) is
   the open notebook's `metadata.title` when it is a non-empty string,
   else null: `notebookTitle` in `journal.ts` reads it, trimmed (a title of

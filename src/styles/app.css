@@ -507,8 +507,10 @@ button {
 }
 
 /* A phone's page has no room for it (#867), an iPad's has: `.touch-ui` is
- * both, so the phone's width says which. */
-@media (max-width: 719.98px) {
+ * both, so the phone's width says which. A phone on its side is as wide as
+ * an iPad and shorter than one, so its height says so too: 520px is the
+ * short window the start screen's mark shrinks for, below. */
+@media (max-width: 719.98px), (max-height: 520px) {
   .touch-ui .page-eyebrow {
     display: none;
   }
