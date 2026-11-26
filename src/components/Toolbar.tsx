@@ -5,10 +5,13 @@ import { NotebookTitle } from './NotebookTitle';
 import { ContextMenu, type MenuItem } from './ContextMenu';
 import { DEVICE_LABEL, isPageSpec, offersDevice, pickerLabel } from '../lib/kernel-device';
 import { type Place, shortStatusText, statusText } from '../lib/header-status';
+import { useNarrow } from '../lib/useNarrow';
 import {
   ChevronDownIcon,
+  JournalIcon,
   MoreIcon,
   LockIcon,
+  NotebookIcon,
   PlayIcon,
   PublishIcon,
   ShieldIcon,
@@ -95,6 +98,7 @@ export function Toolbar({
   const kernels = Object.values(specs?.kernelspecs ?? {}).flatMap(s => (s ? [s] : []));
 
   const [open, setOpen] = useState<MenuName>();
+  const narrow = useNarrow();
   const anchors = {
     status: useRef<HTMLButtonElement>(null),
     run: useRef<HTMLButtonElement>(null),
@@ -242,12 +246,56 @@ export function Toolbar({
           <SidebarIcon />
         </button>
         <div className="title-block">
-          <NotebookTitle
-            // A fresh field for each notebook.
-            key={c?.path}
-            name={c ? c.name.replace(/\.ipynb$/, '') : 'Ganymede'}
-            onRename={c?.rename}
-          />
+          <div className="title-row">
+            <NotebookTitle
+              // A fresh field for each notebook.
+              key={c?.path}
+              name={c ? c.name.replace(/\.ipynb$/, '') : 'Ganymede'}
+              onRename={c?.rename}
+            />
+            {c && onToggleJournal && (!narrow || c.journal) && (
+              // The header names which view shows (#819); the other part calls
+              // the same toggle as the More menu item, which keeps the cell.
+              // On a phone it takes a row of its own, so only the journal
+              // view shows it; the notebook keeps the ⋯ item and its height.
+              <div
+                className="mode-switch"
+                role="group"
+                aria-label={`View: ${c.journal ? 'Journal' : 'Notebook'}`}
+              >
+                <button
+                  type="button"
+                  aria-label="Notebook"
+                  title="Notebook"
+                  aria-pressed={!c.journal}
+                  onClick={() => {
+                    if (c.journal) {
+                      onToggleJournal();
+                      // On a phone this unmounts the control, and focus would
+                      // fall out of the header: the More (⋯) button takes it,
+                      // its View item being the control's twin (#819).
+                      if (narrow) anchors.more.current?.focus();
+                    }
+                  }}
+                >
+                  <NotebookIcon />
+                  <span className="mode-label">Notebook</span>
+                </button>
+                <button
+                  type="button"
+                  aria-label="Journal"
+                  title="Journal"
+                  aria-pressed={c.journal}
+                  onClick={() => {
+                    if (!c.journal) onToggleJournal();
+                  }}
+                >
+                  <JournalIcon />
+                  <span className="mode-label">Journal</span>
+                </button>
+              </div>
+            )}
+          </div>
           {c && (
             <button
               type="button"

@@ -28,6 +28,7 @@ test.describe('portrait phone', () => {
     await openBrowserNotebook(page, { top: 59, right: 0, bottom: 34, left: 0 });
     const toolbar = await box(page, '.toolbar');
     expect(toolbar.y).toBe(0);
+    // A notebook on a phone has no Notebook | Journal row (#819).
     expect(toolbar.height).toBe(52 + 59);
     // The title is in the part below the inset.
     const title = await box(page, '.toolbar .title');

@@ -1095,6 +1095,15 @@ journal than as cells. **View as Journal** shows the open notebook that
 way: the toolbar in the browser, View › View as Journal in the Mac app,
 the notebook's More menu on the iPad and iPhone, or the Command Palette.
 **Open as Notebook** goes back to full editing, in the same live room and on the same kernel.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release. The header names which view shows: a
+> **Notebook | Journal** control beside the title, in the browser and in
+> the Mac and iPad apps' toolbars. On a phone-width browser it shows only
+> in the journal view, on a row under the title. Picking the other part
+> switches, keeping your place by cell, and the ways above still work.
+
 A notebook with cells an agent wrote opens as a journal; any other opens as
 a notebook. Your choice for a file holds until you close the app or page,
 including when the file is reopened after a Reload or a server restart,

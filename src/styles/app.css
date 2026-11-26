@@ -152,6 +152,7 @@ button {
 
 .sidebar-titlebar {
   /* Room for the traffic lights, and a drag handle in an installed app. */
+  /* var(--toolbar-h) on purpose: it stays aligned with the toolbar, which grows for the control (#819). */
   height: var(--toolbar-h);
   flex: none;
   app-region: drag;
@@ -402,9 +403,32 @@ button {
   flex: none;
 }
 
+/* The title over the status line (#801), with the Notebook | Journal
+ * control beside the title (#819); the status line keeps the full width. */
 .title-block {
   min-width: 0;
   margin-left: 4px;
+}
+
+/* The title and the control beside it (#819): the title truncates first,
+ * so the control sits next to it however long the name. */
+.title-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.title-row .title,
+.title-row .title-field {
+  min-width: 0;
+}
+
+/* The button's -4px side margins make the .title its content sizes 8px
+ * narrower than the box it needs, so its cap grows by the padding they
+ * cancel: with room the whole name shows, and it truncates only when the
+ * toolbar really runs out of it. */
+.title-row .title-button {
+  max-width: calc(100% + 8px);
 }
 
 .title {
@@ -503,6 +527,80 @@ button {
   white-space: nowrap;
 }
 
+/* Notebook | Journal beside the title (#819): the header names which view
+ * shows, and the other part switches to it, as the More menu item does. */
+.mode-switch {
+  display: flex;
+  flex: none;
+  grid-area: mode;
+  margin-left: 6px;
+  border: 1px solid var(--separator);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.mode-switch button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 28px;
+  padding: 0 9px;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.mode-switch button + button {
+  border-left: 1px solid var(--separator);
+}
+
+.mode-switch button:hover:not([aria-pressed='true']) {
+  background: var(--hover);
+}
+
+.mode-switch button[aria-pressed='true'] {
+  background: var(--selected);
+  color: var(--text);
+}
+
+.mode-label {
+  white-space: nowrap;
+}
+
+/* A touch screen: targets of 44px (#819). The control is taller than the
+ * title's row, so it spans the title and the status line beside them and
+ * the toolbar's fixed 52px still holds everything. */
+.touch-ui .title-row {
+  display: contents;
+}
+
+.touch-ui .title-block {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    'title mode'
+    'status mode';
+  align-items: center;
+}
+
+.touch-ui .title-block .title,
+.touch-ui .title-block .title-field {
+  grid-area: title;
+}
+
+.touch-ui .title-block .status-line {
+  grid-area: status;
+}
+
+.touch-ui .mode-switch button {
+  min-height: 44px;
+}
+
 /* Run Cell filled, joined to its menu button (#801). */
 .run-group {
   display: flex;
@@ -547,6 +645,7 @@ button {
 .run-button:focus-visible,
 .run-menu-button:focus-visible,
 .status-line:focus-visible,
+.mode-switch button:focus-visible,
 .tb-button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
@@ -611,6 +710,35 @@ button {
      * is left past the buttons and the sidebar toggle (~230px below 720px,
      * where the labels are gone), instead of running under Run Cell. */
     min-width: min(120px, calc(100vw - 230px));
+  }
+  /* The Notebook | Journal control is its icons below 720px (#819). */
+  .mode-label {
+    display: none;
+  }
+  .mode-switch button {
+    padding: 0 6px;
+  }
+  /* A phone has no room beside the title: the control gets a slim row of
+   * its own under the status line, and the toolbar grows by its 44px to
+   * hold it — only while the header has the control at all. */
+  :root.touch-ui:has(.toolbar .mode-switch) {
+    --toolbar-h: calc(52px + 44px + var(--safe-top));
+  }
+  :root.touch-ui:has(.toolbar .mode-switch) .title-block {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      'title'
+      'status'
+      'mode';
+  }
+  .touch-ui .title-block .mode-switch {
+    margin-left: 0;
+  }
+  /* The control's own row: its two buttons share its width, so the box
+   * ends at them and each is a 44px target. */
+  .touch-ui .mode-switch button {
+    flex: 1 1 0;
+    min-width: 44px;
   }
 }
 
