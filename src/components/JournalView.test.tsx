@@ -208,6 +208,15 @@ describe('JournalView', () => {
     expect(screen.getByText(/print\(x\)/)).toBeInTheDocument();
   });
 
+  it('says what a cell’s outputs are, not that they were saved (#852)', async () => {
+    const nb = withOutput({ 'image/svg+xml': '<svg xmlns="http://www.w3.org/2000/svg"/>' });
+    show(nb);
+    const cell = (await screen.findAllByRole('article'))[0]!;
+    const meta = cell.querySelector('.journal-output-meta')!;
+    expect(meta).toHaveTextContent('SVG');
+    expect(meta).not.toHaveTextContent('saved output');
+  });
+
   it('shows the earlier source behind a rev chip', async () => {
     show(journal());
     const chip = await screen.findByRole('button', { name: /Revision 2/ });

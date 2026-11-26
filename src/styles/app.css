@@ -2850,7 +2850,7 @@ button {
 }
 
 /* The notebook's meta line under a figure's output (#852), in the journal's
- * own words: "saved output", since a journal's outputs are the file's. */
+ * own words: what the outputs are, with no time. */
 .journal-output-meta {
   margin-top: 8px;
   padding-top: 5px;

@@ -7,9 +7,11 @@ import type { Notebook } from '@jupyterlab/notebook';
 
 // The menu's own behaviour; the actions are cell-controls.test.ts's.
 const applyCellAction = vi.hoisted(() => vi.fn(async () => {}));
+const toggleOutputs = vi.hoisted(() => vi.fn());
 vi.mock('../lib/cell-controls', async importOriginal => ({
   ...(await importOriginal<typeof import('../lib/cell-controls')>()),
   applyCellAction,
+  toggleOutputs,
 }));
 
 const { CellMenu } = await import('./CellMenu');
@@ -157,5 +159,25 @@ describe('CellMenu', () => {
     setup(1, 'code', false, 1, true);
     expect(screen.getByRole('menuitem', { name: 'Show Output' })).toBeInTheDocument();
     expect(screen.queryByRole('menuitem', { name: 'Collapse Output' })).toBeNull();
+  });
+
+  it('collapses the cell’s outputs (#852), as its own cell', async () => {
+    const { notebook, cell } = setup(1, 'code', false, 1);
+    toggleOutputs.mockClear();
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Collapse Output' }));
+    // What toggling them comes to is cell-controls.test.ts's; here, that the
+    // menu asks for it, for its own cell.
+    expect(toggleOutputs).toHaveBeenCalledWith(notebook, cell);
+    expect(notebook.activate).toHaveBeenCalled();
+  });
+
+  it('offers Collapse Output disabled while the machine is away (#852)', async () => {
+    const { cell } = setup(1, 'code', true, 1);
+    toggleOutputs.mockClear();
+    const item = screen.getByRole('menuitem', { name: 'Collapse Output' });
+    expect(item).toBeDisabled();
+    await userEvent.click(item);
+    expect(toggleOutputs).not.toHaveBeenCalled();
+    expect((cell as unknown as { outputHidden: boolean }).outputHidden).toBe(false);
   });
 });

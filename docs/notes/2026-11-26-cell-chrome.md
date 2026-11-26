@@ -22,8 +22,9 @@ only statement about what a cell had produced was the output itself.
   `CellMenu` touch already used.
 - Under a cell's outputs, one `gn-output-meta` line says what they are and
   how long the run took (`Text · Image · 1.2 s`), from `output-labels.ts`.
-  With no kernel attached it says `saved output` instead, since nothing is
-  there to say how long it took.
+  A cell whose outputs came from the file says `saved output` instead,
+  until this page runs it (`saved: !runs.hasRun(cell.model)`), kernel or
+  not. The journal's cards list the kinds only, with no time.
 - Focus reads on the card: a selected cell takes the accent as its edge,
   and an editor with focus adds a 2 px ring of the accent around the card
   (`:has(.cm-editor.cm-focused)`), in place of a ring on the editor box.

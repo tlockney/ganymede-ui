@@ -427,8 +427,9 @@ const JournalCell = memo(function JournalCell({
   const revisions = revisionsOf(cell);
   const source = sourceOf(cell);
   const outputs = (cell.outputs ?? []) as Record<string, unknown>[];
-  // The notebook's meta line under the outputs (#852), the file's own here.
-  const meta = outputMetaText(outputs as nbformat.IOutput[], { saved: true });
+  // The notebook's meta line under the outputs (#852): what the outputs are,
+  // not what they were saved as or how long a run here took.
+  const meta = outputMetaText(outputs as nbformat.IOutput[]);
   return (
     <article
       className={`journal-cell journal-${p.kind}`}

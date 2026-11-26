@@ -180,7 +180,7 @@ export function formatOutputTime(ms: number): string {
 /**
  * What a cell's meta line says, or undefined for no line: "saved output" for
  * outputs that came from the file, else what they are and how long the run
- * took ("SVG · 38 ms"). The journal shows the same line under its figures.
+ * took ("SVG · 38 ms"). The journal's cards list the kinds only, with no time.
  */
 export function outputMetaText(
   outputs: readonly nbformat.IOutput[],
