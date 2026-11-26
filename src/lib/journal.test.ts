@@ -385,7 +385,7 @@ describe('journalHeader', () => {
   const at = (iso: string) => ({ metadata: agent('note', { at: iso }).metadata });
   const fmt = (d: Date) => d.toISOString().slice(0, 10);
 
-  it('says the title, kernel, who started it and when, and the cell count', () => {
+  it('puts the language and the earliest day in an eyebrow, then the title and who started it', () => {
     const cells = [
       at('2026-11-19T12:00:00Z'),
       { metadata: {} },
@@ -399,8 +399,9 @@ describe('journalHeader', () => {
         fmt,
       ),
     ).toEqual({
+      eyebrow: 'Python 3 · 2026-11-18',
       title: 'Trend',
-      details: ['Python 3', 'Started by other 2026-11-18', '3 cells'],
+      details: ['Started by other', '3 cells'],
     });
   });
 
@@ -410,17 +411,17 @@ describe('journalHeader', () => {
       { metadata: agent('note', { by: 'bob', at: '2026-11-18T12:00:00Z' }).metadata },
       { metadata: agent('note', { by: '', at: '2026-11-17T12:00:00Z' }).metadata },
     ];
-    expect(journalHeader({}, cells, 'x.ipynb', fmt).details).toEqual([
-      'Started by alice 2026-11-17',
-      '3 cells',
-    ]);
+    const header = journalHeader({}, cells, 'x.ipynb', fmt);
+    expect(header.eyebrow).toBe('2026-11-17');
+    expect(header.details).toEqual(['Started by alice', '3 cells']);
   });
 
-  it('falls back to the file name, the language, and says nothing of a start with no agent', () => {
+  it('falls back to the file name and the language, and says nothing of a start with no agent', () => {
     expect(
       journalHeader({ language_info: { name: 'python' } }, [{ metadata: {} }], 'Io moons.ipynb'),
-    ).toEqual({ title: 'Io moons', details: ['python', '1 cell'] });
+    ).toEqual({ eyebrow: 'python', title: 'Io moons', details: ['1 cell'] });
     expect(journalHeader({}, [], 'x.ipynb').details).toEqual(['0 cells']);
+    expect(journalHeader({}, [], 'x.ipynb').eyebrow).toBe('');
   });
 });
 

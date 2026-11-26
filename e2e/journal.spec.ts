@@ -60,6 +60,11 @@ test('opens an agent’s notebook as a journal, and writes a note and a request'
 
   const journal = page.getByRole('region', { name: `Journal of ${FILE}` });
   await expect(journal).toBeVisible();
+  // The header (#852): the language and the day of the earliest cell in an
+  // eyebrow, then the title and who started it in the meta line.
+  await expect(journal.locator('.journal-eyebrow')).toHaveText(/^typescript · /);
+  await expect(journal.locator('.journal-title')).toHaveText('Journal e2e');
+  await expect(journal.locator('.journal-meta')).toHaveText(/Started by claude-code · 3 cells/);
   const cells = journal.getByRole('article');
   await expect(cells).toHaveCount(3);
   await expect(cells.nth(0)).toContainText('Agent note');

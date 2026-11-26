@@ -223,7 +223,7 @@ describe('text contrast (#799)', () => {
       // source tint are non-text: 3:1, not 4.5:1 (#845 review).
       const vars = variables(theme);
       const accent = color(resolve('var(--accent)', vars));
-      for (const bg of ['var(--window-bg)', 'var(--sidebar-solid)']) {
+      for (const bg of ['var(--window-bg)', 'var(--sidebar-solid)', 'var(--cell-bg)']) {
         const ratio = contrast(accent, color(resolve(bg, vars)));
         expect(ratio, `${bg} ${ratio.toFixed(2)}`).toBeGreaterThanOrEqual(3);
       }
@@ -363,12 +363,18 @@ describe('text contrast (#799)', () => {
 });
 
 describe('secondary metadata text (#814)', () => {
-  // The status line in the toolbar (Toolbar.tsx) and a cell's meta line
-  // (cell-controls.ts): --meta-color, as strong as the prompts (#799). The
-  // --text-2 they used before fails here in light: 4.36:1 on a selected
-  // cell's --accent-soft and 4.47:1 on the status line's hover fill.
+  // The status line in the toolbar (Toolbar.tsx), a cell's meta line
+  // (cell-controls.ts), the meta line under a cell's outputs and the run
+  // gutter's count and time (#852): --meta-color, as strong as the prompts
+  // (#799). The --text-2 they used before fails here in light: 4.36:1 on a
+  // selected cell's --accent-soft and 4.47:1 on the status line's hover
+  // fill.
   const status = '.status-line';
-  const meta = '.touch-ui .notebook-page .gn-cell-meta';
+  const metaLines = [
+    '.touch-ui .notebook-page .gn-cell-meta',
+    '.notebook-page .gn-output-meta',
+    ':root:not(.touch-ui) .notebook-page .gn-cell-gutter',
+  ];
 
   for (const theme of themes) {
     it(`the status line reads at ${AA}:1 in ${theme}, still and on hover`, () => {
@@ -387,16 +393,19 @@ describe('secondary metadata text (#814)', () => {
       expect(onHover, onHover.toFixed(2)).toBeGreaterThanOrEqual(AA);
     });
 
-    it(`the cell meta line reads at ${AA}:1 in ${theme}, on the page and on a selected cell`, () => {
+    it(`the cell’s meta text reads at ${AA}:1 in ${theme}, on the card and selected`, () => {
       const vars = variables(theme);
       const page = color(resolve('var(--window-bg)', vars));
-      // The line shows on the active cell, which a multiselect fills as
-      // any other selected cell.
-      const selected = over(color(resolve('var(--jp-notebook-multiselected-color)', vars)), page);
-      const text = color(resolve(decl(jupyter, meta, 'color', theme)!, vars));
-      for (const bg of [page, selected]) {
-        const ratio = contrast(over(text, bg), bg);
-        expect(ratio, ratio.toFixed(2)).toBeGreaterThanOrEqual(AA);
+      // A cell is a card now (#852); a selected one still takes JupyterLab's
+      // multiselect fill, which a multiselect of one draws too.
+      const card = over(color(resolve('var(--cell-bg)', vars)), page);
+      const selected = over(color(resolve('var(--jp-notebook-multiselected-color)', vars)), card);
+      for (const selector of metaLines) {
+        const text = color(resolve(decl(jupyter, selector, 'color', theme)!, vars));
+        for (const bg of [card, selected]) {
+          const ratio = contrast(over(text, bg), bg);
+          expect(ratio, `${selector} ${ratio.toFixed(2)}`).toBeGreaterThanOrEqual(AA);
+        }
       }
     });
   }

@@ -319,6 +319,10 @@ to all cells, and is remembered in this browser's local storage.
 
 ### Reading outputs
 
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
 An error output starts with **Execution failed** and its exception
 summary (`ZeroDivisionError: division by zero`), above the traceback; a
 cell stopped with Interrupt says **Execution stopped**. Text on stderr is
@@ -326,9 +330,20 @@ marked **Warning**. A stream longer than 20 lines is collapsed to its last
 lines under a bar that says **Log, N lines**; **View full log** opens all
 of it and **Show last lines** goes back. When
 no kernel is attached, outputs the notebook was saved with say **Saved
-output**.
+output**. A line under the outputs else says what they are and how long
+the run took, as in "Text · Image · 1.2 s".
 
 ### Running cells and errors
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+Each code cell is a card, and its left margin has a round Run button and
+the cell's execution count. While the cell runs the button counts the
+seconds; a line under its outputs keeps the time afterwards. The cell's
+toolbar moves, duplicates, and opens its ⋯ menu, which has Delete and
+Cell Type.
 
 The cell the kernel is running says so under its input, with how long it
 has run and an Interrupt button; cells waiting behind it say they are

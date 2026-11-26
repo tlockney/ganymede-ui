@@ -10,6 +10,7 @@ import {
   outputs,
   runAll,
   screenshot,
+  selectCell,
   statusLine,
   toolbarMenu,
   waitForIdle,
@@ -47,7 +48,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
     // Saved, so the status line doesn't say "Edited"; the HTML cell selected.
     await toolbarMenu(page, 'More', 'Save');
     await expect(statusLine(page)).toHaveAccessibleName(/^Saved on /);
-    await page.locator('.jp-Cell').nth(4).locator('.jp-InputPrompt').click();
+    await selectCell(page, 4);
     await screenshot(page, testInfo, `notebook-${colorScheme}`);
   });
 }

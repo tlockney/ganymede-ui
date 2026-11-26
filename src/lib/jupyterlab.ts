@@ -57,10 +57,8 @@ import { ObservableList } from '@jupyterlab/observables';
 import {
   type LabIcon,
   ToolbarButton,
-  addAboveIcon,
-  addBelowIcon,
-  deleteIcon,
   duplicateIcon,
+  ellipsesIcon,
   moveDownIcon,
   moveUpIcon,
 } from '@jupyterlab/ui-components';
@@ -408,20 +406,28 @@ export function recheckToolbarOverlap(notebook: Notebook): IDisposable {
 
 type CellAction = (notebook: Notebook) => void;
 
-/** The buttons on the active cell: JupyterLab's default cell toolbar. */
-const CELL_TOOLBAR: [name: string, icon: LabIcon, tooltip: string, action: CellAction][] = [
+/**
+ * The buttons on the active cell (#852): the capsule moves, duplicates and
+ * offers ⋯. Delete and Cell Type live in the ⋯ menu (CellMenu), so a slip
+ * can't delete a cell from the capsule.
+ */
+const CELL_TOOLBAR: [name: string, icon: LabIcon, tooltip: string, action?: CellAction][] = [
+  ['move-cell-up', moveUpIcon, 'Move cell up', n => NotebookActions.moveUp(n)],
+  ['move-cell-down', moveDownIcon, 'Move cell down', n => NotebookActions.moveDown(n)],
   [
     'duplicate-cell',
     duplicateIcon,
     'Duplicate cell',
     n => NotebookActions.duplicate(n, 'belowSelected'),
   ],
-  ['move-cell-up', moveUpIcon, 'Move cell up', n => NotebookActions.moveUp(n)],
-  ['move-cell-down', moveDownIcon, 'Move cell down', n => NotebookActions.moveDown(n)],
-  ['insert-cell-above', addAboveIcon, 'Insert cell above', n => NotebookActions.insertAbove(n)],
-  ['insert-cell-below', addBelowIcon, 'Insert cell below', n => NotebookActions.insertBelow(n)],
-  ['delete-cell', deleteIcon, 'Delete cell', n => NotebookActions.deleteCells(n)],
+  ['cell-actions', ellipsesIcon, 'Cell actions'],
 ];
+
+/** What `attachEditing` adds beyond JupyterLab's own extensions. */
+export type EditingOptions = {
+  /** The ⋯ toolbar button: open a cell's menu under `anchor`. */
+  onCellMenu?(cell: Cell, anchor: HTMLElement): void;
+};
 
 /**
  * documentsearch's find bar, rendered only while it is in the page. The
@@ -465,14 +471,15 @@ function panelOf(notebook: Notebook): NotebookPanel {
  * - Accel+F opens the find bar over the notebook, Accel+G and Shift+Accel+G
  *   step through the matches (as do Enter and Shift+Enter in the bar),
  *   Escape closes it.
- * - The active cell gets JupyterLab's cell toolbar (duplicate, move, insert,
- *   delete).
+ * - The active cell gets its capsule (#852): move up and down, duplicate,
+ *   and ⋯ for the cell menu (CellMenu), where Delete lives.
  */
 export function attachEditing(
   notebook: Notebook,
   session: ISessionContext,
   rendermime: IRenderMimeRegistry,
   commands: CommandRegistry,
+  options: EditingOptions = {},
 ): IDisposable {
   const disposables = new DisposableSet();
   const id = notebook.id;
@@ -598,19 +605,24 @@ export function attachEditing(
       if (cell.inputArea) fillColor.getValueFor(cell.inputArea.node);
     });
     const items = new ObservableList<{ name: string; widget: Widget }>();
-    items.pushAll(
-      CELL_TOOLBAR.map(([name, icon, tooltip, action]) => ({
-        name,
-        widget: new ToolbarButton({
-          icon,
-          tooltip,
-          // cell-toolbar's stylesheet only shows buttons marked for the
-          // cell's type.
-          className: 'jp-cell-all',
-          onClick: () => action(notebook),
-        }),
-      })),
-    );
+    for (const [name, icon, tooltip, action] of CELL_TOOLBAR) {
+      const act = action;
+      const widget = new ToolbarButton({
+        icon,
+        tooltip,
+        // cell-toolbar's stylesheet only shows buttons marked for the
+        // cell's type.
+        className: 'jp-cell-all',
+        onClick: act ? () => act(notebook) : undefined,
+      });
+      if (name === 'cell-actions') {
+        widget.onClick = () => {
+          const cell = notebook.activeCell;
+          if (cell) options.onCellMenu?.(cell, widget.node);
+        };
+      }
+      items.push({ name, widget });
+    }
     return items;
   });
   disposables.add(cellToolbar);

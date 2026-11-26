@@ -688,15 +688,18 @@ export function forgetChosenViews(): void {
 
 /** What the header says of the notebook. */
 export type JournalHeaderData = {
+  /** The mono line above the title: "PYTHON · 9 NOV 2026". */
+  eyebrow: string;
   title: string;
-  /** Kernel or language, who started it and when, the cell count: each a short phrase. */
+  /** Who started it and the cell count: each a short phrase. */
   details: string[];
 };
 
 /**
- * The header's text: the notebook's `metadata.title` or else the file name
- * without its extension; the kernel (its display name, else its language);
- * who started it (the agent of the earliest-dated agent cell) and when; and the cell count.
+ * The header's text: an eyebrow of the language and the day the earliest
+ * agent cell was written (#852); the notebook's `metadata.title` or else the
+ * file name without its extension; who started it (the agent of the
+ * earliest-dated agent cell) and the cell count.
  */
 export function journalHeader(
   metadata: unknown,
@@ -708,7 +711,7 @@ export function journalHeader(
   const title = text(meta.title) ?? (fileName.replace(/\.ipynb$/i, '') || fileName);
   const kernelspec = isRecord(meta.kernelspec) ? meta.kernelspec : {};
   const info = isRecord(meta.language_info) ? meta.language_info : {};
-  const kernel = text(kernelspec.display_name) ?? text(info.name) ?? text(kernelspec.language);
+  const language = text(kernelspec.language) ?? text(info.name) ?? text(kernelspec.display_name);
   // The agent and time of the earliest-dated agent cell; with no dates, the
   // first agent in document order.
   let by: string | undefined;
@@ -723,13 +726,11 @@ export function journalHeader(
     }
   }
   by ??= agentNames(cells)[0];
+  const eyebrow = [language, first !== undefined ? formatDate(new Date(first)) : undefined]
+    .filter((part): part is string => part !== undefined)
+    .join(' · ');
   const details: string[] = [];
-  if (kernel) details.push(kernel);
-  if (by || first !== undefined) {
-    details.push(
-      `Started${by ? ` by ${by}` : ''}${first !== undefined ? ` ${formatDate(new Date(first))}` : ''}`,
-    );
-  }
+  if (by) details.push(`Started by ${by}`);
   details.push(cells.length === 1 ? '1 cell' : `${cells.length} cells`);
-  return { title, details };
+  return { eyebrow, title, details };
 }

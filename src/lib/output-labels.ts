@@ -9,7 +9,9 @@
  * - A long stream (a loop's prints, a training log) shows its last lines,
  *   with a "Log, N lines" label and a "View full log" button that opens
  *   all of it and "Show last lines" to go back.
- * - Outputs with no kernel to have made them say "Saved output".
+ * - Under each cell's outputs, below a hairline, a meta line says what they
+ *   are and how long the run took ("SVG · 38 ms"), or "saved output" for
+ *   outputs with no kernel to have made them (#852).
  * - A chart or table wider than the prose column goes wide: the class
  *   `gn-mod-wide` has jupyter.css span the pane with it, past the column
  *   on both sides, capped inside the pane. A stream never does (its text
@@ -44,11 +46,13 @@ export const PANE_GUTTER = 32;
 export const WIDE_SLACK = 8;
 
 const BAR = 'gn-output-bar';
-const SAVED = 'gn-saved-output';
+const META = 'gn-output-meta';
 
 type Options = {
   /** Whether a kernel is attached: without one, outputs are only what was saved. */
   hasKernel(): boolean;
+  /** The clock, for a run's time (tests). */
+  now?(): number;
 };
 
 export type OutputLabels = IDisposable & {
@@ -129,7 +133,51 @@ export function labelFor(
   return undefined;
 }
 
-export function attachOutputLabels(notebook: Notebook, { hasKernel }: Options): OutputLabels {
+/** One output's kind, as the meta line names it. */
+function kindOf(output: nbformat.IOutput): string | undefined {
+  if (output.output_type === 'stream') return output.name === 'stderr' ? 'Warning' : 'Text';
+  if (output.output_type === 'error') return 'Error';
+  const data = (output as nbformat.IDisplayData).data;
+  if (!data) return undefined;
+  if (data['image/svg+xml'] !== undefined) return 'SVG';
+  if (data['image/png'] !== undefined || data['image/jpeg'] !== undefined) return 'Image';
+  if (typeof data['text/html'] === 'string' && /<table[\s>]/i.test(data['text/html']))
+    return 'Table';
+  for (const [mime, kind] of [
+    ['text/html', 'HTML'],
+    ['text/markdown', 'Markdown'],
+    ['application/json', 'JSON'],
+    ['text/plain', 'Text'],
+  ] as const)
+    if (data[mime] !== undefined) return kind;
+  return undefined;
+}
+
+/**
+ * What a cell's outputs are made of, in the order they first appear:
+ * "Text", "Image", "Text and table".
+ */
+export function outputKinds(outputs: readonly nbformat.IOutput[]): string[] {
+  const kinds: string[] = [];
+  for (const output of outputs) {
+    const kind = kindOf(output);
+    if (kind && !kinds.includes(kind)) kinds.push(kind);
+  }
+  return kinds;
+}
+
+/** How a run's time is written: "38 ms", "1.2 s", "18 s". */
+export function formatOutputTime(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return '';
+  const ms = Math.round(seconds * 1000);
+  if (ms < 1000) return `${ms} ms`;
+  return seconds < 10 ? `${Math.round(seconds * 10) / 10} s` : `${Math.round(seconds)} s`;
+}
+
+export function attachOutputLabels(
+  notebook: Notebook,
+  { hasKernel, now = Date.now }: Options,
+): OutputLabels {
   let disposed = false;
   let scheduled = false;
   /** Output indexes a person opened to the full log, by cell model. */
@@ -138,6 +186,11 @@ export function attachOutputLabels(notebook: Notebook, { hasKernel }: Options): 
   const lineCounts = new WeakMap<object, { len: number; lines: number }>();
   /** Outputs lists already wired to forget `opened` when they are cleared. */
   const wired = new WeakSet<object>();
+  /** When a cell's run started, and how long its last run took (#852). */
+  const runStarted = new WeakMap<object, number>();
+  const runSeconds = new WeakMap<object, number>();
+  /** Cell models already listened to for their execution state. */
+  const states = new WeakSet<object>();
   /** Images already given a load listener, so it is given only once. */
   const loads = new WeakSet<HTMLImageElement>();
   /** Cells whose DOM changed, for the next pass to look at; `all` is all of them. */
@@ -167,17 +220,52 @@ export function attachOutputLabels(notebook: Notebook, { hasKernel }: Options): 
         if (sender.length === 0) opened.delete(cell.model);
       });
     }
-    // Saved output: shown once above the cell's outputs.
-    let saved = area.node.querySelector<HTMLElement>(`:scope > .${SAVED}`);
-    if (!hasKernel() && model.length > 0) {
-      if (!saved) {
-        saved = document.createElement('div');
-        saved.className = SAVED;
-        saved.textContent = 'Saved output';
-        saved.title = 'Saved with the notebook. Run the cell to replace it.';
-        area.node.prepend(saved);
-      }
-    } else saved?.remove();
+    // The run's time: from the cell's execution state, so it covers every
+    // output the run made, and stops when the cell is idle again.
+    if (!states.has(cell.model)) {
+      states.add(cell.model);
+      cell.model.stateChanged.connect((_sender, args) => {
+        if (args.name !== 'executionState') return;
+        if (String(args.newValue) === 'running') {
+          runStarted.set(cell.model, now());
+          runSeconds.delete(cell.model);
+        } else if (runStarted.has(cell.model)) {
+          runSeconds.set(cell.model, (now() - runStarted.get(cell.model)!) / 1000);
+          runStarted.delete(cell.model);
+        }
+        dirty.add(cell);
+        schedule();
+      });
+    }
+    // A cell's meta line: below its outputs, under a hairline, what they are
+    // and how long the run took (#852). A run's time is taken from the cell
+    // model's execution state, so it covers what the cell printed and drew,
+    // not just one output; a cell saved with outputs and no kernel shows
+    // "saved output" instead.
+    const outputs = model.toJSON() as nbformat.IOutput[];
+    let meta = area.node.querySelector<HTMLElement>(`:scope > .${META}`);
+    if (outputs.length === 0) {
+      meta?.remove();
+    } else {
+      const saved = !hasKernel();
+      const started = runStarted.get(cell.model);
+      // While the cell is running, the gutter counts the seconds; the meta
+      // line has them once the run is done.
+      const seconds = started !== undefined ? undefined : runSeconds.get(cell.model);
+      const parts = saved
+        ? ['saved output']
+        : [...outputKinds(outputs), ...(seconds === undefined ? [] : [formatOutputTime(seconds)])];
+      if (parts.length > 0) {
+        const text = parts.join(' · ');
+        if (!meta) {
+          meta = document.createElement('div');
+          meta.className = META;
+          if (saved) meta.title = 'Saved with the notebook. Run the cell to replace it.';
+          area.node.append(meta);
+        }
+        if (meta.textContent !== text) meta.textContent = text;
+      } else meta?.remove();
+    }
 
     for (let i = 0; i < model.length; i++) {
       const out = area.widgets[i]?.node.querySelector<HTMLElement>('.jp-OutputArea-output');

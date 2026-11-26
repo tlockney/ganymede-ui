@@ -39,9 +39,6 @@
   --jp-content-font-color1: var(--text);
   --jp-ui-font-color1: var(--text);
   --jp-content-link-color: var(--accent-text);
-
-  --cell-bg: #ffffff;
-  --cell-border: rgba(43, 58, 103, 0.1);
 }
 
 /* The code font's ligatures and style (#354, #565): cells, text
@@ -57,8 +54,6 @@
 
 @media (prefers-color-scheme: dark) {
   .notebook-page {
-    --cell-bg: #232842;
-    --cell-border: rgba(255, 255, 255, 0.07);
     --prompt-color: var(--text-2);
   }
 }
@@ -100,106 +95,139 @@
 }
 
 .notebook-page .jp-WindowedPanel-inner {
-  max-width: 920px;
+  /* Code and output up to ~1000px (#852); the prose keeps a measure. */
+  max-width: 1064px;
   margin: 0 auto;
   padding: 0 32px;
 }
 
+/* A cell is a card that holds its code and its output together (#852). The
+ * left padding is the margin the run button and execution count sit in,
+ * level with the code. */
 .notebook-page .jp-Cell {
   position: relative;
-  padding: 6px 0 !important;
-  background: transparent;
+  margin: 6px 0;
+  padding: 10px 14px 8px 60px !important;
+  border: 1px solid var(--cell-border);
+  border-radius: 12px;
+  background: var(--cell-bg);
+  min-height: 72px;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
 }
 
-/* Prompts: small, monospaced, right-aligned, out of the way. */
+/* Selection is a quiet 1px accent border. Only an editor with focus rings
+ * the card, in 2px (#852). */
+.notebook-page .jp-Cell.jp-mod-active {
+  border-color: var(--accent);
+  /* JupyterLab's own selected-cell line would fight the card's border. */
+  box-shadow: none;
+}
+
+.notebook-page .jp-Cell:has(.cm-editor.cm-focused) {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+/* JupyterLab rings a cell focused in command mode and squares its corners
+ * off. The card's edge and ring say that instead (#852). */
+.notebook-page .jp-Notebook.jp-mod-commandMode .jp-Cell.jp-mod-active:focus-visible {
+  border: 1px solid var(--accent);
+  border-radius: 12px;
+  outline: none;
+  box-shadow: none;
+}
+
+/* JupyterLab tints and rings the active editor while it has focus. The card's
+ * ring says that (#852), and the card's fill is the editor's. */
+.notebook-page .jp-Notebook.jp-mod-editMode .jp-Cell.jp-mod-active .jp-InputArea-editor {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* A card that holds no code has no margin to hold a run button. */
+.notebook-page .jp-MarkdownCell {
+  padding-left: 18px !important;
+}
+
+/* The prompt column goes: the run button and count in the margin say what
+ * `[n]:` said (#852). */
 .notebook-page .jp-InputPrompt,
 .notebook-page .jp-OutputPrompt {
-  font: 11px/1 var(--font-mono);
-  padding-top: 11px;
+  display: none;
 }
 
-/* Code cells as rounded cards. */
+/* The editor sits in the card, so it draws no card of its own. */
 .notebook-page .jp-CodeCell .jp-InputArea-editor {
-  border-radius: 10px;
-  border: 0.5px solid var(--cell-border) !important;
-  padding: 6px 4px;
-  transition: box-shadow 0.15s ease;
-}
-
-.notebook-page .jp-Cell.jp-mod-active .jp-InputArea-editor {
-  box-shadow:
-    0 0 0 1px var(--cell-border),
-    0 1px 3px rgba(0, 0, 0, 0.06);
-}
-
-/* An editor with focus has a 2px focus ring on its box, so it reads
- * differently from selection: the selected cell keeps its rail and has no
- * ring while its editor is not focused (#814, e2e/selection-focus.spec.ts). */
-.notebook-page .jp-Notebook.jp-mod-editMode .jp-Cell.jp-mod-active .jp-InputArea-editor {
-  box-shadow: 0 0 0 2px var(--accent);
+  border: 0 !important;
+  padding: 0;
+  background: transparent;
 }
 
 .notebook-page .cm-editor {
   background: transparent !important;
 }
 
-/*
- * The active-cell marker: one thin accent bar down the whole cell, like a
- * selection in Finder. JupyterLab draws it on the input and output
- * collapsers separately, which reads as two selections, so the cell draws
- * it instead.
- */
-.notebook-page .jp-Collapser {
-  border-radius: 3px;
-}
-
-.notebook-page .jp-Cell.jp-mod-active::before {
-  content: '';
-  position: absolute;
-  top: 6px;
-  bottom: 6px;
-  left: 0;
-  width: var(--jp-cell-collapser-width);
-  border-radius: 3px;
-  background: var(--accent);
-  opacity: 0.85;
-  pointer-events: none;
-}
-
 .notebook-page .jp-Cell .jp-Collapser:hover {
   background: var(--text-3);
 }
 
-/* A Markdown cell taller than about twelve lines of prose keeps only a
- * short marker at the rail's top (#814, src/lib/markdown-rail.ts): a
- * full-height bar down screens of prose read as a selection of all of
- * it. A shorter cell keeps the rail, and a code cell keeps it always. */
-.notebook-page .jp-Cell.gn-mod-tall.jp-mod-active::before {
-  bottom: auto;
-  height: 28px;
+/* JupyterLab draws the collapser as a brand-coloured rail beside the code of
+ * the active cell. The card's accent edge says that now, and the chevron
+ * (code-collapse.ts) is the control; the 6px rail stays as its click target
+ * and still lights under the pointer (#852). */
+.notebook-page .jp-Notebook .jp-Cell .jp-Collapser,
+.notebook-page .jp-Notebook .jp-Cell.jp-mod-active .jp-Collapser,
+.notebook-page .jp-Notebook .jp-Cell.jp-mod-active.jp-mod-dirty .jp-Collapser {
+  background: transparent;
+  box-shadow: none;
 }
 
-/* Markdown reads like a document. */
+/* A selected cell is a card of the same fill as any other; its edge and ring
+ * say it is selected (#852). */
+.notebook-page
+  .jp-Notebook.jp-mod-commandMode
+  .jp-Cell.jp-mod-active.jp-mod-selected:not(.jp-mod-multiSelected) {
+  background: var(--cell-bg);
+}
+
+/* Markdown reads like a document, at a measure inside the card. */
 .notebook-page .jp-MarkdownOutput {
-  padding: 2px 8px;
+  max-width: 700px;
+  padding: 2px 0;
   /* The Markdown font setting (#565, src/lib/code-font.ts). */
   font-family: var(--markdown-font, var(--font-ui));
   font-feature-settings: var(--markdown-font-features, normal);
-  font-size: 15px;
-  line-height: 1.6;
+  font-size: 16px;
+  line-height: 1.65;
 }
 
 .notebook-page .jp-MarkdownOutput h1 {
-  font-size: 28px;
+  font-size: 34px;
   font-weight: 700;
-  letter-spacing: -0.02em;
-  margin-top: 0.4em;
+  letter-spacing: -0.025em;
+  line-height: 1.15;
+  margin: 1.1em 0 0.45em;
 }
 
 .notebook-page .jp-MarkdownOutput h2 {
-  font-size: 21px;
+  font-size: 25px;
+  font-weight: 650;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+  margin: 1.3em 0 0.4em;
+}
+
+.notebook-page .jp-MarkdownOutput h3 {
+  font-size: 19px;
   font-weight: 600;
   letter-spacing: -0.01em;
+  margin: 1.2em 0 0.35em;
+}
+
+.notebook-page .jp-MarkdownOutput > :first-child {
+  margin-top: 0;
 }
 
 .notebook-page .jp-MarkdownOutput code {
@@ -248,15 +276,7 @@
   .notebook-page .jp-CodeCell:not(.jp-mod-outputsScrolled) .jp-OutputArea-output.gn-mod-wide {
     flex: none;
     width: var(--gn-pane, 100%);
-    /* Half the row, less half the span, less the prompt beside it. */
-    margin-left: calc(50% - var(--gn-pane, 100%) / 2 - var(--jp-cell-prompt-width));
-  }
-}
-
-/* JupyterLab stacks the prompt above the output at 760px and under: there
- * is no prompt beside the output to span past. */
-@media (min-width: 720px) and (width <= 760px) {
-  .notebook-page .jp-CodeCell:not(.jp-mod-outputsScrolled) .jp-OutputArea-output.gn-mod-wide {
+    /* Half the row, less half the span. */
     margin-left: calc(50% - var(--gn-pane, 100%) / 2);
   }
 }
@@ -312,10 +332,20 @@
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
 }
 
-/* Cell toolbar: above the card's top edge, clear of the code. */
+/* Cell toolbar: a floating capsule above the card's top edge (#852). */
 .notebook-page .jp-cell-toolbar {
-  top: -4px;
-  right: 6px;
+  top: -13px;
+  right: 10px;
+  gap: 0;
+  padding: 2px 3px;
+  border: 1px solid var(--cell-border);
+  border-radius: 999px;
+  background: var(--window-bg);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.notebook-page .jp-cell-toolbar .jp-ToolbarButtonComponent {
+  border-radius: 999px;
 }
 
 /* Sandboxed HTML and JavaScript outputs (src/lib/output-frames.ts); the
@@ -325,6 +355,93 @@
   width: 100%;
   height: 0;
   border: 0;
+}
+
+/* ---------- The run gutter (#852) ---------- */
+
+/* A round run button, the cell's execution count below it, and the seconds
+ * a run has taken beside the count, in the card's left margin. The touch
+ * layout has Run in the cell menu and its count on the meta line, so it
+ * gets no second Run. Nothing moves between idle, running and done: the
+ * count's column and the time's line are always there (#812). */
+.notebook-page .gn-cell-gutter {
+  display: none;
+}
+
+:root:not(.touch-ui) .notebook-page .gn-cell-gutter {
+  position: absolute;
+  top: 10px;
+  left: 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  width: 30px;
+  color: var(--meta-color);
+  font: 11px/1.1 var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+:root:not(.touch-ui) .notebook-page .gn-run-button {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--accent-fill);
+  color: var(--on-accent);
+  cursor: pointer;
+  transition:
+    filter 0.12s ease,
+    transform 0.12s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+:root:not(.touch-ui) .notebook-page .gn-run-button svg {
+  /* The triangle's mass sits left of centre; nudge it back. */
+  margin-left: 2px;
+}
+
+:root:not(.touch-ui) .notebook-page .gn-run-button:hover:not(:disabled) {
+  filter: brightness(0.95);
+}
+
+:root:not(.touch-ui) .notebook-page .gn-run-button:active:not(:disabled) {
+  transform: scale(0.94);
+}
+
+:root:not(.touch-ui) .notebook-page .gn-run-button:disabled {
+  cursor: default;
+}
+
+:root:not(.touch-ui) .notebook-page .gn-run-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+:root:not(.touch-ui) .notebook-page .gn-run-button[data-state='running'] {
+  animation: gn-run-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes gn-run-pulse {
+  50% {
+    filter: brightness(0.88);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root:not(.touch-ui) .notebook-page .gn-run-button[data-state='running'] {
+    animation: none;
+  }
+}
+
+:root:not(.touch-ui) .notebook-page .gn-run-elapsed {
+  min-height: 11px;
+  font-size: 10px;
 }
 
 /* ---------- Cell controls (#200) ---------- */
@@ -340,9 +457,16 @@
 
 /* `touch-ui` is on the root on touch screens and in narrow windows, but not
  * for a narrow web view beside the Mac app's own sidebar (App.tsx). */
-/* A gutter for the "…" button, clear of the code. */
+/* A gutter for the "…" button, clear of the code. The left padding holds the
+ * code toggle; Run lives in the cell menu here, so there is no run gutter. */
 .touch-ui .notebook-page .jp-Cell {
   padding-right: 44px !important;
+  padding-left: 30px !important;
+  min-height: 0;
+}
+
+.touch-ui .notebook-page .gn-code-toggle {
+  left: 6px;
 }
 
 .touch-ui .notebook-page .gn-cell-more {
@@ -477,6 +601,8 @@
 @media (max-width: 719.98px) {
   .touch-ui .notebook-page .jp-Cell {
     padding-right: 0 !important;
+    /* The code toggle is in the line above, so the code takes the width. */
+    padding-left: 0 !important;
   }
 
   /* The line above the active cell only: a tap on another cell makes it active. */
@@ -530,7 +656,7 @@
 
   /* The code toggle's chevron on the meta line's middle. */
   .touch-ui .notebook-page .jp-Cell.jp-mod-active > .gn-code-toggle {
-    top: 6px;
+    top: 10px;
     height: 36px;
   }
 
@@ -633,17 +759,16 @@
   overflow-y: auto;
 }
 
-.notebook-page .gn-saved-output {
-  margin: 2px 0 0 var(--jp-cell-collapser-width, 8px);
-  padding-left: var(--jp-cell-prompt-width, 64px);
-  color: var(--text-2);
-  font: 12px var(--font-ui);
-}
-
-@media (max-width: 719.98px) {
-  .notebook-page .gn-saved-output {
-    padding-left: 8px;
-  }
+/* The meta line under a cell's outputs (#852): what they are and how long
+ * the run took, "Text · 1.2 s", under a hairline; "saved output" when there
+ * was no kernel to make them. Mono, quiet, aligned with the code. */
+.notebook-page .gn-output-meta {
+  margin-top: 8px;
+  padding-top: 5px;
+  border-top: 1px solid var(--separator);
+  color: var(--meta-color);
+  font: 11px/1.4 var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 /* The cell being dragged follows the pointer, above the others. */
@@ -754,13 +879,13 @@
 
 /* ---------- Code collapse (#564) ---------- */
 
-/* A disclosure button in each code cell's prompt column (src/lib/
- * code-collapse.ts): on hover and on the active cell, and always while the
- * code is collapsed, when the chevron points right. */
+/* The code toggle (src/lib/code-collapse.ts): beside the run button, shown
+ * on hover and on the active cell, and always while the code is collapsed,
+ * when the chevron points right. */
 .notebook-page .gn-code-toggle {
   position: absolute;
-  top: 9px;
-  left: calc(var(--jp-cell-collapser-width) + 4px);
+  top: 11px;
+  left: 38px;
   z-index: 1;
   display: grid;
   place-items: center;
@@ -824,12 +949,9 @@
 @media (width <= 760px) {
   .notebook-page .gn-code-toggle {
     top: 0;
+    left: 6px;
     width: 28px;
     height: 28px;
-  }
-  .notebook-page .jp-CodeCell .jp-InputPrompt {
-    width: auto;
-    padding-left: 30px;
   }
 }
 

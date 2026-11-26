@@ -9,9 +9,9 @@ import type { CommandRegistry } from '@lumino/commands';
 import { Widget } from '@lumino/widgets';
 import { type Backend, trustNotebook } from '../lib/backends';
 import { attachEditing, createCommands, createNotebook, createRendermime } from '../lib/jupyterlab';
-import { attachCellControls } from '../lib/cell-controls';
+import { attachCellControls, selectOnly } from '../lib/cell-controls';
+import { attachCellGutter } from '../lib/cell-gutter';
 import { attachCodeCollapse } from '../lib/code-collapse';
-import { attachMarkdownRail } from '../lib/markdown-rail';
 import { attachOutputLabels } from '../lib/output-labels';
 import { attachTypeErrors } from '../lib/type-errors';
 import { attachLanguageFeatures, type LanguageFeatures } from '../lib/language-editor';
@@ -699,12 +699,33 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         e => setNotice(runFailed(session, services.kernelspecs, memory, e)),
         () => !down(),
       );
-      const editing = attachEditing(notebook, session, rendermime, commands);
+      const editing = attachEditing(notebook, session, rendermime, commands, {
+        // The toolbar's ⋯ opens the same cell menu the touch controls do (#852).
+        onCellMenu: (cell, anchor) => setMenu({ cell, anchor }),
+      });
       const cellControls = attachCellControls(
         notebook,
         (cell, anchor) => setMenu({ cell, anchor }),
         down,
       );
+      // A run button and the execution count in each code cell's left margin
+      // (#852); the journal hides the notebook, and a machine that is away runs
+      // nothing.
+      const runCell = async (cell: Cell) => {
+        if (journalRef.current || down() || !selectOnly(notebook, cell)) return;
+        try {
+          if (await ensureKernel()) await NotebookActions.run(notebook, session);
+        } catch (e) {
+          setNotice(
+            runFailed(session, services.kernelspecs, memory, e, 'run the cell', true),
+            () => void runCell(cell),
+          );
+        }
+      };
+      const cellGutter = attachCellGutter(notebook, {
+        run: cell => void runCell(cell),
+        away: down,
+      });
       const codeCollapse = attachCodeCollapse(notebook, down);
       const typeErrors = attachTypeErrors(notebook, session);
       const language = attachLanguageFeatures(notebook, session, message =>
@@ -721,7 +742,6 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       });
       // A kernel starting or going away changes what the outputs are: saved, or live.
       session.kernelChanged.connect(outputLabels.refresh);
-      const markdownRail = attachMarkdownRail(notebook);
       const beforeSave = () => notebookWidgets.saveState(model);
       const saver: Saver = room
         ? new RoomSaver({ room, path, model, beforeSave })
@@ -764,12 +784,12 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         disposables: [
           editing,
           cellControls,
+          cellGutter,
           codeCollapse,
           typeErrors,
           language,
           runStatus,
           outputLabels,
-          markdownRail,
           {
             dispose: () => session.kernelChanged.disconnect(outputLabels.refresh),
             isDisposed: false,

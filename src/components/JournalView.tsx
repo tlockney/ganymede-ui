@@ -744,6 +744,7 @@ export function JournalView({
       onKeyDown={touch}
     >
       <header className="journal-header">
+        {header.eyebrow && <p className="journal-eyebrow">{header.eyebrow}</p>}
         <h1 className="journal-title">{header.title}</h1>
         <p className="journal-meta">{header.details.join(' · ')}</p>
       </header>
