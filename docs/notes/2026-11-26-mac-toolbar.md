@@ -24,23 +24,22 @@ words.
   `HeaderStatusTests` covers them without a window: `chipText`,
   `chipLead`, `chipState`, and `chipKind` and `dotLabel` for the mark.
 - The mark is a solid 7pt dot in `Color("Ready")` while the kernel waits,
-  and a small spinner in the same 10pt frame (`ProgressView`,
-  `.mini`, also tinted `Ready`) while it starts, runs or restarts: the
-  shape says which, not the colour, and the words after it don't move.
-  `.secondary` fills the dot once the kernel has stopped. The spinner
-  needs no colorset of its own, so the `KernelBusy` colorset is gone:
-  `Ready` is the blue the mark keeps, where `AccentFill` would follow the
-  system accent, which the reader can set to anything. VoiceOver reads the
-  chip as one control: its label is the chip's whole text, its value the
-  mark's words, as "TypeScript · This Mac · Idle, Kernel idle, button",
-  and the mark itself is hidden, so the state is neither lost nor read
-  twice.
+  and a small system spinner in the same 10pt frame (`ProgressView`,
+  `.mini`) while it starts, runs or restarts: the shape says which, not
+  the colour, and the words after it don't move. `.secondary` fills the
+  dot once the kernel has stopped. The issue asked for the busy state to
+  glow blue; the spinner says it instead, since `Ready` is already the
+  blue the mark keeps (`#8fb3ff` in dark) and a second blue would say
+  nothing. The spinner keeps the system's own colour: `.tint` has no
+  effect on a macOS spinner. VoiceOver reads the chip as one control: its
+  label is the chip's whole text, its value the mark's words, as
+  "TypeScript · This Mac · Idle, Kernel idle, button", and the mark itself
+  is hidden, so the state is neither lost nor read twice.
 - The state part holds its width, so idle → busy → idle leaves the items
   after the chip where they were: a hidden `Text` in a `ZStack` reserves
   the widest state word's width in whatever font the toolbar draws, with
-  no size of its own. The issue guessed "Restarting" is the longest word;
-  measured in the system font at 13pt, "Connecting" is wider (69.7pt
-  against 62.1pt), so "Connecting" is what the chip reserves.
+  no size of its own. That word is "Connecting", 69.7pt in the system
+  font at 13pt: it is what the chip reserves.
 - Hovering the chip shows the whole status line (`HeaderStatus.full`), as
   the popover's first line does. The popover is otherwise unchanged.
 - The order is now: the chip (`.navigation`, beside the title); Trust and

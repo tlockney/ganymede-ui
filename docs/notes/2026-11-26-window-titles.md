@@ -41,6 +41,9 @@ journal's window was titled with its file's name — the day it started,
   untouched. `displayTitle` and `tabTitle` use it for `.file` and
   `.machineFile`, so a machine's window still ends `· m4mini`; folders and
   consoles are as they were, and the sidebar keeps the file's full name.
+- Two dated files with the same stem, `2026-11-09-notes.ipynb` and
+  `2026-11-10-notes.ipynb`, get the same tab title, "notes"; accepted,
+  since the titlebar's tooltip and the sidebar keep each full name.
 - Tests: `journal.test.ts` (`notebookTitle`), `NotebookPane.test.tsx` (the
   line with `native`, in the page and above it; none in the toolbar
   chrome), `native.test.ts` and `App.test.tsx` (the state's `title`, and
