@@ -83,10 +83,6 @@ at all. `npm run build && npm run preview`
 (same proxy, port 4173) runs the production build, with offline use and
 Workbox's service worker.
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
-
 To use the app for real, have Ganymede serve the built app
 (`ganymede serve --static-dir dist`, or a release), or host it anywhere
 and connect it to a server with `--allow-origin`.
@@ -100,10 +96,6 @@ features such as the clipboard; [docs/device.md](docs/device.md) lists them.
 ## Using it
 
 ### First open in the browser
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
 
 With no saved connection, no token in the URL and no login on the page's own
 server, the page shows three actions, and no sheet:
@@ -168,11 +160,6 @@ JupyterLab's; press `H` in command mode for the
 full list. Every shortcut can be rebound there, and changes stay in this
 browser. [docs/shortcuts.md](docs/shortcuts.md) lists the defaults.
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release, whose toolbar is a row of icon buttons with the
-> kernel in a picker and a "…" menu for what doesn't fit a narrow window.
-
 The title has a status line under it: where the notebook is saved, where
 it runs, and the kernel, as in "Saved in this browser · Runs here ·
 TypeScript". With a Ganymede server it reads "Saved on _host_ · Runs on
@@ -234,11 +221,6 @@ open notebook first; if that save fails or the server doesn't answer, the
 switch stops and asks: keep editing, download a copy, or switch without
 saving.
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release. The latest release switches at once, and the
-> notebook's last save can be cut off.
-
 ### Live editing on a Ganymede server
 
 On a Ganymede server, including the apps' own, an open notebook joins the
@@ -287,11 +269,6 @@ storage); the Mac and iPad apps keep their own, in their Settings.
 
 ### Offline SQL
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release, where the page fetches DuckDB on its first visit
-> online, whether or not anything uses it.
-
 `jupyter.sql` in the browser's kernels, the DuckDB console and Parquet
 files run on DuckDB, whose wasm and worker (36 MB) come from jsDelivr.
 The page fetches them the first time one of these is used, a cell that
@@ -322,10 +299,6 @@ notebook (`metadata.jupyter.source_hidden`, as JupyterLab saves it).
 
 ### Cells on a phone
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
-
 In a window narrower than 720px (not the Mac app) — a phone, iPad Split View, a narrow
 browser window — the active cell has a short line above
 it with its execution count (`In [3]`, or `Not run`), its type, and its …
@@ -345,10 +318,6 @@ them sideways. It is in the cell's … menu and the command palette, applies
 to all cells, and is remembered in this browser's local storage.
 
 ### Reading outputs
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
 
 An error output starts with **Execution failed** and its exception
 summary (`ZeroDivisionError: division by zero`), above the traceback; a
@@ -378,12 +347,6 @@ notice says **Kernel state was reset by the interrupt** and offers
 again; nothing runs until you press it. The journal view runs no cells,
 so there the notice points to **Open as Notebook** instead. An interrupt that stops the cell in place keeps
 the variables and shows no notice.
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release. The kernel says so from the cdp-kernel release
-> after 0.15.0; with 0.15.0, the version the app bundles today, only the
-> cell's output says the state is gone.
 
 When a Ganymede server reports memory use and the kernel's last reading,
 taken in the few seconds before it died, had the machine nearly out of
@@ -433,11 +396,6 @@ covers tokens, cookies and cross-origin access on the server side.
   Offline SQL has fetched it, DuckDB's wasm and worker stay in the
   browser's Cache Storage (`duckdb-wasm-<version>`) until you clear the
   site's data.
-
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release, which keeps them in the same place but fetches
-  > them on its first visit online, whether or not anything uses them.
 
 - **Error reports:** off by default. In a browser, Settings > "Send
   error reports" (kept in local storage, `ganymede-ui:crash-reports`); in

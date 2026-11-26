@@ -95,10 +95,6 @@ Where the app connects is decided in this order (`App.tsx`):
    connection, drops it. The Apple apps always arrive with a config, so
    they never show it.
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
-
 The URL can also say what to open, as an Apple app window opened on one
 file does: `?open=<path>` opens that notebook once connected, with the
 sidebar closed, and `?dir=<path>` is the folder the sidebar lists on that
@@ -120,11 +116,6 @@ switch, and the sheet, its fields fixed, offers Keep Editing, Download a
 Copy (the controller's `download`) and Switch Without Saving (its
 `discard`, so the pane's teardown doesn't save). Cancel during the save
 drops the switch.
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release, as is the wait for the last saves below. The
-> latest release switches at once and disposes the old services then.
 
 Switching backends disposes the old `ServiceManager`, once the last
 saves of the panes that closed on it (`pendingHandoffs` in
@@ -170,12 +161,6 @@ Two kernels are registered:
   [`scripts/kernel-modules.ts`](../scripts/kernel-modules.ts), and maps
   cdp-kernel's specifiers to them with the kernel's `modules` option, so
   charts draw offline. The apps' kernel page does the same.
-
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release, where the page fetches DuckDB's wasm and worker
-  > on its first visit online, whether or not anything uses it, and a
-  > failed fetch isn't tried again until the page reloads.
 
   `jupyter.sql` works the same way for DuckDB's module, which is served
   from `kernel-modules/` too. DuckDB's wasm and worker are 36 MB, so
@@ -236,11 +221,6 @@ JupyterLite's service worker, adapted.
 
 ## Notebook
 
-> [!NOTE]
-> **Unreleased.** The status line under the title and restart and run all
-> are available only from a build of `main` (HEAD), not in the latest
-> release.
-
 `NotebookPane` shows one file. It holds JupyterLab's `Notebook` widget,
 its `NotebookModel`, and a `SessionContext`, which rejoins the kernel
 already running for the file but starts none on open: reading a notebook
@@ -264,11 +244,6 @@ kernel starts a new one of the same kind, since a dead kernel's
 connection can't restart it. cdp-kernel marks a reset with
 `cdp_kernel.state_reset` metadata on the stderr note it prints
 (`state-reset.ts`); a kernel without it shows no notice.
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release. The metadata comes in the cdp-kernel release after
-> 0.15.0.
 
 `run-status.ts` shows, on the cells, which
 one the kernel is running (with its time and an Interrupt button) and
