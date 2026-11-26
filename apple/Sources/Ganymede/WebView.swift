@@ -21,7 +21,7 @@ struct WebView: NSViewRepresentable {
     var place: Place = .thisDevice
     /// Whether the page gets the person's name (#842): always on this
     /// device; on a machine, its remote's setting.
-    var sharesName: Bool = true
+    var sharesName: Bool
 
     func makeCoordinator() -> WebViewCoordinator {
         WebViewCoordinator(place: place, sharesName: sharesName)
@@ -32,6 +32,7 @@ struct WebView: NSViewRepresentable {
     }
 
     func updateNSView(_ view: WKWebView, context: Context) {
+        context.coordinator.update(sharesName: sharesName)
         context.coordinator.onNavigate = onNavigate
         context.coordinator.document = document
         context.coordinator.page = page
@@ -53,7 +54,7 @@ struct WebView: UIViewRepresentable {
     var place: Place = .thisDevice
     /// Whether the page gets the person's name (#842): always on this
     /// device; on a machine, its remote's setting.
-    var sharesName: Bool = true
+    var sharesName: Bool
 
     func makeCoordinator() -> WebViewCoordinator {
         store?.coordinator ?? WebViewCoordinator(place: place, sharesName: sharesName)
@@ -80,6 +81,7 @@ struct WebView: UIViewRepresentable {
     }
 
     func updateUIView(_ view: WKWebView, context: Context) {
+        context.coordinator.update(sharesName: sharesName)
         context.coordinator.page = page
         context.coordinator.onOpenFile = onOpenFile
         context.coordinator.load(url, in: view)
@@ -102,10 +104,11 @@ final class WebViewStore {
     /// coordinator's: another place gets a store of its own.
     let place: Place
     /// Whether the page gets the person's name (#842): the machine's
-    /// remote's setting.
+    /// remote's setting when the page is made. A later change goes through
+    /// the coordinator's `update(sharesName:)`.
     let sharesName: Bool
 
-    init(place: Place = .thisDevice, sharesName: Bool = true) {
+    init(place: Place = .thisDevice, sharesName: Bool) {
         self.place = place
         self.sharesName = sharesName
     }
@@ -214,21 +217,35 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// page may ask the app for follows this, never its origin, which a
     /// machine's page shares with this device's (#701).
     let place: Place
-    /// Whether this window's page gets the person's name (#842): always
-    /// on this device; on a machine, its remote's setting. Fixed for the
-    /// window's life, as `place` is: a changed setting reaches a machine's
-    /// windows as they are made again.
-    let sharesName: Bool
+    /// Whether the page gets the person's name (#842): always on this
+    /// device; on a machine, its remote's setting. On this device it is
+    /// ignored; a change reaches the open page through
+    /// `update(sharesName:)`.
+    private(set) var sharesName: Bool
     var onNavigate: ((URL?) -> Void)?
     var onOpenFile: ((String) -> Void)?
     /// The page's `openTab` message (#729). Only the Mac's windows set it,
     /// and only they register the handler.
     var onOpenTab: ((TabRequest) -> Void)?
 
-    init(place: Place = .thisDevice, sharesName: Bool = true) {
+    init(place: Place = .thisDevice, sharesName: Bool) {
         self.place = place
         self.sharesName = sharesName
         super.init()
+    }
+
+    /// The machine's name setting changed (#842): the page's scripts are
+    /// made again and the page it shows now reloads, when that changes
+    /// whether it gets the name. Its commands wait for the reloaded page.
+    func update(sharesName new: Bool) {
+        let before = place.allows(.personName, sharesName: sharesName)
+        sharesName = new
+        guard place.allows(.personName, sharesName: new) != before,
+              PersonName.name != nil, let view = webView, loaded != nil
+        else { return }
+        Self.installPageScripts(on: view, loaded: loaded, place: place, sharesName: new)
+        page?.reset(forStart: AppModel.shared.serverStart)
+        view.reload()
     }
     #if os(iOS)
     /// Puts a stored page back where it waits off screen (`WebViewStore`).
@@ -271,7 +288,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         scripts.addUserScript(CodeFont.pageScript)
         // The person's name for the notebook rooms (#606): a machine's
         // window only when its remote's setting says so (#842).
-        if place.allows(.personName, sharesName: sharesName), let script = PersonName.pageScript(for: loaded) {
+        if let script = PersonName.pageScript(for: loaded, place: place, sharesName: sharesName) {
             scripts.addUserScript(script)
         }
     }
@@ -386,19 +403,11 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
             // `<a download>`, including the blob: and data: links outputs
             // and widgets make for files.
             decisionHandler(.download)
-        } else if !place.isMachine, navigationAction.targetFrame?.isMainFrame ?? true,
+        } else if navigationAction.targetFrame?.isMainFrame ?? true,
                   let target = navigationAction.request.url, !isExternal(target),
-                  WindowTarget(page: target)?.place.isMachine == true {
-            // This device's window never becomes a machine's page (#842):
-            // it has this device's handlers and the person's name, which a
-            // machine gets only through its own window and setting.
-            decisionHandler(.cancel)
-        } else if place.isMachine, navigationAction.navigationType == .linkActivated,
-                  navigationAction.targetFrame?.isMainFrame ?? true,
-                  let target = navigationAction.request.url, !isExternal(target),
-                  Self.isWebURL(target), !place.allowsFollowing(target) {
-            // A link in a machine's page to one of this device's pages
-            // (the same origin): not a page the machine's window may become.
+                  Self.isWebURL(target), !place.allowsLoading(target) {
+            // A window never becomes another place's page (#842): its handlers
+            // and the person's name are its own place's.
             decisionHandler(.cancel)
         } else if let target = navigationAction.request.url, isExternal(target),
            navigationAction.navigationType == .linkActivated {

@@ -9,19 +9,21 @@ gate stopped it.
 
 `Remote` gains `sharesName: Bool?`, nil meaning on: a remote saved by
 an older build has no key, so synthesized Codable decodes it as on
-(`shares`), and the editor saves off as `false` and on back as nil.
+(`shares`), and the editor saves off as `false` and on back as nil. An
+older build that saves the remotes drops an "off" setting, so after a
+downgrade the setting is on again.
 `Place.allows(_:sharesName:)` gives a machine `personName` only when
 the setting says so; this device always gets it, and the rest of the
 table is whatever `allows(_:)` says. `WebView`, its store and its
-coordinator carry the flag, and the page's view is keyed on the place and
-the flag, so changing the setting reloads that machine's open windows
-with the new scripts. `Remote.sharesName(for:in:)` is the one lookup
+coordinator carry the flag; a later change to the setting reloads that
+machine's open notebook in place, with the new scripts
+(`update(sharesName:)`). `Remote.sharesName(for:in:)` is the one lookup
 (this device always; an unknown, removed or server-less machine never);
 `Place` never reads the saved remotes itself.
 
-A this-device window now refuses any navigation to a machine's page
-(`?machine=`): it would carry this device's handlers and the name to
-that machine whatever its setting.
+A window loads only its own place's pages (`Place.allowsLoading`): this
+device's never a machine's, on any path, and a machine's never this
+device's or another machine's.
 
 A machine that lets you in by your tailnet login credits edits to that
 login (the room's `connect_as`), so the setting doesn't change what it
@@ -37,5 +39,6 @@ the editor's on/off mapping. `npm test` and `npm run check`
 pass, and `xcodebuild test` for the GanymedeTests scheme passes on
 macOS.
 
-By-hand check on #399. README's privacy line and Ganymede's
-docs/privacy.md (an `Unreleased in ganymede-ui` marker) are updated too.
+By-hand check on #399. README's privacy line is updated too; ganymede#968
+adds an `Unreleased in ganymede-ui` note to Ganymede's docs/privacy.md and
+merges after this.

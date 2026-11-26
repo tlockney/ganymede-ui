@@ -89,9 +89,9 @@ declare global {
  * The name the Mac app gave the page (`window.ganymedeUser.name`), for a
  * room on the page's own origin: the in-app server's, which a connected
  * machine's rooms are relayed through too, so a machine's window sends
- * it when the app gave the page the name for that machine. A remote
- * server opened from a browser, iPad or iPhone, gets none, and the
- * server says "a person".
+ * it when the app gave the page the name for that machine. A page in a
+ * browser, or on an iPad or iPhone, gets none, and the server says "a
+ * person".
  */
 export function pageUserName(
   baseUrl: string,

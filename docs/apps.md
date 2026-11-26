@@ -849,11 +849,6 @@ asking again for its check period.
 
 ## Connected machines
 
-> [!NOTE]
-> **Unreleased.** Your name going to a connected machine's rooms, and
-> the setting that turns it off, are available only from a build of
-> `main` (HEAD), not in the latest release.
-
 A connected machine is another computer running `ganymede serve`: a Mac
 mini, a laptop, a cloud box where an agent keeps a journal. Its files, its
 live notebooks and its kernels open in the app next to this device's. Each
@@ -884,9 +879,10 @@ with only SSH stays in Settings for shells.
   `by "a person"`. It is on for each machine by default, since these
   are machines you linked yourself. "Show my name in this machine's
   notebooks", in the machine's editor (Settings > Remotes, Edit),
-  turns it off; open windows of that machine reload, and your edits
-  there show as "a person". A machine that lets you in by your tailnet
-  login credits your edits to that login whatever this setting says.
+  turns it off; an open notebook of that machine reloads in place, and
+  your edits there show as "a person". A machine that lets you in by
+  your tailnet login credits your edits to that login whatever this
+  setting says.
   iPad and iPhone send no name either way.
 - **When a machine stops answering,** its open notebooks turn read-only
   and a banner reads "_machine_ went offline · Reconnecting…". They are
@@ -897,6 +893,11 @@ with only SSH stays in Settings for shells.
   only. Neither Spotlight, File > Open
   Recent nor the Recents list in the app's sidebar include a machine's
   notebooks.
+
+> [!NOTE]
+> **Unreleased.** Your name going to a connected machine's rooms, and
+> the setting that turns it off, are available only from a build of
+> `main` (HEAD), not in the latest release.
 
 On the Mac a machine's window is the app's native window: the same
 sidebar (Files, Search, Running, Outline and Journals), toolbar,

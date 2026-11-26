@@ -96,7 +96,7 @@ struct ContentView: View {
     @State private var columns = SidebarColumns.automatic
     /// The iPhone's page, kept while the folder list shows (#209). A store
     /// is for one place: `switchPlace` makes another.
-    @State private var phonePage = WebViewStore()
+    @State private var phonePage = WebViewStore(place: .thisDevice, sharesName: true)
     /// The iPhone's screens over the folder list: the notebook, or none.
     @State private var phonePath: [PhoneScreen] = []
     /// The iPad's bottom panel (#251): terminals on remotes. The iPhone
@@ -1138,13 +1138,6 @@ struct ContentView: View {
         model.sharesName(for: place)
     }
 
-    /// What the page's web view is made again for (#842): another place,
-    /// or a change to the machine's name setting, which the page's
-    /// scripts are fixed for.
-    private var pageIdentity: [AnyHashable] {
-        [AnyHashable(place), AnyHashable(sharesName(for: place))]
-    }
-
     private var content: some View {
         Group {
             if let url = page {
@@ -1155,9 +1148,8 @@ struct ContentView: View {
                     onOpenFile: { path in openWindow(value: EditorRequest(path: path)) },
                     place: place, sharesName: sharesName(for: place)
                 )
-                // A page loaded for another place gets its own handlers;
-                // a changed name setting, its scripts again (#842).
-                .id(pageIdentity)
+                // A page loaded for another place gets its own handlers.
+                .id(place)
                 #else
                 // A page loaded for another place gets its own handlers: this
                 // device's page is not a machine's (#758).
@@ -1165,7 +1157,7 @@ struct ContentView: View {
                     url: url, page: pageModel, onOpenFile: openEditor, store: isPhone ? phonePage : nil,
                     place: place, sharesName: sharesName(for: place)
                 )
-                .id(pageIdentity)
+                .id(place)
                 #endif
             } else if model.error != nil {
                 startProblem

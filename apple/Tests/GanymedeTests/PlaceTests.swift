@@ -165,6 +165,36 @@ final class PlaceTests: XCTestCase {
         XCTAssertTrue(Place.thisDevice.allowsFollowing(try url("/api/contents/")))
     }
 
+    func testAWindowLoadsOnlyItsOwnPlacesPages() throws {
+        func url(_ path: String) throws -> URL {
+            try XCTUnwrap(URL(string: "http://127.0.0.1:8123" + path))
+        }
+        for path in ["/", "/?open=/a.ipynb", "/api/contents/", "/?machine=bad!"] {
+            XCTAssertTrue(Place.thisDevice.allowsLoading(try url(path)), path)
+        }
+        for path in [
+            "/?machine=\(id)", "/index.html?machine=\(id)",
+            "/x/y.html?kernels=server&machine=\(id)",
+        ] {
+            XCTAssertFalse(Place.thisDevice.allowsLoading(try url(path)), path)
+        }
+        let machine = Place.machine(id)
+        for path in ["/?kernels=server&machine=\(id)&open=/a.ipynb", "/machines/\(id)/files/a.png"] {
+            XCTAssertTrue(machine.allowsLoading(try url(path)), path)
+        }
+        for path in [
+            "/?machine=other1", "/index.html?machine=other1",
+            "/machines/\(id)/index.html?machine=other1", "/", "/files/secret.txt",
+        ] {
+            XCTAssertFalse(machine.allowsLoading(try url(path)), path)
+        }
+        // The first `machine=` is the page's, as the page reads it.
+        XCTAssertEqual(Place.shown(by: try url("/?machine=\(id)&machine=other1")), .machine(id))
+        XCTAssertEqual(Place.shown(by: try url("/index.html?machine=\(id)")), .machine(id))
+        XCTAssertEqual(Place.shown(by: try url("/?open=/a.ipynb")), .thisDevice)
+        XCTAssertEqual(Place.shown(by: try url("/?machine=bad!")), .thisDevice)
+    }
+
     func testMachineNotebooksStayOutOfNativeRecentsAndSpotlight() {
         XCTAssertTrue(Place.thisDevice.indexesLocally)
         XCTAssertFalse(Place.machine(id).indexesLocally)

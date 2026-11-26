@@ -131,10 +131,10 @@ enum Place: Hashable, Codable {
     }
 
     /// Whether a link the person followed, to a page on the app's own
-    /// server, may load in this place's window. This device's windows may
-    /// go anywhere on it. A machine's may stay on its mount, or reload its
-    /// own page (`/` with its `machine=`), but not turn into this device's
-    /// pages, which have the app's handlers' trust.
+    /// server, may load in this place's window. This device's windows are
+    /// checked by `allowsLoading`. A machine's may stay on its mount, or
+    /// reload its own page (`/` with its `machine=`), but not turn into
+    /// this device's pages, which have the app's handlers' trust.
     func allowsFollowing(_ url: URL) -> Bool {
         guard case .machine(let id) = self else { return true }
         if url.path == "/machines/\(id)" || url.path.hasPrefix(mountPath) { return true }
@@ -142,6 +142,29 @@ enum Place: Hashable, Codable {
         let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
         // The first `machine=`, as `WindowTarget(page:)` and the page read it.
         return items.first { $0.name == "machine" }?.value == id
+    }
+
+    /// The place a page at `url` on the app's own server shows, as the page
+    /// reads it (`machineFromSearch`): the first `machine=` on any path, a
+    /// malformed one ignored, so the page falls back to this device (#842).
+    static func shown(by url: URL) -> Place {
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        guard let raw = items.first(where: { $0.name == "machine" })?.value else { return .thisDevice }
+        // `URLSearchParams` reads `+` as a space; a space is never a valid id.
+        return Place(machine: raw.replacingOccurrences(of: "+", with: " ")) ?? .thisDevice
+    }
+
+    /// Whether this place's window may load `url`, a page on the app's own
+    /// server, by any navigation (#842). A window's handlers and the person's
+    /// name are fixed for its place, so it never becomes another place's
+    /// page: this device's window never a machine's, a machine's never this
+    /// device's (`allowsFollowing`) or another machine's.
+    func allowsLoading(_ url: URL) -> Bool {
+        let shown = Self.shown(by: url)
+        switch self {
+        case .thisDevice: return !shown.isMachine
+        case .machine: return allowsFollowing(url) && (shown == self || !shown.isMachine)
+        }
     }
 
     /// Whether notebooks of this place go in native Recents, File > Open
