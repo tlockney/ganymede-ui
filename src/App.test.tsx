@@ -796,7 +796,10 @@ describe('App', () => {
       ServerConnection.makeSettings({
         baseUrl: 'http://server/',
         fetch: ((input: RequestInfo) => {
-          asked.push(typeof input === 'string' ? input : input.url);
+          const url = typeof input === 'string' ? input : input.url;
+          // The kernel list is asked for on its own (#832); this records
+          // the memory reads.
+          if (url.includes('kernel_usage')) asked.push(url);
           return Promise.resolve(
             new Response(JSON.stringify({ content: { kernel_memory: 2048 } })),
           );

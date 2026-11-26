@@ -281,6 +281,51 @@ describe('Toolbar', () => {
     expect(screen.getByRole('menuitemradio', { name: 'Python 3' })).not.toHaveAttribute('title');
   });
 
+  it('marks a kernel that runs on a remote, and says when it isn’t answering (#832)', async () => {
+    const down = {
+      remote: { name: 'workmbp', reachable: false, error: 'gateway: error sending request' },
+      gateway: ['javascript'],
+    };
+    const { rerender } = render(bar({ places: down }));
+    await userEvent.click(status());
+    expect(screen.getByRole('menuitemradio', { name: 'JavaScript · workmbp' })).toHaveTextContent(
+      'JavaScript · workmbp',
+    );
+    // This server's own kernel carries no mark.
+    expect(screen.getByRole('menuitemradio', { name: 'Python 3' })).toBeInTheDocument();
+    expect(
+      screen.getByRole('menuitem', {
+        name: 'workmbp isn’t answering: gateway: error sending request',
+      }),
+    ).toBeDisabled();
+
+    await userEvent.keyboard('{Escape}');
+    rerender(
+      bar({ places: { ...down, remote: { ...down.remote, reachable: true, error: null } } }),
+    );
+    await userEvent.click(status());
+    expect(screen.getByRole('menuitemradio', { name: 'JavaScript · workmbp' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: /isn’t answering/ })).not.toBeInTheDocument();
+  });
+
+  it("names the machine a remote runs kernels for, in a machine's window (#832)", async () => {
+    render(
+      bar({
+        machine: 'm5air',
+        places: {
+          remote: { name: 'workmbp', reachable: false, error: 'gateway: error sending request' },
+          gateway: ['javascript'],
+        },
+      }),
+    );
+    await userEvent.click(status());
+    expect(
+      screen.getByRole('menuitem', {
+        name: 'm5air runs kernels on workmbp, which isn’t answering',
+      }),
+    ).toBeDisabled();
+  });
+
   it('runs the cell, and interrupts only a busy kernel, from visible buttons', async () => {
     const c = controller({ status: 'busy' });
     const { rerender } = render(bar({ controller: c }));

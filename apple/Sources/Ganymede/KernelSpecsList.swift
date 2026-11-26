@@ -31,9 +31,13 @@ struct InstalledKernelsSection: View {
         Section {
             if let specs {
                 ForEach(specs.specs) { spec in
-                    KernelSpecRow(spec: spec, isDefault: spec.name == specs.defaultName)
+                    KernelSpecRow(spec: spec, isDefault: spec.name == specs.defaultName, remote: specs.remote?.name)
                 }
-                if specs.specs.isEmpty {
+                // The remote isn't answering (#832): the line that says so
+                // stands in for "no kernels" when the list is empty too.
+                if let line = specs.notAnswering() {
+                    Text(line).font(.caption).foregroundStyle(.secondary)
+                } else if specs.specs.isEmpty {
                     // A remote's list comes through the server's gateway,
                     // which has none until it first reaches the remote.
                     Text(model.kernelRemote == nil ? "No kernels installed." : "No kernels listed yet.")
@@ -96,11 +100,19 @@ struct InstalledKernelsSection: View {
 struct KernelSpecRow: View {
     let spec: KernelSpecs.Spec
     let isDefault: Bool
+    /// The remote this kernel runs on (#832), when it runs on one.
+    var remote: String?
+
+    /// "Python 3 · workmbp" for a remote's kernel, its plain name here.
+    private var name: String {
+        guard spec.gateway, let remote, !remote.isEmpty else { return spec.displayName }
+        return "\(spec.displayName) · \(remote)"
+    }
 
     private var summary: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                Text(spec.displayName)
+                Text(name)
                 Text([spec.name, spec.language].compactMap { $0 }.joined(separator: " · "))
                     .font(.caption)
                     .foregroundStyle(.secondary)

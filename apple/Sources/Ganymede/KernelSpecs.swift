@@ -20,6 +20,9 @@ struct KernelSpecs: Equatable {
         var env: [Field] = []
         /// `spec.metadata`, sorted by key.
         var metadata: [Field] = []
+        /// Whether this kernel runs on the server's remote (#832), as its
+        /// `"gateway": true` says; absent from a server older than that.
+        var gateway = false
         var id: String { name }
 
         /// Whether there is anything to show beyond the name, language
@@ -35,6 +38,17 @@ struct KernelSpecs: Equatable {
         var key: String
         var value: String
         var id: String { key }
+    }
+
+    /// The remote the server runs kernels on, from the answer's top-level
+    /// `gateway` (ganymede#969, #832): its name, whether it answers, and why
+    /// it doesn't. Absent from a server older than that, and one whose
+    /// kernels run here.
+    struct Remote: Equatable {
+        var name: String
+        var reachable: Bool
+        /// An empty error is no more than a missing one.
+        var error: String?
     }
 
     /// A JSON value as text: strings, numbers and booleans plainly, null as
@@ -82,6 +96,9 @@ struct KernelSpecs: Equatable {
     var specs: [Spec]
     /// The kernel a new notebook starts, by name.
     var defaultName: String?
+    /// The remote kernels run on (#832), or nil when they run here or the
+    /// server predates ganymede#969.
+    var remote: Remote?
 
     /// From the body of `GET /api/kernelspecs`; nil when it isn't one.
     init?(json data: Data) {
@@ -101,11 +118,32 @@ struct KernelSpecs: Equatable {
                 resourceDir: Self.string(entry["resource_dir"]),
                 argv: (spec?["argv"] as? [Any])?.compactMap { $0 as? String } ?? [],
                 env: Self.fields(spec?["env"]),
-                metadata: Self.fields(spec?["metadata"])
+                metadata: Self.fields(spec?["metadata"]),
+                gateway: entry["gateway"] as? Bool == true
             )
         }
         .sorted { ($0.displayName.lowercased(), $0.name) < ($1.displayName.lowercased(), $1.name) }
         defaultName = object["default"] as? String
+        remote = Self.parseRemote(object["gateway"])
+    }
+
+    /// The top-level `gateway` of an answer, or nil when it has none or it
+    /// isn't one.
+    private static func parseRemote(_ value: Any?) -> Remote? {
+        guard let object = value as? [String: Any],
+              let name = string(object["name"]),
+              let reachable = object["reachable"] as? Bool
+        else { return nil }
+        return Remote(name: name, reachable: reachable, error: string(object["error"]))
+    }
+
+    /// The line that says the remote kernels run on isn't answering (#832),
+    /// naming it by `name` when the app has its own for it; nil while it
+    /// answers, before the server's first check, or without a remote.
+    func notAnswering(name: String? = nil) -> String? {
+        guard let remote, !remote.reachable, let error = remote.error, !error.isEmpty
+        else { return nil }
+        return "\(name ?? remote.name) isn’t answering: \(error)"
     }
 
     /// Asks `server` for its kernels.

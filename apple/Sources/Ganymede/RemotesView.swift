@@ -102,6 +102,9 @@ struct RemotesView<Extra: View>: View {
 /// proxies (`gateway_url`).
 struct KernelLocationSection: View {
     @Environment(AppModel.self) private var model
+    /// What the server says of the remote kernels run on (#832): the line
+    /// under the picker while it isn't answering.
+    @State private var specs: KernelSpecs?
 
     var body: some View {
         Section {
@@ -111,10 +114,39 @@ struct KernelLocationSection: View {
                     Text(remote.title).tag(UUID?.some(remote.id))
                 }
             }
+            status
         } header: {
             Text("Where Kernels Run")
         } footer: {
             Text(Self.footer)
+        }
+        // A remote that goes down or comes back, as the server finds it.
+        .task(id: "\(model.serverURL?.absoluteString ?? "")\n\(model.kernelRemoteID?.uuidString ?? "")") {
+            await check()
+        }
+    }
+
+    /// "workmbp isn't answering: …", under the picker (#832). Named as the
+    /// remote is here, not as its server's URL names it.
+    @ViewBuilder
+    private var status: some View {
+        if let line = specs?.notAnswering(name: model.kernelRemote?.title) {
+            Text(line)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    /// Asks for the kernelspecs, and with them the remote's status, every
+    /// 15 seconds while a remote is chosen: the server retries it at the
+    /// same pace.
+    private func check() async {
+        guard model.kernelRemote != nil,
+              let server = model.serverURL.flatMap(ServerEndpoint.init(serverURL:))
+        else { return }
+        while !Task.isCancelled {
+            if let loaded = try? await KernelSpecs.load(from: server) { specs = loaded }
+            try? await Task.sleep(for: .seconds(15))
         }
     }
 

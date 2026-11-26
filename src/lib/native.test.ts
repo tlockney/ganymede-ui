@@ -89,6 +89,7 @@ describe('native', () => {
       cellType: 'code',
       journal: false,
       kernels: [{ name: 'cdp', displayName: 'TypeScript', device: false }],
+      kernelsRemote: null,
       backend: { label: 'Ganymede', detail: 'local server' },
       running: [
         {

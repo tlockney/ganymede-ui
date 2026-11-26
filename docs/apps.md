@@ -182,6 +182,19 @@ shown or hidden, its tab and its expanded folders across launches.
   machine's own notebooks, connect it instead
   ([Connected machines](#connected-machines)).
 
+- Kernels that run on a remote carry its name wherever they are listed:
+  "Python 3 · workmbp" in the Mac's kernel popover and Kernel > Change
+  Kernel, in the iPad's and iPhone's kernel menu, in the browser's kernel
+  pickers, and in Settings > Kernels. Kernels that run here keep their
+  plain names. While the remote isn't answering, those lists end with a
+  line that says so — "workmbp isn't answering: …" — and Settings >
+  Remotes shows it under Where Kernels Run. A server that has not checked
+  the remote yet says nothing.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release.
+
 ### Terminals and the kernel log
 
 - Terminals open in the window's bottom panel, as tabs under the
@@ -869,6 +882,16 @@ with only SSH stays in Settings for shells.
 - **When a machine stops answering,** its open notebooks turn read-only
   and a banner reads "_machine_ went offline · Reconnecting…". They are
   editable again when it is back. There is no offline editing.
+- **Kernels a machine runs elsewhere.** A machine's server can itself run
+  kernels on a remote. Those kernels carry that remote's name ("Python 3 ·
+  workmbp"), and while it isn't answering the line names the machine whose
+  kernels they are too: "m4mini runs kernels on workmbp, which isn't
+  answering".
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release.
+
 - **What a machine's window doesn't get.** The device API, Notebook
   Access, the Shortcuts bridge, the app's editor for text files, the
   Agent's keys, your name in the notebook's presence and `ganymede://`
