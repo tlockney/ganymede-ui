@@ -70,8 +70,8 @@ describe('agent settings', () => {
   });
 
   it('work without storage', () => {
-    expect(loadAgentSettings(undefined)).toEqual(DEFAULT_SETTINGS);
-    expect(() => saveAgentSettings(DEFAULT_SETTINGS, undefined)).not.toThrow();
+    expect(loadAgentSettings(null)).toEqual(DEFAULT_SETTINGS);
+    expect(() => saveAgentSettings(DEFAULT_SETTINGS, null)).not.toThrow();
   });
 });
 
@@ -162,7 +162,7 @@ describe('BrowserCredentialStore', () => {
   });
 
   it('rejects a key when storage is blocked', async () => {
-    const keys = new BrowserCredentialStore(undefined, undefined);
+    const keys = new BrowserCredentialStore(null, null);
     await expect(keys.setKey('anthropic', 'sk', false)).rejects.toThrow(/blocks storage/);
     await expect(keys.setKey('anthropic', '', false)).resolves.toBeUndefined();
   });
