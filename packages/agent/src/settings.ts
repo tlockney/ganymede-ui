@@ -366,10 +366,13 @@ export async function adoptBrowserKeys(
 }
 
 /** The page's key store, shared by the Settings sheet and the agent: the Keychain in the apps. */
-export function pageKeyStore(handler = agentKeysHandler()): KeyStore {
-  if (!handler) return new BrowserCredentialStore();
+export function pageKeyStore(
+  handler = agentKeysHandler(),
+  browser: KeyStore = new BrowserCredentialStore(),
+): KeyStore {
+  if (!handler) return browser;
   const keychain = new KeychainCredentialStore(handler);
-  void adoptBrowserKeys(keychain);
+  void adoptBrowserKeys(keychain, browser);
   return keychain;
 }
 

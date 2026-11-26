@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   type AgentKeysHandler,
   BrowserCredentialStore,
@@ -195,7 +195,7 @@ function fakeKeychain(fail?: string) {
       return null;
     },
   };
-  return { items, keys: new KeychainCredentialStore(handler) };
+  return { items, handler, keys: new KeychainCredentialStore(handler) };
 }
 
 describe('KeychainCredentialStore', () => {
@@ -240,6 +240,16 @@ describe('pageKeyStore', () => {
   it('uses the Keychain in the apps and browser storage elsewhere', () => {
     expect(pageKeyStore({ postMessage: async () => null })).toBeInstanceOf(KeychainCredentialStore);
     expect(pageKeyStore(undefined)).toBeInstanceOf(BrowserCredentialStore);
+  });
+
+  it('moves a key left in web storage into the Keychain when it makes the Keychain store', async () => {
+    const local = new MemoryStore();
+    const browser = new BrowserCredentialStore(new MemoryStore(), local);
+    await browser.setKey('anthropic', 'sk-old', true);
+    const { items, handler } = fakeKeychain();
+    pageKeyStore(handler, browser);
+    await vi.waitFor(() => expect(local.length).toBe(0));
+    expect(items.get('anthropic')).toBe('sk-old');
   });
 });
 
