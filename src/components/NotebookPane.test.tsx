@@ -317,6 +317,7 @@ beforeEach(() => {
   fakes.editing.length = 0;
   fakes.initialize = undefined;
   fakes.execute.mockClear();
+  fakes.kernelErrorDialog.mockClear();
   vi.mocked(attachDevice).mockClear();
   serverSettings = undefined;
   outputLabels.options = undefined;
@@ -961,12 +962,25 @@ describe('NotebookPane', () => {
     request.mockRestore();
   });
 
-  it("quiets JupyterLab's kernel error dialog: the notice reports a failed start (#869)", async () => {
+  it("shows a kernel that fails to start once: the notice, not also JupyterLab's dialog (#869)", async () => {
     const { latest } = setup();
     await waitFor(() => expect(latest()).toBeDefined());
-    const session = fakes.sessions[0] as { _displayKernelError: () => Promise<void> };
-    expect(session._displayKernelError).not.toBe(fakes.kernelErrorDialog);
-    await session._displayKernelError();
+    const session = fakes.sessions[0] as {
+      changeKernel: ReturnType<typeof vi.fn>;
+      _displayKernelError: (message: string, traceback: string) => Promise<void>;
+    };
+    const message =
+      "io: kernelspec python3 (/k/python3/kernel.json) runs /missing/python, which doesn't exist; reinstall the kernel or fix argv in kernel.json";
+    // As JupyterLab's SessionContext does: its dialog, then the rejection.
+    session.changeKernel.mockImplementationOnce(async () => {
+      void session._displayKernelError(message, '');
+      throw new Error(message);
+    });
+    await act(() => latest()!.run());
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(`Couldn’t run the cell: ${message}`);
+    expect(within(alert).getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    expect(within(alert).getByRole('button', { name: 'Dismiss' })).toBeInTheDocument();
     expect(fakes.kernelErrorDialog).not.toHaveBeenCalled();
   });
 

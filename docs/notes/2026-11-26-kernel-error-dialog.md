@@ -10,7 +10,8 @@ was missing was cut off at its edge.
   dialog from its private `_displayKernelError` on a failed start, a
   failed kernel change, a failed connect, and a kernel that dies with a
   reason, and rethrows the error (or reports the death) as well. The pane
-  already turns each of those into its notice.
+  already turns each of those into its notice (a failed connect into its
+  error view).
 - `quietKernelErrors` (`src/lib/session-errors.ts`) replaces
   `_displayKernelError` on the pane's own `SessionContext` with a no-op,
   behind a type guard. No option turns the dialog off, and a subclass
@@ -19,6 +20,9 @@ was missing was cut off at its edge.
 - `session-errors.test.ts` checks the method still exists, so such an
   upgrade fails a test; that a failed start opens no dialog and still
   rejects once quieted; and, as the control, that it opens one without.
-  `NotebookPane.test.tsx` checks the pane quiets its session.
+  `NotebookPane.test.tsx` runs a cell whose kernel fails to start the way
+  JupyterLab's does (dialog, then rejection) and sees the notice with
+  Retry and Dismiss, and no dialog.
 - Any JupyterLab dialog that still shows wraps its `<pre>`
-  (`src/styles/jupyter.css`).
+  (`src/styles/jupyter.css`); `e2e/dialog-wrap.spec.ts` fails without
+  either of its two declarations.
