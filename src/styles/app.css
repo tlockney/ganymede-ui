@@ -506,13 +506,16 @@ button {
   top: var(--page-eyebrow-h);
 }
 
-/* A phone's page has no room for it (#867). */
-.touch-ui .page-eyebrow {
-  display: none;
-}
+/* A phone's page has no room for it (#867), an iPad's has: `.touch-ui` is
+ * both, so the phone's width says which. */
+@media (max-width: 719.98px) {
+  .touch-ui .page-eyebrow {
+    display: none;
+  }
 
-.touch-ui.chrome-native .content:has(> .page-eyebrow) .notebook-page {
-  top: 0;
+  .touch-ui.chrome-native .content:has(> .page-eyebrow) .notebook-page {
+    top: 0;
+  }
 }
 
 /* Eyebrow, title row and status line need more than the 52px header: it

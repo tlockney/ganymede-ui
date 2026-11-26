@@ -11,8 +11,10 @@ journal's window was titled with its file's name — the day it started,
   when it is given `native` (`App` passes `chrome=native`), the notebook
   view is showing (the journal's header has the eyebrow already), and
   `journalHeader` gives one: an agent's notebook, with a language. The
-  apps' page has no `.touch-ui`, an iPad's does, and `.touch-ui` hides it
-  as it hides the toolbar's.
+  apps' page has no `.touch-ui`; an iPad's does, and keeps the line,
+  where a phone has no room for it: `.touch-ui` at the phone's width
+  (719.98px, the width the rest of the CSS calls a phone) hides it, as
+  the toolbar's `.touch-ui` hides its eyebrow on both.
 - The line sits in the cells' column, and the column's edge is two
   paddings in: the notebook's own 32px inside the 1064px measure, then
   JupyterLab's `--jp-notebook-padding` (10px) on the cells' viewport. The
@@ -20,7 +22,8 @@ journal's window was titled with its file's name — the day it started,
   the cards. It uses the variable, so a theme's padding carries.
 - `.notebook-page` fills `.content`, so the scroll area would cover a line
   in the flow above it: it starts 30px down (6px + 16px of line, 8px of
-  margin) while the line is there, and none of that on a phone.
+  margin) while the line is there, and none of that on a phone, which
+  hides the line.
 - `PageState.title` (the page's post to the app, `src/lib/native.ts`) is
   the open notebook's `metadata.title` when it is a non-empty string,
   else null: `notebookTitle` in `journal.ts` reads it, trimmed (a title of
@@ -42,7 +45,8 @@ journal's window was titled with its file's name — the day it started,
   `WindowTargetTests` (`displayName`'s cases, `tabTitle` with a title),
   and an e2e in `e2e/journal.spec.ts` that opens a notebook with
   `chrome=native` and checks the line's text, that the page starts below
-  it and that its text starts where the cell's edge does.
+  it and that its text starts where the cell's edge does, and another
+  that finds the line on an iPad and not on a phone.
 - Checked with `npm run check`, `npm run test`, the vitest files above,
   that e2e, and `xcodebuild test` for the `Ganymede` scheme on macOS
   (`PageStateTests` and `WindowTargetTests`, after `bootstrap.sh`; the app

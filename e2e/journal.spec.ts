@@ -114,6 +114,30 @@ test('says what the notebook is above its first cell with the native chrome (#86
   expect(textLeft).toBeCloseTo(first!.x, 0);
 });
 
+// A phone has no room for the line, an iPad does (#867): the CSS hides it
+// at the phone's width, as `.touch-ui` is on both.
+for (const { name, width, height, shows } of [
+  { name: 'a phone', width: 375, height: 800, shows: false },
+  { name: 'an iPad', width: 820, height: 1180, shows: true },
+]) {
+  test.describe(`the page eyebrow with the native chrome on ${name}`, () => {
+    test.use({ viewport: { width, height }, hasTouch: true });
+
+    test(`${shows ? 'shows' : 'hides'} the page eyebrow (#867)`, async ({ page }) => {
+      await page.goto(
+        `/?token=${TOKEN}&kernels=server&chrome=native&open=${encodeURIComponent(FILE)}`,
+      );
+      const journal = page.getByRole('region', { name: `Journal of ${FILE}` });
+      await expect(journal).toBeVisible();
+      await journal.getByRole('button', { name: 'Open as Notebook' }).click();
+      await expect(page.locator('.jp-Cell')).toHaveCount(3);
+      const eyebrow = page.locator('.page-eyebrow');
+      if (shows) await expect(eyebrow).toBeVisible();
+      else await expect(eyebrow).toBeHidden();
+    });
+  });
+}
+
 test('opens an agent’s notebook as a journal, and writes a note and a request', async ({
   page,
 }) => {
