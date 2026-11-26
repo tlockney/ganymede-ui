@@ -340,9 +340,37 @@ function agentKeysHandler(): AgentKeysHandler | undefined {
   }
 }
 
+/**
+ * Moves keys an older build left in web storage into the Keychain
+ * (ganymede-ui#849): a connected machine's window had no `agentKeys`
+ * handler, so its keys went to `BrowserCredentialStore`. Each one goes to
+ * the Keychain when that has none for the provider, and leaves web storage
+ * either way, so no key stays readable there. One the Keychain refuses
+ * stays where it was.
+ */
+export async function adoptBrowserKeys(
+  keychain: KeyStore,
+  browser: KeyStore = new BrowserCredentialStore(),
+): Promise<void> {
+  for (const { providerId } of await browser.list()) {
+    try {
+      const old = await browser.read(providerId);
+      if (old?.type === 'api_key' && old.key && !(await keychain.read(providerId))) {
+        await keychain.setKey(providerId, old.key, true);
+      }
+      await browser.delete(providerId);
+    } catch {
+      // Kept in web storage; the next page load tries again.
+    }
+  }
+}
+
 /** The page's key store, shared by the Settings sheet and the agent: the Keychain in the apps. */
 export function pageKeyStore(handler = agentKeysHandler()): KeyStore {
-  return handler ? new KeychainCredentialStore(handler) : new BrowserCredentialStore();
+  if (!handler) return new BrowserCredentialStore();
+  const keychain = new KeychainCredentialStore(handler);
+  void adoptBrowserKeys(keychain);
+  return keychain;
 }
 
 export const credentials: KeyStore = pageKeyStore();

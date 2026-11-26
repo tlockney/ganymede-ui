@@ -889,9 +889,9 @@ with only SSH stays in Settings for shells.
   editable again when it is back. There is no offline editing.
 - **What a machine's window doesn't get.** The device API, Notebook
   Access, the Shortcuts bridge, the app's editor for text files and
-  `ganymede://` links are for this device's windows only. Neither Spotlight, File > Open
-  Recent nor the Recents list in the app's sidebar include a machine's
-  notebooks.
+  `ganymede://` links are for this device's windows only. Neither
+  Spotlight, File > Open Recent nor the Recents list in the app's sidebar
+  include a machine's notebooks.
 
 > [!NOTE]
 > **Unreleased.** Your name going to a connected machine's rooms, the

@@ -13,4 +13,11 @@ origin a machine's window loads are the app's own (`Place.allowsLoading`,
 `sandbox allow-scripts`, so they run in an opaque origin and are refused,
 as this device's `/files` pages are. A test now covers the opaque origin.
 
-Part of ganymede#965, section 2. By-hand check on #399.
+Keys the released build kept in web storage from a machine's window
+would otherwise stay there, unseen and unremovable. `adoptBrowserKeys`
+moves each into the Keychain when the Keychain has none for that
+provider, then clears it from web storage; one the Keychain refuses
+stays for the next page load.
+
+Part of ganymede#965, section 2. By-hand checks on #399 (Mac) and
+#273 (iPad and iPhone).
