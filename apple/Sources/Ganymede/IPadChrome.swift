@@ -1158,6 +1158,11 @@ struct NotebookStatusMenu: View {
             ForEach(page.state.kernels, id: \.name) { kernel in
                 kernelChoice(kernel)
             }
+            // A remote that isn't answering (#832), named for this window
+            // when it is a machine's (#740).
+            if let line = page.state.notAnswering(machine: machine) {
+                Text(line).font(.caption).foregroundStyle(.secondary)
+            }
             // Where every notebook's kernels run (#473), with the connected
             // machines as places (#701).
             if place.allows(.kernelLocation), AppModel.shared.kernelLocations.hasRemotes {
@@ -1166,6 +1171,9 @@ struct NotebookStatusMenu: View {
             }
         }
     }
+
+    /// The machine whose window this is (#740), when it is one.
+    private var machine: String? { place.machineID.flatMap(AppModel.shared.machineName(_:)) }
 
     private func kernelChoice(_ kernel: PageState.Kernel) -> some View {
         Button {

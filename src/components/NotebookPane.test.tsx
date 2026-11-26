@@ -16,6 +16,7 @@ import { attachDevice } from '../lib/device-remote';
 import { NotebookRoom } from '../lib/room';
 import { attachCellControls } from '../lib/cell-controls';
 import type { BackendConfig } from '../lib/backends';
+import type { KernelPlaces } from '../lib/kernel-place';
 import { forgetChosenViews } from '../lib/journal';
 
 // No kernel and no real notebook widget: the pane's loading, dirty state and
@@ -271,6 +272,7 @@ function setup(
   get = vi.fn(async () => ({ path: 'moons/Io.ipynb', content: structuredClone(NOTEBOOK) })),
   path = 'moons/Io.ipynb',
   config?: BackendConfig,
+  places?: KernelPlaces,
 ) {
   const fake = fakeServices();
   if (serverSettings) Object.assign(fake.services, { serverSettings });
@@ -282,6 +284,7 @@ function setup(
     <NotebookPane
       backend={fakeBackend(fake.services, config)}
       path={path}
+      places={places}
       onController={onController}
       onRenamed={onRenamed}
     />,
@@ -956,6 +959,29 @@ describe('NotebookPane', () => {
     expect(latest()!.kernelName).toBe('ts');
     await act(() => latest()!.runAll());
     expect(session.changeKernel).toHaveBeenCalledWith({ name: 'ts' });
+  });
+
+  it('marks a remote’s kernels in the notice’s picker, and says when it isn’t answering (#832)', async () => {
+    const nb = structuredClone(NOTEBOOK);
+    nb.metadata.kernelspec = { name: 'julia', display_name: 'Julia' };
+    const { latest } = setup(
+      vi.fn(async () => ({ path: 'moons/Io.ipynb', content: nb })),
+      'moons/Io.ipynb',
+      undefined,
+      {
+        remote: { name: 'workmbp', reachable: false, error: 'gateway: error sending request' },
+        gateway: ['python3'],
+      },
+    );
+    await waitFor(() => expect(latest()?.status).toBe('none'));
+    await act(() => latest()!.run());
+    const picker = screen.getByRole('combobox', { name: 'Pick a Kernel' });
+    expect(within(picker).getByRole('option', { name: 'Python 3 · workmbp' })).toBeEnabled();
+    expect(
+      within(picker).getByRole('option', {
+        name: 'workmbp isn’t answering: gateway: error sending request',
+      }),
+    ).toBeDisabled();
   });
 
   it('records the kernel in the notebook when it is changed', async () => {
@@ -2873,8 +2899,16 @@ describe('NotebookPane on a connected machine that is away (#701)', () => {
   const LOCAL: BackendConfig = { kind: 'ganymede', url: '', token: 't' };
 
   /** A pane in a (fake) room whose connection is `connected`; the room's notebook is a real one. */
-  async function inRoom(connected: boolean, config: BackendConfig = MACHINE) {
+  async function inRoom(
+    connected: boolean,
+    config: BackendConfig = MACHINE,
+    {
+      kernelspec,
+      places,
+    }: { kernelspec?: { name: string; display_name: string }; places?: KernelPlaces } = {},
+  ) {
     const content = structuredClone(NOTEBOOK);
+    if (kernelspec) content.metadata.kernelspec = kernelspec;
     Object.assign(content.cells[0]!, {
       execution_count: 3,
       outputs: [{ output_type: 'stream', name: 'stdout', text: '1\n' }],
@@ -2889,6 +2923,7 @@ describe('NotebookPane on a connected machine that is away (#701)', () => {
       vi.fn(async () => ({ path: 'moons/Io.ipynb', content })),
       'moons/Io.ipynb',
       config,
+      places,
     );
     await waitFor(() => expect(view.latest()).toBeDefined());
     await waitFor(() => expect(fakes.sessions.length).toBeGreaterThan(0));
@@ -2907,6 +2942,23 @@ describe('NotebookPane on a connected machine that is away (#701)', () => {
     expect(session.changeKernel).not.toHaveBeenCalled();
     expect(advance).not.toHaveBeenCalled();
     expect(all).not.toHaveBeenCalled();
+  });
+
+  it('says in the notice’s picker that the machine’s remote isn’t answering (#832)', async () => {
+    const { latest } = await inRoom(true, MACHINE, {
+      kernelspec: { name: 'julia', display_name: 'Julia' },
+      places: {
+        remote: { name: 'workmbp', reachable: false, error: 'gateway: timed out' },
+        gateway: ['python3'],
+      },
+    });
+    await act(() => latest()!.run());
+    const picker = screen.getByRole('combobox', { name: 'Pick a Kernel' });
+    expect(
+      within(picker).getByRole('option', {
+        name: 'Mini runs kernels on workmbp, which isn’t answering',
+      }),
+    ).toBeDisabled();
   });
 
   it('runs when the machine is answering', async () => {

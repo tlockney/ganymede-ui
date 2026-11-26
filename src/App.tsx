@@ -9,6 +9,7 @@ import {
 } from './lib/backends';
 import { initialConfig, isAppServer, sameBackend } from './lib/app-config';
 import { offersDevice } from './lib/kernel-device';
+import { useKernelPlaces } from './lib/kernel-place';
 import { reportMoved } from './lib/kernel-relay';
 import { useColorScheme } from './lib/useColorScheme';
 import { TOUCH_QUERY, useMedia, useNarrow } from './lib/useNarrow';
@@ -927,6 +928,11 @@ export function App() {
   // page is open (#350): the manager's poll, a return to the page, or the
   // app's `refresh-kernels`.
   const specs = backend?.services.kernelspecs.specs ?? undefined;
+  // Where the server runs kernels when that is a remote, and which specs run
+  // there (ganymede#969, #832): JupyterLab's manager drops those keys.
+  const places = useKernelPlaces(
+    backend?.config.kind === 'ganymede' ? backend.services.serverSettings : undefined,
+  );
   useSignals(backend?.services.sessions.runningChanged, backend?.services.kernelspecs.specsChanged);
   useEffect(
     () => (backend ? refreshKernelsOnReturn(backend.services.kernelspecs) : undefined),
@@ -1032,8 +1038,20 @@ export function App() {
       cellType: shown?.cellType ?? null,
       journal: shown?.journal ?? false,
       kernels: Object.values(specs?.kernelspecs ?? {}).flatMap(k =>
-        k ? [{ name: k.name, displayName: k.display_name, device: offersDevice(k) }] : [],
+        k
+          ? [
+              {
+                name: k.name,
+                displayName: k.display_name,
+                device: offersDevice(k),
+                ...(places.gateway.includes(k.name) && places.remote
+                  ? { gateway: places.remote.name }
+                  : {}),
+              },
+            ]
+          : [],
       ),
+      kernelsRemote: places.remote,
       backend: backend ? { label: backend.label, detail: backend.detail } : null,
       running: JSON.parse(runningKey) as RunningSession[],
       recents: JSON.parse(recentsKeyed) as string[],
@@ -1048,6 +1066,7 @@ export function App() {
     dirty,
     shown,
     specs,
+    places,
     backend,
     runningKey,
     recentsKeyed,
@@ -1171,6 +1190,8 @@ export function App() {
               onToggleVariables={() => setVariablesOpen(o => !o)}
               variablesOpen={variablesOpen}
               specs={specs}
+              places={places}
+              machine={machineName}
               place={backend ? placeOf(backend.config) : undefined}
               accessMissing={accessMissing}
               onNotebookAccess={() => void runCommand.current('notebook-access')}
@@ -1216,6 +1237,7 @@ export function App() {
                 key={`${backend.config.kind}:${openPath}`}
                 backend={backend}
                 path={openPath}
+                places={places}
                 onController={setController}
                 onRenamed={followRename}
               />

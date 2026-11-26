@@ -1,5 +1,6 @@
 import type { KernelSpec } from '@jupyterlab/services';
 import { DEVICE_LABEL, offersDevice, pickerLabel } from '../lib/kernel-device';
+import { notAnsweringLine, placeLabel, type KernelPlaces } from '../lib/kernel-place';
 import { ACTION_LABEL, type Problem, type ProblemAction } from '../lib/problems';
 
 type Props = {
@@ -11,14 +12,31 @@ type Props = {
   onDismiss(): void;
   /** The kernels to pick from, for `pick-kernel`. */
   specs?: KernelSpec.ISpecModels | null;
+  /** Where the server runs kernels, when that is a remote (#832). */
+  places?: KernelPlaces;
+  /** The machine whose window this is, for the remote's line (#832). */
+  machine?: string;
 };
 
 /**
  * The pane's notice (#213): what went wrong, what the next step does, and
  * a button for it (Restart, Retry, Save, or a kernel picker).
  */
-export function ProblemNotice({ problem, onAction, onPickKernel, onDismiss, specs }: Props) {
+export function ProblemNotice({
+  problem,
+  onAction,
+  onPickKernel,
+  onDismiss,
+  specs,
+  places,
+  machine,
+}: Props) {
   const kernels = Object.values(specs?.kernelspecs ?? {}).filter(s => !!s);
+  // A kernel that runs on a remote carries its name, and one disabled line
+  // says when that remote isn't answering (#832).
+  const remoteOf = (s: KernelSpec.ISpecModel) =>
+    places?.gateway.includes(s.name) ? places.remote?.name : undefined;
+  const notAnswering = notAnsweringLine(places?.remote, machine);
   return (
     <div className={`pane-notice problem-${problem.kind}`} role="alert">
       <div className="pane-notice-text">
@@ -39,7 +57,10 @@ export function ProblemNotice({ problem, onAction, onPickKernel, onDismiss, spec
                     {ACTION_LABEL[action]}…
                   </option>
                   {kernels.map(s => {
-                    const { text, label } = pickerLabel(s);
+                    const { text, label } = pickerLabel({
+                      ...s,
+                      display_name: placeLabel(s, remoteOf(s)),
+                    });
                     return (
                       <option
                         key={s.name}
@@ -51,6 +72,11 @@ export function ProblemNotice({ problem, onAction, onPickKernel, onDismiss, spec
                       </option>
                     );
                   })}
+                  {notAnswering && (
+                    <option value="" disabled>
+                      {notAnswering}
+                    </option>
+                  )}
                 </select>
               </label>
             )

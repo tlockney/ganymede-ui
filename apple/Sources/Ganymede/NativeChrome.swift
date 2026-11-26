@@ -824,8 +824,16 @@ private struct KernelPopover: View {
                     }
                 }
             }
+            // The remote kernels run on, when it isn't answering (#832),
+            // named for this window when it is a machine's (#740).
+            if let line = state.notAnswering(machine: machine) {
+                Text(line).font(.caption).foregroundStyle(.secondary)
+            }
         }
     }
+
+    /// The machine whose window this is (#740), when it is one.
+    private var machine: String? { place.machineID.flatMap(AppModel.shared.machineName(_:)) }
 }
 
 /// Asks before trusting, as the page's own Trust button did.
@@ -1052,6 +1060,18 @@ struct KernelMenu: View {
     @FocusedValue(\.pageModel) private var page
     @FocusedValue(\.windowScope) private var scope
 
+    /// The remote kernels run on, when it isn't answering (#832), named for
+    /// this window when it is a machine's (#740).
+    private var notAnswering: String? {
+        page?.state.notAnswering(machine: scope?.place.machineID.flatMap(AppModel.shared.machineName(_:)))
+    }
+
+    /// Whether Change Kernel has anything to offer: a kernel, or the line
+    /// that says why none came.
+    private var offersKernels: Bool {
+        page?.state.kernels.isEmpty == false || notAnswering != nil
+    }
+
     var body: some View {
         // Which kernel runs, from its own reply (#693).
         if let version = page?.state.kernelVersionLine {
@@ -1073,8 +1093,15 @@ struct KernelMenu: View {
                 Button(kernel.pickerName) { page?.run("change-kernel", arg: kernel.name) }
                     .accessibilityLabel(kernel.pickerLabel)
             }
+            // A remote that isn't answering (#832), named for this window
+            // when it is a machine's (#740).
+            if let notAnswering {
+                Divider()
+                Button(notAnswering) {}
+                    .disabled(true)
+            }
         }
-        .disabled(page?.state.hasNotebook != true || (page?.state.kernels.isEmpty ?? true))
+        .disabled(page?.state.hasNotebook != true || !offersKernels)
         Divider()
         Button("Trust Notebook…") {
             if let page { confirmTrust(page) }

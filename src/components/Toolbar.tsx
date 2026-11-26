@@ -4,6 +4,7 @@ import type { CellType, NotebookController } from './NotebookPane';
 import { NotebookTitle } from './NotebookTitle';
 import { ContextMenu, type MenuItem } from './ContextMenu';
 import { DEVICE_LABEL, isPageSpec, offersDevice, pickerLabel } from '../lib/kernel-device';
+import { notAnsweringLine, placeLabel, type KernelPlaces } from '../lib/kernel-place';
 import { type Place, shortStatusText, statusText } from '../lib/header-status';
 import { useNarrow } from '../lib/useNarrow';
 import {
@@ -33,6 +34,10 @@ type Props = {
   onToggleVariables?(): void;
   variablesOpen?: boolean;
   specs?: KernelSpec.ISpecModels;
+  /** Where the server runs kernels, when that is a remote (#832). */
+  places?: KernelPlaces;
+  /** The machine whose window this is, for the remote's line (#832). */
+  machine?: string;
   /** Where the notebooks are saved and the kernels run (#801); the status line names it. */
   place?: Place;
   /** What the notebook asks for that its grant doesn't give (host API). */
@@ -79,6 +84,8 @@ export function Toolbar({
   onToggleVariables,
   variablesOpen = false,
   specs,
+  places,
+  machine,
   place = HERE,
   accessMissing = [],
   onNotebookAccess,
@@ -96,6 +103,11 @@ export function Toolbar({
     if (c && window.confirm(TRUST_PROMPT)) void c.trust();
   };
   const kernels = Object.values(specs?.kernelspecs ?? {}).flatMap(s => (s ? [s] : []));
+  // The remote a spec runs on (#832), for its mark in the picker, and the
+  // one line saying that remote isn't answering.
+  const remoteOf = (s: KernelSpec.ISpecModel) =>
+    places?.gateway.includes(s.name) ? places.remote?.name : undefined;
+  const notAnswering = notAnsweringLine(places?.remote, machine);
 
   const [open, setOpen] = useState<MenuName>();
   const narrow = useNarrow();
@@ -134,13 +146,23 @@ export function Toolbar({
           ? [
               { heading: 'Kernel' },
               ...(c.kernelVersionLine ? [{ note: c.kernelVersionLine }] : []),
-              ...kernels.map(s => ({
-                label: pickerLabel(s).text,
-                ariaLabel: pickerLabel(s).label,
-                title: offersDevice(s) ? DEVICE_LABEL : undefined,
-                checked: c.kernelName === s.name,
-                onSelect: () => void c.changeKernel(s.name),
-              })),
+              ...kernels.map(s => {
+                const { text, label } = pickerLabel({
+                  ...s,
+                  display_name: placeLabel(s, remoteOf(s)),
+                });
+                return {
+                  label: text,
+                  ariaLabel: label,
+                  title: offersDevice(s) ? DEVICE_LABEL : undefined,
+                  checked: c.kernelName === s.name,
+                  onSelect: () => void c.changeKernel(s.name),
+                };
+              }),
+              // Why the remote's kernels are the last it sent (#832).
+              ...(notAnswering
+                ? [{ label: notAnswering, disabled: true, onSelect: () => {} }]
+                : []),
             ]
           : []),
       ],

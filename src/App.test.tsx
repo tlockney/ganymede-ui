@@ -31,6 +31,8 @@ const mocks = vi.hoisted(() => ({
   loadHostGrants: vi.fn(),
   /** The last pane's `onRenamed`. */
   onRenamed: undefined as undefined | ((from: string, to: string) => void),
+  /** The last pane's `places` (#832). */
+  places: undefined as unknown,
   /** The last pane's `onController`. */
   onController: undefined as undefined | ((c: unknown) => void),
   /** Stands in for the examples' copy when a test sets it. */
@@ -112,13 +114,16 @@ vi.mock('./components/NotebookPane', async () => {
   return {
     NotebookPane: ({
       path,
+      places,
       onController,
       onRenamed,
     }: {
       path: string;
+      places?: unknown;
       onController(c: unknown): void;
       onRenamed?(from: string, to: string): void;
     }) => {
+      mocks.places = places;
       mocks.onRenamed = onRenamed;
       mocks.onController = onController;
       useEffect(() => {
@@ -782,6 +787,92 @@ describe('App', () => {
     vi.unstubAllGlobals();
   });
 
+  it('tells the app where kernels run, and when that remote isn’t answering (#832)', async () => {
+    const states: Record<string, unknown>[] = [];
+    vi.stubGlobal('webkit', {
+      messageHandlers: {
+        state: { postMessage: (m: Record<string, unknown>) => states.push(m) },
+      },
+    });
+    mocks.controller = { dirty: false, save: vi.fn(async () => true) };
+    const fake = fakeServices({ '': [{ name: 'Io.ipynb', type: 'notebook' }] });
+    // What the server says of the remote kernels run on: JupyterLab's
+    // kernelspec manager drops these keys, so the page asks itself.
+    (fake.services as unknown as { serverSettings: unknown }).serverSettings =
+      ServerConnection.makeSettings({
+        baseUrl: 'http://server/',
+        fetch: (async () =>
+          new Response(
+            JSON.stringify({
+              kernelspecs: { python3: { name: 'python3', gateway: true } },
+              gateway: {
+                name: 'workmbp',
+                reachable: false,
+                error: 'gateway: error sending request',
+              },
+            }),
+          )) as unknown as typeof fetch,
+      });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    history.replaceState(null, '', '/?kernels=server&open=Io.ipynb');
+    render(<App />);
+    await waitFor(() =>
+      expect(states.at(-1)).toMatchObject({
+        kernels: [{ name: 'python3', displayName: 'Python 3', device: false, gateway: 'workmbp' }],
+        kernelsRemote: {
+          name: 'workmbp',
+          reachable: false,
+          error: 'gateway: error sending request',
+        },
+      }),
+    );
+
+    // The toolbar's kernel menu names where a kernel runs, and says when
+    // that remote isn't answering.
+    await userEvent.click(screen.getByRole('button', { name: /^(Saved|Edited|Locked)/ }));
+    const menu = await screen.findByRole('menu', { name: 'Notebook and Kernel' });
+    expect(
+      within(menu).getByRole('menuitemradio', { name: 'Python 3 · workmbp' }),
+    ).toBeInTheDocument();
+    expect(
+      within(menu).getByRole('menuitem', {
+        name: 'workmbp isn’t answering: gateway: error sending request',
+      }),
+    ).toBeDisabled();
+    // The pane gets the same places, for its notice's kernel picker.
+    expect(mocks.places).toEqual({
+      remote: { name: 'workmbp', reachable: false, error: 'gateway: error sending request' },
+      gateway: ['python3'],
+    });
+    vi.unstubAllGlobals();
+  });
+
+  it('says in a machine’s window that the machine’s remote isn’t answering (#832)', async () => {
+    mocks.controller = { dirty: false, save: vi.fn(async () => true) };
+    const fake = fakeServices({ '': [{ name: 'Io.ipynb', type: 'notebook' }] });
+    (fake.services as unknown as { serverSettings: unknown }).serverSettings =
+      ServerConnection.makeSettings({
+        baseUrl: 'http://127.0.0.1:1/machines/mini-1/',
+        fetch: (async () =>
+          new Response(
+            JSON.stringify({
+              kernelspecs: { python3: { name: 'python3', gateway: true } },
+              gateway: { name: 'workmbp', reachable: false, error: 'gateway: timed out' },
+            }),
+          )) as unknown as typeof fetch,
+      });
+    mocks.connect.mockImplementation(async c => fakeBackend(fake.services, c));
+    history.replaceState(null, '', '/?machine=mini-1&machine_name=m4mini&open=Io.ipynb');
+    render(<App />);
+    await userEvent.click(await screen.findByRole('button', { name: /^(Saved|Edited|Locked)/ }));
+    const menu = await screen.findByRole('menu', { name: 'Notebook and Kernel' });
+    expect(
+      await within(menu).findByRole('menuitem', {
+        name: 'm4mini runs kernels on workmbp, which isn’t answering',
+      }),
+    ).toBeDisabled();
+  });
+
   it('reads the kernels’ memory while the app’s Running list asks for it (#241)', async () => {
     const states: Record<string, unknown>[] = [];
     vi.stubGlobal('webkit', {
@@ -796,7 +887,10 @@ describe('App', () => {
       ServerConnection.makeSettings({
         baseUrl: 'http://server/',
         fetch: ((input: RequestInfo) => {
-          asked.push(typeof input === 'string' ? input : input.url);
+          const url = typeof input === 'string' ? input : input.url;
+          // The kernel list is asked for on its own (#832); this records
+          // the memory reads.
+          if (url.includes('kernel_usage')) asked.push(url);
           return Promise.resolve(
             new Response(JSON.stringify({ content: { kernel_memory: 2048 } })),
           );
