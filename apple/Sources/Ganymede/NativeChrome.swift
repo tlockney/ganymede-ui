@@ -749,6 +749,8 @@ struct KernelPicker: View {
     var place: Place = .thisDevice
     var header: HeaderStatus?
     @State private var shown = false
+    /// The pointer is over the chip, which takes a quiet highlight.
+    @State private var hovering = false
 
     /// The widest state word, whose width the state part holds: a chip
     /// that grows with "Running" and shrinks to "Idle" would shift every
@@ -762,7 +764,10 @@ struct KernelPicker: View {
         } label: {
             chip
         }
-        .labelStyle(.titleAndIcon)
+        // No capsule or border: the chip is one piece with the title above
+        // it, and reads as words until the pointer finds it (#867).
+        .buttonStyle(ChipButtonStyle(hovering: hovering))
+        .onHover { hovering = $0 }
         .help(header?.full ?? page.state.kernelVersionLine ?? "The notebook's kernel")
         .accessibilityLabel(chipText)
         // The mark's words are the button's value, so the whole chip reads
@@ -776,7 +781,7 @@ struct KernelPicker: View {
         }
     }
 
-    /// The mark, then the words.
+    /// The mark, then the words, in the quiet secondary style.
     private var chip: some View {
         HStack(spacing: 5) {
             mark
@@ -794,7 +799,9 @@ struct KernelPicker: View {
                     }
                 }
             }
+            .foregroundStyle(.secondary)
         }
+        .font(.caption)
     }
 
     /// The chip's mark in a fixed 10pt frame (#867): a 7pt dot while the
@@ -839,6 +846,24 @@ struct KernelPicker: View {
     private var markKind: HeaderStatus.ChipKind {
         if page.state.kernelMissing { return .missing }
         return header?.chipKind ?? .stopped
+    }
+}
+
+/// The chip's button (#867): no capsule or border, so it reads as words
+/// with the title above it. Under the pointer they take a quiet fill, and
+/// a stronger one while pressed.
+private struct ChipButtonStyle: ButtonStyle {
+    var hovering: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .padding(.horizontal, 5)
+            .padding(.vertical, 2)
+            .background(
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(Color.primary.opacity(configuration.isPressed ? 0.12 : hovering ? 0.06 : 0))
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 5))
     }
 }
 
