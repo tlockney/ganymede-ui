@@ -79,6 +79,7 @@ import { DevicePrompt } from './DevicePrompt';
 import { kernelVersionLine } from '../lib/kernel-version';
 import { type LastReading, diedOutOfMemory, useLastKernelReading } from '../lib/kernel-usage';
 import { initialParams } from '../lib/run';
+import { quietKernelErrors } from '../lib/session-errors';
 
 export type CellType = nbformat.CellType;
 
@@ -668,6 +669,9 @@ export function NotebookPane({ backend, path, places, native, onController, onRe
         type: 'notebook',
         kernelPreference: { shouldStart: false, autoStartDefault: false },
       });
+      // The pane's notice reports a kernel that fails to start or dies; no
+      // second report from JupyterLab's own dialog (#869).
+      quietKernelErrors(session);
       // The cells' language until the kernel starts and reports its own, so
       // they highlight while editing before the first run (#352).
       const intendedName = intendedRef.current.name;

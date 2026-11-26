@@ -1149,3 +1149,10 @@
   border-top: 1px solid var(--separator);
   margin: 0.6em 0;
 }
+
+/* A JupyterLab dialog's message is a <pre>, one line however long: it
+ * wraps here, so none of it is cut off at the dialog's edge (#869). */
+.jp-Dialog-body pre {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

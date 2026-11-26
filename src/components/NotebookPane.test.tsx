@@ -29,6 +29,8 @@ const fakes = vi.hoisted(() => ({
   editing: [] as { dispose: () => void }[],
   /** What a notebook command runs. */
   execute: vi.fn(async () => {}),
+  /** The fake session's JupyterLab error dialog, which should never open. */
+  kernelErrorDialog: vi.fn(async () => {}),
   /** How the next session rejoins; by default at once, finding none. */
   initialize: undefined as undefined | ((session: { session: unknown }) => Promise<boolean>),
 }));
@@ -245,6 +247,8 @@ vi.mock('@jupyterlab/apputils', async importOriginal => {
     initialize = vi.fn(() => fakes.initialize?.(this) ?? Promise.resolve(false));
     changeKernel = vi.fn(async () => null);
     dispose = vi.fn();
+    /** JupyterLab's own "Error Starting Kernel" dialog (#869). */
+    _displayKernelError = fakes.kernelErrorDialog;
     constructor(readonly options: Record<string, unknown>) {
       fakes.sessions.push(this);
     }
@@ -955,6 +959,15 @@ describe('NotebookPane', () => {
     );
     expect(request).not.toHaveBeenCalled();
     request.mockRestore();
+  });
+
+  it("quiets JupyterLab's kernel error dialog: the notice reports a failed start (#869)", async () => {
+    const { latest } = setup();
+    await waitFor(() => expect(latest()).toBeDefined());
+    const session = fakes.sessions[0] as { _displayKernelError: () => Promise<void> };
+    expect(session._displayKernelError).not.toBe(fakes.kernelErrorDialog);
+    await session._displayKernelError();
+    expect(fakes.kernelErrorDialog).not.toHaveBeenCalled();
   });
 
   it('starts the kernel the file names on the first run', async () => {
