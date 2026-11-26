@@ -2899,8 +2899,16 @@ describe('NotebookPane on a connected machine that is away (#701)', () => {
   const LOCAL: BackendConfig = { kind: 'ganymede', url: '', token: 't' };
 
   /** A pane in a (fake) room whose connection is `connected`; the room's notebook is a real one. */
-  async function inRoom(connected: boolean, config: BackendConfig = MACHINE) {
+  async function inRoom(
+    connected: boolean,
+    config: BackendConfig = MACHINE,
+    {
+      kernelspec,
+      places,
+    }: { kernelspec?: { name: string; display_name: string }; places?: KernelPlaces } = {},
+  ) {
     const content = structuredClone(NOTEBOOK);
+    if (kernelspec) content.metadata.kernelspec = kernelspec;
     Object.assign(content.cells[0]!, {
       execution_count: 3,
       outputs: [{ output_type: 'stream', name: 'stdout', text: '1\n' }],
@@ -2915,6 +2923,7 @@ describe('NotebookPane on a connected machine that is away (#701)', () => {
       vi.fn(async () => ({ path: 'moons/Io.ipynb', content })),
       'moons/Io.ipynb',
       config,
+      places,
     );
     await waitFor(() => expect(view.latest()).toBeDefined());
     await waitFor(() => expect(fakes.sessions.length).toBeGreaterThan(0));
@@ -2933,6 +2942,23 @@ describe('NotebookPane on a connected machine that is away (#701)', () => {
     expect(session.changeKernel).not.toHaveBeenCalled();
     expect(advance).not.toHaveBeenCalled();
     expect(all).not.toHaveBeenCalled();
+  });
+
+  it('says in the notice’s picker that the machine’s remote isn’t answering (#832)', async () => {
+    const { latest } = await inRoom(true, MACHINE, {
+      kernelspec: { name: 'julia', display_name: 'Julia' },
+      places: {
+        remote: { name: 'workmbp', reachable: false, error: 'gateway: timed out' },
+        gateway: ['python3'],
+      },
+    });
+    await act(() => latest()!.run());
+    const picker = screen.getByRole('combobox', { name: 'Pick a Kernel' });
+    expect(
+      within(picker).getByRole('option', {
+        name: 'Mini runs kernels on workmbp, which isn’t answering',
+      }),
+    ).toBeDisabled();
   });
 
   it('runs when the machine is answering', async () => {
