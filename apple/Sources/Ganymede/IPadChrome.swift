@@ -276,9 +276,10 @@ struct IPadSidebar: View {
     /// kept from this device's, in a machine's scene).
     private var shownTab: NavigatorTab { tabs.contains(tab) ? tab : .files }
 
-    /// Kernels, and the panel's terminals, which are this device's.
+    /// Kernels, and the panel's terminals: the panel is this scene's, and
+    /// holds a machine's own terminals too (#858).
     private var runningCount: Int {
-        page.state.sessions.count + (place.allows(.localTerminal) ? panel.terminals.count : 0)
+        page.state.sessions.count + panel.terminals.count
     }
 
     // MARK: Journals (#758)
@@ -424,10 +425,7 @@ struct IPadSidebar: View {
             }
         case .running:
             runningSection
-            // The panel's shells are on this device.
-            if place.allows(.localTerminal) {
-                IPadPanelTerminalRows(panel: panel, show: showTerminal)
-            }
+            IPadPanelTerminalRows(panel: panel, show: showTerminal)
             if runningCount == 0 {
                 Text("No kernels or terminals running").foregroundStyle(.secondary)
             }

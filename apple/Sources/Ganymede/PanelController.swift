@@ -29,9 +29,10 @@ final class PanelController {
     var showsLog = false
 
     /// Shows the panel; with no terminal in it yet, starts one on `target`.
-    func show(startingOn target: TerminalTarget) {
+    /// Nil for a window with none to start (#858), which shows it empty.
+    func show(startingOn target: TerminalTarget?) {
         isShown = true
-        if terminals.isEmpty && !showsLog { add(target) }
+        if let target, terminals.isEmpty && !showsLog { add(target) }
     }
 
     /// Shows the panel with the Kernel Log tab.
@@ -47,7 +48,7 @@ final class PanelController {
     }
 
     /// ⌃`: hides the panel, or shows it as `show(startingOn:)` does.
-    func toggle(startingOn target: TerminalTarget) {
+    func toggle(startingOn target: TerminalTarget?) {
         if isShown {
             isShown = false
         } else {

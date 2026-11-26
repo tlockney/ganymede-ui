@@ -186,9 +186,12 @@ struct TerminalWindow: View {
             // The server is rooted at `/`, so an absolute path is the cwd.
             return JupyterTerminalTransport(endpoint: endpoint, cwd: (folder ?? model.root).path)
             #endif
-        case .server(let id):
+        case .server(let id, let folder):
+            // A path on the server: the Ganymede server resolves a machine's
+            // relative folder against its root, and falls back to the root
+            // when it isn't there (#858).
             guard let endpoint = model.server(of: id) else { return nil }
-            return JupyterTerminalTransport(endpoint: endpoint)
+            return JupyterTerminalTransport(endpoint: endpoint, cwd: folder)
         case .ssh(let id):
             guard let ssh = model.remote(id)?.ssh else { return nil }
             #if os(macOS)
@@ -216,7 +219,7 @@ struct TerminalWindow: View {
             #else
             return model.error.map { "Ganymede could not start: \($0)" }
             #endif
-        case .server(let id):
+        case .server(let id, _):
             return model.remote(id)?.hasServer != true ? "This remote is gone or has no server. \(settings)" : nil
         case .ssh(let id):
             guard let ssh = model.remote(id)?.ssh else {
@@ -317,21 +320,30 @@ extension AppModel {
     func title(for target: TerminalTarget) -> String {
         switch target {
         case .local(let folder): "Terminal in \((folder ?? root).lastPathComponent)"
-        case .server(let id): "Terminal on \(remote(id)?.title ?? "remote")"
+        case .server(let id, _): "Terminal on \(remote(id)?.title ?? "remote")"
         case .ssh(let id): "SSH to \(remote(id)?.title ?? "remote")"
         }
     }
 }
 
 #if os(iOS)
-/// The toolbar's terminal menu: each remote with SSH or a server.
+/// The toolbar's terminal menu: a new terminal on the machine the scene
+/// shows (#858), and each of the remotes' with SSH or a server.
 struct TerminalMenu: View {
     var model: AppModel
+    /// What a new terminal on the scene's own machine runs on; nil for this
+    /// device, whose terminals are the remotes' in the panel, as before.
+    var newTerminal: TerminalTarget?
     let open: (TerminalRequest) -> Void
 
     var body: some View {
+        let remotes = model.remotes.filter { $0.hasServer || $0.ssh != nil }
         Menu {
-            ForEach(model.remotes) { remote in
+            if let newTerminal {
+                Button("New Terminal") { open(TerminalRequest(target: newTerminal)) }
+            }
+            if newTerminal != nil, !remotes.isEmpty { Divider() }
+            ForEach(remotes) { remote in
                 if remote.ssh != nil {
                     Button("\(remote.title) (SSH)") { open(TerminalRequest(target: .ssh(remote.id))) }
                 }
@@ -342,7 +354,7 @@ struct TerminalMenu: View {
         } label: {
             Label("Terminal", systemImage: "terminal")
         }
-        .disabled(!model.remotes.contains { $0.hasServer || $0.ssh != nil })
+        .disabled(newTerminal == nil && remotes.isEmpty)
     }
 }
 
@@ -371,25 +383,23 @@ struct TerminalScene: View {
 struct TerminalCommands: View {
     @Environment(\.openWindow) private var openWindow
     var model: AppModel
-    @FocusedValue(\.windowFolder) private var folder
     @FocusedValue(\.windowScope) private var scope
+    @FocusedValue(\.pageModel) private var page
     /// The front notebook window's bottom panel, where new terminals go
     /// (#248); a window of their own when no notebook window is in front.
     @FocusedValue(\.panelController) private var panel
 
     var body: some View {
-        // A shell on this Mac: not offered in a machine's window (#741),
-        // which has no `windowFolder` to start in.
-        let local = scope?.place.allows(.localTerminal) ?? true
+        let target = newTerminal
         Button("New Terminal") {
-            open(.local(folder: folder ?? model.root))
+            if let target { open(target) }
         }
         .keyboardShortcut("`", modifiers: [.control, .shift])
-        .disabled(!local)
+        .disabled(target == nil)
         Button("New Terminal Tab") {
-            openWindow(value: TerminalRequest(target: .local(folder: folder ?? model.root)))
+            if let target { openWindow(value: TerminalRequest(target: target)) }
         }
-        .disabled(!local)
+        .disabled(target == nil)
         // One item per way in: a remote with both a server and SSH gets two.
         Menu("New Terminal On") {
             ForEach(model.remotes) { remote in
@@ -406,6 +416,14 @@ struct TerminalCommands: View {
             }
         }
         .disabled(!model.remotes.contains { $0.hasServer || $0.ssh != nil })
+    }
+
+    /// What this window's New Terminal opens (#858): a shell on this Mac, or
+    /// on the machine the window shows, in the folder of the notebook there.
+    /// With no window in front, a shell on this Mac's root, as before.
+    private var newTerminal: TerminalTarget? {
+        guard let scope else { return .local(folder: model.root) }
+        return scope.terminalTarget(notebook: page?.state.path, remotes: model.remotes)
     }
 
     private func open(_ target: TerminalTarget) {

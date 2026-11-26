@@ -204,6 +204,42 @@ final class PlaceTests: XCTestCase {
         XCTAssertFalse(Place.machine(id).isThisDevice)
     }
 
+    // MARK: terminals (#858)
+
+    func testAWindowsTerminalRunsWhereItsPlaceDoes() {
+        let mini = Remote(name: "mini", serverURL: "http://mini:8888")
+        let remotes = [mini]
+        let machine = Place.machine(mini.id.uuidString)
+        // A machine's window runs its terminal on the machine, in the folder
+        // of the notebook it shows, which the machine's server resolves
+        // against its root.
+        XCTAssertEqual(machine.terminalTarget(folder: "notes", remotes: remotes), .server(mini.id, folder: "notes"))
+        // No folder known is the machine's root.
+        for folder in [nil, ""] {
+            XCTAssertEqual(machine.terminalTarget(folder: folder, remotes: remotes), .server(mini.id))
+        }
+        // This device's window still has a shell of its own, here, and takes
+        // a path on this Mac.
+        XCTAssertEqual(
+            Place.thisDevice.terminalTarget(folder: "Users/me/notes", remotes: remotes),
+            .local(folder: URL(fileURLWithPath: "/Users/me/notes", isDirectory: true)))
+        for folder in [nil, ""] {
+            XCTAssertEqual(Place.thisDevice.terminalTarget(folder: folder, remotes: remotes), .local(folder: nil))
+        }
+    }
+
+    func testAMachinesTerminalNeedsItsRemoteAndItsServer() {
+        let mini = Remote(name: "mini", serverURL: "http://mini:8888")
+        var shell = Remote(name: "shell")
+        shell.ssh = Remote.SSH(host: "box")
+        // The remote was removed, or saved again with SSH only: there is
+        // nowhere on it to run a terminal.
+        XCTAssertNil(Place.machine(mini.id.uuidString).terminalTarget(folder: "notes", remotes: []))
+        XCTAssertNil(Place.machine(mini.id.uuidString).terminalTarget(folder: nil, remotes: [shell]))
+        // Another machine's terminal is not this one's, whatever it offers.
+        XCTAssertNil(Place.machine(mini.id.uuidString).terminalTarget(folder: nil, remotes: [shell, Remote(serverURL: "http://other:8888")]))
+    }
+
     // MARK: window targets
 
     func testAMachineTargetRoundTripsThroughSceneStorage() throws {
