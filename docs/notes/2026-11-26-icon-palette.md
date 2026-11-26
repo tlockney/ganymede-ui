@@ -53,9 +53,10 @@ components.
 - `apple/`: an `AccentColor` colorset in the Mac and iOS asset catalogs
   (`#A85F00` in both appearances), and
   `ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor` on both
-  app targets, so the native controls follow the page. Dark keeps the
-  bright orange, where tinted text sits on a dark window; light takes the
-  darker one so tinted text reads 4.5:1 on white (4.88:1). A system-wide
+  app targets, so the native controls follow the page. It is the darker
+  orange in both appearances, so the system's white text on its own accent
+  fills reads 4.88:1, at the cost of a dimmer tint on the dark window
+  (3.45:1, enough for icons and indicators). A system-wide
   accent reaches the app only when the user's accent is Multicolor, the
   default: any other choice keeps the user's color.
   `AccentFill` (`#F9A03F`) and `OnAccent` (`#2A1600`) fill the Running
