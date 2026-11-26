@@ -588,13 +588,13 @@ struct ServerLine: View {
 /// into one AppKit family, and AppKit threw while syncing a new window's
 /// items into the others when a notebook opened from the Finder (#226).
 ///
-/// In a fixed order, so no control moves under the pointer: the kernel's
-/// chip, beside the title (its dot, the kernel's name, where it runs and
+/// In a fixed order, so no control moves under the pointer: the title, then
+/// the kernel's chip beside it (its dot, the kernel's name, where it runs and
 /// what it is doing; its popover has the file and the kernels to change
 /// to); Trust and Notebook Access, which are there only while they apply;
 /// Notebook | Journal, there while a notebook is open (#819); Run Cell with
 /// its run menu and Interrupt, in one group, always there and enabled while
-/// the kernel is busy; Share; and More. That is seven items, under the ten
+/// the kernel is busy; Share; and More. That is eight items, under the ten
 /// a ToolbarContentBuilder takes. New Notebook is File > New Notebook
 /// (⌘N), not a toolbar button (#867).
 struct NotebookToolbar: ToolbarContent {
@@ -770,9 +770,10 @@ struct KernelPicker: View {
         .accessibilityLabel(chipText)
         // The mark's words are the button's value, so the whole chip reads
         // as one control (#867): "TypeScript · This Mac · Idle, Kernel
-        // idle, button". A console or a folder has no status line, so no
-        // value.
-        .modifier(ChipValue(label: dotLabel))
+        // idle, button". A console or a folder has no status line, so an
+        // empty value: one modifier, not an `if`, so the button keeps its
+        // identity (and an open popover) when the status line comes or goes.
+        .accessibilityValue(dotLabel ?? "")
         .disabled(!page.state.hasNotebook)
         .popover(isPresented: $shown, arrowEdge: .bottom) {
             KernelPopover(page: page, panel: panel, place: place, header: header) { shown = false }
@@ -821,7 +822,6 @@ struct KernelPicker: View {
                 case .working:
                     ProgressView()
                         .controlSize(.mini)
-                        .tint(Color("Ready"))
                 case .missing:
                     Image(systemName: "exclamationmark.triangle")
                 case .idle, .stopped:
@@ -847,22 +847,6 @@ struct KernelPicker: View {
     private var markKind: HeaderStatus.ChipKind {
         if page.state.kernelMissing { return .missing }
         return header?.chipKind ?? .stopped
-    }
-}
-
-/// The chip's mark's words as the button's value, when the window has a
-/// status line (#867). A console or a folder has none to add, so the value
-/// is left off rather than empty.
-private struct ChipValue: ViewModifier {
-    let label: String?
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if let label {
-            content.accessibilityValue(label)
-        } else {
-            content
-        }
     }
 }
 

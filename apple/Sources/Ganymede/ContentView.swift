@@ -151,8 +151,8 @@ struct ContentView: View {
                 // The kernel popover's Kernel Log is this device's window's
                 // alone (#858), so a machine's window passes no panel to it.
                 panel: place.isThisDevice ? panel : nil, place: place, header: headerStatus,
-                // A notebook's title, drawn with its chip under it (#867);
-                // a console or a folder keeps the system's.
+                // A notebook's title, drawn with the kernel's button beside
+                // it (#867); a console or a folder keeps the system's.
                 title: showsNotebook ? windowTitle : nil)
             // The panel is every window's: a machine's terminals run on the
             // machine (#858), and a machine whose remote is gone keeps its
@@ -195,10 +195,13 @@ struct ContentView: View {
         // its title, or its file's (#867).
         .navigationTitle(windowTitle)
         .modifier(WindowSceneValues(place: place, folder: sidebarRoot, panel: panel))
-        // A notebook's toolbar item draws the title with its chip under it
-        // (#867), so the system's title and subtitle go; its tab keeps the
-        // display title, from `.navigationTitle` above.
-        .modifier(NotebookTitleRemoved(notebook: showsNotebook))
+        // A notebook's toolbar item draws the title (#867), so the system's
+        // title and subtitle go; its tab keeps the display title, from
+        // `.navigationTitle` above. One modifier with an optional kind, not
+        // an `if`: two branches would be two views, and switching between
+        // them would rebuild the window's web view when a notebook opens or
+        // closes in place.
+        .toolbar(removing: showsNotebook ? .title : nil)
         // Notebooks opened from the Finder (#228): the first window to see
         // them takes them. Each opens in a new tab (or brings forward
         // the one showing it), except that the window the app opened on
@@ -1270,22 +1273,6 @@ private struct KeychainAlert: ViewModifier {
 }
 
 #if os(macOS)
-/// A notebook window's toolbar draws its own title and chip (#867), so the
-/// system's title and subtitle are removed there. A console's or a folder's
-/// keeps them, as before.
-private struct NotebookTitleRemoved: ViewModifier {
-    var notebook: Bool
-
-    @ViewBuilder
-    func body(content: Content) -> some View {
-        if notebook {
-            content.toolbar(removing: .title)
-        } else {
-            content
-        }
-    }
-}
-
 /// The focused window's values for the menus (#740): the place, its server
 /// folder and the terminal panel for every window, since a machine's
 /// terminals run in its own panel (#858); this Mac's folder only for a

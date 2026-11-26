@@ -134,8 +134,9 @@ struct HeaderStatus: Equatable {
         if kernelMissing { return "Kernel not installed" }
         switch status {
         case "starting"?: return "Kernel starting"
-        case "busy"?, "restarting"?, "autorestarting"?, "connecting"?,
-             "terminating"?: return "Kernel busy"
+        case "busy"?, "restarting"?, "autorestarting"?, "connecting"?:
+            return "Kernel busy"
+        case "terminating"?: return "Kernel stopping"
         case nil, "idle"?, "none"?: return "Kernel idle"
         default: return "Kernel stopped"
         }

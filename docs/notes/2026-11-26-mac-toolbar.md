@@ -23,9 +23,11 @@ words.
   on disk" or "Edited · Locked: changed on disk", in `.secondary` caption,
   and nothing while the file is saved. The whole status line
   (`HeaderStatus.full`) stays in the chip's help and in the popover.
-  `HeaderStatus.save` remains `saveNote` or "Saved on <place>", so the
-  subtitle of a machine's window with no notebook open still says
-  "on _machine_".
+- `.toolbar(removing:)` takes `showsNotebook ? .title : nil` rather than
+  sitting in an `if`: the two branches of an `if` are two views, and
+  flipping between them when a notebook opens or closes in place would
+  rebuild the window's web view. The chip's accessibility value is
+  likewise one modifier (an empty value without a status line).
 - The chip is a toolbar button on the toolbar's own capsule, ending in a
   chevron that says it opens a menu. An earlier draft put it under the
   title as borderless caption words; in use, choosing a kernel there was
@@ -68,8 +70,8 @@ words.
   dot once the kernel has stopped. The issue asked for the busy state to
   glow blue; the spinner says it instead, since `Ready` is already the
   blue the mark keeps (`#8fb3ff` in dark) and a second blue would say
-  nothing. The spinner keeps the system's own colour: `.tint` has no
-  effect on a macOS spinner. VoiceOver reads the chip as one control: its
+  nothing. The spinner keeps the system's own colour (`.tint` has no
+  effect on a macOS spinner, so none is set). VoiceOver reads the chip as one control: its
   label is the chip's whole text, its value the mark's words, as
   "TypeScript · This Mac · Idle, Kernel idle, button", and the mark itself
   is hidden, so the state is neither lost nor read twice.
@@ -99,4 +101,7 @@ builds `NativeChrome` and `ContentView` with them).
 Left undone: the chip's popover still opens only by clicking, and the
 width is held for the state word alone: changing the kernel, or where its
 kernels run, still moves the items after the chip. That is a change the
-reader asked for, unlike the kernel starting and stopping.
+reader asked for, unlike the kernel starting and stopping. Nor is the
+title block's width held: "Edited" appearing under a title narrower than
+it widens the block and moves the items after it, which needs a title of
+under six or so characters.

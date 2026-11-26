@@ -148,10 +148,12 @@ final class HeaderStatusTests: XCTestCase {
         XCTAssertEqual(status().dotLabel, "Kernel idle")
         XCTAssertEqual(status(state: nil).chipKind, .idle)
         XCTAssertEqual(status(state: "none").dotLabel, "Kernel idle")
-        for state in ["busy", "restarting", "autorestarting", "connecting", "terminating"] {
+        for state in ["busy", "restarting", "autorestarting", "connecting"] {
             XCTAssertEqual(status(state: state).chipKind, .working, state)
             XCTAssertEqual(status(state: state).dotLabel, "Kernel busy", state)
         }
+        XCTAssertEqual(status(state: "terminating").chipKind, .working)
+        XCTAssertEqual(status(state: "terminating").dotLabel, "Kernel stopping")
         XCTAssertEqual(status(state: "starting").chipKind, .working)
         XCTAssertEqual(status(state: "starting").dotLabel, "Kernel starting")
         for state in ["dead", "unknown", "odd"] {

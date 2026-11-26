@@ -108,12 +108,12 @@ shown or hidden, its tab and its expanded folders across launches.
   button beside it. The title is the notebook's own (`metadata.title`) or
   its file's name, and the button reads "Python · This Mac · Idle ⌄":
   the notebook's language, where its kernel runs, and what the kernel is
-  doing — Idle, Running, Starting, Restarting, Stopped, or Connecting while
-  it reaches a kernel that runs on a remote. Under the title, when there
+  doing — Idle, Running, Starting, Restarting, Stopping, Stopped, or
+  Connecting while it reaches a kernel that runs on a remote. Under the title, when there
   is something to say, it says where the notebook stands: "Edited" with
   unsaved changes, and "Locked: changed on disk" while the file changed
-  under you. A saved file adds nothing there, since "Saved on This Mac" is
-  what the window says anyway. A kernel that isn't installed reads "julia
+  under you. A saved file adds nothing there; the kernel button's help and
+  popover say where it is saved. A kernel that isn't installed reads "julia
   not installed · Choose Kernel" beside a warning triangle. The button's
   mark is a solid blue dot while the kernel waits, a small spinner while
   it starts, runs or restarts, and a grey dot once it has stopped. It
