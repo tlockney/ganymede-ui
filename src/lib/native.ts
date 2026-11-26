@@ -173,6 +173,11 @@ export function fileMove(arg: string | undefined): { from: string; to: string | 
 export type PageState = {
   /** The open notebook's server path, or null. */
   path: string | null;
+  /**
+   * The open notebook's `metadata.title` when it has one (#867), else null:
+   * what the app's window calls it, where the file's name isn't the title.
+   */
+  title: string | null;
   dirty: boolean;
   /** The kernel's state (`idle`, `busy`, `none`, …); null with no notebook open. */
   status: string | null;
@@ -180,6 +185,14 @@ export type PageState = {
   kernel: string | null;
   /** That kernel's display name, or what the file asks for when it isn't installed. */
   kernelDisplayName: string | null;
+  /**
+   * The notebook's language, from the running kernel's kernelspec, else the
+   * file's `metadata.kernelspec.language`, else its
+   * `metadata.language_info.name` (#867): what the app's Mac chip calls it,
+   * as "TypeScript" where the kernel's display name says "TypeScript
+   * (in app)". Null when neither names one.
+   */
+  kernelLanguage: string | null;
   /**
    * The running kernel's implementation and version, from its
    * `kernel_info_reply` ("cdp-kernel 0.14.0 · node 24.11.0", #693); null

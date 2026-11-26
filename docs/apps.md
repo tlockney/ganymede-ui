@@ -104,26 +104,43 @@ shown or hidden, its tab and its expanded folders across launches.
 
 ### Toolbar and menus
 
-- The window's title has a status line under it, as the browser's has:
-  where the notebook is saved, where it runs, the kernel and what it is
-  doing, as in "Saved on This Mac · Runs on This Mac · TypeScript", or
-  "Edited · Runs on Studio Mac · Python 3 · Running". "Saved" becomes
-  "Edited" with unsaved changes and "Locked: changed on disk" while the
-  file changed under you, and a kernel that isn't installed reads "julia
-  (not installed) · Choose kernel". The system draws the line, so it
-  isn't clickable: the toolbar's kernel button, which reads "Choose
-  Kernel" for a missing kernel, opens a popover with the same text, the
+- A notebook's window has its title in the toolbar, with the kernel's
+  button beside it. The title is the notebook's own (`metadata.title`) or
+  its file's name, and the button reads "Python · This Mac · Idle ⌄":
+  the notebook's language, where its kernel runs, and what the kernel is
+  doing — Idle, Running, Starting, Restarting, Stopping, Stopped, or
+  Connecting while it reaches a kernel that runs on a remote. Under the title, when there
+  is something to say, it says where the notebook stands: "Edited" with
+  unsaved changes, and "Locked: changed on disk" while the file changed
+  under you. A saved file adds nothing there; the kernel button's help and
+  popover say where it is saved. A kernel that isn't installed reads "julia
+  not installed · Choose Kernel" beside a warning triangle. The button's
+  mark is a solid blue dot while the kernel waits, a small spinner while
+  it starts, runs or restarts, and a grey dot once it has stopped. It
+  opens a popover with the whole status line, the
   file's path, the kernel's state and memory, Interrupt, Restart, Kernel
-  Log, where kernels run and the kernels to change to.
+  Log, where kernels run and the kernels to change to, and hovering it
+  shows the whole status line. A console's or a folder's window keeps the
+  system's own title, with the kernel's button beside it.
 - The toolbar's controls stay in one order, so none moves under the
-  pointer: New Notebook; Trust and Notebook Access, which are there only
-  while they apply; **Run Cell**, whose menu has Run All, Run with
-  Parameters…, Clear All Outputs, Restart Kernel and Restart & Run All;
-  **Interrupt**, always there and enabled while the kernel runs; the
-  kernel button; Share (download, export, publish); and ⋯, which has View
+  pointer: the title and the kernel's button; Trust and Notebook Access, which
+  are there only while they apply; Notebook | Journal, the notebook's two
+  views, there while a notebook is open; **Run Cell**, whose menu has Run
+  All, Run with Parameters…, Clear All Outputs, Restart Kernel and Restart
+  & Run All, with **Interrupt** beside it, always there and enabled while
+  the kernel runs; Share (download, export, publish); and ⋯, which has View
   as Journal, Insert Code Cell, Insert Markdown Cell, Cell Type and Save.
   Run All is only in Run Cell's menu, so the two can't be mistaken for
-  each other. Everything in these menus is also in the menu bar.
+  each other. New Notebook isn't a toolbar button: File > New Notebook
+  (⌘N) makes one in the window's folder, as the sidebar's menu does.
+  Everything in these menus is also in the menu bar.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, where the status line under the title has the whole
+> line ("Saved on This Mac · Runs on This Mac · TypeScript"), the
+> toolbar's kernel button reads only the kernel's name, New Notebook is in
+> the toolbar, and Run Cell and Interrupt stand apart.
 
 - The Cell menu runs, runs with parameters, inserts, moves and deletes
   cells, clears all outputs, collapses and expands code, goes to a definition and renames a symbol (see
@@ -181,7 +198,7 @@ shown or hidden, its tab and its expanded folders across launches.
 
 - Kernels can run on a remote server instead. Add the remote in
   Settings > Remotes (its editor can switch kernels to it), then pick
-  where kernels run from the kernel button in the toolbar or Kernel >
+  where kernels run from the kernel's button in the toolbar or Kernel >
   Advanced > Run Kernels On. The sidebar's foot names where they run now
   ("This Mac" or the remote); its menu is where you open a terminal on
   a remote. The choice is app-wide, and switching shuts down running
@@ -715,7 +732,9 @@ keys are kept in the keychain too.
   the top level it does nothing), and Return opens the selected file or toggles the selected folder. Tapping
   a notebook or data file gives the keyboard to the page.
 
-- The title has the Mac's status line under it, and tapping it opens a
+- The title has a status line under it that says where the notebook is
+  saved, where it runs, the kernel and what it is doing, as "Saved on
+  This iPad · Runs on This iPad · Python 3 · Running"; tapping it opens a
   menu with the file's path, the kernel's version, the kernels to change
   to and, once a remote has a server, where kernels run, as Settings
   does. It turns red while the kernel is missing or saving is locked.
@@ -942,7 +961,9 @@ with only SSH stays in Settings for shells.
 > its text files don't open and it has no terminal panel or New Terminal
 > (New Terminal On already works there). The Kernel Log tab is in this
 > device's window only: a machine's kernel runs on the machine, and this
-> Mac's server keeps no log of it.
+> Mac's server keeps no log of it. A notebook's window has its title in
+> the toolbar with the kernel's button beside it, where the release's has the
+> whole status line under the title.
 
 On the Mac a machine's window is the app's native window: the same
 sidebar (Files, Search, Running, Outline and Journals), toolbar,
@@ -955,14 +976,16 @@ folders list again once it answers. When it doesn't answer, a failed file
 operation says "_machine_ didn't answer" (or "_machine_ isn't connected to
 this Mac" when it isn't connected).
 Delete removes a machine's file for good (its server keeps no Trash), so
-it always asks first. The title is the notebook or folder and the subtitle
-reads "on _machine_". A machine's text file opens in the app's editor as
-this Mac's do, read and saved through the machine's mount: its window's
-title is the file and the machine ("notes.md · m4mini"), and the same path
-on this Mac and on the machine are two editors. These work on this Mac's
-disk, so a machine's window doesn't have them: Show in Finder, Duplicate
-on a folder (a machine copies files only), the Recents tab, File > Open
-Recent. File > New Tab and New Window
+it always asks first. The title is the notebook or folder, with the kernel's
+button beside it and the save part under the title for a notebook, and with
+no notebook open the subtitle reads "on _machine_". A machine's text file
+opens in the app's editor as this Mac's do, read and saved through the
+machine's mount: its window's title is the file and the machine
+("notes.md · m4mini"), and the same path on this Mac and on the machine are
+two editors. These work
+on this Mac's disk, so a machine's window doesn't have them: Show in
+Finder, Duplicate on a folder (a machine copies files only), the Recents
+tab, File > Open Recent. File > New Tab and New Window
 open on the same machine, not on this Mac. Kernel > Advanced
 and Runs On in the kernel popover set where this Mac's kernels run, so a
 machine's window hides them; File > New Terminal and New Terminal Tab, and

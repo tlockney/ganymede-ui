@@ -174,26 +174,34 @@ enum WindowTarget: Codable, Hashable {
         return .folder(folder ?? root)
     }
 
-    /// The window subtitle (#812): the notebook's status line, which names
-    /// where it is saved ("Saved on <machine>"); without a notebook, "on
-    /// <machine>" for a machine's window and nothing otherwise.
+    /// The window subtitle (#812, #867): only where the notebook is saved —
+    /// "Saved on <machine>", "Edited" or "Locked: changed on disk" — since
+    /// where it runs and its kernel are the toolbar's chip. Without a
+    /// notebook, "on <machine>" for a machine's window and nothing
+    /// otherwise.
     static func subtitle(header: HeaderStatus?, machineName: String?) -> String {
-        if let header { return header.full }
+        if let header { return header.save }
         guard let machineName, !machineName.isEmpty else { return "" }
         return "on \(machineName)"
     }
 
     /// The window title. A machine's window adds its name, so its tab
     /// can't be taken for a local one (`machineName`, from `Remote.title`).
-    func displayTitle(machineName: String? = nil) -> String {
+    /// A notebook is called its `metadata.title` where the page reports one
+    /// (#867), and its file's name otherwise.
+    func displayTitle(machineName: String? = nil, metadataTitle: String? = nil) -> String {
         let base: String
         switch self {
-        case .file(let url): base = url.deletingPathExtension().lastPathComponent
+        case .file(let url):
+            base = Self.displayName(fileStem: url.deletingPathExtension().lastPathComponent,
+                                    metadataTitle: metadataTitle)
         case .folder(let url): base = url.lastPathComponent.isEmpty ? url.path : url.lastPathComponent
         case .console(let url, _):
             base = "DuckDB · " + (url.lastPathComponent.isEmpty ? url.path : url.lastPathComponent)
         case .machineFile(_, let path):
-            base = URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent
+            base = Self.displayName(
+                fileStem: URL(fileURLWithPath: path).deletingPathExtension().lastPathComponent,
+                metadataTitle: metadataTitle)
         case .machineFolder(_, let path):
             let name = URL(fileURLWithPath: path, isDirectory: true).lastPathComponent
             base = name.isEmpty || path == "/" ? (machineName ?? "Machine") : name
@@ -202,15 +210,35 @@ enum WindowTarget: Codable, Hashable {
         return "\(base) · \(machineName)"
     }
 
+    /// What a notebook's window is called (#867): its `metadata.title` when
+    /// the page reports one, else the file's name without the date an
+    /// agent's journal starts it with ("2026-11-09-fremont-bridge" is
+    /// "fremont-bridge"), so the title reads as a title where the sidebar
+    /// keeps the file's name. A name that is only a date keeps it.
+    static func displayName(fileStem: String, metadataTitle: String?) -> String {
+        if let title = metadataTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !title.isEmpty {
+            return title
+        }
+        let range = NSRange(fileStem.startIndex..., in: fileStem)
+        let stripped = datePrefix?.stringByReplacingMatches(
+            in: fileStem, range: range, withTemplate: "") ?? fileStem
+        return stripped.isEmpty ? fileStem : stripped
+    }
+
+    /// The day a journal's file name starts with: `YYYY-MM-DD-`.
+    private static let datePrefix = try? NSRegularExpression(pattern: #"^\d{4}-\d{2}-\d{2}-"#)
+
     var title: String { displayTitle() }
 
     /// The tab's title: a console shows the name the page reports (#735),
     /// the rest their usual title.
-    func tabTitle(consoleName: String?, machineName: String? = nil) -> String {
+    func tabTitle(consoleName: String?, machineName: String? = nil,
+                 metadataTitle: String? = nil) -> String {
         if case .console = self, let name = consoleName?.trimmingCharacters(in: .whitespaces), !name.isEmpty {
             return name
         }
-        return displayTitle(machineName: machineName)
+        return displayTitle(machineName: machineName, metadataTitle: metadataTitle)
     }
 
     /// Whether this window already shows `page`, a target read from its

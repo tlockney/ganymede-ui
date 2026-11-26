@@ -213,11 +213,20 @@ struct PageState: Decodable, Equatable {
 
     /// The open notebook's server path; nil when none is open.
     var path: String?
+    /// The open notebook's `metadata.title`, when it has one (#867): what
+    /// the window calls it, where the file's name isn't the title. Nil
+    /// otherwise, and from a page older than that.
+    var title: String?
     var dirty = false
     /// The kernel's state (`idle`, `busy`, `none`, …); nil with no notebook.
     var status: String?
     var kernel: String?
     var kernelDisplayName: String?
+    /// The notebook's language (#867): the running kernel's kernelspec's,
+    /// else the file's `metadata.kernelspec.language` or
+    /// `metadata.language_info.name`; absent from a page older than that,
+    /// and one that names none.
+    var kernelLanguage: String?
     /// The running kernel's implementation and version, such as
     /// "cdp-kernel 0.14.0 · node 24.11.0"; nil with none running, and from
     /// a page older than #693.

@@ -588,34 +588,70 @@ struct ServerLine: View {
 /// into one AppKit family, and AppKit threw while syncing a new window's
 /// items into the others when a notebook opened from the Finder (#226).
 ///
-/// In a fixed order, so no control moves under the pointer: New Notebook;
-/// Trust and Notebook Access, which are there only while they apply and so
-/// come first; Notebook | Journal, there while a notebook is open (#819);
-/// Run Cell with its run menu; Interrupt, always there and enabled while
-/// the kernel is busy; the status button (the kernel's name, whose popover
-/// has the file, the kernel and where it runs); Share; and More. That is
-/// nine items, under the ten a ToolbarContentBuilder takes.
+/// In a fixed order, so no control moves under the pointer: the title, then
+/// the kernel's chip beside it (its dot, the kernel's name, where it runs and
+/// what it is doing; its popover has the file and the kernels to change
+/// to); Trust and Notebook Access, which are there only while they apply;
+/// Notebook | Journal, there while a notebook is open (#819); Run Cell with
+/// its run menu and Interrupt, in one group, always there and enabled while
+/// the kernel is busy; Share; and More. That is eight items, under the ten
+/// a ToolbarContentBuilder takes. New Notebook is File > New Notebook
+/// (⌘N), not a toolbar button (#867).
 struct NotebookToolbar: ToolbarContent {
     var page: PageModel
     /// Saved as File > Save saves it, and enabled when that is.
     var document: PageDocument
-    /// Where New Notebook puts it: the window's folder.
-    let folder: URL
     /// The window's bottom panel, for the kernel popover's Kernel Log.
     var panel: PanelController?
     /// The window's place: a machine's kernel popover has no Runs On.
     var place: Place = .thisDevice
     /// The status line the window's subtitle shows, for the popover.
     var header: HeaderStatus?
+    /// The notebook's title, which the toolbar draws in place of the
+    /// system's (#867); nil for a console or a folder, which keep the
+    /// system's title.
+    var title: String?
 
     var body: some ToolbarContent {
-        ToolbarItem(placement: .navigation) {
-            Button {
-                page.run("new-notebook", arg: FolderEntry.serverPath(folder))
-            } label: {
-                Label("New Notebook", systemImage: "square.and.pencil")
+        // The title, and beside it the kernel's own button (#867): a
+        // notebook window's toolbar has no system title or subtitle
+        // (`.toolbar(removing: .title)` in `ContentView`), so this item
+        // draws the title, with the save part under it only where there is
+        // something to say ("Edited", "Locked: changed on disk"). The
+        // kernel's state is on its button, not repeated here, and the full
+        // status line stays in the button's help and popover.
+        if let title {
+            ToolbarItem(placement: .navigation) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title)
+                        .font(.headline)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    if let note = header?.saveNote {
+                        Text(note)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                // An agent's `metadata.title` can be a sentence: held to a
+                // width, so it truncates instead of pushing the kernel's
+                // button and the groups into the toolbar's overflow menu.
+                .frame(maxWidth: 320, alignment: .leading)
+                // The toolbar's glass clips its item at the edge: room so
+                // the title's first letter isn't cut off (#867).
+                .padding(.horizontal, 8)
             }
-            .help("New Notebook (⌘N)")
+            // A plain title over a caption, not two lines squeezed into the
+            // toolbar's glass capsule.
+            .sharedBackgroundVisibility(.hidden)
+        }
+        // The kernel's button: a toolbar button of its own, with a chevron,
+        // so choosing a kernel is a plain target rather than small words
+        // under the title (#867). A console or a folder keeps the system's
+        // title, with the button beside it.
+        ToolbarItem(placement: .navigation) {
+            KernelPicker(page: page, panel: panel, place: place, header: header)
         }
         // Only while the notebook isn't trusted.
         if !page.state.trusted {
@@ -638,17 +674,14 @@ struct NotebookToolbar: ToolbarContent {
                 JournalViewPicker(page: page)
             }
         }
-        ToolbarItem {
+        // Run Cell with its run menu, and Interrupt: one group, so the pair
+        // reads as one control and neither drifts from the other (#867).
+        ToolbarItemGroup {
             RunCellMenu(page: page)
-        }
-        ToolbarItem {
             Button { page.run("interrupt") } label: { Label("Interrupt", systemImage: "stop.fill") }
                 .labelStyle(.titleAndIcon)
                 .help("Interrupt the kernel (⌘.)")
                 .disabled(!page.state.isBusy)
-        }
-        ToolbarItem {
-            KernelPicker(page: page, panel: panel, place: place, header: header)
         }
         // Download, Export As and Publish, as in the File menu (#620): the
         // web toolbar that has them is hidden under native chrome.
@@ -711,12 +744,13 @@ struct NotebookToolbar: ToolbarContent {
     }
 }
 
-/// The status button (#241, #812): the kernel's name in the toolbar, or
-/// "Choose Kernel" when the notebook's isn't installed, and a popover with
-/// the status line's full text, the file, the kernel's state and memory,
-/// Interrupt, Restart, the Kernel Log, where kernels run and the kernels to
-/// change to. The window's subtitle is drawn by the system and can't be
-/// clicked, so the details open from here.
+/// The status button (#241, #812, #867): the kernel's chip in the toolbar —
+/// a dot, the kernel's name, where it runs and what it is doing, as
+/// "TypeScript · This Mac · Idle" — and a popover with the status line's
+/// full text, the file, the kernel's state and memory, Interrupt, Restart,
+/// the Kernel Log, where kernels run and the kernels to change to. The
+/// window's subtitle names only where the file is saved and can't be
+/// clicked, so the rest is here, beside the title.
 struct KernelPicker: View {
     var page: PageModel
     var panel: PanelController?
@@ -724,22 +758,99 @@ struct KernelPicker: View {
     var header: HeaderStatus?
     @State private var shown = false
 
+    /// The widest state word, whose width the state part holds: a chip
+    /// that grows with "Running" and shrinks to "Idle" would shift every
+    /// item after it (#867). "Connecting" is wider than "Restarting"
+    /// (69.7pt against 62.1pt in the system font at 13pt).
+    private static let widestState = "Connecting"
+
     var body: some View {
         Button {
             shown.toggle()
         } label: {
-            if page.state.kernelMissing {
-                Label("Choose Kernel", systemImage: "exclamationmark.triangle")
-            } else {
-                Label(page.state.kernelDisplayName ?? "Kernel", systemImage: "cpu")
-            }
+            chip
         }
-        .labelStyle(.titleAndIcon)
-        .help(page.state.kernelVersionLine ?? "The notebook's kernel")
+        .help(header?.full ?? page.state.kernelVersionLine ?? "The notebook's kernel")
+        .accessibilityLabel(chipText)
+        // The mark's words are the button's value, so the whole chip reads
+        // as one control (#867): "TypeScript · This Mac · Idle, Kernel
+        // idle, button". A console or a folder has no status line, so an
+        // empty value: one modifier, not an `if`, so the button keeps its
+        // identity (and an open popover) when the status line comes or goes.
+        .accessibilityValue(dotLabel ?? "")
         .disabled(!page.state.hasNotebook)
         .popover(isPresented: $shown, arrowEdge: .bottom) {
             KernelPopover(page: page, panel: panel, place: place, header: header) { shown = false }
         }
+    }
+
+    /// The mark, the words, then a chevron that says the button opens the
+    /// kernel's choices.
+    private var chip: some View {
+        HStack(spacing: 5) {
+            mark
+            HStack(spacing: 4) {
+                Text(chipLead)
+                    .lineLimit(1)
+                if let state = chipState {
+                    Text("·")
+                    // Held to the widest state word's width, so idle, busy
+                    // and idle again leave the items after the chip where
+                    // they were.
+                    ZStack(alignment: .leading) {
+                        Text(KernelPicker.widestState).hidden()
+                        Text(state).lineLimit(1)
+                    }
+                }
+            }
+            Image(systemName: "chevron.down")
+                .font(.caption2.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .accessibilityHidden(true)
+        }
+    }
+
+    /// The chip's mark in a fixed 10pt frame (#867): a 7pt dot while the
+    /// kernel waits, a small spinner in its place while it works, a grey
+    /// dot once it has stopped, and a warning triangle when it isn't
+    /// installed. A console or a folder has no status line, so it keeps the
+    /// neutral `cpu` symbol, with no state to read. The shape says which,
+    /// not the colour, and the frame is the same for each, so the words
+    /// after it don't move.
+    private var mark: some View {
+        Group {
+            if header == nil {
+                Image(systemName: "cpu")
+            } else {
+                switch markKind {
+                case .working:
+                    ProgressView()
+                        .controlSize(.mini)
+                case .missing:
+                    Image(systemName: "exclamationmark.triangle")
+                case .idle, .stopped:
+                    Circle()
+                        .fill(markKind == .idle ? Color("Ready") : Color.secondary)
+                        .frame(width: 7, height: 7)
+                }
+            }
+        }
+        .frame(width: 10, height: 10)
+        // The button carries the words, including the mark's (#867).
+        .accessibilityHidden(true)
+    }
+
+    /// A console has a kernel but no status line (`HeaderStatus.make` is
+    /// for notebooks), so its chip names the kernel alone.
+    private var chipLead: String { header?.chipLead ?? page.state.kernelDisplayName ?? "Kernel" }
+    private var chipState: String? { header?.chipState }
+    private var chipText: String { header?.chipText ?? chipLead }
+    /// The mark's words, only where a status line gives them.
+    private var dotLabel: String? { header?.dotLabel }
+
+    private var markKind: HeaderStatus.ChipKind {
+        if page.state.kernelMissing { return .missing }
+        return header?.chipKind ?? .stopped
     }
 }
 

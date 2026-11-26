@@ -1022,12 +1022,17 @@ export function App() {
     const kernel = shown?.kernelName ?? null;
     postState({
       path: openPath ?? null,
+      title: shown?.title ?? null,
       dirty,
       status: shown?.status ?? null,
       kernel,
       kernelDisplayName:
         shown?.missingKernel ??
         (kernel ? (specs?.kernelspecs[kernel]?.display_name ?? kernel) : null),
+      // The running kernel's kernelspec first, then the file's own metadata
+      // (#867).
+      kernelLanguage:
+        (kernel ? specs?.kernelspecs[kernel]?.language : null) ?? shown?.language ?? null,
       kernelVersionLine: shown?.kernelVersionLine ?? null,
       kernelMissing: !!shown?.missingKernel,
       locked: shown?.locked ?? false,
@@ -1239,6 +1244,7 @@ export function App() {
                 backend={backend}
                 path={openPath}
                 places={places}
+                native={native}
                 onController={setController}
                 onRenamed={followRename}
               />

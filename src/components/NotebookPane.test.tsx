@@ -282,6 +282,7 @@ function setup(
   path = 'moons/Io.ipynb',
   config?: BackendConfig,
   places?: KernelPlaces,
+  native = false,
 ) {
   const fake = fakeServices();
   if (serverSettings) Object.assign(fake.services, { serverSettings });
@@ -294,6 +295,7 @@ function setup(
       backend={fakeBackend(fake.services, config)}
       path={path}
       places={places}
+      native={native}
       onController={onController}
       onRenamed={onRenamed}
     />,
@@ -347,6 +349,22 @@ const modelOf = () => (fakes.notebooks[0] as { model: NotebookModel }).model;
 const modelOf2 = () => (fakes.notebooks[1] as { model: NotebookModel }).model;
 
 describe('NotebookPane', () => {
+  it('reports the notebook’s metadata title, and a change to it (#867)', async () => {
+    const named = structuredClone(NOTEBOOK);
+    named.metadata.title = 'Io moons';
+    const { latest } = setup(vi.fn(async () => ({ path: 'moons/Io.ipynb', content: named })));
+    await waitFor(() => expect(latest()?.title).toBe('Io moons'));
+    // A live room changes the title in the file's metadata, without a reload.
+    act(() => modelOf().setMetadata('title', 'Europa'));
+    await waitFor(() => expect(latest()?.title).toBe('Europa'));
+  });
+
+  it('reports no title when the notebook’s metadata has none (#867)', async () => {
+    const { latest } = setup();
+    await waitFor(() => expect(latest()).toBeDefined());
+    expect(latest()!.title).toBeUndefined();
+  });
+
   it('opens a notebook an agent kept as a journal, and switches to the notebook and back (#184)', async () => {
     const kept = structuredClone(NOTEBOOK);
     kept.cells[0]!.metadata = {
@@ -366,6 +384,35 @@ describe('NotebookPane', () => {
 
     act(() => latest()!.toggleJournal());
     await waitFor(() => expect(latest()!.journal).toBe(true));
+  });
+
+  it('says what the notebook is above its first cell in the native chrome (#867)', async () => {
+    const { latest } = setup(
+      vi.fn(async () => ({ path: 'moons/Io.ipynb', content: kept() })),
+      'moons/Io.ipynb',
+      undefined,
+      undefined,
+      true,
+    );
+    await waitFor(() => expect(latest()?.journal).toBe(true));
+    // The journal's header has the eyebrow; the page's line waits for the cells.
+    expect(document.querySelector('.page-eyebrow')).not.toBeInTheDocument();
+
+    act(() => latest()!.toggleJournal());
+    await waitFor(() => expect(latest()!.journal).toBe(false));
+    expect(document.querySelector('.page-eyebrow')).toHaveTextContent('python · 20 Nov 2026');
+    // In the page, above the notebook's cells.
+    const eyebrow = document.querySelector('.page-eyebrow')!;
+    const page = document.querySelector('.notebook-page')!;
+    expect(eyebrow.nextElementSibling).toBe(page);
+  });
+
+  it('shows no page eyebrow in the toolbar chrome (#867)', async () => {
+    const { latest } = setup(vi.fn(async () => ({ path: 'moons/Io.ipynb', content: kept() })));
+    await waitFor(() => expect(latest()?.journal).toBe(true));
+    act(() => latest()!.toggleJournal());
+    await waitFor(() => expect(latest()!.journal).toBe(false));
+    expect(document.querySelector('.page-eyebrow')).not.toBeInTheDocument();
   });
 
   it('tells the journal which agents are in its room, from the server (#724)', async () => {

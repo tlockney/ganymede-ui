@@ -74,10 +74,12 @@ describe('native', () => {
   it('posts the page state to the app’s state handler', () => {
     const state = {
       path: 'Io.ipynb',
+      title: 'Io moons',
       dirty: true,
       status: 'idle',
       kernel: 'cdp',
       kernelDisplayName: 'TypeScript',
+      kernelLanguage: 'typescript',
       kernelVersionLine: 'cdp-kernel 0.14.0 · node 24.11.0',
       kernelMissing: false,
       locked: false,

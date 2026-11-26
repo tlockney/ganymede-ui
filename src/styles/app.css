@@ -477,6 +477,49 @@ button {
   display: none;
 }
 
+/* The same eyebrow on the page itself, in the Apple apps' own chrome
+ * (#867): there is no toolbar to show it, so the notebook says what it is
+ * above its first cell, in the cells' column. The page's own 10px of
+ * notebook padding (`--jp-notebook-padding`, on the cells' viewport) puts
+ * the line on the cell's left edge. */
+.page-eyebrow {
+  max-width: 1064px;
+  margin: 0 auto 8px;
+  padding: 6px calc(max(32px, var(--safe-right)) + var(--jp-notebook-padding, 10px)) 0
+    calc(max(32px, var(--safe-left)) + var(--jp-notebook-padding, 10px));
+  color: var(--meta-color);
+  font: 11px/16px var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The notebook's scroll area fills the page and would cover the line: it
+ * starts below it (the line's 6px + 16px and its 8px margin). */
+.chrome-native .content:has(> .page-eyebrow) {
+  --page-eyebrow-h: 30px;
+}
+
+.chrome-native .content:has(> .page-eyebrow) .notebook-page {
+  top: var(--page-eyebrow-h);
+}
+
+/* A phone's page has no room for it (#867), an iPad's has: `.touch-ui` is
+ * both, so the phone's width says which. A phone on its side is as wide as
+ * an iPad and shorter than one, so its height says so too: 520px is the
+ * short window the start screen's mark shrinks for, below. */
+@media (max-width: 719.98px), (max-height: 520px) {
+  .touch-ui .page-eyebrow {
+    display: none;
+  }
+
+  .touch-ui.chrome-native .content:has(> .page-eyebrow) .notebook-page {
+    top: 0;
+  }
+}
+
 /* Eyebrow, title row and status line need more than the 52px header: it
  * grows by 12px while it has an eyebrow, or the eyebrow is clipped. Only
  * the main column's: the sidebar's titlebar keeps 52px, so its rows don't

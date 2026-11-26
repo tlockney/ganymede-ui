@@ -193,6 +193,38 @@ final class WindowTargetTests: XCTestCase {
         XCTAssertEqual(notebook.tabTitle(consoleName: "Orbits"), "a")
     }
 
+    func testANotebookIsTitledWithItsTitleElseItsFileName() throws {
+        let dated = WindowTarget.file(URL(fileURLWithPath: "/Users/me/work/2026-11-09-fremont-bridge.ipynb"))
+        // The day a journal's file starts with isn't part of its title (#867).
+        XCTAssertEqual(dated.displayTitle(), "fremont-bridge")
+        // The page's `metadata.title` wins, trimmed, and the file's name is
+        // there while the page hasn't said.
+        XCTAssertEqual(dated.displayTitle(metadataTitle: "Fremont Bridge at 6 pm"),
+                       "Fremont Bridge at 6 pm")
+        XCTAssertEqual(dated.displayTitle(metadataTitle: "  Fremont Bridge  "), "Fremont Bridge")
+        for blank in ["", "   "] {
+            XCTAssertEqual(dated.displayTitle(metadataTitle: blank), "fremont-bridge")
+        }
+        // A name that is only a date keeps it, and one without stays as it is.
+        let day = WindowTarget.file(URL(fileURLWithPath: "/Users/me/work/2026-11-09-.ipynb"))
+        XCTAssertEqual(day.displayTitle(), "2026-11-09-")
+        let plain = WindowTarget.file(URL(fileURLWithPath: "/Users/me/work/notes.ipynb"))
+        XCTAssertEqual(plain.displayTitle(), "notes")
+        let loose = WindowTarget.file(URL(fileURLWithPath: "/Users/me/work/fremont-2026-11-09.ipynb"))
+        XCTAssertEqual(loose.displayTitle(), "fremont-2026-11-09")
+        // A machine's window, and a tab's title, in the same way.
+        let machine = try XCTUnwrap(WindowTarget.machine(
+            "3F2B8C1E-AAAA-4BBB-8CCC-0123456789AB", path: "/notes/2026-11-09-a.ipynb",
+            isFolder: false))
+        XCTAssertEqual(machine.displayTitle(machineName: "m4mini"), "a · m4mini")
+        XCTAssertEqual(machine.tabTitle(consoleName: nil, machineName: "m4mini",
+                                        metadataTitle: "Io moons"),
+                       "Io moons · m4mini")
+        // A folder keeps its name.
+        let folder = WindowTarget.folder(URL(fileURLWithPath: "/2026-11-09-work", isDirectory: true))
+        XCTAssertEqual(folder.displayTitle(metadataTitle: "Io moons"), "2026-11-09-work")
+    }
+
     func testAConsoleSavedBeforeNamesStillDecodes() throws {
         // As #730 saved it: no record, nothing but the folder and the id.
         let saved = #"{"console":{"folder":"file:///Users/me/work/","id":"0F8FAD5B-D9CB-469F-A165-70867728950E"}}"#

@@ -27,6 +27,8 @@ import {
   firstVisibleJournalCell,
   hasAgentCells,
   journalHeader,
+  notebookTitle,
+  notebookLanguage,
   trustedCellIds,
 } from '../lib/journal';
 import type { Cell, ICodeCellModel } from '@jupyterlab/cells';
@@ -87,6 +89,16 @@ export type KernelState = Kernel.Status | 'connecting' | 'none';
 export type NotebookController = {
   path: string;
   name: string;
+  /**
+   * The notebook's `metadata.title`, when it has one (#867): the app's
+   * windows call it that, where the file's name isn't the title.
+   */
+  title?: string;
+  /**
+   * The notebook's own language, from its metadata (#867): what the app's
+   * Mac chip calls it where no kernelspec gives one.
+   */
+  language?: string;
   status: KernelState;
   /** The running kernel, or the one the first run will start. */
   kernelName?: string;
@@ -224,6 +236,12 @@ type Props = {
   path: string;
   /** Where the server runs kernels, when that is a remote (#832). */
   places?: KernelPlaces;
+  /**
+   * The Apple apps draw the sidebar and toolbar themselves (`chrome=native`,
+   * #205): the page has no header, so it shows the journal's eyebrow above
+   * the first cell instead (#867).
+   */
+  native?: boolean;
   onController(c: NotebookController | undefined): void;
   /** The file at `from` was renamed to `to`: open it there, if it is still the one open. */
   onRenamed?(from: string, to: string): void;
@@ -395,7 +413,7 @@ class FileLocked extends Error {}
  * JupyterLab document context, so the same code saves to a Ganymede server
  * or to the browser's own storage.
  */
-export function NotebookPane({ backend, path, places, onController, onRenamed }: Props) {
+export function NotebookPane({ backend, path, places, native, onController, onRenamed }: Props) {
   // A page for a connected machine (#701).
   const onMachine = backend.config.kind === 'ganymede' && !!backend.config.machine;
   // A ref, not a dependency of the controller effect: a parent that
@@ -444,6 +462,16 @@ export function NotebookPane({ backend, path, places, onController, onRenamed }:
    * keeps: its language and the day it was started. Empty otherwise.
    */
   const [eyebrow, setEyebrow] = useState('');
+  /**
+   * The notebook's `metadata.title` (#867), so a live room's change to it
+   * reaches the app's window title; undefined for a notebook without one.
+   */
+  const [title, setTitle] = useState<string>();
+  /**
+   * The notebook's own language, from its metadata (#867): what the app's
+   * Mac chip calls it while no running kernel's kernelspec names one.
+   */
+  const [language, setLanguage] = useState<string>();
   /** Whether the journal view is showing (#184); decided when the file opens. */
   const [journal, setJournal] = useState(false);
   const journalRef = useRef(false);
@@ -1128,6 +1156,12 @@ export function NotebookPane({ backend, path, places, onController, onRenamed }:
       });
       const next = outlineOf(cells);
       const key = JSON.stringify(next);
+      // The notebook's title (#867), as the metadata has it: a live room
+      // changes it without reopening the file.
+      setTitle(notebookTitle(model.metadata));
+      // Its language, as the file names it; the running kernel's own
+      // kernelspec is asked first (#867).
+      setLanguage(notebookLanguage(model.metadata));
       // The journal's eyebrow above the title (#852), for a notebook an agent
       // keeps: its language and the day it was started. Only the cells'
       // metadata is read, not their code.
@@ -1492,6 +1526,8 @@ export function NotebookPane({ backend, path, places, onController, onRenamed }:
     const controller: NotebookController = {
       path,
       name: basename(path),
+      title,
+      language,
       status,
       kernelName: kernelName ?? intended.name,
       missingKernel: kernelName ? undefined : intended.missing,
@@ -1736,6 +1772,8 @@ export function NotebookPane({ backend, path, places, onController, onRenamed }:
     cellType,
     outline,
     eyebrow,
+    title,
+    language,
     journal,
     backend,
     onMachine,
@@ -1809,6 +1847,9 @@ export function NotebookPane({ backend, path, places, onController, onRenamed }:
           {machineName} went offline · Reconnecting…
         </div>
       )}
+      {/* The Apple apps draw no toolbar, so the page says what the notebook
+       * is above its first cell, as the toolbar's eyebrow does (#867). */}
+      {native && !journal && eyebrow && <p className="page-eyebrow">{eyebrow}</p>}
       <div className="notebook-page" ref={host} hidden={journal} />
       {journal && (
         <JournalView

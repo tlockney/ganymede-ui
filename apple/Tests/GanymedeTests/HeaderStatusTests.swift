@@ -5,12 +5,12 @@ import XCTest
 final class HeaderStatusTests: XCTestCase {
     private func status(
         savedOn: String = "This Mac", runsOn: String? = "This Mac", dirty: Bool = false,
-        locked: Bool = false, kernel: String? = "TypeScript", missing: Bool = false,
-        state: String? = "idle"
+        locked: Bool = false, kernel: String? = "TypeScript", language: String? = nil,
+        missing: Bool = false, state: String? = "idle"
     ) -> HeaderStatus {
         HeaderStatus(
             savedOn: savedOn, runsOn: runsOn, dirty: dirty, locked: locked,
-            kernel: kernel, kernelMissing: missing, status: state)
+            kernel: kernel, language: language, kernelMissing: missing, status: state)
     }
 
     func testNamesWhereItIsSavedAndRuns() {
@@ -35,6 +35,19 @@ final class HeaderStatusTests: XCTestCase {
         XCTAssertEqual(
             status(dirty: true, locked: true).full,
             "Edited · Locked: changed on disk · Runs on This Mac · TypeScript")
+    }
+
+    /// The save part beside the Mac toolbar's chip (#867): only what "Saved
+    /// on …" doesn't say, and nothing while the file is saved.
+    func testTheChipShowsTheSavePartOnlyWhenThereIsSomethingToSay() {
+        XCTAssertNil(status().saveNote)
+        XCTAssertEqual(status(dirty: true).saveNote, "Edited")
+        XCTAssertEqual(status(locked: true).saveNote, "Locked: changed on disk")
+        XCTAssertEqual(
+            status(dirty: true, locked: true).saveNote, "Edited · Locked: changed on disk")
+        // What the popover and the subtitle say still has it all.
+        XCTAssertEqual(status().save, "Saved on This Mac")
+        XCTAssertEqual(status(dirty: true).save, "Edited")
     }
 
     func testTheShortFormKeepsTheSaveStateAndWhereItRuns() {
@@ -79,6 +92,78 @@ final class HeaderStatusTests: XCTestCase {
         }
     }
 
+    /// The chip beside the Mac's title (#867): the kernel, where it runs and
+    /// what it is doing, in that order.
+    func testTheChipsWords() {
+        XCTAssertEqual(status().chipText, "TypeScript · This Mac · Idle")
+        XCTAssertEqual(
+            status(runsOn: "Studio Mac", state: "busy").chipText, "TypeScript · Studio Mac · Running")
+        XCTAssertEqual(status(runsOn: nil).chipText, "TypeScript · Idle")
+        XCTAssertEqual(status(state: nil).chipText, "TypeScript · This Mac · Idle")
+        XCTAssertEqual(status(state: "none").chipText, "TypeScript · This Mac · Idle")
+        XCTAssertEqual(status(kernel: nil).chipText, "No kernel · This Mac · Idle")
+        // The missing kernel asks for one instead of saying what it does.
+        let missing = status(kernel: "julia", missing: true)
+        XCTAssertEqual(missing.chipText, "julia not installed · Choose Kernel")
+        XCTAssertEqual(missing.chipState, nil)
+        XCTAssertEqual(status(kernel: nil, missing: true).chipText, "Kernel not installed · Choose Kernel")
+    }
+
+    /// The chip calls the notebook by its language, not the kernel's
+    /// display name (#867): "Python" for the "Python 3" kernel, and a
+    /// language the app doesn't know with its first letter capitalized.
+    func testTheChipNamesTheNotebooksLanguage() {
+        XCTAssertEqual(
+            status(kernel: "Python 3", language: "python").chipText, "Python · This Mac · Idle")
+        XCTAssertEqual(
+            status(kernel: "TypeScript (in app)", language: "typescript").chipText,
+            "TypeScript · This Mac · Idle")
+        XCTAssertEqual(status(kernel: "Python 3", language: "julia").chipText, "Julia · This Mac · Idle")
+        XCTAssertEqual(
+            status(kernel: "Python 3", language: "wolfram").chipText, "Wolfram · This Mac · Idle")
+        XCTAssertEqual(status(kernel: nil, language: "r").chipText, "R · This Mac · Idle")
+        // No language: the kernel's display name, as before.
+        XCTAssertEqual(status(kernel: "Python 3").chipText, "Python 3 · This Mac · Idle")
+        XCTAssertEqual(status(kernel: "Python 3", language: " ").chipText, "Python 3 · This Mac · Idle")
+        // The known names, as each language writes itself.
+        let known = [
+            "typescript": "TypeScript", "javascript": "JavaScript", "python": "Python",
+            "sql": "SQL", "r": "R", "julia": "Julia", "rust": "Rust", "go": "Go", "bash": "Bash",
+        ]
+        for (language, name) in known {
+            XCTAssertEqual(HeaderStatus.languageName(language), name, language)
+        }
+        XCTAssertNil(HeaderStatus.languageName(nil))
+        XCTAssertNil(HeaderStatus.languageName(""))
+        // A missing kernel asks for one whatever language the file names.
+        XCTAssertEqual(
+            status(kernel: "julia", language: "julia", missing: true).chipText,
+            "julia not installed · Choose Kernel")
+    }
+
+    /// The chip's mark: a dot while the kernel waits, a spinner while it
+    /// works, a grey dot when it has stopped, a triangle when it is missing.
+    func testTheChipsMark() {
+        XCTAssertEqual(status().chipKind, .idle)
+        XCTAssertEqual(status().dotLabel, "Kernel idle")
+        XCTAssertEqual(status(state: nil).chipKind, .idle)
+        XCTAssertEqual(status(state: "none").dotLabel, "Kernel idle")
+        for state in ["busy", "restarting", "autorestarting", "connecting"] {
+            XCTAssertEqual(status(state: state).chipKind, .working, state)
+            XCTAssertEqual(status(state: state).dotLabel, "Kernel busy", state)
+        }
+        XCTAssertEqual(status(state: "terminating").chipKind, .working)
+        XCTAssertEqual(status(state: "terminating").dotLabel, "Kernel stopping")
+        XCTAssertEqual(status(state: "starting").chipKind, .working)
+        XCTAssertEqual(status(state: "starting").dotLabel, "Kernel starting")
+        for state in ["dead", "unknown", "odd"] {
+            XCTAssertEqual(status(state: state).chipKind, .stopped, state)
+            XCTAssertEqual(status(state: state).dotLabel, "Kernel stopped", state)
+        }
+        XCTAssertEqual(status(kernel: "julia", missing: true).chipKind, .missing)
+        XCTAssertEqual(status(kernel: "julia", missing: true).dotLabel, "Kernel not installed")
+    }
+
     func testPlacesForThisDeviceAndAMachine() {
         let device = HeaderStatus.places(
             machineName: nil, isMachine: false, deviceName: "This iPad", kernelLocation: nil)
@@ -108,8 +193,17 @@ final class HeaderStatusTests: XCTestCase {
         state.dirty = true
         state.status = "busy"
         state.kernelDisplayName = "TypeScript"
+        state.kernelLanguage = "typescript"
         let header = HeaderStatus.make(state: state, savedOn: "This Mac", runsOn: "Studio Mac")
         XCTAssertEqual(header?.full, "Edited · Runs on Studio Mac · TypeScript · Running")
+        XCTAssertEqual(header?.chipLead, "TypeScript · Studio Mac")
+        XCTAssertEqual(header?.language, "typescript")
+        // A page older than #867 sends no language: the chip says the
+        // kernel's display name.
+        state.kernelLanguage = nil
+        XCTAssertEqual(
+            HeaderStatus.make(state: state, savedOn: "This Mac", runsOn: nil)?.chipLead,
+            "TypeScript")
         // A page older than #812 sends no `locked`.
         XCTAssertEqual(header?.locked, false)
         state.locked = true

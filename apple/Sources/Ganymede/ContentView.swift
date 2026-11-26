@@ -146,13 +146,14 @@ struct ContentView: View {
             workspace
         }
         .toolbar {
-            // New Notebook takes `sidebarRoot` by its server path, a
-            // machine's too (#740).
             NotebookToolbar(
-                page: pageModel, document: document, folder: sidebarRoot,
+                page: pageModel, document: document,
                 // The kernel popover's Kernel Log is this device's window's
                 // alone (#858), so a machine's window passes no panel to it.
-                panel: place.isThisDevice ? panel : nil, place: place, header: headerStatus)
+                panel: place.isThisDevice ? panel : nil, place: place, header: headerStatus,
+                // A notebook's title, drawn with the kernel's button beside
+                // it (#867); a console or a folder keeps the system's.
+                title: showsNotebook ? windowTitle : nil)
             // The panel is every window's: a machine's terminals run on the
             // machine (#858), and a machine whose remote is gone keeps its
             // panel too, empty, for the remotes' terminals there.
@@ -182,13 +183,25 @@ struct ContentView: View {
             }
         }
         // The status line (#812). The system draws it and it isn't
-        // clickable: the kernel button's popover opens the details.
-        .navigationSubtitle(WindowTarget.subtitle(header: headerStatus, machineName: machineName))
+        // clickable: the kernel button's popover opens the details. A
+        // notebook's window has none: its save part is beside the chip
+        // (#867), and `.toolbar(removing: .title)` takes the system title
+        // and subtitle away. A machine's window with no notebook keeps
+        // "on <machine>".
+        .navigationSubtitle(
+            showsNotebook ? "" : WindowTarget.subtitle(header: headerStatus, machineName: machineName))
         .frame(minWidth: 720, minHeight: 480)
-        // A console's tab is titled with its name (#735).
-        .navigationTitle((target ?? loaded).tabTitle(
-            consoleName: pageModel.state.console?.name, machineName: machineName))
+        // A console's tab is titled with its name (#735), a notebook with
+        // its title, or its file's (#867).
+        .navigationTitle(windowTitle)
         .modifier(WindowSceneValues(place: place, folder: sidebarRoot, panel: panel))
+        // A notebook's toolbar item draws the title (#867), so the system's
+        // title and subtitle go; its tab keeps the display title, from
+        // `.navigationTitle` above. One modifier with an optional kind, not
+        // an `if`: two branches would be two views, and switching between
+        // them would rebuild the window's web view when a notebook opens or
+        // closes in place.
+        .toolbar(removing: showsNotebook ? .title : nil)
         // Notebooks opened from the Finder (#228): the first window to see
         // them takes them. Each opens in a new tab (or brings forward
         // the one showing it), except that the window the app opened on
@@ -663,6 +676,33 @@ struct ContentView: View {
         )
     }
 
+    /// What the window and its tab are called: a console by its name
+    /// (#735), a notebook by its `metadata.title` or its file's, the rest
+    /// by their folder's (#867).
+    private var windowTitle: String {
+        (target ?? loaded).tabTitle(
+            consoleName: pageModel.state.console?.name, machineName: machineName,
+            metadataTitle: shownTitle)
+    }
+
+    /// The page's `metadata.title`, once the page reports the file this
+    /// window is for: until then it is the previous notebook's, and a file
+    /// window that just changed target would take its title for a moment.
+    /// The file's name is enough to tell, and doesn't depend on how the
+    /// server spells the folder. A folder's window shows whichever
+    /// notebook its page has open.
+    private var shownTitle: String? {
+        let expected: String? = switch target ?? loaded {
+        case .file(let url): url.lastPathComponent
+        case .machineFile(_, let path): (path as NSString).lastPathComponent
+        default: nil
+        }
+        if let expected, expected != pageModel.state.path.map({ ($0 as NSString).lastPathComponent }) {
+            return nil
+        }
+        return pageModel.state.title
+    }
+
     /// The page asks for a tab (`openTab`): a notebook or data file, or a
     /// new DuckDB console. The server is rooted at `/` on the Mac.
     private func openTab(_ request: TabRequest) {
@@ -713,6 +753,13 @@ struct ContentView: View {
         }
     }
 
+    /// The notebook's title for its strip while another area fills the
+    /// window (#250, #867): the window's own, so a notebook the page
+    /// titled says that, not its file's name.
+    private var notebookTitle: String {
+        (target ?? loaded).displayTitle(machineName: machineName, metadataTitle: pageModel.state.title)
+    }
+
     /// The leading strip while an area fills the window: the sidebar, and
     /// the notebook when it is folded.
     private var leadingStrip: [FoldedStrip.Item] {
@@ -722,7 +769,7 @@ struct ContentView: View {
         }
         // A filled panel has the notebook's row over it instead.
         if layout.filled == .inspector {
-            items.append(.init(title: (target ?? loaded).title, systemImage: "doc.text") { layout.restore() })
+            items.append(.init(title: notebookTitle, systemImage: "doc.text") { layout.restore() })
             if panel.isShown {
                 items.append(.init(title: "Terminal Panel", systemImage: "rectangle.bottomthird.inset.filled") {
                     layout.restore()
@@ -743,7 +790,7 @@ struct ContentView: View {
                     .overlay {
                         if panelFills {
                             FoldedStrip(
-                                items: [.init(title: (target ?? loaded).title, systemImage: "doc.text") { layout.restore() }],
+                                items: [.init(title: notebookTitle, systemImage: "doc.text") { layout.restore() }],
                                 axis: .horizontal
                             )
                             .background(.bar)
