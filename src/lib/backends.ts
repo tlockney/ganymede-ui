@@ -1,4 +1,5 @@
 import { URLExt } from '@jupyterlab/coreutils';
+import { hostLabel } from './backend-host';
 import {
   type Contents,
   ContentsManager,
@@ -220,11 +221,7 @@ async function connectTo(config: BackendConfig): Promise<Backend> {
               : `The server answered ${res.status}.`,
       );
     }
-    const host = config.machine
-      ? (config.machineName ?? 'connected machine')
-      : config.url
-        ? new URL(base).host
-        : 'local server';
+    const host = hostLabel(config);
     if (config.kernels === 'page') {
       const { createLiteServices } = await import('./lite');
       const services = await createLiteServices({

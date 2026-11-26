@@ -45,8 +45,10 @@ import {
   openFailure,
   roomClosed,
   saveFailed,
+  stateReset,
   unreachable,
 } from '../lib/problems';
+import { interruptResetState } from '../lib/state-reset';
 import { type RunStatus, attachRunStatus } from '../lib/run-status';
 import { ProblemNotice } from './ProblemNotice';
 import { useSignals } from '../lib/useSignal';
@@ -139,6 +141,11 @@ export type NotebookController = {
   changeCellType(type: CellType): void;
   interrupt(): Promise<void>;
   restart(): Promise<void>;
+  /**
+   * Restart the kernel, then run every cell (#801). A restart that fails
+   * is reported and the cells don't run.
+   */
+  restartAndRunAll(): Promise<void>;
   changeKernel(name: string): Promise<void>;
   /**
    * Runs one of the notebook's commands by its id in the shortcuts table
@@ -437,6 +444,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
   }, []);
   /** The latest controller, for the notice's buttons. */
   const controllerRef = useRef<NotebookController>(undefined);
+  /** Restart the kernel, then run every cell: the state-reset notice's button (#796). */
+  const restartRunAll = useRef<() => Promise<void>>(undefined);
   /** Whether the session has rejoined the file's running kernel, if any. */
   const [joined, setJoined] = useState(false);
   /** Set once the file is deleted from under the notebook: no save may put it back. */
@@ -836,6 +845,14 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       Widget.attach(open.notebook, holder);
       // Start with the first cell active, ready for the keyboard.
       open.notebook.activeCellIndex = 0;
+      // Nothing has focus (the start screen's Try a Notebook button went
+      // when the notebook came, #815): take it in command mode, so
+      // Shift-Enter runs the first cell. A notebook opened from a control
+      // that keeps focus leaves it there, and so do the Apple apps
+      // (`chrome-native`), whose own sidebar keeps the keyboard.
+      const active = document.activeElement;
+      const native = document.documentElement.classList.contains('chrome-native');
+      if (!native && (!active || active === document.body)) open.notebook.activate();
     }
     const observer = new ResizeObserver(() => open.notebook.update());
     observer.observe(node);
@@ -867,8 +884,13 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
     let sawDown = false;
     const watchVersion = (kernel: Kernel.IKernelConnection) => {
       const onMessage = (_: unknown, { msg, direction }: Kernel.IAnyMessageArgs) => {
-        if (direction !== 'recv' || msg.header.msg_type !== 'kernel_info_reply') return;
-        if (waiting || kernel.isDisposed) return;
+        if (direction !== 'recv' || waiting || kernel.isDisposed) return;
+        // An interrupt ended the runtime, and its variables with it (#796).
+        if (interruptResetState(msg)) {
+          setNotice(stateReset(), () => void restartRunAll.current?.());
+          return;
+        }
+        if (msg.header.msg_type !== 'kernel_info_reply') return;
         replied = true;
         setKernelVersion(kernelVersionLine(msg.content));
       };
@@ -918,10 +940,14 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       const restartingNow = kernel?.status === 'restarting' || kernel?.status === 'autorestarting';
       if (!kernel || kernel.isDisposed || kernel.status === 'dead') {
         unwatch();
+        // Shut down or gone: there is no reset state to restore.
+        clearNotice('state-reset');
         versionOf = null;
         setKernelVersion(undefined);
       } else if (versionOf !== kernel) {
         unwatch();
+        // Another kernel: an earlier one's reset isn't this one's.
+        clearNotice('state-reset');
         versionOf = kernel;
         replied = false;
         waiting = restartingNow;
@@ -937,6 +963,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
           () => {},
         );
       } else if (restartingNow && !waiting) {
+        // A restart clears the state anyway.
+        clearNotice('state-reset');
         waiting = true;
         sawDown = false;
         setKernelVersion(undefined);
@@ -1268,6 +1296,17 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
     // A connected machine that stopped answering (#701): the notebook shows
     // what it had and does nothing that edits or runs until it is back.
     const away = () => onMachine && !!open.room && !open.room.connected;
+    const restartKernel = async () => {
+      const kernel = session.session?.kernel;
+      // A dead kernel can't restart (it disposed its connection): start
+      // a new one of the same kind in its place.
+      if (kernel && (kernel.status === 'dead' || kernel.isDisposed)) {
+        await open.track(session.changeKernel({ name: kernel.name }));
+      } else {
+        await kernel?.restart();
+      }
+      open.runStatus.clear();
+    };
     const reportRun = (what: string, action: () => Promise<void>) => {
       const run = async () => {
         if (away()) return;
@@ -1281,6 +1320,24 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         }
       };
       return run;
+    };
+    const runAll = async () => {
+      if (journal) return;
+      if (await open.ensureKernel(true)) await NotebookActions.runAll(notebook, session);
+    };
+    // Restart & Run All, from the run menu and the state-reset notice.
+    // A failed restart leaves the cells alone: its notice says so and
+    // Retry does both. Once the restart is done, Retry only runs the cells.
+    const restartAndRunAll = () => {
+      let restarted = false;
+      return reportRun('restart the kernel and run all cells', async () => {
+        if (journal) return;
+        if (!restarted) {
+          await restartKernel();
+          restarted = true;
+        }
+        await runAll();
+      })();
     };
     // Move the file to `to` with `rename` (the file's own rename, or its
     // folder's in the sidebar), taking the saves and the kernel along.
@@ -1418,10 +1475,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         if (journal) return;
         if (await open.ensureKernel()) await NotebookActions.runAndAdvance(notebook, session);
       }),
-      runAll: reportRun('run all cells', async () => {
-        if (journal) return;
-        if (await open.ensureKernel(true)) await NotebookActions.runAll(notebook, session);
-      }),
+      runAll: reportRun('run all cells', runAll),
       clearOutputs: () => {
         if (journal || away()) return;
         // As NotebookActions.clearAllOutputs, which needs an active cell;
@@ -1441,17 +1495,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       interrupt: report('interrupt the kernel', async () => {
         await session.session?.kernel?.interrupt();
       }),
-      restart: report('restart the kernel', async () => {
-        const kernel = session.session?.kernel;
-        // A dead kernel can't restart (it disposed its connection): start
-        // a new one of the same kind in its place.
-        if (kernel && (kernel.status === 'dead' || kernel.isDisposed)) {
-          await open.track(session.changeKernel({ name: kernel.name }));
-        } else {
-          await kernel?.restart();
-        }
-        open.runStatus.clear();
-      }),
+      restart: report('restart the kernel', restartKernel),
+      restartAndRunAll,
       command: id => {
         const { commands } = open;
         // The notebook's own commands act on cells the journal hides.
@@ -1547,6 +1592,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       }),
     };
     controllerRef.current = controller;
+    restartRunAll.current = restartAndRunAll;
     onController(controller);
   }, [
     open,
@@ -1662,7 +1708,10 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
       {devicePrompt && <DevicePrompt prompt={devicePrompt} />}
       {notice && (
         <ProblemNotice
-          problem={notice.problem}
+          problem={
+            // The journal runs no cells: the notice says where Restart & Run All is.
+            journal && notice.problem.kind === 'state-reset' ? stateReset(true) : notice.problem
+          }
           specs={services.kernelspecs.specs}
           onDismiss={() => clearNotice(notice.problem.kind)}
           onPickKernel={name => void controllerRef.current?.changeKernel(name)}

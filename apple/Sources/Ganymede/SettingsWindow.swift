@@ -36,7 +36,7 @@ struct SettingsWindow: View {
             DeviceSettings()
                 .tabItem { Label("Device", systemImage: "hand.raised") }
                 .tag(SettingsTab.device)
-            // The engine benchmark and the crash report tests (#698).
+            // The crash report tests (#698).
             if developer {
                 DeveloperSettings()
                     .padding()
@@ -259,6 +259,7 @@ private struct CommandLineToolSettings: View {
 /// each with Revoke.
 private struct LinkRunSettings: View {
     private let permissions = URLRunPermissions.shared
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         Section {
@@ -284,8 +285,21 @@ private struct LinkRunSettings: View {
         } header: {
             Text("Links")
         } footer: {
-            Text("A ganymede://run link, or a Shortcuts action that runs a notebook, asks before it first runs one. These notebooks were allowed with Always; a revoked one asks again.")
+            Text("A ganymede://run link, or a Shortcuts action that runs a notebook, asks before it first runs one. These notebooks were allowed with Always; a revoked one asks again, and so does one that was changed outside Ganymede.")
         }
+        // A notebook replaced since its answer was kept has none to list.
+        .onAppear { permissions.pruneStale() }
+        // And when the app comes back from a change made outside it.
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { permissions.pruneStale() }
+        }
+        // On the Mac the scene stays active when the app is switched away
+        // from, so the app becoming active is the moment.
+        #if os(macOS)
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            permissions.pruneStale()
+        }
+        #endif
     }
 }
 

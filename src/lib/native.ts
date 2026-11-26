@@ -58,6 +58,7 @@ export type NativeHooks = {
  * `toggle-type-errors` turns type errors in TypeScript and JavaScript cells
  * on or off (#669). `toggle-live-markdown` does the same for the live
  * Markdown preview in Markdown cells (#672).
+ * `restart-run-all` restarts the kernel, then runs every cell (#812).
  * `toggle-journal` switches the open notebook between the journal view and
  * the notebook (#184); `PageState.journal` says which shows (#724).
  * `go-to-definition` and `rename-symbol` act on the name at the open
@@ -91,6 +92,7 @@ export const PAGE_COMMANDS = {
   'run-with-params': '',
   interrupt: '',
   restart: '',
+  'restart-run-all': '',
   'insert-code': '',
   'insert-markdown': '',
   'cell-type': 'arg',
@@ -169,7 +171,7 @@ export type PageState = {
   /** The open notebook's server path, or null. */
   path: string | null;
   dirty: boolean;
-  /** The kernel's state, as the toolbar's subtitle shows it; null with no notebook open. */
+  /** The kernel's state (`idle`, `busy`, `none`, …); null with no notebook open. */
   status: string | null;
   /** The running kernel or the one the first run starts, by name. */
   kernel: string | null;
@@ -183,6 +185,11 @@ export type PageState = {
   kernelVersionLine: string | null;
   /** True when the file's kernel isn't installed here. */
   kernelMissing: boolean;
+  /**
+   * Saving is locked because the file changed on disk (#367): the status
+   * line's "Locked" (#812).
+   */
+  locked: boolean;
   trusted: boolean;
   /** Whether Notebook Access works here: a Ganymede server that runs the kernels. */
   hostGrants: boolean;

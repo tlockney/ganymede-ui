@@ -30,12 +30,18 @@ struct FolderSidebar: View {
     /// A file operation is running: the menu items that change files wait,
     /// so two quick ones can't take the same name.
     @State private var busy = false
+    /// The selected row, which Up and Down move and Return, Right and Left
+    /// act on (#787). Only files and folders are selectable.
+    @State private var selection: FolderEntry?
+    /// The rows listed so far, by folder: Left finds a row's parent here,
+    /// and a reload that drops the selected row clears it (#791).
+    @State private var tree = SidebarTree()
 
     /// Whether the window's machine answers (always true for this device).
     private var reachable: Bool { PlaceReachability.shared.isReachable(place) }
 
     var body: some View {
-        List {
+        List(selection: $selection) {
             if !reachable {
                 Text(machineName.map { "“\($0)” is offline. Reconnecting…" } ?? "The machine is offline. Reconnecting…")
                     .foregroundStyle(.secondary).font(.caption)
@@ -45,6 +51,15 @@ struct FolderSidebar: View {
             }
         }
         .listStyle(.sidebar)
+        .modifier(SidebarKeys(
+            selection: selection,
+            isExpanded: { actions.isExpanded($0.url).wrappedValue },
+            setExpanded: { actions.isExpanded($0.url).wrappedValue = $1 },
+            canOpen: { $0.canOpen(in: place) },
+            open: open,
+            parent: { tree.parent(of: $0, root: folder) },
+            select: { selection = $0 }
+        ))
         .contextMenu {
             Button("New Notebook") { page.run("new-notebook", arg: source.serverPath(folder)) }
                 .disabled(!reachable)
@@ -53,9 +68,19 @@ struct FolderSidebar: View {
         }
         // The machine answers again: list everything again.
         .onChange(of: reachable) { if reachable { generation += 1 } }
+        // Another folder in this window: the old one's rows are gone.
+        .onChange(of: folder) {
+            selection = nil
+            tree = SidebarTree()
+        }
         // A notebook made or saved by the page shows up, and so do changes
         // made outside the app when it comes back to the front.
-        .onChange(of: page.state.path) { generation += 1 }
+        .onChange(of: page.state.path) { old, _ in
+            generation += 1
+            // The page renamed or moved the open notebook: the row
+            // selected under its old path is gone.
+            if let old, let selected = selection, FolderEntry.path(selected.serverPath, isAt: old) { selection = nil }
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             generation += 1
         }
@@ -87,7 +112,19 @@ struct FolderSidebar: View {
                     set: { expanded = FolderEntry.expandedPaths(expanded, setting: key, to: $0) }
                 )
             },
+            select: { selection = $0 },
+            listed: listed(_:in:),
             open: open,
+            openByClick: { entry in
+                open(entry)
+                // The click left the list the keyboard; a notebook it
+                // opened should have it, so Down and Return go to the page.
+                if entry.opensInPage {
+                    DispatchQueue.main.async {
+                        if let window = NSApp.keyWindow { returnKeyboardToPage(in: window) }
+                    }
+                }
+            },
             openInNewTab: { entry in
                 if let target = WindowTarget(opening: entry) { openWindow(value: target) }
             },
@@ -102,6 +139,19 @@ struct FolderSidebar: View {
             offline: !reachable,
             machineName: machineName
         )
+    }
+
+    /// Clears the selection when it is `entry` or inside it, as a renamed
+    /// or deleted folder's rows go.
+    private func dropSelection(at entry: FolderEntry) {
+        if let selected = selection, selected.isAtOrInside(entry) { selection = nil }
+    }
+
+    /// A folder's contents listed `entries` (#791): a selected row the
+    /// listing no longer has is cleared (`SidebarTree.listed`).
+    private func listed(_ entries: [FolderEntry], in dir: URL) {
+        let kept = tree.listed(entries, in: dir, keeping: selection, root: folder)
+        if kept != selection { selection = kept }
     }
 
     private func open(_ entry: FolderEntry) {
@@ -158,6 +208,8 @@ struct FolderSidebar: View {
             do {
                 let target = try await source.rename(entry.url, to: name)
                 generation += 1
+                // Its row, and any inside it, is gone under the old name.
+                dropSelection(at: entry)
                 // From the page's path now, after the move returned.
                 if let moved = FolderEntry.path(
                     page.state.path, movedFrom: entry.serverPath, to: source.serverPath(target)
@@ -199,6 +251,7 @@ struct FolderSidebar: View {
             do {
                 try await source.delete(entry.url)
                 generation += 1
+                dropSelection(at: entry)
                 // What the page shows now, not when the person confirmed.
                 if FolderEntry.path(page.state.path, isAt: entry.serverPath) { page.run("close") }
             } catch {
@@ -215,7 +268,14 @@ struct FolderActions {
     var isRunning: (String) -> Bool
     /// Whether a folder, by file URL, is expanded.
     var isExpanded: (URL) -> Binding<Bool>
+    /// A click made this row the list's selection (#787).
+    var select: (FolderEntry) -> Void
+    /// A folder's contents were listed: the folder's URL as the contents
+    /// were given it, and its rows (#791).
+    var listed: ([FolderEntry], URL) -> Void
     var open: (FolderEntry) -> Void
+    /// A click opened the file: `open`, then the keyboard goes back to the page.
+    var openByClick: (FolderEntry) -> Void
     var openInNewTab: (FolderEntry) -> Void
     var newNotebook: (URL) -> Void
     var newFolder: (URL) -> Void
@@ -245,38 +305,54 @@ private struct FolderContents: View {
         Group {
             ForEach(entries) { entry in
                 if entry.isDirectory {
-                    DisclosureGroup(isExpanded: actions.isExpanded(entry.url)) {
+                    let isExpanded = actions.isExpanded(entry.url)
+                    DisclosureGroup(isExpanded: isExpanded) {
                         FolderContents(folder: entry.url, source: source, actions: actions, generation: generation)
                     } label: {
-                        Label(entry.name, systemImage: "folder")
+                        FolderRowLabel(name: entry.name, isExpanded: isExpanded, select: { actions.select(entry) })
                             .contextMenu { menu(for: entry) }
+                            // The label's row is the folder's selectable
+                            // row (#787).
+                            .tag(entry)
                     }
                 } else {
-                    Button {
-                        actions.open(entry)
-                    } label: {
-                        HStack {
-                            Label(entry.title, systemImage: entry.isNotebook ? "book.pages" : "doc.text")
-                            Spacer()
-                            if entry.isNotebook, actions.isRunning(entry.serverPath) {
-                                // Its kernel is running.
-                                Circle()
-                                    .fill(Color.green)
-                                    .frame(width: 6, height: 6)
-                                    .accessibilityLabel("Kernel running")
-                            }
+                    let canOpen = entry.canOpen(in: actions.place)
+                    // Not a `Button`: in a list with a selection it can keep
+                    // the click from selecting the row (#787). A tap gesture
+                    // alongside the list's own selects the row and opens it.
+                    HStack {
+                        Label(entry.title, systemImage: entry.isNotebook ? "book.pages" : "doc.text")
+                        Spacer()
+                        if entry.isNotebook, actions.isRunning(entry.serverPath) {
+                            // Its kernel is running.
+                            Circle()
+                                .fill(Color.green)
+                                .frame(width: 6, height: 6)
+                                .accessibilityLabel("Kernel running")
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
-                    .disabled(!entry.canOpen(in: actions.place))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    // Only a file that can't open here is dimmed: the rest keeps
+                    // the list's own tint and selected-row colour.
+                    .opacity(canOpen ? 1 : 0.5)
+                    .simultaneousGesture(
+                        TapGesture().onEnded {
+                            actions.select(entry)
+                            if canOpen { actions.openByClick(entry) }
+                        }
+                    )
+                    .accessibilityElement(children: .combine)
+                    .accessibilityAddTraits(canOpen ? .isButton : [])
+                    .accessibilityHint(canOpen ? "" : "Can't open here")
+                    .accessibilityAction { if canOpen { actions.open(entry) } }
                     .padding(.vertical, 1)
                     .listRowBackground(
                         entry.serverPath == actions.openPath
                             ? Color.accentColor.opacity(0.18) : Color.clear
                     )
                     .contextMenu { menu(for: entry) }
+                    .tag(entry)
                 }
             }
             if let error {
@@ -299,6 +375,7 @@ private struct FolderContents: View {
             guard !Task.isCancelled else { return }
             entries = listed
             error = nil
+            actions.listed(listed, folder)
         } catch {
             guard !Task.isCancelled else { return }
             self.error = FileSourceError.message(error, place: actions.place, machineName: actions.machineName)
@@ -505,10 +582,17 @@ struct ServerLine: View {
 
 // MARK: - Toolbar
 
-/// The notebook's controls, in the window's toolbar. Not customizable:
+/// The notebook's controls, in the window's toolbar (#812). Not customizable:
 /// a customizable toolbar (`.toolbar(id:)`) joins every window's toolbar
 /// into one AppKit family, and AppKit threw while syncing a new window's
 /// items into the others when a notebook opened from the Finder (#226).
+///
+/// In a fixed order, so no control moves under the pointer: New Notebook;
+/// Trust and Notebook Access, which are there only while they apply and so
+/// come first; Run Cell with its run menu; Interrupt, always there and
+/// enabled while the kernel is busy; the status button (the kernel's name,
+/// whose popover has the file, the kernel and where it runs); Share; and
+/// More. That is eight items, under the ten a ToolbarContentBuilder takes.
 struct NotebookToolbar: ToolbarContent {
     var page: PageModel
     /// Saved as File > Save saves it, and enabled when that is.
@@ -519,6 +603,8 @@ struct NotebookToolbar: ToolbarContent {
     var panel: PanelController?
     /// The window's place: a machine's kernel popover has no Runs On.
     var place: Place = .thisDevice
+    /// The status line the window's subtitle shows, for the popover.
+    var header: HeaderStatus?
 
     var body: some ToolbarContent {
         ToolbarItem(placement: .navigation) {
@@ -529,61 +615,32 @@ struct NotebookToolbar: ToolbarContent {
             }
             .help("New Notebook (⌘N)")
         }
-        ToolbarItem {
-            Button { Task { await document.save() } } label: { Label("Save", systemImage: "square.and.arrow.down") }
-                .help("Save (⌘S)")
-                .disabled(document.file == nil)
-        }
-        ToolbarItem {
-            ControlGroup {
-                Button { page.run("run") } label: { Label("Run", systemImage: "play.fill") }
-                    .help("Run the selected cell and select the next (⇧↩)")
-                Button { page.run("run-all") } label: { Label("Run All", systemImage: "forward.fill") }
-                    .help("Run all cells")
-            }
-            .disabled(!page.state.editsCells)
-        }
-        ToolbarItem {
-            ControlGroup {
-                Button { page.run("interrupt") } label: { Label("Interrupt", systemImage: "stop.fill") }
-                    .help("Interrupt the kernel (⌘.)")
-                    .disabled(!page.state.isBusy)
-                Button { page.run("restart") } label: {
-                    Label("Restart", systemImage: "arrow.clockwise")
-                }
-                .help("Restart the kernel")
-                .disabled(!page.state.hasKernel)
+        // Only while the notebook isn't trusted.
+        if !page.state.trusted {
+            ToolbarItem {
+                Button { confirmTrust(page) } label: { Label("Trust", systemImage: "checkmark.shield") }
+                    .help("Trust this notebook's HTML and JavaScript outputs")
+                    .disabled(!page.state.hasNotebook)
             }
         }
-        // One group, not two items: a ToolbarContentBuilder takes at most
-        // ten. The journal toggle (#724) is first: the page's own button
-        // is under the app's chrome.
-        ToolbarItemGroup {
-            Button { page.run("toggle-journal") } label: {
-                Label(page.state.journalToggleTitle, systemImage: page.state.journalToggleSymbol)
+        // Only while the notebook asks for something its grant doesn't give.
+        if let wanted = page.state.accessWanted, !wanted.isEmpty {
+            ToolbarItem {
+                Button { page.run("notebook-access") } label: { Label("Access", systemImage: "lock.shield") }
+                    .help("Notebook Access: this notebook asks for \(wanted.joined(separator: ", "))")
             }
-            .help(page.state.journalToggleTitle)
-            .disabled(!page.state.hasNotebook)
-            Menu {
-                Button("Code Cell") { page.run("insert-code") }
-                Button("Markdown Cell") { page.run("insert-markdown") }
-            } label: {
-                Label("Insert Cell", systemImage: "plus.rectangle")
-            }
-            .help("Insert a cell below")
-            .disabled(!page.state.editsCells)
         }
         ToolbarItem {
-            Picker("Cell Type", selection: cellType) {
-                Text("Code").tag("code")
-                Text("Markdown").tag("markdown")
-                Text("Raw").tag("raw")
-            }
-            .help("The selected cell's type")
-            .disabled(!page.state.editsCells)
+            RunCellMenu(page: page)
         }
         ToolbarItem {
-            KernelPicker(page: page, panel: panel, place: place)
+            Button { page.run("interrupt") } label: { Label("Interrupt", systemImage: "stop.fill") }
+                .labelStyle(.titleAndIcon)
+                .help("Interrupt the kernel (⌘.)")
+                .disabled(!page.state.isBusy)
+        }
+        ToolbarItem {
+            KernelPicker(page: page, panel: panel, place: place, header: header)
         }
         // Download, Export As and Publish, as in the File menu (#620): the
         // web toolbar that has them is hidden under native chrome.
@@ -604,17 +661,38 @@ struct NotebookToolbar: ToolbarContent {
             .disabled(!page.state.hasNotebook)
         }
         ToolbarItem {
-            Button { confirmTrust(page) } label: { Label("Trust", systemImage: "checkmark.shield") }
-                .help("Trust this notebook's HTML and JavaScript outputs")
-                .disabled(!page.state.hasNotebook || page.state.trusted)
+            moreMenu
         }
-        // Only while the notebook asks for something its grant doesn't give.
-        if let wanted = page.state.accessWanted, !wanted.isEmpty {
-            ToolbarItem {
-                Button { page.run("notebook-access") } label: { Label("Access", systemImage: "lock.shield") }
-                    .help("Notebook Access: this notebook asks for \(wanted.joined(separator: ", "))")
+    }
+
+    /// The rest, in a fixed order. The journal toggle (#724) is first: the
+    /// page's own button is under the app's chrome. Everything here is
+    /// also in the menu bar, and Save is ⌘S.
+    private var moreMenu: some View {
+        Menu {
+            Button { page.run("toggle-journal") } label: {
+                Label(page.state.journalToggleTitle, systemImage: page.state.journalToggleSymbol)
             }
+            .disabled(!page.state.hasNotebook)
+            Divider()
+            Button("Insert Code Cell") { page.run("insert-code") }
+                .disabled(!page.state.editsCells)
+            Button("Insert Markdown Cell") { page.run("insert-markdown") }
+                .disabled(!page.state.editsCells)
+            Picker("Cell Type", selection: cellType) {
+                Text("Code").tag("code")
+                Text("Markdown").tag("markdown")
+                Text("Raw").tag("raw")
+            }
+            .pickerStyle(.inline)
+            .disabled(!page.state.editsCells)
+            Divider()
+            Button("Save") { Task { await document.save() } }
+                .disabled(document.file == nil)
+        } label: {
+            Label("More", systemImage: "ellipsis.circle")
         }
+        .help("View as journal, insert a cell, change its type, save")
     }
 
     private var cellType: Binding<String> {
@@ -625,25 +703,34 @@ struct NotebookToolbar: ToolbarContent {
     }
 }
 
-/// The notebook's kernel (#241): its name in the toolbar, and a popover
-/// with its state and memory, Interrupt, Restart, the Kernel Log and the
-/// kernels to change to.
+/// The status button (#241, #812): the kernel's name in the toolbar, or
+/// "Choose Kernel" when the notebook's isn't installed, and a popover with
+/// the status line's full text, the file, the kernel's state and memory,
+/// Interrupt, Restart, the Kernel Log, where kernels run and the kernels to
+/// change to. The window's subtitle is drawn by the system and can't be
+/// clicked, so the details open from here.
 struct KernelPicker: View {
     var page: PageModel
     var panel: PanelController?
     var place: Place = .thisDevice
+    var header: HeaderStatus?
     @State private var shown = false
 
     var body: some View {
         Button {
             shown.toggle()
         } label: {
-            Label(page.state.kernelDisplayName ?? "Kernel", systemImage: "cpu")
+            if page.state.kernelMissing {
+                Label("Choose Kernel", systemImage: "exclamationmark.triangle")
+            } else {
+                Label(page.state.kernelDisplayName ?? "Kernel", systemImage: "cpu")
+            }
         }
+        .labelStyle(.titleAndIcon)
         .help(page.state.kernelVersionLine ?? "The notebook's kernel")
         .disabled(!page.state.hasNotebook)
         .popover(isPresented: $shown, arrowEdge: .bottom) {
-            KernelPopover(page: page, panel: panel, place: place) { shown = false }
+            KernelPopover(page: page, panel: panel, place: place, header: header) { shown = false }
         }
     }
 }
@@ -652,12 +739,44 @@ private struct KernelPopover: View {
     var page: PageModel
     let panel: PanelController?
     let place: Place
+    let header: HeaderStatus?
     let dismiss: () -> Void
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            statusSection
+            kernelSection
+        }
+        .padding()
+        .frame(minWidth: 260, maxWidth: 380, alignment: .leading)
+        // The kernels' memory is read only while this shows.
+        .onAppear { page.watchMemory(true) }
+        .onDisappear { page.watchMemory(false) }
+    }
+
+    /// The status line in full, and the file it is about (#812).
+    @ViewBuilder
+    private var statusSection: some View {
+        if let header {
+            Text(header.full)
+                .foregroundStyle(header.needsAttention ? Color.red : Color.primary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        if let path = page.state.path {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("File").font(.caption).foregroundStyle(.secondary)
+                Text(path).textSelection(.enabled)
+            }
+        }
+        if header != nil || page.state.path != nil {
+            Divider()
+        }
+    }
+
+    private var kernelSection: some View {
         let state = page.state
         let session = state.sessions.first { $0.path == state.path }
-        VStack(alignment: .leading, spacing: 10) {
+        return VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(state.kernelDisplayName ?? "No kernel").font(.headline)
                 Text(PageState.statusLabel(state.status)).foregroundStyle(.secondary)
@@ -699,11 +818,6 @@ private struct KernelPopover: View {
                 }
             }
         }
-        .padding()
-        .frame(minWidth: 260)
-        // The kernels' memory is read only while this shows.
-        .onAppear { page.watchMemory(true) }
-        .onDisappear { page.watchMemory(false) }
     }
 }
 
@@ -942,6 +1056,8 @@ struct KernelMenu: View {
             .disabled(page?.state.isBusy != true)
         Button("Restart") { page?.run("restart") }
             .disabled(page?.state.hasKernel != true)
+        Button("Restart & Run All") { page?.run("restart-run-all") }
+            .disabled(page?.state.editsCells != true)
         Button("Shut Down Other Kernels") { page?.run("shutdown-others") }
             .disabled(page?.state.otherSessions.isEmpty ?? true)
         Divider()

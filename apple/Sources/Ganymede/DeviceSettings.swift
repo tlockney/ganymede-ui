@@ -1,3 +1,6 @@
+#if os(macOS)
+import AppKit
+#endif
 import DeviceBridge
 import SwiftUI
 import UniformTypeIdentifiers
@@ -12,6 +15,7 @@ import WidgetKit
 struct DeviceSettings: View {
     /// A ledger of its own on the shared store (ganymede-device#86).
     @State private var model = DeviceGrants()
+    @Environment(\.scenePhase) private var scenePhase
     /// Shortcuts' "Run Script on Device" (#434), off by default.
     @AppStorage(RunScriptIntent.enabledKey) private var shortcutRuns = false
 
@@ -69,6 +73,18 @@ struct DeviceSettings: View {
         }
         .formStyle(.grouped)
         .onAppear { model.reload() }
+        // A notebook may have been changed outside the app while it was in
+        // the background: reading again drops what no longer holds (#584).
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { model.reload() }
+        }
+        // On the Mac the scene stays active when the app is switched away
+        // from, so the app becoming active is the moment.
+        #if os(macOS)
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+            model.reload()
+        }
+        #endif
         // A prompt in a notebook window may keep an answer while this
         // stays open; the ledger's store is UserDefaults.
         .task {
@@ -79,7 +95,7 @@ struct DeviceSettings: View {
     }
 
     private var footer: some View {
-        Text("When a notebook first uses something that needs your permission, such as notifications, Ganymede asks whether to allow it once, always, or never. “Always” and “never” are kept here until you revoke them, as are the folders you picked for a notebook.")
+        Text("When a notebook first uses something that needs your permission, such as notifications, Ganymede asks whether to allow it once, always, or never. “Always” and “never” are kept here until you revoke them, as are the folders you picked for a notebook. A notebook that is changed outside Ganymede loses its answers, and asks again.")
     }
 }
 

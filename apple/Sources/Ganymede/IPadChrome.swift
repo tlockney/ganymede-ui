@@ -44,6 +44,15 @@ struct IPadSidebar: View {
     @State private var failure: String?
     /// Whether a file operation is running: one at a time, as the Mac's.
     @State private var busy = false
+    /// The selected Files row, which the arrow keys of a hardware keyboard
+    /// move and Return, Right and Left act on (#787).
+    @State private var selection: FolderEntry?
+    /// The expanded folders of the Files tree, by file URL; here, not per
+    /// folder, so the keys can expand any of them (#787).
+    @State private var expandedFolders: Set<URL> = []
+    /// The Files rows listed so far, by folder: Left finds a row's parent
+    /// here, and a reload that drops the selected row clears it (#791).
+    @State private var tree = SidebarTree()
     /// The search field's text, and whether it reads notebooks too (#240).
     @State private var query = ""
     @State private var searchContents = false
@@ -137,13 +146,44 @@ struct IPadSidebar: View {
     }
 
     private var list: some View {
-        List { listContent }
+        List(selection: selectionBinding) { listContent }
             .listStyle(.sidebar)
+            .modifier(SidebarKeys(
+                selection: filesShown ? selection : nil,
+                isExpanded: { expandedFolders.contains($0.url) },
+                setExpanded: { entry, expanded in
+                    if expanded { expandedFolders.insert(entry.url) } else { expandedFolders.remove(entry.url) }
+                },
+                canOpen: { $0.canOpen(in: place) },
+                open: open,
+                parent: { tree.parent(of: $0, root: folder) },
+                select: { if filesShown { selection = $0 } }
+            ))
+            // The list is shared by every tab: a selection made in Files
+            // mustn't take Return in Search or Running.
+            .onChange(of: shownTab) { selection = nil }
+            // Another folder: the old one's rows are gone.
+            .onChange(of: folder) {
+                selection = nil
+                tree = SidebarTree()
+            }
             .navigationTitle(tabbed ? shownTab.title : "Notebooks")
             // The iPad's navigator tabs, as on the Mac (#251).
             .safeAreaInset(edge: .top, spacing: 0) {
                 if tabbed { tabStrip }
             }
+    }
+
+    /// Whether the Files tab shows in the iPad's tabbed list: the only
+    /// list with a selection. The iPhone's has none: there a row only
+    /// opens, and nothing stays highlighted.
+    private var filesShown: Bool { tabbed && shownTab == .files }
+
+    private var selectionBinding: Binding<FolderEntry?> {
+        Binding(
+            get: { filesShown ? selection : nil },
+            set: { if filesShown { selection = $0 } }
+        )
     }
 
     /// A reloaded page has no search, and a keystroke before the page was
@@ -178,7 +218,12 @@ struct IPadSidebar: View {
             // The examples show in the app's own folder from the start
             // (#463), never in a machine's.
             .modifier(AddsExamples(page: page, enabled: place.isThisDevice) { generation += 1 })
-            .onChange(of: page.state.path) { generation += 1 }
+            .onChange(of: page.state.path) { old, _ in
+                generation += 1
+                // The page renamed or moved the open notebook: the row
+                // selected under its old path is gone.
+                if let old, let selected = selection, FolderEntry.path(path(selected), isAt: old) { selection = nil }
+            }
             .onChange(of: phase) { _, phase in
                 if phase == .active { generation += 1 }
             }
@@ -552,7 +597,22 @@ struct IPadSidebar: View {
             offline: !reachable,
             place: place,
             machineName: machineName,
+            isExpanded: { url in
+                Binding(
+                    get: { expandedFolders.contains(url) },
+                    set: { if $0 { expandedFolders.insert(url) } else { expandedFolders.remove(url) } }
+                )
+            },
+            select: { if filesShown { selection = $0 } },
+            listed: listed(_:in:),
             open: open,
+            openByTap: { entry in
+                open(entry)
+                // The tap left a hardware keyboard in the list; a notebook
+                // it opened should have it, so ↓ and Return go to the page
+                // (#791), as the Mac's click does.
+                if tabbed, entry.opensInPage { returnKeyboardToPage() }
+            },
             newNotebook: newNotebook(in:),
             newFolder: newFolder(in:),
             rename: { entry in
@@ -612,6 +672,31 @@ struct IPadSidebar: View {
         source.serverPath(entry.url)
     }
 
+    /// Clears the selection when it is `entry` or inside it, as a renamed
+    /// or deleted folder's rows go.
+    private func dropSelection(at entry: FolderEntry) {
+        if let selected = selection, selected.isAtOrInside(entry) { selection = nil }
+    }
+
+    /// A folder's contents listed `entries` (#791): a selected row the
+    /// listing no longer has is cleared (`SidebarTree.listed`).
+    private func listed(_ entries: [FolderEntry], in dir: URL) {
+        let kept = tree.listed(entries, in: dir, keeping: selection, root: folder)
+        if kept != selection { selection = kept }
+    }
+
+    /// Gives a hardware keyboard to the page's web view (#791), as the
+    /// Mac's `returnKeyboardToPage` does, on the next turn of the run loop
+    /// as `TerminalSurface` does: the tap is still being handled, and
+    /// `opened` has only just asked for the notebook to show. Nothing
+    /// when the page isn't on screen.
+    private func returnKeyboardToPage() {
+        DispatchQueue.main.async {
+            guard let webView = page.webView, webView.window != nil, !webView.isHidden else { return }
+            _ = webView.becomeFirstResponder()
+        }
+    }
+
     private func open(_ entry: FolderEntry) {
         if entry.opensInPage {
             page.run("open", arg: path(entry))
@@ -658,6 +743,8 @@ struct IPadSidebar: View {
         let from = path(entry)
         exclusively {
             let target = try await source.rename(entry.url, to: file)
+            // Its row, and any inside it, is gone under the old name.
+            dropSelection(at: entry)
             let to = source.serverPath(target)
             page.run("file-moved", arg: PageState.fileMoved(from: from, to: to))
             // From the page's path now, after the move returned.
@@ -679,6 +766,7 @@ struct IPadSidebar: View {
         let from = path(entry)
         exclusively {
             try await source.delete(entry.url)
+            dropSelection(at: entry)
             page.run("file-moved", arg: PageState.fileMoved(from: from, to: nil))
             // What the page shows now, not when the person confirmed.
             if FolderEntry.path(page.state.path, isAt: from) { page.run("close") }
@@ -806,7 +894,16 @@ struct IPadFolderActions {
     var offline = false
     var place: Place = .thisDevice
     var machineName: String?
+    /// Whether a folder, by file URL, is expanded: the sidebar's one set.
+    var isExpanded: (URL) -> Binding<Bool>
+    /// A tap made this row the list's selection (#787).
+    var select: (FolderEntry) -> Void
+    /// A folder's contents were listed: the folder's URL as the contents
+    /// were given it, and its rows (#791).
+    var listed: ([FolderEntry], URL) -> Void
     var open: (FolderEntry) -> Void
+    /// A tap opened the file: `open`, then the keyboard goes to the page (#791).
+    var openByTap: (FolderEntry) -> Void
     var newNotebook: (URL) -> Void
     var newFolder: (URL) -> Void
     var rename: (FolderEntry) -> Void
@@ -827,36 +924,53 @@ private struct IPadFolderContents: View {
         Group {
             ForEach(entries) { entry in
                 if entry.isDirectory {
-                    DisclosureGroup {
+                    let isExpanded = actions.isExpanded(entry.url)
+                    DisclosureGroup(isExpanded: isExpanded) {
                         IPadFolderContents(folder: entry.url, source: source, actions: actions, generation: generation)
                     } label: {
-                        Label(entry.name, systemImage: "folder")
+                        FolderRowLabel(name: entry.name, isExpanded: isExpanded, select: { actions.select(entry) })
                             .contextMenu { menu(for: entry) }
+                            // The label's row is the folder's selectable
+                            // row (#787).
+                            .tag(entry)
                     }
                 } else {
-                    Button {
-                        actions.open(entry)
-                    } label: {
-                        HStack {
-                            Label(entry.title, systemImage: entry.isNotebook ? "book.pages" : "doc.text")
-                            Spacer()
-                            if entry.isNotebook, actions.isRunning(source.serverPath(entry.url)) {
-                                // Its kernel is running.
-                                Circle()
-                                    .fill(Color.green)
-                                    .frame(width: 6, height: 6)
-                                    .accessibilityLabel("Kernel running")
-                            }
+                    let canOpen = entry.canOpen(in: actions.place)
+                    // Not a `Button`: in a list with a selection it can keep
+                    // the tap from selecting the row (#787). A tap gesture
+                    // alongside the list's own selects the row and opens it.
+                    HStack {
+                        Label(entry.title, systemImage: entry.isNotebook ? "book.pages" : "doc.text")
+                        Spacer()
+                        if entry.isNotebook, actions.isRunning(source.serverPath(entry.url)) {
+                            // Its kernel is running.
+                            Circle()
+                                .fill(Color.green)
+                                .frame(width: 6, height: 6)
+                                .accessibilityLabel("Kernel running")
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
                     }
-                    .disabled(!entry.canOpen(in: actions.place))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    // Only a file that can't open here is dimmed: the rest keeps
+                    // the list's own tint and selected-row colour.
+                    .opacity(canOpen ? 1 : 0.5)
+                    .simultaneousGesture(
+                        TapGesture().onEnded {
+                            actions.select(entry)
+                            if canOpen { actions.openByTap(entry) }
+                        }
+                    )
+                    .accessibilityElement(children: .combine)
+                    .accessibilityAddTraits(canOpen ? .isButton : [])
+                    .accessibilityHint(canOpen ? "" : "Can't open here")
+                    .accessibilityAction { if canOpen { actions.open(entry) } }
                     .listRowBackground(
                         source.serverPath(entry.url) == actions.openPath
                             ? Color.accentColor.opacity(0.18) : nil
                     )
                     .contextMenu { menu(for: entry) }
+                    .tag(entry)
                 }
             }
             if let error {
@@ -879,6 +993,7 @@ private struct IPadFolderContents: View {
             guard !Task.isCancelled else { return }
             entries = listed
             error = nil
+            actions.listed(listed, folder)
         } catch {
             guard !Task.isCancelled else { return }
             self.error = FileSourceError.message(error, place: actions.place, machineName: actions.machineName)
@@ -970,124 +1085,258 @@ struct PhoneOutlineMenu: View {
     }
 }
 
-/// The notebook's controls in the navigation bar: run and kernel controls
-/// on their own, the rest in a menu.
+/// The title and, under it, the status line (#812): where the file is
+/// saved, where it runs and the kernel. Without a notebook, the title alone,
+/// with "on <machine>" for a machine's scene.
+struct NotebookTitle: View {
+    let title: String
+    let header: HeaderStatus?
+    let machineName: String?
+    var page: PageModel
+    var place: Place = .thisDevice
+    var phone = false
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Text(title).font(.headline).lineLimit(1)
+            if let header {
+                NotebookStatusMenu(header: header, page: page, place: place, phone: phone)
+            } else if let machineName, !machineName.isEmpty {
+                Text("on \(machineName)")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+            }
+        }
+    }
+}
+
+/// The status line as a menu (#812): tapping it shows the file, the kernel's
+/// version, the kernels to change to and where kernels run. The iPad shows
+/// the line in full and the iPhone its short form; the accessibility label
+/// is the full text on both. It is red while the kernel is missing or saving
+/// is locked.
+struct NotebookStatusMenu: View {
+    let header: HeaderStatus
+    var page: PageModel
+    var place: Place = .thisDevice
+    var phone = false
+
+    var body: some View {
+        Menu {
+            fileSection
+            kernelSection
+        } label: {
+            HStack(spacing: 2) {
+                Text(phone ? header.short : header.full)
+                    .font(.caption)
+                    .lineLimit(1)
+                Image(systemName: "chevron.down")
+                    .imageScale(.small)
+            }
+            .foregroundStyle(header.needsAttention ? Color.red : Color.secondary)
+        }
+        .accessibilityLabel(header.full)
+        .accessibilityHint("Shows the file and the kernel")
+    }
+
+    @ViewBuilder
+    private var fileSection: some View {
+        if let path = page.state.path {
+            Section("File") {
+                Text(path)
+            }
+        }
+    }
+
+    private var kernelSection: some View {
+        Section("Kernel") {
+            // Which kernel runs, from its own reply (#693).
+            if let version = page.state.kernelVersionLine {
+                Text(version)
+            }
+            ForEach(page.state.kernels, id: \.name) { kernel in
+                kernelChoice(kernel)
+            }
+            // Where every notebook's kernels run (#473), with the connected
+            // machines as places (#701).
+            if place.allows(.kernelLocation), AppModel.shared.kernelLocations.hasRemotes {
+                KernelLocationPicker(running: page.state.sessions.count)
+                    .pickerStyle(.inline)
+            }
+        }
+    }
+
+    private func kernelChoice(_ kernel: PageState.Kernel) -> some View {
+        Button {
+            page.run("change-kernel", arg: kernel.name)
+        } label: {
+            if kernel.name == page.state.kernel {
+                Label(kernel.pickerName, systemImage: "checkmark")
+            } else {
+                Text(kernel.pickerName)
+            }
+        }
+        .accessibilityLabel(kernel.pickerLabel)
+    }
+}
+
+/// The notebook's controls in the navigation bar (#812), in a fixed order.
+/// The iPad's trailing items: Trust and Notebook Access while they apply
+/// (they come first, so the rest never move), Run Cell with its run menu,
+/// Interrupt (always there, enabled while busy), Share and More. The
+/// iPhone's: More at the top, and the run bar at the bottom (Interrupt,
+/// Outline, Run Cell), in thumb reach (#209); Share, Trust and Notebook
+/// Access are in its More menu.
 struct IPadNotebookToolbar: ToolbarContent {
     var page: PageModel
-    /// The scene's place (#758): where kernels run is this device's setting,
-    /// not a machine's.
-    var place: Place = .thisDevice
     /// In the bottom toolbar, in thumb reach: the iPhone (#209).
     var bottom = false
     /// Asks for the notebook's new name (#209).
     var rename: () -> Void = {}
 
     var body: some ToolbarContent {
-        ToolbarItemGroup(placement: bottom ? .bottomBar : .navigationBarTrailing) {
-            Button { page.run("run") } label: { Label("Run", systemImage: "play.fill") }
-                .disabled(!page.state.editsCells)
-            Button { page.run("run-all") } label: { Label("Run All", systemImage: "forward.fill") }
-                .disabled(!page.state.editsCells)
-            Button { page.run("interrupt") } label: { Label("Interrupt", systemImage: "stop.fill") }
-                .disabled(!page.state.isBusy)
+        if bottom {
+            phoneItems
+        }
+        if !bottom {
+            padItems
+        }
+    }
+
+    // MARK: iPhone
+
+    @ToolbarContentBuilder
+    private var phoneItems: some ToolbarContent {
+        ToolbarItem(placement: .navigationBarTrailing) {
+            moreMenu
+        }
+        ToolbarItemGroup(placement: .bottomBar) {
+            // Icon only: the bar is narrow, and the label is its name.
+            interruptButton
+            PhoneOutlineMenu(page: page)
+            RunCellMenu(page: page)
+        }
+    }
+
+    // MARK: iPad
+
+    @ToolbarContentBuilder
+    private var padItems: some ToolbarContent {
+        ToolbarItemGroup(placement: .navigationBarTrailing) {
+            // Only while the notebook isn't trusted.
+            if !page.state.trusted {
+                Button { page.run("trust") } label: { Label("Trust Notebook", systemImage: "checkmark.shield") }
+            }
             // Only while the notebook asks for something its grant doesn't give.
             if let wanted = page.state.accessWanted, !wanted.isEmpty {
                 Button { page.run("notebook-access") } label: { Label("Notebook Access", systemImage: "lock.shield") }
                     .accessibilityHint("Asks for \(wanted.joined(separator: ", "))")
             }
-            // The iPad has the sidebar's Outline tab.
-            if bottom {
-                PhoneOutlineMenu(page: page)
-            }
-            Menu {
-                Button { page.run("insert-code") } label: { Label("Insert Code Cell", systemImage: "plus.rectangle") }
-                Button { page.run("insert-markdown") } label: { Label("Insert Markdown Cell", systemImage: "text.badge.plus") }
-                Picker("Cell Type", selection: cellType) {
-                    Text("Code").tag("code")
-                    Text("Markdown").tag("markdown")
-                    Text("Raw").tag("raw")
-                }
-                Button { page.run("run-with-params") } label: {
-                    Label("Run with Parameters…", systemImage: "slider.horizontal.3")
-                }
-                .disabled(page.state.runParams != true)
-                Button { page.run("clear-outputs") } label: {
-                    Label("Clear All Outputs", systemImage: "eraser")
-                }
-                // The journal view and back (#724).
-                Button { page.run("toggle-journal") } label: {
-                    Label(page.state.journalToggleTitle, systemImage: page.state.journalToggleSymbol)
-                }
-                Divider()
-                Button { page.run("restart") } label: { Label("Restart Kernel", systemImage: "arrow.clockwise") }
-                    .disabled(!page.state.hasKernel)
-                Button { page.run("shutdown-others") } label: {
-                    Label("Shut Down Other Kernels", systemImage: "power")
-                }
-                .disabled(page.state.otherSessions.isEmpty)
-                Menu {
-                    // Which kernel runs, from its own reply (#693).
-                    if let version = page.state.kernelVersionLine {
-                        Text(version)
-                        Divider()
-                    }
-                    ForEach(page.state.kernels, id: \.name) { kernel in
-                        Button {
-                            page.run("change-kernel", arg: kernel.name)
-                        } label: {
-                            if kernel.name == page.state.kernel {
-                                Label(kernel.pickerName, systemImage: "checkmark")
-                            } else {
-                                Text(kernel.pickerName)
-                            }
-                        }
-                        .accessibilityLabel(kernel.pickerLabel)
-                    }
-                } label: {
-                    Label(page.state.kernelDisplayName ?? "Kernel", systemImage: "cpu")
-                }
-                // Where every notebook's kernels run (#473): an advanced
-                // choice, with the connected machines as places (#701).
-                if place.allows(.kernelLocation), AppModel.shared.kernelLocations.hasRemotes {
-                    Menu("Advanced") {
-                        KernelLocationPicker(running: page.state.sessions.count)
-                            .pickerStyle(.inline)
-                    }
-                }
-                Divider()
-                Button { page.run("save") } label: { Label("Save", systemImage: "square.and.arrow.down") }
-                    .disabled(!page.state.dirty)
-                Button(action: rename) { Label("Rename…", systemImage: "pencil") }
-                Button { page.run("download") } label: { Label("Download", systemImage: "arrow.down.doc") }
-                Menu {
-                    Button("Markdown") { page.run("export", arg: "markdown") }
-                    Button("Script") { page.run("export", arg: "script") }
-                } label: {
-                    Label("Export As", systemImage: "square.and.arrow.up.on.square")
-                }
-                .disabled(page.state.publish != true)
-                Button { page.run("publish") } label: {
-                    Label("Publish as Web Page…", systemImage: "globe")
-                }
-                .disabled(page.state.publish != true)
-                Button { page.run("trust") } label: { Label("Trust Notebook", systemImage: "checkmark.shield") }
-                    .disabled(page.state.trusted)
-                Button { page.run("notebook-access") } label: {
-                    Label("Notebook Access…", systemImage: "lock.shield")
-                }
-                .disabled(page.state.hostGrants != true)
-                Divider()
-                Button { page.run("show-shortcuts") } label: { Label("Keyboard Shortcuts", systemImage: "keyboard") }
-                Button {
-                    NotificationCenter.default.post(name: .showAppSettings, object: page)
-                } label: {
-                    Label("Settings", systemImage: "gearshape")
-                }
-            } label: {
-                Label("More", systemImage: "ellipsis.circle")
-            }
-            .disabled(!page.state.hasNotebook)
+            RunCellMenu(page: page)
+            interruptButton
+                .labelStyle(.titleAndIcon)
+            shareMenu
+            moreMenu
         }
+    }
+
+    // MARK: Pieces
+
+    /// Always there, enabled only while the kernel is busy.
+    private var interruptButton: some View {
+        Button { page.run("interrupt") } label: { Label("Interrupt", systemImage: "stop.fill") }
+            .disabled(!page.state.isBusy)
+    }
+
+    private var shareMenu: some View {
+        Menu {
+            shareItems
+        } label: {
+            Label("Share", systemImage: "square.and.arrow.up")
+        }
+        .disabled(!page.state.hasNotebook)
+    }
+
+    @ViewBuilder
+    private var shareItems: some View {
+        Button { page.run("download") } label: { Label("Download", systemImage: "arrow.down.doc") }
+        Menu {
+            Button("Markdown") { page.run("export", arg: "markdown") }
+            Button("Script") { page.run("export", arg: "script") }
+        } label: {
+            Label("Export As", systemImage: "square.and.arrow.up.on.square")
+        }
+        .disabled(page.state.publish != true)
+        Button { page.run("publish") } label: {
+            Label("Publish as Web Page…", systemImage: "globe")
+        }
+        .disabled(page.state.publish != true)
+    }
+
+    /// The rest, in a fixed order.
+    private var moreMenu: some View {
+        Menu {
+            editItems
+            Divider()
+            Button { page.run("shutdown-others") } label: {
+                Label("Shut Down Other Kernels", systemImage: "power")
+            }
+            .disabled(page.state.otherSessions.isEmpty)
+            Divider()
+            fileItems
+            Divider()
+            Button { page.run("show-shortcuts") } label: { Label("Keyboard Shortcuts", systemImage: "keyboard") }
+            Button {
+                NotificationCenter.default.post(name: .showAppSettings, object: page)
+            } label: {
+                Label("Settings", systemImage: "gearshape")
+            }
+        } label: {
+            Label("More", systemImage: "ellipsis.circle")
+        }
+        .disabled(!page.state.hasNotebook)
+    }
+
+    @ViewBuilder
+    private var editItems: some View {
+        // The journal view and back (#724).
+        Button { page.run("toggle-journal") } label: {
+            Label(page.state.journalToggleTitle, systemImage: page.state.journalToggleSymbol)
+        }
+        Button { page.run("insert-code") } label: { Label("Insert Code Cell", systemImage: "plus.rectangle") }
+            .disabled(!page.state.editsCells)
+        Button { page.run("insert-markdown") } label: { Label("Insert Markdown Cell", systemImage: "text.badge.plus") }
+            .disabled(!page.state.editsCells)
+        Picker("Cell Type", selection: cellType) {
+            Text("Code").tag("code")
+            Text("Markdown").tag("markdown")
+            Text("Raw").tag("raw")
+        }
+        .disabled(!page.state.editsCells)
+    }
+
+    /// Save and Rename, then what the iPhone's bar has no room for: Share,
+    /// Trust and Notebook Access (the iPad has them as buttons while they
+    /// apply, and here always).
+    @ViewBuilder
+    private var fileItems: some View {
+        Button { page.run("save") } label: { Label("Save", systemImage: "square.and.arrow.down") }
+            .disabled(!page.state.dirty)
+        Button(action: rename) { Label("Rename…", systemImage: "pencil") }
+        if bottom {
+            Menu {
+                shareItems
+            } label: {
+                Label("Share", systemImage: "square.and.arrow.up")
+            }
+        }
+        Button { page.run("trust") } label: { Label("Trust Notebook", systemImage: "checkmark.shield") }
+            .disabled(page.state.trusted)
+        Button { page.run("notebook-access") } label: {
+            Label("Notebook Access…", systemImage: "lock.shield")
+        }
+        .disabled(page.state.hostGrants != true)
     }
 
     private var cellType: Binding<String> {
@@ -1131,6 +1380,7 @@ struct IPadCommands: Commands {
         CommandMenu("Kernel") {
             IPadPageButton("Interrupt", "interrupt", key: ".")
             IPadPageButton("Restart", "restart")
+            IPadPageButton("Restart & Run All", "restart-run-all") { $0.editsCells }
             IPadPageButton("Shut Down Other Kernels", "shutdown-others") { !$0.otherSessions.isEmpty }
         }
         // The iPadOS 26 menu bar's Help menu (#409).

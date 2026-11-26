@@ -67,10 +67,26 @@ On first launch the app asks once whether to send crash reports
 The sidebar has six tabs (⌘1 to ⌘6). Each window keeps its sidebar
 shown or hidden, its tab and its expanded folders across launches.
 
-- **Files** lists the window's folder as a tree. Right-click an item to
+- **Files** lists the window's folder as a tree. Click a folder's name
+  to expand or collapse it. Right-click an item to
   open it in a new tab, show it in the Finder, make a notebook or folder
   there, or move it to the Trash. A dot marks notebooks whose kernel is
   running.
+
+  With the sidebar focused, ↑ and ↓ move the selection, → expands and
+  ← collapses the selected folder, and Return opens the selected file or
+  expands or collapses the selected folder. On a file or a collapsed
+  folder, ← selects the folder holding it, as in the Finder; at the top
+  level it does nothing. Clicking a row selects it.
+  Clicking a notebook or data file sends the keyboard back to the page;
+  clicking a folder, or pressing Tab into the sidebar, keeps it in the
+  sidebar.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release, where only a folder's arrow expands it and the
+  > sidebar has no keyboard navigation.
+
 - **Search** finds file and folder names under the window's folder and,
   with "Search notebook contents" ticked, the text of its notebooks,
   showing the matching line.
@@ -93,11 +109,33 @@ shown or hidden, its tab and its expanded folders across launches.
 
 ### Toolbar and menus
 
-- The toolbar saves, runs cells, interrupts and restarts the kernel,
-  inserts cells, sets the cell type and trusts the notebook. Its Share
-  button downloads, exports or publishes the notebook. Its kernel
-  button opens a popover with the kernel's state and memory, Interrupt,
-  Restart, Kernel Log and the kernels to change to.
+- The window's title has a status line under it, as the browser's has:
+  where the notebook is saved, where it runs, the kernel and what it is
+  doing, as in "Saved on This Mac · Runs on This Mac · TypeScript", or
+  "Edited · Runs on Studio Mac · Python 3 · Running". "Saved" becomes
+  "Edited" with unsaved changes and "Locked: changed on disk" while the
+  file changed under you, and a kernel that isn't installed reads "julia
+  (not installed) · Choose kernel". The system draws the line, so it
+  isn't clickable: the toolbar's kernel button, which reads "Choose
+  Kernel" for a missing kernel, opens a popover with the same text, the
+  file's path, the kernel's state and memory, Interrupt, Restart, Kernel
+  Log, where kernels run and the kernels to change to.
+- The toolbar's controls stay in one order, so none moves under the
+  pointer: New Notebook; Trust and Notebook Access, which are there only
+  while they apply; **Run Cell**, whose menu has Run All, Run with
+  Parameters…, Clear All Outputs, Restart Kernel and Restart & Run All;
+  **Interrupt**, always there and enabled while the kernel runs; the
+  kernel button; Share (download, export, publish); and ⋯, which has View
+  as Journal, Insert Code Cell, Insert Markdown Cell, Cell Type and Save.
+  Run All is only in Run Cell's menu, so the two can't be mistaken for
+  each other. Everything in these menus is also in the menu bar.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release, whose toolbar has buttons for Save, Run, Run All,
+  > Interrupt, Restart, the journal, Insert Cell and Cell Type, and a
+  > kernel and state line under the title.
+
 - The Cell menu runs, runs with parameters, inserts, moves and deletes
   cells, clears all outputs, collapses and expands code, goes to a definition and renames a symbol (see
   [Signatures, definitions and renames](#signatures-definitions-and-renames)), and opens Find; the Kernel menu interrupts (⌘.),
@@ -141,9 +179,14 @@ shown or hidden, its tab and its expanded folders across launches.
   node 24.11.0" (the name and version the kernel reports, and the
   runtime when its banner names one; "ipython 8.20.0" for IPython): at
   the top of the Mac's Kernel menu, in the kernel popover and the
-  button's help tag, in the iPad's kernel menu, and as the tooltip of
-  the browser toolbar's kernel label and picker. Nothing shows while no
-  kernel runs or before it has replied.
+  button's help tag, in the iPad's and iPhone's status menu, and in the
+  menu the browser's status line opens. Nothing shows while no kernel runs or
+  before it has replied.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release, where the browser shows it as the tooltip of the
+  > toolbar's kernel label and picker.
 
 - Kernels can run on a remote server instead. Add the remote in
   Settings > Remotes (its editor can switch kernels to it), then pick
@@ -304,7 +347,14 @@ time they run a notebook, as [links](#links) do, with "Always allow"
 kept per notebook and listed under Settings › General › Links. A run
 with parameters asks on its own. The question is a dialog on the Mac, so a
 Shortcut run by an automation waits for an answer the first time: run it
-once by hand and choose "Always allow" before automating it.
+once by hand and choose "Always allow" before automating it. If the
+notebook is changed outside the app after that (git, iCloud from another
+Mac), the next automated run asks again.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release. The latest release keeps "Always allow" for a path
+> whatever happens to the file.
 
 ### Links
 
@@ -348,6 +398,21 @@ exists. `new` asks, naming the folder and the template, unless it
 writes into a folder under Settings › General › Spotlight and copies a
 template from one. In those folders its reply, like `open`'s, tells
 the caller whether a name is taken or a template exists.
+
+"Always allow" is for the notebook as Ganymede last saw it. When the
+notebook's file is changed by anything but Ganymede's own server (git,
+Finder, another editor, a download, a sync), the answer is forgotten and
+the next run asks again; Settings › General › Links no longer lists it.
+What the app's own server writes keeps it: saving in a window, a run
+saving its outputs, a room's autosave and an MCP agent connected to the
+app's server. A save from `ganymede serve`, `ganymede mcp`'s own server
+or JupyterLab on its own server counts as outside. The same goes for Shortcuts actions,
+which share these answers.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release. The latest release keeps "Always allow" for a path
+> whatever happens to the file.
 
 For a reply, put the route under `x-callback-url/` and add
 [x-callback-url](https://x-callback-url.com) answers:
@@ -631,20 +696,43 @@ keys are kept in the keychain too.
   connected machine, and the iPhone's list a Journals section when there
   are journals ([Connected machines](#connected-machines)).
 
-- Files lists the notebook folder as a tree; long-press an item to
+- Files lists the notebook folder as a tree; tap a folder to expand or
+  collapse it, and long-press an item to
   rename, duplicate or delete it, or make a notebook or folder in it. A
   dot marks notebooks whose kernel is running. Search finds files by name
   in the folder and below it (and, switched on, in what notebooks say).
   In Running, swipe or long-press a kernel to shut it down.
-- The navigation bar runs cells and interrupts the kernel, and its ⋯ menu
-  inserts cells, sets the cell type, runs with parameters, clears all
-  outputs, restarts or
-  changes the kernel, shuts down other kernels, saves, renames,
-  downloads, exports and trusts. With a
-  keyboard, hold ⌘ to see the commands: New Notebook ⌘N, Save ⌘S, Run All
-  ⇧⌘↩, Interrupt ⌘., Find ⌘F.
-- Once a remote has a server, the ⋯ menu also picks where kernels run,
-  as Settings does.
+
+  With a hardware keyboard, the Files tab takes the Mac's keys: ↑ and ↓
+  move the selection, → and ← expand and collapse the selected folder,
+  ← on a file or a collapsed folder selects the folder holding it (at
+  the top level it does nothing), and Return opens the selected file or toggles the selected folder. Tapping
+  a notebook or data file gives the keyboard to the page.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release, where only a folder's chevron expands it and the
+  > Files tab has no keyboard navigation.
+
+- The title has the Mac's status line under it, and tapping it opens a
+  menu with the file's path, the kernel's version, the kernels to change
+  to and, once a remote has a server, where kernels run, as Settings
+  does. It turns red while the kernel is missing or saving is locked.
+- The navigation bar's controls stay in one order: Trust and Notebook
+  Access while they apply; **Run Cell**, whose menu has Run All, Run with
+  Parameters…, Clear All Outputs, Restart Kernel and Restart & Run All;
+  **Interrupt**, always there and enabled while the kernel runs; Share
+  (download, export, publish); and ⋯, which has View as Journal, Insert
+  Code Cell, Insert Markdown Cell, Cell Type, Shut Down Other Kernels,
+  Save, Rename…, Trust Notebook, Notebook Access…, Keyboard Shortcuts and
+  Settings. With a keyboard, hold ⌘ to see the commands: New Notebook ⌘N,
+  Save ⌘S, Run All ⇧⌘↩, Interrupt ⌘., Find ⌘F.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release, whose navigation bar has Run, Run All and
+  > Interrupt buttons and a ⋯ menu with the run, kernel and sharing
+  > commands, and a kernel and state line under the title.
 
 - A text file opens over the notebook, one at a time; Close (which asks to
   save) or opening a notebook from the sidebar goes back to it, saving
@@ -664,11 +752,23 @@ keys are kept in the keychain too.
 
 The first screen lists the notebook folder, with the same long-press
 actions and Running section as the iPad's sidebar, and the terminal,
-Settings and folder buttons. Tapping a notebook opens it; swipe from the
-left edge or tap Back to return to the list. The notebook's run controls
-and its ⋯ menu are in the bottom toolbar. Terminals and text files cover
-the screen. The bottom toolbar's Outline menu lists the notebook's
-headings; pick one to go to its cell.
+Settings and folder buttons. Tapping a notebook opens it, and tapping a
+folder expands or collapses it; swipe from the left edge or tap Back to
+return to the list. The notebook's title has a status line under it, in
+a short form ("Saved · Runs on Studio Mac"); tapping it opens the file,
+the kernel and where kernels run, and VoiceOver reads it in full. The
+bottom toolbar has Interrupt, the Outline menu and Run Cell, whose menu
+has Run All, Run with Parameters…, Clear All Outputs, Restart Kernel
+and Restart & Run All; the ⋯ menu at the top has the rest, including
+Share, Trust Notebook and Notebook Access…. Terminals and text files
+cover the screen. The Outline menu lists the notebook's headings; pick
+one to go to its cell.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, where only a folder's chevron expands it, the run
+> controls and ⋯ menu are in the bottom toolbar, and the title has a
+> kernel and state line.
 
 ### On both
 
@@ -992,7 +1092,7 @@ it. There is no View menu item for it yet.
 
 A notebook a Claude session keeps through `ganymede mcp` reads better as a
 journal than as cells. **View as Journal** shows the open notebook that
-way: the toolbar's journal button, View › View as Journal in the Mac app,
+way: the toolbar in the browser, View › View as Journal in the Mac app,
 the notebook's More menu on the iPad and iPhone, or the Command Palette.
 **Open as Notebook** goes back to full editing, in the same live room and on the same kernel.
 A notebook with cells an agent wrote opens as a journal; any other opens as
@@ -1084,12 +1184,8 @@ the notebook's editor colors (light and dark). In a notebook, the text of a
 template string tagged `sql` (`` jupyter.sql`select …` ``, `` sql`…` ``) in a
 JavaScript or TypeScript cell is highlighted as DuckDB SQL too, with `${…}`
 left as JavaScript, and a Markdown fence marked `duckdb` is highlighted the
-same way.
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release: the first argument of ``jupyter.sql.query(`…`)``
-> is highlighted as DuckDB SQL too, as a `sql` tag is.
+same way. The first argument of ``jupyter.sql.query(`…`)`` is
+highlighted as DuckDB SQL too, as a `sql` tag is.
 
 DuckDB wasm is the build SQL in a notebook uses, in a worker of its own: the
 first console fetches it (36 MB, once, then kept), and later ones run offline.
@@ -1175,7 +1271,7 @@ name, as for New Notebook from File.
 ## Publishing a notebook
 
 **Publish as Web Page…** (File menu and the toolbar's Share button on
-the Mac, the ⋯ menu on the iPad
+the Mac, the Share or ⋯ menu on the iPad
 and iPhone, the toolbar and the Command Palette in the browser) saves
 the notebook as one self-contained `.html` page to read and share: the
 page `ganymede nb publish` writes, with prose, charts and tables, light
@@ -1201,9 +1297,12 @@ export replaces nothing, the sheet refuses its page the same way.
 
 ## Running with parameters
 
-**Run with Parameters…** (Cell menu on the Mac, the ⋯ menu on the iPad
-and iPhone, the Command Palette in the browser, and its toolbar's More
-menu in a narrow window) runs the notebook as a program, the way `ganymede execute -p
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+**Run with Parameters…** (Cell menu on the Mac, the Run Cell menu on the iPad
+and iPhone, the Command Palette and the toolbar in the browser) runs the notebook as a program, the way `ganymede execute -p
 --results` does ([Programs](https://ganymede-server.com/docs/programs)):
 top to bottom in a new kernel on the server, with the parameters you
 type (a JSON object, such as `{"day": "mon"}`) in `jupyter.params`. The
@@ -1220,8 +1319,8 @@ has no such run.
 ## Exporting a notebook
 
 **Export As › Markdown** and **Script** (File menu and the toolbar's
-Share button on the Mac, the ⋯ menu
-on the iPad and iPhone, the Command Palette and the toolbar's More menu
+Share button on the Mac, the Share or ⋯ menu
+on the iPad and iPhone, the Command Palette and the toolbar
 in the browser) save the notebook as a Markdown file or as its code in
 the kernel's language (`.ts`, `.py`, …), as JupyterLab's Save and Export
 Notebook As does. Markdown with images arrives as a zip of the text and
@@ -1265,21 +1364,6 @@ iPhone, that stays hidden until **Show Developer Settings** is turned on
 at the bottom of General (on iPad and iPhone, in Settings, above Help).
 It is off by default, and turning it off hides the tab again. It holds:
 
-- **Engine Benchmark.** **Run Benchmark** runs the workloads of the
-  engine benchmark (ganymede's `spikes/v8-engine`: a start, CPU work,
-  TypeScript stripping, large output and memory) on the V8 inside the app
-  (jitless) and on WebKit's Workers, the engine of today's in-app kernel.
-  It takes under a minute: keep that screen open and the app in front until it's
-  done; the results say if you left. Each
-  workload shows cold and steady times in milliseconds for each engine,
-  the device, the OS and the app's peak memory footprint. V8 starts once
-  per process, so quit and relaunch the app between runs for steady
-  numbers. A build whose library has no V8 says so and runs only the
-  WebKit half, and so does a device that doesn't give the app the address
-  space V8 needs (an iPhone or iPad build without the extended virtual
-  addressing entitlement): the results give that reason for V8. **Share Results** shares a
-  `results-<time>.json` file, and **Copy Results** copies its text; `node
-bench/report.mjs` in that folder turns the file into tables.
 - **Crash Report Tests.** Buttons that send a test error or crash the app
   with a Swift crash or a Rust panic, to check what a real failure sends.
   They are off while crash reports are, and the report of a crash goes out

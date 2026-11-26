@@ -15,7 +15,7 @@
 #   IOS_CERTIFICATE_P12         Apple Distribution certificate and private
 #   IOS_CERTIFICATE_PASSWORD    key, base64, and its password
 #   IOS_PROVISIONING_PROFILE    App Store profile for com.ganymede-server.Ganymede,
-#                               with Extended Virtual Address Space (#755), base64
+#                               base64
 #   IOS_SHARE_PROFILE           App Store profile for the share extension,
 #                               com.ganymede-server.Ganymede.Share, base64 (#449)
 #   IOS_WIDGETS_PROFILE         App Store profile for the notebook widget,
@@ -113,10 +113,6 @@ if ((manual)); then
   }
   install_profile IOS_PROVISIONING_PROFILE "$bundle_id"
   app_profile=$uuid
-  # V8 needs more address space than an iOS app gets without it (#755).
-  [[ $(/usr/libexec/PlistBuddy -c 'Print :Entitlements:com.apple.developer.kernel.extended-virtual-addressing' \
-    "$work/IOS_PROVISIONING_PROFILE.plist" 2> /dev/null) == true ]] ||
-    fail "IOS_PROVISIONING_PROFILE doesn't include Extended Virtual Address Space: turn it on for $bundle_id and regenerate the profile"
   install_profile IOS_SHARE_PROFILE "$share_id"
   share_profile=$uuid
   install_profile IOS_WIDGETS_PROFILE "$widgets_id"

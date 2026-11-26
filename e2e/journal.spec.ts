@@ -3,6 +3,7 @@
 // @agent request through the room, and they land in the notebook and on disk.
 import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { crc32, deflateSync } from 'node:zlib';
 import { expect, test } from '@playwright/test';
 import { ROOT_DIR } from './env';
 import { openWithToken, removeFromServer, sidebarItem } from './helpers';
@@ -179,6 +180,239 @@ test('fits a phone: no sideways scroll and 44 px buttons', async ({ page }) => {
     expect(box!.height).toBeGreaterThanOrEqual(44);
   }
 });
+
+/** A solid gray PNG, `width` × `height`, base64: a wide chart's stand-in. */
+function png(width: number, height: number): string {
+  const chunk = (type: string, data: Buffer) => {
+    const len = Buffer.alloc(4);
+    len.writeUInt32BE(data.length);
+    const body = Buffer.concat([Buffer.from(type, 'ascii'), data]);
+    const crc = Buffer.alloc(4);
+    crc.writeUInt32BE(crc32(body));
+    return Buffer.concat([len, body, crc]);
+  };
+  const header = Buffer.alloc(13);
+  header.writeUInt32BE(width, 0);
+  header.writeUInt32BE(height, 4);
+  header.set([8, 0, 0, 0, 0], 8); // 8-bit grayscale
+  const row = Buffer.concat([Buffer.from([0]), Buffer.alloc(width, 0x80)]);
+  const pixels = deflateSync(Buffer.concat(Array.from({ length: height }, () => row)));
+  return Buffer.concat([
+    Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    chunk('IHDR', header),
+    chunk('IDAT', pixels),
+    chunk('IEND', Buffer.alloc(0)),
+  ]).toString('base64');
+}
+
+/**
+ * A journal like the Fremont Bridge one (#798): wide Markdown and HTML
+ * tables, wide images in Markdown (an attachment) and in outputs, long
+ * unbroken text in Markdown and in a stream, and a long line of code.
+ */
+function richJournal() {
+  const columns = Array.from({ length: 12 }, (_, i) => `Counter column ${i + 1}`);
+  const markdownTable = [
+    `| ${columns.join(' | ')} |`,
+    `| ${columns.map(() => '---:').join(' | ')} |`,
+    ...[2019, 2020, 2021].map(y => `| ${columns.map((_, i) => `${y}-${1000 + i}`).join(' | ')} |`),
+  ].join('\n');
+  const htmlTable =
+    '<table class="dataframe"><thead><tr>' +
+    columns.map(c => `<th>${c}</th>`).join('') +
+    '</tr></thead><tbody><tr>' +
+    columns.map((_, i) => `<td>${123456 + i}</td>`).join('') +
+    '</tr></tbody></table>';
+  // No hyphens or other break points: only overflow-wrap can break it.
+  const longWord = 'https://data.seattle.gov/' + 'fremontbridgebicyclecounter'.repeat(14);
+  const chart = png(1600, 60);
+  const cells = [
+    { cell_type: 'markdown', id: 'r0', source: '# Fremont Bridge', metadata: agent('note') },
+    {
+      cell_type: 'markdown',
+      id: 'r1',
+      source: `## Totals by counter\n\n${markdownTable}`,
+      metadata: agent('note'),
+    },
+    {
+      cell_type: 'markdown',
+      id: 'r2',
+      source: `Source: ${longWord}\n\n\`\`\`\n${'x'.repeat(300)}\n\`\`\``,
+      metadata: agent('note'),
+    },
+    {
+      cell_type: 'markdown',
+      id: 'r3',
+      source: '![daily counts](attachment:chart.png)',
+      attachments: { 'chart.png': { 'image/png': chart } },
+      metadata: agent('note'),
+    },
+    {
+      cell_type: 'code',
+      id: 'r4',
+      source: 'df.pivot_table()',
+      execution_count: 1,
+      metadata: agent('executed'),
+      outputs: [
+        {
+          output_type: 'execute_result',
+          execution_count: 1,
+          data: { 'text/html': htmlTable, 'text/plain': 'table' },
+          metadata: {},
+        },
+      ],
+    },
+    {
+      cell_type: 'code',
+      id: 'r5',
+      source: 'plot(daily)',
+      execution_count: 2,
+      metadata: agent('executed'),
+      outputs: [
+        { output_type: 'stream', name: 'stdout', text: longWord },
+        { output_type: 'display_data', data: { 'image/png': chart }, metadata: {} },
+      ],
+    },
+    {
+      cell_type: 'markdown',
+      id: 'r6',
+      source: '| a | b |\n| --- | --- |\n| 1 | 2 |',
+      metadata: agent('note'),
+    },
+    {
+      cell_type: 'markdown',
+      id: 'r7',
+      source: '$$' + Array.from({ length: 60 }, (_, i) => `x_{${i}}`).join('+') + '$$',
+      metadata: agent('note'),
+    },
+  ];
+  return {
+    nbformat: 4,
+    nbformat_minor: 5,
+    metadata: { kernelspec: { name: 'cdp-node', display_name: 'Node', language: 'typescript' } },
+    cells,
+  };
+}
+
+for (const { name, width, height } of [
+  { name: 'a phone', width: 390, height: 844 },
+  { name: 'a desktop', width: 1280, height: 820 },
+]) {
+  test(`keeps wide content in its own scroll box on ${name} (#798)`, async ({ page }) => {
+    writeFileSync(join(ROOT_DIR, FILE), JSON.stringify(richJournal()));
+    await page.setViewportSize({ width, height });
+    await openWithToken(page);
+    const sidebar = page.getByRole('button', { name: 'Show Sidebar' });
+    if (width < 600) await sidebar.click();
+    await sidebarItem(page, 'Journal e2e').click();
+    const journal = page.getByRole('region', { name: `Journal of ${FILE}` });
+    const cells = journal.getByRole('article');
+    await expect(cells).toHaveCount(8);
+    // Everything has rendered: the tables, both images and the equation.
+    await expect(journal.locator('table')).toHaveCount(3);
+    const tables = journal.locator('table').filter({ hasText: 'Counter column 12' });
+    await expect(tables).toHaveCount(2);
+    const equation = cells.nth(7).locator("mjx-container[display='true']");
+    await expect(equation).toHaveCount(1);
+    const images = journal.locator('img');
+    await expect(images).toHaveCount(2);
+    await expect(cells.nth(5).locator('img')).toHaveCount(1);
+    await expect
+      .poll(() => images.evaluateAll(els => els.every(i => (i as HTMLImageElement).complete)))
+      .toBe(true);
+
+    // No sideways scroll: not the page, not the journal, not its scroll area.
+    const scroll = journal.locator('.journal-scroll');
+    expect(await scroll.evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
+    expect(await journal.evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth - window.innerWidth),
+    ).toBeLessThanOrEqual(0);
+
+    // Each cell's body stays inside the column.
+    const column = await journal.locator('.journal-content').evaluate(el => {
+      const r = el.getBoundingClientRect();
+      const s = getComputedStyle(el);
+      return {
+        left: r.left + parseFloat(s.paddingLeft),
+        right: r.right - parseFloat(s.paddingRight),
+      };
+    });
+    for (const box of await journal
+      .locator('.journal-body')
+      .evaluateAll(els => els.map(e => e.getBoundingClientRect().toJSON() as DOMRect))) {
+      expect(box.left).toBeGreaterThanOrEqual(column.left - 0.5);
+      expect(box.right).toBeLessThanOrEqual(column.right + 0.5);
+    }
+
+    // Images shrink to the column, keeping their shape (1600 × 60).
+    for (const box of await images.evaluateAll(els =>
+      els.map(e => e.getBoundingClientRect().toJSON() as DOMRect),
+    )) {
+      expect(box.right).toBeLessThanOrEqual(column.right + 0.5);
+      expect(Math.abs(box.width / box.height - 1600 / 60)).toBeLessThan(0.5);
+    }
+
+    // Both tables are wider than the column and scroll in their own box:
+    // the nearest scrollable ancestor is no wider than the column.
+    for (const table of await tables.all()) {
+      const local = await table.evaluate(el => {
+        let box: HTMLElement | null = el as HTMLElement;
+        while (
+          box &&
+          !(box.scrollWidth > box.clientWidth && getComputedStyle(box).overflowX !== 'visible')
+        )
+          box = box.parentElement;
+        if (!box) return undefined;
+        const r = box.getBoundingClientRect();
+        return {
+          scroller: box.classList.contains('journal-scroll'),
+          left: r.left,
+          right: r.right,
+          before: box.scrollLeft,
+          after: ((box.scrollLeft = 200), box.scrollLeft),
+        };
+      });
+      expect(local).toBeDefined();
+      expect(local!.scroller).toBe(false);
+      expect(local!.right).toBeLessThanOrEqual(column.right + 0.5);
+      expect(local!.after).toBeGreaterThan(local!.before);
+    }
+    // The long equation scrolls in its own box too.
+    expect(await equation.evaluate(el => el.scrollWidth - el.clientWidth)).toBeGreaterThan(0);
+    // ...sideways only. MathJax overhangs its box by a pixel or two
+    // (scrollHeight stays above clientHeight whatever overflow-y is), so
+    // what keeps it from scrolling vertically is overflow-y: hidden.
+    expect(await equation.evaluate(el => getComputedStyle(el).overflowY)).toBe('hidden');
+    const eqBox = (await equation.boundingBox())!;
+    expect(eqBox.x + eqBox.width).toBeLessThanOrEqual(column.right + 0.5);
+
+    // A narrow table keeps its own width and stays centered in the
+    // Markdown's content box (JupyterLab pads its right side).
+    const narrow = await cells
+      .nth(6)
+      .locator('.jp-RenderedMarkdown')
+      .evaluate(el => {
+        const r = el.getBoundingClientRect();
+        const s = getComputedStyle(el);
+        const left = r.left + parseFloat(s.paddingLeft);
+        const right = r.right - parseFloat(s.paddingRight);
+        const table = el.querySelector('table')!.getBoundingClientRect();
+        const row = el.querySelector('tr')!.getBoundingClientRect();
+        return {
+          table: table.width,
+          row: row.width,
+          offset: table.left + table.width / 2 - (left + right) / 2,
+        };
+      });
+    expect(narrow.row).toBeGreaterThan(0);
+    expect(Math.abs(narrow.table - narrow.row)).toBeLessThan(2);
+    expect(Math.abs(narrow.offset)).toBeLessThan(1);
+    // Long text wraps rather than widening the Markdown.
+    const markdown = cells.nth(2).locator('.journal-rendered').first();
+    expect(await markdown.evaluate(el => el.scrollWidth - el.clientWidth)).toBeLessThanOrEqual(0);
+  });
+}
 
 test("sanitizes an untrusted cell's HTML output: no script runs, event attributes go", async ({
   page,

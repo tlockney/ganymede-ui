@@ -21,6 +21,7 @@ import * as encoding from 'lib0/encoding';
 import type { INotebookModel } from '@jupyterlab/notebook';
 import { WebsocketProvider } from 'y-websocket';
 import type { SaveOptions, Saver } from './saver';
+import { sameOutputs } from './trust';
 
 /** `jupyter-collaboration`'s raw message type: a JSON string. */
 const MSG_RAW = 2;
@@ -472,7 +473,9 @@ export class RoomSaver implements Saver {
  * trust: its cells carry no `trusted` mark, since the server decides it
  * when it saves (a cell is trusted when its outputs came from a run on the
  * server, or the file was signed). So read the file as the contents API
- * marks it, and trust here each code cell, by id, that it marks trusted.
+ * marks it, and trust here each code cell, by id, that it marks trusted
+ * and whose outputs here are the ones the file holds (#793): the file can
+ * be behind the room, and its trust is for its own outputs.
  * Never takes trust away: a cell trusted here (this page ran it) stays so;
  * {@link watchRemoteOutputs} takes it away when another client changes
  * the outputs. Skips the update when `stale()` says outputs changed during
@@ -487,16 +490,23 @@ export async function trustFromFile(
 ): Promise<boolean> {
   const file = await contents.get(path, { type: 'notebook', content: true });
   const cells = (file.content as nbformat.INotebookContent | null)?.cells ?? [];
-  const trusted = new Set(
+  /** The outputs the file holds for each cell it marks trusted, by id. */
+  const trusted = new Map(
     cells
       .filter(c => c.cell_type === 'code' && c.metadata?.trusted === true && c.id)
-      .map(c => c.id as string),
+      .map(c => [c.id as string, (c as nbformat.ICodeCell).outputs ?? []]),
   );
   if (model.isDisposed || stale()) return false;
   let changed = false;
   for (let i = 0; i < model.cells.length; i++) {
     const cell = model.cells.get(i);
-    if (cell.type === 'code' && !cell.trusted && trusted.has(cell.id)) {
+    if (cell.type !== 'code' || cell.trusted) continue;
+    const saved = trusted.get(cell.id);
+    // The file can be behind the room: trust only the outputs it signed.
+    // Compare the room's outputs as saved, not the output area's view,
+    // which merges stream chunks and resolves `\r` and `\b`.
+    const outputs = (cell as ICodeCellModel).sharedModel.getOutputs();
+    if (saved && sameOutputs(outputs, saved)) {
       changed = trustHere(cell as ICodeCellModel, true) || changed;
     }
   }

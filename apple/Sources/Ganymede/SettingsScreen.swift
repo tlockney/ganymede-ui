@@ -93,7 +93,7 @@ struct SettingsScreen: View {
                 .navigationTitle("Keyboard Shortcuts")
                 .navigationBarTitleDisplayMode(.inline)
             case .developer:
-                // The engine benchmark and the crash report tests (#698).
+                // The crash report tests (#698).
                 DeveloperSettings()
                     .navigationBarTitleDisplayMode(.inline)
             default:

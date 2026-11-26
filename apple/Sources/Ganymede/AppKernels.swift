@@ -23,11 +23,15 @@ final class AppKernels: NSObject {
 
     static let hostHandler = "kernelHost"
 
+    /// The in-app kernel's name: it runs in this app whichever server the
+    /// other kernels run on (the header's "Runs on", #812).
+    nonisolated static let inAppKernelName = "cdp-browser"
+
     /// The kernelspec the app registers: the TypeScript kernel the notebook
     /// page used to run itself, under the same name. Interrupts go over the
     /// control channel, which the server sets for every registered kernel.
     static let spec: [String: Any] = [
-        "name": "cdp-browser",
+        "name": inAppKernelName,
         "display_name": "TypeScript (cdp-kernel, in app)",
         "language": "typescript",
         "argv": [] as [String],
@@ -350,11 +354,7 @@ final class AppKernels: NSObject {
     /// `url`'s path with every link resolved, as the server's root is.
     /// Not `resolvingSymlinksInPath`, which drops a leading `/private`.
     nonisolated static func canonicalPath(_ url: URL) -> String {
-        url.withUnsafeFileSystemRepresentation { path in
-            guard let path, let real = realpath(path, nil) else { return nil }
-            defer { free(real) }
-            return String(cString: real)
-        } ?? url.standardizedFileURL.path
+        FileStamp.canonical(url)
     }
 
     /// Once a kernel's notebook and owner are both known, the bridge

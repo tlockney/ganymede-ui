@@ -323,10 +323,18 @@ final class AppModel {
     private nonisolated static func launch(
         _ config: [String: any Sendable], _ saved: Int
     ) throws -> ServerHost {
-        if saved > 0, let host = try? ServerHost(config: config.merging(["port": saved]) { $1 }) {
-            return host
+        let host: ServerHost
+        if saved > 0, let onSaved = try? ServerHost(config: config.merging(["port": saved]) { $1 }) {
+            host = onSaved
+        } else {
+            host = try ServerHost(config: config.merging(["port": 0]) { $1 })
         }
-        return try ServerHost(config: config.merging(["port": 0]) { $1 })
+        // A new server has no observer, so each start sets it. The server
+        // listens from `ServerHost(config:)`, so a client on the saved port
+        // could write before this line: that write isn't reported, and it
+        // fails safe, since its answers are asked again.
+        KeptAnswers.watch(host)
+        return host
     }
 
     /// Runs `work` after whatever start is already queued.

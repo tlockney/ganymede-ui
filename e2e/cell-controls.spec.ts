@@ -2,12 +2,11 @@
 // moves, runs and deletes cells from each cell's "…" menu and the add-cell
 // bar. A desktop window keeps the toolbar and shows neither.
 import { expect, type Page, test } from '@playwright/test';
-import { outputs } from './helpers';
+import { outputs, useThisBrowser } from './helpers';
 
 async function newBrowserNotebook(page: Page) {
   await page.goto('/');
-  await page.getByRole('radio', { name: /This browser/ }).click();
-  await page.getByRole('button', { name: 'Connect', exact: true }).click();
+  await useThisBrowser(page);
   await expect(page.getByRole('button', { name: /This browser/ })).toBeAttached({
     timeout: 60_000,
   });
@@ -80,5 +79,6 @@ test('a desktop window keeps its toolbar and shows no cell controls', async ({ p
   await newBrowserNotebook(page);
   await expect(page.getByRole('button', { name: 'Cell Actions' })).toBeHidden();
   await expect(page.getByRole('button', { name: 'Add Code Cell' })).toBeHidden();
-  await expect(page.getByRole('button', { name: 'Insert Code Cell' })).toBeVisible();
+  await page.getByRole('button', { name: 'More', exact: true }).click();
+  await expect(page.getByRole('menuitem', { name: 'Insert Code Cell' })).toBeVisible();
 });

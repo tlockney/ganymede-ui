@@ -431,6 +431,46 @@ describe('NotebookPane', () => {
     change.mockRestore();
   });
 
+  it('takes focus in command mode when it opens with nothing focused, as after Try a Notebook (#815)', async () => {
+    const { Widget } = await import('@lumino/widgets');
+    const activate = vi.spyOn(Widget.prototype, 'activate');
+    (document.activeElement as HTMLElement | null)?.blur();
+    expect(document.activeElement).toBe(document.body);
+    const { latest } = setup();
+    await waitFor(() => expect(latest()).toBeDefined());
+    expect(activate).toHaveBeenCalledWith();
+    expect(activate.mock.contexts).toContain(fakes.notebooks[0]);
+    activate.mockRestore();
+  });
+
+  it('leaves focus where it is when it opens from a control that keeps it (#815)', async () => {
+    const { Widget } = await import('@lumino/widgets');
+    const activate = vi.spyOn(Widget.prototype, 'activate');
+    const sidebarButton = document.createElement('button');
+    document.body.append(sidebarButton);
+    sidebarButton.focus();
+    const { latest } = setup();
+    await waitFor(() => expect(latest()).toBeDefined());
+    expect(activate.mock.contexts).not.toContain(fakes.notebooks[0]);
+    expect(document.activeElement).toBe(sidebarButton);
+    sidebarButton.remove();
+    activate.mockRestore();
+  });
+
+  it('leaves focus to the Apple apps with native chrome (#815)', async () => {
+    const { Widget } = await import('@lumino/widgets');
+    const activate = vi.spyOn(Widget.prototype, 'activate');
+    document.documentElement.classList.add('chrome-native');
+    try {
+      const { latest } = setup();
+      await waitFor(() => expect(latest()).toBeDefined());
+      expect(activate.mock.contexts).not.toContain(fakes.notebooks[0]);
+    } finally {
+      document.documentElement.classList.remove('chrome-native');
+      activate.mockRestore();
+    }
+  });
+
   it('takes focus out of the hidden notebook when the journal shows (#184)', async () => {
     const { latest } = setup();
     await waitFor(() => expect(latest()).toBeDefined());
@@ -915,6 +955,199 @@ describe('NotebookPane', () => {
       });
     });
 
+    describe('an interrupt that reset the kernel’s state (#796)', () => {
+      /** A kernel that announces messages as the library's connection does. */
+      const withMessages = (over: Partial<FakeKernel> = {}) => {
+        const anyMessage = new Signal<unknown, { msg: unknown; direction: string }>({});
+        const k = { ...kernel(over), anyMessage, info: new Promise<never>(() => {}) };
+        /** The stderr note cdp-kernel prints when the runtime ends, with `meta` as its metadata. */
+        const note = (meta?: unknown, direction = 'recv', type = 'stream') =>
+          act(() =>
+            anyMessage.emit({
+              msg: {
+                header: { msg_type: type },
+                content: { name: 'stderr', text: '\n[cdp-kernel] restarting on next cell\n' },
+                metadata: meta ?? {},
+              },
+              direction,
+            }),
+          );
+        return Object.assign(k, { note });
+      };
+      const reset = (reason = 'interrupt') => ({
+        cdp_kernel: { state_reset: true, reason, runtime: 'browser' },
+      });
+      const show = async (k: FakeKernel, s: Awaited<ReturnType<typeof running>>) => {
+        s.session.session = { kernel: k };
+        act(() => s.session.kernelChanged.emit(null));
+        await waitFor(() => expect(s.latest()?.kernelName).toBe(k.name));
+      };
+      const notice = () => screen.queryByRole('alert');
+
+      it('says so, and Restart & Run All restarts the kernel and then runs every cell', async () => {
+        const s = await running();
+        const order: string[] = [];
+        const k = withMessages();
+        Object.assign(k, { restart: vi.fn(async () => void order.push('restart')) });
+        const all = vi
+          .spyOn(NotebookActions, 'runAll')
+          .mockImplementation(async () => (order.push('run all'), true));
+        await show(k, s);
+        k.note(reset());
+        expect(await screen.findByRole('alert')).toHaveTextContent(
+          'Kernel state was reset by the interrupt.',
+        );
+        expect(notice()).toHaveClass('problem-state-reset');
+        // Nothing runs until the person asks.
+        expect(order).toEqual([]);
+        await userEvent.click(screen.getByRole('button', { name: 'Restart & Run All' }));
+        await waitFor(() => expect(order).toEqual(['restart', 'run all']));
+        expect(notice()).not.toBeInTheDocument();
+        all.mockRestore();
+      });
+
+      it('runs nothing when the restart fails, and Retry does both', async () => {
+        const s = await running();
+        const k = withMessages();
+        const restart = vi
+          .fn()
+          .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+          .mockResolvedValue(undefined);
+        Object.assign(k, { restart });
+        const all = vi.spyOn(NotebookActions, 'runAll').mockResolvedValue(true);
+        await show(k, s);
+        k.note(reset());
+        await userEvent.click(await screen.findByRole('button', { name: 'Restart & Run All' }));
+        expect(await screen.findByRole('alert')).toHaveTextContent(
+          'Couldn’t reach the server to restart the kernel and run all cells.',
+        );
+        expect(all).not.toHaveBeenCalled();
+        await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+        await waitFor(() => expect(all).toHaveBeenCalledOnce());
+        expect(restart).toHaveBeenCalledTimes(2);
+        all.mockRestore();
+      });
+
+      it('says nothing for an interrupt that kept the state, another end, or an older kernel', async () => {
+        const s = await running();
+        const k = withMessages();
+        await show(k, s);
+        // An older cdp-kernel's note, or an interrupt a waiting cell answered.
+        k.note();
+        // The runtime crashed: its note in the output says so.
+        k.note(reset('exit'));
+        // Not a message the kernel sent, or not a stream.
+        k.note(reset(), 'send');
+        k.note(reset(), 'recv', 'execute_reply');
+        expect(notice()).not.toBeInTheDocument();
+        // The same kernel's reset does show: the cases above were refused.
+        k.note(reset());
+        expect(await screen.findByRole('alert')).toHaveTextContent('Kernel state was reset');
+      });
+
+      it.each(['restarting', 'autorestarting'])(
+        'goes away on %s, and a note from then on is ignored',
+        async state => {
+          const s = await running();
+          const k = withMessages();
+          await show(k, s);
+          k.note(reset());
+          expect(await screen.findByRole('alert')).toBeInTheDocument();
+          k.status = state;
+          act(() => s.session.statusChanged.emit(state));
+          await waitFor(() => expect(notice()).not.toBeInTheDocument());
+          k.note(reset());
+          expect(notice()).not.toBeInTheDocument();
+        },
+      );
+
+      it('goes away when the kernel changes, and the old one’s late note is ignored', async () => {
+        const s = await running();
+        const a = withMessages({ name: 'a' });
+        await show(a, s);
+        a.note(reset());
+        expect(await screen.findByRole('alert')).toBeInTheDocument();
+        const b = withMessages({ name: 'b' });
+        await show(b, s);
+        await waitFor(() => expect(notice()).not.toBeInTheDocument());
+        a.note(reset());
+        expect(notice()).not.toBeInTheDocument();
+      });
+
+      it('keeps another problem’s notice when the kernel changes', async () => {
+        const s = await running();
+        const a = withMessages({ name: 'a' });
+        await show(a, s);
+        a.connectionStatus = 'disconnected';
+        act(() => s.session.connectionStatusChanged.emit('disconnected'));
+        expect(await screen.findByRole('alert')).toHaveTextContent('Lost the connection');
+        // A kernel whose connection is down too, so the lost notice stays for it.
+        await show(withMessages({ name: 'b', connectionStatus: 'disconnected' }), s);
+        expect(screen.getByRole('alert')).toHaveTextContent('Lost the connection');
+      });
+
+      it('offers no Restart & Run All in the journal, and does once it shows the notebook', async () => {
+        const s = await running(vi.fn(async () => ({ path: 'moons/Io.ipynb', content: kept() })));
+        expect(s.latest()?.journal).toBe(true);
+        const k = withMessages();
+        const restart = vi.fn(async () => {});
+        Object.assign(k, { restart });
+        await show(k, s);
+        k.note(reset());
+        expect(await screen.findByRole('alert')).toHaveTextContent(
+          'Kernel state was reset by the interrupt.',
+        );
+        expect(notice()).toHaveTextContent('Choose Open as Notebook');
+        expect(screen.queryByRole('button', { name: 'Restart & Run All' })).not.toBeInTheDocument();
+        act(() => s.latest()!.toggleJournal());
+        await userEvent.click(await screen.findByRole('button', { name: 'Restart & Run All' }));
+        await waitFor(() => expect(restart).toHaveBeenCalledOnce());
+      });
+
+      it('goes away when the kernel is shut down', async () => {
+        const s = await running();
+        const k = withMessages();
+        await show(k, s);
+        k.note(reset());
+        expect(await screen.findByRole('alert')).toBeInTheDocument();
+        s.session.session = null;
+        act(() => s.session.kernelChanged.emit(null));
+        await waitFor(() => expect(s.latest()?.status).toBe('none'));
+        expect(notice()).not.toBeInTheDocument();
+      });
+
+      it('does not restart again when Retry follows a failed Run All', async () => {
+        const s = await running();
+        const k = withMessages();
+        const restart = vi.fn(async () => {});
+        Object.assign(k, { restart });
+        const all = vi
+          .spyOn(NotebookActions, 'runAll')
+          .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+          .mockResolvedValue(true);
+        await show(k, s);
+        k.note(reset());
+        await userEvent.click(await screen.findByRole('button', { name: 'Restart & Run All' }));
+        await userEvent.click(await screen.findByRole('button', { name: 'Retry' }));
+        await waitFor(() => expect(all).toHaveBeenCalledTimes(2));
+        expect(restart).toHaveBeenCalledOnce();
+        // A new press restarts again.
+        k.note(reset());
+        await userEvent.click(await screen.findByRole('button', { name: 'Restart & Run All' }));
+        await waitFor(() => expect(restart).toHaveBeenCalledTimes(2));
+        all.mockRestore();
+      });
+
+      it('Dismiss hides it', async () => {
+        const s = await running();
+        const k = withMessages();
+        await show(k, s);
+        k.note(reset());
+        await userEvent.click(await screen.findByRole('button', { name: 'Dismiss' }));
+        expect(notice()).not.toBeInTheDocument();
+      });
+    });
+
     it.each(['restarting', 'autorestarting', 'starting', 'terminating'])(
       'keeps %s while a run is in flight (#655)',
       async state => {
@@ -1080,6 +1313,41 @@ describe('NotebookPane', () => {
       await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
       await waitFor(() => expect(restart).toHaveBeenCalledTimes(2));
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+
+    it('restarts the kernel, then runs every cell (#801)', async () => {
+      const { latest, session } = await running();
+      const order: string[] = [];
+      const restart = vi.fn(async () => void order.push('restart'));
+      Object.assign(session.session!.kernel, { restart });
+      const all = vi
+        .spyOn(NotebookActions, 'runAll')
+        .mockImplementation(async () => (order.push('run all'), true));
+      await act(() => latest()!.restartAndRunAll());
+      expect(order).toEqual(['restart', 'run all']);
+      all.mockRestore();
+    });
+
+    it('does nothing from the journal (#801)', async () => {
+      const { latest } = await journalWithOutput();
+      const session = fakes.sessions[0] as { changeKernel: ReturnType<typeof vi.fn> };
+      const all = vi.spyOn(NotebookActions, 'runAll').mockResolvedValue(true);
+      await act(() => latest()!.restartAndRunAll());
+      expect(session.changeKernel).not.toHaveBeenCalled();
+      expect(all).not.toHaveBeenCalled();
+      all.mockRestore();
+    });
+
+    it('does not run the cells when the restart fails (#801)', async () => {
+      const { latest, session } = await running();
+      const restart = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+      Object.assign(session.session!.kernel, { restart });
+      const all = vi.spyOn(NotebookActions, 'runAll').mockResolvedValue(true);
+      await act(() => latest()!.restartAndRunAll());
+      expect(restart).toHaveBeenCalledOnce();
+      expect(all).not.toHaveBeenCalled();
+      expect(screen.getByRole('alert')).toBeInTheDocument();
+      all.mockRestore();
     });
 
     it('says when a run can’t reach the server, and Retry runs again', async () => {

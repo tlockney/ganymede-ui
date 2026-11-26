@@ -2,6 +2,7 @@
 // the sidebar clears the notch in landscape, and nothing moves where every
 // inset is zero (the Mac). Chromium emulates the insets over CDP.
 import { expect, type Page, test } from '@playwright/test';
+import { openConnectSheet, useThisBrowser } from './helpers';
 
 type Insets = { top: number; right: number; bottom: number; left: number };
 
@@ -9,8 +10,7 @@ async function openBrowserNotebook(page: Page, insets: Insets) {
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Emulation.setSafeAreaInsetsOverride', { insets });
   await page.goto('/');
-  await page.getByRole('radio', { name: /This browser/ }).click();
-  await page.getByRole('button', { name: 'Connect', exact: true }).click();
+  await useThisBrowser(page);
   await expect(page.getByRole('button', { name: /This browser/ })).toBeAttached({
     timeout: 60_000,
   });
@@ -73,6 +73,7 @@ test.describe('landscape phone', () => {
       insets: { top: 0, right: 59, bottom: 21, left: 59 },
     });
     await page.goto('/');
+    await openConnectSheet(page);
     await page.addStyleTag({ content: '.sheet { min-height: 600px; }' });
     const connect = page.getByRole('button', { name: 'Connect', exact: true });
     await connect.scrollIntoViewIfNeeded();

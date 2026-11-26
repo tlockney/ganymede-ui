@@ -6,7 +6,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 import { FIXTURE, GANYMEDE_URL, ROOT_DIR, TOKEN } from './env';
-import { openNotebook, outputs, removeFromServer } from './helpers';
+import { openNotebook, outputs, removeFromServer, statusLine } from './helpers';
 
 const COPY = 'Served by Ganymede.ipynb';
 
@@ -24,7 +24,7 @@ test('opens from the URL ganymede serve prints, runs a cell and saves', async ({
 
   await openNotebook(page, COPY);
   // Opening it to read starts no kernel; the first run does.
-  await expect(page.getByText(/ · Starts when you run a cell$/)).toBeVisible();
+  await expect(statusLine(page).locator('.status-dot')).toHaveClass(/\bs-none\b/);
   await page.locator('.jp-CodeCell').first().click();
   await page.keyboard.press('Shift+Enter');
   await expect(

@@ -7,6 +7,12 @@
 
   --accent: #007aff;
   --accent-soft: rgba(0, 122, 255, 0.12);
+  /* The accent under white text (buttons, highlighted rows) and as text
+   * on the page (links, insert buttons, text buttons): darker than
+   * --accent, so each reads at 4.5:1 or more (#799,
+   * src/styles/contrast.test.ts). */
+  --accent-fill: #0062cc;
+  --accent-text: #0058b8;
   --window-bg: #ffffff;
   --sidebar-bg: rgba(236, 236, 240, 0.72);
   --sidebar-solid: #ececf0;
@@ -49,6 +55,8 @@
   :root {
     --accent: #0a84ff;
     --accent-soft: rgba(10, 132, 255, 0.2);
+    --accent-fill: #0068d9;
+    --accent-text: #5eacff;
     --window-bg: #1e1e20;
     --sidebar-bg: rgba(40, 40, 44, 0.7);
     --sidebar-solid: #2a2a2e;
@@ -378,21 +386,14 @@ button {
   min-width: 0;
 }
 
-/* The buttons keep their width (what doesn't fit is in "…", #201); the
- * title takes what is left and truncates. */
+/* The buttons keep their width and place (#801); the title and status
+ * line take what is left and truncate. */
 .toolbar-leading {
   flex: 1 1 auto;
 }
 
 .toolbar-trailing {
   flex: none;
-}
-
-/* Each toolbar item, measured as one (#201). */
-.tb-item {
-  display: flex;
-  flex: none;
-  align-items: center;
 }
 
 .title-block {
@@ -408,25 +409,50 @@ button {
   text-overflow: ellipsis;
 }
 
-.title .edited {
-  font-weight: 400;
-  color: var(--text-3);
-}
-
-.subtitle {
+.status-line {
   display: flex;
   align-items: center;
   gap: 5px;
-  font-size: 11px;
+  /* The -5px margins widen the box by 10px: the cap has to allow for them. */
+  max-width: calc(100% + 10px);
+  min-width: 0;
+  height: 18px;
+  margin: 0 -5px;
+  padding: 0 5px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
   color: var(--text-2);
+  font: 11px var(--font-ui);
   white-space: nowrap;
+  cursor: default;
 }
 
-/* A long kernel name ends in "…" rather than running under the Run buttons. */
-.subtitle-text {
+.status-line:hover,
+.status-line[aria-expanded='true'] {
+  background: var(--hover);
+}
+
+.status-line.locked .status-text {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* A long line ends in "…" rather than running under the Run buttons; the
+ * button's name has all of it. */
+.status-text {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.status-short {
+  display: none;
+}
+
+.status-caret {
+  flex: none;
+  opacity: 0.6;
 }
 
 .tb-button {
@@ -459,44 +485,123 @@ button {
   color: var(--text);
 }
 
-.segmented {
-  display: flex;
-  padding: 1px;
-  border-radius: 7px;
-  background: var(--control-bg);
-}
-
-.segmented .tb-button {
-  height: 26px;
-  min-width: 30px;
-}
-
-.popup-button {
-  position: relative;
+.tb-labeled {
   display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
 
-.popup-button select {
-  appearance: none;
-  height: 26px;
-  max-width: 180px;
-  padding: 0 24px 0 10px;
-  border: 0;
+.tb-label {
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+/* Run Cell filled, joined to its menu button (#801). */
+.run-group {
+  display: flex;
+  flex: none;
   border-radius: 6px;
-  background: var(--control-bg)
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='12' viewBox='0 0 8 12' fill='none' stroke='%238e8e93' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M1.5 4.5 4 2l2.5 2.5M1.5 7.5 4 10l2.5-2.5'/%3E%3C/svg%3E")
-    no-repeat right 8px center;
-  color: var(--text);
-  font: 12px var(--font-ui);
-  text-overflow: ellipsis;
+  overflow: hidden;
+  background: var(--accent-fill);
 }
 
-.popup-button select:disabled {
-  opacity: 0.35;
+.run-button,
+.run-menu-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 28px;
+  border: 0;
+  background: transparent;
+  color: #fff;
+  cursor: default;
 }
 
-.popup-button select:hover:not(:disabled) {
-  background-color: var(--control-bg-hover);
+.run-button {
+  min-width: 32px;
+  padding: 0 10px 0 8px;
+}
+
+.run-menu-button {
+  width: 24px;
+  border-left: 1px solid rgba(255, 255, 255, 0.35);
+}
+
+.run-button:hover:not(:disabled),
+.run-menu-button:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.run-button:disabled {
+  opacity: 0.6;
+}
+
+.run-button:focus-visible,
+.run-menu-button:focus-visible,
+.status-line:focus-visible,
+.tb-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* Beside the sidebar there is less room: the labels go and the icons stay,
+ * with the same accessible names. A phone, or a window with the sidebar
+ * closed, keeps them longer. */
+@media (max-width: 1019.98px) {
+  .window:not(.sidebar-collapsed) .tb-label {
+    display: none;
+  }
+}
+
+@media (max-width: 719.98px) {
+  .tb-label {
+    display: none;
+  }
+  /* A phone has little width but the line may take two rows, so where the
+   * notebook is saved and runs still shows. */
+  .status-line {
+    align-items: flex-start;
+    height: auto;
+    padding-top: 1px;
+    padding-bottom: 1px;
+    white-space: normal;
+    text-align: left;
+    line-height: 1.15;
+    font-size: 10.5px;
+  }
+  /* The short form: where it is saved and where it runs, not the kernel. */
+  .status-full {
+    display: none;
+  }
+  .status-short {
+    display: inline;
+  }
+  .status-text {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    white-space: normal;
+  }
+  .status-dot,
+  .status-caret {
+    margin-top: 3px;
+  }
+  .toolbar-trailing {
+    gap: 2px;
+  }
+  .toolbar-leading {
+    gap: 4px;
+  }
+  /* Trust and Notebook Access move to the ⋯ menu, so the title keeps room
+   * for its status line (#801). */
+  .tb-decision {
+    display: none;
+  }
+  .title-block {
+    min-width: 120px;
+  }
 }
 
 .status-dot {
@@ -695,7 +800,7 @@ button {
 }
 
 .push-button.primary {
-  background: var(--accent);
+  background: var(--accent-fill);
   color: #fff;
   box-shadow:
     0 1px 2px rgba(0, 0, 0, 0.15),
@@ -870,6 +975,25 @@ button {
   justify-content: flex-end;
   gap: 8px;
   margin-top: 18px;
+}
+
+/* The connect sheet's choices and fields, disabled together while it asks
+ * about a notebook that couldn't save (#792). */
+.connect-fields {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.connect-fields:disabled {
+  opacity: 0.6;
+}
+
+/* Three choices for a notebook that couldn't save before a switch (#792):
+ * they wrap on a phone instead of running off the sheet. */
+.sheet-unsaved .sheet-buttons {
+  flex-wrap: wrap;
 }
 
 .shortcuts-sheet {
@@ -1048,6 +1172,11 @@ button {
   margin-left: 66px;
 }
 
+/* The status beside it wraps; the button keeps its label on one line. */
+.settings-test > .push-button {
+  flex: none;
+}
+
 .settings-test .test-ok {
   color: var(--green);
 }
@@ -1170,7 +1299,7 @@ button {
   border: 0;
   border-radius: 6px;
   background: var(--accent-soft);
-  color: var(--accent);
+  color: var(--accent-text);
   font: inherit;
   cursor: pointer;
 }
@@ -1207,7 +1336,7 @@ button {
   padding: 3px 10px;
   border: 0;
   border-radius: 6px;
-  background: var(--accent);
+  background: var(--accent-fill);
   color: #fff;
   font: inherit;
   cursor: pointer;
@@ -1217,13 +1346,15 @@ button {
   padding: 3px 8px;
   border: 0;
   border-radius: 6px;
-  background: var(--accent);
+  background: var(--accent-fill);
   color: #fff;
   font: inherit;
 }
 
-/* A kernel that is only missing, not broken, is a warning. */
+/* A kernel that is only missing, not broken, is a warning, as is one
+   whose state an interrupt reset (#796). */
 .pane-notice.problem-missing-kernel,
+.pane-notice.problem-state-reset,
 .pane-notice.problem-save-conflict {
   border-color: var(--orange);
 }
@@ -1365,7 +1496,7 @@ button {
 
 .popup-menu-item:hover:not(:disabled),
 .popup-menu-item:focus-visible {
-  background: var(--accent);
+  background: var(--accent-fill);
   color: #fff;
   outline: none;
 }
@@ -1404,7 +1535,19 @@ button {
   color: var(--text-3);
 }
 
-.popup-menu.with-checks .popup-menu-heading {
+/* A line of information in a menu (a file's path): wraps and can be selected. */
+.popup-menu-note {
+  max-width: 320px;
+  padding: 2px 12px 4px;
+  font-size: 12px;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.popup-menu.with-checks .popup-menu-heading,
+.popup-menu.with-checks .popup-menu-note {
   padding-left: 28px;
 }
 
@@ -1732,7 +1875,7 @@ button {
 }
 
 .keyboard-bar-key.primary {
-  background: var(--accent);
+  background: var(--accent-fill);
   color: #fff;
   font-weight: 600;
 }
@@ -1789,7 +1932,7 @@ button {
 }
 
 .palette-item.active {
-  background: var(--accent);
+  background: var(--accent-fill);
   color: #fff;
 }
 
@@ -2302,7 +2445,7 @@ button {
 
 .journal-running {
   flex: 1;
-  color: var(--accent);
+  color: var(--accent-text);
 }
 
 .journal button,
@@ -2498,6 +2641,36 @@ button {
   min-width: 0;
   user-select: text;
   -webkit-user-select: text;
+  /* A long word or link wraps rather than widening the journal (#798).
+     Not `anywhere`: that would let a table's columns shrink to a letter. */
+  overflow-wrap: break-word;
+}
+
+/* Wide content scrolls in its own box, not the journal (#798). Outputs
+   already do (.journal-output); a Markdown table, code block or display
+   equation, which has no box of its own, becomes one. A narrow table
+   keeps its width and stays centered. Images and SVG already shrink to the column (JupyterLab's
+   max-width: 100%). */
+.journal-rendered .jp-RenderedMarkdown table {
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.journal-rendered .jp-RenderedMarkdown pre {
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+/* overflow-x: auto alone makes overflow-y auto too, and MathJax's box
+   overhangs it by a pixel or two, so the equation would scroll
+   vertically. */
+.journal-rendered .jp-RenderedMarkdown mjx-container[display='true'] {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 .journal-follow {
@@ -2509,7 +2682,7 @@ button {
   padding: 0 16px;
   border: 0;
   border-radius: 22px;
-  background: var(--accent);
+  background: var(--accent-fill);
   color: #fff;
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
   cursor: pointer;
@@ -2585,7 +2758,9 @@ button {
   text-align: center;
   font-size: 12px;
   font-weight: 600;
-  color: #fff;
+  /* Dark text in both themes: white on the orange reads at about 2:1,
+   * this at 7.6:1 or more (#802, src/styles/contrast.test.ts). */
+  color: #1d1d1f;
   background: var(--orange);
 }
 
@@ -2676,4 +2851,157 @@ button {
 .duck-recent {
   width: auto;
   max-width: 16em;
+}
+
+/* ---------- First open (#815) ---------- */
+
+/* The start screen, in the empty state: three ways in, each a push button
+   with a line under it, and the browser-storage note between the two that
+   keep work in the browser. */
+.start-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: min(360px, calc(100% - 32px));
+}
+
+.start-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  margin-top: 12px;
+}
+
+.start-actions .push-button {
+  min-width: 200px;
+  height: 32px;
+  justify-content: center;
+  margin-top: 10px;
+}
+
+.start-actions .push-button:first-child {
+  margin-top: 0;
+}
+
+.start-detail,
+.start-note {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 13px;
+  text-wrap: balance;
+}
+
+.empty-state .start-detail,
+.empty-state .start-note {
+  margin: 0;
+}
+
+.start-note {
+  margin-top: 14px;
+  padding: 6px 12px;
+  border-radius: 8px;
+  background: var(--control-bg);
+}
+
+.empty-state .start-note {
+  margin-top: 14px;
+  margin-bottom: 4px;
+}
+
+.start-error {
+  margin: 14px 0 0;
+  text-align: center;
+}
+
+/* Where browser work is kept, floating over the foot of the notebook until
+   dismissed. */
+.storage-notice {
+  position: absolute;
+  bottom: calc(12px + var(--safe-bottom));
+  left: 50%;
+  z-index: 9;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: max-content;
+  max-width: min(600px, calc(100% - 32px - var(--safe-left) - var(--safe-right)));
+  padding: 6px 8px 6px 14px;
+  border: 1px solid var(--separator);
+  border-radius: 10px;
+  background: var(--window-bg);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+  font-size: 13px;
+  transform: translateX(-50%);
+}
+
+.storage-notice-text {
+  min-width: 0;
+}
+
+.storage-notice .push-button {
+  flex: none;
+  height: 26px;
+}
+
+.storage-notice-dismiss {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.storage-notice-dismiss:hover {
+  background: var(--control-bg-hover);
+}
+
+/* A touch screen: targets of 44px. */
+.touch-ui .storage-notice .push-button,
+.touch-ui .storage-notice-dismiss,
+.touch-ui .start-actions .push-button {
+  min-height: 44px;
+}
+
+.touch-ui .storage-notice-dismiss {
+  min-width: 44px;
+}
+
+/* A short window (a phone on its side) scrolls the start screen rather than
+   cutting off its last button: auto margins centre it when it fits and
+   start it at the top when it doesn't. The window's one row is the window's
+   height: with the default `auto` row it grew to the start screen's height,
+   below the visible window, out of reach of any scrolling. */
+.window {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+.empty-state:has(.start-screen) {
+  justify-content: flex-start;
+  overflow-y: auto;
+}
+
+.empty-state:has(.start-screen) > .app-mark {
+  margin-top: auto;
+}
+
+.start-screen {
+  margin-bottom: auto;
+}
+
+@media (max-height: 520px) {
+  .empty-state:has(.start-screen) .app-mark img {
+    width: 48px;
+    height: 48px;
+  }
 }

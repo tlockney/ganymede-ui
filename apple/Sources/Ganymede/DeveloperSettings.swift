@@ -10,125 +10,22 @@ struct ShowDeveloperSettingsSection: View {
         Section {
             Toggle("Show Developer Settings", isOn: $shown)
         } footer: {
-            Text("Adds Developer settings: an engine benchmark and tests for crash reports.")
+            Text("Adds Developer settings: tests for crash reports.")
         }
     }
 }
 
-/// Settings > Developer (#698): an engine benchmark and the crash report
-/// tests, on Mac and iOS.
+/// Settings > Developer (#698): the crash report tests, on Mac and iOS.
+/// The engine benchmark it also held went with V8 (#765).
 struct DeveloperSettings: View {
-    var benchmark: EngineBenchmark = .shared
     var reports: CrashReports = .shared
-    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         Form {
-            EngineBenchmarkSection(benchmark: benchmark)
-            if benchmark.hasResults {
-                EngineBenchmarkResults(benchmark: benchmark)
-            }
             CrashReportTestsSection(reports: reports)
         }
         .formStyle(.grouped)
         .navigationTitle("Developer")
-        // WebKit throttles a page that isn't shown: the results say so.
-        .onDisappear { benchmark.screenLeft() }
-        .onChange(of: scenePhase) { _, phase in
-            if phase != .active { benchmark.screenLeft() }
-        }
-    }
-}
-
-/// The benchmark's button and progress.
-private struct EngineBenchmarkSection: View {
-    var benchmark: EngineBenchmark
-
-    var body: some View {
-        Section {
-            Button("Run Benchmark") {
-                Task { await benchmark.run() }
-            }
-            .disabled(benchmark.running)
-            if benchmark.running {
-                HStack(spacing: 8) {
-                    ProgressView()
-                        .controlSize(.small)
-                    Text(benchmark.step)
-                        .foregroundStyle(.secondary)
-                }
-            }
-            if let page = benchmark.page {
-                BenchWorkerView(page: page)
-                    .frame(height: 120)
-            }
-            if let failure = benchmark.failure {
-                Text(failure)
-                    .foregroundStyle(.red)
-            }
-            if benchmark.leftScreen {
-                Text("This screen or the app left the front during the run, so WebKit's numbers may be low. Run it again.")
-                    .foregroundStyle(.orange)
-            }
-        } header: {
-            Text("Engine Benchmark")
-        } footer: {
-            Text("Runs the workloads of the V8 spike on jitless V8 and on WebKit Workers, the engine of today's in-app kernel. "
-                + "It takes under a minute: keep this screen open, with the app in front, until it's done. "
-                + "V8 initializes once per process, so for steady numbers quit and relaunch the app between runs.")
-        }
-    }
-}
-
-/// Per workload, cold and steady times in ms for each engine, the device,
-/// and Share and Copy for the results file.
-private struct EngineBenchmarkResults: View {
-    var benchmark: EngineBenchmark
-
-    var body: some View {
-        Section {
-            LabeledContent("V8 (jitless)", value: benchmark.v8Available ? "Included" : "Not in this build")
-            ForEach(benchmark.rows) { row in
-                LabeledContent(row.name) {
-                    VStack(alignment: .trailing, spacing: 2) {
-                        if let v8 = row.v8 {
-                            Text("V8 \(v8.text)")
-                        }
-                        if let webkit = row.webkit {
-                            Text("WebKit \(webkit.text)")
-                        }
-                    }
-                    .font(.callout.monospacedDigit())
-                }
-            }
-            ForEach(benchmark.problems, id: \.self) { problem in
-                Text(problem)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .textSelection(.enabled)
-            }
-            if !benchmark.device.isEmpty {
-                LabeledContent("Device", value: benchmark.device)
-                LabeledContent("OS", value: benchmark.os)
-            }
-            if let footprint = benchmark.footprint {
-                LabeledContent("App peak footprint", value: "\(EngineBench.mb(footprint.peak)) MB")
-            }
-            if !benchmark.running {
-                if let file = benchmark.resultsFile {
-                    ShareLink("Share Results", item: file)
-                }
-                if let text = benchmark.resultsText {
-                    Button("Copy Results") { copyToPasteboard(text) }
-                }
-            }
-        } header: {
-            Text("Results")
-        } footer: {
-            Text("Cold start to the first result, then the median of the later runs, in ms (cold / steady). "
-                + "The footprint is the app's, as the system counts it; WebKit's Workers run in another process, which the app can't read. "
-                + "Share writes results-<time>.json, which node bench/report.mjs in ganymede's spikes/v8-engine reads.")
-        }
     }
 }
 

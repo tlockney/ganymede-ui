@@ -4,7 +4,7 @@
 // language features work in the in-browser backend, as in the apps' in-app
 // kernel. Needs no server, only the production build.
 import { expect, test } from '@playwright/test';
-import { outputs, waitForReady } from './helpers';
+import { outputs, useThisBrowser, waitForReady } from './helpers';
 
 test('type errors and typed completion from TypeScript the app serves', async ({ page }) => {
   const fetched: string[] = [];
@@ -13,8 +13,7 @@ test('type errors and typed completion from TypeScript the app serves', async ({
     if (r.url().includes('/kernel-typescript/')) fetched.push(r.url());
   });
   await page.goto('/');
-  await page.getByRole('radio', { name: /This browser/ }).click();
-  await page.getByRole('button', { name: 'Connect', exact: true }).click();
+  await useThisBrowser(page);
   await expect(page.getByRole('button', { name: /This browser/ })).toBeVisible({ timeout: 60_000 });
   await page.getByRole('button', { name: 'New Notebook' }).first().click();
   await expect(page.locator('.jp-Cell').first()).toBeVisible({ timeout: 60_000 });

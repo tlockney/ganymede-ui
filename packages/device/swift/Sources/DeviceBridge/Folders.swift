@@ -8,7 +8,10 @@ import Foundation
 // and revokes it through `FolderGrants`. Each call names a folder by its
 // grant id and a path relative to it, and may not leave it: `..`, an
 // absolute path, or a symlink that resolves outside fails `denied`. The
-// app turns it on with `DeviceBridge.addFolders()`.
+// app turns it on with `DeviceBridge.addFolders()`. A grant is for the
+// notebook's file as the app last saw it (`FileStamp`), and is forgotten
+// when something other than the app's server changes that file, as the
+// ledger's answers are.
 
 /// A folder a notebook was given.
 public struct FolderGrant: Hashable, Sendable {
@@ -22,17 +25,24 @@ public struct FolderGrant: Hashable, Sendable {
     public let writable: Bool
     /// The bookmark that finds it again.
     public let bookmark: Data
+    /// What the app last saw of the notebook's file (`FileStamp`); nil
+    /// when the file wasn't there then, or for a grant kept before
+    /// stamps, which takes the file's stamp the next time it is there.
+    public let stamp: String?
 
-    public init(id: String, notebook: String, name: String, writable: Bool, bookmark: Data) {
+    public init(id: String, notebook: String, name: String, writable: Bool, bookmark: Data, stamp: String? = nil) {
         self.id = id
         self.notebook = notebook
         self.name = name
         self.writable = writable
         self.bookmark = bookmark
+        self.stamp = stamp
     }
 
-    func with(notebook: String? = nil, bookmark: Data? = nil) -> FolderGrant {
-        FolderGrant(id: id, notebook: notebook ?? self.notebook, name: name, writable: writable, bookmark: bookmark ?? self.bookmark)
+    func with(notebook: String? = nil, bookmark: Data? = nil, stamp: String?) -> FolderGrant {
+        FolderGrant(
+            id: id, notebook: notebook ?? self.notebook, name: name, writable: writable,
+            bookmark: bookmark ?? self.bookmark, stamp: stamp)
     }
 }
 
@@ -44,7 +54,8 @@ public protocol FolderStore {
     func save(_ grants: [FolderGrant])
 }
 
-/// UserDefaults, under one key.
+/// UserDefaults, under one key. A row's `stamp` is optional: rows kept
+/// before stamps load with none.
 @MainActor
 public struct UserDefaultsFolderStore: FolderStore {
     public let key: String
@@ -62,13 +73,17 @@ public struct UserDefaultsFolderStore: FolderStore {
                   let name = row["name"] as? String, let writable = row["writable"] as? Bool,
                   let bookmark = row["bookmark"] as? Data
             else { return nil }
-            return FolderGrant(id: id, notebook: notebook, name: name, writable: writable, bookmark: bookmark)
+            return FolderGrant(id: id, notebook: notebook, name: name, writable: writable, bookmark: bookmark, stamp: row["stamp"] as? String)
         }
     }
 
     public func save(_ grants: [FolderGrant]) {
         defaults.set(
-            grants.map { ["id": $0.id, "notebook": $0.notebook, "name": $0.name, "writable": $0.writable, "bookmark": $0.bookmark] as [String: Any] },
+            grants.map { grant -> [String: Any] in
+                var row: [String: Any] = ["id": grant.id, "notebook": grant.notebook, "name": grant.name, "writable": grant.writable, "bookmark": grant.bookmark]
+                if let stamp = grant.stamp { row["stamp"] = stamp }
+                return row
+            },
             forKey: key)
     }
 }
@@ -76,16 +91,62 @@ public struct UserDefaultsFolderStore: FolderStore {
 /// The folders notebooks were given. Instances on one store share them,
 /// as `PermissionLedger`s do: each read goes to the store, so a Settings
 /// screen's instance sees what a bridge's added.
+///
+/// A grant is for the notebook's file as the app last saw it. Each read
+/// compares the grant's stamp with the file now, as the ledger does for
+/// its answers: a grant whose file was changed by something other than
+/// the app's server is forgotten, a grant with no stamp takes the file's
+/// when it is there, and a notebook whose file isn't there keeps its
+/// grants, so `move` can carry them.
 @MainActor
 public final class FolderGrants {
     private let store: FolderStore
+    /// The stamp of the file at a notebook's path now, nil when it isn't
+    /// there. `FileStamp.of`; tests pass their own.
+    private let stamp: (String) -> String?
+    /// The server's reported writes, which explain a stamp that moved
+    /// before `serverWrote` caught up; nil for none.
+    private let log: ServerWriteLog?
 
-    public init(store: FolderStore? = nil) {
+    public init(
+        store: FolderStore? = nil, stamp: @escaping (String) -> String? = FileStamp.of,
+        log: ServerWriteLog? = ServerWriteLog.shared
+    ) {
         self.store = store ?? UserDefaultsFolderStore()
+        self.stamp = stamp
+        self.log = log
     }
 
-    /// Every grant, for a Settings screen.
-    public var grants: [FolderGrant] { store.load() }
+    /// Every grant still good for its notebook's file, for a Settings
+    /// screen and the calls. Saves the store when that dropped or stamped
+    /// any, by the ledger's rules (`PermissionLedger`).
+    public var grants: [FolderGrant] {
+        let rows = store.load()
+        let checked = rows.compactMap { row -> FolderGrant? in
+            switch FileStamp.verdict(was: row.stamp, now: stamp(row.notebook), path: row.notebook, log: log) {
+            case .keep: return row
+            case .restamp(let now): return row.with(stamp: now)
+            case .drop: return nil
+            }
+        }
+        if checked != rows { store.save(checked) }
+        return checked
+    }
+
+    /// The server wrote the file at `path` (canonical), which had stamp
+    /// `before` and now has `after`: the grants of that notebook move to
+    /// `after` by `FileStamp.moved`, as `PermissionLedger.serverWrote` does
+    /// for answers.
+    public func serverWrote(path: String, before: String?, after: String?) {
+        let rows = store.load()
+        let moved = rows.map { row -> FolderGrant in
+            guard let stamp = FileStamp.moved(was: row.stamp, before: before, after: after),
+                  FileStamp.canonical(row.notebook) == path
+            else { return row }
+            return row.with(stamp: stamp)
+        }
+        if moved != rows { store.save(moved) }
+    }
 
     /// `notebook`'s grants, in the order they were picked.
     public func grants(for notebook: String) -> [FolderGrant] {
@@ -102,20 +163,43 @@ public final class FolderGrants {
         store.save(grants.filter { $0.notebook != notebook })
     }
 
-    /// A notebook was renamed or moved: its grants follow.
+    /// A notebook was renamed or moved: its grants follow, each keeping
+    /// its stamp (a rename leaves the file's size, mtime and inode as they
+    /// were; the file is usually gone from `old` by now, which leaves its
+    /// grants alone until they are moved).
     public func move(from old: String, to new: String) {
         guard old != new else { return }
         let rows = grants
         guard rows.contains(where: { $0.notebook == old }) else { return }
-        store.save(rows.map { $0.notebook == old ? $0.with(notebook: new) : $0 })
+        store.save(rows.map { $0.notebook == old ? $0.with(notebook: new, stamp: $0.stamp) : $0 })
     }
 
     func grant(_ id: String, notebook: String) -> FolderGrant? {
         grants.first { $0.id == id && $0.notebook == notebook }
     }
 
-    /// Keeps `grant`, in place of one with its id.
+    /// The stamp of `notebook`'s file now, nil when it isn't there: what a
+    /// pick is for, to be passed to `keep(_:unlessChangedSince:)`.
+    func currentStamp(ofNotebook notebook: String) -> String? {
+        stamp(notebook)
+    }
+
+    /// As `keep(_:)`, unless the notebook's file is no longer the one the
+    /// person was asked about (`seen`, read before the picker was shown),
+    /// by `FileStamp.verdict`: the server's own writes meanwhile don't
+    /// count as a swap. Whether it was kept.
+    func keep(_ grant: FolderGrant, unlessChangedSince seen: String?) -> Bool {
+        guard FileStamp.verdict(was: seen, now: stamp(grant.notebook), path: grant.notebook, log: log) != .drop else {
+            return false
+        }
+        keep(grant)
+        return true
+    }
+
+    /// Keeps `grant`, in place of one with its id, with the notebook's
+    /// stamp now when it has none.
     func keep(_ grant: FolderGrant) {
+        let grant = grant.stamp == nil ? grant.with(stamp: stamp(grant.notebook)) : grant
         var rows = grants
         if let index = rows.firstIndex(where: { $0.id == grant.id }) {
             rows[index] = grant
@@ -380,12 +464,16 @@ extension DeviceBridge {
         let grants = grants ?? FolderGrants()
         folderGrants = grants
         addDialog("folders.pick", prepare: { context in
-            _ = try Self.notebook(context, "folders.pick")
-        }, finish: { answer, params, context in
+            // The notebook's file as the person is asked about it: the
+            // pick is kept only if it is still that file when they pick.
+            let notebook = try Self.notebook(context, "folders.pick")
+            return Seen(stamp: grants.currentStamp(ofNotebook: notebook))
+        }, finish: { answer, params, context, prepared in
             guard case let .folder(url) = answer else { return NSNull() }
             let notebook = try Self.notebook(context, "folders.pick")
             let writable = params["write"] as? Bool ?? false
-            return Self.folderReply(try Self.keep(url, writable: writable, notebook: notebook, grants: grants))
+            let seen = (prepared as? Seen)?.stamp
+            return Self.folderReply(try Self.keep(url, writable: writable, notebook: notebook, grants: grants, unlessChangedSince: seen))
         })
         addMethod("folders.list", contextHandler: { _, context, reply in
             do {
@@ -499,7 +587,7 @@ extension DeviceBridge {
                     MainActor.assumeIsolated {
                         if dropped { grants.revoke(grant.id) }
                         if let refreshed, let current = grants.grant(grant.id, notebook: grant.notebook) {
-                            grants.keep(current.with(bookmark: refreshed))
+                            grants.keep(current.with(bookmark: refreshed, stamp: current.stamp))
                         }
                         reply(result.map(\.value))
                     }
@@ -511,7 +599,9 @@ extension DeviceBridge {
 
     /// Keeps the picked `url` for `notebook`, in place of the notebook's
     /// earlier grant of the same folder, which keeps its id.
-    private static func keep(_ url: URL, writable: Bool, notebook: String, grants: FolderGrants) throws -> FolderGrant {
+    private static func keep(
+        _ url: URL, writable: Bool, notebook: String, grants: FolderGrants, unlessChangedSince seen: String?
+    ) throws -> FolderGrant {
         let bookmark: Data
         do {
             bookmark = try FolderAccess.bookmark(url)
@@ -526,8 +616,15 @@ extension DeviceBridge {
         let grant = FolderGrant(
             id: earlier?.id ?? UUID().uuidString, notebook: notebook, name: url.lastPathComponent,
             writable: writable, bookmark: bookmark)
-        grants.keep(grant)
+        guard grants.keep(grant, unlessChangedSince: seen) else {
+            throw DeviceCallError("failed", "folders.pick: the notebook changed while the picker was up, so the folder isn't kept; pick it again")
+        }
         return grant
+    }
+
+    /// The notebook's stamp when a pick began, carried to its answer.
+    private struct Seen {
+        let stamp: String?
     }
 
     /// The notebook a folder call's kernel runs; without one, nothing to

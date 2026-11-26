@@ -76,10 +76,16 @@ npm run dev                                 # http://localhost:5173/?token=test
 
 The dev server proxies `/api` to `GANYMEDE_URL` (default
 `http://127.0.0.1:8888`), so the page and the server share an origin. A token
-in the page URL connects at once; otherwise a sheet asks where kernels run.
-"This browser" needs no server at all. `npm run build && npm run preview`
+in the page URL connects at once; otherwise the page shows a start screen
+(see [First open](#first-open-in-the-browser)), and **Connect to a Server…**
+opens the sheet that asks where kernels run. "This browser" needs no server
+at all. `npm run build && npm run preview`
 (same proxy, port 4173) runs the production build, with offline use and
 Workbox's service worker.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
 
 To use the app for real, have Ganymede serve the built app
 (`ganymede serve --static-dir dist`, or a release), or host it anywhere
@@ -93,7 +99,34 @@ features such as the clipboard; [docs/device.md](docs/device.md) lists them.
 
 ## Using it
 
-On a first run, the empty window says where notebooks live and where
+### First open in the browser
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+With no saved connection, no token in the URL and no login on the page's own
+server, the page shows three actions, and no sheet:
+
+- **Try a Notebook** runs the sample in this browser: a short TypeScript tour
+  whose first cell is one line of code, run with Shift-Enter or the ▶ button
+  in the toolbar. No server and no network are needed.
+- **Open a Notebook…** picks a `.ipynb` file from the device and opens it in
+  this browser. A file that isn't a notebook is refused, with the reason, and
+  nothing is connected.
+- **Connect to a Server…** opens the sheet that asks where kernels run, with
+  the server's URL, token and placement.
+
+Work in the browser is stored in the browser, not on the device's disk: a
+note above the notebook says "Saved in this browser. Download a copy to keep
+it elsewhere." and offers **Download a Copy**. **Dismiss** hides it for this
+origin (`ganymede-ui:storage-notice` in local storage). A reload comes back
+to the same notebook in this browser. The Apple apps always open on a
+connection, so they never show the start screen.
+
+### The first-run welcome
+
+Once connected, the empty window says where notebooks live and where
 kernels run, with buttons to show the folder and to change where kernels
 run, and offers a sample notebook: a short TypeScript tour with
 Markdown, a table and a plot, copied into the folder the sidebar shows
@@ -127,20 +160,44 @@ a network connection. [examples/README.md](examples/README.md) says how
 they are built.
 
 Open a notebook from the sidebar, which also lists running kernels. The
-toolbar runs, interrupts and restarts the kernel, switches kernels, trusts
-the notebook, downloads it, and saves (⌘S). Keyboard shortcuts follow
-JupyterLab's; press `H` in command mode (or the keyboard button) for the
+toolbar runs cells (Run Cell, with Run All and restarts in its menu),
+interrupts the kernel, shares (download, export, publish) and holds the
+rest in its ⋯ menu; the status line under the title switches kernels.
+Save with ⌘S. Keyboard shortcuts follow
+JupyterLab's; press `H` in command mode for the
 full list. Every shortcut can be rebound there, and changes stay in this
 browser. [docs/shortcuts.md](docs/shortcuts.md) lists the defaults.
 
-In a narrow window, toolbar buttons that don't fit move into a "…" menu
-at the toolbar's end, listed by name. Run always stays.
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, whose toolbar is a row of icon buttons with the
+> kernel in a picker and a "…" menu for what doesn't fit a narrow window.
 
-`⇧⌘P` (`Ctrl+Shift+P`), or the toolbar's command button, opens a command
+The title has a status line under it: where the notebook is saved, where
+it runs, and the kernel, as in "Saved in this browser · Runs here ·
+TypeScript". With a Ganymede server it reads "Saved on _host_ · Runs on
+_host_" (a connected machine's name in place of the host; "Runs here"
+when the kernels are in the page). It says "Edited" while there are
+unsaved edits and "Locked: changed on disk" when saving is locked, and
+adds the kernel's state (Running, Starting, Restarting, Stopped) only
+when it isn't idle. A kernel the file names that isn't installed reads
+"_name_ (not installed) · Choose kernel". The line is a button: it opens
+the file's path, the kernel's version and the kernel picker.
+
+Run Cell (⇧↩) and Interrupt are always in view, whatever the width: Run
+Cell has a ▾ button for Run All, Run with Parameters…, Clear All Outputs,
+Restart Kernel and Restart & Run All, and Interrupt is lit only while the
+kernel is busy. Their labels give way to icons in a narrow window. Trust
+Notebook and Notebook Access show when they apply. Share has Download
+Notebook, the export formats and Publish as Web Page…; "⋯" has View as
+Journal, Variables, Insert Code Cell and Insert Text Cell, Cell Type, Save,
+the Command Palette and Keyboard Shortcuts. Nothing moves with the width.
+
+`⇧⌘P` (`Ctrl+Shift+P`), or Command Palette… in the toolbar's ⋯ menu, opens a command
 palette: type to find any command, kernel or recent notebook, and press
 `↩` to run it.
 
-The toolbar's Variables button shows what the cells defined, beside the
+Show Variables in the toolbar's ⋯ menu shows what the cells defined, beside the
 notebook: name, type and a short value, read again after each run, with
 objects that expand a level at a time. It needs a kernel that speaks the
 Jupyter debugger protocol (cdp-kernel's Node and Deno kernels, ipykernel);
@@ -172,6 +229,15 @@ Outline tab.
 A notebook with unsaved edits saves itself every two minutes, when the
 page is hidden, and when you open another file, and the browser asks before a tab with unsaved edits
 closes. A failed save or kernel action shows its error above the notebook.
+In a browser, switching where kernels run in the connect sheet saves the
+open notebook first; if that save fails or the server doesn't answer, the
+switch stops and asks: keep editing, download a copy, or switch without
+saving.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release. The latest release switches at once, and the
+> notebook's last save can be cut off.
 
 ### Live editing on a Ganymede server
 
@@ -219,6 +285,31 @@ font of pages from `ganymede nb publish`), or Monospace (the code font).
 Both choices stay in this browser (`ganymede-ui:code-font` in local
 storage); the Mac and iPad apps keep their own, in their Settings.
 
+### Offline SQL
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, where the page fetches DuckDB on its first visit
+> online, whether or not anything uses it.
+
+`jupyter.sql` in the browser's kernels, the DuckDB console and Parquet
+files run on DuckDB, whose wasm and worker (36 MB) come from jsDelivr.
+The page fetches them the first time one of these is used, a cell that
+names `sql` included, and keeps them in the browser, so later kernels run
+SQL offline. A visit that doesn't use DuckDB fetches nothing. A fetch that
+fails, such as one made offline, is tried again on the next use. When the
+browser has no room to keep them, the page doesn't try again until it
+loads again, when the first SQL cell tries again; in a browser, Try Again
+in Settings tries at once. Meanwhile SQL and the data views load DuckDB
+from jsDelivr each time. The kernel that ran the first SQL loads DuckDB
+from jsDelivr itself; kernels started after the files are kept use the
+browser's copy.
+
+In a browser, Settings > Offline SQL > Download DuckDB fetches them now,
+with progress, and offers Try Again if the download fails. The Mac and
+iPad apps have no such button: their kernels run in a page with its own
+data store, which fetches DuckDB the first time a cell uses SQL there.
+
 ### Collapsing code
 
 A code cell's chevron, left of its prompt (shown on hover and on the
@@ -237,6 +328,23 @@ queued. When something goes wrong, the notice above the notebook says
 what happened and offers the next step: Restart when the kernel died,
 Retry when the server couldn't be reached or a save failed, and a kernel
 picker when the notebook's kernel isn't installed here.
+
+Some kernels can't stop a busy cell in place: cdp-kernel's browser
+kernel (this browser, kernels in the page, and the apps' in-app kernel)
+ends the cells' Worker instead, and a new one starts on the next cell
+without the earlier cells' variables. Its Bun, workerd and celld runtimes
+on a server do the same with their process. When the kernel says so, the
+notice says **Kernel state was reset by the interrupt** and offers
+**Restart & Run All**, which restarts the kernel and runs every cell
+again; nothing runs until you press it. The journal view runs no cells,
+so there the notice points to **Open as Notebook** instead. An interrupt that stops the cell in place keeps
+the variables and shows no notice.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release. The kernel says so from the cdp-kernel release
+> after 0.15.0; with 0.15.0, the version the app bundles today, only the
+> cell's output says the state is gone.
 
 When a Ganymede server reports memory use and the kernel's last reading,
 taken in the few seconds before it died, had the machine nearly out of
@@ -282,6 +390,16 @@ covers tokens, cookies and cross-origin access on the server side.
   file opened from the notebook folder doesn't count, since Ganymede
   sandboxes `/files`. The key is sent only to the provider you picked,
   straight from the page.
+- **DuckDB:** once SQL, the DuckDB console, a Parquet file or Settings >
+  Offline SQL has fetched it, DuckDB's wasm and worker stay in the
+  browser's Cache Storage (`duckdb-wasm-<version>`) until you clear the
+  site's data.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release, which keeps them in the same place but fetches
+  > them on its first visit online, whether or not anything uses them.
+
 - **Error reports:** off by default. In a browser, Settings > "Send
   error reports" (kept in local storage, `ganymede-ui:crash-reports`); in
   the Mac and iPad apps, the app's own setting. When on, an unhandled

@@ -11,6 +11,7 @@ final class PageStateTests: XCTestCase {
             "kernelDisplayName": "TypeScript",
             "kernelVersionLine": "cdp-kernel 0.14.0 · node 24.11.0",
             "kernelMissing": false,
+            "locked": true,
             "trusted": true,
             "hostGrants": true,
             "publish": true,
@@ -24,6 +25,7 @@ final class PageStateTests: XCTestCase {
         let state = PageState(body: body)
         XCTAssertEqual(state?.path, "moons/Io.ipynb")
         XCTAssertEqual(state?.kernelVersionLine, "cdp-kernel 0.14.0 · node 24.11.0")
+        XCTAssertEqual(state?.locked, true)
         XCTAssertEqual(state?.hostGrants, true)
         XCTAssertEqual(state?.publish, true)
         XCTAssertEqual(state?.runParams, true)
@@ -299,22 +301,25 @@ final class PageStateTests: XCTestCase {
         )
     }
 
-    func testSubtitleNamesTheKernelAndItsState() {
-        var state = PageState()
-        XCTAssertEqual(state.subtitle, "")
-        state.path = "Io.ipynb"
-        XCTAssertEqual(state.subtitle, "No kernel · Starts when you run a cell")
-        state.kernelDisplayName = "TypeScript"
-        state.status = "busy"
-        XCTAssertEqual(state.subtitle, "TypeScript · Running")
-        state.kernelMissing = true
-        state.kernelDisplayName = "Python 3"
-        state.status = "none"
-        XCTAssertEqual(state.subtitle, "Python 3 (not installed) · Starts when you run a cell")
+    func testStatusLabelsNameTheKernelState() {
+        XCTAssertEqual(PageState.statusLabel("busy"), "Running")
+        XCTAssertEqual(PageState.statusLabel("autorestarting"), "Restarting")
+        XCTAssertEqual(PageState.statusLabel("none"), "Starts when you run a cell")
+        XCTAssertEqual(PageState.statusLabel(nil), "Starts when you run a cell")
+    }
+
+    /// A page older than #812 doesn't send `locked`.
+    func testLockedIsAbsentFromAnOlderPage() {
+        let body: [String: Any] = [
+            "path": "Io.ipynb", "dirty": false, "status": "idle", "kernel": "cdp",
+            "kernelDisplayName": "TypeScript", "kernelMissing": false, "trusted": true,
+            "cellType": "code", "kernels": [Any](), "backend": NSNull(),
+        ]
+        XCTAssertNil(PageState(body: body)?.locked)
     }
 
     /// A data file open in the page has no kernel or cells: the notebook
-    /// menus disable and the subtitle shows no kernel (#671).
+    /// menus disable (#671).
     func testADataFileIsNotANotebook() {
         var state = PageState()
         state.path = "Io.ipynb"
@@ -324,7 +329,6 @@ final class PageStateTests: XCTestCase {
             state.path = path
             XCTAssertFalse(state.hasNotebook, path)
             XCTAssertTrue(state.showsData, path)
-            XCTAssertEqual(state.subtitle, "", path)
         }
         state.path = "notes.md"
         XCTAssertTrue(state.hasNotebook)

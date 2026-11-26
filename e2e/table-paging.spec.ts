@@ -2,12 +2,11 @@
 // cdp-kernel#489): the table output's `ganymede.page` names the kernel's
 // copy, and the app asks for rows over the `ganymede.table.v1` comm.
 import { expect, type Page, test } from '@playwright/test';
-import { waitForReady } from './helpers';
+import { useThisBrowser, waitForReady } from './helpers';
 
 async function connectBrowser(page: Page) {
   await page.goto('/');
-  await page.getByRole('radio', { name: /This browser/ }).click();
-  await page.getByRole('button', { name: 'Connect', exact: true }).click();
+  await useThisBrowser(page);
   await expect(page.getByRole('button', { name: /This browser/ })).toBeVisible({
     timeout: 60_000,
   });
