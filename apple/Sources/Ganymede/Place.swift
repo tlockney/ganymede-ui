@@ -66,7 +66,8 @@ enum Place: Hashable, Codable {
         /// ganymede-device's bridge, the permission ledger, Notebook Access
         /// and Shortcuts: the `kernelRelay` and `deviceRemote` handlers.
         case deviceBridge
-        /// The page's `openFile` (the app's editor, on this device's files).
+        /// The page's `openFile` (the app's editor, on this device's files
+        /// or a machine's through its mount, #855).
         case openFile
         /// The `state` and `document` messages, which drive native chrome,
         /// the window's proxy icon, native Recents and Spotlight.
@@ -100,7 +101,10 @@ enum Place: Hashable, Codable {
             // (`indexesLocally`). `agentKeys` (#849): the window's page is
             // the app's own (`allowsLoading`), and a machine's files reach
             // it sandboxed, in an opaque origin `AgentKeys.trusted` refuses.
+            // `openFile` (#855): the editor reads a machine's file through
+            // the app's mount, not this Mac's disk.
             capability == .settings || capability == .nativeChrome || capability == .agentKeys
+                || capability == .openFile
         }
     }
 

@@ -10,6 +10,8 @@ struct TextFileClient: Sendable {
 
     struct Failure: LocalizedError, Equatable {
         let message: String
+        /// The server's status, when it answered; 0 when it didn't (#855).
+        var status = 0
         /// The server refused a save because the file changed on disk
         /// since `lastModified` (Ganymede answers 409).
         var conflict = false
@@ -76,14 +78,21 @@ struct TextFileClient: Sendable {
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
         guard (200..<300).contains(status) else {
-            let message = (json?["message"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            var message = (json?["message"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            // The mount's 404 for a machine it hasn't mounted is plain
+            // text (#855): kept, so the editor says it in the sidebar's
+            // words rather than "the file no longer exists".
+            if message == nil, status == 404,
+               FileSourceError.isNotMounted(String(decoding: data, as: UTF8.self)) {
+                message = String(decoding: data, as: UTF8.self)
+            }
             switch status {
             case 404:
-                throw Failure(message: message ?? "The file no longer exists.")
+                throw Failure(message: message ?? "The file no longer exists.", status: status)
             case 409:
-                throw Failure(message: message ?? "The file changed on disk.", conflict: true)
+                throw Failure(message: message ?? "The file changed on disk.", status: status, conflict: true)
             default:
-                throw Failure(message: message ?? "The server answered \(status).")
+                throw Failure(message: message ?? "The server answered \(status).", status: status)
             }
         }
         guard let json, let lastModified = json["last_modified"] as? String else {

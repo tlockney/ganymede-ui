@@ -111,8 +111,9 @@ struct FolderEntry: Identifiable, Hashable {
     }
 
     /// Whether a window of `place` can open the item: notebooks and data
-    /// files in the page anywhere, other files in the app's editor, which
-    /// reads this device's disk, only on this device.
+    /// files in the page anywhere, other files in the place's editor, which
+    /// reads this Mac's disk or the machine's files through the app's
+    /// mount (#855).
     func canOpen(in place: Place) -> Bool {
         opensInPage || place.allows(.openFile)
     }

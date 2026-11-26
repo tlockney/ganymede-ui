@@ -617,7 +617,7 @@ struct ContentView: View {
                     folder: sidebarRoot, source: source, place: place, page: pageModel,
                     panel: place.isThisDevice ? panel : nil
                 ) { path in
-                    openWindow(value: EditorRequest(path: path))
+                    openWindow(value: EditorRequest(path: path, machine: place.machineID))
                 }
                 // A restarted server has a new address and token.
                 .id(place.isMachine ? model.serverURL : nil)
@@ -858,7 +858,9 @@ struct ContentView: View {
     /// (it forgets the page before the new one loads).
     private func switchPlace(_ new: Place) {
         guard new != place else { return }
-        // Text files saved on the way, as when the notebook comes back.
+        // Text files saved on the way, as when the notebook comes back; the
+        // old place's, so a machine's file isn't left over this device's
+        // notebook (#855).
         openFiles.showNotebook()
         phonePath = []
         panelFills = false
@@ -882,11 +884,11 @@ struct ContentView: View {
             VStack(spacing: 0) {
                 NavigationStack(path: $openFiles.stack) {
                     notebook
-                        .navigationDestination(for: String.self) { path in
+                        .navigationDestination(for: EditorRequest.self) { request in
                             // Close asks to save; the sidebar's notebooks go
                             // back to the notebook, saving on the way.
-                            EditorWindow(document: openFiles.document(for: path)) {
-                                openFiles.close(path)
+                            EditorWindow(document: openFiles.document(for: request)) {
+                                openFiles.close(request)
                             }
                             .navigationBarBackButtonHidden(true)
                             // The terminal, panel and fill buttons, as over
@@ -1032,12 +1034,14 @@ struct ContentView: View {
     }
 
     /// A text file from the sidebar: over the notebook in the iPad's
-    /// detail area (#251), full screen on iPhone.
+    /// detail area (#251), full screen on iPhone. The request names the
+    /// window's place, so a machine's file opens through its mount (#855).
     private func openEditor(_ path: String) {
+        let request = EditorRequest(path: path, machine: place.machineID)
         if isPhone {
-            editing = EditorRequest(path: path)
+            editing = request
         } else {
-            openFiles.open(path)
+            openFiles.open(request)
             panelFills = false
             if portrait { columns = .hidden }
         }
@@ -1100,9 +1104,11 @@ struct ContentView: View {
     /// Whether a terminal or editor is over the window, and the sheet.
     private var coverShown: Bool { terminal != nil || editing != nil }
 
-    /// The text files open for editing: the editor's, and the iPad's.
+    /// The text files open for editing: the editor's, and the iPad's. Only
+    /// this device's: a folder switch restarts this device's server, and a
+    /// machine's file is the machine's, through the mount (#855).
     private var openTextFiles: [String] {
-        (editing.map { [$0.path] } ?? []) + openFiles.stack
+        ((editing.map { [$0] } ?? []) + openFiles.stack).compactMap(\.thisDevicePath)
     }
 
     /// The person said yes to switching folders for a link.
@@ -1145,7 +1151,9 @@ struct ContentView: View {
                 WebView(
                     url: url, onNavigate: follow, document: document, page: pageModel,
                     onOpenTab: openTab,
-                    onOpenFile: { path in openWindow(value: EditorRequest(path: path)) },
+                    onOpenFile: { path in
+                        openWindow(value: EditorRequest(path: path, machine: place.machineID))
+                    },
                     place: place, sharesName: sharesName(for: place)
                 )
                 // A page loaded for another place gets its own handlers.

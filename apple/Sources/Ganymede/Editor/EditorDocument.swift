@@ -4,21 +4,16 @@ import SwiftUI
 import AppKit
 #endif
 
-/// What an editor window opens: a text file on the app's own server, by
-/// its path there. Opening a file that is already open brings its window
-/// to the front, since the values are equal.
-struct EditorRequest: Codable, Hashable, Identifiable {
-    var path: String
-    var id: String { path }
-}
-
 /// One text file being edited (#122): its text as last loaded or saved,
 /// whether it has unsaved edits, and whether the file changed on disk
-/// since. Reads and writes go through `/api/contents`.
+/// since. Reads and writes go through `/api/contents`, on the app's own
+/// server or a connected machine's mount (#855).
 @MainActor
 @Observable
 final class EditorDocument {
     let path: String
+    /// The connected machine whose file this is; nil for this device's.
+    let machine: String?
     /// The text the view shows after a load; the view owns the text in
     /// between and reports edits with `edited`.
     @ObservationIgnored private(set) var text = ""
@@ -46,8 +41,9 @@ final class EditorDocument {
     private static let all = NSHashTable<EditorDocument>.weakObjects()
     #endif
 
-    init(path: String, endpoint: @escaping @MainActor () -> ServerEndpoint?) {
+    init(path: String, machine: String? = nil, endpoint: @escaping @MainActor () -> ServerEndpoint?) {
         self.path = path
+        self.machine = machine
         self.endpoint = endpoint
         #if os(macOS)
         Self.all.add(self)
@@ -105,7 +101,7 @@ final class EditorDocument {
             take(snapshot)
             problem = nil
         } catch {
-            problem = error.localizedDescription
+            problem = message(for: error)
             failedSave = false
         }
     }
@@ -158,7 +154,7 @@ final class EditorDocument {
             changedOnDisk = true
             return false
         } catch {
-            problem = "The file could not be saved: " + error.localizedDescription
+            problem = "The file could not be saved: " + message(for: error)
             failedSave = true
             return false
         }
@@ -202,8 +198,11 @@ final class EditorDocument {
         let closeGuard = EditorCloseGuard(document: self, original: window.delegate)
         window.delegate = closeGuard
         self.closeGuard = closeGuard
-        // The proxy icon. The Mac's server is rooted at `/`.
-        window.representedURL = URL(fileURLWithPath: "/" + path)
+        // The proxy icon. The Mac's server is rooted at `/`; a machine's
+        // file is no file of this Mac's (#855).
+        if machine == nil {
+            window.representedURL = URL(fileURLWithPath: "/" + path)
+        }
         syncWindow()
     }
 
