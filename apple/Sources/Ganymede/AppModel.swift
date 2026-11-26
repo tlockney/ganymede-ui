@@ -24,6 +24,11 @@ final class AppModel {
     /// soon as a restart is asked for, this once the new server listens
     /// (#640). Nil while none is up.
     private(set) var servedRoot: URL?
+    /// The remote the running server runs kernels on (`gateway_url`), as
+    /// it was started: `kernelRemoteID` changes as soon as a switch is
+    /// asked for, this once the new server listens, so an answer from the
+    /// old server isn't read as the new remote's (#854).
+    private(set) var servedKernels = ServedKernels()
     /// The folder the last failed start was for, set with `error`.
     private(set) var failedRoot: URL?
     private(set) var error: String?
@@ -177,6 +182,7 @@ final class AppModel {
         url = nil
         serverURL = nil
         servedRoot = nil
+        servedKernels.clear()
         failedRoot = nil
         error = nil
         #if os(macOS)
@@ -217,6 +223,9 @@ final class AppModel {
         #endif
         // The folder this start serves: `root` may change before it runs.
         let launchedRoot = serverRootFolder
+        // The remote this start runs kernels on: the choice may change
+        // before it runs (#854).
+        let launchedKernels = servedKernels.ticket(for: kernelRemote)
         startsRequested += 1
         let number = startsRequested
         enqueue { [self] in
@@ -229,6 +238,7 @@ final class AppModel {
             url = nil
             serverURL = nil
             servedRoot = nil
+            servedKernels.clear()
             error = nil
             failedRoot = nil
             #if os(macOS)
@@ -289,6 +299,7 @@ final class AppModel {
                 mounted = [:]
                 syncMachines(fromStart: true)
                 servedRoot = launchedRoot
+                servedKernels.listening(launchedKernels)
                 url = pageURL(host.url)
                 #if os(macOS)
                 writeServerInfo(host.url, settings: launched)
@@ -525,6 +536,7 @@ final class AppModel {
         url = nil
         serverURL = nil
         servedRoot = nil
+        servedKernels.clear()
         await withCheckedContinuation { done in
             Self.serverQueue.async {
                 old.stop()
@@ -546,6 +558,7 @@ final class AppModel {
         url = nil
         serverURL = nil
         servedRoot = nil
+        servedKernels.clear()
     }
 
     /// Makes `folder` the notebook folder. On macOS that is only the folder
@@ -613,6 +626,8 @@ final class AppModel {
             if !remote.hasServer { kernelRemoteID = nil }
             restart = oldURL != remote.serverURL || newToken != oldToken
         }
+        // A start for the old URL or token may still be queued (#854).
+        if restart { servedKernels.edited() }
         persist()
         if restart { start() }
     }

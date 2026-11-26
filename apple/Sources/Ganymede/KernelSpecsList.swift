@@ -31,8 +31,10 @@ struct InstalledKernelsSection: View {
         Section {
             if let specs {
                 // The app's name for the remote (#832), as Where Kernels Run
-                // has it; the server's own when the app has no remote by it.
-                let remote = specs.remote.map { model.kernelRemote?.title ?? $0.name }
+                // has it; the server's own while the server isn't the chosen
+                // remote's (#854), or the app has no remote by it.
+                let remote = Remote.kernelsLabel(in: specs, chosen: model.kernelRemote,
+                                                 served: model.servedKernels)
                 ForEach(specs.specs) { spec in
                     KernelSpecRow(spec: spec, isDefault: spec.name == specs.defaultName, remote: remote)
                 }
@@ -43,7 +45,10 @@ struct InstalledKernelsSection: View {
                 } else if specs.specs.isEmpty {
                     // A remote's list comes through the server's gateway,
                     // which has none until it first reaches the remote.
-                    Text(model.kernelRemote == nil ? "No kernels installed." : "No kernels listed yet.")
+                    // Whether the running server has a remote, not whether one
+                    // is chosen: a start queued behind a switch may serve
+                    // another (#854).
+                    Text(model.servedKernels.current == nil ? "No kernels installed." : "No kernels listed yet.")
                         .foregroundStyle(.secondary)
                 }
             } else if let error {
@@ -84,7 +89,7 @@ struct InstalledKernelsSection: View {
             specs = try await KernelSpecs.load(from: server)
             error = nil
             // A remote's list may not have arrived yet: ask once more.
-            if specs?.specs.isEmpty == true, model.kernelRemote != nil {
+            if specs?.specs.isEmpty == true, model.servedKernels.current != nil {
                 try await Task.sleep(nanoseconds: 5_000_000_000)
                 specs = try await KernelSpecs.load(from: server)
             }

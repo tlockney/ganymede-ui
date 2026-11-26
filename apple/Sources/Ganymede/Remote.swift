@@ -59,6 +59,23 @@ struct Remote: Codable, Identifiable, Hashable {
 
     var hasServer: Bool { !serverURL.isEmpty }
 
+    /// The line Settings shows while the remote kernels run on isn't
+    /// answering (#832), named as the app names it; nil while the running
+    /// server isn't the chosen remote's (#854), and whenever
+    /// `specs.notAnswering` is.
+    static func notAnswering(in specs: KernelSpecs, chosen: Remote?, served: ServedKernels) -> String? {
+        guard let remote = served.describing(chosen) else { return nil }
+        return specs.notAnswering(name: remote.title)
+    }
+
+    /// The name Settings › Installed gives the remote a server's kernels
+    /// run on (#832): the app's title when the running server is the
+    /// chosen remote's, else the server's own name for it (#854); nil when
+    /// the answer names no remote.
+    static func kernelsLabel(in specs: KernelSpecs, chosen: Remote?, served: ServedKernels) -> String? {
+        specs.remote.map { served.describing(chosen)?.title ?? $0.name }
+    }
+
     /// Whether the remote can be saved: a valid http(s) server URL, SSH
     /// with a host, or both.
     var isValid: Bool {
@@ -211,5 +228,50 @@ struct RemoteStore {
         /// The remote the kernel server became, until its token has moved.
         static let legacyRemote = "kernelServerRemote"
         static func token(_ id: UUID) -> String { "remote.\(id.uuidString)" }
+    }
+}
+
+/// The remote the running server runs kernels on, as its start asked for
+/// it (#854): `AppModel.servedKernels`. A start takes a ticket when it is
+/// asked for and commits it once its server listens, so a start queued
+/// behind a switch, from A to B, serves A and says so, even though B is
+/// chosen by then.
+struct ServedKernels: Equatable {
+    /// What a start runs kernels on: the remote's id, its server URL then,
+    /// and `edits` then, since editing the remote's URL or token restarts
+    /// the server too.
+    struct Ticket: Equatable {
+        var id: UUID
+        var serverURL: String
+        var edits: Int
+    }
+
+    /// The running server's, or nil while none is up or kernels run on
+    /// this device.
+    private(set) var current: Ticket?
+    /// Counts edits to the chosen remote that restart the server (its URL
+    /// or token): a ticket taken before one is the old server's.
+    private(set) var edits = 0
+
+    /// The ticket a start takes when it is asked for.
+    func ticket(for remote: Remote?) -> Ticket? {
+        remote.map { Ticket(id: $0.id, serverURL: $0.serverURL, edits: edits) }
+    }
+
+    /// The chosen remote's URL or token was edited, and a restart asked for.
+    mutating func edited() { edits += 1 }
+
+    /// The start that took `ticket` has its server listening.
+    mutating func listening(_ ticket: Ticket?) { current = ticket }
+
+    /// No server is up, or a new start has begun.
+    mutating func clear() { current = nil }
+
+    /// `chosen` when the running server was started for it as it is now
+    /// (same id, URL and edits), else nil: an answer from that server is
+    /// about `chosen`.
+    func describing(_ chosen: Remote?) -> Remote? {
+        guard let chosen, current == ticket(for: chosen) else { return nil }
+        return chosen
     }
 }
