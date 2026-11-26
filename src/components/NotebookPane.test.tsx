@@ -63,6 +63,7 @@ vi.mock('../lib/jupyterlab', async () => {
       // Its cells, with the active one selected, for what a run needs.
       // Each cell has a node in the notebook's, which a test can give a layout.
       const cellNodes: HTMLElement[] = [];
+      const activates: (() => void)[] = [];
       Object.defineProperty(w, 'widgets', {
         get: () =>
           Array.from({ length: w.model!.cells.length }, (_, i) => {
@@ -71,7 +72,11 @@ vi.mock('../lib/jupyterlab', async () => {
               cellNodes[i]!.dataset.notebookCell = String(i);
               w.node.append(cellNodes[i]!);
             }
-            return { model: w.model!.cells.get(i), node: cellNodes[i], activate: () => {} };
+            return {
+              model: w.model!.cells.get(i),
+              node: cellNodes[i],
+              activate: (activates[i] ??= vi.fn()),
+            };
           }),
       });
       w.isSelectedOrActive = cell =>
@@ -639,7 +644,8 @@ describe('NotebookPane', () => {
         activeCellIndex: number;
         scrollToItem: ReturnType<typeof vi.fn>;
         select: ReturnType<typeof vi.fn>;
-        widgets: { model: unknown }[];
+        deselectAll: ReturnType<typeof vi.fn>;
+        widgets: { model: unknown; activate: ReturnType<typeof vi.fn> }[];
       };
       act(() => latest()!.toggleJournal());
       // Flush at the top: no margin above it (#841).
@@ -650,6 +656,14 @@ describe('NotebookPane', () => {
       await waitFor(() => expect(notebook.select).toHaveBeenCalledOnce());
       expect((notebook.select.mock.calls[0]![0] as { model: unknown }).model).toBe(
         notebook.widgets[5]!.model,
+      );
+      // scrollToCell's steps, once the scroll is done: the cell alone is
+      // selected, and its editor activated.
+      expect(notebook.widgets[5]!.activate).toHaveBeenCalledOnce();
+      const scrolled = notebook.scrollToItem.mock.invocationCallOrder[0]!;
+      expect(notebook.deselectAll.mock.invocationCallOrder.at(-1)!).toBeGreaterThan(scrolled);
+      expect(notebook.select.mock.invocationCallOrder[0]!).toBeGreaterThan(
+        notebook.deselectAll.mock.invocationCallOrder.at(-1)!,
       );
     });
 

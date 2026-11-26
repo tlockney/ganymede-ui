@@ -892,6 +892,20 @@ test('keeps a one-line wide cell its scrollbar room after the journal and back (
         editorLaidOut: el.querySelector('.jp-InputArea-editor')!.getBoundingClientRect().height > 0,
       })),
     ).toEqual({ visibility: 'hidden', laidOut: true, editorLaidOut: true });
+    // A click where the cell is lands in the journal, not the notebook.
+    const box = (await editor.boundingBox())!;
+    expect(
+      await page.evaluate(
+        ([x, y]) => {
+          const hit = document.elementFromPoint(x!, y!);
+          return {
+            journal: !!hit?.closest('.journal'),
+            notebook: !!hit?.closest('.notebook-page'),
+          };
+        },
+        [box.x + box.width / 2, box.y + box.height / 2],
+      ),
+    ).toEqual({ journal: true, notebook: false });
     const content = page.locator('.jp-CodeCell .cm-content').first();
     await content.focus();
     expect(await content.evaluate(el => el.contains(document.activeElement))).toBe(false);
