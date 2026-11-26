@@ -607,12 +607,43 @@ struct NotebookToolbar: ToolbarContent {
     var place: Place = .thisDevice
     /// The status line the window's subtitle shows, for the popover.
     var header: HeaderStatus?
+    /// The notebook's title, which the toolbar draws in place of the
+    /// system's (#867); nil for a console or a folder, which keep the
+    /// system's title.
+    var title: String?
 
     var body: some ToolbarContent {
-        // The kernel's chip, beside the title, where the status line under
-        // it used to say all of this (#867).
-        ToolbarItem(placement: .navigation) {
-            KernelPicker(page: page, panel: panel, place: place, header: header)
+        // The title and, under it, the kernel's chip (#867): a notebook
+        // window's toolbar has no system title or subtitle
+        // (`.toolbar(removing: .title)` in `ContentView`), so this one
+        // item draws the title, the chip, and beside the chip the save
+        // part only where there is something to say ("Edited", "Locked:
+        // changed on disk"). The full status line stays in the chip's
+        // help and popover.
+        if let title {
+            ToolbarItem(placement: .navigation) {
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title)
+                        .font(.headline)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    HStack(spacing: 6) {
+                        KernelPicker(page: page, panel: panel, place: place, header: header)
+                        if let note = header?.saveNote {
+                            Text(note)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                }
+            }
+        } else {
+            // A console or a folder keeps the system's title, and its chip
+            // stands beside it where it was.
+            ToolbarItem(placement: .navigation) {
+                KernelPicker(page: page, panel: panel, place: place, header: header)
+            }
         }
         // Only while the notebook isn't trusted.
         if !page.state.trusted {

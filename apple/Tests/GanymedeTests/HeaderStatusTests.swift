@@ -37,6 +37,19 @@ final class HeaderStatusTests: XCTestCase {
             "Edited · Locked: changed on disk · Runs on This Mac · TypeScript")
     }
 
+    /// The save part beside the Mac toolbar's chip (#867): only what "Saved
+    /// on …" doesn't say, and nothing while the file is saved.
+    func testTheChipShowsTheSavePartOnlyWhenThereIsSomethingToSay() {
+        XCTAssertNil(status().saveNote)
+        XCTAssertEqual(status(dirty: true).saveNote, "Edited")
+        XCTAssertEqual(status(locked: true).saveNote, "Locked: changed on disk")
+        XCTAssertEqual(
+            status(dirty: true, locked: true).saveNote, "Edited · Locked: changed on disk")
+        // What the popover and the subtitle say still has it all.
+        XCTAssertEqual(status().save, "Saved on This Mac")
+        XCTAssertEqual(status(dirty: true).save, "Edited")
+    }
+
     func testTheShortFormKeepsTheSaveStateAndWhereItRuns() {
         XCTAssertEqual(status(runsOn: "Studio Mac", state: "busy").short, "Saved · Runs on Studio Mac")
         XCTAssertEqual(status(dirty: true).short, "Edited · Runs on This Mac")

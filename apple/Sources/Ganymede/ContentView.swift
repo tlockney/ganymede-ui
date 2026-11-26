@@ -150,7 +150,10 @@ struct ContentView: View {
                 page: pageModel, document: document,
                 // The kernel popover's Kernel Log is this device's window's
                 // alone (#858), so a machine's window passes no panel to it.
-                panel: place.isThisDevice ? panel : nil, place: place, header: headerStatus)
+                panel: place.isThisDevice ? panel : nil, place: place, header: headerStatus,
+                // A notebook's title, drawn with its chip under it (#867);
+                // a console or a folder keeps the system's.
+                title: showsNotebook ? windowTitle : nil)
             // The panel is every window's: a machine's terminals run on the
             // machine (#858), and a machine whose remote is gone keeps its
             // panel too, empty, for the remotes' terminals there.
@@ -180,15 +183,22 @@ struct ContentView: View {
             }
         }
         // The status line (#812). The system draws it and it isn't
-        // clickable: the kernel button's popover opens the details.
-        .navigationSubtitle(WindowTarget.subtitle(header: headerStatus, machineName: machineName))
+        // clickable: the kernel button's popover opens the details. A
+        // notebook's window has none: its save part is beside the chip
+        // (#867), and `.toolbar(removing: .title)` takes the system title
+        // and subtitle away. A machine's window with no notebook keeps
+        // "on <machine>".
+        .navigationSubtitle(
+            showsNotebook ? "" : WindowTarget.subtitle(header: headerStatus, machineName: machineName))
         .frame(minWidth: 720, minHeight: 480)
         // A console's tab is titled with its name (#735), a notebook with
         // its title, or its file's (#867).
-        .navigationTitle((target ?? loaded).tabTitle(
-            consoleName: pageModel.state.console?.name, machineName: machineName,
-            metadataTitle: pageModel.state.title))
+        .navigationTitle(windowTitle)
         .modifier(WindowSceneValues(place: place, folder: sidebarRoot, panel: panel))
+        // A notebook's toolbar item draws the title with its chip under it
+        // (#867), so the system's title and subtitle go; its tab keeps the
+        // display title, from `.navigationTitle` above.
+        .modifier(NotebookTitleRemoved(notebook: showsNotebook))
         // Notebooks opened from the Finder (#228): the first window to see
         // them takes them. Each opens in a new tab (or brings forward
         // the one showing it), except that the window the app opened on
@@ -661,6 +671,15 @@ struct ContentView: View {
         InspectorController.showsNotebook(
             state: pageModel.state, pageReported: pageModel.ready, target: target ?? loaded
         )
+    }
+
+    /// What the window and its tab are called: a console by its name
+    /// (#735), a notebook by its `metadata.title` or its file's, the rest
+    /// by their folder's (#867).
+    private var windowTitle: String {
+        (target ?? loaded).tabTitle(
+            consoleName: pageModel.state.console?.name, machineName: machineName,
+            metadataTitle: pageModel.state.title)
     }
 
     /// The page asks for a tab (`openTab`): a notebook or data file, or a
@@ -1251,6 +1270,22 @@ private struct KeychainAlert: ViewModifier {
 }
 
 #if os(macOS)
+/// A notebook window's toolbar draws its own title and chip (#867), so the
+/// system's title and subtitle are removed there. A console's or a folder's
+/// keeps them, as before.
+private struct NotebookTitleRemoved: ViewModifier {
+    var notebook: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if notebook {
+            content.toolbar(removing: .title)
+        } else {
+            content
+        }
+    }
+}
+
 /// The focused window's values for the menus (#740): the place, its server
 /// folder and the terminal panel for every window, since a machine's
 /// terminals run in its own panel (#858); this Mac's folder only for a

@@ -19,9 +19,15 @@ struct HeaderStatus: Equatable {
     var status: String?
 
     /// The save part: Saved on <place>, Edited, or Locked.
-    var save: String {
+    var save: String { saveNote ?? "Saved on \(savedOn)" }
+
+    /// The save part beside the Mac toolbar's chip (#867): only what
+    /// "Saved on …" doesn't say, as "Edited" or "Locked: changed on disk",
+    /// and nothing while the file is saved. The popover's first line
+    /// (`full`) still has the whole of it.
+    var saveNote: String? {
         if locked { return dirty ? "Edited · Locked: changed on disk" : "Locked: changed on disk" }
-        return dirty ? "Edited" : "Saved on \(savedOn)"
+        return dirty ? "Edited" : nil
     }
 
     /// The runs part; nil when the kernel is missing or the place unknown.
