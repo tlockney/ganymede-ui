@@ -8,11 +8,14 @@
  * The button never moves: it is in the same place whether the cell is idle,
  * running or done, and the elapsed time's slot is reserved while it is
  * empty (#812). While the cell runs the button says so, for a screen reader
- * too ("Running, 3 s"), and is not pressed again by accident.
+ * too ("Running, 3 s"), and a queued one says what it waits behind: the
+ * queue ({@link RunStatus}) is the one place that knows, so the button
+ * never counts on a guess of its own.
  */
 import { type Cell, CodeCell } from '@jupyterlab/cells';
 import { type Notebook } from '@jupyterlab/notebook';
 import { DisposableDelegate, type IDisposable } from '@lumino/disposable';
+import { type RunStatus, runLabel, runSeconds } from './run-status';
 
 export const GUTTER = 'gn-cell-gutter';
 export const RUN_BUTTON = 'gn-run-button';
@@ -27,6 +30,8 @@ const PLAY =
 type Options = {
   /** Run `cell`: select it first, then run it. */
   run(cell: Cell): void;
+  /** The run queue, which says whether the cell runs, waits, or is idle. */
+  runs: RunStatus;
   /** A machine that is away: the button does nothing (#701). */
   away?(): boolean;
   /** The clock, for tests. */
@@ -41,14 +46,17 @@ export type CellGutter = IDisposable;
  */
 export function attachCellGutter(
   notebook: Notebook,
-  { run, away = () => false, now = Date.now }: Options,
+  { run, runs, away = () => false, now = Date.now }: Options,
 ): CellGutter {
   let disposed = false;
-  /** Per-cell teardown: its timers and listeners. */
+  /** Per-cell teardown: its listeners. */
   const teardowns = new Map<Cell, () => void>();
 
   const decorate = (cell: Cell) => {
     if (!(cell instanceof CodeCell) || teardowns.has(cell)) return;
+    // JupyterLab disposes a cell's model before the widget's `disposed`
+    // fires, so keep it here rather than read it late.
+    const model = cell.model;
     const gutter = document.createElement('div');
     gutter.className = GUTTER;
     const button = document.createElement('button');
@@ -63,42 +71,30 @@ export function attachCellGutter(
     gutter.append(button, count, elapsed);
     cell.node.prepend(gutter);
 
-    let started: number | undefined;
-    let timer: ReturnType<typeof setInterval> | undefined;
-
-    const stopTimer = () => {
-      if (timer !== undefined) clearInterval(timer);
-      timer = undefined;
-    };
-
     const render = () => {
       if (cell.isDisposed) return;
-      const running = cell.model.executionState === 'running';
-      if (running && started === undefined) started = now();
-      if (!running && started !== undefined) {
-        started = undefined;
-        stopTimer();
-      }
-      const seconds = running ? Math.max(0, Math.floor((now() - started!) / 1000)) : undefined;
-      const label = seconds === undefined ? 'Run cell' : `Running, ${seconds} s`;
+      const state = runs.stateOf(model);
+      // Only a run underway has seconds; a queued cell waits, it doesn't count.
+      const seconds = state?.phase === 'running' ? runSeconds(state, now()) : undefined;
+      const label = runLabel(state, now());
       if (button.getAttribute('aria-label') !== label) {
         button.setAttribute('aria-label', label);
         button.title = label;
       }
-      button.disabled = running;
-      button.dataset.state = running ? 'running' : 'idle';
+      // A run already in the queue isn't started again.
+      button.disabled = state !== undefined;
+      button.dataset.state = state?.phase ?? 'idle';
       elapsed.textContent = seconds === undefined ? '' : `${seconds} s`;
       // The slot stays, so nothing shifts as the time appears.
       elapsed.style.visibility = seconds === undefined ? 'hidden' : 'visible';
-      const exec = cell.model.executionCount;
+      const exec = model.executionCount;
       count.textContent = exec == null ? '–' : String(exec);
-      if (running && timer === undefined) timer = setInterval(render, 1000);
     };
 
     const onClick = (e: MouseEvent) => {
       e.preventDefault();
       e.stopPropagation();
-      if (away() || cell.model.executionState === 'running') return;
+      if (away() || runs.stateOf(model)) return;
       run(cell);
     };
     // The cell takes a press to select it or focus its editor; a press on
@@ -109,20 +105,24 @@ export function attachCellGutter(
     gutter.addEventListener('mousedown', stop, true);
     gutter.addEventListener('focusin', stop, true);
     const onState = (_model: unknown, args: { name: string }) => {
-      if (args.name === 'executionState' || args.name === 'executionCount') render();
+      if (args.name === 'executionCount') render();
     };
-    cell.model.stateChanged.connect(onState);
+    model.stateChanged.connect(onState);
+    // The queue ticks the seconds, and changes phase when a run starts or ends.
+    runs.changed.connect(render);
     render();
 
-    teardowns.set(cell, () => {
-      stopTimer();
+    const teardown = () => {
+      if (!teardowns.delete(cell)) return;
       button.removeEventListener('click', onClick);
       gutter.removeEventListener('mousedown', stop, true);
       gutter.removeEventListener('focusin', stop, true);
-      cell.model.stateChanged.disconnect(onState);
+      model.stateChanged.disconnect(onState);
+      runs.changed.disconnect(render);
       gutter.remove();
-    });
-    cell.disposed.connect(() => teardowns.get(cell)?.());
+    };
+    teardowns.set(cell, teardown);
+    cell.disposed.connect(teardown);
   };
 
   const sync = () => {

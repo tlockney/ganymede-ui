@@ -32,6 +32,10 @@
   /* A cell's card (#852), in the notebook and the journal alike. */
   --cell-bg: #ffffff;
   --cell-border: rgba(43, 58, 103, 0.1);
+  /* A selected cell's edge: the accent, quiet, at 45% (#852). The dark
+   * theme's accent makes it rgba(249, 160, 63, 0.45); the light one's, its
+   * own accent at the same alpha. */
+  --cell-selected-border: color-mix(in srgb, var(--accent) 45%, transparent);
   --hover: rgba(0, 0, 0, 0.05);
   --selected: rgba(0, 0, 0, 0.08);
   --control-bg: rgba(0, 0, 0, 0.045);
@@ -453,6 +457,24 @@ button {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* The journal's eyebrow above the title (#852), in the notebook view too:
+ * a notebook an agent keeps says so, "TYPESCRIPT · 9 NOV 2026". */
+.title-eyebrow {
+  margin: 0 0 2px;
+  color: var(--meta-color);
+  font: 10px/1.2 var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* A phone's header has no room for it: the status line has it all. */
+.touch-ui .title-eyebrow {
+  display: none;
 }
 
 .status-line {
@@ -1530,8 +1552,10 @@ button {
   display: flex;
   gap: 8px;
   align-items: center;
-  margin: 2px 0 2px var(--jp-cell-collapser-width, 8px);
-  padding-left: var(--jp-cell-prompt-width, 64px);
+  /* In the cell's card, under the code, which starts at the card's content
+   * edge: no prompt column to indent past (#852). */
+  margin: 2px 0;
+  padding-right: 14px;
   color: var(--text-2);
   font: 12px var(--font-ui);
   font-variant-numeric: tabular-nums;
@@ -2674,17 +2698,29 @@ button {
   text-align: center;
 }
 
-/* A journal cell is the notebook's card (#852): code and its output
- * together, in the cell's own border and background. */
+/* A journal cell that holds code and its output is the notebook's card
+ * (#852): code and output together, in the cell's own border and background.
+ * A note or a finding is prose, not a card: no border, no fill. */
 .journal-cell {
   display: grid;
   grid-template-columns: 132px minmax(0, 1fr);
   gap: 12px;
   margin: 8px 0;
   padding: 12px 14px;
-  border: 1px solid var(--cell-border);
+  border: 1px solid transparent;
   border-radius: 12px;
+  background: transparent;
+}
+
+.journal-cell[data-cell-type='code'] {
+  border-color: var(--cell-border);
   background: var(--cell-bg);
+}
+
+/* A finding right after a figure belongs to it: less gap, so it reads as
+ * the figure's caption (as in the mockup). */
+.journal-cell[data-cell-type='code'] + .journal-cell {
+  margin-top: 2px;
 }
 
 .journal-gutter {
@@ -2811,6 +2847,17 @@ button {
 .journal-output {
   margin-top: 6px;
   overflow-x: auto;
+}
+
+/* The notebook's meta line under a figure's output (#852), in the journal's
+ * own words: "saved output", since a journal's outputs are the file's. */
+.journal-output-meta {
+  margin-top: 8px;
+  padding-top: 5px;
+  border-top: 1px solid var(--separator);
+  color: var(--meta-color);
+  font: 11px/1.4 var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
 .journal-rendered {

@@ -1,7 +1,13 @@
 import { useEffect } from 'react';
-import type { Cell } from '@jupyterlab/cells';
+import type { Cell, CodeCell, ICodeCellModel } from '@jupyterlab/cells';
 import type { Notebook } from '@jupyterlab/notebook';
-import { CELL_MENU, type CellMenuAction, applyCellAction, selectOnly } from '../lib/cell-controls';
+import {
+  CELL_MENU,
+  type CellMenuAction,
+  applyCellAction,
+  selectOnly,
+  toggleOutputs,
+} from '../lib/cell-controls';
 import { canCollapse, setCollapsed } from '../lib/code-collapse';
 import { setWrapCodeEnabled, wrapCodeEnabled } from '../lib/wrap-code';
 import { ContextMenu, type MenuItem } from './ContextMenu';
@@ -19,7 +25,8 @@ type Props = {
 };
 
 /**
- * One cell's menu (#200): Run, Collapse Code (#564), Cell Type, Move Up/Down, Duplicate, Delete,
+ * One cell's menu (#200): Run, Collapse Code (#564), Collapse Output (#852),
+ * Cell Type, Move Up/Down, Duplicate, Delete,
  * in the shared popup menu (#203), so it is sized for touch and a tap
  * outside it or Escape closes it.
  */
@@ -76,6 +83,22 @@ export function CellMenu({ notebook, cell, anchor, run, away = false, onClose }:
                   if (away) return;
                   // Its cell, as the other items act on it (`applyCellAction`).
                   if (selectOnly(notebook, cell)) setCollapsed(cell, !cell.inputHidden, notebook);
+                  if (!notebook.isDisposed) notebook.activate();
+                },
+              },
+            ]
+          : []),
+        // Collapsing a cell's outputs (#852): JupyterLab's button for it sits
+        // on the output prompt, which the card hides. Only a cell with outputs
+        // has anything to collapse.
+        ...(cell.model.type === 'code' && (cell.model as ICodeCellModel).outputs.length
+          ? [
+              {
+                label: (cell as CodeCell).outputHidden ? 'Show Output' : 'Collapse Output',
+                disabled: away,
+                onSelect: () => {
+                  if (away) return;
+                  toggleOutputs(notebook, cell);
                   if (!notebook.isDisposed) notebook.activate();
                 },
               },

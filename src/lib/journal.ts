@@ -696,6 +696,19 @@ export type JournalHeaderData = {
 };
 
 /**
+ * The eyebrow's day, as the header shows it: "9 Nov 2026" (the CSS uppercases
+ * it). `toLocaleDateString()` wrote it as the reader's locale does, which is
+ * "11/26/2026" in the US (#852).
+ */
+export function eyebrowDate(at: Date): string {
+  return at.toLocaleDateString('en-GB', {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  });
+}
+
+/**
  * The header's text: an eyebrow of the language and the day the earliest
  * agent cell was written (#852); the notebook's `metadata.title` or else the
  * file name without its extension; who started it (the agent of the
@@ -705,7 +718,7 @@ export function journalHeader(
   metadata: unknown,
   cells: readonly Pick<JournalCellData, 'metadata'>[],
   fileName: string,
-  formatDate: (at: Date) => string = d => d.toLocaleDateString(),
+  formatDate: (at: Date) => string = eyebrowDate,
 ): JournalHeaderData {
   const meta = isRecord(metadata) ? metadata : {};
   const title = text(meta.title) ?? (fileName.replace(/\.ipynb$/i, '') || fileName);

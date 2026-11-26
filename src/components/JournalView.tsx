@@ -7,6 +7,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import type { YCodeCell, YNotebook } from '@jupyter/ydoc';
 import type { IRenderMimeRegistry } from '@jupyterlab/rendermime';
+import type * as nbformat from '@jupyterlab/nbformat';
 import type { ServerConnection } from '@jupyterlab/services';
 import { MimeModel } from '@jupyterlab/rendermime';
 import type { ReadonlyJSONObject } from '@lumino/coreutils';
@@ -48,6 +49,7 @@ import {
   type NewCell,
   type Revision,
 } from '../lib/journal';
+import { outputMetaText } from '../lib/output-labels';
 import { agentsAt, composerHint, useRooms } from '../lib/journals';
 import type { NotebookRoom } from '../lib/room';
 import { useNarrow } from '../lib/useNarrow';
@@ -425,12 +427,15 @@ const JournalCell = memo(function JournalCell({
   const revisions = revisionsOf(cell);
   const source = sourceOf(cell);
   const outputs = (cell.outputs ?? []) as Record<string, unknown>[];
+  // The notebook's meta line under the outputs (#852), the file's own here.
+  const meta = outputMetaText(outputs as nbformat.IOutput[], { saved: true });
   return (
     <article
       className={`journal-cell journal-${p.kind}`}
       aria-label={`Cell ${index + 1}, ${p.label}`}
       data-cell-index={index}
       data-cell-id={cell.id}
+      data-cell-type={cell.cell_type}
     >
       <div className="journal-gutter">
         <span className="journal-prov">
@@ -482,6 +487,7 @@ const JournalCell = memo(function JournalCell({
                 <Output output={o} rendermime={rendermime} trusted={trusted} />
               </div>
             ))}
+            {meta && <p className="journal-output-meta">{meta}</p>}
           </>
         ) : cell.cell_type === 'markdown' ? (
           <Rendered

@@ -126,6 +126,16 @@ export async function applyCellAction(
   }
 }
 
+/**
+ * Collapse a cell's outputs, or show them again (#852), as JupyterLab's own
+ * button on the output prompt would: the card hides that prompt, so the menu
+ * carries it.
+ */
+export function toggleOutputs(notebook: Notebook, cell: Cell): void {
+  if (!selectOnly(notebook, cell)) return;
+  NotebookActions.toggleOutput(notebook);
+}
+
 /** Add a cell of `type` after `cell` and start editing it. */
 export function addCellAfter(notebook: Notebook, cell: Cell, type: 'code' | 'markdown'): void {
   if (!selectOnly(notebook, cell)) return;

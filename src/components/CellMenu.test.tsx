@@ -1,5 +1,5 @@
 import '../test/notebook-env';
-import { act, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { Cell } from '@jupyterlab/cells';
@@ -16,8 +16,11 @@ const { CellMenu } = await import('./CellMenu');
 const { resetWrapCodeForTests, wrapCodeEnabled } = await import('../lib/wrap-code');
 const { Signal } = await import('@lumino/signaling');
 
-function setup(index: number, type = 'code', away = false) {
-  const cells = [0, 1, 2].map(i => ({ model: { type: i === index ? type : 'code' } }));
+function setup(index: number, type = 'code', away = false, outputs = 0, hidden = false) {
+  const cells = [0, 1, 2].map(i => ({
+    model: { type: i === index ? type : 'code', outputs: i === index ? new Array(outputs) : [] },
+    outputHidden: i === index ? hidden : false,
+  }));
   const notebook = {
     widgets: cells,
     model: { cells: { changed: new Signal({}) } },
@@ -140,5 +143,19 @@ describe('CellMenu', () => {
   it('has no Collapse Code for a Markdown cell', () => {
     setup(1, 'markdown');
     expect(screen.queryByRole('menuitem', { name: /Collapse Code|Expand Code/ })).toBeNull();
+  });
+
+  it('offers Collapse Output only for a cell that has output (#852)', () => {
+    setup(1);
+    expect(screen.queryByRole('menuitem', { name: /(Collapse|Show) Output/ })).toBeNull();
+    cleanup();
+    setup(1, 'code', false, 1);
+    expect(screen.getByRole('menuitem', { name: 'Collapse Output' })).toBeEnabled();
+  });
+
+  it('says Show Output once they are collapsed (#852)', () => {
+    setup(1, 'code', false, 1, true);
+    expect(screen.getByRole('menuitem', { name: 'Show Output' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Collapse Output' })).toBeNull();
   });
 });

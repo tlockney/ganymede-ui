@@ -17,6 +17,7 @@ Range.prototype.getBoundingClientRect ??= () => new DOMRect();
 const { createNotebook, createRendermime } = await import('./jupyterlab');
 const { attachCellGutter, EXEC_COUNT, GUTTER, RUN_BUTTON, RUN_ELAPSED } =
   await import('./cell-gutter');
+const { attachRunStatus } = await import('./run-status');
 const { NotebookActions, NotebookModel } = await import('@jupyterlab/notebook');
 const { Widget } = await import('@lumino/widgets');
 
@@ -39,6 +40,7 @@ const CONTENT: nbformat.INotebookContent = {
 let notebook: Notebook;
 let holder: HTMLDivElement;
 let gutter: IDisposable;
+let runs: ReturnType<typeof attachRunStatus>;
 let run: ReturnType<typeof vi.fn<(cell: unknown) => void>>;
 let clock: number;
 
@@ -60,11 +62,14 @@ beforeEach(() => {
   Widget.attach(notebook, holder);
   run = vi.fn<(cell: unknown) => void>();
   clock = 0;
-  gutter = attachCellGutter(notebook, { run, now: () => clock });
+  // The gutter asks the run queue (#852), so the notebook's real one drives it.
+  runs = attachRunStatus(notebook, { interrupt: vi.fn(), now: () => clock });
+  gutter = attachCellGutter(notebook, { run, runs, now: () => clock });
 });
 
 afterEach(() => {
   gutter.dispose();
+  runs.dispose();
   const model = notebook.model;
   notebook.dispose();
   model?.dispose();
@@ -88,7 +93,7 @@ describe('attachCellGutter (#852)', () => {
     expect(run).toHaveBeenCalledWith(cell(2));
     gutter.dispose();
     run.mockClear();
-    gutter = attachCellGutter(notebook, { run, away: () => true });
+    gutter = attachCellGutter(notebook, { run, runs, away: () => true });
     buttonOf(0).click();
     expect(run).not.toHaveBeenCalled();
   });
@@ -121,12 +126,43 @@ describe('attachCellGutter (#852)', () => {
     }
   });
 
+  it('says what a queued cell waits behind, with no time of its own', () => {
+    vi.useFakeTimers();
+    try {
+      setState(0, 'running');
+      // A second cell started while the first runs waits in the queue.
+      setState(2, 'running');
+      expect(buttonOf(2).getAttribute('aria-label')).toBe('Queued');
+      expect(buttonOf(2).disabled).toBe(true);
+      // Queued has no seconds to count: only a running cell ticks.
+      expect(elapsedOf(2).textContent).toBe('');
+      expect(elapsedOf(2).style.visibility).toBe('hidden');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('takes a removed cell’s gutter and listeners away', async () => {
+    const gutterEl = gutterOf(0)!;
+    // Deleting a cell disposes its widget, which is when its gutter goes.
+    notebook.activeCellIndex = 0;
+    NotebookActions.deleteCells(notebook);
+    await new Promise(r => setTimeout(r, 0));
+    expect(gutterEl.isConnected).toBe(false);
+    // The cells that are still there still have theirs.
+    expect(notebook.widgets.map(w => w.node.querySelectorAll(`.${GUTTER}`).length)).toEqual([0, 1]);
+    // Disposing the gutter after that takes those too, and is not a second
+    // teardown of the one already gone.
+    expect(() => gutter.dispose()).not.toThrow();
+    expect(notebook.widgets.every(w => !w.node.querySelector(`.${GUTTER}`))).toBe(true);
+  });
+
   it('adds a gutter to cells added later, and takes it away when disposed', async () => {
     notebook.activeCellIndex = 0;
     NotebookActions.insertBelow(notebook);
     await new Promise(r => setTimeout(r, 0));
     expect(gutterOf(1)).not.toBeNull();
     gutter.dispose();
-    expect(notebook.node.querySelector(`.${GUTTER}`)).toBeNull();
+    expect(notebook.widgets.every(w => !w.node.querySelector(`.${GUTTER}`))).toBe(true);
   });
 });

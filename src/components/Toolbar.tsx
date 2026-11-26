@@ -246,6 +246,11 @@ export function Toolbar({
           <SidebarIcon />
         </button>
         <div className="title-block">
+          {c?.eyebrow && (
+            // The journal's eyebrow, in the notebook view too (#852): the
+            // header of a notebook an agent keeps says what it is.
+            <p className="title-eyebrow">{c.eyebrow}</p>
+          )}
           <div className="title-row">
             <NotebookTitle
               // A fresh field for each notebook.
