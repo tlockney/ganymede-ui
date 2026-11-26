@@ -143,8 +143,9 @@ shown or hidden, its tab and its expanded folders across launches.
 - Kernels come from the kernelspecs installed on the Mac, as with
   `ganymede serve`. Opened from the Finder, the app takes `PATH` from your
   login shell, so kernelspecs that run `node`, `deno` or `python3` start.
-- Settings > Kernels lists the installed kernels, on the iPad and iPhone
-  as well as the Mac, from the server kernels run on. Click a kernel's row
+- Settings > Kernels lists the installed kernels on the Mac, from the
+  server kernels run on; on the iPad and iPhone the same list follows
+  Where Kernels Run in Settings > Remotes. Click a kernel's row
   to open its details: the display name, name and language, then what the
   server reports of the interrupt mode, protocol version, kernelspec
   folder, the command that starts it (with a Copy button), `env` and
@@ -181,6 +182,24 @@ shown or hidden, its tab and its expanded folders across launches.
   kernels, so the Mac asks first while any run. To work on another
   machine's own notebooks, connect it instead
   ([Connected machines](#connected-machines)).
+
+- Kernels that run on a remote carry its name wherever they are listed:
+  "Python 3 · workmbp" in the Mac's kernel popover and Kernel > Change
+  Kernel, in the iPad's and iPhone's kernel menu, in the browser's kernel
+  pickers, and in the installed kernels' list (Settings > Kernels on the
+  Mac; Settings > Remotes on the iPad and iPhone). Kernels that run here
+  keep their plain names. While the remote isn't answering, those lists
+  end with a line that says so — "workmbp isn't answering: …" — and Where
+  Kernels Run shows it under the picker: in Settings > Kernels on the
+  Mac, and in Settings > Remotes on the iPad and iPhone. A server that
+  has not checked the remote yet says nothing.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release. It needs a Ganymede server with ganymede#969,
+  > which no release includes yet; a `ganymede serve` built from ganymede
+  > `main` has it. The apps embed Ganymede v0.17.0, so nothing shows in
+  > the Mac, iPad and iPhone apps until `GANYMEDE_REF` moves (#851).
 
 ### Terminals and the kernel log
 
@@ -887,6 +906,21 @@ with only SSH stays in Settings for shells.
 - **When a machine stops answering,** its open notebooks turn read-only
   and a banner reads "_machine_ went offline · Reconnecting…". They are
   editable again when it is back. There is no offline editing.
+- **Kernels a machine runs elsewhere.** A machine's server can itself run
+  kernels on a remote. Those kernels carry that remote's name ("Python 3 ·
+  workmbp"), and while it isn't answering the line names the machine whose
+  kernels they are too: "m4mini runs kernels on workmbp, which isn't
+  answering".
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release. It needs ganymede#969, which no release includes
+  > yet, on the machine: this device forwards the machine's answer as it
+  > is. A machine running `ganymede serve` built from ganymede `main` has
+  > it, and an app on Ganymede v0.17.0 shows it in that machine's window.
+  > A machine that is itself the Mac app shows it once `GANYMEDE_REF`
+  > moves (#851).
+
 - **What a machine's window doesn't get.** The device API, Notebook
   Access, the Shortcuts bridge, the app's editor for text files and
   `ganymede://` links are for this device's windows only. Neither

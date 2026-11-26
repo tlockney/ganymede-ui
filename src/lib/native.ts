@@ -1,4 +1,5 @@
 import type { KernelSpec, Session } from '@jupyterlab/services';
+import type { KernelsRemote } from './kernel-place';
 import type { SearchState } from './search';
 import type { OutlineItem } from './outline';
 import type { VariableNode, VariablesState } from './useVariables';
@@ -208,8 +209,18 @@ export type PageState = {
   cellType: string | null;
   /** Whether the open notebook shows as a journal (#184, #724): the app's View as Journal / Open as Notebook. */
   journal: boolean;
-  /** The kernels a notebook can switch to; `device` marks those that offer the device API (#648). */
-  kernels: { name: string; displayName: string; device: boolean }[];
+  /**
+   * The kernels a notebook can switch to; `device` marks those that offer
+   * the device API (#648), and `gateway` names the remote a kernel runs on
+   * (#832) — absent for this server's own.
+   */
+  kernels: { name: string; displayName: string; device: boolean; gateway?: string }[];
+  /**
+   * The remote the server runs kernels on, as `/api/kernelspecs` says
+   * (ganymede#969, #832), or null when they run here, the page hasn't
+   * asked yet, or the server predates it.
+   */
+  kernelsRemote: KernelsRemote | null;
   /** Where kernels run: the backend's label and detail, or null before it connects. */
   backend: { label: string; detail: string } | null;
   /** The backend's running sessions: each notebook with a kernel (#225). */

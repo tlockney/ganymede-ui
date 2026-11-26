@@ -1,5 +1,30 @@
 import Foundation
 
+/// The remote a server runs kernels on, from `/api/kernelspecs`
+/// (ganymede#969, #832): its name, whether it answers, and why it doesn't.
+/// Absent from a server older than that, and one whose kernels run here.
+struct KernelsRemote: Decodable, Equatable {
+    var name: String
+    var reachable: Bool
+    /// An empty error is no more than a missing one.
+    var error: String?
+
+    /// The one line a kernel list shows when the remote isn't answering
+    /// (#832), or nil while it answers, before the server's first check, or
+    /// without one. `name` is the app's own name for the remote, where it
+    /// has one; in a machine's window `machine` names the machine whose
+    /// kernels those are: "m5air runs kernels on workmbp, which isn't
+    /// answering".
+    func notAnswering(name: String? = nil, machine: String? = nil) -> String? {
+        guard !reachable, let error, !error.isEmpty else { return nil }
+        let remote = name ?? self.name
+        if let machine, !machine.isEmpty {
+            return "\(machine) runs kernels on \(remote), which isn’t answering"
+        }
+        return "\(remote) isn’t answering: \(error)"
+    }
+}
+
 /// What the page posts to the app's `state` message handler whenever it
 /// changes (ganymede-ui's `src/lib/native.ts`, `PageState`, #205): enough
 /// for native toolbars and menus to show and enable themselves.
@@ -10,12 +35,23 @@ struct PageState: Decodable, Equatable {
         /// Whether the kernelspec declares `capabilities.device` (#648);
         /// absent from a page older than that.
         var device: Bool?
+        /// The remote this kernel runs on, by the server's name for it
+        /// (#832); absent for this server's own, and from a page older than
+        /// that.
+        var gateway: String?
 
+        /// Its name where it runs: "Python 3 · workmbp" for a remote's.
+        var place: String { gateway.map { "\(displayName) · \($0)" } ?? displayName }
         /// The name in a picker: marked when the kernel offers `device`.
-        var pickerName: String { device == true ? "\(displayName) ◆" : displayName }
+        var pickerName: String { device == true ? "\(place) ◆" : place }
         /// What a screen reader says for it.
-        var pickerLabel: String { device == true ? "\(displayName), offers the device API" : displayName }
+        var pickerLabel: String { device == true ? "\(place), offers the device API" : place }
     }
+
+    /// The remote kernels run on, from `/api/kernelspecs` (ganymede#969):
+    /// its name, whether it answers, and why it doesn't (#832). Absent from
+    /// a page older than that, and one whose kernels run here.
+    typealias Remote = KernelsRemote
 
     struct Backend: Decodable, Equatable {
         var label: String
@@ -208,6 +244,9 @@ struct PageState: Decodable, Equatable {
     /// page older than #724.
     var journal: Bool?
     var kernels: [Kernel] = []
+    /// The remote the server runs kernels on (#832); absent from a page
+    /// whose kernels run here, one older than that, or before it asks.
+    var kernelsRemote: Remote?
     var backend: Backend?
     /// Running sessions; absent from a page older than #225.
     var running: [Session]?
@@ -286,6 +325,15 @@ struct PageState: Decodable, Equatable {
     /// Whether there is a kernel to restart: one has started, even if it
     /// has since died (when Restart is most needed).
     var hasKernel: Bool { status != nil && status != "none" }
+
+    /// The one line a kernel list shows when kernels run on a remote that
+    /// isn't answering (#832), or nil while it answers, before the server's
+    /// first check, or without a remote. In a machine's window `machine`
+    /// names the machine whose kernels those are: "m5air runs kernels on
+    /// workmbp, which isn't answering".
+    func notAnswering(machine: String? = nil) -> String? {
+        kernelsRemote?.notAnswering(machine: machine)
+    }
 }
 
 /// How many views want the kernels' memory from a page (#241): the

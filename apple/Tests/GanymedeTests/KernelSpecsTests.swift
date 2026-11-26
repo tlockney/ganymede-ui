@@ -77,6 +77,34 @@ final class KernelSpecsTests: XCTestCase {
         XCTAssertFalse(spec.hasDetails)
     }
 
+    func testReadsWhereKernelsRun() throws {
+        let body = Data("""
+        {"default": "k", "kernelspecs": {
+          "k": {"name": "k", "gateway": true, "spec": {"display_name": "K"}},
+          "python3": {"name": "python3", "spec": {"display_name": "Python 3"}}
+        }, "gateway": {"name": "workmbp", "reachable": false, "error": "gateway: error sending request"}}
+        """.utf8)
+        let specs = try XCTUnwrap(KernelSpecs(json: body))
+        XCTAssertEqual(specs.specs.map(\.name), ["k", "python3"])
+        XCTAssertEqual(specs.specs.map(\.gateway), [true, false], "a server older than #832 sends none")
+        XCTAssertEqual(specs.remote, .init(name: "workmbp", reachable: false, error: "gateway: error sending request"))
+        XCTAssertEqual(specs.notAnswering(), "workmbp isn’t answering: gateway: error sending request")
+        XCTAssertEqual(specs.notAnswering(name: "work bench"), "work bench isn’t answering: gateway: error sending request")
+    }
+
+    func testNoRemoteLineWhenNoneIsSentOrItAnswers() throws {
+        for body in [
+            #"{"kernelspecs": {}}"#,
+            #"{"kernelspecs": {}, "gateway": {"name": "workmbp", "reachable": true}}"#,
+            #"{"kernelspecs": {}, "gateway": {"name": "workmbp", "reachable": false, "error": ""}}"#,
+            #"{"kernelspecs": {}, "gateway": {"reachable": false}}"#,
+            #"{"kernelspecs": {}, "gateway": "workmbp"}"#,
+        ] {
+            let specs = try XCTUnwrap(KernelSpecs(json: Data(body.utf8)))
+            XCTAssertNil(specs.notAnswering(), body)
+        }
+    }
+
     func testShellCommandQuotesWhatNeedsIt() {
         XCTAssertEqual(KernelSpecs.shellCommand(["python3", "-m", "k", "-f", "{connection_file}"]),
                        "python3 -m k -f {connection_file}")

@@ -102,6 +102,16 @@ struct RemotesView<Extra: View>: View {
 /// proxies (`gateway_url`).
 struct KernelLocationSection: View {
     @Environment(AppModel.self) private var model
+    /// The server's answer, and the remote it was fetched for: another
+    /// remote's answer is not this one's (#832).
+    private struct RemoteSpecs {
+        var remote: UUID
+        var specs: KernelSpecs
+    }
+
+    /// What the server says of the remote kernels run on (#832): the line
+    /// under the picker while it isn't answering.
+    @State private var loaded: RemoteSpecs?
 
     var body: some View {
         Section {
@@ -111,10 +121,49 @@ struct KernelLocationSection: View {
                     Text(remote.title).tag(UUID?.some(remote.id))
                 }
             }
+            status
         } header: {
             Text("Where Kernels Run")
         } footer: {
             Text(Self.footer)
+        }
+        // A remote that goes down or comes back, as the server finds it.
+        .task(id: "\(model.serverURL?.absoluteString ?? "")\n\(model.kernelRemoteID?.uuidString ?? "")") {
+            await check()
+        }
+    }
+
+    /// "workmbp isn't answering: …", under the picker (#832). Named as the
+    /// remote is here, not as its server's URL names it, and shown only for
+    /// the remote it was fetched for.
+    @ViewBuilder
+    private var status: some View {
+        if let loaded, loaded.remote == model.kernelRemoteID,
+           let line = loaded.specs.notAnswering(name: model.kernelRemote?.title) {
+            Text(line)
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    /// Asks for the kernelspecs, and with them the remote's status, every
+    /// 15 seconds while a remote is chosen: the server retries it at the
+    /// same pace.
+    private func check() async {
+        // The answer belongs to the remote chosen when it was asked for: a
+        // switch to this device, or to another remote, drops the last one's.
+        loaded = nil
+        guard let remote = model.kernelRemoteID,
+              let server = model.serverURL.flatMap(ServerEndpoint.init(serverURL:))
+        else { return }
+        while !Task.isCancelled {
+            if let specs = try? await KernelSpecs.load(from: server) {
+                loaded = RemoteSpecs(remote: remote, specs: specs)
+            } else if loaded?.remote != remote {
+                // A failed load says nothing of another remote.
+                loaded = nil
+            }
+            try? await Task.sleep(for: .seconds(15))
         }
     }
 

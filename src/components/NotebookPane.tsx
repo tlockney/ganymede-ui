@@ -60,6 +60,7 @@ import {
 import { interruptResetState } from '../lib/state-reset';
 import { type RunStatus, attachRunStatus } from '../lib/run-status';
 import { ProblemNotice } from './ProblemNotice';
+import type { KernelPlaces } from '../lib/kernel-place';
 import { useSignals } from '../lib/useSignal';
 import { hasUntrustedOutputs } from '../lib/trust';
 import { hostWants } from '../lib/host-grants';
@@ -214,6 +215,8 @@ export type NotebookController = {
 type Props = {
   backend: Backend;
   path: string;
+  /** Where the server runs kernels, when that is a remote (#832). */
+  places?: KernelPlaces;
   onController(c: NotebookController | undefined): void;
   /** The file at `from` was renamed to `to`: open it there, if it is still the one open. */
   onRenamed?(from: string, to: string): void;
@@ -380,7 +383,7 @@ class FileLocked extends Error {}
  * JupyterLab document context, so the same code saves to a Ganymede server
  * or to the browser's own storage.
  */
-export function NotebookPane({ backend, path, onController, onRenamed }: Props) {
+export function NotebookPane({ backend, path, places, onController, onRenamed }: Props) {
   // A page for a connected machine (#701).
   const onMachine = backend.config.kind === 'ganymede' && !!backend.config.machine;
   // A ref, not a dependency of the controller effect: a parent that
@@ -1794,6 +1797,8 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
             journal && notice.problem.kind === 'state-reset' ? stateReset(true) : notice.problem
           }
           specs={services.kernelspecs.specs}
+          places={places}
+          machine={machineName}
           onDismiss={() => clearNotice(notice.problem.kind)}
           onPickKernel={name => void controllerRef.current?.changeKernel(name)}
           onAction={action => {

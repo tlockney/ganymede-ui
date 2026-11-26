@@ -89,6 +89,59 @@ final class PageStateTests: XCTestCase {
         XCTAssertEqual(state?.kernels.first?.device, nil)
     }
 
+    func testNamesWhereAKernelRuns() {
+        let body: [String: Any] = [
+            "path": "Io.ipynb", "dirty": false, "status": "idle", "kernel": "py",
+            "kernelDisplayName": "Python", "kernelMissing": false, "trusted": true,
+            "cellType": "code", "backend": NSNull(), "running": [Any](),
+            "kernels": [
+                ["name": "py", "displayName": "Python", "gateway": "workmbp"],
+                ["name": "cdp", "displayName": "TypeScript", "device": true, "gateway": "workmbp"],
+                ["name": "js", "displayName": "JavaScript"],
+            ],
+            "kernelsRemote": ["name": "workmbp", "reachable": true],
+        ]
+        let state = PageState(body: body)
+        XCTAssertEqual(state?.kernels.map(\.pickerName),
+                       ["Python · workmbp", "TypeScript · workmbp ◆", "JavaScript"])
+        XCTAssertEqual(state?.kernels.map(\.pickerLabel),
+                       ["Python · workmbp", "TypeScript · workmbp, offers the device API", "JavaScript"])
+        XCTAssertEqual(state?.kernelsRemote, PageState.Remote(name: "workmbp", reachable: true, error: nil))
+        XCTAssertNil(state?.notAnswering(), "it answers")
+    }
+
+    func testSaysWhenTheRemoteIsntAnswering() {
+        let body: [String: Any] = [
+            "path": "Io.ipynb", "dirty": false, "status": "none", "kernelMissing": true,
+            "trusted": true, "cellType": "code", "backend": NSNull(), "running": [Any](),
+            "kernels": [Any](),
+            "kernelsRemote": ["name": "workmbp", "reachable": false, "error": "gateway: error sending request"],
+        ]
+        let state = PageState(body: body)
+        XCTAssertEqual(state?.notAnswering(), "workmbp isn’t answering: gateway: error sending request")
+        XCTAssertEqual(state?.notAnswering(machine: "m5air"),
+                       "m5air runs kernels on workmbp, which isn’t answering")
+        XCTAssertEqual(state?.notAnswering(machine: ""), "workmbp isn’t answering: gateway: error sending request")
+    }
+
+    func testNoRemoteLineWithoutARemoteOrAnError() throws {
+        let local: [String: Any] = [
+            "path": "Io.ipynb", "dirty": false, "kernelMissing": false,
+            "trusted": true, "kernels": [Any](),
+        ]
+        let here = try XCTUnwrap(PageState(body: local))
+        XCTAssertNil(here.notAnswering(), "a page whose kernels run here, or older than #832")
+        for remote in [
+            ["name": "workmbp", "reachable": false],
+            ["name": "workmbp", "reachable": false, "error": ""],
+        ] as [[String: Any]] {
+            var body = local
+            body["kernelsRemote"] = remote
+            let state = try XCTUnwrap(PageState(body: body), "\(remote)")
+            XCTAssertNil(state.notAnswering(), "\(remote)")
+        }
+    }
+
     func testReadsTheKernelsMemory() {
         let body: [String: Any] = [
             "path": "Io.ipynb", "dirty": false, "status": "idle", "kernel": "cdp",
