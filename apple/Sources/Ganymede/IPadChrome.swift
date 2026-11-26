@@ -255,8 +255,8 @@ struct IPadSidebar: View {
                         Text("\(runningCount)")
                             .font(.system(size: 10, weight: .semibold))
                             .padding(.horizontal, 4)
-                            .background(Capsule().fill(Color.accentColor))
-                            .foregroundStyle(.white)
+                            .background(Capsule().fill(Color("AccentFill")))
+                            .foregroundStyle(Color("OnAccent"))
                             .offset(x: 12, y: 4)
                             .accessibilityHidden(true)
                     }
@@ -349,7 +349,7 @@ struct IPadSidebar: View {
                     }
                     Spacer()
                     if journal.running {
-                        Circle().fill(Color.green).frame(width: 6, height: 6)
+                        Circle().fill(Color("Ready")).frame(width: 6, height: 6)
                             .accessibilityLabel("An agent is in it")
                     }
                 }
@@ -945,7 +945,7 @@ private struct IPadFolderContents: View {
                         if entry.isNotebook, actions.isRunning(source.serverPath(entry.url)) {
                             // Its kernel is running.
                             Circle()
-                                .fill(Color.green)
+                                .fill(Color("Ready"))
                                 .frame(width: 6, height: 6)
                                 .accessibilityLabel("Kernel running")
                         }

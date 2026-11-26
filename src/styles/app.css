@@ -5,7 +5,9 @@
     -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', 'Segoe UI', system-ui, sans-serif;
   --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, 'JetBrains Mono', monospace;
 
-  --accent: #e8890f;
+  /* Icons and indicators (focus rings, the drop line, the active-cell bar):
+   * 3:1 is enough, but not less (#845 review). Fills take --accent-fill. */
+  --accent: #b86a00;
   --accent-soft: rgba(249, 160, 63, 0.16);
   /* The accent under --on-accent text (buttons, highlighted rows) and as
    * text on the page (links, insert buttons, text buttons): --on-accent on
@@ -2556,7 +2558,7 @@ button {
 }
 
 .journal-note .journal-dot {
-  background: var(--accent);
+  background: var(--ready);
 }
 
 .journal-chip {

@@ -62,8 +62,8 @@ struct NavigatorSidebar: View {
                             Text("\(running)")
                                 .font(.system(size: 9, weight: .semibold))
                                 .padding(.horizontal, 3)
-                                .background(Capsule().fill(Color.accentColor))
-                                .foregroundStyle(.white)
+                                .background(Capsule().fill(Color("AccentFill")))
+                                .foregroundStyle(Color("OnAccent"))
                                 .offset(x: 2, y: -2)
                                 .accessibilityHidden(true)
                         }
@@ -289,7 +289,7 @@ private struct JournalsNavigator: View {
                         }
                         Spacer()
                         if journal.running {
-                            Circle().fill(Color.green).frame(width: 6, height: 6)
+                            Circle().fill(Color("Ready")).frame(width: 6, height: 6)
                                 .accessibilityLabel("An agent is in it")
                         }
                     }
