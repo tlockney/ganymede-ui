@@ -8,7 +8,7 @@
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { outputs, waitForIdle, waitForReady } from './helpers';
+import { outputs, useThisBrowser, waitForIdle, waitForReady } from './helpers';
 
 /** The installed cdp-kernel: its version, and whether its kernel sends the metadata. */
 const kernel = (() => {
@@ -32,8 +32,7 @@ const notice = (page: Page) => page.locator('.pane-notice.problem-state-reset');
 /** A new notebook in the browser backend, with `moon` defined in its first cell. */
 async function withMoon(page: Page) {
   await page.goto('/');
-  await page.getByRole('radio', { name: /This browser/ }).click();
-  await page.getByRole('button', { name: 'Connect', exact: true }).click();
+  await useThisBrowser(page);
   await expect(page.getByRole('button', { name: /This browser/ })).toBeVisible({ timeout: 60_000 });
   await page.getByRole('button', { name: 'New Notebook' }).first().click();
   await expect(page.locator('.jp-Cell').first()).toBeVisible({ timeout: 60_000 });
