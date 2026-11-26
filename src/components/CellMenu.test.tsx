@@ -1,5 +1,5 @@
 import '../test/notebook-env';
-import { act, render, screen } from '@testing-library/react';
+import { act, cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import type { Cell } from '@jupyterlab/cells';
@@ -7,17 +7,22 @@ import type { Notebook } from '@jupyterlab/notebook';
 
 // The menu's own behaviour; the actions are cell-controls.test.ts's.
 const applyCellAction = vi.hoisted(() => vi.fn(async () => {}));
+const toggleOutputs = vi.hoisted(() => vi.fn());
 vi.mock('../lib/cell-controls', async importOriginal => ({
   ...(await importOriginal<typeof import('../lib/cell-controls')>()),
   applyCellAction,
+  toggleOutputs,
 }));
 
 const { CellMenu } = await import('./CellMenu');
 const { resetWrapCodeForTests, wrapCodeEnabled } = await import('../lib/wrap-code');
 const { Signal } = await import('@lumino/signaling');
 
-function setup(index: number, type = 'code', away = false) {
-  const cells = [0, 1, 2].map(i => ({ model: { type: i === index ? type : 'code' } }));
+function setup(index: number, type = 'code', away = false, outputs = 0, hidden = false) {
+  const cells = [0, 1, 2].map(i => ({
+    model: { type: i === index ? type : 'code', outputs: i === index ? new Array(outputs) : [] },
+    outputHidden: i === index ? hidden : false,
+  }));
   const notebook = {
     widgets: cells,
     model: { cells: { changed: new Signal({}) } },
@@ -140,5 +145,39 @@ describe('CellMenu', () => {
   it('has no Collapse Code for a Markdown cell', () => {
     setup(1, 'markdown');
     expect(screen.queryByRole('menuitem', { name: /Collapse Code|Expand Code/ })).toBeNull();
+  });
+
+  it('offers Collapse Output only for a cell that has output (#852)', () => {
+    setup(1);
+    expect(screen.queryByRole('menuitem', { name: /(Collapse|Show) Output/ })).toBeNull();
+    cleanup();
+    setup(1, 'code', false, 1);
+    expect(screen.getByRole('menuitem', { name: 'Collapse Output' })).toBeEnabled();
+  });
+
+  it('says Show Output once they are collapsed (#852)', () => {
+    setup(1, 'code', false, 1, true);
+    expect(screen.getByRole('menuitem', { name: 'Show Output' })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Collapse Output' })).toBeNull();
+  });
+
+  it('collapses the cell’s outputs (#852), as its own cell', async () => {
+    const { notebook, cell } = setup(1, 'code', false, 1);
+    toggleOutputs.mockClear();
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Collapse Output' }));
+    // What toggling them comes to is cell-controls.test.ts's; here, that the
+    // menu asks for it, for its own cell.
+    expect(toggleOutputs).toHaveBeenCalledWith(notebook, cell);
+    expect(notebook.activate).toHaveBeenCalled();
+  });
+
+  it('offers Collapse Output disabled while the machine is away (#852)', async () => {
+    const { cell } = setup(1, 'code', true, 1);
+    toggleOutputs.mockClear();
+    const item = screen.getByRole('menuitem', { name: 'Collapse Output' });
+    expect(item).toBeDisabled();
+    await userEvent.click(item);
+    expect(toggleOutputs).not.toHaveBeenCalled();
+    expect((cell as unknown as { outputHidden: boolean }).outputHidden).toBe(false);
   });
 });

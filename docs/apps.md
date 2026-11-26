@@ -128,15 +128,21 @@ shown or hidden, its tab and its expanded folders across launches.
 - The Cell menu runs, runs with parameters, inserts, moves and deletes
   cells, clears all outputs, collapses and expands code, goes to a definition and renames a symbol (see
   [Signatures, definitions and renames](#signatures-definitions-and-renames)), and opens Find; the Kernel menu interrupts (⌘.),
-  restarts, changes and trusts. A code cell's chevron, left of its
-  prompt, collapses its code to the first line, as on the web page
-  (README, "Collapsing code"); the iPad's Cell menu has Collapse All Code
-  and Expand All Code.
+  restarts, changes and trusts. A code cell's chevron, between its Run
+  button and the code, collapses its code to the first line, as on the web
+  page (README, "Collapsing code"); the iPad's Cell menu has Collapse All
+  Code and Expand All Code.
 - View > Command Palette… (⇧⌘P) finds and runs the notebook, cell and
   kernel commands by name. [Keyboard shortcuts](shortcuts.md) lists the
   rest.
 - Help > Ganymede Website, Ganymede Documentation and Apps Guide open
   ganymede-server.com, its docs and this page in the browser.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release. The chevron's place beside the Run button is new
+> with the cell's margin; the release has no margin, and the chevron sits
+> left of the prompt.
 
 ### Kernels
 

@@ -79,6 +79,25 @@ export async function openNotebook(page: Page, file: string) {
 
 export const outputs = (page: Page) => page.locator('.jp-OutputArea-output');
 
+/**
+ * Put the notebook in command mode on the cell at `index` (#852 removed the
+ * `[n]:` prompts the tests used to click). A code cell's editor takes a
+ * click, and Escape leaves it for command mode with the cell still selected.
+ * A Markdown cell drawn as text hides its editor (`display: none`), so click
+ * the rendered Markdown, which selects the cell where it already is.
+ */
+export async function selectCell(page: Page, index = 0) {
+  const cell = page.locator('.jp-Cell').nth(index);
+  const editor = cell.locator('.jp-InputArea-editor:visible');
+  if (await editor.count()) {
+    await editor.first().click();
+    await page.keyboard.press('Escape');
+  } else {
+    await cell.locator('.jp-MarkdownOutput').first().click();
+  }
+  await expect(cell).toHaveClass(/jp-mod-active/);
+}
+
 /** Save a full-page screenshot under test-results/screenshots and attach it. */
 export async function screenshot(page: Page, testInfo: TestInfo, name: string) {
   const dir = join(testInfo.project.outputDir, 'screenshots');

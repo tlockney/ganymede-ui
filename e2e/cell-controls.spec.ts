@@ -82,7 +82,7 @@ test.describe('on a phone', () => {
 test('a desktop window keeps its toolbar and shows no cell controls', async ({ page }) => {
   await page.setViewportSize({ width: 1280, height: 820 });
   await newBrowserNotebook(page);
-  await expect(page.getByRole('button', { name: 'Cell Actions' })).toBeHidden();
+  await expect(page.locator('.gn-cell-more')).toBeHidden();
   await expect(page.getByRole('button', { name: 'Add Code Cell' })).toBeHidden();
   await page.getByRole('button', { name: 'More', exact: true }).click();
   await expect(page.getByRole('menuitem', { name: 'Insert Code Cell' })).toBeVisible();

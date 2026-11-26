@@ -1,5 +1,5 @@
 import '../test/notebook-env';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import type { ICodeCellModel } from '@jupyterlab/cells';
 import type * as nbformat from '@jupyterlab/nbformat';
 import type { Notebook } from '@jupyterlab/notebook';
@@ -15,14 +15,17 @@ Range.prototype.getBoundingClientRect ??= () => new DOMRect();
 const { createNotebook, createRendermime } = await import('./jupyterlab');
 const {
   attachOutputLabels,
+  formatOutputTime,
   labelFor,
   isInterrupt,
   LOG_LINES,
+  outputKinds,
   PANE_GUTTER,
   pastColumn,
   WIDE,
   WIDE_SLACK,
 } = await import('./output-labels');
+const { attachRunStatus } = await import('./run-status');
 const { NotebookModel } = await import('@jupyterlab/notebook');
 const { Widget } = await import('@lumino/widgets');
 
@@ -50,8 +53,9 @@ const lines = (n: number) => Array.from({ length: n }, (_, i) => `line ${i}`).jo
 
 let notebook: Notebook;
 let holder: HTMLDivElement;
-let kernel = true;
+let clock = 0;
 let labels: ReturnType<typeof attachOutputLabels> | undefined;
+let runs: ReturnType<typeof attachRunStatus> | undefined;
 
 function open(cells: nbformat.ICodeCell[]) {
   notebook = createNotebook(createRendermime('', {} as Contents.IManager));
@@ -61,17 +65,17 @@ function open(cells: nbformat.ICodeCell[]) {
   holder = document.createElement('div');
   document.body.append(holder);
   Widget.attach(notebook, holder);
-  labels = attachOutputLabels(notebook, { hasKernel: () => kernel });
+  // The meta line's "saved output" and time come from the run queue (#852).
+  runs = attachRunStatus(notebook, { interrupt: () => {}, now: () => clock });
+  labels = attachOutputLabels(notebook, { runs });
 }
-
-beforeEach(() => {
-  kernel = true;
-});
 
 afterEach(() => {
   if (!labels) return;
   labels.dispose();
   labels = undefined;
+  runs?.dispose();
+  runs = undefined;
   const model = notebook.model;
   notebook.dispose();
   model?.dispose();
@@ -219,16 +223,79 @@ describe('attachOutputLabels (#813)', () => {
     expect(bars()).toHaveLength(1);
   });
 
-  it('says Saved output only while there is no kernel, for cells with outputs', async () => {
-    kernel = false;
+  it('says what a cell’s outputs are, and how long the run took, below them (#852)', async () => {
+    open([cellWith('a', [stream('stdout', 'hi\n'), image])]);
+    await settle();
+    const metas = () => notebook.node.querySelectorAll<HTMLElement>('.gn-output-meta');
+    expect(metas()).toHaveLength(1);
+    // The outputs are the file's until this page runs the cell.
+    expect(metas()[0]!.textContent).toBe('saved output');
+    // The output area is above it: the meta line comes last in the cell.
+    const area = notebook.widgets[0]!.node.querySelector('.jp-OutputArea')!;
+    expect(area.lastElementChild).toBe(metas()[0]);
+
+    const model = notebook.widgets[0]!.model as ICodeCellModel;
+    clock = 38;
+    model.executionState = 'running';
+    await settle();
+    expect(metas()[0]!.textContent).toBe('Text · Image');
+    clock = 138;
+    model.executionState = 'idle';
+    await settle();
+    expect(metas()[0]!.textContent).toBe('Text · Image · 100 ms');
+  });
+
+  it('says saved output below them until this page runs the cell (#852)', async () => {
     open([cellWith('a', [stream('stdout', 'hi\n')]), cellWith('b', [])]);
     await settle();
-    const saved = () => notebook.node.querySelectorAll('.gn-saved-output');
+    const saved = () => notebook.node.querySelectorAll<HTMLElement>('.gn-output-meta');
     expect(saved()).toHaveLength(1);
-    expect(saved()[0]!.textContent).toBe('Saved output');
-    kernel = true;
+    expect(saved()[0]!.textContent).toBe('saved output');
+    expect(saved()[0]!.title).toBe('Saved with the notebook. Run the cell to replace it.');
+    // A kernel, running or not, doesn't change what the file held: only a
+    // run here does.
     labels!.refresh();
-    expect(saved()).toHaveLength(0);
+    await settle();
+    expect(saved()[0]!.textContent).toBe('saved output');
+    const model = notebook.widgets[0]!.model as ICodeCellModel;
+    clock = 2000;
+    model.executionState = 'running';
+    await settle();
+    // The run underway is the gutter's to count, not the line's.
+    expect(saved()[0]!.textContent).toBe('Text');
+    clock = 2040;
+    model.executionState = 'idle';
+    await settle();
+    expect(saved()[0]!.textContent).toBe('Text · 40 ms');
+    expect(saved()[0]!.hasAttribute('title')).toBe(false);
+  });
+});
+
+describe('the meta line’s words (#852)', () => {
+  it('names each kind of output once, in order', () => {
+    expect(outputKinds([stream('stdout', 'hi\n'), stream('stderr', 'hmm\n')])).toEqual([
+      'Text',
+      'Warning',
+    ]);
+    expect(outputKinds([image, stream('stdout', 'x'), error])).toEqual(['Image', 'Text', 'Error']);
+    expect(
+      outputKinds([
+        { output_type: 'display_data', data: { 'image/svg+xml': '<svg/>' }, metadata: {} },
+        { output_type: 'display_data', data: { 'text/html': '<table></table>' }, metadata: {} },
+      ]),
+    ).toEqual(['SVG', 'Table']);
+    // Nothing to name: a widget or an unknown mime type.
+    expect(outputKinds([])).toEqual([]);
+    expect(outputKinds([{ output_type: 'display_data', data: {}, metadata: {} }])).toEqual([]);
+  });
+
+  it('writes a run’s time to a fixed precision', () => {
+    expect(formatOutputTime(38)).toBe('38 ms');
+    expect(formatOutputTime(999.4)).toBe('999 ms');
+    expect(formatOutputTime(1000)).toBe('1 s');
+    expect(formatOutputTime(1240)).toBe('1.2 s');
+    expect(formatOutputTime(18_400)).toBe('18 s');
+    expect(formatOutputTime(Number.NaN)).toBe('');
   });
 });
 

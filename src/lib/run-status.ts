@@ -13,6 +13,10 @@
  * Each busy cell gets a line under its input: "Running 0:12" with an
  * Interrupt button, or "Queued". It is plain DOM in the cell's node, as
  * the touch cell controls are (cell-controls.ts).
+ *
+ * It is the one place that knows the queue (#852): the margin's Run button
+ * asks it which phase the cell is in and since when, and the meta line under
+ * the outputs takes the time a run took from here.
  */
 import type { Cell, ICellModel, ICodeCellModel } from '@jupyterlab/cells';
 import { type Notebook, NotebookActions } from '@jupyterlab/notebook';
@@ -80,6 +84,24 @@ export function describeRun(state: RunState, now: number): string {
   return state.ahead === 1 ? 'Queued, 1 cell ahead' : `Queued, ${state.ahead} cells ahead`;
 }
 
+/** How long a cell's run has been going, in seconds, as the gutter shows it. */
+export function runSeconds(state: RunState, now: number): number {
+  if (state.phase !== 'running') return 0;
+  return Math.max(0, Math.floor((now - state.since) / 1000));
+}
+
+/**
+ * What the margin's Run button says to a screen reader: what it does, what
+ * the cell runs for, or what it waits behind (#852).
+ */
+export function runLabel(state: RunState | undefined, now: number): string {
+  if (!state) return 'Run cell';
+  // Queued says so in one word: the margin has no room for the queue's count,
+  // and the line in the cell says how many runs are ahead.
+  if (state.phase === 'queued') return 'Queued';
+  return `Running, ${runSeconds(state, now)} s`;
+}
+
 const LINE = 'gn-run-status';
 const RUNNING = 'gn-mod-running';
 const QUEUED = 'gn-mod-queued';
@@ -103,6 +125,20 @@ export type RunStatus = IDisposable & {
   readonly busy: boolean;
   /** Emitted when {@link busy} changes. */
   readonly busyChanged: ISignal<Notebook, boolean>;
+  /** Which run a cell waits on, and since when; nothing when it isn't in the queue. */
+  stateOf(model: ICellModel): RunState | undefined;
+  /**
+   * How many milliseconds a cell's last run took, as its outputs were made
+   * (the meta line under them says so): nothing before it runs here.
+   */
+  lastRun(model: ICellModel): number | undefined;
+  /**
+   * Whether this page ran the cell: false for a cell whose outputs are
+   * only what the file held, which say so ("saved output").
+   */
+  hasRun(model: ICellModel): boolean;
+  /** Emitted on every change to the queue, and once a second while a cell runs. */
+  readonly changed: ISignal<Notebook, void>;
 };
 
 /**
@@ -121,6 +157,10 @@ export function attachRunStatus(notebook: Notebook, { interrupt, now = Date.now 
    */
   const mine = new Set<string>();
   const busyChanged = new Signal<Notebook, boolean>(notebook);
+  const changed = new Signal<Notebook, void>(notebook);
+  /** Seconds each cell's last run took, and which cells this page has run. */
+  const lastRuns = new WeakMap<ICellModel, number>();
+  const ran = new WeakSet<ICellModel>();
 
   const lineOf = (cell: Cell, create: boolean): HTMLElement | null => {
     let line = cell.node.querySelector<HTMLElement>(`:scope > .${LINE}`);
@@ -169,6 +209,7 @@ export function attachRunStatus(notebook: Notebook, { interrupt, now = Date.now 
       line.querySelector<HTMLElement>('.gn-run-interrupt')!.hidden = state.phase !== 'running';
     }
     updateBusy();
+    changed.emit();
     // Tick only while something runs.
     if (queue.keys.length && !timer) timer = setInterval(render, 1000);
     if (!queue.keys.length && timer) {
@@ -179,9 +220,15 @@ export function attachRunStatus(notebook: Notebook, { interrupt, now = Date.now 
 
   const onState = (model: ICellModel, args: { name: string; newValue: unknown }) => {
     if (args.name !== 'executionState') return;
-    if (args.newValue === 'running') queue.schedule(model, now());
-    else {
+    if (args.newValue === 'running') {
+      ran.add(model);
+      queue.schedule(model, now());
+    } else {
       mine.delete(model.id);
+      // How long the run took: the cell's outputs were made between the
+      // kernel starting it and now.
+      const state = queue.state(model);
+      if (state?.phase === 'running') lastRuns.set(model, Math.max(0, now() - state.since));
       queue.finish(model, now());
     }
     render();
@@ -190,7 +237,11 @@ export function attachRunStatus(notebook: Notebook, { interrupt, now = Date.now 
     if (model.type !== 'code' || watched.has(model)) return;
     watched.add(model);
     model.stateChanged.connect(onState);
-    if ((model as ICodeCellModel).executionState === 'running') queue.schedule(model, now());
+    if ((model as ICodeCellModel).executionState === 'running') {
+      // Running when the pane attached: its outputs aren't only the file's.
+      ran.add(model);
+      queue.schedule(model, now());
+    }
   };
   const unwatch = (model: ICellModel) => {
     if (!watched.delete(model)) return;
@@ -258,6 +309,10 @@ export function attachRunStatus(notebook: Notebook, { interrupt, now = Date.now 
       return busy;
     },
     busyChanged,
+    changed,
+    stateOf: model => queue.state(model),
+    lastRun: model => lastRuns.get(model),
+    hasRun: model => ran.has(model),
     clear() {
       queue.clear();
       render();

@@ -140,7 +140,7 @@ function withOutput(data: Record<string, string>, id = 'c1') {
 }
 
 describe('JournalView', () => {
-  it('starts with a header: the title, the kernel, who started it, and the cell count', async () => {
+  it('starts with a header: the language and day above the title, who started it below', async () => {
     // A notebook with its metadata, as a file gives it.
     const nb = new YNotebook();
     nb.fromJSON({
@@ -156,9 +156,11 @@ describe('JournalView', () => {
     const region = screen.getByRole('region', { name: 'Journal of Trend.ipynb' });
     // First among the view's elements.
     expect(region.firstElementChild?.tagName).toBe('HEADER');
+    // The language and the day of the earliest cell make an eyebrow (#852).
+    const eyebrow = region.querySelector('.journal-eyebrow')!.textContent!;
+    expect(eyebrow).toMatch(/^Python 3 · /);
     expect(screen.getByRole('heading', { level: 1, name: 'Trend of moons' })).toBeInTheDocument();
     const meta = region.querySelector('.journal-meta')!.textContent!;
-    expect(meta).toContain('Python 3');
     expect(meta).toContain('Started by claude-code');
     expect(meta).toContain('3 cells');
     // It follows the notebook.
@@ -204,6 +206,15 @@ describe('JournalView', () => {
     await userEvent.click(fold);
     expect(fold).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByText(/print\(x\)/)).toBeInTheDocument();
+  });
+
+  it('says what a cell’s outputs are, not that they were saved (#852)', async () => {
+    const nb = withOutput({ 'image/svg+xml': '<svg xmlns="http://www.w3.org/2000/svg"/>' });
+    show(nb);
+    const cell = (await screen.findAllByRole('article'))[0]!;
+    const meta = cell.querySelector('.journal-output-meta')!;
+    expect(meta).toHaveTextContent('SVG');
+    expect(meta).not.toHaveTextContent('saved output');
   });
 
   it('shows the earlier source behind a rev chip', async () => {

@@ -52,6 +52,35 @@ test.afterEach(async () => {
   await removeFromServer(FILE, FREMONT);
 });
 
+// The notebook view's header shows the eyebrow too (#852). Eyebrow, title
+// and status line need more than 52px, so outside touch layouts the main
+// column's header grows to 64px while it has one; at 52 the eyebrow was cut
+// off at the top. The sidebar's rows stay where they are (#812).
+test('fits the eyebrow inside the notebook view’s header (#852)', async ({ page }) => {
+  await openWithToken(page);
+  // The sidebar's first row; the lists below it gain Recents and an Outline.
+  const titlebar = page.locator('.sidebar-titlebar');
+  const before = (await titlebar.boundingBox())!;
+  await sidebarItem(page, 'Journal e2e').click();
+  await expect(page.getByRole('region', { name: `Journal of ${FILE}` })).toBeVisible();
+  await page
+    .getByRole('group', { name: 'View: Journal' })
+    .getByRole('button', { name: 'Notebook' })
+    .click();
+  await expect(page.locator('.jp-Cell')).toHaveCount(3);
+  const eyebrow = page.locator('.toolbar .title-eyebrow');
+  await expect(eyebrow).toHaveText(/^typescript · /i);
+  const [toolbar, box, after] = await Promise.all([
+    page.locator('.toolbar').boundingBox(),
+    eyebrow.boundingBox(),
+    titlebar.boundingBox(),
+  ]);
+  expect(toolbar!.height).toBe(64);
+  expect(box!.y).toBeGreaterThanOrEqual(toolbar!.y);
+  expect(box!.y + box!.height).toBeLessThanOrEqual(toolbar!.y + toolbar!.height);
+  expect(after!.height).toBe(before.height);
+});
+
 test('opens an agent’s notebook as a journal, and writes a note and a request', async ({
   page,
 }) => {
@@ -60,6 +89,11 @@ test('opens an agent’s notebook as a journal, and writes a note and a request'
 
   const journal = page.getByRole('region', { name: `Journal of ${FILE}` });
   await expect(journal).toBeVisible();
+  // The header (#852): the language and the day of the earliest cell in an
+  // eyebrow, then the title and who started it in the meta line.
+  await expect(journal.locator('.journal-eyebrow')).toHaveText(/^typescript · /);
+  await expect(journal.locator('.journal-title')).toHaveText('Journal e2e');
+  await expect(journal.locator('.journal-meta')).toHaveText(/Started by claude-code · 3 cells/);
   const cells = journal.getByRole('article');
   await expect(cells).toHaveCount(3);
   await expect(cells.nth(0)).toContainText('Agent note');

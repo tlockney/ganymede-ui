@@ -289,13 +289,18 @@ data store, which fetches DuckDB the first time a cell uses SQL there.
 
 ### Collapsing code
 
-A code cell's chevron, left of its prompt (shown on hover and on the
-active cell), collapses its code to the first line; the chevron or that
-line expands it again. In command mode ⌘⌥[ and ⌘⌥] (Ctrl+Alt+[ and ]
+A code cell's chevron, between its Run button and the code (shown on hover
+and on the active cell), collapses its code to the first line; the chevron
+or that line expands it again. In command mode ⌘⌥[ and ⌘⌥] (Ctrl+Alt+[ and ]
 elsewhere) collapse and expand the selected cells, and ⇧ with them does
 every code cell; the command palette has all four, and on a phone the
 cell's … menu has Collapse Code. A collapsed cell is saved that way in the
 notebook (`metadata.jupyter.source_hidden`, as JupyterLab saves it).
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release. The chevron's place beside the Run button is new
+> with the cell's margin; in the release it sits left of the prompt.
 
 ### Cells on a phone
 
@@ -319,16 +324,32 @@ to all cells, and is remembered in this browser's local storage.
 
 ### Reading outputs
 
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release. The release says **Saved output** where no kernel
+> is attached, whatever the cell has run.
+
 An error output starts with **Execution failed** and its exception
 summary (`ZeroDivisionError: division by zero`), above the traceback; a
 cell stopped with Interrupt says **Execution stopped**. Text on stderr is
 marked **Warning**. A stream longer than 20 lines is collapsed to its last
 lines under a bar that says **Log, N lines**; **View full log** opens all
-of it and **Show last lines** goes back. When
-no kernel is attached, outputs the notebook was saved with say **Saved
-output**.
+of it and **Show last lines** goes back. Until this page runs the cell,
+outputs the notebook was saved with say **Saved output**. A line under the
+outputs else says what they are and how long the run took, as in "Text ·
+Image · 1.2 s".
 
 ### Running cells and errors
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+Each code cell is a card, and its left margin has a round Run button and
+the cell's execution count. While the cell runs the button counts the
+seconds; a line under its outputs keeps the time afterwards. The cell's
+toolbar moves, duplicates, and opens its ⋯ menu, which has Delete, Cell
+Type and, for a cell with output, Collapse Output (and Show Output back).
 
 The cell the kernel is running says so under its input, with how long it
 has run and an Interrupt button; cells waiting behind it say they are

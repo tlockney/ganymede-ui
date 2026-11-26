@@ -57,6 +57,7 @@ let editing: IDisposable;
 let kernel: ReturnType<typeof fakeKernel>;
 let holder: HTMLDivElement;
 let commands: ReturnType<typeof createCommands>;
+let onCellMenu: ReturnType<typeof vi.fn<(cell: unknown, anchor: HTMLElement) => void>>;
 
 beforeEach(() => {
   kernel = fakeKernel();
@@ -76,7 +77,8 @@ beforeEach(() => {
   Widget.attach(notebook, holder);
   notebook.activeCellIndex = 0;
   commands = createCommands(notebook, session);
-  editing = attachEditing(notebook, session, rendermime, commands);
+  onCellMenu = vi.fn<(cell: unknown, anchor: HTMLElement) => void>();
+  editing = attachEditing(notebook, session, rendermime, commands, { onCellMenu });
 });
 
 afterEach(() => {
@@ -161,15 +163,22 @@ describe('attachEditing', () => {
       [...notebook.activeCell!.node.querySelectorAll('.jp-cell-toolbar [title]')].map(b =>
         b.getAttribute('title'),
       );
-    await vi.waitFor(() => expect(titles()).toHaveLength(6));
-    expect(titles()).toEqual([
-      'Duplicate cell',
-      'Move cell up',
-      'Move cell down',
-      'Insert cell above',
-      'Insert cell below',
-      'Delete cell',
-    ]);
+    await vi.waitFor(() => expect(titles()).toHaveLength(4));
+    expect(titles()).toEqual(['Move cell up', 'Move cell down', 'Duplicate cell', 'Cell actions']);
+  });
+
+  it('opens the cell menu from the capsule’s ⋯ (#852)', async () => {
+    await vi.waitFor(() =>
+      expect(notebook.activeCell!.node.querySelector('.jp-cell-toolbar')).not.toBeNull(),
+    );
+    const more = notebook.activeCell!.node.querySelector<HTMLButtonElement>(
+      '.jp-cell-toolbar [title="Cell actions"]',
+    )!;
+    await vi.waitFor(() => expect(more.disabled).toBe(false));
+    more.click();
+    expect(onCellMenu).toHaveBeenCalledTimes(1);
+    expect(onCellMenu.mock.calls[0]![0]).toBe(notebook.activeCell);
+    expect(onCellMenu.mock.calls[0]![1]).toBeInstanceOf(HTMLElement);
   });
 });
 

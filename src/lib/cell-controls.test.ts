@@ -14,8 +14,15 @@ Range.prototype.getClientRects ??= () => [] as unknown as DOMRectList;
 Range.prototype.getBoundingClientRect ??= () => new DOMRect();
 
 const { createNotebook, createRendermime } = await import('./jupyterlab');
-const { attachCellControls, applyCellAction, addCellAfter, cellRunState, describeCell, CELL_MENU } =
-  await import('./cell-controls');
+const {
+  attachCellControls,
+  applyCellAction,
+  addCellAfter,
+  cellRunState,
+  describeCell,
+  toggleOutputs,
+  CELL_MENU,
+} = await import('./cell-controls');
 const { NotebookModel } = await import('@jupyterlab/notebook');
 const { Widget } = await import('@lumino/widgets');
 
@@ -107,6 +114,19 @@ describe('applyCellAction', () => {
     });
     await applyCellAction(notebook, cell(2), 'run', run);
     expect(run).toHaveBeenCalledOnce();
+  });
+
+  it('collapses a cell’s outputs from the menu, and shows them again (#852)', () => {
+    const model = cell(0).model as unknown as {
+      sharedModel: { setOutputs(outputs: nbformat.IOutput[]): void };
+    };
+    model.sharedModel.setOutputs([{ output_type: 'stream', name: 'stdout', text: 'io' }]);
+    const code = cell(0) as unknown as { outputHidden: boolean };
+    expect(code.outputHidden).toBe(false);
+    toggleOutputs(notebook, cell(0));
+    expect(code.outputHidden).toBe(true);
+    toggleOutputs(notebook, cell(0));
+    expect(code.outputHidden).toBe(false);
   });
 
   it('offers every action the issue asks for', () => {

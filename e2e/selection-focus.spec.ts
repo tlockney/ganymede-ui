@@ -1,6 +1,8 @@
-// Selection and editor focus look different (#814): a selected cell keeps
-// its rail and has no ring while its editor is not focused; an editor with
-// focus has a 2px ring on the editor box, rail still there.
+// Selection and editor focus look different (#814, a card since #852): a
+// selected cell has a quiet accent edge, 1px of the accent at 45%, and no
+// ring; an editor with focus has a 2px ring of the accent around the card,
+// the quiet edge still there; and a cell focused in command mode (arrow keys,
+// not a click) rings the same way, keeping the card's corners.
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, type Page, test } from '@playwright/test';
@@ -17,20 +19,20 @@ const FILE = 'Selection focus.ipynb';
 
 test.afterEach(() => removeFromServer(FILE));
 
-/** The cell's rail (`::before`) as the browser computes it: the accent. */
-const railColor = (page: Page, cell: ReturnType<Page['locator']>) =>
-  cell.evaluate(el => getComputedStyle(el, '::before').backgroundColor);
+/** The cell's edge, which the accent takes while it is selected. */
+const border = (cell: ReturnType<Page['locator']>) =>
+  cell.evaluate(el => getComputedStyle(el).borderTopColor);
 
-/** The editor box's shadow, where the ring is. */
-const shadow = (page: Page, editor: ReturnType<Page['locator']>) =>
-  editor.evaluate(el => getComputedStyle(el).boxShadow);
+/** The card's shadow, where the ring is. */
+const shadow = (cell: ReturnType<Page['locator']>) =>
+  cell.evaluate(el => getComputedStyle(el).boxShadow);
 
 const editorFocused = (page: Page) =>
   page.evaluate(
     () => !!document.activeElement && document.activeElement.closest('.cm-editor') !== null,
   );
 
-test('a selected cell without editor focus has no ring; a focused editor does', async ({
+test('a selected cell has a quiet accent edge; a focused editor rings the card', async ({
   page,
 }) => {
   const cellOf = (id: string, source: string) => ({
@@ -56,25 +58,43 @@ test('a selected cell without editor focus has no ring; a focused editor does', 
   await expect(cells.first()).toBeVisible();
   await waitForReady(page);
   const cell = cells.nth(1);
-  const editor = cell.locator('.jp-InputArea-editor');
+
+  // A cell is a card.
+  await expect(cell).toHaveCSS('border-radius', '12px');
 
   // Click into the editor: the cell is selected and its editor focused.
   await cell.locator('.cm-content').click();
   await expect(cell).toHaveClass(/jp-mod-active/);
   expect(await editorFocused(page)).toBe(true);
-  const accent = await railColor(page, cell);
-  // The rail is the accent, and the ring is a 2px one of the same colour,
-  // on the editor box. The shadow eases in, so wait out the transition.
-  expect(accent).toMatch(/rgb\(\d+, \d+, \d+\)/);
+  // The ring is a 2px one of the accent around the card (it eases in).
   await expect
-    .poll(() => shadow(page, editor), { timeout: 5_000 })
-    .toBe(`${accent} 0px 0px 0px 2px`);
+    .poll(async () => shadow(cell), { timeout: 5_000 })
+    .toMatch(/^rgb\(\d+, \d+, \d+\) 0px 0px 0px 2px$/);
+  const ring = (await shadow(cell)).replace(/ 0px 0px 0px 2px$/, '');
+  // The edge under it is the quieter colour, not the ring's.
+  const edge = await border(cell);
+  expect(edge).not.toBe(ring);
+  expect(await cell.evaluate(el => getComputedStyle(el).borderTopWidth)).toBe('1px');
 
-  // Escape leaves the cell selected, its editor without focus: the rail
-  // stays, the ring goes.
+  // Escape leaves the cell selected with its editor unfocused: the keyboard
+  // focus is the cell's, in command mode, and that rings the card too, in
+  // the same 2px of the accent, keeping its corners — JupyterLab would square
+  // them off and draw its own 1px line (#852). The edge stays quiet.
   await page.keyboard.press('Escape');
   await expect(cell).toHaveClass(/jp-mod-active/);
   expect(await editorFocused(page)).toBe(false);
-  await expect.poll(async () => !(await shadow(page, editor)).includes(accent)).toBe(true);
-  expect(await railColor(page, cell)).toBe(accent);
+  await expect
+    .poll(async () => (await shadow(cell)).startsWith(`${ring} 0px 0px 0px 2px`), {
+      timeout: 5_000,
+    })
+    .toBe(true);
+  await expect(cell).toHaveCSS('border-radius', '12px');
+  expect(await border(cell)).toBe(edge);
+
+  // The focus elsewhere, the ring goes; the cell is still selected, its
+  // edge still the quiet one.
+  await page.keyboard.press('Tab');
+  await expect.poll(async () => !(await shadow(cell)).includes(ring)).toBe(true);
+  await expect(cell).toHaveClass(/jp-mod-active/);
+  expect(await border(cell)).toBe(edge);
 });

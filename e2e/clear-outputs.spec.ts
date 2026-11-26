@@ -18,7 +18,7 @@ test('clears all outputs from the command palette', async ({ page }, testInfo) =
   await runAll(page);
   await expect(outputs(page).filter({ hasText: 'largest moon' })).toBeVisible();
   await waitForIdle(page);
-  await expect(page.locator('.jp-CodeCell .jp-InputPrompt').first()).toHaveText(/\[\d+\]/);
+  await expect(page.locator('.jp-CodeCell .gn-exec-count').first()).toHaveText(/\d+/);
 
   await toolbarMenu(page, 'More', 'Command Palette…');
   const palette = page.getByRole('dialog', { name: 'Command palette' });
@@ -28,6 +28,7 @@ test('clears all outputs from the command palette', async ({ page }, testInfo) =
   await page.keyboard.press('Enter');
 
   await expect(outputs(page)).toHaveCount(0);
-  await expect(page.locator('.jp-CodeCell .jp-InputPrompt').first()).not.toHaveText(/\[\d+\]/);
+  // The count in the cell's margin goes with the outputs.
+  await expect(page.locator('.jp-CodeCell .gn-exec-count').first()).toHaveText('–');
   await screenshot(page, testInfo, 'clear-outputs-cleared');
 });

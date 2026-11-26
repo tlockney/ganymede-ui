@@ -9,7 +9,9 @@
  * - A long stream (a loop's prints, a training log) shows its last lines,
  *   with a "Log, N lines" label and a "View full log" button that opens
  *   all of it and "Show last lines" to go back.
- * - Outputs with no kernel to have made them say "Saved output".
+ * - Under each cell's outputs, below a hairline, a meta line says what they
+ *   are and how long the run took ("SVG · 38 ms"), or "saved output" for
+ *   outputs that came from the file and that this page hasn't run (#852).
  * - A chart or table wider than the prose column goes wide: the class
  *   `gn-mod-wide` has jupyter.css span the pane with it, past the column
  *   on both sides, capped inside the pane. A stream never does (its text
@@ -26,6 +28,7 @@ import type * as nbformat from '@jupyterlab/nbformat';
 import type { Notebook } from '@jupyterlab/notebook';
 import type { PartialJSONValue } from '@lumino/coreutils';
 import type { IDisposable } from '@lumino/disposable';
+import type { RunStatus } from './run-status';
 
 /** A stream longer than this many lines shows only its tail until opened. */
 export const LOG_LINES = 20;
@@ -44,11 +47,14 @@ export const PANE_GUTTER = 32;
 export const WIDE_SLACK = 8;
 
 const BAR = 'gn-output-bar';
-const SAVED = 'gn-saved-output';
+const META = 'gn-output-meta';
 
 type Options = {
-  /** Whether a kernel is attached: without one, outputs are only what was saved. */
-  hasKernel(): boolean;
+  /**
+   * The run queue: the time a run took is counted from it, and whether the
+   * cell has run here says if its outputs are only what the file held.
+   */
+  runs: RunStatus;
 };
 
 export type OutputLabels = IDisposable & {
@@ -129,7 +135,65 @@ export function labelFor(
   return undefined;
 }
 
-export function attachOutputLabels(notebook: Notebook, { hasKernel }: Options): OutputLabels {
+/** One output's kind, as the meta line names it. */
+function kindOf(output: nbformat.IOutput): string | undefined {
+  if (output.output_type === 'stream') return output.name === 'stderr' ? 'Warning' : 'Text';
+  if (output.output_type === 'error') return 'Error';
+  const data = (output as nbformat.IDisplayData).data;
+  if (!data) return undefined;
+  if (data['image/svg+xml'] !== undefined) return 'SVG';
+  if (data['image/png'] !== undefined || data['image/jpeg'] !== undefined) return 'Image';
+  if (typeof data['text/html'] === 'string' && /<table[\s>]/i.test(data['text/html']))
+    return 'Table';
+  for (const [mime, kind] of [
+    ['text/html', 'HTML'],
+    ['text/markdown', 'Markdown'],
+    ['application/json', 'JSON'],
+    ['text/plain', 'Text'],
+  ] as const)
+    if (data[mime] !== undefined) return kind;
+  return undefined;
+}
+
+/**
+ * What a cell's outputs are made of, in the order they first appear:
+ * "Text", "Image", "Text and table".
+ */
+export function outputKinds(outputs: readonly nbformat.IOutput[]): string[] {
+  const kinds: string[] = [];
+  for (const output of outputs) {
+    const kind = kindOf(output);
+    if (kind && !kinds.includes(kind)) kinds.push(kind);
+  }
+  return kinds;
+}
+
+/** How a run's time is written: "38 ms", "1.2 s", "18 s". */
+export function formatOutputTime(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return '';
+  const rounded = Math.round(ms);
+  if (rounded < 1000) return `${rounded} ms`;
+  const seconds = rounded / 1000;
+  return seconds < 10 ? `${Math.round(seconds * 10) / 10} s` : `${Math.round(seconds)} s`;
+}
+
+/**
+ * What a cell's meta line says, or undefined for no line: "saved output" for
+ * outputs that came from the file, else what they are and how long the run
+ * took ("SVG · 38 ms"). The journal's cards list the kinds only, with no time.
+ */
+export function outputMetaText(
+  outputs: readonly nbformat.IOutput[],
+  { saved = false, ms }: { saved?: boolean; ms?: number } = {},
+): string | undefined {
+  if (outputs.length === 0) return undefined;
+  const parts = saved
+    ? ['saved output']
+    : [...outputKinds(outputs), ...(ms === undefined ? [] : [formatOutputTime(ms)])];
+  return parts.length > 0 ? parts.join(' · ') : undefined;
+}
+
+export function attachOutputLabels(notebook: Notebook, { runs }: Options): OutputLabels {
   let disposed = false;
   let scheduled = false;
   /** Output indexes a person opened to the full log, by cell model. */
@@ -138,6 +202,12 @@ export function attachOutputLabels(notebook: Notebook, { hasKernel }: Options): 
   const lineCounts = new WeakMap<object, { len: number; lines: number }>();
   /** Outputs lists already wired to forget `opened` when they are cleared. */
   const wired = new WeakSet<object>();
+  /**
+   * What each cell's meta line depends on (`phase|ran|time`), so a queue tick
+   * looks at only the cells whose line would change (#852): a run starting,
+   * a run finished, the first run of a cell whose outputs the file held.
+   */
+  const metaKeys = new Map<object, string>();
   /** Images already given a load listener, so it is given only once. */
   const loads = new WeakSet<HTMLImageElement>();
   /** Cells whose DOM changed, for the next pass to look at; `all` is all of them. */
@@ -167,17 +237,38 @@ export function attachOutputLabels(notebook: Notebook, { hasKernel }: Options): 
         if (sender.length === 0) opened.delete(cell.model);
       });
     }
-    // Saved output: shown once above the cell's outputs.
-    let saved = area.node.querySelector<HTMLElement>(`:scope > .${SAVED}`);
-    if (!hasKernel() && model.length > 0) {
-      if (!saved) {
-        saved = document.createElement('div');
-        saved.className = SAVED;
-        saved.textContent = 'Saved output';
-        saved.title = 'Saved with the notebook. Run the cell to replace it.';
-        area.node.prepend(saved);
+    // The run's time comes from the run queue (below), so it covers every
+    // output the run made, and stops when the cell is idle again.
+    // A cell's meta line: below its outputs, under a hairline, what they are
+    // and how long the run took (#852). The time comes from the run queue,
+    // so it covers every output the run made, not just one; a cell whose
+    // outputs came from the file, and that this page hasn't run, says
+    // "saved output" instead, with or without a kernel attached.
+    const outputs = model.toJSON() as nbformat.IOutput[];
+    let meta = area.node.querySelector<HTMLElement>(`:scope > .${META}`);
+    const state = runs.stateOf(cell.model);
+    const text = outputMetaText(outputs, {
+      saved: !runs.hasRun(cell.model),
+      // While the cell runs, the gutter counts the seconds; the meta line
+      // has them once the run is done.
+      ms: state ? undefined : runs.lastRun(cell.model),
+    });
+    if (text === undefined) meta?.remove();
+    else {
+      if (!meta) {
+        meta = document.createElement('div');
+        meta.className = META;
+        area.node.append(meta);
       }
-    } else saved?.remove();
+      if (meta.textContent !== text) meta.textContent = text;
+      // Set or removed on every pass: the line says the same thing whatever
+      // ran before (#852).
+      const title = runs.hasRun(cell.model)
+        ? ''
+        : 'Saved with the notebook. Run the cell to replace it.';
+      if (title) meta.title = title;
+      else meta.removeAttribute('title');
+    }
 
     for (let i = 0; i < model.length; i++) {
       const out = area.widgets[i]?.node.querySelector<HTMLElement>('.jp-OutputArea-output');
@@ -211,6 +302,20 @@ export function attachOutputLabels(notebook: Notebook, { hasKernel }: Options): 
           out.classList.contains(WIDE),
         ),
       );
+      if (out.classList.contains(WIDE)) {
+        // Where the span starts (#852): the card's left padding holds the run
+        // gutter, so its row starts right of the pane's gutter, and a span
+        // centred on the pane has to start left of the row. Measured, not
+        // assumed: the pane's gutter (jupyter.css's 32px) is at the column's
+        // left edge, wherever the card's padding has put the row.
+        const row = out.parentElement?.getBoundingClientRect().left;
+        if (row !== undefined && paneEl) {
+          const left = `${Math.round(paneEl.getBoundingClientRect().left + PANE_GUTTER - row)}px`;
+          if (out.style.getPropertyValue('--gn-wide-left') !== left) {
+            out.style.setProperty('--gn-wide-left', left);
+          }
+        }
+      }
       const info = labelFor(
         json,
         json.output_type === 'stream' ? countedLines(item, json) : undefined,
@@ -319,6 +424,25 @@ export function attachOutputLabels(notebook: Notebook, { hasKernel }: Options): 
   });
   observer.observe(notebook.node, { childList: true, subtree: true });
 
+  /**
+   * A run starting or ending changes what a cell's meta line says, and a
+   * cell's first run here takes "saved output" away: look again at those
+   * cells, and only them (#852).
+   */
+  const onRuns = () => {
+    for (const cell of notebook.widgets) {
+      if (!(cell instanceof CodeCell) || cell.isDisposed) continue;
+      const state = runs.stateOf(cell.model);
+      const ran = runs.hasRun(cell.model);
+      const key = `${state?.phase ?? ''}|${ran}|${ran && !state ? (runs.lastRun(cell.model) ?? '') : ''}`;
+      if (metaKeys.get(cell.model) === key) continue;
+      metaKeys.set(cell.model, key);
+      dirty.add(cell);
+      schedule();
+    }
+  };
+  runs.changed.connect(onRuns);
+
   const onClick = (e: MouseEvent) => {
     const target = (e.target as Element | null)?.closest<HTMLElement>('[data-gn-output]');
     if (!target) return;
@@ -377,6 +501,7 @@ export function attachOutputLabels(notebook: Notebook, { hasKernel }: Options): 
       disposed = true;
       observer.disconnect();
       paneMoved.disconnect();
+      runs.changed.disconnect(onRuns);
       window.removeEventListener('resize', rescan);
       notebook.node.removeEventListener('click', onClick);
       notebook.node.removeEventListener('mousedown', onDown, true);

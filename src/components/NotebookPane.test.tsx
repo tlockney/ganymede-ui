@@ -127,15 +127,16 @@ vi.mock('../lib/cell-controls', async importOriginal => ({
 }));
 
 // The output labels need JupyterLab's cells too; output-labels.test.ts covers
-// what a pass does. Here stands what the pane wires to them: whether a kernel
-// is attached, and a look again when that changes (#813).
+// what a pass does. Here stands what the pane wires to them: the run queue
+// that says what "saved output" means (#852), and a look again when a kernel
+// comes or goes (#813).
 const outputLabels = vi.hoisted(() => ({
-  options: undefined as { hasKernel(): boolean } | undefined,
+  options: undefined as { runs: unknown } | undefined,
   refresh: vi.fn(),
 }));
 vi.mock('../lib/output-labels', async importOriginal => ({
   ...(await importOriginal<typeof import('../lib/output-labels')>()),
-  attachOutputLabels: vi.fn((_notebook: unknown, options: { hasKernel(): boolean }) => {
+  attachOutputLabels: vi.fn((_notebook: unknown, options: { runs: unknown }) => {
     outputLabels.options = options;
     return { dispose: vi.fn(), isDisposed: false, refresh: outputLabels.refresh };
   }),
@@ -180,6 +181,8 @@ const runStatus = vi.hoisted(() => ({
   /** Whether a cell is running or queued, and the signal for it changing. */
   busy: false,
   busyChanged: undefined as { emit(busy: boolean): void } | undefined,
+  /** The queue the pane passes on: the margin's Run and the meta line read it. */
+  status: undefined as unknown,
   /** The functions connected to `busyChanged` now. */
   handlers: new Set<unknown>(),
 }));
@@ -195,7 +198,7 @@ vi.mock('../lib/run-status', async () => {
       const disconnect = busyChanged.disconnect.bind(busyChanged);
       busyChanged.connect = (fn, ctx) => (runStatus.handlers.add(fn), connect(fn, ctx));
       busyChanged.disconnect = (fn, ctx) => (runStatus.handlers.delete(fn), disconnect(fn, ctx));
-      return {
+      const status = {
         clear: runStatus.clear,
         dispose: vi.fn(),
         isDisposed: false,
@@ -203,7 +206,13 @@ vi.mock('../lib/run-status', async () => {
           return runStatus.busy;
         },
         busyChanged,
+        changed: new Signal<object, void>({}),
+        stateOf: vi.fn(() => undefined),
+        lastRun: vi.fn(() => undefined),
+        hasRun: vi.fn(() => false),
       };
+      runStatus.status = status;
+      return status;
     }),
   };
 });
@@ -927,26 +936,19 @@ describe('NotebookPane', () => {
     expect(modelOf().dirty).toBe(true);
   });
 
-  it('looks at the outputs again when a kernel attaches, so Saved output goes (#813)', async () => {
-    const withOutput = structuredClone(NOTEBOOK);
-    Object.assign(withOutput.cells[0]!, {
-      execution_count: 3,
-      outputs: [{ output_type: 'stream', name: 'stdout', text: '1\n' }],
-    });
-    const { latest } = setup(vi.fn(async () => ({ path: 'moons/Io.ipynb', content: withOutput })));
+  it('gives the output labels the run queue, and looks again when a kernel comes (#852)', async () => {
+    const { latest } = setup();
     await waitFor(() => expect(latest()).toBeDefined());
-    // The session has no kernel: what the labels read to say "Saved output".
+    // What "saved output" means is the queue's answer: a cell this page
+    // hasn't run (#852), kernel or no kernel.
     expect(outputLabels.options).toBeDefined();
-    expect(outputLabels.options!.hasKernel()).toBe(false);
+    expect(outputLabels.options!.runs).toBe(runStatus.status);
     const session = fakes.sessions[0] as {
-      session: unknown;
       kernelChanged: { emit(v: unknown): void };
     };
-    session.session = { kernel: { name: 'python3' } };
     act(() => session.kernelChanged.emit(null));
-    // The kernel is attached now, and the pane had the labels look again:
-    // the cell's "Saved output" is gone (output-labels.test.ts covers how).
-    expect(outputLabels.options!.hasKernel()).toBe(true);
+    // The kernel came or went, and the pane had the labels look again:
+    // output-labels.test.ts covers how.
     expect(outputLabels.refresh).toHaveBeenCalled();
   });
 

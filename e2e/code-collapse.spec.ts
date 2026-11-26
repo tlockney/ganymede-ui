@@ -1,7 +1,7 @@
 // Collapsing code cells (#564): the disclosure button beside a code cell,
 // the keyboard, and the first line shown in place of the code.
 import { expect, type Page, test } from '@playwright/test';
-import { useThisBrowser } from './helpers';
+import { selectCell, useThisBrowser } from './helpers';
 
 async function newBrowserNotebook(page: Page) {
   await page.goto('/');
@@ -44,8 +44,7 @@ test('a code cell collapses to its first line and expands again', async ({ page 
   await page.keyboard.press('Escape');
 
   // Command mode: ⌘⌥[ / Ctrl+Alt+[ collapses, ⌘⌥] / Ctrl+Alt+] expands.
-  await cell.locator('.jp-InputPrompt').click();
-  await expect(cell).toHaveClass(/jp-mod-active/);
+  await selectCell(page, 0);
   await page.keyboard.press('ControlOrMeta+Alt+BracketLeft');
   await expect(cell.locator('.jp-InputPlaceholder')).toBeVisible();
   await page.keyboard.press('ControlOrMeta+Alt+BracketRight');

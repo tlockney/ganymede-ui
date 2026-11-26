@@ -9,9 +9,9 @@ import type { CommandRegistry } from '@lumino/commands';
 import { Widget } from '@lumino/widgets';
 import { type Backend, trustNotebook } from '../lib/backends';
 import { attachEditing, createCommands, createNotebook, createRendermime } from '../lib/jupyterlab';
-import { attachCellControls } from '../lib/cell-controls';
+import { attachCellControls, selectOnly } from '../lib/cell-controls';
+import { attachCellGutter } from '../lib/cell-gutter';
 import { attachCodeCollapse } from '../lib/code-collapse';
-import { attachMarkdownRail } from '../lib/markdown-rail';
 import { attachOutputLabels } from '../lib/output-labels';
 import { attachTypeErrors } from '../lib/type-errors';
 import { attachLanguageFeatures, type LanguageFeatures } from '../lib/language-editor';
@@ -26,6 +26,7 @@ import {
   chosenView,
   firstVisibleJournalCell,
   hasAgentCells,
+  journalHeader,
   trustedCellIds,
 } from '../lib/journal';
 import type { Cell, ICodeCellModel } from '@jupyterlab/cells';
@@ -187,6 +188,12 @@ export type NotebookController = {
   /** The Markdown cells' headings, in order (#212). */
   outline: OutlineItem[];
   /**
+   * The journal's eyebrow over the title, for a notebook an agent keeps
+   * (#852): its language and the day it was started, "TYPESCRIPT · 9 NOV
+   * 2026". Undefined for a notebook no agent wrote, which needs none.
+   */
+  eyebrow?: string;
+  /**
    * Whether the journal view shows instead of the notebook (#184): on at
    * open when the notebook has cells an agent wrote.
    */
@@ -266,6 +273,11 @@ type Open = {
    * to start.
    */
   ensureKernel(all?: boolean): Promise<boolean>;
+  /**
+   * Run the active cell, starting a kernel when there is none, and report a
+   * failure with a way to try again (#852): the cell menu's Run.
+   */
+  runActive(retry?: () => void): Promise<void>;
   /** The notebook's commands, which its keys run. */
   commands: CommandRegistry;
   /** Go to definition and rename, through the kernel's language service (#676). */
@@ -427,6 +439,11 @@ export function NotebookPane({ backend, path, places, onController, onRenamed }:
   const [trusted, setTrusted] = useState(true);
   const [cellType, setCellType] = useState<CellType>('code');
   const [outline, setOutline] = useState<OutlineItem[]>([]);
+  /**
+   * The journal's eyebrow above the title (#852), for a notebook an agent
+   * keeps: its language and the day it was started. Empty otherwise.
+   */
+  const [eyebrow, setEyebrow] = useState('');
   /** Whether the journal view is showing (#184); decided when the file opens. */
   const [journal, setJournal] = useState(false);
   const journalRef = useRef(false);
@@ -702,29 +719,58 @@ export function NotebookPane({ backend, path, places, onController, onRenamed }:
         e => setNotice(runFailed(session, services.kernelspecs, memory, e)),
         () => !down(),
       );
-      const editing = attachEditing(notebook, session, rendermime, commands);
+      const editing = attachEditing(notebook, session, rendermime, commands, {
+        // The toolbar's ⋯ opens the same cell menu the touch controls do (#852).
+        onCellMenu: (cell, anchor) => setMenu({ cell, anchor }),
+      });
       const cellControls = attachCellControls(
         notebook,
         (cell, anchor) => setMenu({ cell, anchor }),
         down,
       );
-      const codeCollapse = attachCodeCollapse(notebook, down);
-      const typeErrors = attachTypeErrors(notebook, session);
-      const language = attachLanguageFeatures(notebook, session, message =>
-        setNotice({ kind: 'failed', message, actions: [] }),
-      );
+      // A run button and the execution count in each code cell's left margin
+      // (#852); the journal hides the notebook, and a machine that is away runs
+      // nothing.
+      /**
+       * Run the active cell, starting a kernel first when there is none: the
+       * margin's Run button, the cell menu's Run and the menu's retry after a
+       * failure all come here (#852). `retry` runs the same again.
+       */
+      const runActive = async (retry: () => void = () => void runActive()): Promise<void> => {
+        if (journalRef.current || down()) return;
+        try {
+          if (await ensureKernel()) await NotebookActions.run(notebook, session);
+        } catch (e) {
+          setNotice(
+            runFailed(session, services.kernelspecs, memory, e, 'run the cell', true),
+            retry,
+          );
+        }
+      };
+      const runCell = async (cell: Cell) => {
+        if (!selectOnly(notebook, cell)) return;
+        await runActive(() => void runCell(cell));
+      };
       const runStatus = attachRunStatus(notebook, {
         interrupt: () =>
           void session.session?.kernel
             ?.interrupt()
             .catch(e => setNotice(failed('interrupt the kernel', e))),
       });
-      const outputLabels = attachOutputLabels(notebook, {
-        hasKernel: () => !!session.session?.kernel,
+      const cellGutter = attachCellGutter(notebook, {
+        run: cell => void runCell(cell),
+        runs: runStatus,
+        away: down,
       });
-      // A kernel starting or going away changes what the outputs are: saved, or live.
+      const codeCollapse = attachCodeCollapse(notebook, down);
+      const typeErrors = attachTypeErrors(notebook, session);
+      const language = attachLanguageFeatures(notebook, session, message =>
+        setNotice({ kind: 'failed', message, actions: [] }),
+      );
+      const outputLabels = attachOutputLabels(notebook, { runs: runStatus });
+      // A kernel coming or going changes what the outputs are: live, or what
+      // the file held.
       session.kernelChanged.connect(outputLabels.refresh);
-      const markdownRail = attachMarkdownRail(notebook);
       const beforeSave = () => notebookWidgets.saveState(model);
       const saver: Saver = room
         ? new RoomSaver({ room, path, model, beforeSave })
@@ -758,6 +804,7 @@ export function NotebookPane({ backend, path, places, onController, onRenamed }:
         saver,
         room,
         ensureKernel,
+        runActive,
         commands,
         language,
         runStatus,
@@ -767,12 +814,12 @@ export function NotebookPane({ backend, path, places, onController, onRenamed }:
         disposables: [
           editing,
           cellControls,
+          cellGutter,
           codeCollapse,
           typeErrors,
           language,
           runStatus,
           outputLabels,
-          markdownRail,
           {
             dispose: () => session.kernelChanged.disconnect(outputLabels.refresh),
             isDisposed: false,
@@ -1081,6 +1128,16 @@ export function NotebookPane({ backend, path, places, onController, onRenamed }:
       });
       const next = outlineOf(cells);
       const key = JSON.stringify(next);
+      // The journal's eyebrow above the title (#852), for a notebook an agent
+      // keeps: its language and the day it was started. Only the cells'
+      // metadata is read, not their code.
+      const meta = Array.from({ length: model.cells.length }, (_, i) => {
+        const cell = model.cells.get(i);
+        return { metadata: (cell?.metadata ?? {}) as Record<string, unknown> };
+      });
+      setEyebrow(
+        hasAgentCells(meta) ? journalHeader(model.metadata, meta, basename(path)).eyebrow : '',
+      );
       if (key === last) return;
       last = key;
       setOutline(next);
@@ -1101,7 +1158,7 @@ export function NotebookPane({ backend, path, places, onController, onRenamed }:
       model.contentChanged.disconnect(later);
       model.cells.changed.disconnect(now);
     };
-  }, [open]);
+  }, [open, path]);
 
   // Don't lose unsaved edits: save every few minutes and when the page is
   // hidden (an installed web app can be killed after that), and ask before
@@ -1596,6 +1653,7 @@ export function NotebookPane({ backend, path, places, onController, onRenamed }:
       moved,
       kernel: session.session?.kernel ?? undefined,
       outline,
+      eyebrow: eyebrow || undefined,
       goToDefinition: () =>
         journal ? Promise.resolve(false) : open.language.service.goToDefinition(),
       renameSymbol: newName =>
@@ -1677,6 +1735,7 @@ export function NotebookPane({ backend, path, places, onController, onRenamed }:
     lock,
     cellType,
     outline,
+    eyebrow,
     journal,
     backend,
     onMachine,
@@ -1774,18 +1833,7 @@ export function NotebookPane({ backend, path, places, onController, onRenamed }:
           cell={menu.cell}
           anchor={menu.anchor}
           away={!!machineName && roomOffline}
-          run={async function run() {
-            try {
-              if (await open.ensureKernel()) {
-                await NotebookActions.run(open.notebook, open.session);
-              }
-            } catch (e) {
-              setNotice(
-                runFailed(open.session, services.kernelspecs, memory, e, 'run the cell', true),
-                () => void run(),
-              );
-            }
-          }}
+          run={() => open.runActive()}
           onClose={() => setMenu(undefined)}
         />
       )}

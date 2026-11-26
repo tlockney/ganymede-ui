@@ -1,7 +1,7 @@
 // The keyboard shortcuts sheet: from the toolbar, and from H in command mode.
 import { expect, test } from '@playwright/test';
 import { FIXTURE } from './env';
-import { openNotebook, openWithToken, toolbarMenu } from './helpers';
+import { openNotebook, openWithToken, selectCell, toolbarMenu } from './helpers';
 
 test('shows the keyboard shortcuts from the toolbar and from H', async ({ page }) => {
   await openWithToken(page);
@@ -14,7 +14,7 @@ test('shows the keyboard shortcuts from the toolbar and from H', async ({ page }
   await expect(sheet).toHaveCount(0);
 
   // Command mode on the first cell, then H.
-  await page.locator('.jp-Cell').first().locator('.jp-InputPrompt').click();
+  await selectCell(page, 0);
   await page.keyboard.press('h');
   await expect(sheet).toBeVisible();
   await sheet.getByRole('button', { name: 'Done' }).click();
@@ -38,7 +38,7 @@ test('a shortcut added in the sheet works in the notebook and survives a reload'
   await sheet.getByRole('button', { name: 'Done' }).click();
 
   const before = await cells.count();
-  await cells.first().locator('.jp-InputPrompt').click();
+  await selectCell(page, 0);
   await page.keyboard.press('n');
   await expect(cells).toHaveCount(before + 1);
 
