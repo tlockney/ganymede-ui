@@ -7,7 +7,7 @@ import {
   saveConfig,
   signedInHere,
 } from './lib/backends';
-import { initialConfig, isAppServer, sameBackend } from './lib/app-config';
+import { initialConfig, isAppOrMountedServer, isAppServer, sameBackend } from './lib/app-config';
 import { offersDevice } from './lib/kernel-device';
 import { useKernelPlaces } from './lib/kernel-place';
 import { reportMoved } from './lib/kernel-relay';
@@ -916,8 +916,9 @@ export function App() {
     [],
   );
   // The Apple apps edit other files in their own editor, on their own
-  // server: the one this page came from.
-  const editsFiles = canOpenFiles() && !!backend && isAppServer(backend.config);
+  // server or its mount of a connected machine: the one this page came
+  // from, whatever it mounts (#855).
+  const editsFiles = canOpenFiles() && !!backend && isAppOrMountedServer(backend.config);
 
   const dirty = !!openPath && controller?.path === openPath && controller.dirty;
   useEffect(() => postDocument({ path: openPath ?? null, dirty }), [openPath, dirty]);

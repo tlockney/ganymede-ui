@@ -15,7 +15,8 @@ struct FolderSidebar: View {
     /// Where the files are: this Mac's disk, for now (#737).
     var source: any FileSource = LocalFileSource()
     /// The window's place: a machine's items can't be revealed in the
-    /// Finder or opened in the text editor, which read this Mac's disk (#740).
+    /// Finder, which lists this Mac's disk, but the text editor opens them
+    /// through the app's mount (#740, #855).
     var place: Place = .thisDevice
     /// The machine's name for words about it, when the window is a machine's.
     var machineName: String?

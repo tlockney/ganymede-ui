@@ -617,7 +617,7 @@ struct ContentView: View {
                     folder: sidebarRoot, source: source, place: place, page: pageModel,
                     panel: place.isThisDevice ? panel : nil
                 ) { path in
-                    openWindow(value: EditorRequest(path: path, machine: place.machineID))
+                    openWindow(value: EditorRequest(path: path, place: place))
                 }
                 // A restarted server has a new address and token.
                 .id(place.isMachine ? model.serverURL : nil)
@@ -1037,7 +1037,7 @@ struct ContentView: View {
     /// detail area (#251), full screen on iPhone. The request names the
     /// window's place, so a machine's file opens through its mount (#855).
     private func openEditor(_ path: String) {
-        let request = EditorRequest(path: path, machine: place.machineID)
+        let request = EditorRequest(path: path, place: place)
         if isPhone {
             editing = request
         } else {
@@ -1152,7 +1152,7 @@ struct ContentView: View {
                     url: url, onNavigate: follow, document: document, page: pageModel,
                     onOpenTab: openTab,
                     onOpenFile: { path in
-                        openWindow(value: EditorRequest(path: path, machine: place.machineID))
+                        openWindow(value: EditorRequest(path: path, place: place))
                     },
                     place: place, sharesName: sharesName(for: place)
                 )

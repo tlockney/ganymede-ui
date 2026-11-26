@@ -188,9 +188,7 @@ final class IPadOpenFiles {
 
     func document(for request: EditorRequest) -> EditorDocument {
         if let document = documents[request] { return document }
-        let document = EditorDocument(
-            path: request.path, machine: request.machine,
-            endpoint: EditorDocument.endpoint(machine: request.machine))
+        let document = EditorDocument(request)
         documents[request] = document
         return document
     }

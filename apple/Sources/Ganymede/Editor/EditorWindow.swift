@@ -15,15 +15,11 @@ struct EditorWindow: View {
 
     #if os(macOS)
     init(request: EditorRequest) {
-        _document = State(initialValue: EditorDocument(
-            path: request.path, machine: request.machine,
-            endpoint: EditorDocument.endpoint(machine: request.machine)))
+        _document = State(initialValue: EditorDocument(request))
     }
     #else
     init(request: EditorRequest, onClose: (() -> Void)? = nil) {
-        _document = State(initialValue: EditorDocument(
-            path: request.path, machine: request.machine,
-            endpoint: EditorDocument.endpoint(machine: request.machine)))
+        _document = State(initialValue: EditorDocument(request))
         self.onClose = onClose
     }
 

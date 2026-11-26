@@ -34,21 +34,59 @@ final class EditorRequestTests: XCTestCase {
         XCTAssertEqual(try JSONDecoder().decode(EditorRequest.self, from: data), remote)
     }
 
-    func testTheIPadsStackKeepsAPlacesFilesApart() {
-        let local = EditorRequest(path: "/a.txt")
-        let remote = EditorRequest(path: "/a.txt", machine: id)
-        var stack = FileStack.opening(local, in: [EditorRequest]())
-        stack = FileStack.opening(remote, in: stack)
-        // The same path in a machine's window is another file over the notebook.
-        XCTAssertEqual(stack, [local, remote])
-        // Leaving a place takes its files with it (`switchPlace` shows the
-        // notebook, which empties the stack), never the other place's.
-        XCTAssertEqual(FileStack.opening(local, in: stack).last, local)
-        XCTAssertEqual(stack.filter { $0.machine == nil }, [local])
-        XCTAssertEqual(FileStack.closing(remote, in: stack), [local])
+    func testARequestNamesItsPlacesFile() {
+        let here = EditorRequest(path: "/a.txt", place: .thisDevice)
+        XCTAssertEqual(here.path, "/a.txt")
+        XCTAssertNil(here.machine)
+        XCTAssertEqual(here.thisDevicePath, "/a.txt")
+        let there = EditorRequest(path: "/a.txt", place: .machine(id))
+        XCTAssertEqual(there.path, "/a.txt")
+        XCTAssertEqual(there.machine, id)
+        XCTAssertNil(there.thisDevicePath)
+        XCTAssertNotEqual(here, there)
     }
 
     // MARK: where it reads its file
+
+    func testThisDevicesFileIsOnThisDevicesServer() throws {
+        let server = try XCTUnwrap(ServerEndpoint(string: "http://127.0.0.1:8123", token: "abc"))
+        let request = EditorRequest(path: "/a.txt", place: .thisDevice)
+        XCTAssertNil(request.endpoint(local: nil))
+        XCTAssertEqual(request.endpoint(local: server), server)
+    }
+
+    func testAMachinesFileIsOnTheAppsMountOfIt() throws {
+        let server = try XCTUnwrap(ServerEndpoint(string: "http://127.0.0.1:8123", token: "abc"))
+        let mounted = try XCTUnwrap(EditorRequest(path: "notes/a.txt", place: .machine(id)).endpoint(local: server))
+        XCTAssertEqual(mounted.base.absoluteString, "http://127.0.0.1:8123/machines/\(id)/")
+        XCTAssertEqual(mounted.token, "abc")
+        XCTAssertEqual(
+            mounted.request("api/contents/notes/a.txt").url?.path,
+            "/machines/\(id)/api/contents/notes/a.txt")
+        // The mount's root: a leading slash adds no segment.
+        XCTAssertNotNil(EditorRequest(path: "/notes/a.txt", place: .machine(id)).endpoint(local: server))
+        // No server, nowhere to read it.
+        XCTAssertNil(EditorRequest(path: "notes/a.txt", place: .machine(id)).endpoint(local: nil))
+    }
+
+    func testAMachineIDTheAppDoesntKnowGetsNoEndpoint() throws {
+        let server = try XCTUnwrap(ServerEndpoint(string: "http://127.0.0.1:8123", token: "abc"))
+        // A request saved by another build can name an id `Place` refuses,
+        // and the mount would be asked for a path that isn't a machine's.
+        for bad in ["", "a/b", "../x", "a b", String(repeating: "x", count: 65)] {
+            XCTAssertNil(EditorRequest(path: "/a.txt", machine: bad).endpoint(local: server), bad)
+        }
+        // Never this device's server instead, which would open a path of
+        // this Mac's.
+        XCTAssertNil(EditorRequest(path: "/a.txt", machine: "a/b").endpoint(local: server))
+    }
+
+    func testAMachinePathThatLeavesItsRootGetsNoEndpoint() throws {
+        let server = try XCTUnwrap(ServerEndpoint(string: "http://127.0.0.1:8123", token: "abc"))
+        for bad in ["a/../b", "./a", "a//b", "", "/a/../b", "a/"] {
+            XCTAssertNil(EditorRequest(path: bad, place: .machine(id)).endpoint(local: server), bad)
+        }
+    }
 
     func testAMachinesFileIsReadThroughTheAppsMount() throws {
         let server = try XCTUnwrap(ServerEndpoint(string: "http://127.0.0.1:8123", token: "abc"))
@@ -77,7 +115,10 @@ final class EditorRequestTests: XCTestCase {
     }
 
     func testAMachineThatIsNotMountedSaysSoAsTheSidebarDoes() throws {
-        let mount = try failure(status: 404, body: "No machine \"\(id)\" is mounted")
+        // The mount's 404 is JSON, as the sidebar's reads find it (#855).
+        let mount = try failure(
+            status: 404,
+            body: #"{"message": "No machine \#(id) is mounted", "reason": null}"#)
         XCTAssertEqual(mount.status, 404)
         XCTAssertEqual(
             FileSourceError.textFileMessage(mount, machine: id, name: "m4mini"),

@@ -1,19 +1,17 @@
 import Foundation
 
-/// An editor's file, when it is a connected machine's (#855): the app's
+/// An editor's file when it is a connected machine's (#855): the app's
 /// server mounts each machine under `/machines/{id}/`, with the machine's
 /// token behind it, so the editor's `/api/contents` reads and writes there.
-/// What needs the app model: the endpoint, and the machine's name in the
-/// words for a failure.
+/// What needs the app model: the server to ask, and the machine's name in
+/// the words for a failure.
 extension EditorDocument {
-    /// Where the document reads and writes its file, asked each time so a
-    /// restarted server's new address and token are picked up: this
-    /// device's server, or the machine's mount on it. A machine whose id
-    /// isn't one gets no endpoint, never this device's server, which would
-    /// open a path of this Mac's instead.
-    static func endpoint(machine: String?) -> @MainActor () -> ServerEndpoint? {
-        guard let machine else { return { AppModel.shared.localServer } }
-        return { AppModel.shared.localServer?.mounted(machine: machine) }
+    /// A document for `request`'s file, through this device's server or the
+    /// app's mount of its machine (`EditorRequest.endpoint(local:)`). The
+    /// server is asked on every read and write, so a restarted server's new
+    /// address and token are picked up.
+    convenience init(_ request: EditorRequest) {
+        self.init(request, local: { AppModel.shared.localServer })
     }
 
     /// What the view says about a read or save that failed: a machine's in

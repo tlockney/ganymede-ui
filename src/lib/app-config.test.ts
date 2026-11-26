@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { initialConfig, isAppServer, sameBackend } from './app-config';
+import { initialConfig, isAppOrMountedServer, isAppServer, sameBackend } from './app-config';
 import { type BackendConfig, saveConfig } from './backends';
 
 beforeEach(() => {
@@ -15,6 +15,15 @@ describe('isAppServer', () => {
     expect(isAppServer({ ...local, machine: 'mini-1' })).toBe(false);
     expect(isAppServer({ ...local, url: 'http://mini:8888' })).toBe(false);
     expect(isAppServer({ kind: 'browser' })).toBe(false);
+  });
+});
+
+describe('isAppOrMountedServer', () => {
+  it('is the app’s server, and its mount of a connected machine (#855)', () => {
+    expect(isAppOrMountedServer(local)).toBe(true);
+    expect(isAppOrMountedServer({ ...local, machine: 'mini-1' })).toBe(true);
+    expect(isAppOrMountedServer({ ...local, url: 'http://mini:8888' })).toBe(false);
+    expect(isAppOrMountedServer({ kind: 'browser' })).toBe(false);
   });
 });
 

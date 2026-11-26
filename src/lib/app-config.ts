@@ -31,6 +31,12 @@ export function isAppServer(config: BackendConfig): boolean {
   return config.kind === 'ganymede' && config.url === '' && !config.machine;
 }
 
+/** The Apple app's server or its mount of a connected machine (#855):
+ *  where the app's own editor can open files. */
+export function isAppOrMountedServer(config: BackendConfig): boolean {
+  return config.kind === 'ganymede' && config.url === '';
+}
+
 /** Whether two configs reach the same notebooks, whatever the token. */
 export function sameBackend(a: BackendConfig, b: BackendConfig): boolean {
   if (a.kind !== 'ganymede' || b.kind !== 'ganymede') return a.kind === b.kind;

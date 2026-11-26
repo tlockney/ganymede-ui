@@ -1023,7 +1023,7 @@ describe('App', () => {
     vi.unstubAllGlobals();
   });
 
-  it('opens other files in the app’s editor, only on the app’s own server', async () => {
+  it('opens other files in the app’s editor, on the app’s server or its mount of a machine (#855)', async () => {
     const opened: unknown[] = [];
     vi.stubGlobal('webkit', {
       messageHandlers: { openFile: { postMessage: (m: unknown) => opened.push(m) } },
@@ -1031,10 +1031,10 @@ describe('App', () => {
     localStorage.setItem('ganymede-ui:backend', JSON.stringify({ kind: 'ganymede', url: '' }));
     const tree = { '': [{ name: 'notes.md', type: 'file' as const }] };
     mocks.connect.mockResolvedValue(fakeBackend(fakeServices(tree).services));
-    const { unmount } = render(<App />);
+    const here = render(<App />);
     await userEvent.click(await screen.findByText('notes.md'));
     expect(opened).toEqual([{ path: 'notes.md' }]);
-    unmount();
+    here.unmount();
 
     // Another server's files aren't the app's to open.
     mocks.connect.mockResolvedValue(
@@ -1044,7 +1044,7 @@ describe('App', () => {
         token: '',
       }),
     );
-    render(<App />);
+    const remote = render(<App />);
     // Not opened, though its file menu still works.
     const notes = (await screen.findByText('notes.md')).closest('button')!;
     expect(notes).toHaveAttribute('aria-disabled', 'true');
@@ -1053,6 +1053,34 @@ describe('App', () => {
     // Nor do the app's renames and deletes move its Recents (#240).
     const gone = JSON.stringify({ from: 'notes.md', to: null });
     expect(await window.ganymede!.command('file-moved', gone)).toBe(false);
+    remote.unmount();
+
+    // A machine window is the same server's mount, so its files open too,
+    // and its search says so (#855).
+    const states: Record<string, unknown>[] = [];
+    vi.stubGlobal('webkit', {
+      messageHandlers: {
+        openFile: { postMessage: (m: unknown) => opened.push(m) },
+        state: { postMessage: (m: Record<string, unknown>) => states.push(m) },
+      },
+    });
+    mocks.connect.mockImplementation(async c => fakeBackend(fakeServices(tree).services, c));
+    history.replaceState(null, '', '/?machine=mini-1&machine_name=m4mini');
+    const machine = render(<App />);
+    await userEvent.click(await screen.findByText('notes.md'));
+    expect(opened).toEqual([{ path: 'notes.md' }, { path: 'notes.md' }]);
+    machine.unmount();
+
+    // Its search says the app opens the machine's files too (#855).
+    history.replaceState(null, '', '/?machine=mini-1&machine_name=m4mini&chrome=native');
+    render(<App />);
+    expect(await window.ganymede!.command('search', JSON.stringify({ query: 'notes' }))).toBe(true);
+    await waitFor(() =>
+      expect(states.at(-1)?.search).toMatchObject({
+        matches: [{ path: 'notes.md', name: 'notes.md' }],
+        opensFiles: true,
+      }),
+    );
     vi.unstubAllGlobals();
   });
 

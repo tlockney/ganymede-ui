@@ -78,14 +78,10 @@ struct TextFileClient: Sendable {
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
         guard (200..<300).contains(status) else {
-            var message = (json?["message"] as? String).flatMap { $0.isEmpty ? nil : $0 }
-            // The mount's 404 for a machine it hasn't mounted is plain
-            // text (#855): kept, so the editor says it in the sidebar's
-            // words rather than "the file no longer exists".
-            if message == nil, status == 404,
-               FileSourceError.isNotMounted(String(decoding: data, as: UTF8.self)) {
-                message = String(decoding: data, as: UTF8.self)
-            }
+            // The mount's 404 for a machine it hasn't mounted is JSON, as
+            // every other error is: `{"message": "No machine \"<id>\" is
+            // mounted", "reason": null}` (#855).
+            let message = (json?["message"] as? String).flatMap { $0.isEmpty ? nil : $0 }
             switch status {
             case 404:
                 throw Failure(message: message ?? "The file no longer exists.", status: status)
