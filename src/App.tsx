@@ -1239,6 +1239,7 @@ export function App() {
                 backend={backend}
                 path={openPath}
                 places={places}
+                native={native}
                 onController={setController}
                 onRenamed={followRename}
               />

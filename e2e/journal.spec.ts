@@ -5,7 +5,7 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { crc32, deflateSync } from 'node:zlib';
 import { expect, test, type Browser, type Page } from '@playwright/test';
-import { APP_URL, ROOT_DIR } from './env';
+import { APP_URL, ROOT_DIR, TOKEN } from './env';
 import { openWithToken, removeFromServer, sidebarItem, waitForReady } from './helpers';
 
 const FREMONT = 'Fremont Bridge.ipynb';
@@ -79,6 +79,39 @@ test('fits the eyebrow inside the notebook view’s header (#852)', async ({ pag
   expect(box!.y).toBeGreaterThanOrEqual(toolbar!.y);
   expect(box!.y + box!.height).toBeLessThanOrEqual(toolbar!.y + toolbar!.height);
   expect(after!.height).toBe(before.height);
+});
+
+// The Apple apps draw no toolbar (`chrome=native`, #205), so the page itself
+// says what the notebook is, as the toolbar's eyebrow does: above the first
+// cell, in the cells' column, with the notebook starting below it (#867).
+test('says what the notebook is above its first cell with the native chrome (#867)', async ({
+  page,
+}) => {
+  await page.goto(`/?token=${TOKEN}&kernels=server&chrome=native&open=${encodeURIComponent(FILE)}`);
+  const journal = page.getByRole('region', { name: `Journal of ${FILE}` });
+  await expect(journal).toBeVisible();
+  // The journal's header has the eyebrow while the journal shows.
+  await expect(page.locator('.page-eyebrow')).toHaveCount(0);
+  await journal.getByRole('button', { name: 'Open as Notebook' }).click();
+  await expect(page.locator('.jp-Cell')).toHaveCount(3);
+
+  await expect(page.locator('.toolbar')).toHaveCount(0);
+  const eyebrow = page.locator('.page-eyebrow');
+  await expect(eyebrow).toHaveText(/^typescript · /);
+  const [line, notebook, first] = await Promise.all([
+    eyebrow.boundingBox(),
+    page.locator('.notebook-page').boundingBox(),
+    page.locator('.jp-Cell').first().boundingBox(),
+  ]);
+  // Above the notebook's page, and the page starts below the line rather
+  // than under it.
+  expect(line!.y + line!.height).toBeLessThanOrEqual(notebook!.y + 0.5);
+  expect(notebook!.y).toBeLessThanOrEqual(first!.y);
+  // In the cells' column: the line's text starts where the cell's edge does.
+  const textLeft = await eyebrow.evaluate(
+    el => el.getBoundingClientRect().x + parseFloat(getComputedStyle(el).paddingLeft),
+  );
+  expect(textLeft).toBeCloseTo(first!.x, 0);
 });
 
 test('opens an agent’s notebook as a journal, and writes a note and a request', async ({

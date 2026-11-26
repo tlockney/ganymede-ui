@@ -6,6 +6,7 @@ import {
   forgetChosenViews,
   journalHeader,
   moveChosenViews,
+  notebookTitle,
   attachmentDataUrl,
   cellTrusted,
   trustedCellIds,
@@ -422,6 +423,13 @@ describe('journalHeader', () => {
     ).toEqual({ eyebrow: 'python', title: 'Io moons', details: ['1 cell'] });
     expect(journalHeader({}, [], 'x.ipynb').details).toEqual(['0 cells']);
     expect(journalHeader({}, [], 'x.ipynb').eyebrow).toBe('');
+  });
+
+  it('reads a notebook’s title only when it is a non-empty string (#867)', () => {
+    expect(notebookTitle({ title: 'Io moons' })).toBe('Io moons');
+    expect(notebookTitle({ title: '  ' })).toBeUndefined();
+    expect(notebookTitle({ title: 4 })).toBeUndefined();
+    expect(notebookTitle(undefined)).toBeUndefined();
   });
 });
 

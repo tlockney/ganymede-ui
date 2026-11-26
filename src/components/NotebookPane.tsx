@@ -224,6 +224,12 @@ type Props = {
   path: string;
   /** Where the server runs kernels, when that is a remote (#832). */
   places?: KernelPlaces;
+  /**
+   * The Apple apps draw the sidebar and toolbar themselves (`chrome=native`,
+   * #205): the page has no header, so it shows the journal's eyebrow above
+   * the first cell instead (#867).
+   */
+  native?: boolean;
   onController(c: NotebookController | undefined): void;
   /** The file at `from` was renamed to `to`: open it there, if it is still the one open. */
   onRenamed?(from: string, to: string): void;
@@ -395,7 +401,7 @@ class FileLocked extends Error {}
  * JupyterLab document context, so the same code saves to a Ganymede server
  * or to the browser's own storage.
  */
-export function NotebookPane({ backend, path, places, onController, onRenamed }: Props) {
+export function NotebookPane({ backend, path, places, native, onController, onRenamed }: Props) {
   // A page for a connected machine (#701).
   const onMachine = backend.config.kind === 'ganymede' && !!backend.config.machine;
   // A ref, not a dependency of the controller effect: a parent that
@@ -1809,6 +1815,9 @@ export function NotebookPane({ backend, path, places, onController, onRenamed }:
           {machineName} went offline · Reconnecting…
         </div>
       )}
+      {/* The Apple apps draw no toolbar, so the page says what the notebook
+       * is above its first cell, as the toolbar's eyebrow does (#867). */}
+      {native && !journal && eyebrow && <p className="page-eyebrow">{eyebrow}</p>}
       <div className="notebook-page" ref={host} hidden={journal} />
       {journal && (
         <JournalView

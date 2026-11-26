@@ -282,6 +282,7 @@ function setup(
   path = 'moons/Io.ipynb',
   config?: BackendConfig,
   places?: KernelPlaces,
+  native = false,
 ) {
   const fake = fakeServices();
   if (serverSettings) Object.assign(fake.services, { serverSettings });
@@ -294,6 +295,7 @@ function setup(
       backend={fakeBackend(fake.services, config)}
       path={path}
       places={places}
+      native={native}
       onController={onController}
       onRenamed={onRenamed}
     />,
@@ -366,6 +368,35 @@ describe('NotebookPane', () => {
 
     act(() => latest()!.toggleJournal());
     await waitFor(() => expect(latest()!.journal).toBe(true));
+  });
+
+  it('says what the notebook is above its first cell in the native chrome (#867)', async () => {
+    const { latest } = setup(
+      vi.fn(async () => ({ path: 'moons/Io.ipynb', content: kept() })),
+      'moons/Io.ipynb',
+      undefined,
+      undefined,
+      true,
+    );
+    await waitFor(() => expect(latest()?.journal).toBe(true));
+    // The journal's header has the eyebrow; the page's line waits for the cells.
+    expect(document.querySelector('.page-eyebrow')).not.toBeInTheDocument();
+
+    act(() => latest()!.toggleJournal());
+    await waitFor(() => expect(latest()!.journal).toBe(false));
+    expect(document.querySelector('.page-eyebrow')).toHaveTextContent('python · 20 Nov 2026');
+    // In the page, above the notebook's cells.
+    const eyebrow = document.querySelector('.page-eyebrow')!;
+    const page = document.querySelector('.notebook-page')!;
+    expect(eyebrow.nextElementSibling).toBe(page);
+  });
+
+  it('shows no page eyebrow in the toolbar chrome (#867)', async () => {
+    const { latest } = setup(vi.fn(async () => ({ path: 'moons/Io.ipynb', content: kept() })));
+    await waitFor(() => expect(latest()?.journal).toBe(true));
+    act(() => latest()!.toggleJournal());
+    await waitFor(() => expect(latest()!.journal).toBe(false));
+    expect(document.querySelector('.page-eyebrow')).not.toBeInTheDocument();
   });
 
   it('tells the journal which agents are in its room, from the server (#724)', async () => {
