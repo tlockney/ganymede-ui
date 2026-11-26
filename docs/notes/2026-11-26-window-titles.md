@@ -47,12 +47,13 @@ journal's window was titled with its file's name — the day it started,
   `chrome=native` and checks the line's text, that the page starts below
   it and that its text starts where the cell's edge does, and another
   that finds the line on an iPad and not on a phone.
-- Checked with `npm run check`, `npm run test`, the vitest files above,
-  that e2e, and `xcodebuild test` for the `Ganymede` scheme on macOS
-  (`PageStateTests` and `WindowTargetTests`, after `bootstrap.sh`; the app
-  target builds ContentView with them).
+- The folded strips that label a filled window (`FoldedStrip`, #250) use
+  the window's title too: `displayTitle` with the page's `metadata.title`
+  and a machine's name, so a notebook the page titled says that where the
+  strip has room for words and in its help. The sidebar beside it keeps
+  the file's name.
 
-Left undone: the folded strips that label a filled window still use the
-target's `title`, the file's name, where the window's own title now says
-the notebook's. They are a row of a few characters, and the sidebar next
-to them keeps the file's name.
+Checked with `npm run check`, `npm run test`, the vitest files above,
+that e2e, and `xcodebuild test` for the `Ganymede` scheme on macOS
+(`PageStateTests` and `WindowTargetTests`, after `bootstrap.sh`; the app
+target builds ContentView with them).

@@ -713,6 +713,13 @@ struct ContentView: View {
         }
     }
 
+    /// The notebook's title for its strip while another area fills the
+    /// window (#250, #867): the window's own, so a notebook the page
+    /// titled says that, not its file's name.
+    private var notebookTitle: String {
+        (target ?? loaded).displayTitle(machineName: machineName, metadataTitle: pageModel.state.title)
+    }
+
     /// The leading strip while an area fills the window: the sidebar, and
     /// the notebook when it is folded.
     private var leadingStrip: [FoldedStrip.Item] {
@@ -722,7 +729,7 @@ struct ContentView: View {
         }
         // A filled panel has the notebook's row over it instead.
         if layout.filled == .inspector {
-            items.append(.init(title: (target ?? loaded).title, systemImage: "doc.text") { layout.restore() })
+            items.append(.init(title: notebookTitle, systemImage: "doc.text") { layout.restore() })
             if panel.isShown {
                 items.append(.init(title: "Terminal Panel", systemImage: "rectangle.bottomthird.inset.filled") {
                     layout.restore()
@@ -743,7 +750,7 @@ struct ContentView: View {
                     .overlay {
                         if panelFills {
                             FoldedStrip(
-                                items: [.init(title: (target ?? loaded).title, systemImage: "doc.text") { layout.restore() }],
+                                items: [.init(title: notebookTitle, systemImage: "doc.text") { layout.restore() }],
                                 axis: .horizontal
                             )
                             .background(.bar)
