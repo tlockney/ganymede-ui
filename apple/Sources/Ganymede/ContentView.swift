@@ -147,20 +147,22 @@ struct ContentView: View {
         }
         .toolbar {
             // New Notebook takes `sidebarRoot` by its server path, a
-            // machine's too; a machine's window has no panel (#740).
+            // machine's too (#740).
             NotebookToolbar(
                 page: pageModel, document: document, folder: sidebarRoot,
+                // The kernel popover's Kernel Log is this device's window's
+                // alone (#858), so a machine's window passes no panel to it.
                 panel: place.isThisDevice ? panel : nil, place: place, header: headerStatus)
-            // The panel's shells are on this Mac: none for a machine's window.
-            if place.isThisDevice {
-                ToolbarItem {
-                    Button {
-                        panel.toggle(startingOn: .local(folder: sidebarRoot))
-                    } label: {
-                        Label(panel.isShown ? "Hide Terminal Panel" : "Show Terminal Panel", systemImage: "rectangle.bottomthird.inset.filled")
-                    }
-                    .help(panel.isShown ? "Hide the terminal panel (⌃`)" : "Show the terminal panel (⌃`)")
+            // The panel is every window's: a machine's terminals run on the
+            // machine (#858), and a machine whose remote is gone keeps its
+            // panel too, empty, for the remotes' terminals there.
+            ToolbarItem {
+                Button {
+                    panel.toggle(startingOn: windowTerminal)
+                } label: {
+                    Label(panel.isShown ? "Hide Terminal Panel" : "Show Terminal Panel", systemImage: "rectangle.bottomthird.inset.filled")
                 }
+                .help(panel.isShown ? "Hide the terminal panel (⌃`)" : "Show the terminal panel (⌃`)")
             }
             // Only a tab with a notebook has an inspector (#729).
             if showsNotebook {
@@ -269,7 +271,7 @@ struct ContentView: View {
             panel.resize(to: panelHeight, available: .infinity)
             // Shells don't outlive the app: a panel that was showing comes
             // back with a new one, as ⌃` would start.
-            if panelShown, place.isThisDevice { panel.show(startingOn: .local(folder: sidebarRoot)) }
+            if panelShown { panel.show(startingOn: windowTerminal) }
         }
         .onChange(of: panel.isShown) { _, shown in
             panelShown = shown
@@ -413,11 +415,9 @@ struct ContentView: View {
                         if !tall, !mainFills { columns = .automatic }
                     }
                 }
-                // The terminal panel's shells are this device's.
-                .focusedSceneValue(
-                    \.iPadPanel,
-                    place.allows(.localTerminal) ? IPadPanelToggle(shown: panelShown, toggle: togglePanel) : nil
-                )
+                // Every scene has the panel: a machine's terminals run on
+                // the machine (#858), the rest on remotes.
+                .focusedSceneValue(\.iPadPanel, IPadPanelToggle(shown: panelShown, toggle: togglePanel))
                 .onAppear { panel.resize(to: panelHeight, available: .infinity) }
                 .onChange(of: panel.height) { _, new in panelHeight = new }
                 // However the last terminal closed, the next one opens
@@ -590,6 +590,15 @@ struct ContentView: View {
     /// The window's place, from what it was loaded for.
     private var place: Place { loaded.place }
 
+    /// What a new terminal in this window runs on (#858), as File > New
+    /// Terminal and the panel's + ask: the place decides, from the folder of
+    /// the notebook the window shows, else the folder the window is on. Nil
+    /// for a machine whose remote was removed or has no server.
+    private var windowTerminal: TerminalTarget? {
+        WindowScope(place: place, serverFolder: FolderEntry.serverPath(sidebarRoot))
+            .terminalTarget(notebook: pageModel.state.path, remotes: model.remotes)
+    }
+
     /// A machine's name, for its window's title and subtitle.
     private var machineName: String? { place.machineID.flatMap(model.machineName(_:)) }
 
@@ -615,7 +624,7 @@ struct ContentView: View {
             if let source = fileSource {
                 NavigatorSidebar(
                     folder: sidebarRoot, source: source, place: place, page: pageModel,
-                    panel: place.isThisDevice ? panel : nil
+                    panel: panel
                 ) { path in
                     openWindow(value: EditorRequest(path: path, place: place))
                 }
@@ -740,30 +749,31 @@ struct ContentView: View {
                             .background(.bar)
                         }
                     }
-                if place.isThisDevice {
-                    BottomPanel(
-                        panel: panel,
-                        folder: sidebarRoot,
-                        available: area.size.height,
-                        kernelID: pageModel.state.kernelID,
-                        server: model.serverURL.flatMap(ServerEndpoint.init(serverURL:)),
-                        fills: panelFills,
-                        toggleFill: { layout.toggle(.panel) }
-                    )
-                        // Top-aligned, so a hidden panel's views (AppKit cursor
-                        // rects included) sit below the window, not over the notebook.
-                        .frame(height: panelShows ? nil : 0, alignment: .top)
-                        .clipped()
-                        .opacity(panelShows ? 1 : 0)
-                        .allowsHitTesting(panelShows)
-                        .accessibilityHidden(!panelShows)
-                }
-                if layout.filled == .notebook, place.isThisDevice {
+                BottomPanel(
+                    panel: panel,
+                    newTerminal: windowTerminal,
+                    available: area.size.height,
+                    kernelID: pageModel.state.kernelID,
+                    server: model.serverURL.flatMap(ServerEndpoint.init(serverURL:)),
+                    // A machine's kernel is the machine's, whose log this
+                    // Mac's server doesn't keep (#858).
+                    kernelLog: place.isThisDevice,
+                    fills: panelFills,
+                    toggleFill: { layout.toggle(.panel) }
+                )
+                    // Top-aligned, so a hidden panel's views (AppKit cursor
+                    // rects included) sit below the window, not over the notebook.
+                    .frame(height: panelShows ? nil : 0, alignment: .top)
+                    .clipped()
+                    .opacity(panelShows ? 1 : 0)
+                    .allowsHitTesting(panelShows)
+                    .accessibilityHidden(!panelShows)
+                if layout.filled == .notebook {
                     Divider()
                     FoldedStrip(
                         items: [.init(title: "Terminal Panel", systemImage: "rectangle.bottomthird.inset.filled") {
                             layout.restore()
-                            panel.show(startingOn: .local(folder: sidebarRoot))
+                            panel.show(startingOn: windowTerminal)
                         }],
                         axis: .horizontal
                     )
@@ -902,7 +912,10 @@ struct ContentView: View {
                 .opacity(notebookHidden ? 0 : 1)
                 .allowsHitTesting(!notebookHidden)
                 .accessibilityHidden(notebookHidden)
-                IPadPanel(panel: panel, available: area.size.height, shown: panelShown, filling: $panelFills)
+                IPadPanel(
+                    panel: panel, newTerminal: terminalTarget,
+                    available: area.size.height, shown: panelShown, filling: $panelFills
+                )
                     .frame(height: panelShown ? nil : 0, alignment: .top)
                     .clipped()
                     .opacity(panelShown ? 1 : 0)
@@ -912,8 +925,18 @@ struct ContentView: View {
         }
     }
 
-    /// Whether the iPad's bottom panel is on screen.
-    private var panelShown: Bool { panel.isShown && !mainFills && place.allows(.localTerminal) }
+    /// Whether the iPad's bottom panel is on screen. Every scene has one:
+    /// a machine's terminals run on the machine (#858).
+    private var panelShown: Bool { panel.isShown && !mainFills }
+
+    /// What a new terminal on this scene's own machine runs on (#858), the
+    /// place deciding from the folder of the notebook it shows, as on the
+    /// Mac: nil for this device, whose terminals are the remotes' in the
+    /// panel, as before.
+    private var terminalTarget: TerminalTarget? {
+        guard place.isMachine else { return nil }
+        return place.terminalTarget(notebook: pageModel.state.path, fallbackFolder: "", remotes: model.remotes)
+    }
 
     /// Whether the panel fills the detail area over the notebook.
     private var notebookHidden: Bool { panelFills && panelShown }
@@ -969,26 +992,22 @@ struct ContentView: View {
     }
 
     /// The app's own buttons: terminals, Settings, the notebook folder. A
-    /// machine's scene has no terminals (their shells are on this device) and
-    /// no folder to open (#758).
+    /// machine's scene has terminals, on the machine (#858), and no folder to
+    /// open (#758).
     @ViewBuilder
     private var appButtons: some View {
-        if place.allows(.localTerminal) {
-            TerminalMenu(model: model) { request in
-                // In the bottom panel on iPad (#251), full screen on iPhone.
-                if isPhone {
-                    terminal = request
-                } else {
-                    panel.add(request.target)
-                    mainFills = false
-                }
+        TerminalMenu(model: model, newTerminal: terminalTarget) { request in
+            // In the bottom panel on iPad (#251), full screen on iPhone.
+            if isPhone {
+                terminal = request
+            } else {
+                panel.add(request.target)
+                mainFills = false
             }
         }
         if !isPhone {
-            if place.allows(.localTerminal) {
-                Button(action: togglePanel) {
-                    Label(panelShown ? "Hide Terminal Panel" : "Show Terminal Panel", systemImage: "rectangle.bottomthird.inset.filled")
-                }
+            Button(action: togglePanel) {
+                Label(panelShown ? "Hide Terminal Panel" : "Show Terminal Panel", systemImage: "rectangle.bottomthird.inset.filled")
             }
             Button(action: toggleMainFill) {
                 Label(
@@ -1023,7 +1042,6 @@ struct ContentView: View {
     /// Shows or hides the iPad's bottom panel. Shown, it leaves a filled
     /// screen, so it can be seen.
     private func togglePanel() {
-        guard place.allows(.localTerminal) else { return }
         if panelShown {
             panel.isShown = false
             panelFills = false
@@ -1226,9 +1244,10 @@ private struct KeychainAlert: ViewModifier {
 }
 
 #if os(macOS)
-/// The focused window's values for the menus (#740): the folder and the
-/// terminal panel only for a window of this device, whose shells and disk
-/// they are; the place and server folder for every window.
+/// The focused window's values for the menus (#740): the place, its server
+/// folder and the terminal panel for every window, since a machine's
+/// terminals run in its own panel (#858); this Mac's folder only for a
+/// window of this device, whose disk it is.
 private struct WindowSceneValues: ViewModifier {
     var place: Place
     var folder: URL
@@ -1236,13 +1255,13 @@ private struct WindowSceneValues: ViewModifier {
 
     func body(content: Content) -> some View {
         let scope = WindowScope(place: place, serverFolder: FolderEntry.serverPath(folder))
+        let window = content
+            .focusedSceneValue(\.panelController, panel)
+            .focusedSceneValue(\.windowScope, scope)
         if place.isThisDevice {
-            content
-                .focusedSceneValue(\.windowFolder, folder)
-                .focusedSceneValue(\.panelController, panel)
-                .focusedSceneValue(\.windowScope, scope)
+            window.focusedSceneValue(\.windowFolder, folder)
         } else {
-            content.focusedSceneValue(\.windowScope, scope)
+            window
         }
     }
 }

@@ -929,10 +929,14 @@ with only SSH stays in Settings for shells.
 > [!NOTE]
 > **Unreleased.** Your name going to a connected machine's rooms, the
 > setting that turns it off, the agent's Keychain keys in a machine's
-> window, and opening a machine's text files in the app's editor are
+> window, opening a machine's text files in the app's editor, and
+> terminals in a machine's window (which run on the machine) are
 > available only from a build of `main` (HEAD), not in the latest release,
-> where a machine's window keeps the agent's key in the page's web storage
-> and its text files don't open.
+> where a machine's window keeps the agent's key in the page's web storage,
+> its text files don't open and it has no terminal panel or New Terminal
+> (New Terminal On already works there). The Kernel Log tab is in this
+> device's window only: a machine's kernel runs on the machine, and this
+> Mac's server keeps no log of it.
 
 On the Mac a machine's window is the app's native window: the same
 sidebar (Files, Search, Running, Outline and Journals), toolbar,
@@ -952,12 +956,14 @@ title is the file and the machine ("notes.md · m4mini"), and the same path
 on this Mac and on the machine are two editors. These work on this Mac's
 disk, so a machine's window doesn't have them: Show in Finder, Duplicate
 on a folder (a machine copies files only), the Recents tab, File > Open
-Recent, the terminal panel and its shells. File > New Tab and New Window
+Recent. File > New Tab and New Window
 open on the same machine, not on this Mac. Kernel > Advanced
 and Runs On in the kernel popover set where this Mac's kernels run, so a
-machine's window hides them; File > New Terminal and New Terminal Tab
-start a shell on this Mac, so they are dimmed there (New Terminal On
-still works). The sidebar's place
+machine's window hides them; File > New Terminal and New Terminal Tab, and
+the panel's New Terminal, start a shell on the machine, in the panel, in the
+folder of the notebook the window shows, else the folder the window shows,
+both paths on the machine, so it works on the files the window lists (New
+Terminal On still works). The sidebar's place
 menu shows the machine as the current place, and picking another opens
 its window. Its Journals tab lists that machine's journals.
 
@@ -969,8 +975,10 @@ Files, Search, Running, Outline and Journals tabs (Journals for this
 device too), and the iPhone's list a Journals section when there are
 journals. The scene shows one place at a time: the place menu (the iPad) or
 the Places section (the iPhone) switches to this device or another
-machine, and loads that place's page. A machine's scene has no terminals,
-panel, Recents, Open Example Notebooks, New DuckDB Console, Open Folder
+machine, and loads that place's page. A machine's scene has terminals, in
+its panel, on the machine: the terminal button adds one there and the
+Running tab lists the panel's, as on this device. It has no Recents, Open
+Example Notebooks, New DuckDB Console, Open Folder
 or kernel location choice. A machine's text file opens in the editor over
 the notebook, as this device's do, read and saved through the machine's
 mount; switching place closes it, saving on the way, so it is never left

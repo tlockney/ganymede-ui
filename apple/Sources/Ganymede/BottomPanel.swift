@@ -11,8 +11,10 @@ struct BottomPanel: View {
     @Environment(AppModel.self) private var model
     @Environment(\.openWindow) private var openWindow
     var panel: PanelController
-    /// Where a new local terminal starts: the window's folder.
-    let folder: URL
+    /// What a new terminal in the panel runs on (#858): a shell on this Mac,
+    /// in the window's folder, or on the machine the window shows. Nil for a
+    /// window with none to start, whose panel offers the remotes' only.
+    let newTerminal: TerminalTarget?
     /// The height of the area the notebook and panel share, for the limit
     /// on how tall the panel gets.
     let available: Double
@@ -20,6 +22,10 @@ struct BottomPanel: View {
     let kernelID: String?
     /// The server the page uses, which keeps the kernel's log.
     let server: ServerEndpoint?
+    /// Whether the panel has the Kernel Log tab (#858): this device's window
+    /// only. A machine's kernel runs on the machine, and this Mac's server
+    /// keeps no log of it, so a machine's panel has no tab to ask it with.
+    let kernelLog: Bool
     /// It fills the window (#250): as tall as the area, not resizable.
     var fills = false
     /// Its fill control: fills the window, or restores the layout.
@@ -28,6 +34,9 @@ struct BottomPanel: View {
     @State private var titles: [PanelTerminal.ID: String] = [:]
     /// The height when a drag of the top edge began.
     @State private var dragStart: Double?
+
+    /// Whether the Kernel Log is on show: only where the panel has it.
+    private var showsLog: Bool { kernelLog && panel.showsLog }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -47,16 +56,18 @@ struct BottomPanel: View {
             header
             Divider()
             ZStack {
-                KernelLogView(
-                    kernelID: kernelID,
-                    server: server,
-                    active: panel.isShown && panel.showsLog
-                )
-                    .opacity(panel.showsLog ? 1 : 0)
-                    .allowsHitTesting(panel.showsLog)
-                    .accessibilityHidden(!panel.showsLog)
+                if kernelLog {
+                    KernelLogView(
+                        kernelID: kernelID,
+                        server: server,
+                        active: panel.isShown && showsLog
+                    )
+                        .opacity(showsLog ? 1 : 0)
+                        .allowsHitTesting(showsLog)
+                        .accessibilityHidden(!showsLog)
+                }
                 ForEach(panel.terminals) { terminal in
-                    let selected = terminal.id == panel.selection && !panel.showsLog
+                    let selected = terminal.id == panel.selection && !showsLog
                     TerminalWindow(
                         target: terminal.target,
                         inPanel: true,
@@ -75,10 +86,13 @@ struct BottomPanel: View {
                         .allowsHitTesting(selected)
                         .accessibilityHidden(!selected)
                 }
-                if panel.terminals.isEmpty && !panel.showsLog {
+                if panel.terminals.isEmpty && !showsLog {
                     VStack(spacing: 8) {
                         Text("No terminals").foregroundStyle(.secondary)
-                        Button("New Terminal") { panel.add(.local(folder: folder)) }
+                        Button("New Terminal") {
+                            if let newTerminal { panel.add(newTerminal) }
+                        }
+                        .disabled(newTerminal == nil)
                     }
                 }
             }
@@ -95,18 +109,20 @@ struct BottomPanel: View {
         HStack(spacing: 2) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 2) {
-                    PanelTab(
-                        title: "Kernel Log",
-                        systemImage: "doc.plaintext",
-                        selected: panel.showsLog,
-                        select: { panel.showLog() },
-                        close: nil
-                    )
+                    if kernelLog {
+                        PanelTab(
+                            title: "Kernel Log",
+                            systemImage: "doc.plaintext",
+                            selected: showsLog,
+                            select: { panel.showLog() },
+                            close: nil
+                        )
+                    }
                     ForEach(panel.terminals) { terminal in
                         PanelTab(
                             title: titles[terminal.id] ?? model.title(for: terminal.target),
                             systemImage: "terminal",
-                            selected: terminal.id == panel.selection && !panel.showsLog,
+                            selected: terminal.id == panel.selection && !showsLog,
                             select: { panel.select(terminal.id) },
                             close: { close(terminal.id) },
                             moveToTab: { moveToTab(terminal) }
@@ -115,7 +131,7 @@ struct BottomPanel: View {
                 }
                 .padding(.horizontal, 6)
             }
-            NewTerminalMenu(model: model) { panel.add($0) } local: { panel.add(.local(folder: folder)) }
+            NewTerminalMenu(model: model, newTerminal: newTerminal) { panel.add($0) }
             FillButton(fills: fills, area: "panel", action: toggleFill)
             Button {
                 panel.isShown = false
@@ -148,7 +164,7 @@ struct BottomPanel: View {
         // keyboard, so hand it to the notebook here, if a terminal had it
         // (the click on × came from this, the key window). Otherwise the
         // next selected terminal takes it.
-        if panel.terminals.count == 1, !panel.showsLog, let window = NSApp.keyWindow,
+        if panel.terminals.count == 1, !showsLog, let window = NSApp.keyWindow,
            window.firstResponder is TerminalView {
             returnKeyboardToPage(in: window)
         }
@@ -358,16 +374,21 @@ private struct KernelLogView: View {
     }
 }
 
-/// The panel's + menu: a terminal in the window's folder, or on a remote.
+/// The panel's + menu: a terminal in the window's folder or on its machine
+/// (#858), and one on each remote.
 private struct NewTerminalMenu: View {
     var model: AppModel
+    /// The window's own terminal; nil when it has none to start.
+    let newTerminal: TerminalTarget?
     let add: (TerminalTarget) -> Void
-    let local: () -> Void
 
     var body: some View {
+        let remotes = model.remotes.filter { $0.hasServer || $0.ssh != nil }
         Menu {
-            Button("New Terminal", action: local)
-            let remotes = model.remotes.filter { $0.hasServer || $0.ssh != nil }
+            Button("New Terminal") {
+                if let newTerminal { add(newTerminal) }
+            }
+            .disabled(newTerminal == nil)
             if !remotes.isEmpty {
                 Divider()
                 ForEach(remotes) { remote in
@@ -382,7 +403,7 @@ private struct NewTerminalMenu: View {
         } label: {
             Image(systemName: "plus")
         } primaryAction: {
-            local()
+            if let newTerminal { add(newTerminal) }
         }
         .menuStyle(.borderlessButton)
         .fixedSize()
@@ -429,12 +450,15 @@ struct FillButton: View {
 /// terminal don't get ⌃` (NUL); terminals in a tab of their own still do.
 struct PanelCommands: View {
     @FocusedValue(\.panelController) private var panel
-    @FocusedValue(\.windowFolder) private var folder
+    @FocusedValue(\.windowScope) private var scope
+    @FocusedValue(\.pageModel) private var page
     var model: AppModel
 
     var body: some View {
+        // What an empty panel starts, as File > New Terminal would (#858).
+        let target = scope?.terminalTarget(notebook: page?.state.path, remotes: model.remotes)
         Button(panel?.isShown == true ? "Hide Terminal Panel" : "Show Terminal Panel") {
-            panel?.toggle(startingOn: .local(folder: folder ?? model.root))
+            panel?.toggle(startingOn: target)
         }
         .keyboardShortcut("`", modifiers: [.control])
         .disabled(panel == nil)

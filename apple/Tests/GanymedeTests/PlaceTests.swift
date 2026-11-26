@@ -204,6 +204,62 @@ final class PlaceTests: XCTestCase {
         XCTAssertFalse(Place.machine(id).isThisDevice)
     }
 
+    // MARK: terminals (#858)
+
+    func testAWindowsTerminalStartsInItsNotebooksFolderElseTheWindows() {
+        let mini = Remote(name: "mini", serverURL: "http://mini:8888")
+        let remotes = [mini]
+        let machine = Place.machine(mini.id.uuidString)
+        // A machine's window runs its terminal on the machine, in the folder
+        // of the notebook it shows, which the machine's server resolves
+        // against its root.
+        for notebook in ["a/b/nb.ipynb", "/a/b/nb.ipynb"] {
+            XCTAssertEqual(
+                machine.terminalTarget(notebook: notebook, fallbackFolder: "x", remotes: remotes),
+                .server(mini.id, folder: "a/b"), notebook)
+        }
+        // With no notebook open, the folder the window is on.
+        XCTAssertEqual(
+            machine.terminalTarget(notebook: nil, fallbackFolder: "x", remotes: remotes),
+            .server(mini.id, folder: "x"))
+        // A notebook at the machine's root, and a window on the root: the
+        // root itself.
+        XCTAssertEqual(
+            machine.terminalTarget(notebook: "nb.ipynb", fallbackFolder: "x", remotes: remotes),
+            .server(mini.id))
+        XCTAssertEqual(
+            machine.terminalTarget(notebook: nil, fallbackFolder: "", remotes: remotes),
+            .server(mini.id))
+        // This device's window still has a shell of its own, here and on this
+        // Mac's disk, whose paths start at `/`. A window on the root starts
+        // there, as before: not in the app's own folder.
+        XCTAssertEqual(
+            Place.thisDevice.terminalTarget(notebook: "Users/me/nb.ipynb", fallbackFolder: "", remotes: remotes),
+            .local(folder: URL(fileURLWithPath: "/Users/me", isDirectory: true)))
+        XCTAssertEqual(
+            Place.thisDevice.terminalTarget(notebook: nil, fallbackFolder: "Users/me/notes", remotes: remotes),
+            .local(folder: URL(fileURLWithPath: "/Users/me/notes", isDirectory: true)))
+        XCTAssertEqual(
+            Place.thisDevice.terminalTarget(notebook: "nb.ipynb", fallbackFolder: "", remotes: remotes),
+            .local(folder: URL(fileURLWithPath: "/", isDirectory: true)))
+        XCTAssertEqual(
+            Place.thisDevice.terminalTarget(notebook: nil, fallbackFolder: "", remotes: remotes),
+            .local(folder: URL(fileURLWithPath: "/", isDirectory: true)))
+    }
+
+    func testAMachinesTerminalNeedsItsRemoteAndItsServer() {
+        let mini = Remote(name: "mini", serverURL: "http://mini:8888")
+        var shell = Remote(name: "shell")
+        shell.ssh = Remote.SSH(host: "box")
+        // The remote was removed, or saved again with SSH only: there is
+        // nowhere on it to run a terminal.
+        XCTAssertNil(Place.machine(mini.id.uuidString).terminalTarget(notebook: nil, fallbackFolder: "notes", remotes: []))
+        XCTAssertNil(Place.machine(mini.id.uuidString).terminalTarget(notebook: nil, fallbackFolder: "", remotes: [shell]))
+        // Another machine's terminal is not this one's, whatever it offers.
+        XCTAssertNil(Place.machine(mini.id.uuidString).terminalTarget(
+            notebook: nil, fallbackFolder: "", remotes: [shell, Remote(serverURL: "http://other:8888")]))
+    }
+
     // MARK: window targets
 
     func testAMachineTargetRoundTripsThroughSceneStorage() throws {

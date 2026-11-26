@@ -45,8 +45,9 @@ enum Place: Hashable, Codable {
     /// difference.
     func drawsNativeChrome(onMac: Bool, iosDraws: Bool) -> Bool { onMac || iosDraws }
 
-    /// This device's own disk and shells: what Reveal in Finder, the
-    /// terminal panel and local Recents work on.
+    /// This device's own disk and shells: what Reveal in Finder and local
+    /// Recents work on. (A machine's window has a terminal panel of its own,
+    /// with the machine's shells in it, #858.)
     var isThisDevice: Bool { !isMachine }
 
     /// The path the page uses as its server, on the app's own origin.
@@ -86,7 +87,8 @@ enum Place: Hashable, Codable {
         /// Where this Mac's kernels run (Runs On, Kernel > Advanced): a
         /// setting of this device, not of a machine's window.
         case kernelLocation
-        /// File > New Terminal and New Terminal Tab: a shell on this Mac.
+        /// A shell on this device's own server, which only this device has:
+        /// a machine's window runs its terminals on the machine (#858).
         case localTerminal
     }
 
@@ -115,6 +117,33 @@ enum Place: Hashable, Codable {
     /// else is as `allows(_:)`, whatever `sharesName` says.
     func allows(_ capability: Capability, sharesName: Bool) -> Bool {
         (capability == .personName && sharesName) || allows(capability)
+    }
+
+    /// What a new terminal in a window of this place runs on (#858): a shell
+    /// on this device, or one on the server of the machine the window shows,
+    /// so a machine's window starts its terminals where its files are rather
+    /// than on this Mac. It starts in the folder of the notebook the window
+    /// shows, else in `fallbackFolder`, the folder the window is on; both are
+    /// paths from the window's own server's root, "" for the root itself.
+    /// Nil for a machine whose remote was removed, or has no server: it has
+    /// nowhere to run one.
+    func terminalTarget(notebook: String?, fallbackFolder: String, remotes: [Remote]) -> TerminalTarget? {
+        let folder = notebook.map(FolderEntry.parentPath) ?? fallbackFolder
+        switch self {
+        case .thisDevice:
+            // The app's server on this Mac is rooted at `/`, so one of its
+            // paths is a path from there, and "" is `/` itself: a window on
+            // the root starts its shell there, as it did before this was one
+            // place's rule, not in the app's own default folder.
+            return .local(folder: URL(fileURLWithPath: "/" + folder.drop { $0 == "/" }, isDirectory: true))
+        case .machine(let id):
+            // The remote the window was made from, as it is saved now: one
+            // that is gone, or was saved again with SSH only, is no server.
+            guard let remote = remotes.first(where: { $0.id.uuidString == id && $0.hasServer }) else {
+                return nil
+            }
+            return .server(remote.id, folder: folder.isEmpty ? nil : folder)
+        }
     }
 
     /// The script message handlers a window of this place registers. The

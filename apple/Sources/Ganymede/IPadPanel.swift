@@ -5,11 +5,15 @@ import UIKit
 /// The iPad's bottom panel (#251), as the Mac's (#248): terminals as tabs
 /// under the notebook, resized by dragging its top edge. Every terminal
 /// stays in the view tree while the panel is hidden or another tab is
-/// selected, so its session keeps running; closing a tab ends it. The
-/// iPad has no local shell, so its terminals are on remotes.
+/// selected, so its session keeps running; closing a tab ends it. The iPad
+/// has no shell of its own, so its terminals are on the machine the scene
+/// shows (#858) or on remotes.
 struct IPadPanel: View {
     @Environment(AppModel.self) private var model
     var panel: PanelController
+    /// What a new terminal on the scene's machine runs on (#858); nil for
+    /// this device, whose terminals are the remotes' only.
+    let newTerminal: TerminalTarget?
     /// The height of the area the notebook and panel share.
     let available: Double
     /// Whether the panel is on screen: shown, and not under a filled
@@ -45,7 +49,9 @@ struct IPadPanel: View {
                 if panel.terminals.isEmpty {
                     VStack(spacing: 8) {
                         Text("No terminals").foregroundStyle(.secondary)
-                        if remotes.isEmpty {
+                        if let newTerminal {
+                            Button("New Terminal") { panel.add(newTerminal) }
+                        } else if remotes.isEmpty {
                             Text("Add a remote with SSH or a server in Settings.")
                                 .font(.callout)
                                 .foregroundStyle(.secondary)
@@ -94,6 +100,10 @@ struct IPadPanel: View {
                 .padding(.horizontal, 8)
             }
             Menu {
+                if let newTerminal {
+                    Button("New Terminal") { panel.add(newTerminal) }
+                }
+                if newTerminal != nil, !remotes.isEmpty { Divider() }
                 ForEach(remotes) { remote in
                     if remote.ssh != nil {
                         Button("\(remote.title) (SSH)") { panel.add(.ssh(remote.id)) }
@@ -105,7 +115,7 @@ struct IPadPanel: View {
             } label: {
                 Image(systemName: "plus").frame(width: 44, height: 44)
             }
-            .disabled(remotes.isEmpty)
+            .disabled(newTerminal == nil && remotes.isEmpty)
             .accessibilityLabel("New Terminal")
             Button {
                 filling.toggle()

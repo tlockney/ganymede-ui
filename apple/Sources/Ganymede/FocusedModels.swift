@@ -25,4 +25,16 @@ struct WindowScope: Equatable {
     var place: Place
     var serverFolder: String
 }
+
+extension WindowScope {
+    /// The terminal a new one in this window opens (#858), which the place
+    /// decides: a shell on this Mac, or on the machine the window shows. It
+    /// starts in the folder of the notebook the window shows, when the page
+    /// has one, else in the folder the window is on; both are paths on the
+    /// window's server. Nil for a machine whose remote is gone or has no
+    /// server.
+    func terminalTarget(notebook: String?, remotes: [Remote]) -> TerminalTarget? {
+        place.terminalTarget(notebook: notebook, fallbackFolder: serverFolder, remotes: remotes)
+    }
+}
 #endif
