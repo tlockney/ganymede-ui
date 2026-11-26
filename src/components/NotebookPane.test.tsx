@@ -57,10 +57,13 @@ vi.mock('../lib/jupyterlab', async () => {
         mode?: string;
         deselectAll(): void;
         scrollToCell(cell: unknown, align?: string): Promise<void>;
+        scrollToItem(index: number, align?: string, margin?: number): Promise<void>;
+        select(cell: unknown): void;
       };
       // Its cells, with the active one selected, for what a run needs.
       // Each cell has a node in the notebook's, which a test can give a layout.
       const cellNodes: HTMLElement[] = [];
+      const activates: (() => void)[] = [];
       Object.defineProperty(w, 'widgets', {
         get: () =>
           Array.from({ length: w.model!.cells.length }, (_, i) => {
@@ -69,7 +72,11 @@ vi.mock('../lib/jupyterlab', async () => {
               cellNodes[i]!.dataset.notebookCell = String(i);
               w.node.append(cellNodes[i]!);
             }
-            return { model: w.model!.cells.get(i), node: cellNodes[i] };
+            return {
+              model: w.model!.cells.get(i),
+              node: cellNodes[i],
+              activate: (activates[i] ??= vi.fn()),
+            };
           }),
       });
       w.isSelectedOrActive = cell =>
@@ -80,6 +87,9 @@ vi.mock('../lib/jupyterlab', async () => {
       // The outline goes to a heading's cell (#212).
       w.deselectAll = vi.fn();
       w.scrollToCell = vi.fn(async () => {});
+      // Back from the journal, with no margin above the cell (#841).
+      w.scrollToItem = vi.fn(async () => {});
+      w.select = vi.fn();
       (w as unknown as { rendermime: unknown }).rendermime = rendermime;
       fakes.notebooks.push(w);
       return w;
@@ -632,18 +642,29 @@ describe('NotebookPane', () => {
       });
       const notebook = fakes.notebooks[0] as {
         activeCellIndex: number;
-        scrollToCell: ReturnType<typeof vi.fn>;
-        model: NotebookModel;
+        scrollToItem: ReturnType<typeof vi.fn>;
+        select: ReturnType<typeof vi.fn>;
+        deselectAll: ReturnType<typeof vi.fn>;
+        widgets: { model: unknown; activate: ReturnType<typeof vi.fn> }[];
       };
       act(() => latest()!.toggleJournal());
-      await waitFor(() => expect(notebook.scrollToCell).toHaveBeenCalledOnce());
+      // Flush at the top: no margin above it (#841).
+      await waitFor(() =>
+        expect(notebook.scrollToItem).toHaveBeenCalledExactlyOnceWith(5, 'start', 0),
+      );
       expect(notebook.activeCellIndex).toBe(5);
-      const [cell, align] = notebook.scrollToCell.mock.calls[0] as unknown as [
-        { model: unknown },
-        string,
-      ];
-      expect(cell.model).toBe(notebook.model.cells.get(5));
-      expect(align).toBe('start');
+      await waitFor(() => expect(notebook.select).toHaveBeenCalledOnce());
+      expect((notebook.select.mock.calls[0]![0] as { model: unknown }).model).toBe(
+        notebook.widgets[5]!.model,
+      );
+      // scrollToCell's steps, once the scroll is done: the cell alone is
+      // selected, and its editor activated.
+      expect(notebook.widgets[5]!.activate).toHaveBeenCalledOnce();
+      const scrolled = notebook.scrollToItem.mock.invocationCallOrder[0]!;
+      expect(notebook.deselectAll.mock.invocationCallOrder.at(-1)!).toBeGreaterThan(scrolled);
+      expect(notebook.select.mock.invocationCallOrder[0]!).toBeGreaterThan(
+        notebook.deselectAll.mock.invocationCallOrder.at(-1)!,
+      );
     });
 
     it('lands on the same cell going notebook, journal, notebook', async () => {
@@ -654,12 +675,11 @@ describe('NotebookPane', () => {
       await waitFor(() => expect(latest()?.journal).toBe(true));
       const notebook = fakes.notebooks[0] as {
         activeCellIndex: number;
-        scrollToCell: ReturnType<typeof vi.fn>;
-        model: NotebookModel;
+        scrollToItem: ReturnType<typeof vi.fn>;
       };
       // Scrolling the notebook to a cell moves it there.
-      notebook.scrollToCell.mockImplementation(async (cell: { node: HTMLElement }) => {
-        state.notebookTop = Number(cell.node.dataset.notebookCell) * CELL;
+      notebook.scrollToItem.mockImplementation(async (index: number) => {
+        state.notebookTop = index * CELL;
       });
       act(() => latest()!.toggleJournal());
       await waitFor(() => expect(latest()!.journal).toBe(false));

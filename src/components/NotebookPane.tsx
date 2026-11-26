@@ -192,8 +192,12 @@ export type NotebookController = {
   journal: boolean;
   /** Switch between the journal view and the notebook, in the same room. */
   toggleJournal(): void;
-  /** Selects the cell at `index` and scrolls it to the top; false when there is none. */
-  goToCell(index: number): boolean;
+  /**
+   * Selects the cell at `index` and scrolls it to the top; false when there
+   * is none. JupyterLab leaves a quarter of the view above the cell; `flush`
+   * leaves none, as the journal had it (#841).
+   */
+  goToCell(index: number, flush?: boolean): boolean;
   /**
    * Jump to the definition of the name at the active cell's cursor (#676);
    * false when the kernel has no language service or there is none to go to.
@@ -1607,7 +1611,7 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         chooseView(recentsKey(backend.config), path, next);
         setJournal(next);
       },
-      goToCell: index => {
+      goToCell: (index, flush = false) => {
         if (journalRef.current) {
           const article = document.querySelector(`.journal [data-cell-index="${index}"]`);
           if (!article) return false;
@@ -1619,7 +1623,17 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
         notebook.mode = 'command';
         notebook.deselectAll();
         notebook.activeCellIndex = index;
-        void notebook.scrollToCell(cell, 'start');
+        if (flush) {
+          // scrollToCell's own steps, with no margin above the cell.
+          void notebook
+            .scrollToItem(index, 'start', 0)
+            .catch(() => undefined)
+            .then(() => {
+              notebook.deselectAll();
+              notebook.select(cell);
+              cell.activate();
+            });
+        } else void notebook.scrollToCell(cell, 'start');
         notebook.activate();
         return true;
       },
@@ -1677,8 +1691,9 @@ export function NotebookPane({ backend, path, onController, onRenamed }: Props) 
     const cell = returnToRef.current;
     if (journal || !showing || cell === undefined) return;
     returnToRef.current = undefined;
-    // After the notebook is laid out again.
-    const frame = requestAnimationFrame(() => controllerRef.current?.goToCell(cell));
+    // After the notebook shows again. It stayed laid out under the journal
+    // (#841), so JupyterLab's quarter-view margin applies: go flush instead.
+    const frame = requestAnimationFrame(() => controllerRef.current?.goToCell(cell, true));
     return () => cancelAnimationFrame(frame);
   }, [journal, showing]);
 
