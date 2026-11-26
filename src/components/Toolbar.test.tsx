@@ -421,6 +421,35 @@ describe('Toolbar', () => {
     }
   });
 
+  it('moves focus to More when a phone loses the header control (#819)', async () => {
+    const narrow = vi.spyOn(window, 'matchMedia').mockImplementation(
+      q =>
+        ({
+          media: q,
+          matches: true,
+          addEventListener() {},
+          removeEventListener() {},
+          addListener() {},
+          removeListener() {},
+        }) as unknown as MediaQueryList,
+    );
+    try {
+      const onToggleJournal = vi.fn();
+      const { rerender } = render(
+        bar({ onToggleJournal, controller: controller({ journal: true }) }),
+      );
+      await userEvent.click(named('Notebook'));
+      expect(onToggleJournal).toHaveBeenCalledOnce();
+      // The control leaves with the journal view; the More (⋯) button has
+      // its focus, rather than it falling out of the header to the page.
+      rerender(bar({ onToggleJournal, controller: controller({ journal: false }) }));
+      expect(screen.queryByRole('group', { name: /^View/ })).not.toBeInTheDocument();
+      expect(named('More')).toHaveFocus();
+    } finally {
+      narrow.mockRestore();
+    }
+  });
+
   it('disables what runs or edits cells while the journal shows them hidden (#184)', async () => {
     const c = controller({ journal: true });
     render(bar({ controller: c }));

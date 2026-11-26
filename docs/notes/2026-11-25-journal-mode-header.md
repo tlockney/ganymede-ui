@@ -46,3 +46,19 @@ Built in Xcode 27.2: the Ganymede (Mac) and Ganymede-iOS (iOS arm64
 simulator) schemes both build with the change. The segmented `Picker`,
 `tag` and `ToolbarItem` are long-standing SwiftUI (macOS 10.15 / iOS 13)
 APIs.
+
+Review fixes on #829, same day: the phone e2e test now also asserts
+the toolbar's 96px while the control shows (it fails without the
+`:root.touch-ui:has(.toolbar .mode-switch)` rule), and a new e2e test
+at 820px with touch asserts the touch layout around the control:
+44px buttons, the 'title mode' / 'status mode' grid (the control right
+of the title, spanning it and the status line under it), everything
+inside the toolbar's 52px, and nothing painted over the control. Each
+rule in the `.touch-ui` block for it was removed one at a time to
+check a failure, then restored. The title's and the status line's
+grid areas are pinned by name, because auto-placement lands the same
+cells the areas name, so geometry alone can't. On a phone, pressing
+Notebook in the control moves focus to the More (⋯) button instead of
+letting the control's unmount drop it to the page (`Toolbar.test.tsx`).
+The `.sidebar-titlebar` height now says it matches the toolbar on
+purpose, and the iPad toolbar's comment lists the picker in its place.

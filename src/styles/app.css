@@ -146,6 +146,7 @@ button {
 
 .sidebar-titlebar {
   /* Room for the traffic lights, and a drag handle in an installed app. */
+  /* var(--toolbar-h) on purpose: it stays aligned with the toolbar, which grows for the control (#819). */
   height: var(--toolbar-h);
   flex: none;
   app-region: drag;

@@ -780,9 +780,70 @@ test('fits the header control on a phone, which still switches (#819)', async ({
   expect(first!.x - switchBox.x).toBeLessThanOrEqual(2);
   expect(switchBox.x + switchBox.width - (second!.x + second!.width)).toBeLessThanOrEqual(2);
   expect(first!.width + second!.width).toBeGreaterThanOrEqual(switchBox.width - 4);
+  // In the journal view the control's own row grows the toolbar by its
+  // 44px: 52 + 44, with no safe-top in a plain page, as the 52 below.
+  expect((await page.locator('.toolbar').boundingBox())!.height).toBe(96);
   await view.getByRole('button', { name: 'Notebook' }).click();
   await expect(page.locator('.jp-Cell')).toHaveCount(3);
   // The notebook on a phone keeps its header height: the view is in ⋯.
   await expect(page.getByRole('group', { name: /^View/ })).toHaveCount(0);
   expect((await page.locator('.toolbar').boundingBox())!.height).toBe(52);
+});
+
+// Wider than the phone's 720px, on a touch screen: the control still fits
+// the toolbar's fixed 52px, spanning the title and the status line.
+test.describe('a touch screen wider than a phone', () => {
+  test.use({ viewport: { width: 820, height: 1180 }, hasTouch: true });
+
+  test('spans the header control over the title and its status line (#819)', async ({ page }) => {
+    await openWithToken(page);
+    await sidebarItem(page, 'Journal e2e').click();
+    const journal = page.getByRole('region', { name: `Journal of ${FILE}` });
+    await expect(journal).toBeVisible();
+    // The notebook view, which keeps the header control at this width.
+    await page
+      .getByRole('group', { name: 'View: Journal' })
+      .getByRole('button', { name: 'Notebook' })
+      .click();
+    await expect(journal).toBeHidden();
+    await expect(page.locator('.jp-Cell')).toHaveCount(3);
+
+    const view = page.getByRole('group', { name: 'View: Notebook' });
+    await expect(view).toBeVisible();
+    // A touch screen: targets of 44px.
+    for (const name of ['Notebook', 'Journal']) {
+      expect(
+        (await view.getByRole('button', { name }).boundingBox())!.height,
+      ).toBeGreaterThanOrEqual(44);
+    }
+    // The 'title mode' / 'status mode' grid: the control to the right of the
+    // title, spanning it and the status line, which stays under the title.
+    const [title, status, mode, toolbar] = await Promise.all([
+      page.locator('.toolbar .title').boundingBox(),
+      page.locator('.toolbar .status-line').boundingBox(),
+      view.boundingBox(),
+      page.locator('.toolbar').boundingBox(),
+    ]);
+    expect(mode!.x).toBeGreaterThanOrEqual(title!.x + title!.width);
+    expect(status!.y).toBeGreaterThanOrEqual(title!.y + title!.height);
+    expect(mode!.y).toBeLessThanOrEqual(title!.y);
+    expect(mode!.y + mode!.height).toBeGreaterThanOrEqual(status!.y + status!.height);
+    // The grid's own word for where the title and the status line sit.
+    // Geometry alone can't pin this: auto-placement lands the same cells,
+    // so the areas are asserted by name.
+    await expect(page.locator('.toolbar .title')).toHaveCSS('grid-area', 'title');
+    await expect(page.locator('.toolbar .status-line')).toHaveCSS('grid-area', 'status');
+    // Inside the toolbar's fixed 52px, with nothing over the control.
+    expect(toolbar!.height).toBe(52);
+    expect(mode!.y + mode!.height).toBeLessThanOrEqual(toolbar!.y + toolbar!.height);
+    expect(
+      await page.evaluate(
+        ({ x, y }) => {
+          const hit = document.elementFromPoint(x, y);
+          return !!hit?.closest('.mode-switch');
+        },
+        { x: mode!.x + mode!.width / 2, y: mode!.y + mode!.height / 2 },
+      ),
+    ).toBe(true);
+  });
 });

@@ -271,7 +271,13 @@ export function Toolbar({
                   title="Notebook"
                   aria-pressed={!c.journal}
                   onClick={() => {
-                    if (c.journal) onToggleJournal();
+                    if (c.journal) {
+                      onToggleJournal();
+                      // On a phone this unmounts the control, and focus would
+                      // fall out of the header: the More (⋯) button takes it,
+                      // its View item being the control's twin (#819).
+                      if (narrow) anchors.more.current?.focus();
+                    }
                   }}
                 >
                   <NotebookIcon />

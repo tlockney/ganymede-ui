@@ -1183,8 +1183,9 @@ struct NotebookStatusMenu: View {
 
 /// The notebook's controls in the navigation bar (#812), in a fixed order.
 /// The iPad's trailing items: Trust and Notebook Access while they apply
-/// (they come first, so the rest never move), Run Cell with its run menu,
-/// Interrupt (always there, enabled while busy), Share and More. The
+/// (they come first, so the rest never move), the Notebook | Journal
+/// picker (a notebook only, #819), Run Cell with its run menu, Interrupt
+/// (always there, enabled while busy), Share and More. The
 /// iPhone's: More at the top, and the run bar at the bottom (Interrupt,
 /// Outline, Run Cell), in thumb reach (#209); Share, Trust and Notebook
 /// Access are in its More menu.
