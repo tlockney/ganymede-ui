@@ -682,7 +682,25 @@ struct ContentView: View {
     private var windowTitle: String {
         (target ?? loaded).tabTitle(
             consoleName: pageModel.state.console?.name, machineName: machineName,
-            metadataTitle: pageModel.state.title)
+            metadataTitle: shownTitle)
+    }
+
+    /// The page's `metadata.title`, once the page reports the file this
+    /// window is for: until then it is the previous notebook's, and a file
+    /// window that just changed target would take its title for a moment.
+    /// The file's name is enough to tell, and doesn't depend on how the
+    /// server spells the folder. A folder's window shows whichever
+    /// notebook its page has open.
+    private var shownTitle: String? {
+        let expected: String? = switch target ?? loaded {
+        case .file(let url): url.lastPathComponent
+        case .machineFile(_, let path): (path as NSString).lastPathComponent
+        default: nil
+        }
+        if let expected, expected != pageModel.state.path.map({ ($0 as NSString).lastPathComponent }) {
+            return nil
+        }
+        return pageModel.state.title
     }
 
     /// The page asks for a tab (`openTab`): a notebook or data file, or a

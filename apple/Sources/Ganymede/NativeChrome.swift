@@ -634,6 +634,10 @@ struct NotebookToolbar: ToolbarContent {
                             .lineLimit(1)
                     }
                 }
+                // An agent's `metadata.title` can be a sentence: held to a
+                // width, so it truncates instead of pushing the kernel's
+                // button and the groups into the toolbar's overflow menu.
+                .frame(maxWidth: 320, alignment: .leading)
                 // The toolbar's glass clips its item at the edge: room so
                 // the title's first letter isn't cut off (#867).
                 .padding(.horizontal, 8)
