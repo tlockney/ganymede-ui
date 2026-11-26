@@ -50,17 +50,17 @@ final class PlaceTests: XCTestCase {
         }
     }
 
-    func testAMachineWindowGetsNoBridgeGrantsShortcutsEditorKeysOrAppLinks() {
+    func testAMachineWindowGetsNoBridgeGrantsShortcutsEditorOrAppLinks() {
         let machine = Place.machine(id)
         for capability in [
-            Place.Capability.deviceBridge, .openFile, .agentKeys, .personName, .appLinks,
+            Place.Capability.deviceBridge, .openFile, .personName, .appLinks,
         ] {
             XCTAssertFalse(machine.allows(capability), "\(capability)")
         }
         // Only what the machine's own page needs; a new capability must be
         // considered here.
         let allowed = Place.Capability.allCases.filter { machine.allows($0) }
-        XCTAssertEqual(Set(allowed.map { "\($0)" }), ["settings", "nativeChrome"])
+        XCTAssertEqual(Set(allowed.map { "\($0)" }), ["settings", "nativeChrome", "agentKeys"])
     }
 
     func testKernelLocationAndLocalTerminalAreThisDevicesOnly() {
@@ -85,7 +85,7 @@ final class PlaceTests: XCTestCase {
         XCTAssertEqual(
             Set(Place.Capability.allCases.filter { machine.allows($0, sharesName: true) }
                 .map { "\($0)" }),
-            ["settings", "nativeChrome", "personName"])
+            ["settings", "nativeChrome", "agentKeys", "personName"])
         for capability in Place.Capability.allCases where capability != .personName {
             XCTAssertEqual(
                 machine.allows(capability, sharesName: true),
@@ -124,13 +124,14 @@ final class PlaceTests: XCTestCase {
     func testTheWebViewIsMadeFromThePlacesHandlerTable() {
         let machine = Place.machine(id).handlerNames
         // The native window reads a machine's page through `state` and `document` (#740).
-        XCTAssertEqual(machine.count, 3)
-        XCTAssertEqual(Set(machine), ["settings", "state", "document"])
-        for name in ["kernelRelay", "deviceRemote", "openFile", "agentKeys"] {
+        // The agent's keys too, from the Keychain (#849).
+        XCTAssertEqual(machine.count, 4)
+        XCTAssertEqual(Set(machine), ["settings", "state", "document", "agentKeys"])
+        for name in ["kernelRelay", "deviceRemote", "openFile"] {
             XCTAssertFalse(machine.contains(name), name)
             XCTAssertTrue(Place.thisDevice.handlerNames.contains(name), name)
         }
-        for name in ["state", "document"] {
+        for name in ["state", "document", "agentKeys"] {
             XCTAssertTrue(Place.thisDevice.handlerNames.contains(name), name)
         }
     }

@@ -56,6 +56,9 @@ final class AgentKeysTests: XCTestCase {
         XCTAssertFalse(AgentKeys.trusted(isMainFrame: true, scheme: "http", host: "127.0.0.1", port: 8888, page: page))
         XCTAssertFalse(AgentKeys.trusted(isMainFrame: true, scheme: "https", host: "example.org", port: 0, page: page))
         XCTAssertFalse(AgentKeys.trusted(isMainFrame: true, scheme: "http", host: "127.0.0.1", port: 49152, page: nil))
+        // A sandboxed page (`/files`, or a machine's through its mount,
+        // #849) has an opaque origin: no scheme or host.
+        XCTAssertFalse(AgentKeys.trusted(isMainFrame: true, scheme: "", host: "", port: 0, page: page))
         let https = URL(string: "https://example.org/ui/")!
         XCTAssertTrue(AgentKeys.trusted(isMainFrame: true, scheme: "https", host: "example.org", port: 0, page: https))
     }

@@ -888,16 +888,17 @@ with only SSH stays in Settings for shells.
   and a banner reads "_machine_ went offline · Reconnecting…". They are
   editable again when it is back. There is no offline editing.
 - **What a machine's window doesn't get.** The device API, Notebook
-  Access, the Shortcuts bridge, the app's editor for text files, the
-  Agent's keys and `ganymede://` links are for this device's windows
-  only. Neither Spotlight, File > Open
-  Recent nor the Recents list in the app's sidebar include a machine's
-  notebooks.
+  Access, the Shortcuts bridge, the app's editor for text files and
+  `ganymede://` links are for this device's windows only. Neither
+  Spotlight, File > Open Recent nor the Recents list in the app's sidebar
+  include a machine's notebooks.
 
 > [!NOTE]
-> **Unreleased.** Your name going to a connected machine's rooms, and
-> the setting that turns it off, are available only from a build of
-> `main` (HEAD), not in the latest release.
+> **Unreleased.** Your name going to a connected machine's rooms, the
+> setting that turns it off, and the agent's Keychain keys in a machine's
+> window are available only from a build of `main` (HEAD), not in the
+> latest release, where a machine's window keeps the agent's key in the
+> page's web storage.
 
 On the Mac a machine's window is the app's native window: the same
 sidebar (Files, Search, Running, Outline and Journals), toolbar,

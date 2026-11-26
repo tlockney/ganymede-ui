@@ -1,10 +1,11 @@
 // @vitest-environment node
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   type AgentKeysHandler,
   BrowserCredentialStore,
   DEFAULT_SETTINGS,
   KeychainCredentialStore,
+  adoptBrowserKeys,
   keyOnly,
   loadAgentSettings,
   onAgentSettingsChange,
@@ -194,7 +195,7 @@ function fakeKeychain(fail?: string) {
       return null;
     },
   };
-  return { items, keys: new KeychainCredentialStore(handler) };
+  return { items, handler, keys: new KeychainCredentialStore(handler) };
 }
 
 describe('KeychainCredentialStore', () => {
@@ -239,5 +240,42 @@ describe('pageKeyStore', () => {
   it('uses the Keychain in the apps and browser storage elsewhere', () => {
     expect(pageKeyStore({ postMessage: async () => null })).toBeInstanceOf(KeychainCredentialStore);
     expect(pageKeyStore(undefined)).toBeInstanceOf(BrowserCredentialStore);
+  });
+
+  it('moves a key left in web storage into the Keychain when it makes the Keychain store', async () => {
+    const local = new MemoryStore();
+    const browser = new BrowserCredentialStore(new MemoryStore(), local);
+    await browser.setKey('anthropic', 'sk-old', true);
+    const { items, handler } = fakeKeychain();
+    pageKeyStore(handler, browser);
+    await vi.waitFor(() => expect(local.length).toBe(0));
+    expect(items.get('anthropic')).toBe('sk-old');
+  });
+});
+
+describe('adoptBrowserKeys', () => {
+  it('moves a key an older build left in web storage into the Keychain, and clears it there', async () => {
+    const local = new MemoryStore();
+    const session = new MemoryStore();
+    const browser = new BrowserCredentialStore(session, local);
+    await browser.setKey('anthropic', 'sk-old', true);
+    await browser.setKey('openai', 'sk-tab', false);
+    const { items, keys } = fakeKeychain();
+    items.set('openai', 'sk-keychain');
+    await adoptBrowserKeys(keys, browser);
+    expect(items.get('anthropic')).toBe('sk-old');
+    // The Keychain's own key wins.
+    expect(items.get('openai')).toBe('sk-keychain');
+    expect(local.length).toBe(0);
+    expect(session.length).toBe(0);
+  });
+
+  it('keeps a key in web storage when the Keychain refuses it', async () => {
+    const local = new MemoryStore();
+    const browser = new BrowserCredentialStore(new MemoryStore(), local);
+    await browser.setKey('google', 'g-1', true);
+    const { keys } = fakeKeychain('denied');
+    await adoptBrowserKeys(keys, browser);
+    expect(local.getItem('ganymede-ui:agent-key:google')).toContain('g-1');
   });
 });

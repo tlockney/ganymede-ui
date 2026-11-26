@@ -71,7 +71,8 @@ enum Place: Hashable, Codable {
         /// The `state` and `document` messages, which drive native chrome,
         /// the window's proxy icon, native Recents and Spotlight.
         case nativeChrome
-        /// The agent's API keys in the Keychain.
+        /// The agent's API keys in the Keychain: a machine's window too
+        /// (#849), so a key is the same in every window.
         case agentKeys
         /// The person's name, sent in a notebook room's awareness: always
         /// on this device, and on a machine when its remote's setting
@@ -96,8 +97,10 @@ enum Place: Hashable, Codable {
             // `nativeChrome`: the Mac draws a machine's sidebar and toolbar
             // too (#740), from the page's `state`. Its `document` message
             // never reaches native Recents, Spotlight or the proxy icon
-            // (`indexesLocally`).
-            capability == .settings || capability == .nativeChrome
+            // (`indexesLocally`). `agentKeys` (#849): the window's page is
+            // the app's own (`allowsLoading`), and a machine's files reach
+            // it sandboxed, in an opaque origin `AgentKeys.trusted` refuses.
+            capability == .settings || capability == .nativeChrome || capability == .agentKeys
         }
     }
 
