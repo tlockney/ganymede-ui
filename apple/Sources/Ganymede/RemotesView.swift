@@ -147,6 +147,8 @@ struct RemoteEditor: View {
     @State private var port = ""
     /// Run kernels on this remote's server once it is saved (#473).
     @State private var runsKernels: Bool
+    /// Whether this machine's rooms get this Mac's account name (#842).
+    @State private var sharesName: Bool
     #if os(macOS)
     /// Other devices on the tailnet, to fill in the URL (ganymede#816).
     @State private var peers: [AppTailnet.Peer] = []
@@ -163,6 +165,7 @@ struct RemoteEditor: View {
         _ssh = State(initialValue: remote.ssh ?? Remote.SSH(host: ""))
         _port = State(initialValue: remote.ssh?.port.map(String.init) ?? "")
         _runsKernels = State(initialValue: AppModel.shared.kernelRemoteID == remote.id)
+        _sharesName = State(initialValue: remote.shares)
         self.isNew = isNew
     }
 
@@ -212,6 +215,7 @@ struct RemoteEditor: View {
                     SecureField("Token", text: $token)
                     if !remote.serverURL.trimmingCharacters(in: .whitespaces).isEmpty {
                         Toggle("Run kernels on this remote", isOn: $runsKernels)
+                        Toggle("Show my name in this machine's notebooks", isOn: $sharesName)
                     }
                 } header: {
                     Text("Jupyter or Ganymede server")
@@ -304,11 +308,11 @@ struct RemoteEditor: View {
 
     private var serverFooter: String {
         #if os(macOS)
-        "Optional. Used for kernels and terminals. Choose where kernels run here, from the foot of a "
+        let words = "Optional. Used for kernels and terminals. Choose where kernels run here, from the foot of a "
             + "window's sidebar, or from the Kernel menu. Running kernels are shut down when it changes. "
             + "A Ganymede server that lets you in by your tailnet login needs no token."
         #else
-        "Optional. Used for kernels and terminals. Choose where kernels run here, above, or from a "
+        let words = "Optional. Used for kernels and terminals. Choose where kernels run here, above, or from a "
             + "notebook's More menu. Running kernels are shut down when it changes. "
             + "A Ganymede server that lets you in by your tailnet login needs no token. "
             + "On your tailnet, enter the device's address, like https://name.tailnet.ts.net/, "
@@ -316,6 +320,11 @@ struct RemoteEditor: View {
             + "A Mac shares Ganymede there when Share on my tailnet is on in Settings › General › "
             + "Tailnet and your Tailscale login is listed."
         #endif
+        guard !remote.serverURL.trimmingCharacters(in: .whitespaces).isEmpty else { return words }
+        // The name setting's words, under its toggle (#842).
+        return words + " "
+            + "Your Mac account's name goes to that machine's rooms, so its agents "
+            + "and other people there see who edited; turn it off and they see \"a person\"."
     }
 
     private var hostPrompt: String {
@@ -368,6 +377,8 @@ struct RemoteEditor: View {
         } else {
             result.ssh = nil
         }
+        // On stays nil, as a remote saved by an older build is (#842).
+        result.sharesName = sharesName ? nil : false
         return result
     }
 }

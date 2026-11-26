@@ -70,6 +70,30 @@ final class PlaceTests: XCTestCase {
         }
     }
 
+    func testAMachineGetsThePersonsNameOnlyWhenItsRemoteSaysSo() {
+        let machine = Place.machine(id)
+        XCTAssertTrue(machine.allows(.personName, sharesName: true))
+        XCTAssertFalse(machine.allows(.personName, sharesName: false))
+        // Without its setting, a machine still gets no name.
+        XCTAssertFalse(machine.allows(.personName))
+        // This device always gets it, whatever the setting would say.
+        for shares in [true, false] {
+            XCTAssertTrue(Place.thisDevice.allows(.personName, sharesName: shares))
+        }
+        // The setting changes nothing else: with it on, a machine gets
+        // `personName` beside what it always did, no more.
+        XCTAssertEqual(
+            Set(Place.Capability.allCases.filter { machine.allows($0, sharesName: true) }
+                .map { "\($0)" }),
+            ["settings", "nativeChrome", "personName"])
+        for capability in Place.Capability.allCases where capability != .personName {
+            XCTAssertEqual(
+                machine.allows(capability, sharesName: true),
+                machine.allows(capability),
+                "\(capability)")
+        }
+    }
+
     func testNewTabOpensOnTheWindowsOwnMachineOrFolder() {
         let root = URL(fileURLWithPath: "/Users/me/notebooks", isDirectory: true)
         let folder = URL(fileURLWithPath: "/Users/me/moons", isDirectory: true)

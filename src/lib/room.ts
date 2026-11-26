@@ -67,8 +67,8 @@ export type RoomOptions = {
   /**
    * The person's name, sent in the room's awareness so the server credits
    * their edits to it (an agent is told who changed a cell). By default
-   * [`pageUserName`]: the name the Mac app gives the page, for its own
-   * server only.
+   * [`pageUserName`]: the name the Mac app gives the page, for rooms on
+   * the page's own origin only.
    */
   person?: string;
 };
@@ -76,8 +76,10 @@ export type RoomOptions = {
 declare global {
   interface Window {
     /**
-     * Set by the Mac app before the page loads, on its own server's page
-     * only: the account's full name.
+     * Set by the Mac app before the page loads, on its own server's pages
+     * only: the account's full name. A connected machine's window loads
+     * from that server too, and gets the name only when the machine's
+     * setting says so.
      */
     ganymedeUser?: unknown;
   }
@@ -85,9 +87,11 @@ declare global {
 
 /**
  * The name the Mac app gave the page (`window.ganymedeUser.name`), for a
- * room on the page's own server: the in-app server, the person's own. A
- * remote server, or a browser, iPad or iPhone, gets none, and the server
- * says "a person".
+ * room on the page's own origin: the in-app server's, which a connected
+ * machine's rooms are relayed through too, so a machine's window sends
+ * it when the app gave the page the name for that machine. A remote
+ * server opened from a browser, iPad or iPhone, gets none, and the
+ * server says "a person".
  */
 export function pageUserName(
   baseUrl: string,

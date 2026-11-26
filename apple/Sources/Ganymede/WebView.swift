@@ -19,9 +19,12 @@ struct WebView: NSViewRepresentable {
     /// Where the window's notebooks live (#701): a machine's window gets
     /// none of the app's native handlers.
     var place: Place = .thisDevice
+    /// Whether the page gets the person's name (#842): always on this
+    /// device; on a machine, its remote's setting.
+    var sharesName: Bool = true
 
     func makeCoordinator() -> WebViewCoordinator {
-        WebViewCoordinator(place: place)
+        WebViewCoordinator(place: place, sharesName: sharesName)
     }
 
     func makeNSView(context: Context) -> WKWebView {
@@ -48,9 +51,12 @@ struct WebView: UIViewRepresentable {
     var store: WebViewStore? = nil
     /// Where the window's notebooks live (#701).
     var place: Place = .thisDevice
+    /// Whether the page gets the person's name (#842): always on this
+    /// device; on a machine, its remote's setting.
+    var sharesName: Bool = true
 
     func makeCoordinator() -> WebViewCoordinator {
-        store?.coordinator ?? WebViewCoordinator(place: place)
+        store?.coordinator ?? WebViewCoordinator(place: place, sharesName: sharesName)
     }
 
     func makeUIView(context: Context) -> WKWebView {
@@ -95,13 +101,17 @@ final class WebViewStore {
     /// Where the page's notebooks live (#701, #758). Fixed, as the
     /// coordinator's: another place gets a store of its own.
     let place: Place
+    /// Whether the page gets the person's name (#842): the machine's
+    /// remote's setting.
+    let sharesName: Bool
 
-    init(place: Place = .thisDevice) {
+    init(place: Place = .thisDevice, sharesName: Bool = true) {
         self.place = place
+        self.sharesName = sharesName
     }
 
     private(set) lazy var coordinator: WebViewCoordinator = {
-        let coordinator = WebViewCoordinator(place: place)
+        let coordinator = WebViewCoordinator(place: place, sharesName: sharesName)
         coordinator.park = { [weak self] in self?.park() }
         return coordinator
     }()
@@ -204,14 +214,20 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// page may ask the app for follows this, never its origin, which a
     /// machine's page shares with this device's (#701).
     let place: Place
+    /// Whether this window's page gets the person's name (#842): always
+    /// on this device; on a machine, its remote's setting. Fixed for the
+    /// window's life, as `place` is: a changed setting reaches a machine's
+    /// windows as they are made again.
+    let sharesName: Bool
     var onNavigate: ((URL?) -> Void)?
     var onOpenFile: ((String) -> Void)?
     /// The page's `openTab` message (#729). Only the Mac's windows set it,
     /// and only they register the handler.
     var onOpenTab: ((TabRequest) -> Void)?
 
-    init(place: Place = .thisDevice) {
+    init(place: Place = .thisDevice, sharesName: Bool = true) {
         self.place = place
+        self.sharesName = sharesName
         super.init()
     }
     #if os(iOS)
@@ -242,9 +258,10 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// Every user script the page gets, replacing any already there: add
     /// a new one here, since a code font change reinstalls them all.
     /// `loaded`: the page's URL, the in-app server's, whose origin alone
-    /// gets the person's name.
+    /// gets the person's name. `sharesName`: whether a machine's window
+    /// gets it, its remote's setting (#842).
     private static func installPageScripts(
-        on view: WKWebView, loaded: URL?, place: Place
+        on view: WKWebView, loaded: URL?, place: Place, sharesName: Bool
     ) {
         let scripts = view.configuration.userContentController
         scripts.removeAllUserScripts()
@@ -252,9 +269,9 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         scripts.addUserScript(CrashReports.shared.pageScript)
         // The code font (#354), before the page loads.
         scripts.addUserScript(CodeFont.pageScript)
-        // The person's name for the notebook rooms (#606): not for a
-        // machine's, which isn't this device's server.
-        if place.allows(.personName), let script = PersonName.pageScript(for: loaded) {
+        // The person's name for the notebook rooms (#606): a machine's
+        // window only when its remote's setting says so (#842).
+        if place.allows(.personName, sharesName: sharesName), let script = PersonName.pageScript(for: loaded) {
             scripts.addUserScript(script)
         }
     }
@@ -279,13 +296,13 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
             let url = change.newValue ?? nil
             Task { @MainActor in self?.onNavigate?(url) }
         }
-        Self.installPageScripts(on: view, loaded: loaded, place: place)
+        Self.installPageScripts(on: view, loaded: loaded, place: place, sharesName: sharesName)
         // The code font (#354) as it changes: a reload must get the new
         // setting too, so the scripts are installed again.
         codeFontObserver = observeCodeFont(markdown: true) { [weak self, weak view] in
             guard let view else { return }
             guard let self else { return }
-            Self.installPageScripts(on: view, loaded: self.loaded, place: self.place)
+            Self.installPageScripts(on: view, loaded: self.loaded, place: self.place, sharesName: self.sharesName)
             view.evaluateJavaScript(CodeFont.updateScript, completionHandler: nil)
         }
         let handlers = view.configuration.userContentController
@@ -326,7 +343,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
 
     private func startLoad(_ url: URL, start: Int, in view: WKWebView) {
         // The person's name, for this server's origin only (#606).
-        Self.installPageScripts(on: view, loaded: url, place: place)
+        Self.installPageScripts(on: view, loaded: url, place: place, sharesName: sharesName)
         if place.allows(.deviceBridge) {
             // The ledger keeps notebooks by absolute path (#383).
             kernels.notebookRoot = AppModel.shared.serverRootFolder

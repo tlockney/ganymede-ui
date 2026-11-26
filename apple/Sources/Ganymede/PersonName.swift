@@ -4,9 +4,10 @@ import WebKit
 /// The person's name for the notebook rooms (#606): the page sends it in
 /// a room's awareness, so the server credits their edits to it and an
 /// agent is told who changed a cell (`src/lib/room.ts`). The Mac's
-/// account full name, for the in-app server only: the script sets it only
-/// on a page from the in-app server's origin, and the page sends it
-/// only to its own server, never to a remote one. iPad and iPhone have no
+/// account full name, for the in-app server's origin alone: the page
+/// sends it only to rooms on that origin, which a connected machine's
+/// are relayed through too, and a machine's window gets the script only
+/// when its remote's setting says so (#842). iPad and iPhone have no
 /// name to give, and the server says "a person".
 enum PersonName {
     static var name: String? {

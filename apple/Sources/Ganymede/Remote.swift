@@ -9,6 +9,14 @@ struct Remote: Codable, Identifiable, Hashable {
     /// token is kept in the keychain (`RemoteStore.token(for:)`).
     var serverURL = ""
     var ssh: SSH?
+    /// Whether a machine's windows get the person's name for their
+    /// notebook rooms (#842). Nil means on: a remote saved by an older
+    /// build has no key, so synthesized Codable decodes it as on.
+    var sharesName: Bool?
+
+    /// Whether the name goes to this machine's rooms: on unless the
+    /// setting says off.
+    var shares: Bool { sharesName ?? true }
 
     struct SSH: Codable, Hashable {
         /// A host name, or an alias from ~/.ssh/config on the Mac.

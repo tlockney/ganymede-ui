@@ -73,7 +73,9 @@ enum Place: Hashable, Codable {
         case nativeChrome
         /// The agent's API keys in the Keychain.
         case agentKeys
-        /// The person's name, sent to rooms on this device's server.
+        /// The person's name, sent in a notebook room's awareness: always
+        /// on this device, and on a machine when its remote's setting
+        /// says so (`allows(_:sharesName:)`, #842).
         case personName
         /// Opening `ganymede://` and other non-web links.
         case appLinks
@@ -97,6 +99,15 @@ enum Place: Hashable, Codable {
             // (`indexesLocally`).
             capability == .settings || capability == .nativeChrome
         }
+    }
+
+    /// The same table with the machine's own setting for `personName`
+    /// (#842): a machine's window gets the person's name only when the
+    /// remote it was made from says so, which the window (`WebView`)
+    /// passes; a place never reads the saved remotes itself. Everything
+    /// else is as `allows(_:)`, whatever `sharesName` says.
+    func allows(_ capability: Capability, sharesName: Bool) -> Bool {
+        (capability == .personName && sharesName) || allows(capability)
     }
 
     /// The script message handlers a window of this place registers. The
