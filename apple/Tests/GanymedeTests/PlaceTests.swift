@@ -378,13 +378,22 @@ final class PlaceTests: XCTestCase {
         XCTAssertNil(WindowTarget.root(of: .machine("../x"), device: device))
     }
 
-    func testAWindowSubtitleIsTheStatusLineOrWhereTheMachineIs() {
-        let header = HeaderStatus(
+    /// The subtitle is the save state alone (#867): where it runs and the
+    /// kernel are the toolbar's chip.
+    func testAWindowSubtitleIsTheSaveStateOrWhereTheMachineIs() {
+        var header = HeaderStatus(
             savedOn: "mini", runsOn: "mini", dirty: false, locked: false,
-            kernel: "Python 3", kernelMissing: false, status: "idle")
+            kernel: "Python 3", kernelMissing: false, status: "busy")
+        XCTAssertEqual(WindowTarget.subtitle(header: header, machineName: "mini"), "Saved on mini")
+        header.dirty = true
+        XCTAssertEqual(WindowTarget.subtitle(header: header, machineName: "mini"), "Edited")
+        header.locked = true
         XCTAssertEqual(
-            WindowTarget.subtitle(header: header, machineName: "mini"),
-            "Saved on mini · Runs on mini · Python 3")
+            WindowTarget.subtitle(header: header, machineName: "mini"), "Edited · Locked: changed on disk")
+        header.dirty = false
+        XCTAssertEqual(
+            WindowTarget.subtitle(header: header, machineName: "mini"), "Locked: changed on disk")
+        // Without a notebook, a machine's window says where it is.
         XCTAssertEqual(WindowTarget.subtitle(header: nil, machineName: "mini"), "on mini")
         XCTAssertEqual(WindowTarget.subtitle(header: nil, machineName: ""), "")
         XCTAssertEqual(WindowTarget.subtitle(header: nil, machineName: nil), "")

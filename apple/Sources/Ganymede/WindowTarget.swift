@@ -174,11 +174,13 @@ enum WindowTarget: Codable, Hashable {
         return .folder(folder ?? root)
     }
 
-    /// The window subtitle (#812): the notebook's status line, which names
-    /// where it is saved ("Saved on <machine>"); without a notebook, "on
-    /// <machine>" for a machine's window and nothing otherwise.
+    /// The window subtitle (#812, #867): only where the notebook is saved —
+    /// "Saved on <machine>", "Edited" or "Locked: changed on disk" — since
+    /// where it runs and its kernel are the toolbar's chip. Without a
+    /// notebook, "on <machine>" for a machine's window and nothing
+    /// otherwise.
     static func subtitle(header: HeaderStatus?, machineName: String?) -> String {
-        if let header { return header.full }
+        if let header { return header.save }
         guard let machineName, !machineName.isEmpty else { return "" }
         return "on \(machineName)"
     }
