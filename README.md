@@ -61,6 +61,18 @@ The iPad and iPhone app is on TestFlight for internal testers.
 [docs/apps.md](docs/apps.md) is the apps' user guide;
 [apple/README.md](apple/README.md) has how to build them.
 
+A notebook's window says under its title where the notebook is saved —
+"Saved on This Mac", "Edited", "Locked: changed on disk" — and a chip
+beside the title reads "TypeScript · This Mac · Idle": its kernel, where
+that kernel runs and what it is doing, behind a dot that is green while
+the kernel waits and blue while it works.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, where the status line under the title has all of it
+> ("Saved on This Mac · Runs on This Mac · TypeScript") and the toolbar's
+> kernel button reads only the kernel's name.
+
 ## Run
 
 You need Node.js 22.12 or later (CI uses 24). The server modes need
