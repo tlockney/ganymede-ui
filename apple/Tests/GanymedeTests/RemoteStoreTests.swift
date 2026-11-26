@@ -124,6 +124,27 @@ final class RemoteStoreTests: XCTestCase {
         XCTAssertFalse(store.load().remotes.first?.shares ?? true)
     }
 
+    func testWhichWindowsGetTheName() {
+        let on = Remote(name: "on", serverURL: "http://on:8888")
+        let off = Remote(name: "off", serverURL: "http://off:8888", sharesName: false)
+        let sshOnly = Remote(name: "ssh", ssh: .init(host: "box"))
+        let remotes = [on, off, sshOnly]
+        // This device always; a machine by its remote's setting.
+        XCTAssertTrue(Remote.sharesName(for: .thisDevice, in: remotes))
+        XCTAssertTrue(Remote.sharesName(for: .thisDevice, in: []))
+        XCTAssertTrue(Remote.sharesName(for: .machine(on.id.uuidString), in: remotes))
+        XCTAssertFalse(Remote.sharesName(for: .machine(off.id.uuidString), in: remotes))
+        // A removed or unknown machine, or a remote with no server, never.
+        XCTAssertFalse(Remote.sharesName(for: .machine(on.id.uuidString), in: [off]))
+        XCTAssertFalse(Remote.sharesName(for: .machine(UUID().uuidString), in: remotes))
+        XCTAssertFalse(Remote.sharesName(for: .machine(sshOnly.id.uuidString), in: remotes))
+    }
+
+    func testTheEditorsToggleSavesOnAsUnset() {
+        XCTAssertNil(Remote.sharesNameSetting(true))
+        XCTAssertEqual(Remote.sharesNameSetting(false), false)
+    }
+
     func testKernelsOnARemoteWithoutAServerFallBackToThisDevice() throws {
         let sshOnly = Remote(ssh: .init(host: "box"))
         try store.save([sshOnly], kernels: sshOnly.id)

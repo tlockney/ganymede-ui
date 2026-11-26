@@ -13,15 +13,29 @@ an older build has no key, so synthesized Codable decodes it as on
 `Place.allows(_:sharesName:)` gives a machine `personName` only when
 the setting says so; this device always gets it, and the rest of the
 table is whatever `allows(_:)` says. `WebView`, its store and its
-coordinator carry the flag, so a machine's windows pick the setting up
-as they are made again; `Place` never reads the saved remotes itself.
+coordinator carry the flag, and the page's view is keyed on the place and
+the flag, so changing the setting reloads that machine's open windows
+with the new scripts. `Remote.sharesName(for:in:)` is the one lookup
+(this device always; an unknown, removed or server-less machine never);
+`Place` never reads the saved remotes itself.
+
+A this-device window now refuses any navigation to a machine's page
+(`?machine=`): it would carry this device's handlers and the name to
+that machine whatever its setting.
+
+A machine that lets you in by your tailnet login credits edits to that
+login (the room's `connect_as`), so the setting doesn't change what it
+shows; apps.md and the footer say so. On iPad and iPhone the toggle is
+saved but nothing is sent, since they have no name; the footer says so.
 The toggle is "Show my name in this machine's notebooks", in the
 machine's editor on the Mac, iPad and iPhone.
 
 `PlaceTests` checks the gate both ways and that the rest of the table is
-unchanged; `RemoteStoreTests` decodes JSON as an older build wrote it
-and round-trips off through the store. `npm test` and `npm run check`
+unchanged; `RemoteStoreTests` decodes JSON as an older build wrote it,
+round-trips off through the store, and covers `sharesName(for:in:)` and
+the editor's on/off mapping. `npm test` and `npm run check`
 pass, and `xcodebuild test` for the GanymedeTests scheme passes on
 macOS.
 
-By-hand checks are on #399.
+By-hand check on #399. README's privacy line and Ganymede's
+docs/privacy.md (an `Unreleased in ganymede-ui` marker) are updated too.

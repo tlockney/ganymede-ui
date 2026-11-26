@@ -18,6 +18,18 @@ struct Remote: Codable, Identifiable, Hashable {
     /// setting says off.
     var shares: Bool { sharesName ?? true }
 
+    /// The saved form of the editor's toggle: on stays nil, as a remote
+    /// saved by an older build is; off is `false` (#842).
+    static func sharesNameSetting(_ on: Bool) -> Bool? { on ? nil : false }
+
+    /// Whether a window of `place` gets the person's name (#842): this
+    /// device always; a machine when the remote with its id and a server
+    /// says so; an unknown or removed machine never.
+    static func sharesName(for place: Place, in remotes: [Remote]) -> Bool {
+        guard let id = place.machineID else { return true }
+        return remotes.first { $0.id.uuidString == id && $0.hasServer }?.shares ?? false
+    }
+
     struct SSH: Codable, Hashable {
         /// A host name, or an alias from ~/.ssh/config on the Mac.
         var host: String

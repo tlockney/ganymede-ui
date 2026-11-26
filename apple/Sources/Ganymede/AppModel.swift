@@ -410,11 +410,10 @@ final class AppModel {
         remotes.first { $0.id.uuidString == id && $0.hasServer }?.title
     }
 
-    /// Whether a machine's windows get the person's name for their rooms
-    /// (#842): the remote's own setting, on unless turned off. No remote
-    /// with this id sends none.
-    func sharesName(machine id: String) -> Bool {
-        remotes.first { $0.id.uuidString == id && $0.hasServer }?.shares ?? false
+    /// Whether a window of `place` gets the person's name for its rooms
+    /// (#842): `Remote.sharesName(for:in:)` over the saved remotes.
+    func sharesName(for place: Place) -> Bool {
+        Remote.sharesName(for: place, in: remotes)
     }
 
     /// Mounts each remote with a server on the running server, and takes

@@ -386,6 +386,13 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
             // `<a download>`, including the blob: and data: links outputs
             // and widgets make for files.
             decisionHandler(.download)
+        } else if !place.isMachine, navigationAction.targetFrame?.isMainFrame ?? true,
+                  let target = navigationAction.request.url, !isExternal(target),
+                  WindowTarget(page: target)?.place.isMachine == true {
+            // This device's window never becomes a machine's page (#842):
+            // it has this device's handlers and the person's name, which a
+            // machine gets only through its own window and setting.
+            decisionHandler(.cancel)
         } else if place.isMachine, navigationAction.navigationType == .linkActivated,
                   navigationAction.targetFrame?.isMainFrame ?? true,
                   let target = navigationAction.request.url, !isExternal(target),

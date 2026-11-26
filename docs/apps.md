@@ -533,11 +533,11 @@ A notebook can be edited on one server at a time: if an agent's own
 The Mac app gives its own server your account's full name with each
 notebook it opens, so an agent working there is told who changed a
 cell: `changed by "Thomas"` rather than `by "a person"`. The name goes
-to the app's server on this Mac — and, through it, to a connected
-machine's rooms when that machine's setting says so ([Connected
-machines](#connected-machines)) — and to the other clients with that
-notebook open (such as an agent, or JupyterLab), never to a remote
-server opened from a browser. iPad and iPhone send no name.
+to the app's server on this Mac and to the other clients with that
+notebook open (such as an agent, or JupyterLab). It also goes to a
+connected machine's notebooks when that machine's setting is on
+([Connected machines](#connected-machines)), and never to any other
+server. iPad and iPhone send no name.
 
 > [!NOTE]
 > **Unreleased.** The name going to a connected machine's rooms is
@@ -881,11 +881,13 @@ with only SSH stays in Settings for shells.
 - **Your name.** With each edit you make in a machine's notebook, your
   Mac account's name goes to that machine's rooms, so the agents and
   other people there see who edited: `changed by "Thomas"` rather than
-  `by "a person"`. It is on for each machine by default — these are
-  machines you linked yourself. "Show my name in this machine's
+  `by "a person"`. It is on for each machine by default, since these
+  are machines you linked yourself. "Show my name in this machine's
   notebooks", in the machine's editor (Settings > Remotes, Edit),
-  turns it off, and your edits there show as "a person". iPad and
-  iPhone send no name either way.
+  turns it off; open windows of that machine reload, and your edits
+  there show as "a person". A machine that lets you in by your tailnet
+  login credits your edits to that login whatever this setting says.
+  iPad and iPhone send no name either way.
 - **When a machine stops answering,** its open notebooks turn read-only
   and a banner reads "_machine_ went offline · Reconnecting…". They are
   editable again when it is back. There is no offline editing.

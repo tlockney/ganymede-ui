@@ -322,9 +322,15 @@ struct RemoteEditor: View {
         #endif
         guard !remote.serverURL.trimmingCharacters(in: .whitespaces).isEmpty else { return words }
         // The name setting's words, under its toggle (#842).
+        #if os(macOS)
         return words + " "
-            + "Your Mac account's name goes to that machine's rooms, so its agents "
-            + "and other people there see who edited; turn it off and they see \"a person\"."
+            + "With Show my name on, your Mac account's name goes to that machine's notebooks, "
+            + "so its agents and other people there see who edited; off, they see \"a person\". "
+            + "A machine that lets you in by your tailnet login shows that login either way."
+        #else
+        return words + " "
+            + "An iPad or iPhone sends no name, so Show my name has no effect here."
+        #endif
     }
 
     private var hostPrompt: String {
@@ -378,7 +384,7 @@ struct RemoteEditor: View {
             result.ssh = nil
         }
         // On stays nil, as a remote saved by an older build is (#842).
-        result.sharesName = sharesName ? nil : false
+        result.sharesName = Remote.sharesNameSetting(sharesName)
         return result
     }
 }
