@@ -326,7 +326,7 @@ private struct FolderContents: View {
                         if entry.isNotebook, actions.isRunning(entry.serverPath) {
                             // Its kernel is running.
                             Circle()
-                                .fill(Color.green)
+                                .fill(Color("Ready"))
                                 .frame(width: 6, height: 6)
                                 .accessibilityLabel("Kernel running")
                         }
@@ -544,7 +544,7 @@ struct ServerLine: View {
         } label: {
             HStack(spacing: 6) {
                 Circle()
-                    .fill(page.state.backend == nil ? Color.secondary : Color.green)
+                    .fill(page.state.backend == nil ? Color.secondary : Color("Ready"))
                     .frame(width: 7, height: 7)
                     .accessibilityHidden(true)
                 Image(systemName: machineName == nil && locations.selected == nil ? "laptopcomputer" : "server.rack")
