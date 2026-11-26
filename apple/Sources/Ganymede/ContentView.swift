@@ -185,9 +185,11 @@ struct ContentView: View {
         // clickable: the kernel button's popover opens the details.
         .navigationSubtitle(WindowTarget.subtitle(header: headerStatus, machineName: machineName))
         .frame(minWidth: 720, minHeight: 480)
-        // A console's tab is titled with its name (#735).
+        // A console's tab is titled with its name (#735), a notebook with
+        // its title, or its file's (#867).
         .navigationTitle((target ?? loaded).tabTitle(
-            consoleName: pageModel.state.console?.name, machineName: machineName))
+            consoleName: pageModel.state.console?.name, machineName: machineName,
+            metadataTitle: pageModel.state.title))
         .modifier(WindowSceneValues(place: place, folder: sidebarRoot, panel: panel))
         // Notebooks opened from the Finder (#228): the first window to see
         // them takes them. Each opens in a new tab (or brings forward
