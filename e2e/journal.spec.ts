@@ -52,6 +52,29 @@ test.afterEach(async () => {
   await removeFromServer(FILE, FREMONT);
 });
 
+// The notebook view's header shows the eyebrow too (#852). Eyebrow, title
+// and status line need more than 52px, so on a Mac it grows to 64px while
+// it has one; at 52 the eyebrow was cut off at the top.
+test('fits the eyebrow inside the notebook view’s header (#852)', async ({ page }) => {
+  await openWithToken(page);
+  await sidebarItem(page, 'Journal e2e').click();
+  await expect(page.getByRole('region', { name: `Journal of ${FILE}` })).toBeVisible();
+  await page
+    .getByRole('group', { name: 'View: Journal' })
+    .getByRole('button', { name: 'Notebook' })
+    .click();
+  await expect(page.locator('.jp-Cell')).toHaveCount(3);
+  const eyebrow = page.locator('.toolbar .title-eyebrow');
+  await expect(eyebrow).toHaveText(/^typescript · /i);
+  const [toolbar, box] = await Promise.all([
+    page.locator('.toolbar').boundingBox(),
+    eyebrow.boundingBox(),
+  ]);
+  expect(toolbar!.height).toBe(64);
+  expect(box!.y).toBeGreaterThanOrEqual(toolbar!.y);
+  expect(box!.y + box!.height).toBeLessThanOrEqual(toolbar!.y + toolbar!.height);
+});
+
 test('opens an agent’s notebook as a journal, and writes a note and a request', async ({
   page,
 }) => {

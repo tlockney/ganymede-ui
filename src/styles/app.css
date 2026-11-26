@@ -477,6 +477,12 @@ button {
   display: none;
 }
 
+/* Eyebrow, title row and status line need more than the 52px header: it
+ * grows by 12px while it has an eyebrow, or the eyebrow is clipped. */
+:root:not(.touch-ui):has(.toolbar .title-eyebrow) {
+  --toolbar-h: calc(64px + var(--safe-top));
+}
+
 .status-line {
   display: flex;
   align-items: center;
