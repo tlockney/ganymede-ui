@@ -101,7 +101,7 @@ struct HeaderStatus: Equatable {
 
     /// What VoiceOver says of the chip's dot.
     var dotLabel: String {
-        if kernelMissing { return "Kernel stopped" }
+        if kernelMissing { return "Kernel not installed" }
         switch status {
         case "starting"?: return "Kernel starting"
         case "busy"?, "restarting"?, "autorestarting"?, "connecting"?,

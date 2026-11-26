@@ -114,7 +114,7 @@ final class HeaderStatusTests: XCTestCase {
             XCTAssertEqual(status(state: state).dotLabel, "Kernel stopped", state)
         }
         XCTAssertEqual(status(kernel: "julia", missing: true).chipKind, .missing)
-        XCTAssertEqual(status(kernel: "julia", missing: true).dotLabel, "Kernel stopped")
+        XCTAssertEqual(status(kernel: "julia", missing: true).dotLabel, "Kernel not installed")
     }
 
     func testPlacesForThisDeviceAndAMachine() {
