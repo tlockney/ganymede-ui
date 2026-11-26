@@ -196,7 +196,7 @@ shown or hidden, its tab and its expanded folders across launches.
 
 - Kernels can run on a remote server instead. Add the remote in
   Settings > Remotes (its editor can switch kernels to it), then pick
-  where kernels run from the kernel button in the toolbar or Kernel >
+  where kernels run from the kernel chip in the toolbar or Kernel >
   Advanced > Run Kernels On. The sidebar's foot names where they run now
   ("This Mac" or the remote); its menu is where you open a terminal on
   a remote. The choice is app-wide, and switching shuts down running
@@ -730,7 +730,9 @@ keys are kept in the keychain too.
   the top level it does nothing), and Return opens the selected file or toggles the selected folder. Tapping
   a notebook or data file gives the keyboard to the page.
 
-- The title has the Mac's status line under it, and tapping it opens a
+- The title has a status line under it that says where the notebook is
+  saved, where it runs, the kernel and what it is doing, as "Saved on
+  This iPad · Runs on This iPad · Python 3 · Running"; tapping it opens a
   menu with the file's path, the kernel's version, the kernels to change
   to and, once a remote has a server, where kernels run, as Settings
   does. It turns red while the kernel is missing or saving is locked.
