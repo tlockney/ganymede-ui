@@ -377,7 +377,14 @@ notice says the kernel ran out of memory.
 - **Your name (Mac app):** the Mac app gives its own server your
   account's full name when it opens a notebook, so an agent working in
   the notebook is told who changed a cell; other clients with that
-  notebook open there see it too. It never goes to a remote server.
+  notebook open there see it too. It goes to no other server, except a
+  connected machine's notebooks while that machine's "Show my name"
+  setting is on (the default).
+
+  > [!NOTE]
+  > **Unreleased.** Sending the name to a connected machine is
+  > available only from a build of `main` (HEAD), not in the latest
+  > release, which sends it to no other server.
 
 Ganymede's [security page](https://ganymede-server.com/docs/security)
 covers tokens, cookies and cross-origin access on the server side.

@@ -96,7 +96,7 @@ struct ContentView: View {
     @State private var columns = SidebarColumns.automatic
     /// The iPhone's page, kept while the folder list shows (#209). A store
     /// is for one place: `switchPlace` makes another.
-    @State private var phonePage = WebViewStore()
+    @State private var phonePage = WebViewStore(place: .thisDevice, sharesName: true)
     /// The iPhone's screens over the folder list: the notebook, or none.
     @State private var phonePath: [PhoneScreen] = []
     /// The iPad's bottom panel (#251): terminals on remotes. The iPhone
@@ -864,7 +864,7 @@ struct ContentView: View {
         panelFills = false
         if isPhone {
             phonePage.retire()
-            phonePage = WebViewStore(place: new)
+            phonePage = WebViewStore(place: new, sharesName: sharesName(for: new))
         }
         pageModel.forgetPage()
         place = new
@@ -1132,6 +1132,12 @@ struct ContentView: View {
     }
     #endif
 
+    /// Whether a window of `place` gets the person's name (#842): this
+    /// device always does; a machine, when its remote's setting says so.
+    private func sharesName(for place: Place) -> Bool {
+        model.sharesName(for: place)
+    }
+
     private var content: some View {
         Group {
             if let url = page {
@@ -1140,7 +1146,7 @@ struct ContentView: View {
                     url: url, onNavigate: follow, document: document, page: pageModel,
                     onOpenTab: openTab,
                     onOpenFile: { path in openWindow(value: EditorRequest(path: path)) },
-                    place: place
+                    place: place, sharesName: sharesName(for: place)
                 )
                 // A page loaded for another place gets its own handlers.
                 .id(place)
@@ -1149,7 +1155,7 @@ struct ContentView: View {
                 // device's page is not a machine's (#758).
                 WebView(
                     url: url, page: pageModel, onOpenFile: openEditor, store: isPhone ? phonePage : nil,
-                    place: place
+                    place: place, sharesName: sharesName(for: place)
                 )
                 .id(place)
                 #endif
