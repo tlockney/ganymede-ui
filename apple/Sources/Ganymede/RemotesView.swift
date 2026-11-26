@@ -135,11 +135,14 @@ struct KernelLocationSection: View {
 
     /// "workmbp isn't answering: …", under the picker (#832). Named as the
     /// remote is here, not as its server's URL names it, and shown only for
-    /// the remote it was fetched for.
+    /// the remote it was fetched for (which drops one fetched before a
+    /// switch to this device), and only while the running server is that
+    /// remote's (#854).
     @ViewBuilder
     private var status: some View {
         if let loaded, loaded.remote == model.kernelRemoteID,
-           let line = loaded.specs.notAnswering(name: model.kernelRemote?.title) {
+           let line = Remote.notAnswering(in: loaded.specs, chosen: model.kernelRemote,
+                                          served: model.servedKernels) {
             Text(line)
                 .font(.caption)
                 .foregroundStyle(.secondary)
