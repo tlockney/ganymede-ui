@@ -736,8 +736,9 @@ struct KernelPicker: View {
         .accessibilityLabel(chipText)
         // The mark's words are the button's value, so the whole chip reads
         // as one control (#867): "TypeScript · This Mac · Idle, Kernel
-        // idle, button".
-        .accessibilityValue(dotLabel)
+        // idle, button". A console or a folder has no status line, so no
+        // value.
+        .modifier(ChipValue(label: dotLabel))
         .disabled(!page.state.hasNotebook)
         .popover(isPresented: $shown, arrowEdge: .bottom) {
             KernelPopover(page: page, panel: panel, place: place, header: header) { shown = false }
@@ -768,21 +769,27 @@ struct KernelPicker: View {
     /// The chip's mark in a fixed 10pt frame (#867): a 7pt dot while the
     /// kernel waits, a small spinner in its place while it works, a grey
     /// dot once it has stopped, and a warning triangle when it isn't
-    /// installed. The shape says which, not the colour, and the frame is
-    /// the same for each, so the words after it don't move.
+    /// installed. A console or a folder has no status line, so it keeps the
+    /// neutral `cpu` symbol, with no state to read. The shape says which,
+    /// not the colour, and the frame is the same for each, so the words
+    /// after it don't move.
     private var mark: some View {
         Group {
-            switch markKind {
-            case .working:
-                ProgressView()
-                    .controlSize(.mini)
-                    .tint(Color("Ready"))
-            case .missing:
-                Image(systemName: "exclamationmark.triangle")
-            case .idle, .stopped:
-                Circle()
-                    .fill(markKind == .idle ? Color("Ready") : Color.secondary)
-                    .frame(width: 7, height: 7)
+            if header == nil {
+                Image(systemName: "cpu")
+            } else {
+                switch markKind {
+                case .working:
+                    ProgressView()
+                        .controlSize(.mini)
+                        .tint(Color("Ready"))
+                case .missing:
+                    Image(systemName: "exclamationmark.triangle")
+                case .idle, .stopped:
+                    Circle()
+                        .fill(markKind == .idle ? Color("Ready") : Color.secondary)
+                        .frame(width: 7, height: 7)
+                }
             }
         }
         .frame(width: 10, height: 10)
@@ -795,11 +802,28 @@ struct KernelPicker: View {
     private var chipLead: String { header?.chipLead ?? page.state.kernelDisplayName ?? "Kernel" }
     private var chipState: String? { header?.chipState }
     private var chipText: String { header?.chipText ?? chipLead }
-    private var dotLabel: String { header?.dotLabel ?? "Kernel stopped" }
+    /// The mark's words, only where a status line gives them.
+    private var dotLabel: String? { header?.dotLabel }
 
     private var markKind: HeaderStatus.ChipKind {
         if page.state.kernelMissing { return .missing }
         return header?.chipKind ?? .stopped
+    }
+}
+
+/// The chip's mark's words as the button's value, when the window has a
+/// status line (#867). A console or a folder has none to add, so the value
+/// is left off rather than empty.
+private struct ChipValue: ViewModifier {
+    let label: String?
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if let label {
+            content.accessibilityValue(label)
+        } else {
+            content
+        }
     }
 }
 
