@@ -33,8 +33,11 @@ only statement about what a cell had produced was the output itself.
   and the cell count below. Journal cells are cards of the same tokens, so
   the notebook and the journal read as one layout.
 - The notebook view's header shows the same eyebrow above the name. Three
-  lines don't fit the 52 px header, so on a Mac it grows to 64 px while it
-  has one; before that the eyebrow was cut off at the top.
+  lines don't fit the 52 px header, so outside touch layouts the main
+  column's header grows to 64 px while it has one; before that the eyebrow
+  was cut off at the top. The sidebar's titlebar keeps 52 px, so its rows
+  don't move. The apps draw their own header and don't show the eyebrow
+  in the Notebook view yet (#865).
 - `markdown-rail.ts` is gone: the cards replaced the rail it drew beside
   Markdown.
 - Tests: `src/lib/cell-gutter.test.ts` for the margin; `output-labels.test.ts`

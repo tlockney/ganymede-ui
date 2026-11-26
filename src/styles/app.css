@@ -478,8 +478,10 @@ button {
 }
 
 /* Eyebrow, title row and status line need more than the 52px header: it
- * grows by 12px while it has an eyebrow, or the eyebrow is clipped. */
-:root:not(.touch-ui):has(.toolbar .title-eyebrow) {
+ * grows by 12px while it has an eyebrow, or the eyebrow is clipped. Only
+ * the main column's: the sidebar's titlebar keeps 52px, so its rows don't
+ * move when a notebook with an eyebrow opens (#812). */
+:root:not(.touch-ui) .main:has(.toolbar .title-eyebrow) {
   --toolbar-h: calc(64px + var(--safe-top));
 }
 
