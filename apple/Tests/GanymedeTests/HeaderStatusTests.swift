@@ -79,6 +79,44 @@ final class HeaderStatusTests: XCTestCase {
         }
     }
 
+    /// The chip beside the Mac's title (#867): the kernel, where it runs and
+    /// what it is doing, in that order.
+    func testTheChipsWords() {
+        XCTAssertEqual(status().chipText, "TypeScript · This Mac · Idle")
+        XCTAssertEqual(
+            status(runsOn: "Studio Mac", state: "busy").chipText, "TypeScript · Studio Mac · Running")
+        XCTAssertEqual(status(runsOn: nil).chipText, "TypeScript · Idle")
+        XCTAssertEqual(status(state: nil).chipText, "TypeScript · This Mac · Idle")
+        XCTAssertEqual(status(state: "none").chipText, "TypeScript · This Mac · Idle")
+        XCTAssertEqual(status(kernel: nil).chipText, "No kernel · This Mac · Idle")
+        // The missing kernel asks for one instead of saying what it does.
+        let missing = status(kernel: "julia", missing: true)
+        XCTAssertEqual(missing.chipText, "julia not installed · Choose Kernel")
+        XCTAssertEqual(missing.chipState, nil)
+        XCTAssertEqual(status(kernel: nil, missing: true).chipText, "Kernel not installed · Choose Kernel")
+    }
+
+    /// The chip's dot: green while the kernel waits, blue while it works,
+    /// grey when it has stopped.
+    func testTheChipsDot() {
+        XCTAssertEqual(status().chipDot, .ready)
+        XCTAssertEqual(status().dotLabel, "Kernel idle")
+        XCTAssertEqual(status(state: nil).chipDot, .ready)
+        XCTAssertEqual(status(state: "none").dotLabel, "Kernel idle")
+        for state in ["busy", "restarting", "autorestarting", "connecting", "terminating"] {
+            XCTAssertEqual(status(state: state).chipDot, .busy, state)
+            XCTAssertEqual(status(state: state).dotLabel, "Kernel busy", state)
+        }
+        XCTAssertEqual(status(state: "starting").chipDot, .busy)
+        XCTAssertEqual(status(state: "starting").dotLabel, "Kernel starting")
+        for state in ["dead", "unknown", "odd"] {
+            XCTAssertEqual(status(state: state).chipDot, .stopped, state)
+            XCTAssertEqual(status(state: state).dotLabel, "Kernel stopped", state)
+        }
+        XCTAssertEqual(status(kernel: "julia", missing: true).chipDot, .stopped)
+        XCTAssertEqual(status(kernel: "julia", missing: true).dotLabel, "Kernel stopped")
+    }
+
     func testPlacesForThisDeviceAndAMachine() {
         let device = HeaderStatus.places(
             machineName: nil, isMachine: false, deviceName: "This iPad", kernelLocation: nil)

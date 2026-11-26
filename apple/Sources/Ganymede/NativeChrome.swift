@@ -588,13 +588,14 @@ struct ServerLine: View {
 /// into one AppKit family, and AppKit threw while syncing a new window's
 /// items into the others when a notebook opened from the Finder (#226).
 ///
-/// In a fixed order, so no control moves under the pointer: New Notebook;
-/// Trust and Notebook Access, which are there only while they apply and so
-/// come first; Notebook | Journal, there while a notebook is open (#819);
-/// Run Cell with its run menu; Interrupt, always there and enabled while
-/// the kernel is busy; the status button (the kernel's name, whose popover
-/// has the file, the kernel and where it runs); Share; and More. That is
-/// nine items, under the ten a ToolbarContentBuilder takes.
+/// In a fixed order, so no control moves under the pointer: the kernel's
+/// chip, beside the title (its dot, the kernel's name, where it runs and
+/// what it is doing; its popover has the file and the kernels to change
+/// to); New Notebook; Trust and Notebook Access, which are there only
+/// while they apply; Notebook | Journal, there while a notebook is open
+/// (#819); Run Cell with its run menu; Interrupt, always there and enabled
+/// while the kernel is busy; Share; and More. That is nine items, under
+/// the ten a ToolbarContentBuilder takes.
 struct NotebookToolbar: ToolbarContent {
     var page: PageModel
     /// Saved as File > Save saves it, and enabled when that is.
@@ -609,6 +610,11 @@ struct NotebookToolbar: ToolbarContent {
     var header: HeaderStatus?
 
     var body: some ToolbarContent {
+        // The kernel's chip, beside the title, where the status line under
+        // it used to say all of this (#867).
+        ToolbarItem(placement: .navigation) {
+            KernelPicker(page: page, panel: panel, place: place, header: header)
+        }
         ToolbarItem(placement: .navigation) {
             Button {
                 page.run("new-notebook", arg: FolderEntry.serverPath(folder))
@@ -646,9 +652,6 @@ struct NotebookToolbar: ToolbarContent {
                 .labelStyle(.titleAndIcon)
                 .help("Interrupt the kernel (⌘.)")
                 .disabled(!page.state.isBusy)
-        }
-        ToolbarItem {
-            KernelPicker(page: page, panel: panel, place: place, header: header)
         }
         // Download, Export As and Publish, as in the File menu (#620): the
         // web toolbar that has them is hidden under native chrome.
@@ -711,12 +714,13 @@ struct NotebookToolbar: ToolbarContent {
     }
 }
 
-/// The status button (#241, #812): the kernel's name in the toolbar, or
-/// "Choose Kernel" when the notebook's isn't installed, and a popover with
-/// the status line's full text, the file, the kernel's state and memory,
-/// Interrupt, Restart, the Kernel Log, where kernels run and the kernels to
-/// change to. The window's subtitle is drawn by the system and can't be
-/// clicked, so the details open from here.
+/// The status button (#241, #812, #867): the kernel's chip in the toolbar —
+/// a dot, the kernel's name, where it runs and what it is doing, as
+/// "TypeScript · This Mac · Idle" — and a popover with the status line's
+/// full text, the file, the kernel's state and memory, Interrupt, Restart,
+/// the Kernel Log, where kernels run and the kernels to change to. The
+/// window's subtitle names only where the file is saved and can't be
+/// clicked, so the rest is here, beside the title.
 struct KernelPicker: View {
     var page: PageModel
     var panel: PanelController?
@@ -724,21 +728,70 @@ struct KernelPicker: View {
     var header: HeaderStatus?
     @State private var shown = false
 
+    /// The widest state word, whose width the state part holds: a chip
+    /// that grows with "Running" and shrinks to "Idle" would shift every
+    /// item after it (#867). "Connecting" is wider than "Restarting"
+    /// (69.7pt against 62.1pt in the system font at 13pt).
+    private static let widestState = "Connecting"
+
     var body: some View {
         Button {
             shown.toggle()
         } label: {
-            if page.state.kernelMissing {
-                Label("Choose Kernel", systemImage: "exclamationmark.triangle")
-            } else {
-                Label(page.state.kernelDisplayName ?? "Kernel", systemImage: "cpu")
-            }
+            chip
         }
         .labelStyle(.titleAndIcon)
-        .help(page.state.kernelVersionLine ?? "The notebook's kernel")
+        .help(header?.full ?? page.state.kernelVersionLine ?? "The notebook's kernel")
+        .accessibilityLabel(chipText)
         .disabled(!page.state.hasNotebook)
         .popover(isPresented: $shown, arrowEdge: .bottom) {
             KernelPopover(page: page, panel: panel, place: place, header: header) { shown = false }
+        }
+    }
+
+    /// A 7pt dot, or a warning triangle for a kernel that isn't installed,
+    /// then the words.
+    private var chip: some View {
+        HStack(spacing: 5) {
+            if page.state.kernelMissing {
+                Image(systemName: "exclamationmark.triangle")
+                    .accessibilityLabel(dotLabel)
+            } else {
+                Circle()
+                    .fill(dotColor)
+                    .frame(width: 7, height: 7)
+                    .accessibilityElement()
+                    .accessibilityLabel(dotLabel)
+            }
+            HStack(spacing: 4) {
+                Text(chipLead)
+                    .lineLimit(1)
+                if let state = chipState {
+                    Text("·")
+                    // Held to the widest state word's width, so idle, busy
+                    // and idle again leave the items after the chip where
+                    // they were.
+                    ZStack(alignment: .leading) {
+                        Text(KernelPicker.widestState).hidden()
+                        Text(state).lineLimit(1)
+                    }
+                }
+            }
+        }
+    }
+
+    /// A console has a kernel but no status line (`HeaderStatus.make` is
+    /// for notebooks), so its chip names the kernel alone.
+    private var chipLead: String { header?.chipLead ?? page.state.kernelDisplayName ?? "Kernel" }
+    private var chipState: String? { header?.chipState }
+    private var chipText: String { header?.chipText ?? chipLead }
+    private var dotLabel: String { header?.dotLabel ?? "Kernel stopped" }
+
+    private var dotColor: Color {
+        switch header?.chipDot {
+        case .ready: Color("Ready")
+        case .busy: Color("KernelBusy")
+        case .stopped, nil: .secondary
         }
     }
 }

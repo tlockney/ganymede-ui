@@ -59,6 +59,56 @@ struct HeaderStatus: Equatable {
         return parts.compactMap { $0 }.joined(separator: " · ")
     }
 
+    /// The Mac toolbar chip's first words (#867): the kernel and where it
+    /// runs — "TypeScript · This Mac" — or, for a kernel that isn't
+    /// installed, "julia not installed · Choose Kernel". The state is a
+    /// part of its own (`chipState`), so the view can hold its width.
+    var chipLead: String {
+        if kernelMissing { return "\(kernel ?? "Kernel") not installed · Choose Kernel" }
+        return [kernel ?? "No kernel", runsOn].compactMap { $0 }.joined(separator: " · ")
+    }
+
+    /// The chip's state: "Idle" while the kernel waits or there is none;
+    /// nil when it is missing, where the chip asks for one instead.
+    var chipState: String? {
+        if kernelMissing { return nil }
+        return stateText ?? "Idle"
+    }
+
+    /// The whole chip: `<kernel> · <runs on> · <state>`, as
+    /// "TypeScript · This Mac · Idle", or the missing kernel's words.
+    var chipText: String {
+        [chipLead, chipState].compactMap { $0 }.joined(separator: " · ")
+    }
+
+    /// How the chip's dot is drawn: green while the kernel waits, blue
+    /// while it works, grey once it has stopped.
+    enum ChipDot: Equatable {
+        case ready, busy, stopped
+    }
+
+    var chipDot: ChipDot {
+        if kernelMissing { return .stopped }
+        switch status {
+        case "busy"?, "starting"?, "restarting"?, "autorestarting"?, "connecting"?,
+             "terminating"?: return .busy
+        case nil, "idle"?, "none"?: return .ready
+        default: return .stopped
+        }
+    }
+
+    /// What VoiceOver says of the chip's dot.
+    var dotLabel: String {
+        if kernelMissing { return "Kernel stopped" }
+        switch status {
+        case "starting"?: return "Kernel starting"
+        case "busy"?, "restarting"?, "autorestarting"?, "connecting"?,
+             "terminating"?: return "Kernel busy"
+        case nil, "idle"?, "none"?: return "Kernel idle"
+        default: return "Kernel stopped"
+        }
+    }
+
     /// The iPhone's form: the save state as one word, then where it runs,
     /// with no kernel, so a long name doesn't push the runs part out.
     var short: String {
