@@ -546,9 +546,16 @@ A notebook can be edited on one server at a time: if an agent's own
 The Mac app gives its own server your account's full name with each
 notebook it opens, so an agent working there is told who changed a
 cell: `changed by "Thomas"` rather than `by "a person"`. The name goes
-only to the app's server on this Mac, and to the other clients with
-that notebook open (such as an agent, or JupyterLab), never to a remote
+to the app's server on this Mac and to the other clients with that
+notebook open (such as an agent, or JupyterLab). It also goes to a
+connected machine's notebooks when that machine's setting is on
+([Connected machines](#connected-machines)), and never to any other
 server. iPad and iPhone send no name.
+
+> [!NOTE]
+> **Unreleased.** The name going to a connected machine's rooms is
+> available only from a build of `main` (HEAD), not in the latest
+> release.
 
 ### Sharing on your tailnet
 
@@ -879,6 +886,17 @@ with only SSH stays in Settings for shells.
   when it last wrote. Picking one opens the notebook. It needs a machine
   whose Ganymede lists open rooms (ganymede#893); an older one says so.
   On the Mac this is the native sidebar's Journals tab.
+- **Your name.** With each edit you make in a machine's notebook, your
+  Mac account's name goes to that machine's rooms, so the agents and
+  other people there see who edited: `changed by "Thomas"` rather than
+  `by "a person"`. It is on for each machine by default, since these
+  are machines you linked yourself. "Show my name in this machine's
+  notebooks", in the machine's editor (Settings > Remotes, Edit),
+  turns it off; an open notebook of that machine reloads in place, and
+  your edits there show as "a person". A machine that lets you in by
+  your tailnet login credits your edits to that login whatever this
+  setting says.
+  iPad and iPhone send no name either way.
 - **When a machine stops answering,** its open notebooks turn read-only
   and a banner reads "_machine_ went offline · Reconnecting…". They are
   editable again when it is back. There is no offline editing.
@@ -894,10 +912,15 @@ with only SSH stays in Settings for shells.
 
 - **What a machine's window doesn't get.** The device API, Notebook
   Access, the Shortcuts bridge, the app's editor for text files, the
-  Agent's keys, your name in the notebook's presence and `ganymede://`
-  links are for this device's windows only. Neither Spotlight, File > Open
+  Agent's keys and `ganymede://` links are for this device's windows
+  only. Neither Spotlight, File > Open
   Recent nor the Recents list in the app's sidebar include a machine's
   notebooks.
+
+> [!NOTE]
+> **Unreleased.** Your name going to a connected machine's rooms, and
+> the setting that turns it off, are available only from a build of
+> `main` (HEAD), not in the latest release.
 
 On the Mac a machine's window is the app's native window: the same
 sidebar (Files, Search, Running, Outline and Journals), toolbar,

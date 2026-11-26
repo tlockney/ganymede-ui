@@ -105,6 +105,46 @@ final class RemoteStoreTests: XCTestCase {
         XCTAssertEqual(store.token(for: sshOnly.id), "")
     }
 
+    func testARemoteSavedByAnOlderBuildSharesItsName() throws {
+        // JSON as an older build wrote it, with no `sharesName` key.
+        let old = """
+        [{"id":"D1A0E1C8-9B54-4A11-9DA3-2F3B8C1E0001","name":"mini","serverURL":"http://mini:8888","ssh":null}]
+        """
+        let decoded = try XCTUnwrap(JSONDecoder().decode([Remote].self, from: Data(old.utf8)).first)
+        XCTAssertNil(decoded.sharesName)
+        XCTAssertTrue(decoded.shares)
+        XCTAssertTrue(Remote(name: "mini", serverURL: "http://mini:8888").shares)
+        XCTAssertTrue(Remote(name: "mini", serverURL: "http://mini:8888", sharesName: true).shares)
+        XCTAssertFalse(Remote(name: "mini", serverURL: "http://mini:8888", sharesName: false).shares)
+        // Off round-trips through the store, and is kept across launches.
+        var off = Remote(name: "mini", serverURL: "http://mini:8888")
+        off.sharesName = false
+        try store.save([off], kernels: nil)
+        XCTAssertEqual(store.load().remotes, [off])
+        XCTAssertFalse(store.load().remotes.first?.shares ?? true)
+    }
+
+    func testWhichWindowsGetTheName() {
+        let on = Remote(name: "on", serverURL: "http://on:8888")
+        let off = Remote(name: "off", serverURL: "http://off:8888", sharesName: false)
+        let sshOnly = Remote(name: "ssh", ssh: .init(host: "box"))
+        let remotes = [on, off, sshOnly]
+        // This device always; a machine by its remote's setting.
+        XCTAssertTrue(Remote.sharesName(for: .thisDevice, in: remotes))
+        XCTAssertTrue(Remote.sharesName(for: .thisDevice, in: []))
+        XCTAssertTrue(Remote.sharesName(for: .machine(on.id.uuidString), in: remotes))
+        XCTAssertFalse(Remote.sharesName(for: .machine(off.id.uuidString), in: remotes))
+        // A removed or unknown machine, or a remote with no server, never.
+        XCTAssertFalse(Remote.sharesName(for: .machine(on.id.uuidString), in: [off]))
+        XCTAssertFalse(Remote.sharesName(for: .machine(UUID().uuidString), in: remotes))
+        XCTAssertFalse(Remote.sharesName(for: .machine(sshOnly.id.uuidString), in: remotes))
+    }
+
+    func testTheEditorsToggleSavesOnAsUnset() {
+        XCTAssertNil(Remote.sharesNameSetting(true))
+        XCTAssertEqual(Remote.sharesNameSetting(false), false)
+    }
+
     func testKernelsOnARemoteWithoutAServerFallBackToThisDevice() throws {
         let sshOnly = Remote(ssh: .init(host: "box"))
         try store.save([sshOnly], kernels: sshOnly.id)

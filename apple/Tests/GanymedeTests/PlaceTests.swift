@@ -70,6 +70,30 @@ final class PlaceTests: XCTestCase {
         }
     }
 
+    func testAMachineGetsThePersonsNameOnlyWhenItsRemoteSaysSo() {
+        let machine = Place.machine(id)
+        XCTAssertTrue(machine.allows(.personName, sharesName: true))
+        XCTAssertFalse(machine.allows(.personName, sharesName: false))
+        // Without its setting, a machine still gets no name.
+        XCTAssertFalse(machine.allows(.personName))
+        // This device always gets it, whatever the setting would say.
+        for shares in [true, false] {
+            XCTAssertTrue(Place.thisDevice.allows(.personName, sharesName: shares))
+        }
+        // The setting changes nothing else: with it on, a machine gets
+        // `personName` beside what it always did, no more.
+        XCTAssertEqual(
+            Set(Place.Capability.allCases.filter { machine.allows($0, sharesName: true) }
+                .map { "\($0)" }),
+            ["settings", "nativeChrome", "personName"])
+        for capability in Place.Capability.allCases where capability != .personName {
+            XCTAssertEqual(
+                machine.allows(capability, sharesName: true),
+                machine.allows(capability),
+                "\(capability)")
+        }
+    }
+
     func testNewTabOpensOnTheWindowsOwnMachineOrFolder() {
         let root = URL(fileURLWithPath: "/Users/me/notebooks", isDirectory: true)
         let folder = URL(fileURLWithPath: "/Users/me/moons", isDirectory: true)
@@ -139,6 +163,36 @@ final class PlaceTests: XCTestCase {
         XCTAssertFalse(machine.allowsFollowing(try url("/machines/other/api/status")))
         XCTAssertFalse(machine.allowsFollowing(try url("/files/secret.txt")))
         XCTAssertTrue(Place.thisDevice.allowsFollowing(try url("/api/contents/")))
+    }
+
+    func testAWindowLoadsOnlyItsOwnPlacesPages() throws {
+        func url(_ path: String) throws -> URL {
+            try XCTUnwrap(URL(string: "http://127.0.0.1:8123" + path))
+        }
+        for path in ["/", "/?open=/a.ipynb", "/api/contents/", "/?machine=bad!"] {
+            XCTAssertTrue(Place.thisDevice.allowsLoading(try url(path)), path)
+        }
+        for path in [
+            "/?machine=\(id)", "/index.html?machine=\(id)",
+            "/x/y.html?kernels=server&machine=\(id)",
+        ] {
+            XCTAssertFalse(Place.thisDevice.allowsLoading(try url(path)), path)
+        }
+        let machine = Place.machine(id)
+        for path in ["/?kernels=server&machine=\(id)&open=/a.ipynb", "/machines/\(id)/files/a.png"] {
+            XCTAssertTrue(machine.allowsLoading(try url(path)), path)
+        }
+        for path in [
+            "/?machine=other1", "/index.html?machine=other1",
+            "/machines/\(id)/index.html?machine=other1", "/", "/files/secret.txt",
+        ] {
+            XCTAssertFalse(machine.allowsLoading(try url(path)), path)
+        }
+        // The first `machine=` is the page's, as the page reads it.
+        XCTAssertEqual(Place.shown(by: try url("/?machine=\(id)&machine=other1")), .machine(id))
+        XCTAssertEqual(Place.shown(by: try url("/index.html?machine=\(id)")), .machine(id))
+        XCTAssertEqual(Place.shown(by: try url("/?open=/a.ipynb")), .thisDevice)
+        XCTAssertEqual(Place.shown(by: try url("/?machine=bad!")), .thisDevice)
     }
 
     func testMachineNotebooksStayOutOfNativeRecentsAndSpotlight() {

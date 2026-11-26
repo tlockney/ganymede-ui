@@ -410,6 +410,12 @@ final class AppModel {
         remotes.first { $0.id.uuidString == id && $0.hasServer }?.title
     }
 
+    /// Whether a window of `place` gets the person's name for its rooms
+    /// (#842): `Remote.sharesName(for:in:)` over the saved remotes.
+    func sharesName(for place: Place) -> Bool {
+        Remote.sharesName(for: place, in: remotes)
+    }
+
     /// Mounts each remote with a server on the running server, and takes
     /// away the mounts of remotes that were removed or changed. Runs when
     /// the server starts (a new server has none) and when remotes change.
