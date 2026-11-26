@@ -641,6 +641,9 @@ struct NotebookToolbar: ToolbarContent {
                 // the title's first letter isn't cut off (#867).
                 .padding(.horizontal, 8)
             }
+            // A plain title over a caption, not two lines squeezed into the
+            // toolbar's glass capsule.
+            .sharedBackgroundVisibility(.hidden)
         } else {
             // A console or a folder keeps the system's title, and its chip
             // stands beside it where it was.
