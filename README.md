@@ -61,17 +61,18 @@ The iPad and iPhone app is on TestFlight for internal testers.
 [docs/apps.md](docs/apps.md) is the apps' user guide;
 [apple/README.md](apple/README.md) has how to build them.
 
-A notebook's window says under its title where the notebook is saved —
-"Saved on This Mac", "Edited", "Locked: changed on disk" — and a chip
-beside the title reads "TypeScript · This Mac · Idle": its kernel, where
-that kernel runs and what it is doing, behind a solid blue dot while the
-kernel waits and a small spinner while it works.
+A notebook's window shows its title in the toolbar, with a chip under it:
+"Python · This Mac · Idle" — the notebook's language, where its kernel runs
+and what it is doing, behind a solid blue dot while the kernel waits and a
+small spinner while it works. Beside the chip it says "Edited" with
+unsaved changes, or "Locked: changed on disk" while the file changed under
+you; a saved file adds nothing there.
 
 > [!NOTE]
 > **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release, where the status line under the title has all of it
-> ("Saved on This Mac · Runs on This Mac · TypeScript") and the toolbar's
-> kernel button reads only the kernel's name.
+> the latest release, where the system's title has a status line under it
+> with all of it ("Saved on This Mac · Runs on This Mac · TypeScript"),
+> and the toolbar's kernel button beside it reads only the kernel's name.
 
 ## Run
 

@@ -104,30 +104,33 @@ shown or hidden, its tab and its expanded folders across launches.
 
 ### Toolbar and menus
 
-- The window's title has a status line under it, and it says where the
-  notebook is saved: "Saved on This Mac" or "Saved on Studio Mac",
-  "Edited" with unsaved changes, and "Locked: changed on disk" while the
-  file changed under you. Where it runs, the kernel and what the kernel is
-  doing are the kernel chip beside the title, as in "TypeScript · This
-  Mac · Idle": the kernel's name, the place its kernel runs, and its
-  state — Idle, Running, Starting, Restarting, Stopped, or Connecting
-  while it reaches a kernel that runs on a remote. A kernel that isn't
-  installed reads "julia not installed · Choose Kernel" beside a warning
-  triangle. The chip's mark is a solid blue dot while the kernel waits, a
-  small spinner while it starts, runs or restarts, and a grey dot once it
-  has stopped. The chip opens a popover with the whole status line, the
+- A notebook's window has its title in the toolbar, with the kernel chip
+  right under it. The title is the notebook's own (`metadata.title`) or
+  its file's name, and under it the chip reads "Python · This Mac · Idle":
+  the notebook's language, where its kernel runs, and what the kernel is
+  doing — Idle, Running, Starting, Restarting, Stopped, or Connecting while
+  it reaches a kernel that runs on a remote. Beside the chip, when there
+  is something to say, it says where the notebook stands: "Edited" with
+  unsaved changes, and "Locked: changed on disk" while the file changed
+  under you. A saved file adds nothing there, since "Saved on This Mac" is
+  what the window says anyway. A kernel that isn't installed reads "julia
+  not installed · Choose Kernel" beside a warning triangle. The chip's
+  mark is a solid blue dot while the kernel waits, a small spinner while
+  it starts, runs or restarts, and a grey dot once it has stopped. The
+  chip is plain words, not a button on a capsule: it takes a quiet fill
+  under the pointer. It opens a popover with the whole status line, the
   file's path, the kernel's state and memory, Interrupt, Restart, Kernel
   Log, where kernels run and the kernels to change to, and hovering it
-  shows the whole status line. The system draws the line under the title,
-  so it isn't clickable.
+  shows the whole status line. A console's or a folder's window keeps the
+  system's own title, with the chip beside it.
 - The toolbar's controls stay in one order, so none moves under the
-  pointer: the kernel chip; Trust and Notebook Access, which are there only
-  while they apply; Notebook | Journal, the notebook's two views, there
-  while a notebook is open; **Run Cell**, whose menu has Run All, Run with
-  Parameters…, Clear All Outputs, Restart Kernel and Restart & Run All,
-  with **Interrupt** beside it, always there and enabled while the kernel
-  runs; Share (download, export, publish); and ⋯, which has View as
-  Journal, Insert Code Cell, Insert Markdown Cell, Cell Type and Save.
+  pointer: the title with its kernel chip; Trust and Notebook Access, which
+  are there only while they apply; Notebook | Journal, the notebook's two
+  views, there while a notebook is open; **Run Cell**, whose menu has Run
+  All, Run with Parameters…, Clear All Outputs, Restart Kernel and Restart
+  & Run All, with **Interrupt** beside it, always there and enabled while
+  the kernel runs; Share (download, export, publish); and ⋯, which has View
+  as Journal, Insert Code Cell, Insert Markdown Cell, Cell Type and Save.
   Run All is only in Run Cell's menu, so the two can't be mistaken for
   each other. New Notebook isn't a toolbar button: File > New Notebook
   (⌘N) makes one in the window's folder, as the sidebar's menu does.
@@ -959,9 +962,9 @@ with only SSH stays in Settings for shells.
 > its text files don't open and it has no terminal panel or New Terminal
 > (New Terminal On already works there). The Kernel Log tab is in this
 > device's window only: a machine's kernel runs on the machine, and this
-> Mac's server keeps no log of it. A notebook's subtitle names only where
-> it is saved ("Saved on _machine_"), where the release's has the whole
-> status line.
+> Mac's server keeps no log of it. A notebook's window has its title in
+> the toolbar with the kernel chip under it, where the release's has the
+> whole status line under the title.
 
 On the Mac a machine's window is the app's native window: the same
 sidebar (Files, Search, Running, Outline and Journals), toolbar,
@@ -974,12 +977,13 @@ folders list again once it answers. When it doesn't answer, a failed file
 operation says "_machine_ didn't answer" (or "_machine_ isn't connected to
 this Mac" when it isn't connected).
 Delete removes a machine's file for good (its server keeps no Trash), so
-it always asks first. The title is the notebook or folder, the subtitle
-names where the notebook is saved ("Saved on _machine_"), and with no
-notebook open it reads "on _machine_". A machine's text file opens in the
-app's editor as this Mac's do, read and saved through the machine's mount:
-its window's title is the file and the machine ("notes.md · m4mini"), and
-the same path on this Mac and on the machine are two editors. These work
+it always asks first. The title is the notebook or folder, with the kernel
+chip under it and the save part beside the chip for a notebook, and with
+no notebook open the subtitle reads "on _machine_". A machine's text file
+opens in the app's editor as this Mac's do, read and saved through the
+machine's mount: its window's title is the file and the machine
+("notes.md · m4mini"), and the same path on this Mac and on the machine are
+two editors. These work
 on this Mac's disk, so a machine's window doesn't have them: Show in
 Finder, Duplicate on a folder (a machine copies files only), the Recents
 tab, File > Open Recent. File > New Tab and New Window

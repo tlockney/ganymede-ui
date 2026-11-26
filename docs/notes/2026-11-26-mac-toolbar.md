@@ -9,20 +9,52 @@ title carried the rest — "Saved on This Mac · Runs on This Mac ·
 TypeScript · Running" — a sentence in a place that has room for a few
 words.
 
-- The status line under the title now says only where the notebook is
-  saved: `HeaderStatus.save`, as "Saved on This Mac", "Edited" or
-  "Locked: changed on disk". `WindowTarget.subtitle` passes that through,
-  and a machine's window with no notebook open still says "on _machine_".
-- Where it runs, the kernel and what it is doing are a chip beside the
-  title: "TypeScript · This Mac · Idle". `HeaderStatus.chipLead` gives the
-  kernel's name and its place (no place while the kernel is missing);
-  `chipState` gives `stateText`, or "Idle" while the kernel waits or there
-  is none. A kernel that isn't installed gives "julia not installed ·
-  Choose Kernel" beside a warning triangle in place of the dot, and no
-  state, since there is nothing for it to do.
+- A notebook's window no longer has the system's title or subtitle in its
+  toolbar: `.toolbar(removing: .title)` takes them away (`ContentView`) and
+  `.navigationTitle` stays, so the window's tab still gets the display
+  title. One `.navigation` item draws the block in their place
+  (`NotebookToolbar`): the notebook's display title in `.headline`, on one
+  line, truncated in the middle, and under it, one point away, the
+  kernel's chip. A console's or a folder's window keeps the system title,
+  and its chip beside it, as before.
+- Beside the chip the save part shows only where "Saved on …" would say
+  nothing new: `HeaderStatus.saveNote` gives "Edited", "Locked: changed
+  on disk" or "Edited · Locked: changed on disk", in `.secondary` caption,
+  and nothing while the file is saved. The whole status line
+  (`HeaderStatus.full`) stays in the chip's help and in the popover.
+  `HeaderStatus.save` remains `saveNote` or "Saved on <place>", so the
+  subtitle of a machine's window with no notebook open still says
+  "on _machine_".
+- The chip is borderless now (`ChipButtonStyle`): words rather than a
+  toolbar capsule, the dot and a `.caption` lead in `.secondary`. The
+  pointer fills a quiet rounded background under the words, stronger
+  while pressed. It opens the same popover, with the same accessibility
+  label and value.
+- Where it runs, the language and what the kernel is doing are the chip,
+  as "Python · This Mac · Idle": the notebook's language, its place and
+  its state. `HeaderStatus.chipLead` gives the language and the place (no
+  place while the kernel is missing); `chipState` gives `stateText`, or
+  "Idle" while the kernel waits or there is none. A kernel that isn't
+  installed gives "julia not installed · Choose Kernel" beside a warning
+  triangle in place of the dot, and no state, since there is nothing for
+  it to do.
+- The chip calls the notebook by its language, not the kernel's display
+  name: "Python" for a "Python 3" kernel, "TypeScript" for the in-app
+  "TypeScript (in app)". The page reports `kernelLanguage`: the running
+  kernel's kernelspec's `language`, else the file's
+  `metadata.kernelspec.language`, else its `metadata.language_info.name`
+  (`notebookLanguage` in `src/lib/journal.ts`, which the pane's controller
+  carries to `postState`). `HeaderStatus.languageName` writes the names a
+  language writes itself — "TypeScript", "JavaScript", "Python", "SQL",
+  "R", "Julia", "Rust", "Go", "Bash" — and capitalizes any other's first
+  letter. A page that names no language falls back to the kernel's
+  display name, as it read before.
 - The words are computed on `HeaderStatus`, not in the view, so
   `HeaderStatusTests` covers them without a window: `chipText`,
-  `chipLead`, `chipState`, and `chipKind` and `dotLabel` for the mark.
+  `chipLead`, `chipState`, `saveNote`, `languageName`, and `chipKind` and
+  `dotLabel` for the mark. `PageStateTests` covers the page's new
+  `kernelLanguage`, and the page's own tests (`journal.test.ts`,
+  `native.test.ts`, `App.test.tsx`) cover where it comes from.
 - The mark is a solid 7pt dot in `Color("Ready")` while the kernel waits,
   and a small system spinner in the same 10pt frame (`ProgressView`,
   `.mini`) while it starts, runs or restarts: the shape says which, not
@@ -42,20 +74,21 @@ words.
   font at 13pt: it is what the chip reserves.
 - Hovering the chip shows the whole status line (`HeaderStatus.full`), as
   the popover's first line does. The popover is otherwise unchanged.
-- The order is now: the chip (`.navigation`, beside the title); Trust and
-  Notebook Access, while they apply; Notebook | Journal; Run Cell with its
-  run menu and Interrupt, in one `ToolbarItemGroup`, so the pair reads as
-  one control; Share; More. New Notebook's item is gone, and
-  `NotebookToolbar` takes no `folder` for it. File > New Notebook already
-  had ⌘N.
+- The order is now: the title with its chip and save part under and beside
+  it (`.navigation`, in the system title's place); Trust and Notebook
+  Access, while they apply; Notebook | Journal; Run Cell with its run menu
+  and Interrupt, in one `ToolbarItemGroup`, so the pair reads as one
+  control; Share; More. New Notebook's item is gone, and `NotebookToolbar`
+  takes no `folder` for it. File > New Notebook already had ⌘N.
 - Removing the button removes only a duplicate: the menu item, the
   sidebar's New Notebook and New Notebook Here, and the empty window's
   button all still make notebooks.
 
-Checked with `npm run check`, `xcodebuild test` for the `Ganymede` scheme
-on macOS (`HeaderStatusTests` and `PlaceTests`; the app target builds
-`NativeChrome`, `ContentView` and `WindowTarget` with them), and
-`xcodebuild build -scheme Ganymede -configuration Debug` for the Mac app.
+Checked with `npm run check`, `npx vitest run` on `journal.test.ts`,
+`native.test.ts`, `App.test.tsx` and `NotebookPane.test.tsx`, and
+`xcodebuild test` for the `Ganymede` scheme on macOS
+(`HeaderStatusTests`, `PageStateTests` and `PlaceTests`; the app target
+builds `NativeChrome` and `ContentView` with them).
 
 Left undone: the chip's popover still opens only by clicking, and the
 width is held for the state word alone: changing the kernel, or where its
