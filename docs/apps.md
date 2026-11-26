@@ -113,12 +113,13 @@ shown or hidden, its tab and its expanded folders across launches.
   state — Idle, Running, Starting, Restarting, Stopped, or Connecting
   while it reaches a kernel that runs on a remote. A kernel that isn't
   installed reads "julia not installed · Choose Kernel" beside a warning
-  triangle. The chip's dot is green while the kernel waits, blue while it
-  starts, runs or restarts, and grey once it has stopped. The chip opens a
-  popover with the whole status line, the file's path, the kernel's state
-  and memory, Interrupt, Restart, Kernel Log, where kernels run and the
-  kernels to change to, and hovering it shows the whole status line. The
-  system draws the line under the title, so it isn't clickable.
+  triangle. The chip's mark is a solid blue dot while the kernel waits, a
+  small spinner while it starts, runs or restarts, and a grey dot once it
+  has stopped. The chip opens a popover with the whole status line, the
+  file's path, the kernel's state and memory, Interrupt, Restart, Kernel
+  Log, where kernels run and the kernels to change to, and hovering it
+  shows the whole status line. The system draws the line under the title,
+  so it isn't clickable.
 - The toolbar's controls stay in one order, so none moves under the
   pointer: the kernel chip; Trust and Notebook Access, which are there only
   while they apply; Notebook | Journal, the notebook's two views, there

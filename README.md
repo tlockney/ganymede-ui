@@ -64,8 +64,8 @@ The iPad and iPhone app is on TestFlight for internal testers.
 A notebook's window says under its title where the notebook is saved —
 "Saved on This Mac", "Edited", "Locked: changed on disk" — and a chip
 beside the title reads "TypeScript · This Mac · Idle": its kernel, where
-that kernel runs and what it is doing, behind a dot that is green while
-the kernel waits and blue while it works.
+that kernel runs and what it is doing, behind a solid blue dot while the
+kernel waits and a small spinner while it works.
 
 > [!NOTE]
 > **Unreleased.** Available only from a build of `main` (HEAD), not in

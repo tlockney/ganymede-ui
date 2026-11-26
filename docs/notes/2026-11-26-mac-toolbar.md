@@ -22,15 +22,17 @@ words.
   state, since there is nothing for it to do.
 - The words are computed on `HeaderStatus`, not in the view, so
   `HeaderStatusTests` covers them without a window: `chipText`,
-  `chipLead`, `chipState`, and `chipDot` and `dotLabel` for the dot.
-- The dot is `Color("Ready")` while the kernel waits, a new `KernelBusy`
-  colorset (#8fb3ff, the same in light and dark, beside `Ready` in the
-  macOS and iOS catalogs) while it starts, runs or restarts, and
-  `.secondary` once it has stopped. A colorset of its own rather than an
-  existing blue: `AccentFill` follows the system accent, which the reader
-  can set to anything, and the busy dot has to read as blue. VoiceOver
-  says "Kernel idle", "Kernel busy", "Kernel starting" or "Kernel
-  stopped" of the dot, and the button's label is the chip's whole text.
+  `chipLead`, `chipState`, and `chipKind` and `dotLabel` for the mark.
+- The mark is a solid 7pt dot in `Color("Ready")` while the kernel waits,
+  and a small spinner in the same 10pt frame (`ProgressView`,
+  `.mini`, also tinted `Ready`) while it starts, runs or restarts: the
+  shape says which, not the colour, and the words after it don't move.
+  `.secondary` fills the dot once the kernel has stopped. The spinner
+  needs no colorset of its own, so the `KernelBusy` colorset is gone:
+  `Ready` is the blue the mark keeps, where `AccentFill` would follow the
+  system accent, which the reader can set to anything. VoiceOver says
+  "Kernel idle", "Kernel busy", "Kernel starting" or "Kernel stopped" of
+  the mark, and the button's label is the chip's whole text.
 - The state part holds its width, so idle → busy → idle leaves the items
   after the chip where they were: a hidden `Text` in a `ZStack` reserves
   the widest state word's width in whatever font the toolbar draws, with
