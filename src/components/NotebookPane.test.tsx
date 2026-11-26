@@ -29,6 +29,8 @@ const fakes = vi.hoisted(() => ({
   editing: [] as { dispose: () => void }[],
   /** What a notebook command runs. */
   execute: vi.fn(async () => {}),
+  /** The fake session's JupyterLab error dialog, which should never open. */
+  kernelErrorDialog: vi.fn(async () => {}),
   /** How the next session rejoins; by default at once, finding none. */
   initialize: undefined as undefined | ((session: { session: unknown }) => Promise<boolean>),
 }));
@@ -245,6 +247,8 @@ vi.mock('@jupyterlab/apputils', async importOriginal => {
     initialize = vi.fn(() => fakes.initialize?.(this) ?? Promise.resolve(false));
     changeKernel = vi.fn(async () => null);
     dispose = vi.fn();
+    /** JupyterLab's own "Error Starting Kernel" dialog (#869). */
+    _displayKernelError = fakes.kernelErrorDialog;
     constructor(readonly options: Record<string, unknown>) {
       fakes.sessions.push(this);
     }
@@ -313,6 +317,7 @@ beforeEach(() => {
   fakes.editing.length = 0;
   fakes.initialize = undefined;
   fakes.execute.mockClear();
+  fakes.kernelErrorDialog.mockClear();
   vi.mocked(attachDevice).mockClear();
   serverSettings = undefined;
   outputLabels.options = undefined;
@@ -955,6 +960,28 @@ describe('NotebookPane', () => {
     );
     expect(request).not.toHaveBeenCalled();
     request.mockRestore();
+  });
+
+  it("shows a kernel that fails to start once: the notice, not also JupyterLab's dialog (#869)", async () => {
+    const { latest } = setup();
+    await waitFor(() => expect(latest()).toBeDefined());
+    const session = fakes.sessions[0] as {
+      changeKernel: ReturnType<typeof vi.fn>;
+      _displayKernelError: (message: string, traceback: string) => Promise<void>;
+    };
+    const message =
+      "io: kernelspec python3 (/k/python3/kernel.json) runs /missing/python, which doesn't exist; reinstall the kernel or fix argv in kernel.json";
+    // As JupyterLab's SessionContext does: its dialog, then the rejection.
+    session.changeKernel.mockImplementationOnce(async () => {
+      void session._displayKernelError(message, '');
+      throw new Error(message);
+    });
+    await act(() => latest()!.run());
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent(`Couldn’t run the cell: ${message}`);
+    expect(within(alert).getByRole('button', { name: 'Retry' })).toBeInTheDocument();
+    expect(within(alert).getByRole('button', { name: 'Dismiss' })).toBeInTheDocument();
+    expect(fakes.kernelErrorDialog).not.toHaveBeenCalled();
   });
 
   it('starts the kernel the file names on the first run', async () => {
