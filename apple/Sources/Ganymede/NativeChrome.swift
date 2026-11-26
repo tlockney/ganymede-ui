@@ -734,6 +734,10 @@ struct KernelPicker: View {
         .labelStyle(.titleAndIcon)
         .help(header?.full ?? page.state.kernelVersionLine ?? "The notebook's kernel")
         .accessibilityLabel(chipText)
+        // The mark's words are the button's value, so the whole chip reads
+        // as one control (#867): "TypeScript · This Mac · Idle, Kernel
+        // idle, button".
+        .accessibilityValue(dotLabel)
         .disabled(!page.state.hasNotebook)
         .popover(isPresented: $shown, arrowEdge: .bottom) {
             KernelPopover(page: page, panel: panel, place: place, header: header) { shown = false }
@@ -782,8 +786,8 @@ struct KernelPicker: View {
             }
         }
         .frame(width: 10, height: 10)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(dotLabel)
+        // The button carries the words, including the mark's (#867).
+        .accessibilityHidden(true)
     }
 
     /// A console has a kernel but no status line (`HeaderStatus.make` is

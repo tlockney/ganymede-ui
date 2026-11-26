@@ -30,9 +30,11 @@ words.
   `.secondary` fills the dot once the kernel has stopped. The spinner
   needs no colorset of its own, so the `KernelBusy` colorset is gone:
   `Ready` is the blue the mark keeps, where `AccentFill` would follow the
-  system accent, which the reader can set to anything. VoiceOver says
-  "Kernel idle", "Kernel busy", "Kernel starting" or "Kernel stopped" of
-  the mark, and the button's label is the chip's whole text.
+  system accent, which the reader can set to anything. VoiceOver reads the
+  chip as one control: its label is the chip's whole text, its value the
+  mark's words, as "TypeScript · This Mac · Idle, Kernel idle, button",
+  and the mark itself is hidden, so the state is neither lost nor read
+  twice.
 - The state part holds its width, so idle → busy → idle leaves the items
   after the chip where they were: a hidden `Text` in a `ZStack` reserves
   the widest state word's width in whatever font the toolbar draws, with
