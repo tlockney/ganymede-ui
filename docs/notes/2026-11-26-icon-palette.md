@@ -51,7 +51,7 @@ components.
   manifest's `background_color` and `theme_color` take the window's
   colors (`#fbf9f5` light, `#181c2f` dark; the manifest has no dark pair).
 - `apple/`: an `AccentColor` colorset in the Mac and iOS asset catalogs
-  (`#A85F00` light, `#F9A03F` dark), and
+  (`#A85F00` in both appearances), and
   `ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor` on both
   app targets, so the native controls follow the page. Dark keeps the
   bright orange, where tinted text sits on a dark window; light takes the
@@ -62,3 +62,10 @@ components.
   count badge, which had white on `Color.accentColor` at 2:1, and
   `Ready` (`#3D6FD6` light, `#8FB3FF` dark) is the native kernel and
   connection dots, which were `Color.green` while the page's is blue.
+
+Review of #847: the system draws its own fills in `AccentColor` (the
+focused sidebar selection, an alert's default button) with white text
+on top, so `AccentColor` stays `#A85F00` in dark mode too: white on it
+is 4.88:1, and as a tint it is 3.45:1 on the navy window. `AccentFill`
+keeps the bright orange for the badges the app draws itself. Machine
+reachability dots use `Ready` for reachable and stay red for offline.

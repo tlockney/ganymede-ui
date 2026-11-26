@@ -394,7 +394,7 @@ struct IPadSidebar: View {
                     Label(entry.title, systemImage: entry.place.isMachine ? "desktopcomputer" : "iphone")
                     Spacer()
                     Circle()
-                        .fill(PlaceReachability.shared.isReachable(entry.place) ? Color.green : Color.red)
+                        .fill(PlaceReachability.shared.isReachable(entry.place) ? Color("Ready") : Color.red)
                         .frame(width: 8, height: 8)
                         .accessibilityLabel(PlaceReachability.shared.isReachable(entry.place) ? "Reachable" : "Offline")
                 }
