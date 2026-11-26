@@ -1022,6 +1022,7 @@ export function App() {
     const kernel = shown?.kernelName ?? null;
     postState({
       path: openPath ?? null,
+      title: shown?.title ?? null,
       dirty,
       status: shown?.status ?? null,
       kernel,

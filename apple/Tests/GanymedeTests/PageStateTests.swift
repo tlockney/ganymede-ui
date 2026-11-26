@@ -43,6 +43,23 @@ final class PageStateTests: XCTestCase {
         XCTAssertEqual(state?.sessions, [])
     }
 
+    func testReadsTheNotebookTitle() {
+        let body: [String: Any] = [
+            "path": "moons/Io.ipynb", "title": "Io moons", "dirty": false,
+            "kernelMissing": false, "trusted": true, "kernels": [Any](), "backend": NSNull(),
+        ]
+        XCTAssertEqual(PageState(body: body)?.title, "Io moons")
+        // Absent from a page older than #867, and from a notebook without one.
+        var older = body
+        older["title"] = nil
+        XCTAssertEqual(PageState(body: older)?.path, "moons/Io.ipynb", "decoded")
+        XCTAssertNil(PageState(body: older)?.title)
+        var none = body
+        none["title"] = NSNull()
+        XCTAssertEqual(PageState(body: none)?.path, "moons/Io.ipynb", "decoded")
+        XCTAssertNil(PageState(body: none)?.title)
+    }
+
     func testReadsTheRunningSessions() {
         let body: [String: Any] = [
             "path": "moons/Io.ipynb", "dirty": false, "status": "idle", "kernel": "cdp",

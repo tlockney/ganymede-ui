@@ -74,6 +74,7 @@ describe('native', () => {
   it('posts the page state to the app’s state handler', () => {
     const state = {
       path: 'Io.ipynb',
+      title: 'Io moons',
       dirty: true,
       status: 'idle',
       kernel: 'cdp',

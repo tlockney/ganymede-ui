@@ -213,6 +213,10 @@ struct PageState: Decodable, Equatable {
 
     /// The open notebook's server path; nil when none is open.
     var path: String?
+    /// The open notebook's `metadata.title`, when it has one (#867): what
+    /// the window calls it, where the file's name isn't the title. Nil
+    /// otherwise, and from a page older than that.
+    var title: String?
     var dirty = false
     /// The kernel's state (`idle`, `busy`, `none`, …); nil with no notebook.
     var status: String?

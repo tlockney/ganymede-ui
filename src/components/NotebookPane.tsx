@@ -27,6 +27,7 @@ import {
   firstVisibleJournalCell,
   hasAgentCells,
   journalHeader,
+  notebookTitle,
   trustedCellIds,
 } from '../lib/journal';
 import type { Cell, ICodeCellModel } from '@jupyterlab/cells';
@@ -87,6 +88,11 @@ export type KernelState = Kernel.Status | 'connecting' | 'none';
 export type NotebookController = {
   path: string;
   name: string;
+  /**
+   * The notebook's `metadata.title`, when it has one (#867): the app's
+   * windows call it that, where the file's name isn't the title.
+   */
+  title?: string;
   status: KernelState;
   /** The running kernel, or the one the first run will start. */
   kernelName?: string;
@@ -1498,6 +1504,7 @@ export function NotebookPane({ backend, path, places, native, onController, onRe
     const controller: NotebookController = {
       path,
       name: basename(path),
+      title: notebookTitle(model.metadata),
       status,
       kernelName: kernelName ?? intended.name,
       missingKernel: kernelName ? undefined : intended.missing,

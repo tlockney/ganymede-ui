@@ -336,6 +336,29 @@ describe('App', () => {
     expect(mocks.loadHostGrants).toHaveBeenCalledWith(expect.anything(), 'Io.ipynb');
   });
 
+  it('tells the app the notebook’s title, for its window (#867)', async () => {
+    const states: Record<string, unknown>[] = [];
+    vi.stubGlobal('webkit', {
+      messageHandlers: {
+        state: { postMessage: (m: Record<string, unknown>) => states.push(m) },
+      },
+    });
+    mocks.controller = {
+      title: 'Io moons',
+      dirty: false,
+      save: vi.fn(async () => true),
+    };
+    const fake = fakeServices({ '': [{ name: 'Io.ipynb', type: 'notebook' }] });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    history.replaceState(null, '', '/?kernels=server&open=Io.ipynb');
+    render(<App />);
+    await waitFor(() =>
+      expect(states.at(-1)).toMatchObject({ path: 'Io.ipynb', title: 'Io moons' }),
+    );
+    // With no notebook open, the state says so, and has no title either.
+    expect(states.some(s => s.path === null && s.title === null)).toBe(true);
+  });
+
   it('runs the app’s commands and tells it what to show', async () => {
     const states: Record<string, unknown>[] = [];
     vi.stubGlobal('webkit', {
@@ -395,6 +418,8 @@ describe('App', () => {
     await waitFor(() =>
       expect(states.at(-1)).toMatchObject({
         path: 'Io.ipynb',
+        // No metadata.title (#867): the app's window falls back to the file.
+        title: null,
         status: 'idle',
         kernel: 'python3',
         kernelDisplayName: 'Python 3',

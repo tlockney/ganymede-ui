@@ -173,6 +173,11 @@ export function fileMove(arg: string | undefined): { from: string; to: string | 
 export type PageState = {
   /** The open notebook's server path, or null. */
   path: string | null;
+  /**
+   * The open notebook's `metadata.title` when it has one (#867), else null:
+   * what the app's window calls it, where the file's name isn't the title.
+   */
+  title: string | null;
   dirty: boolean;
   /** The kernel's state (`idle`, `busy`, `none`, …); null with no notebook open. */
   status: string | null;
