@@ -28,6 +28,7 @@ import {
   hasAgentCells,
   journalHeader,
   notebookTitle,
+  notebookLanguage,
   trustedCellIds,
 } from '../lib/journal';
 import type { Cell, ICodeCellModel } from '@jupyterlab/cells';
@@ -93,6 +94,11 @@ export type NotebookController = {
    * windows call it that, where the file's name isn't the title.
    */
   title?: string;
+  /**
+   * The notebook's own language, from its metadata (#867): what the app's
+   * Mac chip calls it where no kernelspec gives one.
+   */
+  language?: string;
   status: KernelState;
   /** The running kernel, or the one the first run will start. */
   kernelName?: string;
@@ -461,6 +467,11 @@ export function NotebookPane({ backend, path, places, native, onController, onRe
    * reaches the app's window title; undefined for a notebook without one.
    */
   const [title, setTitle] = useState<string>();
+  /**
+   * The notebook's own language, from its metadata (#867): what the app's
+   * Mac chip calls it while no running kernel's kernelspec names one.
+   */
+  const [language, setLanguage] = useState<string>();
   /** Whether the journal view is showing (#184); decided when the file opens. */
   const [journal, setJournal] = useState(false);
   const journalRef = useRef(false);
@@ -1148,6 +1159,9 @@ export function NotebookPane({ backend, path, places, native, onController, onRe
       // The notebook's title (#867), as the metadata has it: a live room
       // changes it without reopening the file.
       setTitle(notebookTitle(model.metadata));
+      // Its language, as the file names it; the running kernel's own
+      // kernelspec is asked first (#867).
+      setLanguage(notebookLanguage(model.metadata));
       // The journal's eyebrow above the title (#852), for a notebook an agent
       // keeps: its language and the day it was started. Only the cells'
       // metadata is read, not their code.
@@ -1513,6 +1527,7 @@ export function NotebookPane({ backend, path, places, native, onController, onRe
       path,
       name: basename(path),
       title,
+      language,
       status,
       kernelName: kernelName ?? intended.name,
       missingKernel: kernelName ? undefined : intended.missing,
@@ -1758,6 +1773,7 @@ export function NotebookPane({ backend, path, places, native, onController, onRe
     outline,
     eyebrow,
     title,
+    language,
     journal,
     backend,
     onMachine,

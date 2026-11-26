@@ -14,6 +14,10 @@ struct HeaderStatus: Equatable {
     var locked: Bool
     /// The kernel's display name; nil with none.
     var kernel: String?
+    /// The notebook's language (#867), as its kernel's kernelspec or the
+    /// file's metadata names it ("python", "typescript"); nil when neither
+    /// does, and the chip says the kernel's display name instead.
+    var language: String?
     var kernelMissing: Bool
     /// The kernel's state (`idle`, `busy`, `none`, …).
     var status: String?
@@ -65,13 +69,33 @@ struct HeaderStatus: Equatable {
         return parts.compactMap { $0 }.joined(separator: " · ")
     }
 
-    /// The Mac toolbar chip's first words (#867): the kernel and where it
-    /// runs — "TypeScript · This Mac" — or, for a kernel that isn't
-    /// installed, "julia not installed · Choose Kernel". The state is a
-    /// part of its own (`chipState`), so the view can hold its width.
+    /// The Mac toolbar chip's first words (#867): the notebook's language
+    /// and where it runs — "TypeScript · This Mac" — or, for a kernel that
+    /// isn't installed, "julia not installed · Choose Kernel". The language
+    /// gives way to the kernel's display name when the page names no
+    /// language. The state is a part of its own (`chipState`), so the view
+    /// can hold its width.
     var chipLead: String {
         if kernelMissing { return "\(kernel ?? "Kernel") not installed · Choose Kernel" }
-        return [kernel ?? "No kernel", runsOn].compactMap { $0 }.joined(separator: " · ")
+        return [HeaderStatus.languageName(language) ?? kernel ?? "No kernel", runsOn]
+            .compactMap { $0 }.joined(separator: " · ")
+    }
+
+    /// Languages the chip writes as they are written (#867): "typescript"
+    /// reads "TypeScript" where capitalizing its first letter would not.
+    private static let languageNames = [
+        "typescript": "TypeScript", "javascript": "JavaScript", "python": "Python",
+        "sql": "SQL", "r": "R", "julia": "Julia", "rust": "Rust", "go": "Go", "bash": "Bash",
+    ]
+
+    /// The chip's name for a notebook's language (#867): a known language's
+    /// spelling, else the language with its first letter capitalized. Nil
+    /// for no language, so the chip falls back to the kernel's name.
+    static func languageName(_ language: String?) -> String? {
+        guard let language = language?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !language.isEmpty else { return nil }
+        if let known = languageNames[language.lowercased()] { return known }
+        return language.prefix(1).uppercased() + language.dropFirst()
     }
 
     /// The chip's state: "Idle" while the kernel waits or there is none;
@@ -144,6 +168,7 @@ struct HeaderStatus: Equatable {
             dirty: state.dirty,
             locked: state.locked ?? false,
             kernel: state.kernelDisplayName,
+            language: state.kernelLanguage,
             kernelMissing: state.kernelMissing,
             status: state.status
         )

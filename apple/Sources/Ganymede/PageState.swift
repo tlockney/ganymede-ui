@@ -222,6 +222,11 @@ struct PageState: Decodable, Equatable {
     var status: String?
     var kernel: String?
     var kernelDisplayName: String?
+    /// The notebook's language (#867): the running kernel's kernelspec's,
+    /// else the file's `metadata.kernelspec.language` or
+    /// `metadata.language_info.name`; absent from a page older than that,
+    /// and one that names none.
+    var kernelLanguage: String?
     /// The running kernel's implementation and version, such as
     /// "cdp-kernel 0.14.0 · node 24.11.0"; nil with none running, and from
     /// a page older than #693.

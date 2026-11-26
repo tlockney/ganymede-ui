@@ -1029,6 +1029,10 @@ export function App() {
       kernelDisplayName:
         shown?.missingKernel ??
         (kernel ? (specs?.kernelspecs[kernel]?.display_name ?? kernel) : null),
+      // The running kernel's kernelspec first, then the file's own metadata
+      // (#867).
+      kernelLanguage:
+        (kernel ? specs?.kernelspecs[kernel]?.language : null) ?? shown?.language ?? null,
       kernelVersionLine: shown?.kernelVersionLine ?? null,
       kernelMissing: !!shown?.missingKernel,
       locked: shown?.locked ?? false,

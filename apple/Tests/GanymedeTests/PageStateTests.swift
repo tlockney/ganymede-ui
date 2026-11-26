@@ -60,6 +60,23 @@ final class PageStateTests: XCTestCase {
         XCTAssertNil(PageState(body: none)?.title)
     }
 
+    func testReadsTheNotebooksLanguage() {
+        let body: [String: Any] = [
+            "path": "moons/Io.ipynb", "kernelLanguage": "typescript", "dirty": false,
+            "kernelMissing": false, "trusted": true, "kernels": [Any](), "backend": NSNull(),
+        ]
+        XCTAssertEqual(PageState(body: body)?.kernelLanguage, "typescript")
+        // Absent from a page older than #867, and from one that names none.
+        var older = body
+        older["kernelLanguage"] = nil
+        XCTAssertEqual(PageState(body: older)?.path, "moons/Io.ipynb", "decoded")
+        XCTAssertNil(PageState(body: older)?.kernelLanguage)
+        var none = body
+        none["kernelLanguage"] = NSNull()
+        XCTAssertEqual(PageState(body: none)?.path, "moons/Io.ipynb", "decoded")
+        XCTAssertNil(PageState(body: none)?.kernelLanguage)
+    }
+
     func testReadsTheRunningSessions() {
         let body: [String: Any] = [
             "path": "moons/Io.ipynb", "dirty": false, "status": "idle", "kernel": "cdp",

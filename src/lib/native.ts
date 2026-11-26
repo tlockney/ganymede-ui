@@ -186,6 +186,14 @@ export type PageState = {
   /** That kernel's display name, or what the file asks for when it isn't installed. */
   kernelDisplayName: string | null;
   /**
+   * The notebook's language, from the running kernel's kernelspec, else the
+   * file's `metadata.kernelspec.language`, else its
+   * `metadata.language_info.name` (#867): what the app's Mac chip calls it,
+   * as "TypeScript" where the kernel's display name says "TypeScript
+   * (in app)". Null when neither names one.
+   */
+  kernelLanguage: string | null;
+  /**
    * The running kernel's implementation and version, from its
    * `kernel_info_reply` ("cdp-kernel 0.14.0 · node 24.11.0", #693); null
    * with no kernel running or none reported.

@@ -719,6 +719,19 @@ export function notebookTitle(metadata: unknown): string | undefined {
 }
 
 /**
+ * A notebook's language, from its metadata (#867): `kernelspec.language`,
+ * else `language_info.name`; undefined when it names none. The app's Mac
+ * chip calls the notebook by it, where the kernel's display name says more
+ * than its language does ("Python 3").
+ */
+export function notebookLanguage(metadata: unknown): string | undefined {
+  const meta = isRecord(metadata) ? metadata : {};
+  const kernelspec = isRecord(meta.kernelspec) ? meta.kernelspec : {};
+  const info = isRecord(meta.language_info) ? meta.language_info : {};
+  return text(kernelspec.language)?.trim() || text(info.name)?.trim() || undefined;
+}
+
+/**
  * The header's text: an eyebrow of the language and the day the earliest
  * agent cell was written (#852); the notebook's `metadata.title` or else the
  * file name without its extension; who started it (the agent of the
@@ -733,8 +746,7 @@ export function journalHeader(
   const meta = isRecord(metadata) ? metadata : {};
   const title = notebookTitle(metadata) ?? (fileName.replace(/\.ipynb$/i, '') || fileName);
   const kernelspec = isRecord(meta.kernelspec) ? meta.kernelspec : {};
-  const info = isRecord(meta.language_info) ? meta.language_info : {};
-  const language = text(kernelspec.language) ?? text(info.name) ?? text(kernelspec.display_name);
+  const language = notebookLanguage(metadata) ?? text(kernelspec.display_name);
   // The agent and time of the earliest-dated agent cell; with no dates, the
   // first agent in document order.
   let by: string | undefined;

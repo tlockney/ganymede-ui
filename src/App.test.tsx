@@ -359,6 +359,55 @@ describe('App', () => {
     expect(states.some(s => s.path === null && s.title === null)).toBe(true);
   });
 
+  it('tells the app the notebook’s language, for its window’s chip (#867)', async () => {
+    const states: Record<string, unknown>[] = [];
+    vi.stubGlobal('webkit', {
+      messageHandlers: {
+        state: { postMessage: (m: Record<string, unknown>) => states.push(m) },
+      },
+    });
+    mocks.controller = {
+      kernelName: 'python3',
+      // The file's own language, which the running kernel's kernelspec
+      // answers before it does.
+      language: 'julia',
+      dirty: false,
+      save: vi.fn(async () => true),
+    };
+    const fake = fakeServices({ '': [{ name: 'Io.ipynb', type: 'notebook' }] });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    history.replaceState(null, '', '/?kernels=server&open=Io.ipynb');
+    render(<App />);
+    await waitFor(() =>
+      expect(states.at(-1)).toMatchObject({ path: 'Io.ipynb', kernelLanguage: 'python' }),
+    );
+  });
+
+  it('falls back to the notebook’s own language when no kernelspec names one (#867)', async () => {
+    const states: Record<string, unknown>[] = [];
+    vi.stubGlobal('webkit', {
+      messageHandlers: {
+        state: { postMessage: (m: Record<string, unknown>) => states.push(m) },
+      },
+    });
+    // A kernel the file asks for that isn't installed: no kernelspec to ask.
+    mocks.controller = {
+      missingKernel: 'Julia 1.11',
+      language: 'julia',
+      dirty: false,
+      save: vi.fn(async () => true),
+    };
+    const fake = fakeServices({ '': [{ name: 'Io.ipynb', type: 'notebook' }] });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    history.replaceState(null, '', '/?kernels=server&open=Io.ipynb');
+    render(<App />);
+    await waitFor(() =>
+      expect(states.at(-1)).toMatchObject({ path: 'Io.ipynb', kernelLanguage: 'julia' }),
+    );
+    // With no notebook open, no language either.
+    expect(states.some(s => s.path === null && s.kernelLanguage === null)).toBe(true);
+  });
+
   it('runs the app’s commands and tells it what to show', async () => {
     const states: Record<string, unknown>[] = [];
     vi.stubGlobal('webkit', {
@@ -423,6 +472,8 @@ describe('App', () => {
         status: 'idle',
         kernel: 'python3',
         kernelDisplayName: 'Python 3',
+        // The running kernel's kernelspec names the language (#867).
+        kernelLanguage: 'python',
         kernelVersionLine: 'cdp-kernel 0.14.0 · node 24.11.0',
         cellType: 'code',
         // Which view shows, for the app's View as Journal (#724).

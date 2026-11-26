@@ -7,6 +7,7 @@ import {
   journalHeader,
   moveChosenViews,
   notebookTitle,
+  notebookLanguage,
   attachmentDataUrl,
   cellTrusted,
   trustedCellIds,
@@ -430,6 +431,24 @@ describe('journalHeader', () => {
     expect(notebookTitle({ title: '  ' })).toBeUndefined();
     expect(notebookTitle({ title: 4 })).toBeUndefined();
     expect(notebookTitle(undefined)).toBeUndefined();
+  });
+
+  it('reads a notebook’s language from its kernelspec, else its language info (#867)', () => {
+    expect(notebookLanguage({ kernelspec: { language: 'typescript' } })).toBe('typescript');
+    // The file's kernelspec first, then the kernel's own report.
+    expect(
+      notebookLanguage({
+        kernelspec: { language: 'python' },
+        language_info: { name: 'python' },
+      }),
+    ).toBe('python');
+    expect(notebookLanguage({ language_info: { name: 'julia' } })).toBe('julia');
+    // A kernelspec with no language leaves the language info to answer.
+    expect(notebookLanguage({ kernelspec: { name: 'x' }, language_info: { name: 'R' } })).toBe('R');
+    expect(notebookLanguage({ kernelspec: { language: '  ' } })).toBeUndefined();
+    expect(notebookLanguage({ kernelspec: { language: 4 } })).toBeUndefined();
+    expect(notebookLanguage({})).toBeUndefined();
+    expect(notebookLanguage(undefined)).toBeUndefined();
   });
 });
 
