@@ -176,36 +176,38 @@ private struct IPadPanelTab: View {
 /// The text files opened in the iPad's detail area (#251), over the
 /// notebook, which stays loaded beneath them. A file's document outlives
 /// its screen until it is closed, so going back to the notebook keeps
-/// unsaved edits, which come back when the file is opened again.
+/// unsaved edits, which come back when the file is opened again. Each is
+/// an `EditorRequest`, so this device's file and a machine's of the same
+/// path are two files, and the place being left takes its own (#855).
 @MainActor
 @Observable
 final class IPadOpenFiles {
-    /// The detail area's stack of server paths: files over the notebook.
-    var stack: [String] = []
-    @ObservationIgnored private var documents: [String: EditorDocument] = [:]
+    /// The detail area's stack of files over the notebook.
+    var stack: [EditorRequest] = []
+    @ObservationIgnored private var documents: [EditorRequest: EditorDocument] = [:]
 
-    func document(for path: String) -> EditorDocument {
-        if let document = documents[path] { return document }
-        let document = EditorDocument(path: path) { AppModel.shared.localServer }
-        documents[path] = document
+    func document(for request: EditorRequest) -> EditorDocument {
+        if let document = documents[request] { return document }
+        let document = EditorDocument(request)
+        documents[request] = document
         return document
     }
 
     /// Shows the file, moving it to the top if it is already open.
-    func open(_ path: String) {
-        stack = FileStack.opening(path, in: stack)
+    func open(_ request: EditorRequest) {
+        stack = FileStack.opening(request, in: stack)
     }
 
     /// Closes the file's screen and forgets its document.
-    func close(_ path: String) {
-        stack = FileStack.closing(path, in: stack)
-        documents[path] = nil
+    func close(_ request: EditorRequest) {
+        stack = FileStack.closing(request, in: stack)
+        documents[request] = nil
     }
 
     /// Saves the kept documents with edits that no screen shows, whose
     /// editors can't save them when the app goes to the background.
     func saveHidden() {
-        for (path, document) in documents where document.dirty && !stack.contains(path) {
+        for (request, document) in documents where document.dirty && !stack.contains(request) {
             Task { await document.save() }
         }
     }
@@ -214,8 +216,8 @@ final class IPadOpenFiles {
     /// the editor does when the app goes to the background; a failed save
     /// keeps the edits for the next time the file is opened.
     func showNotebook() {
-        for path in stack {
-            if let document = documents[path], document.dirty {
+        for request in stack {
+            if let document = documents[request], document.dirty {
                 Task { await document.save() }
             }
         }

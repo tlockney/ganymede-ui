@@ -64,10 +64,14 @@ final class TextFileTests: XCTestCase {
                 return error as? TextFileClient.Failure
             }
         }
-        XCTAssertEqual(failure(404, ""), .init(message: "The file no longer exists."))
-        XCTAssertEqual(failure(409, #"{"message": "Io.md changed on disk"}"#), .init(message: "Io.md changed on disk", conflict: true))
-        XCTAssertEqual(failure(400, #"{"message": "Io.bin is not UTF-8 encoded"}"#), .init(message: "Io.bin is not UTF-8 encoded"))
-        XCTAssertEqual(failure(500, "oops"), .init(message: "The server answered 500."))
+        XCTAssertEqual(failure(404, ""), .init(message: "The file no longer exists.", status: 404))
+        XCTAssertEqual(
+            failure(409, #"{"message": "Io.md changed on disk"}"#),
+            .init(message: "Io.md changed on disk", status: 409, conflict: true))
+        XCTAssertEqual(
+            failure(400, #"{"message": "Io.bin is not UTF-8 encoded"}"#),
+            .init(message: "Io.bin is not UTF-8 encoded", status: 400))
+        XCTAssertEqual(failure(500, "oops"), .init(message: "The server answered 500.", status: 500))
     }
 
     func testPicksTheLanguageFromTheName() {

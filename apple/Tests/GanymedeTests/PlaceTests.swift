@@ -50,17 +50,17 @@ final class PlaceTests: XCTestCase {
         }
     }
 
-    func testAMachineWindowGetsNoBridgeGrantsShortcutsEditorOrAppLinks() {
+    func testAMachineWindowGetsNoBridgeGrantsShortcutsOrAppLinks() {
         let machine = Place.machine(id)
         for capability in [
-            Place.Capability.deviceBridge, .openFile, .personName, .appLinks,
+            Place.Capability.deviceBridge, .personName, .appLinks,
         ] {
             XCTAssertFalse(machine.allows(capability), "\(capability)")
         }
         // Only what the machine's own page needs; a new capability must be
         // considered here.
         let allowed = Place.Capability.allCases.filter { machine.allows($0) }
-        XCTAssertEqual(Set(allowed.map { "\($0)" }), ["settings", "nativeChrome", "agentKeys"])
+        XCTAssertEqual(Set(allowed.map { "\($0)" }), ["settings", "nativeChrome", "agentKeys", "openFile"])
     }
 
     func testKernelLocationAndLocalTerminalAreThisDevicesOnly() {
@@ -85,7 +85,7 @@ final class PlaceTests: XCTestCase {
         XCTAssertEqual(
             Set(Place.Capability.allCases.filter { machine.allows($0, sharesName: true) }
                 .map { "\($0)" }),
-            ["settings", "nativeChrome", "agentKeys", "personName"])
+            ["settings", "nativeChrome", "agentKeys", "openFile", "personName"])
         for capability in Place.Capability.allCases where capability != .personName {
             XCTAssertEqual(
                 machine.allows(capability, sharesName: true),
@@ -124,14 +124,15 @@ final class PlaceTests: XCTestCase {
     func testTheWebViewIsMadeFromThePlacesHandlerTable() {
         let machine = Place.machine(id).handlerNames
         // The native window reads a machine's page through `state` and `document` (#740).
-        // The agent's keys too, from the Keychain (#849).
-        XCTAssertEqual(machine.count, 4)
-        XCTAssertEqual(Set(machine), ["settings", "state", "document", "agentKeys"])
-        for name in ["kernelRelay", "deviceRemote", "openFile"] {
+        // The agent's keys too, from the Keychain (#849), and its files through
+        // the app's editor (#855).
+        XCTAssertEqual(machine.count, 5)
+        XCTAssertEqual(Set(machine), ["settings", "state", "document", "agentKeys", "openFile"])
+        for name in ["kernelRelay", "deviceRemote"] {
             XCTAssertFalse(machine.contains(name), name)
             XCTAssertTrue(Place.thisDevice.handlerNames.contains(name), name)
         }
-        for name in ["state", "document", "agentKeys"] {
+        for name in ["openFile", "state", "document", "agentKeys"] {
             XCTAssertTrue(Place.thisDevice.handlerNames.contains(name), name)
         }
     }
@@ -333,13 +334,12 @@ final class PlaceTests: XCTestCase {
         XCTAssertEqual(WindowTarget.subtitle(header: nil, machineName: nil), "")
     }
 
-    func testOnlyNotebooksAndDataOpenOnAMachine() throws {
+    func testNotebooksDataAndTextFilesOpenInAMachineWindow() throws {
         let note = FolderEntry(url: try XCTUnwrap(FolderEntry.machineURL(id, path: "a.ipynb")), isDirectory: false)
         let data = FolderEntry(url: try XCTUnwrap(FolderEntry.machineURL(id, path: "a.csv")), isDirectory: false)
         let text = FolderEntry(url: try XCTUnwrap(FolderEntry.machineURL(id, path: "a.py")), isDirectory: false)
-        for entry in [note, data] { XCTAssertTrue(entry.canOpen(in: .machine(id))) }
-        XCTAssertFalse(text.canOpen(in: .machine(id)))
-        // The text editor reads this Mac's disk.
+        // A machine's text file opens in the app's editor through its mount (#855).
+        for entry in [note, data, text] { XCTAssertTrue(entry.canOpen(in: .machine(id))) }
         XCTAssertTrue(text.canOpen(in: .thisDevice))
     }
 

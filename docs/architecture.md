@@ -637,7 +637,8 @@ Ctrl, Tab and arrows on the software keyboard.
 `Editor/` is the text editor (#122). In the apps the page registers no
 editor of its own: its sidebar enables files that aren't notebooks when
 the app has an `openFile` message handler and the page uses the app's own
-server, and posts the file's path there. The app opens an
+server or its mount of a connected machine (#855), and posts the file's
+path there. The app opens an
 `EditorWindow` (`WindowGroup(for: EditorRequest.self)`; a full-screen
 cover on iPhone). `EditorDocument` reads and saves the file with
 `TextFileClient`, through `/api/contents` with `format=text`, and polls

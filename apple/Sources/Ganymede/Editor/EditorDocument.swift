@@ -4,21 +4,19 @@ import SwiftUI
 import AppKit
 #endif
 
-/// What an editor window opens: a text file on the app's own server, by
-/// its path there. Opening a file that is already open brings its window
-/// to the front, since the values are equal.
-struct EditorRequest: Codable, Hashable, Identifiable {
-    var path: String
-    var id: String { path }
-}
-
 /// One text file being edited (#122): its text as last loaded or saved,
 /// whether it has unsaved edits, and whether the file changed on disk
-/// since. Reads and writes go through `/api/contents`.
+/// since. Reads and writes go through `/api/contents`, on the app's own
+/// server or a connected machine's mount (#855).
 @MainActor
 @Observable
 final class EditorDocument {
-    let path: String
+    /// What this document opens: the file's path, and the machine whose it
+    /// is (#855).
+    @ObservationIgnored private let request: EditorRequest
+    var path: String { request.path }
+    /// The connected machine whose file this is; nil for this device's.
+    var machine: String? { request.machine }
     /// The text the view shows after a load; the view owns the text in
     /// between and reports edits with `edited`.
     @ObservationIgnored private(set) var text = ""
@@ -38,7 +36,10 @@ final class EditorDocument {
     @ObservationIgnored private var failedSave = false
     /// Counts saves and loads, so a poll answered before one is ignored.
     @ObservationIgnored private var changes = 0
-    private let endpoint: @MainActor () -> ServerEndpoint?
+    /// Where this device's server is, asked on every read and write so a
+    /// restarted server's new address and token are picked up; the file's
+    /// own server comes from it (`EditorRequest.endpoint(local:)`).
+    @ObservationIgnored private let local: @MainActor () -> ServerEndpoint?
     #if os(macOS)
     @ObservationIgnored private weak var window: NSWindow?
     @ObservationIgnored private var closeGuard: EditorCloseGuard?
@@ -46,9 +47,9 @@ final class EditorDocument {
     private static let all = NSHashTable<EditorDocument>.weakObjects()
     #endif
 
-    init(path: String, endpoint: @escaping @MainActor () -> ServerEndpoint?) {
-        self.path = path
-        self.endpoint = endpoint
+    init(_ request: EditorRequest, local: @escaping @MainActor () -> ServerEndpoint?) {
+        self.request = request
+        self.local = local
         #if os(macOS)
         Self.all.add(self)
         #endif
@@ -61,7 +62,15 @@ final class EditorDocument {
     var language: TextLanguage? { TextLanguage(fileName: name) }
 
     private var client: TextFileClient? {
-        endpoint().map { TextFileClient(endpoint: $0, path: path) }
+        request.endpoint(local: local()).map { TextFileClient(endpoint: $0, path: path) }
+    }
+
+    /// Why there is no client: the machine the request names isn't one the
+    /// app knows (its id is malformed, or its path leaves the mount's
+    /// root), which is not the same as no server at all (#855).
+    private var unavailable: String {
+        if machine != nil, local() != nil { return "This file's machine is not one the app knows." }
+        return "Ganymede's server is not running."
     }
 
     /// The view's text changed.
@@ -89,7 +98,7 @@ final class EditorDocument {
     /// arrives win: the file is marked as changed on disk instead.
     private func read(keepingEdits: Bool) async {
         guard let client else {
-            problem = "Ganymede's server is not running."
+            problem = unavailable
             failedSave = false
             return
         }
@@ -105,7 +114,7 @@ final class EditorDocument {
             take(snapshot)
             problem = nil
         } catch {
-            problem = error.localizedDescription
+            problem = message(for: error)
             failedSave = false
         }
     }
@@ -126,7 +135,7 @@ final class EditorDocument {
     private func write(checking: Bool) async -> Bool {
         guard dirty else { return true }
         guard let client else {
-            problem = "Ganymede's server is not running."
+            problem = unavailable
             failedSave = true
             return false
         }
@@ -158,7 +167,7 @@ final class EditorDocument {
             changedOnDisk = true
             return false
         } catch {
-            problem = "The file could not be saved: " + error.localizedDescription
+            problem = "The file could not be saved: " + message(for: error)
             failedSave = true
             return false
         }
@@ -202,8 +211,11 @@ final class EditorDocument {
         let closeGuard = EditorCloseGuard(document: self, original: window.delegate)
         window.delegate = closeGuard
         self.closeGuard = closeGuard
-        // The proxy icon. The Mac's server is rooted at `/`.
-        window.representedURL = URL(fileURLWithPath: "/" + path)
+        // The proxy icon. The Mac's server is rooted at `/`; a machine's
+        // file is no file of this Mac's (#855).
+        if machine == nil {
+            window.representedURL = URL(fileURLWithPath: "/" + path)
+        }
         syncWindow()
     }
 

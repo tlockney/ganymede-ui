@@ -702,7 +702,8 @@ struct IPadSidebar: View {
             page.run("open", arg: path(entry))
             opened()
         } else if entry.canOpen(in: place) {
-            // The app's editor reads this device's disk: never a machine's file.
+            // The app's editor opens this device's files, or a machine's
+            // through its mount (#855).
             openFile(path(entry))
         }
     }

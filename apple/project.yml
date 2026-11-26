@@ -626,6 +626,8 @@ targets:
       - path: Sources/Ganymede/Terminal/SSHKey.swift
       - path: Sources/Ganymede/Terminal/SSHSignIn.swift
       - path: Sources/Ganymede/Editor/TextFile.swift
+      # The request that names the file's place (#855).
+      - path: Sources/Ganymede/Editor/EditorRequest.swift
       - path: Sources/Ganymede/Editor/CodeEditing.swift
       # The line-number ruler (#661).
       - path: Sources/Ganymede/Editor/LineNumbers.swift
@@ -707,6 +709,8 @@ targets:
       - path: Sources/Ganymede/Terminal/SSHKey.swift
       - path: Sources/Ganymede/Terminal/SSHSignIn.swift
       - path: Sources/Ganymede/Editor/TextFile.swift
+      # The request that names the file's place (#855).
+      - path: Sources/Ganymede/Editor/EditorRequest.swift
       - path: Sources/Ganymede/Editor/CodeEditing.swift
       # The line-number gutter (#524).
       - path: Sources/Ganymede/Editor/LineNumbers.swift

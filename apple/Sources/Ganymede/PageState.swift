@@ -126,7 +126,8 @@ struct PageState: Decodable, Equatable {
         var truncated: Bool
         var error: String?
         /// Whether a file that isn't a notebook opens in the app's editor:
-        /// only from the app's own server.
+        /// on the app's own server, or its mount of a connected machine
+        /// (#855).
         var opensFiles: Bool?
 
         /// Whether tapping `match` opens it.

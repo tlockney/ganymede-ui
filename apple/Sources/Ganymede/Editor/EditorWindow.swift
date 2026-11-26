@@ -1,8 +1,9 @@
 import SwiftUI
 
 /// A window, or on iPhone a full-screen view, editing one text file on the
-/// app's own server (#122). It reloads the file when it changes on disk
-/// and there are no edits, and asks what to do when there are.
+/// app's own server or a connected machine's mount (#122, #855). It reloads
+/// the file when it changes on disk and there are no edits, and asks what
+/// to do when there are.
 struct EditorWindow: View {
     @State private var document: EditorDocument
     #if os(iOS)
@@ -14,11 +15,11 @@ struct EditorWindow: View {
 
     #if os(macOS)
     init(request: EditorRequest) {
-        _document = State(initialValue: EditorDocument(path: request.path) { AppModel.shared.localServer })
+        _document = State(initialValue: EditorDocument(request))
     }
     #else
     init(request: EditorRequest, onClose: (() -> Void)? = nil) {
-        _document = State(initialValue: EditorDocument(path: request.path) { AppModel.shared.localServer })
+        _document = State(initialValue: EditorDocument(request))
         self.onClose = onClose
     }
 
@@ -29,6 +30,18 @@ struct EditorWindow: View {
         self.onClose = onClose
     }
     #endif
+
+    /// The window's title: the file, and on the Mac the name of the machine
+    /// whose it is (#855), as a machine's notebook window has it; the id
+    /// when the remote is gone.
+    private var title: String {
+        #if os(macOS)
+        guard let machine = document.machine else { return document.name }
+        return "\(document.name) · \(AppModel.shared.machineName(machine) ?? machine)"
+        #else
+        document.name
+        #endif
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -58,7 +71,7 @@ struct EditorWindow: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
-        .navigationTitle(document.name)
+        .navigationTitle(title)
         .toolbar {
             #if os(iOS)
             if let onClose {
@@ -138,7 +151,7 @@ struct EditorScene: View {
                     .foregroundStyle(.secondary)
             }
         }
-        .onAppear { OpenTextFiles.shared.set(request.map { [$0.path] } ?? [], for: windowID) }
+        .onAppear { OpenTextFiles.shared.set(request?.thisDevicePath.map { [$0] } ?? [], for: windowID) }
         .onDisappear { OpenTextFiles.shared.set([], for: windowID) }
     }
 }

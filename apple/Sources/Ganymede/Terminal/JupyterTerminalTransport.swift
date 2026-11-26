@@ -42,6 +42,17 @@ struct ServerEndpoint: Equatable, Sendable {
         base.appendingPathComponent(path)
     }
 
+    /// This server with a connected machine's mount as its root (#855):
+    /// the same token, so the app reaches the machine's contents API
+    /// through it. Nil for an id the server wouldn't accept, so a path is
+    /// never built from it.
+    func mounted(machine id: String) -> ServerEndpoint? {
+        guard Place.isValidMachineID(id) else { return nil }
+        return ServerEndpoint(
+            base: base.appendingPathComponent("machines").appendingPathComponent(id, isDirectory: true),
+            token: token)
+    }
+
     func request(_ path: String, method: String = "GET") -> URLRequest {
         var request = URLRequest(url: url(path))
         request.httpMethod = method

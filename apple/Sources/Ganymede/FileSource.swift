@@ -84,6 +84,17 @@ enum FileSourceError: LocalizedError, Equatable {
         return machineMessage(error, machine: machineName)
     }
 
+    /// The same for a text file's failed read or save (#855): the editor's
+    /// client answers with its own failure, which carries the status the
+    /// mount gave, so a machine's says what the sidebar says.
+    static func textFileMessage(_ error: Error, machine: String?, name: String?) -> String {
+        guard machine != nil else { return error.localizedDescription }
+        let source = (error as? TextFileClient.Failure).map {
+            FileSourceError.server(status: $0.status, message: $0.message)
+        }
+        return machineMessage(source ?? error, machine: name)
+    }
+
     /// Whether a 404's message is the mount's for a machine it hasn't
     /// mounted: exactly its form, `No machine "<id>" is mounted`, so a
     /// contents 404 naming a file that happens to say "no machine" isn't.

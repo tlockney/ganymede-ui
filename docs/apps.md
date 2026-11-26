@@ -922,17 +922,17 @@ with only SSH stays in Settings for shells.
   > moves (#851).
 
 - **What a machine's window doesn't get.** The device API, Notebook
-  Access, the Shortcuts bridge, the app's editor for text files and
-  `ganymede://` links are for this device's windows only. Neither
-  Spotlight, File > Open Recent nor the Recents list in the app's sidebar
-  include a machine's notebooks.
+  Access, the Shortcuts bridge and `ganymede://` links are for this
+  device's windows only. Neither Spotlight, File > Open Recent nor the
+  Recents list in the app's sidebar include a machine's notebooks.
 
 > [!NOTE]
 > **Unreleased.** Your name going to a connected machine's rooms, the
-> setting that turns it off, and the agent's Keychain keys in a machine's
-> window are available only from a build of `main` (HEAD), not in the
-> latest release, where a machine's window keeps the agent's key in the
-> page's web storage.
+> setting that turns it off, the agent's Keychain keys in a machine's
+> window, and opening a machine's text files in the app's editor are
+> available only from a build of `main` (HEAD), not in the latest release,
+> where a machine's window keeps the agent's key in the page's web storage
+> and its text files don't open.
 
 On the Mac a machine's window is the app's native window: the same
 sidebar (Files, Search, Running, Outline and Journals), toolbar,
@@ -946,12 +946,14 @@ operation says "_machine_ didn't answer" (or "_machine_ isn't connected to
 this Mac" when it isn't connected).
 Delete removes a machine's file for good (its server keeps no Trash), so
 it always asks first. The title is the notebook or folder and the subtitle
-reads "on _machine_". These work on this Mac's disk, so a machine's window
-doesn't have them: Show in Finder, Duplicate on a folder (a machine copies
-files only), the Recents tab, File > Open Recent, the terminal panel and
-its shells, and opening a text file in the app's editor (notebooks and
-data files open in the page; other files are dimmed). File > New Tab and
-New Window open on the same machine, not on this Mac. Kernel > Advanced
+reads "on _machine_". A machine's text file opens in the app's editor as
+this Mac's do, read and saved through the machine's mount: its window's
+title is the file and the machine ("notes.md · m4mini"), and the same path
+on this Mac and on the machine are two editors. These work on this Mac's
+disk, so a machine's window doesn't have them: Show in Finder, Duplicate
+on a folder (a machine copies files only), the Recents tab, File > Open
+Recent, the terminal panel and its shells. File > New Tab and New Window
+open on the same machine, not on this Mac. Kernel > Advanced
 and Runs On in the kernel popover set where this Mac's kernels run, so a
 machine's window hides them; File > New Terminal and New Terminal Tab
 start a shell on this Mac, so they are dimmed there (New Terminal On
@@ -969,8 +971,10 @@ journals. The scene shows one place at a time: the place menu (the iPad) or
 the Places section (the iPhone) switches to this device or another
 machine, and loads that place's page. A machine's scene has no terminals,
 panel, Recents, Open Example Notebooks, New DuckDB Console, Open Folder
-or kernel location choice, and non-page files aren't opened in the app's
-editor.
+or kernel location choice. A machine's text file opens in the editor over
+the notebook, as this device's do, read and saved through the machine's
+mount; switching place closes it, saving on the way, so it is never left
+open over another place's notebook.
 
 The app reaches a machine through its own server, which forwards a fixed
 list of routes to the machine with the machine's token, so no token is
