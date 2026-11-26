@@ -2,11 +2,13 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 /*
- * Text contrast computed from the stylesheets themselves (#799): white on
- * the filled accent, the accent as text (links, insert and text buttons),
+ * Text contrast computed from the stylesheets themselves (#799): --on-accent
+ * on the filled accent, the accent as text (links, insert and text buttons),
  * execution prompts, and text on the orange fill (#802), in light and
- * dark, each at WCAG AA's 4.5:1 for text. A later change to a token, a
- * color or an opacity in these rules fails here.
+ * dark, each at WCAG AA's 4.5:1 for text. A change to a token, a color or
+ * an opacity in these rules fails here. #845's review added the accent's
+ * own contrast as a non-text indicator (3:1) and the text a fill on a
+ * parent draws.
  */
 
 const AA = 4.5;
@@ -146,14 +148,18 @@ const opacity = (v: string | undefined, vars: Map<string, string>) =>
   v === undefined ? 1 : Number(resolve(v, vars));
 
 describe('text contrast (#799)', () => {
-  // Every rule that puts white text on an accent fill: the primary
+  // Every rule that puts --on-accent text on an accent fill: the primary
   // buttons, notice actions, highlighted menu and palette rows, the
   // keyboard bar's primary key, the journal's follow button.
   const fillOf = (r: Rule) => r.decls.get('background') ?? r.decls.get('background-color');
   const filled = [...app, ...jupyter].filter(
-    r =>
-      /^(#fff|#ffffff|white)$/i.test(r.decls.get('color') ?? '') &&
-      /^var\(--accent/.test(fillOf(r) ?? ''),
+    r => r.decls.get('color') === 'var(--on-accent)' && /^var\(--accent/.test(fillOf(r) ?? ''),
+  );
+  // White text on an accent fill, which --on-accent replaced (#845): the
+  // accent is the icon's orange now, too light for white.
+  const WHITE = /^(#fff|#ffffff|white)$/i;
+  const whiteOnAccent = [...app, ...jupyter].filter(
+    r => WHITE.test(r.decls.get('color') ?? '') && /^var\(--accent/.test(fillOf(r) ?? ''),
   );
 
   // The accent as text color. Plain --accent is for icons only (the
@@ -163,6 +169,19 @@ describe('text contrast (#799)', () => {
     /^var\(--accent(-text)?\)$/.test(r.decls.get('color') ?? ''),
   );
   const ICONS = ['.source-item .tint', '.choice.selected svg'];
+
+  // Rules whose fill is a parent's, not their own (#845 review): the Run
+  // button and its menu sit on .run-group's fill, the palette's shortcut
+  // keys on an active row's. Filtering the rules' own backgrounds misses
+  // them, so the pairs are named here and both ends are checked.
+  const FILLED_BY_PARENT: [child: string, parent: string][] = [
+    ['.run-button', '.run-group'],
+    ['.run-menu-button', '.run-group'],
+    ['.palette-item.active .palette-keys', '.palette-item.active'],
+  ];
+  const backgroundOf = (selector: string, theme: Theme) =>
+    decl([...app, ...jupyter], selector, 'background', theme) ??
+    decl([...app, ...jupyter], selector, 'background-color', theme);
 
   it('uses plain --accent as a text color only on icons', () => {
     const plain = accentText
@@ -185,13 +204,53 @@ describe('text contrast (#799)', () => {
     expect(filled.length).toBeGreaterThanOrEqual(7);
   });
 
+  it('puts no white text on an accent fill any more (#845)', () => {
+    expect(whiteOnAccent.map(r => r.selector)).toEqual([]);
+    // The rules that read a parent's fill, which the filter above misses.
+    for (const [child, parent] of FILLED_BY_PARENT) {
+      for (const theme of themes) {
+        expect(backgroundOf(parent, theme), `${parent} in ${theme}`).toMatch(/^var\(--accent/);
+        const text = decl([...app, ...jupyter], child, 'color', theme);
+        expect(text, `${child} in ${theme}`).toBeDefined();
+        expect(WHITE.test(text!), `${child} in ${theme}`).toBe(false);
+      }
+    }
+  });
+
   for (const theme of themes) {
-    it(`white on every accent fill reads at ${AA}:1 in ${theme}`, () => {
+    it(`the accent as an indicator reads at 3:1 on the page and sidebar in ${theme}`, () => {
+      // Focus rings, the drop line, the active-cell bar and the sidebar's
+      // source tint are non-text: 3:1, not 4.5:1 (#845 review).
       const vars = variables(theme);
+      const accent = color(resolve('var(--accent)', vars));
+      for (const bg of ['var(--window-bg)', 'var(--sidebar-solid)']) {
+        const ratio = contrast(accent, color(resolve(bg, vars)));
+        expect(ratio, `${bg} ${ratio.toFixed(2)}`).toBeGreaterThanOrEqual(3);
+      }
+    });
+
+    it(`text on a parent's accent fill reads at ${AA}:1 in ${theme}`, () => {
+      const vars = variables(theme);
+      for (const [child, parent] of FILLED_BY_PARENT) {
+        const fill = color(resolve(backgroundOf(parent, theme)!, vars));
+        expect(fill[3], parent).toBe(1);
+        const text = color(resolve(decl([...app, ...jupyter], child, 'color', theme)!, vars));
+        const opacityOf = opacity(decl([...app, ...jupyter], child, 'opacity', theme), vars);
+        const shown = over(text, fill, opacityOf);
+        const ratio = contrast(shown, fill);
+        expect(ratio, `${child} ${ratio.toFixed(2)}`).toBeGreaterThanOrEqual(AA);
+      }
+    });
+  }
+
+  for (const theme of themes) {
+    it(`--on-accent on every accent fill reads at ${AA}:1 in ${theme}`, () => {
+      const vars = variables(theme);
+      const text = color(resolve('var(--on-accent)', vars));
       for (const r of filled) {
         const bg = color(resolve(fillOf(r)!, vars));
         expect(bg[3], r.selector).toBe(1);
-        const ratio = contrast(color('#fff'), bg);
+        const ratio = contrast(text, bg);
         expect(ratio, `${r.selector} ${ratio.toFixed(2)}`).toBeGreaterThanOrEqual(AA);
       }
     });

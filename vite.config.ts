@@ -121,8 +121,9 @@ const config: UserConfig = {
         display: 'standalone',
         // Chromium on macOS: draw our own titlebar next to the window controls.
         display_override: ['window-controls-overlay', 'standalone'],
-        background_color: '#f5f5f7',
-        theme_color: '#f5f5f7',
+        // The window's own colors (#845); the manifest has no dark pair.
+        background_color: '#fbf9f5',
+        theme_color: '#fbf9f5',
         icons: [
           { src: 'icons/icon-192.png', sizes: '192x192', type: 'image/png' },
           { src: 'icons/icon-512.png', sizes: '512x512', type: 'image/png' },

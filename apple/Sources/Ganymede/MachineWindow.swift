@@ -31,7 +31,7 @@ struct PlaceMenu: View {
             HStack(spacing: 6) {
                 Text(currentTitle).fontWeight(.semibold).lineLimit(1)
                 Circle()
-                    .fill(reachability.isReachable(current) ? Color.green : Color.red)
+                    .fill(reachability.isReachable(current) ? Color("Ready") : Color.red)
                     .frame(width: 7, height: 7)
                     .accessibilityHidden(true)
                 Image(systemName: "chevron.down").font(.caption2)
