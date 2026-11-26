@@ -57,6 +57,8 @@ vi.mock('../lib/jupyterlab', async () => {
         mode?: string;
         deselectAll(): void;
         scrollToCell(cell: unknown, align?: string): Promise<void>;
+        scrollToItem(index: number, align?: string, margin?: number): Promise<void>;
+        select(cell: unknown): void;
       };
       // Its cells, with the active one selected, for what a run needs.
       // Each cell has a node in the notebook's, which a test can give a layout.
@@ -69,7 +71,7 @@ vi.mock('../lib/jupyterlab', async () => {
               cellNodes[i]!.dataset.notebookCell = String(i);
               w.node.append(cellNodes[i]!);
             }
-            return { model: w.model!.cells.get(i), node: cellNodes[i] };
+            return { model: w.model!.cells.get(i), node: cellNodes[i], activate: () => {} };
           }),
       });
       w.isSelectedOrActive = cell =>
@@ -80,6 +82,9 @@ vi.mock('../lib/jupyterlab', async () => {
       // The outline goes to a heading's cell (#212).
       w.deselectAll = vi.fn();
       w.scrollToCell = vi.fn(async () => {});
+      // Back from the journal, with no margin above the cell (#841).
+      w.scrollToItem = vi.fn(async () => {});
+      w.select = vi.fn();
       (w as unknown as { rendermime: unknown }).rendermime = rendermime;
       fakes.notebooks.push(w);
       return w;
@@ -632,18 +637,20 @@ describe('NotebookPane', () => {
       });
       const notebook = fakes.notebooks[0] as {
         activeCellIndex: number;
-        scrollToCell: ReturnType<typeof vi.fn>;
-        model: NotebookModel;
+        scrollToItem: ReturnType<typeof vi.fn>;
+        select: ReturnType<typeof vi.fn>;
+        widgets: { model: unknown }[];
       };
       act(() => latest()!.toggleJournal());
-      await waitFor(() => expect(notebook.scrollToCell).toHaveBeenCalledOnce());
+      // Flush at the top: no margin above it (#841).
+      await waitFor(() =>
+        expect(notebook.scrollToItem).toHaveBeenCalledExactlyOnceWith(5, 'start', 0),
+      );
       expect(notebook.activeCellIndex).toBe(5);
-      const [cell, align] = notebook.scrollToCell.mock.calls[0] as unknown as [
-        { model: unknown },
-        string,
-      ];
-      expect(cell.model).toBe(notebook.model.cells.get(5));
-      expect(align).toBe('start');
+      await waitFor(() => expect(notebook.select).toHaveBeenCalledOnce());
+      expect((notebook.select.mock.calls[0]![0] as { model: unknown }).model).toBe(
+        notebook.widgets[5]!.model,
+      );
     });
 
     it('lands on the same cell going notebook, journal, notebook', async () => {
@@ -654,12 +661,11 @@ describe('NotebookPane', () => {
       await waitFor(() => expect(latest()?.journal).toBe(true));
       const notebook = fakes.notebooks[0] as {
         activeCellIndex: number;
-        scrollToCell: ReturnType<typeof vi.fn>;
-        model: NotebookModel;
+        scrollToItem: ReturnType<typeof vi.fn>;
       };
       // Scrolling the notebook to a cell moves it there.
-      notebook.scrollToCell.mockImplementation(async (cell: { node: HTMLElement }) => {
-        state.notebookTop = Number(cell.node.dataset.notebookCell) * CELL;
+      notebook.scrollToItem.mockImplementation(async (index: number) => {
+        state.notebookTop = index * CELL;
       });
       act(() => latest()!.toggleJournal());
       await waitFor(() => expect(latest()!.journal).toBe(false));

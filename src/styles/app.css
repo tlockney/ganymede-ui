@@ -2537,9 +2537,14 @@ button {
   white-space: pre-wrap;
 }
 
-/* The journal view (#184): a notebook an agent keeps, read and followed live. */
+/* The journal view (#184): a notebook an agent keeps, read and followed live.
+ * The journal covers the notebook, which stays laid out under it, hidden
+ * from sight, the pointer, focus and assistive tech. From display: none,
+ * switching back laid the notebook out again, and macOS WebKit with classic
+ * scrollbars gave a one-line cell no room for its sideways scrollbar (#841). */
 .notebook-page[hidden] {
-  display: none;
+  display: block;
+  visibility: hidden;
 }
 
 .journal {

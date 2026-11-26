@@ -847,3 +847,62 @@ test.describe('a touch screen wider than a phone', () => {
     ).toBe(true);
   });
 });
+
+test('keeps a one-line wide cell its scrollbar room after the journal and back (#841)', async ({
+  page,
+}) => {
+  const wide = 'Wide one-line e2e.ipynb';
+  writeFileSync(
+    join(ROOT_DIR, wide),
+    JSON.stringify({
+      nbformat: 4,
+      nbformat_minor: 5,
+      metadata: { kernelspec: { name: 'cdp-node', display_name: 'Node', language: 'typescript' } },
+      cells: [
+        {
+          cell_type: 'code',
+          id: 'w1',
+          metadata: {},
+          outputs: [],
+          execution_count: null,
+          source: `const long = ${'"abcdefghij" + '.repeat(40)}1;`,
+        },
+      ],
+    }),
+  );
+  try {
+    await openWithToken(page);
+    await sidebarItem(page, 'Wide one-line e2e').click();
+    const editor = page.locator('.jp-CodeCell .jp-InputArea-editor').first();
+    await expect(editor).toBeVisible();
+    const before = await editor.evaluate(el => el.getBoundingClientRect().height);
+
+    await page
+      .getByRole('group', { name: 'View: Notebook' })
+      .getByRole('button', { name: 'Journal' })
+      .click();
+    await expect(page.getByRole('region', { name: `Journal of ${wide}` })).toBeVisible();
+    // Under the journal the notebook keeps its layout, out of sight and reach.
+    const notebook = page.locator('.notebook-page');
+    await expect(notebook).toBeHidden();
+    expect(
+      await notebook.evaluate(el => ({
+        visibility: getComputedStyle(el).visibility,
+        laidOut: el.getBoundingClientRect().height > 0,
+        editorLaidOut: el.querySelector('.jp-InputArea-editor')!.getBoundingClientRect().height > 0,
+      })),
+    ).toEqual({ visibility: 'hidden', laidOut: true, editorLaidOut: true });
+    const content = page.locator('.jp-CodeCell .cm-content').first();
+    await content.focus();
+    expect(await content.evaluate(el => el.contains(document.activeElement))).toBe(false);
+
+    await page
+      .getByRole('group', { name: 'View: Journal' })
+      .getByRole('button', { name: 'Notebook' })
+      .click();
+    await expect(editor).toBeVisible();
+    expect(await editor.evaluate(el => el.getBoundingClientRect().height)).toBe(before);
+  } finally {
+    await removeFromServer(wide);
+  }
+});
