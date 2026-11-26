@@ -96,24 +96,24 @@ final class HeaderStatusTests: XCTestCase {
         XCTAssertEqual(status(kernel: nil, missing: true).chipText, "Kernel not installed · Choose Kernel")
     }
 
-    /// The chip's dot: green while the kernel waits, blue while it works,
-    /// grey when it has stopped.
-    func testTheChipsDot() {
-        XCTAssertEqual(status().chipDot, .ready)
+    /// The chip's mark: a dot while the kernel waits, a spinner while it
+    /// works, a grey dot when it has stopped, a triangle when it is missing.
+    func testTheChipsMark() {
+        XCTAssertEqual(status().chipKind, .idle)
         XCTAssertEqual(status().dotLabel, "Kernel idle")
-        XCTAssertEqual(status(state: nil).chipDot, .ready)
+        XCTAssertEqual(status(state: nil).chipKind, .idle)
         XCTAssertEqual(status(state: "none").dotLabel, "Kernel idle")
         for state in ["busy", "restarting", "autorestarting", "connecting", "terminating"] {
-            XCTAssertEqual(status(state: state).chipDot, .busy, state)
+            XCTAssertEqual(status(state: state).chipKind, .working, state)
             XCTAssertEqual(status(state: state).dotLabel, "Kernel busy", state)
         }
-        XCTAssertEqual(status(state: "starting").chipDot, .busy)
+        XCTAssertEqual(status(state: "starting").chipKind, .working)
         XCTAssertEqual(status(state: "starting").dotLabel, "Kernel starting")
         for state in ["dead", "unknown", "odd"] {
-            XCTAssertEqual(status(state: state).chipDot, .stopped, state)
+            XCTAssertEqual(status(state: state).chipKind, .stopped, state)
             XCTAssertEqual(status(state: state).dotLabel, "Kernel stopped", state)
         }
-        XCTAssertEqual(status(kernel: "julia", missing: true).chipDot, .stopped)
+        XCTAssertEqual(status(kernel: "julia", missing: true).chipKind, .missing)
         XCTAssertEqual(status(kernel: "julia", missing: true).dotLabel, "Kernel stopped")
     }
 

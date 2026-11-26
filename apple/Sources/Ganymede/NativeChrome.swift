@@ -740,20 +740,10 @@ struct KernelPicker: View {
         }
     }
 
-    /// A 7pt dot, or a warning triangle for a kernel that isn't installed,
-    /// then the words.
+    /// The mark, then the words.
     private var chip: some View {
         HStack(spacing: 5) {
-            if page.state.kernelMissing {
-                Image(systemName: "exclamationmark.triangle")
-                    .accessibilityLabel(dotLabel)
-            } else {
-                Circle()
-                    .fill(dotColor)
-                    .frame(width: 7, height: 7)
-                    .accessibilityElement()
-                    .accessibilityLabel(dotLabel)
-            }
+            mark
             HStack(spacing: 4) {
                 Text(chipLead)
                     .lineLimit(1)
@@ -771,6 +761,31 @@ struct KernelPicker: View {
         }
     }
 
+    /// The chip's mark in a fixed 10pt frame (#867): a 7pt dot while the
+    /// kernel waits, a small spinner in its place while it works, a grey
+    /// dot once it has stopped, and a warning triangle when it isn't
+    /// installed. The shape says which, not the colour, and the frame is
+    /// the same for each, so the words after it don't move.
+    private var mark: some View {
+        Group {
+            switch markKind {
+            case .working:
+                ProgressView()
+                    .controlSize(.mini)
+                    .tint(Color("Ready"))
+            case .missing:
+                Image(systemName: "exclamationmark.triangle")
+            case .idle, .stopped:
+                Circle()
+                    .fill(markKind == .idle ? Color("Ready") : Color.secondary)
+                    .frame(width: 7, height: 7)
+            }
+        }
+        .frame(width: 10, height: 10)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(dotLabel)
+    }
+
     /// A console has a kernel but no status line (`HeaderStatus.make` is
     /// for notebooks), so its chip names the kernel alone.
     private var chipLead: String { header?.chipLead ?? page.state.kernelDisplayName ?? "Kernel" }
@@ -778,12 +793,9 @@ struct KernelPicker: View {
     private var chipText: String { header?.chipText ?? chipLead }
     private var dotLabel: String { header?.dotLabel ?? "Kernel stopped" }
 
-    private var dotColor: Color {
-        switch header?.chipDot {
-        case .ready: Color("Ready")
-        case .busy: Color("KernelBusy")
-        case .stopped, nil: .secondary
-        }
+    private var markKind: HeaderStatus.ChipKind {
+        if page.state.kernelMissing { return .missing }
+        return header?.chipKind ?? .stopped
     }
 }
 

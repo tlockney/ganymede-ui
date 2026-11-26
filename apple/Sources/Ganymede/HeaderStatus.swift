@@ -81,18 +81,20 @@ struct HeaderStatus: Equatable {
         [chipLead, chipState].compactMap { $0 }.joined(separator: " · ")
     }
 
-    /// How the chip's dot is drawn: green while the kernel waits, blue
-    /// while it works, grey once it has stopped.
-    enum ChipDot: Equatable {
-        case ready, busy, stopped
+    /// How the chip's mark is drawn (#867): a solid dot while the kernel
+    /// waits, a spinner while it works, a grey dot once it has stopped, and
+    /// the warning triangle while the kernel isn't installed. The shape
+    /// says which, so nothing moves and nothing needs a colour of its own.
+    enum ChipKind: Equatable {
+        case idle, working, stopped, missing
     }
 
-    var chipDot: ChipDot {
-        if kernelMissing { return .stopped }
+    var chipKind: ChipKind {
+        if kernelMissing { return .missing }
         switch status {
         case "busy"?, "starting"?, "restarting"?, "autorestarting"?, "connecting"?,
-             "terminating"?: return .busy
-        case nil, "idle"?, "none"?: return .ready
+             "terminating"?: return .working
+        case nil, "idle"?, "none"?: return .idle
         default: return .stopped
         }
     }
