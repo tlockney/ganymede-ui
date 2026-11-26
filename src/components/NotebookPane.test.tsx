@@ -16,6 +16,7 @@ import { attachDevice } from '../lib/device-remote';
 import { NotebookRoom } from '../lib/room';
 import { attachCellControls } from '../lib/cell-controls';
 import type { BackendConfig } from '../lib/backends';
+import type { KernelPlaces } from '../lib/kernel-place';
 import { forgetChosenViews } from '../lib/journal';
 
 // No kernel and no real notebook widget: the pane's loading, dirty state and
@@ -271,6 +272,7 @@ function setup(
   get = vi.fn(async () => ({ path: 'moons/Io.ipynb', content: structuredClone(NOTEBOOK) })),
   path = 'moons/Io.ipynb',
   config?: BackendConfig,
+  places?: KernelPlaces,
 ) {
   const fake = fakeServices();
   if (serverSettings) Object.assign(fake.services, { serverSettings });
@@ -282,6 +284,7 @@ function setup(
     <NotebookPane
       backend={fakeBackend(fake.services, config)}
       path={path}
+      places={places}
       onController={onController}
       onRenamed={onRenamed}
     />,
@@ -956,6 +959,29 @@ describe('NotebookPane', () => {
     expect(latest()!.kernelName).toBe('ts');
     await act(() => latest()!.runAll());
     expect(session.changeKernel).toHaveBeenCalledWith({ name: 'ts' });
+  });
+
+  it('marks a remote’s kernels in the notice’s picker, and says when it isn’t answering (#832)', async () => {
+    const nb = structuredClone(NOTEBOOK);
+    nb.metadata.kernelspec = { name: 'julia', display_name: 'Julia' };
+    const { latest } = setup(
+      vi.fn(async () => ({ path: 'moons/Io.ipynb', content: nb })),
+      'moons/Io.ipynb',
+      undefined,
+      {
+        remote: { name: 'workmbp', reachable: false, error: 'gateway: error sending request' },
+        gateway: ['python3'],
+      },
+    );
+    await waitFor(() => expect(latest()?.status).toBe('none'));
+    await act(() => latest()!.run());
+    const picker = screen.getByRole('combobox', { name: 'Pick a Kernel' });
+    expect(within(picker).getByRole('option', { name: 'Python 3 · workmbp' })).toBeEnabled();
+    expect(
+      within(picker).getByRole('option', {
+        name: 'workmbp isn’t answering: gateway: error sending request',
+      }),
+    ).toBeDisabled();
   });
 
   it('records the kernel in the notebook when it is changed', async () => {

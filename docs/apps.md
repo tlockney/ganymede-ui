@@ -914,11 +914,12 @@ with only SSH stays in Settings for shells.
 
   > [!NOTE]
   > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release. It needs a Ganymede server with ganymede#969,
-  > which no release includes yet, on this device and on the machine; a
-  > `ganymede serve` built from ganymede `main` has it. The apps embed
-  > Ganymede v0.17.0, so nothing shows in the Mac, iPad and iPhone apps
-  > until `GANYMEDE_REF` moves (#851).
+  > the latest release. It needs ganymede#969, which no release includes
+  > yet, on the machine: this device forwards the machine's answer as it
+  > is. A machine running `ganymede serve` built from ganymede `main` has
+  > it, and an app on Ganymede v0.17.0 shows it in that machine's window.
+  > A machine that is itself the Mac app shows it once `GANYMEDE_REF`
+  > moves (#851).
 
 - **What a machine's window doesn't get.** The device API, Notebook
   Access, the Shortcuts bridge, the app's editor for text files, the
