@@ -53,10 +53,6 @@ ganymede serve --port 8888 --token "$GANYMEDE_TOKEN" \
 In the app, choose **Connect to a Server…** on the first screen; later, the
 connection button at the bottom of the sidebar opens the same sheet.
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release, which opens the sheet by itself on the first visit.
-
 1. Choose **Ganymede server**.
 2. **Server**: the server's URL, such as `https://ganymede.example.com`.
    Leave it empty only when the page and the server share an origin.

@@ -82,11 +82,6 @@ shown or hidden, its tab and its expanded folders across launches.
   clicking a folder, or pressing Tab into the sidebar, keeps it in the
   sidebar.
 
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release, where only a folder's arrow expands it and the
-  > sidebar has no keyboard navigation.
-
 - **Search** finds file and folder names under the window's folder and,
   with "Search notebook contents" ticked, the text of its notebooks,
   showing the matching line.
@@ -129,12 +124,6 @@ shown or hidden, its tab and its expanded folders across launches.
   as Journal, Insert Code Cell, Insert Markdown Cell, Cell Type and Save.
   Run All is only in Run Cell's menu, so the two can't be mistaken for
   each other. Everything in these menus is also in the menu bar.
-
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release, whose toolbar has buttons for Save, Run, Run All,
-  > Interrupt, Restart, the journal, Insert Cell and Cell Type, and a
-  > kernel and state line under the title.
 
 - The Cell menu runs, runs with parameters, inserts, moves and deletes
   cells, clears all outputs, collapses and expands code, goes to a definition and renames a symbol (see
@@ -182,11 +171,6 @@ shown or hidden, its tab and its expanded folders across launches.
   button's help tag, in the iPad's and iPhone's status menu, and in the
   menu the browser's status line opens. Nothing shows while no kernel runs or
   before it has replied.
-
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release, where the browser shows it as the tooltip of the
-  > toolbar's kernel label and picker.
 
 - Kernels can run on a remote server instead. Add the remote in
   Settings > Remotes (its editor can switch kernels to it), then pick
@@ -351,11 +335,6 @@ once by hand and choose "Always allow" before automating it. If the
 notebook is changed outside the app after that (git, iCloud from another
 Mac), the next automated run asks again.
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release. The latest release keeps "Always allow" for a path
-> whatever happens to the file.
-
 ### Links
 
 The Mac app opens `ganymede://` links, so launchers, Markdown links,
@@ -408,11 +387,6 @@ saving its outputs, a room's autosave and an MCP agent connected to the
 app's server. A save from `ganymede serve`, `ganymede mcp`'s own server
 or JupyterLab on its own server counts as outside. The same goes for Shortcuts actions,
 which share these answers.
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release. The latest release keeps "Always allow" for a path
-> whatever happens to the file.
 
 For a reply, put the route under `x-callback-url/` and add
 [x-callback-url](https://x-callback-url.com) answers:
@@ -709,11 +683,6 @@ keys are kept in the keychain too.
   the top level it does nothing), and Return opens the selected file or toggles the selected folder. Tapping
   a notebook or data file gives the keyboard to the page.
 
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release, where only a folder's chevron expands it and the
-  > Files tab has no keyboard navigation.
-
 - The title has the Mac's status line under it, and tapping it opens a
   menu with the file's path, the kernel's version, the kernels to change
   to and, once a remote has a server, where kernels run, as Settings
@@ -727,12 +696,6 @@ keys are kept in the keychain too.
   Save, Rename…, Trust Notebook, Notebook Access…, Keyboard Shortcuts and
   Settings. With a keyboard, hold ⌘ to see the commands: New Notebook ⌘N,
   Save ⌘S, Run All ⇧⌘↩, Interrupt ⌘., Find ⌘F.
-
-  > [!NOTE]
-  > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release, whose navigation bar has Run, Run All and
-  > Interrupt buttons and a ⋯ menu with the run, kernel and sharing
-  > commands, and a kernel and state line under the title.
 
 - A text file opens over the notebook, one at a time; Close (which asks to
   save) or opening a notebook from the sidebar goes back to it, saving
@@ -763,12 +726,6 @@ and Restart & Run All; the ⋯ menu at the top has the rest, including
 Share, Trust Notebook and Notebook Access…. Terminals and text files
 cover the screen. The Outline menu lists the notebook's headings; pick
 one to go to its cell.
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release, where only a folder's chevron expands it, the run
-> controls and ⋯ menu are in the bottom toolbar, and the title has a
-> kernel and state line.
 
 ### On both
 
@@ -1096,14 +1053,6 @@ way: the toolbar in the browser, View › View as Journal in the Mac app,
 the notebook's More menu on the iPad and iPhone, or the Command Palette.
 **Open as Notebook** goes back to full editing, in the same live room and on the same kernel.
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release. The header names which view shows: a
-> **Notebook | Journal** control beside the title, in the browser and in
-> the Mac and iPad apps' toolbars. On a phone-width browser it shows only
-> in the journal view, on a row under the title. Picking the other part
-> switches, keeping your place by cell, and the ways above still work.
-
 A notebook with cells an agent wrote opens as a journal; any other opens as
 a notebook. Your choice for a file holds until you close the app or page,
 including when the file is reopened after a Reload or a server restart,
@@ -1152,10 +1101,6 @@ on a Ganymede server, and there is no setting for it.
 
 ### Where it opens, and following live
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
-
 A journal opens where you would want it, the first of these that applies:
 
 - At the cell you switched from, when you got here from the notebook with
@@ -1188,10 +1133,6 @@ metadata doesn't count) and nothing new has come. A finished journal read
 from the start has no button.
 
 ### Writing on a phone, and requests
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release.
 
 Below 720 px wide the box at the bottom is two full-width buttons, **Add
 note** and **Ask the agent** (the agent line stays above them). Tap one and
@@ -1369,11 +1310,6 @@ with no Ganymede server; on a connection to a Jupyter server, whose
 export replaces nothing, the sheet refuses its page the same way.
 
 ## Running with parameters
-
-> [!NOTE]
-> **Unreleased.** In the latest release, Run with Parameters… is in the
-> ⋯ menu on the iPad and iPhone, and in the browser in the Command
-> Palette and, in a narrow window, the toolbar's More menu.
 
 **Run with Parameters…** (Cell menu on the Mac, the Run Cell menu on the iPad
 and iPhone, the Command Palette and the toolbar in the browser) runs the notebook as a program, the way `ganymede execute -p

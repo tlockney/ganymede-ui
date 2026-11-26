@@ -344,11 +344,6 @@ it). The picker is your consent, so there is no permission prompt; Settings › 
 with Revoke. It works only in kernels in the app. A notebook changed
 outside the app loses its folders (see Permissions and the ledger, below).
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release. The latest release keeps a notebook's folders
-> whatever happens to the file.
-
 ```ts
 const folder = await device.folders.pick({ write: true });
 if (folder) {
@@ -413,11 +408,6 @@ the app's own server writes keeps them: saving in a window, a run saving
 its outputs, a room's autosave and an MCP agent connected to the app's
 server. A save from `ganymede serve`, `ganymede mcp`'s own server or
 JupyterLab on its own server counts as outside.
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release. The latest release keeps an answer for a notebook's
-> path whatever happens to the file.
 
 Each namespace with a permission also has `authorizationStatus()` and
 `requestAuthorization()`, to check or ask before the first call. Only

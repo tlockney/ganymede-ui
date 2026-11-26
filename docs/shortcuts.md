@@ -12,11 +12,6 @@ Single-letter shortcuts such as `M` (make the cell Markdown) work only in
 command mode; in edit mode they type the letter. The sheet says this too,
 and the ⋯ menu's Cell Type changes a cell's type with the mouse.
 
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release, where the toolbar has a keyboard button and a cell
-> type picker instead of these menu items.
-
 ## Command palette
 
 `⇧⌘P` (`Ctrl+Shift+P` on Windows and Linux) opens the command palette:
@@ -33,11 +28,6 @@ Mac app has View › Command Palette…. Firefox keeps `Ctrl+Shift+P` (`⇧⌘P`
 for a private window, so there use the menu item or rebind the
 palette in the Shortcuts sheet. In the Mac app the menu's `⇧⌘P` stays as
 it is when you rebind it.
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release, where the browser toolbar has a command button for
-> this.
 
 ## On a touch screen
 
