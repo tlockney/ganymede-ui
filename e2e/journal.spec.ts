@@ -132,8 +132,18 @@ for (const { name, width, height, shows } of [
       await journal.getByRole('button', { name: 'Open as Notebook' }).click();
       await expect(page.locator('.jp-Cell')).toHaveCount(3);
       const eyebrow = page.locator('.page-eyebrow');
-      if (shows) await expect(eyebrow).toBeVisible();
-      else await expect(eyebrow).toBeHidden();
+      if (shows) {
+        await expect(eyebrow).toBeVisible();
+      } else {
+        await expect(eyebrow).toBeHidden();
+        // A hidden line takes no room: the notebook's page starts at the
+        // content's top, where it sits under the line (#867).
+        const [notebook, content] = await Promise.all([
+          page.locator('.notebook-page').boundingBox(),
+          page.locator('.content:has(> .notebook-page)').boundingBox(),
+        ]);
+        expect(notebook!.y).toBe(content!.y);
+      }
     });
   });
 }
