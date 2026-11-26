@@ -85,7 +85,7 @@ final class PlaceTests: XCTestCase {
         XCTAssertEqual(
             Set(Place.Capability.allCases.filter { machine.allows($0, sharesName: true) }
                 .map { "\($0)" }),
-            ["settings", "nativeChrome", "personName"])
+            ["settings", "nativeChrome", "agentKeys", "personName"])
         for capability in Place.Capability.allCases where capability != .personName {
             XCTAssertEqual(
                 machine.allows(capability, sharesName: true),
