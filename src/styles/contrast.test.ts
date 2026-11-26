@@ -2,8 +2,8 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
 /*
- * Text contrast computed from the stylesheets themselves (#799): white on
- * the filled accent, the accent as text (links, insert and text buttons),
+ * Text contrast computed from the stylesheets themselves (#799): --on-accent
+ * on the filled accent, the accent as text (links, insert and text buttons),
  * execution prompts, and text on the orange fill (#802), in light and
  * dark, each at WCAG AA's 4.5:1 for text. A later change to a token, a
  * color or an opacity in these rules fails here.
@@ -146,14 +146,18 @@ const opacity = (v: string | undefined, vars: Map<string, string>) =>
   v === undefined ? 1 : Number(resolve(v, vars));
 
 describe('text contrast (#799)', () => {
-  // Every rule that puts white text on an accent fill: the primary
+  // Every rule that puts --on-accent text on an accent fill: the primary
   // buttons, notice actions, highlighted menu and palette rows, the
   // keyboard bar's primary key, the journal's follow button.
   const fillOf = (r: Rule) => r.decls.get('background') ?? r.decls.get('background-color');
   const filled = [...app, ...jupyter].filter(
-    r =>
-      /^(#fff|#ffffff|white)$/i.test(r.decls.get('color') ?? '') &&
-      /^var\(--accent/.test(fillOf(r) ?? ''),
+    r => r.decls.get('color') === 'var(--on-accent)' && /^var\(--accent/.test(fillOf(r) ?? ''),
+  );
+  // White text on an accent fill, which --on-accent replaced (#845): the
+  // accent is the icon's orange now, too light for white.
+  const WHITE = /^(#fff|#ffffff|white)$/i;
+  const whiteOnAccent = [...app, ...jupyter].filter(
+    r => WHITE.test(r.decls.get('color') ?? '') && /^var\(--accent/.test(fillOf(r) ?? ''),
   );
 
   // The accent as text color. Plain --accent is for icons only (the
@@ -185,13 +189,18 @@ describe('text contrast (#799)', () => {
     expect(filled.length).toBeGreaterThanOrEqual(7);
   });
 
+  it('puts no white text on an accent fill any more (#845)', () => {
+    expect(whiteOnAccent.map(r => r.selector)).toEqual([]);
+  });
+
   for (const theme of themes) {
-    it(`white on every accent fill reads at ${AA}:1 in ${theme}`, () => {
+    it(`--on-accent on every accent fill reads at ${AA}:1 in ${theme}`, () => {
       const vars = variables(theme);
+      const text = color(resolve('var(--on-accent)', vars));
       for (const r of filled) {
         const bg = color(resolve(fillOf(r)!, vars));
         expect(bg[3], r.selector).toBe(1);
-        const ratio = contrast(color('#fff'), bg);
+        const ratio = contrast(text, bg);
         expect(ratio, `${r.selector} ${ratio.toFixed(2)}`).toBeGreaterThanOrEqual(AA);
       }
     });
