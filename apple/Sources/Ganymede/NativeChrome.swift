@@ -637,6 +637,9 @@ struct NotebookToolbar: ToolbarContent {
                         }
                     }
                 }
+                // The toolbar's glass clips its item at the edge: room so
+                // the title's first letter isn't cut off (#867).
+                .padding(.horizontal, 8)
             }
         } else {
             // A console or a folder keeps the system's title, and its chip
