@@ -122,16 +122,19 @@ enum Place: Hashable, Codable {
     /// What a new terminal in a window of this place runs on (#858): a shell
     /// on this device, or one on the server of the machine the window shows,
     /// so a machine's window starts its terminals where its files are rather
-    /// than on this Mac. `folder` is where the shell starts, a path on that
-    /// place's server — a machine's relative to its root; nil or "" is the
-    /// root. Nil for a machine whose remote was removed, or has no server: it
-    /// has nowhere to run one.
-    func terminalTarget(folder: String?, remotes: [Remote]) -> TerminalTarget? {
+    /// than on this Mac. It starts in the folder of the notebook the window
+    /// shows, else in `fallbackFolder`, the folder the window is on; both are
+    /// paths from the window's own server's root, "" for the root itself.
+    /// Nil for a machine whose remote was removed, or has no server: it has
+    /// nowhere to run one.
+    func terminalTarget(notebook: String?, fallbackFolder: String, remotes: [Remote]) -> TerminalTarget? {
+        let folder = notebook.map(FolderEntry.parentPath) ?? fallbackFolder
         switch self {
         case .thisDevice:
             // The app's server on this Mac is rooted at `/`, so one of its
-            // paths is a path from there.
-            guard let folder, !folder.isEmpty else { return .local(folder: nil) }
+            // paths is a path from there, and "" is `/` itself: a window on
+            // the root starts its shell there, as it did before this was one
+            // place's rule, not in the app's own default folder.
             return .local(folder: URL(fileURLWithPath: "/" + folder.drop { $0 == "/" }, isDirectory: true))
         case .machine(let id):
             // The remote the window was made from, as it is saved now: one
@@ -139,7 +142,7 @@ enum Place: Hashable, Codable {
             guard let remote = remotes.first(where: { $0.id.uuidString == id && $0.hasServer }) else {
                 return nil
             }
-            return .server(remote.id, folder: folder.flatMap { $0.isEmpty ? nil : $0 })
+            return .server(remote.id, folder: folder.isEmpty ? nil : folder)
         }
     }
 

@@ -124,5 +124,88 @@ final class JupyterTerminalTransportTests: XCTestCase {
         try await waitFor("the refusal") { !closed.isEmpty }
         XCTAssertEqual(closed.first ?? nil, "This server has no terminals.")
     }
+
+    /// A machine's terminal asks the server for its folder (#858), which the
+    /// Ganymede server resolves against its root. It must: with no cwd the
+    /// shell starts at the root wherever the window's notebook is.
+    func testAMachinesTerminalAsksForItsFolder() async throws {
+        let endpoint = try XCTUnwrap(ServerEndpoint(string: "http://127.0.0.1:9", token: "t"))
+        let body = try await createBody(of: .server(UUID(), folder: "notes"), on: endpoint)
+        XCTAssertEqual(body["cwd"] as? String, "notes")
+        // A target saved before a folder was known asks for the root, saying
+        // nothing about where the shell starts.
+        let folderless = try await createBody(of: .server(UUID()), on: endpoint)
+        XCTAssertNil(folderless["cwd"])
+    }
+
+    /// The create body a transport for `target` sends, from the request itself.
+    private func createBody(of target: TerminalTarget, on endpoint: ServerEndpoint) async throws -> [String: Any] {
+        TerminalCreateRequest.forget()
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [TerminalCreateRequest.self]
+        let transport = try XCTUnwrap(target.serverTransport(
+            on: endpoint, session: URLSession(configuration: configuration)))
+        transport.start()
+        try await waitFor("the create") { !TerminalCreateRequest.bodies.isEmpty }
+        transport.close()
+        return try XCTUnwrap(JSONSerialization.jsonObject(with: TerminalCreateRequest.bodies[0]) as? [String: Any])
+    }
+}
+
+/// Answers a terminal's create request itself, keeping the body it was sent,
+/// so a test sees the cwd the app asks for without a server. It refuses the
+/// terminal (404), so the transport stops there, before its websocket.
+final class TerminalCreateRequest: URLProtocol {
+    private static let lock = NSLock()
+    private static var sent: [Data] = []
+
+    /// What the create requests were sent, in order.
+    static var bodies: [Data] {
+        lock.lock()
+        defer { lock.unlock() }
+        return sent
+    }
+
+    static func forget() {
+        lock.lock()
+        sent = []
+        lock.unlock()
+    }
+
+    private static func record(_ body: Data) {
+        lock.lock()
+        sent.append(body)
+        lock.unlock()
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        if let body = Self.body(of: request) { Self.record(body) }
+        let response = HTTPURLResponse(
+            url: request.url!, statusCode: 404, httpVersion: "HTTP/1.1", headerFields: nil)!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
+
+    /// The request's body: URLSession hands it over as a stream rather than as
+    /// data.
+    private static func body(of request: URLRequest) -> Data? {
+        if let body = request.httpBody { return body }
+        guard let stream = request.httpBodyStream else { return nil }
+        stream.open()
+        defer { stream.close() }
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 1024)
+        while stream.hasBytesAvailable {
+            let count = stream.read(&buffer, maxLength: buffer.count)
+            guard count > 0 else { break }
+            data.append(buffer, count: count)
+        }
+        return data
+    }
 }
 #endif

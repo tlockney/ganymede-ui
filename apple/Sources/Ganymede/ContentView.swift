@@ -150,19 +150,19 @@ struct ContentView: View {
             // machine's too (#740).
             NotebookToolbar(
                 page: pageModel, document: document, folder: sidebarRoot,
+                // The kernel popover's Kernel Log is this device's window's
+                // alone (#858), so a machine's window passes no panel to it.
                 panel: place.isThisDevice ? panel : nil, place: place, header: headerStatus)
             // The panel is every window's: a machine's terminals run on the
-            // machine (#858). A window with none to start has no panel to
-            // offer.
-            if windowTerminal != nil {
-                ToolbarItem {
-                    Button {
-                        panel.toggle(startingOn: windowTerminal)
-                    } label: {
-                        Label(panel.isShown ? "Hide Terminal Panel" : "Show Terminal Panel", systemImage: "rectangle.bottomthird.inset.filled")
-                    }
-                    .help(panel.isShown ? "Hide the terminal panel (⌃`)" : "Show the terminal panel (⌃`)")
+            // machine (#858), and a machine whose remote is gone keeps its
+            // panel too, empty, for the remotes' terminals there.
+            ToolbarItem {
+                Button {
+                    panel.toggle(startingOn: windowTerminal)
+                } label: {
+                    Label(panel.isShown ? "Hide Terminal Panel" : "Show Terminal Panel", systemImage: "rectangle.bottomthird.inset.filled")
                 }
+                .help(panel.isShown ? "Hide the terminal panel (⌃`)" : "Show the terminal panel (⌃`)")
             }
             // Only a tab with a notebook has an inspector (#729).
             if showsNotebook {
@@ -624,7 +624,7 @@ struct ContentView: View {
             if let source = fileSource {
                 NavigatorSidebar(
                     folder: sidebarRoot, source: source, place: place, page: pageModel,
-                    panel: place.isThisDevice ? panel : nil
+                    panel: panel
                 ) { path in
                     openWindow(value: EditorRequest(path: path, place: place))
                 }
@@ -755,6 +755,9 @@ struct ContentView: View {
                     available: area.size.height,
                     kernelID: pageModel.state.kernelID,
                     server: model.serverURL.flatMap(ServerEndpoint.init(serverURL:)),
+                    // A machine's kernel is the machine's, whose log this
+                    // Mac's server doesn't keep (#858).
+                    kernelLog: place.isThisDevice,
                     fills: panelFills,
                     toggleFill: { layout.toggle(.panel) }
                 )
@@ -927,12 +930,12 @@ struct ContentView: View {
     private var panelShown: Bool { panel.isShown && !mainFills }
 
     /// What a new terminal on this scene's own machine runs on (#858), the
-    /// place deciding from the folder of the notebook it shows: nil for this
-    /// device, whose terminals are the remotes' in the panel, as before.
+    /// place deciding from the folder of the notebook it shows, as on the
+    /// Mac: nil for this device, whose terminals are the remotes' in the
+    /// panel, as before.
     private var terminalTarget: TerminalTarget? {
         guard place.isMachine else { return nil }
-        let folder = pageModel.state.path.map(FolderEntry.parentPath) ?? ""
-        return place.terminalTarget(folder: folder.isEmpty ? nil : folder, remotes: model.remotes)
+        return place.terminalTarget(notebook: pageModel.state.path, fallbackFolder: "", remotes: model.remotes)
     }
 
     /// Whether the panel fills the detail area over the notebook.

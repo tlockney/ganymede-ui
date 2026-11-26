@@ -14,8 +14,8 @@ struct NavigatorSidebar: View {
     /// Finder or text editor.
     var place: Place = .thisDevice
     var page: PageModel
-    /// The window's bottom panel, for terminals the foot's menu opens; none
-    /// for a machine's window.
+    /// The window's bottom panel, for terminals the foot's menu opens (a
+    /// machine's window has one too, #858).
     var panel: PanelController?
     let openFile: (String) -> Void
     /// The selected tab, kept per window.

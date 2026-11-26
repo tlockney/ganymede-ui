@@ -210,11 +210,6 @@ shown or hidden, its tab and its expanded folders across launches.
   resize it. Hiding the panel keeps its shells running; closing a tab
   ends that one. Since `` ⌃` `` toggles the panel, programs in a panel
   terminal don't receive it (a terminal in a tab of its own still does).
-- In a machine's window the shell is on the machine, not this Mac: the
-  panel's New Terminal and File > New Terminal start it in the folder of
-  the notebook the window shows, else the folder it shows, both paths on
-  the machine, so it works on the files the window lists. Its running
-  kernels are where they run, as on this device.
 - File > New Terminal (`` ⌃⇧` ``) adds a shell to the panel. File > New
   Terminal On, or the panel's + menu, opens one on a remote's server, if
   it has terminals (Ganymede with terminals, or `jupyter server`), or
@@ -777,8 +772,7 @@ one to go to its cell.
 - **Help**: Settings > Help, and the iPad menu bar's Help menu,
   open ganymede-server.com, its docs and this page in Safari.
 - **Terminals**: the terminal button opens a shell on a remote, over SSH
-  or on its server's terminals; in a machine's scene, New Terminal opens
-  one on that machine, as on the Mac. SSH signs in with an ed25519 key the app
+  or on its server's terminals. SSH signs in with an ed25519 key the app
   generates or imports (Settings > SSH key; copy the public key into
   `~/.ssh/authorized_keys` on the remote) and trusts the host key the
   first time, refusing it if it changes later. iOS drops the connection
@@ -939,7 +933,10 @@ with only SSH stays in Settings for shells.
 > terminals in a machine's window (which run on the machine) are
 > available only from a build of `main` (HEAD), not in the latest release,
 > where a machine's window keeps the agent's key in the page's web storage,
-> its text files don't open and it has no terminals.
+> its text files don't open and it has no terminal panel or New Terminal
+> (New Terminal On already works there). The Kernel Log tab is in this
+> device's window only: a machine's kernel runs on the machine, and this
+> Mac's server keeps no log of it.
 
 On the Mac a machine's window is the app's native window: the same
 sidebar (Files, Search, Running, Outline and Journals), toolbar,
@@ -962,9 +959,11 @@ on a folder (a machine copies files only), the Recents tab, File > Open
 Recent. File > New Tab and New Window
 open on the same machine, not on this Mac. Kernel > Advanced
 and Runs On in the kernel popover set where this Mac's kernels run, so a
-machine's window hides them; File > New Terminal and New Terminal Tab
-start a shell on the machine, in the panel, in the folder of the notebook
-the window shows (New Terminal On still works). The sidebar's place
+machine's window hides them; File > New Terminal and New Terminal Tab, and
+the panel's New Terminal, start a shell on the machine, in the panel, in the
+folder of the notebook the window shows, else the folder the window shows,
+both paths on the machine, so it works on the files the window lists (New
+Terminal On still works). The sidebar's place
 menu shows the machine as the current place, and picking another opens
 its window. Its Journals tab lists that machine's journals.
 

@@ -186,12 +186,12 @@ struct TerminalWindow: View {
             // The server is rooted at `/`, so an absolute path is the cwd.
             return JupyterTerminalTransport(endpoint: endpoint, cwd: (folder ?? model.root).path)
             #endif
-        case .server(let id, let folder):
+        case .server(let id, _):
             // A path on the server: the Ganymede server resolves a machine's
             // relative folder against its root, and falls back to the root
             // when it isn't there (#858).
             guard let endpoint = model.server(of: id) else { return nil }
-            return JupyterTerminalTransport(endpoint: endpoint, cwd: folder)
+            return target.serverTransport(on: endpoint)
         case .ssh(let id):
             guard let ssh = model.remote(id)?.ssh else { return nil }
             #if os(macOS)

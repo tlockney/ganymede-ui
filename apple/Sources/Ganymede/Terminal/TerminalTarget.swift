@@ -21,3 +21,18 @@ struct TerminalRequest: Codable, Hashable, Identifiable {
     var id = UUID()
     var target: TerminalTarget
 }
+
+extension TerminalTarget {
+    /// The transport a machine's terminal opens on `endpoint`, the server it
+    /// runs on (#858). Its `folder` is the shell's cwd, a path on that server
+    /// which the Ganymede server resolves against its root (nil is that
+    /// root), so a terminal saved with a folder still opens where it did.
+    /// Here, in a file the tests compile, rather than in the view, so a test
+    /// sees the cwd the panel sends. Nil for any other target: this Mac's
+    /// shell and SSH are not a server's.
+    @MainActor
+    func serverTransport(on endpoint: ServerEndpoint, session: URLSession = .shared) -> JupyterTerminalTransport? {
+        guard case .server(_, let folder) = self else { return nil }
+        return JupyterTerminalTransport(endpoint: endpoint, cwd: folder, session: session)
+    }
+}

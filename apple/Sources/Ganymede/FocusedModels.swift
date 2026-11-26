@@ -34,8 +34,7 @@ extension WindowScope {
     /// window's server. Nil for a machine whose remote is gone or has no
     /// server.
     func terminalTarget(notebook: String?, remotes: [Remote]) -> TerminalTarget? {
-        let folder = notebook.map(FolderEntry.parentPath) ?? serverFolder
-        return place.terminalTarget(folder: folder.isEmpty ? nil : folder, remotes: remotes)
+        place.terminalTarget(notebook: notebook, fallbackFolder: serverFolder, remotes: remotes)
     }
 }
 #endif

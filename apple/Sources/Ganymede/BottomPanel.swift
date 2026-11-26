@@ -22,6 +22,10 @@ struct BottomPanel: View {
     let kernelID: String?
     /// The server the page uses, which keeps the kernel's log.
     let server: ServerEndpoint?
+    /// Whether the panel has the Kernel Log tab (#858): this device's window
+    /// only. A machine's kernel runs on the machine, and this Mac's server
+    /// keeps no log of it, so a machine's panel has no tab to ask it with.
+    let kernelLog: Bool
     /// It fills the window (#250): as tall as the area, not resizable.
     var fills = false
     /// Its fill control: fills the window, or restores the layout.
@@ -30,6 +34,9 @@ struct BottomPanel: View {
     @State private var titles: [PanelTerminal.ID: String] = [:]
     /// The height when a drag of the top edge began.
     @State private var dragStart: Double?
+
+    /// Whether the Kernel Log is on show: only where the panel has it.
+    private var showsLog: Bool { kernelLog && panel.showsLog }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -49,16 +56,18 @@ struct BottomPanel: View {
             header
             Divider()
             ZStack {
-                KernelLogView(
-                    kernelID: kernelID,
-                    server: server,
-                    active: panel.isShown && panel.showsLog
-                )
-                    .opacity(panel.showsLog ? 1 : 0)
-                    .allowsHitTesting(panel.showsLog)
-                    .accessibilityHidden(!panel.showsLog)
+                if kernelLog {
+                    KernelLogView(
+                        kernelID: kernelID,
+                        server: server,
+                        active: panel.isShown && showsLog
+                    )
+                        .opacity(showsLog ? 1 : 0)
+                        .allowsHitTesting(showsLog)
+                        .accessibilityHidden(!showsLog)
+                }
                 ForEach(panel.terminals) { terminal in
-                    let selected = terminal.id == panel.selection && !panel.showsLog
+                    let selected = terminal.id == panel.selection && !showsLog
                     TerminalWindow(
                         target: terminal.target,
                         inPanel: true,
@@ -77,7 +86,7 @@ struct BottomPanel: View {
                         .allowsHitTesting(selected)
                         .accessibilityHidden(!selected)
                 }
-                if panel.terminals.isEmpty && !panel.showsLog {
+                if panel.terminals.isEmpty && !showsLog {
                     VStack(spacing: 8) {
                         Text("No terminals").foregroundStyle(.secondary)
                         Button("New Terminal") {
@@ -100,18 +109,20 @@ struct BottomPanel: View {
         HStack(spacing: 2) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 2) {
-                    PanelTab(
-                        title: "Kernel Log",
-                        systemImage: "doc.plaintext",
-                        selected: panel.showsLog,
-                        select: { panel.showLog() },
-                        close: nil
-                    )
+                    if kernelLog {
+                        PanelTab(
+                            title: "Kernel Log",
+                            systemImage: "doc.plaintext",
+                            selected: showsLog,
+                            select: { panel.showLog() },
+                            close: nil
+                        )
+                    }
                     ForEach(panel.terminals) { terminal in
                         PanelTab(
                             title: titles[terminal.id] ?? model.title(for: terminal.target),
                             systemImage: "terminal",
-                            selected: terminal.id == panel.selection && !panel.showsLog,
+                            selected: terminal.id == panel.selection && !showsLog,
                             select: { panel.select(terminal.id) },
                             close: { close(terminal.id) },
                             moveToTab: { moveToTab(terminal) }
@@ -153,7 +164,7 @@ struct BottomPanel: View {
         // keyboard, so hand it to the notebook here, if a terminal had it
         // (the click on × came from this, the key window). Otherwise the
         // next selected terminal takes it.
-        if panel.terminals.count == 1, !panel.showsLog, let window = NSApp.keyWindow,
+        if panel.terminals.count == 1, !showsLog, let window = NSApp.keyWindow,
            window.firstResponder is TerminalView {
             returnKeyboardToPage(in: window)
         }
