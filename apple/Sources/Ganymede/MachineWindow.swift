@@ -3,8 +3,10 @@ import SwiftUI
 /// The place switcher (#701): the current place's name with a dot for
 /// reachable or offline, and a menu of the places to open. Opening one
 /// shows its window; the caller decides how. A machine the app verified is
-/// this Mac's own server wears a "This Mac" badge (#883): it is listed with
-/// the machines, and its windows are this Mac's place.
+/// this Mac's own server wears a "This Mac" badge (#883) beside the
+/// switcher's name, and " — This Mac" in the menu, where a menu item is its
+/// title alone: it is listed with the machines, and its windows are this
+/// Mac's place.
 struct PlaceMenu: View {
     let entries: [PlaceEntry]
     let current: Place
@@ -43,13 +45,14 @@ struct PlaceMenu: View {
     }
 
     /// One place in the menu: its name, whether it answers, and whether it
-    /// is this Mac's own (#883).
+    /// is this Mac's own (#883). An `NSMenu` flattens an item to its title,
+    /// so the badge's capsule would not show there: the title says it.
     private func row(_ entry: PlaceEntry) -> some View {
         let offline = !reachability.isReachable(entry.place)
+        let own = entry.place.isThisMac ? " — This Mac" : ""
         return HStack(spacing: 6) {
             if entry.place == current { Image(systemName: "checkmark") }
-            Text(entry.title + (offline ? " · offline" : ""))
-            if entry.place.isThisMac { ThisMacBadge() }
+            Text(entry.title + own + (offline ? " · offline" : ""))
         }
     }
 }

@@ -135,13 +135,23 @@ enum AppMCP {
     /// from other servers'.
     static let appMarker = "ganymede_app"
 
+    /// The server info files (`jpserver-<pid>.json`) in `dir`, sorted by
+    /// name: the ones `jupyter_server`, `ganymede serve` and the app write
+    /// there, which this removes stale ones of, and the this-Mac check reads
+    /// (#883).
+    static func serverInfoFiles(in dir: URL) -> [URL] {
+        let files = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
+        return files
+            .filter { $0.lastPathComponent.hasPrefix("jpserver-") && $0.pathExtension == "json" }
+            .sorted { $0.lastPathComponent < $1.lastPathComponent }
+    }
+
     /// Removes server info files the app wrote for processes that are gone
     /// (a crash, a force quit).
     static func removeStaleServerInfo(
         in dir: URL, isRunning: (Int32) -> Bool = { kill($0, 0) == 0 || errno == EPERM }
     ) {
-        let files = (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? []
-        for file in files where file.lastPathComponent.hasPrefix("jpserver-") && file.pathExtension == "json" {
+        for file in serverInfoFiles(in: dir) {
             guard let data = try? Data(contentsOf: file),
                   let info = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
                   info[appMarker] as? Bool == true,

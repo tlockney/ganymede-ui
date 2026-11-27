@@ -28,6 +28,10 @@ struct WebView: NSViewRepresentable {
     /// The folder the ledger keeps a this-Mac window's notebooks under
     /// (#883): the server's `root_dir`. Nil for this device's windows.
     var ledgerRoot: URL? = nil
+    /// A load of the page committed (#883): the window reads its place
+    /// again, so a check that verified its machine applies on this load and
+    /// not under the page that was showing.
+    var onLoad: (() -> Void)? = nil
 
     func makeCoordinator() -> WebViewCoordinator {
         WebViewCoordinator(
@@ -45,6 +49,7 @@ struct WebView: NSViewRepresentable {
         context.coordinator.page = page
         context.coordinator.onOpenTab = onOpenTab
         context.coordinator.onOpenFile = onOpenFile
+        context.coordinator.onLoad = onLoad
         context.coordinator.load(url, in: view)
     }
 }
@@ -260,6 +265,8 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// The page's `openTab` message (#729). Only the Mac's windows set it,
     /// and only they register the handler.
     var onOpenTab: ((TabRequest) -> Void)?
+    /// A load committed (#883): the Mac window reads its place again.
+    var onLoad: (() -> Void)?
 
     init(place: Place = .thisDevice, sharesName: Bool, usesDevice: Bool, ledgerRoot: URL? = nil) {
         self.place = place
@@ -429,6 +436,10 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         if place.allows(.deviceRemote, settings) { kernels.reset() }
         // The new page takes commands once it has posted its state.
         page?.committed(navigation)
+        // A load of this window's page: the place it was loaded with is
+        // read again (#883), so a check that verified its machine applies
+        // here, on this load.
+        onLoad?()
     }
 
     /// The UI page's process died: its dialogs and sounds for server

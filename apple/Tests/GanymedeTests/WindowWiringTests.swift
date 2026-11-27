@@ -162,6 +162,32 @@ final class WindowWiringTests: XCTestCase {
         }
     }
 
+    /// This Mac's own server's window gets both, as this device's does,
+    /// whatever its settings say, and its dialogs ask as this device's: the
+    /// server was verified, so its cells are this Mac's own processes
+    /// (#883).
+    @MainActor
+    func testThisMacsWindowGetsBothHandlersAndAsksAsThisDevice() async throws {
+        let server = try server()
+        defer { server.stop() }
+        let presenter = AskerPresenter()
+        let host = KernelHost(device: DeviceBridge(presenter: presenter), kernels: AppKernels())
+        let view = try await page(
+            host, place: .thisMac(id), settings: PlaceSettings(sharesName: true, usesDevice: false),
+            asker: Place.thisMac(id).asker { _ in "mini" }, at: server.url)
+        for name in ["deviceRemote", "kernelRelay"] {
+            let kind = try await handler(name, in: view)
+            XCTAssertEqual(kind, "object", name)
+        }
+        _ = try await view.evaluateJavaScript("""
+            webkit.messageHandlers.deviceRemote.postMessage(
+                { id: 1, owner: 1, method: 'ui.alert', params: { message: 'x' } });
+            true
+            """)
+        try await eventually("the dialog") { !presenter.askers.isEmpty }
+        XCTAssertEqual(presenter.askers, [nil])
+    }
+
     /// A machine's dialogs always say where the cell runs (#877): the
     /// app's name for the machine, or "another computer" when it has none
     /// (a remote removed while its window was open), never as if the cell

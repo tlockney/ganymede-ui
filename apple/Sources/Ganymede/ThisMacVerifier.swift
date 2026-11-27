@@ -22,8 +22,9 @@ protocol ThisMacProbe: Sendable {
     /// Whether this pid's code is signed for `team`'s team, with
     /// `identifier`: the app's own bundled helper and nobody else's code.
     func hasSignature(pid: Int32, team: String, identifier: String) -> Bool
-    /// Whether this pid holds a TCP socket listening on `port`.
-    func isListening(pid: Int32, port: Int) -> Bool
+    /// Whether this pid holds a TCP socket listening on `port` at `host`,
+    /// the literal address the info file named (`127.0.0.1` or `::1`).
+    func isListening(pid: Int32, port: Int, host: String) -> Bool
 }
 
 /// Whether a `jpserver-<pid>.json` is this Mac's own Ganymede (#883).
@@ -31,13 +32,14 @@ protocol ThisMacProbe: Sendable {
 /// The app can't trust a server for being on `localhost`: any process of
 /// any user can listen on a loopback port, and the app sends that server
 /// its token. So the check is who is listening: the info file this user's
-/// Jupyter runtime directory holds (mode 0600, so only this user's
-/// processes write one) names a loopback address, a live pid that is the
-/// app's own bundled `ganymede` — signed for the app's team, with the
-/// helper's identifier — that holds the listening socket, and the app's own
-/// version. Anything else is an ordinary machine: a `cargo install` or
-/// Homebrew `ganymede` stays one, and the bundled helper started from a
-/// terminal qualifies.
+/// Jupyter runtime directory holds (this user's own, which Jupyter creates
+/// 0700, so only this user's processes write one) names `127.0.0.1` or `::1` as its literal — never
+/// a name, and never a wildcard bind, which the socket lookup refuses — a
+/// live pid that is the app's own bundled `ganymede` — signed for the
+/// app's team, with the helper's identifier — that holds the listening
+/// socket on that address, and the app's own version. Anything else is an
+/// ordinary machine: a `cargo install` or Homebrew `ganymede` stays one,
+/// and the bundled helper started from a terminal qualifies.
 struct ThisMacVerifier {
     let probe: any ThisMacProbe
 
@@ -71,9 +73,12 @@ struct ThisMacVerifier {
     private func verify(
         _ info: ThisMacServer, team: String?, identifier: String?, version: String?
     ) -> Bool {
-        // A loopback port is the only place a server it trusts may listen,
-        // and the one the app sends its token to through the mount.
-        guard let host = info.url.host, ThisMacServer.isLoopback(host),
+        // A loopback address is the only place a server it trusts may
+        // listen, and the one the app sends its token to through the mount.
+        // The literal, not a name: what `localhost` resolves to is the
+        // system's to say, and the socket the check looks at is at the
+        // address written here.
+        guard let host = info.url.host, ThisMacServer.isTrustedAddress(host),
               let port = info.port, (1...65535).contains(port)
         else { return false }
         // An unsigned or ad-hoc-signed app has no team and no identifier to
@@ -82,7 +87,7 @@ struct ThisMacVerifier {
         guard let team, !team.isEmpty, let identifier, !identifier.isEmpty,
               probe.isRunning(info.pid),
               probe.hasSignature(pid: info.pid, team: team, identifier: identifier),
-              probe.isListening(pid: info.pid, port: port),
+              probe.isListening(pid: info.pid, port: port, host: host),
               let version, version == info.version
         else { return false }
         return true
@@ -112,25 +117,20 @@ struct SystemThisMacProbe: ThisMacProbe {
     /// The app's `Contents/Helpers/ganymede`, which a server must be.
     var bundledTool: URL? = CommandLineTool.bundledTool()
 
-    func infoFiles(in directory: URL) -> [URL] {
-        let files =
-            (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil))
-            ?? []
-        return files
-            .filter { $0.lastPathComponent.hasPrefix("jpserver-") && $0.pathExtension == "json" }
-            .sorted { $0.lastPathComponent < $1.lastPathComponent }
-    }
+    func infoFiles(in directory: URL) -> [URL] { AppMCP.serverInfoFiles(in: directory) }
 
     /// The running app's team, from its own signature. Absent on a build
     /// signed ad hoc, which is how a debug build is made.
     var teamIdentifier: String? {
         var code: SecCode?
         guard SecCodeCopySelf([], &code) == errSecSuccess, let code else { return nil }
-        // A `SecCode` is a static code for the signature's sake: the same
+        // The signature's information is the static code's: the same
         // object to the Security framework, which the SDK's Swift types
         // don't say.
-        return signingInformation(unsafeBitCast(code, to: SecStaticCode.self))?[kSecCodeInfoTeamIdentifier as String]
-            as? String
+        var staticCode: SecStaticCode?
+        guard SecCodeCopyStaticCode(code, [], &staticCode) == errSecSuccess, let staticCode
+        else { return nil }
+        return signingInformation(staticCode)?[kSecCodeInfoTeamIdentifier as String] as? String
     }
 
     /// The identifier the bundled tool's signature carries. The release
@@ -149,16 +149,37 @@ struct SystemThisMacProbe: ThisMacProbe {
     }
 
     /// `ganymede --version` says `ganymede 0.17.0`, and the info file's
-    /// `ganymede_version` is the last word. Read once: the app's own tool
-    /// doesn't change while it runs, and reading it runs it.
-    var bundledVersion: String? { Self.version }
+    /// `ganymede_version` is the last word. A success is kept — the app's
+    /// own tool doesn't change while it runs — and a failed read is tried
+    /// again next time, since reading it runs the tool and may fail once
+    /// (#883).
+    var bundledVersion: String? {
+        Self.cache.version {
+            guard let tool = CommandLineTool.bundledTool(),
+                  let line = CommandLineTool.version(of: tool.path)
+            else { return nil }
+            return line.split(whereSeparator: \.isWhitespace).last.map(String.init)
+        }
+    }
 
-    private static let version: String? = {
-        guard let tool = CommandLineTool.bundledTool(),
-              let line = CommandLineTool.version(of: tool.path)
-        else { return nil }
-        return line.split(whereSeparator: \.isWhitespace).last.map(String.init)
-    }()
+    /// The bundled tool's version once it was read: the check runs off the
+    /// main thread and windows read it too (`verifyThisMacNow`), so the
+    /// read is behind a lock.
+    private final class VersionCache: @unchecked Sendable {
+        private let lock = NSLock()
+        private var version: String?
+
+        /// The version `read` gives, once; a nil read isn't kept.
+        func version(_ read: () -> String?) -> String? {
+            lock.lock()
+            defer { lock.unlock() }
+            if let version { return version }
+            version = read()
+            return version
+        }
+    }
+
+    private static let cache = VersionCache()
 
     func isRunning(_ pid: Int32) -> Bool {
         // Signal 0 asks without sending one; a process of another user
@@ -184,11 +205,14 @@ struct SystemThisMacProbe: ThisMacProbe {
         return SecCodeCheckValidity(code, [], requirement) == errSecSuccess
     }
 
-    /// Whether `pid` holds a TCP socket listening on `port`: libproc's list
-    /// of its file descriptors, then each socket's own information. A
-    /// socket in `TSI_S_LISTEN` is a listener; a connected one to the same
-    /// port isn't, whatever its peer.
-    func isListening(pid: Int32, port: Int) -> Bool {
+    /// Whether `pid` holds a TCP socket listening on `port` at `host`, the
+    /// literal loopback address the info file named: libproc's list of its
+    /// file descriptors, then each socket's own information. A socket in
+    /// `TSI_S_LISTEN` is a listener, and it must be at that address: one a
+    /// wildcard bind made listens on every interface, and the app's token
+    /// must not go there. A connected socket to the same port isn't a
+    /// listener, whatever its peer.
+    func isListening(pid: Int32, port: Int, host: String) -> Bool {
         let stride = Int32(MemoryLayout<proc_fdinfo>.stride)
         // The size the whole list needs: the kernel says so when the buffer
         // given is too small, which none is.
@@ -209,9 +233,27 @@ struct SystemThisMacProbe: ThisMacProbe {
             guard tcp.tcpsi_state == TSI_S_LISTEN else { continue }
             // The port is in network byte order.
             let local = Int(UInt16(bigEndian: UInt16(truncatingIfNeeded: tcp.tcpsi_ini.insi_lport)))
-            if local == port { return true }
+            if local == port, Self.isAddress(tcp.tcpsi_ini, host) { return true }
         }
         return false
+    }
+
+    /// Whether `info`'s local address is `host`, written as the literal it
+    /// must be: the IPv4 loopback or the IPv6 one, by the socket's own IP
+    /// version. A wildcard bind (`0.0.0.0`, `::`) is neither.
+    private static func isAddress(_ info: in_sockinfo, _ host: String) -> Bool {
+        switch (info.insi_vflag, ThisMacServer.normalize(host)) {
+        case (0x1, "127.0.0.1"):  // INI_IPV4
+            // `s_addr` is in network byte order.
+            return UInt32(bigEndian: info.insi_laddr.ina_46.i46a_addr4.s_addr) == 0x7F00_0001
+        case (0x2, "::1"):  // INI_IPV6
+            var address = info.insi_laddr.ina_6
+            return withUnsafeBytes(of: &address) { bytes in
+                bytes.count == 16 && bytes.dropLast().allSatisfy { $0 == 0 } && bytes.last == 1
+            }
+        default:
+            return false
+        }
     }
 
     private func signingInformation(_ code: SecStaticCode) -> [String: Any]? {

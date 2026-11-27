@@ -1,8 +1,10 @@
 #if os(macOS)
+import Darwin
 import XCTest
 
 /// Whether a server info file is this Mac's own Ganymede (#883): every part
-/// that must hold, with the system's lookups faked.
+/// that must hold, with the system's lookups faked — and the socket lookup
+/// itself against listeners this process opens.
 final class ThisMacVerifierTests: XCTestCase {
     private let team = "ABCDE12345"
     private let helper = "ganymede-UUID0123456789ABCDEF0123456789ABCDEF"
@@ -32,7 +34,7 @@ final class ThisMacVerifierTests: XCTestCase {
     }
 
     /// What the check asks: each answer a test sets, and the info files of a
-    /// real folder.
+    /// real folder, filtered as the app filters them (`AppMCP.serverInfoFiles`).
     private struct Fake: ThisMacProbe {
         var teamIdentifier: String? = "ABCDE12345"
         var helperIdentifier: String? = "ganymede-UUID0123456789ABCDEF0123456789ABCDEF"
@@ -42,16 +44,11 @@ final class ThisMacVerifierTests: XCTestCase {
         var signatures: [Int32: (team: String, identifier: String)] = [
             4242: ("ABCDE12345", "ganymede-UUID0123456789ABCDEF0123456789ABCDEF"),
         ]
-        var ports: [Int32: Set<Int>] = [4242: [8888]]
+        /// The addresses each pid listens on: the literal a socket bound,
+        /// and its port.
+        var listeners: [Int32: [(host: String, port: Int)]] = [4242: [("127.0.0.1", 8888)]]
 
-        func infoFiles(in directory: URL) -> [URL] {
-            let files =
-                (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: nil))
-                ?? []
-            return files
-                .filter { $0.lastPathComponent.hasPrefix("jpserver-") && $0.pathExtension == "json" }
-                .sorted { $0.lastPathComponent < $1.lastPathComponent }
-        }
+        func infoFiles(in directory: URL) -> [URL] { AppMCP.serverInfoFiles(in: directory) }
 
         func isRunning(_ pid: Int32) -> Bool { running.contains(pid) }
 
@@ -60,7 +57,9 @@ final class ThisMacVerifierTests: XCTestCase {
             return signature.team == team && signature.identifier == identifier
         }
 
-        func isListening(pid: Int32, port: Int) -> Bool { ports[pid]?.contains(port) ?? false }
+        func isListening(pid: Int32, port: Int, host: String) -> Bool {
+            (listeners[pid] ?? []).contains { $0.port == port && $0.host == host }
+        }
     }
 
     private func verifier(_ probe: Fake) -> ThisMacVerifier { ThisMacVerifier(probe: probe) }
@@ -69,9 +68,37 @@ final class ThisMacVerifierTests: XCTestCase {
 
     func testAServerSignedAsTheAppsOwnHelperOnItsPortIsThisMacs() {
         XCTAssertTrue(verifier(Fake()).verify(info()))
-        // Each loopback address the info file may name.
-        for url in ["http://127.0.0.1:8888/", "http://localhost:8888/", "http://[::1]:8888/"] {
-            XCTAssertTrue(verifier(Fake()).verify(info(url: url)), url)
+        // Each address the info file may name, as its literal: the IPv4
+        // loopback, and the IPv6 one on a socket that bound it.
+        XCTAssertTrue(verifier(Fake()).verify(info(url: "http://127.0.0.1:8888/")))
+        var six = Fake()
+        six.listeners[pid] = [("::1", 8888)]
+        XCTAssertTrue(verifier(six).verify(info(url: "http://[::1]:8888/")))
+    }
+
+    /// A name isn't an address (#883): what `localhost` resolves to is the
+    /// system's to say, and the check looked at an address's socket.
+    func testALocalhostAddressIsNoThisMac() {
+        // The info file's `url` names it, and even a fake socket that bound
+        // the name doesn't make it an address the check accepts.
+        var localhost = Fake()
+        localhost.listeners[pid] = [("localhost", 8888)]
+        for url in ["http://localhost:8888/", "http://LOCALHOST:8888/"] {
+            XCTAssertFalse(verifier(Fake()).verify(info(url: url)), url)
+            XCTAssertFalse(verifier(localhost).verify(info(url: url)), url)
+        }
+        // The info file's literal is an address the socket isn't at.
+        XCTAssertFalse(verifier(localhost).verify(info()))
+    }
+
+    /// A wildcard bind listens on every interface, and the app's token must
+    /// not go there (#883): the socket lookup wants the literal address.
+    func testAWildcardBindIsNoThisMac() {
+        for address in ["0.0.0.0", "::"] {
+            var wildcard = Fake()
+            wildcard.listeners[pid] = [(address, 8888)]
+            XCTAssertFalse(verifier(wildcard).verify(info()), address)
+            XCTAssertFalse(verifier(wildcard).verify(info(url: "http://[::1]:8888/")), address)
         }
     }
 
@@ -131,18 +158,22 @@ final class ThisMacVerifierTests: XCTestCase {
         // Another process holds the port, or none does: the info file names
         // a pid that isn't the listener.
         var elsewhere = Fake()
-        elsewhere.ports = [pid: [9999]]
+        elsewhere.listeners = [pid: [("127.0.0.1", 9999)]]
         XCTAssertFalse(verifier(elsewhere).verify(info()))
         var nothing = Fake()
-        nothing.ports = [:]
+        nothing.listeners = [:]
         XCTAssertFalse(verifier(nothing).verify(info()))
     }
 
     func testAServerOfAnotherVersionIsNoThisMac() {
+        // The info file's version isn't the app's own bundled one.
+        XCTAssertFalse(verifier(Fake()).verify(info(version: "0.16.0")))
         var older = Fake()
         older.bundledVersion = "0.16.0"
         XCTAssertFalse(verifier(older).verify(info()))
-        // An info file that doesn't say its version at all: an older server.
+        // The app can't read its own bundled tool's version: nothing is
+        // known to match, and the read isn't kept, so a later check tries
+        // again and may verify (#883).
         var silent = Fake()
         silent.bundledVersion = nil
         XCTAssertFalse(verifier(silent).verify(info()))
@@ -166,8 +197,14 @@ final class ThisMacVerifierTests: XCTestCase {
         // One that doesn't verify is left out, beside one that does.
         _ = try write(pid: pid, fields: [:])
         var notListening = Fake()
-        notListening.ports = [:]
+        notListening.listeners = [:]
         XCTAssertEqual(verifier(notListening).servers(in: directory), [])
+        // The filter is the app's: another program's file, without the name
+        // of a server info file, isn't one.
+        _ = try write(pid: 5, fields: [:], name: "ganymede-mcp-5.json")
+        let files = AppMCP.serverInfoFiles(in: directory).map(\.lastPathComponent)
+        XCTAssertTrue(files.contains("jpserver-4242.json"))
+        XCTAssertFalse(files.contains("ganymede-mcp-5.json"))
     }
 
     // MARK: what a remote must be
@@ -203,18 +240,126 @@ final class ThisMacVerifierTests: XCTestCase {
         six.url = URL(string: "http://[::1]:8888/")!
         XCTAssertTrue(
             six.serves(Remote(name: "here", serverURL: "http://[::1]:8888"), token: "a-token"))
+        // A name is no address, the info file's own included (#883): the
+        // app's token must go to a literal the app checked.
         var named = info()
         named.url = URL(string: "http://localhost:8888/")!
-        XCTAssertTrue(
+        XCTAssertFalse(
             named.serves(Remote(name: "here", serverURL: "http://LOCALHOST:8888"), token: "a-token"))
+        XCTAssertFalse(
+            named.serves(Remote(name: "here", serverURL: "http://127.0.0.1:8888"), token: "a-token"))
+    }
+
+    // MARK: the system's socket lookup
+
+    /// The system's own answer, about a socket this process opened: a
+    /// listener at the bound literal is the pid's, and at no other address.
+    func testTheSystemFindsAListenerAtTheAddressItBound() throws {
+        let loopback = try openListener("127.0.0.1")
+        defer { close(loopback.fd) }
+        let probe = SystemThisMacProbe(bundledTool: nil)
+        XCTAssertTrue(probe.isListening(pid: getpid(), port: loopback.port, host: "127.0.0.1"))
+        XCTAssertFalse(probe.isListening(pid: getpid(), port: loopback.port, host: "::1"))
+        XCTAssertFalse(probe.isListening(pid: getpid(), port: loopback.port, host: "0.0.0.0"))
+        // Another port is another socket.
+        XCTAssertFalse(probe.isListening(pid: getpid(), port: loopback.port + 1, host: "127.0.0.1"))
+    }
+
+    func testTheSystemFindsAnIPv6ListenerAtItsLiteral() throws {
+        let loopback = try openListener("::1")
+        defer { close(loopback.fd) }
+        let probe = SystemThisMacProbe(bundledTool: nil)
+        XCTAssertTrue(probe.isListening(pid: getpid(), port: loopback.port, host: "::1"))
+        // The brackets a URL keeps on the literal are the same address.
+        XCTAssertTrue(probe.isListening(pid: getpid(), port: loopback.port, host: "[::1]"))
+        XCTAssertFalse(probe.isListening(pid: getpid(), port: loopback.port, host: "127.0.0.1"))
+    }
+
+    /// A wildcard listener answers on every interface, and the check refuses
+    /// it (#883): the app's token must go to the loopback literal alone.
+    func testTheSystemRefusesAWildcardListener() throws {
+        let any = try openListener("0.0.0.0")
+        defer { close(any.fd) }
+        let probe = SystemThisMacProbe(bundledTool: nil)
+        for host in ["127.0.0.1", "::1", "0.0.0.0"] {
+            XCTAssertFalse(probe.isListening(pid: getpid(), port: any.port, host: host), host)
+        }
     }
 
     // MARK: helpers
 
+    /// A TCP listener this process opens on `address`, at a port the system
+    /// picks: the socket lookup then answers about a real socket, this
+    /// process's own.
+    private func openListener(_ address: String) throws -> (fd: Int32, port: Int) {
+        let six = address.contains(":")
+        let fd = socket(six ? AF_INET6 : AF_INET, SOCK_STREAM, 0)
+        guard fd >= 0 else { throw socketError("socket") }
+        var reuse: Int32 = 1
+        _ = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &reuse, socklen_t(MemoryLayout<Int32>.size))
+        var storage = sockaddr_storage()
+        let size = six ? MemoryLayout<sockaddr_in6>.size : MemoryLayout<sockaddr_in>.size
+        if six {
+            var address6 = sockaddr_in6()
+            address6.sin6_len = UInt8(MemoryLayout<sockaddr_in6>.size)
+            address6.sin6_family = sa_family_t(AF_INET6)
+            guard inet_pton(AF_INET6, address, &address6.sin6_addr) == 1 else {
+                close(fd)
+                throw socketError("inet_pton \(address)")
+            }
+            withUnsafeMutableBytes(of: &storage) { destination in
+                withUnsafeBytes(of: address6) { destination.copyBytes(from: $0) }
+            }
+        } else {
+            var address4 = sockaddr_in()
+            address4.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+            address4.sin_family = sa_family_t(AF_INET)
+            guard inet_pton(AF_INET, address, &address4.sin_addr) == 1 else {
+                close(fd)
+                throw socketError("inet_pton \(address)")
+            }
+            withUnsafeMutableBytes(of: &storage) { destination in
+                withUnsafeBytes(of: address4) { destination.copyBytes(from: $0) }
+            }
+        }
+        let bound = withUnsafePointer(to: &storage) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                Darwin.bind(fd, $0, socklen_t(size))
+            }
+        }
+        guard bound == 0, Darwin.listen(fd, 1) == 0 else {
+            close(fd)
+            throw socketError("bind/listen \(address)")
+        }
+        // The port the system gave it.
+        var local = sockaddr_storage()
+        var localSize = socklen_t(MemoryLayout<sockaddr_storage>.size)
+        _ = withUnsafeMutablePointer(to: &local) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                getsockname(fd, $0, &localSize)
+            }
+        }
+        let port = withUnsafeBytes(of: local) { bytes in
+            // `sin_port` and `sin6_port` sit at the same offset, in network
+            // byte order.
+            Int(UInt16(bigEndian: bytes.loadUnaligned(fromByteOffset: 2, as: UInt16.self)))
+        }
+        return (fd, port)
+    }
+
+    private struct SocketError: Error {
+        var message: String
+        var code: Int32
+    }
+
+    private func socketError(_ what: String) -> SocketError {
+        SocketError(message: "\(what): \(String(cString: strerror(errno)))", code: errno)
+    }
+
     /// A server info file in the test's folder, as `ganymede serve` writes
     /// it, with `fields` over the defaults.
     @discardableResult
-    private func write(pid: Int32, fields: [String: Any]) throws -> URL {
+    private func write(pid: Int32, fields: [String: Any], name: String? = nil) throws -> URL {
         var info: [String: Any] = [
             "url": "http://127.0.0.1:8888/",
             "hostname": "127.0.0.1",
@@ -230,7 +375,7 @@ final class ThisMacVerifierTests: XCTestCase {
             "ganymede_version": "0.17.0",
         ]
         for (key, value) in fields { info[key] = value }
-        let file = directory.appendingPathComponent("jpserver-\(pid).json")
+        let file = directory.appendingPathComponent(name ?? "jpserver-\(pid).json")
         try JSONSerialization.data(withJSONObject: info, options: [.sortedKeys]).write(to: file)
         return file
     }

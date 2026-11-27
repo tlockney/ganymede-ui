@@ -258,26 +258,32 @@ enum Place: Hashable, Codable {
     /// this device ([`AppURL`]'s `run`, `new`, a granted folder's `open`,
     /// an x-callback answer) or reach outside the machine's root is
     /// refused. This device's app links aren't this function's: they stay
-    /// `opensExternally`'s, as they were.
+    /// `opensExternally`'s, as they were. A this-Mac window's aren't either:
+    /// it reads the relative `open` (`relativeOpenPath`) itself, and gives
+    /// the rest to the system as this device does (#883).
     func machineLink(_ url: URL) -> MachineLink {
         guard case .machine = self, url.scheme?.lowercased() == AppURL.scheme else {
             return .notApp
         }
-        guard let parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
-            // A `ganymede://` URL that doesn't parse names nothing to open.
-            return .refused
-        }
-        let items = parts.queryItems ?? []
+        return Self.relativeOpenPath(url).map(MachineLink.open(path:)) ?? .refused
+    }
+
+    /// The path a `ganymede://open?path=` link names, when it is relative
+    /// to a server's root and doesn't climb: what a machine's window opens
+    /// there (#868), and a this-Mac window opens against its server's root,
+    /// `root_dir`, since its page's paths are from it (#883). Nil for
+    /// another link, an x-callback one, or a path that is empty, absolute,
+    /// `~` or climbs.
+    static func relativeOpenPath(_ url: URL) -> String? {
+        guard let parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else { return nil }
         // x-callback links answer another app, which a machine's window
         // gives nothing to.
-        if parts.host?.lowercased() == "x-callback-url" { return .refused }
-        if items.contains(where: { Self.callbackNames.contains($0.name.lowercased()) }) {
-            return .refused
+        if parts.host?.lowercased() == "x-callback-url" { return nil }
+        if (parts.queryItems ?? []).contains(where: { callbackNames.contains($0.name.lowercased()) }) {
+            return nil
         }
-        guard let request = try? AppURL(url), case .open(let path) = request.command else {
-            return .refused
-        }
-        return Self.relativeMachinePath(path).map(MachineLink.open(path:)) ?? .refused
+        guard let request = try? AppURL(url), case .open(let path) = request.command else { return nil }
+        return relativeMachinePath(path)
     }
 
     /// What this window does with a link (#868), which `WebView`'s policy
@@ -286,16 +292,29 @@ enum Place: Hashable, Codable {
     /// `ganymede://` nor an output frame's can act or make the notice
     /// appear.
     func linkAction(for url: URL, clicked: Bool) -> LinkAction {
-        if case .machine = self, url.scheme?.lowercased() == AppURL.scheme {
-            // A machine's app link names a file on that machine, and is
-            // read there (#868). Anything but a click is dropped without a
-            // word: an output could otherwise loop it.
-            guard clicked else { return .cancel }
-            switch machineLink(url) {
-            case .open(let path): return .openOnMachine(path: path)
-            case .refused: return .refuse
-            // The scheme matched, so the link isn't another kind.
-            case .notApp: return .cancel
+        if url.scheme?.lowercased() == AppURL.scheme {
+            switch self {
+            case .machine:
+                // A machine's app link names a file on that machine, and is
+                // read there (#868). Anything but a click is dropped without
+                // a word: an output could otherwise loop it.
+                guard clicked else { return .cancel }
+                switch machineLink(url) {
+                case .open(let path): return .openOnMachine(path: path)
+                case .refused: return .refuse
+                // The scheme matched, so the link isn't another kind.
+                case .notApp: return .cancel
+                }
+            case .thisMac:
+                // This Mac's own server's page has the server's `root_dir`
+                // as its root, so a relative `open` opens there (#883). An
+                // absolute path, `~`, `run`, `new` or an x-callback answer
+                // is this device's, which the system's `AppURLHandler`
+                // does, resolving the path as a file on this Mac.
+                guard clicked, let path = Self.relativeOpenPath(url) else { break }
+                return .openOnMachine(path: path)
+            case .thisDevice:
+                break
             }
         }
         // Anything else is as it was (#701): a click goes to the system,
@@ -470,7 +489,7 @@ enum Places {
 struct ThisMacServer: Equatable {
     /// The server's process, `pid`.
     var pid: Int32
-    /// Its `url`, always a loopback address.
+    /// Its `url`: `127.0.0.1` or `::1`, the literal the check accepted.
     var url: URL
     /// Its `token`, which the app sends the server.
     var token: String
@@ -485,21 +504,26 @@ struct ThisMacServer: Equatable {
     /// Whether `remote` names this server: the same address on its port,
     /// with its token. Not merely `localhost` on the same port — the
     /// remote must reach the address the verified process listens on, or
-    /// the app's token would go to a server it didn't check. A named host
-    /// and an address are different addresses.
+    /// the app's token would go to a server it didn't check. A name and an
+    /// address are different addresses, and so are two addresses.
     func serves(_ remote: Remote, token: String?) -> Bool {
         guard let token, !token.isEmpty, token == self.token,
               let port, let url = URL(string: remote.serverURL),
-              let host = url.host, Self.isLoopback(host), url.port == port,
-              let listened = self.url.host, Self.normalize(host) == Self.normalize(listened)
+              let host = url.host, Self.isTrustedAddress(host), url.port == port,
+              let listened = self.url.host, Self.isTrustedAddress(listened),
+              Self.normalize(host) == Self.normalize(listened)
         else { return false }
         return true
     }
 
-    /// Whether `host` is a loopback address: the only place a server the app
-    /// trusts may listen (`ThisMacVerifier` refuses a wider one).
-    static func isLoopback(_ host: String) -> Bool {
-        ["127.0.0.1", "::1", "localhost"].contains(normalize(host))
+    /// Whether `host` is an address a server the app trusts may listen on,
+    /// written as the literal it is: `127.0.0.1` or `::1` (with or without
+    /// the brackets an IPv6 literal may have). A name is refused,
+    /// `localhost` included: the app's token must go to the address whose
+    /// socket the check looked at, and what a name resolves to is the
+    /// system's to say (#883).
+    static func isTrustedAddress(_ host: String) -> Bool {
+        ["127.0.0.1", "::1"].contains(normalize(host))
     }
 
     /// `host` as written, with the brackets an IPv6 literal may keep off
@@ -509,6 +533,60 @@ struct ThisMacServer: Equatable {
         var host = host.lowercased()
         if host.hasPrefix("["), host.hasSuffix("]") { host = String(host.dropFirst().dropLast()) }
         return host
+    }
+}
+
+/// The servers a this-Mac check verified (#883), by remote id: what
+/// `AppModel` keeps, what a window's place is read from, and where a
+/// `.thisMac` window's notebooks are. Empty on iOS, where nothing verifies.
+struct ThisMacServers: Equatable {
+    /// Each verified remote's server, by the remote's id (its UUID string).
+    private(set) var byID: [String: ThisMacServer] = [:]
+
+    init() {}
+
+    /// The remotes whose server `servers` holds: each matched on its saved
+    /// address, its port and its token, so a remote that names another
+    /// address or has another token stays an ordinary machine.
+    init(_ servers: [ThisMacServer], remotes: [Remote], token: (UUID) -> String?) {
+        for remote in remotes {
+            guard let server = servers.first(where: { $0.serves(remote, token: token(remote.id)) })
+            else { continue }
+            byID[remote.id.uuidString] = server
+        }
+    }
+
+    /// The remotes the check verified, for the place switcher.
+    var ids: Set<String> { Set(byID.keys) }
+
+    var isEmpty: Bool { byID.isEmpty }
+
+    /// The server verified for `id`, if one was.
+    func server(_ id: String) -> ThisMacServer? { byID[id] }
+
+    /// The same with `id`'s server gone: its process ended, or it stopped
+    /// answering, so it isn't this Mac's own any more.
+    func removing(_ id: String) -> ThisMacServers {
+        var servers = self
+        servers.byID[id] = nil
+        return servers
+    }
+
+    /// What a window's target is, as a place: a machine whose server the
+    /// check verified is `.thisMac`, whatever the window was opened as.
+    func place(for target: WindowTarget) -> Place {
+        switch target.place {
+        case .machine(let id) where byID[id] != nil: .thisMac(id)
+        default: target.place
+        }
+    }
+
+    /// The folder a `.thisMac` window's server is rooted at (`root_dir`),
+    /// which its ledger keeps notebooks under and its Recents point into;
+    /// nil for every other place.
+    func root(for place: Place) -> URL? {
+        guard case .thisMac(let id) = place else { return nil }
+        return byID[id]?.root
     }
 }
 

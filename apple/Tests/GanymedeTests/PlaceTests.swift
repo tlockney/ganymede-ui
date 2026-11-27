@@ -670,6 +670,37 @@ final class PlaceTests: XCTestCase {
         XCTAssertEqual(ReachabilitySchedule.delay(afterFailures: 10_000), 30)
     }
 
+    /// A machine that answers again after failing sends the check again,
+    /// since its mount may be another server's, and whether it is this Mac's
+    /// own is the check's to say (#883).
+    @MainActor
+    func testAMachineAnsweringAgainSendsTheThisMacCheckAgain() {
+        let reachability = PlaceReachability()
+        var asked: [String] = []
+        reachability.onReachable = { asked.append($0) }
+        // Offline twice: no answer yet to be an answer again after.
+        reachability.recorded(false, for: id)
+        reachability.recorded(false, for: id)
+        XCTAssertEqual(asked, [])
+        // The answer after those: the app is told once.
+        reachability.recorded(true, for: id)
+        XCTAssertEqual(asked, [id])
+        XCTAssertTrue(reachability.isReachable(.machine(id)))
+        // Each answer while it answers isn't another time.
+        reachability.recorded(true, for: id)
+        XCTAssertEqual(asked, [id])
+        // Going away isn't one either.
+        reachability.recorded(false, for: id)
+        XCTAssertEqual(asked, [id])
+        XCTAssertFalse(reachability.isReachable(.machine(id)))
+        // A machine that answers the first time was never offline.
+        let fresh = PlaceReachability()
+        var first: [String] = []
+        fresh.onReachable = { first.append($0) }
+        fresh.recorded(true, for: id)
+        XCTAssertEqual(first, [])
+    }
+
     func testStatusIsAskedThroughTheMount() throws {
         let url = try XCTUnwrap(PlaceReachability.statusURL(id, server: server))
         XCTAssertEqual(url.path, "/machines/\(id)/api/status")
@@ -779,17 +810,60 @@ final class PlaceTests: XCTestCase {
         XCTAssertNil(here.terminalTarget(notebook: nil, fallbackFolder: "x", remotes: []))
     }
 
-    /// Its links are this device's (#868, #883): an app link goes to the
-    /// system, not to the machine's reading of the path.
-    func testThisMacsLinksAreThisDevices() throws {
+    /// A relative app link opens against its server's root, as a machine's
+    /// window's does, since the page's paths are from it (#883); an
+    /// absolute one, `~`, `run`, `new` and x-callback answers are this
+    /// device's, which the system's `AppURLHandler` resolves here.
+    func testThisMacsRelativeOpenLinksOpenAgainstItsRoot() throws {
         let here = Place.thisMac(id)
-        let open = try XCTUnwrap(URL(string: "ganymede://open?path=a.ipynb"))
+        let open = try XCTUnwrap(URL(string: "ganymede://open?path=notes/a.ipynb"))
         XCTAssertEqual(here.machineLink(open), .notApp)
         XCTAssertTrue(here.opensExternally(open))
-        XCTAssertEqual(here.linkAction(for: open, clicked: true), .openExternally)
+        XCTAssertEqual(here.linkAction(for: open, clicked: true), .openOnMachine(path: "notes/a.ipynb"))
         // The machine it would otherwise have been reads the same link as
-        // its own.
-        XCTAssertEqual(Place.machine(id).linkAction(for: open, clicked: true), .openOnMachine(path: "a.ipynb"))
+        // its own, and so does this Mac's own server's: one relative path.
+        XCTAssertEqual(Place.machine(id).linkAction(for: open, clicked: true), .openOnMachine(path: "notes/a.ipynb"))
+        // The rest are this device's: the system opens the notebook as a
+        // file on this Mac, and runs what was asked.
+        for link in [
+            "ganymede://open?path=/Users/me/a.ipynb",
+            "ganymede://open?path=~/a.ipynb",
+            "ganymede://open?path=../a.ipynb",
+            "ganymede://run?path=a.ipynb",
+            "ganymede://x-callback-url/run?path=a.ipynb&x-success=other%3A%2F%2Fx",
+            "ganymede://open?path=a.ipynb&x-success=other%3A%2F%2Fx",
+        ] {
+            let url = try XCTUnwrap(URL(string: link))
+            XCTAssertEqual(here.linkAction(for: url, clicked: true), .openExternally, link)
+        }
+        // A navigation nothing clicked loads here, as this device's does; a
+        // machine's window drops it without a word (#868).
+        XCTAssertEqual(here.linkAction(for: open, clicked: false), .allow)
+        XCTAssertEqual(Place.machine(id).linkAction(for: open, clicked: false), .cancel)
+    }
+
+    /// A relative `open` link is read the same way for a machine's window
+    /// and this Mac's own: nothing that would act on this device, or climb
+    /// above the server's root, is opened there (#868, #883).
+    func testRelativeOpenPathsThatClimbAreNoOnes() throws {
+        for link in [
+            "ganymede://open?path=/Users/me/a.ipynb",
+            "ganymede://open?path=~/a.ipynb",
+            "ganymede://open?path=../a.ipynb",
+            "ganymede://open?path=a/../../b.ipynb",
+            "ganymede://open?path=",
+            "ganymede://open",
+            "ganymede://run?path=a.ipynb",
+            "ganymede://new?dir=a&name=b",
+        ] {
+            let url = try XCTUnwrap(URL(string: link))
+            XCTAssertNil(Place.relativeOpenPath(url), link)
+            XCTAssertEqual(Place.machine(id).machineLink(url), .refused, link)
+            XCTAssertEqual(Place.machine(id).linkAction(for: url, clicked: true), .refuse, link)
+        }
+        XCTAssertEqual(
+            Place.relativeOpenPath(try XCTUnwrap(URL(string: "ganymede://open?path=notes/a.ipynb"))),
+            "notes/a.ipynb")
     }
 
     func testThisMacStaysOnItsMountAsAMachineDoes() throws {

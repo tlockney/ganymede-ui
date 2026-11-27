@@ -12,6 +12,11 @@ struct ContentView: View {
     /// folder that was the default then, so a later Open Folder… (which
     /// changes the default) leaves it alone.
     @State private var loaded: WindowTarget
+    /// The place this window's page was loaded with (#883): a check that
+    /// verifies its machine is this Mac's own upgrades the window on its
+    /// next load, and a check that stops verifying it downgrades the window
+    /// at once. `place` reads it.
+    @State private var loadedPlace: Place?
     /// The folder the sidebar lists and New Notebook uses. It stays put
     /// when the page opens a notebook in a subfolder, which moves `target`.
     @State private var sidebarRoot: URL
@@ -60,7 +65,14 @@ struct ContentView: View {
         // made as this window opens.
         let request = target.wrappedValue == nil ? WorkspaceTabs.pending : nil
         let loaded = WindowTarget.opening(target.wrappedValue, requested: request?.target, root: AppModel.shared.root)
+        // A restored window's machine is checked here, before its first
+        // load (#883): the page is loaded with the place the check finds,
+        // as this Mac's own server's window or a machine's, and is not made
+        // again by a check that answers after it.
+        let model = AppModel.shared
+        if loaded.place.isMachine { model.verifyThisMacNow() }
         _loaded = State(initialValue: loaded)
+        _loadedPlace = State(initialValue: model.place(for: loaded))
         _sidebarRoot = State(initialValue: loaded.folder)
         _request = State(initialValue: request)
     }
@@ -588,6 +600,9 @@ struct ContentView: View {
     private func show(_ shown: WindowTarget) {
         target = shown
         loaded = shown
+        // Another load: the page is loaded with the place the app finds
+        // now (#883), so a check that verified its machine applies here.
+        loadedPlace = model.place(for: shown)
         sidebarRoot = shown.folder
     }
 
@@ -600,11 +615,28 @@ struct ContentView: View {
         sidebarRoot = saved
     }
 
-    /// The window's place, from what it was loaded for, and what the app
-    /// has checked (#883): a machine whose server verifies is this Mac's
-    /// own. A check that fails leaves the window a machine's on its next
-    /// load, its web view rebuilt with a machine's handlers.
-    private var place: Place { model.place(for: loaded) }
+    /// What the app says this window's place is now (#883).
+    private var currentPlace: Place { model.place(for: loaded) }
+
+    /// The place this window's page was loaded with (#883). A check that
+    /// verifies the window's machine is this Mac's own upgrades the window
+    /// on its next load — the page loading again, the window opening
+    /// another page, or a new window — never under the page that is
+    /// showing. A check that stops verifying it rebuilds the window at once
+    /// as a machine's, since the handlers it was given must not outlive the
+    /// verified server.
+    private var place: Place {
+        guard let loadedPlace else { return currentPlace }
+        return loadedPlace.isThisMac && !currentPlace.isThisMac ? currentPlace : loadedPlace
+    }
+
+    /// The page loaded (#883): its place is read again, so a check that
+    /// verified the window's machine applies on this load. A page reloaded
+    /// at the same place changes nothing.
+    private func readPlace() {
+        let now = currentPlace
+        if loadedPlace != now { loadedPlace = now }
+    }
 
     /// What a new terminal in this window runs on (#858), as File > New
     /// Terminal and the panel's + ask: the place decides, from the folder of
@@ -1228,6 +1260,19 @@ struct ContentView: View {
         model.usesDevice(for: place)
     }
 
+    /// What a window's page is made for (#883): its place, and the folder a
+    /// this-Mac server is rooted at, whose notebooks its ledger keeps. A
+    /// server restarted with another `root_dir` keeps notebooks by other
+    /// paths, so the page is made again for it.
+    private struct PagePlace: Hashable {
+        var place: Place
+        var root: String?
+    }
+
+    private var pagePlace: PagePlace {
+        PagePlace(place: place, root: model.thisMacRoot(for: place)?.path)
+    }
+
     private var content: some View {
         Group {
             if let url = page {
@@ -1239,10 +1284,12 @@ struct ContentView: View {
                         openWindow(value: EditorRequest(path: path, place: place))
                     },
                     place: place, sharesName: sharesName(for: place), usesDevice: usesDevice(for: place),
-                    ledgerRoot: model.thisMacRoot(for: place)
+                    ledgerRoot: model.thisMacRoot(for: place),
+                    onLoad: readPlace
                 )
-                // A page loaded for another place gets its own handlers.
-                .id(place)
+                // A page loaded for another place, or for a server rooted
+                // elsewhere, gets its own handlers.
+                .id(pagePlace)
                 #else
                 // A page loaded for another place gets its own handlers: this
                 // device's page is not a machine's (#758).
@@ -1259,11 +1306,17 @@ struct ContentView: View {
             }
         }
         .task { model.startIfNeeded() }
-        // Every load checks again whether this window's machine is this
-        // Mac's own (#883): a check that fails turns the window back into
-        // a machine's, with a machine's handlers.
+        // A check on every appearance keeps the app's answer current; it
+        // upgrades the window on its next load and downgrades it at once
+        // (#883).
         .onAppear { model.refreshThisMac() }
         #if os(macOS)
+        .onChange(of: currentPlace) { _, now in
+            // A downgrade is kept, so a check that verifies the server
+            // again waits for the next load to apply (#883).
+            guard let held = loadedPlace, held.isThisMac, !now.isThisMac else { return }
+            loadedPlace = now
+        }
         .modifier(KeychainAlert(model: model))
         #endif
     }

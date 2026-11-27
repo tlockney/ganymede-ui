@@ -935,10 +935,14 @@ with only SSH stays in Settings for shells.
   and its windows are this Mac's: the permission ledger, the device API,
   your name, app links and Shortcuts all work as in a local window, and
   its notebooks are the ones Open Recent and Spotlight keep. The app
-  decides this from the server's process and signature, not its address: a
-  `cargo install` or Homebrew `ganymede`, or any other program listening on
-  a loopback port, stays an ordinary machine. A copy of the app that isn't
-  signed with its team (a debug build) never counts a server as its own.
+  decides this from the server's process and signature, not its address
+  alone: it must be the app's own bundled helper, of the app's own
+  version, listening on `127.0.0.1` or `::1` — the literal, not a name,
+  and not a bind to every interface — and the remote must use that same
+  address. A `cargo install` or Homebrew `ganymede`, any other program
+  listening on a loopback port, and a server started with `--ip 0.0.0.0`
+  stay ordinary machines. A copy of the app that isn't signed with its team
+  (a debug build) never counts a server as its own.
 
   > [!NOTE]
   > **Unreleased.** Available only from a build of `main` (HEAD), not in
