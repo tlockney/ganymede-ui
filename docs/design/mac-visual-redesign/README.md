@@ -96,7 +96,9 @@ branding. An outside review of A was folded in before he chose:
   terminals are dark mono chips.
 - Tabs and the toolbar use a short display title ("Fremont Bridge"): the
   notebook's `metadata.title`, else the file name without its date. The
-  dated file name stays in the sidebar and the tooltip.
+  dated file name stays in the sidebar and the tooltip. (Later, 2026-11-27,
+  Thomas added a step: `metadata.title`, else the first `#` heading, else
+  the file name without its date; see #892.)
 - The kernel chip is the one place that shows execution state.
 - The sidebar's footer shows the project's folder and location.
 - The selected cell has a quiet border. The full ring is for keyboard
@@ -151,18 +153,20 @@ The steps of #844, and where each stands. Thomas, 2026-11-27: visual
 consistency and a clear visual identity are the point of this work, so the
 toolbar follow-up and the tabs come before the status bar.
 
-| Step                           | Issue                                                      | State                                                                                               |
-| ------------------------------ | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| 1. Color tokens                | [#845](https://github.com/tlockney/ganymede-ui/issues/845) | Merged (#847)                                                                                       |
-| 2. Cell chrome                 | [#852](https://github.com/tlockney/ganymede-ui/issues/852) | Merged (#863)                                                                                       |
-| 3. Mac toolbar                 | [#867](https://github.com/tlockney/ganymede-ui/issues/867) | Merged (#870); falls short of the board: [#892](https://github.com/tlockney/ganymede-ui/issues/892) |
-| 4a. Mac sidebar                | [#873](https://github.com/tlockney/ganymede-ui/issues/873) | Merged (#876)                                                                                       |
-| 4b. Find tab                   | [#879](https://github.com/tlockney/ganymede-ui/issues/879) | Merged (#881)                                                                                       |
-| 3b. Toolbar to match the board | [#892](https://github.com/tlockney/ganymede-ui/issues/892) | Next                                                                                                |
-| 6. Tabs (spike)                | not filed yet                                              | After #892                                                                                          |
-| 5. Status bar                  | [#882](https://github.com/tlockney/ganymede-ui/issues/882) | After the tabs                                                                                      |
-| 7. iPad and iPhone             | not filed yet                                              | Later                                                                                               |
-| 8. Docs and screenshots        | not filed yet                                              | Last                                                                                                |
+| Step                             | Issue                                                      | State                                                                                               |
+| -------------------------------- | ---------------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
+| 1. Color tokens                  | [#845](https://github.com/tlockney/ganymede-ui/issues/845) | Merged (#847)                                                                                       |
+| 2. Cell chrome                   | [#852](https://github.com/tlockney/ganymede-ui/issues/852) | Merged (#863); falls short of the board: [#897](https://github.com/tlockney/ganymede-ui/issues/897) |
+| 3. Mac toolbar                   | [#867](https://github.com/tlockney/ganymede-ui/issues/867) | Merged (#870); falls short of the board: [#892](https://github.com/tlockney/ganymede-ui/issues/892) |
+| 4a. Mac sidebar                  | [#873](https://github.com/tlockney/ganymede-ui/issues/873) | Merged (#876); falls short of the board: [#896](https://github.com/tlockney/ganymede-ui/issues/896) |
+| 4b. Find tab                     | [#879](https://github.com/tlockney/ganymede-ui/issues/879) | Merged (#881)                                                                                       |
+| 3b. Toolbar to match the board   | [#892](https://github.com/tlockney/ganymede-ui/issues/892) | Next                                                                                                |
+| 6. Tabs (spike)                  | not filed yet                                              | After [#892](https://github.com/tlockney/ganymede-ui/issues/892)                                    |
+| 2b. Page type and selection ring | [#897](https://github.com/tlockney/ganymede-ui/issues/897) | After the tabs                                                                                      |
+| 4c. Sidebar float, tint, badges  | [#896](https://github.com/tlockney/ganymede-ui/issues/896) | After the tabs                                                                                      |
+| 5. Status bar                    | [#882](https://github.com/tlockney/ganymede-ui/issues/882) | After the tabs                                                                                      |
+| 7. iPad and iPhone               | not filed yet                                              | Later                                                                                               |
+| 8. Docs and screenshots          | not filed yet                                              | Last                                                                                                |
 
 The acceptance check for #844: on a Mac, in dark and light mode, the
 Fremont Bridge journal (`2026-11-09-fremont-bridge.ipynb`) looks like the
