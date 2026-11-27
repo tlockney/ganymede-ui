@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Chosen direction, Mac, Journal mode</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#fbc27a}a:hover{color:#fdd9a8}
+.a-glass{background:rgba(255,255,255,0.075);border:0.5px solid rgba(255,255,255,0.12);box-shadow:0 1px 0 rgba(255,255,255,0.06) inset,0 4px 14px rgba(0,0,0,0.25)}
+.a-btn{appearance:none;border:0;background:transparent;color:#e9e9ee;font:inherit;display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:16px;font-size:13px;font-weight:500}
+.a-ico{width:16px;height:16px;flex:none}
+.a-row{display:flex;align-items:center;gap:9px;height:30px;padding:0 10px;border-radius:9px;font-size:13px;color:#dedee3}
+.a-tab{display:flex;align-items:center;gap:8px;height:30px;padding:0 12px;border-radius:15px;font-size:12.5px;color:#a8a8b0;max-width:210px}
+.a-mono{font-family:"SF Mono","JetBrains Mono",ui-monospace,monospace}
+.kw{color:#9fbcff}.fn{color:#e6d3b3}.st{color:#fbb064}.nu{color:#d9c97c}.cm{color:#8a95a3;font-style:italic}.tag{color:#a167e6}
+</style>
+</helmet>
+<div style="width:1440px;height:900px;background:#0d0f17;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text',Inter,system-ui,sans-serif;color:#ececf1;position:relative;overflow:hidden">
+  <div style="position:absolute;inset:0;background:#181c2f;border-radius:18px;overflow:hidden;box-shadow:0 0 0 0.5px rgba(255,255,255,0.14)">
+
+    <!-- floating sidebar -->
+    <nav aria-label="Navigator" class="a-glass" style="position:absolute;left:8px;top:8px;bottom:8px;width:256px;border-radius:16px;background:linear-gradient(rgba(43,58,103,0.92),rgba(20,27,52,0.92));display:flex;flex-direction:column;padding:14px 10px 10px;box-sizing:border-box;gap:14px">
+      <div style="display:flex;gap:8px;padding:2px 6px;height:20px;align-items:center">
+        <span style="width:12px;height:12px;border-radius:6px;background:#ff5f57"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#febc2e"></span>
+        <span style="width:12px;height:12px;border-radius:6px;background:#28c840"></span>
+      </div>
+      <div style="display:flex;align-items:center;gap:10px;padding:0 6px">
+        <svg width="30" height="30" viewBox="100 100 824 824" aria-hidden="true"><defs><linearGradient id="ebg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2b3a67"/><stop offset="1" stop-color="#0d1226"/></linearGradient><radialGradient id="emoon" cx="0.36" cy="0.32" r="0.8"><stop offset="0" stop-color="#f4e9d8"/><stop offset="0.55" stop-color="#c9b79c"/><stop offset="1" stop-color="#6e5f4d"/></radialGradient></defs><rect x="100" y="100" width="824" height="824" rx="185" fill="url(#ebg)"/><g transform="rotate(-20 512 512)"><ellipse cx="512" cy="512" rx="390" ry="92" fill="none" stroke="#f9a03f" stroke-width="18" opacity="0.45"/></g><circle cx="512" cy="512" r="250" fill="url(#emoon)"/><g transform="rotate(-20 512 512)"><path d="M122 512a390 92 0 0 0 780 0" fill="none" stroke="#f9a03f" stroke-width="22" stroke-linecap="round"/></g></svg>
+        <span style="font-size:19px;font-weight:700;letter-spacing:-0.02em;color:#f4e9d8">Ganymede</span>
+      </div>
+      <div class="a-glass" role="tablist" aria-label="Sidebar" style="display:flex;padding:3px;border-radius:14px;background:rgba(0,0,0,0.2);font-size:12px"><span role="tab" aria-selected="false" style="flex:1;text-align:center;padding:5px 0;color:#b9bdd0">Files</span><span role="tab" aria-selected="true" style="flex:1;text-align:center;padding:5px 0;border-radius:11px;background:rgba(255,255,255,0.14);color:#fff;font-weight:600">Outline</span><span role="tab" aria-selected="false" style="flex:1;text-align:center;padding:5px 0;color:#b9bdd0">Running</span><span role="tab" aria-selected="false" aria-label="Search" style="width:30px;text-align:center;padding:5px 0;color:#b9bdd0">⌕</span></div>
+      <div style="display:flex;flex-direction:column;gap:2px">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:4px 10px 6px;font-size:11.5px;font-weight:600;color:#9a9aa3"><span>Files · ganymede-server</span><span style="font-weight:500">This Mac ⌄</span></div>
+        <div class="a-row"><svg class="a-ico" viewBox="0 0 16 16" fill="none" stroke="#c9b79c" stroke-width="1.3" aria-hidden="true"><path d="M1.5 4h5l1.5 1.5h6.5v7h-13z"/></svg>cdp-kernel</div>
+        <div class="a-row"><svg class="a-ico" viewBox="0 0 16 16" fill="none" stroke="#c9b79c" stroke-width="1.3" aria-hidden="true"><path d="M1.5 4h5l1.5 1.5h6.5v7h-13z"/></svg>Examples</div>
+        <div class="a-row"><svg class="a-ico" viewBox="0 0 16 16" fill="none" stroke="#c9b79c" stroke-width="1.3" aria-hidden="true"><path d="M1.5 4h5l1.5 1.5h6.5v7h-13z"/></svg>ganymede-ui</div>
+        <div class="a-row"><span style="width:16px;height:16px;border-radius:4px;background:#3178c6;color:#fff;font-size:8px;font-weight:700;display:flex;align-items:center;justify-content:center">TS</span>04 DuckDB</div>
+        <div class="a-row" style="background:rgba(255,255,255,0.09);color:#fff;font-weight:500"><span style="width:16px;height:16px;border-radius:4px;background:#3178c6;color:#fff;font-size:8px;font-weight:700;display:flex;align-items:center;justify-content:center">TS</span>2026-11-09-fremont-bridge<span style="margin-left:auto;width:7px;height:7px;border-radius:4px;background:#8fb3ff"></span></div>
+      </div>
+      <div style="margin-top:auto"></div>
+      <div style="padding:10px;border-radius:12px;background:rgba(0,0,0,0.16);display:flex;flex-direction:column;gap:5px;font-size:12.5px">
+        <span style="font-size:10.5px;font-weight:600;letter-spacing:0.07em;color:#9a9fb6">IN THIS JOURNAL</span>
+        <span style="color:#dfe2ee">1. What does the counter cover?</span>
+        <span style="color:#fbb064;font-weight:600">2. Riders per day, by year</span>
+        <span style="color:#dfe2ee">3. Can the sidewalk split…</span>
+        <span style="color:#dfe2ee">4. Workdays and weekends</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:10px;background:rgba(0,0,0,0.16);font-size:12px;color:#b8b8c0">
+        <svg class="a-ico" viewBox="0 0 16 16" fill="none" stroke="#c9b79c" stroke-width="1.3" aria-hidden="true"><path d="M1.5 4h5l1.5 1.5h6.5v7h-13z"/></svg><span style="display:flex;flex-direction:column;line-height:1.3"><span style="color:#e6e6ec">ganymede-server</span><span style="font-size:11px;color:#9a9fb6">~/src/personal · This Mac</span></span><span style="margin-left:auto">⌄</span>
+      </div>
+    </nav>
+
+    <!-- toolbar -->
+    <header style="position:absolute;left:280px;right:14px;top:12px;height:40px;display:flex;align-items:center;gap:10px">
+      <div style="display:flex;flex-direction:column;justify-content:center;padding:0 6px">
+        <span style="font-size:15px;font-weight:600;letter-spacing:-0.01em;color:#f4e9d8">Fremont Bridge</span>
+      </div>
+      <button class="a-btn a-glass" style="height:28px;padding:0 11px;font-size:12px;color:#cfd0d8"><span role="img" aria-label="Kernel idle" style="width:7px;height:7px;border-radius:4px;background:#8fb3ff"></span>TypeScript · This Mac · Idle</button>
+      <span style="flex:1"></span>
+      <div class="a-glass" style="display:flex;padding:3px;border-radius:19px;gap:2px">
+        <button class="a-btn" style="height:30px;color:#b4b4bc">Notebook</button>
+        <button class="a-btn" style="background:rgba(255,255,255,0.12);height:30px">Journal</button>
+      </div>
+      <button class="a-btn a-glass" style="height:30px;font-size:12px;color:#cfd0d8"><span style="width:7px;height:7px;border-radius:4px;background:#8fb3ff"></span>Following live</button>
+      <div class="a-glass" style="display:flex;padding:3px;border-radius:19px;gap:2px">
+        <button class="a-btn" aria-label="Share" style="height:30px;padding:0 10px"><svg class="a-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M8 1.5v9M5 4.5l3-3 3 3M3.5 7.5v6.5h9V7.5"/></svg></button>
+        <button class="a-btn" aria-label="More" style="height:30px;padding:0 10px"><svg class="a-ico" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><circle cx="3.5" cy="8" r="1.3"/><circle cx="8" cy="8" r="1.3"/><circle cx="12.5" cy="8" r="1.3"/></svg></button>
+        <button class="a-btn" aria-label="Inspector" style="height:30px;padding:0 10px"><svg class="a-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="2"/><path d="M10 2.5v11"/></svg></button>
+      </div>
+    </header>
+
+    <!-- tab strip: active tab joins the canvas -->
+    <div style="position:absolute;left:272px;right:0;top:58px;height:46px;background:#13172a"></div>
+    <div role="tablist" aria-label="Open tabs" style="position:absolute;left:284px;right:14px;top:58px;height:46px;display:flex;align-items:flex-end;gap:4px">
+      <div role="tab" aria-selected="true" title="2026-11-09-fremont-bridge.ipynb" style="height:40px;display:flex;align-items:center;gap:9px;padding:0 18px;border-radius:11px 11px 0 0;background:#1b2036;box-shadow:inset 0 1.5px 0 rgba(249,160,63,0.55);font-size:13.5px;font-weight:600;color:#f4e9d8;min-width:200px"><span style="width:18px;height:18px;border-radius:5px;background:#3178c6;color:#fff;font-size:8.5px;font-weight:700;display:flex;align-items:center;justify-content:center">TS</span>Fremont Bridge<span role="img" aria-label="Kernel idle" title="Kernel idle" style="margin-left:auto;width:7px;height:7px;border-radius:4px;background:#8fb3ff"></span></div>
+      <div role="tab" aria-selected="false" title="duckdb-console.ipynb" style="height:32px;margin-bottom:4px;display:flex;align-items:center;gap:8px;padding:0 12px;border-radius:9px;font-size:12.5px;color:#9aa0b8"><span style="width:15px;height:15px;border-radius:4px;background:rgba(49,120,198,0.55);color:#fff;font-size:7.5px;font-weight:700;display:flex;align-items:center;justify-content:center">TS</span>DuckDB console<span role="img" aria-label="Kernel running" title="Kernel running" style="width:10px;height:10px;border-radius:5px;border:1.5px solid rgba(143,179,255,0.3);border-top-color:#8fb3ff;box-sizing:border-box"></span></div>
+      <span style="width:1px;height:18px;margin:0 6px 11px;background:rgba(255,255,255,0.12)"></span>
+      <div role="tab" aria-selected="false" title="Machine m4mini" style="height:30px;margin-bottom:5px;display:flex;align-items:center;gap:7px;padding:0 12px;border-radius:15px;border:1px solid rgba(143,179,255,0.35);font-size:12.5px;color:#b9c8f2"><svg class="a-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><rect x="2" y="3" width="12" height="9" rx="2"/><path d="M5 14h6"/></svg>m4mini</div>
+      <div role="tab" aria-selected="false" title="Machine workmbp" style="height:30px;margin-bottom:5px;display:flex;align-items:center;gap:7px;padding:0 12px;border-radius:15px;border:1px solid rgba(143,179,255,0.35);font-size:12.5px;color:#b9c8f2"><svg class="a-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><rect x="2.5" y="3" width="11" height="7.5" rx="1.2"/><path d="M1 12.5h14"/></svg>workmbp</div>
+      <div role="tab" aria-selected="false" title="Terminal: zsh" style="height:30px;margin-bottom:5px;display:flex;align-items:center;gap:7px;padding:0 12px;border-radius:7px;background:#0d1020;font-size:12px;color:#c9cbd6" class="a-mono"><span style="color:#8fb3ff">&gt;_</span>zsh</div>
+      <button class="a-btn" aria-label="New tab" style="width:30px;padding:0;justify-content:center;color:#a8a8b0;margin-bottom:6px">+</button>
+    </div>
+
+    <!-- page -->
+    <main style="position:absolute;left:272px;right:0;top:104px;bottom:30px;overflow:hidden;background:#1b2036">
+      <div style="width:880px;margin:24px auto 0;display:flex;flex-direction:column;gap:18px">
+        <div style="display:flex;flex-direction:column;gap:6px;max-width:720px">
+          <span class="a-mono" style="font-size:11px;font-weight:600;letter-spacing:0.09em;color:#f9a03f">TYPESCRIPT · 9 NOV 2026 · KEPT WITH CLAUDE</span>
+          <h1 style="margin:0;font-family:'New York',Georgia,serif;font-size:31px;font-weight:600;letter-spacing:-0.015em;line-height:1.18;color:#f4e9d8">Have bike commutes over the Fremont Bridge come back since 2019?</h1>
+        </div>
+        <h2 style="margin:4px 0 0;font-family:'New York',Georgia,serif;font-size:23px;font-weight:600">2. Riders per day, by year</h2>
+        <p style="margin:0;max-width:720px;font-size:15.5px;line-height:1.65;color:#c8cbdb">Average riders per day, January to September, each year against 2019.</p>
+        <article aria-label="Figure and finding" style="border-radius:14px;background:#232842;padding:18px 20px 16px;display:flex;flex-direction:column;gap:14px">
+          <button class="a-btn" aria-expanded="false" style="align-self:flex-start;height:26px;padding:0 10px;font-size:12px;color:#a7adc6;background:rgba(255,255,255,0.05)">▸ Source · TypeScript · 9 lines · ran 9 Nov, 38 ms</button>
+          <figure style="margin:0;width:840px;display:flex;flex-direction:column;gap:6px;font-size:11px;color:#a7adc6"><span>↑ riders per day (Jan–Sep)</span><div style="position:relative;width:840px;height:210px"><div style="position:absolute;left:44px;right:0;top:210px;border-top:1px solid rgba(255,255,255,0.08)"></div><span style="position:absolute;left:0;width:36px;text-align:right;top:203px">0</span><div style="position:absolute;left:44px;right:0;top:182px;border-top:1px solid rgba(255,255,255,0.08)"></div><span style="position:absolute;left:0;width:36px;text-align:right;top:175px">500</span><div style="position:absolute;left:44px;right:0;top:155px;border-top:1px solid rgba(255,255,255,0.08)"></div><span style="position:absolute;left:0;width:36px;text-align:right;top:148px">1,000</span><div style="position:absolute;left:44px;right:0;top:127px;border-top:1px solid rgba(255,255,255,0.08)"></div><span style="position:absolute;left:0;width:36px;text-align:right;top:120px">1,500</span><div style="position:absolute;left:44px;right:0;top:99px;border-top:1px solid rgba(255,255,255,0.08)"></div><span style="position:absolute;left:0;width:36px;text-align:right;top:92px">2,000</span><div style="position:absolute;left:44px;right:0;top:72px;border-top:1px solid rgba(255,255,255,0.08)"></div><span style="position:absolute;left:0;width:36px;text-align:right;top:65px">2,500</span><div style="position:absolute;left:44px;right:0;top:44px;border-top:1px solid rgba(255,255,255,0.08)"></div><span style="position:absolute;left:0;width:36px;text-align:right;top:37px">3,000</span><div style="position:absolute;left:44px;right:0;top:17px;border-top:1px solid rgba(255,255,255,0.08)"></div><span style="position:absolute;left:0;width:36px;text-align:right;top:10px">3,500</span><div style="position:absolute;left:44px;right:0;top:20px;border-top:1.5px dashed #8fb3ff"></div><div title="2013: 2,720" style="position:absolute;left:48.5px;width:47.8px;bottom:0;height:150px;background:#4a5a96"></div><div title="2014: 3,000" style="position:absolute;left:105.4px;width:47.8px;bottom:0;height:166px;background:#4a5a96"></div><div title="2015: 2,940" style="position:absolute;left:162.3px;width:47.8px;bottom:0;height:162px;background:#4a5a96"></div><div title="2016: 2,950" style="position:absolute;left:219.1px;width:47.8px;bottom:0;height:163px;background:#4a5a96"></div><div title="2017: 2,820" style="position:absolute;left:276.0px;width:47.8px;bottom:0;height:156px;background:#4a5a96"></div><div title="2018: 3,090" style="position:absolute;left:332.8px;width:47.8px;bottom:0;height:171px;background:#4a5a96"></div><div title="2019: 3,430" style="position:absolute;left:389.7px;width:47.8px;bottom:0;height:190px;background:#8fb3ff"></div><div title="2020: 2,330" style="position:absolute;left:446.5px;width:47.8px;bottom:0;height:129px;background:#4a5a96"></div><div title="2021: 2,160" style="position:absolute;left:503.4px;width:47.8px;bottom:0;height:119px;background:#4a5a96"></div><div title="2022: 2,370" style="position:absolute;left:560.3px;width:47.8px;bottom:0;height:131px;background:#4a5a96"></div><div title="2023: 2,660" style="position:absolute;left:617.1px;width:47.8px;bottom:0;height:147px;background:#4a5a96"></div><div title="2024: 2,750" style="position:absolute;left:674.0px;width:47.8px;bottom:0;height:152px;background:#4a5a96"></div><div title="2025: 3,070" style="position:absolute;left:730.8px;width:47.8px;bottom:0;height:170px;background:#4a5a96"></div><div title="2026: 3,697" style="position:absolute;left:787.7px;width:47.8px;bottom:0;height:204px;background:#4a5a96"></div></div><div style="display:flex;margin-left:44px"><span style="flex:1;text-align:center">2013</span><span style="flex:1;text-align:center">2014</span><span style="flex:1;text-align:center">2015</span><span style="flex:1;text-align:center">2016</span><span style="flex:1;text-align:center">2017</span><span style="flex:1;text-align:center">2018</span><span style="flex:1;text-align:center">2019</span><span style="flex:1;text-align:center">2020</span><span style="flex:1;text-align:center">2021</span><span style="flex:1;text-align:center">2022</span><span style="flex:1;text-align:center">2023</span><span style="flex:1;text-align:center">2024</span><span style="flex:1;text-align:center">2025</span><span style="flex:1;text-align:center">2026</span></div></figure>
+          <p style="margin:0;max-width:760px;font-size:15px;line-height:1.65;color:#e2e4ee;border-left:2px solid rgba(249,160,63,0.6);padding-left:14px"><b>Finding 1 (revised after sections 3 to 6).</b> Riders are back, commuters are not. January to September 2026 averages 3,697 riders a day, 8% above 2019 (3,430) and the highest since the counter started. But the gain is weekends (+36%) and off-peak workday hours (+37% midday), while the 6–10 am commute is still 19% below 2019.</p>
+        </article>
+        <h2 style="margin:6px 0 0;font-family:'New York',Georgia,serif;font-size:23px;font-weight:600;color:#c8cbdb">3. Can the sidewalk split separate commuters? (dead end)</h2>
+      </div>
+      <div class="composer-fade" style="position:absolute;left:0;right:0;bottom:0;height:96px;background:linear-gradient(rgba(27,32,54,0),#1b2036 45%)"></div>
+      <div class="a-glass" style="position:absolute;left:50%;transform:translateX(-50%);bottom:16px;width:760px;display:flex;align-items:center;gap:10px;padding:8px 8px 8px 16px;border-radius:22px;background:rgba(35,40,66,0.96)">
+        <span style="flex:1;font-size:13.5px;color:#9a9fb6">Ask Claude to check, extend, or revise this journal…</span>
+        <button class="a-btn" style="height:30px;background:#f9a03f;color:#2a1600;font-weight:600">Send</button>
+      </div>
+    </main>
+    <footer style="position:absolute;left:272px;right:0;bottom:0;height:30px;display:flex;align-items:center;gap:16px;padding:0 18px;border-top:0.5px solid rgba(255,255,255,0.08);font-size:11.5px;color:#a7adc6;background:#181c2f">
+      <span style="display:flex;align-items:center;gap:6px"><span style="width:6px;height:6px;border-radius:3px;background:#8fb3ff"></span>Saved on This Mac</span>
+      
+      <span style="margin-left:auto">cdp-kernel 0.16.0 · node</span><span>212 MB</span>
+    </footer>
+  </div>
+  <div style="position:absolute;right:28px;top:120px;width:250px;padding:14px 16px;border-radius:12px;background:#fff8c5;color:#3a3418;font-size:12.5px;line-height:1.5;font-family:Inter,system-ui,sans-serif"><b>Journal mode:</b> same file, read as findings. Source folds behind a disclosure, each figure sits with its finding, headings use the serif reading face, and the composer replaces Run. Switching back to Notebook opens the same cell as an editable cell.</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

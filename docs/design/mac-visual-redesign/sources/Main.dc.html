@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Today and the three directions</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#2b59c3}a:hover{color:#1d3f8f}
+.n{display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:11px;background:#d6452f;color:#fff;font-size:12px;font-weight:700;flex:none}
+.pin{position:absolute;width:26px;height:26px;border-radius:13px;background:#d6452f;color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 3px #fff}
+</style>
+</helmet>
+<div style="width:1440px;height:900px;box-sizing:border-box;padding:56px 64px;background:#f4f4f2;color:#1b1b1d;font-family:Inter,-apple-system,system-ui,sans-serif;display:flex;flex-direction:column;gap:36px">
+  <div style="display:flex;align-items:baseline;gap:16px">
+    <h1 style="margin:0;font-size:34px;font-weight:700;letter-spacing:-0.02em">Ganymede for Mac, today</h1>
+    <p style="margin:0;font-size:16px;color:#55555a">v0.17.1, the screenshot from this thread</p>
+  </div>
+  <div style="display:flex;gap:40px">
+    <div style="position:relative;width:820px;flex:none">
+      <img src="../boards/today-v0.17.1.png" alt="Ganymede v0.17.1 notebook window in dark mode" style="width:820px;height:371px;display:block;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,0.18)">
+      <div class="pin" style="left:420px;top:8px">1</div>
+      <div class="pin" style="left:560px;top:44px">2</div>
+      <div class="pin" style="left:110px;top:42px">3</div>
+      <div class="pin" style="left:262px;top:150px">4</div>
+      <div class="pin" style="left:330px;top:186px">5</div>
+    </div>
+    <ol style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:16px;font-size:15px;line-height:1.5">
+      <li style="display:flex;gap:12px"><span class="n">1</span><span><b>A crowded toolbar.</b> Eleven controls and a two-line title that gets cut off. Every control has the same weight, so nothing leads.</span></li>
+      <li style="display:flex;gap:12px"><span class="n">2</span><span><b>Flat, equal tabs.</b> AppKit's tab bar: grey, same width, no icons, no kernel state. Notebooks and machine windows look alike.</span></li>
+      <li style="display:flex;gap:12px"><span class="n">3</span><span><b>A sidebar that doesn't float.</b> macOS 26 sidebars are inset glass panels. This one is a flat column with a row of tiny icons on top.</span></li>
+      <li style="display:flex;gap:12px"><span class="n">4</span><span><b>Jupyter, not Mac.</b> <code>[1]:</code> prompts, a "Saved output" label, a bare blue bar for the selected cell, floating cell icons.</span></li>
+      <li style="display:flex;gap:12px"><span class="n">5</span><span><b>No rhythm.</b> Cells, outputs and labels sit at nearly the same spacing, so the page reads as one block. Output tables float without a frame.</span></li>
+    </ol>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:24px">
+    <a href="A-Mac.dc.html" style="text-decoration:none;color:inherit;background:#fff;border-radius:16px;padding:22px 24px;display:flex;flex-direction:column;gap:8px;box-shadow:0 0 0 2px #2b59c3">
+      <span style="font-size:12px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:#2b59c3">Recommended</span>
+      <span style="font-size:20px;font-weight:700">A · Tahoe native</span>
+      <span style="font-size:14px;line-height:1.5;color:#3d3d42">Built from macOS 26 parts: floating glass sidebar, grouped toolbar capsules, Safari-style tab pills with kernel icons. Cells become cards with a run button in the margin. Character comes from a Ganymede accent and real spacing, not decoration.</span>
+    </a>
+    <a href="B-Mac.dc.html" style="text-decoration:none;color:inherit;background:#fff;border-radius:16px;padding:22px 24px;display:flex;flex-direction:column;gap:8px">
+      <span style="font-size:12px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:#6b6b70">Pro tool</span>
+      <span style="font-size:20px;font-weight:700">B · Workbench</span>
+      <span style="font-size:14px;line-height:1.5;color:#3d3d42">Xcode and Nova lineage: editor tabs joined to the page, an activity display in the toolbar, a status bar, a gutter with run timing. Dense on purpose, with a tinted dark theme and an amber run color.</span>
+    </a>
+    <a href="C-Mac.dc.html" style="text-decoration:none;color:inherit;background:#fff;border-radius:16px;padding:22px 24px;display:flex;flex-direction:column;gap:8px">
+      <span style="font-size:12px;font-weight:600;letter-spacing:0.06em;text-transform:uppercase;color:#6b6b70">Writing first</span>
+      <span style="font-size:20px;font-weight:700">C · Document</span>
+      <span style="font-size:14px;line-height:1.5;color:#3d3d42">Notes and Pages lineage: tabs move into a compact toolbar, the sidebar hides by default, prose sets in a serif, and cell chrome appears only on hover. The notebook reads like a finished document.</span>
+    </a>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
