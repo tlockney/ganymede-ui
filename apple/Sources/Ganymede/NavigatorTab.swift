@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// The sidebar's navigator tabs, the same on the Mac (#246) and the iPad
+/// The sidebar's navigator tabs: the Mac's (#246, #879) and the iPad's
 /// (#251).
 enum NavigatorTab: String, CaseIterable, Identifiable {
-    case files, search, running, outline, recents, journals
+    case files, search, running, outline, find, recents, journals
 
     var id: String { rawValue }
 
@@ -14,6 +14,7 @@ enum NavigatorTab: String, CaseIterable, Identifiable {
         case .running: "Running"
         case .journals: "Journals"
         case .outline: "Outline"
+        case .find: "Find"
         case .recents: "Recents"
         }
     }
@@ -25,6 +26,7 @@ enum NavigatorTab: String, CaseIterable, Identifiable {
         case .running: "bolt"
         case .journals: "text.book.closed"
         case .outline: "list.bullet.indent"
+        case .find: "magnifyingglass"
         case .recents: "clock"
         }
     }
@@ -37,6 +39,7 @@ enum NavigatorTab: String, CaseIterable, Identifiable {
         case .search: "2"
         case .running: "3"
         case .outline: "4"
+        case .find: "2"
         case .recents: "5"
         case .journals: "6"
         }
@@ -52,11 +55,41 @@ enum NavigatorTab: String, CaseIterable, Identifiable {
         count > 0 ? "\(count) running" : ""
     }
 
-    /// The tabs a window of `place` shows, the same on the Mac and the iPad
-    /// (#758): every tab, but not Recents for a machine, whose notebooks
-    /// aren't in them (`Place.indexesLocally`). Journals is for every place.
-    static func tabs(for place: Place) -> [NavigatorTab] {
-        allCases.filter { $0 != .recents || place.indexesLocally }
+    /// The platform whose sidebar this is (#879): the Mac's one Find tab
+    /// joins the outline and search; the iPad keeps both until step 7.
+    enum SidebarPlatform {
+        case mac, iPad
+    }
+
+    /// The running app's own.
+    static var platform: SidebarPlatform {
+        #if os(macOS)
+        .mac
+        #else
+        .iPad
+        #endif
+    }
+
+    /// The tabs a window of `place` shows (#758, #879): the Mac's Find
+    /// replaces Search and Outline; every tab, but not Recents for a
+    /// machine, whose notebooks aren't in them (`Place.indexesLocally`).
+    /// Journals is for every place.
+    static func tabs(for place: Place, on platform: SidebarPlatform = NavigatorTab.platform) -> [NavigatorTab] {
+        let recents: [NavigatorTab] = place.indexesLocally ? [.recents] : []
+        switch platform {
+        case .mac:
+            return [.files, .find, .running] + recents + [.journals]
+        case .iPad:
+            return [.files, .search, .running, .outline] + recents + [.journals]
+        }
+    }
+
+    /// The tab a window shows (#879): `stored` while it has it; a Mac
+    /// window's stored Search or Outline is its Find; else Files.
+    static func shown(_ stored: NavigatorTab, in tabs: [NavigatorTab]) -> NavigatorTab {
+        if tabs.contains(stored) { return stored }
+        if tabs.contains(.find), stored == .search || stored == .outline { return .find }
+        return .files
     }
 
     /// Whether the journals are wanted now (#758): the iPad's (`tabbed`)
@@ -80,6 +113,71 @@ enum NavigatorTab: String, CaseIterable, Identifiable {
         case .automatic: compact || !portrait
         case .shown: true
         }
+    }
+}
+
+/// What the Find tab shows (#879): the open notebook's outline while its
+/// field is empty, else the notebook's matches and then the folder's files.
+/// Pure, so the view's sections are tested without a window.
+enum FindLayout {
+    enum Section: Equatable {
+        case outline, notebook, files
+    }
+
+    /// What the list says over no rows (#879): "Searching…" while an
+    /// answer is still on its way, else that nothing matched.
+    enum Status: Equatable {
+        /// Nothing to say: the field is empty, or rows show.
+        case none
+        /// The page or the files are still being asked.
+        case searching
+        /// Nothing matched; `stoppedEarly` for a scan of the files that
+        /// gave up before it had looked everywhere.
+        case nothing(stoppedEarly: Bool)
+    }
+
+    /// The trimmed query: what the page is asked to find, and what the
+    /// query of its answer (`PageState.notebookFind`) must be to show.
+    static func normalized(_ query: String) -> String {
+        query.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// The sections, in order: the outline alone while the query is empty;
+    /// otherwise the notebook's matches when one is open, then the folder's.
+    static func sections(query: String, hasNotebook: Bool) -> [Section] {
+        guard !normalized(query).isEmpty else { return [.outline] }
+        return (hasNotebook ? [Section.notebook] : []) + [.files]
+    }
+
+    /// The page's answer that may show for `query` (#879): nil while it is
+    /// another query's, which the page has yet to replace.
+    static func answer(for query: String, in find: PageState.NotebookFind?) -> PageState.NotebookFind? {
+        guard let find, find.query == normalized(query) else { return nil }
+        return find
+    }
+
+    /// Whether the page must be asked again (#879): a page loaded again
+    /// forgets the query it was asked, as it forgets `inspect-variables`,
+    /// so a field with a query is asked again while the answer is gone or
+    /// another query's.
+    static func shouldReask(query: String, find: PageState.NotebookFind?) -> Bool {
+        !normalized(query).isEmpty && answer(for: query, in: find) == nil
+    }
+
+    /// What the list says while it shows no rows (#879): still searching
+    /// while the page hasn't answered for the field's query, so "No
+    /// matches" doesn't flash before it does. The files' search no longer
+    /// speaks for the notebook, whose rows may yet arrive.
+    static func status(
+        query: String, hasNotebook: Bool, find: PageState.NotebookFind?,
+        searchingFiles: Bool, fileMatches: Int, stoppedEarly: Bool
+    ) -> Status {
+        guard !normalized(query).isEmpty else { return .none }
+        let found = answer(for: query, in: find)
+        let notebookMatches = hasNotebook ? found?.matches.count ?? 0 : 0
+        if notebookMatches > 0 || fileMatches > 0 { return .none }
+        if hasNotebook, found == nil { return .searching }
+        return searchingFiles ? .searching : .nothing(stoppedEarly: stoppedEarly)
     }
 }
 

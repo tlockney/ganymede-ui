@@ -36,6 +36,8 @@ const mocks = vi.hoisted(() => ({
   places: undefined as unknown,
   /** The last pane's `onController`. */
   onController: undefined as undefined | ((c: unknown) => void),
+  /** The last Find query the pane was given (#879). */
+  findQuery: undefined as string | undefined,
   /** Stands in for the examples' copy when a test sets it. */
   copyExamples: undefined as undefined | (() => Promise<string>),
 }));
@@ -116,17 +118,20 @@ vi.mock('./components/NotebookPane', async () => {
     NotebookPane: ({
       path,
       places,
+      findQuery,
       onController,
       onRenamed,
     }: {
       path: string;
       places?: unknown;
+      findQuery?: string;
       onController(c: unknown): void;
       onRenamed?(from: string, to: string): void;
     }) => {
       mocks.places = places;
       mocks.onRenamed = onRenamed;
       mocks.onController = onController;
+      mocks.findQuery = findQuery;
       useEffect(() => {
         if (mocks.controller) {
           const name = path.split('/').pop();
@@ -152,6 +157,7 @@ const { resetStorageNoticeForTests } = await import('./lib/storage-notice');
 
 beforeEach(() => {
   mocks.controller = undefined;
+  mocks.findQuery = undefined;
   mocks.copyExamples = undefined;
   mocks.signedInHere.mockReset().mockResolvedValue(false);
   localStorage.clear();
@@ -505,6 +511,29 @@ describe('App', () => {
     expect(states.some(s => s.path === null && s.title === null)).toBe(true);
   });
 
+  it('answers the Find tab with nothing found when the notebook never opened (#881)', async () => {
+    const states: Record<string, unknown>[] = [];
+    vi.stubGlobal('webkit', {
+      messageHandlers: {
+        state: { postMessage: (m: Record<string, unknown>) => states.push(m) },
+      },
+    });
+    // No controller: the notebook failed to open, so no pane answers.
+    const fake = fakeServices({ '': [{ name: 'Io.ipynb', type: 'notebook' }] });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    history.replaceState(null, '', '/?kernels=server&open=Io.ipynb');
+    render(<App />);
+    await waitFor(() => expect(states.at(-1)).toMatchObject({ path: 'Io.ipynb' }));
+    expect(states.at(-1)!.notebookFind).toBeNull();
+    const run = window.ganymede!.command;
+    expect(await run('find-in-notebook', '  volcano ')).toBe(true);
+    await waitFor(() =>
+      expect(states.at(-1)!.notebookFind).toEqual({ query: 'volcano', matches: [], more: 0 }),
+    );
+    expect(await run('find-in-notebook', '')).toBe(true);
+    await waitFor(() => expect(states.at(-1)!.notebookFind).toBeNull());
+  });
+
   it('tells the app the notebook’s language, for its window’s chip (#867)', async () => {
     const states: Record<string, unknown>[] = [];
     vi.stubGlobal('webkit', {
@@ -579,6 +608,12 @@ describe('App', () => {
       goToDefinition,
       renameSymbol,
       outline: [{ level: 1, text: 'Io', cell: 2 }],
+      // The Mac app's Find results (#879), posted in the state.
+      notebookFind: {
+        query: 'volcano',
+        matches: [{ cell: 2, heading: 'Io', snippet: 'volcano = 2' }],
+        more: 1,
+      },
       dirty: false,
       save: vi.fn(async () => true),
       runAll,
@@ -631,6 +666,11 @@ describe('App', () => {
           { name: 'cdp-browser', displayName: 'TypeScript (in app)', device: true },
         ],
         outline: [{ level: 1, text: 'Io', cell: 2 }],
+        notebookFind: {
+          query: 'volcano',
+          matches: [{ cell: 2, heading: 'Io', snippet: 'volcano = 2' }],
+          more: 1,
+        },
       }),
     );
 
@@ -642,6 +682,11 @@ describe('App', () => {
     expect(await run('go-to-cell', 'one')).toBe(false);
     expect(await run('go-to-cell')).toBe(false);
     expect(goToCell).toHaveBeenCalledTimes(2);
+    // The Mac app's Find tab asks the page's cells (#879).
+    expect(await run('find-in-notebook', '  volcano  ')).toBe(true);
+    await waitFor(() => expect(mocks.findQuery).toBe('volcano'));
+    expect(await run('find-in-notebook', '')).toBe(true);
+    await waitFor(() => expect(mocks.findQuery).toBe(''));
     // Go to definition and rename through the kernel's language service (#676).
     expect(await run('go-to-definition')).toBe(true);
     expect(goToDefinition).toHaveBeenCalledTimes(1);

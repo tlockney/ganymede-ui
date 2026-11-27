@@ -75,8 +75,9 @@ others the symbol alone, and Running counts what is running. The column
 is a pale navy over the system's sidebar material, and the navy itself in
 the dark.
 
-The sidebar has six tabs (⌘1 to ⌘6). Each window keeps its sidebar
-shown or hidden, its tab and its expanded folders across launches.
+The sidebar has five tabs (⌘1 to ⌘6, with ⌘4 also opening Find). Each
+window keeps its sidebar shown or hidden, its tab and its expanded
+folders across launches.
 
 - **Files** lists the window's folder as a tree. Click a folder's name
   to expand or collapse it. Right-click an item to
@@ -93,18 +94,28 @@ shown or hidden, its tab and its expanded folders across launches.
   clicking a folder, or pressing Tab into the sidebar, keeps it in the
   sidebar.
 
-- **Search** finds file and folder names under the window's folder and,
-  with "Search notebook contents" ticked, the text of its notebooks,
-  showing the matching line.
+- **Find** (⌘2, and ⌘4, which was Outline's key) searches the open
+  notebook and the window's folder from one field. With the field empty
+  it shows the notebook's outline; type a query and it lists the
+  notebook's cells whose source holds it, each under the nearest heading
+  above it and with the line that matched. Click one to go to its cell;
+  "and N more" says how many matched beyond the fifty listed. Below them
+  are the folder's files whose names match and, with "Contents" ticked,
+  whose notebooks' text does, with the matching line. ⌘⇧F opens Find and
+  puts the cursor in its field; Escape clears it. The page searches the
+  notebook a moment after typing stops.
+
+  > [!NOTE]
+  > **Unreleased.** The one Find tab is available only from a build of
+  > `main` (HEAD), not in the latest release, where Search and Outline
+  > are separate tabs.
+
 - **Running** lists running kernels, each with its memory when the server
   reports it (a Ganymede server does), and the terminals open in any
   window. Click a terminal to bring it to the front, or right-click a
   kernel or terminal to shut it down (or choose Kernel > Shut Down Other
   Kernels).
 - **Recents** lists the notebooks opened lately.
-- **Outline** lists the open notebook's headings; click one to go to its
-  cell.
-
 - **Journals** (⌘6) lists the notebooks an agent is in or last wrote, in
   this window's place: the notebook, the agent's name and "running" while
   the agent is in it, otherwise when it last wrote ("2 min ago"). Click
@@ -957,7 +968,9 @@ with only SSH stays in Settings for shells.
   > window has none of the local window's features.
 
 - **A machine's window** (the app's native sidebar and toolbar on the
-  Mac, iPad and iPhone alike) has Files, Journals, Running and Search tabs. Its tab
+  Mac, iPad and iPhone alike) has Files, Running and Journals, and the
+  Mac's Find or the iPad's Search and Outline: the iPad's tabs for a
+  machine are Files, Search, Running, Outline and Journals. Its tab
   and title carry the machine's name ("Orbits · m4mini"). A notebook
   opens live in the machine's room, on the machine's kernels, and saves
   there; Running lists the machine's kernels. Recents are the machine's
@@ -1060,11 +1073,12 @@ with only SSH stays in Settings for shells.
 > [!NOTE]
 > **Unreleased.** Your name going to a connected machine's rooms, the
 > setting that turns it off, the agent's Keychain keys in a machine's
-> window, opening a machine's text files in the app's editor, and
-> terminals in a machine's window (which run on the machine) are
-> available only from a build of `main` (HEAD), not in the latest release,
-> where a machine's window keeps the agent's key in the page's web storage,
-> its text files don't open and it has no terminal panel or New Terminal
+> window, opening a machine's text files in the app's editor, the one
+> Find tab in its sidebar, and terminals in a machine's window (which run
+> on the machine) are available only from a build of `main` (HEAD), not in
+> the latest release, where a machine's window keeps the agent's key in
+> the page's web storage, its text files don't open, its sidebar has
+> Search and Outline, and it has no terminal panel or New Terminal
 > (New Terminal On already works there). The Kernel Log tab is in this
 > device's window only: a machine's kernel runs on the machine, and this
 > Mac's server keeps no log of it. A notebook's window has its title in
@@ -1072,7 +1086,7 @@ with only SSH stays in Settings for shells.
 > whole status line under the title.
 
 On the Mac a machine's window is the app's native window: the same
-sidebar (Files, Search, Running, Outline and Journals), toolbar,
+sidebar as this Mac's (Files, Find, Running and Journals), toolbar,
 inspector, menus and tabs as for this Mac, listing the machine's files.
 Open, New Notebook, New Folder and Rename work on the machine's files.
 When the machine stops answering, the Files tab shows "_machine_ is

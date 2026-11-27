@@ -4,16 +4,117 @@ import XCTest
 final class NavigatorTabTests: XCTestCase {
     private let id = "3F2B8C1E-AAAA-4BBB-8CCC-0123456789AB"
 
-    func testThisDeviceHasEveryTab() {
-        XCTAssertEqual(NavigatorTab.tabs(for: .thisDevice), NavigatorTab.allCases)
+    func testTheMacHasFindInPlaceOfSearchAndOutline() {
+        XCTAssertEqual(
+            NavigatorTab.tabs(for: .thisDevice, on: .mac),
+            [.files, .find, .running, .recents, .journals])
+        XCTAssertEqual(
+            NavigatorTab.tabs(for: .machine(id), on: .mac),
+            [.files, .find, .running, .journals])
+        let tabs = NavigatorTab.tabs(for: .thisDevice, on: .mac)
+        XCTAssertFalse(tabs.contains(.search))
+        XCTAssertFalse(tabs.contains(.outline))
     }
 
-    func testAMachineHasNoRecentsButKeepsJournalsFilesSearchRunningAndOutline() {
-        let tabs = NavigatorTab.tabs(for: .machine(id))
-        XCTAssertFalse(tabs.contains(.recents))
-        for tab in [NavigatorTab.files, .search, .running, .outline, .journals] {
-            XCTAssertTrue(tabs.contains(tab), "\(tab)")
+    func testTheIPadKeepsSearchAndOutlineAndNoFind() {
+        XCTAssertEqual(
+            NavigatorTab.tabs(for: .thisDevice, on: .iPad),
+            [.files, .search, .running, .outline, .recents, .journals])
+        XCTAssertEqual(
+            NavigatorTab.tabs(for: .machine(id), on: .iPad),
+            [.files, .search, .running, .outline, .journals])
+        XCTAssertFalse(NavigatorTab.tabs(for: .thisDevice, on: .iPad).contains(.find))
+    }
+
+    func testAMachineHasNoRecents() {
+        for platform in [NavigatorTab.SidebarPlatform.mac, .iPad] {
+            XCTAssertFalse(NavigatorTab.tabs(for: .machine(id), on: platform).contains(.recents), "\(platform)")
         }
+    }
+
+    func testAStoredSearchOrOutlineShowsAsFindOnAMacWindow() {
+        let mac = NavigatorTab.tabs(for: .thisDevice, on: .mac)
+        XCTAssertEqual(NavigatorTab.shown(.search, in: mac), .find)
+        XCTAssertEqual(NavigatorTab.shown(.outline, in: mac), .find)
+        XCTAssertEqual(NavigatorTab.shown(.files, in: mac), .files)
+        // A machine's window has no Recents: the stored tab is Files.
+        XCTAssertEqual(
+            NavigatorTab.shown(.recents, in: NavigatorTab.tabs(for: .machine(id), on: .mac)), .files)
+        // The iPad keeps showing its own Search and Outline.
+        let iPad = NavigatorTab.tabs(for: .thisDevice, on: .iPad)
+        XCTAssertEqual(NavigatorTab.shown(.search, in: iPad), .search)
+        XCTAssertEqual(NavigatorTab.shown(.outline, in: iPad), .outline)
+        // Find isn't an iPad tab.
+        XCTAssertEqual(NavigatorTab.shown(.find, in: iPad), .files)
+    }
+
+    /// The Find tab's sections (#879).
+    func testFindShowsTheOutlineUntilTheFieldHasAQuery() {
+        XCTAssertEqual(FindLayout.sections(query: "", hasNotebook: true), [.outline])
+        XCTAssertEqual(FindLayout.sections(query: "  \n ", hasNotebook: true), [.outline])
+        XCTAssertEqual(FindLayout.sections(query: "plume", hasNotebook: true), [.notebook, .files])
+        XCTAssertEqual(FindLayout.sections(query: "plume", hasNotebook: false), [.files])
+        XCTAssertEqual(FindLayout.normalized("  plume  "), "plume")
+    }
+
+    /// The page's answer (#879): only the field's own query's may show.
+    func testAFindAnswerShowsOnlyUnderItsOwnQuery() {
+        let plume = find("plume", cells: [1])
+        XCTAssertEqual(FindLayout.answer(for: "  plume ", in: plume), plume)
+        XCTAssertNil(FindLayout.answer(for: "volcano", in: plume))
+        XCTAssertNil(FindLayout.answer(for: "plume", in: nil))
+        XCTAssertNil(FindLayout.answer(for: "  ", in: plume), "an empty field shows the outline")
+    }
+
+    /// A page loaded again forgets what it was asked, as it forgets
+    /// `inspect-variables`: the field's query goes to it again.
+    func testAPageLoadedAgainIsAskedTheFieldsQueryAgain() {
+        XCTAssertFalse(FindLayout.shouldReask(query: "  plume  ", find: find("plume", cells: [1])))
+        XCTAssertFalse(FindLayout.shouldReask(query: "", find: nil))
+        XCTAssertFalse(FindLayout.shouldReask(query: " \n ", find: find("plume", cells: [1])))
+        // The reloaded page's state has no answer; nor has one that still
+        // has to answer a newer query.
+        XCTAssertTrue(FindLayout.shouldReask(query: "plume", find: nil))
+        XCTAssertTrue(FindLayout.shouldReask(query: "plume", find: find("volcano", cells: [])))
+    }
+
+    /// What the list says over no rows (#879): "No matches" waits for the
+    /// page, which may still have rows to send.
+    func testTheListSaysSearchingUntilTheNotebookHasAnswered() {
+        let nothing = find("plume", cells: [])
+        let row = find("plume", cells: [2])
+        // An empty field shows the outline: nothing to say.
+        XCTAssertEqual(status(query: "  ", hasNotebook: true, find: nil, searchingFiles: true), .none)
+        // The page hasn't answered for this query yet.
+        XCTAssertEqual(status(query: "plume", hasNotebook: true, find: nil, searchingFiles: false), .searching)
+        XCTAssertEqual(
+            status(query: "plume", hasNotebook: true, find: find("volcano", cells: []), searchingFiles: false),
+            .searching, "another query's answer")
+        // Files that matched are rows, so nothing is said over them.
+        XCTAssertEqual(status(query: "plume", hasNotebook: true, find: nil, searchingFiles: false, fileMatches: 2), .none)
+        XCTAssertEqual(status(query: "plume", hasNotebook: true, find: row, searchingFiles: true), .none)
+        // Answered with nothing, and the files still going: still searching.
+        XCTAssertEqual(status(query: "plume", hasNotebook: true, find: nothing, searchingFiles: true), .searching)
+        XCTAssertEqual(status(query: "plume", hasNotebook: true, find: nothing, searchingFiles: false), .nothing(stoppedEarly: false))
+        XCTAssertEqual(
+            status(query: "plume", hasNotebook: false, find: nil, searchingFiles: false, stoppedEarly: true),
+            .nothing(stoppedEarly: true), "no notebook: the files alone answer")
+    }
+
+    /// The page's answer for `query`, matching the cells in `cells`.
+    private func find(_ query: String, cells: [Int]) -> PageState.NotebookFind {
+        PageState.NotebookFind(
+            query: query,
+            matches: cells.map { .init(cell: $0, heading: nil, snippet: "plume") }, more: 0)
+    }
+
+    private func status(
+        query: String, hasNotebook: Bool, find: PageState.NotebookFind?,
+        searchingFiles: Bool, fileMatches: Int = 0, stoppedEarly: Bool = false
+    ) -> FindLayout.Status {
+        FindLayout.status(
+            query: query, hasNotebook: hasNotebook, find: find,
+            searchingFiles: searchingFiles, fileMatches: fileMatches, stoppedEarly: stoppedEarly)
     }
 
     func testJournalsIsInEveryPlacesTabs() {
@@ -64,6 +165,7 @@ final class NavigatorTabTests: XCTestCase {
     /// The capsule's tooltips and the Running tab's value (#873).
     func testEachTabNamesItselfAndItsKey() {
         XCTAssertEqual(NavigatorTab.files.help, "Files (⌘1)")
+        XCTAssertEqual(NavigatorTab.find.help, "Find (⌘2)")
         XCTAssertEqual(NavigatorTab.running.help, "Running (⌘3)")
         XCTAssertEqual(NavigatorTab.journals.help, "Journals (⌘6)")
     }

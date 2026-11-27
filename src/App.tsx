@@ -735,6 +735,11 @@ export function App() {
         if (!c || arg === undefined || arg === '' || !Number.isInteger(index)) return false;
         return c.goToCell(index);
       }
+      case 'find-in-notebook':
+        // The Mac app's Find tab (#879): what its notebook cells must hold,
+        // debounced there; an empty query clears the matches.
+        setFindQuery(arg?.trim() ?? '');
+        return true;
       case 'refresh-kernels':
         // The app came to the front (#350): kernelspecs may have changed.
         if (!backend) return false;
@@ -1028,6 +1033,9 @@ export function App() {
   // The app's sidebar's search and Recents (#240): the page's sidebar has
   // its own, so these run only with `chrome=native`.
   const [nativeSearch, setNativeSearch] = useState<SearchRequest>({ query: '' });
+  // The Mac app's Find field (#879): its notebook's matches are computed
+  // there, and posted in the native state (`notebookFind`).
+  const [findQuery, setFindQuery] = useState('');
   const found = useFileSearch(
     native ? backend?.services.contents : undefined,
     nativeSearch.dir ?? '',
@@ -1106,6 +1114,14 @@ export function App() {
       consoles: native ? (JSON.parse(consolesKeyed) as PageState['consoles']) : [],
       search: JSON.parse(searchKey) as PageState['search'],
       outline: shown?.outline ?? [],
+      // No notebook shown, as when it failed to open (#881): the page still
+      // answers the asked query, with nothing found, so the app's Find tab
+      // doesn't wait for a notebook that will never answer.
+      notebookFind: shown
+        ? shown.notebookFind
+        : findQuery
+          ? { query: findQuery, matches: [], more: 0 }
+          : null,
       variables: JSON.parse(variablesKey) as PageState['variables'],
     });
   }, [
@@ -1124,6 +1140,7 @@ export function App() {
     variablesKey,
     accessKey,
     hostGrants,
+    findQuery,
   ]);
 
   // ⌘S / Ctrl+S saves, as in any document app; ⇧⌘P opens the command
@@ -1287,6 +1304,7 @@ export function App() {
                 path={openPath}
                 places={places}
                 native={native}
+                findQuery={findQuery}
                 onController={setController}
                 onRenamed={followRename}
               />

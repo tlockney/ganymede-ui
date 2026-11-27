@@ -15,6 +15,11 @@ const ATX = /^ {0,3}(#{1,6})(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*$/;
 const SETEXT = /^ {0,3}(=+|-+)[ \t]*$/;
 const HTML_HEADING = /^ {0,3}<h([1-6])\b[^>]*>(.*?)<\/h\1>/i;
 
+/** Whether `line` underlines a setext heading: `===` or `---`. */
+export function isSetextUnderline(line: string): boolean {
+  return SETEXT.test(line);
+}
+
 /**
  * Heading text without Markdown: links and images keep their text,
  * emphasis and code marks go (code keeps what is inside it as written),

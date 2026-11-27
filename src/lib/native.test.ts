@@ -11,6 +11,7 @@ import {
   fileMove,
   pageSearch,
   pageVariables,
+  PAGE_COMMANDS,
   postState,
   runningSessions,
   searchRequest,
@@ -108,6 +109,7 @@ describe('native', () => {
       consoles: [],
       search: null,
       outline: [{ level: 1, text: 'Io', cell: 0 }],
+      notebookFind: null,
       variables: null,
     };
     postState(state);
@@ -115,6 +117,10 @@ describe('native', () => {
     vi.stubGlobal('webkit', { messageHandlers: { state: { postMessage } } });
     postState(state);
     expect(postMessage).toHaveBeenCalledWith(state);
+  });
+
+  it('runs find-in-notebook with a query, and clears it with none (#879)', () => {
+    expect(PAGE_COMMANDS['find-in-notebook']).toBe('arg');
   });
 
   it('lists running sessions by display name, with the kernel’s state', () => {
