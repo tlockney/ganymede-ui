@@ -38,6 +38,11 @@ skips the e2e and macOS app jobs when the change can't affect them:
 docs, Markdown, a release's version bump, or only the other job's files
 (`apple/` for e2e, `e2e/` for the app). A release runs build and e2e on
 the tag; its own macos and ios jobs build the app.
+`.github/workflows/e2e-cdp-kernel-main.yml` runs the same Linux e2e
+suite weekly, and by hand from the Actions tab, against cdp-kernel built
+from its `main` in place of the pinned release, so a kernel change that
+breaks the app shows up before a release pins it (#840). It doesn't run
+on pull requests, and its summary names the cdp-kernel commit it tested.
 `node scripts/render-icons.mjs` regenerates the PNG icons from
 `public/icons/icon.svg`.
 `python3 scripts/fonts.py` rebuilds the bundled code fonts in

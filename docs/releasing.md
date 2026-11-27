@@ -22,6 +22,12 @@ cdp-kernel and for the ganymede-ui release `ganymede ui install`
 installs, so that default is the ganymede-ui release before this one
 until Ganymede's next release.
 
+Before a round moves the cdp-kernel pin, check the latest run of
+`.github/workflows/e2e-cdp-kernel-main.yml` (Actions, "e2e against
+cdp-kernel main"): it runs the e2e suite against cdp-kernel's `main`
+weekly, or start it by hand. A failure there is what the new pin would
+break (#840).
+
 ## Version numbers
 
 Ganymede and ganymede-ui share their minor version, so the docs and the

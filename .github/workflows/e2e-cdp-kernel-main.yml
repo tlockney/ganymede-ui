@@ -1,0 +1,99 @@
+name: e2e against cdp-kernel main
+
+# The Linux e2e suite against cdp-kernel's `main` instead of the pinned
+# release (#840), so a kernel change that breaks the app shows up here,
+# not first on a release pull request. It builds `@tlockney/cdp-kernel`
+# from main, installs it in place of package.json's pin (the browser
+# kernel the page bundles) and as the server's `cdp-node` kernel, and
+# runs `npm run e2e`. Specs that skip on the pinned kernel (such as
+# e2e/interrupt-reset.spec.ts) run when main has what they need.
+#
+# Weekly and by hand from the Actions tab. Not on pull requests: an
+# unreleased kernel change must not block them. Not part of CI, so it
+# isn't a required check, and release.yml doesn't call it. A failure
+# fails the run; its summary names the cdp-kernel commit it tested.
+# Ganymede's own `e2e-cdp-kernel-main` job does the same for the server.
+on:
+  schedule:
+    - cron: '41 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 24
+          cache: npm
+      - name: Build cdp-kernel from main
+        id: kernel
+        run: |
+          git clone --depth 1 https://github.com/tlockney/cdp-kernel "$RUNNER_TEMP/cdp-kernel"
+          cd "$RUNNER_TEMP/cdp-kernel"
+          commit=$(git rev-parse HEAD)
+          echo "cdp-kernel main at $commit"
+          echo "Tested cdp-kernel main at [\`$commit\`](https://github.com/tlockney/cdp-kernel/commit/$commit)." >> "$GITHUB_STEP_SUMMARY"
+          npm ci
+          # npm pack builds (prepack) and prints the tarball's name last.
+          echo "tarball=$PWD/$(npm pack --silent | tail -n 1)" >> "$GITHUB_OUTPUT"
+      # The same Ganymede as ci.yml's e2e job; only the kernel differs.
+      - name: Install Ganymede and cdp-kernel main
+        env:
+          TARBALL: ${{ steps.kernel.outputs.tarball }}
+        run: |
+          GANYMEDE_VERSION=$(yq '.jobs.e2e.env.GANYMEDE_VERSION' .github/workflows/ci.yml)
+          curl -fsSL "https://raw.githubusercontent.com/tlockney/ganymede/v$GANYMEDE_VERSION/site/install.sh" \
+            | sh -s -- --version "$GANYMEDE_VERSION" --no-kernel --bin-dir "$HOME/.local/bin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          npm install -g "$TARBALL"
+          cdp-kernel install --runtime node
+          "$HOME/.local/bin/ganymede" --version
+          "$HOME/.local/bin/ganymede" kernelspec list
+      - run: npm ci
+      # In place of the pin, for the browser kernel the build bundles.
+      # --no-save leaves package.json and package-lock.json as they are.
+      - name: Use cdp-kernel main in the page
+        env:
+          TARBALL: ${{ steps.kernel.outputs.tarball }}
+        run: |
+          npm install --no-save "$TARBALL"
+          # Stop if npm kept the registry's copy: the run would test the pin.
+          node -e '
+            const p = require("./node_modules/.package-lock.json").packages["node_modules/@tlockney/cdp-kernel"];
+            console.log(`page bundles cdp-kernel ${p.version} from ${p.resolved}`);
+            if (!p.resolved?.startsWith("file:")) process.exit(1);
+          '
+      - id: playwright
+        run: echo "version=$(node -p "require('@playwright/test/package.json').version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ runner.arch }}-${{ steps.playwright.outputs.version }}-chromium
+      # Best effort for the system libraries, as in ci.yml (#499).
+      - run: |
+          npx playwright install chromium
+          timeout 5m npx playwright install-deps chromium || { sudo pkill -x apt-get || true; echo "::warning::apt failed; using the runner image's libraries"; }
+      - run: npm run build
+      # A run that hits the job's timeout ends as cancelled, which sends no
+      # failure notice: stop a hanging suite first, as a failure.
+      - run: npm run e2e -- --global-timeout=1200000
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: e2e-test-results
+          path: |
+            test-results
+            playwright-report
+          if-no-files-found: ignore
