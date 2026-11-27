@@ -1281,6 +1281,13 @@ commands (toolbar, Command Palette and keys) are off, because they would act
 on cells you can't see. It works in the browser and in the Mac, iPad and iPhone apps,
 on a Ganymede server, and there is no setting for it.
 
+The header names which view shows: a **Notebook | Journal** control beside
+the title in the browser, and in the Mac and iPad apps' toolbars, there while
+a notebook is open. On a phone-width browser it shows only in the journal
+view, on a row under the status line; the iPhone app keeps the More menu's
+item instead. Picking the other part switches, keeping your place by cell,
+and the ways above still work.
+
 - **The header** comes first: the notebook's title (its metadata title, else
   the file name), then its kernel, who started it and when (the first agent
   that wrote a cell, and the earliest time an agent did), and the cell count.
