@@ -68,3 +68,9 @@ and Outline for now. Step 4b of the Mac redesign (#844).
   can't say "Searching…" for good (review of #881). The page searches a
   new query at once; only cell edits wait 300 ms, since the field has
   already waited for typing to stop.
+- ⌘⇧F with the sidebar hidden brought the column back on Find but left
+  the keyboard in the notebook, and ⌘⇧F with Find already showing didn't
+  always move it (by-hand check on #881). Setting the field's focus once
+  did nothing while the field wasn't in the window yet, or while its focus
+  state already read true. `takeFocus()` now drops the focus and asks again
+  every 50 ms, for up to about a second, until the field has it.

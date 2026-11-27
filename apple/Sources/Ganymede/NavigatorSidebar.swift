@@ -243,6 +243,7 @@ private struct FindNavigator: View {
     @State private var results = FileSearch.Results()
     @State private var searching = false
     @FocusState private var fieldFocused: Bool
+    @State private var focusTask: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -264,7 +265,10 @@ private struct FindNavigator: View {
         .onChange(of: focusField) { if focusField { takeFocus() } }
         // The page has no reason to keep searching the notebook once the
         // tab goes; an empty query clears its matches.
-        .onDisappear { page.run("find-in-notebook", arg: "") }
+        .onDisappear {
+            focusTask?.cancel()
+            page.run("find-in-notebook", arg: "")
+        }
     }
 
     private var field: some View {
@@ -283,10 +287,24 @@ private struct FindNavigator: View {
     }
 
     /// ⌘⇧F's one request: the field takes the keyboard, and a later ⌘⇧F
-    /// asks again.
+    /// asks again. The field may not be in the window yet (the column is
+    /// coming back from hidden), and the notebook's web view may hold the
+    /// keyboard while `fieldFocused` still reads true, so a plain
+    /// `fieldFocused = true` can do nothing (#881). It drops the focus and
+    /// asks again on later turns until the field reports it has it.
     private func takeFocus() {
-        fieldFocused = true
         focusField = false
+        fieldFocused = false
+        focusTask?.cancel()
+        focusTask = Task { @MainActor in
+            for _ in 0..<FindFocus.attempts {
+                try? await Task.sleep(for: FindFocus.interval)
+                if Task.isCancelled { return }
+                fieldFocused = true
+                try? await Task.sleep(for: FindFocus.interval)
+                if Task.isCancelled || fieldFocused { return }
+            }
+        }
     }
 
     /// The page's answer that can show: while it is for the query the
@@ -661,5 +679,13 @@ private struct RecentsNavigator: View {
             }
         }
     }
+}
+
+/// How ⌘⇧F waits for the Find field (#881): it asks every `interval`, for
+/// about the time the sidebar column takes to come back, and stops once the
+/// field has the keyboard.
+enum FindFocus {
+    static let interval: Duration = .milliseconds(50)
+    static let attempts = 12
 }
 #endif
