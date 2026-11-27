@@ -53,13 +53,6 @@ struct FolderSidebar: View {
         }
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
-        // A quiet selection (#873): the list draws the selected row's fill in
-        // a neutral grey, not the accent, which would shout over the
-        // notebook. `SidebarSelection` is opaque and dark enough for the
-        // white text the system puts on a focused selection (4.5:1 in both
-        // appearances); `.secondary` would not be. It greys the rows' icons
-        // too. Nothing about the keys or focus changes.
-        .tint(Color("SidebarSelection"))
         .modifier(SidebarKeys(
             selection: selection,
             isExpanded: { actions.isExpanded($0.url).wrappedValue },
@@ -356,8 +349,10 @@ private struct FolderContents: View {
                     .accessibilityHint(canOpen ? "" : "Can't open here")
                     .accessibilityAction { if canOpen { actions.open(entry) } }
                     .padding(.vertical, 1)
-                    // The open notebook's row, in the same quiet grey as the
-                    // selected row (#873): a tint of it, not the accent.
+                    // The open notebook's row, in a quiet grey (#873), so it
+                    // doesn't read as a second selection beside the
+                    // system's own, which keeps the accent while the list
+                    // has focus.
                     .listRowBackground(
                         entry.serverPath == actions.openPath
                             ? Color.primary.opacity(0.08) : Color.clear
@@ -574,7 +569,9 @@ struct ProjectLine: View {
                         .lineLimit(1)
                     Text(lines.detail)
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        // Not `.secondary`, which measured 3.6:1 on the
+                        // light tint (#873): this keeps it past 4.5:1.
+                        .foregroundStyle(Color.primary.opacity(0.72))
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }

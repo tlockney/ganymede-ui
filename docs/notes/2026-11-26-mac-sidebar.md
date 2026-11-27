@@ -9,16 +9,18 @@ button and the Running tab already. Step 4 of the Mac redesign (#844);
 the Find tab, which joins Search and Outline, is a separate change.
 
 - The column is navy glass: `SidebarTint`, a colorset in the macOS
-  assets, is #2B3A67 at 8% in the light and at 55% in the dark, laid
+  assets, is #2B3A67 at 14% in the light and at 55% in the dark, laid
   behind the whole column (`ContentView`'s `sidebar`) and so over the
-  system's sidebar material. Against typical material greys (#E9E9E9
-  light, #2A2A2C dark), primary labels read about 11.5:1 and 9.6:1. The
-  system's secondary labels (black at about 50%, white at about 55%) read
-  about 3.7:1 in the light, where the untinted sidebar gives them about
-  3.8:1, and about 5.0:1 in the dark. These are estimates, not read from
-  a running window; the PR's screenshots are measured. The color stays
-  translucent, because an opaque fill would take away the material's
-  vibrancy.
+  system's sidebar material. 8% in the light was invisible in the
+  running app. Measured from the PR's screenshots (strongest text pixel
+  against the foot's background), the foot's folder name reads 11.0:1 in
+  the light and 9.8:1 in the dark. Its second line, in the system's
+  `.secondary`, read 3.6:1 in the light (5.1:1 in the dark), so it is
+  `Color.primary` at 72% instead, about 4.7:1 by the same arithmetic.
+  The lists' own secondary captions (Recents' folders) stay the system's;
+  the tint costs them little (about 3.8:1 to 3.6:1 in the light). The
+  color stays translucent, because an opaque fill would take away the
+  material's vibrancy.
 - The lists in the column hide their own scroll background
   (`.scrollContentBackground(.hidden)`), so the tint is behind their rows
   and not only around them. `OutlineNavigator` is also the inspector's
@@ -41,13 +43,14 @@ the Find tab, which joins Search and Outline, is a separate change.
   tested without a window. The capsule is one element with the tab bar
   trait (`.isTabBar`, its segments contained), so VoiceOver reads the
   segments as tabs.
-- Selection is quiet: the Files list takes `SidebarSelection` as its
-  tint, an opaque grey (#6E6E73 light, #5A5A5E dark) that keeps the white
-  text of a focused selection at about 5.1:1 and 7:1; `.secondary`, which
-  is translucent, would put white text on a pale grey. The tint greys the
-  rows' icons too. The open notebook's row is `Color.primary` at 8%
-  instead of the accent at 18%. Keyboard behaviour is untouched:
-  `SidebarKeys` and the list's selection binding are as they were.
+- The selected row keeps the system's highlight. The mockup had a grey
+  one, but on the Mac a focused sidebar list draws its selection in the
+  app's accent whatever `.tint` or `.accentColor` the list or its rows
+  carry (tried in the running app); it turns grey by itself when the
+  window isn't key. Drawing our own would mean hiding the system's and
+  rechecking focus and keyboard visuals, so the system's stays. The
+  open notebook's row is `Color.primary` at 8% instead of the accent at
+  18%, so it doesn't read as a second selection.
 - The foot is the project: `ProjectLine` replaces `ServerLine`, with the
   folder symbol, the folder's name in `.callout` and, in `.caption`
   secondary, the folder it is in and the place: "~/notes · This Mac".
