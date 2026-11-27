@@ -21,3 +21,5 @@ examples/src
 public/fonts/catalog.json
 # Imported from tlockney/ganymede-device in its own style (#560).
 packages/device
+# The design canvas's boards (#893), kept as the canvas wrote them.
+docs/design/mac-visual-redesign/sources
