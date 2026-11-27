@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Direction D on iPad and iPhone</title>
+
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&amp;family=JetBrains+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#f9a03f}a:hover{color:#fbc27a}
+.d-mono{font-family:"SF Mono","JetBrains Mono",ui-monospace,monospace}
+.d-btn{appearance:none;border:0;background:transparent;color:#d9dcea;font:inherit;display:inline-flex;align-items:center;justify-content:center;gap:6px;height:36px;padding:0 12px;border-radius:10px;font-size:14px}
+.d-cell{border:1px solid #353c5a;border-radius:12px;overflow:hidden;background:#1e2238}
+.d-head{display:flex;justify-content:space-between;align-items:center;height:30px;padding:0 12px;background:#262b44;font-size:11px;color:#a2a8c2}
+.kw{color:#9fbcff}.fn{color:#c9b79c}.st{color:#f4e9d8}
+</style>
+</helmet>
+<div style="width:1200px;height:900px;box-sizing:border-box;padding:48px;background:#e9e9ee;font-family:Inter,-apple-system,system-ui,sans-serif;color:#eef0f7;display:flex;gap:48px;align-items:flex-start">
+
+  <div style="display:flex;flex-direction:column;gap:14px">
+    <span style="font-size:14px;font-weight:600;color:#55555c">iPad · sidebar sections and folder tabs carry over</span>
+    <div style="width:720px;height:540px;border-radius:28px;background:#20243a;box-shadow:0 0 0 10px #1c1c1e,0 20px 50px rgba(0,0,0,0.25);overflow:hidden;display:flex">
+      <nav aria-label="Workspace" style="width:200px;flex:none;background:linear-gradient(#26325c,#121830);padding:22px 10px;box-sizing:border-box;display:flex;flex-direction:column;gap:2px;font-size:14px">
+        <span style="font-size:19px;font-weight:800;padding:0 8px 10px">Ganymede</span>
+        <span style="font-size:11.5px;font-weight:600;color:#8e95b0;padding:8px 8px 4px">Workspace</span>
+        <span style="padding:7px 8px">Studio Mac</span>
+        <span style="font-size:11.5px;font-weight:600;color:#8e95b0;padding:12px 8px 4px">Open</span>
+        <span style="padding:7px 8px;border-radius:8px;background:rgba(143,179,255,0.18)">2026-11-09-fremont-bridge</span>
+        <span style="padding:7px 8px">duckdb-console</span>
+      </nav>
+      <div style="flex:1;display:flex;flex-direction:column">
+        <div role="tablist" aria-label="Open tabs" style="height:46px;flex:none;display:flex;align-items:flex-end;gap:4px;padding:0 12px;border-bottom:1px solid #353c5a;background:#1a1e33">
+          <span role="tab" aria-selected="true" style="height:36px;display:flex;align-items:center;padding:0 14px;border-radius:10px 10px 0 0;background:#20243a;box-shadow:inset 0 2px 0 #f9a03f;font-size:13.5px;font-weight:600;margin-bottom:-1px">2026-11-09-fremont-bridge</span>
+          <span role="tab" aria-selected="false" style="height:36px;display:flex;align-items:center;padding:0 14px;font-size:13.5px;color:#a6abc4">duckdb-console</span>
+        </div>
+        <div style="padding:22px 24px;display:flex;flex-direction:column;gap:14px">
+          <div style="display:flex;align-items:flex-end">
+            <div style="flex:1"><span class="d-mono" style="font-size:11px;font-weight:600;letter-spacing:0.08em;color:#f9a03f">TYPESCRIPT NOTEBOOK</span><h2 style="margin:4px 0 0;font-size:30px;font-weight:800;letter-spacing:-0.03em">Riders per day, by year</h2></div>
+            <button class="d-btn" style="background:#f9a03f;color:#2a1600;font-weight:700">▶ Run cell</button>
+          </div>
+          <div class="d-cell" style="border-color:#f9a03f"><div class="d-head d-mono"><span style="color:#f9a03f">Cell 3 · TypeScript</span><span>38 ms</span></div><pre class="d-mono" style="margin:0;padding:12px 14px;font-size:13.5px;background:#191d30">Plot.<span class="fn">plot</span>({
+  marks: [
+    Plot.<span class="fn">barY</span>(yearly.<span class="fn">toRecords</span>(),
+      { x: <span class="st">"year"</span>, y: <span class="st">"per_day"</span> }),
+    Plot.<span class="fn">ruleY</span>([base2019]),
+  ],
+})</pre><div style="border-top:1px solid #353c5a;padding:12px 14px"><figure style="margin:0;width:560px;display:flex;flex-direction:column;gap:6px;font-size:10px;color:#a2a8c2"><span>↑ riders per day (Jan–Sep)</span><div style="position:relative;width:560px;height:110px"><div style="position:absolute;left:44px;right:0;top:110px;border-top:1px solid rgba(255,255,255,0.08)"></div><span style="position:absolute;left:0;width:36px;text-align:right;top:103px">0</span><div style="position:absolute;left:44px;right:0;top:81px;border-top:1px solid rgba(255,255,255,0.08)"></div><span style="position:absolute;left:0;width:36px;text-align:right;top:74px">1,000</span><div style="position:absolute;left:44px;right:0;top:52px;border-top:1px solid rgba(255,255,255,0.08)"></div><span style="position:absolute;left:0;width:36px;text-align:right;top:45px">2,000</span><div style="position:absolute;left:44px;right:0;top:23px;border-top:1px solid rgba(255,255,255,0.08)"></div><span style="position:absolute;left:0;width:36px;text-align:right;top:16px">3,000</span><div style="position:absolute;left:44px;right:0;top:11px;border-top:1.5px dashed #2747b8"></div><div title="2013: 2,720" style="position:absolute;left:46.9px;width:31.0px;bottom:0;height:79px;background:#9fb0e6"></div><div title="2014: 3,000" style="position:absolute;left:83.8px;width:31.0px;bottom:0;height:87px;background:#9fb0e6"></div><div title="2015: 2,940" style="position:absolute;left:120.7px;width:31.0px;bottom:0;height:85px;background:#9fb0e6"></div><div title="2016: 2,950" style="position:absolute;left:157.5px;width:31.0px;bottom:0;height:85px;background:#9fb0e6"></div><div title="2017: 2,820" style="position:absolute;left:194.4px;width:31.0px;bottom:0;height:82px;background:#9fb0e6"></div><div title="2018: 3,090" style="position:absolute;left:231.2px;width:31.0px;bottom:0;height:89px;background:#9fb0e6"></div><div title="2019: 3,430" style="position:absolute;left:268.1px;width:31.0px;bottom:0;height:99px;background:#2747b8"></div><div title="2020: 2,330" style="position:absolute;left:304.9px;width:31.0px;bottom:0;height:67px;background:#9fb0e6"></div><div title="2021: 2,160" style="position:absolute;left:341.8px;width:31.0px;bottom:0;height:63px;background:#9fb0e6"></div><div title="2022: 2,370" style="position:absolute;left:378.7px;width:31.0px;bottom:0;height:69px;background:#9fb0e6"></div><div title="2023: 2,660" style="position:absolute;left:415.5px;width:31.0px;bottom:0;height:77px;background:#9fb0e6"></div><div title="2024: 2,750" style="position:absolute;left:452.4px;width:31.0px;bottom:0;height:80px;background:#9fb0e6"></div><div title="2025: 3,070" style="position:absolute;left:489.2px;width:31.0px;bottom:0;height:89px;background:#9fb0e6"></div><div title="2026: 3,697" style="position:absolute;left:526.1px;width:31.0px;bottom:0;height:107px;background:#9fb0e6"></div></div><div style="display:flex;margin-left:44px"><span style="flex:1;text-align:center">2013</span><span style="flex:1;text-align:center">2014</span><span style="flex:1;text-align:center">2015</span><span style="flex:1;text-align:center">2016</span><span style="flex:1;text-align:center">2017</span><span style="flex:1;text-align:center">2018</span><span style="flex:1;text-align:center">2019</span><span style="flex:1;text-align:center">2020</span><span style="flex:1;text-align:center">2021</span><span style="flex:1;text-align:center">2022</span><span style="flex:1;text-align:center">2023</span><span style="flex:1;text-align:center">2024</span><span style="flex:1;text-align:center">2025</span><span style="flex:1;text-align:center">2026</span></div></figure></div></div>
+        </div>
+        <footer style="margin-top:auto;height:32px;display:flex;align-items:center;gap:8px;padding:0 16px;border-top:1px solid #353c5a;font-size:12px;color:#b2b7cf"><span style="width:7px;height:7px;border-radius:4px;background:#8fb3ff"></span>Saved on this iPad<span style="margin-left:auto">TypeScript · Studio Mac</span></footer>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex;flex-direction:column;gap:14px">
+    <span style="font-size:14px;font-weight:600;color:#55555c">iPhone · title block and run button at the top</span>
+    <div style="width:320px;height:680px;border-radius:46px;background:#20243a;box-shadow:0 0 0 10px #1c1c1e,0 20px 50px rgba(0,0,0,0.25);position:relative;overflow:hidden">
+      <header style="position:absolute;left:14px;right:14px;top:52px;display:flex;align-items:center;justify-content:space-between">
+        <button class="d-btn" aria-label="Back" style="color:#f9a03f;padding:0 4px">‹ Files</button>
+        <button class="d-btn" aria-label="More" style="color:#f9a03f">•••</button>
+      </header>
+      <main style="position:absolute;left:16px;right:16px;top:104px;display:flex;flex-direction:column;gap:12px">
+        <span class="d-mono" style="font-size:10.5px;font-weight:600;letter-spacing:0.08em;color:#f9a03f">TYPESCRIPT · STUDIO MAC</span>
+        <h2 style="margin:0;font-size:28px;font-weight:800;letter-spacing:-0.03em">Riders per day, by year</h2>
+        <div class="d-cell" style="border-color:#f9a03f"><div class="d-head d-mono"><span style="color:#f9a03f">Cell 3</span><span>38 ms</span></div><pre class="d-mono" style="margin:0;padding:10px 12px;font-size:12.5px;background:#191d30;white-space:pre-wrap">Plot.<span class="fn">plot</span>({
+  marks: [
+    Plot.<span class="fn">barY</span>(yearly.<span class="fn">toRecords</span>(),
+      { x: <span class="st">"year"</span>, y: <span class="st">"per_day"</span> }),
+    Plot.<span class="fn">ruleY</span>([base2019]),
+  ],
+})</pre><div style="border-top:1px solid #353c5a;padding:10px 12px"><figure style="margin:0;width:262px;display:flex;flex-direction:column;gap:6px;font-size:10px;color:#a2a8c2"><span>↑ riders per day (Jan–Sep)</span><div style="position:relative;width:262px;height:100px"><div style="position:absolute;left:44px;right:0;top:100px;border-top:1px solid rgba(255,255,255,0.08)"></div><span style="position:absolute;left:0;width:36px;text-align:right;top:93px">0</span><div style="position:absolute;left:44px;right:0;top:74px;border-top:1px solid rgba(255,255,255,0.08)"></div><span style="position:absolute;left:0;width:36px;text-align:right;top:67px">1,000</span><div style="position:absolute;left:44px;right:0;top:47px;border-top:1px solid rgba(255,255,255,0.08)"></div><span style="position:absolute;left:0;width:36px;text-align:right;top:40px">2,000</span><div style="position:absolute;left:44px;right:0;top:21px;border-top:1px solid rgba(255,255,255,0.08)"></div><span style="position:absolute;left:0;width:36px;text-align:right;top:14px">3,000</span><div style="position:absolute;left:44px;right:0;top:10px;border-top:1.5px dashed #2747b8"></div><div title="2013: 2,720" style="position:absolute;left:45.2px;width:13.1px;bottom:0;height:72px;background:#9fb0e6"></div><div title="2014: 3,000" style="position:absolute;left:60.8px;width:13.1px;bottom:0;height:79px;background:#9fb0e6"></div><div title="2015: 2,940" style="position:absolute;left:76.4px;width:13.1px;bottom:0;height:77px;background:#9fb0e6"></div><div title="2016: 2,950" style="position:absolute;left:92.0px;width:13.1px;bottom:0;height:78px;background:#9fb0e6"></div><div title="2017: 2,820" style="position:absolute;left:107.5px;width:13.1px;bottom:0;height:74px;background:#9fb0e6"></div><div title="2018: 3,090" style="position:absolute;left:123.1px;width:13.1px;bottom:0;height:81px;background:#9fb0e6"></div><div title="2019: 3,430" style="position:absolute;left:138.7px;width:13.1px;bottom:0;height:90px;background:#2747b8"></div><div title="2020: 2,330" style="position:absolute;left:154.2px;width:13.1px;bottom:0;height:61px;background:#9fb0e6"></div><div title="2021: 2,160" style="position:absolute;left:169.8px;width:13.1px;bottom:0;height:57px;background:#9fb0e6"></div><div title="2022: 2,370" style="position:absolute;left:185.4px;width:13.1px;bottom:0;height:62px;background:#9fb0e6"></div><div title="2023: 2,660" style="position:absolute;left:201.0px;width:13.1px;bottom:0;height:70px;background:#9fb0e6"></div><div title="2024: 2,750" style="position:absolute;left:216.5px;width:13.1px;bottom:0;height:72px;background:#9fb0e6"></div><div title="2025: 3,070" style="position:absolute;left:232.1px;width:13.1px;bottom:0;height:81px;background:#9fb0e6"></div><div title="2026: 3,697" style="position:absolute;left:247.7px;width:13.1px;bottom:0;height:97px;background:#9fb0e6"></div></div></figure></div></div>
+        <div class="d-cell"><div class="d-head d-mono"><span>Cell 4</span><span>0.8 s</span></div><pre class="d-mono" style="margin:0;padding:10px 12px;font-size:12.5px;background:#191d30;white-space:pre-wrap"><span class="kw">const</span> split = h.filter(…)</pre></div>
+      </main>
+      <div style="position:absolute;left:0;right:0;bottom:0;height:84px;background:#1a1e33;border-top:1px solid #353c5a;display:flex;align-items:flex-start;justify-content:space-around;padding-top:10px;box-sizing:border-box">
+        <button class="d-btn" aria-label="Interrupt" style="color:#7c84a3">■</button>
+        <button class="d-btn" aria-label="Insert cell">+</button>
+        <button class="d-btn" style="background:#f9a03f;color:#2a1600;font-weight:700">▶ Run cell</button>
+      </div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1200,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

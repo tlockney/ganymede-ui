@@ -22,6 +22,10 @@ On first launch the app asks once whether to send crash reports
 
 ## Mac
 
+The Mac app's look follows the redesign in #844; its mockups, and how
+the design got there, are in
+[docs/design/mac-redesign](design/mac-redesign/README.md).
+
 ### Opening notebooks
 
 - Double-click an `.ipynb` file in the Finder (or Open With > Ganymede)

@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Step 4, Mac sidebar</title>
+
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&amp;family=JetBrains+Mono:wght@400;500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0}
+a{color:#fbc27a}a:hover{color:#fdd9a8}
+.s-panel{position:relative;width:272px;height:720px;border-radius:16px;display:flex;flex-direction:column;padding:14px 10px 10px;box-sizing:border-box;gap:12px;flex:none}
+.s-dark{background:linear-gradient(rgba(43,58,103,0.95),rgba(20,27,52,0.95));border:0.5px solid rgba(255,255,255,0.12);box-shadow:0 1px 0 rgba(255,255,255,0.06) inset,0 8px 24px rgba(0,0,0,0.35);color:#e6e7ee}
+.s-light{background:linear-gradient(#eef0f7,#e4e7f1);border:0.5px solid rgba(20,27,52,0.12);box-shadow:0 1px 0 rgba(255,255,255,0.8) inset,0 8px 24px rgba(20,27,52,0.12);color:#1b2036}
+.s-lights{display:flex;gap:8px;padding:2px 6px;height:20px;align-items:center}
+.s-lights span{width:12px;height:12px;border-radius:6px}
+.s-brand{display:flex;align-items:center;gap:10px;padding:0 6px}
+.s-seg{display:flex;padding:3px;border-radius:14px;gap:2px}
+.s-dark .s-seg{background:rgba(0,0,0,0.22);border:0.5px solid rgba(255,255,255,0.1)}
+.s-light .s-seg{background:rgba(20,27,52,0.07);border:0.5px solid rgba(20,27,52,0.08)}
+.s-segbtn{appearance:none;border:0;background:transparent;font:inherit;font-size:12px;height:26px;min-width:32px;padding:0 8px;border-radius:11px;display:inline-flex;align-items:center;justify-content:center;gap:5px;position:relative}
+.s-dark .s-segbtn{color:#b9bdd0}
+.s-light .s-segbtn{color:#4a5270}
+.s-dark .s-segbtn.on{background:rgba(255,255,255,0.15);color:#fff;font-weight:600;flex:1}
+.s-light .s-segbtn.on{background:#fff;color:#1b2036;font-weight:600;flex:1;box-shadow:0 1px 2px rgba(20,27,52,0.15)}
+.s-badge{position:absolute;top:1px;right:1px;font-size:9px;font-weight:600;line-height:12px;padding:0 3px;border-radius:6px;background:#f9a03f;color:#2a1600}
+.s-ico{width:15px;height:15px;flex:none}
+.s-head{display:flex;align-items:center;justify-content:space-between;padding:2px 10px 4px;font-size:10.5px;font-weight:600;letter-spacing:0.07em}
+.s-dark .s-head{color:#9a9fb6}
+.s-light .s-head{color:#5b6380}
+.s-row{display:flex;align-items:center;gap:9px;height:28px;padding:0 10px;border-radius:8px;font-size:13px}
+.s-dark .s-row{color:#dedee3}
+.s-light .s-row{color:#1f2540}
+.s-dark .s-row.sel{background:rgba(255,255,255,0.10);color:#fff;font-weight:500}
+.s-light .s-row.sel{background:rgba(20,27,52,0.08);color:#11152a;font-weight:500}
+.s-ts{width:16px;height:16px;border-radius:4px;background:#3178c6;color:#fff;font-size:8px;font-weight:700;display:flex;align-items:center;justify-content:center;flex:none}
+.s-foot{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:10px;font-size:12px}
+.s-dark .s-foot{background:rgba(0,0,0,0.18)}
+.s-light .s-foot{background:rgba(20,27,52,0.06)}
+.s-field{display:flex;align-items:center;gap:7px;height:30px;padding:0 10px;border-radius:9px;font-size:13px}
+.s-dark .s-field{background:rgba(0,0,0,0.25);border:0.5px solid rgba(255,255,255,0.12);color:#9a9fb6}
+.s-dark .s-field.focus{box-shadow:0 0 0 2px rgba(249,160,63,0.7);color:#fff}
+.s-out{display:flex;align-items:center;height:26px;padding:0 10px;border-radius:7px;font-size:12.5px;color:#dfe2ee}
+.s-out.now{color:#fbb064;font-weight:600;background:rgba(249,160,63,0.10)}
+.s-hit{display:flex;flex-direction:column;gap:2px;padding:5px 10px;border-radius:8px;font-size:12.5px;color:#dfe2ee}
+.s-hit small{font-size:11.5px;color:#a7adc6;line-height:1.35}
+.s-hit mark{background:rgba(249,160,63,0.28);color:#fff;border-radius:3px;padding:0 1px}
+.s-cap{width:272px;font-size:12.5px;line-height:1.5;color:#b8bccb}
+.s-cap b{color:#f4e9d8;font-weight:600}
+.s-mono{font-family:"SF Mono","JetBrains Mono",ui-monospace,monospace}
+</style>
+</helmet>
+<div style="width:1640px;height:900px;background:#0d0f17;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text',Inter,system-ui,sans-serif;color:#ececf1;position:relative;overflow:hidden;box-sizing:border-box;padding:32px 40px;display:flex;gap:40px">
+
+  <!-- 1 · Files, dark -->
+  <div style="display:flex;flex-direction:column;gap:14px">
+    <nav aria-label="Navigator: Files" class="s-panel s-dark">
+      <div class="s-lights"><span style="background:#ff5f57"></span><span style="background:#febc2e"></span><span style="background:#28c840"></span></div>
+      <div class="s-brand">
+        <svg width="28" height="28" viewBox="100 100 824 824" aria-hidden="true"><defs><linearGradient id="sbg1" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#2b3a67"/><stop offset="1" stop-color="#0d1226"/></linearGradient><radialGradient id="smoon1" cx="0.36" cy="0.32" r="0.8"><stop offset="0" stop-color="#f4e9d8"/><stop offset="0.55" stop-color="#c9b79c"/><stop offset="1" stop-color="#6e5f4d"/></radialGradient></defs><rect x="100" y="100" width="824" height="824" rx="185" fill="url(#sbg1)"/><g transform="rotate(-20 512 512)"><ellipse cx="512" cy="512" rx="390" ry="92" fill="none" stroke="#f9a03f" stroke-width="18" opacity="0.45"/></g><circle cx="512" cy="512" r="250" fill="url(#smoon1)"/><g transform="rotate(-20 512 512)"><path d="M122 512a390 92 0 0 0 780 0" fill="none" stroke="#f9a03f" stroke-width="22" stroke-linecap="round"/></g></svg>
+        <span style="font-size:18px;font-weight:700;letter-spacing:-0.02em;color:#f4e9d8">Ganymede</span>
+      </div>
+      <div class="s-seg" role="tablist" aria-label="Sidebar">
+        <button class="s-segbtn on" role="tab" aria-selected="true" title="Files (⌘1)"><svg class="s-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M1.5 4h5l1.5 1.5h6.5v7h-13z"/></svg>Files</button>
+        <button class="s-segbtn" role="tab" aria-selected="false" aria-label="Find" title="Find (⌘2)"><svg class="s-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.4 10.4L14 14"/></svg></button>
+        <button class="s-segbtn" role="tab" aria-selected="false" aria-label="Running, 2" title="Running (⌘3)"><svg class="s-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M9 1.5L3.5 9h4l-1 5.5L12 7H8z"/></svg><span class="s-badge" aria-hidden="true">2</span></button>
+        <button class="s-segbtn" role="tab" aria-selected="false" aria-label="Recents" title="Recents (⌘5)"><svg class="s-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></svg></button>
+        <button class="s-segbtn" role="tab" aria-selected="false" aria-label="Journals" title="Journals (⌘6)"><svg class="s-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M3 2.5h9.5v11H3z"/><path d="M5.5 2.5v11"/></svg></button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:1px">
+        <div class="s-head"><span>GANYMEDE-SERVER</span></div>
+        <div class="s-row"><svg class="s-ico" viewBox="0 0 16 16" fill="none" stroke="#c9b79c" stroke-width="1.3" aria-hidden="true"><path d="M1.5 4h5l1.5 1.5h6.5v7h-13z"/></svg>cdp-kernel</div>
+        <div class="s-row"><svg class="s-ico" viewBox="0 0 16 16" fill="none" stroke="#c9b79c" stroke-width="1.3" aria-hidden="true"><path d="M1.5 4h5l1.5 1.5h6.5v7h-13z"/></svg>data</div>
+        <div class="s-row"><svg class="s-ico" viewBox="0 0 16 16" fill="none" stroke="#c9b79c" stroke-width="1.3" aria-hidden="true"><path d="M1.5 4h5l1.5 1.5h6.5v7h-13z"/></svg>Examples</div>
+        <div class="s-row"><span class="s-ts">TS</span>04 DuckDB</div>
+        <div class="s-row sel"><span class="s-ts">TS</span>2026-11-09-fremont-bridge<span role="img" aria-label="Kernel idle" style="margin-left:auto;width:7px;height:7px;border-radius:4px;background:#8fb3ff"></span></div>
+        <div class="s-row"><span class="s-ts" style="background:#5a6177">TS</span>fremont.ts</div>
+        <div class="s-row"><span class="s-ts" style="background:#3572a5">PY</span>moons</div>
+        <div class="s-row"><span class="s-ts" style="background:#5a6177">MD</span>README.md</div>
+      </div>
+      <div style="margin-top:auto"></div>
+      <button class="s-foot" style="appearance:none;border:0;font:inherit;text-align:left;color:inherit;width:100%" aria-label="Project: ganymede-server, ~/src/personal on This Mac. Menu">
+        <svg class="s-ico" viewBox="0 0 16 16" fill="none" stroke="#c9b79c" stroke-width="1.3" aria-hidden="true"><path d="M1.5 4h5l1.5 1.5h6.5v7h-13z"/></svg>
+        <span style="display:flex;flex-direction:column;line-height:1.3;min-width:0"><span style="color:#f0f0f5;font-weight:500">ganymede-server</span><span style="font-size:11px;color:#a3a8c0">~/src/personal · This Mac</span></span>
+        <span style="margin-left:auto;color:#a3a8c0">⌄</span>
+      </button>
+    </nav>
+    <p class="s-cap" style="margin:0"><b>Files.</b> Floating navy glass with the mark and wordmark. One capsule for the navigator: the open one shows its name, the rest are icons with tooltips and labels. The open notebook is a quiet neutral row, so the active tab draws the eye. The foot names the project folder and where it is; its menu has Show in Finder, New Terminal On and Remotes.</p>
+  </div>
+
+  <!-- 2 · Find, empty = outline -->
+  <div style="display:flex;flex-direction:column;gap:14px">
+    <nav aria-label="Navigator: Find" class="s-panel s-dark">
+      <div class="s-lights"><span style="background:#ff5f57"></span><span style="background:#febc2e"></span><span style="background:#28c840"></span></div>
+      <div class="s-brand">
+        <svg width="28" height="28" viewBox="100 100 824 824" aria-hidden="true"><rect x="100" y="100" width="824" height="824" rx="185" fill="#1f2a4d"/><circle cx="512" cy="512" r="250" fill="#d9c8ab"/><g transform="rotate(-20 512 512)"><path d="M122 512a390 92 0 0 0 780 0" fill="none" stroke="#f9a03f" stroke-width="22" stroke-linecap="round"/></g></svg>
+        <span style="font-size:18px;font-weight:700;letter-spacing:-0.02em;color:#f4e9d8">Ganymede</span>
+      </div>
+      <div class="s-seg" role="tablist" aria-label="Sidebar">
+        <button class="s-segbtn" role="tab" aria-selected="false" aria-label="Files" title="Files (⌘1)"><svg class="s-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M1.5 4h5l1.5 1.5h6.5v7h-13z"/></svg></button>
+        <button class="s-segbtn on" role="tab" aria-selected="true" title="Find (⌘2)"><svg class="s-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.4 10.4L14 14"/></svg>Find</button>
+        <button class="s-segbtn" role="tab" aria-selected="false" aria-label="Running, 2" title="Running (⌘3)"><svg class="s-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M9 1.5L3.5 9h4l-1 5.5L12 7H8z"/></svg><span class="s-badge" aria-hidden="true">2</span></button>
+        <button class="s-segbtn" role="tab" aria-selected="false" aria-label="Recents" title="Recents (⌘5)"><svg class="s-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></svg></button>
+        <button class="s-segbtn" role="tab" aria-selected="false" aria-label="Journals" title="Journals (⌘6)"><svg class="s-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M3 2.5h9.5v11H3z"/><path d="M5.5 2.5v11"/></svg></button>
+      </div>
+      <label class="s-field"><svg class="s-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.4 10.4L14 14"/></svg><input aria-label="Find in this notebook and folder" placeholder="Find in notebook and folder" style="all:unset;flex:1;font-size:13px;color:#fff"></label>
+      <div style="display:flex;flex-direction:column;gap:1px">
+        <div class="s-head"><span>OUTLINE · FREMONT BRIDGE</span></div>
+        <a class="s-out" href="#" style="font-weight:600;text-decoration:none">Have bike commutes come back since 2019?</a>
+        <a class="s-out" href="#" style="padding-left:22px;text-decoration:none">1. What does the counter cover?</a>
+        <a class="s-out now" href="#" aria-current="location" style="padding-left:22px;text-decoration:none">2. Riders per day, by year</a>
+        <a class="s-out" href="#" style="padding-left:22px;text-decoration:none">3. Can the sidewalk split…</a>
+        <a class="s-out" href="#" style="padding-left:22px;text-decoration:none">4. Workdays and weekends</a>
+        <a class="s-out" href="#" style="padding-left:22px;text-decoration:none">5. The 6–10 am window</a>
+        <a class="s-out" href="#" style="padding-left:22px;text-decoration:none">6. Dry days only</a>
+        <a class="s-out" href="#" style="padding-left:22px;text-decoration:none">Findings</a>
+      </div>
+      <div style="margin-top:auto"></div>
+      <button class="s-foot" style="appearance:none;border:0;font:inherit;text-align:left;color:inherit;width:100%" aria-label="Project: ganymede-server, ~/src/personal on This Mac. Menu">
+        <svg class="s-ico" viewBox="0 0 16 16" fill="none" stroke="#c9b79c" stroke-width="1.3" aria-hidden="true"><path d="M1.5 4h5l1.5 1.5h6.5v7h-13z"/></svg>
+        <span style="display:flex;flex-direction:column;line-height:1.3"><span style="color:#f0f0f5;font-weight:500">ganymede-server</span><span style="font-size:11px;color:#a3a8c0">~/src/personal · This Mac</span></span>
+        <span style="margin-left:auto;color:#a3a8c0">⌄</span>
+      </button>
+    </nav>
+    <p class="s-cap" style="margin:0"><b>Find, empty: the outline.</b> Outline and Search become one tab. With nothing typed it is the open notebook's outline; the section you're reading is marked, and a click goes there. ⌘2 opens it, and ⌘4 (today's Outline) and ⌘⇧F focus its field.</p>
+  </div>
+
+  <!-- 3 · Find, typing -->
+  <div style="display:flex;flex-direction:column;gap:14px">
+    <nav aria-label="Navigator: Find results" class="s-panel s-dark">
+      <div class="s-lights"><span style="background:#ff5f57"></span><span style="background:#febc2e"></span><span style="background:#28c840"></span></div>
+      <div class="s-brand">
+        <svg width="28" height="28" viewBox="100 100 824 824" aria-hidden="true"><rect x="100" y="100" width="824" height="824" rx="185" fill="#1f2a4d"/><circle cx="512" cy="512" r="250" fill="#d9c8ab"/><g transform="rotate(-20 512 512)"><path d="M122 512a390 92 0 0 0 780 0" fill="none" stroke="#f9a03f" stroke-width="22" stroke-linecap="round"/></g></svg>
+        <span style="font-size:18px;font-weight:700;letter-spacing:-0.02em;color:#f4e9d8">Ganymede</span>
+      </div>
+      <div class="s-seg" role="tablist" aria-label="Sidebar">
+        <button class="s-segbtn" role="tab" aria-selected="false" aria-label="Files" title="Files (⌘1)"><svg class="s-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M1.5 4h5l1.5 1.5h6.5v7h-13z"/></svg></button>
+        <button class="s-segbtn on" role="tab" aria-selected="true" title="Find (⌘2)"><svg class="s-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.4 10.4L14 14"/></svg>Find</button>
+        <button class="s-segbtn" role="tab" aria-selected="false" aria-label="Running, 2" title="Running (⌘3)"><svg class="s-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M9 1.5L3.5 9h4l-1 5.5L12 7H8z"/></svg><span class="s-badge" aria-hidden="true">2</span></button>
+        <button class="s-segbtn" role="tab" aria-selected="false" aria-label="Recents" title="Recents (⌘5)"><svg class="s-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></svg></button>
+        <button class="s-segbtn" role="tab" aria-selected="false" aria-label="Journals" title="Journals (⌘6)"><svg class="s-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M3 2.5h9.5v11H3z"/><path d="M5.5 2.5v11"/></svg></button>
+      </div>
+      <label class="s-field focus"><svg class="s-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.4 10.4L14 14"/></svg><input aria-label="Find in this notebook and folder" value="sidewalk" style="all:unset;flex:1;font-size:13px;color:#fff"><span aria-hidden="true" style="color:#9a9fb6">✕</span></label>
+      <div style="display:flex;flex-direction:column;gap:1px">
+        <div class="s-head"><span>IN THIS NOTEBOOK · 3</span></div>
+        <a class="s-hit" href="#" style="text-decoration:none">3. Can the <mark>sidewalk</mark> split…<small>Heading</small></a>
+        <a class="s-hit" href="#" style="text-decoration:none"><span style="color:#a7adc6;font-size:11.5px">3. Can the sidewalk split…</span><small>…the west/east <mark>sidewalk</mark> columns change meaning on 1 Jul 2025…</small></a>
+        <a class="s-hit" href="#" style="text-decoration:none"><span style="color:#a7adc6;font-size:11.5px">Findings</span><small>4. The west/east <mark>sidewalk</mark> columns change…</small></a>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:1px">
+        <div class="s-head"><span>IN GANYMEDE-SERVER · 2</span><span style="display:flex;align-items:center;gap:5px;letter-spacing:0;font-weight:500"><span aria-hidden="true" style="width:12px;height:12px;border-radius:3px;background:#f9a03f;color:#2a1600;font-size:9px;display:inline-flex;align-items:center;justify-content:center">✓</span>Contents</span></div>
+        <a class="s-hit" href="#" style="text-decoration:none"><span style="display:flex;align-items:center;gap:7px"><span class="s-ts" style="background:#5a6177">TS</span>fremont.ts</span><small class="s-mono" style="font-size:11px">west: r.<mark>sidewalk</mark>_west ?? 0,</small></a>
+        <a class="s-hit" href="#" style="text-decoration:none"><span style="display:flex;align-items:center;gap:7px"><span class="s-ts" style="background:#5a6177">MD</span>data/README.md</span><small>Counts per <mark>sidewalk</mark>, hourly…</small></a>
+      </div>
+      <div style="margin-top:auto"></div>
+      <button class="s-foot" style="appearance:none;border:0;font:inherit;text-align:left;color:inherit;width:100%" aria-label="Project: ganymede-server, ~/src/personal on This Mac. Menu">
+        <svg class="s-ico" viewBox="0 0 16 16" fill="none" stroke="#c9b79c" stroke-width="1.3" aria-hidden="true"><path d="M1.5 4h5l1.5 1.5h6.5v7h-13z"/></svg>
+        <span style="display:flex;flex-direction:column;line-height:1.3"><span style="color:#f0f0f5;font-weight:500">ganymede-server</span><span style="font-size:11px;color:#a3a8c0">~/src/personal · This Mac</span></span>
+        <span style="margin-left:auto;color:#a3a8c0">⌄</span>
+      </button>
+    </nav>
+    <p class="s-cap" style="margin:0"><b>Find, typing.</b> Matches in the open notebook come first, each under its section; a click goes to the cell. Then the folder's files, by name, and by text with Contents ticked (today's Search). With no notebook open, only the folder part shows.</p>
+  </div>
+
+  <!-- 4 · Files, light -->
+  <div style="display:flex;flex-direction:column;gap:14px">
+    <nav aria-label="Navigator: Files, light" class="s-panel s-light">
+      <div class="s-lights"><span style="background:#ff5f57"></span><span style="background:#febc2e"></span><span style="background:#28c840"></span></div>
+      <div class="s-brand">
+        <svg width="28" height="28" viewBox="100 100 824 824" aria-hidden="true"><rect x="100" y="100" width="824" height="824" rx="185" fill="#2b3a67"/><circle cx="512" cy="512" r="250" fill="#e8dcc6"/><g transform="rotate(-20 512 512)"><path d="M122 512a390 92 0 0 0 780 0" fill="none" stroke="#f9a03f" stroke-width="22" stroke-linecap="round"/></g></svg>
+        <span style="font-size:18px;font-weight:700;letter-spacing:-0.02em;color:#1b2036">Ganymede</span>
+      </div>
+      <div class="s-seg" role="tablist" aria-label="Sidebar">
+        <button class="s-segbtn on" role="tab" aria-selected="true" title="Files (⌘1)"><svg class="s-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M1.5 4h5l1.5 1.5h6.5v7h-13z"/></svg>Files</button>
+        <button class="s-segbtn" role="tab" aria-selected="false" aria-label="Find" title="Find (⌘2)"><svg class="s-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><circle cx="7" cy="7" r="4.5"/><path d="M10.4 10.4L14 14"/></svg></button>
+        <button class="s-segbtn" role="tab" aria-selected="false" aria-label="Running, 2" title="Running (⌘3)"><svg class="s-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M9 1.5L3.5 9h4l-1 5.5L12 7H8z"/></svg><span class="s-badge" aria-hidden="true">2</span></button>
+        <button class="s-segbtn" role="tab" aria-selected="false" aria-label="Recents" title="Recents (⌘5)"><svg class="s-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 4.5V8l2.5 1.5"/></svg></button>
+        <button class="s-segbtn" role="tab" aria-selected="false" aria-label="Journals" title="Journals (⌘6)"><svg class="s-ico" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M3 2.5h9.5v11H3z"/><path d="M5.5 2.5v11"/></svg></button>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:1px">
+        <div class="s-head"><span>GANYMEDE-SERVER</span></div>
+        <div class="s-row"><svg class="s-ico" viewBox="0 0 16 16" fill="none" stroke="#8a6a3c" stroke-width="1.3" aria-hidden="true"><path d="M1.5 4h5l1.5 1.5h6.5v7h-13z"/></svg>cdp-kernel</div>
+        <div class="s-row"><svg class="s-ico" viewBox="0 0 16 16" fill="none" stroke="#8a6a3c" stroke-width="1.3" aria-hidden="true"><path d="M1.5 4h5l1.5 1.5h6.5v7h-13z"/></svg>data</div>
+        <div class="s-row"><svg class="s-ico" viewBox="0 0 16 16" fill="none" stroke="#8a6a3c" stroke-width="1.3" aria-hidden="true"><path d="M1.5 4h5l1.5 1.5h6.5v7h-13z"/></svg>Examples</div>
+        <div class="s-row"><span class="s-ts">TS</span>04 DuckDB</div>
+        <div class="s-row sel"><span class="s-ts">TS</span>2026-11-09-fremont-bridge<span role="img" aria-label="Kernel idle" style="margin-left:auto;width:7px;height:7px;border-radius:4px;background:#2f5fd0"></span></div>
+        <div class="s-row"><span class="s-ts" style="background:#6b7186">TS</span>fremont.ts</div>
+        <div class="s-row"><span class="s-ts" style="background:#3572a5">PY</span>moons</div>
+        <div class="s-row"><span class="s-ts" style="background:#6b7186">MD</span>README.md</div>
+      </div>
+      <div style="margin-top:auto"></div>
+      <button class="s-foot" style="appearance:none;border:0;font:inherit;text-align:left;color:inherit;width:100%" aria-label="Project: ganymede-server, ~/src/personal on This Mac. Menu">
+        <svg class="s-ico" viewBox="0 0 16 16" fill="none" stroke="#8a6a3c" stroke-width="1.3" aria-hidden="true"><path d="M1.5 4h5l1.5 1.5h6.5v7h-13z"/></svg>
+        <span style="display:flex;flex-direction:column;line-height:1.3"><span style="color:#11152a;font-weight:500">ganymede-server</span><span style="font-size:11px;color:#4f5775">~/src/personal · This Mac</span></span>
+        <span style="margin-left:auto;color:#4f5775">⌄</span>
+      </button>
+    </nav>
+    <p class="s-cap" style="margin:0"><b>Light.</b> The same glass with a pale navy tint; the mark keeps its colours. Hidden (toolbar button, ⌃⌘S, View menu), the sidebar takes no room and the page reflows to the full window, as today.</p>
+  </div>
+
+  <div style="position:absolute;right:28px;top:32px;width:300px;padding:14px 16px;border-radius:12px;background:#fff8c5;color:#3a3418;font-size:12.5px;line-height:1.5;font-family:Inter,system-ui,sans-serif">
+    <b>Step 4 proposal.</b> Tabs go from six to five: Files, Find (Outline + Search), Running, Recents (this Mac only), Journals. "Kernels run on" leaves the sidebar foot: it is already in the kernel button's popover and the Kernel menu. The Running count stays as a badge. Machine windows get the same sidebar with the machine's name in the foot.</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1640,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
