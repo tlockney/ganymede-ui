@@ -712,16 +712,6 @@ final class PlaceTests: XCTestCase {
 
     // MARK: this Mac's own server (#883)
 
-    /// The server info file the check accepts, as `ThisMacVerifier` makes
-    /// one: this Mac's own Ganymede on a loopback port.
-    private func serverInfo(
-        port: Int = 8888, token: String = "a-token", root: String = "/Users/me"
-    ) -> ThisMacServer {
-        ThisMacServer(
-            pid: 42, url: URL(string: "http://127.0.0.1:\(port)/")!, token: token,
-            root: URL(fileURLWithPath: root, isDirectory: true), version: "0.17.0")
-    }
-
     func testThisMacsOwnServerIsThisDevicesPlaceThroughItsMount() {
         let here = Place.thisMac(id)
         XCTAssertTrue(here.isThisMac)
@@ -760,41 +750,18 @@ final class PlaceTests: XCTestCase {
         XCTAssertEqual(Place.machine(id).asker { _ in "mini" }, "mini")
     }
 
-    /// A remote is this Mac's own place only when it names the verified
-    /// server: the same loopback port, with the same token (#883).
-    func testARemoteMakesThisMacsPlaceOnlyWhenItNamesTheVerifiedServer() {
+    /// A window's place is its remote's, and this Mac's own for the ids a
+    /// check verified: the one production path a window, the place switcher
+    /// and a menu read (#883). What a remote must name to be verified is
+    /// `ThisMacVerifier`'s and `ThisMacServers`' (`ThisMacServersTests`).
+    func testARemoteMakesThisMacsPlaceOnlyWhenTheCheckVerifiedIt() {
         let remote = Remote(name: "here", serverURL: "http://127.0.0.1:8888")
-        let server = serverInfo()
         XCTAssertEqual(
-            Place(remote: remote, token: "a-token", thisMac: [server]),
-            .thisMac(remote.id.uuidString))
-        // Another token, no token, no check at all, or a server on another
-        // port: an ordinary machine.
-        XCTAssertEqual(
-            Place(remote: remote, token: "another", thisMac: [server]),
-            .machine(remote.id.uuidString))
-        XCTAssertEqual(Place(remote: remote, thisMac: [server]), .machine(remote.id.uuidString))
-        XCTAssertEqual(Place(remote: remote, token: "a-token"), .machine(remote.id.uuidString))
-        XCTAssertEqual(
-            Place(remote: remote, token: "a-token", thisMac: [serverInfo(port: 9999)]),
-            .machine(remote.id.uuidString))
-        // Another loopback address is another server, even with the port and
-        // token the verified one wrote: the app would reach a server it
-        // didn't check.
-        let elsewhere = Remote(name: "here", serverURL: "http://localhost:8888")
-        XCTAssertEqual(
-            Place(remote: elsewhere, token: "a-token", thisMac: [server]),
-            .machine(elsewhere.id.uuidString))
-        // A name that isn't loopback is no this Mac's server, whatever its
-        // port and token say.
-        let named = Remote(name: "mini", serverURL: "http://mini:8888")
-        XCTAssertEqual(
-            Place(remote: named, token: "a-token", thisMac: [server]),
-            .machine(named.id.uuidString))
-        // The ids the app verified, for the places it lists and the windows
-        // it opens, without reading a token again.
-        XCTAssertEqual(Place(remote: remote, verified: [remote.id.uuidString]), .thisMac(remote.id.uuidString))
+            Place(remote: remote, verified: [remote.id.uuidString]), .thisMac(remote.id.uuidString))
         XCTAssertEqual(Place(remote: remote, verified: []), .machine(remote.id.uuidString))
+        XCTAssertEqual(Place(remote: remote), .machine(remote.id.uuidString))
+        // A remote with no server is no place at all: it is for shells.
+        XCTAssertNil(Place(remote: Remote(name: "box"), verified: []))
     }
 
     func testThisMacsTerminalsRunOnItAsAMachinesDo() {
@@ -925,5 +892,125 @@ final class PlaceTests: XCTestCase {
         XCTAssertEqual(
             WindowTarget.root(of: .thisMac(id), device: URL(fileURLWithPath: "/Users/me")),
             WindowTarget.machine(id, path: "/", isFolder: true))
+    }
+
+    /// A window's place follows the check without the page being loaded
+    /// under it (#883): an upgrade to this Mac's own server waits for the
+    /// window's next load, and a downgrade applies at once, since the
+    /// handlers the page was given must not outlive the verified server. A
+    /// downgrade taken that way is held: a check that verifies the server
+    /// again waits for the next load too.
+    func testAWindowsPlaceUpgradesOnItsNextLoadAndDowngradesAtOnce() {
+        let here = Place.thisMac(id)
+        let machine = Place.machine(id)
+        // The page loaded as a machine's, and the check now verifies it: the
+        // window stays a machine's until it loads again, and is no machine's
+        // once it does.
+        XCTAssertEqual(Place.window(loaded: machine, current: here), machine)
+        // This Mac's own server is gone: the window is a machine's now.
+        XCTAssertEqual(Place.window(loaded: here, current: machine), machine)
+        // The downgrade it took is held, as a machine's place now is: a check
+        // that verifies the server again waits for the next load.
+        let held = Place.window(loaded: here, current: machine)
+        XCTAssertEqual(Place.window(loaded: held, current: here), held)
+        // A page loaded at a place the app still finds: unchanged.
+        XCTAssertEqual(Place.window(loaded: here, current: here), here)
+        XCTAssertEqual(Place.window(loaded: .thisDevice, current: .thisDevice), .thisDevice)
+        // Before a window's page is loaded at all, its place is the one the
+        // app finds.
+        XCTAssertEqual(Place.window(loaded: nil, current: machine), machine)
+    }
+
+    /// A link the page opens in a new window (`target="_blank"`,
+    /// `window.open`) is read as a click's (#883): in this Mac's own server's
+    /// window a relative `open` shows the notebook there, where the system
+    /// would otherwise resolve it as a file on this Mac, and a machine's
+    /// window still refuses one that names this device's files.
+    func testANewWindowsLinkIsReadAsAClick() throws {
+        let here = Place.thisMac(id)
+        let open = try XCTUnwrap(URL(string: "ganymede://open?path=notes/a.ipynb"))
+        XCTAssertEqual(here.newWindowAction(for: open), .openOnMachine(path: "notes/a.ipynb"))
+        XCTAssertEqual(
+            Place.machine(id).newWindowAction(for: open), .openOnMachine(path: "notes/a.ipynb"))
+        // The rest go to the system in this Mac's own server's window, as
+        // this device's do: an absolute path is a file on this Mac.
+        for link in [
+            "ganymede://open?path=/Users/me/a.ipynb",
+            "ganymede://open?path=~/a.ipynb",
+            "ganymede://open?path=../a.ipynb",
+            "ganymede://run?path=a.ipynb",
+        ] {
+            let url = try XCTUnwrap(URL(string: link))
+            XCTAssertEqual(here.newWindowAction(for: url), .openExternally, link)
+            XCTAssertEqual(Place.thisDevice.newWindowAction(for: url), .openExternally, link)
+        }
+        // A machine's refuses one, with the notice, as a click does.
+        XCTAssertEqual(
+            Place.machine(id).newWindowAction(
+                for: try XCTUnwrap(URL(string: "ganymede://open?path=/Users/me/a.ipynb"))),
+            .refuse)
+        // A web link opens in the browser, as a click's does, in either.
+        let web = try XCTUnwrap(URL(string: "https://example.com/x"))
+        XCTAssertEqual(here.newWindowAction(for: web), .openExternally)
+        XCTAssertEqual(Place.machine(id).newWindowAction(for: web), .openExternally)
+    }
+
+    /// A window's page paths are from its own server's root (#883): this
+    /// Mac's own server's `root_dir`, and the app server's root for every
+    /// other place, so a recent console, a save and the page's recents name
+    /// the same folders.
+    /// Only a downgrade is taken by the web view a window has (#883), so
+    /// the page keeps its unsaved edits; an upgrade, even back to the place
+    /// it was downgraded from, waits for another web view on a load.
+    func testOnlyADowngradeIsTakenInPlace() {
+        XCTAssertTrue(Place.thisMac(id).takesInPlace(.machine(id)))
+        XCTAssertFalse(Place.machine(id).takesInPlace(.thisMac(id)))
+        XCTAssertFalse(Place.thisDevice.takesInPlace(.machine(id)))
+        XCTAssertFalse(Place.machine(id).takesInPlace(.thisDevice))
+    }
+
+    /// A remote saved with another address or token is mounted again, and
+    /// a remote that is gone is unmounted: each loses its this-Mac trust
+    /// first (#883). One saved as it was keeps its mount and its trust.
+    func testARemoteEditedOrRemovedIsTheOneWhoseTrustGoes() {
+        let mounted = ["same": "http://127.0.0.1:8888|t", "moved": "http://127.0.0.1:8888|t",
+                       "rekeyed": "http://127.0.0.1:8888|t", "gone": "http://127.0.0.1:8888|t"]
+        let wanted: [String: (url: String, token: String)] = [
+            "same": ("http://127.0.0.1:8888", "t"), "moved": ("http://127.0.0.1:9999", "t"),
+            "rekeyed": ("http://127.0.0.1:8888", "u"), "new": ("http://127.0.0.1:8888", "t"),
+        ]
+        let changes = MachineMounts.changes(mounted: mounted, wanted: wanted)
+        XCTAssertEqual(changes.removed, ["gone"])
+        XCTAssertEqual(changes.remounted, ["moved", "new", "rekeyed"])
+    }
+
+    func testAPagePathIsUnderTheWindowsOwnRoot() {
+        let server = URL(fileURLWithPath: "/", isDirectory: true)
+        let work = URL(fileURLWithPath: "/Users/me/work", isDirectory: true)
+        let here = Place.thisMac(id)
+        XCTAssertEqual(here.pageRoot(thisMac: work, server: server), PageRoot(url: work))
+        // Every other place's page is the app server's, whose root is this
+        // Mac's, whatever a this-Mac server is rooted at.
+        XCTAssertEqual(Place.machine(id).pageRoot(thisMac: work, server: server), PageRoot(url: server))
+        XCTAssertEqual(Place.thisDevice.pageRoot(thisMac: work, server: server), PageRoot(url: server))
+        // The check that verified it is gone: the app's own root, which is
+        // what a window of no this-Mac place has.
+        XCTAssertEqual(here.pageRoot(thisMac: nil, server: server), PageRoot(url: server))
+        let root = here.pageRoot(thisMac: work, server: server)
+        XCTAssertEqual(root.file("notes/Io.ipynb"), work.appendingPathComponent("notes/Io.ipynb"))
+        // The window's `document` message is read against the same root as
+        // the ledger's notebook paths (`received(document:)`).
+        XCTAssertEqual(
+            DocumentMessage(body: ["path": "notes/Io.ipynb", "dirty": false], root: root.url, place: here)?.file,
+            work.appendingPathComponent("notes/Io.ipynb"))
+        XCTAssertEqual(
+            root.files(["a.ipynb", "notes/b.ipynb"]),
+            [work.appendingPathComponent("a.ipynb"), work.appendingPathComponent("notes/b.ipynb")])
+        // File › Open Recent Console opens a recent console's folder there:
+        // the page named it from its own server's root.
+        let session = UUID()
+        XCTAssertEqual(
+            TabRequest.duckdbConsole(folder: "notes", session: session).target(root: root.url),
+            .console(folder: work.appendingPathComponent("notes", isDirectory: true), id: session))
     }
 }

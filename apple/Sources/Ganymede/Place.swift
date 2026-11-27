@@ -37,17 +37,16 @@ enum Place: Hashable, Codable {
         self = .machine(id)
     }
 
-    /// The place of a remote: its UUID string, and this Mac's own when
-    /// `thisMac` has verified one of this Mac's servers at the remote's
-    /// address, on its port and with its token (#883). Elsewhere a remote's
-    /// place is `.machine`, and on iOS it always is: nothing verifies there.
-    init?(remote: Remote, token: String? = nil, thisMac: [ThisMacServer] = []) {
+    /// The place of a remote, before any this-Mac check: an SSH-only remote
+    /// is no place, and one with a server is its machine. What a window
+    /// opened now would be, and what the syncing paths name;
+    /// `init?(remote:verified:)` is what a check's answer makes of it
+    /// (#883). Trust is never given on the address alone: `ThisMacServers`
+    /// matches a verified server to a remote, and a place is read from its
+    /// answer.
+    init?(remote: Remote) {
         guard remote.hasServer, let place = Place(machine: remote.id.uuidString) else { return nil }
-        if let id = place.machineID, thisMac.contains(where: { $0.serves(remote, token: token) }) {
-            self = .thisMac(id)
-        } else {
-            self = place
-        }
+        self = place
     }
 
     /// The place of a remote whose id the app has already verified (#883):
@@ -328,6 +327,34 @@ enum Place: Hashable, Codable {
     /// The names x-callback-url puts in a link's query.
     static let callbackNames: Set<String> = ["x-success", "x-error", "x-cancel"]
 
+    /// What a new window (`target="_blank"`, `window.open`) does with `url`
+    /// (#883): the page asked for one, so its link is read as a click's is —
+    /// a relative `open` in a machine's window, or in this Mac's own
+    /// server's, shows that notebook in the window it came from, while
+    /// anything else that needs no window goes to the system, as a click's
+    /// does. One rule, so a new window can't be the way round
+    /// `decidePolicyFor` and into this device's `AppURL`.
+    func newWindowAction(for url: URL) -> LinkAction { linkAction(for: url, clicked: true) }
+
+    /// What a window's place is (#883), from the place its page was loaded
+    /// with and the one the app finds now: an upgrade to this Mac's own
+    /// server applies on the window's next load, never under the page that
+    /// is showing, and a downgrade applies at once — the page's elevated
+    /// handlers must not outlive the verified server. A downgrade that was
+    /// taken this way is held: a check that verifies the server again waits
+    /// for the next load too.
+    static func window(loaded: Place?, current: Place) -> Place {
+        guard let loaded else { return current }
+        return loaded.isThisMac && !current.isThisMac ? current : loaded
+    }
+
+    /// Whether a window's web view, made for this place, takes `new` in
+    /// place (#883): only a downgrade — this Mac's own server is gone — is
+    /// taken under the page that is showing, so its unsaved edits stay.
+    /// Anything else, an upgrade above all, is another web view's, made on
+    /// the window's next load.
+    func takesInPlace(_ new: Place) -> Bool { isThisMac && !new.isThisMac }
+
     /// `path` when a machine's window may open it: relative to the
     /// machine's root, with no empty, `.` or `..` segment, which
     /// `appendingPathComponent` would keep and the mount would be asked
@@ -400,6 +427,34 @@ enum Place: Hashable, Codable {
         var items = [("machine", id)]
         if let name, !name.isEmpty { items.append(("machine_name", name)) }
         return items
+    }
+
+    /// The folder a window of this place reads its page's paths from
+    /// (#883): this Mac's own server's `root_dir` (`thisMac`, which the
+    /// check that verified it keeps and which may be gone since), since the
+    /// page's paths are from it; else the app server's root, which this
+    /// device's and a machine's pages are from. One rule, so the ledger, a
+    /// `document` message, Recents and Spotlight name the same folders.
+    func pageRoot(thisMac root: URL?, server: URL) -> PageRoot {
+        PageRoot(url: isThisMac ? root ?? server : server)
+    }
+}
+
+/// The folder a window's page paths are under (#883). A this-Mac window's
+/// server is rooted at its `root_dir`, so a path the page names is a file
+/// under that; this device's page is rooted at the app server's root, and
+/// a machine's paths never reach this Mac's disk at all.
+struct PageRoot: Equatable {
+    var url: URL
+
+    /// The file at `path`, as the page names it.
+    func file(_ path: String) -> URL {
+        url.appendingPathComponent(path, isDirectory: false)
+    }
+
+    /// The files at `paths`, as the page names them.
+    func files(_ paths: [String]) -> [URL] {
+        paths.map(file)
     }
 }
 

@@ -15,8 +15,14 @@ struct ContentView: View {
     /// The place this window's page was loaded with (#883): a check that
     /// verifies its machine is this Mac's own upgrades the window on its
     /// next load, and a check that stops verifying it downgrades the window
-    /// at once. `place` reads it.
+    /// at once, in place. `place` reads it.
     @State private var loadedPlace: Place?
+    /// What the window's web view is made for (#883): its place and the
+    /// folder a this-Mac server is rooted at. An upgrade to this Mac's own
+    /// server, and a server restarted on another folder, are another web
+    /// view's; a downgrade is not, since making the web view again would
+    /// load the page again and drop its unsaved edits.
+    @State private var pagePlace: PagePlace
     /// The folder the sidebar lists and New Notebook uses. It stays put
     /// when the page opens a notebook in a subfolder, which moves `target`.
     @State private var sidebarRoot: URL
@@ -65,14 +71,19 @@ struct ContentView: View {
         // made as this window opens.
         let request = target.wrappedValue == nil ? WorkspaceTabs.pending : nil
         let loaded = WindowTarget.opening(target.wrappedValue, requested: request?.target, root: AppModel.shared.root)
-        // A restored window's machine is checked here, before its first
-        // load (#883): the page is loaded with the place the check finds,
-        // as this Mac's own server's window or a machine's, and is not made
-        // again by a check that answers after it.
+        // A restored window's machine is checked once, here, before its
+        // first load (#883): the page is loaded with the place the check
+        // finds, as this Mac's own server's window or a machine's, and is
+        // not made again by a check that answers after it. SwiftUI makes a
+        // window's `ContentView` more than once and keeps only the first;
+        // `AppModel.verifyThisMacNow` sees that, and checks for the first of
+        // them in a turn.
         let model = AppModel.shared
         if loaded.place.isMachine { model.verifyThisMacNow() }
+        let place = model.place(for: loaded)
         _loaded = State(initialValue: loaded)
-        _loadedPlace = State(initialValue: model.place(for: loaded))
+        _loadedPlace = State(initialValue: place)
+        _pagePlace = State(initialValue: ContentView.PagePlace(place: place, root: model.thisMacRoot(for: place)?.path))
         _sidebarRoot = State(initialValue: loaded.folder)
         _request = State(initialValue: request)
     }
@@ -473,7 +484,8 @@ struct ContentView: View {
         }
         .onChange(of: pageModel.state.dirty) { was, now in
             guard was, !now, place.indexesLocally, let path = pageModel.state.path else { return }
-            SpotlightSettings.shared.saved(model.serverRootFolder.appendingPathComponent(path, isDirectory: false))
+            // The page's paths are from its own server's root (#883).
+            SpotlightSettings.shared.saved(pageRoot.file(path))
         }
         .onContinueUserActivity(CSSearchableItemActionType) { activity in
             _ = SpotlightSettings.shared.open(activity, with: openFromSpotlight)
@@ -602,7 +614,9 @@ struct ContentView: View {
         loaded = shown
         // Another load: the page is loaded with the place the app finds
         // now (#883), so a check that verified its machine applies here.
-        loadedPlace = model.place(for: shown)
+        let place = model.place(for: shown)
+        loadedPlace = place
+        pagePlace = PagePlace(place: place, root: model.thisMacRoot(for: place)?.path)
         sidebarRoot = shown.folder
     }
 
@@ -618,24 +632,22 @@ struct ContentView: View {
     /// What the app says this window's place is now (#883).
     private var currentPlace: Place { model.place(for: loaded) }
 
-    /// The place this window's page was loaded with (#883). A check that
-    /// verifies the window's machine is this Mac's own upgrades the window
-    /// on its next load — the page loading again, the window opening
-    /// another page, or a new window — never under the page that is
-    /// showing. A check that stops verifying it rebuilds the window at once
-    /// as a machine's, since the handlers it was given must not outlive the
-    /// verified server.
-    private var place: Place {
-        guard let loadedPlace else { return currentPlace }
-        return loadedPlace.isThisMac && !currentPlace.isThisMac ? currentPlace : loadedPlace
-    }
+    /// The place this window is (#883): the one its page was loaded with,
+    /// upgraded to this Mac's own on its next load, and downgraded at once
+    /// when the check stops verifying the server — in place, without the
+    /// web view being made again, so the page keeps its unsaved edits.
+    private var place: Place { Place.window(loaded: loadedPlace, current: currentPlace) }
 
     /// The page loaded (#883): its place is read again, so a check that
-    /// verified the window's machine applies on this load. A page reloaded
-    /// at the same place changes nothing.
+    /// verified the window's machine applies on this load. The web view's
+    /// identity follows it, which is a load's business (a page loading
+    /// again, another page, another window), never a downgrade's: that is
+    /// taken in place, and this runs only after a load committed.
     private func readPlace() {
         let now = currentPlace
         if loadedPlace != now { loadedPlace = now }
+        let made = PagePlace(place: now, root: model.thisMacRoot(for: now)?.path)
+        if pagePlace != made { pagePlace = made }
     }
 
     /// What a new terminal in this window runs on (#858), as File > New
@@ -1238,11 +1250,10 @@ struct ContentView: View {
         }
     }
 
-    /// The page's recents, as files, for Spotlight (#305).
+    /// The page's recents, as files, for Spotlight (#305): under the folder
+    /// its paths are from, its own server's root (#883).
     private var recentFiles: [URL] {
-        (pageModel.state.recents ?? []).map {
-            model.serverRootFolder.appendingPathComponent($0, isDirectory: false)
-        }
+        pageRoot.files(pageModel.state.recents ?? [])
     }
     #endif
 
@@ -1269,9 +1280,9 @@ struct ContentView: View {
         var root: String?
     }
 
-    private var pagePlace: PagePlace {
-        PagePlace(place: place, root: model.thisMacRoot(for: place)?.path)
-    }
+    /// The folder a window of `place`'s page paths are from (#883): this
+    /// Mac's own server's `root_dir`, else the app server's root.
+    private var pageRoot: PageRoot { model.pageRoot(for: place) }
 
     private var content: some View {
         Group {
@@ -1284,18 +1295,20 @@ struct ContentView: View {
                         openWindow(value: EditorRequest(path: path, place: place))
                     },
                     place: place, sharesName: sharesName(for: place), usesDevice: usesDevice(for: place),
-                    ledgerRoot: model.thisMacRoot(for: place),
+                    pageRoot: pageRoot,
                     onLoad: readPlace
                 )
                 // A page loaded for another place, or for a server rooted
-                // elsewhere, gets its own handlers.
+                // elsewhere, gets its own handlers. A downgrade keeps the
+                // one it has (#883): its handlers go in place instead.
                 .id(pagePlace)
                 #else
                 // A page loaded for another place gets its own handlers: this
                 // device's page is not a machine's (#758).
                 WebView(
                     url: url, page: pageModel, onOpenFile: openEditor, store: isPhone ? phonePage : nil,
-                    place: place, sharesName: sharesName(for: place), usesDevice: usesDevice(for: place)
+                    place: place, sharesName: sharesName(for: place), usesDevice: usesDevice(for: place),
+                    pageRoot: pageRoot
                 )
                 .id(place)
                 #endif
@@ -1313,7 +1326,8 @@ struct ContentView: View {
         #if os(macOS)
         .onChange(of: currentPlace) { _, now in
             // A downgrade is kept, so a check that verifies the server
-            // again waits for the next load to apply (#883).
+            // again waits for the next load to apply (#883): the web view
+            // took the downgrade in place, and an upgrade is a load's.
             guard let held = loadedPlace, held.isThisMac, !now.isThisMac else { return }
             loadedPlace = now
         }

@@ -51,28 +51,47 @@ struct ThisMacVerifier {
     /// Ganymede. Every part must hold; a build that can't say who it is (a
     /// debug build, signed ad hoc) verifies nothing, which is intended.
     func verify(_ info: ThisMacServer) -> Bool {
-        verify(
-            info, team: probe.teamIdentifier, identifier: probe.helperIdentifier,
-            version: probe.bundledVersion)
+        guard let team = probe.teamIdentifier, !team.isEmpty,
+              let identifier = probe.helperIdentifier, !identifier.isEmpty,
+              passes(info, team: team, identifier: identifier),
+              let version = probe.bundledVersion, version == info.version
+        else { return false }
+        return true
     }
 
     /// The servers of this Mac's own Ganymede in `directory`, the info files
     /// that verify. The app's own identity is looked at once for them all.
+    /// The bundled tool's version is read only once an info file has passed
+    /// the cheaper checks (`passes(_:team:identifier:)`), since reading it
+    /// runs the tool: an unsigned or ad-hoc-signed build, which can verify
+    /// nothing, and a file that is no server's, never run it.
     func servers(in directory: URL = AppMCP.runtimeDirectory()) -> [ThisMacServer] {
         let team = probe.teamIdentifier
         let identifier = probe.helperIdentifier
-        let version = probe.bundledVersion
+        guard let team, !team.isEmpty, let identifier, !identifier.isEmpty else { return [] }
+        var readVersion = false
+        var version: String?
+        /// `probe.bundledVersion`, read once for all the files.
+        func bundledVersion() -> String? {
+            if !readVersion {
+                version = probe.bundledVersion
+                readVersion = true
+            }
+            return version
+        }
         return probe.infoFiles(in: directory).compactMap { file in
             guard let info = Self.read(file),
-                  verify(info, team: team, identifier: identifier, version: version)
+                  passes(info, team: team, identifier: identifier),
+                  let bundled = bundledVersion(), bundled == info.version
             else { return nil }
             return info
         }
     }
 
-    private func verify(
-        _ info: ThisMacServer, team: String?, identifier: String?, version: String?
-    ) -> Bool {
+    /// Every part that must hold: the loopback literal and its port, and
+    /// the pid that is running, signed for the app's team with the
+    /// helper's identifier, and listening at that address.
+    private func passes(_ info: ThisMacServer, team: String, identifier: String) -> Bool {
         // A loopback address is the only place a server it trusts may
         // listen, and the one the app sends its token to through the mount.
         // The literal, not a name: what `localhost` resolves to is the
@@ -81,16 +100,9 @@ struct ThisMacVerifier {
         guard let host = info.url.host, ThisMacServer.isTrustedAddress(host),
               let port = info.port, (1...65535).contains(port)
         else { return false }
-        // An unsigned or ad-hoc-signed app has no team and no identifier to
-        // require, so it verifies nothing: a debug build counts its own
-        // bundled server as a machine.
-        guard let team, !team.isEmpty, let identifier, !identifier.isEmpty,
-              probe.isRunning(info.pid),
-              probe.hasSignature(pid: info.pid, team: team, identifier: identifier),
-              probe.isListening(pid: info.pid, port: port, host: host),
-              let version, version == info.version
-        else { return false }
-        return true
+        return probe.isRunning(info.pid)
+            && probe.hasSignature(pid: info.pid, team: team, identifier: identifier)
+            && probe.isListening(pid: info.pid, port: port, host: host)
     }
 
     /// One info file's fields; nil when it isn't a server info file or
@@ -164,8 +176,9 @@ struct SystemThisMacProbe: ThisMacProbe {
 
     /// The bundled tool's version once it was read: the check runs off the
     /// main thread and windows read it too (`verifyThisMacNow`), so the
-    /// read is behind a lock.
-    private final class VersionCache: @unchecked Sendable {
+    /// read is behind a lock. Internal, not private, so the tests can hold
+    /// one and see a kept success and a retried failure.
+    final class VersionCache: @unchecked Sendable {
         private let lock = NSLock()
         private var version: String?
 

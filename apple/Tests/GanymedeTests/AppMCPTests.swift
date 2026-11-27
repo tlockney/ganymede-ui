@@ -106,6 +106,30 @@ final class AppMCPTests: XCTestCase {
         XCTAssertFalse(names.contains { $0.hasPrefix(".") }, "\(names)")
     }
 
+    /// A write in the runtime directory is compared against the
+    /// `jpserver-*.json` files and their dates (#883): a server that starts
+    /// or stops is one, and a kernel's own `kernel-*.json` write is none.
+    func testTheServerInfoFilesAreTheOnesAWriteIsComparedAgainst() throws {
+        let runtime = dir.appendingPathComponent("runtime")
+        try FileManager.default.createDirectory(at: runtime, withIntermediateDirectories: true)
+        let base = try XCTUnwrap(URL(string: "http://127.0.0.1:52011/"))
+        let file = try XCTUnwrap(AppMCP.writeServerInfo(
+            AppMCP.serverInfo(base: base, token: "a", root: "/", pid: 42), in: runtime, pid: 42
+        ))
+        let date = try XCTUnwrap(AppMCP.infoFileDates(in: runtime)["jpserver-42.json"])
+        // A kernel's own file is no server info file: it changes nothing.
+        try Data("{}".utf8).write(to: runtime.appendingPathComponent("kernel-abc.json"))
+        XCTAssertEqual(AppMCP.infoFileDates(in: runtime), ["jpserver-42.json": date])
+        // Another server's is another change.
+        _ = try XCTUnwrap(AppMCP.writeServerInfo(
+            AppMCP.serverInfo(base: base, token: "b", root: "/", pid: 43), in: runtime, pid: 43
+        ))
+        XCTAssertEqual(AppMCP.infoFileDates(in: runtime).keys.sorted(), ["jpserver-42.json", "jpserver-43.json"])
+        // A server that stopped takes its file with it.
+        try FileManager.default.removeItem(at: file)
+        XCTAssertEqual(AppMCP.infoFileDates(in: runtime).keys.sorted(), ["jpserver-43.json"])
+    }
+
     func testGanymedeCommandIsFoundOnPath() throws {
         let bin = dir.appendingPathComponent("bin")
         try FileManager.default.createDirectory(at: bin, withIntermediateDirectories: true)

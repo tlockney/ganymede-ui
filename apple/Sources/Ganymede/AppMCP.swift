@@ -146,6 +146,21 @@ enum AppMCP {
             .sorted { $0.lastPathComponent < $1.lastPathComponent }
     }
 
+    /// The server info files in `dir`, by name, with when each last changed:
+    /// what a write in the runtime directory is compared against, so a check
+    /// follows a server that started or stopped and not a kernel's own
+    /// `kernel-*.json` write (#883).
+    static func infoFileDates(in dir: URL) -> [String: Date] {
+        var dates: [String: Date] = [:]
+        for file in serverInfoFiles(in: dir) {
+            guard let date = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?
+                .contentModificationDate
+            else { continue }
+            dates[file.lastPathComponent] = date
+        }
+        return dates
+    }
+
     /// Removes server info files the app wrote for processes that are gone
     /// (a crash, a force quit).
     static func removeStaleServerInfo(

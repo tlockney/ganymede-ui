@@ -180,12 +180,15 @@ struct OpenCommands: View {
         // The page's recent DuckDB consoles (#735): each opens as a tab, or
         // brings forward the tab showing it.
         let consoles = page?.state.consoles ?? []
+        // The consoles' folders are the page's paths, from its own server's
+        // root: a this-Mac window's from its `root_dir` (#883).
+        let root = model.pageRoot(for: scope?.place ?? .thisDevice).url
         Menu("Open Recent Console") {
             ForEach(consoles) { recent in
                 Button(recent.menuTitle) {
                     openWindow(
                         value: TabRequest.duckdbConsole(folder: recent.folder, session: UUID(uuidString: recent.id))
-                            .target(root: model.serverRootFolder))
+                            .target(root: root))
                 }
             }
             Divider()

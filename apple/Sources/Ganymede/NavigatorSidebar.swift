@@ -486,36 +486,10 @@ private struct RecentsNavigator: View {
     private let recents = Recents.shared
     @Environment(\.openWindow) private var openWindow
 
-    /// A recent notebook as this window opens it.
-    private struct Entry: Identifiable {
-        var url: URL
-        /// The path the window's page opens: the notebook's own on this
-        /// device, or its path in this Mac's own server's root (#883).
-        var path: String
-        var id: URL { url }
-    }
+    private typealias Entry = RecentEntry
 
-    /// The Recents this window can open. This device's window lists them
-    /// all, by their own paths. A this-Mac window's are the ones under its
-    /// server's root — the notebooks that server serves — and another
-    /// server's are no part of this window (#883).
-    private var entries: [Entry] {
-        recents.urls.compactMap { url in
-            guard let root else { return Entry(url: url, path: FolderEntry.serverPath(url)) }
-            guard let path = Self.relativePath(of: url, in: root) else { return nil }
-            return Entry(url: url, path: path)
-        }
-    }
-
-    /// `url`'s path under `root`, when it is under it: what a this-Mac
-    /// window's page opens, its paths being from the server's root.
-    private static func relativePath(of url: URL, in root: URL) -> String? {
-        let path = url.standardizedFileURL.path
-        let base = root.standardizedFileURL.path
-        let prefix = base.hasSuffix("/") ? base : base + "/"
-        guard path.hasPrefix(prefix) else { return nil }
-        return String(path.dropFirst(prefix.count))
-    }
+    /// The Recents this window can open (`RecentEntry.entries`).
+    private var entries: [Entry] { RecentEntry.entries(recents.urls, root: root) }
 
     var body: some View {
         let entries = entries
@@ -561,12 +535,7 @@ private struct RecentsNavigator: View {
     /// A new window on the notebook: this Mac's own server's in a window of
     /// its place, so it opens through the mount as this one's does (#883).
     private func openTab(_ entry: Entry) {
-        if let id = place.machineID,
-           let target = WindowTarget.machine(id, path: entry.path, isFolder: false) {
-            openWindow(value: target)
-        } else {
-            openWindow(value: WindowTarget(opening: entry.url))
-        }
+        openWindow(value: entry.tabTarget(in: place))
     }
 }
 #endif

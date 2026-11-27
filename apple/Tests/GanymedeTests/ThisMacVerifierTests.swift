@@ -207,6 +207,111 @@ final class ThisMacVerifierTests: XCTestCase {
         XCTAssertFalse(files.contains("ganymede-mcp-5.json"))
     }
 
+    // MARK: what is read, and when
+
+    /// A probe that counts the reads of the bundled tool's version: reading
+    /// it runs the app's own helper, so a file that fails a cheaper check
+    /// must never ask for it (#883).
+    private final class CountingProbe: ThisMacProbe, @unchecked Sendable {
+        var team: String? = "ABCDE12345"
+        var helper: String? = "ganymede-UUID0123456789ABCDEF0123456789ABCDEF"
+        var version: String? = "0.17.0"
+        var versionReads = 0
+        var running: Set<Int32> = [4242]
+        var signature = true
+        var listeners: [Int32: [(host: String, port: Int)]] = [4242: [("127.0.0.1", 8888)]]
+
+        func infoFiles(in directory: URL) -> [URL] { AppMCP.serverInfoFiles(in: directory) }
+
+        var teamIdentifier: String? { team }
+        var helperIdentifier: String? { helper }
+        var bundledVersion: String? {
+            versionReads += 1
+            return version
+        }
+
+        func isRunning(_ pid: Int32) -> Bool { running.contains(pid) }
+
+        func hasSignature(pid: Int32, team: String, identifier: String) -> Bool { signature }
+
+        func isListening(pid: Int32, port: Int, host: String) -> Bool {
+            (listeners[pid] ?? []).contains { $0.port == port && $0.host == host }
+        }
+    }
+
+    /// The bundled tool's version is read only once an info file has passed
+    /// the cheaper checks — the loopback literal, the pid, its signature and
+    /// its socket — so no `jpserver` file, and no unsigned build, runs the
+    /// tool (#883).
+    func testAFileThatFailsACheaperCheckRunsNoBundledTool() throws {
+        let probe = CountingProbe()
+        let verifier = ThisMacVerifier(probe: probe)
+        _ = try write(pid: pid, fields: [:])
+        // A build that can verify nothing runs nothing.
+        probe.team = nil
+        XCTAssertEqual(verifier.servers(in: directory), [])
+        XCTAssertEqual(probe.versionReads, 0)
+        probe.team = team
+        // A name is no address, and a wildcard bind is no listener at one.
+        _ = try write(pid: pid, fields: ["url": "http://localhost:8888/"])
+        XCTAssertEqual(verifier.servers(in: directory), [])
+        XCTAssertEqual(probe.versionReads, 0)
+        _ = try write(pid: pid, fields: [ "url": "http://0.0.0.0:8888/"])
+        XCTAssertEqual(verifier.servers(in: directory), [])
+        XCTAssertEqual(probe.versionReads, 0)
+        _ = try write(pid: pid, fields: [:])
+        // A pid that is gone, code of no one the app asked about, and a pid
+        // that doesn't hold the socket.
+        probe.running = []
+        XCTAssertEqual(verifier.servers(in: directory), [])
+        probe.running = [pid]
+        probe.signature = false
+        XCTAssertEqual(verifier.servers(in: directory), [])
+        probe.signature = true
+        probe.listeners = [:]
+        XCTAssertEqual(verifier.servers(in: directory), [])
+        XCTAssertEqual(probe.versionReads, 0)
+        // Every cheaper check passed: the version is read, once for them all.
+        probe.listeners = [pid: [("127.0.0.1", 8888)]]
+        XCTAssertEqual(verifier.servers(in: directory).map(\.pid), [pid])
+        XCTAssertEqual(probe.versionReads, 1)
+        // One read serves every file of a check: the second server's needs
+        // no other.
+        _ = try write(pid: 4343, fields: [:])
+        probe.running = [pid, 4343]
+        probe.listeners[4343] = [("127.0.0.1", 8888)]
+        XCTAssertEqual(verifier.servers(in: directory).map(\.pid), [pid, 4343])
+        XCTAssertEqual(probe.versionReads, 2)
+    }
+
+    /// The bundled tool's version is read once and kept, since the app's own
+    /// tool doesn't change while it runs; a failed read isn't kept, and is
+    /// tried again by the next check (#883).
+    func testTheBundledVersionsReadIsKeptAndAFailureIsTriedAgain() {
+        let kept = SystemThisMacProbe.VersionCache()
+        var reads = 0
+        var answer: String? = "0.17.0"
+        let read: () -> String? = {
+            reads += 1
+            return answer
+        }
+        XCTAssertEqual(kept.version(read), "0.17.0")
+        XCTAssertEqual(kept.version(read), "0.17.0")
+        XCTAssertEqual(reads, 1)
+        // A read that failed is tried again, and kept once it works.
+        let retried = SystemThisMacProbe.VersionCache()
+        answer = nil
+        reads = 0
+        XCTAssertNil(retried.version(read))
+        XCTAssertEqual(reads, 1)
+        XCTAssertNil(retried.version(read))
+        XCTAssertEqual(reads, 2)
+        answer = "0.18.0"
+        XCTAssertEqual(retried.version(read), "0.18.0")
+        XCTAssertEqual(retried.version(read), "0.18.0")
+        XCTAssertEqual(reads, 3)
+    }
+
     // MARK: what a remote must be
 
     func testARemoteNamesTheServerOnItsPortWithItsToken() {

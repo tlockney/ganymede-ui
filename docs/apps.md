@@ -942,7 +942,12 @@ with only SSH stays in Settings for shells.
   address. A `cargo install` or Homebrew `ganymede`, any other program
   listening on a loopback port, and a server started with `--ip 0.0.0.0`
   stay ordinary machines. A copy of the app that isn't signed with its team
-  (a debug build) never counts a server as its own.
+  (a debug build) never counts a server as its own. The check is made
+  before the window's page loads, and a window that becomes a This Mac
+  window takes it on its next load. When the server goes away the window
+  stops being one at once: the ledger, the device API and the kernel relay
+  are taken away without reloading the page, so unsaved edits stay, and its
+  notebook is then read through the mount like any machine's.
 
   > [!NOTE]
   > **Unreleased.** Available only from a build of `main` (HEAD), not in
