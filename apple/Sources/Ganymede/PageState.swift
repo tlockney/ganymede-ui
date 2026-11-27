@@ -163,6 +163,28 @@ struct PageState: Decodable, Equatable {
         var cell: Int
     }
 
+    /// The open notebook's matches for the Mac app's Find tab (#879): what
+    /// `find-in-notebook` found, posted while its field has a query.
+    struct NotebookFind: Decodable, Equatable {
+        /// A cell whose source holds the query.
+        struct Match: Decodable, Equatable, Identifiable {
+            /// The index of the cell: the `go-to-cell` command's argument.
+            var cell: Int
+            /// The nearest heading at or above the cell, or nil above any.
+            var heading: String?
+            /// The matching line, one line around the match.
+            var snippet: String
+
+            var id: Int { cell }
+        }
+
+        /// The trimmed query that was searched for.
+        var query: String
+        var matches: [Match]
+        /// How many more cells matched than `matches` lists.
+        var more: Int
+    }
+
     /// The kernel's variables, as the inspector's Variables view shows
     /// them (#249): rows in order, members under their object.
     struct Variables: Decodable, Equatable {
@@ -271,6 +293,9 @@ struct PageState: Decodable, Equatable {
     var search: Search?
     /// The open notebook's headings; absent from a page older than #212.
     var outline: [Heading]?
+    /// The open notebook's matches for the Find tab (#879); absent from a
+    /// page older than that, and nil while its field is empty.
+    var notebookFind: NotebookFind?
     /// The kernel's variables while the inspector asks for them
     /// (`inspect-variables`, #249); nil otherwise and from older pages.
     var variables: Variables?

@@ -270,7 +270,7 @@ struct IPadSidebar: View {
 
     /// The tabs of the place, as the Mac's (#251, #758): Journals for every
     /// place, no Recents for a machine.
-    private var tabs: [NavigatorTab] { NavigatorTab.tabs(for: place) }
+    private var tabs: [NavigatorTab] { NavigatorTab.tabs(for: place, on: .iPad) }
 
     /// The selected tab, or Files when the place has no such tab (Recents,
     /// kept from this device's, in a machine's scene).
@@ -432,6 +432,10 @@ struct IPadSidebar: View {
         case .outline:
             // The open notebook's headings, as on the Mac (#288).
             IPadOutlineRows(page: page, picked: opened)
+        case .find:
+            // The Mac's Find (#879); the iPad's tabs keep Search and
+            // Outline, so this is never its shown tab.
+            EmptyView()
         case .recents:
             recentsSection
             if (page.state.recents ?? []).isEmpty {

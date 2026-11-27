@@ -50,6 +50,7 @@ function controller(over: Partial<NotebookController> = {}): NotebookController 
     discard: vi.fn(() => () => {}),
     moved: vi.fn(async () => {}),
     outline: [],
+    notebookFind: null,
     journal: false,
     toggleJournal: vi.fn(),
     goToCell: vi.fn(() => true),

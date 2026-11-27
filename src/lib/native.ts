@@ -2,6 +2,7 @@ import type { KernelSpec, Session } from '@jupyterlab/services';
 import type { KernelsRemote } from './kernel-place';
 import type { SearchState } from './search';
 import type { OutlineItem } from './outline';
+import type { NotebookFind } from './notebook-find';
 import type { VariableNode, VariablesState } from './useVariables';
 /**
  * The Mac app's document window (#132): the page tells it which notebook is
@@ -42,7 +43,9 @@ export type NativeHooks = {
  * `search` takes a `SearchRequest` as JSON (an empty query ends it), and
  * `clear-recents` empties the Recents list (#240). `refresh-kernels` asks
  * the server for its kernelspecs again (#350). `go-to-cell` takes a
- * cell's index, as `PageState.outline` gives it (#212).
+ * cell's index, as `PageState.outline` gives it (#212); `find-in-notebook`
+ * takes the query the Mac app's Find field holds (an empty one clears it)
+ * and answers with `PageState.notebookFind` (#879).
  * `watch-memory` takes `on` or `off`: whether the app's Running list shows,
  * so the page asks the server for each kernel's memory and posts it in
  * `RunningSession.memory` (#241).
@@ -115,6 +118,7 @@ export const PAGE_COMMANDS = {
   'refresh-kernels': '',
   'file-moved': 'arg',
   'go-to-cell': 'arg',
+  'find-in-notebook': 'arg',
   'watch-memory': 'arg',
   'inspect-variables': 'arg',
   'toggle-variable': 'arg',
@@ -248,6 +252,11 @@ export type PageState = {
   search: PageSearch | null;
   /** The open notebook's headings, for the app's Outline (#212); empty with none. */
   outline: OutlineItem[];
+  /**
+   * The open notebook's matches for the Mac app's Find tab (#879), or null
+   * while its field is empty; the `find-in-notebook` command's answer.
+   */
+  notebookFind: NotebookFind | null;
   /** The kernel's variables while the app's inspector shows them (#249), or null. */
   variables: PageVariables | null;
 };

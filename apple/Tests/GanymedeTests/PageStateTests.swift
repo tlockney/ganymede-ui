@@ -230,6 +230,37 @@ final class PageStateTests: XCTestCase {
         XCTAssertEqual(PageState(body: body)?.headings, [])
     }
 
+    func testReadsTheFindResults() {
+        var body: [String: Any] = [
+            "path": "Io.ipynb", "dirty": false, "status": "idle", "kernel": "cdp",
+            "kernelDisplayName": "TypeScript", "kernelMissing": false, "trusted": true,
+            "cellType": "code", "kernels": [Any](), "backend": NSNull(),
+            "notebookFind": [
+                "query": "plume",
+                "matches": [
+                    ["cell": 0, "heading": NSNull(), "snippet": "plume = 1"],
+                    ["cell": 3, "heading": "Volcanoes", "snippet": "A plume rises."],
+                ],
+                "more": 2,
+            ],
+        ]
+        let find = PageState(body: body)?.notebookFind
+        XCTAssertEqual(find?.query, "plume")
+        XCTAssertEqual(find?.matches, [
+            PageState.NotebookFind.Match(cell: 0, heading: nil, snippet: "plume = 1"),
+            PageState.NotebookFind.Match(cell: 3, heading: "Volcanoes", snippet: "A plume rises."),
+        ])
+        XCTAssertEqual(find?.more, 2)
+        XCTAssertEqual(find?.matches.map(\.id), [0, 3], "a match's cell is its id")
+
+        // A page from before #879 sends none.
+        body["notebookFind"] = nil
+        XCTAssertNil(PageState(body: body)?.notebookFind)
+        // And an empty field posts null.
+        body["notebookFind"] = NSNull()
+        XCTAssertNil(PageState(body: body)?.notebookFind)
+    }
+
     func testReadsTheVariables() throws {
         var body: [String: Any] = [
             "path": "Io.ipynb", "dirty": false, "status": "idle", "kernel": "cdp",

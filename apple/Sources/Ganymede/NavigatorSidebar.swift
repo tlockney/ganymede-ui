@@ -20,6 +20,8 @@ struct NavigatorSidebar: View {
     let openFile: (String) -> Void
     /// The selected tab, kept per window.
     @SceneStorage("navigator.tab") private var tab: NavigatorTab = .files
+    /// ⌘⇧F's request that Find's field take the keyboard.
+    @State private var findFocus = false
     private let terminals = OpenTerminals.shared
     @Environment(AppModel.self) private var model
     @Environment(\.openWindow) private var openWindow
@@ -65,14 +67,17 @@ struct NavigatorSidebar: View {
                     folder: folder, source: source, place: place,
                     machineName: place.machineID.flatMap(model.machineName(_:)),
                     page: page, openFile: openFile)
-            case .search:
-                SearchNavigator(folder: folder, source: source, place: place, page: page, openFile: openFile)
+            case .find, .search, .outline:
+                // The Mac's one Find (#879): a stored Search or Outline
+                // shows here, and its field's outline stands in while the
+                // field is empty.
+                FindNavigator(
+                    folder: folder, source: source, place: place, page: page,
+                    openFile: openFile, focusField: $findFocus)
             case .running:
                 RunningList(page: page)
             case .journals:
                 JournalsNavigator(place: place, page: page)
-            case .outline:
-                OutlineNavigator(page: page)
             case .recents:
                 RecentsNavigator(page: page)
             }
@@ -85,6 +90,24 @@ struct NavigatorSidebar: View {
                 placeName: placeName,
                 showsInFinder: place.isThisDevice,
                 panel: panel)
+        }
+        .background {
+            // ⌘4 and ⌘⇧F, which have no menu item (#879): ⌘4 was Outline's
+            // key and still opens Find; ⌘⇧F opens Find and puts the cursor
+            // in its field, as a Mac app's Find does.
+            Group {
+                Button("Find") { tab = .find }
+                    .keyboardShortcut("4", modifiers: .command)
+                Button("Find in Notebook") {
+                    tab = .find
+                    findFocus = true
+                }
+                .keyboardShortcut("f", modifiers: [.command, .shift])
+            }
+            .buttonStyle(.plain)
+            .opacity(0)
+            .accessibilityHidden(true)
+            .frame(width: 0, height: 0)
         }
     }
 
@@ -128,7 +151,7 @@ struct NavigatorSidebar: View {
     private func segment(_ item: NavigatorTab) -> some View {
         if shownTab == item {
             // The name gives way to the symbol alone when the capsule is too
-            // narrow for both: at the sidebar's 180pt the other five tabs
+            // narrow for both: at the sidebar's 180pt the other four tabs
             // leave it about 28pt, and a truncated word reads worse than the
             // symbol on its own. The tooltip keeps the name to hand.
             ViewThatFits(in: .horizontal) {
@@ -178,25 +201,30 @@ struct NavigatorSidebar: View {
 
     /// The tabs: not Recents for a machine, whose notebooks aren't in them.
     private var tabs: [NavigatorTab] {
-        NavigatorTab.tabs(for: place)
+        NavigatorTab.tabs(for: place, on: .mac)
     }
 
-    /// The selected tab, or Files when a machine's window has Recents kept.
-    private var shownTab: NavigatorTab { tabs.contains(tab) ? tab : .files }
+    /// The selected tab, or the one that stands for it here (#879).
+    private var shownTab: NavigatorTab { NavigatorTab.shown(tab, in: tabs) }
 
     private var running: Int { page.state.sessions.count + terminals.entries.count }
 }
 
-// MARK: - Search
+// MARK: - Find
 
-/// Names under the window's folder, and with the box ticked, the text of
-/// its notebooks (#246). Searching starts a moment after typing stops.
-private struct SearchNavigator: View {
+/// The Find tab (#879): one field over the open notebook's outline while it
+/// is empty, and over the notebook's matching cells and then the folder's
+/// files while it isn't. The notebook's matches come from the page, which
+/// searches them on `find-in-notebook`; the files' from `FileSearch`, as the
+/// old Search tab did (#246).
+private struct FindNavigator: View {
     let folder: URL
     let source: any FileSource
     var place: Place = .thisDevice
     var page: PageModel
     let openFile: (String) -> Void
+    /// Set by ⌘⇧F: the field takes the keyboard, once, and it clears.
+    @Binding var focusField: Bool
     @Environment(\.openWindow) private var openWindow
     @SceneStorage("navigator.query") private var query = ""
     @SceneStorage("navigator.contents") private var contents = false
@@ -209,49 +237,118 @@ private struct SearchNavigator: View {
             field
             list
         }
+        // The page searches the cells a moment after typing stops (#879).
+        .task(id: query) { await find() }
         .task(id: "\(folder.absoluteString)|\(query)|\(contents)") { await search() }
+        .onAppear { if focusField { takeFocus() } }
+        .onChange(of: focusField) { if focusField { takeFocus() } }
+        // The page has no reason to keep searching the notebook once the
+        // tab goes; an empty query clears its matches.
+        .onDisappear { page.run("find-in-notebook", arg: "") }
     }
 
     private var field: some View {
         VStack(alignment: .leading, spacing: 6) {
-            TextField("Search", text: $query)
+            TextField("Find", text: $query)
                 .textFieldStyle(.roundedBorder)
                 .focused($fieldFocused)
                 .onExitCommand { query = "" }
-            Toggle("Search notebook contents", isOn: $contents)
+            Toggle("Contents", isOn: $contents)
                 .toggleStyle(.checkbox)
                 .font(.callout)
+                .help("Search the text of the notebooks, not only their names")
         }
         .padding(.horizontal, 10)
         .padding(.top, 8)
-        .onAppear { fieldFocused = true }
     }
 
+    /// ⌘⇧F's one request: the field takes the keyboard, and a later ⌘⇧F
+    /// asks again.
+    private func takeFocus() {
+        fieldFocused = true
+        focusField = false
+    }
+
+    /// The query the page was asked for, and whose answer can show: a
+    /// trimmed one, as `find-in-notebook` takes it.
+    private var found: PageState.NotebookFind? {
+        let normalized = FindLayout.normalized(query)
+        guard let find = page.state.notebookFind, find.query == normalized else { return nil }
+        return find
+    }
+
+    @ViewBuilder
     private var list: some View {
-        List {
-            if !results.names.isEmpty {
-                Section("Names") {
-                    ForEach(results.names) { match in row(match) }
-                }
+        if FindLayout.sections(query: query, hasNotebook: page.state.hasNotebook) == [.outline] {
+            OutlineNavigator(page: page)
+        } else {
+            List {
+                if page.state.hasNotebook { notebookSection }
+                fileSection
             }
-            if !results.contents.isEmpty {
-                Section("Contents") {
-                    ForEach(results.contents) { match in row(match) }
+            .listStyle(.sidebar)
+            .scrollContentBackground(.hidden)
+            .overlay { status }
+        }
+    }
+
+    /// The notebook's matches, under the heading above each one (#879).
+    private var notebookSection: some View {
+        Section("In this notebook") {
+            ForEach(found?.matches ?? []) { match in
+                Button {
+                    page.run("go-to-cell", arg: String(match.cell))
+                } label: {
+                    VStack(alignment: .leading, spacing: 2) {
+                        if let heading = match.heading {
+                            Text(heading)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                        }
+                        Text(match.snippet)
+                            .font(.system(.caption, design: .monospaced))
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .help(match.heading.map { "\($0): \(match.snippet)" } ?? match.snippet)
+            }
+            if let more = found?.more, more > 0 {
+                Text("and \(more) more")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
             }
         }
-        .listStyle(.sidebar)
-        .scrollContentBackground(.hidden)
-        .overlay { status }
+    }
+
+    /// The folder's files, names first, then what their notebooks say when
+    /// "Contents" is ticked: the old Search tab's rows.
+    private var fileSection: some View {
+        let matches = results.names + results.contents
+        return Section("In \(folderName)") {
+            ForEach(Array(matches.enumerated()), id: \.offset) { _, match in row(match) }
+        }
+    }
+
+    /// The window's folder's name, or "/" at the root.
+    private var folderName: String {
+        let name = folder.lastPathComponent
+        return name.isEmpty ? "/" : name
     }
 
     @ViewBuilder
     private var status: some View {
-        if FileSearch.normalized(query).isEmpty {
+        if FindLayout.normalized(query).isEmpty {
             EmptyView()
         } else if searching && results.names.isEmpty && results.contents.isEmpty {
             Text("Searching…").foregroundStyle(.secondary)
-        } else if results.names.isEmpty && results.contents.isEmpty {
+        } else if results.names.isEmpty && results.contents.isEmpty &&
+            (found?.matches.isEmpty ?? true) {
             Text(results.stoppedEarly ? "No matches in the files searched" : "No matches")
                 .foregroundStyle(.secondary)
         }
@@ -340,6 +437,20 @@ private struct SearchNavigator: View {
         guard !Task.isCancelled else { return }
         results = found
         searching = false
+    }
+
+    /// Asks the page for the notebook's matches (#879), a moment after
+    /// typing stops, as the outline waits for its headings. A newer query
+    /// cancels this one, and an empty field clears the page's matches.
+    private func find() async {
+        let query = FindLayout.normalized(query)
+        guard !query.isEmpty else {
+            page.run("find-in-notebook", arg: "")
+            return
+        }
+        try? await Task.sleep(nanoseconds: 250_000_000)
+        guard !Task.isCancelled else { return }
+        page.run("find-in-notebook", arg: query)
     }
 }
 

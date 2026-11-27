@@ -287,25 +287,31 @@ function setup(
   config?: BackendConfig,
   places?: KernelPlaces,
   native = false,
+  findQuery?: string,
 ) {
   const fake = fakeServices();
   if (serverSettings) Object.assign(fake.services, { serverSettings });
   fake.contents.get = get as never;
+  const backend = fakeBackend(fake.services, config);
   const controllers: (NotebookController | undefined)[] = [];
   const onController = vi.fn((c: NotebookController | undefined) => controllers.push(c));
   const onRenamed = vi.fn();
-  const utils = render(
+  const pane = (query?: string) => (
     <NotebookPane
-      backend={fakeBackend(fake.services, config)}
+      backend={backend}
       path={path}
       places={places}
       native={native}
+      findQuery={query}
       onController={onController}
       onRenamed={onRenamed}
-    />,
+    />
   );
+  const utils = render(pane(findQuery));
+  // The Mac app's Find field changing (#879): the pane reports new matches.
+  const renderWith = (query: string) => utils.rerender(pane(query));
   const latest = () => controllers[controllers.length - 1];
-  return { ...utils, fake, onController, onRenamed, latest };
+  return { ...utils, fake, onController, onRenamed, latest, renderWith };
 }
 
 beforeEach(() => {
@@ -1893,6 +1899,51 @@ describe('NotebookPane', () => {
       'start',
     );
     expect(latest()!.goToCell(5)).toBe(false);
+  });
+
+  it('searches the cells for the app’s Find tab, and follows edits and a cleared field (#879)', async () => {
+    const nb = structuredClone(NOTEBOOK);
+    nb.cells = [
+      { cell_type: 'markdown', id: 'm1', source: '# Io\n## Volcanoes', metadata: {} },
+      ...nb.cells,
+      {
+        cell_type: 'code',
+        id: 'a2',
+        source: 'plume = 2',
+        metadata: {},
+        outputs: [],
+        execution_count: null,
+      },
+    ];
+    const { latest, renderWith } = setup(
+      vi.fn(async () => ({ path: 'moons/Io.ipynb', content: nb })),
+    );
+    await waitFor(() => expect(latest()).toBeDefined());
+    // Nothing while the field is empty.
+    expect(latest()!.notebookFind).toBeNull();
+    renderWith('volcano');
+    await waitFor(() =>
+      expect(latest()?.notebookFind).toEqual({
+        query: 'volcano',
+        matches: [{ cell: 0, heading: 'Volcanoes', snippet: '## Volcanoes' }],
+        more: 0,
+      }),
+    );
+    // A match in a later cell keeps the heading above it.
+    renderWith('  plume  ');
+    await waitFor(() =>
+      expect(latest()?.notebookFind).toEqual({
+        query: 'plume',
+        matches: [{ cell: 2, heading: 'Volcanoes', snippet: 'plume = 2' }],
+        more: 0,
+      }),
+    );
+    // An edit shows a moment later.
+    act(() => modelOf().cells.get(2).sharedModel.setSource('plume = 3'));
+    await waitFor(() => expect(latest()?.notebookFind?.matches[0].snippet).toBe('plume = 3'));
+    // Clearing the field clears the matches.
+    renderWith('');
+    await waitFor(() => expect(latest()?.notebookFind).toBeNull());
   });
 
   it('goes to a definition and renames a symbol through the language service, and shows its refusals (#676)', async () => {

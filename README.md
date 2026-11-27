@@ -225,7 +225,13 @@ doesn't open yet.
 Below the folder, Outline lists the open notebook's Markdown headings,
 indented by level; click one to select its cell and scroll to it. It
 updates as you edit. The Mac app shows the same list in its sidebar's
-Outline tab.
+Find tab, whose field shows the outline while it is empty and otherwise
+searches the open notebook and the folder.
+
+> [!NOTE]
+> **Unreleased.** The Mac's one Find tab is available only from a build
+> of `main` (HEAD), not in the latest release, where Search and Outline
+> are separate tabs.
 
 A notebook with unsaved edits saves itself every two minutes, when the
 page is hidden, and when you open another file, and the browser asks before a tab with unsaved edits

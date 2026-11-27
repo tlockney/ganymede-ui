@@ -4,16 +4,57 @@ import XCTest
 final class NavigatorTabTests: XCTestCase {
     private let id = "3F2B8C1E-AAAA-4BBB-8CCC-0123456789AB"
 
-    func testThisDeviceHasEveryTab() {
-        XCTAssertEqual(NavigatorTab.tabs(for: .thisDevice), NavigatorTab.allCases)
+    func testTheMacHasFindInPlaceOfSearchAndOutline() {
+        XCTAssertEqual(
+            NavigatorTab.tabs(for: .thisDevice, on: .mac),
+            [.files, .find, .running, .recents, .journals])
+        XCTAssertEqual(
+            NavigatorTab.tabs(for: .machine(id), on: .mac),
+            [.files, .find, .running, .journals])
+        let tabs = NavigatorTab.tabs(for: .thisDevice, on: .mac)
+        XCTAssertFalse(tabs.contains(.search))
+        XCTAssertFalse(tabs.contains(.outline))
     }
 
-    func testAMachineHasNoRecentsButKeepsJournalsFilesSearchRunningAndOutline() {
-        let tabs = NavigatorTab.tabs(for: .machine(id))
-        XCTAssertFalse(tabs.contains(.recents))
-        for tab in [NavigatorTab.files, .search, .running, .outline, .journals] {
-            XCTAssertTrue(tabs.contains(tab), "\(tab)")
+    func testTheIPadKeepsSearchAndOutlineAndNoFind() {
+        XCTAssertEqual(
+            NavigatorTab.tabs(for: .thisDevice, on: .iPad),
+            [.files, .search, .running, .outline, .recents, .journals])
+        XCTAssertEqual(
+            NavigatorTab.tabs(for: .machine(id), on: .iPad),
+            [.files, .search, .running, .outline, .journals])
+        XCTAssertFalse(NavigatorTab.tabs(for: .thisDevice, on: .iPad).contains(.find))
+    }
+
+    func testAMachineHasNoRecents() {
+        for platform in [NavigatorTab.SidebarPlatform.mac, .iPad] {
+            XCTAssertFalse(NavigatorTab.tabs(for: .machine(id), on: platform).contains(.recents), "\(platform)")
         }
+    }
+
+    func testAStoredSearchOrOutlineShowsAsFindOnAMacWindow() {
+        let mac = NavigatorTab.tabs(for: .thisDevice, on: .mac)
+        XCTAssertEqual(NavigatorTab.shown(.search, in: mac), .find)
+        XCTAssertEqual(NavigatorTab.shown(.outline, in: mac), .find)
+        XCTAssertEqual(NavigatorTab.shown(.files, in: mac), .files)
+        // A machine's window has no Recents: the stored tab is Files.
+        XCTAssertEqual(
+            NavigatorTab.shown(.recents, in: NavigatorTab.tabs(for: .machine(id), on: .mac)), .files)
+        // The iPad keeps showing its own Search and Outline.
+        let iPad = NavigatorTab.tabs(for: .thisDevice, on: .iPad)
+        XCTAssertEqual(NavigatorTab.shown(.search, in: iPad), .search)
+        XCTAssertEqual(NavigatorTab.shown(.outline, in: iPad), .outline)
+        // Find isn't an iPad tab.
+        XCTAssertEqual(NavigatorTab.shown(.find, in: iPad), .files)
+    }
+
+    /// The Find tab's sections (#879).
+    func testFindShowsTheOutlineUntilTheFieldHasAQuery() {
+        XCTAssertEqual(FindLayout.sections(query: "", hasNotebook: true), [.outline])
+        XCTAssertEqual(FindLayout.sections(query: "  \n ", hasNotebook: true), [.outline])
+        XCTAssertEqual(FindLayout.sections(query: "plume", hasNotebook: true), [.notebook, .files])
+        XCTAssertEqual(FindLayout.sections(query: "plume", hasNotebook: false), [.files])
+        XCTAssertEqual(FindLayout.normalized("  plume  "), "plume")
     }
 
     func testJournalsIsInEveryPlacesTabs() {
@@ -64,6 +105,7 @@ final class NavigatorTabTests: XCTestCase {
     /// The capsule's tooltips and the Running tab's value (#873).
     func testEachTabNamesItselfAndItsKey() {
         XCTAssertEqual(NavigatorTab.files.help, "Files (⌘1)")
+        XCTAssertEqual(NavigatorTab.find.help, "Find (⌘2)")
         XCTAssertEqual(NavigatorTab.running.help, "Running (⌘3)")
         XCTAssertEqual(NavigatorTab.journals.help, "Journals (⌘6)")
     }

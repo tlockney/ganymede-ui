@@ -72,6 +72,7 @@ import { seedLanguage } from '../lib/language';
 import { handOff, handedOff, notFound, renameFile, renamedPath, shownHandoff } from '../lib/rename';
 import type { NotebookWidgets } from '../lib/widgets';
 import { type OutlineItem, outlineOf } from '../lib/outline';
+import { type NotebookFind, findInNotebook } from '../lib/notebook-find';
 import { attachDevice, type DevicePromptState, promptClick } from '../lib/device-remote';
 import { declareDevice } from '../lib/kernel-relay';
 import { guardReload, reloadPage } from '../lib/reload';
@@ -201,6 +202,11 @@ export type NotebookController = {
   /** The Markdown cells' headings, in order (#212). */
   outline: OutlineItem[];
   /**
+   * What the Mac app's Find field found in the cells (#879), or null while
+   * its field is empty: the page searches, 300 ms after a change.
+   */
+  notebookFind: NotebookFind | null;
+  /**
    * The journal's eyebrow over the title, for a notebook an agent keeps
    * (#852): its language and the day it was started, "TYPESCRIPT · 9 NOV
    * 2026". Undefined for a notebook no agent wrote, which needs none.
@@ -243,6 +249,8 @@ type Props = {
    * the first cell instead (#867).
    */
   native?: boolean;
+  /** The Mac app's Find field's query (#879); empty while its field is. */
+  findQuery?: string;
   onController(c: NotebookController | undefined): void;
   /** The file at `from` was renamed to `to`: open it there, if it is still the one open. */
   onRenamed?(from: string, to: string): void;
@@ -414,7 +422,15 @@ class FileLocked extends Error {}
  * JupyterLab document context, so the same code saves to a Ganymede server
  * or to the browser's own storage.
  */
-export function NotebookPane({ backend, path, places, native, onController, onRenamed }: Props) {
+export function NotebookPane({
+  backend,
+  path,
+  places,
+  native,
+  findQuery,
+  onController,
+  onRenamed,
+}: Props) {
   // A page for a connected machine (#701).
   const onMachine = backend.config.kind === 'ganymede' && !!backend.config.machine;
   // A ref, not a dependency of the controller effect: a parent that
@@ -458,6 +474,8 @@ export function NotebookPane({ backend, path, places, native, onController, onRe
   const [trusted, setTrusted] = useState(true);
   const [cellType, setCellType] = useState<CellType>('code');
   const [outline, setOutline] = useState<OutlineItem[]>([]);
+  /** What the Mac app's Find field found in the cells (#879), or null. */
+  const [notebookFind, setNotebookFind] = useState<NotebookFind | null>(null);
   /**
    * The journal's eyebrow above the title (#852), for a notebook an agent
    * keeps: its language and the day it was started. Empty otherwise.
@@ -1198,6 +1216,51 @@ export function NotebookPane({ backend, path, places, native, onController, onRe
     };
   }, [open, path]);
 
+  // The Mac app's Find results (#879), 300 ms after the cells or the field's
+  // query change, as the outline is: every cell's source is searched, not
+  // only the Markdown ones. An empty query has nothing to find.
+  useEffect(() => {
+    if (!open) return;
+    const { model } = open;
+    let last = '';
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const update = () => {
+      timer = undefined;
+      const query = findQuery?.trim() ?? '';
+      const next = query
+        ? findInNotebook(
+            Array.from({ length: model.cells.length }, (_, i) => {
+              const cell = model.cells.get(i);
+              return { type: cell.type, source: cell.sharedModel.getSource() };
+            }),
+            query,
+          )
+        : null;
+      const key = JSON.stringify(next);
+      if (key === last) return;
+      last = key;
+      setNotebookFind(next);
+    };
+    // Cells added, removed or moved update it at once, so a row never
+    // points at the wrong cell.
+    const later = () => {
+      if (timer !== undefined) clearTimeout(timer);
+      timer = setTimeout(update, 300);
+    };
+    const now = () => {
+      if (timer !== undefined) clearTimeout(timer);
+      update();
+    };
+    later();
+    model.contentChanged.connect(later);
+    model.cells.changed.connect(now);
+    return () => {
+      if (timer !== undefined) clearTimeout(timer);
+      model.contentChanged.disconnect(later);
+      model.cells.changed.disconnect(now);
+    };
+  }, [open, findQuery]);
+
   // Don't lose unsaved edits: save every few minutes and when the page is
   // hidden (an installed web app can be killed after that), and ask before
   // the page closes with edits that are not saved yet.
@@ -1693,6 +1756,7 @@ export function NotebookPane({ backend, path, places, native, onController, onRe
       moved,
       kernel: session.session?.kernel ?? undefined,
       outline,
+      notebookFind,
       eyebrow: eyebrow || undefined,
       goToDefinition: () =>
         journal ? Promise.resolve(false) : open.language.service.goToDefinition(),
@@ -1775,6 +1839,7 @@ export function NotebookPane({ backend, path, places, native, onController, onRe
     lock,
     cellType,
     outline,
+    notebookFind,
     eyebrow,
     title,
     language,
