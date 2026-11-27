@@ -336,6 +336,74 @@ describe('App', () => {
     expect(mocks.loadHostGrants).toHaveBeenCalledWith(expect.anything(), 'Io.ipynb');
   });
 
+  // The grants of a machine are the machine's, read in its window through
+  // the app's mount (#868).
+  it('reads a machine’s notebook grant in its window (#868)', async () => {
+    const states: Record<string, unknown>[] = [];
+    vi.stubGlobal('webkit', {
+      messageHandlers: {
+        state: { postMessage: (m: Record<string, unknown>) => states.push(m) },
+      },
+    });
+    mocks.loadHostGrants.mockResolvedValue({
+      path: 'Io.ipynb',
+      grant: {},
+      defaults: { read: [''], edit_self: true, run: [] },
+    });
+    mocks.controller = {
+      dirty: false,
+      save: vi.fn(async () => true),
+      hostWants: () => ['notebooks.run'],
+    };
+    const fake = fakeServices({ '': [{ name: 'Io.ipynb', type: 'notebook' }] });
+    mocks.connect.mockImplementation(async c => fakeBackend(fake.services, c));
+    history.replaceState(null, '', '/?machine=mini-1&machine_name=m4mini&open=Io.ipynb');
+    render(<App />);
+    expect(await screen.findByTitle('Notebook Access: asks for notebooks.run')).toBeInTheDocument();
+    const [asked, path] = mocks.loadHostGrants.mock.calls.at(-1) as [
+      { config: { machine?: string } },
+      string,
+    ];
+    expect(asked.config.machine).toBe('mini-1');
+    expect(path).toBe('Io.ipynb');
+    await waitFor(() =>
+      expect(states.at(-1)).toMatchObject({
+        hostGrants: true,
+        accessWanted: ['notebooks.run'],
+      }),
+    );
+    vi.unstubAllGlobals();
+  });
+
+  // An app whose bundled server predates ganymede#973 answers 404 for the
+  // grant: the padlock shows nothing, and Notebook Access says so when
+  // opened (#868).
+  it('shows no padlock when a machine has no notebook access settings (#868)', async () => {
+    const states: Record<string, unknown>[] = [];
+    vi.stubGlobal('webkit', {
+      messageHandlers: {
+        state: { postMessage: (m: Record<string, unknown>) => states.push(m) },
+      },
+    });
+    mocks.loadHostGrants.mockRejectedValue(
+      new Error('This server has no notebook access settings. They need a newer Ganymede.'),
+    );
+    mocks.controller = {
+      dirty: false,
+      save: vi.fn(async () => true),
+      hostWants: () => ['notebooks.run'],
+    };
+    const fake = fakeServices({ '': [{ name: 'Io.ipynb', type: 'notebook' }] });
+    mocks.connect.mockImplementation(async c => fakeBackend(fake.services, c));
+    history.replaceState(null, '', '/?machine=mini-1&machine_name=m4mini&open=Io.ipynb');
+    render(<App />);
+    await waitFor(() => expect(mocks.loadHostGrants).toHaveBeenCalled());
+    await act(async () => {});
+    expect(screen.queryByTitle(/^Notebook Access: asks for/)).toBeNull();
+    expect(states.at(-1)).toMatchObject({ accessWanted: [] });
+    vi.unstubAllGlobals();
+  });
+
   it('tells the app the notebook’s title, for its window (#867)', async () => {
     const states: Record<string, unknown>[] = [];
     vi.stubGlobal('webkit', {

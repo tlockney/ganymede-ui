@@ -45,16 +45,22 @@ describe('host grants', () => {
     expect(describePaths(['journal', 'reports'])).toBe('journal, reports');
   });
 
-  it('is available only on a Ganymede server that runs the kernels', () => {
+  it("is available on a Ganymede server that runs the kernels, this device's or a machine's", () => {
     const b = (config: Backend['config']) => ({ config }) as Backend;
     expect(hostGrantsAvailable(b({ kind: 'ganymede', url: '', token: '' }))).toBe(true);
     expect(hostGrantsAvailable(b({ kind: 'ganymede', url: '', token: '', kernels: 'page' }))).toBe(
       false,
     );
-    // Not on a connected machine (#701): the mount doesn't forward api/host.
+    // A connected machine's own settings (#868): its window edits them
+    // through the app's mount, which forwards api/host/grants (ganymede#973).
     expect(hostGrantsAvailable(b({ kind: 'ganymede', url: '', token: '', machine: 'm1' }))).toBe(
-      false,
+      true,
     );
+    expect(
+      hostGrantsAvailable(
+        b({ kind: 'ganymede', url: '', token: '', machine: 'm1', kernels: 'page' }),
+      ),
+    ).toBe(false);
     expect(hostGrantsAvailable(b({ kind: 'browser' }))).toBe(false);
     expect(hostGrantsAvailable(undefined)).toBe(false);
   });

@@ -166,6 +166,50 @@ enum Place: Hashable, Codable {
         allows(.appLinks) || ["http", "https"].contains(url.scheme?.lowercased() ?? "")
     }
 
+    /// What `url` asks a machine's window to do (#868). A link in a
+    /// machine's notebook names the machine's files, so it is read against
+    /// the machine: only `ganymede://open?path=P` with `P` relative to the
+    /// machine's root opens a notebook there. Anything that would act on
+    /// this device ([`AppURL`]'s `run`, `new`, a granted folder's `open`,
+    /// an x-callback answer) or reach outside the machine's root is
+    /// refused. This device's app links aren't this function's: they stay
+    /// `opensExternally`'s, as they were.
+    func machineLink(_ url: URL) -> MachineLink {
+        guard case .machine = self, url.scheme?.lowercased() == AppURL.scheme else {
+            return .notApp
+        }
+        guard let parts = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            // A `ganymede://` URL that doesn't parse names nothing to open.
+            return .refused
+        }
+        let items = parts.queryItems ?? []
+        // x-callback links answer another app, which a machine's window
+        // gives nothing to.
+        if parts.host?.lowercased() == "x-callback-url" { return .refused }
+        if items.contains(where: { Self.callbackNames.contains($0.name.lowercased()) }) {
+            return .refused
+        }
+        guard let request = try? AppURL(url), case .open(let path) = request.command else {
+            return .refused
+        }
+        return Self.relativeMachinePath(path).map(MachineLink.open(path:)) ?? .refused
+    }
+
+    /// The names x-callback-url puts in a link's query.
+    static let callbackNames: Set<String> = ["x-success", "x-error", "x-cancel"]
+
+    /// `path` when a machine's window may open it: relative to the
+    /// machine's root, with no empty, `.` or `..` segment, which
+    /// `appendingPathComponent` would keep and the mount would be asked
+    /// for above its root. Nil for an absolute path, `~`, or a path that
+    /// climbs.
+    static func relativeMachinePath(_ path: String) -> String? {
+        guard !path.isEmpty, !path.hasPrefix("/"), !path.hasPrefix("~") else { return nil }
+        let segments = path.split(separator: "/", omittingEmptySubsequences: false)
+        guard !segments.contains(where: { $0.isEmpty || $0 == "." || $0 == ".." }) else { return nil }
+        return path
+    }
+
     /// Whether a link the person followed, to a page on the app's own
     /// server, may load in this place's window. This device's windows are
     /// checked by `allowsLoading`. A machine's may stay on its mount, or
@@ -215,6 +259,22 @@ enum Place: Hashable, Codable {
         if let name, !name.isEmpty { items.append(("machine_name", name)) }
         return items
     }
+}
+
+/// What a `ganymede://` link asks in a machine's window (#868). A machine's
+/// notebook links name that machine's files, never this device's: only
+/// opening a notebook by a path on the machine is followed.
+enum MachineLink: Equatable {
+    /// Not a `ganymede://` link, or not a machine's window: web links keep
+    /// today's path, and this device's app links are `AppURL`'s.
+    case notApp
+    /// `ganymede://open?path=P`: open `P`, relative to the machine's root,
+    /// in this window.
+    case open(path: String)
+    /// An app link a machine's window won't follow: `run`, `new`,
+    /// `open?folder=&file=`, x-callback, or a path that is absolute, `~`
+    /// or climbs.
+    case refused
 }
 
 /// One entry of the place switcher.

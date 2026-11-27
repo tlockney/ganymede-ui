@@ -946,10 +946,36 @@ with only SSH stays in Settings for shells.
   > A machine that is itself the Mac app shows it once `GANYMEDE_REF`
   > moves (#851).
 
-- **What a machine's window doesn't get.** The device API, Notebook
-  Access, the Shortcuts bridge and `ganymede://` links are for this
-  device's windows only. Neither Spotlight, File > Open Recent nor the
-  Recents list in the app's sidebar include a machine's notebooks.
+- **Notebook Access** works in a machine's window and edits that machine's
+  settings: the grant's paths and defaults are the machine's API paths and
+  its `[host]` defaults, and nothing on this Mac changes. A machine whose
+  Ganymede includes ganymede#973 answers; an older one says "This server
+  has no notebook access settings. They need a newer Ganymede." when the
+  sheet opens, and the padlock stays quiet.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release. It needs ganymede#973, which no release includes
+  > yet, on the machine: an older machine answers that it needs a newer
+  > Ganymede. The release dims Notebook Access in a machine's window.
+
+- **App links** in a machine's notebook name that machine's files.
+  `ganymede://open?path=a/b.ipynb` opens `a/b.ipynb` on the machine, in
+  the same window. Other app links there are refused with "This link
+  names a file on another computer." and nothing happens on this Mac:
+  `run`, `new`, `open` with a granted `folder=`, x-callback links, and a
+  path that is absolute, `~` or climbs with `..`. Web links open in the
+  browser, as they always did.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release, where a `ganymede://` link in a machine's
+  > notebook does nothing.
+
+- **What a machine's window doesn't get.** The device API and the
+  Shortcuts bridge are for this device's windows only. Neither Spotlight,
+  File > Open Recent nor the Recents list in the app's sidebar include a
+  machine's notebooks.
 
 > [!NOTE]
 > **Unreleased.** Your name going to a connected machine's rooms, the

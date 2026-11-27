@@ -410,6 +410,13 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
             // and the person's name are its own place's.
             decisionHandler(.cancel)
         } else if let target = navigationAction.request.url, isExternal(target),
+                  place.isMachine, target.scheme?.lowercased() == AppURL.scheme {
+            // A machine's app link names a file on that machine (#868):
+            // it is read there, never by this device's `AppURL`, whose
+            // commands act on this Mac.
+            followMachineLink(target)
+            decisionHandler(.cancel)
+        } else if let target = navigationAction.request.url, isExternal(target),
            navigationAction.navigationType == .linkActivated {
             // A machine's notebook may link to anything: web links open in
             // the browser, but not `ganymede://` or other app links, which
@@ -535,7 +542,11 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         windowFeatures: WKWindowFeatures
     ) -> WKWebView? {
         if let target = navigationAction.request.url {
-            if isExternal(target) {
+            if place.isMachine, target.scheme?.lowercased() == AppURL.scheme {
+                // As in `decidePolicyFor`: a machine's app link is the
+                // machine's, and never opens this device's `AppURL` (#868).
+                followMachineLink(target)
+            } else if isExternal(target) {
                 if place.opensExternally(target) { openExternally(target) }
             } else if place.isMachine, Self.isWebURL(target), !place.allowsFollowing(target) {
                 // As in `decidePolicyFor`: not one of this device's pages.
@@ -561,6 +572,37 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         NSWorkspace.shared.open(url)
         #else
         UIApplication.shared.open(url)
+        #endif
+    }
+
+    /// A `ganymede://` link in a machine's window (#868): an `open` with a
+    /// relative path shows that machine's notebook in this window; anything
+    /// else is refused with a notice. Neither reaches this device's
+    /// `AppURL`, whose commands open, make and run files here.
+    private func followMachineLink(_ url: URL) {
+        switch place.machineLink(url) {
+        case .open(let path):
+            page?.run("open", arg: path)
+        case .refused:
+            showMachineLinkNotice()
+        case .notApp:
+            break
+        }
+    }
+
+    /// Says a link in a machine's window names a file elsewhere (#868), as
+    /// the window shows its other short notices.
+    private func showMachineLinkNotice() {
+        let message = "This link names a file on another computer."
+        #if os(macOS)
+        let alert = NSAlert()
+        alert.messageText = message
+        alert.runModal()
+        #else
+        guard let view = webView else { return }
+        let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)
+        alert.addAction(UIAlertAction(title: "OK", style: .default))
+        present(alert, from: view) {}
         #endif
     }
 

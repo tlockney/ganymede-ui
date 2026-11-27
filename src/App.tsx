@@ -969,6 +969,9 @@ export function App() {
     let cancelled = false;
     loadHostGrants(backend, shownPath).then(
       grants => !cancelled && setAccessMissing(missingWants(wants, grants)),
+      // No grant info: a machine whose Ganymede predates ganymede#973
+      // answers 404 here, and the padlock shows nothing. Opening Notebook
+      // Access gives that server's own words (#868).
       () => !cancelled && setAccessMissing(none),
     );
     return () => {
