@@ -883,6 +883,11 @@ test('fits the header control on a phone, which still switches (#819)', async ({
   expect(first!.x - switchBox.x).toBeLessThanOrEqual(2);
   expect(switchBox.x + switchBox.width - (second!.x + second!.width)).toBeLessThanOrEqual(2);
   expect(first!.width + second!.width).toBeGreaterThanOrEqual(switchBox.width - 4);
+  // Its row starts where the title and status text do, not at the 6px margin
+  // the control has beside the title on a wider window (#830). (The status
+  // line's own box is 5px wider on each side; the title is its text's edge.)
+  const titleBox = (await title.boundingBox())!;
+  expect(Math.abs(switchBox.x - titleBox.x)).toBeLessThanOrEqual(1);
   // In the journal view the control's own row grows the toolbar by its
   // 44px: 52 + 44, with no safe-top in a plain page, as the 52 below.
   expect((await page.locator('.toolbar').boundingBox())!.height).toBe(96);
