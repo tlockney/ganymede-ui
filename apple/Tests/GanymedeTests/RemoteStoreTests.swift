@@ -145,6 +145,45 @@ final class RemoteStoreTests: XCTestCase {
         XCTAssertEqual(Remote.sharesNameSetting(false), false)
     }
 
+    func testARemoteSavedByAnOlderBuildDoesNotUseTheDevice() throws {
+        // JSON as an older build wrote it, with no `usesDevice` key (#877):
+        // it still decodes, and means off.
+        let old = """
+        [{"id":"D1A0E1C8-9B54-4A11-9DA3-2F3B8C1E0001","name":"mini","serverURL":"http://mini:8888","ssh":null}]
+        """
+        let decoded = try XCTUnwrap(JSONDecoder().decode([Remote].self, from: Data(old.utf8)).first)
+        XCTAssertNil(decoded.usesDevice)
+        XCTAssertFalse(decoded.letsNotebooksUseDevice)
+        XCTAssertFalse(Remote(name: "mini", serverURL: "http://mini:8888").letsNotebooksUseDevice)
+        // On round-trips through the store, and off is kept as no key.
+        var on = Remote(name: "mini", serverURL: "http://mini:8888")
+        on.usesDevice = Remote.usesDeviceSetting(true)
+        try store.save([on], kernels: nil)
+        XCTAssertTrue(try XCTUnwrap(store.load().remotes.first).letsNotebooksUseDevice)
+    }
+
+    func testWhichMachinesNotebooksMayUseThisDevice() {
+        let on = Remote(name: "on", serverURL: "http://on:8888", usesDevice: true)
+        let off = Remote(name: "off", serverURL: "http://off:8888")
+        let sshOnly = Remote(name: "ssh", ssh: .init(host: "box"))
+        let remotes = [on, off, sshOnly]
+        // This device's own notebooks always may; a machine's by its
+        // remote's setting.
+        XCTAssertTrue(Remote.usesDevice(for: .thisDevice, in: remotes))
+        XCTAssertTrue(Remote.usesDevice(for: .thisDevice, in: []))
+        XCTAssertTrue(Remote.usesDevice(for: .machine(on.id.uuidString), in: remotes))
+        XCTAssertFalse(Remote.usesDevice(for: .machine(off.id.uuidString), in: remotes))
+        // A removed or unknown machine, or a remote with no server, never.
+        XCTAssertFalse(Remote.usesDevice(for: .machine(on.id.uuidString), in: [off]))
+        XCTAssertFalse(Remote.usesDevice(for: .machine(UUID().uuidString), in: remotes))
+        XCTAssertFalse(Remote.usesDevice(for: .machine(sshOnly.id.uuidString), in: remotes))
+    }
+
+    func testTheDeviceToggleSavesOffAsUnset() {
+        XCTAssertEqual(Remote.usesDeviceSetting(true), true)
+        XCTAssertNil(Remote.usesDeviceSetting(false))
+    }
+
     func testKernelsOnARemoteWithoutAServerFallBackToThisDevice() throws {
         let sshOnly = Remote(ssh: .init(host: "box"))
         try store.save([sshOnly], kernels: sshOnly.id)

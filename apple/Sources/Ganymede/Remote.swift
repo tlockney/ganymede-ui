@@ -13,14 +13,28 @@ struct Remote: Codable, Identifiable, Hashable {
     /// notebook rooms (#842). Nil means on: a remote saved by an older
     /// build has no key, so synthesized Codable decodes it as on.
     var sharesName: Bool?
+    /// Whether a machine's notebooks may use this device's `device` API
+    /// (#877). Nil means off: a remote saved by an older build has no key,
+    /// and a machine's notebook can be written by other people and agents
+    /// there, so its calls leave this device only when the person said so.
+    var usesDevice: Bool?
 
     /// Whether the name goes to this machine's rooms: on unless the
     /// setting says off.
     var shares: Bool { sharesName ?? true }
 
+    /// Whether a machine's notebooks get this device (#877): on only when
+    /// the setting says so.
+    var letsNotebooksUseDevice: Bool { usesDevice ?? false }
+
     /// The saved form of the editor's toggle: on stays nil, as a remote
     /// saved by an older build is; off is `false` (#842).
     static func sharesNameSetting(_ on: Bool) -> Bool? { on ? nil : false }
+
+    /// The saved form of the device toggle (#877): on is `true`, since a
+    /// remote saved by an older build has no key and means off; off stays
+    /// nil.
+    static func usesDeviceSetting(_ on: Bool) -> Bool? { on ? true : nil }
 
     /// Whether a window of `place` gets the person's name (#842): this
     /// device always; a machine when the remote with its id and a server
@@ -28,6 +42,15 @@ struct Remote: Codable, Identifiable, Hashable {
     static func sharesName(for place: Place, in remotes: [Remote]) -> Bool {
         guard let id = place.machineID else { return true }
         return remotes.first { $0.id.uuidString == id && $0.hasServer }?.shares ?? false
+    }
+
+    /// Whether a notebook of `place` may use this device's `device` API
+    /// (#877): a machine when the remote with its id and a server says so,
+    /// and never one that is gone. This device's own notebooks always may,
+    /// which its place decides; `true` here says the same.
+    static func usesDevice(for place: Place, in remotes: [Remote]) -> Bool {
+        guard let id = place.machineID else { return true }
+        return remotes.first { $0.id.uuidString == id && $0.hasServer }?.letsNotebooksUseDevice ?? false
     }
 
     struct SSH: Codable, Hashable {

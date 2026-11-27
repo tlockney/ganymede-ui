@@ -16,7 +16,7 @@ private final class Picker: DialogPresenter {
     /// What happens while the picker is up, before it answers.
     var whileShown: (() -> Void)?
 
-    func present(_ dialog: Dialog, on host: DialogHost?, done: @escaping (DialogResult) -> Void) throws -> Close {
+    func present(_ dialog: Dialog, asker: String?, on host: DialogHost?, done: @escaping (DialogResult) -> Void) throws -> Close {
         shown.append(dialog)
         whileShown?()
         done(folder.map { .folder($0) } ?? .dismissed)

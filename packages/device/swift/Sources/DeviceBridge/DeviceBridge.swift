@@ -251,7 +251,12 @@ public final class DeviceBridge: NSObject, WKScriptMessageHandlerWithReply {
     /// Answers one message, now or, for a dialog, once the person closes
     /// it. `reply` is called once. A dialog shows on `host`'s window, the
     /// notebook whose page asked, or on the key window without one.
-    public func respond(to body: Any, from host: DialogHost? = nil, reply: @escaping ([String: Any]) -> Void) {
+    /// `asker`, when given, is the machine the asking kernel runs on: its
+    /// dialogs say so (#877). This device's windows pass none.
+    public func respond(
+        to body: Any, from host: DialogHost? = nil, asker: String? = nil,
+        reply: @escaping ([String: Any]) -> Void
+    ) {
         if let call = body as? [String: Any], call["method"] as? String == "stream.next" {
             streams.next(
                 call["params"] as? [String: Any] ?? [:], call: Self.callID(call["id"]),
@@ -259,7 +264,7 @@ public final class DeviceBridge: NSObject, WKScriptMessageHandlerWithReply {
             return
         }
         if let call = body as? [String: Any], let method = call["method"] as? String, answersLater(method) {
-            respondLater(method, call, host: host, reply: reply)
+            respondLater(method, call, asker: asker, host: host, reply: reply)
             return
         }
         guard let call = body as? [String: Any], let method = call["method"] as? String,
@@ -279,7 +284,7 @@ public final class DeviceBridge: NSObject, WKScriptMessageHandlerWithReply {
             reply(Self.error("failed", "\(error)"))
             return
         }
-        dialogs.show(dialog, id: id, on: host) { outcome in
+        dialogs.show(dialog, asker: asker, id: id, on: host) { outcome in
             reply(Self.reply(outcome, method))
         }
     }
@@ -548,7 +553,10 @@ public final class DeviceBridge: NSObject, WKScriptMessageHandlerWithReply {
         return permissions[namespace] == nil ? nil : namespace
     }
 
-    private func respondLater(_ method: String, _ call: [String: Any], host: DialogHost?, reply: @escaping ([String: Any]) -> Void) {
+    private func respondLater(
+        _ method: String, _ call: [String: Any], asker: String?, host: DialogHost?,
+        reply: @escaping ([String: Any]) -> Void
+    ) {
         guard let id = Self.callID(call["id"]) else {
             reply(Self.error("failed", "\(method) needs a numeric call id, so it can be cancelled"))
             return
@@ -607,7 +615,7 @@ public final class DeviceBridge: NSObject, WKScriptMessageHandlerWithReply {
             weak var weakHost = host
             let carried = prepared
             authorize(method, entry.permission, call: token, owner: owner) { [weak self] in
-                self?.showDialog(dialog, method, call: token, on: weakHost) { result, answer in
+                self?.showDialog(dialog, method, call: token, asker: asker, on: weakHost) { result, answer in
                     guard let finish = entry.finish else { return result }
                     // The notebook as it is now: it may have moved while
                     // the dialog showed.
@@ -733,11 +741,11 @@ public final class DeviceBridge: NSObject, WKScriptMessageHandlerWithReply {
     /// Shows a permissioned dialog, and answers `token` when it closes. A
     /// cancel of the call, or a release of its kernel, closes it.
     private func showDialog(
-        _ dialog: Dialog, _ method: String, call token: PendingCall, on host: DialogHost?,
+        _ dialog: Dialog, _ method: String, call token: PendingCall, asker: String?, on host: DialogHost?,
         finish: @escaping @MainActor (Any, DialogResult) throws -> Any
     ) {
         guard pending.isWaiting(token) else { return }
-        dialogs.show(dialog, id: token.id, on: host) { [weak self] outcome in
+        dialogs.show(dialog, asker: asker, id: token.id, on: host) { [weak self] outcome in
             guard let self, self.pending.isWaiting(token) else { return }
             guard case let .answered(result, answer) = outcome else {
                 return self.pending.answer(token, Self.reply(outcome, method))

@@ -28,7 +28,7 @@ private final class Screen: DialogPresenter {
     var closed = 0
     private var answers: [(DialogResult) -> Void] = []
 
-    func present(_ dialog: Dialog, on host: DialogHost?, done: @escaping (DialogResult) -> Void) throws -> Close {
+    func present(_ dialog: Dialog, asker: String?, on host: DialogHost?, done: @escaping (DialogResult) -> Void) throws -> Close {
         shown.append(dialog)
         answers.append(done)
         return { [weak self] gone in

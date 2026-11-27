@@ -125,6 +125,36 @@ final class KernelHost: NSObject {
         kernels.lend(ui)
     }
 
+    /// Takes `ui`'s remote `device` calls for a machine's kernels (#877),
+    /// and nothing else of this device's. The ledger's messages aren't
+    /// taken: it keeps this device's notebooks by their absolute paths, and
+    /// a machine's notebooks aren't this device's to keep. Nor is the web
+    /// view lent to `AppKernels`, which a machine's window doesn't run its
+    /// kernels in. Every dialog and clipboard prompt says `asker`, the
+    /// machine's name, because what a call reads leaves this device.
+    func attachRemote(to ui: WKWebView, asker: String?) {
+        self.ui = ui
+        let options = RemoteOptions(asker: asker, confirmClipboardReads: true)
+        device.registerRemote(in: ui.configuration.userContentController, options) { [weak self, weak ui] message in
+            guard let self, let ui, message.webView === ui else { return false }
+            return self.fromPage(message)
+        }
+    }
+
+    /// Attaches the device handlers a window of `place` gets (#877): this
+    /// device's `kernelRelay`, the full bridge and the lend (`attach`), or
+    /// a machine's `deviceRemote` alone when its remote's setting says so
+    /// (`attachRemote`), and neither with that setting off. The one
+    /// decision a window's place makes about them, so `WindowWiringTests`
+    /// builds a page and asks this.
+    func attach(to ui: WKWebView, place: Place, settings: PlaceSettings, asker: String?) {
+        if place.allows(.deviceLedger, settings) {
+            attach(to: ui)
+        } else if place.allows(.deviceRemote, settings) {
+            attachRemote(to: ui, asker: asker)
+        }
+    }
+
     /// The UI page is `url`.
     func uiWillLoad(_ url: URL) {
         pageURL = url

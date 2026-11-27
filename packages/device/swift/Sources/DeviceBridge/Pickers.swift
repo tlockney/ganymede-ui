@@ -168,11 +168,14 @@ private final class PhotoPickerDelegate: NSObject, PHPickerViewControllerDelegat
 /// The open and save panels, as sheets on the asking notebook's window.
 @MainActor
 enum FilePanels {
-    static func open(types: [String], multiple: Bool, window: NSWindow, done: @escaping (DialogResult) -> Void) -> Close {
+    /// `message`, when given, names the machine that asked (#877), above the
+    /// panel's own words.
+    static func open(types: [String], multiple: Bool, message: String? = nil, window: NSWindow, done: @escaping (DialogResult) -> Void) -> Close {
         let panel = NSOpenPanel()
         panel.canChooseFiles = true
         panel.canChooseDirectories = false
         panel.allowsMultipleSelection = multiple
+        if let message { panel.message = message }
         let contentTypes = types.compactMap { UTType($0) }
         if !contentTypes.isEmpty { panel.allowedContentTypes = contentTypes }
         panel.beginSheetModal(for: window) { response in
@@ -208,10 +211,12 @@ enum FilePanels {
         }
     }
 
-    static func save(_ file: NamedFile, window: NSWindow, done: @escaping (DialogResult) -> Void) -> Close {
+    /// `message`, when given, names the machine that asked (#877).
+    static func save(_ file: NamedFile, message: String? = nil, window: NSWindow, done: @escaping (DialogResult) -> Void) -> Close {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = file.name
         panel.canCreateDirectories = true
+        if let message { panel.message = message }
         panel.beginSheetModal(for: window) { response in
             guard response == .OK, let url = panel.url else { return done(.dismissed) }
             do {

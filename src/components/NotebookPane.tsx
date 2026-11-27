@@ -73,6 +73,7 @@ import { handOff, handedOff, notFound, renameFile, renamedPath, shownHandoff } f
 import type { NotebookWidgets } from '../lib/widgets';
 import { type OutlineItem, outlineOf } from '../lib/outline';
 import { attachDevice, type DevicePromptState, promptClick } from '../lib/device-remote';
+import { canAnswer } from '@tlockney/ganymede-device/frontend';
 import { declareDevice } from '../lib/kernel-relay';
 import { guardReload, reloadPage } from '../lib/reload';
 import { DevicePrompt } from './DevicePrompt';
@@ -860,8 +861,10 @@ export function NotebookPane({ backend, path, places, native, onController, onRe
           // `device` for cells on server kernels (#568): the
           // app's bridge, or in a browser web APIs behind a click.
           attachDevice(session, {
-            // A machine's kernels get no `device` of this device's (#701).
-            disabled: onMachine,
+            // A machine's kernels get no `device` of this device's (#701),
+            // unless the machine's setting lets them and this window
+            // registered the remote handler (#877).
+            disabled: onMachine && !canAnswer(),
             click: promptClick(setDevicePrompt, () => {
               const kernel = session.kernelDisplayName;
               const file = basename(saver.path);

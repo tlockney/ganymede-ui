@@ -951,6 +951,25 @@ with only SSH stays in Settings for shells.
   your tailnet login credits your edits to that login whatever this
   setting says.
   iPad and iPhone send no name either way.
+- **The device API.** A machine's notebooks get no `device` of this one
+  by default. "Let this machine's notebooks use this device", in the
+  machine's editor (Settings > Remotes, Edit), turns it on for that
+  machine, and it applies to that machine's windows opened after the
+  change. With it on, a cell on the machine's kernels may call the
+  remote methods ([Device API](device.md#from-a-machines-kernel)),
+  answered by this device: every dialog it raises says where the cell
+  runs ("A cell on m4mini asks to use this device."), a picker, share,
+  save or preview asks first with Continue and Cancel ("A cell on
+  m4mini asks to use this device. It wants to pick files."), and a
+  clipboard read always asks first ("m4mini asks to read your
+  clipboard."). This device's permission ledger and Shortcuts stay its
+  own windows': the ledger keeps notebooks by their path on this device.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release, where a machine's window has no device API and no
+  > setting for one.
+
 - **When a machine stops answering,** its open notebooks turn read-only
   and a banner reads "_machine_ went offline · Reconnecting…". They are
   editable again when it is back. There is no offline editing.
@@ -1004,8 +1023,10 @@ with only SSH stays in Settings for shells.
   > the latest release, where a `ganymede://` link in a machine's
   > notebook does nothing.
 
-- **What a machine's window doesn't get.** The device API and the
-  Shortcuts bridge are for this device's windows only. Neither Spotlight,
+- **What a machine's window doesn't get.** The Shortcuts bridge and this
+  device's permission ledger are for this device's windows only, and the
+  device API is off until the machine's setting says otherwise (above).
+  Neither Spotlight,
   File > Open Recent nor the Recents list in the app's sidebar include a
   machine's notebooks.
 

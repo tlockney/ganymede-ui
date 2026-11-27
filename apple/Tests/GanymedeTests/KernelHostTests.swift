@@ -8,8 +8,14 @@ import XCTest
 private final class SilentPresenter: DialogPresenter {
     var shown = 0
     var closed = 0
-    func present(_ dialog: Dialog, on host: DialogHost?, done: @escaping (DialogResult) -> Void) throws -> Close {
+    /// The machine each dialog named, when one asked (#877).
+    var askers: [String?] = []
+    /// Each dialog's answer, for a test to give.
+    var answers: [(DialogResult) -> Void] = []
+    func present(_ dialog: Dialog, asker: String?, on host: DialogHost?, done: @escaping (DialogResult) -> Void) throws -> Close {
         shown += 1
+        askers.append(asker)
+        answers.append(done)
         return { [weak self] gone in
             self?.closed += 1
             gone()
@@ -368,6 +374,91 @@ final class KernelHostTests: XCTestCase {
         host.reset()
         while presenter.closed == 0, Date() < deadline { try await Task.sleep(nanoseconds: 50_000_000) }
         XCTAssertEqual(presenter.closed, 1, "the page's reset closed it")
+    }
+
+    /// A machine's window with its setting on (#877): the remote subset
+    /// alone, from its own page, every dialog naming the machine, and a
+    /// clipboard read asking first.
+    @MainActor
+    func testAMachinesWindowGetsTheRemoteSubsetAloneAndNamesItsMachine() async throws {
+        let server = try server()
+        defer { server.stop() }
+        let presenter = SilentPresenter()
+        let host = KernelHost(device: DeviceBridge(presenter: presenter), kernels: AppKernels())
+        let ui = uiView()
+        // The app's page for a machine's window: the same origin, its own
+        // query (`?machine=`).
+        host.attachRemote(to: ui, asker: "mini")
+        var parts = URLComponents(url: server.url, resolvingAgainstBaseURL: false)!
+        parts.queryItems = (parts.queryItems ?? []) + [URLQueryItem(name: "machine", value: "m1")]
+        let page = try XCTUnwrap(parts.url)
+        host.uiWillLoad(page)
+        ui.load(URLRequest(url: page))
+        try await waitFor(ui, "document.title === 'ui' && document.readyState === 'complete'")
+
+        // The ledger's handler and the full bridge aren't taken.
+        for name in ["kernelRelay", "device"] {
+            let kind = try await eval(ui, "typeof webkit.messageHandlers.\(name)") as? String
+            XCTAssertEqual(kind, "undefined", name)
+        }
+        let hello = try await ui.callAsyncJavaScript(
+            "const r = await webkit.messageHandlers.deviceRemote.postMessage({ owner: 1, method: 'hello', params: {} });"
+                + " return r.result ? r.result.capabilities.join(',') : JSON.stringify(r)",
+            contentWorld: .page) as? String
+        XCTAssertEqual(
+            hello,
+            "clipboard.readText,clipboard.writeText,clipboard.readImage,clipboard.writeImage,info,openURL,"
+                + "ui.alert,ui.confirm,ui.prompt,ui.actionSheet,ui.pickDate,share,preview,"
+                + "files.pick,files.export,photos.pick,sound.play")
+
+        // A dialog from the machine's kernel says where the cell runs.
+        _ = try await eval(ui, """
+            webkit.messageHandlers.deviceRemote.postMessage({ id: 2, owner: 1, method: 'ui.alert', params: { message: 'x' } });
+            true
+            """)
+        try await eventually("the alert") { presenter.shown == 1 }
+        XCTAssertEqual(presenter.askers, ["mini"])
+        presenter.answers[0](.ok)
+
+        // A clipboard read asks first, and Don't Allow reads nothing.
+        _ = try await eval(ui, """
+            webkit.messageHandlers.deviceRemote.postMessage({ id: 3, owner: 1, method: 'clipboard.readText', params: {} })
+              .then(r => { window.clipReply = r; });
+            true
+            """)
+        try await eventually("the clipboard ask") { presenter.shown == 2 }
+        XCTAssertEqual(presenter.askers.last, "mini")
+        presenter.answers[1](.dismissed)
+        try await waitFor(ui, "!!window.clipReply && window.clipReply.error.code === 'denied'")
+
+        // The page's reset drops what it asked: a dialog it left open is
+        // closed, and nothing else of the device's, since the machine's
+        // window has no ledger to keep.
+        _ = try await eval(ui, """
+            webkit.messageHandlers.deviceRemote.postMessage({ id: 4, owner: 1, method: 'ui.alert', params: { message: 'y' } });
+            true
+            """)
+        try await eventually("the alert") { presenter.shown == 3 }
+        XCTAssertEqual(presenter.closed, 0)
+        host.reset()
+        try await eventually("the reset closed it") { presenter.closed == 1 }
+    }
+
+    /// A machine's window lends nothing to the app's kernels (#877): the
+    /// lend is how this device's kernels keep running in a page's window,
+    /// and a machine's notebooks aren't this device's. This device's
+    /// window lends its page, as it did.
+    @MainActor
+    func testAMachinesWindowLendsNothingToTheAppsKernels() {
+        let kernels = AppKernels()
+        let host = KernelHost(device: DeviceBridge(presenter: SilentPresenter()), kernels: kernels)
+        let machinePage = uiView()
+        host.attachRemote(to: machinePage, asker: "mini")
+        XCTAssertTrue(kernels.lentPages.isEmpty, "a machine's window lends nothing")
+        let localPage = uiView()
+        host.attach(to: localPage)
+        XCTAssertEqual(kernels.lentPages.count, 1)
+        XCTAssertTrue(kernels.lentPages.first === localPage, "this device's window lends its page")
     }
 
     /// A rename carries kept answers along, folders included, and the

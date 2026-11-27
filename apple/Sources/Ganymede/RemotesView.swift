@@ -201,6 +201,8 @@ struct RemoteEditor: View {
     @State private var runsKernels: Bool
     /// Whether this machine's rooms get this Mac's account name (#842).
     @State private var sharesName: Bool
+    /// Whether this machine's notebooks may use this device (#877).
+    @State private var usesDevice: Bool
     #if os(macOS)
     /// Other devices on the tailnet, to fill in the URL (ganymede#816).
     @State private var peers: [AppTailnet.Peer] = []
@@ -218,6 +220,7 @@ struct RemoteEditor: View {
         _port = State(initialValue: remote.ssh?.port.map(String.init) ?? "")
         _runsKernels = State(initialValue: AppModel.shared.kernelRemoteID == remote.id)
         _sharesName = State(initialValue: remote.shares)
+        _usesDevice = State(initialValue: remote.letsNotebooksUseDevice)
         self.isNew = isNew
     }
 
@@ -268,6 +271,9 @@ struct RemoteEditor: View {
                     if !remote.serverURL.trimmingCharacters(in: .whitespaces).isEmpty {
                         Toggle("Run kernels on this remote", isOn: $runsKernels)
                         Toggle("Show my name in this machine's notebooks", isOn: $sharesName)
+                        Toggle("Let this machine's notebooks use this device", isOn: $usesDevice)
+                        Text(deviceFooter)
+                            .font(.caption).foregroundStyle(.secondary)
                     }
                 } header: {
                     Text("Jupyter or Ganymede server")
@@ -358,6 +364,13 @@ struct RemoteEditor: View {
         #endif
     }
 
+    /// What the device toggle means, under it (#877): handlers are made with
+    /// a window's page, and a read of the clipboard always asks.
+    private var deviceFooter: String {
+        "Applies to this machine's windows opened after the change. A notebook asking for your "
+            + "clipboard always asks first."
+    }
+
     private var serverFooter: String {
         #if os(macOS)
         let words = "Optional. Used for kernels and terminals. Choose where kernels run here, from the foot of a "
@@ -437,6 +450,9 @@ struct RemoteEditor: View {
         }
         // On stays nil, as a remote saved by an older build is (#842).
         result.sharesName = Remote.sharesNameSetting(sharesName)
+        // Off stays nil, as a remote saved by an older build is, which means
+        // off too (#877).
+        result.usesDevice = Remote.usesDeviceSetting(usesDevice)
         return result
     }
 }

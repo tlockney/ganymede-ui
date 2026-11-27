@@ -13,16 +13,26 @@ final class PersonNameScriptTests: XCTestCase {
         try XCTSkipIf(PersonName.name == nil, "no account name on this platform")
     }
 
-    private func script(place: Place, sharesName: Bool) -> WKUserScript? {
-        PersonName.pageScript(for: loaded, place: place, sharesName: sharesName)
+    private func script(place: Place, settings: PlaceSettings) -> WKUserScript? {
+        PersonName.pageScript(for: loaded, place: place, settings: settings)
     }
 
     func testAMachinesPageGetsTheNameOnlyWithItsSettingOn() {
-        XCTAssertNotNil(script(place: .machine("m1"), sharesName: true))
-        XCTAssertNil(script(place: .machine("m1"), sharesName: false))
+        XCTAssertNotNil(script(place: .machine("m1"), settings: PlaceSettings(sharesName: true)))
+        XCTAssertNil(script(place: .machine("m1"), settings: PlaceSettings(sharesName: false)))
     }
 
     func testThisDevicesPageAlwaysGetsTheName() {
-        XCTAssertNotNil(script(place: .thisDevice, sharesName: false))
+        XCTAssertNotNil(script(place: .thisDevice, settings: PlaceSettings(sharesName: false)))
+    }
+
+    /// The device setting is a machine's notebooks' business, not the
+    /// page's name (#877).
+    func testTheDeviceSettingDoesNotChangeTheNameScript() {
+        for name in [true, false] {
+            XCTAssertEqual(
+                script(place: .machine("m1"), settings: PlaceSettings(sharesName: name, usesDevice: true)) != nil,
+                name)
+        }
     }
 }

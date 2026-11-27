@@ -749,7 +749,7 @@ posts to `webkit.messageHandlers.deviceRemote`.
 - `accept()`, when given, is asked on each announce; false turns the
   kernel away, for a per-server mute.
 
-The Swift side is `DeviceBridge.registerRemote(in:allow:)`, a second
+The Swift side is `DeviceBridge.registerRemote(in:_:allow:)`, a second
 handler named `deviceRemote` on the notebook page's web view. That page
 renders outputs too, so the handler differs from `device`:
 
@@ -763,6 +763,35 @@ renders outputs too, so the handler differs from `device`:
   be positive integers below 2^40 (the engine range, "In an embedded
   engine" below); any other fails `failed`. Dialogs from
   both share one queue: one dialog at a time.
+
+Its `RemoteOptions` say whose window it is, and default to this device's
+own, which changes nothing:
+
+- `asker`, the app's name for the machine the page's kernels run on.
+  With it, every dialog the cell raises — `ui.alert`, `ui.confirm`,
+  `ui.prompt`, `ui.actionSheet`, `ui.pickDate` — carries "A cell on
+  `<asker>` asks to use this device." as a line above the cell's own
+  words, or as the title when the dialog has none: an action sheet with
+  no message says the line only, and a date picker keeps its own title
+  ("Choose a date", "Choose a time") with the line under it. Without
+  it, dialogs are the cell's alone, as the kernel page's are.
+- A picker, the share sheet, the save panel or the preview sheet takes
+  what it read or wrote to the machine the kernel runs on, so one asks
+  first: "A cell on `<asker>` asks to use this device. It wants to pick
+  files." — or "to pick photos", "to save a file", "to share", "to show
+  a preview" — with Continue and Cancel. Continue shows the picker or
+  sheet, which answers the call. Cancel answers as cancelling it does
+  (`[]`, `false`, or a dismissed preview), and nothing shows. On the
+  Mac the open and save panels also carry the ask line above their file
+  list. Without an asker they show as they always did.
+- `confirmClipboardReads`: `clipboard.readText` and
+  `clipboard.readImage` show a confirm first, "`<asker>` asks to read
+  your clipboard.", with Allow and Don't Allow. Don't Allow fails the
+  call `denied` (the code for a person's refusal, "Rules for the Swift
+  handler" above), and
+  the clipboard isn't read. A machine's window sets it, since what a
+  read takes leaves this device; this device's own windows leave it
+  off, as its server kernels have always read without asking.
 
 ### In a browser
 
