@@ -124,6 +124,18 @@ enum FindLayout {
         case outline, notebook, files
     }
 
+    /// What the list says over no rows (#879): "Searching…" while an
+    /// answer is still on its way, else that nothing matched.
+    enum Status: Equatable {
+        /// Nothing to say: the field is empty, or rows show.
+        case none
+        /// The page or the files are still being asked.
+        case searching
+        /// Nothing matched; `stoppedEarly` for a scan of the files that
+        /// gave up before it had looked everywhere.
+        case nothing(stoppedEarly: Bool)
+    }
+
     /// The trimmed query: what the page is asked to find, and what the
     /// query of its answer (`PageState.notebookFind`) must be to show.
     static func normalized(_ query: String) -> String {
@@ -135,6 +147,37 @@ enum FindLayout {
     static func sections(query: String, hasNotebook: Bool) -> [Section] {
         guard !normalized(query).isEmpty else { return [.outline] }
         return (hasNotebook ? [Section.notebook] : []) + [.files]
+    }
+
+    /// The page's answer that may show for `query` (#879): nil while it is
+    /// another query's, which the page has yet to replace.
+    static func answer(for query: String, in find: PageState.NotebookFind?) -> PageState.NotebookFind? {
+        guard let find, find.query == normalized(query) else { return nil }
+        return find
+    }
+
+    /// Whether the page must be asked again (#879): a page loaded again
+    /// forgets the query it was asked, as it forgets `inspect-variables`,
+    /// so a field with a query is asked again while the answer is gone or
+    /// another query's.
+    static func shouldReask(query: String, find: PageState.NotebookFind?) -> Bool {
+        !normalized(query).isEmpty && answer(for: query, in: find) == nil
+    }
+
+    /// What the list says while it shows no rows (#879): still searching
+    /// while the page hasn't answered for the field's query, so "No
+    /// matches" doesn't flash before it does. The files' search no longer
+    /// speaks for the notebook, whose rows may yet arrive.
+    static func status(
+        query: String, hasNotebook: Bool, find: PageState.NotebookFind?,
+        searchingFiles: Bool, fileMatches: Int, stoppedEarly: Bool
+    ) -> Status {
+        guard !normalized(query).isEmpty else { return .none }
+        let found = answer(for: query, in: find)
+        let notebookMatches = hasNotebook ? found?.matches.count ?? 0 : 0
+        if notebookMatches > 0 || fileMatches > 0 { return .none }
+        if hasNotebook, found == nil { return .searching }
+        return searchingFiles ? .searching : .nothing(stoppedEarly: stoppedEarly)
     }
 }
 

@@ -17,6 +17,9 @@ struct NavigatorSidebar: View {
     /// The window's bottom panel, for terminals the foot's menu opens (a
     /// machine's window has one too, #858).
     var panel: PanelController?
+    /// Shows the window's sidebar column (#879): its keys bring it back
+    /// when the window has it hidden, or an area fills over it.
+    var showSidebar: () -> Void = {}
     let openFile: (String) -> Void
     /// The selected tab, kept per window.
     @SceneStorage("navigator.tab") private var tab: NavigatorTab = .files
@@ -92,13 +95,19 @@ struct NavigatorSidebar: View {
                 panel: panel)
         }
         .background {
-            // ⌘4 and ⌘⇧F, which have no menu item (#879): ⌘4 was Outline's
-            // key and still opens Find; ⌘⇧F opens Find and puts the cursor
-            // in its field, as a Mac app's Find does.
+            // ⌘4 and ⌘⇧F, and the capsule's own keys (#879): a key shows
+            // its navigator, so the column comes back first when the window
+            // has it hidden. ⌘4 was Outline's key and still opens Find;
+            // ⌘⇧F opens Find and puts the cursor in its field, as a Mac
+            // app's Find does.
             Group {
-                Button("Find") { tab = .find }
-                    .keyboardShortcut("4", modifiers: .command)
+                Button("Find") {
+                    showSidebar()
+                    tab = .find
+                }
+                .keyboardShortcut("4", modifiers: .command)
                 Button("Find in Notebook") {
+                    showSidebar()
                     tab = .find
                     findFocus = true
                 }
@@ -119,6 +128,9 @@ struct NavigatorSidebar: View {
         HStack(spacing: 2) {
             ForEach(tabs) { item in
                 Button {
+                    // The key shows its navigator, so the column comes
+                    // back first when the window has it hidden (#879).
+                    showSidebar()
                     tab = item
                 } label: {
                     segment(item)
@@ -239,6 +251,14 @@ private struct FindNavigator: View {
         }
         // The page searches the cells a moment after typing stops (#879).
         .task(id: query) { await find() }
+        // A page loaded again forgets it was asked, as it forgets
+        // `inspect-variables`: the field's query is asked again, so a
+        // reloaded page shows its notebook's matches without the field
+        // having to change.
+        .onChange(of: page.ready) { _, ready in
+            guard ready, FindLayout.shouldReask(query: query, find: page.state.notebookFind) else { return }
+            page.run("find-in-notebook", arg: FindLayout.normalized(query))
+        }
         .task(id: "\(folder.absoluteString)|\(query)|\(contents)") { await search() }
         .onAppear { if focusField { takeFocus() } }
         .onChange(of: focusField) { if focusField { takeFocus() } }
@@ -269,22 +289,29 @@ private struct FindNavigator: View {
         focusField = false
     }
 
-    /// The query the page was asked for, and whose answer can show: a
-    /// trimmed one, as `find-in-notebook` takes it.
+    /// The page's answer that can show: while it is for the query the
+    /// field holds, never another query's.
     private var found: PageState.NotebookFind? {
-        let normalized = FindLayout.normalized(query)
-        guard let find = page.state.notebookFind, find.query == normalized else { return nil }
-        return find
+        FindLayout.answer(for: query, in: page.state.notebookFind)
     }
 
+    /// The sections in order (#879), each drawn by its own case: the
+    /// outline alone needs the whole tab, as a list of its own.
     @ViewBuilder
     private var list: some View {
-        if FindLayout.sections(query: query, hasNotebook: page.state.hasNotebook) == [.outline] {
+        let sections = FindLayout.sections(query: query, hasNotebook: page.state.hasNotebook)
+        if sections == [.outline] {
             OutlineNavigator(page: page)
         } else {
             List {
-                if page.state.hasNotebook { notebookSection }
-                fileSection
+                ForEach(sections, id: \.self) { section in
+                    switch section {
+                    case .notebook: notebookSection
+                    case .files: fileSection
+                    // Only alone, above: a list can't hold the outline's.
+                    case .outline: EmptyView()
+                    }
+                }
             }
             .listStyle(.sidebar)
             .scrollContentBackground(.hidden)
@@ -341,15 +368,21 @@ private struct FindNavigator: View {
         return name.isEmpty ? "/" : name
     }
 
+    /// What the list says while it has no rows (#879): the layout decides,
+    /// so the notebook's late answer keeps "Searching…" up rather than
+    /// letting the files' empty scan say "No matches" first.
     @ViewBuilder
     private var status: some View {
-        if FindLayout.normalized(query).isEmpty {
+        switch FindLayout.status(
+            query: query, hasNotebook: page.state.hasNotebook, find: page.state.notebookFind,
+            searchingFiles: searching, fileMatches: results.names.count + results.contents.count,
+            stoppedEarly: results.stoppedEarly) {
+        case .none:
             EmptyView()
-        } else if searching && results.names.isEmpty && results.contents.isEmpty {
+        case .searching:
             Text("Searching…").foregroundStyle(.secondary)
-        } else if results.names.isEmpty && results.contents.isEmpty &&
-            (found?.matches.isEmpty ?? true) {
-            Text(results.stoppedEarly ? "No matches in the files searched" : "No matches")
+        case .nothing(let stoppedEarly):
+            Text(stoppedEarly ? "No matches in the files searched" : "No matches")
                 .foregroundStyle(.secondary)
         }
     }

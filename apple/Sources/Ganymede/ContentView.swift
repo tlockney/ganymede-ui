@@ -637,7 +637,13 @@ struct ContentView: View {
             if let source = fileSource {
                 NavigatorSidebar(
                     folder: sidebarRoot, source: source, place: place, page: pageModel,
-                    panel: panel
+                    panel: panel,
+                    // The column the sidebar's keys bring back (#879): the
+                    // window folds it, or an area fills over it.
+                    showSidebar: {
+                        layout.restore()
+                        sidebarShown = true
+                    }
                 ) { path in
                     openWindow(value: EditorRequest(path: path, place: place))
                 }

@@ -57,6 +57,66 @@ final class NavigatorTabTests: XCTestCase {
         XCTAssertEqual(FindLayout.normalized("  plume  "), "plume")
     }
 
+    /// The page's answer (#879): only the field's own query's may show.
+    func testAFindAnswerShowsOnlyUnderItsOwnQuery() {
+        let plume = find("plume", cells: [1])
+        XCTAssertEqual(FindLayout.answer(for: "  plume ", in: plume), plume)
+        XCTAssertNil(FindLayout.answer(for: "volcano", in: plume))
+        XCTAssertNil(FindLayout.answer(for: "plume", in: nil))
+        XCTAssertNil(FindLayout.answer(for: "  ", in: plume), "an empty field shows the outline")
+    }
+
+    /// A page loaded again forgets what it was asked, as it forgets
+    /// `inspect-variables`: the field's query goes to it again.
+    func testAPageLoadedAgainIsAskedTheFieldsQueryAgain() {
+        XCTAssertFalse(FindLayout.shouldReask(query: "  plume  ", find: find("plume", cells: [1])))
+        XCTAssertFalse(FindLayout.shouldReask(query: "", find: nil))
+        XCTAssertFalse(FindLayout.shouldReask(query: " \n ", find: find("plume", cells: [1])))
+        // The reloaded page's state has no answer; nor has one that still
+        // has to answer a newer query.
+        XCTAssertTrue(FindLayout.shouldReask(query: "plume", find: nil))
+        XCTAssertTrue(FindLayout.shouldReask(query: "plume", find: find("volcano", cells: [])))
+    }
+
+    /// What the list says over no rows (#879): "No matches" waits for the
+    /// page, which may still have rows to send.
+    func testTheListSaysSearchingUntilTheNotebookHasAnswered() {
+        let nothing = find("plume", cells: [])
+        let row = find("plume", cells: [2])
+        // An empty field shows the outline: nothing to say.
+        XCTAssertEqual(status(query: "  ", hasNotebook: true, find: nil, searchingFiles: true), .none)
+        // The page hasn't answered for this query yet.
+        XCTAssertEqual(status(query: "plume", hasNotebook: true, find: nil, searchingFiles: false), .searching)
+        XCTAssertEqual(
+            status(query: "plume", hasNotebook: true, find: find("volcano", cells: []), searchingFiles: false),
+            .searching, "another query's answer")
+        // Files that matched are rows, so nothing is said over them.
+        XCTAssertEqual(status(query: "plume", hasNotebook: true, find: nil, searchingFiles: false, fileMatches: 2), .none)
+        XCTAssertEqual(status(query: "plume", hasNotebook: true, find: row, searchingFiles: true), .none)
+        // Answered with nothing, and the files still going: still searching.
+        XCTAssertEqual(status(query: "plume", hasNotebook: true, find: nothing, searchingFiles: true), .searching)
+        XCTAssertEqual(status(query: "plume", hasNotebook: true, find: nothing, searchingFiles: false), .nothing(stoppedEarly: false))
+        XCTAssertEqual(
+            status(query: "plume", hasNotebook: false, find: nil, searchingFiles: false, stoppedEarly: true),
+            .nothing(stoppedEarly: true), "no notebook: the files alone answer")
+    }
+
+    /// The page's answer for `query`, matching the cells in `cells`.
+    private func find(_ query: String, cells: [Int]) -> PageState.NotebookFind {
+        PageState.NotebookFind(
+            query: query,
+            matches: cells.map { .init(cell: $0, heading: nil, snippet: "plume") }, more: 0)
+    }
+
+    private func status(
+        query: String, hasNotebook: Bool, find: PageState.NotebookFind?,
+        searchingFiles: Bool, fileMatches: Int = 0, stoppedEarly: Bool = false
+    ) -> FindLayout.Status {
+        FindLayout.status(
+            query: query, hasNotebook: hasNotebook, find: find,
+            searchingFiles: searchingFiles, fileMatches: fileMatches, stoppedEarly: stoppedEarly)
+    }
+
     func testJournalsIsInEveryPlacesTabs() {
         for place in [Place.thisDevice, .machine(id)] {
             XCTAssertTrue(NavigatorTab.tabs(for: place).contains(.journals), "\(place)")
