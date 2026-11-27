@@ -211,6 +211,44 @@ final class PlaceTests: XCTestCase {
         }
     }
 
+    // MARK: what a link in a window does (#868)
+
+    func testAMachinesAppLinkIsFollowedOnlyWhenClicked() throws {
+        let machine = Place.machine(id)
+        let open = try link("ganymede://open?path=a.ipynb")
+        XCTAssertEqual(machine.linkAction(for: open, clicked: true), .openOnMachine(path: "a.ipynb"))
+        // A script's navigation, or a frame's: dropped without a word, so
+        // an output can't make the window follow it or show the notice.
+        XCTAssertEqual(machine.linkAction(for: open, clicked: false), .cancel)
+        XCTAssertEqual(
+            machine.linkAction(for: try link("ganymede://run?path=a.ipynb"), clicked: true), .refuse)
+        XCTAssertEqual(
+            machine.linkAction(for: try link("ganymede://run?path=a.ipynb"), clicked: false), .cancel)
+        XCTAssertEqual(
+            machine.linkAction(for: try link("ganymede://open?path=/etc/hosts"), clicked: true),
+            .refuse)
+    }
+
+    func testAMachinesOtherLinksAreAsTheyWere() throws {
+        let machine = Place.machine(id)
+        let web = try link("https://example.com/a")
+        // A clicked web link goes to the browser; one nothing clicked is
+        // still a navigation the window loads.
+        XCTAssertEqual(machine.linkAction(for: web, clicked: true), .openExternally)
+        XCTAssertEqual(machine.linkAction(for: web, clicked: false), .allow)
+        // A file link is neither, and nothing acts on this Mac.
+        XCTAssertEqual(machine.linkAction(for: try link("file:///etc/hosts"), clicked: true), .cancel)
+    }
+
+    func testThisDevicesLinksAreUnchanged() throws {
+        let device = Place.thisDevice
+        for text in ["ganymede://open?path=/a.ipynb", "https://example.com/a"] {
+            XCTAssertEqual(device.linkAction(for: try link(text), clicked: true), .openExternally, text)
+            // A navigation nothing clicked loads here, as it did.
+            XCTAssertEqual(device.linkAction(for: try link(text), clicked: false), .allow, text)
+        }
+    }
+
     func testAMachineWindowStaysOnItsMountOrItsOwnPage() throws {
         let machine = Place.machine(id)
         func url(_ path: String) throws -> URL {

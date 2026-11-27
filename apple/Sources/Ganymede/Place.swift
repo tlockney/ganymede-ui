@@ -195,6 +195,32 @@ enum Place: Hashable, Codable {
         return Self.relativeMachinePath(path).map(MachineLink.open(path:)) ?? .refused
     }
 
+    /// What this window does with a link (#868), which `WebView`'s policy
+    /// decision asks: `clicked` is WebKit's `.linkActivated`, and only a
+    /// click follows a link, so neither a script's navigation to
+    /// `ganymede://` nor an output frame's can act or make the notice
+    /// appear.
+    func linkAction(for url: URL, clicked: Bool) -> LinkAction {
+        if case .machine = self, url.scheme?.lowercased() == AppURL.scheme {
+            // A machine's app link names a file on that machine, and is
+            // read there (#868). Anything but a click is dropped without a
+            // word: an output could otherwise loop it.
+            guard clicked else { return .cancel }
+            switch machineLink(url) {
+            case .open(let path): return .openOnMachine(path: path)
+            case .refused: return .refuse
+            // The scheme matched, so the link isn't another kind.
+            case .notApp: return .cancel
+            }
+        }
+        // Anything else is as it was (#701): a click goes to the system,
+        // the browser for a web link and this device's `AppURL` for an app
+        // link, while a machine sends only its web links there. A
+        // navigation nothing clicked loads here.
+        guard clicked else { return .allow }
+        return opensExternally(url) ? .openExternally : .cancel
+    }
+
     /// The names x-callback-url puts in a link's query.
     static let callbackNames: Set<String> = ["x-success", "x-error", "x-cancel"]
 
@@ -275,6 +301,22 @@ enum MachineLink: Equatable {
     /// `open?folder=&file=`, x-callback, or a path that is absolute, `~`
     /// or climbs.
     case refused
+}
+
+/// What a window does with a link it is asked to follow or load (#868),
+/// as `Place.linkAction(for:clicked:)` decides it.
+enum LinkAction: Equatable {
+    /// Load it in the window: a navigation nothing clicked.
+    case allow
+    /// Drop it without a word.
+    case cancel
+    /// Hand it to the system: the browser for a web link, this device's
+    /// app for an app link.
+    case openExternally
+    /// `path`, a machine's, opens in the window.
+    case openOnMachine(path: String)
+    /// Say the link names a file on another computer, and do nothing.
+    case refuse
 }
 
 /// One entry of the place switcher.

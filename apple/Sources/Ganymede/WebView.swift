@@ -409,20 +409,28 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
             // A window never becomes another place's page (#842): its handlers
             // and the person's name are its own place's.
             decisionHandler(.cancel)
-        } else if let target = navigationAction.request.url, isExternal(target),
-                  place.isMachine, target.scheme?.lowercased() == AppURL.scheme {
-            // A machine's app link names a file on that machine (#868):
-            // it is read there, never by this device's `AppURL`, whose
-            // commands act on this Mac.
-            followMachineLink(target)
-            decisionHandler(.cancel)
-        } else if let target = navigationAction.request.url, isExternal(target),
-           navigationAction.navigationType == .linkActivated {
-            // A machine's notebook may link to anything: web links open in
-            // the browser, but not `ganymede://` or other app links, which
-            // act on this device (#701).
-            if place.opensExternally(target) { openExternally(target) }
-            decisionHandler(.cancel)
+        } else if let target = navigationAction.request.url, isExternal(target) {
+            // A link (#868): a machine's app link is the machine's, read
+            // there and only when it was clicked, never by this device's
+            // `AppURL`, whose commands act on this Mac; a web link goes to
+            // the browser, and a navigation nothing clicked loads here.
+            switch place.linkAction(
+                for: target, clicked: navigationAction.navigationType == .linkActivated
+            ) {
+            case .allow:
+                decisionHandler(.allow)
+            case .cancel:
+                decisionHandler(.cancel)
+            case .openExternally:
+                openExternally(target)
+                decisionHandler(.cancel)
+            case .openOnMachine(let path):
+                page?.run("open", arg: path)
+                decisionHandler(.cancel)
+            case .refuse:
+                showMachineLinkNotice()
+                decisionHandler(.cancel)
+            }
         } else {
             decisionHandler(.allow)
         }
@@ -575,10 +583,12 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         #endif
     }
 
-    /// A `ganymede://` link in a machine's window (#868): an `open` with a
-    /// relative path shows that machine's notebook in this window; anything
-    /// else is refused with a notice. Neither reaches this device's
-    /// `AppURL`, whose commands open, make and run files here.
+    /// A machine's `ganymede://` link, as `createWebViewWith` takes one
+    /// (#868): an `open` with a relative path shows that machine's notebook
+    /// in this window; anything else is refused with a notice. Neither
+    /// reaches this device's `AppURL`, whose commands open, make and run
+    /// files here. `decidePolicyFor` goes through `Place.linkAction`, so
+    /// only a click follows one.
     private func followMachineLink(_ url: URL) {
         switch place.machineLink(url) {
         case .open(let path):
@@ -590,14 +600,16 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         }
     }
 
-    /// Says a link in a machine's window names a file elsewhere (#868), as
-    /// the window shows its other short notices.
+    /// Says a link in a machine's window names a file elsewhere (#868), in
+    /// a sheet on this window rather than one the app runs modally, so the
+    /// window it belongs to is the one that shows it.
     private func showMachineLinkNotice() {
         let message = "This link names a file on another computer."
         #if os(macOS)
+        guard let window = webView?.window else { return }
         let alert = NSAlert()
         alert.messageText = message
-        alert.runModal()
+        alert.beginSheetModal(for: window)
         #else
         guard let view = webView else { return }
         let alert = UIAlertController(title: nil, message: message, preferredStyle: .alert)

@@ -376,9 +376,9 @@ describe('App', () => {
   });
 
   // An app whose bundled server predates ganymede#973 answers 404 for the
-  // grant: the padlock shows nothing, and Notebook Access says so when
-  // opened (#868).
-  it('shows no padlock when a machine has no notebook access settings (#868)', async () => {
+  // grant: its mount doesn't forward api/host/grants. A machine's window
+  // dims Notebook Access and the padlock shows nothing (#868).
+  it('dims a machine’s Notebook Access when it has none (#868)', async () => {
     const states: Record<string, unknown>[] = [];
     vi.stubGlobal('webkit', {
       messageHandlers: {
@@ -386,7 +386,7 @@ describe('App', () => {
       },
     });
     mocks.loadHostGrants.mockRejectedValue(
-      new Error('This server has no notebook access settings. They need a newer Ganymede.'),
+      new Error('Notebook access on a connected machine needs a newer version of this app.'),
     );
     mocks.controller = {
       dirty: false,
@@ -400,7 +400,45 @@ describe('App', () => {
     await waitFor(() => expect(mocks.loadHostGrants).toHaveBeenCalled());
     await act(async () => {});
     expect(screen.queryByTitle(/^Notebook Access: asks for/)).toBeNull();
-    expect(states.at(-1)).toMatchObject({ accessWanted: [] });
+    await waitFor(() =>
+      expect(states.at(-1)).toMatchObject({ hostGrants: false, accessWanted: [] }),
+    );
+    vi.unstubAllGlobals();
+  });
+
+  // The probe's answer decides: a machine's window stays dimmed, and keeps
+  // its padlock quiet, until the server has said it has the route (#868).
+  it('dims a machine’s Notebook Access until its grant probe answers (#868)', async () => {
+    const states: Record<string, unknown>[] = [];
+    vi.stubGlobal('webkit', {
+      messageHandlers: {
+        state: { postMessage: (m: Record<string, unknown>) => states.push(m) },
+      },
+    });
+    let answer: ((grants: unknown) => void) | undefined;
+    mocks.loadHostGrants.mockReturnValue(new Promise(resolve => (answer = resolve)));
+    mocks.controller = {
+      dirty: false,
+      save: vi.fn(async () => true),
+      hostWants: () => [],
+    };
+    const fake = fakeServices({ '': [{ name: 'Io.ipynb', type: 'notebook' }] });
+    mocks.connect.mockImplementation(async c => fakeBackend(fake.services, c));
+    history.replaceState(null, '', '/?machine=mini-1&machine_name=m4mini&open=Io.ipynb');
+    render(<App />);
+    await waitFor(() => expect(mocks.loadHostGrants).toHaveBeenCalled());
+    await act(async () => {});
+    // No `wants`, and the probe still runs for a machine: until it answers,
+    // the machine isn't one that can be edited.
+    expect(states.at(-1)).toMatchObject({ hostGrants: false });
+    await act(async () =>
+      answer?.({
+        path: 'Io.ipynb',
+        grant: {},
+        defaults: { read: [''], edit_self: true, run: [] },
+      }),
+    );
+    await waitFor(() => expect(states.at(-1)).toMatchObject({ hostGrants: true }));
     vi.unstubAllGlobals();
   });
 

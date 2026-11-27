@@ -948,23 +948,29 @@ with only SSH stays in Settings for shells.
 
 - **Notebook Access** works in a machine's window and edits that machine's
   settings: the grant's paths and defaults are the machine's API paths and
-  its `[host]` defaults, and nothing on this Mac changes. A machine whose
-  Ganymede includes ganymede#973 answers; an older one says "This server
-  has no notebook access settings. They need a newer Ganymede." when the
-  sheet opens, and the padlock stays quiet.
+  its `[host]` defaults, and nothing on this Mac changes. Any machine
+  running Ganymede v0.15.0 or later serves a notebook's grants already;
+  what it needs is an app whose bundled server forwards
+  `api/host/grants` to it, which ganymede#973 adds. Until then Notebook
+  Access is dimmed in a machine's window, and the padlock stays quiet.
 
   > [!NOTE]
   > **Unreleased.** Available only from a build of `main` (HEAD), not in
-  > the latest release. It needs ganymede#973, which no release includes
-  > yet, on the machine: an older machine answers that it needs a newer
-  > Ganymede. The release dims Notebook Access in a machine's window.
+  > the latest release, whose bundled Ganymede predates ganymede#973. It
+  > needs an app built against a `GANYMEDE_REF` after v0.17.0; the machine
+  > needs Ganymede v0.15.0 or later, which serves a notebook's grants
+  > already. Until both, Notebook Access is dimmed in a machine's window,
+  > and the sheet, if it is opened, says it needs a newer version of the
+  > app.
 
 - **App links** in a machine's notebook name that machine's files.
   `ganymede://open?path=a/b.ipynb` opens `a/b.ipynb` on the machine, in
   the same window. Other app links there are refused with "This link
   names a file on another computer." and nothing happens on this Mac:
   `run`, `new`, `open` with a granted `folder=`, x-callback links, and a
-  path that is absolute, `~` or climbs with `..`. Web links open in the
+  path that is absolute, `~` or climbs with `..`. Only a click follows
+  one: a script's navigation to `ganymede://` is dropped without a word,
+  so an output can't make the notice appear. Web links open in the
   browser, as they always did.
 
   > [!NOTE]

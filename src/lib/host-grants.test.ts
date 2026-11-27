@@ -1,13 +1,15 @@
 import { describe, expect, it } from 'vitest';
+import { ServerConnection } from '@jupyterlab/services';
 import {
   describePaths,
   hostGrantsAvailable,
   hostWants,
+  loadHostGrants,
   missingWants,
   pathsText,
   textPaths,
 } from './host-grants';
-import type { Backend } from './backends';
+import type { Backend, BackendConfig } from './backends';
 
 describe('host grants', () => {
   it('reads what a notebook asks for and ignores anything else', () => {
@@ -63,5 +65,50 @@ describe('host grants', () => {
     ).toBe(false);
     expect(hostGrantsAvailable(b({ kind: 'browser' }))).toBe(false);
     expect(hostGrantsAvailable(undefined)).toBe(false);
+  });
+
+  // The app's own mount answers a JSON 404 for api/host/grants when its
+  // bundled Ganymede predates ganymede#973: that is "no settings", in the
+  // words of whichever side is missing them (#868).
+  describe('a 404 with no message of its own', () => {
+    const notFound = async () =>
+      new Response(JSON.stringify({ message: 'Not Found', reason: null }), { status: 404 });
+    const backend = (config: BackendConfig, fetch: typeof globalThis.fetch) =>
+      ({
+        config,
+        services: {
+          contents: {
+            serverSettings: ServerConnection.makeSettings({ baseUrl: 'http://x/', fetch }),
+          },
+        },
+      }) as unknown as Backend;
+
+    it('says a machine needs a newer app', async () => {
+      const machine = backend({ kind: 'ganymede', url: '', token: '', machine: 'm1' }, notFound);
+      await expect(loadHostGrants(machine, 'a.ipynb')).rejects.toThrow(
+        'Notebook access on a connected machine needs a newer version of this app.',
+      );
+    });
+
+    it('says a server needs a newer Ganymede', async () => {
+      const server = backend({ kind: 'ganymede', url: '', token: '' }, notFound);
+      await expect(loadHostGrants(server, 'a.ipynb')).rejects.toThrow(
+        'This server has no notebook access settings. They need a newer Ganymede.',
+      );
+    });
+
+    it('keeps any other answer in its own words', async () => {
+      const answer = (status: number, body: string) =>
+        backend(
+          { kind: 'ganymede', url: '', token: '', machine: 'm1' },
+          async () => new Response(body, { status }),
+        );
+      await expect(
+        loadHostGrants(answer(404, JSON.stringify({ message: 'No such notebook' })), 'a.ipynb'),
+      ).rejects.toThrow('No such notebook');
+      await expect(loadHostGrants(answer(500, 'not json'), 'a.ipynb')).rejects.toThrow(
+        'The server answered 500.',
+      );
+    });
   });
 });
