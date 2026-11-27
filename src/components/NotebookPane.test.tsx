@@ -1946,6 +1946,31 @@ describe('NotebookPane', () => {
     await waitFor(() => expect(latest()?.notebookFind).toBeNull());
   });
 
+  it('moves the Find rows with a cell at once, before the edits’ wait (#879)', async () => {
+    const nb = structuredClone(NOTEBOOK);
+    nb.cells = ['plume = 1', 'plume = 2'].map((source, i) => ({
+      cell_type: 'code',
+      id: `a${i + 1}`,
+      source,
+      metadata: {},
+      outputs: [],
+      execution_count: null,
+    }));
+    const { latest, renderWith } = setup(
+      vi.fn(async () => ({ path: 'moons/Io.ipynb', content: nb })),
+    );
+    await waitFor(() => expect(latest()).toBeDefined());
+    vi.useFakeTimers();
+    renderWith('plume');
+    // The query's own answer, 300 ms on.
+    await act(() => vi.advanceTimersByTimeAsync(300));
+    expect(latest()!.notebookFind?.matches.map(m => m.cell)).toEqual([0, 1]);
+    // A cell inserted above them moves them at once, with no wait: a row
+    // that took the debounce would point at the wrong cell meanwhile.
+    act(() => modelOf().sharedModel.insertCell(0, { cell_type: 'markdown', source: '# Io' }));
+    expect(latest()!.notebookFind?.matches.map(m => m.cell)).toEqual([1, 2]);
+  });
+
   it('goes to a definition and renames a symbol through the language service, and shows its refusals (#676)', async () => {
     const { latest } = setup();
     await waitFor(() => expect(latest()?.status).toBe('none'));

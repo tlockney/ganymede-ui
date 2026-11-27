@@ -77,6 +77,26 @@ describe('findInNotebook', () => {
       findInNotebook([{ type: 'markdown', source: '# Io\r\nplume\r\n' }], 'plume').matches,
     ).toEqual([{ cell: 0, heading: 'Io', snippet: 'plume' }]);
   });
+
+  it('gives a setext heading’s text line that heading (#879)', () => {
+    // The underline is the line after the match, so the heading above the
+    // match is the match's own line.
+    expect(
+      findInNotebook([{ type: 'markdown', source: 'Volcanoes\n=========' }], 'volcano').matches,
+    ).toEqual([{ cell: 0, heading: 'Volcanoes', snippet: 'Volcanoes' }]);
+    expect(
+      findInNotebook(
+        [
+          { type: 'markdown', source: 'Plumes\n---' },
+          { type: 'code', source: 'plume = 1' },
+        ],
+        'plume',
+      ).matches,
+    ).toEqual([
+      { cell: 0, heading: 'Plumes', snippet: 'Plumes' },
+      { cell: 1, heading: 'Plumes', snippet: 'plume = 1' },
+    ]);
+  });
 });
 
 describe('findSnippet', () => {
@@ -101,5 +121,17 @@ describe('findSnippet', () => {
     const end = `${'a'.repeat(100)} plume`;
     expect(findSnippet(end, 'plume').startsWith('…')).toBe(true);
     expect(findSnippet(end, 'plume').endsWith('plume')).toBe(true);
+  });
+
+  it('places the match in the text itself, where lower case is a different length (#879)', () => {
+    // 'İ' lower-cases to two characters, so an index into the lower-cased
+    // line lands past the match and cuts it out of the snippet.
+    const line = `${'İ'.repeat(60)} plume ${'b'.repeat(80)}`;
+    expect(findSnippet(line, 'plume')).toContain('plume');
+  });
+
+  it('takes the query as text, not as a pattern', () => {
+    const line = `${'a '.repeat(40)} (plume) ${'b'.repeat(40)}`;
+    expect(findSnippet(line, '(plume)')).toContain('(plume)');
   });
 });

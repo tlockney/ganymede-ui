@@ -5,7 +5,7 @@
  * Find tab has one field over the notebook and the folder's files.
  */
 
-import { headingsOf } from './outline';
+import { headingsOf, isSetextUnderline } from './outline';
 
 /** What `findInNotebook` reads from each cell. */
 export type FindCell = { type: string; source: string };
@@ -20,13 +20,24 @@ export type NotebookFind = { query: string; matches: FindMatch[]; more: number }
 const SNIPPET_CHARS = 60;
 
 /**
+ * The query as a pattern that takes its characters as text, for finding
+ * where a line holds it.
+ */
+function patternOf(query: string): RegExp {
+  return new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+}
+
+/**
  * The line around the match, in one line (#879): trimmed, and cut to about
  * 60 characters with "…" where it was, so a long cell line reads in a row.
  */
 export function findSnippet(line: string, query: string): string {
   const text = line.trim();
   if (text.length <= SNIPPET_CHARS) return text;
-  const at = text.toLowerCase().indexOf(query.toLowerCase());
+  // The match's place in the text itself: a lower-cased copy can be a
+  // different length ('İ' folds to two characters), so an index into it
+  // would cut the match out of the snippet.
+  const at = text.search(patternOf(query));
   // Centred on the match where the line is long enough either side.
   const start = Math.max(
     0,
@@ -55,8 +66,10 @@ export function findInNotebook(cells: Iterable<FindCell>, query: string, cap = 5
     const at = lines.findIndex(line => line.toLowerCase().includes(needle));
     if (at >= 0) {
       // The heading at or above the matching line: one in this cell before
-      // it, else the last in a cell above.
-      const above = cell.type === 'markdown' ? headingsOf(lines.slice(0, at + 1).join('\n')) : [];
+      // it, else the last in a cell above. A setext heading's underline is
+      // the line after its text, so a match on that text takes it too.
+      const upTo = at + (isSetextUnderline(lines[at + 1] ?? '') ? 2 : 1);
+      const above = cell.type === 'markdown' ? headingsOf(lines.slice(0, upTo).join('\n')) : [];
       const match: FindMatch = {
         cell: index,
         heading: above.at(-1)?.text ?? heading,
