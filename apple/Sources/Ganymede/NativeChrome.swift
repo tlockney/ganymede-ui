@@ -52,6 +52,14 @@ struct FolderSidebar: View {
             }
         }
         .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
+        // A quiet selection (#873): the list draws the selected row's fill in
+        // a neutral grey, not the accent, which would shout over the
+        // notebook. `SidebarSelection` is opaque and dark enough for the
+        // white text the system puts on a focused selection (4.5:1 in both
+        // appearances); `.secondary` would not be. It greys the rows' icons
+        // too. Nothing about the keys or focus changes.
+        .tint(Color("SidebarSelection"))
         .modifier(SidebarKeys(
             selection: selection,
             isExpanded: { actions.isExpanded($0.url).wrappedValue },
@@ -348,9 +356,11 @@ private struct FolderContents: View {
                     .accessibilityHint(canOpen ? "" : "Can't open here")
                     .accessibilityAction { if canOpen { actions.open(entry) } }
                     .padding(.vertical, 1)
+                    // The open notebook's row, in the same quiet grey as the
+                    // selected row (#873): a tint of it, not the accent.
                     .listRowBackground(
                         entry.serverPath == actions.openPath
-                            ? Color.accentColor.opacity(0.18) : Color.clear
+                            ? Color.primary.opacity(0.08) : Color.clear
                     )
                     .contextMenu { menu(for: entry) }
                     .tag(entry)
@@ -458,6 +468,7 @@ struct RunningList: View {
             }
         }
         .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
         // The page asks the server for each kernel's memory only while
         // the list shows (#241).
         .onAppear { page.watchMemory(true) }
@@ -507,24 +518,34 @@ private struct KernelRow: View {
     }
 }
 
-/// The foot of the navigator sidebar (#246): where kernels run, and how
-/// many kernels and terminals there are. A menu: open a terminal on a
-/// remote, manage remotes. Where kernels run (#473) is an advanced choice
-/// in the kernel menu now (#701); connected machines are places instead.
-struct ServerLine: View {
-    var page: PageModel
+/// The foot of the navigator sidebar (#873): the window's folder, named, and
+/// where it is, over a menu: show it in the Finder, open a terminal on a
+/// remote, manage remotes. Where kernels run (#473) is an advanced choice in
+/// the kernel menu and the kernel button's popover now (#701, #867), and how
+/// many run is in the Running tab and that popover: the foot is the project.
+struct ProjectLine: View {
+    /// The window's folder: this Mac's own, or a machine's as its server
+    /// reports it (#740).
+    let folder: URL
+    /// This Mac's home folder, for the "~" in the line under the name; nil
+    /// for a machine's window, whose home this isn't.
+    var home: URL?
+    /// "This Mac", or the machine's name (#740).
+    let placeName: String
+    /// Whether the folder is on this Mac: only then can the menu show it in
+    /// the Finder, which lists this Mac's disk.
+    var showsInFinder = true
     /// The window's bottom panel, for terminals on remotes.
     var panel: PanelController?
-    /// A connected machine's name, for its window (#740): the kernels run
-    /// there, not where this device's setting says.
-    var machineName: String?
     var model = AppModel.shared
-    var terminals = OpenTerminals.shared
 
     var body: some View {
-        let locations = model.kernelLocations
-        let location = machineName ?? locations.title
+        let lines = ProjectLineText.lines(folder: folder, home: home, placeName: placeName)
         Menu {
+            if showsInFinder {
+                Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([folder]) }
+                Divider()
+            }
             let remotes = model.remotes.filter { $0.hasServer || $0.ssh != nil }
             if let panel, !remotes.isEmpty {
                 Section("New Terminal On") {
@@ -537,32 +558,32 @@ struct ServerLine: View {
                         }
                     }
                 }
+                Divider()
             }
-            Divider()
-            Button(locations.hasRemotes ? "Manage Remotes…" : "Add a Remote…") {
+            Button(model.kernelLocations.hasRemotes ? "Manage Remotes…" : "Add a Remote…") {
                 SettingsOpener.show(.remotes)
             }
         } label: {
             HStack(spacing: 6) {
-                Circle()
-                    .fill(page.state.backend == nil ? Color.secondary : Color("Ready"))
-                    .frame(width: 7, height: 7)
-                    .accessibilityHidden(true)
-                Image(systemName: machineName == nil && locations.selected == nil ? "laptopcomputer" : "server.rack")
+                Image(systemName: "folder")
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
-                Text(location)
-                    .lineLimit(1)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(lines.title)
+                        .font(.callout)
+                        .lineLimit(1)
+                    Text(lines.detail)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                Spacer(minLength: 4)
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.system(size: 8, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
-                Spacer(minLength: 4)
-                Text(OpenTerminals.summary(kernels: page.state.sessions.count, terminals: terminals.entries.count))
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
             }
-            .font(.caption)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .contentShape(Rectangle())
@@ -570,14 +591,10 @@ struct ServerLine: View {
         .menuStyle(.button)
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
-        .help(helpText(locations))
-        .accessibilityLabel("Kernels run on \(location)")
-    }
-
-    private func helpText(_ locations: KernelLocations) -> String {
-        var text = "Kernels run on \(machineName ?? locations.title)."
-        if page.state.backend == nil { text += " Not connected." }
-        return text + (machineName == nil ? " Click to open a terminal on a remote." : "")
+        // The whole path, for the line under the name, which is cut short.
+        .help(folder.path)
+        .accessibilityLabel(lines.title)
+        .accessibilityValue(lines.detail)
     }
 }
 
