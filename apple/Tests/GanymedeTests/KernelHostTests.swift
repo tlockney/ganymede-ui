@@ -431,9 +431,34 @@ final class KernelHostTests: XCTestCase {
         presenter.answers[1](.dismissed)
         try await waitFor(ui, "!!window.clipReply && window.clipReply.error.code === 'denied'")
 
-        // The page's reset drops what it asked, and nothing else of the
-        // device's: the machine's window has no ledger to keep.
+        // The page's reset drops what it asked: a dialog it left open is
+        // closed, and nothing else of the device's, since the machine's
+        // window has no ledger to keep.
+        _ = try await eval(ui, """
+            webkit.messageHandlers.deviceRemote.postMessage({ id: 4, owner: 1, method: 'ui.alert', params: { message: 'y' } });
+            true
+            """)
+        try await eventually("the alert") { presenter.shown == 3 }
+        XCTAssertEqual(presenter.closed, 0)
         host.reset()
+        try await eventually("the reset closed it") { presenter.closed == 1 }
+    }
+
+    /// A machine's window lends nothing to the app's kernels (#877): the
+    /// lend is how this device's kernels keep running in a page's window,
+    /// and a machine's notebooks aren't this device's. This device's
+    /// window lends its page, as it did.
+    @MainActor
+    func testAMachinesWindowLendsNothingToTheAppsKernels() {
+        let kernels = AppKernels()
+        let host = KernelHost(device: DeviceBridge(presenter: SilentPresenter()), kernels: kernels)
+        let machinePage = uiView()
+        host.attachRemote(to: machinePage, asker: "mini")
+        XCTAssertTrue(kernels.lentPages.isEmpty, "a machine's window lends nothing")
+        let localPage = uiView()
+        host.attach(to: localPage)
+        XCTAssertEqual(kernels.lentPages.count, 1)
+        XCTAssertTrue(kernels.lentPages.first === localPage, "this device's window lends its page")
     }
 
     /// A rename carries kept answers along, folders included, and the

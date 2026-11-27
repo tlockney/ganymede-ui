@@ -184,6 +184,18 @@ final class PlaceTests: XCTestCase {
         }
     }
 
+    /// A machine's dialogs always say where the cell runs (#877): the
+    /// app's name for the machine, or "another computer" when it has none.
+    /// This device's windows ask as no machine, so their dialogs are
+    /// unchanged.
+    func testAMachinesAskerNamesItOrSaysAnotherComputer() {
+        XCTAssertEqual(Place.machine(id).asker { _ in "m4mini" }, "m4mini")
+        XCTAssertEqual(Place.machine(id).asker { _ in nil }, "another computer")
+        // The lookup is asked for this window's machine only.
+        XCTAssertEqual(Place.machine(id).asker { asked in asked == id ? "m4mini" : nil }, "m4mini")
+        XCTAssertNil(Place.thisDevice.asker { _ in "m4mini" })
+    }
+
     func testAMachinePageOpensWebLinksButNotAppLinks() throws {
         let web = try XCTUnwrap(URL(string: "https://example.com/a"))
         let app = try XCTUnwrap(URL(string: "ganymede://open?path=/a"))

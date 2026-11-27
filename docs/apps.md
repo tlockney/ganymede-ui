@@ -935,10 +935,12 @@ with only SSH stays in Settings for shells.
   change. With it on, a cell on the machine's kernels may call the
   remote methods ([Device API](device.md#from-a-machines-kernel)),
   answered by this device: every dialog it raises says where the cell
-  runs ("A cell on m4mini asks to use this device."), and a clipboard
-  read always asks first ("m4mini asks to read your clipboard."). This
-  device's permission ledger and Shortcuts stay its own windows': the
-  ledger keeps notebooks by their path on this device.
+  runs ("A cell on m4mini asks to use this device."), a picker, share,
+  save or preview asks first with Continue and Cancel ("A cell on
+  m4mini asks to use this device. It wants to pick files."), and a
+  clipboard read always asks first ("m4mini asks to read your
+  clipboard."). This device's permission ledger and Shortcuts stay its
+  own windows': the ledger keeps notebooks by their path on this device.
 
   > [!NOTE]
   > **Unreleased.** Available only from a build of `main` (HEAD), not in

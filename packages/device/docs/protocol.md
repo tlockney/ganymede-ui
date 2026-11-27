@@ -771,8 +771,19 @@ own, which changes nothing:
   With it, every dialog the cell raises — `ui.alert`, `ui.confirm`,
   `ui.prompt`, `ui.actionSheet`, `ui.pickDate` — carries "A cell on
   `<asker>` asks to use this device." as a line above the cell's own
-  words (the title when the dialog has no message). Without it, dialogs
-  are the cell's alone, as the kernel page's are.
+  words, or as the title when the dialog has none: an action sheet with
+  no message says the line only, and a date picker keeps its own title
+  ("Choose a date", "Choose a time") with the line under it. Without
+  it, dialogs are the cell's alone, as the kernel page's are.
+- A picker, the share sheet, the save panel or the preview sheet takes
+  what it read or wrote to the machine the kernel runs on, so one asks
+  first: "A cell on `<asker>` asks to use this device. It wants to pick
+  files." — or "to pick photos", "to save a file", "to share", "to show
+  a preview" — with Continue and Cancel. Continue shows the picker or
+  sheet, which answers the call. Cancel answers as cancelling it does
+  (`[]`, `false`, or a dismissed preview), and nothing shows. On the
+  Mac the open and save panels also carry the ask line above their file
+  list. Without an asker they show as they always did.
 - `confirmClipboardReads`: `clipboard.readText` and
   `clipboard.readImage` show a confirm first, "`<asker>` asks to read
   your clipboard.", with Allow and Don't Allow. Don't Allow fails the

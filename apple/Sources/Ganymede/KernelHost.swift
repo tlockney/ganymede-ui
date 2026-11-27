@@ -141,6 +141,20 @@ final class KernelHost: NSObject {
         }
     }
 
+    /// Attaches the device handlers a window of `place` gets (#877): this
+    /// device's `kernelRelay`, the full bridge and the lend (`attach`), or
+    /// a machine's `deviceRemote` alone when its remote's setting says so
+    /// (`attachRemote`), and neither with that setting off. The one
+    /// decision a window's place makes about them, so `WindowWiringTests`
+    /// builds a page and asks this.
+    func attach(to ui: WKWebView, place: Place, settings: PlaceSettings, asker: String?) {
+        if place.allows(.deviceLedger, settings) {
+            attach(to: ui)
+        } else if place.allows(.deviceRemote, settings) {
+            attachRemote(to: ui, asker: asker)
+        }
+    }
+
     /// The UI page is `url`.
     func uiWillLoad(_ url: URL) {
         pageURL = url

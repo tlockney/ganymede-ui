@@ -144,6 +144,10 @@ final class AppKernels: NSObject {
         if webView.window == nil { ui.addSubview(webView) }
     }
 
+    /// The notebook pages the kernel web view was lent, for the tests: a
+    /// machine's window lends nothing (#877).
+    var lentPages: [WKWebView] { hosts.compactMap(\.view) }
+
     /// The last notebook page lent that is still in a window, or any left.
     private func liveHost() -> WKWebView? {
         hosts.removeAll { $0.view == nil }

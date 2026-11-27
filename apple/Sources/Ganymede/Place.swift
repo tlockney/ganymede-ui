@@ -175,6 +175,18 @@ enum Place: Hashable, Codable {
         return names
     }
 
+    /// The name a window of this place asks as, for the device bridge's
+    /// `asker` (#877): the app's name for the machine, or "another
+    /// computer" when it has none (a remote removed while its window was
+    /// open), so a machine's dialogs always say the cell isn't this
+    /// device's. Nil for this device's windows, whose dialogs are its
+    /// alone. `name` is the app's lookup for a machine id
+    /// (`AppModel.machineName`), so a test needs no saved remotes.
+    func asker(name: (String) -> String?) -> String? {
+        guard case .machine(let id) = self else { return nil }
+        return name(id) ?? "another computer"
+    }
+
     /// Whether a link the page asked to open goes to the system: web links
     /// always, `ganymede://` and other app links only for this device.
     func opensExternally(_ url: URL) -> Bool {

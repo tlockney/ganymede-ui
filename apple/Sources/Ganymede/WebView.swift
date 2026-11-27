@@ -328,15 +328,11 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         // What this window's place gets (`Place.handlerNames`, #701, #877).
         let names = place.handlerNames(settings)
         // The device bridge, ledger prompts and Shortcuts: this device's
-        // windows only.
-        if names.contains("kernelRelay") {
-            kernels.attach(to: view)
-        } else if names.contains("deviceRemote") {
-            // A machine's window with its setting on (#877): the remote
-            // subset alone, every dialog naming the machine, and never the
-            // ledger or a lend of this web view to the app's kernels.
-            kernels.attachRemote(to: view, asker: place.machineID.flatMap(AppModel.shared.machineName(_:)))
-        }
+        // windows get them all, a machine's the remote subset alone, every
+        // dialog naming the machine (#877).
+        kernels.attach(
+            to: view, place: place, settings: settings,
+            asker: place.asker { AppModel.shared.machineName($0) })
         urlObservation = view.observe(\.url, options: [.new]) { [weak self] _, change in
             let url = change.newValue ?? nil
             Task { @MainActor in self?.onNavigate?(url) }

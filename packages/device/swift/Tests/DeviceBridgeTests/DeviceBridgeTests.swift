@@ -817,6 +817,117 @@ final class DeviceBridgeTests: XCTestCase {
         XCTAssertEqual(Dialog.clipboardAsk(nil), "A cell asks to read your clipboard.")
     }
 
+    /// A dialog's words with the asker named (#877): the line above the
+    /// cell's own words, or as the title when the dialog has none.
+    func testDialogsWordsPutTheAskLineFirst() {
+        let line = Dialog.askLine("mini")
+        // As it always was: the title, the message, or both.
+        XCTAssertEqual(Dialog.words(title: "Rename", message: nil, asker: nil), .init(title: "Rename", message: nil))
+        XCTAssertEqual(Dialog.words(title: nil, message: "Done", asker: nil), .init(title: nil, message: "Done"))
+        XCTAssertEqual(Dialog.words(title: "Rename", message: "Done", asker: nil), .init(title: "Rename", message: "Done"))
+        // A machine's: the line above the cell's words, or the title.
+        XCTAssertEqual(
+            Dialog.words(title: nil, message: "Done", asker: "mini"), .init(title: line, message: "Done"))
+        XCTAssertEqual(
+            Dialog.words(title: "Rename", message: "Done", asker: "mini"),
+            .init(title: "Rename", message: line + "\n\nDone"))
+        // An empty message has nothing to go under the line.
+        XCTAssertEqual(
+            Dialog.words(title: "Rename", message: "", asker: "mini"), .init(title: "Rename", message: line))
+        XCTAssertEqual(Dialog.words(title: nil, message: "", asker: "mini"), .init(title: line, message: nil))
+        // An action sheet needn't have a message: the line goes under its title.
+        XCTAssertEqual(
+            Dialog.words(title: "Quality", message: nil, asker: "mini"), .init(title: "Quality", message: line))
+        // A date picker has neither, so the presenter's own title stands and
+        // the line goes under it.
+        XCTAssertEqual(
+            Dialog.words(title: nil, message: nil, asker: "mini", standIn: "Choose a date"),
+            .init(title: "Choose a date", message: line))
+        XCTAssertEqual(
+            Dialog.words(title: nil, message: nil, asker: nil, standIn: "Choose a date"),
+            .init(title: "Choose a date", message: nil))
+    }
+
+    /// A machine's picker, share sheet, save panel or preview sheet takes
+    /// what it read or wrote to the other computer, so it asks first, naming
+    /// the machine (#877): Continue shows it, Cancel answers as cancelling
+    /// it does.
+    func testAMachinesSheetsAskFirstNamingTheMachine() {
+        let presenter = FakePresenter()
+        let bridge = DeviceBridge(clipboard: FakeClipboard(), presenter: presenter, appVersion: "")
+        let options = RemoteOptions(asker: "mini")
+        let png = Data([0x89, 0x50, 0x4E, 0x47])
+        let file: [String: Any] = ["name": "plot.png", "data": ["base64": png.base64EncodedString()]]
+
+        let calls: [(method: String, params: [String: Any], wants: String, dialog: Dialog, answer: DialogResult)] = [
+            (
+                "files.pick", ["types": ["text/csv"]], "to pick files",
+                .pickFiles(types: ["public.comma-separated-values-text"], multiple: false),
+                .files([PickedFile(name: "a.csv", type: "text/csv", data: Data([1]))])
+            ),
+            (
+                "photos.pick", [:], "to pick photos", .pickPhotos(limit: 1),
+                .files([PickedFile(name: "p.jpg", type: "image/jpeg", data: png)])
+            ),
+            (
+                "files.export", ["name": "out.txt", "data": ["base64": "aGk="]], "to save a file",
+                .exportFile(NamedFile(name: "out.txt", data: Data("hi".utf8))), .saved
+            ),
+            ("share", ["text": "hi"], "to share", .share(text: "hi", url: nil, files: []), .shared),
+            (
+                "preview", ["files": [file]], "to show a preview",
+                .preview(files: [NamedFile(name: "plot.png", data: png)]), .dismissed
+            ),
+        ]
+        func ask(_ replies: Replies, _ id: Int, _ call: (method: String, params: [String: Any])) {
+            bridge.respondRemote(
+                to: ["id": id, "owner": 1, "method": call.method, "params": call.params],
+                options: options, reply: replies.reply)
+        }
+        let confirm = { (wants: String) in
+            Dialog.confirm(
+                title: nil, message: "A cell on mini asks to use this device. It wants \(wants).",
+                destructive: false, okLabel: "Continue")
+        }
+
+        // Continue shows the picker or sheet, and it answers the call.
+        for (index, call) in calls.enumerated() {
+            let replies = Replies()
+            ask(replies, index + 1, (call.method, call.params))
+            XCTAssertEqual(presenter.shown.last, confirm(call.wants), call.method)
+            XCTAssertNil(presenter.askers.last.flatMap { $0 }, "\(call.method): the confirm's words name the machine")
+            XCTAssertTrue(replies.all.isEmpty, "\(call.method): nothing shows before the person continues")
+            presenter.answer(.confirmed)
+            XCTAssertEqual(presenter.shown.last, call.dialog, "\(call.method): Continue shows it")
+            presenter.answer(call.answer)
+            XCTAssertNil(replies.last?["error"], "\(call.method): \(String(describing: replies.last))")
+            XCTAssertEqual(replies.all.count, 1, call.method)
+        }
+
+        // Cancel answers as cancelling the picker itself does, and shows
+        // nothing.
+        for (index, call) in calls.enumerated() {
+            let replies = Replies()
+            ask(replies, index + 10, (call.method, call.params))
+            XCTAssertEqual(presenter.shown.last, confirm(call.wants), call.method)
+            let shown = presenter.shown.count
+            presenter.answer(.dismissed)
+            XCTAssertEqual(presenter.shown.count, shown, "\(call.method): Cancel shows no picker")
+            XCTAssertNil(replies.last?["error"], "\(call.method): a cancel isn't an error")
+            XCTAssertEqual(
+                replies.last?["result"].map { String(describing: $0) } ?? "none",
+                String(describing: call.dialog.result(.dismissed)), call.method)
+        }
+
+        // This device's own calls are as they always were: no confirm.
+        let replies = Replies()
+        bridge.respondRemote(
+            to: ["id": 20, "owner": 1, "method": "files.pick", "params": [:]],
+            reply: replies.reply)
+        XCTAssertEqual(presenter.shown.last, .pickFiles(types: [], multiple: false))
+        XCTAssertNil(presenter.askers.last.flatMap { $0 })
+    }
+
     func testAMachinesClipboardReadAsksEachTime() {
         let clipboard = FakeClipboard()
         clipboard.text = "a secret"

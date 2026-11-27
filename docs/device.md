@@ -80,10 +80,11 @@ package, which isn't out yet
   need no permission, where the person sees and confirms the action or
   nothing goes back to the kernel. Anything picked or read goes to the
   machine the kernel runs on.
-- Clipboard reads are the exception: iPadOS can show its paste prompt,
-  but on the Mac a server kernel, a remote server's included, can read
-  the clipboard with no dialog. Connect only to servers you trust. A
-  connected machine's kernel always asks first
+- Clipboard reads are the exception, and it is the window that decides,
+  not where the kernel runs: a kernel on a remote server, run from this
+  device's own window, still reads the clipboard with no dialog (iPadOS
+  can show its paste prompt). Connect only to servers you trust. Only a
+  connected machine's window asks first
   ([below](#from-a-machines-kernel)).
 - In JupyterLab nothing answers, and `connectDevice` gives a `device`
   whose calls fail `unavailable` after five seconds. Another client on
@@ -105,10 +106,14 @@ machine's windows opened after it.
 With it on, a cell there gets the same remote methods, answered by this
 device over the comm above, and every dialog it raises says where the
 cell runs: "A cell on m4mini asks to use this device.", above the cell's
-own words. A clipboard read asks every time — "m4mini asks to read your
-clipboard.", with Allow and Don't Allow — because what it reads goes to
-the other computer, whose notebook other people and agents can write.
-Don't Allow fails the call `denied`.
+own words. A picker, the share sheet, a saved file or a preview asks
+first, since what it picks or writes goes to the other computer: "A
+cell on m4mini asks to use this device. It wants to pick files.", with
+Continue and Cancel, and the Mac's open and save panels keep the line
+above their file list. A clipboard read asks every time — "m4mini asks
+to read your clipboard.", with Allow and Don't Allow — because what it
+reads goes to the other computer, whose notebook other people and
+agents can write. Don't Allow fails the call `denied`.
 
 A machine's notebooks never get this device's permission ledger or
 Shortcuts: the ledger keeps notebooks by their absolute path on this
