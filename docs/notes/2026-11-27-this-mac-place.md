@@ -95,5 +95,4 @@ helper's>"`; that pid holds the TCP socket listening on the port at that
 - Not done here: the window's banner when a check fails (the page draws the
   offline machine's banner; a native notice would be new chrome, and this
   branch asked for the load-time decision only), and section 4's routing of
-  local notebooks through the server. The banner is to be filed as a
-  follow-up issue.
+  local notebooks through the server. The banner is #887.
