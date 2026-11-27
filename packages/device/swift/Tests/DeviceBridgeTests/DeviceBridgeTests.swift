@@ -79,6 +79,8 @@ private final class FakeSoundLoader: SoundLoader {
 @MainActor
 private final class FakePresenter: DialogPresenter {
     var shown: [Dialog] = []
+    /// The machine named for each dialog, when one was (#877).
+    var askers: [String?] = []
     var hosts: [DialogHost?] = []
     var closed = 0
     var refuse = false
@@ -87,10 +89,11 @@ private final class FakePresenter: DialogPresenter {
     var slowClose = false
     private var closing: [() -> Void] = []
     private var answers: [(DialogResult) -> Void] = []
-    func present(_ dialog: Dialog, on host: DialogHost?, done: @escaping (DialogResult) -> Void) throws -> Close {
+    func present(_ dialog: Dialog, asker: String?, on host: DialogHost?, done: @escaping (DialogResult) -> Void) throws -> Close {
         if refuse { throw DialogUnavailable(description: "no window") }
         if fail { throw DialogFailed(description: "disk full") }
         shown.append(dialog)
+        askers.append(asker)
         hosts.append(host)
         answers.append(done)
         return { [weak self] gone in
@@ -790,7 +793,71 @@ final class DeviceBridgeTests: XCTestCase {
         XCTAssertEqual(errorCode(kernelPage.last ?? [:]), "cancelled")
     }
 
-    func testRemoteReleaseStopsOnlyItsOwnSounds() {
+    func testARemotesDialogNamesTheMachineThatAsked() {
+        let presenter = FakePresenter()
+        let bridge = DeviceBridge(clipboard: FakeClipboard(), presenter: presenter, appVersion: "")
+        let replies = Replies()
+        // This device's windows name no one, as they always didn't.
+        bridge.respondRemote(to: ["id": 1, "owner": 1, "method": "ui.alert", "params": ["message": "a"]], reply: replies.reply)
+        presenter.answer(.ok)
+        // A machine's window says who asked (#877).
+        let options = RemoteOptions(asker: "mini")
+        let second = Replies()
+        bridge.respondRemote(
+            to: ["id": 2, "owner": 1, "method": "ui.alert", "params": ["message": "b"]],
+            options: options, reply: second.reply)
+        presenter.answer(.ok)
+        XCTAssertEqual(presenter.askers, [nil, "mini"])
+        // The dialog is the cell's, unchanged: the presenter is where it
+        // says who asked.
+        XCTAssertEqual(presenter.shown.last, .alert(title: nil, message: "b"))
+        // The asker's line, as every platform shows it.
+        XCTAssertEqual(Dialog.askLine("mini"), "A cell on mini asks to use this device.")
+        XCTAssertEqual(Dialog.clipboardAsk("mini"), "mini asks to read your clipboard.")
+        XCTAssertEqual(Dialog.clipboardAsk(nil), "A cell asks to read your clipboard.")
+    }
+
+    func testAMachinesClipboardReadAsksEachTime() {
+        let clipboard = FakeClipboard()
+        clipboard.text = "a secret"
+        let presenter = FakePresenter()
+        let bridge = DeviceBridge(clipboard: clipboard, presenter: presenter, appVersion: "")
+        let options = RemoteOptions(asker: "mini", confirmClipboardReads: true)
+        let refused = Replies()
+        bridge.respondRemote(
+            to: ["id": 1, "owner": 1, "method": "clipboard.readText", "params": [:]],
+            options: options, reply: refused.reply)
+        XCTAssertEqual(presenter.shown.last, .clipboardRead)
+        XCTAssertEqual(presenter.askers.last, "mini")
+        XCTAssertTrue(refused.all.isEmpty, "nothing is read before the person answers")
+        // Don't Allow is a refusal, the code a person's refusal has.
+        presenter.answer(.dismissed)
+        XCTAssertEqual(errorCode(refused.last ?? [:]), "denied")
+
+        let allowed = Replies()
+        bridge.respondRemote(
+            to: ["id": 2, "owner": 1, "method": "clipboard.readText", "params": [:]],
+            options: options, reply: allowed.reply)
+        presenter.answer(.confirmed)
+        XCTAssertEqual(allowed.last?["result"] as? String, "a secret")
+        XCTAssertEqual(presenter.shown.count, 2, "every read asks, not just the first")
+
+        // An image too, and this device's windows (no asker, no confirm)
+        // read as they did.
+        clipboard.image = Data([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
+        let image = Replies()
+        bridge.respondRemote(
+            to: ["id": 3, "owner": 1, "method": "clipboard.readImage", "params": [:]],
+            options: options, reply: image.reply)
+        presenter.answer(.confirmed)
+        XCTAssertNotNil(image.last?["result"])
+        let unasked = Replies()
+        bridge.respondRemote(to: ["id": 4, "owner": 1, "method": "clipboard.readText", "params": [:]], reply: unasked.reply)
+        XCTAssertEqual(unasked.last?["result"] as? String, "a secret")
+        XCTAssertEqual(presenter.shown.count, 3)
+    }
+
+    func testARemoteReleaseStopsOnlyItsOwnSounds() {
         let loader = FakeSoundLoader()
         let bridge = DeviceBridge(clipboard: FakeClipboard(), presenter: FakePresenter(), sounds: loader, appVersion: "")
         let audio: [String: Any] = ["base64": "AQI="]

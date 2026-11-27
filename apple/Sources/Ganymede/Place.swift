@@ -64,9 +64,17 @@ enum Place: Hashable, Codable {
     /// origin as this device's, so this is decided by the window's place,
     /// never by origin (as `AgentKeys.trusted` does for the local page).
     enum Capability: CaseIterable {
-        /// ganymede-device's bridge, the permission ledger, Notebook Access
-        /// and Shortcuts: the `kernelRelay` and `deviceRemote` handlers.
-        case deviceBridge
+        /// The `deviceRemote` handler: ganymede-device's remote subset, the
+        /// `device` calls of a server kernel's comm (#568), which this
+        /// device's windows always get and a machine's only when its
+        /// setting says so (`allows(_:settings:)`, #877).
+        case deviceRemote
+        /// The permission ledger, open-time prompts, Notebook Access,
+        /// Shortcuts and the lend of the web view to `AppKernels`: the
+        /// `kernelRelay` handler. This device only: the ledger keeps this
+        /// device's notebooks by absolute path, and a machine's notebooks
+        /// aren't this device's (#877).
+        case deviceLedger
         /// The page's `openFile` (the app's editor, on this device's files
         /// or a machine's through its mount, #855).
         case openFile
@@ -78,7 +86,7 @@ enum Place: Hashable, Codable {
         case agentKeys
         /// The person's name, sent in a notebook room's awareness: always
         /// on this device, and on a machine when its remote's setting
-        /// says so (`allows(_:sharesName:)`, #842).
+        /// says so (`PlaceSettings`, #842).
         case personName
         /// Opening `ganymede://` and other non-web links.
         case appLinks
@@ -110,13 +118,18 @@ enum Place: Hashable, Codable {
         }
     }
 
-    /// The same table with the machine's own setting for `personName`
-    /// (#842): a machine's window gets the person's name only when the
-    /// remote it was made from says so, which the window (`WebView`)
-    /// passes; a place never reads the saved remotes itself. Everything
-    /// else is as `allows(_:)`, whatever `sharesName` says.
-    func allows(_ capability: Capability, sharesName: Bool) -> Bool {
-        (capability == .personName && sharesName) || allows(capability)
+    /// The same table with the machine's own settings (#842, #877): a
+    /// machine's window gets the person's name only when the remote it was
+    /// made from says so, and its notebooks get this device's `device` API
+    /// only when that says so too. The window (`WebView`) passes them; a
+    /// place never reads the saved remotes itself. Everything else is as
+    /// `allows(_:)`, whatever the settings say.
+    func allows(_ capability: Capability, _ settings: PlaceSettings) -> Bool {
+        switch capability {
+        case .personName: settings.sharesName || allows(capability)
+        case .deviceRemote: settings.usesDevice || allows(capability)
+        default: allows(capability)
+        }
     }
 
     /// What a new terminal in a window of this place runs on (#858): a shell
@@ -149,14 +162,16 @@ enum Place: Hashable, Codable {
     /// The script message handlers a window of this place registers. The
     /// one table the web view is made from, so a gate that is wrong shows
     /// in a test. (`kernelRelay` and `deviceRemote` are the device bridge's,
-    /// attached by `ServerHost.kernels`.)
-    var handlerNames: [String] {
+    /// attached by `KernelHost`; a machine's window gets the remote handler
+    /// alone, and only with its setting on, #877.)
+    func handlerNames(_ settings: PlaceSettings) -> [String] {
         var names: [String] = []
-        if allows(.deviceBridge) { names += ["kernelRelay", "deviceRemote"] }
-        if allows(.openFile) { names.append("openFile") }
-        if allows(.nativeChrome) { names += ["state", "document"] }
-        if allows(.agentKeys) { names.append("agentKeys") }
-        if allows(.settings) { names.append("settings") }
+        if allows(.deviceLedger, settings) { names.append("kernelRelay") }
+        if allows(.deviceRemote, settings) { names.append("deviceRemote") }
+        if allows(.openFile, settings) { names.append("openFile") }
+        if allows(.nativeChrome, settings) { names += ["state", "document"] }
+        if allows(.agentKeys, settings) { names.append("agentKeys") }
+        if allows(.settings, settings) { names.append("settings") }
         return names
     }
 
@@ -285,6 +300,19 @@ enum Place: Hashable, Codable {
         if let name, !name.isEmpty { items.append(("machine_name", name)) }
         return items
     }
+}
+
+/// A window's own settings, which the remote it was made from keeps (#842,
+/// #877): whether the person's name goes to a machine's rooms, and whether
+/// a machine's notebooks may use this device's `device` API. The window
+/// passes them to `Place`; a place never reads the saved remotes itself.
+/// This device's windows ignore both (its place allows the name and the
+/// device API whatever they say), and the defaults are a new remote's: the
+/// name on, since a machine is one you linked yourself, and the device API
+/// off, since a machine's notebooks can be written by others there.
+struct PlaceSettings: Equatable {
+    var sharesName = true
+    var usesDevice = false
 }
 
 /// What a `ganymede://` link asks in a machine's window (#868). A machine's

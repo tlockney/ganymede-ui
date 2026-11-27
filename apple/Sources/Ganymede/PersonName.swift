@@ -48,8 +48,8 @@ enum PersonName {
 
     /// The script for `place`'s window: none for a machine whose remote's
     /// setting says no, else as `pageScript(for:)` (#842).
-    static func pageScript(for loaded: URL?, place: Place, sharesName: Bool) -> WKUserScript? {
-        guard place.allows(.personName, sharesName: sharesName) else { return nil }
+    static func pageScript(for loaded: URL?, place: Place, settings: PlaceSettings) -> WKUserScript? {
+        guard place.allows(.personName, settings) else { return nil }
         return pageScript(for: loaded)
     }
 }

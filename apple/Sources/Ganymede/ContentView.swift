@@ -96,7 +96,7 @@ struct ContentView: View {
     @State private var columns = SidebarColumns.automatic
     /// The iPhone's page, kept while the folder list shows (#209). A store
     /// is for one place: `switchPlace` makes another.
-    @State private var phonePage = WebViewStore(place: .thisDevice, sharesName: true)
+    @State private var phonePage = WebViewStore(place: .thisDevice, sharesName: true, usesDevice: false)
     /// The iPhone's screens over the folder list: the notebook, or none.
     @State private var phonePath: [PhoneScreen] = []
     /// The iPad's bottom panel (#251): terminals on remotes. The iPhone
@@ -923,7 +923,8 @@ struct ContentView: View {
         panelFills = false
         if isPhone {
             phonePage.retire()
-            phonePage = WebViewStore(place: new, sharesName: sharesName(for: new))
+            phonePage = WebViewStore(
+                place: new, sharesName: sharesName(for: new), usesDevice: usesDevice(for: new))
         }
         pageModel.forgetPage()
         place = new
@@ -1209,6 +1210,14 @@ struct ContentView: View {
         model.sharesName(for: place)
     }
 
+    /// Whether a window of `place` may use this device's `device` API
+    /// (#877): this device always may; a machine, when its remote's setting
+    /// says so. The handlers are made with the page, so a change applies to
+    /// the machine's windows opened after it.
+    private func usesDevice(for place: Place) -> Bool {
+        model.usesDevice(for: place)
+    }
+
     private var content: some View {
         Group {
             if let url = page {
@@ -1219,7 +1228,7 @@ struct ContentView: View {
                     onOpenFile: { path in
                         openWindow(value: EditorRequest(path: path, place: place))
                     },
-                    place: place, sharesName: sharesName(for: place)
+                    place: place, sharesName: sharesName(for: place), usesDevice: usesDevice(for: place)
                 )
                 // A page loaded for another place gets its own handlers.
                 .id(place)
@@ -1228,7 +1237,7 @@ struct ContentView: View {
                 // device's page is not a machine's (#758).
                 WebView(
                     url: url, page: pageModel, onOpenFile: openEditor, store: isPhone ? phonePage : nil,
-                    place: place, sharesName: sharesName(for: place)
+                    place: place, sharesName: sharesName(for: place), usesDevice: usesDevice(for: place)
                 )
                 .id(place)
                 #endif

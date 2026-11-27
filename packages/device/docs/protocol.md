@@ -749,7 +749,7 @@ posts to `webkit.messageHandlers.deviceRemote`.
 - `accept()`, when given, is asked on each announce; false turns the
   kernel away, for a per-server mute.
 
-The Swift side is `DeviceBridge.registerRemote(in:allow:)`, a second
+The Swift side is `DeviceBridge.registerRemote(in:_:allow:)`, a second
 handler named `deviceRemote` on the notebook page's web view. That page
 renders outputs too, so the handler differs from `device`:
 
@@ -763,6 +763,24 @@ renders outputs too, so the handler differs from `device`:
   be positive integers below 2^40 (the engine range, "In an embedded
   engine" below); any other fails `failed`. Dialogs from
   both share one queue: one dialog at a time.
+
+Its `RemoteOptions` say whose window it is, and default to this device's
+own, which changes nothing:
+
+- `asker`, the app's name for the machine the page's kernels run on.
+  With it, every dialog the cell raises — `ui.alert`, `ui.confirm`,
+  `ui.prompt`, `ui.actionSheet`, `ui.pickDate` — carries "A cell on
+  `<asker>` asks to use this device." as a line above the cell's own
+  words (the title when the dialog has no message). Without it, dialogs
+  are the cell's alone, as the kernel page's are.
+- `confirmClipboardReads`: `clipboard.readText` and
+  `clipboard.readImage` show a confirm first, "`<asker>` asks to read
+  your clipboard.", with Allow and Don't Allow. Don't Allow fails the
+  call `denied` (the code for a person's refusal, "Rules for the Swift
+  handler" above), and
+  the clipboard isn't read. A machine's window sets it, since what a
+  read takes leaves this device; this device's own windows leave it
+  off, as its server kernels have always read without asking.
 
 ### In a browser
 

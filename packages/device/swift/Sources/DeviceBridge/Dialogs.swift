@@ -53,6 +53,12 @@ public enum Dialog: Equatable, Sendable {
     case capturePhoto
     /// `folders.pick`: a folder, for reading, or for writing too.
     case pickFolder(write: Bool)
+    /// The confirm a machine's `clipboard.readText` and `clipboard.readImage`
+    /// show before the read (#877): the clipboard leaves this device for
+    /// another computer, whose notebook other people can write. It has no
+    /// text of the cell's, so its words are the app's, naming the asker the
+    /// remote handler was given.
+    case clipboardRead
 
     /// Why a dialog call's params were refused. Its description is the
     /// reply's message.
@@ -279,6 +285,19 @@ public enum Dialog: Equatable, Sendable {
         formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return formatter.string(from: date)
     }
+
+    /// The line a dialog from a machine's kernel starts with (#877), so the
+    /// person knows the call crossed from another computer: "A cell on mini
+    /// asks to use this device."
+    static func askLine(_ asker: String) -> String {
+        "A cell on \(asker) asks to use this device."
+    }
+
+    /// The clipboard read confirm's words (#877): who is reading, and that
+    /// it is the person's clipboard.
+    static func clipboardAsk(_ asker: String?) -> String {
+        asker.map { "\($0) asks to read your clipboard." } ?? "A cell asks to read your clipboard."
+    }
 }
 
 /// What the person did with a dialog.
@@ -330,8 +349,11 @@ public protocol DialogPresenter {
     /// dialog shows only after one of the two, so it never lands on a
     /// dialog still animating out. Throws when there is nowhere to show
     /// it, such as no window. `host` is the view of the page that asked,
-    /// when known; the dialog shows on its window.
-    func present(_ dialog: Dialog, on host: DialogHost?, done: @escaping (DialogResult) -> Void) throws -> Close
+    /// when known; the dialog shows on its window. `asker`, when given, is
+    /// the machine the asking kernel runs on (#877): the dialog says so,
+    /// above the cell's own words, so a dialog never looks like this
+    /// device's own.
+    func present(_ dialog: Dialog, asker: String?, on host: DialogHost?, done: @escaping (DialogResult) -> Void) throws -> Close
 }
 
 /// Closes a dialog, then calls its argument once the dialog has gone.
@@ -352,6 +374,8 @@ final class DialogQueue {
     private struct Waiting {
         let id: Int
         let dialog: Dialog
+        /// The machine the asking kernel runs on, when it isn't this device's.
+        let asker: String?
         weak var host: DialogHost?
         let reply: (Outcome) -> Void
     }
@@ -378,8 +402,8 @@ final class DialogQueue {
         self.presenter = presenter
     }
 
-    func show(_ dialog: Dialog, id: Int, on host: DialogHost?, reply: @escaping (Outcome) -> Void) {
-        waiting.append(Waiting(id: id, dialog: dialog, host: host, reply: reply))
+    func show(_ dialog: Dialog, asker: String? = nil, id: Int, on host: DialogHost?, reply: @escaping (Outcome) -> Void) {
+        waiting.append(Waiting(id: id, dialog: dialog, asker: asker, host: host, reply: reply))
         next()
     }
 
@@ -409,7 +433,7 @@ final class DialogQueue {
         let current = Showing(id: call.id, reply: call.reply)
         showing = current
         do {
-            let close = try presenter.present(call.dialog, on: call.host) { [weak self] answer in
+            let close = try presenter.present(call.dialog, asker: call.asker, on: call.host) { [weak self] answer in
                 if case let .failed(message) = answer {
                     self?.finish(current, .failed("failed", message))
                 } else {
@@ -471,7 +495,7 @@ public struct DialogFailed: Error, CustomStringConvertible {
 public struct SystemDialogPresenter: DialogPresenter {
     public init() {}
 
-    public func present(_ dialog: Dialog, on host: DialogHost?, done: @escaping (DialogResult) -> Void) throws -> Close {
+    public func present(_ dialog: Dialog, asker: String?, on host: DialogHost?, done: @escaping (DialogResult) -> Void) throws -> Close {
         guard let window = host?.window ?? NSApp?.keyWindow ?? NSApp?.mainWindow ?? NSApp?.windows.first(where: { $0.isVisible }) else {
             throw DialogUnavailable(description: "there is no window to show a dialog on")
         }
@@ -500,16 +524,16 @@ public struct SystemDialogPresenter: DialogPresenter {
         case .share, .preview, .pickFiles, .exportFile, .pickPhotos, .capturePhoto, .pickFolder:
             preconditionFailure("shown above")
         case let .alert(title, message):
-            Self.text(alert, title: title, message: message)
+            Self.text(alert, title: title, message: message, asker: asker)
             alert.addButton(withTitle: "OK")
             answer = { _ in .ok }
         case let .confirm(title, message, destructive, okLabel):
-            Self.text(alert, title: title, message: message)
+            Self.text(alert, title: title, message: message, asker: asker)
             alert.addButton(withTitle: okLabel ?? "OK").hasDestructiveAction = destructive
             alert.addButton(withTitle: "Cancel")
             answer = { $0.rawValue == first ? .confirmed : .dismissed }
         case let .prompt(title, message, placeholder, defaultValue, secure):
-            Self.text(alert, title: title, message: message)
+            Self.text(alert, title: title, message: message, asker: asker)
             let field = secure ? NSSecureTextField() : NSTextField()
             field.frame = NSRect(x: 0, y: 0, width: 260, height: 24)
             field.placeholderString = placeholder
@@ -520,8 +544,7 @@ public struct SystemDialogPresenter: DialogPresenter {
             alert.window.initialFirstResponder = field
             answer = { $0.rawValue == first ? .text(field.stringValue) : .dismissed }
         case let .actionSheet(title, message, options, cancel, destructive):
-            alert.messageText = title
-            alert.informativeText = message ?? ""
+            Self.text(alert, title: title, message: message ?? "", asker: asker)
             for (index, option) in options.enumerated() {
                 alert.addButton(withTitle: option).hasDestructiveAction = index == destructive
             }
@@ -532,6 +555,9 @@ public struct SystemDialogPresenter: DialogPresenter {
             }
         case let .pickDate(title, mode, value, min, max):
             alert.messageText = title ?? (mode == .time ? "Choose a time" : "Choose a date")
+            // The asker's line, under the title: a date picker has no
+            // message of the cell's to go above (#877).
+            if let asker { alert.informativeText = Dialog.askLine(asker) }
             let picker = NSDatePicker()
             picker.datePickerStyle = mode == .time ? .textFieldAndStepper : .clockAndCalendar
             switch mode {
@@ -547,6 +573,11 @@ public struct SystemDialogPresenter: DialogPresenter {
             alert.addButton(withTitle: "OK")
             alert.addButton(withTitle: "Cancel")
             answer = { $0.rawValue == first ? .date(picker.dateValue) : .dismissed }
+        case .clipboardRead:
+            alert.messageText = Dialog.clipboardAsk(asker)
+            alert.addButton(withTitle: "Allow")
+            alert.addButton(withTitle: "Don't Allow")
+            answer = { $0.rawValue == first ? .confirmed : .dismissed }
         }
         alert.beginSheetModal(for: window) { response in
             done(answer(response))
@@ -560,12 +591,18 @@ public struct SystemDialogPresenter: DialogPresenter {
     }
 
     /// A title in bold with the message under it, or the message alone.
-    private static func text(_ alert: NSAlert, title: String?, message: String) {
+    /// With an `asker` (#877), the line naming that machine comes first, so
+    /// a machine's dialog never reads as this device's own.
+    private static func text(_ alert: NSAlert, title: String?, message: String, asker: String?) {
+        var body = message
+        if let asker {
+            body = body.isEmpty ? Dialog.askLine(asker) : Dialog.askLine(asker) + "\n\n" + body
+        }
         if let title {
             alert.messageText = title
-            alert.informativeText = message
+            alert.informativeText = body
         } else {
-            alert.messageText = message
+            alert.messageText = body
         }
     }
 }
@@ -578,7 +615,7 @@ public struct SystemDialogPresenter: DialogPresenter {
 public struct SystemDialogPresenter: DialogPresenter {
     public init() {}
 
-    public func present(_ dialog: Dialog, on host: DialogHost?, done: @escaping (DialogResult) -> Void) throws -> Close {
+    public func present(_ dialog: Dialog, asker: String?, on host: DialogHost?, done: @escaping (DialogResult) -> Void) throws -> Close {
         let window = host?.window
         guard let top = Self.topViewController(in: window) else {
             throw DialogUnavailable(description: "there is no window to show a dialog on")
@@ -589,18 +626,21 @@ public struct SystemDialogPresenter: DialogPresenter {
         var consentFlow: ConsentFlow?
         switch dialog {
         case let .alert(title, message):
-            let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+            let words = Self.words(title: title, message: message, asker: asker)
+            let alert = UIAlertController(title: words.title, message: words.message, preferredStyle: .alert)
             alert.addAction(UIAlertAction(title: "OK", style: .default) { _ in done(.ok) })
             controller = alert
         case let .confirm(title, message, destructive, okLabel):
-            let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+            let words = Self.words(title: title, message: message, asker: asker)
+            let alert = UIAlertController(title: words.title, message: words.message, preferredStyle: .alert)
             alert.addAction(UIAlertAction(title: "Cancel", style: .cancel) { _ in done(.dismissed) })
             alert.addAction(UIAlertAction(title: okLabel ?? "OK", style: destructive ? .destructive : .default) { _ in
                 done(.confirmed)
             })
             controller = alert
         case let .prompt(title, message, placeholder, defaultValue, secure):
-            let alert = UIAlertController(title: title, message: message, preferredStyle: .alert)
+            let words = Self.words(title: title, message: message, asker: asker)
+            let alert = UIAlertController(title: words.title, message: words.message, preferredStyle: .alert)
             alert.addTextField { field in
                 field.placeholder = placeholder
                 field.text = defaultValue
@@ -612,7 +652,8 @@ public struct SystemDialogPresenter: DialogPresenter {
             })
             controller = alert
         case let .actionSheet(title, message, options, cancel, destructive):
-            let sheet = UIAlertController(title: title, message: message, preferredStyle: .actionSheet)
+            let words = Self.words(title: title, message: message, asker: asker)
+            let sheet = UIAlertController(title: words.title, message: words.message, preferredStyle: .actionSheet)
             for (index, option) in options.enumerated() {
                 sheet.addAction(UIAlertAction(title: option, style: index == destructive ? .destructive : .default) { _ in
                     done(.option(index))
@@ -628,7 +669,11 @@ public struct SystemDialogPresenter: DialogPresenter {
             }
             controller = sheet
         case let .pickDate(title, mode, value, min, max):
-            let picker = DatePickerController(title: title, mode: mode, value: value, min: min, max: max, done: done)
+            // The asker's line goes under the sheet's title, above the
+            // picker, which has no message of the cell's (#877).
+            let picker = DatePickerController(
+                title: title, message: asker.map(Dialog.askLine), mode: mode,
+                value: value, min: min, max: max, done: done)
             let navigation = UINavigationController(rootViewController: picker)
             navigation.modalPresentationStyle = .formSheet
             navigation.presentationController?.delegate = picker
@@ -653,6 +698,12 @@ public struct SystemDialogPresenter: DialogPresenter {
             } else {
                 controller = FilePicker.folder(done: done)
             }
+        case .clipboardRead:
+            let alert = UIAlertController(
+                title: nil, message: Dialog.clipboardAsk(asker), preferredStyle: .alert)
+            alert.addAction(UIAlertAction(title: "Don't Allow", style: .cancel) { _ in done(.dismissed) })
+            alert.addAction(UIAlertAction(title: "Allow", style: .default) { _ in done(.confirmed) })
+            controller = alert
         }
         let consent = consentFlow
         let state = Presentation()
@@ -694,6 +745,17 @@ public struct SystemDialogPresenter: DialogPresenter {
         var closed = false
     }
 
+    /// An alert's title and message with the asker named (#877): the asker's
+    /// line is the title when the dialog has none of its own, else the top
+    /// of its message.
+    private static func words(title: String?, message: String?, asker: String?) -> (title: String?, message: String?) {
+        guard let asker else { return (title, message) }
+        let line = Dialog.askLine(asker)
+        guard let message, !message.isEmpty else { return (title ?? line, title == nil ? "" : line) }
+        if title == nil { return (line, message) }
+        return (title, line + "\n\n" + message)
+    }
+
     /// The top view controller of `window` (the asking page's), or else of
     /// the foreground scene's key window.
     private static func topViewController(in window: UIWindow?) -> UIViewController? {
@@ -711,10 +773,14 @@ public struct SystemDialogPresenter: DialogPresenter {
 @MainActor
 final class DatePickerController: UIViewController, UIAdaptivePresentationControllerDelegate {
     private let picker = UIDatePicker()
+    /// The line under the title, naming the asker when a machine's kernel
+    /// asked (#877).
+    private let message: String?
     private let done: (DialogResult) -> Void
     private var answered = false
 
-    init(title: String?, mode: DateMode, value: Date?, min: Date?, max: Date?, done: @escaping (DialogResult) -> Void) {
+    init(title: String?, message: String?, mode: DateMode, value: Date?, min: Date?, max: Date?, done: @escaping (DialogResult) -> Void) {
+        self.message = message
         self.done = done
         super.init(nibName: nil, bundle: nil)
         self.title = title
@@ -739,9 +805,26 @@ final class DatePickerController: UIViewController, UIAdaptivePresentationContro
         view.backgroundColor = .systemBackground
         picker.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(picker)
+        var top = view.safeAreaLayoutGuide.topAnchor
+        if let message {
+            let label = UILabel()
+            label.text = message
+            label.font = .preferredFont(forTextStyle: .footnote)
+            label.textColor = .secondaryLabel
+            label.textAlignment = .center
+            label.numberOfLines = 0
+            label.translatesAutoresizingMaskIntoConstraints = false
+            view.addSubview(label)
+            NSLayoutConstraint.activate([
+                label.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+                label.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+                label.topAnchor.constraint(equalTo: top, constant: 8),
+            ])
+            top = label.bottomAnchor
+        }
         NSLayoutConstraint.activate([
             picker.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            picker.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
+            picker.topAnchor.constraint(equalTo: top, constant: 8),
         ])
         navigationItem.leftBarButtonItem = UIBarButtonItem(systemItem: .cancel, primaryAction: UIAction { [weak self] _ in
             self?.finish(.dismissed)

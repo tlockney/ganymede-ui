@@ -82,7 +82,9 @@ package, which isn't out yet
   machine the kernel runs on.
 - Clipboard reads are the exception: iPadOS can show its paste prompt,
   but on the Mac a server kernel, a remote server's included, can read
-  the clipboard with no dialog. Connect only to servers you trust.
+  the clipboard with no dialog. Connect only to servers you trust. A
+  connected machine's kernel always asks first
+  ([below](#from-a-machines-kernel)).
 - In JupyterLab nothing answers, and `connectDevice` gives a `device`
   whose calls fail `unavailable` after five seconds. Another client on
   the same kernel never answers for the one that ran the cell.
@@ -90,6 +92,32 @@ package, which isn't out yet
   `device.ui.prompt('Name?', { signal: jupyter.signal })`.
 - If the app goes away (the iPad suspends it, the window closes), calls
   in flight fail `disconnected`, and the next call asks again.
+
+### From a machine's kernel
+
+A notebook open in a connected machine's window ([the apps](apps.md#connected-machines))
+runs its kernels on that machine, and the window is still this app's, so
+a cell there can ask for `device` as above. It is off by default: "Let
+this machine's notebooks use this device", in that machine's editor
+(Settings › Remotes, Edit), turns it on, and the change applies to the
+machine's windows opened after it.
+
+With it on, a cell there gets the same remote methods, answered by this
+device over the comm above, and every dialog it raises says where the
+cell runs: "A cell on m4mini asks to use this device.", above the cell's
+own words. A clipboard read asks every time — "m4mini asks to read your
+clipboard.", with Allow and Don't Allow — because what it reads goes to
+the other computer, whose notebook other people and agents can write.
+Don't Allow fails the call `denied`.
+
+A machine's notebooks never get this device's permission ledger or
+Shortcuts: the ledger keeps notebooks by their absolute path on this
+device, and a machine's paths aren't this device's.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, where a machine's notebook gets no `device` of
+> this one whatever the machine's setting says.
 
 ### In a browser
 

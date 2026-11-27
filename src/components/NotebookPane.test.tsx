@@ -3143,8 +3143,21 @@ describe('NotebookPane on a connected machine that is away (#701)', () => {
   });
 
   it('shows no `device` of this one to a machine’s kernels, and does to a local server’s', async () => {
+    // A machine's window whose remote doesn't let its notebooks use this
+    // device registered no remote handler, so the pane attaches none
+    // (#701, #877).
     await inRoom(true);
     expect(vi.mocked(attachDevice).mock.lastCall![1]).toMatchObject({ disabled: true });
+    // The same machine with its setting on: its window registered the
+    // handler, and the pane answers through it.
+    vi.stubGlobal('webkit', {
+      messageHandlers: { deviceRemote: { postMessage: vi.fn(async () => ({})) } },
+    });
+    vi.mocked(attachDevice).mockClear();
+    await inRoom(true);
+    expect(vi.mocked(attachDevice).mock.lastCall![1]?.disabled).toBeFalsy();
+    vi.unstubAllGlobals();
+    // This device's own server kernels always get it.
     vi.mocked(attachDevice).mockClear();
     await inRoom(true, LOCAL);
     expect(vi.mocked(attachDevice).mock.lastCall![1]?.disabled).toBeFalsy();

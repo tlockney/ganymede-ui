@@ -122,7 +122,7 @@ final class AppLedgerPrompter: LedgerPrompter {
         let current = Showing(id: ask.id)
         showing = current
         do {
-            current.close = try presenter.present(ask.dialog, on: host()) { [weak self] result in
+            current.close = try presenter.present(ask.dialog, asker: nil, on: host()) { [weak self] result in
                 // A dismissed prompt's late answer is ignored.
                 guard let self, self.showing === current else { return }
                 self.showing = nil

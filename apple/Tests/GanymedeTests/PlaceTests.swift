@@ -53,7 +53,7 @@ final class PlaceTests: XCTestCase {
     func testAMachineWindowGetsNoBridgeGrantsShortcutsOrAppLinks() {
         let machine = Place.machine(id)
         for capability in [
-            Place.Capability.deviceBridge, .personName, .appLinks,
+            Place.Capability.deviceLedger, .deviceRemote, .personName, .appLinks,
         ] {
             XCTAssertFalse(machine.allows(capability), "\(capability)")
         }
@@ -72,23 +72,57 @@ final class PlaceTests: XCTestCase {
 
     func testAMachineGetsThePersonsNameOnlyWhenItsRemoteSaysSo() {
         let machine = Place.machine(id)
-        XCTAssertTrue(machine.allows(.personName, sharesName: true))
-        XCTAssertFalse(machine.allows(.personName, sharesName: false))
+        XCTAssertTrue(machine.allows(.personName, PlaceSettings(sharesName: true)))
+        XCTAssertFalse(machine.allows(.personName, PlaceSettings(sharesName: false)))
         // Without its setting, a machine still gets no name.
         XCTAssertFalse(machine.allows(.personName))
         // This device always gets it, whatever the setting would say.
         for shares in [true, false] {
-            XCTAssertTrue(Place.thisDevice.allows(.personName, sharesName: shares))
+            XCTAssertTrue(Place.thisDevice.allows(.personName, PlaceSettings(sharesName: shares)))
         }
         // The setting changes nothing else: with it on, a machine gets
         // `personName` beside what it always did, no more.
         XCTAssertEqual(
-            Set(Place.Capability.allCases.filter { machine.allows($0, sharesName: true) }
+            Set(Place.Capability.allCases.filter { machine.allows($0, PlaceSettings(sharesName: true)) }
                 .map { "\($0)" }),
             ["settings", "nativeChrome", "agentKeys", "openFile", "personName"])
         for capability in Place.Capability.allCases where capability != .personName {
             XCTAssertEqual(
-                machine.allows(capability, sharesName: true),
+                machine.allows(capability, PlaceSettings(sharesName: true)),
+                machine.allows(capability),
+                "\(capability)")
+        }
+    }
+
+    /// A machine's notebooks get this device's `device` API only when the
+    /// machine's setting says so, and never the ledger beside it (#877).
+    func testAMachineGetsDeviceRemoteOnlyWhenItsRemoteSaysSo() {
+        let machine = Place.machine(id)
+        XCTAssertTrue(machine.allows(.deviceRemote, PlaceSettings(usesDevice: true)))
+        XCTAssertFalse(machine.allows(.deviceRemote, PlaceSettings(usesDevice: false)))
+        // Off by default: without its settings, a machine gets neither half.
+        XCTAssertFalse(machine.allows(.deviceRemote))
+        XCTAssertFalse(machine.allows(.deviceLedger))
+        // The ledger is this device's alone, whatever the setting says.
+        for uses in [true, false] {
+            XCTAssertFalse(machine.allows(.deviceLedger, PlaceSettings(usesDevice: uses)))
+            XCTAssertTrue(Place.thisDevice.allows(.deviceLedger, PlaceSettings(usesDevice: uses)))
+        }
+        // This device's windows get both, whatever the setting would say.
+        for uses in [true, false] {
+            XCTAssertTrue(Place.thisDevice.allows(.deviceRemote, PlaceSettings(usesDevice: uses)))
+        }
+        // The setting changes nothing else: with it on and the name's off,
+        // a machine's window gets `deviceRemote` beside what it always did,
+        // no more.
+        let onlyDevice = PlaceSettings(sharesName: false, usesDevice: true)
+        XCTAssertEqual(
+            Set(Place.Capability.allCases.filter { machine.allows($0, onlyDevice) }
+                .map { "\($0)" }),
+            ["settings", "nativeChrome", "agentKeys", "openFile", "deviceRemote"])
+        for capability in Place.Capability.allCases where capability != .deviceRemote {
+            XCTAssertEqual(
+                machine.allows(capability, onlyDevice),
                 machine.allows(capability),
                 "\(capability)")
         }
@@ -122,18 +156,31 @@ final class PlaceTests: XCTestCase {
     }
 
     func testTheWebViewIsMadeFromThePlacesHandlerTable() {
-        let machine = Place.machine(id).handlerNames
+        // Off, a machine's page has no bridge of this device's (#877).
+        let off = Place.machine(id).handlerNames(PlaceSettings())
         // The native window reads a machine's page through `state` and `document` (#740).
         // The agent's keys too, from the Keychain (#849), and its files through
         // the app's editor (#855).
-        XCTAssertEqual(machine.count, 5)
-        XCTAssertEqual(Set(machine), ["settings", "state", "document", "agentKeys", "openFile"])
+        XCTAssertEqual(off.count, 5)
+        XCTAssertEqual(Set(off), ["settings", "state", "document", "agentKeys", "openFile"])
         for name in ["kernelRelay", "deviceRemote"] {
-            XCTAssertFalse(machine.contains(name), name)
-            XCTAssertTrue(Place.thisDevice.handlerNames.contains(name), name)
+            XCTAssertFalse(off.contains(name), name)
+            XCTAssertTrue(Place.thisDevice.handlerNames(PlaceSettings()).contains(name), name)
         }
+        // On, the remote handler alone is added: a machine's window never
+        // registers the ledger's (#877).
+        let on = Place.machine(id).handlerNames(PlaceSettings(usesDevice: true))
+        XCTAssertEqual(on.count, 6)
+        XCTAssertTrue(on.contains("deviceRemote"))
+        XCTAssertFalse(on.contains("kernelRelay"))
         for name in ["openFile", "state", "document", "agentKeys"] {
-            XCTAssertTrue(Place.thisDevice.handlerNames.contains(name), name)
+            XCTAssertTrue(Place.thisDevice.handlerNames(PlaceSettings()).contains(name), name)
+        }
+        // This device's table is the same with either setting.
+        for uses in [true, false] {
+            XCTAssertEqual(
+                Place.thisDevice.handlerNames(PlaceSettings(usesDevice: uses)),
+                ["kernelRelay", "deviceRemote", "openFile", "state", "document", "agentKeys", "settings"])
         }
     }
 

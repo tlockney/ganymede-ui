@@ -427,6 +427,12 @@ final class AppModel {
         Remote.sharesName(for: place, in: remotes)
     }
 
+    /// Whether a notebook of `place` may use this device's `device` API
+    /// (#877): `Remote.usesDevice(for:in:)` over the saved remotes.
+    func usesDevice(for place: Place) -> Bool {
+        Remote.usesDevice(for: place, in: remotes)
+    }
+
     /// Mounts each remote with a server on the running server, and takes
     /// away the mounts of remotes that were removed or changed. Runs when
     /// the server starts (a new server has none) and when remotes change.

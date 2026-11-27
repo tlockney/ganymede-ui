@@ -33,7 +33,7 @@ private final class Mute: SoundPlayback {
 private final class Screen: DialogPresenter {
     var shown = 0
     var closed = 0
-    func present(_ dialog: Dialog, on host: DialogHost?, done: @escaping (DialogResult) -> Void) throws -> Close {
+    func present(_ dialog: Dialog, asker: String?, on host: DialogHost?, done: @escaping (DialogResult) -> Void) throws -> Close {
         shown += 1
         return { [weak self] gone in
             self?.closed += 1

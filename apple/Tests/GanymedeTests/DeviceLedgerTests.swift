@@ -25,7 +25,7 @@ final class RecordingPresenter: DialogPresenter {
     var closed = 0
     var unavailable = false
 
-    func present(_ dialog: Dialog, on host: DialogHost?, done: @escaping (DialogResult) -> Void) throws -> Close {
+    func present(_ dialog: Dialog, asker: String?, on host: DialogHost?, done: @escaping (DialogResult) -> Void) throws -> Close {
         if unavailable { throw DialogUnavailable(description: "no window") }
         shown.append(dialog)
         answers.append(done)

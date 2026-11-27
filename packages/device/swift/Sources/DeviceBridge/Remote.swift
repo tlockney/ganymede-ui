@@ -1,5 +1,28 @@
 import WebKit
 
+/// What a window's remote handler is for (#877). This device's own windows
+/// take the defaults: their dialogs are their own, and a server kernel's
+/// clipboard read needs no prompt on the Mac.
+public struct RemoteOptions: Equatable, Sendable {
+    /// The machine the page's kernels run on, named in every dialog and
+    /// clipboard prompt: "A cell on mini asks to use this device." Nil for a
+    /// window of this device, whose dialogs say nothing about where the cell
+    /// runs. It is the app's name for the machine (`Remote.title`), never a
+    /// name the machine chose.
+    public var asker: String?
+    /// Whether `clipboard.readText` and `clipboard.readImage` ask first.
+    /// A machine's notebook can be written by other people and agents
+    /// there, and what a read takes leaves this device for that machine, so
+    /// a machine's window turns this on. This device's own windows leave it
+    /// off, as its server kernels have always read without asking.
+    public var confirmClipboardReads: Bool
+
+    public init(asker: String? = nil, confirmClipboardReads: Bool = false) {
+        self.asker = asker
+        self.confirmClipboardReads = confirmClipboardReads
+    }
+}
+
 /// The bridge's second handler, for kernels that aren't in the app
 /// (docs/protocol.md, "Over a Jupyter comm"): the notebook page answers a
 /// remote kernel's comm (`answerDevice` in src/frontend.ts) and posts the
@@ -23,12 +46,15 @@ extension DeviceBridge {
     /// Only main-frame messages for which `allow` is true reach the bridge.
     /// `allow` has no default: handlers outlive navigation, so the app must
     /// check that the message comes from its own page (origin, web view).
+    /// `options` says who is asking, for a machine's window (#877).
     public func registerRemote(
         in controller: WKUserContentController,
+        _ options: RemoteOptions = RemoteOptions(),
         allow: @escaping @MainActor (WKScriptMessage) -> Bool
     ) {
         controller.addScriptMessageHandler(
-            RemoteHandler(bridge: self, allow: allow), contentWorld: .page, name: Self.remoteHandlerName)
+            RemoteHandler(bridge: self, options: options, allow: allow),
+            contentWorld: .page, name: Self.remoteHandlerName)
     }
 
     /// Answers one message from the remote handler, as `respond(to:from:reply:)`
@@ -36,7 +62,10 @@ extension DeviceBridge {
     /// from the kernel page's (both count up from 1), so a cancel from one
     /// page never closes the other's dialog, and a release never stops the
     /// other's sounds. `hello` lists only the remote subset.
-    public func respondRemote(to body: Any, from host: DialogHost? = nil, reply: @escaping ([String: Any]) -> Void) {
+    public func respondRemote(
+        to body: Any, from host: DialogHost? = nil, options: RemoteOptions = RemoteOptions(),
+        reply: @escaping ([String: Any]) -> Void
+    ) {
         guard var call = body as? [String: Any] else {
             reply(Self.error("failed", "a device message must be an object"))
             return
@@ -74,7 +103,39 @@ extension DeviceBridge {
             reply(Self.error("unavailable", "\(method) isn't available to a remote kernel"))
             return
         }
-        respond(to: call, from: host, reply: reply)
+        // A machine's kernel may have the clipboard only with the person's
+        // say-so each time (#877): what it reads goes to another computer.
+        if options.confirmClipboardReads, method == "clipboard.readText" || method == "clipboard.readImage" {
+            confirmClipboardRead(method, call: call, asker: options.asker, from: host, reply: reply)
+            return
+        }
+        respond(to: call, from: host, asker: options.asker, reply: reply)
+    }
+
+    /// Asks, every time, before a machine's kernel reads this device's
+    /// clipboard (#877): Allow goes on with the call, anything else rejects
+    /// it `denied`, the code this protocol uses for a person's refusal.
+    private func confirmClipboardRead(
+        _ method: String, call: [String: Any], asker: String?, from host: DialogHost?,
+        reply: @escaping ([String: Any]) -> Void
+    ) {
+        guard let id = Self.callID(call["id"]) else {
+            reply(Self.error("failed", "\(method) needs a numeric id, so it can be cancelled"))
+            return
+        }
+        dialogs.show(.clipboardRead, asker: asker, id: id, on: host) { [weak self] outcome in
+            guard let self else { return }
+            switch outcome {
+            case .answered(_, .confirmed):
+                self.respond(to: call, from: host, asker: asker, reply: reply)
+            case .answered:
+                reply(Self.error("denied", "\(method): this device's clipboard wasn't read"))
+            case .cancelled:
+                reply(Self.error("cancelled", "\(method) was cancelled"))
+            case let .failed(code, message):
+                reply(Self.error(code, message))
+            }
+        }
     }
 }
 
@@ -83,10 +144,12 @@ extension DeviceBridge {
 @MainActor
 private final class RemoteHandler: NSObject, WKScriptMessageHandlerWithReply {
     weak var bridge: DeviceBridge?
+    let options: RemoteOptions
     let allow: @MainActor (WKScriptMessage) -> Bool
 
-    init(bridge: DeviceBridge, allow: @escaping @MainActor (WKScriptMessage) -> Bool) {
+    init(bridge: DeviceBridge, options: RemoteOptions, allow: @escaping @MainActor (WKScriptMessage) -> Bool) {
         self.bridge = bridge
+        self.options = options
         self.allow = allow
     }
 
@@ -101,6 +164,6 @@ private final class RemoteHandler: NSObject, WKScriptMessageHandlerWithReply {
             replyHandler(DeviceBridge.error("unavailable", "device calls are taken from the notebook page only"), nil)
             return
         }
-        bridge.respondRemote(to: message.body, from: message.webView) { replyHandler($0, nil) }
+        bridge.respondRemote(to: message.body, from: message.webView, options: options) { replyHandler($0, nil) }
     }
 }
