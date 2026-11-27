@@ -37,6 +37,7 @@ import { HostAccessSheet } from './components/HostAccessSheet';
 import { PublishSheet } from './components/PublishSheet';
 import { publishAvailable } from './lib/publish';
 import {
+  NoGrantsRoute,
   hostGrantsAvailable,
   loadHostGrants,
   missingWants,
@@ -319,6 +320,12 @@ export function App() {
   // the sheet closes.
   const [accessMissing, setAccessMissing] = useState<string[]>([]);
   const [accessChecked, setAccessChecked] = useState(0);
+  // Whether the open notebook's machine answers for its grant (#868): the
+  // probe below sets it, and undefined until then, so a machine's window
+  // offers no Notebook Access while the app checks. A 404 from the mount
+  // sets it too: the sheet opens and says which side needs a newer
+  // version, rather than the person finding the item dimmed for good.
+  const [machineGrants, setMachineGrants] = useState<boolean | undefined>(undefined);
   // In the Apple apps these are tabs of the app's one Settings (#332); the
   // page's sheets are for the browser.
   const openShortcuts = useCallback(() => {
@@ -955,26 +962,60 @@ export function App() {
   const shownPath = shown?.path;
   const wantsKey = JSON.stringify(shown?.hostWants() ?? []);
   const accessPath = useRef<string | undefined>(undefined);
+  // A connected machine's grants come through the app's mount, which
+  // forwards them only when the app bundles a Ganymede with ganymede#973
+  // (#868). Its answer below decides: until it answers, and after a
+  // failure that isn't the mount's 404, Notebook Access is dimmed in the
+  // machine's window. A 404 means the mount has no route at all, so the
+  // item opens the sheet, which says the app needs a newer version. A
+  // server keeps `hostGrantsAvailable`'s answer, as before.
+  const machine = backend?.config.kind === 'ganymede' ? !!backend.config.machine : false;
+  const hostGrants = hostGrantsAvailable(backend) && (!machine || machineGrants === true);
   useEffect(() => {
     const wants = JSON.parse(wantsKey) as string[];
     const none = (m: string[]) => (m.length ? [] : m);
-    if (!shownPath || !backend || !hostGrantsAvailable(backend) || wants.length === 0) {
+    if (!shownPath || !backend || !hostGrantsAvailable(backend)) {
       setAccessMissing(none);
       return;
     }
-    // Another notebook: drop the last one's list until this one's loads.
-    // A recheck of the same notebook keeps it, so the button doesn't flicker.
-    if (accessPath.current !== shownPath) setAccessMissing(none);
-    accessPath.current = shownPath;
+    // A server's grants matter only while the notebook asks for something.
+    // A machine's page needs the answer itself, which says whether the
+    // mount forwards them at all (#868).
+    if (wants.length === 0 && !machine) {
+      setAccessMissing(none);
+      return;
+    }
+    // Another notebook, or another place: drop the last one's list until
+    // this one's loads. A recheck of the same notebook keeps it, so the
+    // button doesn't flicker.
+    const key = `${machine && backend.config.kind === 'ganymede' ? backend.config.machine : ''}:${shownPath}`;
+    if (accessPath.current !== key) {
+      setAccessMissing(none);
+      if (machine) setMachineGrants(undefined);
+    }
+    accessPath.current = key;
     let cancelled = false;
     loadHostGrants(backend, shownPath).then(
-      grants => !cancelled && setAccessMissing(missingWants(wants, grants)),
-      () => !cancelled && setAccessMissing(none),
+      grants => {
+        if (cancelled) return;
+        if (machine) setMachineGrants(true);
+        setAccessMissing(missingWants(wants, grants));
+      },
+      (err: unknown) => {
+        if (cancelled) return;
+        // No grant info: the mount answers 404 when the app's bundled
+        // Ganymede predates ganymede#973, and the padlock shows nothing.
+        // That 404 keeps Notebook Access available, so the sheet opens
+        // and says the app needs a newer version; any other failure
+        // leaves a machine without it (#868).
+        if (machine) setMachineGrants(err instanceof NoGrantsRoute);
+        setAccessMissing(none);
+      },
     );
     return () => {
       cancelled = true;
     };
-  }, [shownPath, backend, wantsKey, accessChecked]);
+  }, [shownPath, backend, wantsKey, accessChecked, machine]);
   const accessKey = JSON.stringify(accessMissing);
   const showVariables = variablesOpen && !!shown;
   // The app's inspector's Variables view (#249), for the notebook shown.
@@ -1037,7 +1078,7 @@ export function App() {
       kernelMissing: !!shown?.missingKernel,
       locked: shown?.locked ?? false,
       trusted: shown?.trusted ?? true,
-      hostGrants: hostGrantsAvailable(backend),
+      hostGrants,
       publish: publishAvailable(backend),
       runParams: runAvailable(backend),
       accessWanted: JSON.parse(accessKey) as string[],
@@ -1082,6 +1123,7 @@ export function App() {
     searchKey,
     variablesKey,
     accessKey,
+    hostGrants,
   ]);
 
   // ⌘S / Ctrl+S saves, as in any document app; ⇧⌘P opens the command
@@ -1361,7 +1403,7 @@ export function App() {
             consoles: consoles.filter(c => !(consoleShown && c.id === duck?.id)),
             journal: shown?.journal ?? false,
             trusted: shown?.trusted ?? true,
-            hostGrants: hostGrantsAvailable(backend),
+            hostGrants,
             publish: publishAvailable(backend),
             runParams: runAvailable(backend),
             connected: !!backend,

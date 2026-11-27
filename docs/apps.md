@@ -946,10 +946,45 @@ with only SSH stays in Settings for shells.
   > A machine that is itself the Mac app shows it once `GANYMEDE_REF`
   > moves (#851).
 
-- **What a machine's window doesn't get.** The device API, Notebook
-  Access, the Shortcuts bridge and `ganymede://` links are for this
-  device's windows only. Neither Spotlight, File > Open Recent nor the
-  Recents list in the app's sidebar include a machine's notebooks.
+- **Notebook Access** works in a machine's window and edits that machine's
+  settings: the grant's paths and defaults are the machine's API paths and
+  its `[host]` defaults, and nothing on this Mac changes. Any machine
+  running Ganymede v0.15.0 or later serves a notebook's grants already;
+  what it needs is an app whose bundled server forwards
+  `api/host/grants` to it, which ganymede#973 adds. A machine's window
+  dims Notebook Access only while the app checks the open notebook's
+  grant, and keeps it dimmed if that check fails for any other reason: an
+  app whose server has no such route answers 404, and the sheet it opens
+  says the app needs a newer version. The padlock stays quiet either way.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release, whose bundled Ganymede predates ganymede#973. It
+  > needs an app built against a `GANYMEDE_REF` after v0.17.0; the machine
+  > needs Ganymede v0.15.0 or later, which serves a notebook's grants
+  > already. Until the app has the first, Notebook Access in a machine's
+  > window opens the sheet, which says it needs a newer version of the
+  > app; with both, the sheet shows and edits the machine's own settings.
+
+- **App links** in a machine's notebook name that machine's files.
+  `ganymede://open?path=a/b.ipynb` opens `a/b.ipynb` on the machine, in
+  the same window. Other app links there are refused with "This link
+  names a file on another computer." and nothing happens on this Mac:
+  `run`, `new`, `open` with a granted `folder=`, x-callback links, and a
+  path that is absolute, `~` or climbs with `..`. Only a click follows
+  one: a script's navigation to `ganymede://` is dropped without a word,
+  so an output can't make the notice appear. Web links open in the
+  browser, as they always did.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release, where a `ganymede://` link in a machine's
+  > notebook does nothing.
+
+- **What a machine's window doesn't get.** The device API and the
+  Shortcuts bridge are for this device's windows only. Neither Spotlight,
+  File > Open Recent nor the Recents list in the app's sidebar include a
+  machine's notebooks.
 
 > [!NOTE]
 > **Unreleased.** Your name going to a connected machine's rooms, the

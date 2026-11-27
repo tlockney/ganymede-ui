@@ -19,16 +19,22 @@ export type HostDefaults = Required<HostGrant>;
 export type HostGrants = { path: string; grant: HostGrant; defaults: HostDefaults };
 
 /**
- * Whether `backend` can keep host API grants: only a Ganymede server can,
- * and not a connected machine's (#701): the app's mount doesn't forward
- * `api/host`, and a machine's own apps decide what its notebooks may reach.
+ * Whether `backend` can keep host API grants: a Ganymede server's, this
+ * device's or a connected machine's (#868). A machine's window edits the
+ * machine's own grants through the app's mount, which forwards
+ * `api/host/grants` to a machine running Ganymede v0.15.0 or later. It
+ * takes a Ganymede with ganymede#973 on this device's side, so an app
+ * whose bundled server predates that answers 404; the page dims
+ * Notebook Access in a machine's window only while it checks, and opens
+ * the sheet after that to say so (#868).
  */
 export function hostGrantsAvailable(backend: Backend | undefined): boolean {
-  return (
-    backend?.config.kind === 'ganymede' &&
-    backend.config.kernels !== 'page' &&
-    !backend.config.machine
-  );
+  return backend?.config.kind === 'ganymede' && backend.config.kernels !== 'page';
+}
+
+/** Whether `backend` is a connected machine's: its grants come through the app's mount. */
+function machineBackend(backend: Backend): boolean {
+  return backend.config.kind === 'ganymede' && !!backend.config.machine;
 }
 
 function url(backend: Backend, path: string): [string, ServerConnection.ISettings] {
@@ -36,25 +42,52 @@ function url(backend: Backend, path: string): [string, ServerConnection.ISetting
   return [URLExt.join(settings.baseUrl, 'api/host/grants', URLExt.encodeParts(path)), settings];
 }
 
-async function answer(res: Response): Promise<HostGrants> {
+/**
+ * The server answered 404 for a notebook's grant with no message of its
+ * own: it has no `api/host/grants` route at all. The app's mount says
+ * that while its bundled Ganymede predates ganymede#973, and a machine
+ * older than Ganymede v0.15.0 says it too (#868). A machine's window
+ * still offers Notebook Access then: the sheet opens and says which side
+ * needs the newer version, where any other failure leaves it dimmed.
+ */
+export class NoGrantsRoute extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'NoGrantsRoute';
+  }
+}
+
+/**
+ * The answer's grants, or why the server has none. A 404 whose message is
+ * missing or exactly "Not Found" is a server with no grants route at all:
+ * the app's own mount answers that when its bundled Ganymede predates
+ * ganymede#973, and a machine older than Ganymede v0.15.0 answers it too
+ * (#868). Anything else is the answer's own words.
+ */
+async function answer(res: Response, machine: boolean): Promise<HostGrants> {
   if (res.ok) return (await res.json()) as HostGrants;
-  let message = `The server answered ${res.status}.`;
+  let message: string | undefined;
   try {
     const body = (await res.json()) as { message?: string };
     if (body.message) message = body.message;
   } catch {
-    // Not JSON: keep the status.
+    // Not JSON: no message.
   }
-  if (res.status === 404 && message.startsWith('The server answered')) {
-    message = 'This server has no notebook access settings. They need a newer Ganymede.';
+  if (res.status === 404 && (message === undefined || message === 'Not Found')) {
+    throw new NoGrantsRoute(
+      machine
+        ? 'Notebook access on a connected machine needs a newer version of this app.'
+        : 'This server has no notebook access settings. They need a newer Ganymede.',
+    );
   }
-  throw new Error(message);
+  throw new Error(message ?? `The server answered ${res.status}.`);
 }
 
 /** The notebook's own grant and the server's defaults. */
 export async function loadHostGrants(backend: Backend, path: string): Promise<HostGrants> {
   const [u, settings] = url(backend, path);
-  return answer(await ServerConnection.makeRequest(u, { method: 'GET' }, settings));
+  const res = await ServerConnection.makeRequest(u, { method: 'GET' }, settings);
+  return answer(res, machineBackend(backend));
 }
 
 /** Stores `grant` in place of the notebook's own; `{}` gives it the defaults. */
@@ -65,7 +98,8 @@ export async function saveHostGrant(
 ): Promise<HostGrants> {
   const [u, settings] = url(backend, path);
   const init = { method: 'PUT', body: JSON.stringify(grant) };
-  return answer(await ServerConnection.makeRequest(u, init, settings));
+  const res = await ServerConnection.makeRequest(u, init, settings);
+  return answer(res, machineBackend(backend));
 }
 
 /**

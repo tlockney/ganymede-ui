@@ -147,6 +147,108 @@ final class PlaceTests: XCTestCase {
         XCTAssertTrue(Place.thisDevice.opensExternally(app))
     }
 
+    // MARK: app links (#868)
+
+    private func link(_ text: String) throws -> URL {
+        try XCTUnwrap(URL(string: text), text)
+    }
+
+    func testAMachineOpensALinksNotebookOnTheMachine() throws {
+        let machine = Place.machine(id)
+        XCTAssertEqual(
+            machine.machineLink(try link("ganymede://open?path=a/b.ipynb")),
+            .open(path: "a/b.ipynb")
+        )
+        XCTAssertEqual(
+            machine.machineLink(try link("ganymede://open?path=notes.ipynb")),
+            .open(path: "notes.ipynb")
+        )
+        // A percent-encoded path is read as the path it spells.
+        XCTAssertEqual(
+            machine.machineLink(try link("ganymede://open?path=a%2Fb%20c.ipynb")),
+            .open(path: "a/b c.ipynb")
+        )
+    }
+
+    func testAMachineKeepsWebLinksAndThisDevicesAppLinks() throws {
+        let machine = Place.machine(id)
+        XCTAssertEqual(machine.machineLink(try link("https://example.com/a")), .notApp)
+        XCTAssertEqual(machine.machineLink(try link("file:///etc/hosts")), .notApp)
+        // Not a machine's link: this device's app links are `AppURL`'s.
+        XCTAssertEqual(
+            Place.thisDevice.machineLink(try link("ganymede://open?path=a.ipynb")),
+            .notApp
+        )
+    }
+
+    func testAMachineRefusesPathsOutsideItsRoot() throws {
+        let machine = Place.machine(id)
+        for path in [
+            "/a.ipynb", "~/a.ipynb", "~",
+            "a/../b.ipynb", "a/./b.ipynb", "a//b.ipynb", "a/",
+        ] {
+            let encoded = path.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? path
+            XCTAssertEqual(machine.machineLink(try link("ganymede://open?path=" + encoded)), .refused, path)
+        }
+        // Empty and missing paths name no notebook.
+        XCTAssertEqual(machine.machineLink(try link("ganymede://open?path=")), .refused)
+        XCTAssertEqual(machine.machineLink(try link("ganymede://open")), .refused)
+    }
+
+    func testAMachineRefusesAppLinksThatActOnThisDevice() throws {
+        let machine = Place.machine(id)
+        for text in [
+            "ganymede://run?path=a.ipynb",
+            "ganymede://new?dir=a",
+            "ganymede://open?folder=work&file=a.ipynb",
+            "ganymede://x-callback-url/open?path=a.ipynb&x-success=shortcuts://x",
+            "ganymede://open?path=a.ipynb&x-success=shortcuts://x",
+            "ganymede://device-callback/run?path=a",
+            "ganymede://nope",
+            "ganymede://",
+        ] {
+            XCTAssertEqual(machine.machineLink(try link(text)), .refused, text)
+        }
+    }
+
+    // MARK: what a link in a window does (#868)
+
+    func testAMachinesAppLinkIsFollowedOnlyWhenClicked() throws {
+        let machine = Place.machine(id)
+        let open = try link("ganymede://open?path=a.ipynb")
+        XCTAssertEqual(machine.linkAction(for: open, clicked: true), .openOnMachine(path: "a.ipynb"))
+        // A script's navigation, or a frame's: dropped without a word, so
+        // an output can't make the window follow it or show the notice.
+        XCTAssertEqual(machine.linkAction(for: open, clicked: false), .cancel)
+        XCTAssertEqual(
+            machine.linkAction(for: try link("ganymede://run?path=a.ipynb"), clicked: true), .refuse)
+        XCTAssertEqual(
+            machine.linkAction(for: try link("ganymede://run?path=a.ipynb"), clicked: false), .cancel)
+        XCTAssertEqual(
+            machine.linkAction(for: try link("ganymede://open?path=/etc/hosts"), clicked: true),
+            .refuse)
+    }
+
+    func testAMachinesOtherLinksAreAsTheyWere() throws {
+        let machine = Place.machine(id)
+        let web = try link("https://example.com/a")
+        // A clicked web link goes to the browser; one nothing clicked is
+        // still a navigation the window loads.
+        XCTAssertEqual(machine.linkAction(for: web, clicked: true), .openExternally)
+        XCTAssertEqual(machine.linkAction(for: web, clicked: false), .allow)
+        // A file link is neither, and nothing acts on this Mac.
+        XCTAssertEqual(machine.linkAction(for: try link("file:///etc/hosts"), clicked: true), .cancel)
+    }
+
+    func testThisDevicesLinksAreUnchanged() throws {
+        let device = Place.thisDevice
+        for text in ["ganymede://open?path=/a.ipynb", "https://example.com/a"] {
+            XCTAssertEqual(device.linkAction(for: try link(text), clicked: true), .openExternally, text)
+            // A navigation nothing clicked loads here, as it did.
+            XCTAssertEqual(device.linkAction(for: try link(text), clicked: false), .allow, text)
+        }
+    }
+
     func testAMachineWindowStaysOnItsMountOrItsOwnPage() throws {
         let machine = Place.machine(id)
         func url(_ path: String) throws -> URL {
