@@ -298,3 +298,21 @@ struct ServedKernels: Equatable {
         return chosen
     }
 }
+
+/// What `AppModel.syncMachines` does to the machine mounts.
+enum MachineMounts {
+    /// The ids whose remote is gone or has no server any more, whose mount
+    /// goes, and the ids that are new or saved with another address or
+    /// token, which are mounted again. `mounted` is each mount's
+    /// `url|token`. Each loses any this-Mac trust it had first (#883):
+    /// another address or token is another server, which the trust wasn't
+    /// earned by.
+    static func changes(
+        mounted: [String: String], wanted: [String: (url: String, token: String)]
+    ) -> (removed: [String], remounted: [String]) {
+        let removed = mounted.keys.filter { wanted[$0] == nil }.sorted()
+        let remounted = wanted.filter { mounted[$0.key] != "\($0.value.url)|\($0.value.token)" }
+            .map(\.key).sorted()
+        return (removed, remounted)
+    }
+}

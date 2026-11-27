@@ -74,7 +74,9 @@ struct NavigatorSidebar: View {
             case .outline:
                 OutlineNavigator(page: page)
             case .recents:
-                RecentsNavigator(page: page)
+                // This Mac's own server's notebooks are the ones under its
+                // `root_dir`, opened by their path in it (#883).
+                RecentsNavigator(page: page, place: place, root: model.thisMacRoot(for: place))
             }
             Divider()
             ProjectLine(
@@ -475,18 +477,30 @@ struct OutlineNavigator: View {
 /// File › Open Recent's notebooks: in this window, or a new one.
 private struct RecentsNavigator: View {
     var page: PageModel
+    /// The window's place (#883): this Mac's own server's window opens its
+    /// notebooks by their path in that server's root.
+    var place: Place = .thisDevice
+    /// The folder a this-Mac window's server is rooted at (`root_dir`);
+    /// nil for this device's windows, whose notebook paths are their own.
+    var root: URL?
     private let recents = Recents.shared
     @Environment(\.openWindow) private var openWindow
 
+    private typealias Entry = RecentEntry
+
+    /// The Recents this window can open (`RecentEntry.entries`).
+    private var entries: [Entry] { RecentEntry.entries(recents.urls, root: root) }
+
     var body: some View {
+        let entries = entries
         List {
-            ForEach(recents.urls, id: \.self) { url in
+            ForEach(entries) { entry in
                 Button {
-                    page.run("open", arg: FolderEntry.serverPath(url))
+                    page.run("open", arg: entry.path)
                 } label: {
                     VStack(alignment: .leading, spacing: 2) {
-                        Label(url.deletingPathExtension().lastPathComponent, systemImage: "book.closed")
-                        Text(ProjectLineText.abbreviate(url.deletingLastPathComponent().path, home: NSHomeDirectory()))
+                        Label(entry.url.deletingPathExtension().lastPathComponent, systemImage: "book.closed")
+                        Text(ProjectLineText.abbreviate(entry.url.deletingLastPathComponent().path, home: NSHomeDirectory()))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -496,26 +510,32 @@ private struct RecentsNavigator: View {
                 }
                 .buttonStyle(.plain)
                 .contextMenu {
-                    Button("Open") { page.run("open", arg: FolderEntry.serverPath(url)) }
-                    Button("Open in New Tab") { openWindow(value: WindowTarget(opening: url)) }
-                    Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([url]) }
+                    Button("Open") { page.run("open", arg: entry.path) }
+                    Button("Open in New Tab") { openTab(entry) }
+                    Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([entry.url]) }
                 }
             }
         }
         .listStyle(.sidebar)
         .scrollContentBackground(.hidden)
         .overlay {
-            if recents.urls.isEmpty {
+            if entries.isEmpty {
                 Text("Notebooks you open show here").foregroundStyle(.secondary)
             }
         }
         .safeAreaInset(edge: .bottom) {
-            if !recents.urls.isEmpty {
+            if !entries.isEmpty {
                 Button("Clear Recents") { recents.clear() }
                     .buttonStyle(.borderless)
                     .padding(8)
             }
         }
+    }
+
+    /// A new window on the notebook: this Mac's own server's in a window of
+    /// its place, so it opens through the mount as this one's does (#883).
+    private func openTab(_ entry: Entry) {
+        openWindow(value: entry.tabTarget(in: place))
     }
 }
 #endif

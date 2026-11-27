@@ -99,12 +99,13 @@ struct FolderEntry: Identifiable, Hashable {
     }
 
     /// Whether `url` is a location in `place`: a file URL for this device, a
-    /// machine's URL for that machine (its id's case is not relied on).
+    /// machine's URL for that machine (its id's case is not relied on) —
+    /// this Mac's own server's too, which is reached the same way (#883).
     static func isLocation(_ url: URL, in place: Place) -> Bool {
         switch place {
         case .thisDevice:
             return url.isFileURL
-        case .machine(let id):
+        case .machine(let id), .thisMac(let id):
             guard let location = machineLocation(url) else { return false }
             return location.id.caseInsensitiveCompare(id) == .orderedSame
         }

@@ -25,9 +25,18 @@ struct WebView: NSViewRepresentable {
     /// Whether a machine's notebooks may use this device's `device` API
     /// (#877): its remote's setting. This device's page always may.
     var usesDevice: Bool
+    /// The folder the window's page paths are from (#883): this Mac's own
+    /// server's `root_dir` in its window, the app server's root in every
+    /// other, for the ledger's notebook paths and a `document` message's.
+    var pageRoot: PageRoot
+    /// A load of the page committed (#883): the window reads its place
+    /// again, so a check that verified its machine applies on this load and
+    /// not under the page that was showing.
+    var onLoad: (() -> Void)? = nil
 
     func makeCoordinator() -> WebViewCoordinator {
-        WebViewCoordinator(place: place, sharesName: sharesName, usesDevice: usesDevice)
+        WebViewCoordinator(
+            place: place, sharesName: sharesName, usesDevice: usesDevice, pageRoot: pageRoot)
     }
 
     func makeNSView(context: Context) -> WKWebView {
@@ -35,12 +44,13 @@ struct WebView: NSViewRepresentable {
     }
 
     func updateNSView(_ view: WKWebView, context: Context) {
-        context.coordinator.update(sharesName: sharesName)
+        context.coordinator.update(place: place, pageRoot: pageRoot, sharesName: sharesName)
         context.coordinator.onNavigate = onNavigate
         context.coordinator.document = document
         context.coordinator.page = page
         context.coordinator.onOpenTab = onOpenTab
         context.coordinator.onOpenFile = onOpenFile
+        context.coordinator.onLoad = onLoad
         context.coordinator.load(url, in: view)
     }
 }
@@ -61,9 +71,15 @@ struct WebView: UIViewRepresentable {
     /// Whether a machine's notebooks may use this device's `device` API
     /// (#877): its remote's setting. This device's page always may.
     var usesDevice: Bool
+    /// The folder the window's page paths are from (#883): this Mac's own
+    /// server's `root_dir` in its window, the app server's root in every
+    /// other. On iOS, where nothing verifies, always the app server's.
+    var pageRoot: PageRoot
 
     func makeCoordinator() -> WebViewCoordinator {
-        store?.coordinator ?? WebViewCoordinator(place: place, sharesName: sharesName, usesDevice: usesDevice)
+        store?.coordinator
+            ?? WebViewCoordinator(
+                place: place, sharesName: sharesName, usesDevice: usesDevice, pageRoot: pageRoot)
     }
 
     func makeUIView(context: Context) -> WKWebView {
@@ -87,7 +103,7 @@ struct WebView: UIViewRepresentable {
     }
 
     func updateUIView(_ view: WKWebView, context: Context) {
-        context.coordinator.update(sharesName: sharesName)
+        context.coordinator.update(place: place, pageRoot: pageRoot, sharesName: sharesName)
         context.coordinator.page = page
         context.coordinator.onOpenFile = onOpenFile
         context.coordinator.load(url, in: view)
@@ -226,18 +242,23 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// machine's window never becomes a local one, so what it was given
     /// (or not given) at creation can't be undone by a later load. What a
     /// page may ask the app for follows this, never its origin, which a
-    /// machine's page shares with this device's (#701).
-    let place: Place
+    /// machine's page shares with this device's (#701). A this-Mac window
+    /// whose verified server is gone becomes a machine's here (#883),
+    /// without the web view being made again.
+    private(set) var place: Place
     /// Whether the page gets the person's name (#842): always on this
     /// device; on a machine, its remote's setting. On this device it is
-    /// ignored; a change reaches the open page through
-    /// `update(sharesName:)`.
+    /// ignored; a change reaches the open page through `update`.
     private(set) var sharesName: Bool
     /// Whether a machine's notebooks may use this device's `device` API
     /// (#877): its remote's setting when the window was made. Fixed, as
     /// the place is: the handlers are registered with the web view, so a
     /// later change applies to the machine's windows opened after it.
     let usesDevice: Bool
+    /// The folder the window's page paths are from (#883): this Mac's own
+    /// server's `root_dir` in its window, the app server's root in every
+    /// other, since the page's paths are from it.
+    private(set) var pageRoot: PageRoot
     /// The page's own settings, as `Place` takes them (#842, #877). On this
     /// device both are ignored.
     private var settings: PlaceSettings { PlaceSettings(sharesName: sharesName, usesDevice: usesDevice) }
@@ -246,26 +267,63 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// The page's `openTab` message (#729). Only the Mac's windows set it,
     /// and only they register the handler.
     var onOpenTab: ((TabRequest) -> Void)?
+    /// A load committed (#883): the Mac window reads its place again.
+    var onLoad: (() -> Void)?
 
-    init(place: Place = .thisDevice, sharesName: Bool, usesDevice: Bool) {
+    init(place: Place = .thisDevice, sharesName: Bool, usesDevice: Bool, pageRoot: PageRoot? = nil) {
         self.place = place
         self.sharesName = sharesName
         self.usesDevice = usesDevice
+        // The app's own server's root, which this device's page paths are
+        // from, until the window passes its own (#883).
+        self.pageRoot = pageRoot ?? PageRoot(url: AppModel.shared.serverRootFolder)
         super.init()
     }
 
-    /// The machine's name setting changed (#842): the page's scripts are
-    /// made again and the page it shows now reloads, when that changes
-    /// whether it gets the name. Its commands wait for the reloaded page.
-    func update(sharesName new: Bool) {
-        let before = place.allows(.personName, settings)
-        sharesName = new
-        guard place.allows(.personName, settings) != before,
+    /// What the window passes each time it lays the page out: its place
+    /// (#883), the folder its page paths are from, and whether the page gets
+    /// the person's name (#842). A downgrade — this Mac's own server is gone
+    /// — applies here and now: the page's elevated handlers go and what it
+    /// asks next answers as a machine's window's would, without the web view
+    /// being made again, so the page keeps what it has open and its unsaved
+    /// edits. An upgrade, and the window's identity, wait for its next load.
+    /// A change of the name setting alone reloads the page, when it changes
+    /// whether the page gets it; its commands wait for the reloaded page.
+    func update(place new: Place, pageRoot root: PageRoot, sharesName name: Bool) {
+        if place != new {
+            // A downgrade is the page's to take now. Anything else is
+            // another web view's: this one keeps the place, and the
+            // handlers, it has.
+            guard place.takesInPlace(new) else { return }
+            place = new
+            pageRoot = root
+            sharesName = name
+            if let view = webView { downgrade(view) }
+            return
+        }
+        let nameBefore = place.allows(.personName, settings)
+        pageRoot = root
+        sharesName = name
+        guard place.allows(.personName, settings) != nameBefore,
               PersonName.name != nil, let view = webView, loaded != nil
         else { return }
         Self.installPageScripts(on: view, loaded: loaded, place: place, settings: settings)
         page?.reset(forStart: AppModel.shared.serverStart)
         view.reload()
+    }
+
+    /// The window's trust was dropped (#883): this Mac's own server is gone,
+    /// so the page's ledger, the kernel relay and the full device bridge go
+    /// with it, and the page gets what a machine's window gets: the device
+    /// API only with the remote's "use this device" setting on (#877), its
+    /// dialogs naming the machine and a clipboard read asking first. The web view is not made again: a window made again would load
+    /// the page again, and its unsaved edits would go with it. The window's
+    /// identity changes on its next load instead.
+    private func downgrade(_ view: WKWebView) {
+        kernels.downgrade(
+            to: view, place: place, settings: settings,
+            asker: place.asker { AppModel.shared.machineName($0) })
+        Self.installPageScripts(on: view, loaded: loaded, place: place, settings: settings)
     }
     #if os(iOS)
     /// Puts a stored page back where it waits off screen (`WebViewStore`).
@@ -385,10 +443,11 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     private func startLoad(_ url: URL, start: Int, in view: WKWebView) {
         // The person's name, for this server's origin only (#606).
         Self.installPageScripts(on: view, loaded: url, place: place, settings: settings)
-        // The ledger keeps notebooks by absolute path (#383): this device's
-        // alone, since a machine's notebooks aren't this device's (#877).
+        // The ledger keeps notebooks by absolute path (#383): this device's,
+        // and this Mac's own server's under its `root_dir` (#883), since
+        // those notebooks are this Mac's too. A machine's aren't (#877).
         if place.allows(.deviceLedger, settings) {
-            kernels.notebookRoot = AppModel.shared.serverRootFolder
+            kernels.notebookRoot = pageRoot.url
         }
         // The page a machine's kernel calls must come from, and what it
         // asked goes when it loads again (#877). This device's windows
@@ -413,6 +472,10 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         if place.allows(.deviceRemote, settings) { kernels.reset() }
         // The new page takes commands once it has posted its state.
         page?.committed(navigation)
+        // A load of this window's page: the place it was loaded with is
+        // read again (#883), so a check that verified its machine applies
+        // here, on this load.
+        onLoad?()
     }
 
     /// The UI page's process died: its dialogs and sounds for server
@@ -570,7 +633,11 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     #endif
 
     /// `window.open` and `target="_blank"`: the browser for other hosts,
-    /// this view for the server's own pages.
+    /// this view for the server's own pages. A link that is the page's own
+    /// server's, or this Mac's own server's relative `open`, shows its
+    /// notebook in this window, as a click does (#868, #883): the page
+    /// asked for a window, and it gets none, so it can't be the way round
+    /// `decidePolicyFor` and into this device's `AppURL`.
     func webView(
         _ webView: WKWebView,
         createWebViewWith configuration: WKWebViewConfiguration,
@@ -578,12 +645,19 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         windowFeatures: WKWindowFeatures
     ) -> WKWebView? {
         if let target = navigationAction.request.url {
-            if place.isMachine, target.scheme?.lowercased() == AppURL.scheme {
-                // As in `decidePolicyFor`: a machine's app link is the
-                // machine's, and never opens this device's `AppURL` (#868).
-                followMachineLink(target)
-            } else if isExternal(target) {
-                if place.opensExternally(target) { openExternally(target) }
+            if isExternal(target) {
+                switch place.newWindowAction(for: target) {
+                case .openOnMachine(let path):
+                    page?.run("open", arg: path)
+                case .refuse:
+                    showMachineLinkNotice()
+                case .openExternally:
+                    openExternally(target)
+                case .allow, .cancel:
+                    // Nothing is loaded: an external link is one of the
+                    // three above, and a new window is not this view's.
+                    break
+                }
             } else if place.isMachine, Self.isWebURL(target), !place.allowsFollowing(target) {
                 // As in `decidePolicyFor`: not one of this device's pages.
             } else {
@@ -609,23 +683,6 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         #else
         UIApplication.shared.open(url)
         #endif
-    }
-
-    /// A machine's `ganymede://` link, as `createWebViewWith` takes one
-    /// (#868): an `open` with a relative path shows that machine's notebook
-    /// in this window; anything else is refused with a notice. Neither
-    /// reaches this device's `AppURL`, whose commands open, make and run
-    /// files here. `decidePolicyFor` goes through `Place.linkAction`, so
-    /// only a click follows one.
-    private func followMachineLink(_ url: URL) {
-        switch place.machineLink(url) {
-        case .open(let path):
-            page?.run("open", arg: path)
-        case .refused:
-            showMachineLinkNotice()
-        case .notApp:
-            break
-        }
     }
 
     /// Says a link in a machine's window names a file elsewhere (#868), in
@@ -894,7 +951,11 @@ extension WebViewCoordinator {
     /// The page's `document` message: its notebook and unsaved edits. Only
     /// the page itself may send it.
     func received(document message: WKScriptMessage) {
-        if message.frameInfo.isMainFrame, let update = DocumentMessage(body: message.body, place: place) {
+        // This Mac's own server's notebooks are this Mac's, under its
+        // `root_dir` (#883), so Recents and Spotlight keep them: the same
+        // folder the ledger keeps them under (`pageRoot`).
+        if message.frameInfo.isMainFrame,
+           let update = DocumentMessage(body: message.body, root: pageRoot.url, place: place) {
             document?.update(update, in: place)
         }
     }

@@ -174,23 +174,28 @@ struct OpenCommands: View {
                 .disabled(recents.urls.isEmpty)
         }
         // This Mac's notebooks: not from a connected machine's window (#740).
-        .disabled(scope?.place.isMachine == true)
+        // This Mac's own server's window lists them, they being this Mac's
+        // (#883), so `indexesLocally` decides, not `isMachine`.
+        .disabled(scope?.place.indexesLocally == false)
         // The page's recent DuckDB consoles (#735): each opens as a tab, or
         // brings forward the tab showing it.
         let consoles = page?.state.consoles ?? []
+        // The consoles' folders are the page's paths, from its own server's
+        // root: a this-Mac window's from its `root_dir` (#883).
+        let root = model.pageRoot(for: scope?.place ?? .thisDevice).url
         Menu("Open Recent Console") {
             ForEach(consoles) { recent in
                 Button(recent.menuTitle) {
                     openWindow(
                         value: TabRequest.duckdbConsole(folder: recent.folder, session: UUID(uuidString: recent.id))
-                            .target(root: model.serverRootFolder))
+                            .target(root: root))
                 }
             }
             Divider()
             Button("Clear Recent Consoles") { page?.run("clear-recent-consoles") }
                 .disabled(consoles.isEmpty)
         }
-        .disabled(page == nil || scope?.place.isMachine == true)
+        .disabled(page == nil || scope?.place.indexesLocally == false)
         Button("Open Folder…") {
             if let folder = model.chooseFolder() {
                 openWindow(value: WindowTarget.folder(folder.standardizedFileURL))

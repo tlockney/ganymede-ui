@@ -267,3 +267,42 @@ final class LinkFolderStore {
         AppURL.resolvedURL(url).path
     }
 }
+
+#if os(macOS)
+/// A recent notebook as a window's File › Open Recent opens it.
+struct RecentEntry: Identifiable, Equatable {
+    var url: URL
+    /// The path the window's page opens: the notebook's own on this
+    /// device, or its path in this Mac's own server's root (#883).
+    var path: String
+    var id: URL { url }
+
+    /// The Recents a window can open. This device's window lists them
+    /// all, by their own paths. A this-Mac window's (`root`, its server's
+    /// `root_dir`) are the ones under its server's root — the notebooks
+    /// that server serves — and another server's are no part of this
+    /// window (#883).
+    static func entries(_ urls: [URL], root: URL?) -> [RecentEntry] {
+        urls.compactMap { url in
+            guard let root else { return RecentEntry(url: url, path: FolderEntry.serverPath(url)) }
+            // `LinkFolders.relativePath` resolves symlinks on both sides,
+            // and is nil for a file outside the folder.
+            guard let path = LinkFolders.relativePath(of: url, in: root), !path.isEmpty else {
+                return nil
+            }
+            return RecentEntry(url: url, path: path)
+        }
+    }
+
+    /// The window Open in New Tab makes: this Mac's own server's in a
+    /// window of its place, so it opens through the mount as this one's
+    /// does (#883); this device's file elsewhere.
+    func tabTarget(in place: Place) -> WindowTarget {
+        if let id = place.machineID,
+           let target = WindowTarget.machine(id, path: path, isFolder: false) {
+            return target
+        }
+        return WindowTarget(opening: url)
+    }
+}
+#endif

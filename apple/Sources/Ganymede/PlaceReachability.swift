@@ -11,6 +11,10 @@ final class PlaceReachability {
 
     /// The last answer per machine id; absent until the first check.
     private(set) var reachable: [String: Bool] = [:]
+    /// What to do when a machine that wasn't answering answers again: the
+    /// app checks its server again, since a mount that came back may be
+    /// another server's, and whether it is this Mac's own (#883).
+    var onReachable: ((String) -> Void)?
     @ObservationIgnored private var tasks: [String: Task<Void, Never>] = [:]
     /// Where the mount is: the app's server with its token, nil while it
     /// isn't running.
@@ -52,10 +56,20 @@ final class PlaceReachability {
             let ok = await Self.check(id, server: server, session: session)
             guard !Task.isCancelled else { return }
             failures = ok ? 0 : failures + 1
-            if reachable[id] != ok { reachable[id] = ok }
+            recorded(ok, for: id)
             let wait = ReachabilitySchedule.delay(afterFailures: failures)
             try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
         }
+    }
+
+    /// Records a poll's answer, and when the machine answers after not
+    /// answering, has the app check its server again (#883): the mount that
+    /// came back may be another server's, and whether it is this Mac's own
+    /// is the check's to say.
+    func recorded(_ ok: Bool, for id: String) {
+        let again = ok && reachable[id] == false
+        if reachable[id] != ok { reachable[id] = ok }
+        if again { onReachable?(id) }
     }
 
     /// The URL of `api/status` through the mount, on the app's server (its

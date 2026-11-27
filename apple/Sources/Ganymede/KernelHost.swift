@@ -155,6 +155,32 @@ final class KernelHost: NSObject {
         }
     }
 
+    /// This Mac's server is gone from this window (#883): the trust it
+    /// earned goes without the page being loaded again, which would drop
+    /// its unsaved edits. The ledger's relay and the full bridge go, and
+    /// the window gets what a machine's window of `place` gets: the
+    /// bridge's remote handler only when the remote's "use this device"
+    /// setting is on (#877), answering as a machine's — every dialog names
+    /// the machine, and a clipboard read asks first — and no device
+    /// handler at all with it off, since what the page asks leaves this
+    /// device for a server the app no longer checked. The window's other
+    /// handlers (`openFile`, `state`, `document`, `agentKeys`, `settings`)
+    /// are a machine's too and stay.
+    func downgrade(to ui: WKWebView, place: Place, settings: PlaceSettings, asker: String?) {
+        // The page's calls that were in flight are the old bridge's.
+        reset()
+        let controller = ui.configuration.userContentController
+        // Both were added in the page's content world, which is what the
+        // name-only removal takes (#883).
+        controller.removeScriptMessageHandler(forName: Self.relayHandler)
+        // A second handler of one name in a world is an error: the remote
+        // one goes before the machine's comes.
+        controller.removeScriptMessageHandler(forName: DeviceBridge.remoteHandlerName)
+        if place.allows(.deviceRemote, settings) {
+            attachRemote(to: ui, asker: asker)
+        }
+    }
+
     /// The UI page is `url`.
     func uiWillLoad(_ url: URL) {
         pageURL = url

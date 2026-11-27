@@ -3,6 +3,7 @@ import Foundation
 import Observation
 #if os(macOS)
 import AppKit
+import Darwin
 import UniformTypeIdentifiers
 #endif
 
@@ -64,6 +65,23 @@ final class AppModel {
     /// The machines mounted on the running server (#701): each id with the
     /// URL and token it was mounted with.
     @ObservationIgnored private var mounted: [String: String] = [:]
+    /// The remotes whose server the app verified is this Mac's own Ganymede
+    /// (#883), by remote id: their windows are this Mac's place. Empty on
+    /// iOS, where nothing verifies. The checks that find them, and the
+    /// watches that keep them, are `ThisMacChecks`.
+    var thisMac: ThisMacServers {
+        #if os(macOS)
+        thisMacChecks.servers
+        #else
+        ThisMacServers()
+        #endif
+    }
+    #if os(macOS)
+    @ObservationIgnored private let thisMacChecks = ThisMacChecks()
+    /// Whether a window's launch check was made this turn of the main
+    /// runloop, so the rest of that turn's windows take its answer (#883).
+    @ObservationIgnored private var windowCheckTaken = false
+    #endif
     /// The app's SSH key, for SSH remotes on iOS (the Mac uses its own
     /// ssh and keys).
     private(set) var sshKey: Curve25519.Signing.PrivateKey?
@@ -158,6 +176,11 @@ final class AppModel {
         // A crashed run's server info file holds the MCP token; clear it
         // whether or not MCP is on now.
         AppMCP.removeStaleServerInfo(in: AppMCP.runtimeDirectory())
+        // A this-Mac check's answer is matched against the remotes as they
+        // are when it applies: a remote added or edited meanwhile is read
+        // as it is now (#883).
+        thisMacChecks.remotes = { [weak self] in self?.remotes ?? [] }
+        thisMacChecks.token = { [weak self] id in self?.token(for: id) }
         #endif
     }
 
@@ -187,6 +210,10 @@ final class AppModel {
         error = nil
         #if os(macOS)
         removeServerInfo()
+        // The server this start replaces stops below: nothing it verified is
+        // mounted any more (#883). A first start replaces nothing, and keeps
+        // what a window's check found before it came up.
+        if server != nil { stopThisMacTrust() }
         #endif
         guard let web = Bundle.main.url(forResource: "web", withExtension: nil) else {
             error = "The app bundle has no web folder; build it with apple/scripts/bootstrap.sh."
@@ -411,9 +438,83 @@ final class AppModel {
     // MARK: Connected machines (#701)
 
     /// This device and each machine, for the place switcher; this device
-    /// alone where the server can't mount machines.
+    /// alone where the server can't mount machines. A machine the app
+    /// verified is this Mac's own server (#883) is listed as this Mac's
+    /// place, with its remote's name.
     var places: [PlaceEntry] {
-        Places.entries(remotes: remotes, thisDevice: Places.deviceName, mounting: ServerHost.machinesSupported)
+        Places.entries(
+            remotes: remotes, thisDevice: Places.deviceName,
+            mounting: ServerHost.machinesSupported, verified: thisMac.ids)
+    }
+
+    /// What a window's target is, as a place (#883): a machine whose server
+    /// the app verified is this Mac's own is `.thisMac`.
+    func place(for target: WindowTarget) -> Place { thisMac.place(for: target) }
+
+    /// The folder a `.thisMac` window's server is rooted at (#883), which
+    /// the ledger keeps its notebooks under and its Recents point into; nil
+    /// for every other place.
+    func thisMacRoot(for place: Place) -> URL? { thisMac.root(for: place) }
+
+    /// The folder a window of `place` reads its page's paths from (#883):
+    /// this Mac's own server's `root_dir`, else the app server's root.
+    func pageRoot(for place: Place) -> PageRoot {
+        place.pageRoot(thisMac: thisMacRoot(for: place), server: serverRootFolder)
+    }
+
+    /// Checks this Mac's servers again (#883): the info files `ganymede
+    /// serve` writes and the processes behind them, off the main thread,
+    /// since reading the bundled tool's version runs it. Runs when a mount
+    /// connects, when a machine that was offline answers again, and when a
+    /// window appears, so a server that stops verifying leaves its windows
+    /// machines. A check asked for while one is out runs once more when
+    /// that one ends, since what it was asked for may have changed meanwhile.
+    func refreshThisMac() {
+        #if os(macOS)
+        thisMacChecks.refresh()
+        #endif
+    }
+
+    #if os(macOS)
+    /// Checks this Mac's servers here and now (#883), on the caller's
+    /// thread: a window runs it before its first load, so the page it loads
+    /// is this Mac's own place when the check says so, rather than a
+    /// machine's that a later check rebuilds. Quick after the first check,
+    /// which reads the bundled version once.
+    ///
+    /// SwiftUI makes a window's `ContentView` more than once and keeps only
+    /// the first, so the check is made for the first one in a turn and the
+    /// rest of that turn take its answer; a window that opens later checks
+    /// again, and every window opened in one turn sees the same mounts. The
+    /// answer applies without waiting on a check that is out, whose own
+    /// answer is dropped instead, this one being newer.
+    func verifyThisMacNow() {
+        guard !windowCheckTaken else { return }
+        windowCheckTaken = true
+        // Cleared once the turn ends, when the window's views are made and
+        // its page loads.
+        DispatchQueue.main.async { [weak self] in self?.windowCheckTaken = false }
+        thisMacChecks.checkNow()
+    }
+    #endif
+
+    /// The app's server stopped, so nothing is mounted and nothing the check
+    /// verified is a place any more (#883): the trust goes with the mounts,
+    /// as do the watches that kept it.
+    private func stopThisMacTrust() {
+        #if os(macOS)
+        thisMacChecks.stopTrust()
+        #endif
+    }
+
+    /// A remote no longer names the server it was trusted for (#883): its
+    /// trust goes before its mount is made again. The one call the syncing
+    /// paths make, so a remote edited, removed or left without a server
+    /// takes its trust with it.
+    private func forgetThisMacTrust(_ id: String) {
+        #if os(macOS)
+        thisMacChecks.forget(id)
+        #endif
     }
 
     /// The name of the machine with this id (a Remote's UUID string).
@@ -439,6 +540,11 @@ final class AppModel {
     func syncMachines(fromStart: Bool = false) {
         guard ServerHost.machinesSupported, let server else {
             mounted = [:]
+            #if os(macOS)
+            // No server, no mounts: a server it verified isn't a place of
+            // this Mac's without one (#883).
+            stopThisMacTrust()
+            #endif
             return
         }
         // Not while a restart is pending: it stops this server, and the new
@@ -451,13 +557,23 @@ final class AppModel {
                 wanted[id] = (remote.serverURL, token(for: remote.id))
             }
         }
-        for id in mounted.keys where wanted[id] == nil {
+        let changes = MachineMounts.changes(mounted: mounted, wanted: wanted)
+        for id in changes.removed {
             server.removeMachine(id: id)
             mounted[id] = nil
+            // A remote that is gone, or lost its server, names no server
+            // any more: the trust one earned is not its (#883).
+            forgetThisMacTrust(id)
         }
         machineFailures = machineFailures.filter { wanted[$0.key] != nil }
         var fresh: [String] = []
-        for (id, entry) in wanted where mounted[id] != "\(entry.url)|\(entry.token)" {
+        for id in changes.remounted {
+            guard let entry = wanted[id] else { continue }
+            // Another address or token is another server, and the app's
+            // token would go to it: the trust the old one earned goes now,
+            // before the mount is made again, so nothing is answered for a
+            // server that isn't there any more (#883).
+            forgetThisMacTrust(id)
             do {
                 try server.addMachine(id: id, url: entry.url, token: entry.token.isEmpty ? nil : entry.token)
                 mounted[id] = "\(entry.url)|\(entry.token)"
@@ -475,6 +591,10 @@ final class AppModel {
         if !fresh.isEmpty {
             machineError = ([machineError].compactMap { $0 } + fresh).joined(separator: "\n\n")
         }
+        // The mounts (re)connected: check again whether any of their
+        // servers is this Mac's own (#883), and whenever one answers again.
+        PlaceReachability.shared.onReachable = { [weak self] _ in self?.refreshThisMac() }
+        refreshThisMac()
         PlaceReachability.shared.watch(places.map(\.place).filter(\.isMachine), on: serverURL)
     }
 
@@ -536,6 +656,8 @@ final class AppModel {
     func stopServer() async {
         #if os(macOS)
         removeServerInfo()
+        // Its mounts go with it, and what they made this Mac's own (#883).
+        stopThisMacTrust()
         #endif
         guard let old = server else { return }
         server = nil
@@ -558,6 +680,7 @@ final class AppModel {
     func stopForQuit() {
         #if os(macOS)
         removeServerInfo()
+        stopThisMacTrust()
         #endif
         server?.stop()
         server = nil

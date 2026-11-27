@@ -929,6 +929,33 @@ with only SSH stays in Settings for shells.
   independent, so one can show the Mac mini while another shows this Mac.
   On the iPad and iPhone the scene shows one place at a time: the
   machine's sidebar has the switcher back to this device.
+- **This Mac's own server.** A remote whose server is this Mac's own
+  Ganymede — the app's bundled `ganymede serve`, started by hand or in the
+  background — is listed with the machines and wears a "This Mac" badge,
+  and its windows are this Mac's: the permission ledger, the device API,
+  your name, app links and Shortcuts all work as in a local window, and
+  its notebooks are the ones Open Recent and Spotlight keep. The app
+  decides this from the server's process and signature, not its address
+  alone: it must be the app's own bundled helper, of the app's own
+  version, listening on `127.0.0.1` or `::1` — the literal, not a name,
+  and not a bind to every interface — and the remote must use that same
+  address. A `cargo install` or Homebrew `ganymede`, any other program
+  listening on a loopback port, and a server started with `--ip 0.0.0.0`
+  stay ordinary machines. A copy of the app that isn't signed with its team
+  (a debug build) never counts a server as its own. The check is made
+  before the window's page loads, and a window that becomes a This Mac
+  window takes it on its next load. When the server goes away the window
+  stops being one at once, without reloading the page, so unsaved edits
+  stay: the ledger and the kernel relay are taken away, the device API is
+  kept only if the remote's "Let this machine's notebooks use this device"
+  is on, and its notebook is then read through the mount like any
+  machine's.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release, where every machine is an ordinary one and its
+  > window has none of the local window's features.
+
 - **A machine's window** (the app's native sidebar and toolbar on the
   Mac, iPad and iPhone alike) has Files, Journals, Running and Search tabs. Its tab
   and title carry the machine's name ("Orbits · m4mini"). A notebook
