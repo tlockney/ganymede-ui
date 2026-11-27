@@ -190,17 +190,17 @@ final class WindowWiringTests: XCTestCase {
 
     /// This Mac's server is gone from a window that has it open (#883): the
     /// page keeps what it has — the web view isn't made again, so its
-    /// unsaved edits stay — while the ledger's relay goes and what the page
-    /// asks answers as a machine's window's would, naming the machine.
+    /// unsaved edits stay — while the ledger's relay and the full bridge
+    /// go. What is left is what a machine's window gets: with the remote's
+    /// "use this device" setting off (#877's default), no device handler
+    /// at all.
     @MainActor
-    func testADowngradeTakesThisMacsHandlersAwayInPlace() async throws {
+    func testADowngradeWithTheDeviceSettingOffLeavesNoDeviceAPI() async throws {
         let server = try server()
         defer { server.stop() }
-        let presenter = AskerPresenter()
-        let host = KernelHost(device: DeviceBridge(presenter: presenter), kernels: AppKernels())
-        let view = try await page(
-            host, place: .thisMac(id), settings: PlaceSettings(sharesName: true, usesDevice: false),
-            at: server.url)
+        let host = KernelHost(device: DeviceBridge(presenter: AskerPresenter()), kernels: AppKernels())
+        let settings = PlaceSettings(sharesName: true, usesDevice: false)
+        let view = try await page(host, place: .thisMac(id), settings: settings, at: server.url)
         for name in ["deviceRemote", "kernelRelay"] {
             let kind = try await handler(name, in: view)
             XCTAssertEqual(kind, "object", name)
@@ -208,15 +208,34 @@ final class WindowWiringTests: XCTestCase {
         // Something the page holds in memory: a page loaded again would lose
         // it, and its unsaved edits with it.
         _ = try await view.evaluateJavaScript("window.kept = 'not reloaded'; true")
-        host.downgrade(to: view, asker: "mini")
+        host.downgrade(to: view, place: .machine(id), settings: settings, asker: "mini")
+        for name in ["deviceRemote", "kernelRelay"] {
+            let kind = try await handler(name, in: view)
+            XCTAssertEqual(kind, "undefined", name)
+        }
+        let kept = try await view.evaluateJavaScript("window.kept") as? String
+        XCTAssertEqual(kept, "not reloaded")
+    }
+
+    /// With the remote's "use this device" setting on, a downgraded window
+    /// keeps the device API as a machine's window has it (#877, #883): the
+    /// ledger's relay goes, and a dialog says where the cell runs.
+    @MainActor
+    func testADowngradeWithTheDeviceSettingOnAnswersAsTheMachine() async throws {
+        let server = try server()
+        defer { server.stop() }
+        let presenter = AskerPresenter()
+        let host = KernelHost(device: DeviceBridge(presenter: presenter), kernels: AppKernels())
+        let settings = PlaceSettings(sharesName: true, usesDevice: true)
+        let view = try await page(host, place: .thisMac(id), settings: settings, at: server.url)
+        _ = try await view.evaluateJavaScript("window.kept = 'not reloaded'; true")
+        host.downgrade(to: view, place: .machine(id), settings: settings, asker: "mini")
         let relay = try await handler("kernelRelay", in: view)
         XCTAssertEqual(relay, "undefined")
         let remote = try await handler("deviceRemote", in: view)
         XCTAssertEqual(remote, "object")
         let kept = try await view.evaluateJavaScript("window.kept") as? String
         XCTAssertEqual(kept, "not reloaded")
-        // The bridge's remote handler answers as a machine's: the dialog
-        // says where the cell runs.
         _ = try await view.evaluateJavaScript("""
             webkit.messageHandlers.deviceRemote.postMessage(
                 { id: 1, owner: 1, method: 'ui.alert', params: { message: 'x' } });

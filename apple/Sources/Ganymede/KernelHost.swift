@@ -157,15 +157,16 @@ final class KernelHost: NSObject {
 
     /// This Mac's server is gone from this window (#883): the trust it
     /// earned goes without the page being loaded again, which would drop
-    /// its unsaved edits. The ledger's relay goes, and the bridge's remote
-    /// handler comes back as a machine's window's — every dialog and
-    /// clipboard read names the machine, and asks before a clipboard read —
-    /// since what the page asks leaves this device for a server the app no
-    /// longer checked. The page is still the app's own page, at its own
-    /// origin, so what it asks is taken as a machine's window takes it. The
-    /// window's other handlers (`openFile`, `state`, `document`,
-    /// `agentKeys`, `settings`) are a machine's too and stay.
-    func downgrade(to ui: WKWebView, asker: String?) {
+    /// its unsaved edits. The ledger's relay and the full bridge go, and
+    /// the window gets what a machine's window of `place` gets: the
+    /// bridge's remote handler only when the remote's "use this device"
+    /// setting is on (#877), answering as a machine's — every dialog names
+    /// the machine, and a clipboard read asks first — and no device
+    /// handler at all with it off, since what the page asks leaves this
+    /// device for a server the app no longer checked. The window's other
+    /// handlers (`openFile`, `state`, `document`, `agentKeys`, `settings`)
+    /// are a machine's too and stay.
+    func downgrade(to ui: WKWebView, place: Place, settings: PlaceSettings, asker: String?) {
         // The page's calls that were in flight are the old bridge's.
         reset()
         let controller = ui.configuration.userContentController
@@ -175,7 +176,9 @@ final class KernelHost: NSObject {
         // A second handler of one name in a world is an error: the remote
         // one goes before the machine's comes.
         controller.removeScriptMessageHandler(forName: DeviceBridge.remoteHandlerName)
-        attachRemote(to: ui, asker: asker)
+        if place.allows(.deviceRemote, settings) {
+            attachRemote(to: ui, asker: asker)
+        }
     }
 
     /// The UI page is `url`.

@@ -106,8 +106,9 @@ helper's>"`; that pid holds the TCP socket listening on the port at that
   once, and in place: the web view is not made again, which would load the
   page again and drop its unsaved edits, so the ledger's relay, the
   kernel relay and the full device bridge are taken off the page it has
-  open, and what it asks from then on answers as a machine's window does
-  (`KernelHost.downgrade`). The window's place is a machine's from that
+  open, and it gets what a machine's window gets: the remote device
+  handler only with the remote's #877 setting on, naming the machine, and
+  none with it off (`KernelHost.downgrade`). The window's place is a machine's from that
   moment — its Recents, its terminals and its links are the machine's —
   and its identity (`ContentView.pagePlace`) changes on its next load
   only, where the page is loaded again anyway.

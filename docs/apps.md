@@ -945,9 +945,11 @@ with only SSH stays in Settings for shells.
   (a debug build) never counts a server as its own. The check is made
   before the window's page loads, and a window that becomes a This Mac
   window takes it on its next load. When the server goes away the window
-  stops being one at once: the ledger, the device API and the kernel relay
-  are taken away without reloading the page, so unsaved edits stay, and its
-  notebook is then read through the mount like any machine's.
+  stops being one at once, without reloading the page, so unsaved edits
+  stay: the ledger and the kernel relay are taken away, the device API is
+  kept only if the remote's "Let this machine's notebooks use this device"
+  is on, and its notebook is then read through the mount like any
+  machine's.
 
   > [!NOTE]
   > **Unreleased.** Available only from a build of `main` (HEAD), not in

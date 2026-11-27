@@ -314,13 +314,15 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
 
     /// The window's trust was dropped (#883): this Mac's own server is gone,
     /// so the page's ledger, the kernel relay and the full device bridge go
-    /// with it, and what the page asks from here on answers as a machine's
-    /// window's does — a dialog naming the machine, a clipboard read asking
-    /// first. The web view is not made again: a window made again would load
+    /// with it, and the page gets what a machine's window gets: the device
+    /// API only with the remote's "use this device" setting on (#877), its
+    /// dialogs naming the machine and a clipboard read asking first. The web view is not made again: a window made again would load
     /// the page again, and its unsaved edits would go with it. The window's
     /// identity changes on its next load instead.
     private func downgrade(_ view: WKWebView) {
-        kernels.downgrade(to: view, asker: place.asker { AppModel.shared.machineName($0) })
+        kernels.downgrade(
+            to: view, place: place, settings: settings,
+            asker: place.asker { AppModel.shared.machineName($0) })
         Self.installPageScripts(on: view, loaded: loaded, place: place, settings: settings)
     }
     #if os(iOS)
