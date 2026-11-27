@@ -24,8 +24,9 @@ export type HostGrants = { path: string; grant: HostGrant; defaults: HostDefault
  * machine's own grants through the app's mount, which forwards
  * `api/host/grants` to a machine running Ganymede v0.15.0 or later. It
  * takes a Ganymede with ganymede#973 on this device's side, so an app
- * whose bundled server predates that answers 404, and the page dims
- * Notebook Access in a machine's window until the server says otherwise.
+ * whose bundled server predates that answers 404; the page dims
+ * Notebook Access in a machine's window only while it checks, and opens
+ * the sheet after that to say so (#868).
  */
 export function hostGrantsAvailable(backend: Backend | undefined): boolean {
   return backend?.config.kind === 'ganymede' && backend.config.kernels !== 'page';
@@ -39,6 +40,21 @@ function machineBackend(backend: Backend): boolean {
 function url(backend: Backend, path: string): [string, ServerConnection.ISettings] {
   const settings = backend.services.contents.serverSettings;
   return [URLExt.join(settings.baseUrl, 'api/host/grants', URLExt.encodeParts(path)), settings];
+}
+
+/**
+ * The server answered 404 for a notebook's grant with no message of its
+ * own: it has no `api/host/grants` route at all. The app's mount says
+ * that while its bundled Ganymede predates ganymede#973, and a machine
+ * older than Ganymede v0.15.0 says it too (#868). A machine's window
+ * still offers Notebook Access then: the sheet opens and says which side
+ * needs the newer version, where any other failure leaves it dimmed.
+ */
+export class NoGrantsRoute extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'NoGrantsRoute';
+  }
 }
 
 /**
@@ -58,7 +74,7 @@ async function answer(res: Response, machine: boolean): Promise<HostGrants> {
     // Not JSON: no message.
   }
   if (res.status === 404 && (message === undefined || message === 'Not Found')) {
-    throw new Error(
+    throw new NoGrantsRoute(
       machine
         ? 'Notebook access on a connected machine needs a newer version of this app.'
         : 'This server has no notebook access settings. They need a newer Ganymede.',

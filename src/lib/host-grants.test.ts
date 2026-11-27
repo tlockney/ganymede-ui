@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { ServerConnection } from '@jupyterlab/services';
 import {
+  NoGrantsRoute,
   describePaths,
   hostGrantsAvailable,
   hostWants,
@@ -69,7 +70,8 @@ describe('host grants', () => {
 
   // The app's own mount answers a JSON 404 for api/host/grants when its
   // bundled Ganymede predates ganymede#973: that is "no settings", in the
-  // words of whichever side is missing them (#868).
+  // words of whichever side is missing them (#868). The page opens
+  // Notebook Access on that answer, so the error says so.
   describe('a 404 with no message of its own', () => {
     const notFound = async () =>
       new Response(JSON.stringify({ message: 'Not Found', reason: null }), { status: 404 });
@@ -85,6 +87,7 @@ describe('host grants', () => {
 
     it('says a machine needs a newer app', async () => {
       const machine = backend({ kind: 'ganymede', url: '', token: '', machine: 'm1' }, notFound);
+      await expect(loadHostGrants(machine, 'a.ipynb')).rejects.toThrow(NoGrantsRoute);
       await expect(loadHostGrants(machine, 'a.ipynb')).rejects.toThrow(
         'Notebook access on a connected machine needs a newer version of this app.',
       );
@@ -92,6 +95,7 @@ describe('host grants', () => {
 
     it('says a server needs a newer Ganymede', async () => {
       const server = backend({ kind: 'ganymede', url: '', token: '' }, notFound);
+      await expect(loadHostGrants(server, 'a.ipynb')).rejects.toThrow(NoGrantsRoute);
       await expect(loadHostGrants(server, 'a.ipynb')).rejects.toThrow(
         'This server has no notebook access settings. They need a newer Ganymede.',
       );
@@ -103,12 +107,15 @@ describe('host grants', () => {
           { kind: 'ganymede', url: '', token: '', machine: 'm1' },
           async () => new Response(body, { status }),
         );
-      await expect(
-        loadHostGrants(answer(404, JSON.stringify({ message: 'No such notebook' })), 'a.ipynb'),
-      ).rejects.toThrow('No such notebook');
-      await expect(loadHostGrants(answer(500, 'not json'), 'a.ipynb')).rejects.toThrow(
-        'The server answered 500.',
-      );
+      // Another 404 is the answer's own (a notebook that isn't there), and
+      // so is a failure that isn't the missing route: neither is
+      // `NoGrantsRoute`, so a machine's window keeps Notebook Access dimmed.
+      const missing = answer(404, JSON.stringify({ message: 'No such notebook' }));
+      await expect(loadHostGrants(missing, 'a.ipynb')).rejects.toThrow('No such notebook');
+      await expect(loadHostGrants(missing, 'a.ipynb')).rejects.not.toBeInstanceOf(NoGrantsRoute);
+      const failed = answer(500, 'not json');
+      await expect(loadHostGrants(failed, 'a.ipynb')).rejects.toThrow('The server answered 500.');
+      await expect(loadHostGrants(failed, 'a.ipynb')).rejects.not.toBeInstanceOf(NoGrantsRoute);
     });
   });
 });

@@ -19,6 +19,7 @@ import { recentsKey } from './lib/recents';
 import { loadConsoles, saveConsole } from './lib/console-recents';
 import { handOff } from './lib/rename';
 import { SERVER_TIMEOUT_MS } from './lib/server-request';
+import { NoGrantsRoute } from './lib/host-grants';
 
 // The shell's wiring: which backend it connects to, the sheet, and new
 // notebooks. The backends and the notebook pane are tested on their own.
@@ -376,9 +377,10 @@ describe('App', () => {
   });
 
   // An app whose bundled server predates ganymede#973 answers 404 for the
-  // grant: its mount doesn't forward api/host/grants. A machine's window
-  // dims Notebook Access and the padlock shows nothing (#868).
-  it('dims a machine’s Notebook Access when it has none (#868)', async () => {
+  // grant: its mount doesn't forward api/host/grants. Notebook Access still
+  // opens, and the sheet says the app needs a newer version; the padlock
+  // shows nothing (#868).
+  it('opens a machine’s Notebook Access when its mount has no route (#868)', async () => {
     const states: Record<string, unknown>[] = [];
     vi.stubGlobal('webkit', {
       messageHandlers: {
@@ -386,7 +388,9 @@ describe('App', () => {
       },
     });
     mocks.loadHostGrants.mockRejectedValue(
-      new Error('Notebook access on a connected machine needs a newer version of this app.'),
+      new NoGrantsRoute(
+        'Notebook access on a connected machine needs a newer version of this app.',
+      ),
     );
     mocks.controller = {
       dirty: false,
@@ -397,17 +401,23 @@ describe('App', () => {
     mocks.connect.mockImplementation(async c => fakeBackend(fake.services, c));
     history.replaceState(null, '', '/?machine=mini-1&machine_name=m4mini&open=Io.ipynb');
     render(<App />);
-    await waitFor(() => expect(mocks.loadHostGrants).toHaveBeenCalled());
-    await act(async () => {});
-    expect(screen.queryByTitle(/^Notebook Access: asks for/)).toBeNull();
     await waitFor(() =>
-      expect(states.at(-1)).toMatchObject({ hostGrants: false, accessWanted: [] }),
+      expect(states.at(-1)).toMatchObject({ hostGrants: true, accessWanted: [] }),
     );
+    // Quiet: the grant never said the notebook asks for more.
+    expect(screen.queryByTitle(/^Notebook Access: asks for/)).toBeNull();
+    // The app's own menu item, as its menu runs it, opens the sheet.
+    expect(await window.ganymede!.command('notebook-access')).toBe(true);
+    expect(
+      await screen.findByText(
+        'Notebook access on a connected machine needs a newer version of this app.',
+      ),
+    ).toBeInTheDocument();
     vi.unstubAllGlobals();
   });
 
-  // The probe's answer decides: a machine's window stays dimmed, and keeps
-  // its padlock quiet, until the server has said it has the route (#868).
+  // The probe's answer decides: a machine's window is dimmed, and keeps its
+  // padlock quiet, until the app has checked the open notebook's grant (#868).
   it('dims a machine’s Notebook Access until its grant probe answers (#868)', async () => {
     const states: Record<string, unknown>[] = [];
     vi.stubGlobal('webkit', {
@@ -440,6 +450,36 @@ describe('App', () => {
     );
     await waitFor(() => expect(states.at(-1)).toMatchObject({ hostGrants: true }));
     vi.unstubAllGlobals();
+  });
+
+  // The palette's Notebook Access follows the same answer: it can't be
+  // picked while the app checks the machine's grant, and can once it has
+  // (#868).
+  it('dims the palette’s Notebook Access until a machine’s probe answers (#868)', async () => {
+    let answer: ((grants: unknown) => void) | undefined;
+    mocks.loadHostGrants.mockReturnValue(new Promise(resolve => (answer = resolve)));
+    mocks.controller = {
+      dirty: false,
+      save: vi.fn(async () => true),
+      hostWants: () => [],
+    };
+    const fake = fakeServices({ '': [{ name: 'Io.ipynb', type: 'notebook' }] });
+    mocks.connect.mockImplementation(async c => fakeBackend(fake.services, c));
+    history.replaceState(null, '', '/?machine=mini-1&machine_name=m4mini&open=Io.ipynb');
+    render(<App />);
+    await waitFor(() => expect(mocks.loadHostGrants).toHaveBeenCalled());
+    expect(await window.ganymede!.command('command-palette')).toBe(true);
+    const palette = await screen.findByRole('dialog', { name: 'Command palette' });
+    const entry = () => within(palette).getByRole('option', { name: /Notebook Access/ });
+    await waitFor(() => expect(entry()).toHaveAttribute('aria-disabled', 'true'));
+    await act(async () =>
+      answer?.({
+        path: 'Io.ipynb',
+        grant: {},
+        defaults: { read: [''], edit_self: true, run: [] },
+      }),
+    );
+    await waitFor(() => expect(entry()).not.toHaveAttribute('aria-disabled'));
   });
 
   it('tells the app the notebook’s title, for its window (#867)', async () => {

@@ -37,6 +37,7 @@ import { HostAccessSheet } from './components/HostAccessSheet';
 import { PublishSheet } from './components/PublishSheet';
 import { publishAvailable } from './lib/publish';
 import {
+  NoGrantsRoute,
   hostGrantsAvailable,
   loadHostGrants,
   missingWants,
@@ -321,7 +322,9 @@ export function App() {
   const [accessChecked, setAccessChecked] = useState(0);
   // Whether the open notebook's machine answers for its grant (#868): the
   // probe below sets it, and undefined until then, so a machine's window
-  // offers no Notebook Access before the server has said it can.
+  // offers no Notebook Access while the app checks. A 404 from the mount
+  // sets it too: the sheet opens and says which side needs a newer
+  // version, rather than the person finding the item dimmed for good.
   const [machineGrants, setMachineGrants] = useState<boolean | undefined>(undefined);
   // In the Apple apps these are tabs of the app's one Settings (#332); the
   // page's sheets are for the browser.
@@ -961,9 +964,11 @@ export function App() {
   const accessPath = useRef<string | undefined>(undefined);
   // A connected machine's grants come through the app's mount, which
   // forwards them only when the app bundles a Ganymede with ganymede#973
-  // (#868). Its answer below decides, and until it answers the machine is
-  // unavailable: Notebook Access is dimmed in its window. A server keeps
-  // `hostGrantsAvailable`'s answer, as before.
+  // (#868). Its answer below decides: until it answers, and after a
+  // failure that isn't the mount's 404, Notebook Access is dimmed in the
+  // machine's window. A 404 means the mount has no route at all, so the
+  // item opens the sheet, which says the app needs a newer version. A
+  // server keeps `hostGrantsAvailable`'s answer, as before.
   const machine = backend?.config.kind === 'ganymede' ? !!backend.config.machine : false;
   const hostGrants = hostGrantsAvailable(backend) && (!machine || machineGrants === true);
   useEffect(() => {
@@ -996,12 +1001,14 @@ export function App() {
         if (machine) setMachineGrants(true);
         setAccessMissing(missingWants(wants, grants));
       },
-      () => {
+      (err: unknown) => {
         if (cancelled) return;
         // No grant info: the mount answers 404 when the app's bundled
         // Ganymede predates ganymede#973, and the padlock shows nothing.
-        // A machine with no answer stays unavailable (#868).
-        if (machine) setMachineGrants(false);
+        // That 404 keeps Notebook Access available, so the sheet opens
+        // and says the app needs a newer version; any other failure
+        // leaves a machine without it (#868).
+        if (machine) setMachineGrants(err instanceof NoGrantsRoute);
         setAccessMissing(none);
       },
     );

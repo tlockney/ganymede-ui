@@ -951,17 +951,20 @@ with only SSH stays in Settings for shells.
   its `[host]` defaults, and nothing on this Mac changes. Any machine
   running Ganymede v0.15.0 or later serves a notebook's grants already;
   what it needs is an app whose bundled server forwards
-  `api/host/grants` to it, which ganymede#973 adds. Until then Notebook
-  Access is dimmed in a machine's window, and the padlock stays quiet.
+  `api/host/grants` to it, which ganymede#973 adds. A machine's window
+  dims Notebook Access only while the app checks the open notebook's
+  grant, and keeps it dimmed if that check fails for any other reason: an
+  app whose server has no such route answers 404, and the sheet it opens
+  says the app needs a newer version. The padlock stays quiet either way.
 
   > [!NOTE]
   > **Unreleased.** Available only from a build of `main` (HEAD), not in
   > the latest release, whose bundled Ganymede predates ganymede#973. It
   > needs an app built against a `GANYMEDE_REF` after v0.17.0; the machine
   > needs Ganymede v0.15.0 or later, which serves a notebook's grants
-  > already. Until both, Notebook Access is dimmed in a machine's window,
-  > and the sheet, if it is opened, says it needs a newer version of the
-  > app.
+  > already. Until the app has the first, Notebook Access in a machine's
+  > window opens the sheet, which says it needs a newer version of the
+  > app; with both, the sheet shows and edits the machine's own settings.
 
 - **App links** in a machine's notebook name that machine's files.
   `ganymede://open?path=a/b.ipynb` opens `a/b.ipynb` on the machine, in
