@@ -570,7 +570,7 @@ struct ProjectLine: View {
                     Text(lines.detail)
                         .font(.caption)
                         // Not `.secondary`, which measured 3.6:1 on the
-                        // light tint (#873): this keeps it past 4.5:1.
+                        // light tint (#873): this measured 5.25:1 there.
                         .foregroundStyle(Color.primary.opacity(0.72))
                         .lineLimit(1)
                         .truncationMode(.middle)

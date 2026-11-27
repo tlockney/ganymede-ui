@@ -12,13 +12,13 @@ the Find tab, which joins Search and Outline, is a separate change.
   assets, is #2B3A67 at 14% in the light and at 55% in the dark, laid
   behind the whole column (`ContentView`'s `sidebar`) and so over the
   system's sidebar material. 8% in the light was invisible in the
-  running app. Measured from the PR's screenshots (strongest text pixel
-  against the foot's background), the foot's folder name reads 11.0:1 in
-  the light and 9.8:1 in the dark. Its second line, in the system's
-  `.secondary`, read 3.6:1 in the light (5.1:1 in the dark), so it is
-  `Color.primary` at 72% instead, about 4.7:1 by the same arithmetic.
-  The lists' own secondary captions (Recents' folders) stay the system's;
-  the tint costs them little (about 3.8:1 to 3.6:1 in the light). The
+  running app. Measured from screenshots of the PR's head (the
+  extreme text pixel against the background beside it), the foot's second
+  line, in the label color at 72%, reads 5.25:1 in the light and 5.94:1
+  in the dark; in the system's `.secondary`, at an earlier build, it read
+  3.6:1 in the light. The lists' own secondary captions stay the system's
+  and read under 4.5:1 in the light (a Recents caption measured 3.4:1;
+  the untinted sidebar gives about 3.8:1), which #878 takes up. The
   color stays translucent, because an opaque fill would take away the
   material's vibrancy.
 - The lists in the column hide their own scroll background
@@ -53,7 +53,7 @@ the Find tab, which joins Search and Outline, is a separate change.
   18%, so it doesn't read as a second selection.
 - The foot is the project: `ProjectLine` replaces `ServerLine`, with the
   folder symbol, the folder's name in `.callout` and, in `.caption`
-  secondary, the folder it is in and the place: "~/notes · This Mac".
+  at 72% of the label color, the folder it is in and the place: "~/notes · This Mac".
   The home folder is shortened to "~" for this Mac's windows; a
   machine's keep the path its server reports and take the machine's name.
   The help tag is the whole path. The menu keeps "New Terminal On" and
@@ -70,5 +70,5 @@ the Find tab, which joins Search and Outline, is a separate change.
   rather than the app.
 
 Checked with `npm run check`, `xcodebuild test` for the `Ganymede` scheme
-on macOS (721 tests), a Debug build, and `build-for-testing` for
+on macOS (724 tests), a Debug build, and `build-for-testing` for
 `Ganymede-iOS`.
