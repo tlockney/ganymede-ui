@@ -42,6 +42,16 @@ enum NavigatorTab: String, CaseIterable, Identifiable {
         }
     }
 
+    /// The tab's tooltip (#873): its name and the key that shows it, as
+    /// "Files (⌘1)".
+    var help: String { "\(title) (⌘\(String(shortcut.character)))" }
+
+    /// What the Running tab's accessibility value says (#873): "2 running",
+    /// or nothing while nothing runs.
+    static func runningValue(_ count: Int) -> String {
+        count > 0 ? "\(count) running" : ""
+    }
+
     /// The tabs a window of `place` shows, the same on the Mac and the iPad
     /// (#758): every tab, but not Recents for a machine, whose notebooks
     /// aren't in them (`Place.indexesLocally`). Journals is for every place.

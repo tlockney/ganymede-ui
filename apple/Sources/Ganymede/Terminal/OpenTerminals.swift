@@ -35,16 +35,4 @@ final class OpenTerminals {
     func remove(_ id: Entry.ID) {
         entries.removeAll { $0.id == id }
     }
-
-    /// The sidebar's server line: "2 kernels, 1 terminal", or "Nothing
-    /// running".
-    static func summary(kernels: Int, terminals: Int) -> String {
-        func count(_ n: Int, _ noun: String) -> String { "\(n) \(noun)\(n == 1 ? "" : "s")" }
-        switch (kernels, terminals) {
-        case (0, 0): return "Nothing running"
-        case (_, 0): return count(kernels, "kernel")
-        case (0, _): return count(terminals, "terminal")
-        default: return count(kernels, "kernel") + ", " + count(terminals, "terminal")
-        }
-    }
 }

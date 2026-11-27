@@ -61,6 +61,19 @@ final class NavigatorTabTests: XCTestCase {
         XCTAssertTrue(NavigatorTab.sidebarColumnShown(.automatic, portrait: true, compact: true))
     }
 
+    /// The capsule's tooltips and the Running tab's value (#873).
+    func testEachTabNamesItselfAndItsKey() {
+        XCTAssertEqual(NavigatorTab.files.help, "Files (⌘1)")
+        XCTAssertEqual(NavigatorTab.running.help, "Running (⌘3)")
+        XCTAssertEqual(NavigatorTab.journals.help, "Journals (⌘6)")
+    }
+
+    func testTheRunningTabsValueSaysHowManyRun() {
+        XCTAssertEqual(NavigatorTab.runningValue(0), "")
+        XCTAssertEqual(NavigatorTab.runningValue(1), "1 running")
+        XCTAssertEqual(NavigatorTab.runningValue(2), "2 running")
+    }
+
     func testTheSplitViewsShowAndHideAreReadBack() {
         XCTAssertEqual(SidebarColumns(.all), .shown)
         XCTAssertEqual(SidebarColumns(.doubleColumn), .shown)

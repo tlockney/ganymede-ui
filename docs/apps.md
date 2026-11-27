@@ -64,6 +64,17 @@ On first launch the app asks once whether to send crash reports
 
 ### Sidebar
 
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, where the sidebar has a row of icons for its tabs
+> and its foot shows where kernels run.
+
+At the sidebar's top are the app's mark and its name, and under them the
+tabs in one capsule: the tab on show draws its symbol and its name, the
+others the symbol alone, and Running counts what is running. The column
+is a pale navy over the system's sidebar material, and the navy itself in
+the dark.
+
 The sidebar has six tabs (⌘1 to ⌘6). Each window keeps its sidebar
 shown or hidden, its tab and its expanded folders across launches.
 
@@ -89,8 +100,7 @@ shown or hidden, its tab and its expanded folders across launches.
   reports it (a Ganymede server does), and the terminals open in any
   window. Click a terminal to bring it to the front, or right-click a
   kernel or terminal to shut it down (or choose Kernel > Shut Down Other
-  Kernels). The foot of the sidebar shows where kernels run and how many
-  kernels and terminals there are.
+  Kernels).
 - **Recents** lists the notebooks opened lately.
 - **Outline** lists the open notebook's headings; click one to go to its
   cell.
@@ -101,6 +111,13 @@ shown or hidden, its tab and its expanded folders across launches.
   one to open it, or right-click to open it in a new tab. The server is
   asked every 5 seconds while the tab shows; an older server's 404
   (before ganymede#893) says it is too old to list journals.
+
+The foot of the sidebar names the window's folder: its name, over the
+folder it is in and the place, as "moons" over "~/notes · This Mac" (the
+home folder shortened to "~"; a machine's paths as its server reports
+them, with the machine's name). Its menu shows the folder in the Finder
+(this Mac's windows only), opens a terminal on a remote and opens
+Settings > Remotes.
 
 ### Toolbar and menus
 
@@ -196,14 +213,20 @@ shown or hidden, its tab and its expanded folders across launches.
   menu the browser's status line opens. Nothing shows while no kernel runs or
   before it has replied.
 
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, where the sidebar's foot names where kernels run
+> and the kernel's button doesn't.
+
 - Kernels can run on a remote server instead. Add the remote in
   Settings > Remotes (its editor can switch kernels to it), then pick
   where kernels run from the kernel's button in the toolbar or Kernel >
-  Advanced > Run Kernels On. The sidebar's foot names where they run now
-  ("This Mac" or the remote); its menu is where you open a terminal on
-  a remote. The choice is app-wide, and switching shuts down running
-  kernels, so the Mac asks first while any run. To work on another
-  machine's own notebooks, connect it instead
+  Advanced > Run Kernels On. The kernel's button says where they run now
+  ("This Mac" or the remote), and its popover has the setting; the
+  sidebar's foot names the window's folder, and its menu is where you
+  open a terminal on a remote. The choice is app-wide, and switching shuts
+  down running kernels, so the Mac asks first while any run. To work on
+  another machine's own notebooks, connect it instead
   ([Connected machines](#connected-machines)).
 
 - Kernels that run on a remote carry its name wherever they are listed:

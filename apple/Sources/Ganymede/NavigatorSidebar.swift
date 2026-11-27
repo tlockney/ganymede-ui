@@ -40,38 +40,24 @@ struct NavigatorSidebar: View {
                 .padding(.horizontal, 10)
                 .padding(.top, 8)
             }
-            HStack(spacing: 2) {
-                ForEach(tabs) { item in
-                    Button {
-                        tab = item
-                    } label: {
-                        Image(systemName: item.symbol)
-                            .symbolVariant(shownTab == item ? .fill : .none)
-                            .frame(width: 28, height: 22)
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(shownTab == item ? Color.accentColor : Color.secondary)
-                    .help("\(item.title) (⌘\(String(item.shortcut.character)))")
-                    .accessibilityLabel(item.title)
-                    .accessibilityAddTraits(shownTab == item ? .isSelected : [])
-                    .keyboardShortcut(item.shortcut, modifiers: .command)
-                    // How many kernels and terminals run, on the Running tab.
-                    .overlay(alignment: .topTrailing) {
-                        if item == .running, running > 0 {
-                            Text("\(running)")
-                                .font(.system(size: 9, weight: .semibold))
-                                .padding(.horizontal, 3)
-                                .background(Capsule().fill(Color("AccentFill")))
-                                .foregroundStyle(Color("OnAccent"))
-                                .offset(x: 2, y: -2)
-                                .accessibilityHidden(true)
-                        }
-                    }
-                }
+            // The app's mark and name (#873): the window's own header, above
+            // its navigators, as a Mac app's sidebar has. The icon is the
+            // app's, so only the name is read.
+            HStack(spacing: 8) {
+                Image(nsImage: NSApp.applicationIconImage)
+                    .resizable()
+                    .interpolation(.high)
+                    .frame(width: 24, height: 24)
+                    .accessibilityHidden(true)
+                Text("Ganymede")
+                    .font(.title3.weight(.bold))
+                Spacer(minLength: 0)
             }
-            .padding(.vertical, 6)
-            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 10)
+            .padding(.top, 10)
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isHeader)
+            capsule
             Divider()
             switch shownTab {
             case .files:
@@ -91,8 +77,103 @@ struct NavigatorSidebar: View {
                 RecentsNavigator(page: page)
             }
             Divider()
-            ServerLine(page: page, panel: panel, machineName: place.machineID.flatMap(model.machineName(_:)))
+            ProjectLine(
+                folder: folder,
+                // A machine's home isn't this Mac's: its paths stay as its
+                // server reports them (#873).
+                home: place.isThisDevice ? projectHome : nil,
+                placeName: placeName,
+                showsInFinder: place.isThisDevice,
+                panel: panel)
         }
+    }
+
+    /// The tabs in one capsule (#873): the shown tab draws its symbol and its
+    /// name on a raised fill and takes the width the others leave; the rest
+    /// draw the symbol alone. No segment's width depends on the Running
+    /// badge — it is an overlay — so nothing moves as kernels come and go.
+    private var capsule: some View {
+        HStack(spacing: 2) {
+            ForEach(tabs) { item in
+                Button {
+                    tab = item
+                } label: {
+                    segment(item)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(shownTab == item ? Color.primary : Color.secondary)
+                .help(item.help)
+                .accessibilityLabel(item.title)
+                // How many kernels and terminals run, said here: the badge
+                // itself is hidden from VoiceOver.
+                .accessibilityValue(item == .running ? NavigatorTab.runningValue(running) : "")
+                .accessibilityAddTraits(shownTab == item ? .isSelected : [])
+                .keyboardShortcut(item.shortcut, modifiers: .command)
+                .overlay(alignment: .topTrailing) { badge(item) }
+            }
+        }
+        // One tab group to VoiceOver (#873): each segment is a tab in it,
+        // with its name and whether it is shown.
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(.isTabBar)
+        .padding(3)
+        .background(Capsule().fill(Color.primary.opacity(0.05)))
+        .overlay(Capsule().strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5))
+        .padding(.horizontal, 8)
+        .padding(.top, 8)
+        .padding(.bottom, 6)
+    }
+
+    @ViewBuilder
+    private func segment(_ item: NavigatorTab) -> some View {
+        if shownTab == item {
+            // The name gives way to the symbol alone when the capsule is too
+            // narrow for both: at the sidebar's 180pt the other five tabs
+            // leave it about 28pt, and a truncated word reads worse than the
+            // symbol on its own. The tooltip keeps the name to hand.
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 5) {
+                    Image(systemName: item.symbol)
+                        .symbolVariant(.fill)
+                    Text(item.title)
+                        .lineLimit(1)
+                        .fixedSize()
+                }
+                Image(systemName: item.symbol)
+                    .symbolVariant(.fill)
+            }
+            .font(.caption.weight(.semibold))
+            .padding(.horizontal, 6)
+            .frame(maxWidth: .infinity, minHeight: 22)
+            .background(RoundedRectangle(cornerRadius: 5).fill(Color.primary.opacity(0.1)))
+            .contentShape(Rectangle())
+        } else {
+            Image(systemName: item.symbol)
+                .frame(width: 24, height: 22)
+                .contentShape(Rectangle())
+        }
+    }
+
+    /// How many kernels and terminals run, on the Running tab.
+    @ViewBuilder
+    private func badge(_ item: NavigatorTab) -> some View {
+        if item == .running, running > 0 {
+            Text("\(running)")
+                .font(.system(size: 9, weight: .semibold))
+                .padding(.horizontal, 3)
+                .background(Capsule().fill(Color("AccentFill")))
+                .foregroundStyle(Color("OnAccent"))
+                .offset(x: 2, y: -2)
+                .accessibilityHidden(true)
+        }
+    }
+
+    /// This Mac's home folder, which the foot abbreviates to "~".
+    private var projectHome: URL { FileManager.default.homeDirectoryForCurrentUser }
+
+    /// "This Mac", or the name of the machine whose window this is (#740).
+    private var placeName: String {
+        place.machineID.flatMap(model.machineName(_:)) ?? Places.deviceName
     }
 
     /// The tabs: not Recents for a machine, whose notebooks aren't in them.
@@ -160,6 +241,7 @@ private struct SearchNavigator: View {
             }
         }
         .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
         .overlay { status }
     }
 
@@ -304,6 +386,7 @@ private struct JournalsNavigator: View {
             }
         }
         .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
         .overlay { status(journals) }
         // Starts when the tab shows, and is cancelled when it hides or the
         // server (its address and token) changes.
@@ -375,6 +458,7 @@ struct OutlineNavigator: View {
             }
         }
         .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
         .overlay {
             if headings.isEmpty {
                 Text(page.state.hasNotebook ? "No headings in this notebook" : "No notebook open")
@@ -402,7 +486,7 @@ private struct RecentsNavigator: View {
                 } label: {
                     VStack(alignment: .leading, spacing: 2) {
                         Label(url.deletingPathExtension().lastPathComponent, systemImage: "book.closed")
-                        Text(url.deletingLastPathComponent().path.replacingOccurrences(of: NSHomeDirectory(), with: "~"))
+                        Text(ProjectLineText.abbreviate(url.deletingLastPathComponent().path, home: NSHomeDirectory()))
                             .font(.caption)
                             .foregroundStyle(.secondary)
                             .lineLimit(1)
@@ -419,6 +503,7 @@ private struct RecentsNavigator: View {
             }
         }
         .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
         .overlay {
             if recents.urls.isEmpty {
                 Text("Notebooks you open show here").foregroundStyle(.secondary)

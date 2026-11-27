@@ -17,11 +17,4 @@ final class OpenTerminalsTests: XCTestCase {
         terminals.remove(first)
         XCTAssertEqual(terminals.entries.map(\.id), [second])
     }
-
-    func testSummarisesWhatRuns() {
-        XCTAssertEqual(OpenTerminals.summary(kernels: 0, terminals: 0), "Nothing running")
-        XCTAssertEqual(OpenTerminals.summary(kernels: 1, terminals: 0), "1 kernel")
-        XCTAssertEqual(OpenTerminals.summary(kernels: 0, terminals: 2), "2 terminals")
-        XCTAssertEqual(OpenTerminals.summary(kernels: 2, terminals: 1), "2 kernels, 1 terminal")
-    }
 }

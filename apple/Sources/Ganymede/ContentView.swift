@@ -641,6 +641,11 @@ struct ContentView: View {
                 ) { path in
                     openWindow(value: EditorRequest(path: path, place: place))
                 }
+                // The navy glass (#873): a pale navy, or the navy itself in
+                // the dark, over the system's sidebar material and through the
+                // whole column. The lists hide their own background so this
+                // shows behind their rows.
+                .background(Color("SidebarTint").ignoresSafeArea())
                 // A restarted server has a new address and token.
                 .id(place.isMachine ? model.serverURL : nil)
             } else {
