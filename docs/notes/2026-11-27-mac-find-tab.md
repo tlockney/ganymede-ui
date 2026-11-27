@@ -63,3 +63,8 @@ and Outline for now. Step 4b of the Mac redesign (#844).
   hasn't come, even when the files' search is done, so "No matches"
   doesn't flash before it. `NavigatorTabTests` covers these, the
   platform lists and the stored-tab mapping.
+- When no notebook pane is shown, as when the notebook failed to open,
+  the page answers the field's query itself with no matches, so the list
+  can't say "Searching…" for good (review of #881). The page searches a
+  new query at once; only cell edits wait 300 ms, since the field has
+  already waited for typing to stop.

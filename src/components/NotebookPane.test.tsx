@@ -1962,8 +1962,9 @@ describe('NotebookPane', () => {
     await waitFor(() => expect(latest()).toBeDefined());
     vi.useFakeTimers();
     renderWith('plume');
-    // The query's own answer, 300 ms on.
-    await act(() => vi.advanceTimersByTimeAsync(300));
+    // The query's own answer, at once: the app's field already waited for
+    // typing to stop (#881).
+    await act(() => vi.advanceTimersByTimeAsync(0));
     expect(latest()!.notebookFind?.matches.map(m => m.cell)).toEqual([0, 1]);
     // A cell inserted above them moves them at once, with no wait: a row
     // that took the debounce would point at the wrong cell meanwhile.

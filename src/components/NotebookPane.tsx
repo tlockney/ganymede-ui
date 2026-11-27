@@ -1216,9 +1216,9 @@ export function NotebookPane({
     };
   }, [open, path]);
 
-  // The Mac app's Find results (#879), 300 ms after the cells or the field's
-  // query change, as the outline is: every cell's source is searched, not
-  // only the Markdown ones. An empty query has nothing to find.
+  // The Mac app's Find results (#879): at once for a new query, and 300 ms
+  // after the cells' text changes, as the outline is. Every cell's source is
+  // searched, not only the Markdown ones. An empty query has nothing to find.
   useEffect(() => {
     if (!open) return;
     const { model } = open;
@@ -1251,7 +1251,9 @@ export function NotebookPane({
       if (timer !== undefined) clearTimeout(timer);
       update();
     };
-    later();
+    // A new query, or a notebook just opened, is searched at once: the
+    // app's field has already waited for typing to stop (#881).
+    update();
     model.contentChanged.connect(later);
     model.cells.changed.connect(now);
     return () => {

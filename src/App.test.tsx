@@ -511,6 +511,29 @@ describe('App', () => {
     expect(states.some(s => s.path === null && s.title === null)).toBe(true);
   });
 
+  it('answers the Find tab with nothing found when the notebook never opened (#881)', async () => {
+    const states: Record<string, unknown>[] = [];
+    vi.stubGlobal('webkit', {
+      messageHandlers: {
+        state: { postMessage: (m: Record<string, unknown>) => states.push(m) },
+      },
+    });
+    // No controller: the notebook failed to open, so no pane answers.
+    const fake = fakeServices({ '': [{ name: 'Io.ipynb', type: 'notebook' }] });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    history.replaceState(null, '', '/?kernels=server&open=Io.ipynb');
+    render(<App />);
+    await waitFor(() => expect(states.at(-1)).toMatchObject({ path: 'Io.ipynb' }));
+    expect(states.at(-1)!.notebookFind).toBeNull();
+    const run = window.ganymede!.command;
+    expect(await run('find-in-notebook', '  volcano ')).toBe(true);
+    await waitFor(() =>
+      expect(states.at(-1)!.notebookFind).toEqual({ query: 'volcano', matches: [], more: 0 }),
+    );
+    expect(await run('find-in-notebook', '')).toBe(true);
+    await waitFor(() => expect(states.at(-1)!.notebookFind).toBeNull());
+  });
+
   it('tells the app the notebook’s language, for its window’s chip (#867)', async () => {
     const states: Record<string, unknown>[] = [];
     vi.stubGlobal('webkit', {

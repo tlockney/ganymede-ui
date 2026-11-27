@@ -1114,7 +1114,14 @@ export function App() {
       consoles: native ? (JSON.parse(consolesKeyed) as PageState['consoles']) : [],
       search: JSON.parse(searchKey) as PageState['search'],
       outline: shown?.outline ?? [],
-      notebookFind: shown?.notebookFind ?? null,
+      // No notebook shown, as when it failed to open (#881): the page still
+      // answers the asked query, with nothing found, so the app's Find tab
+      // doesn't wait for a notebook that will never answer.
+      notebookFind: shown
+        ? shown.notebookFind
+        : findQuery
+          ? { query: findQuery, matches: [], more: 0 }
+          : null,
       variables: JSON.parse(variablesKey) as PageState['variables'],
     });
   }, [
@@ -1133,6 +1140,7 @@ export function App() {
     variablesKey,
     accessKey,
     hostGrants,
+    findQuery,
   ]);
 
   // ⌘S / Ctrl+S saves, as in any document app; ⇧⌘P opens the command
