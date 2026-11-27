@@ -497,33 +497,19 @@ describe('Toolbar', () => {
   });
 
   it('leaves focus on the Notebook button on a wide window, where the control stays (#830)', async () => {
-    const wide = vi.spyOn(window, 'matchMedia').mockImplementation(
-      q =>
-        ({
-          media: q,
-          matches: false,
-          addEventListener() {},
-          removeEventListener() {},
-          addListener() {},
-          removeListener() {},
-        }) as unknown as MediaQueryList,
+    // The file's default matchMedia is a wide window.
+    const onToggleJournal = vi.fn();
+    const { rerender } = render(
+      bar({ onToggleJournal, controller: controller({ journal: true }) }),
     );
-    try {
-      const onToggleJournal = vi.fn();
-      const { rerender } = render(
-        bar({ onToggleJournal, controller: controller({ journal: true }) }),
-      );
-      await userEvent.click(named('Notebook'));
-      expect(onToggleJournal).toHaveBeenCalledOnce();
-      rerender(bar({ onToggleJournal, controller: controller({ journal: false }) }));
-      // The control is still in the header, so focus stays where the click
-      // put it; only a phone, which loses the control, moves it to More.
-      expect(screen.getByRole('group', { name: /^View/ })).toBeInTheDocument();
-      expect(named('Notebook')).toHaveFocus();
-      expect(named('More')).not.toHaveFocus();
-    } finally {
-      wide.mockRestore();
-    }
+    await userEvent.click(named('Notebook'));
+    expect(onToggleJournal).toHaveBeenCalledOnce();
+    rerender(bar({ onToggleJournal, controller: controller({ journal: false }) }));
+    // The control is still in the header, so focus stays where the click
+    // put it; only a phone, which loses the control, moves it to More.
+    expect(screen.getByRole('group', { name: /^View/ })).toBeInTheDocument();
+    expect(named('Notebook')).toHaveFocus();
+    expect(named('More')).not.toHaveFocus();
   });
 
   it('disables what runs or edits cells while the journal shows them hidden (#184)', async () => {
