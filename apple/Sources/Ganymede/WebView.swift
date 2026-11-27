@@ -25,9 +25,13 @@ struct WebView: NSViewRepresentable {
     /// Whether a machine's notebooks may use this device's `device` API
     /// (#877): its remote's setting. This device's page always may.
     var usesDevice: Bool
+    /// The folder the ledger keeps a this-Mac window's notebooks under
+    /// (#883): the server's `root_dir`. Nil for this device's windows.
+    var ledgerRoot: URL? = nil
 
     func makeCoordinator() -> WebViewCoordinator {
-        WebViewCoordinator(place: place, sharesName: sharesName, usesDevice: usesDevice)
+        WebViewCoordinator(
+            place: place, sharesName: sharesName, usesDevice: usesDevice, ledgerRoot: ledgerRoot)
     }
 
     func makeNSView(context: Context) -> WKWebView {
@@ -61,9 +65,15 @@ struct WebView: UIViewRepresentable {
     /// Whether a machine's notebooks may use this device's `device` API
     /// (#877): its remote's setting. This device's page always may.
     var usesDevice: Bool
+    /// The folder the ledger keeps a this-Mac window's notebooks under
+    /// (#883): the server's `root_dir`. Nil for this device's windows, and
+    /// on iOS, where nothing verifies.
+    var ledgerRoot: URL? = nil
 
     func makeCoordinator() -> WebViewCoordinator {
-        store?.coordinator ?? WebViewCoordinator(place: place, sharesName: sharesName, usesDevice: usesDevice)
+        store?.coordinator
+            ?? WebViewCoordinator(
+                place: place, sharesName: sharesName, usesDevice: usesDevice, ledgerRoot: ledgerRoot)
     }
 
     func makeUIView(context: Context) -> WKWebView {
@@ -238,6 +248,10 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// the place is: the handlers are registered with the web view, so a
     /// later change applies to the machine's windows opened after it.
     let usesDevice: Bool
+    /// The folder the ledger keeps a this-Mac window's notebooks under
+    /// (#883): the server's `root_dir`, since the page's paths are from it.
+    /// Nil for this device's windows, whose paths are the app server's root.
+    let ledgerRoot: URL?
     /// The page's own settings, as `Place` takes them (#842, #877). On this
     /// device both are ignored.
     private var settings: PlaceSettings { PlaceSettings(sharesName: sharesName, usesDevice: usesDevice) }
@@ -247,10 +261,11 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// and only they register the handler.
     var onOpenTab: ((TabRequest) -> Void)?
 
-    init(place: Place = .thisDevice, sharesName: Bool, usesDevice: Bool) {
+    init(place: Place = .thisDevice, sharesName: Bool, usesDevice: Bool, ledgerRoot: URL? = nil) {
         self.place = place
         self.sharesName = sharesName
         self.usesDevice = usesDevice
+        self.ledgerRoot = ledgerRoot
         super.init()
     }
 
@@ -385,10 +400,11 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     private func startLoad(_ url: URL, start: Int, in view: WKWebView) {
         // The person's name, for this server's origin only (#606).
         Self.installPageScripts(on: view, loaded: url, place: place, settings: settings)
-        // The ledger keeps notebooks by absolute path (#383): this device's
-        // alone, since a machine's notebooks aren't this device's (#877).
+        // The ledger keeps notebooks by absolute path (#383): this device's,
+        // and this Mac's own server's under its `root_dir` (#883), since
+        // those notebooks are this Mac's too. A machine's aren't (#877).
         if place.allows(.deviceLedger, settings) {
-            kernels.notebookRoot = AppModel.shared.serverRootFolder
+            kernels.notebookRoot = ledgerRoot ?? AppModel.shared.serverRootFolder
         }
         // The page a machine's kernel calls must come from, and what it
         // asked goes when it loads again (#877). This device's windows
@@ -578,9 +594,11 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         windowFeatures: WKWindowFeatures
     ) -> WKWebView? {
         if let target = navigationAction.request.url {
-            if place.isMachine, target.scheme?.lowercased() == AppURL.scheme {
+            if place.isMachine, !place.isThisMac, target.scheme?.lowercased() == AppURL.scheme {
                 // As in `decidePolicyFor`: a machine's app link is the
                 // machine's, and never opens this device's `AppURL` (#868).
+                // This Mac's own server's window is this device's for links
+                // (#883), so its app links go to the system below.
                 followMachineLink(target)
             } else if isExternal(target) {
                 if place.opensExternally(target) { openExternally(target) }
@@ -894,7 +912,11 @@ extension WebViewCoordinator {
     /// The page's `document` message: its notebook and unsaved edits. Only
     /// the page itself may send it.
     func received(document message: WKScriptMessage) {
-        if message.frameInfo.isMainFrame, let update = DocumentMessage(body: message.body, place: place) {
+        // This Mac's own server's notebooks are this Mac's, under its
+        // `root_dir` (#883), so Recents and Spotlight keep them.
+        let root = ledgerRoot ?? URL(fileURLWithPath: "/", isDirectory: true)
+        if message.frameInfo.isMainFrame,
+           let update = DocumentMessage(body: message.body, root: root, place: place) {
             document?.update(update, in: place)
         }
     }

@@ -153,7 +153,7 @@ enum WindowTarget: Codable, Hashable {
     static func root(of place: Place, device: URL) -> WindowTarget? {
         switch place {
         case .thisDevice: .folder(device)
-        case .machine(let id): machine(id, path: "/", isFolder: true)
+        case .machine(let id), .thisMac(let id): machine(id, path: "/", isFolder: true)
         }
     }
 

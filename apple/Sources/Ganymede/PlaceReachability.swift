@@ -11,6 +11,10 @@ final class PlaceReachability {
 
     /// The last answer per machine id; absent until the first check.
     private(set) var reachable: [String: Bool] = [:]
+    /// What to do when a machine that wasn't answering answers again: the
+    /// app checks its server again, since a mount that came back may be
+    /// another server's, and whether it is this Mac's own (#883).
+    var onReachable: ((String) -> Void)?
     @ObservationIgnored private var tasks: [String: Task<Void, Never>] = [:]
     /// Where the mount is: the app's server with its token, nil while it
     /// isn't running.
@@ -51,8 +55,12 @@ final class PlaceReachability {
         while !Task.isCancelled {
             let ok = await Self.check(id, server: server, session: session)
             guard !Task.isCancelled else { return }
+            let again = ok && reachable[id] == false
             failures = ok ? 0 : failures + 1
             if reachable[id] != ok { reachable[id] = ok }
+            // A machine that answers again: the app checks its server
+            // again, off this poll (#883).
+            if again { onReachable?(id) }
             let wait = ReachabilitySchedule.delay(afterFailures: failures)
             try? await Task.sleep(nanoseconds: UInt64(wait * 1_000_000_000))
         }

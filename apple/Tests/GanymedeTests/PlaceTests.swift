@@ -678,4 +678,178 @@ final class PlaceTests: XCTestCase {
         XCTAssertEqual(query(url)["token"], "abc")
         XCTAssertNil(PlaceReachability.statusURL("../x", server: server))
     }
+
+    // MARK: this Mac's own server (#883)
+
+    /// The server info file the check accepts, as `ThisMacVerifier` makes
+    /// one: this Mac's own Ganymede on a loopback port.
+    private func serverInfo(
+        port: Int = 8888, token: String = "a-token", root: String = "/Users/me"
+    ) -> ThisMacServer {
+        ThisMacServer(
+            pid: 42, url: URL(string: "http://127.0.0.1:\(port)/")!, token: token,
+            root: URL(fileURLWithPath: root, isDirectory: true), version: "0.17.0")
+    }
+
+    func testThisMacsOwnServerIsThisDevicesPlaceThroughItsMount() {
+        let here = Place.thisMac(id)
+        XCTAssertTrue(here.isThisMac)
+        XCTAssertTrue(here.isMachine)
+        XCTAssertFalse(here.isThisDevice)
+        XCTAssertEqual(here.machineID, id)
+        XCTAssertEqual(here.mountPath, "/machines/\(id)/")
+        XCTAssertTrue(here.indexesLocally)
+        XCTAssertFalse(Place.machine(id).isThisMac)
+        XCTAssertFalse(Place.thisDevice.isThisMac)
+    }
+
+    func testThisMacsWindowGetsWhatALocalWindowGetsButTheKernelLocation() {
+        let here = Place.thisMac(id)
+        for capability in Place.Capability.allCases {
+            XCTAssertEqual(here.allows(capability), capability != .kernelLocation, "\(capability)")
+            // The machine's settings change nothing for this Mac's own.
+            for settings in [
+                PlaceSettings(sharesName: true), PlaceSettings(sharesName: false),
+                PlaceSettings(sharesName: false, usesDevice: true),
+            ] {
+                XCTAssertEqual(here.allows(capability, settings), here.allows(capability), "\(capability)")
+            }
+        }
+        // The same handlers as this device's window.
+        XCTAssertTrue(here.allows(.deviceLedger))
+        XCTAssertTrue(here.allows(.deviceRemote))
+        XCTAssertTrue(here.allows(.appLinks))
+        XCTAssertEqual(here.handlerNames(PlaceSettings()), Place.thisDevice.handlerNames(PlaceSettings()))
+        XCTAssertEqual(
+            here.handlerNames(PlaceSettings(usesDevice: false)),
+            Place.thisDevice.handlerNames(PlaceSettings(usesDevice: false)))
+        XCTAssertTrue(here.tracksPageURL(PlaceSettings()))
+        // Its dialogs are this device's: nothing in them names a machine.
+        XCTAssertNil(here.asker { _ in "mini" })
+        XCTAssertEqual(Place.machine(id).asker { _ in "mini" }, "mini")
+    }
+
+    /// A remote is this Mac's own place only when it names the verified
+    /// server: the same loopback port, with the same token (#883).
+    func testARemoteMakesThisMacsPlaceOnlyWhenItNamesTheVerifiedServer() {
+        let remote = Remote(name: "here", serverURL: "http://127.0.0.1:8888")
+        let server = serverInfo()
+        XCTAssertEqual(
+            Place(remote: remote, token: "a-token", thisMac: [server]),
+            .thisMac(remote.id.uuidString))
+        // Another token, no token, no check at all, or a server on another
+        // port: an ordinary machine.
+        XCTAssertEqual(
+            Place(remote: remote, token: "another", thisMac: [server]),
+            .machine(remote.id.uuidString))
+        XCTAssertEqual(Place(remote: remote, thisMac: [server]), .machine(remote.id.uuidString))
+        XCTAssertEqual(Place(remote: remote, token: "a-token"), .machine(remote.id.uuidString))
+        XCTAssertEqual(
+            Place(remote: remote, token: "a-token", thisMac: [serverInfo(port: 9999)]),
+            .machine(remote.id.uuidString))
+        // Another loopback address is another server, even with the port and
+        // token the verified one wrote: the app would reach a server it
+        // didn't check.
+        let elsewhere = Remote(name: "here", serverURL: "http://localhost:8888")
+        XCTAssertEqual(
+            Place(remote: elsewhere, token: "a-token", thisMac: [server]),
+            .machine(elsewhere.id.uuidString))
+        // A name that isn't loopback is no this Mac's server, whatever its
+        // port and token say.
+        let named = Remote(name: "mini", serverURL: "http://mini:8888")
+        XCTAssertEqual(
+            Place(remote: named, token: "a-token", thisMac: [server]),
+            .machine(named.id.uuidString))
+        // The ids the app verified, for the places it lists and the windows
+        // it opens, without reading a token again.
+        XCTAssertEqual(Place(remote: remote, verified: [remote.id.uuidString]), .thisMac(remote.id.uuidString))
+        XCTAssertEqual(Place(remote: remote, verified: []), .machine(remote.id.uuidString))
+    }
+
+    func testThisMacsTerminalsRunOnItAsAMachinesDo() {
+        let remote = Remote(name: "here", serverURL: "http://127.0.0.1:8888")
+        let here = Place.thisMac(remote.id.uuidString)
+        XCTAssertEqual(
+            here.terminalTarget(notebook: "a/nb.ipynb", fallbackFolder: "x", remotes: [remote]),
+            .server(remote.id, folder: "a"))
+        XCTAssertEqual(
+            here.terminalTarget(notebook: nil, fallbackFolder: "x", remotes: [remote]),
+            .server(remote.id, folder: "x"))
+        // Its remote gone: nowhere to run one.
+        XCTAssertNil(here.terminalTarget(notebook: nil, fallbackFolder: "x", remotes: []))
+    }
+
+    /// Its links are this device's (#868, #883): an app link goes to the
+    /// system, not to the machine's reading of the path.
+    func testThisMacsLinksAreThisDevices() throws {
+        let here = Place.thisMac(id)
+        let open = try XCTUnwrap(URL(string: "ganymede://open?path=a.ipynb"))
+        XCTAssertEqual(here.machineLink(open), .notApp)
+        XCTAssertTrue(here.opensExternally(open))
+        XCTAssertEqual(here.linkAction(for: open, clicked: true), .openExternally)
+        // The machine it would otherwise have been reads the same link as
+        // its own.
+        XCTAssertEqual(Place.machine(id).linkAction(for: open, clicked: true), .openOnMachine(path: "a.ipynb"))
+    }
+
+    func testThisMacStaysOnItsMountAsAMachineDoes() throws {
+        let here = Place.thisMac(id)
+        func url(_ path: String) throws -> URL {
+            try XCTUnwrap(URL(string: "http://127.0.0.1:8123" + path))
+        }
+        XCTAssertTrue(here.allowsFollowing(try url("/machines/\(id)/files/a.png")))
+        XCTAssertTrue(here.allowsLoading(try url("/?kernels=server&machine=\(id)&open=/a.ipynb")))
+        XCTAssertTrue(here.allowsLoading(try url("/machines/\(id)/files/a.png")))
+        XCTAssertFalse(here.allowsLoading(try url("/?machine=other1")))
+        XCTAssertFalse(here.allowsLoading(try url("/files/secret.txt")))
+    }
+
+    /// Its notebooks are this Mac's, under the server's `root_dir`: a
+    /// notebook's path is joined to it, so Recents and Spotlight keep it
+    /// (#883).
+    func testThisMacsNotebooksAreFilesOnThisMac() throws {
+        let root = URL(fileURLWithPath: "/Users/me/work", isDirectory: true)
+        let body: [String: Any] = ["path": "notes/Io.ipynb", "dirty": false]
+        let message = try XCTUnwrap(DocumentMessage(body: body, root: root, place: .thisMac(id)))
+        XCTAssertEqual(message.file, URL(fileURLWithPath: "/Users/me/work/notes/Io.ipynb"))
+        XCTAssertEqual(message.file?.isFileURL, true)
+        XCTAssertEqual(DocumentEffects.of(message, previousFile: nil, wasDirty: false, in: .thisMac(id)).noteRecent, message.file)
+        XCTAssertEqual(DocumentEffects.representedURL(for: message.file, in: .thisMac(id)), message.file)
+        // A machine's file still isn't one.
+        XCTAssertEqual(
+            DocumentMessage(body: body, root: root, place: .machine(id))?.file,
+            FolderEntry.machineURL(id, path: "notes/Io.ipynb"))
+    }
+
+    func testAFolderRestoredIsOneOfThisMacsOwn() throws {
+        let url = try XCTUnwrap(FolderEntry.machineURL(id, path: "work"))
+        XCTAssertTrue(FolderEntry.isLocation(url, in: .thisMac(id)))
+        XCTAssertFalse(FolderEntry.isLocation(url, in: .thisMac("other2")))
+    }
+
+    func testTheSwitcherListsAVerifiedMachineAsThisMacs() {
+        let mini = Remote(name: "mini", serverURL: "http://127.0.0.1:8888")
+        let entries = Places.entries(
+            remotes: [mini], thisDevice: "This Mac", mounting: true, verified: [mini.id.uuidString])
+        XCTAssertEqual(entries.map(\.place), [.thisDevice, .thisMac(mini.id.uuidString)])
+        // Its name stays its remote's: the badge says the rest.
+        XCTAssertEqual(entries.map(\.title), ["This Mac", "mini"])
+        // Unverified, it is a machine as before.
+        XCTAssertEqual(
+            Places.entries(remotes: [mini], thisDevice: "This Mac", mounting: true).map(\.place),
+            [.thisDevice, .machine(mini.id.uuidString)])
+    }
+
+    func testAThisMacPlaceRoundTripsThroughCodable() throws {
+        let data = try JSONEncoder().encode(Place.thisMac(id))
+        XCTAssertEqual(try JSONDecoder().decode(Place.self, from: data), .thisMac(id))
+    }
+
+    /// A window opens this Mac's own server's root as it opens a machine's
+    /// (#883).
+    func testAThisMacWindowOpensItsRoot() {
+        XCTAssertEqual(
+            WindowTarget.root(of: .thisMac(id), device: URL(fileURLWithPath: "/Users/me")),
+            WindowTarget.machine(id, path: "/", isFolder: true))
+    }
 }

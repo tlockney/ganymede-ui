@@ -24,10 +24,12 @@ struct DocumentMessage: Equatable {
         }
         self.dirty = dirty
         if let path = fields["path"] as? String, !path.isEmpty {
-            if let id = place.machineID {
+            if let id = place.machineID, !place.isThisMac {
                 // A malformed id has no URL: no file.
                 file = FolderEntry.machineURL(id, path: path)
             } else {
+                // This device's, and this Mac's own server's under its
+                // `root_dir` (#883): a file on this Mac either way.
                 file = root.appendingPathComponent(path, isDirectory: false).standardizedFileURL
             }
         } else {

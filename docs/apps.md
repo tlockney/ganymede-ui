@@ -929,6 +929,22 @@ with only SSH stays in Settings for shells.
   independent, so one can show the Mac mini while another shows this Mac.
   On the iPad and iPhone the scene shows one place at a time: the
   machine's sidebar has the switcher back to this device.
+- **This Mac's own server.** A remote whose server is this Mac's own
+  Ganymede — the app's bundled `ganymede serve`, started by hand or in the
+  background — is listed with the machines and wears a "This Mac" badge,
+  and its windows are this Mac's: the permission ledger, the device API,
+  your name, app links and Shortcuts all work as in a local window, and
+  its notebooks are the ones Open Recent and Spotlight keep. The app
+  decides this from the server's process and signature, not its address: a
+  `cargo install` or Homebrew `ganymede`, or any other program listening on
+  a loopback port, stays an ordinary machine. A copy of the app that isn't
+  signed with its team (a debug build) never counts a server as its own.
+
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release, where every machine is an ordinary one and its
+  > window has none of the local window's features.
+
 - **A machine's window** (the app's native sidebar and toolbar on the
   Mac, iPad and iPhone alike) has Files, Journals, Running and Search tabs. Its tab
   and title carry the machine's name ("Orbits · m4mini"). A notebook

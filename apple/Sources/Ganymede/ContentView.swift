@@ -595,13 +595,16 @@ struct ContentView: View {
     /// Only a location of this window's own place.
     private func restoreSidebar() {
         guard let saved = FolderEntry.location(storageKey: savedSidebar),
-              FolderEntry.isLocation(saved, in: loaded.place)
+              FolderEntry.isLocation(saved, in: place)
         else { return }
         sidebarRoot = saved
     }
 
-    /// The window's place, from what it was loaded for.
-    private var place: Place { loaded.place }
+    /// The window's place, from what it was loaded for, and what the app
+    /// has checked (#883): a machine whose server verifies is this Mac's
+    /// own. A check that fails leaves the window a machine's on its next
+    /// load, its web view rebuilt with a machine's handlers.
+    private var place: Place { model.place(for: loaded) }
 
     /// What a new terminal in this window runs on (#858), as File > New
     /// Terminal and the panel's + ask: the place decides, from the folder of
@@ -846,8 +849,10 @@ struct ContentView: View {
         if shown?.url.standardizedFileURL.path != loaded.url.standardizedFileURL.path {
             pageReported = true
         }
-        // A page can't turn itself into another place's window (#701).
-        guard let shown, shown.place == loaded.place else { return }
+        // A page can't turn itself into another place's window (#701). A
+        // machine the app checked is this Mac's own (#883) is that place
+        // here, though the page names it as a machine.
+        guard let shown, model.place(for: shown) == place else { return }
         // A console's page reports its folder, not the tab's own id.
         if let target, target.shows(shown) { return }
         // A window opened on nothing stays blank on the folder it loaded,
@@ -1233,7 +1238,8 @@ struct ContentView: View {
                     onOpenFile: { path in
                         openWindow(value: EditorRequest(path: path, place: place))
                     },
-                    place: place, sharesName: sharesName(for: place), usesDevice: usesDevice(for: place)
+                    place: place, sharesName: sharesName(for: place), usesDevice: usesDevice(for: place),
+                    ledgerRoot: model.thisMacRoot(for: place)
                 )
                 // A page loaded for another place gets its own handlers.
                 .id(place)
@@ -1253,6 +1259,10 @@ struct ContentView: View {
             }
         }
         .task { model.startIfNeeded() }
+        // Every load checks again whether this window's machine is this
+        // Mac's own (#883): a check that fails turns the window back into
+        // a machine's, with a machine's handlers.
+        .onAppear { model.refreshThisMac() }
         #if os(macOS)
         .modifier(KeychainAlert(model: model))
         #endif

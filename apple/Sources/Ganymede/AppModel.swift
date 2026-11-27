@@ -64,6 +64,13 @@ final class AppModel {
     /// The machines mounted on the running server (#701): each id with the
     /// URL and token it was mounted with.
     @ObservationIgnored private var mounted: [String: String] = [:]
+    /// The remotes whose server the app verified is this Mac's own Ganymede
+    /// (#883), by remote id, with the info file it verified by: their
+    /// windows are this Mac's place. Empty on iOS, where nothing verifies.
+    private(set) var thisMac: [String: ThisMacServer] = [:]
+    /// Whether a this-Mac check is out, so a window's load doesn't start
+    /// another while it has one to apply.
+    @ObservationIgnored private var checkingThisMac = false
     /// The app's SSH key, for SSH remotes on iOS (the Mac uses its own
     /// ssh and keys).
     private(set) var sshKey: Curve25519.Signing.PrivateKey?
@@ -411,10 +418,63 @@ final class AppModel {
     // MARK: Connected machines (#701)
 
     /// This device and each machine, for the place switcher; this device
-    /// alone where the server can't mount machines.
+    /// alone where the server can't mount machines. A machine the app
+    /// verified is this Mac's own server (#883) is listed as this Mac's
+    /// place, with its remote's name.
     var places: [PlaceEntry] {
-        Places.entries(remotes: remotes, thisDevice: Places.deviceName, mounting: ServerHost.machinesSupported)
+        Places.entries(
+            remotes: remotes, thisDevice: Places.deviceName,
+            mounting: ServerHost.machinesSupported, verified: Set(thisMac.keys))
     }
+
+    /// What a window's target is, as a place (#883): a machine whose server
+    /// the app verified is this Mac's own is `.thisMac`.
+    func place(for target: WindowTarget) -> Place {
+        switch target.place {
+        case .machine(let id) where thisMac[id] != nil: .thisMac(id)
+        default: target.place
+        }
+    }
+
+    /// The folder a `.thisMac` window's server is rooted at (#883), which
+    /// the ledger keeps its notebooks under and its Recents point at; nil
+    /// for every other place.
+    func thisMacRoot(for place: Place) -> URL? {
+        guard case .thisMac(let id) = place else { return nil }
+        return thisMac[id]?.root
+    }
+
+    /// Checks this Mac's servers again (#883): the info files `ganymede
+    /// serve` writes and the processes behind them, off the main thread,
+    /// since reading the bundled tool's version runs it. Runs when a mount
+    /// connects and when a window loads, so a server that stops verifying
+    /// leaves its windows machines on their next load.
+    func refreshThisMac() {
+        #if os(macOS)
+        guard !checkingThisMac else { return }
+        checkingThisMac = true
+        Task.detached { [weak self] in
+            let servers = ThisMacVerifier().servers()
+            await self?.applied(thisMac: servers)
+        }
+        #endif
+    }
+
+    #if os(macOS)
+    /// What a this-Mac check found, applied here on the main actor: the
+    /// remotes whose server it verified, by id, with the info file each was
+    /// verified by.
+    private func applied(thisMac servers: [ThisMacServer]) {
+        checkingThisMac = false
+        var found: [String: ThisMacServer] = [:]
+        for remote in remotes {
+            let token = token(for: remote.id)
+            guard let server = servers.first(where: { $0.serves(remote, token: token) }) else { continue }
+            found[remote.id.uuidString] = server
+        }
+        if found != thisMac { thisMac = found }
+    }
+    #endif
 
     /// The name of the machine with this id (a Remote's UUID string).
     func machineName(_ id: String) -> String? {
@@ -475,6 +535,10 @@ final class AppModel {
         if !fresh.isEmpty {
             machineError = ([machineError].compactMap { $0 } + fresh).joined(separator: "\n\n")
         }
+        // The mounts (re)connected: check again whether any of their
+        // servers is this Mac's own (#883), and whenever one answers again.
+        PlaceReachability.shared.onReachable = { [weak self] _ in self?.refreshThisMac() }
+        refreshThisMac()
         PlaceReachability.shared.watch(places.map(\.place).filter(\.isMachine), on: serverURL)
     }
 

@@ -6,9 +6,20 @@ import UIKit
 /// Where a window's notebooks live (#701): this device, or a connected
 /// machine reached through the app's own server, which mounts it under
 /// `/machines/{id}/` (ganymede#894). The id is the Remote's UUID string.
+///
+/// A machine the app has checked is this Mac's own server (`.thisMac`,
+/// #883) is reached the same way, through its mount, but trusted as this
+/// device's: its files are this Mac's and its notebooks are the ones a
+/// local window has.
 enum Place: Hashable, Codable {
     case thisDevice
     case machine(String)
+    /// A machine whose server the app verified as this Mac's own Ganymede
+    /// (#883): a background `ganymede serve` on this Mac, whose process is
+    /// the app's own bundled helper. Trust comes from who is listening, not
+    /// where: any process of any user can listen on a loopback port, and
+    /// the app sends that server its token (`ThisMacVerifier`).
+    case thisMac(String)
 
     /// What the server accepts as a machine id: `[A-Za-z0-9_-]{1,64}`.
     static func isValidMachineID(_ id: String) -> Bool {
@@ -26,17 +37,44 @@ enum Place: Hashable, Codable {
         self = .machine(id)
     }
 
-    /// The place of a remote: its UUID string.
-    init?(remote: Remote) {
-        guard remote.hasServer else { return nil }
-        self.init(machine: remote.id.uuidString)
+    /// The place of a remote: its UUID string, and this Mac's own when
+    /// `thisMac` has verified one of this Mac's servers at the remote's
+    /// address, on its port and with its token (#883). Elsewhere a remote's
+    /// place is `.machine`, and on iOS it always is: nothing verifies there.
+    init?(remote: Remote, token: String? = nil, thisMac: [ThisMacServer] = []) {
+        guard remote.hasServer, let place = Place(machine: remote.id.uuidString) else { return nil }
+        if let id = place.machineID, thisMac.contains(where: { $0.serves(remote, token: token) }) {
+            self = .thisMac(id)
+        } else {
+            self = place
+        }
+    }
+
+    /// The place of a remote whose id the app has already verified (#883):
+    /// `.thisMac` for an id in `verified`, else `.machine`. What the place
+    /// switcher and a window read once `AppModel` has checked, without
+    /// reading the keychain's token again.
+    init?(remote: Remote, verified: Set<String>) {
+        guard remote.hasServer, let place = Place(machine: remote.id.uuidString),
+              let id = place.machineID
+        else { return nil }
+        self = verified.contains(id) ? .thisMac(id) : place
     }
 
     var machineID: String? {
-        if case .machine(let id) = self { id } else { nil }
+        switch self {
+        case .machine(let id), .thisMac(let id): id
+        case .thisDevice: nil
+        }
     }
 
     var isMachine: Bool { machineID != nil }
+
+    /// Whether this is this Mac's own server (#883): a machine reached
+    /// through the mount whose process the app verified.
+    var isThisMac: Bool {
+        if case .thisMac = self { true } else { false }
+    }
 
     /// Whether the app draws the sidebar and toolbar of a window of this
     /// place (the page loads with `chrome=native`): on the Mac every
@@ -47,14 +85,15 @@ enum Place: Hashable, Codable {
 
     /// This device's own disk and shells: what Reveal in Finder and local
     /// Recents work on. (A machine's window has a terminal panel of its own,
-    /// with the machine's shells in it, #858.)
+    /// with the machine's shells in it, #858. This Mac's own server's window
+    /// is a machine's here: its files are reached through the mount, #883.)
     var isThisDevice: Bool { !isMachine }
 
     /// The path the page uses as its server, on the app's own origin.
     var mountPath: String {
         switch self {
         case .thisDevice: "/"
-        case .machine(let id): "/machines/\(id)/"
+        case .machine(let id), .thisMac(let id): "/machines/\(id)/"
         }
     }
 
@@ -104,6 +143,13 @@ enum Place: Hashable, Codable {
         switch self {
         case .thisDevice:
             true
+        case .thisMac:
+            // The server is this Mac's own, verified by its signature
+            // (#883), and its notebooks are this Mac's, so its window gets
+            // what a local window gets. `kernelLocation` stays a setting of
+            // this device's own windows: where this Mac's kernels run is
+            // not the background server's to say.
+            capability != .kernelLocation
         case .machine:
             // `nativeChrome`: the Mac draws a machine's sidebar and toolbar
             // too (#740), from the page's `state`. Its `document` message
@@ -159,7 +205,9 @@ enum Place: Hashable, Codable {
             // the root starts its shell there, as it did before this was one
             // place's rule, not in the app's own default folder.
             return .local(folder: URL(fileURLWithPath: "/" + folder.drop { $0 == "/" }, isDirectory: true))
-        case .machine(let id):
+        case .machine(let id), .thisMac(let id):
+            // This Mac's own server's terminals run there too, in its
+            // folders, as a machine's do (#883).
             // The remote the window was made from, as it is saved now: one
             // that is gone, or was saved again with SSH only, is no server.
             guard let remote = remotes.first(where: { $0.id.uuidString == id && $0.hasServer }) else {
@@ -190,8 +238,8 @@ enum Place: Hashable, Codable {
     /// computer" when it has none (a remote removed while its window was
     /// open), so a machine's dialogs always say the cell isn't this
     /// device's. Nil for this device's windows, whose dialogs are its
-    /// alone. `name` is the app's lookup for a machine id
-    /// (`AppModel.machineName`), so a test needs no saved remotes.
+    /// alone, and for this Mac's own server's (#883): its cells are this
+    /// Mac's own processes, so they ask as this device does.
     func asker(name: (String) -> String?) -> String? {
         guard case .machine(let id) = self else { return nil }
         return name(id) ?? "another computer"
@@ -277,9 +325,10 @@ enum Place: Hashable, Codable {
     /// server, may load in this place's window. This device's windows are
     /// checked by `allowsLoading`. A machine's may stay on its mount, or
     /// reload its own page (`/` with its `machine=`), but not turn into
-    /// this device's pages, which have the app's handlers' trust.
+    /// this device's pages, which have the app's handlers' trust. This
+    /// Mac's own server's window stays on its mount too (#883).
     func allowsFollowing(_ url: URL) -> Bool {
-        guard case .machine(let id) = self else { return true }
+        guard let id = machineID else { return true }
         if url.path == "/machines/\(id)" || url.path.hasPrefix(mountPath) { return true }
         guard url.path == "/" || url.path.isEmpty else { return false }
         let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
@@ -290,6 +339,8 @@ enum Place: Hashable, Codable {
     /// The place a page at `url` on the app's own server shows, as the page
     /// reads it (`machineFromSearch`): the first `machine=` on any path, a
     /// malformed one ignored, so the page falls back to this device (#842).
+    /// A `machine=` names a machine to the page, never this Mac's own place:
+    /// whether that machine is this Mac's is the app's to know (#883).
     static func shown(by url: URL) -> Place {
         let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
         guard let raw = items.first(where: { $0.name == "machine" })?.value else { return .thisDevice }
@@ -301,19 +352,28 @@ enum Place: Hashable, Codable {
     /// server, by any navigation (#842). A window's handlers and the person's
     /// name are fixed for its place, so it never becomes another place's
     /// page: this device's window never a machine's, a machine's never this
-    /// device's (`allowsFollowing`) or another machine's.
+    /// device's (`allowsFollowing`) or another machine's. This Mac's own
+    /// server's window keeps to its mount, as a machine's does: the page it
+    /// loads is the machine page's, and the app's trust is the window's.
     func allowsLoading(_ url: URL) -> Bool {
         let shown = Self.shown(by: url)
         switch self {
         case .thisDevice: return !shown.isMachine
-        case .machine: return allowsFollowing(url) && (shown == self || !shown.isMachine)
+        case .machine, .thisMac:
+            return allowsFollowing(url) && (shown.machineID == machineID || !shown.isMachine)
         }
     }
 
     /// Whether notebooks of this place go in native Recents, File > Open
     /// Recent and Spotlight: those keep local file URLs, and a machine's
-    /// notebooks have none.
-    var indexesLocally: Bool { !isMachine }
+    /// notebooks have none. This Mac's own server's have this Mac's, under
+    /// its `root_dir` (#883).
+    var indexesLocally: Bool {
+        switch self {
+        case .machine: false
+        case .thisDevice, .thisMac: true
+        }
+    }
 
     /// The page URL's query for this place: `machine=` and `machine_name=`.
     func pageQuery(name: String?) -> [(String, String)] {
@@ -388,14 +448,67 @@ enum Places {
 
     /// This device first, then each remote with a server (an SSH-only remote
     /// stays in Settings and is not a place). Only one entry, this device,
-    /// where the server can't mount machines.
-    static func entries(remotes: [Remote], thisDevice: String, mounting: Bool) -> [PlaceEntry] {
+    /// where the server can't mount machines. A remote the app verified as
+    /// this Mac's own server (#883, `verified` holds its id) is listed as
+    /// this Mac's place.
+    static func entries(
+        remotes: [Remote], thisDevice: String, mounting: Bool, verified: Set<String> = []
+    ) -> [PlaceEntry] {
         var list = [PlaceEntry(place: .thisDevice, title: thisDevice)]
         guard mounting else { return list }
         list += remotes.compactMap { remote in
-            Place(remote: remote).map { PlaceEntry(place: $0, title: remote.title) }
+            Place(remote: remote, verified: verified).map { PlaceEntry(place: $0, title: remote.title) }
         }
         return list
+    }
+}
+
+/// A server info file the app has checked is this Mac's own Ganymede
+/// (#883): `ThisMacVerifier` makes one from `jpserver-<pid>.json` only when
+/// the process behind it is the app's own bundled helper. A place reads it
+/// to know a remote is this Mac's, and where its notebooks are.
+struct ThisMacServer: Equatable {
+    /// The server's process, `pid`.
+    var pid: Int32
+    /// Its `url`, always a loopback address.
+    var url: URL
+    /// Its `token`, which the app sends the server.
+    var token: String
+    /// Its `root_dir`: the folder its notebooks' paths are under.
+    var root: URL
+    /// Its `ganymede_version`, which must be the app's own bundled one.
+    var version: String
+
+    /// The port the server listens on: its `url`'s.
+    var port: Int? { url.port }
+
+    /// Whether `remote` names this server: the same address on its port,
+    /// with its token. Not merely `localhost` on the same port — the
+    /// remote must reach the address the verified process listens on, or
+    /// the app's token would go to a server it didn't check. A named host
+    /// and an address are different addresses.
+    func serves(_ remote: Remote, token: String?) -> Bool {
+        guard let token, !token.isEmpty, token == self.token,
+              let port, let url = URL(string: remote.serverURL),
+              let host = url.host, Self.isLoopback(host), url.port == port,
+              let listened = self.url.host, Self.normalize(host) == Self.normalize(listened)
+        else { return false }
+        return true
+    }
+
+    /// Whether `host` is a loopback address: the only place a server the app
+    /// trusts may listen (`ThisMacVerifier` refuses a wider one).
+    static func isLoopback(_ host: String) -> Bool {
+        ["127.0.0.1", "::1", "localhost"].contains(normalize(host))
+    }
+
+    /// `host` as written, with the brackets an IPv6 literal may keep off
+    /// and its case gone: `[::1]` and `::1` are one address, and a name is
+    /// the same name in any case.
+    static func normalize(_ host: String) -> String {
+        var host = host.lowercased()
+        if host.hasPrefix("["), host.hasSuffix("]") { host = String(host.dropFirst().dropLast()) }
+        return host
     }
 }
 

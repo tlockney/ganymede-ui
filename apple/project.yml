@@ -604,6 +604,8 @@ targets:
       # Places: connected machines (#701).
       - path: Sources/Ganymede/Place.swift
       - path: Sources/Ganymede/PlaceReachability.swift
+      # What checks a server is this Mac's own (#883).
+      - path: Sources/Ganymede/ThisMacVerifier.swift
       - path: Sources/Ganymede/Journals.swift
       - path: Sources/Ganymede/Remote.swift
       - path: Sources/Ganymede/AgentKeys.swift
@@ -689,6 +691,8 @@ targets:
       - path: Sources/Ganymede/HeaderStatus.swift
       - path: Sources/Ganymede/Place.swift
       - path: Sources/Ganymede/PlaceReachability.swift
+      # What checks a server is this Mac's own (#883).
+      - path: Sources/Ganymede/ThisMacVerifier.swift
       - path: Sources/Ganymede/Journals.swift
       - path: Sources/Ganymede/Remote.swift
       - path: Sources/Ganymede/AgentKeys.swift
