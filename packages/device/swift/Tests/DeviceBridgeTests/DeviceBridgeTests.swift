@@ -838,14 +838,25 @@ final class DeviceBridgeTests: XCTestCase {
         // An action sheet needn't have a message: the line goes under its title.
         XCTAssertEqual(
             Dialog.words(title: "Quality", message: nil, asker: "mini"), .init(title: "Quality", message: line))
-        // A date picker has neither, so the presenter's own title stands and
-        // the line goes under it.
+    }
+
+    /// A picker the cell gave no title of its own (#877): the presenter's
+    /// stand-in is the asker's line's title, and with no asker there is no
+    /// title at all, as on the iOS sheet before #877.
+    func testAPickerWithoutATitleStandsInOnlyForAnAsker() {
+        XCTAssertEqual(Dialog.pickerTitle(.date), "Choose a date")
+        XCTAssertEqual(Dialog.pickerTitle(.time), "Choose a time")
         XCTAssertEqual(
-            Dialog.words(title: nil, message: nil, asker: "mini", standIn: "Choose a date"),
-            .init(title: "Choose a date", message: line))
+            Dialog.words(title: nil, message: nil, asker: "mini", standIn: Dialog.pickerTitle(.date)),
+            .init(title: "Choose a date", message: Dialog.askLine("mini")))
         XCTAssertEqual(
-            Dialog.words(title: nil, message: nil, asker: nil, standIn: "Choose a date"),
-            .init(title: "Choose a date", message: nil))
+            Dialog.words(title: nil, message: nil, asker: nil, standIn: Dialog.pickerTitle(.date)),
+            .init(title: nil, message: nil))
+        // The Mac's picker named itself before #877 as well, so there the
+        // stand-in is passed as the title, and shows with or without one.
+        XCTAssertEqual(
+            Dialog.words(title: Dialog.pickerTitle(.time), message: nil, asker: nil),
+            .init(title: "Choose a time", message: nil))
     }
 
     /// A machine's picker, share sheet, save panel or preview sheet takes

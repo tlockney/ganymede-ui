@@ -128,6 +128,19 @@ final class PlaceTests: XCTestCase {
         }
     }
 
+    /// The page URL a window hands the device bridge before it loads, which
+    /// a machine's kernel calls need (#877): this device's windows, and a
+    /// machine's only when its setting lets its notebooks use the device.
+    func testAWindowTracksItsPageURLWhenItsPageMayUseTheDevice() {
+        XCTAssertTrue(Place.thisDevice.tracksPageURL(PlaceSettings(usesDevice: true)))
+        XCTAssertTrue(Place.thisDevice.tracksPageURL(PlaceSettings(usesDevice: false)))
+        let machine = Place.machine(id)
+        XCTAssertTrue(machine.tracksPageURL(PlaceSettings(usesDevice: true)))
+        XCTAssertFalse(machine.tracksPageURL(PlaceSettings(usesDevice: false)))
+        // Off is a new remote's default: no page URL, so no `device` calls.
+        XCTAssertFalse(machine.tracksPageURL(PlaceSettings()))
+    }
+
     func testNewTabOpensOnTheWindowsOwnMachineOrFolder() {
         let root = URL(fileURLWithPath: "/Users/me/notebooks", isDirectory: true)
         let folder = URL(fileURLWithPath: "/Users/me/moons", isDirectory: true)

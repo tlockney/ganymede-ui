@@ -303,17 +303,25 @@ public enum Dialog: Equatable, Sendable {
     /// The words a dialog shows, with the asker's line when a machine
     /// asked (#877). The line comes first: above the cell's own words, as
     /// the title when the dialog has no title of its own, or under
-    /// `standIn`, the presenters' own title for a dialog with neither (a
-    /// date or time picker has no message of the cell's).
+    /// `standIn`, the presenter's own title for a dialog with neither (a
+    /// date or time picker has no message of the cell's). A stand-in is
+    /// for an asker's line: with nobody to name, a dialog with no title of
+    /// its own keeps none, as it did before #877.
     static func words(title: String?, message: String?, asker: String?, standIn: String? = nil) -> Words {
+        guard let asker else { return Words(title: title, message: message) }
         let heading = title ?? standIn
-        guard let asker else { return Words(title: heading, message: message) }
         let line = askLine(asker)
         guard let message, !message.isEmpty else {
             return heading.map { Words(title: $0, message: line) } ?? Words(title: line, message: nil)
         }
         guard let heading else { return Words(title: line, message: message) }
         return Words(title: heading, message: line + "\n\n" + message)
+    }
+
+    /// The title a presenter gives a date or time picker the cell gave no
+    /// title of its own (#877): "Choose a date" or "Choose a time".
+    static func pickerTitle(_ mode: DateMode) -> String {
+        mode == .time ? "Choose a time" : "Choose a date"
     }
 
     /// What a picker, the share sheet, the save panel or the preview sheet
@@ -641,12 +649,12 @@ public struct SystemDialogPresenter: DialogPresenter {
             }
         case let .pickDate(title, mode, value, min, max):
             // A date picker has no message of the cell's: the asker's line
-            // goes under the presenter's own title (#877).
+            // goes under the presenter's own title (#877). A Mac picker
+            // named itself before #877 too, so that title is the title,
+            // not a stand-in for an asker's line.
             Self.text(
                 alert,
-                Dialog.words(
-                    title: title, message: nil, asker: asker,
-                    standIn: mode == .time ? "Choose a time" : "Choose a date"))
+                Dialog.words(title: title ?? Dialog.pickerTitle(mode), message: nil, asker: asker))
             let picker = NSDatePicker()
             picker.datePickerStyle = mode == .time ? .textFieldAndStepper : .clockAndCalendar
             switch mode {
@@ -750,10 +758,11 @@ public struct SystemDialogPresenter: DialogPresenter {
             controller = sheet
         case let .pickDate(title, mode, value, min, max):
             // The asker's line goes under the sheet's title, above the
-            // picker, which has no message of the cell's (#877).
+            // picker, which has no message of the cell's (#877). A sheet
+            // with no asker keeps no title of its own, as before #877, so
+            // the stand-in names the picker only for a machine's call.
             let words = Dialog.words(
-                title: title, message: nil, asker: asker,
-                standIn: mode == .time ? "Choose a time" : "Choose a date")
+                title: title, message: nil, asker: asker, standIn: Dialog.pickerTitle(mode))
             let picker = DatePickerController(
                 title: words.title, message: words.message, mode: mode,
                 value: value, min: min, max: max, done: done)

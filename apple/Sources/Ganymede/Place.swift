@@ -132,6 +132,16 @@ enum Place: Hashable, Codable {
         }
     }
 
+    /// Whether a window of this place gives its page's URL to the device
+    /// bridge before it loads (`uiWillLoad`): the page a machine's kernel
+    /// may call must come from, and `fromPage` refuses every call without
+    /// it (#877). This device's windows, whose pages have the ledger, and a
+    /// machine's when its setting says its notebooks may use this device's
+    /// `device` API — the pages whose kernels can ask at all.
+    func tracksPageURL(_ settings: PlaceSettings) -> Bool {
+        allows(.deviceLedger, settings) || allows(.deviceRemote, settings)
+    }
+
     /// What a new terminal in a window of this place runs on (#858): a shell
     /// on this device, or one on the server of the machine the window shows,
     /// so a machine's window starts its terminals where its files are rather

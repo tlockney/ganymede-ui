@@ -393,7 +393,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         // The page a machine's kernel calls must come from, and what it
         // asked goes when it loads again (#877). This device's windows
         // always; a machine's when its setting says so.
-        if place.allows(.deviceRemote, settings) { kernels.uiWillLoad(url) }
+        if place.tracksPageURL(settings) { kernels.uiWillLoad(url) }
         PageModel.startLoad({ view.load(URLRequest(url: url)) }, on: page, start: start)
     }
 

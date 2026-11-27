@@ -48,8 +48,13 @@ remote calls show says "A cell on <asker> asks to use this device.": as
 the line above the cell's words in an alert, confirm, prompt or action
 sheet on both platforms, and as the message under a date picker's title.
 `Dialog.words(title:message:asker:standIn:)` composes those words, the
-one helper both presenters use, so a date picker's own title (`standIn`)
-and an action sheet with no message are decided in one place.
+one helper both presenters use, so an action sheet with no message and a
+picker's stand-in are decided in one place. The stand-in stands only for
+an asker's line: a date or time picker's own title is
+`Dialog.pickerTitle(_:)`, which the Mac passes as the title, as it showed
+it before #877, so a Mac picker is named with or without an asker, while
+the iOS sheet has no title of its own when no machine asked, as it had
+none before #877.
 
 A picker, the share sheet, the save panel and the preview sheet take
 what they read or write to the kernel's machine, so one asks first with
@@ -75,29 +80,30 @@ clipboard.", with Allow and Don't Allow; Don't Allow fails the call
 machine's cells answer through the handler when its window registered
 one and stay off the browser fallback when it didn't.
 
-`PlaceTests` covers both capabilities for each place and both handler
-tables; `RemoteStoreTests` decodes JSON as an older build wrote it,
-round-trips on through the store and covers `usesDevice(for:in:)` and
-the toggle's mapping; `WindowWiringTests` builds a page with the handlers
-a machine's window gets, its setting on and off, through the seam
-`WebViewCoordinator.makeWebView` calls, and checks them (`deviceRemote`
-alone, or neither), that this device's gets both, and the name its
-dialogs ask as, "another computer" included;
+`PlaceTests` covers both capabilities for each place, both handler
+tables and the page URL a machine's kernel can call at all
+(`tracksPageURL`); `RemoteStoreTests` decodes JSON as an older build
+wrote it, round-trips on through the store and covers
+`usesDevice(for:in:)` and the toggle's mapping; `WindowWiringTests`
+builds a page with the handlers a machine's window gets, its setting on
+and off, through the seam `WebViewCoordinator.makeWebView` calls, and
+checks them (`deviceRemote` alone, or neither), that this device's gets
+both, and the name its dialogs ask as, "another computer" included;
 `KernelHostTests` runs a dialog and a refused clipboard read from a
 `?machine=` page, checks that `kernelRelay` and the full `device` handler
 aren't registered, that the dialog names the machine, that the page's
 reset closes a dialog it left open, and that a machine's window lends
 nothing to `AppKernels` where this device's lends its page;
 `DeviceBridgeTests` covers `Dialog.words` alone (a title, a message,
-both, an empty message, an action sheet with none, a date picker's
-stand-in, no asker), the asker on both paths, each of the five confirms
-with a fake presenter (Continue shows the picker and it answers; Cancel
-answers as cancelling it does and shows nothing), and the clipboard
-confirm. `NotebookPane.test.tsx` checks `attachDevice` with and without
-the handler.
+both, an empty message, an action sheet with none, no asker) and a
+picker's stand-in, which names one only for an asker, the asker on both
+paths, each of the five confirms with a fake presenter (Continue shows
+the picker and it answers; Cancel answers as cancelling it does and
+shows nothing), and the clipboard confirm. `NotebookPane.test.tsx`
+checks `attachDevice` with and without the handler.
 
 Checked: `npm run check`, `npx vitest run` (117 files, 1899 tests),
-`swift test` in `packages/device` (312 tests), `xcodebuild test` for the
-Ganymede scheme on macOS (735 tests, 0 failures), and an iOS arm64
+`swift test` in `packages/device` (313 tests), `xcodebuild test` for the
+Ganymede scheme on macOS (736 tests, 0 failures), and an iOS arm64
 simulator build of the Ganymede-iOS scheme, which succeeds. By-hand
 steps on #399 (Mac) and #273 (iPad/iPhone) still to do.
