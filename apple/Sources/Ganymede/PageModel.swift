@@ -34,6 +34,8 @@ final class PageModel {
 
     /// Views that want the kernels' memory (#241).
     @ObservationIgnored private var memoryWatch = MemoryWatch()
+    /// Number of views currently watching memory (for tests).
+    var memoryWatchers: Int { memoryWatch.watchers }
 
     func update(_ state: PageState) {
         // After `forgetPage` until the new page's load commits: a page the

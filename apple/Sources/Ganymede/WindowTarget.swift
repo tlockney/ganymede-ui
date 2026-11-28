@@ -243,6 +243,28 @@ enum WindowTarget: Codable, Hashable {
         return displayTitle(machineName: machineName, metadataTitle: metadataTitle)
     }
 
+    /// The page's `metadata.title`, once the page reports the file `target`
+    /// is for (#871): until then `metadataTitle` is the previous
+    /// notebook's, and a file window that just changed target would take
+    /// its title for a moment. The file's name is enough to tell across
+    /// server spellings of the folder, with a known limit: a file of the
+    /// same name in another folder can show the old title until the page
+    /// posts. A folder window has no expected file and shows whichever
+    /// notebook its page has open.
+    static func shownTitle(
+        target: WindowTarget, pagePath: String?, metadataTitle: String?
+    ) -> String? {
+        let expected: String? = switch target {
+        case .file(let url): url.lastPathComponent
+        case .machineFile(_, let path): (path as NSString).lastPathComponent
+        default: nil
+        }
+        if let expected, expected != pagePath.map({ ($0 as NSString).lastPathComponent }) {
+            return nil
+        }
+        return metadataTitle
+    }
+
     /// Whether this window already shows `page`, a target read from its
     /// page's URL (`init?(page:)`): the same, but a console is the console
     /// of that folder whatever its id.

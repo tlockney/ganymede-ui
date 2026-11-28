@@ -312,6 +312,21 @@ they show no inspector, no toolbar button, and a disabled View > Show
 Inspector. Your choice to show it is kept: it comes back when the tab shows
 a notebook.
 
+### Status bar
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, which has no status bar under the page.
+
+A slim bar under the page in a Mac notebook window shows the notebook's
+save state on the left — `Saved on This Mac` (or the machine's name),
+`Edited`, or `Locked: changed on disk` — and the running kernel's
+package and version (`cdp-kernel 0.16.0 · node 24.11.0`) and memory
+usage on the right when available. View > Show Status Bar (`⌘/`) toggles
+it and remembers your choice across launches. Consoles, folders, data
+files and machine windows leave the bar empty so switching tabs keeps the
+page at one height.
+
 ### Filling the window
 
 Any of the notebook, the bottom panel and the inspector can fill the

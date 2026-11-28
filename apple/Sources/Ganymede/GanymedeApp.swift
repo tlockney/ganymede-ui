@@ -36,6 +36,7 @@ struct GanymedeApp: App {
             CommandGroup(after: .sidebar) {
                 PanelCommands(model: model)
                 InspectorCommands()
+                StatusBarCommands()
                 FillCommands()
                 CommandPaletteCommand()
                 JournalCommand()

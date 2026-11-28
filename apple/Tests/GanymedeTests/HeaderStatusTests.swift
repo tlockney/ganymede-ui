@@ -45,9 +45,12 @@ final class HeaderStatusTests: XCTestCase {
         XCTAssertEqual(status(locked: true).saveNote, "Locked: changed on disk")
         XCTAssertEqual(
             status(dirty: true, locked: true).saveNote, "Edited · Locked: changed on disk")
-        // What the popover and the subtitle say still has it all.
+        // What the popover, subtitle and status bar say still has it all.
         XCTAssertEqual(status().save, "Saved on This Mac")
+        XCTAssertEqual(status(savedOn: "m4mini").save, "Saved on m4mini")
         XCTAssertEqual(status(dirty: true).save, "Edited")
+        XCTAssertEqual(status(locked: true).save, "Locked: changed on disk")
+        XCTAssertEqual(status(dirty: true, locked: true).save, "Edited · Locked: changed on disk")
     }
 
     func testTheShortFormKeepsTheSaveStateAndWhereItRuns() {
