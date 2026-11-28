@@ -16,9 +16,13 @@ final class AppLedgerPrompter: LedgerPrompter {
     private let presenter: DialogPresenter
     /// The view whose window the prompt shows on.
     var host: () -> DialogHost?
+    /// Resolves the view whose window should present a prompt for a specific
+    /// notebook path when multiple tabs or windows share one `AppKernels`.
+    var hostForNotebook: ((String) -> DialogHost?)?
 
     private struct Ask {
         let id: Int
+        let notebook: String?
         let dialog: Dialog
         let done: (DialogResult) -> Void
     }
@@ -63,7 +67,7 @@ final class AppLedgerPrompter: LedgerPrompter {
             message: "“Always Allow” and “Don’t Allow” apply to this notebook until you change them in Settings › Device.",
             options: ["Allow Once", "Always Allow", "Don’t Allow"] + (shortcut ? ["Don’t Allow Any Shortcuts"] : []),
             cancel: "Cancel", destructive: 2)
-        enqueue(Ask(id: id, dialog: dialog) { [ledger] result in
+        enqueue(Ask(id: id, notebook: notebook, dialog: dialog) { [ledger] result in
             switch result {
             case .option(0): answer(.once)
             case .option(1): answer(.always)
@@ -87,7 +91,7 @@ final class AppLedgerPrompter: LedgerPrompter {
             message: "The notebook says it uses this. You can change your answer in Settings › Device.",
             options: ["Allow", "Don’t Allow"],
             cancel: "Not Now", destructive: 1)
-        enqueue(Ask(id: id, dialog: dialog) { result in
+        enqueue(Ask(id: id, notebook: notebook, dialog: dialog) { result in
             switch result {
             case .option(0): answer(.always)
             case .option(1): answer(.deny)
@@ -122,7 +126,8 @@ final class AppLedgerPrompter: LedgerPrompter {
         let current = Showing(id: ask.id)
         showing = current
         do {
-            current.close = try presenter.present(ask.dialog, asker: nil, on: host()) { [weak self] result in
+            let hostView = ask.notebook.flatMap { hostForNotebook?($0) } ?? host()
+            current.close = try presenter.present(ask.dialog, asker: nil, on: hostView) { [weak self] result in
                 // A dismissed prompt's late answer is ignored.
                 guard let self, self.showing === current else { return }
                 self.showing = nil

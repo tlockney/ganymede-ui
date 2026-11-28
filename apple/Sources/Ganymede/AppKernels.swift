@@ -1,5 +1,10 @@
 import DeviceBridge
 import WebKit
+#if os(macOS)
+import AppKit
+#else
+import UIKit
+#endif
 
 /// The kernels the app runs itself, as kernels of its own server
 /// (ganymede#266): cdp-kernel's TypeScript kernel in a hidden web view
@@ -102,7 +107,15 @@ final class AppKernels: NSObject {
         self.device = device ?? KernelHost.systemBridge(folders: folders)
         prompter = AppLedgerPrompter(presenter: prompts, host: { nil })
         super.init()
-        prompter.host = { [weak self] in self?.liveHost() }
+        if self.device.dialogHost == nil {
+            self.device.dialogHost = { [weak self] owner in
+                self?.host(forOwner: owner)
+            }
+        }
+        prompter.host = { [weak self] in self?.frontHost() }
+        prompter.hostForNotebook = { [weak self] notebook in
+            self?.host(forKernel: nil, notebook: notebook) ?? self?.frontHost()
+        }
         if self.device.ledgerPrompter == nil {
             self.device.ledgerPrompter = prompter
         }
@@ -156,9 +169,79 @@ final class AppKernels: NSObject {
 
     /// Back in a window if the one it was in closed.
     private func keepInWindow() {
-        guard webView.window == nil, let host = liveHost(), host !== webView.superview else { return }
+        guard webView.window == nil, let host = frontHost() ?? liveHost(), host !== webView.superview else { return }
         host.addSubview(webView)
     }
+
+    /// Resolves the UI web view whose window runs the kernel for `owner`, or
+    /// `nil` when no matching notebook page is open (so dialogs fall back to
+    /// the active window rather than whichever tab houses `webView`).
+    private func host(forOwner owner: Int) -> WKWebView? {
+        let kernel = owners.first { $0.value == owner }?.key
+        let notebook = kernel.flatMap { notebooks[$0] } ?? device.ledger.notebook(for: owner)
+        return host(forKernel: kernel, notebook: notebook)
+    }
+
+    /// Finds an open notebook page matching `kernel` or resolved `notebook`.
+    private func host(forKernel kernel: String?, notebook: String?) -> WKWebView? {
+        hosts.removeAll { $0.view == nil }
+        let open = PageModel.attachedPages.allObjects.filter { page in
+            guard let view = page.webView, let window = view.window else { return false }
+            #if os(macOS)
+            guard window.isVisible || window.isMiniaturized else { return false }
+            #endif
+            return hosts.isEmpty || hosts.contains { $0.view === view }
+        }
+        if let kernel {
+            let byKernel = open.filter { $0.state.kernelID == kernel }
+            if let match = preferredPage(in: byKernel)?.webView { return match }
+        }
+        if let notebook {
+            let resolved = resolve(notebook)
+            let byPath = open.filter { $0.state.path.map(resolve) == resolved }
+            if let match = preferredPage(in: byPath)?.webView { return match }
+        }
+        return nil
+    }
+
+    /// Picks the frontmost matching page when multiple windows or tabs show it.
+    private func preferredPage(in matches: [PageModel]) -> PageModel? {
+        guard matches.count > 1 else { return matches.first }
+        return frontmost(in: matches, matchTabSelection: false) { $0.webView?.window }
+    }
+
+    /// The lent notebook page in the frontmost visible window, or `liveHost()`.
+    private func frontHost() -> WKWebView? {
+        hosts.removeAll { $0.view == nil }
+        let lent = Array(hosts.compactMap(\.view).reversed())
+        return frontmost(in: lent, matchTabSelection: true) { $0.window } ?? liveHost()
+    }
+
+    #if os(macOS)
+    private func frontmost<Item>(in items: [Item], matchTabSelection: Bool, windowOf: (Item) -> NSWindow?) -> Item? {
+        if let key = NSApp?.keyWindow, let match = items.first(where: { windowOf($0) === key }) {
+            return match
+        }
+        if let main = NSApp?.mainWindow, let match = items.first(where: { windowOf($0) === main }) {
+            return match
+        }
+        for window in NSApp?.orderedWindows ?? [] {
+            if matchTabSelection, let selected = window.tabGroup?.selectedWindow,
+               let match = items.first(where: { windowOf($0) === selected }) {
+                return match
+            }
+            if let match = items.first(where: { windowOf($0) === window }) { return match }
+        }
+        return items.first
+    }
+    #else
+    private func frontmost<Item>(in items: [Item], matchTabSelection: Bool, windowOf: (Item) -> UIWindow?) -> Item? {
+        if let match = items.first(where: { windowOf($0)?.isKeyWindow == true }) {
+            return match
+        }
+        return items.first
+    }
+    #endif
 
     func handle(_ event: KernelEvent, from server: RegisteredKernels) {
         switch event {

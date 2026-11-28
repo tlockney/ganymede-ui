@@ -95,6 +95,15 @@ public final class DeviceBridge: NSObject, WKScriptMessageHandlerWithReply {
     /// permissioned call with no kept "always" is denied.
     public weak var ledgerPrompter: LedgerPrompter?
 
+    /// Resolves the view whose window should present dialogs for an `owner`
+    /// when a single hidden web view runs kernels for many tabs or windows.
+    /// When nil, `userContentController(_:didReceive:replyHandler:)` uses the
+    /// sending `message.webView`. When set and returning `nil` for an owner
+    /// (for example a background kernel with no open window), no host is used
+    /// so dialogs fall back to the active window rather than whichever window
+    /// currently houses the shared kernel web view.
+    public var dialogHost: (@MainActor (_ owner: Int) -> DialogHost?)?
+
     /// Kernel `owner` (its `webkitHost().owner`) runs the notebook at
     /// `path`; call it when the kernel starts. It moves only that kernel:
     /// when a notebook is renamed or moved, call `notebookMoved`, which
@@ -229,7 +238,10 @@ public final class DeviceBridge: NSObject, WKScriptMessageHandlerWithReply {
             replyHandler(Self.error("unavailable", "device calls are taken from the kernel page only"), nil)
             return
         }
-        respondPage(to: message.body, from: message.webView) { replyHandler($0, nil) }
+        // When `dialogHost` is set, the kernel web view is shared across windows,
+        // so pass `nil` here and let `respondPage` resolve the caller's own
+        // window without falling back to the web view hosting the shared page.
+        respondPage(to: message.body, from: dialogHost == nil ? message.webView : nil) { replyHandler($0, nil) }
     }
 
     /// Answers a message from the kernel page, as `respond(to:from:reply:)`
@@ -245,7 +257,16 @@ public final class DeviceBridge: NSObject, WKScriptMessageHandlerWithReply {
                 }
             }
         }
-        respond(to: body, from: host, reply: reply)
+        let resolvedHost: DialogHost?
+        if let host {
+            resolvedHost = host
+        } else if let dialogHost {
+            let owner = (body as? [String: Any]).flatMap { Self.callID($0["owner"]) } ?? 0
+            resolvedHost = dialogHost(owner)
+        } else {
+            resolvedHost = nil
+        }
+        respond(to: body, from: resolvedHost, reply: reply)
     }
 
     /// Answers one message, now or, for a dialog, once the person closes

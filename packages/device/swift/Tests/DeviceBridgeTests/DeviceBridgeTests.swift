@@ -1,6 +1,9 @@
 @testable import DeviceBridge
 import UniformTypeIdentifiers
 import XCTest
+#if os(macOS)
+import AppKit
+#endif
 
 /// A date from what `Date.prototype.toISOString` writes.
 private func isoDate(_ text: String) -> Date? {
@@ -388,6 +391,70 @@ final class DeviceBridgeTests: XCTestCase {
         bridge.respond(to: ["id": 1, "method": "ui.alert", "params": ["message": "m"]], from: page) { _ in }
         XCTAssertTrue(presenter.hosts.last! === page)
     }
+
+    func testDialogHostHookResolvesOwnerAndRespectsExplicitHost() {
+        let presenter = FakePresenter()
+        let bridge = DeviceBridge(clipboard: FakeClipboard(), presenter: presenter, appVersion: "")
+        let ownerPage = DialogHost()
+        let explicitPage = DialogHost()
+        bridge.dialogHost = { owner in owner == 7 ? ownerPage : nil }
+
+        bridge.respondPage(to: ["id": 1, "owner": 7, "method": "ui.alert", "params": ["message": "m"]]) { _ in }
+        XCTAssertTrue(presenter.hosts.last! === ownerPage)
+        presenter.answer(.ok)
+
+        bridge.respondPage(to: ["id": 2, "owner": 9, "method": "ui.alert", "params": ["message": "m"]]) { _ in }
+        XCTAssertNil(presenter.hosts.last!)
+        presenter.answer(.ok)
+
+        bridge.respondPage(to: ["id": 3, "owner": 9, "method": "ui.alert", "params": ["message": "m"]], from: explicitPage) { _ in }
+        XCTAssertTrue(presenter.hosts.last! === explicitPage)
+        presenter.answer(.ok)
+    }
+
+    #if os(macOS)
+    func testSystemDialogPresenterTargetWindowPrefersSelectedTabInTabGroup() {
+        let w1 = NSWindow(
+            contentRect: NSRect(x: -2000, y: 100, width: 320, height: 240),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        let w2 = NSWindow(
+            contentRect: NSRect(x: -2000, y: 100, width: 320, height: 240),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        w1.isReleasedWhenClosed = false
+        w2.isReleasedWhenClosed = false
+        w1.tabbingIdentifier = "device-bridge-tab-test"
+        w2.tabbingIdentifier = "device-bridge-tab-test"
+        w1.tabbingMode = .preferred
+        w2.tabbingMode = .preferred
+        let host1 = DialogHost()
+        w1.contentView = host1
+        defer {
+            w2.close()
+            w1.close()
+        }
+        w1.orderFront(nil)
+        w1.addTabbedWindow(w2, ordered: .above)
+        w2.makeKeyAndOrderFront(nil)
+
+        XCTAssertTrue(SystemDialogPresenter.targetWindow(for: host1) === w1)
+        XCTAssertTrue(
+            SystemDialogPresenter.targetWindow(
+                for: nil, keyWindow: nil, mainWindow: nil, orderedWindows: [w2, w1], windows: [w1, w2]
+            ) === w2
+        )
+        XCTAssertTrue(
+            SystemDialogPresenter.targetWindow(
+                for: nil, keyWindow: nil, mainWindow: nil, orderedWindows: [], windows: [w1, w2]
+            ) === w2
+        )
+    }
+    #endif
 
     func testAnActionSheetsDestructiveIsAnIndex() throws {
         let sheet = { (destructive: Any) in
