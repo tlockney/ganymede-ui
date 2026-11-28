@@ -809,20 +809,34 @@ keys are kept in the keychain too.
 
 ### iPad
 
-- The sidebar, toolbar and key commands are the app's own, as on the
-  Mac; the page shows just the notebook. The sidebar hides in portrait
-  and comes back with a swipe from the edge. It has the Mac's navigator
-  tabs (⌘1 to ⌘5 with a keyboard): Files, Search, Running (kernels and
-  the panel's terminals), Outline and Recents.
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, where the iPad sidebar has a plain icon bar with no
+> brand header or inline outline card, the title sits centered over a text
+> status line, Run Cell is a plain toolbar button, and there is no touch
+> tab strip or Split View folding.
 
-  The sidebar also has a Journals tab (⌘6), for this iPad and for every
-  connected machine, and the iPhone's list a Journals section when there
-  are journals ([Connected machines](#connected-machines)).
+- The sidebar, toolbar and key commands are the app's own, as on the
+  Mac; the page shows just the notebook. The sidebar is tinted warm cream
+  in light mode and navy in dark mode, with the Ganymede mark and wordmark
+  at the top and a touch-sized capsule for its navigator tabs (⌘1 to ⌘6
+  with a keyboard): Files, Search, Running (kernels and the panel's
+  terminals, with an orange count badge), Outline, Recents and Journals
+  ([Connected machines](#connected-machines)). It hides in portrait and
+  narrow Split View (under 600 points wide) and comes back with the
+  sidebar button or a swipe from the edge, reflowing the page to full
+  width.
+
+- When a notebook with headings is open, a pinned **IN THIS JOURNAL** or
+  **IN THIS NOTEBOOK** card sits at the foot of the sidebar, highlighting
+  the current section in orange; tap any heading to jump straight to its
+  cell.
 
 - Files lists the notebook folder as a tree; tap a folder to expand or
   collapse it, and long-press an item to
   rename, duplicate or delete it, or make a notebook or folder in it. A
-  dot marks notebooks whose kernel is running. Search finds files by name
+  dot marks notebooks whose kernel is running, and the open row carries a
+  quiet neutral highlight. Search finds files by name
   in the folder and below it (and, switched on, in what notebooks say).
   In Running, swipe or long-press a kernel to shut it down.
 
@@ -832,21 +846,29 @@ keys are kept in the keychain too.
   the top level it does nothing), and Return opens the selected file or toggles the selected folder. Tapping
   a notebook or data file gives the keyboard to the page.
 
-- The title has a status line under it that says where the notebook is
-  saved, where it runs, the kernel and what it is doing, as "Saved on
-  This iPad · Runs on This iPad · Python 3 · Running"; tapping it opens a
-  menu with the file's path, the kernel's version, the kernels to change
-  to and, once a remote has a server, where kernels run, as Settings
-  does. It turns red while the kernel is missing or saving is locked.
-- The navigation bar's controls stay in one order: Trust and Notebook
-  Access while they apply; **Run Cell**, whose menu has Run All, Run with
-  Parameters…, Clear All Outputs, Restart Kernel and Restart & Run All;
-  **Interrupt**, always there and enabled while the kernel runs; Share
-  (download, export, publish); and ⋯, which has View as Journal, Insert
-  Code Cell, Insert Markdown Cell, Cell Type, Shut Down Other Kernels,
-  Save, Rename…, Trust Notebook, Notebook Access…, Keyboard Shortcuts and
-  Settings. With a keyboard, hold ⌘ to see the commands: New Notebook ⌘N,
-  Save ⌘S, Run All ⇧⌘↩, Interrupt ⌘., Find ⌘F.
+- Above the notebook sits a compact touch tab strip: the open notebook or
+  connected machine joins the page with a 1.5pt colored top edge (orange
+  for notebooks, blue for connected machines), beside quieter recent
+  notebook chips and outlined machine capsules. Under 600 points wide in
+  Split View, extra tabs fold into a **+N tabs ⌄** menu right beside the
+  active tab.
+
+- The navigation bar matches the page surface and shows the notebook's
+  display title (`metadata.title`, first level-1 heading, or file name
+  without its date) beside a **kernel chip** (`dot · language · runs on`,
+  such as `TypeScript · Studio Mac`); tapping the chip opens the file
+  path, kernel version, kernel switcher and Where Kernels Run. At full
+  width the trailing controls stay in a fixed order: Trust and Notebook
+  Access while they apply, **Notebook | Journal**, the orange **Run**
+  capsule (Run, Run menu and Interrupt), Share, and **⋯** (journal toggle,
+  cell insertion and type, Save, Rename…, Shut Down Other Kernels,
+  Terminals, Terminal Panel, Fill the Screen, Open Folder, Keyboard
+  Shortcuts and Settings). In narrow Split View under 600 points wide,
+  the kernel chip shrinks to its status dot (VoiceOver still reads the
+  full status) with Run inside its menu, while **Notebook | Journal**
+  stays visible and Share moves into **⋯**. With a keyboard, hold ⌘ to see
+  the commands: New Notebook ⌘N, Save ⌘S, Run All ⇧⌘↩, Interrupt ⌘.,
+  Find ⌘F, Settings ⌘,.
 
 - A text file opens over the notebook, one at a time; Close (which asks to
   save) or opening a notebook from the sidebar goes back to it, saving
