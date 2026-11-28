@@ -886,19 +886,48 @@ keys are kept in the keychain too.
 
 ### iPhone
 
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, where the iPhone shows a plain subtitle under the
+> file name, no `Notebook | Journal` switcher in the header, and a
+> system bottom toolbar with Interrupt, an Outline menu, and Run Cell.
+
 The first screen lists the notebook folder, with the same long-press
 actions and Running section as the iPad's sidebar, and the terminal,
 Settings and folder buttons. Tapping a notebook opens it, and tapping a
 folder expands or collapses it; swipe from the left edge or tap Back to
-return to the list. The notebook's title has a status line under it, in
-a short form ("Saved · Runs on Studio Mac"); tapping it opens the file,
-the kernel and where kernels run, and VoiceOver reads it in full. The
-bottom toolbar has Interrupt, the Outline menu and Run Cell, whose menu
-has Run All, Run with Parameters…, Clear All Outputs, Restart Kernel
-and Restart & Run All; the ⋯ menu at the top has the rest, including
-Share, Trust Notebook and Notebook Access…. Terminals and text files
-cover the screen. The Outline menu lists the notebook's headings; pick
-one to go to its cell.
+return to the list.
+
+- **Header:** The navigation bar shows the notebook's display title
+  (`metadata.title`, else the first level-1 heading, else the file name
+  without a leading date prefix), with a compact save/lock note when
+  edited or locked, and the **⋯** menu at the top right keeping every
+  action (View as Journal / Open as Notebook, Insert Code or Markdown
+  Cell, Cell Type, Shut Down Other Kernels, Save, Rename…, Share, Trust
+  Notebook, Notebook Access…, Keyboard Shortcuts and Settings). Under it,
+  a subtle navy-to-orange gradient strip holds the compact **kernel
+  chip** (`● TS · This iPhone` or `Studio Mac`, opening the file path,
+  kernel version, kernel switcher and Where Kernels Run, with VoiceOver
+  reading the full status line) beside the **Notebook | Journal**
+  switcher.
+- **Floating glass bottom bar:** In Notebook mode, one floating glass
+  capsule holds the **Outline** button, a **`< 3 / 14 >` cell stepper**
+  (stepping cells with previous/next buttons and showing the current
+  section name), an inline **Interrupt** button while the kernel is
+  running, and one orange **Run** pill (tap to run the selected cell,
+  hold for Run All, Run with Parameters…, Clear All Outputs, Restart
+  Kernel and Restart & Run All). In Journal mode, the bar switches to a
+  compact **section navigation bar** (`Section 2 of 6 · <heading>`) that
+  opens the Outline sheet without obscuring the journal composer.
+- **Outline sheet:** Tapping the Outline button, the stepper readout, or
+  the Journal section bar opens a sheet with `"Outline"`, a **`Run all
+▾`** menu, a progress summary (`14 cells · 12 ran · kernel idle`),
+  numbered section rows with accessible status dots (blue for ran,
+  orange with highlight for current, muted for not run — tap any row to
+  jump to that section), and **`+ Code`** / **`+ Text`** buttons at the
+  foot.
+
+Terminals and text files cover the screen.
 
 ### On both
 
@@ -1381,11 +1410,16 @@ on cells you can't see. It works in the browser and in the Mac, iPad and iPhone 
 on a Ganymede server, and there is no setting for it.
 
 The header names which view shows: a **Notebook | Journal** control beside
-the title in the browser, and in the Mac and iPad apps' toolbars, there while
-a notebook is open. On a phone-width browser it shows only in the journal
-view, on a row under the status line; the iPhone app keeps the More menu's
-item instead. Picking the other part switches, keeping your place by cell,
-and the ways above still work.
+the title in the browser, in the Mac and iPad apps' toolbars, and in the
+iPhone's header strip, there while a notebook is open. On a phone-width
+browser it shows only in the journal view, on a row under the status line.
+Picking the other part switches, keeping your place by cell, and the ways
+above still work.
+
+> [!NOTE]
+> **Unreleased.** The iPhone header strip's **Notebook | Journal**
+> switcher is available only from a build of `main` (HEAD), not in the
+> latest release, where the iPhone app uses the More menu item instead.
 
 - **The header** comes first: the notebook's title (its metadata title, else
   the file name), then its kernel, who started it and when (the first agent

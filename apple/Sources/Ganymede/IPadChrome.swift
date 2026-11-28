@@ -1066,30 +1066,6 @@ struct IPadOutlineRows: View {
     }
 }
 
-/// The iPhone's way to the outline (#288): a menu of the notebook's
-/// headings in the bottom toolbar, indented by level.
-struct PhoneOutlineMenu: View {
-    var page: PageModel
-
-    var body: some View {
-        let headings = page.state.headings
-        let top = headings.map(\.level).min() ?? 1
-        Menu {
-            ForEach(Array(headings.enumerated()), id: \.offset) { _, heading in
-                Button {
-                    page.run("go-to-cell", arg: String(heading.cell))
-                } label: {
-                    // Menus take no padding: indent with figure spaces.
-                    Text(String(repeating: "\u{2007}\u{2007}", count: max(0, heading.level - top)) + heading.text)
-                }
-            }
-        } label: {
-            Label("Outline", systemImage: "list.bullet.indent")
-        }
-        .disabled(headings.isEmpty)
-    }
-}
-
 /// The title and, under it, the status line (#812): where the file is
 /// saved, where it runs and the kernel. Without a notebook, the title alone,
 /// with "on <machine>" for a machine's scene.
@@ -1222,14 +1198,11 @@ struct IPadNotebookToolbar: ToolbarContent {
 
     @ToolbarContentBuilder
     private var phoneItems: some ToolbarContent {
+        // The iPhone's floating glass bar (`PhoneBottomBar`, #915) replaces
+        // the old system `.bottomBar`, while `moreMenu` stays at the top
+        // trailing position keeping every existing iPhone action.
         ToolbarItem(placement: .navigationBarTrailing) {
             moreMenu
-        }
-        ToolbarItemGroup(placement: .bottomBar) {
-            // Icon only: the bar is narrow, and the label is its name.
-            interruptButton
-            PhoneOutlineMenu(page: page)
-            RunCellMenu(page: page)
         }
     }
 

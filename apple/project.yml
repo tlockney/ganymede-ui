@@ -642,6 +642,8 @@ targets:
       - path: Sources/Ganymede/ProjectLineText.swift
       # The sidebar's glass tint and caption contrast (#896, #878).
       - path: Sources/Ganymede/SidebarStyle.swift
+      # iPhone visual redesign chrome state and contrast helpers (#915).
+      - path: Sources/Ganymede/Touch/PhoneChromeState.swift
       - path: Sources/Ganymede/WorkspaceTabs.swift
       - path: Sources/Ganymede/Tabs/WorkspaceTabModel.swift
       - path: Sources/Ganymede/Tabs/TabStripLayout.swift
@@ -742,6 +744,8 @@ targets:
       - path: Sources/Ganymede/ProjectLineText.swift
       # The sidebar's glass tint and caption contrast (#896, #878).
       - path: Sources/Ganymede/SidebarStyle.swift
+      # iPhone visual redesign chrome state and contrast helpers (#915).
+      - path: Sources/Ganymede/Touch/PhoneChromeState.swift
       - path: Sources/Ganymede/WorkspaceTabs.swift
       - path: Sources/Ganymede/Tabs/WorkspaceTabModel.swift
       - path: Sources/Ganymede/Tabs/TabStripLayout.swift

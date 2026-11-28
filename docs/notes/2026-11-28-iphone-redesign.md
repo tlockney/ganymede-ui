@@ -1,0 +1,9 @@
+## 2026-11-28, iPhone visual redesign (#915)
+
+- Added the iPhone visual redesign modules under `apple/Sources/Ganymede/Touch/`:
+  - `PhoneChromeState.swift`: pure cross-platform view-models and contrast-checked gradient palette (`PhoneChromeState`, `PhoneHeaderPalette`, `PhoneKernelChipState`, `PhoneBottomBarState`, `PhoneOutlineSheetState`) included in both `GanymedeTests` and `GanymedeTests-iOS`.
+  - `PhoneHeader.swift`: display title (`WindowTarget.displayName`) with optional save/lock note, subtle navy-to-orange gradient header strip (`#2B3A67` to warm orange-tinted navy in dark; warm cream-navy to apricot-cream in light, clearing WCAG AA 4.5:1 across both endpoints), compact kernel chip (`dot · TS · This iPhone` / `Studio Mac` with VoiceOver full status line and dot status), and inline `Notebook | Journal` switcher while keeping all 15 actions in the `⋯` More menu.
+  - `PhoneBottomBar.swift`: floating glass capsule replacing the system `.bottomBar` — Outline button, `< 3 / 14 >` cell stepper (with current section subtitle), inline Interrupt when busy, and orange `Run` pill (`AccentFill` / `OnAccent`, tap to run, hold for `RunMenuItems`) in Notebook mode; compact `Section N of M · <heading>` navigation bar in Journal mode so the web composer stays unobstructed.
+  - `PhoneOutlineSheet.swift`: `.sheet` with `.medium`/`.large` detents, `"Outline"` header, `Run all ▾` menu, `outlineSummary` subtitle, numbered heading rows with accessible status dots (`Section ran`, `Current section`, `Section not run`), empty state keeping header/summary/add actions, and `+ Code` / `+ Text` footer buttons.
+- Wired the iPhone branches in `ContentView.swift` and `IPadChrome.swift` (`phoneItems`) while keeping the Rename alert pre-populated with the file stem (`title`) rather than the display title (`phoneTitle`).
+- Added unit tests in `apple/Tests/GanymedeTests/PhoneChromeTests.swift` and updated `docs/apps.md` with the standard `**Unreleased.**` note.
