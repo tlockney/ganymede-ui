@@ -54,14 +54,17 @@ type CellsSignal = {
  * saves arriving through the room).
  */
 export function createReadOnlyGuard(
-  notebook: Pick<Notebook, 'widgets'> & { mode?: string },
-  model: Pick<NotebookModel, 'readOnly'> & { cells?: { changed: CellsSignal } },
+  notebook: Pick<Notebook, 'widgets'> & { mode?: string; isDisposed?: boolean },
+  model: Pick<NotebookModel, 'readOnly'> & {
+    cells?: { changed: CellsSignal };
+    isDisposed?: boolean;
+  },
 ): ReadOnlyGuard {
   let locked = false;
   let disposed = false;
 
   const lockCells = () => {
-    if (!locked || disposed) return;
+    if (!locked || disposed || notebook.isDisposed || model.isDisposed) return;
     for (const cell of notebook.widgets) {
       // A cell with `syncEditable` writes its read-only state to its
       // `editable` metadata, which is in the shared notebook: not an
@@ -83,7 +86,7 @@ export function createReadOnlyGuard(
 
   return {
     set(readOnly: boolean) {
-      if (disposed) return;
+      if (disposed || notebook.isDisposed || model.isDisposed) return;
       model.readOnly = readOnly;
       if (readOnly) {
         if (!locked) {
@@ -110,28 +113,60 @@ export function createReadOnlyGuard(
 }
 
 /**
- * A connected machine that stops answering (#701): while its room is down,
- * the notebook is read-only (the model and each cell's editor; the pane
- * stops the command-mode keys that edit cells), and `onOffline` says so for the
- * banner. It is editable again when the room is back; nothing is edited
- * while the room is away, so there is no offline editing to merge.
- * Returns the stop function.
+ * A room whose live state or connection state can be watched (#701, #702).
+ * Real `NotebookRoom` exposes `live` and `watchLive`; minimal test doubles may
+ * provide only `connected` and `onConnection`.
+ */
+export type OfflineRoom =
+  | Pick<NotebookRoom, 'live' | 'watchLive'>
+  | (Pick<NotebookRoom, 'connected' | 'onConnection'> & { watchLive?: undefined });
+
+/**
+ * Whether a room is live (socket up and synced, not closed) when `live` is
+ * present, falling back to `connected` for minimal test doubles.
+ */
+export function isRoomLive(room: Partial<Pick<NotebookRoom, 'live' | 'connected'>>): boolean {
+  return typeof room.live === 'boolean' ? room.live : Boolean(room.connected);
+}
+
+/**
+ * Watch whether a room is live (using `watchLive` when available, falling back
+ * to `connected` / `onConnection` for minimal test doubles) (#701, #702).
+ */
+export function watchRoomConnection(
+  room: OfflineRoom,
+  onLive: (live: boolean) => void,
+): () => void {
+  if (typeof room.watchLive === 'function') return room.watchLive(onLive);
+  onLive(room.connected);
+  return room.onConnection(onLive);
+}
+
+/**
+ * While a notebook's room is disconnected or syncing (#701, #702), the
+ * notebook turns read-only (the model and each cell's editor; the pane stops
+ * the command-mode keys that edit cells), and `onOffline` says so for the
+ * banner. It is editable again once the room is live; nothing is edited while
+ * away, so there is no offline editing to merge. Returns the stop function.
  */
 export function watchOffline(
-  room: Pick<NotebookRoom, 'connected' | 'onConnection'>,
-  notebook: Pick<Notebook, 'widgets'> & { mode?: string },
-  model: Pick<NotebookModel, 'readOnly'> & { cells?: { changed: CellsSignal } },
+  room: OfflineRoom,
+  notebook: Pick<Notebook, 'widgets'> & { mode?: string; isDisposed?: boolean },
+  model: Pick<NotebookModel, 'readOnly'> & {
+    cells?: { changed: CellsSignal };
+    isDisposed?: boolean;
+  },
   onOffline: (offline: boolean) => void,
 ): () => void {
   const guard = createReadOnlyGuard(notebook, model);
-  const apply = (connected: boolean) => {
-    onOffline(!connected);
-    guard.set(!connected);
+  const apply = (live: boolean) => {
+    if (notebook.isDisposed || model.isDisposed) return;
+    onOffline(!live);
+    guard.set(!live);
   };
-  apply(room.connected);
   // Command-mode keys are stopped by the pane's own key handler, which
   // runs before the notebook's (`isEditKey`).
-  const stop = room.onConnection(apply);
+  const stop = watchRoomConnection(room, apply);
   return () => {
     stop();
     guard.dispose();

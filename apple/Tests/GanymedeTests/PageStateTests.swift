@@ -36,11 +36,37 @@ final class PageStateTests: XCTestCase {
         XCTAssertEqual(state?.cellType, "markdown")
         XCTAssertEqual(state?.journal, true)
         XCTAssertEqual(state?.journalToggleTitle, "Open as Notebook")
+        XCTAssertEqual(state?.journalToggleSymbol, "square.grid.2x2")
         XCTAssertEqual(state?.hasNotebook, true)
         XCTAssertEqual(state?.editsCells, false, "the journal hides the cells")
         XCTAssertEqual(state?.kernels, [PageState.Kernel(name: "cdp", displayName: "TypeScript", device: true)])
         XCTAssertEqual(state?.backend?.detail, "local server")
         XCTAssertEqual(state?.sessions, [])
+    }
+
+    func testJournalToggleAndEditsCellsDefaultsAndStates() {
+        var state = PageState()
+        XCTAssertNil(state.journal)
+        XCTAssertEqual(state.journalToggleTitle, "View as Journal")
+        XCTAssertEqual(state.journalToggleSymbol, "text.page")
+        XCTAssertFalse(state.editsCells, "no notebook open")
+
+        state.path = "moons/Io.ipynb"
+        XCTAssertTrue(state.editsCells, "absent journal means notebook cells show")
+
+        state.journal = false
+        XCTAssertEqual(state.journalToggleTitle, "View as Journal")
+        XCTAssertEqual(state.journalToggleSymbol, "text.page")
+        XCTAssertTrue(state.editsCells)
+
+        state.journal = true
+        XCTAssertEqual(state.journalToggleTitle, "Open as Notebook")
+        XCTAssertEqual(state.journalToggleSymbol, "square.grid.2x2")
+        XCTAssertFalse(state.editsCells)
+
+        state.journal = false
+        state.path = "moons/Io.csv"
+        XCTAssertFalse(state.editsCells, "a data file has no cells to edit")
     }
 
     func testReadsTheNotebookTitle() {

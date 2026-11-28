@@ -1359,6 +1359,7 @@ struct IPadCommands: Commands {
         SidebarCommands()
         CommandGroup(after: .sidebar) {
             IPadPanelButton()
+            IPadJournalButton()
             CodeFontSizeCommands()
         }
         CommandGroup(replacing: .newItem) { IPadNewNotebook() }
@@ -1417,6 +1418,16 @@ private struct IPadPanelButton: View {
         Button(panel?.shown == true ? "Hide Terminal Panel" : "Show Terminal Panel") { panel?.toggle() }
             .keyboardShortcut("`", modifiers: [.control])
             .disabled(panel == nil)
+    }
+}
+
+/// View › View as Journal / Open as Notebook (#702): mirrors Mac `JournalCommand`.
+private struct IPadJournalButton: View {
+    @FocusedValue(\.pageModel) private var page
+
+    var body: some View {
+        Button(page?.state.journalToggleTitle ?? "View as Journal") { page?.run("toggle-journal") }
+            .disabled(page?.state.hasNotebook != true)
     }
 }
 

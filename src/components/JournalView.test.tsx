@@ -6,7 +6,13 @@ import { ServerConnection } from '@jupyterlab/services';
 import { YNotebook } from '@jupyter/ydoc';
 import * as Y from 'yjs';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { forgetPositions, movePositions, readPosition, savePosition } from '../lib/journal';
+import {
+  forgetPositions,
+  movePositions,
+  readPosition,
+  savePosition,
+  sourceFingerprint,
+} from '../lib/journal';
 import type { NotebookRoom } from '../lib/room';
 import { JournalView } from './JournalView';
 
@@ -300,13 +306,37 @@ describe('JournalView', () => {
     expect(screen.getByText(/In the room: You, Ada/)).toBeInTheDocument();
   });
 
-  it('says which cell is running', async () => {
+  it('names whoever is running a cell via execution_by, falling back to Someone when absent', async () => {
     const nb = journal();
+    nb.addCell({ cell_type: 'code', source: 'y = 2', metadata: {} });
     show(nb);
+    const cell1 = nb.cells[1] as unknown as { executionState: string; ymodel: Y.Map<unknown> };
+    const cell3 = nb.cells[3] as unknown as { ymodel: Y.Map<unknown> };
+
+    // Running without execution_by falls back to Someone, ignoring cell author metadata.
     act(() => {
-      (nb.cells[1] as unknown as { executionState: string }).executionState = 'running';
+      cell1.executionState = 'running';
+    });
+    expect(await screen.findByText('Someone is running cell 2')).toBeInTheDocument();
+
+    // Setting execution_by updates the running line live.
+    act(() => {
+      cell1.ymodel.set('execution_by', 'claude-code');
     });
     expect(await screen.findByText('claude-code is running cell 2')).toBeInTheDocument();
+
+    // Returning to idle clears the running line even if execution_by stays on ymodel.
+    act(() => {
+      cell1.executionState = 'idle';
+    });
+    await waitFor(() => expect(screen.queryByText(/is running cell/)).not.toBeInTheDocument());
+
+    // Works for agent/API runs on code cells without agent metadata.
+    act(() => {
+      cell3.ymodel.set('execution_state', 'running');
+      cell3.ymodel.set('execution_by', 'An API client');
+    });
+    expect(await screen.findByText('An API client is running cell 4')).toBeInTheDocument();
   });
 
   it('goes read-only with Reconnecting… while the room is down, and back', async () => {
@@ -1295,5 +1325,77 @@ describe('opening, input and position keeping (#816, review)', () => {
     expect(await screen.findByRole('dialog', { name: 'Table, 18 rows' })).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+});
+
+describe('clean-run badge (#702, ganymede#944)', () => {
+  const openRoom: Partial<NotebookRoom> = {
+    live: true,
+    watchLive: () => () => {},
+  };
+
+  const withMetadata = (clean_run: unknown) => {
+    const nb = new YNotebook();
+    nb.fromJSON({
+      nbformat: 4,
+      nbformat_minor: 5,
+      metadata: { ganymede: { clean_run } },
+      cells: journal().cells.map(c => c.toJSON()),
+    } as never);
+    return nb;
+  };
+
+  it('shows Ran from a fresh kernel only when verified in an open room with a matching fingerprint', async () => {
+    const cells = journal().cells.map(c => c.toJSON()) as never;
+    const fp = sourceFingerprint(cells);
+    const nb = withMetadata({
+      at: new Date().toISOString(),
+      by: 'Claude Code',
+      kernel: 'python3',
+      fingerprint: fp,
+    });
+    show(nb, openRoom);
+    expect(screen.getByText('Ran from a fresh kernel')).toBeInTheDocument();
+    expect(screen.getByText(/Claude Code · python3/)).toBeInTheDocument();
+
+    // Editing a cell makes the stamp stale and hides the badge live.
+    act(() => {
+      nb.cells[0]!.setSource('# Trend (edited)');
+    });
+    await waitFor(() =>
+      expect(screen.queryByText('Ran from a fresh kernel')).not.toBeInTheDocument(),
+    );
+
+    // Re-stamping with the updated fingerprint brings the badge back live.
+    const nextFp = sourceFingerprint(nb.cells.map(c => c.toJSON()) as never);
+    act(() => {
+      nb.setMetadata('ganymede', {
+        clean_run: { by: 'Claude Code', kernel: 'python3', fingerprint: nextFp },
+      });
+    });
+    expect(await screen.findByText('Ran from a fresh kernel')).toBeInTheDocument();
+  });
+
+  it('omits the badge when unverified or stale (no room, missing, unknown version, mismatch)', () => {
+    const fp = sourceFingerprint(journal().cells.map(c => c.toJSON()) as never);
+
+    // Non-room file read (GET /api/contents with no room open), even with matching fingerprint.
+    const nb = withMetadata({ by: 'Claude', fingerprint: fp });
+    const first = show(nb);
+    expect(screen.queryByText('Ran from a fresh kernel')).not.toBeInTheDocument();
+    first.unmount();
+
+    // Missing fingerprint, unknown v<digits>: version, and mismatched v1: inside a room.
+    for (const clean_run of [
+      { by: 'Claude', kernel: 'python3' },
+      { by: 'Claude', fingerprint: 'v2:00000000' },
+      { by: 'Claude', fingerprint: 'v1:00000000' },
+      { by: 'Claude', fingerprint: 'not-a-fp' },
+    ]) {
+      nb.setMetadata('ganymede', { clean_run });
+      const view = show(nb, openRoom);
+      expect(screen.queryByText('Ran from a fresh kernel')).not.toBeInTheDocument();
+      view.unmount();
+    }
   });
 });

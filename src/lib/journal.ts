@@ -500,16 +500,16 @@ export function latestAgentTime(
 
 /**
  * The cell being run, as "<name> is running cell N" (N counts from 1), from
- * the cells' execution state: the first running one. The name is the agent
- * that wrote the cell, else "Someone".
+ * the cells' execution state: the first running one. The name is the runner
+ * (`execution_by`) while the cell runs, else "Someone".
  */
 export function runningLine(
-  cells: readonly (Pick<JournalCellData, 'metadata'> & { running?: boolean })[],
+  cells: readonly { running?: boolean; executionBy?: string; metadata?: unknown }[],
 ): string | undefined {
   const i = cells.findIndex(c => c.running);
   if (i < 0) return undefined;
-  const by = agentMetadata(cells[i]!)?.by;
-  return `${text(by) ?? 'Someone'} is running cell ${i + 1}`;
+  const by = text(cells[i]!.executionBy)?.trim();
+  return `${by || 'Someone'} is running cell ${i + 1}`;
 }
 
 // Writing to the journal ----------------------------------------------------
@@ -801,4 +801,150 @@ export function journalHeader(
   if (by) details.push(`Started by ${by}`);
   details.push(cells.length === 1 ? '1 cell' : `${cells.length} cells`);
   return { eyebrow, title, details };
+}
+
+// Clean-run fingerprint and stamp (#702, ganymede#944) -----------------------
+
+const MURMUR2_M = 0x5bd1e995;
+const UTF8 = new TextEncoder();
+
+/**
+ * Unsigned 32-bit MurmurHash2 (seed 0 by default), matching Ganymede's
+ * `ganymede_nbformat::hash::murmur2` for clean-run cell fingerprinting.
+ */
+export function murmur2(data: Uint8Array, seed = 0): number {
+  let h = (seed ^ data.length) >>> 0;
+  let i = 0;
+  while (i + 4 <= data.length) {
+    let k = (data[i]! | (data[i + 1]! << 8) | (data[i + 2]! << 16) | (data[i + 3]! << 24)) >>> 0;
+    k = Math.imul(k, MURMUR2_M) >>> 0;
+    k ^= k >>> 24;
+    k = Math.imul(k, MURMUR2_M) >>> 0;
+    h = Math.imul(h, MURMUR2_M) >>> 0;
+    h = (h ^ k) >>> 0;
+    i += 4;
+  }
+  const rem = data.length - i;
+  if (rem >= 3) h = (h ^ (data[i + 2]! << 16)) >>> 0;
+  if (rem >= 2) h = (h ^ (data[i + 1]! << 8)) >>> 0;
+  if (rem >= 1) {
+    h = (h ^ data[i]!) >>> 0;
+    h = Math.imul(h, MURMUR2_M) >>> 0;
+  }
+  h = (h ^ (h >>> 13)) >>> 0;
+  h = Math.imul(h, MURMUR2_M) >>> 0;
+  h = (h ^ (h >>> 15)) >>> 0;
+  return h >>> 0;
+}
+
+/**
+ * The `v1:` fingerprint of a notebook's cell types, sources and order, per
+ * Ganymede's `docs/rooms.md`: MurmurHash2 (seed 0) over `{type_len}:{cell_type}{source_len}:{source}\n`
+ * per cell in UTF-8 byte lengths. Outputs, counts, ids and metadata are excluded.
+ */
+export function sourceFingerprint(
+  cells: readonly Pick<JournalCellData, 'cell_type' | 'source'>[],
+): string {
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (const cell of cells) {
+    const type = typeof cell.cell_type === 'string' ? cell.cell_type : '';
+    const typeBytes = UTF8.encode(type);
+    const source =
+      typeof cell.source === 'string' || Array.isArray(cell.source) ? sourceOf(cell) : '';
+    const sourceBytes = UTF8.encode(source);
+    const typePrefix = UTF8.encode(`${typeBytes.length}:`);
+    const sourcePrefix = UTF8.encode(`${sourceBytes.length}:`);
+    const newline = new Uint8Array([0x0a]);
+    for (const part of [typePrefix, typeBytes, sourcePrefix, sourceBytes, newline]) {
+      chunks.push(part);
+      total += part.length;
+    }
+  }
+  const bytes = new Uint8Array(total);
+  let offset = 0;
+  for (const part of chunks) {
+    bytes.set(part, offset);
+    offset += part.length;
+  }
+  const hash = murmur2(bytes, 0);
+  return `v1:${hash.toString(16).padStart(8, '0')}`;
+}
+
+export type CleanRunState = 'current' | 'stale' | 'unverified';
+
+export type CleanRunStamp = {
+  state: CleanRunState;
+  at?: string;
+  by?: string;
+  kernel?: string;
+  fingerprint?: string;
+};
+
+export type CleanRunBadge = {
+  label: string;
+  detail?: string;
+};
+
+function fingerprintVersion(fp: string): string | undefined {
+  const colon = fp.indexOf(':');
+  if (colon < 2 || colon >= fp.length - 1) return undefined;
+  const prefix = fp.slice(0, colon);
+  return /^v[0-9]+$/.test(prefix) ? prefix : undefined;
+}
+
+/**
+ * Evaluate `metadata.ganymede.clean_run` against the notebook's cells.
+ * Only a `v1:` fingerprint matching the current cells when verified through an
+ * open room (`inRoom: true`) is `'current'`. Missing/malformed/mismatched
+ * fingerprints are `'stale'`; unknown `v<digits>:` versions and non-room
+ * `GET /api/contents` reads are `'unverified'`.
+ */
+export function cleanRunStatus(
+  metadata: unknown,
+  cells: readonly Pick<JournalCellData, 'cell_type' | 'source'>[],
+  { inRoom = false }: { inRoom?: boolean } = {},
+): CleanRunStamp | undefined {
+  const meta = isRecord(metadata) ? metadata : {};
+  const ganymede = isRecord(meta.ganymede) ? meta.ganymede : undefined;
+  const raw = ganymede && isRecord(ganymede.clean_run) ? ganymede.clean_run : undefined;
+  if (!raw) return undefined;
+  const at = text(raw.at)?.trim() || undefined;
+  const by = text(raw.by)?.trim() || undefined;
+  const kernel = text(raw.kernel)?.trim() || undefined;
+  const fingerprint = text(raw.fingerprint)?.trim() || undefined;
+  const base = {
+    ...(at ? { at } : {}),
+    ...(by ? { by } : {}),
+    ...(kernel ? { kernel } : {}),
+    ...(fingerprint ? { fingerprint } : {}),
+  };
+  if (!fingerprint) return { state: 'stale', ...base };
+  const version = fingerprintVersion(fingerprint);
+  if (!version) return { state: 'stale', ...base };
+  if (version !== 'v1') return { state: 'unverified', ...base };
+  if (fingerprint !== sourceFingerprint(cells)) return { state: 'stale', ...base };
+  if (!inRoom) return { state: 'unverified', ...base };
+  return { state: 'current', ...base };
+}
+
+/**
+ * The badge for a clean-run stamp when current ("Ran from a fresh kernel"), or
+ * undefined when stale or unverified so an unchecked stamp is never presented
+ * as current (#702, ganymede#944).
+ */
+export function cleanRunBadge(
+  stamp: CleanRunStamp | undefined,
+  now: number,
+): CleanRunBadge | undefined {
+  if (stamp?.state !== 'current') return undefined;
+  const ms = stamp.at ? Date.parse(stamp.at) : NaN;
+  const when = !Number.isNaN(ms) ? timeAgo(ms, now) : undefined;
+  const detail = [stamp.by, stamp.kernel, when]
+    .filter((part): part is string => part !== undefined)
+    .join(' · ');
+  return {
+    label: 'Ran from a fresh kernel',
+    ...(detail ? { detail } : {}),
+  };
 }

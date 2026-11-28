@@ -21,6 +21,8 @@ import {
   atBottom,
   attachmentDataUrl,
   classifyProvenance,
+  cleanRunBadge,
+  cleanRunStatus,
   followLabel,
   followsLate,
   firstVisibleIndex,
@@ -90,7 +92,7 @@ type Props = {
 /** How often the reading position is saved while scrolling, at most. */
 const SAVE_EVERY_MS = 500;
 
-type Cell = JournalCellData & { running: boolean };
+type Cell = JournalCellData & { running: boolean; executionBy?: string };
 
 /**
  * Whether a transaction added or removed cells, or changed a cell's type,
@@ -131,10 +133,11 @@ function useCells(notebook: YNotebook) {
     }) => {
       if (tr.changed.size === 0) return;
       // Which cells this touched: a cell's own Y.Map is among the changed
-      // parents of anything inside it (its source, outputs, metadata).
+      // parents of anything inside it (its source, outputs, metadata), or in
+      // `tr.changed` directly for keys such as `execution_state` / `execution_by`.
       for (const c of notebook.cells) {
         const y = (c as unknown as { ymodel: object }).ymodel;
-        if (tr.changedParentTypes.has(y)) touched.current.add(y);
+        if (tr.changedParentTypes.has(y) || tr.changed.has(y)) touched.current.add(y);
       }
       // "Changed N ago" is about the others: a change made here (the
       // composer, this page's own runs) is not news.
@@ -160,12 +163,14 @@ function useCells(notebook: YNotebook) {
   const cells = useMemo<Cell[]>(() => {
     const next = new Map<object, Cell>();
     const list = notebook.cells.map(c => {
-      const y = (c as unknown as { ymodel: object }).ymodel;
+      const y = (c as unknown as { ymodel: { get(key: string): unknown } }).ymodel;
       let cell = known.current.get(y);
       if (!cell || touched.current.has(y)) {
         const data = c.toJSON() as unknown as JournalCellData;
         const running = c.cell_type === 'code' && (c as YCodeCell).executionState === 'running';
-        cell = { ...data, running };
+        const rawBy = running ? y.get('execution_by') : undefined;
+        const executionBy = typeof rawBy === 'string' && rawBy.trim() ? rawBy.trim() : undefined;
+        cell = { ...data, running, ...(executionBy ? { executionBy } : {}) };
       }
       next.set(y, cell);
       return cell;
@@ -193,6 +198,7 @@ function useMetadata(notebook: YNotebook): unknown {
     title: notebook.getMetadata('title'),
     kernelspec: notebook.getMetadata('kernelspec'),
     language_info: notebook.getMetadata('language_info'),
+    ganymede: notebook.getMetadata('ganymede'),
   };
 }
 
@@ -626,8 +632,10 @@ export function JournalView({
   const agents = path ? agentsAt(rooms, path) : undefined;
   const names = [...people, ...(agents ?? []).filter(a => !people.includes(a))];
   const hint = composerHint(agents);
-  const header = journalHeader(useMetadata(notebook), cells, name);
+  const metadata = useMetadata(notebook);
+  const header = journalHeader(metadata, cells, name);
   const now = useNow(15_000);
+  const badge = cleanRunBadge(cleanRunStatus(metadata, cells, { inRoom: !!room }), now);
   const [live, setLive] = useState(() => room?.live ?? true);
   useEffect(() => room?.watchLive(setLive), [room]);
 
@@ -906,6 +914,15 @@ export function JournalView({
         {header.eyebrow && <p className="journal-eyebrow">{header.eyebrow}</p>}
         <h1 className="journal-title">{header.title}</h1>
         <p className="journal-meta">{header.details.join(' · ')}</p>
+        {badge && (
+          <p className="journal-clean-run">
+            <span className="journal-chip journal-chip-static">
+              <span className="journal-clean-dot" aria-hidden="true" />
+              {badge.label}
+            </span>
+            {badge.detail && <span>{badge.detail}</span>}
+          </p>
+        )}
       </header>
       <div className="journal-status">
         <span>

@@ -423,10 +423,14 @@ display or error), text, image and JSON, so the next action can take any
 of them; used as text, it is its text. A cell that fails, a missing file
 or a run that outlasts its time limit stops the shortcut with the error.
 
+> [!NOTE]
+> **Unreleased.** Available only from a build of Ganymede `main` (HEAD), not in
+> the latest server release: `execution_by` attribution in the room.
+
 Run Notebook and Run Cell name "Ganymede" as the runner in the
-notebook's room (`execution_by`) while its cells run, for a view that
-shows who runs a cell (#702). Run Notebook with Parameters runs in a new
-kernel with no room, so it names no one.
+notebook's room (`execution_by`) while its cells run, and the journal
+view displays whoever is running a cell. Run Notebook with Parameters
+runs in a new kernel with no room, so it names no one.
 
 Run Notebook and Run Cell (and `ganymede://run`, below) run the
 notebook's current content: when a window has it open, its unsaved edits
@@ -1500,6 +1504,11 @@ above still work.
 - **The header** comes first: the notebook's title (its metadata title, else
   the file name), then its kernel, who started it and when (the first agent
   that wrote a cell, and the earliest time an agent did), and the cell count.
+  When the notebook was verified to have run from a fresh kernel
+  (`metadata.ganymede.clean_run`) in an open room and its cell fingerprint
+  still matches, the header also shows a **Ran from a fresh kernel** badge;
+  stamps without a matching fingerprint, with an unknown version, or from a
+  non-room file read are not shown as current.
 - **Who wrote each cell** is in a left column: _Agent ran it_ (with its
   execution count), _Recorded step_, _Agent note_, or _Person_ for a cell
   without agent metadata, with the author and time where the cell has
@@ -1518,8 +1527,15 @@ above still work.
   notebook; your own edits don't count. It lists the people with
   presence in the room, and the agents working through `ganymede mcp`
   that the server's rooms list names (a server older than 0.14.0
-  can't say). When a client marks a cell as running (JupyterLab
-  does; Ganymede's own runs don't yet), it adds "name is running cell N".
+  can't say). When a cell is running, it adds "<name> is running cell N",
+  naming whoever started the run (`execution_by`, else "Someone").
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of Ganymede `main` (HEAD), not in
+> the latest server release: `execution_by` runner attribution and the
+> `clean_run` cell `fingerprint` checked by the **Ran from a fresh kernel**
+> badge.
+
 - **Writing**: the box at the bottom adds your text as a Markdown cell at
   the end (**Add Note**), or as an `@agent` request (**Ask the agent**),
   which `ganymede mcp watch` reports to the agent once the text has
@@ -1531,8 +1547,9 @@ above still work.
   notebook. Everything else is read-only. On a phone the box is two buttons, as
   [Writing on a phone, and requests](#writing-on-a-phone-and-requests)
   says.
-- **Reconnecting…**: when the connection to the server drops, the journal
-  is read-only until it is back.
+- **Reconnecting…**: when a notebook's room connection drops or is
+  resyncing, both the journal view and the notebook view go read-only with a
+  reconnecting banner until the connection returns.
 
 ### Where it opens, and following live
 
