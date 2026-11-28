@@ -48,12 +48,17 @@ struct RemotesView<Extra: View>: View {
             isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
             presenting: removing
         ) { remote in
-            Button("Remove", role: .destructive) { model.delete(remote: remote.id) }
+            Button("Remove", role: .destructive) {
+                Task { @MainActor in await model.requestDelete(remote: remote.id) }
+            }
         } message: { remote in
             Text(remote.id == model.kernelRemoteID
                 ? "Kernels run on this remote. They will move to this device, and running kernels are shut down."
                 : "Its token is removed from the keychain.")
         }
+        #if os(iOS)
+        .modifier(SwitchSaveAlert(coordinator: model.kernelSwitchGuard, isEnabled: editing == nil))
+        #endif
     }
 
     private func row(_ remote: Remote) -> some View {
@@ -171,7 +176,12 @@ struct KernelLocationSection: View {
     }
 
     private var kernels: Binding<UUID?> {
-        Binding(get: { model.kernelRemoteID }, set: { model.useForKernels($0) })
+        Binding(
+            get: { model.kernelRemoteID },
+            set: { next in
+                Task { @MainActor in await model.requestUseForKernels(next) }
+            }
+        )
     }
 
     #if os(iOS)
@@ -211,6 +221,7 @@ struct RemoteEditor: View {
     #endif
     /// Server URLs saved before, most recent first (#731).
     @State private var recentURLs = RecentHosts.load()
+    @State private var saving = false
     let isNew: Bool
 
     init(remote: Remote, isNew: Bool) {
@@ -320,15 +331,21 @@ struct RemoteEditor: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(isNew ? "Add" : "Save") {
-                        save()
-                        dismiss()
+                        saving = true
+                        Task { @MainActor in
+                            let saved = await save()
+                            saving = false
+                            if saved { dismiss() }
+                        }
                     }
-                    .disabled(!edited.isValid || useSSH && (!portIsValid || !userIsValid))
+                    .disabled(saving || !edited.isValid || useSSH && (!portIsValid || !userIsValid))
                 }
             }
         }
         #if os(macOS)
         .frame(minWidth: 420, minHeight: 380)
+        #else
+        .modifier(SwitchSaveAlert(coordinator: model.kernelSwitchGuard))
         #endif
         .onAppear {
             token = isNew ? "" : model.token(for: remote.id)
@@ -342,17 +359,25 @@ struct RemoteEditor: View {
 
     /// Saves the remote and moves kernels to it, or back to this device,
     /// if the toggle changed where they run. Like Settings › Kernels, it
-    /// doesn't ask first: the footer says running kernels are shut down.
-    /// Kernels leave before the save, so a changed URL or token on the
-    /// remote they leave doesn't restart the server a second time.
-    private func save() {
+    /// saves any open dirty notebooks first if applying requires a restart.
+    private func save() async -> Bool {
         let saved = edited
         let wanted = runsKernels && !saved.serverURL.trimmingCharacters(in: .whitespaces).isEmpty
         let current = model.kernelRemoteID == saved.id
-        if current && !wanted { model.useForKernels(nil) }
-        model.save(saved, token: token)
-        RecentHosts.record(saved.serverURL)
-        if wanted && !current { model.useForKernels(saved.id) }
+        let apply: @MainActor () -> Void = {
+            if current && !wanted { model.useForKernels(nil) }
+            model.save(saved, token: token)
+            RecentHosts.record(saved.serverURL)
+            if wanted && !current { model.useForKernels(saved.id) }
+        }
+        let willRestart = (current && !wanted)
+            || (wanted && !current)
+            || model.wouldRestartSaving(saved, token: token)
+        if willRestart {
+            return await model.guardServerRestart(commit: apply)
+        }
+        apply()
+        return true
     }
 
     /// iOS has no tailnet picker, so its placeholder shows the address to type.

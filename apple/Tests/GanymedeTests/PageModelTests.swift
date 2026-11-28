@@ -273,4 +273,27 @@ final class PageModelTests: XCTestCase {
         page.update(connected)
         XCTAssertEqual(page.pendingCount, 0, "no watch-memory once nobody watches")
     }
+
+    func testTerminationClearsReadinessAndUnreachableDirtyPageFailsSave() async {
+        let page = PageModel()
+        var dirtyState = connected
+        dirtyState.dirty = true
+        dirtyState.path = "work/Orbits.ipynb"
+        page.update(dirtyState)
+        XCTAssertTrue(page.ready)
+        XCTAssertEqual(page.notebookDisplayName, "Orbits.ipynb")
+
+        page.webContentProcessDidTerminate()
+        XCTAssertFalse(page.ready)
+
+        let outcome = await page.save()
+        XCTAssertEqual(outcome, .failed)
+
+        var cleanState = connected
+        cleanState.dirty = false
+        page.forgetPage()
+        page.update(cleanState)
+        let cleanOutcome = await page.save()
+        XCTAssertEqual(cleanOutcome, .saved)
+    }
 }

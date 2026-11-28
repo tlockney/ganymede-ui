@@ -230,7 +230,7 @@ enum NotebookWindows {
 #endif
 
 @MainActor
-final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate {
+final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WKDownloadDelegate, DownloadTracking {
     /// The app's page loads: which URL for which server start (#640).
     private var loads = PageLoads()
     /// The page's URL, the in-app server's.
@@ -340,10 +340,38 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     /// The page's side of the app's kernels and `device` (ganymede-ui#99).
     private let kernels = KernelHost()
     private var codeFontObserver: CodeFontObserver?
+    private var activeDownloadWaiter: DownloadWaiter?
     #if os(iOS)
     /// Where each download is written before the share sheet offers it.
     private var destinations: [ObjectIdentifier: URL] = [:]
+    private var needsReloadAfterTermination = false
+    private var terminatedURL: URL?
     #endif
+
+    /// Runs `trigger` while tracking any resulting `WKDownload` until it
+    /// finishes or its UI dismisses (#808).
+    func runTrackedDownload(_ trigger: @MainActor () async -> Bool) async {
+        let waiter = beginDownloadWait()
+        let triggered = await trigger()
+        await finishDownloadWait(waiter, triggered: triggered)
+    }
+
+    /// Begins tracking any `WKDownload` triggered by `command('download')` (#808).
+    private func beginDownloadWait() -> DownloadWaiter {
+        let waiter = DownloadWaiter()
+        activeDownloadWaiter = waiter
+        return waiter
+    }
+
+    /// Waits for the tracked `WKDownload` (and any iOS share sheet) to finish (#808).
+    private func finishDownloadWait(_ waiter: DownloadWaiter, triggered: Bool) async {
+        await waiter.wait(triggered: triggered)
+        if activeDownloadWaiter === waiter { activeDownloadWaiter = nil }
+    }
+
+    private func finishTrackedDownload(_ id: ObjectIdentifier) {
+        activeDownloadWaiter?.finish(id)
+    }
 
     /// Every user script the page gets, replacing any already there: add
     /// a new one here, since a code font change reinstalls them all.
@@ -436,6 +464,10 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     }
 
     private func startLoad(_ url: URL, start: Int, in view: WKWebView) {
+        #if os(iOS)
+        needsReloadAfterTermination = false
+        terminatedURL = nil
+        #endif
         // The person's name, for this server's origin only (#606).
         Self.installPageScripts(on: view, loaded: url, place: place, settings: settings)
         // The ledger keeps notebooks by absolute path (#383): this device's,
@@ -474,10 +506,38 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     }
 
     /// The UI page's process died: its dialogs and sounds for server
-    /// kernels have no one to answer.
+    /// kernels have no one to answer, commands wait for readiness, and the
+    /// page reloads cleanly once foregrounded (#808).
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         if place.allows(.deviceRemote, settings) { kernels.uiPageEnded() }
+        page?.webContentProcessDidTerminate()
+        let target = webView.url ?? loaded
+        loads.forget()
+        #if os(macOS)
+        if let target {
+            startLoad(target, start: AppModel.shared.serverStart, in: webView)
+        }
+        #else
+        if UIApplication.shared.applicationState != .background, let target {
+            startLoad(target, start: AppModel.shared.serverStart, in: webView)
+        } else {
+            needsReloadAfterTermination = true
+            terminatedURL = target
+        }
+        #endif
     }
+
+    #if os(iOS)
+    /// Reloads the page if its WebContent process was terminated while backgrounded (#808).
+    func reloadIfTerminated() {
+        guard needsReloadAfterTermination, let view = webView, let target = terminatedURL ?? view.url else {
+            return
+        }
+        needsReloadAfterTermination = false
+        terminatedURL = nil
+        startLoad(target, start: AppModel.shared.serverStart, in: view)
+    }
+    #endif
 
     /// Links to other hosts open in the default browser.
     func webView(
@@ -539,10 +599,12 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     }
 
     func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
+        activeDownloadWaiter?.track(download)
         download.delegate = self
     }
 
     func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
+        activeDownloadWaiter?.track(download)
         download.delegate = self
     }
 
@@ -573,13 +635,19 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
         }
     }
 
+    func downloadDidFinish(_ download: WKDownload) {
+        finishTrackedDownload(ObjectIdentifier(download))
+    }
+
     func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
         // Cancelling the save panel ends the download this way too.
-        if (error as? URLError)?.code == .cancelled { return }
-        let alert = NSAlert(error: error)
-        alert.messageText = "The download failed."
-        alert.informativeText = error.localizedDescription
-        alert.runModal()
+        if (error as? URLError)?.code != .cancelled {
+            let alert = NSAlert(error: error)
+            alert.messageText = "The download failed."
+            alert.informativeText = error.localizedDescription
+            alert.runModal()
+        }
+        finishTrackedDownload(ObjectIdentifier(download))
     }
     #else
     /// iOS has no save panel: write to a temporary folder, then offer the
@@ -605,25 +673,45 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     }
 
     func downloadDidFinish(_ download: WKDownload) {
-        guard let url = destinations.removeValue(forKey: ObjectIdentifier(download)),
-              let webView else { return }
+        let id = ObjectIdentifier(download)
+        guard let url = destinations.removeValue(forKey: id),
+              let webView else {
+            finishTrackedDownload(id)
+            return
+        }
         let share = UIActivityViewController(activityItems: [url], applicationActivities: nil)
         share.popoverPresentationController?.sourceView = webView
         share.popoverPresentationController?.sourceRect = CGRect(
             x: webView.bounds.midX, y: webView.bounds.midY, width: 0, height: 0)
-        share.completionWithItemsHandler = { _, _, _, _ in
+        share.completionWithItemsHandler = { [weak self] _, _, _, _ in
             try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
+            Task { @MainActor [weak self] in
+                self?.finishTrackedDownload(id)
+            }
         }
-        present(share, from: webView) {}
+        present(share, from: webView) { [weak self] in
+            try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
+            self?.finishTrackedDownload(id)
+        }
     }
 
     func download(_ download: WKDownload, didFailWithError error: Error, resumeData: Data?) {
-        destinations.removeValue(forKey: ObjectIdentifier(download))
-        guard (error as? URLError)?.code != .cancelled, let webView else { return }
+        let id = ObjectIdentifier(download)
+        destinations.removeValue(forKey: id)
+        guard (error as? URLError)?.code != .cancelled, let webView else {
+            finishTrackedDownload(id)
+            return
+        }
         let alert = UIAlertController(
             title: "The download failed.", message: error.localizedDescription, preferredStyle: .alert)
-        alert.addAction(UIAlertAction(title: "OK", style: .default))
-        present(alert, from: webView) {}
+        alert.addAction(UIAlertAction(title: "OK", style: .default) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.finishTrackedDownload(id)
+            }
+        })
+        present(alert, from: webView) { [weak self] in
+            self?.finishTrackedDownload(id)
+        }
     }
     #endif
 
@@ -789,6 +877,10 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
             top = presented
         }
         if let top {
+            if let pop = controller.popoverPresentationController, top !== webView.window?.rootViewController {
+                pop.sourceView = top.view
+                pop.sourceRect = CGRect(x: top.view.bounds.midX, y: top.view.bounds.midY, width: 0, height: 0)
+            }
             top.present(controller, animated: true)
         } else {
             fallback()

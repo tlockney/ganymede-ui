@@ -2177,9 +2177,12 @@ describe('App', () => {
       history.replaceState(null, '', '/?kernels=server&open=work/Orbits.ipynb');
       render(<App />);
       expect(await screen.findByTestId('pane')).toBeInTheDocument();
-      // The data view takes the notebook's place; its controller stays behind.
+      // The data view takes the notebook's place (which saves the dirty
+      // notebook first under #808); its stale controller stays behind, so
+      // switching backends afterwards must not save it again.
       expect(await window.ganymede!.command('open', 'work/moons.csv')).toBe(true);
       expect(await screen.findByTestId('data-pane')).toBeInTheDocument();
+      save.mockClear();
 
       expect(await window.ganymede!.command('connect')).toBe(true);
       await userEvent.click(await screen.findByRole('radio', { name: /This browser/ }));
@@ -2990,5 +2993,165 @@ describe('App start screen (#815)', () => {
     expect(await screen.findByText('Where should kernels run?')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(screen.queryByText('Where should kernels run?')).not.toBeInTheDocument();
+  });
+});
+
+describe('closing a notebook with unsaved edits (#808)', () => {
+  const openOnServer = async (
+    controller: NonNullable<typeof mocks.controller>,
+    files: Parameters<typeof fakeServices>[0] = {
+      '': [],
+      work: [
+        { name: 'Orbits.ipynb', type: 'notebook' },
+        { name: 'Moons.ipynb', type: 'notebook' },
+        { name: 'Rings.ipynb', type: 'notebook' },
+      ],
+    },
+  ) => {
+    mocks.controller = controller;
+    const fake = fakeServices(files);
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    history.replaceState(null, '', '/?kernels=server&open=work/Orbits.ipynb');
+    render(<App />);
+    expect(await screen.findByTestId('pane')).toHaveTextContent('work/Orbits.ipynb');
+    if (controller.dirty) {
+      await screen.findByRole('button', { name: /^Edited/ });
+    }
+    return fake;
+  };
+
+  it('saves the open notebook before switching via sidebar, and switches once saved', async () => {
+    let saved!: (ok: boolean) => void;
+    const save = vi.fn(() => new Promise<boolean>(r => (saved = r)));
+    await openOnServer({ dirty: true, save, download: vi.fn(), discard: vi.fn() });
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Moons' }));
+    expect(save).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('pane')).toHaveTextContent('work/Orbits.ipynb');
+
+    await act(async () => saved(true));
+    expect(await screen.findByTestId('pane')).toHaveTextContent('work/Moons.ipynb');
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('treats clicking the already open dirty notebook as a no-op', async () => {
+    const save = vi.fn(async () => false);
+    await openOnServer({ dirty: true, save, download: vi.fn(), discard: vi.fn() });
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Orbits' }));
+    expect(save).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.getByTestId('pane')).toHaveTextContent('work/Orbits.ipynb');
+  });
+
+  it('blocks switching when saving fails, supports Keep Editing, Download a Copy, and Switch Without Saving', async () => {
+    const save = vi.fn(async () => false);
+    const download = vi.fn();
+    const undo = vi.fn();
+    const discard = vi.fn(() => undo);
+    await openOnServer({ dirty: true, save, download, discard });
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Moons' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Unsaved edits' });
+    const alert = within(dialog).getByRole('alert');
+    expect(alert).toHaveTextContent('Couldn’t save “Orbits.ipynb”');
+    expect(screen.getByTestId('pane')).toHaveTextContent('work/Orbits.ipynb');
+
+    await userEvent.click(within(alert).getByRole('button', { name: 'Keep Editing' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(discard).not.toHaveBeenCalled();
+    expect(screen.getByTestId('pane')).toHaveTextContent('work/Orbits.ipynb');
+
+    expect(await window.ganymede!.command('open', 'work/Moons.ipynb')).toBe(false);
+    const alert2 = within(await screen.findByRole('dialog', { name: 'Unsaved edits' })).getByRole(
+      'alert',
+    );
+    await userEvent.click(within(alert2).getByRole('button', { name: 'Download a Copy' }));
+    expect(download).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('dialog', { name: 'Unsaved edits' })).toBeInTheDocument();
+
+    await userEvent.click(within(alert2).getByRole('button', { name: 'Switch Without Saving' }));
+    expect(discard).toHaveBeenCalledTimes(1);
+    expect(await screen.findByTestId('pane')).toHaveTextContent('work/Moons.ipynb');
+    expect(undo).not.toHaveBeenCalled();
+  });
+
+  it('shows the timeout reason when the save does not answer in time', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const save = vi.fn(() => new Promise<boolean>(() => {}));
+      await openOnServer({ dirty: true, save, download: vi.fn(), discard: vi.fn() });
+
+      await userEvent.click(await screen.findByRole('button', { name: 'Moons' }));
+      await act(async () => vi.advanceTimersByTime(SERVER_TIMEOUT_MS));
+
+      const alert = within(await screen.findByRole('dialog', { name: 'Unsaved edits' })).getByRole(
+        'alert',
+      );
+      expect(alert).toHaveTextContent('The server didn’t answer in time.');
+      expect(screen.getByTestId('pane')).toHaveTextContent('work/Orbits.ipynb');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('drops a superseded switch when another target is chosen while saving', async () => {
+    let firstSave!: (ok: boolean) => void;
+    let secondSave!: (ok: boolean) => void;
+    const save = vi
+      .fn()
+      .mockImplementationOnce(() => new Promise<boolean>(r => (firstSave = r)))
+      .mockImplementationOnce(() => new Promise<boolean>(r => (secondSave = r)));
+    await openOnServer({ dirty: true, save, download: vi.fn(), discard: vi.fn() });
+
+    await userEvent.click(await screen.findByRole('button', { name: 'Moons' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Rings' }));
+
+    await act(async () => firstSave(true));
+    expect(screen.getByTestId('pane')).toHaveTextContent('work/Orbits.ipynb');
+
+    await act(async () => secondSave(true));
+    expect(await screen.findByTestId('pane')).toHaveTextContent('work/Rings.ipynb');
+  });
+
+  it('guards new-notebook before creating the file and restores undo if creation fails', async () => {
+    const undo = vi.fn();
+    const fake = await openOnServer({
+      dirty: true,
+      save: vi.fn(async () => false),
+      download: vi.fn(),
+      discard: vi.fn(() => undo),
+    });
+    const newUntitled = vi
+      .spyOn(fake.services.contents, 'newUntitled')
+      .mockRejectedValue(new Error('read only'));
+
+    expect(await window.ganymede!.command('new-notebook', 'work')).toBe(false);
+    expect(newUntitled).not.toHaveBeenCalled();
+
+    const alert = within(await screen.findByRole('dialog', { name: 'Unsaved edits' })).getByRole(
+      'alert',
+    );
+    await userEvent.click(within(alert).getByRole('button', { name: 'Switch Without Saving' }));
+    await waitFor(() => expect(newUntitled).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(undo).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId('pane')).toHaveTextContent('work/Orbits.ipynb');
+  });
+
+  it('guards open-examples, new-duckdb-console, and open-console in the page', async () => {
+    const save = vi.fn(async () => false);
+    const discard = vi.fn(() => () => {});
+    mocks.copyExamples = vi.fn(async () => 'work/Examples/Intro.ipynb');
+    await openOnServer({ dirty: true, save, download: vi.fn(), discard });
+
+    expect(await window.ganymede!.command('open-examples', 'work')).toBe(false);
+    expect(mocks.copyExamples).not.toHaveBeenCalled();
+    await userEvent.click(await screen.findByRole('button', { name: 'Keep Editing' }));
+
+    expect(await window.ganymede!.command('new-duckdb-console', 'work')).toBe(false);
+    expect(screen.queryByTestId('duck-console')).toBeNull();
+    await userEvent.click(await screen.findByRole('button', { name: 'Switch Without Saving' }));
+    expect(await screen.findByTestId('duck-console')).toHaveAttribute('data-folder', 'work');
+    expect(discard).toHaveBeenCalledTimes(1);
   });
 });

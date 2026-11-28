@@ -625,6 +625,7 @@ targets:
       - path: Sources/Ganymede/DocumentMessage.swift
       - path: Sources/Ganymede/PageState.swift
       - path: Sources/Ganymede/PageModel.swift
+      - path: Sources/Ganymede/SwitchSaveGuard.swift
       - path: Sources/Ganymede/RecentHosts.swift
       - path: Sources/Ganymede/KernelSpecs.swift
       - path: Sources/Ganymede/SettingsTab.swift
@@ -727,6 +728,7 @@ targets:
       - path: Sources/Ganymede/DocumentMessage.swift
       - path: Sources/Ganymede/PageState.swift
       - path: Sources/Ganymede/PageModel.swift
+      - path: Sources/Ganymede/SwitchSaveGuard.swift
       - path: Sources/Ganymede/RecentHosts.swift
       - path: Sources/Ganymede/KernelSpecs.swift
       - path: Sources/Ganymede/SettingsTab.swift

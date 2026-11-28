@@ -9,6 +9,11 @@ import WebKit
 final class PageModel {
     /// Every page model currently attached to a `WKWebView`.
     static let attachedPages = NSHashTable<PageModel>.weakObjects()
+    #if os(iOS)
+    /// Active scenes' page models, checked before restarting the local kernel
+    /// server (#808).
+    static var openPages: [PageModel] { attachedPages.allObjects }
+    #endif
 
     private(set) var state = PageState()
     @ObservationIgnored weak var webView: WKWebView? {
@@ -16,6 +21,13 @@ final class PageModel {
             if webView != nil { Self.attachedPages.add(self) }
             flush()
         }
+    }
+
+    var notebookDisplayName: String {
+        if let path = state.path, !path.isEmpty {
+            return path.split(separator: "/").last.map(String.init) ?? path
+        }
+        return state.title ?? "the notebook"
     }
     /// Whether the page has posted its state with a backend, so its
     /// commands and calls are ready.
@@ -137,6 +149,46 @@ final class PageModel {
         return true
     }
 
+    /// The web content process terminated; future commands wait until the
+    /// reloaded page becomes ready again (#808).
+    func webContentProcessDidTerminate() {
+        ready = false
+        started = nil
+    }
+
+    /// Saves the open notebook through `window.ganymede.save()` (#808).
+    /// When the page isn't ready, reports `.saved` if nothing is known dirty
+    /// and `.failed` if unsaved edits are recorded.
+    @MainActor
+    func save(timeout: Duration = .seconds(15)) async -> SwitchSaveOutcome {
+        guard ready, let webView else {
+            return state.dirty ? .failed : .saved
+        }
+        return await SwitchSaveCoordinator.raceSave(timeout: timeout) {
+            await withCheckedContinuation { done in
+                webView.callAsyncJavaScript(
+                    "return window.ganymede ? await window.ganymede.save() : true",
+                    arguments: [:],
+                    in: nil,
+                    in: .page
+                ) { result in
+                    switch result {
+                    case .success(let value): done.resume(returning: value as? Bool ?? false)
+                    case .failure: done.resume(returning: false)
+                    }
+                }
+            }
+        }
+    }
+
+    /// Triggers downloading a copy of the open notebook (`download` command)
+    /// and waits for the share sheet or save panel to dismiss (#808).
+    @MainActor
+    func downloadCopy() async {
+        guard ready, let webView else { return }
+        await DownloadWaiter.triggerDownload(in: webView)
+    }
+
     enum CallError: LocalizedError {
         case notReady
 
@@ -210,5 +262,85 @@ struct PageLoads {
     mutating func forget() {
         url = nil
         start = nil
+    }
+}
+
+/// Coordinates waiting for a `WKDownload` (and any iOS share sheet or macOS
+/// save panel) triggered by `PageModel.downloadCopy()` (#808).
+@MainActor
+protocol DownloadTracking: AnyObject {
+    func runTrackedDownload(_ trigger: @MainActor () async -> Bool) async
+}
+
+/// Tracks a `WKDownload` started by `command('download')` until the user
+/// finishes or cancels (#808).
+@MainActor
+final class DownloadWaiter {
+    static func triggerDownload(in webView: WKWebView) async {
+        let trigger: @MainActor () async -> Bool = {
+            await withCheckedContinuation { done in
+                webView.callAsyncJavaScript(
+                    "return window.ganymede ? await window.ganymede.command('download') : false",
+                    arguments: [:],
+                    in: nil,
+                    in: .page
+                ) { result in
+                    switch result {
+                    case .success(let value): done.resume(returning: value as? Bool ?? false)
+                    case .failure: done.resume(returning: false)
+                    }
+                }
+            }
+        }
+        if let tracker = webView.navigationDelegate as? (any DownloadTracking) {
+            await tracker.runTrackedDownload(trigger)
+        } else {
+            _ = await trigger()
+        }
+    }
+
+    private var active: Set<ObjectIdentifier> = []
+    private var started = false
+    private var continuation: CheckedContinuation<Void, Never>?
+
+    func track(_ download: WKDownload) {
+        started = true
+        active.insert(ObjectIdentifier(download))
+    }
+
+    func finish(_ id: ObjectIdentifier) {
+        active.remove(id)
+        if started, active.isEmpty { resume() }
+    }
+
+    private func resume() {
+        let cont = continuation
+        continuation = nil
+        cont?.resume()
+    }
+
+    func wait(triggered: Bool) async {
+        guard triggered else { return }
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { @MainActor [self] in
+                if self.started, self.active.isEmpty { return }
+                await withCheckedContinuation { cont in
+                    if self.started, self.active.isEmpty {
+                        cont.resume()
+                    } else {
+                        self.continuation = cont
+                    }
+                }
+            }
+            group.addTask {
+                try? await Task.sleep(for: .seconds(3))
+                await MainActor.run { [weak self] in
+                    guard let self, !self.started else { return }
+                    self.resume()
+                }
+            }
+            await group.next()
+            group.cancelAll()
+        }
     }
 }
