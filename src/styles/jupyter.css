@@ -606,25 +606,6 @@
   min-height: 0;
 }
 
-/* On touch layouts (>= 720px), .gn-add-cell sits below the output area inside
- * the card (unless read-only), so the recessed well spans edge-to-edge above it (#960). */
-.touch-ui
-  .notebook-page
-  .jp-CodeCell
-  > .jp-Cell-outputWrapper:has(.jp-OutputArea-child, .jp-OutputPlaceholder) {
-  margin: 10px -44px -8px -30px;
-  padding: 10px 44px 9px 30px;
-}
-
-.touch-ui
-  .notebook-page:not(.is-readonly)
-  .jp-CodeCell
-  > .jp-Cell-outputWrapper:has(.jp-OutputArea-child, .jp-OutputPlaceholder) {
-  margin-bottom: 4px;
-  border-bottom: 1px solid var(--separator);
-  border-radius: 0;
-}
-
 .touch-ui .notebook-page .gn-code-toggle {
   left: 6px;
 }
@@ -634,6 +615,26 @@
  * cell menu here, so the button and the seconds have none. Below 720px the
  * meta line above the cell carries the count instead. */
 @media (min-width: 720px) {
+  /* On touch layouts (>= 720px), .gn-add-cell sits below the output area
+   * inside the card (unless read-only), so the recessed well spans
+   * edge-to-edge above it (#960). */
+  .touch-ui
+    .notebook-page
+    .jp-CodeCell
+    > .jp-Cell-outputWrapper:has(.jp-OutputArea-child, .jp-OutputPlaceholder) {
+    margin: 10px -44px -8px -30px;
+    padding: 10px 44px 9px 30px;
+  }
+
+  .touch-ui
+    .notebook-page:not(.is-readonly)
+    .jp-CodeCell
+    > .jp-Cell-outputWrapper:has(.jp-OutputArea-child, .jp-OutputPlaceholder) {
+    margin-bottom: 4px;
+    border-bottom: 1px solid var(--separator);
+    border-radius: 0;
+  }
+
   .touch-ui .notebook-page .gn-cell-gutter {
     position: absolute;
     top: 38px;
