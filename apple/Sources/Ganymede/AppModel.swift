@@ -52,6 +52,9 @@ final class AppModel {
     private(set) var remotes: [Remote]
     /// The remote kernels run on; nil for this device.
     private(set) var kernelRemoteID: UUID?
+    /// Coordinates saving unsaved notebooks before restarting the server on
+    /// kernel location changes (#808).
+    let kernelSwitchGuard = SwitchSaveCoordinator()
     /// Set when a token or the remotes could not be saved; the page shows
     /// it in an alert.
     var keychainError: String?
@@ -951,6 +954,19 @@ final class AppModel {
         }
     }
 
+    /// Removes a remote and its token, after saving any unsaved notebooks if
+    /// removing the active kernel remote would restart the server (#808).
+    @discardableResult
+    func requestDelete(remote id: UUID) async -> Bool {
+        if kernelRemoteID == id {
+            return await guardServerRestart {
+                self.delete(remote: id)
+            }
+        }
+        delete(remote: id)
+        return true
+    }
+
     /// Removes a remote and its token. Kernels move to this device if they
     /// ran there.
     func delete(remote id: UUID) {
@@ -967,6 +983,89 @@ final class AppModel {
         persist()
         if restart { start() }
     }
+
+    /// Saves open notebooks before switching kernel locations (#808), asking
+    /// the person what to do if a save fails or times out.
+    @discardableResult
+    func requestUseForKernels(_ id: UUID?) async -> Bool {
+        let id = id.flatMap { self.remote($0)?.hasServer == true ? $0 : nil }
+        guard id != kernelRemoteID else { return true }
+        return await guardServerRestart {
+            self.useForKernels(id)
+        }
+    }
+
+    /// Whether saving `remote` with `token` would restart the server because it
+    /// is the active kernel remote and its server settings changed.
+    func wouldRestartSaving(_ remote: Remote, token: String?) -> Bool {
+        guard kernelRemoteID == remote.id, let old = self.remote(remote.id) else { return false }
+        let oldToken = self.token(for: remote.id)
+        let newToken = remote.hasServer ? (token ?? oldToken) : ""
+        return !remote.hasServer || old.serverURL != remote.serverURL || newToken != oldToken
+    }
+
+    /// Saves open dirty notebooks before running `commit` to apply a kernel or
+    /// server change that restarts the server (#808).
+    @discardableResult
+    func guardServerRestart(commit: @escaping @MainActor () -> Void) async -> Bool {
+        let targets = dirtySaveTargets()
+        guard !targets.isEmpty else {
+            commit()
+            return true
+        }
+        #if os(macOS)
+        return await kernelSwitchGuard.guardSwitch(
+            targets: targets,
+            askChoice: { Self.askUnsavedKernelSwitch($0) },
+            commit: commit
+        )
+        #else
+        return await kernelSwitchGuard.guardSwitch(
+            targets: targets,
+            commit: commit
+        )
+        #endif
+    }
+
+    private func dirtySaveTargets() -> [SwitchSaveTarget] {
+        #if os(macOS)
+        PageDocument.openUnsaved.map { doc in
+            SwitchSaveTarget(
+                name: { doc.file?.lastPathComponent ?? doc.name },
+                save: { await SwitchSaveCoordinator.raceSave { await doc.save() } },
+                download: { await doc.downloadCopy() }
+            )
+        }
+        #else
+        PageModel.openPages
+            .filter { $0.state.dirty || ($0.ready && $0.webView != nil) }
+            .map { page in
+                SwitchSaveTarget(
+                    name: { page.notebookDisplayName },
+                    save: { await page.save() },
+                    download: { await page.downloadCopy() }
+                )
+            }
+        #endif
+    }
+
+    #if os(macOS)
+    private static func askUnsavedKernelSwitch(_ prompt: BlockedSwitchPrompt) -> UnsavedSwitchDecision {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = prompt.title
+        alert.informativeText = prompt.message
+        alert.addButton(withTitle: "Keep Editing")
+        alert.addButton(withTitle: "Download a Copy")
+        let switchButton = alert.addButton(withTitle: "Switch Without Saving")
+        switchButton.hasDestructiveAction = true
+        switch alert.runModal() {
+        case .alertSecondButtonReturn: return .downloadCopy
+        case .alertThirdButtonReturn: return .switchWithoutSaving
+        default: return .keepEditing
+        }
+    }
+    #endif
 
     /// Runs kernels on the remote's server, or on this device when nil.
     /// Restarts the server.

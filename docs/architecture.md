@@ -117,6 +117,23 @@ Copy (the controller's `download`) and Switch Without Saving (its
 `discard`, so the pane's teardown doesn't save). Cancel during the save
 drops the switch.
 
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+Closing or replacing a dirty notebook in the page (opening another
+file, creating a new notebook, opening examples, or opening a DuckDB
+console in the page) also awaits its save first (#808): when the save
+fails or times out, `UnsavedSheet` (`UnsavedChoice`) asks whether to
+Keep Editing, Download a Copy, or Switch Without Saving. In the Apple
+apps, `SwitchSaveCoordinator` applies the same save-before-switch guard
+before `ContentView.switchPlace` retires the old page on iPad and iPhone
+(including links and Spotlight) and before `AppModel` restarts the server
+for Settings › Kernels or remote server changes, and backgrounding the
+iPad or iPhone scene saves the open notebook inside a background task
+while `WebViewCoordinator` marks terminated WebKit processes not-ready
+until reloaded.
+
 Switching backends disposes the old `ServiceManager`, once the last
 saves of the panes that closed on it (`pendingHandoffs` in
 `src/lib/rename.ts`) are done, or after `SERVER_TIMEOUT_MS`: they save

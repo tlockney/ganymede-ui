@@ -47,5 +47,7 @@ func chooseKernelLocation(_ id: UUID?, model: AppModel, running: Int?) {
         guard alert.runModal() == .alertFirstButtonReturn else { return }
     }
     #endif
-    model.useForKernels(id)
+    Task { @MainActor in
+        await model.requestUseForKernels(id)
+    }
 }

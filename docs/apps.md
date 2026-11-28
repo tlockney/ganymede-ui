@@ -253,6 +253,16 @@ Settings > Remotes.
   another machine's own notebooks, connect it instead
   ([Connected machines](#connected-machines)).
 
+  > [!NOTE]
+  > **Unreleased.** Available only from a build of `main` (HEAD), not in
+  > the latest release, where changing where kernels run restarts the
+  > server without waiting for unsaved notebook edits to save.
+
+  When changing where kernels run restarts the server (from Settings ›
+  Kernels, Settings › Remotes, or the toolbar's kernel picker), the app
+  saves open notebooks first and asks before restarting if a save fails
+  or times out (Keep Editing, Download a Copy, or Switch Without Saving).
+
 - Kernels that run on a remote carry its name wherever they are listed:
   "Python 3 · workmbp" in the Mac's kernel popover and Kernel > Change
   Kernel, in the iPad's and iPhone's kernel menu, in the browser's kernel
@@ -1055,6 +1065,17 @@ Terminals and text files cover the screen.
 - **Downloads** open the share sheet, where Save to Files keeps them.
 - In the background iOS may stop the app's server; back in the
   foreground the app restarts it if it stopped answering.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, which only saves open text files on backgrounding
+> and switches places without awaiting notebook saves.
+
+- Unsaved notebook edits save when going to the background and before
+  switching between this device and a connected machine (including links
+  and Spotlight); if a pre-switch save fails or times out, the app asks
+  Keep Editing, Download a Copy, or Switch Without Saving before leaving
+  the page.
 
 ### Tailscale SSH
 

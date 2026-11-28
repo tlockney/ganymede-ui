@@ -75,6 +75,13 @@ final class PageDocument {
         }
     }
 
+    /// Downloads a copy of the notebook and waits until its save panel closes (#808).
+    func downloadCopy() async {
+        guard let webView else { return }
+        window?.makeKeyAndOrderFront(nil)
+        await DownloadWaiter.triggerDownload(in: webView)
+    }
+
     /// Asks whether to save before `window` closes, then closes it unless
     /// cancelled or the save failed (the page says why).
     func confirmClose(_ window: NSWindow) {
@@ -123,6 +130,14 @@ final class PageDocument {
 
     static var hasUnsaved: Bool {
         all.allObjects.contains { $0.dirty && $0.window?.isVisible == true }
+    }
+
+    /// Every open document window or tab with unsaved edits (#808).
+    static var openUnsaved: [PageDocument] {
+        all.allObjects.filter { doc in
+            guard doc.dirty, let window = doc.window else { return false }
+            return window.isVisible || window.tabGroup?.windows.contains(window) == true
+        }
     }
 
     /// Save, Cancel, Don't Save (⌘D), as document apps ask.

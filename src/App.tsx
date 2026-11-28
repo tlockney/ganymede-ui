@@ -31,6 +31,7 @@ import {
 import { NotebookPane, type NotebookController } from './components/NotebookPane';
 import { dataKind } from './lib/data-files';
 import { ConnectSheet } from './components/ConnectSheet';
+import { UnsavedSheet } from './components/UnsavedSheet';
 import { EmptyState } from './components/EmptyState';
 import { ShortcutsSheet } from './components/ShortcutsSheet';
 import { HostAccessSheet } from './components/HostAccessSheet';
@@ -119,6 +120,18 @@ function stripLaunchParams(): void {
 
 type PendingStart = { kind: 'try' } | { kind: 'open'; file: File };
 
+/**
+ * Races saving `open` against `SERVER_TIMEOUT_MS` so switching away can either
+ * finish cleanly or hand the choice back (#792, #808).
+ */
+async function saveWithTimeout(open: NotebookController): Promise<boolean | 'late'> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const late = new Promise<'late'>(resolve => {
+    timer = setTimeout(() => resolve('late'), SERVER_TIMEOUT_MS);
+  });
+  return Promise.race([open.save().catch(() => false), late]).finally(() => clearTimeout(timer));
+}
+
 export function App() {
   const scheme = useColorScheme();
   useJupyterLabTheme(scheme);
@@ -154,6 +167,8 @@ export function App() {
   /** The record of the console to show on the first connection: the tab's own id (#735). */
   const pendingSession = useRef(launch.session);
   const [openPath, setOpenPathState] = useState<string>();
+  const openPathRef = useRef(openPath);
+  openPathRef.current = openPath;
   /**
    * The DuckDB console (#679) shows in the page where a notebook would, in
    * this folder. It has no path: the app's state says no notebook is open,
@@ -162,6 +177,8 @@ export function App() {
    * app opens a tab for it.
    */
   const [duckFolder, setDuckFolder] = useState<string>();
+  const duckFolderRef = useRef(duckFolder);
+  duckFolderRef.current = duckFolder;
   /**
    * Sets the open path; a path opened closes the console, here and now, not
    * from an effect after the render: an effect could run after a console
@@ -171,11 +188,8 @@ export function App() {
     if (typeof next === 'string' && next) setDuckFolder(undefined);
     setOpenPathState(next);
   }, []);
-  /**
-   * Opens a notebook or data file: in the page, or in a tab of its own from a
-   * console tab, which keeps its console (#729).
-   */
-  const openNotebook = useCallback(
+  /** Opens a path in the page or a new tab without prompting to save first. */
+  const revealPath = useCallback(
     (path: string) => (consoleTab ? openTab({ path }) : setOpenPath(path)),
     [consoleTab, setOpenPath],
   );
@@ -281,6 +295,67 @@ export function App() {
     [followRun, setOpenPath],
   );
   const [controller, setController] = useState<NotebookController>();
+  const controllerRef = useRef(controller);
+  controllerRef.current = controller;
+  /** Bumped by each close guard, backend switch, close, or Keep Editing. */
+  const closeTry = useRef(0);
+  /**
+   * A notebook close or switch that couldn't save (#808): shows UnsavedSheet
+   * with Keep Editing, Download a Copy, or Switch Without Saving.
+   */
+  const [blockedClose, setBlockedClose] = useState<{
+    controller: NotebookController;
+    why?: string;
+    proceed: () => boolean | Promise<boolean> | void;
+  }>();
+  useEffect(() => {
+    setBlockedClose(b => (b && openPath !== b.controller.path ? undefined : b));
+  }, [openPath]);
+  /**
+   * Saves a dirty open notebook before replacing it (#808). Runs `proceed`
+   * once saved (or at once when nothing dirty is open); on save failure or
+   * timeout, blocks the switch behind the unsaved-edits prompt.
+   */
+  const guardClose = useCallback(
+    async (proceed: () => boolean | Promise<boolean> | void): Promise<boolean> => {
+      const attempt = ++closeTry.current;
+      const open = controllerRef.current;
+      if (open && open.path === openPathRef.current && open.dirty) {
+        const saved = await saveWithTimeout(open);
+        if (closeTry.current !== attempt) return false;
+        if (saved !== true) {
+          setBlockedClose({
+            controller: open,
+            why: saved === 'late' ? 'The server didn’t answer in time.' : undefined,
+            proceed,
+          });
+          return false;
+        }
+      }
+      return (await proceed()) !== false;
+    },
+    [],
+  );
+  /**
+   * Opens a notebook or data file: in the page after saving any dirty open
+   * notebook (#808), or in a tab of its own from a console tab (#729).
+   */
+  const openNotebook = useCallback(
+    async (path: string): Promise<boolean> => {
+      if (consoleTab) {
+        openTab({ path });
+        return true;
+      }
+      if (path === openPathRef.current && duckFolderRef.current === undefined) return true;
+      const currentBackend = backendRef.current;
+      return guardClose(() => {
+        if (backendRef.current !== currentBackend) return false;
+        setOpenPath(path);
+        return true;
+      });
+    },
+    [consoleTab, guardClose, setOpenPath],
+  );
   const paneKey =
     backend && openPath && !dataKind(openPath) ? `${backend.config.kind}:${openPath}` : undefined;
   const [failedPane, setFailedPane] = useState<string>();
@@ -344,8 +419,8 @@ export function App() {
   }, []);
   // The app picks where kernels run in Settings › Kernels.
   const openConnect = useCallback(() => {
-    if (!showAppSettings('kernels')) setSheetOpen(true);
-  }, []);
+    if (!blockedClose && !showAppSettings('kernels')) setSheetOpen(true);
+  }, [blockedClose]);
 
   useEffect(stripLaunchParams, []);
 
@@ -431,12 +506,12 @@ export function App() {
       try {
         if (start.kind === 'try') {
           const path = await copySample(contents, '', kernelspecs.specs);
-          if (current) openNotebook(path);
+          if (current) revealPath(path);
         } else {
           const { paths, errors } = await copyIntoFolder(contents, '', [start.file]);
           if (!current) return;
           if (errors.length) setNewError(errors.join('\n'));
-          if (paths.length) openNotebook(paths[0]);
+          if (paths.length) revealPath(paths[0]);
         }
       } catch (e) {
         if (current) {
@@ -448,7 +523,7 @@ export function App() {
     return () => {
       current = false;
     };
-  }, [backend, openNotebook]);
+  }, [backend, revealPath]);
 
   // A backend another took the place of is disposed once the last saves
   // of the panes that closed on it are done (#792): they save through its
@@ -478,44 +553,47 @@ export function App() {
     /** Resolves true once the new notebook opens, false if it wasn't created. */
     async (dir: string): Promise<boolean> => {
       if (!backend) return false;
-      setNewError(undefined);
-      const { services } = backend;
-      let model;
-      try {
-        model = await services.contents.newUntitled({ type: 'notebook', path: dir });
-      } catch (e) {
-        // Said, not dropped: a click that does nothing reads as a dead button.
-        const where = dir ? `“${dir.split('/').pop()}”` : 'this folder';
-        setNewError(
-          `Couldn’t create a notebook in ${where}: ${e instanceof Error ? e.message : String(e)}`,
-        );
-        return false;
-      }
-      // The default kernel, for the first run. Without it the notebook
-      // still opens, and its kernel picker asks.
-      try {
-        const spec = services.kernelspecs.specs;
-        const name = spec?.default;
-        if (name && spec?.kernelspecs[name]) {
-          const ks = spec.kernelspecs[name]!;
-          const nb = await services.contents.get(model.path, { content: true });
-          nb.content.metadata = {
-            ...nb.content.metadata,
-            kernelspec: { name, display_name: ks.display_name, language: ks.language },
-          };
-          await services.contents.save(model.path, {
-            type: 'notebook',
-            format: 'json',
-            content: nb.content,
-          });
+      return guardClose(async () => {
+        if (backendRef.current !== backend) return false;
+        setNewError(undefined);
+        const { services } = backend;
+        let model;
+        try {
+          model = await services.contents.newUntitled({ type: 'notebook', path: dir });
+        } catch (e) {
+          // Said, not dropped: a click that does nothing reads as a dead button.
+          const where = dir ? `“${dir.split('/').pop()}”` : 'this folder';
+          setNewError(
+            `Couldn’t create a notebook in ${where}: ${e instanceof Error ? e.message : String(e)}`,
+          );
+          return false;
         }
-      } catch (e) {
-        console.warn(`Couldn’t set the kernel of ${model.path}:`, e);
-      }
-      openNotebook(model.path);
-      return true;
+        // The default kernel, for the first run. Without it the notebook
+        // still opens, and its kernel picker asks.
+        try {
+          const spec = services.kernelspecs.specs;
+          const name = spec?.default;
+          if (name && spec?.kernelspecs[name]) {
+            const ks = spec.kernelspecs[name]!;
+            const nb = await services.contents.get(model.path, { content: true });
+            nb.content.metadata = {
+              ...nb.content.metadata,
+              kernelspec: { name, display_name: ks.display_name, language: ks.language },
+            };
+            await services.contents.save(model.path, {
+              type: 'notebook',
+              format: 'json',
+              content: nb.content,
+            });
+          }
+        } catch (e) {
+          console.warn(`Couldn’t set the kernel of ${model.path}:`, e);
+        }
+        revealPath(model.path);
+        return true;
+      });
     },
-    [backend, openNotebook],
+    [backend, guardClose, revealPath],
   );
 
   const copyingExamples = useRef(false);
@@ -524,23 +602,27 @@ export function App() {
     async (dir: string): Promise<boolean> => {
       // One copy at a time: a double click shouldn't make two folders.
       if (!backend || copyingExamples.current) return false;
-      copyingExamples.current = true;
-      setNewError(undefined);
-      try {
-        const { copyExamples } = await import('./lib/examples');
-        const { contents, kernelspecs } = backend.services;
-        const path = await copyExamples(contents, dir, kernelspecs.specs);
-        // Not if the backend changed while the copy ran.
-        if (backendRef.current === backend) openNotebook(path);
-        return true;
-      } catch (e) {
-        setNewError(`Couldn’t copy the examples: ${e instanceof Error ? e.message : String(e)}`);
-        return false;
-      } finally {
-        copyingExamples.current = false;
-      }
+      return guardClose(async () => {
+        if (backendRef.current !== backend || copyingExamples.current) return false;
+        copyingExamples.current = true;
+        setNewError(undefined);
+        try {
+          const { copyExamples } = await import('./lib/examples');
+          const { contents, kernelspecs } = backend.services;
+          const path = await copyExamples(contents, dir, kernelspecs.specs);
+          // Not if the backend changed while the copy ran.
+          if (backendRef.current !== backend) return false;
+          revealPath(path);
+          return true;
+        } catch (e) {
+          setNewError(`Couldn’t copy the examples: ${e instanceof Error ? e.message : String(e)}`);
+          return false;
+        } finally {
+          copyingExamples.current = false;
+        }
+      });
     },
-    [backend, openNotebook],
+    [backend, guardClose, revealPath],
   );
 
   // A notebook dropped on the window from Finder or Files is copied into
@@ -548,7 +630,7 @@ export function App() {
   const drop = useFileDrop({
     contents: backend?.services.contents,
     dir: folder,
-    onCopied: paths => openNotebook(paths[0]),
+    onCopied: paths => void openNotebook(paths[0]),
     onError: setNewError,
   });
 
@@ -570,14 +652,14 @@ export function App() {
 
   // The Mac app's window: its title bar's edited dot and proxy icon, and
   // its Save, close and quit prompts.
-  const controllerRef = useRef(controller);
-  controllerRef.current = controller;
   /**
    * Connect to what the sheet picked. The launch file and folder belong to
    * the first backend: kept for a retry there (a corrected token) or when
    * this is the first pick, dropped for another.
    */
   const switchBackend = (c: BackendConfig) => {
+    closeTry.current++;
+    setBlockedClose(undefined);
     // The sheet's pick replaces a start screen pick still connecting (#815).
     pendingStart.current = undefined;
     if (config && !sameBackend(c, config)) {
@@ -617,11 +699,7 @@ export function App() {
     // The controller outlives its pane: a data file or console opened since has none.
     if (open && open.path === openPath && open.dirty) {
       setSavingForSwitch(true);
-      let timer: ReturnType<typeof setTimeout> | undefined;
-      const late = new Promise<'late'>(resolve => {
-        timer = setTimeout(() => resolve('late'), SERVER_TIMEOUT_MS);
-      });
-      const saved = await Promise.race([open.save(), late]).finally(() => clearTimeout(timer));
+      const saved = await saveWithTimeout(open);
       if (switchTry.current !== attempt) return;
       setSavingForSwitch(false);
       if (saved !== true) {
@@ -647,8 +725,7 @@ export function App() {
         const path = arg && clean(arg);
         if (!backend || !path) return false;
         // A console tab keeps its console: the notebook gets a tab (#729).
-        openNotebook(path);
-        return true;
+        return openNotebook(path);
       }
       case 'new-duckdb-console':
         if (!backend) return false;
@@ -660,10 +737,14 @@ export function App() {
         }
         // A notebook open goes the way another notebook's opening takes it.
         {
+          const currentBackend = backend;
           const dir = clean(arg ?? folder);
-          showConsole(startConsole(recentsKey(backend.config), undefined, dir), dir);
+          return guardClose(() => {
+            if (backendRef.current !== currentBackend) return false;
+            showConsole(startConsole(recentsKey(currentBackend.config), undefined, dir), dir);
+            return true;
+          });
         }
-        return true;
       case 'open-console': {
         // A recent console again (#735): a tab on the Mac, else in the page.
         const found = backend
@@ -676,8 +757,12 @@ export function App() {
         }
         // Already the one shown: it keeps its engine and scrollback.
         if (duck?.id === found.id && !openPath && duckFolder !== undefined) return true;
-        showConsole(found, found.folder);
-        return true;
+        const currentBackend = backend;
+        return guardClose(() => {
+          if (backendRef.current !== currentBackend) return false;
+          showConsole(found, found.folder);
+          return true;
+        });
       }
       case 'clear-recent-consoles':
         if (!backend) return false;
@@ -702,6 +787,8 @@ export function App() {
         }
         // Without saving: the app closes a notebook it moved to the Trash.
         if (!openPath) return false;
+        closeTry.current++;
+        setBlockedClose(undefined);
         c?.discard();
         setOpenPath(undefined);
         return true;
@@ -1181,8 +1268,15 @@ export function App() {
   // Esc on a sheet opened from the sidebar closes the sheet, not the sidebar.
   // Notebook Access or Publish.
   const notebookSheetOpen = !!accessFor || !!publishFor || !!runFor;
-  const sheetShown = sheetOpen || shortcutsOpen || settingsOpen || notebookSheetOpen || paletteOpen;
-  otherSheetShown.current = sheetOpen || shortcutsOpen || settingsOpen || notebookSheetOpen;
+  const sheetShown =
+    sheetOpen ||
+    !!blockedClose ||
+    shortcutsOpen ||
+    settingsOpen ||
+    notebookSheetOpen ||
+    paletteOpen;
+  otherSheetShown.current =
+    sheetOpen || !!blockedClose || shortcutsOpen || settingsOpen || notebookSheetOpen;
   useEffect(() => {
     if (!sidebarFloats || sheetShown) return;
     const onKey = (e: KeyboardEvent) => {
@@ -1218,7 +1312,7 @@ export function App() {
             openPath={openPath}
             root={sidebarRoot}
             onOpen={path => {
-              openNotebook(path);
+              void openNotebook(path);
               afterPick();
             }}
             onOpenFile={
@@ -1360,7 +1454,7 @@ export function App() {
                     const { contents, kernelspecs } = backend.services;
                     const path = await copySample(contents, folder, kernelspecs.specs);
                     // Not if the backend changed while the copy ran.
-                    if (backendRef.current === backend) openNotebook(path);
+                    if (backendRef.current === backend) revealPath(path);
                   })
                 }
               />
@@ -1424,6 +1518,27 @@ export function App() {
             // change of state, and they share what `discard` sets.
             c.discard();
             switchBackend(next);
+          }}
+        />
+      )}
+      {blockedClose && (
+        <UnsavedSheet
+          name={blockedClose.controller.name}
+          why={blockedClose.why}
+          onKeepEditing={() => {
+            closeTry.current++;
+            setBlockedClose(undefined);
+          }}
+          onDownloadCopy={() => blockedClose.controller.download()}
+          onSwitchAnyway={() => {
+            const { controller: c, proceed } = blockedClose;
+            closeTry.current++;
+            setBlockedClose(undefined);
+            const undo = c.discard();
+            void Promise.resolve(proceed()).then(ok => {
+              if (ok === false) undo();
+              else afterPick();
+            });
           }}
         />
       )}

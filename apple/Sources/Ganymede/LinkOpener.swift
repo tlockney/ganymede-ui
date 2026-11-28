@@ -194,6 +194,12 @@ final class LinkOpener {
         if notice?.id == id { notice = nil }
     }
 
+    /// Drops a parked link switch when the person chose Keep Editing instead
+    /// of switching to this device (#808).
+    func cancelPending() {
+        pending = nil
+    }
+
     /// The page is ready and its server was started on `served`
     /// (`AppModel.servedRoot`, not the requested root): opens the notebook
     /// a folder switch waits for once that is its folder. A page of the

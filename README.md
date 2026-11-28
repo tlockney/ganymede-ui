@@ -241,6 +241,16 @@ open notebook first; if that save fails or the server doesn't answer, the
 switch stops and asks: keep editing, download a copy, or switch without
 saving.
 
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, where opening another notebook or console closes the
+> open notebook immediately if its save fails.
+
+Opening another notebook, creating a new notebook, opening examples, or
+opening an in-page DuckDB console uses the same save-then-choice guard
+in the browser: if saving fails or times out, Ganymede asks before
+closing the open notebook.
+
 ### Live editing on a Ganymede server
 
 On a Ganymede server, including the apps' own, an open notebook joins the

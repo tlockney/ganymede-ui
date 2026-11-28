@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import type { BackendConfig } from '../lib/backends';
 import { useModalFocus } from '../lib/modal-focus';
 import { BrowserIcon, ServerIcon } from './Icons';
+import { UnsavedChoice } from './UnsavedSheet';
 
 type Props = {
   initial?: BackendConfig;
@@ -215,24 +216,13 @@ export function ConnectSheet({
         )}
 
         {unsaved !== undefined ? (
-          <div className="sheet-unsaved" role="alert">
-            <p className="sheet-error">
-              Couldn’t save “{unsaved}”.{unsavedWhy && ` ${unsavedWhy}`} Switching closes it, and
-              its unsaved edits would be lost.{' '}
-              {unsavedWhy ? 'Keep editing to try again.' : 'Keep editing to see why and try again.'}
-            </p>
-            <div className="sheet-buttons">
-              <button type="button" className="push-button" onClick={onSwitchAnyway}>
-                Switch Without Saving
-              </button>
-              <button type="button" className="push-button" onClick={onDownloadCopy}>
-                Download a Copy
-              </button>
-              <button type="button" className="push-button primary" onClick={onCancel}>
-                Keep Editing
-              </button>
-            </div>
-          </div>
+          <UnsavedChoice
+            name={unsaved}
+            why={unsavedWhy}
+            onKeepEditing={onCancel}
+            onDownloadCopy={onDownloadCopy}
+            onSwitchAnyway={onSwitchAnyway}
+          />
         ) : (
           <div className="sheet-buttons">
             {canCancel && (

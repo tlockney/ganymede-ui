@@ -104,6 +104,8 @@ struct ContentView: View {
     @State private var pickPurpose = FolderPick.openFolder
     /// `ganymede://open` links (#640).
     @State private var links = LinkOpener(later: ContentView.afterPresentationEnds)
+    /// Saves unsaved edits before switching places (#808).
+    @State private var placeSwitchGuard = SwitchSaveCoordinator()
     /// This window, in `OpenTextFiles`.
     @State private var windowID = UUID()
     @State private var settings = false
@@ -516,6 +518,12 @@ struct ContentView: View {
         .modifier(LinkAlert(
             links: links, isEnabled: !settings && !coverShown, grant: startGrant, change: changeFolder
         ))
+        .modifier(SwitchSaveAlert(coordinator: placeSwitchGuard, isEnabled: !settings && !coverShown))
+        .background {
+            Color.clear.modifier(
+                SwitchSaveAlert(coordinator: model.kernelSwitchGuard, isEnabled: !settings && !coverShown)
+            )
+        }
         // Spotlight (#305): the page's recents are indexed, a save updates
         // its entry, and a result opens here.
         .onChange(of: pageModel.state.recents, initial: true) { _, recents in
@@ -574,6 +582,7 @@ struct ContentView: View {
             }
             .environment(model)
             .modifier(LinkAlert(links: links, isEnabled: !coverShown, grant: startGrant, change: changeFolder))
+            .modifier(SwitchSaveAlert(coordinator: placeSwitchGuard, isEnabled: !coverShown))
             .fileImporter(isPresented: $settingsPicking, allowedContentTypes: [.folder], onCompletion: linkFolderPicked)
         }
         .onReceive(NotificationCenter.default.publisher(for: .showAppSettings)) { note in
@@ -598,6 +607,7 @@ struct ContentView: View {
             }
             .environment(model)
             .modifier(LinkAlert(links: links, grant: startGrant, change: changeFolder))
+            .modifier(SwitchSaveAlert(coordinator: placeSwitchGuard))
             .fileImporter(isPresented: $coverPicking, allowedContentTypes: [.folder], onCompletion: linkFolderPicked)
         }
         .fullScreenCover(item: $editing) { request in
@@ -607,6 +617,7 @@ struct ContentView: View {
                 EditorWindow(request: request) { editing = nil }
             }
             .modifier(LinkAlert(links: links, isEnabled: terminal == nil, grant: startGrant, change: changeFolder))
+            .modifier(SwitchSaveAlert(coordinator: placeSwitchGuard, isEnabled: terminal == nil))
             .fileImporter(isPresented: $coverPicking, allowedContentTypes: [.folder], onCompletion: linkFolderPicked)
         }
         .fileImporter(isPresented: $picking, allowedContentTypes: [.folder]) { result in
@@ -622,8 +633,12 @@ struct ContentView: View {
         .onChange(of: phase) { _, phase in
             // Files with edits but no screen of their own (a save on the
             // way back to the notebook failed): iOS may end the scene.
-            if phase == .background { openFiles.saveHidden() }
+            if phase == .background {
+                openFiles.saveHidden()
+                saveNotebookOnBackground()
+            }
             if phase == .active {
+                (pageModel.webView?.navigationDelegate as? WebViewCoordinator)?.reloadIfTerminated()
                 Task { await model.resume() }
                 SpotlightSettings.shared.syncIfStale()
             }
@@ -1041,7 +1056,7 @@ struct ContentView: View {
                 showTerminal: showTerminal,
                 columnShown: NavigatorTab.sidebarColumnShown(
                     columns, portrait: portrait, compact: sizeClass == .compact),
-                onPlace: switchPlace
+                onPlace: { new in Task { @MainActor in await switchPlace(new) } }
             )
             // Another place is another list, and a restarted server has a
             // new address and token (the split view and its panel stay).
@@ -1051,27 +1066,46 @@ struct ContentView: View {
         }
     }
 
-    /// Shows `new` in this scene (#758): the page for that place loads,
-    /// with its own handlers (a coordinator's place is fixed, so the
-    /// iPad's web view is made again, and the iPhone's store replaced). What
-    /// the old place had open, and the old page's state, are dropped first:
-    /// the shared `pageModel` must not carry its notebook into the new place
-    /// (it forgets the page before the new one loads).
-    private func switchPlace(_ new: Place) {
-        guard new != place else { return }
-        // Text files saved on the way, as when the notebook comes back; the
-        // old place's, so a machine's file isn't left over this device's
-        // notebook (#855).
-        openFiles.showNotebook()
-        phonePath = []
-        panelFills = false
-        if isPhone {
-            phonePage.retire()
-            phonePage = WebViewStore(
-                place: new, sharesName: sharesName(for: new), usesDevice: usesDevice(for: new))
+    /// Shows `new` in this scene (#758): saves the open notebook first (#808),
+    /// then drops the old web view and forgets the old page's state before
+    /// switching `place`. On save failure or timeout, asks the user before
+    /// retiring or switching.
+    @MainActor
+    private func switchPlace(
+        _ new: Place,
+        onCancel: @escaping @MainActor () -> Void = {},
+        then afterSwitch: @escaping @MainActor () -> Void = {}
+    ) async {
+        guard new != place else {
+            afterSwitch()
+            return
         }
-        pageModel.forgetPage()
-        place = new
+        await placeSwitchGuard.guardSwitch(
+            notebookName: { pageModel.notebookDisplayName },
+            save: { await pageModel.save() },
+            download: { await pageModel.downloadCopy() },
+            onCancel: onCancel,
+            commit: {
+                guard new != place else {
+                    afterSwitch()
+                    return
+                }
+                // Text files saved on the way, as when the notebook comes back; the
+                // old place's, so a machine's file isn't left over this device's
+                // notebook (#855).
+                openFiles.showNotebook()
+                phonePath = []
+                panelFills = false
+                if isPhone {
+                    phonePage.retire()
+                    phonePage = WebViewStore(
+                        place: new, sharesName: sharesName(for: new), usesDevice: usesDevice(for: new))
+                }
+                pageModel.forgetPage()
+                place = new
+                afterSwitch()
+            }
+        )
     }
 
     /// The iPhone's screens over its folder list (#209).
@@ -1214,7 +1248,7 @@ struct ContentView: View {
             panelFills = false
             pageModel.run("open", arg: path)
         case .place(let targetPlace):
-            switchPlace(targetPlace)
+            Task { @MainActor in await switchPlace(targetPlace) }
         }
     }
 
@@ -1402,15 +1436,18 @@ struct ContentView: View {
     private func showNotebook(apiPath path: String) {
         // A notebook of this device, whichever place the scene shows (#758):
         // a machine's page would look for it on the machine.
-        switchPlace(.thisDevice)
-        pageModel.run("open", arg: path)
-        if isPhone {
-            // Behind a cover, if one is up: there when it closes.
-            phonePath = [.notebook]
-        } else if drawsNativeChrome {
-            openFiles.showNotebook()
-            panelFills = false
-            if portrait { columns = .hidden }
+        Task { @MainActor in
+            await switchPlace(.thisDevice, then: {
+                pageModel.run("open", arg: path)
+                if isPhone {
+                    // Behind a cover, if one is up: there when it closes.
+                    phonePath = [.notebook]
+                } else if drawsNativeChrome {
+                    openFiles.showNotebook()
+                    panelFills = false
+                    if portrait { columns = .hidden }
+                }
+            })
         }
     }
 
@@ -1441,7 +1478,10 @@ struct ContentView: View {
     /// the page not ready (`PageModel.forgetPage`), so this device's page
     /// becoming ready is a transition that `pageReady` sees.
     private func showThisDeviceForParkedLink() {
-        if links.waitsForThisDevice(showing: place) { switchPlace(.thisDevice) }
+        guard links.waitsForThisDevice(showing: place) else { return }
+        Task { @MainActor in
+            await switchPlace(.thisDevice, onCancel: { links.cancelPending() })
+        }
     }
 
     /// Whether a terminal or editor is over the window, and the sheet.
@@ -1458,8 +1498,30 @@ struct ContentView: View {
     private func changeFolder(_ change: LinkOpener.FolderSwitch) {
         // The link's notebook is this device's: show this device's page, so
         // it opens in context and not in a machine's.
-        switchPlace(.thisDevice)
-        links.confirm(change) { model.open(folder: $0) }
+        Task { @MainActor in
+            await switchPlace(.thisDevice, then: {
+                links.confirm(change) { model.open(folder: $0) }
+            })
+        }
+    }
+
+    /// Saves the open notebook before iOS suspends the scene (#808).
+    private func saveNotebookOnBackground() {
+        guard pageModel.ready, pageModel.webView != nil else { return }
+        var taskID: UIBackgroundTaskIdentifier = .invalid
+        let endTask: @MainActor () -> Void = {
+            if taskID != .invalid {
+                UIApplication.shared.endBackgroundTask(taskID)
+                taskID = .invalid
+            }
+        }
+        taskID = UIApplication.shared.beginBackgroundTask(withName: "SaveNotebook") {
+            Task { @MainActor in endTask() }
+        }
+        Task { @MainActor in
+            _ = await pageModel.save(timeout: .seconds(4))
+            endTask()
+        }
     }
 
     /// Runs `work` once a sheet, cover, picker or alert that is closing is
