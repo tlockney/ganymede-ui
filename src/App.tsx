@@ -281,6 +281,14 @@ export function App() {
     [followRun, setOpenPath],
   );
   const [controller, setController] = useState<NotebookController>();
+  const paneKey =
+    backend && openPath && !dataKind(openPath) ? `${backend.config.kind}:${openPath}` : undefined;
+  const [failedPane, setFailedPane] = useState<string>();
+  const openFailed = !!paneKey && failedPane === paneKey;
+  const onLoadError = useCallback(
+    (failed: boolean) => setFailedPane(failed ? paneKey : undefined),
+    [paneKey],
+  );
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [paletteOpen, setPaletteOpen] = useState(false);
   /** The Variables view beside the notebook (#242). */
@@ -1114,12 +1122,12 @@ export function App() {
       consoles: native ? (JSON.parse(consolesKeyed) as PageState['consoles']) : [],
       search: JSON.parse(searchKey) as PageState['search'],
       outline: shown?.outline ?? [],
-      // No notebook shown, as when it failed to open (#881): the page still
-      // answers the asked query, with nothing found, so the app's Find tab
-      // doesn't wait for a notebook that will never answer.
+      // Answer empty only once opening has failed (#891): while the notebook
+      // is still opening, leave notebookFind null so the Mac Find tab keeps
+      // "Searching…" instead of flashing "No matches".
       notebookFind: shown
         ? shown.notebookFind
-        : findQuery
+        : openFailed && findQuery
           ? { query: findQuery, matches: [], more: 0 }
           : null,
       variables: JSON.parse(variablesKey) as PageState['variables'],
@@ -1128,6 +1136,7 @@ export function App() {
     openPath,
     dirty,
     shown,
+    openFailed,
     specs,
     places,
     backend,
@@ -1306,6 +1315,7 @@ export function App() {
                 native={native}
                 findQuery={findQuery}
                 onController={setController}
+                onLoadError={onLoadError}
                 onRenamed={followRename}
               />
             ) : (

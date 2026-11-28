@@ -35,6 +35,7 @@ import { SearchDocumentModel, SearchDocumentView } from '@jupyterlab/documentsea
 import {
   Notebook,
   NotebookActions,
+  type NotebookMode,
   NotebookPanel,
   NotebookSearchProvider,
   StaticNotebook,
@@ -196,9 +197,16 @@ export function createStaticRendermime(): IRenderMimeRegistry {
 
 let notebookCount = 0;
 
+/** `Notebook` with `setMode` public so callers can change mode without taking focus (#897). */
+export class GanymedeNotebook extends Notebook {
+  override setMode(newValue: NotebookMode, options?: { focus?: boolean }): void {
+    super.setMode(newValue, options);
+  }
+}
+
 /** A notebook widget with no model yet, with an id safe in selectors. */
-export function createNotebook(rendermime: IRenderMimeRegistry): Notebook {
-  const notebook = new Notebook({
+export function createNotebook(rendermime: IRenderMimeRegistry): GanymedeNotebook {
+  const notebook = new GanymedeNotebook({
     rendermime,
     contentFactory: new NotebookPanel.ContentFactory({
       editorFactory: editorServices.factory.newInlineEditor,

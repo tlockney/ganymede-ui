@@ -21,6 +21,8 @@
   --sidebar-solid: #ece6da;
   --toolbar-bg: rgba(251, 249, 245, 0.8);
   --text: #1d1d1f;
+  /* Headings in dark mode take moon cream; light keeps --text (#897). */
+  --heading: var(--text);
   --text-2: rgba(60, 60, 67, 0.72);
   --text-3: rgba(60, 60, 67, 0.45);
   /* Metadata text, the status line and a cell's meta line: darker than
@@ -84,6 +86,7 @@
     --sidebar-solid: #141a33;
     --toolbar-bg: rgba(24, 28, 47, 0.8);
     --text: #f5f5f7;
+    --heading: var(--brand-cream);
     --text-2: rgba(235, 235, 245, 0.66);
     --text-3: rgba(235, 235, 245, 0.36);
     --meta-color: var(--text-2);
@@ -460,10 +463,10 @@ button {
 }
 
 /* The journal's eyebrow above the title (#852), in the notebook view too:
- * a notebook an agent keeps says so, "TYPESCRIPT · 9 NOV 2026". */
+ * a notebook an agent keeps says so, "TYPESCRIPT · 9 NOV 2026 · KEPT WITH CLAUDE". */
 .title-eyebrow {
   margin: 0 0 2px;
-  color: var(--meta-color);
+  color: var(--accent-text);
   font: 10px/1.2 var(--font-mono);
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -487,7 +490,7 @@ button {
   margin: 0 auto 8px;
   padding: 6px calc(max(32px, var(--safe-right)) + var(--jp-notebook-padding, 10px)) 0
     calc(max(32px, var(--safe-left)) + var(--jp-notebook-padding, 10px));
-  color: var(--meta-color);
+  color: var(--accent-text);
   font: 11px/16px var(--font-mono);
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -521,11 +524,17 @@ button {
 }
 
 /* Eyebrow, title row and status line need more than the 52px header: it
- * grows by 12px while it has an eyebrow, or the eyebrow is clipped. Only
- * the main column's: the sidebar's titlebar keeps 52px, so its rows don't
- * move when a notebook with an eyebrow opens (#812). */
-:root:not(.touch-ui) .main:has(.toolbar .title-eyebrow) {
+ * grows by 12px while it has an eyebrow, or the eyebrow is clipped. Set
+ * on `:root` so sheets and the command palette outside `.window` also clear
+ * the taller toolbar (#866); pin `.sidebar-titlebar` to 52px so the
+ * sidebar's rows still don't move when a notebook with an eyebrow opens
+ * (#812). */
+:root:not(.touch-ui):has(.toolbar .title-eyebrow) {
   --toolbar-h: calc(64px + var(--safe-top));
+}
+
+:root:not(.touch-ui):has(.toolbar .title-eyebrow) .sidebar-titlebar {
+  height: calc(52px + var(--safe-top));
 }
 
 .status-line {
@@ -2653,10 +2662,10 @@ button {
   border-bottom: 1px solid var(--separator);
 }
 
-/* The mono eyebrow above the title, "TYPESCRIPT · 9 NOV 2026" (#852). */
+/* The mono eyebrow above the title, "TYPESCRIPT · 9 NOV 2026 · KEPT WITH CLAUDE" (#852, #897). */
 .journal-eyebrow {
   margin: 0 0 3px;
-  color: var(--meta-color);
+  color: var(--accent-text);
   font: 11px/1.3 var(--font-mono);
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -2664,6 +2673,7 @@ button {
 
 .journal-title {
   margin: 0;
+  color: var(--heading);
   font-size: 24px;
   font-weight: 700;
   letter-spacing: -0.02em;
@@ -2918,6 +2928,16 @@ button {
   /* A long word or link wraps rather than widening the journal (#798).
      Not `anywhere`: that would let a table's columns shrink to a letter. */
   overflow-wrap: break-word;
+}
+
+/* Headings in dark mode take moon cream (#897). */
+.journal-rendered .jp-RenderedMarkdown h1,
+.journal-rendered .jp-RenderedMarkdown h2,
+.journal-rendered .jp-RenderedMarkdown h3,
+.journal-rendered .jp-RenderedMarkdown h4,
+.journal-rendered .jp-RenderedMarkdown h5,
+.journal-rendered .jp-RenderedMarkdown h6 {
+  color: var(--heading);
 }
 
 /* Wide content scrolls in its own box, not the journal (#798). Outputs

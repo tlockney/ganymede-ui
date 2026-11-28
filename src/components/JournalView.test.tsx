@@ -156,9 +156,9 @@ describe('JournalView', () => {
     const region = screen.getByRole('region', { name: 'Journal of Trend.ipynb' });
     // First among the view's elements.
     expect(region.firstElementChild?.tagName).toBe('HEADER');
-    // The language and the day of the earliest cell make an eyebrow (#852).
+    // The language, day of the earliest cell and agent make an eyebrow (#852, #897).
     const eyebrow = region.querySelector('.journal-eyebrow')!.textContent!;
-    expect(eyebrow).toMatch(/^Python 3 · /);
+    expect(eyebrow).toMatch(/^Python 3 · .+ · Kept with claude-code$/);
     expect(screen.getByRole('heading', { level: 1, name: 'Trend of moons' })).toBeInTheDocument();
     const meta = region.querySelector('.journal-meta')!.textContent!;
     expect(meta).toContain('Started by claude-code');

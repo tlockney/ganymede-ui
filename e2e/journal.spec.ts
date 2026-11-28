@@ -6,7 +6,14 @@ import { join } from 'node:path';
 import { crc32, deflateSync } from 'node:zlib';
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { APP_URL, ROOT_DIR, TOKEN } from './env';
-import { openWithToken, removeFromServer, sidebarItem, waitForReady } from './helpers';
+import {
+  openWithToken,
+  removeFromServer,
+  sidebarItem,
+  tabTo,
+  toolbarMenu,
+  waitForReady,
+} from './helpers';
 
 const FREMONT = 'Fremont Bridge.ipynb';
 /** The first cell of "4. Workdays and weekends", in the Fremont Bridge journal. */
@@ -79,6 +86,18 @@ test('fits the eyebrow inside the notebook view’s header (#852)', async ({ pag
   expect(box!.y).toBeGreaterThanOrEqual(toolbar!.y);
   expect(box!.y + box!.height).toBeLessThanOrEqual(toolbar!.y + toolbar!.height);
   expect(after!.height).toBe(before.height);
+
+  // Sheets and the command palette render outside .window, so --toolbar-h
+  // must sit on :root for them to start below the 64px header (#866).
+  await toolbarMenu(page, 'More', 'Command Palette…');
+  const palette = page.getByRole('dialog', { name: 'Command palette' });
+  await expect(palette).toBeVisible();
+  const [paletteBox, afterPalette] = await Promise.all([
+    palette.boundingBox(),
+    titlebar.boundingBox(),
+  ]);
+  expect(paletteBox!.y).toBeGreaterThanOrEqual(toolbar!.y + toolbar!.height);
+  expect(afterPalette!.height).toBe(before.height);
 });
 
 // The Apple apps draw no toolbar (`chrome=native`, #205), so the page itself
@@ -1028,3 +1047,55 @@ test('keeps a one-line wide cell its scrollbar room after the journal and back (
     await removeFromServer(wide);
   }
 });
+
+for (const colorScheme of ['dark', 'light'] as const) {
+  test(`styles moon-cream headings, orange eyebrow and quiet selection after switching to Notebook (${colorScheme}) (#897)`, async ({
+    page,
+  }) => {
+    await page.emulateMedia({ colorScheme });
+    await openWithToken(page);
+    await sidebarItem(page, 'Journal e2e').click();
+    const journal = page.getByRole('region', { name: `Journal of ${FILE}` });
+    await expect(journal).toBeVisible();
+
+    const expectedEyebrowColor = colorScheme === 'dark' ? 'rgb(251, 176, 100)' : 'rgb(146, 73, 0)';
+    const expectedHeadingColor = colorScheme === 'dark' ? 'rgb(244, 233, 216)' : 'rgb(29, 29, 31)';
+    const jEyebrow = journal.locator('.journal-eyebrow');
+    await expect(jEyebrow).toHaveText(/^typescript · .+ · Kept with claude-code$/i);
+    await expect(jEyebrow).toHaveCSS('color', expectedEyebrowColor);
+    await expect(journal.locator('.journal-title')).toHaveCSS('color', expectedHeadingColor);
+    await expect(journal.locator('.journal-rendered .jp-RenderedMarkdown h1')).toHaveCSS(
+      'color',
+      expectedHeadingColor,
+    );
+
+    // Switch from Journal to Notebook: headings keep the theme's heading color,
+    // toolbar eyebrow uses accent text, and cell 1 is selected quietly without
+    // the 2px focus ring until keyboard navigation or editing occurs.
+    await page
+      .getByRole('group', { name: 'View: Journal' })
+      .getByRole('button', { name: 'Notebook' })
+      .click();
+    const first = page.locator('.jp-Cell').first();
+    await expect(first).toHaveClass(/jp-mod-active/);
+    await expect(first.locator('.jp-MarkdownOutput h1')).toHaveCSS('color', expectedHeadingColor);
+    const tEyebrow = page.locator('.toolbar .title-eyebrow');
+    await expect(tEyebrow).toHaveText(/^typescript · .+ · Kept with claude-code$/i);
+    await expect(tEyebrow).toHaveCSS('color', expectedEyebrowColor);
+    await expect(first).toHaveCSS('box-shadow', 'none');
+    expect(
+      await page.evaluate(
+        () =>
+          !!document.activeElement?.closest('.jp-Cell') ||
+          !!document.activeElement?.closest('.cm-editor'),
+      ),
+    ).toBe(false);
+
+    // Tabbing from the toolbar into the notebook lands on the active cell in
+    // command mode, showing the 2px accent focus ring.
+    await tabTo(page, first);
+    await expect
+      .poll(() => first.evaluate(el => getComputedStyle(el).boxShadow))
+      .toMatch(/0px 0px 0px 2px$/);
+  });
+}

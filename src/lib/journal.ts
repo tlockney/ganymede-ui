@@ -690,7 +690,7 @@ export function forgetChosenViews(): void {
 
 /** What the header says of the notebook. */
 export type JournalHeaderData = {
-  /** The mono line above the title: "PYTHON · 9 NOV 2026". */
+  /** The mono line above the title: "PYTHON · 9 NOV 2026 · KEPT WITH CLAUDE". */
   eyebrow: string;
   title: string;
   /** Who started it and the cell count: each a short phrase. */
@@ -760,10 +760,11 @@ export function notebookLanguage(metadata: unknown): string | undefined {
 }
 
 /**
- * The header's text: an eyebrow of the language and the day the earliest
- * agent cell was written (#852); the notebook's `metadata.title` or else the
- * file name without its extension; who started it (the agent of the
- * earliest-dated agent cell) and the cell count.
+ * The header's text: an eyebrow of the language, the day the earliest
+ * agent cell was written (#852), and who kept it when known (#897); the
+ * notebook's `metadata.title` or else the file name without its extension;
+ * who started it (the agent of the earliest-dated agent cell) and the cell
+ * count.
  */
 export function journalHeader(
   metadata: unknown,
@@ -789,7 +790,11 @@ export function journalHeader(
     }
   }
   by ??= agentNames(cells)[0];
-  const eyebrow = [language, first !== undefined ? formatDate(new Date(first)) : undefined]
+  const eyebrow = [
+    language,
+    first !== undefined ? formatDate(new Date(first)) : undefined,
+    by ? `Kept with ${by}` : undefined,
+  ]
     .filter((part): part is string => part !== undefined)
     .join(' · ');
   const details: string[] = [];
