@@ -147,6 +147,8 @@ struct ContentView: View {
     /// The ⋯ menu's Rename… is asking for a name (#209).
     @State private var renaming = false
     @State private var newName = ""
+    /// The iPhone's Outline sheet (#915).
+    @State private var phoneOutlineShown = false
     #endif
 
     #if os(macOS)
@@ -1239,18 +1241,34 @@ struct ContentView: View {
     private var notebook: some View {
         content
             // Under the home indicator, except above the iPhone's bottom
-            // toolbar.
+            // glass bar.
             .ignoresSafeArea(.container, edges: isPhone ? [] : .bottom)
-            .navigationTitle(title)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if isPhone {
+                    PhoneHeaderStrip(header: headerStatus, page: pageModel, place: place)
+                }
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if isPhone {
+                    PhoneBottomBar(page: pageModel) { phoneOutlineShown = true }
+                }
+            }
+            .navigationTitle(isPhone ? phoneTitle : title)
             .navigationBarTitleDisplayMode(.inline)
+            .modifier(PhoneHeaderBarBackground(hasNotebook: isPhone && pageModel.state.hasNotebook))
             .toolbar {
                 if drawsNativeChrome {
-                    // The title over the status line (#812); tapping the line
-                    // opens the file, kernel and where kernels run.
                     ToolbarItem(placement: .principal) {
-                        NotebookTitle(
-                            title: title, header: headerStatus, machineName: machineName,
-                            page: pageModel, place: place, phone: isPhone)
+                        if isPhone {
+                            PhoneHeaderTitle(
+                                title: phoneTitle, header: headerStatus, machineName: machineName)
+                        } else {
+                            // The title over the status line (#812); tapping the line
+                            // opens the file, kernel and where kernels run.
+                            NotebookTitle(
+                                title: title, header: headerStatus, machineName: machineName,
+                                page: pageModel, place: place, phone: false)
+                        }
                     }
                     IPadNotebookToolbar(page: pageModel, bottom: isPhone) {
                         newName = title
@@ -1261,6 +1279,9 @@ struct ContentView: View {
                 if !isPhone {
                     ToolbarItemGroup(placement: .primaryAction) { appButtons }
                 }
+            }
+            .sheet(isPresented: $phoneOutlineShown) {
+                PhoneOutlineSheet(page: pageModel)
             }
             // The page renames the open notebook: it saves its edits first
             // and keeps the kernel, and adds `.ipynb`.
@@ -1276,6 +1297,19 @@ struct ContentView: View {
                 }
                 Button("Cancel", role: .cancel) {}
             }
+    }
+
+    /// Display title for the iPhone notebook navigation bar (#915): prefers
+    /// `metadata.title` (or first level-1 heading), else the file name without
+    /// a leading date prefix.
+    private var phoneTitle: String {
+        PhoneChromeState.displayTitle(
+            path: drawsNativeChrome ? pageModel.state.path : nil,
+            metadataTitle: pageModel.state.title,
+            isMachine: place.isMachine,
+            machineName: machineName,
+            rootName: model.root.lastPathComponent
+        )
     }
 
     /// The app's own buttons: terminals, Settings, the notebook folder. A
