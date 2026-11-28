@@ -3,6 +3,7 @@ import type { IKernel } from '@jupyterlite/services';
 import { Signal } from '@lumino/signaling';
 import { startBrowserKernel, type BrowserKernel } from '@tlockney/cdp-kernel/browser';
 import workerUrl from '@tlockney/cdp-kernel/browser/worker?worker&url';
+import sqlPreloadUrl from 'virtual:sql-preload';
 import { noteKernelRequest } from './duckdb-files';
 import { kernelModules } from './kernel-modules';
 import { kernelTypescript } from './kernel-typescript';
@@ -46,6 +47,12 @@ export class CdpBrowserKernel implements IKernel {
       modules: kernelModules(),
       // Typed help from TypeScript 6, loaded on the first request (#668).
       typescript: kernelTypescript(),
+      // Register files in the notebook's folder with DuckDB wasm (#678).
+      preload: [
+        typeof location !== 'undefined'
+          ? new URL(sqlPreloadUrl, location.href).href
+          : sqlPreloadUrl,
+      ],
     });
     this._stop = this._kernel.onMessage((channel, msg) => {
       // LiteKernelClient routes a message to the client whose session is

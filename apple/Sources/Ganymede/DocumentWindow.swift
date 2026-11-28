@@ -17,11 +17,18 @@ final class PageDocument {
     @ObservationIgnored weak var webView: WKWebView?
     @ObservationIgnored private(set) weak var window: NSWindow?
     @ObservationIgnored private var closeGuard: CloseGuard?
+    @ObservationIgnored private let noteRecent: @MainActor (URL, Place) -> Void
+    @ObservationIgnored private let indexSaved: @MainActor (URL) -> Void
 
     /// Every window's document, for the prompt on quit.
     private static let all = NSHashTable<PageDocument>.weakObjects()
 
-    init() {
+    init(
+        noteRecent: @escaping @MainActor (URL, Place) -> Void,
+        indexSaved: @escaping @MainActor (URL) -> Void
+    ) {
+        self.noteRecent = noteRecent
+        self.indexSaved = indexSaved
         Self.all.add(self)
     }
 
@@ -33,8 +40,8 @@ final class PageDocument {
     /// notebook may reach, #740).
     func update(_ message: DocumentMessage, in place: Place = .thisDevice) {
         let effects = DocumentEffects.of(message, previousFile: file, wasDirty: dirty, in: place)
-        if let opened = effects.noteRecent { Recents.shared.note(opened, in: place) }
-        if let saved = effects.indexSaved { SpotlightSettings.shared.saved(saved) }
+        if let opened = effects.noteRecent { noteRecent(opened, place) }
+        if let saved = effects.indexSaved { indexSaved(saved) }
         self.place = place
         file = message.file
         dirty = message.dirty
@@ -183,31 +190,6 @@ private final class CloseGuard: NSObject, NSWindowDelegate {
     }
 }
 
-/// File > Open Recent: the notebooks opened lately, kept by AppKit.
-@MainActor
-@Observable
-final class Recents {
-    static let shared = Recents()
-    private(set) var urls = NSDocumentController.shared.recentDocumentURLs
-
-    /// Records a notebook opened in `place`. A machine's notebooks are not
-    /// noted: these Recents, File > Open Recent and Spotlight keep local
-    /// file URLs (the page keeps a machine's own Recents, by place).
-    func note(_ url: URL, in place: Place = .thisDevice) {
-        guard place.indexesLocally, url.isFileURL else { return }
-        NSDocumentController.shared.noteNewRecentDocumentURL(url)
-        urls = NSDocumentController.shared.recentDocumentURLs
-        // Recents are in Spotlight (#305).
-        SpotlightSettings.shared.opened(url)
-    }
-
-    func clear() {
-        NSDocumentController.shared.clearRecentDocuments(nil)
-        urls = []
-        SpotlightSettings.shared.sync()
-    }
-}
-
 /// Hands over the window a view is in, once it is in one.
 struct WindowReader: NSViewRepresentable {
     let onWindow: (NSWindow) -> Void
@@ -243,36 +225,6 @@ struct WorkspaceTab: ViewModifier {
 extension View {
     func workspaceTab() -> some View {
         modifier(WorkspaceTab())
-    }
-}
-
-/// File > Close (⌘W, #407): the front window's active tab. Replacing the
-/// `.saveItem` group drops the system's Close, so the app adds its own.
-struct CloseCommand: View {
-    var body: some View {
-        Button("Close") {
-            WorkspaceTabs.close(NSApp.keyWindow)
-        }
-        .keyboardShortcut("w")
-    }
-}
-
-/// File > Save (⌘S), for the front notebook or text file window.
-struct SaveCommand: View {
-    @FocusedValue(\.pageDocument) private var document
-    @FocusedValue(\.pageModel) private var page
-    @FocusedValue(\.editorDocument) private var editor
-
-    var body: some View {
-        Button("Save") {
-            if let editor {
-                Task { await editor.save() }
-            } else {
-                Task { await document?.save() }
-            }
-        }
-        .keyboardShortcut("s")
-        .disabled(editor == nil && (document?.file == nil || page?.state.readOnly == true))
     }
 }
 #endif

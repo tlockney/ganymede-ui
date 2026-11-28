@@ -347,6 +347,42 @@ final class SpotlightSettings {
     }
 }
 
+#if os(macOS)
+extension PageDocument {
+    convenience init() {
+        self.init(
+            noteRecent: { Recents.shared.note($0, in: $1) },
+            indexSaved: { SpotlightSettings.shared.saved($0) }
+        )
+    }
+}
+
+/// File > Open Recent: the notebooks opened lately, kept by AppKit.
+@MainActor
+@Observable
+final class Recents {
+    static let shared = Recents()
+    private(set) var urls = NSDocumentController.shared.recentDocumentURLs
+
+    /// Records a notebook opened in `place`. A machine's notebooks are not
+    /// noted: these Recents, File > Open Recent and Spotlight keep local
+    /// file URLs (the page keeps a machine's own Recents, by place).
+    func note(_ url: URL, in place: Place = .thisDevice) {
+        guard place.indexesLocally, url.isFileURL else { return }
+        NSDocumentController.shared.noteNewRecentDocumentURL(url)
+        urls = NSDocumentController.shared.recentDocumentURLs
+        // Recents are in Spotlight (#305).
+        SpotlightSettings.shared.opened(url)
+    }
+
+    func clear() {
+        NSDocumentController.shared.clearRecentDocuments(nil)
+        urls = []
+        SpotlightSettings.shared.sync()
+    }
+}
+#endif
+
 /// Settings › Spotlight: on or off, code or not, and on the Mac, folders.
 struct SpotlightSettingsSection: View {
     @State private var settings = SpotlightSettings.shared

@@ -625,6 +625,7 @@ targets:
       - path: Sources/Ganymede/Remote.swift
       - path: Sources/Ganymede/AgentKeys.swift
       - path: Sources/Ganymede/DocumentMessage.swift
+      - path: Sources/Ganymede/DocumentWindow.swift
       - path: Sources/Ganymede/PageState.swift
       - path: Sources/Ganymede/PageModel.swift
       - path: Sources/Ganymede/SwitchSaveGuard.swift
@@ -730,6 +731,7 @@ targets:
       - path: Sources/Ganymede/Remote.swift
       - path: Sources/Ganymede/AgentKeys.swift
       - path: Sources/Ganymede/DocumentMessage.swift
+      - path: Sources/Ganymede/DocumentWindow.swift
       - path: Sources/Ganymede/PageState.swift
       - path: Sources/Ganymede/PageModel.swift
       - path: Sources/Ganymede/SwitchSaveGuard.swift

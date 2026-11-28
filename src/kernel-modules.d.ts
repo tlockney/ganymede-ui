@@ -9,3 +9,9 @@ declare module 'virtual:kernel-typescript' {
   const urls: { module: string; libs: string; runtimeTypes: string };
   export default urls;
 }
+
+declare module 'virtual:sql-preload' {
+  /** Worker preload registering local data files with DuckDB wasm (#678). */
+  const url: string;
+  export default url;
+}

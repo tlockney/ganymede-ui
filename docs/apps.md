@@ -395,6 +395,14 @@ way. Open Recent and the Recents list keep to
 notebooks. Renaming or deleting the open data file from the sidebar works as
 for any file, and the page follows the rename or closes it.
 
+> [!NOTE]
+> **Unreleased.** **New Notebook from File** and `jupyter.sql` queries on
+> files relative to the notebook's folder now work on the in-app and
+> browser kernels too (up to the data view's memory caps: 8 MB for CSV and
+> TSV, 16 MB for JSON, 64 MB for Parquet). The page reads the file over the
+> contents API and registers its bytes with DuckDB in the kernel; a file
+> over the cap still needs a server kernel.
+
 ### Shortcuts
 
 The Shortcuts app, Spotlight and Siri get these Ganymede actions:
@@ -1690,6 +1698,11 @@ files by the paths you typed, relative to the notebook's folder, so a
 TypeScript kernel that runs in the folder reruns the session. The kernel in
 the browser and the in-app kernel on iPad and iPhone can't find files by
 name, as for New Notebook from File.
+
+> [!NOTE]
+> **Unreleased.** Exported console queries that read local files by path
+> now work on the in-app and browser kernels too, up to the same memory
+> caps (8 MB CSV/TSV, 16 MB JSON, 64 MB Parquet).
 
 ## Publishing a notebook
 

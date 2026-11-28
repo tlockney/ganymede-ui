@@ -2,6 +2,7 @@ import { defineConfig, type ProxyOptions, type UserConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { kernelModules } from './scripts/kernel-modules.ts';
 import { kernelTypescript } from './scripts/kernel-typescript.ts';
+import { sqlPreload } from './scripts/sql-preload.ts';
 import { VitePWA } from 'vite-plugin-pwa';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -90,6 +91,7 @@ const config: UserConfig = {
     react(),
     kernelModules(),
     kernelTypescript(),
+    sqlPreload(),
     {
       name: 'agent-module-graph',
       buildEnd() {

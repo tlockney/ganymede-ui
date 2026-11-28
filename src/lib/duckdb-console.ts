@@ -422,12 +422,12 @@ export type Located =
  * absolute path (left to DuckDB), or a wildcard (left to DuckDB, which says
  * what it finds).
  */
-export function locate(written: string, folder: string): Located {
+export function locate(written: string, folder: string, allowParent = false): Located {
   if (/^[a-z][a-z0-9+.-]*:/i.test(written) || written.startsWith('/') || written.startsWith('~')) {
     return { other: true };
   }
   if (/[*?[]/.test(written)) return { other: true };
-  const parts: string[] = [];
+  const parts = allowParent && folder ? folder.split('/').filter(Boolean) : [];
   for (const part of written.split('/')) {
     if (part === '' || part === '.') continue;
     if (part === '..') {
@@ -435,7 +435,7 @@ export function locate(written: string, folder: string): Located {
     } else parts.push(part);
   }
   if (parts.length === 0) return { other: true };
-  return { local: folder ? `${folder}/${parts.join('/')}` : parts.join('/') };
+  return { local: allowParent || !folder ? parts.join('/') : `${folder}/${parts.join('/')}` };
 }
 
 /**
