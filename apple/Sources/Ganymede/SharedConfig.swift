@@ -350,10 +350,27 @@ enum SharedConfig {
             readError = error.localizedDescription
         }
 
-        // Launch-only keys for the embedded server.
+        // Launch-only keys for the embedded server: always bind loopback with
+        // remote access off and a fresh per-launch random token (never let a
+        // `ganymede.toml` `ip`, `allow_remote_access`, or `token` expose `/`
+        // or bypass session auth), and never open a second kernel provider
+        // socket on the embedded server.
         config["root_dir"] = rootDir
         config["static_dir"] = staticDir
         config["quiet"] = true
+        config["ip"] = "127.0.0.1"
+        config["allow_remote_access"] = false
+        config["trust_xheaders"] = false
+        config.removeValue(forKey: "token")
+        config.removeValue(forKey: "kernel_providers")
+        if var tailscale = config["tailscale"] as? [String: any Sendable] {
+            // `mergeTailnet` activates `[tailscale] allow` and `trust_xheaders`
+            // only when embedded tailnet sharing is on; `whois` requires a
+            // tailnet `ip` and would refuse to start on 127.0.0.1.
+            tailscale["allow"] = [String]()
+            tailscale["whois"] = false
+            config["tailscale"] = tailscale
+        }
         if let cookieSecretFile {
             config["cookie_secret_file"] = cookieSecretFile
         }

@@ -411,5 +411,69 @@ final class SharedConfigTests: XCTestCase {
         XCTAssertEqual(tailscale["cli"] as? String, "/custom/tailscale")
         XCTAssertEqual(tailscale["allow"] as? [String], ["me@example.com"])
     }
+
+    func testLaunchConfigHardensEmbeddedServerAgainstServeOnlyKeys() throws {
+        let web = dir.appendingPathComponent("web")
+        try FileManager.default.createDirectory(at: web, withIntermediateDirectories: true)
+        try "<!doctype html>".write(to: web.appendingPathComponent("index.html"), atomically: true, encoding: .utf8)
+
+        let configDir = dir.appendingPathComponent("cfg")
+        try FileManager.default.createDirectory(at: configDir, withIntermediateDirectories: true)
+        try """
+        ip = "0.0.0.0"
+        allow_remote_access = true
+        token = ""
+        trust_xheaders = true
+
+        [tailscale]
+        allow = ["alice@example.com"]
+        whois = true
+        cli = "/custom/tailscale"
+
+        [kernel_providers]
+        enabled = true
+        """.write(to: configDir.appendingPathComponent("ganymede.toml"), atomically: true, encoding: .utf8)
+
+        let store = SystemGanymedeConfigStore(directory: configDir.path)
+        let launch = SharedConfig.launchConfig(
+            store: store,
+            rootDir: dir.path,
+            staticDir: web.path,
+            cookieSecretFile: dir.appendingPathComponent("cookie_secret").path,
+            mcpMode: .off,
+            mcpImages: false,
+            mcpToken: nil,
+            fallbackHostFolders: []
+        )
+        XCTAssertNil(launch.error)
+        XCTAssertEqual(launch.config["ip"] as? String, "127.0.0.1")
+        XCTAssertEqual(launch.config["allow_remote_access"] as? Bool, false)
+        XCTAssertNil(launch.config["token"], "embedded server must generate its own per-launch random token")
+        XCTAssertEqual(launch.config["trust_xheaders"] as? Bool, false)
+        XCTAssertNil(launch.config["kernel_providers"], "embedded server must not open a second provider socket")
+
+        let tailscale = try XCTUnwrap(launch.config["tailscale"] as? [String: any Sendable])
+        XCTAssertEqual(tailscale["allow"] as? [String], [], "tailnet allow activates only via mergeTailnet")
+        XCTAssertEqual(tailscale["whois"] as? Bool, false, "whois requires a tailnet ip")
+        XCTAssertEqual(tailscale["cli"] as? String, "/custom/tailscale", "tailscale cli is preserved")
+
+        // Real ServerHost starts cleanly on 127.0.0.1 with a non-empty random token.
+        var serverConfig = launch.config.mapValues { $0 as Any }
+        serverConfig["port"] = 0
+        let host = try ServerHost(config: serverConfig)
+        defer { host.stop() }
+        XCTAssertEqual(host.url.host, "127.0.0.1")
+        let endpoint = try XCTUnwrap(ServerEndpoint(serverURL: host.url))
+        XCTAssertFalse(endpoint.token.isEmpty)
+
+        // Enabling embedded tailnet sharing via mergeTailnet re-enables allow & trust_xheaders while keeping cli.
+        let withTailnet = SharedConfig.mergeTailnet(
+            into: launch.config, dnsName: "mac.tailnet.ts.net", allow: ["alice@example.com"]
+        )
+        XCTAssertEqual(withTailnet["trust_xheaders"] as? Bool, true)
+        let mergedTailscale = try XCTUnwrap(withTailnet["tailscale"] as? [String: any Sendable])
+        XCTAssertEqual(mergedTailscale["allow"] as? [String], ["alice@example.com"])
+        XCTAssertEqual(mergedTailscale["cli"] as? String, "/custom/tailscale")
+    }
     #endif
 }

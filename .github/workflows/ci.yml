@@ -23,8 +23,8 @@ permissions:
 # read it from this file.
 env:
   # A tag downloads the release's XCFramework; a commit builds it.
-  # ganymede#995 (ganymede_config_read / ganymede_config_set), #967, #999.
-  GANYMEDE_REF: 0f01579d9987cf93b7708bdff17b9263212edc0e
+  # ganymede#995 (ganymede_config_read / ganymede_config_set), #967, #999, #1003, #1005, #1006.
+  GANYMEDE_REF: 80eb9aa1c83d7ac2500628aa5b3bd6ef6ebf5bf6
 
 # A new push to a pull request cancels its older run; runs on main finish.
 concurrency:

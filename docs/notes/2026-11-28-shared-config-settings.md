@@ -5,10 +5,11 @@ Follow-up to `tlockney/ganymede#995` for `tlockney/ganymede-ui#902` (part of
 
 ## What changed
 
-- **Pinned `GANYMEDE_REF` to `0f01579d9987cf93b7708bdff17b9263212edc0e`** in
+- **Pinned `GANYMEDE_REF` to `80eb9aa1c83d7ac2500628aa5b3bd6ef6ebf5bf6`** in
   `.github/workflows/ci.yml` so the Apple apps link the XCFramework with
   `ganymede_config_read` and `ganymede_config_set` (`ganymede#995`) along
-  with the room-lock and login-shell PATH fixes (`ganymede#967`, `#999`).
+  with room locking (`#967`), login-shell PATH (`#999`), `--log-file`
+  (`#1003`), CLI attach (`#1005`), and the execution history API (`#1006`).
 - **Added `apple/Sources/Ganymede/SharedConfig.swift`**:
   - `GanymedeConfig` wraps `ganymede_config_read` and `ganymede_config_set`
     via `GanymedeFFI`. Swift never parses or writes TOML directly.
@@ -29,11 +30,14 @@ Follow-up to `tlockney/ganymede#995` for `tlockney/ganymede-ui#902` (part of
   - `SharedConfig.launchConfig` reads `ganymede.toml` at server launch,
     merges launch-only keys (`root_dir`, `static_dir`, `quiet`, optional
     `cookie_secret_file`, gateway remote, and the keychain `mcp_token` in
-    memory only), defaults missing `[host] read` to `[]` so `root_dir = "/"`
-    never exposes the whole disk while preserving `[host] edit_self` and
-    `[host] run`, and `SharedConfig.mergeTailnet` merges active `tailscale
-serve` settings without clobbering other `local_hostnames` or
-    `[tailscale]` keys.
+    memory only), enforces `ip = "127.0.0.1"`, `allow_remote_access = false`,
+    `trust_xheaders = false`, removes `token` and `kernel_providers`, and
+    clears `[tailscale] allow`/`whois` (keeping `cli`) so `ganymede serve`
+    network settings never expose `/` or conflict with embedded startup,
+    defaults missing `[host] read` to `[]` so `root_dir = "/"` never exposes
+    the whole disk while preserving `[host] edit_self` and `[host] run`, and
+    `SharedConfig.mergeTailnet` merges active `tailscale serve` settings
+    without clobbering other `local_hostnames` or `[tailscale]` keys.
 - **Wired into `AppModel`, `SpotlightIndex`, and `SettingsWindow`** (macOS
   only; iOS stays unchanged and compiles cleanly):
   - `AppModel.init()` loads MCP and Tailnet allow settings through
