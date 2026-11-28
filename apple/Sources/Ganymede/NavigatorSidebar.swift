@@ -24,7 +24,7 @@ struct NavigatorSidebar: View {
     /// The selected tab, kept per window.
     @SceneStorage("navigator.tab") private var tab: NavigatorTab = .files
     /// ⌘⇧F's request that Find's field take the keyboard.
-    @State private var findFocus = false
+    @State private var findFocus = FindFocusRequest()
     private let terminals = OpenTerminals.shared
     @Environment(AppModel.self) private var model
     @Environment(\.openWindow) private var openWindow
@@ -76,7 +76,7 @@ struct NavigatorSidebar: View {
                 // field is empty.
                 FindNavigator(
                     folder: folder, source: source, place: place, page: page,
-                    openFile: openFile, focusField: $findFocus)
+                    openFile: openFile, focusRequest: $findFocus)
             case .running:
                 RunningList(page: page)
             case .journals:
@@ -105,13 +105,14 @@ struct NavigatorSidebar: View {
             Group {
                 Button("Find") {
                     showSidebar()
+                    findFocus.clear()
                     tab = .find
                 }
                 .keyboardShortcut("4", modifiers: .command)
                 Button("Find in Notebook") {
                     showSidebar()
                     tab = .find
-                    findFocus = true
+                    findFocus.trigger()
                 }
                 .keyboardShortcut("f", modifiers: [.command, .shift])
             }
@@ -133,6 +134,7 @@ struct NavigatorSidebar: View {
                     // The key shows its navigator, so the column comes
                     // back first when the window has it hidden (#879).
                     showSidebar()
+                    findFocus.clear()
                     tab = item
                 } label: {
                     segment(item)
@@ -237,15 +239,13 @@ private struct FindNavigator: View {
     var place: Place = .thisDevice
     var page: PageModel
     let openFile: (String) -> Void
-    /// Set by ⌘⇧F: the field takes the keyboard, once, and it clears.
-    @Binding var focusField: Bool
+    /// Set by ⌘⇧F: `FindField` takes the keyboard and confirms ownership.
+    @Binding var focusRequest: FindFocusRequest
     @Environment(\.openWindow) private var openWindow
     @SceneStorage("navigator.query") private var query = ""
     @SceneStorage("navigator.contents") private var contents = false
     @State private var results = FileSearch.Results()
     @State private var searching = false
-    @FocusState private var fieldFocused: Bool
-    @State private var focusTask: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -263,22 +263,19 @@ private struct FindNavigator: View {
             page.run("find-in-notebook", arg: FindLayout.normalized(query))
         }
         .task(id: "\(folder.absoluteString)|\(query)|\(contents)") { await search() }
-        .onAppear { if focusField { takeFocus() } }
-        .onChange(of: focusField) { if focusField { takeFocus() } }
         // The page has no reason to keep searching the notebook once the
         // tab goes; an empty query clears its matches.
         .onDisappear {
-            focusTask?.cancel()
+            focusRequest.clear()
             page.run("find-in-notebook", arg: "")
         }
     }
 
     private var field: some View {
         VStack(alignment: .leading, spacing: 6) {
-            TextField("Find", text: $query)
-                .textFieldStyle(.roundedBorder)
-                .focused($fieldFocused)
-                .onExitCommand { query = "" }
+            FindField(prompt: "Find", text: $query, focusRequest: $focusRequest) {
+                query = ""
+            }
             Toggle("Contents", isOn: $contents)
                 .toggleStyle(.checkbox)
                 .font(.callout)
@@ -286,27 +283,6 @@ private struct FindNavigator: View {
         }
         .padding(.horizontal, 10)
         .padding(.top, 8)
-    }
-
-    /// ⌘⇧F's one request: the field takes the keyboard, and a later ⌘⇧F
-    /// asks again. The field may not be in the window yet (the column is
-    /// coming back from hidden), and the notebook's web view may hold the
-    /// keyboard while `fieldFocused` still reads true, so a plain
-    /// `fieldFocused = true` can do nothing (#881). It drops the focus and
-    /// asks again on later turns until the field reports it has it.
-    private func takeFocus() {
-        focusField = false
-        fieldFocused = false
-        focusTask?.cancel()
-        focusTask = Task { @MainActor in
-            for _ in 0..<FindFocus.attempts {
-                try? await Task.sleep(for: FindFocus.interval)
-                if Task.isCancelled { return }
-                fieldFocused = true
-                try? await Task.sleep(for: FindFocus.interval)
-                if Task.isCancelled || fieldFocused { return }
-            }
-        }
     }
 
     /// The page's answer that can show: while it is for the query the
@@ -699,13 +675,5 @@ private struct RecentsNavigator: View {
     private func openTab(_ entry: Entry) {
         openWindow(value: entry.tabTarget(in: place))
     }
-}
-
-/// How ⌘⇧F waits for the Find field (#881): it asks every `interval`, for
-/// about the time the sidebar column takes to come back, and stops once the
-/// field has the keyboard.
-enum FindFocus {
-    static let interval: Duration = .milliseconds(50)
-    static let attempts = 12
 }
 #endif
