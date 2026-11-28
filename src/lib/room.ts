@@ -491,8 +491,10 @@ export async function trustFromFile(
   path: string,
   model: INotebookModel,
   stale: () => boolean = () => false,
+  onWritable?: (writable: boolean) => void,
 ): Promise<boolean> {
   const file = await contents.get(path, { type: 'notebook', content: true });
+  if (typeof file.writable === 'boolean') onWritable?.(file.writable);
   const cells = (file.content as nbformat.INotebookContent | null)?.cells ?? [];
   /** The outputs the file holds for each cell it marks trusted, by id. */
   const trusted = new Map(

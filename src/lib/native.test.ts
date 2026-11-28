@@ -84,6 +84,7 @@ describe('native', () => {
       kernelVersionLine: 'cdp-kernel 0.14.0 · node 24.11.0',
       kernelMissing: false,
       locked: false,
+      readOnly: false,
       trusted: true,
       hostGrants: true,
       publish: true,

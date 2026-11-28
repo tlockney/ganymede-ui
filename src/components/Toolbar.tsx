@@ -94,8 +94,9 @@ export function Toolbar({
   onRunWithParams,
 }: Props) {
   const disabled = !c;
-  // The journal view hides the cells: what runs or edits them waits for the notebook.
-  const noCells = !c || c.journal;
+  const readOnly = !!c?.readOnly;
+  // The journal view hides the cells; a read-only notebook edits and runs none (#839).
+  const noCells = !c || c.journal || readOnly;
   const kernelDisplay = c?.missingKernel
     ? undefined
     : (c?.kernelName && specs?.kernelspecs[c.kernelName]?.display_name) || c?.kernelName;
@@ -129,6 +130,7 @@ export function Toolbar({
     place,
     dirty: c.dirty,
     locked: c.locked,
+    readOnly: c.readOnly,
     kernelName: c.kernelName,
     kernelDisplay,
     missingKernel: c.missingKernel,
@@ -155,6 +157,7 @@ export function Toolbar({
                   label: text,
                   ariaLabel: label,
                   title: offersDevice(s) ? DEVICE_LABEL : undefined,
+                  disabled: readOnly,
                   checked: c.kernelName === s.name,
                   onSelect: () => void c.changeKernel(s.name),
                 };
@@ -172,7 +175,13 @@ export function Toolbar({
       items: [
         { label: 'Run All', disabled: noCells, onSelect: () => void c?.runAll() },
         ...(onRunWithParams
-          ? [{ label: 'Run with Parameters…', disabled, onSelect: onRunWithParams }]
+          ? [
+              {
+                label: 'Run with Parameters…',
+                disabled: disabled || readOnly,
+                onSelect: onRunWithParams,
+              },
+            ]
           : []),
         { label: 'Clear All Outputs', disabled: noCells, onSelect: () => c?.clearOutputs() },
         'separator',
@@ -241,7 +250,11 @@ export function Toolbar({
           onSelect: () => c?.changeCellType(type),
         })),
         'separator',
-        { label: 'Save', disabled: disabled || !c?.dirty, onSelect: () => void c?.save() },
+        {
+          label: 'Save',
+          disabled: disabled || readOnly || !c?.dirty,
+          onSelect: () => void c?.save(),
+        },
         ...(onShowPalette ? [{ label: 'Command Palette…', onSelect: onShowPalette }] : []),
         ...(onShowShortcuts ? [{ label: 'Keyboard Shortcuts', onSelect: onShowShortcuts }] : []),
       ],
@@ -278,7 +291,7 @@ export function Toolbar({
               // A fresh field for each notebook.
               key={c?.path}
               name={c ? c.name.replace(/\.ipynb$/, '') : 'Ganymede'}
-              onRename={c?.rename}
+              onRename={readOnly ? undefined : c?.rename}
             />
             {c && onToggleJournal && (!narrow || c.journal) && (
               // The header names which view shows (#819); the other part calls

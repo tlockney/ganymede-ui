@@ -3391,3 +3391,177 @@ describe('NotebookPane progress reporting (#913)', () => {
     ]);
   });
 });
+
+describe('NotebookPane read-only when another Ganymede server owns the notebook (#839)', () => {
+  const LOCAL: BackendConfig = { kind: 'ganymede', url: '', token: 't' };
+
+  async function openInRoom(initialWritable: boolean) {
+    const content = structuredClone(NOTEBOOK);
+    Object.assign(content.cells[0]!, {
+      execution_count: 3,
+      outputs: [{ output_type: 'stream', name: 'stdout', text: '1\n' }],
+    });
+    const { YNotebook } = await import('@jupyter/ydoc');
+    const shared = new YNotebook();
+    shared.fromJSON(content as never);
+    const room = {
+      notebook: shared,
+      connected: true,
+      onConnection: () => () => {},
+      dispose: vi.fn(),
+    };
+    vi.spyOn(NotebookRoom, 'join').mockResolvedValue(room as unknown as NotebookRoom);
+    serverSettings = ServerConnection.makeSettings({ baseUrl: 'http://127.0.0.1:1/' });
+    let writable = initialWritable;
+    const get = vi.fn(async () => ({ path: 'moons/Io.ipynb', content, writable }));
+    const view = setup(get, 'moons/Io.ipynb', LOCAL);
+    await waitFor(() => expect(view.latest()).toBeDefined());
+    await waitFor(() => expect(fakes.sessions.length).toBeGreaterThan(0));
+    return {
+      ...view,
+      shared,
+      get,
+      setWritable(next: boolean) {
+        writable = next;
+      },
+    };
+  }
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it('opens read-only with editing off, Run disabled, and banner shown when contents says writable: false', async () => {
+    const { latest } = await openInRoom(false);
+    expect(latest()!.readOnly).toBe(true);
+    expect(modelOf().readOnly).toBe(true);
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Another Ganymede server on this machine has this notebook open',
+    );
+    expect(screen.queryByTestId('keyboard-bar')).toBeNull();
+    expect(document.querySelector('.notebook-page')).toHaveClass('is-readonly');
+
+    // Run and Run All do not start a kernel or execute cells.
+    const session = fakes.sessions[0] as { changeKernel: ReturnType<typeof vi.fn> };
+    const advance = vi.spyOn(NotebookActions, 'runAndAdvance').mockResolvedValue(true);
+    const all = vi.spyOn(NotebookActions, 'runAll').mockResolvedValue(true);
+    await act(() => latest()!.run());
+    await act(() => latest()!.runAll());
+    await act(() => latest()!.restartAndRunAll());
+    expect(session.changeKernel).not.toHaveBeenCalled();
+    expect(advance).not.toHaveBeenCalled();
+    expect(all).not.toHaveBeenCalled();
+
+    // Cell mutations and save/rename/kernel switch are blocked.
+    const below = vi.spyOn(NotebookActions, 'insertBelow').mockImplementation(() => {});
+    const change = vi.spyOn(NotebookActions, 'changeCellType').mockImplementation(() => {});
+    act(() => {
+      latest()!.insert('code');
+      latest()!.changeCellType('markdown');
+      latest()!.clearOutputs();
+    });
+    expect(below).not.toHaveBeenCalled();
+    expect(change).not.toHaveBeenCalled();
+    expect((modelOf().cells.get(0) as ICodeCellModel).outputs.length).toBe(1);
+    expect(latest()!.command('delete')).toBe(false);
+    expect(await act(() => latest()!.save())).toBe(false);
+    expect(await act(() => latest()!.rename('Europa'))).toBe(false);
+
+    // Edit keys are dropped, navigation keys still work.
+    const node = (fakes.notebooks[0] as { node: HTMLElement }).node;
+    const edit = new KeyboardEvent('keydown', { key: 'b', bubbles: true, cancelable: true });
+    node.dispatchEvent(edit);
+    expect(edit.defaultPrevented).toBe(true);
+    const move = new KeyboardEvent('keydown', {
+      key: 'ArrowDown',
+      bubbles: true,
+      cancelable: true,
+    });
+    node.dispatchEvent(move);
+    expect(move.defaultPrevented).toBe(false);
+
+    // Cell controls, commands, code collapse, and cell toolbar all know it is read-only.
+    const { createCommands } = await import('../lib/jupyterlab');
+    const canEdit = vi.mocked(createCommands).mock.lastCall![4] as () => boolean;
+    expect(canEdit()).toBe(false);
+    expect((vi.mocked(attachCellControls).mock.lastCall![2] as () => boolean)()).toBe(true);
+    const { attachCodeCollapse } = await import('../lib/code-collapse');
+    expect((vi.mocked(attachCodeCollapse).mock.lastCall![1] as () => boolean)()).toBe(true);
+    expect(vi.mocked(attachEditing).mock.lastCall![4]?.canEdit?.()).toBe(false);
+
+    // Cell menu disables every item while read-only.
+    const onMenu = vi.mocked(attachCellControls).mock.lastCall![1];
+    const nb = fakes.notebooks.at(-1) as { widgets: unknown[] };
+    act(() => onMenu(nb.widgets[0] as never, document.body));
+    const menu = screen.getByRole('menu', { name: 'Cell Actions' });
+    const items = Array.from(menu.querySelectorAll<HTMLButtonElement>('[role^="menuitem"]'));
+    expect(items.length).toBeGreaterThan(0);
+    for (const item of items) expect(item, item.textContent ?? '').toBeDisabled();
+  });
+
+  it('switches to read-only when a room turns read-only while open, and back without reload', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const { latest, shared, setWritable } = await openInRoom(true);
+    const initialNotebook = fakes.notebooks[0];
+    expect(latest()!.readOnly).toBe(false);
+    expect(modelOf().readOnly).toBe(false);
+    expect(screen.queryByText(/Another Ganymede server/)).toBeNull();
+    expect(screen.getByTestId('keyboard-bar')).toBeInTheDocument();
+
+    // Room turns read-only while open (contents poll detects writable: false).
+    setWritable(false);
+    await act(() => vi.advanceTimersByTimeAsync(5_000));
+    await waitFor(() => expect(latest()!.readOnly).toBe(true));
+    expect(modelOf().readOnly).toBe(true);
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Another Ganymede server on this machine has this notebook open',
+    );
+    expect(screen.queryByTestId('keyboard-bar')).toBeNull();
+
+    // Lock released: room becomes writable again without reloading the notebook.
+    setWritable(true);
+    await act(() => vi.advanceTimersByTimeAsync(1_000));
+    await waitFor(() => expect(latest()!.readOnly).toBe(false));
+    expect(modelOf().readOnly).toBe(false);
+    expect(screen.queryByText(/Another Ganymede server/)).toBeNull();
+    expect(screen.getByTestId('keyboard-bar')).toBeInTheDocument();
+    expect(fakes.notebooks).toHaveLength(1);
+    expect(fakes.notebooks[0]).toBe(initialNotebook);
+
+    // Also reacts immediately to room state transitions without waiting for a poll.
+    act(() => shared.setState('read_only', true));
+    await waitFor(() => expect(latest()!.readOnly).toBe(true));
+    act(() => shared.setState('read_only', false));
+    await waitFor(() => expect(latest()!.readOnly).toBe(false));
+
+    // Running works again once editable.
+    const advance = vi.spyOn(NotebookActions, 'runAndAdvance').mockResolvedValue(true);
+    await act(() => latest()!.run());
+    expect(advance).toHaveBeenCalledOnce();
+  });
+
+  it('opens read-only without a room when contents reports writable: false, and unlocks when writable', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let writable = false;
+    const get = vi.fn(async () => ({
+      path: 'moons/Io.ipynb',
+      content: structuredClone(NOTEBOOK),
+      last_modified: '2026-10-20T10:00:00Z',
+      writable,
+    }));
+    const { latest } = setup(get);
+    await waitFor(() => expect(latest()).toBeDefined());
+    expect(latest()!.readOnly).toBe(true);
+    expect(modelOf().readOnly).toBe(true);
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Another Ganymede server on this machine has this notebook open',
+    );
+
+    writable = true;
+    await act(() => vi.advanceTimersByTimeAsync(1_000));
+    await waitFor(() => expect(latest()!.readOnly).toBe(false));
+    expect(modelOf().readOnly).toBe(false);
+    expect(screen.queryByText(/Another Ganymede server/)).toBeNull();
+  });
+});

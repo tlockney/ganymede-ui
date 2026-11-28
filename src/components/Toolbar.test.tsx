@@ -25,6 +25,7 @@ function controller(over: Partial<NotebookController> = {}): NotebookController 
     kernelName: 'python3',
     dirty: false,
     locked: false,
+    readOnly: false,
     reload: vi.fn(() => true),
     unlock: vi.fn(async () => {}),
     trusted: true,
@@ -529,6 +530,27 @@ describe('Toolbar', () => {
     expect(menuItem('Insert Code Cell')).toBeDisabled();
     expect(menuItem('Insert Text Cell')).toBeDisabled();
     expect(screen.getByRole('menuitemradio', { name: 'Markdown' })).toBeDisabled();
+  });
+
+  it('disables Run, Run All, cell edits, Save and kernel switching while read-only (#839)', async () => {
+    const c = controller({ readOnly: true, dirty: true });
+    render(bar({ controller: c, onRunWithParams: vi.fn() }));
+    expect(screen.getByRole('button', { name: 'Read-only · Runs here · Python 3' })).toBeVisible();
+    expect(named('Run Cell')).toBeDisabled();
+    await userEvent.click(named('More run actions'));
+    expect(menuItem('Run All')).toBeDisabled();
+    expect(menuItem('Run with Parameters…')).toBeDisabled();
+    expect(menuItem('Clear All Outputs')).toBeDisabled();
+    expect(menuItem('Restart & Run All')).toBeDisabled();
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(named('More'));
+    expect(menuItem('Insert Code Cell')).toBeDisabled();
+    expect(menuItem('Insert Text Cell')).toBeDisabled();
+    expect(menuItem('Save')).toBeDisabled();
+    expect(screen.getByRole('menuitemradio', { name: 'Markdown' })).toBeDisabled();
+    await userEvent.keyboard('{Escape}');
+    await userEvent.click(screen.getByRole('button', { name: /^Read-only/ }));
+    expect(screen.getByRole('menuitemradio', { name: 'JavaScript' })).toBeDisabled();
   });
 
   it('shows and hides the Variables view from More', async () => {

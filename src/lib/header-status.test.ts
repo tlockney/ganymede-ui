@@ -73,6 +73,15 @@ describe('statusText (#801)', () => {
     expect(statusText(base(BROWSER, { dirty: true }))).toBe('Edited · Runs here · TypeScript');
   });
 
+  it('says Read-only when another Ganymede server owns the notebook (#839)', () => {
+    expect(statusText(base(LOCAL, { readOnly: true }))).toBe(
+      'Read-only · Runs on local server · TypeScript',
+    );
+    expect(shortStatusText(base(LOCAL, { readOnly: true }))).toBe(
+      'Read-only · Runs on local server',
+    );
+  });
+
   it('says Locked when the file changed on disk, and Edited too when it was', () => {
     expect(statusText(base(BROWSER, { locked: true }))).toBe(
       'Locked: changed on disk · Runs here · TypeScript',

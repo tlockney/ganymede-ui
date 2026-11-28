@@ -13,7 +13,7 @@ struct RunMenuItems: View {
         Button { page.run("run-with-params") } label: {
             Label("Run with Parameters…", systemImage: "slider.horizontal.3")
         }
-        .disabled(!page.state.hasNotebook || page.state.runParams != true)
+        .disabled(!page.state.hasNotebook || page.state.runParams != true || page.state.readOnly == true)
         Button { page.run("clear-outputs") } label: { Label("Clear All Outputs", systemImage: "eraser") }
             .disabled(!page.state.editsCells)
         Divider()
@@ -66,7 +66,7 @@ struct RunCellMenu: View {
             // though the toolbar shows "Run" (#892).
             .accessibilityLabel("Run Cell")
             .help("Run the selected cell and select the next (⇧↩)")
-            .disabled(!page.state.hasNotebook)
+            .disabled(!page.state.hasNotebook || page.state.readOnly == true)
 
             Divider().frame(height: 16)
 

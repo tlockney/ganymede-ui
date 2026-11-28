@@ -4,7 +4,7 @@ import type { ICodeCellModel } from '@jupyterlab/cells';
 import type * as nbformat from '@jupyterlab/nbformat';
 import type { Notebook } from '@jupyterlab/notebook';
 import type { Contents } from '@jupyterlab/services';
-import type { IDisposable } from '@lumino/disposable';
+import type { CellGutter } from './cell-gutter';
 
 // The run gutter on JupyterLab's real Notebook in jsdom (#852): the button,
 // the count and the elapsed slot. What it looks like is e2e's.
@@ -39,7 +39,7 @@ const CONTENT: nbformat.INotebookContent = {
 
 let notebook: Notebook;
 let holder: HTMLDivElement;
-let gutter: IDisposable;
+let gutter: CellGutter;
 let runs: ReturnType<typeof attachRunStatus>;
 let run: ReturnType<typeof vi.fn<(cell: unknown) => void>>;
 let clock: number;
@@ -88,14 +88,21 @@ describe('attachCellGutter (#852)', () => {
     expect(countOf(0).textContent).toBe('–');
   });
 
-  it('runs that cell when pressed, and not while the machine is away', () => {
+  it('runs that cell when pressed, and disables the button while read-only or away', () => {
     buttonOf(2).click();
     expect(run).toHaveBeenCalledWith(cell(2));
     gutter.dispose();
     run.mockClear();
-    gutter = attachCellGutter(notebook, { run, runs, away: () => true });
+    let locked = true;
+    gutter = attachCellGutter(notebook, { run, runs, away: () => locked });
+    expect(buttonOf(0).disabled).toBe(true);
     buttonOf(0).click();
     expect(run).not.toHaveBeenCalled();
+    locked = false;
+    gutter.refresh();
+    expect(buttonOf(0).disabled).toBe(false);
+    buttonOf(0).click();
+    expect(run).toHaveBeenCalledWith(cell(0));
   });
 
   it('shows the execution count as the model has it', () => {

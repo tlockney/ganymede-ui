@@ -657,8 +657,19 @@ settings restarts Ganymede's server, which restarts its kernels; turning
 MCP off ends agents' sessions and revokes the token, so turning it on
 again makes a new one.
 
-A notebook can be edited on one server at a time: if an agent's own
-`ganymede mcp` server has it open, Ganymede shows it read-only.
+A notebook can be edited on one server at a time: if another Ganymede
+server on this machine (such as `ganymede serve`, `lab`, `ui`, or an
+agent's own `ganymede mcp` server) already has it open, Ganymede shows it
+read-only — editing and Run are disabled, and a banner says another
+Ganymede server on this machine has the notebook open. Once the other
+server lets go, the notebook becomes editable again on its own without a
+reload.
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, where opening a notebook owned by another server
+> leaves editing and Run active even though the server undoes edits and
+> refuses runs.
 
 The Mac app gives its own server your account's full name with each
 notebook it opens, so an agent working there is told who changed a

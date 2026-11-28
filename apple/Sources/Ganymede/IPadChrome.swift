@@ -1340,8 +1340,9 @@ struct IPadNotebookToolbar: ToolbarContent {
     @ViewBuilder
     private var fileItems: some View {
         Button { page.run("save") } label: { Label("Save", systemImage: "square.and.arrow.down") }
-            .disabled(!page.state.dirty)
+            .disabled(!page.state.dirty || page.state.readOnly == true)
         Button(action: rename) { Label("Rename…", systemImage: "pencil") }
+            .disabled(!page.state.canRename)
         if bottom {
             Menu {
                 shareItems
@@ -1381,18 +1382,22 @@ struct IPadCommands: Commands {
             CodeFontSizeCommands()
         }
         CommandGroup(replacing: .newItem) { IPadNewNotebook() }
-        CommandGroup(replacing: .saveItem) { IPadPageButton("Save", "save", key: "s") }
+        CommandGroup(replacing: .saveItem) {
+            IPadPageButton("Save", "save", key: "s") { $0.hasNotebook && $0.readOnly != true }
+        }
         CommandMenu("Cell") {
-            IPadPageButton("Run Cell", "run")
-            IPadPageButton("Run All Cells", "run-all", key: .return, modifiers: [.command, .shift])
-            IPadPageButton("Run with Parameters…", "run-with-params") { $0.hasNotebook && $0.runParams == true }
-            IPadPageButton("Clear All Outputs", "clear-outputs")
-            IPadPageButton("Insert Cell Below", "insert-below")
-            IPadPageButton("Insert Markdown Cell Below", "insert-markdown")
-            IPadPageButton("Collapse All Code", "collapse-all-code")
-            IPadPageButton("Expand All Code", "expand-all-code")
+            IPadPageButton("Run Cell", "run") { $0.editsCells }
+            IPadPageButton("Run All Cells", "run-all", key: .return, modifiers: [.command, .shift]) { $0.editsCells }
+            IPadPageButton("Run with Parameters…", "run-with-params") {
+                $0.hasNotebook && $0.runParams == true && $0.readOnly != true
+            }
+            IPadPageButton("Clear All Outputs", "clear-outputs") { $0.editsCells }
+            IPadPageButton("Insert Cell Below", "insert-below") { $0.editsCells }
+            IPadPageButton("Insert Markdown Cell Below", "insert-markdown") { $0.editsCells }
+            IPadPageButton("Collapse All Code", "collapse-all-code") { $0.editsCells }
+            IPadPageButton("Expand All Code", "expand-all-code") { $0.editsCells }
             IPadPageButton("Go to Definition", "go-to-definition")
-            IPadPageButton("Rename Symbol…", "rename-symbol")
+            IPadPageButton("Rename Symbol…", "rename-symbol") { $0.editsCells }
             IPadPageButton("Find…", "find", key: "f")
         }
         CommandMenu("Kernel") {

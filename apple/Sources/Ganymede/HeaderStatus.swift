@@ -12,6 +12,8 @@ struct HeaderStatus: Equatable {
     var runsOn: String?
     var dirty: Bool
     var locked: Bool
+    /// Another Ganymede server on this machine owns the notebook (#839).
+    var readOnly: Bool = false
     /// The kernel's display name; nil with none.
     var kernel: String?
     /// The notebook's language (#867), as its kernel's kernelspec or the
@@ -30,6 +32,7 @@ struct HeaderStatus: Equatable {
     /// and nothing while the file is saved. The popover's first line
     /// (`full`) still has the whole of it.
     var saveNote: String? {
+        if readOnly { return "Read-only" }
         if locked { return dirty ? "Edited · Locked: changed on disk" : "Locked: changed on disk" }
         return dirty ? "Edited" : nil
     }
@@ -146,7 +149,9 @@ struct HeaderStatus: Equatable {
     /// with no kernel, so a long name doesn't push the runs part out.
     var short: String {
         let word: String
-        if locked {
+        if readOnly {
+            word = "Read-only"
+        } else if locked {
             word = dirty ? "Edited · Locked" : "Locked"
         } else {
             word = dirty ? "Edited" : "Saved"
@@ -168,6 +173,7 @@ struct HeaderStatus: Equatable {
             runsOn: runsOn,
             dirty: state.dirty,
             locked: state.locked ?? false,
+            readOnly: state.readOnly ?? false,
             kernel: state.kernelDisplayName,
             language: state.kernelLanguage,
             kernelMissing: state.kernelMissing,

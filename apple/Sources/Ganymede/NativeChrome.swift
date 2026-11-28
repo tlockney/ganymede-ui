@@ -794,7 +794,7 @@ struct NotebookToolbar: ToolbarContent {
             .disabled(!page.state.editsCells)
             Divider()
             Button("Save") { Task { await document.save() } }
-                .disabled(document.file == nil)
+                .disabled(document.file == nil || page.state.readOnly == true)
         } label: {
             Label("More", systemImage: "ellipsis")
         }
@@ -1204,36 +1204,40 @@ struct CellMenu: View {
 
     var body: some View {
         Group {
-            Button("Run Cell") { page?.run("run") }
-            Button("Run All Cells") { page?.run("run-all") }
-                .keyboardShortcut(.return, modifiers: [.command, .shift])
-            Button("Run with Parameters…") { page?.run("run-with-params") }
-                .disabled(page?.state.runParams != true)
-            Button("Clear All Outputs") { page?.run("clear-outputs") }
-            Divider()
-            Button("Insert Cell Above") { page?.run("insert-above") }
-            Button("Insert Cell Below") { page?.run("insert-below") }
-            Button("Insert Markdown Cell Below") { page?.run("insert-markdown") }
-            Divider()
-            Picker("Cell Type", selection: cellType) {
-                Text("Code").tag("code")
-                Text("Markdown").tag("markdown")
-                Text("Raw").tag("raw")
+            Group {
+                Button("Run Cell") { page?.run("run") }
+                Button("Run All Cells") { page?.run("run-all") }
+                    .keyboardShortcut(.return, modifiers: [.command, .shift])
+                Button("Run with Parameters…") { page?.run("run-with-params") }
+                    .disabled(page?.state.runParams != true || page?.state.readOnly == true)
+                Button("Clear All Outputs") { page?.run("clear-outputs") }
+                Divider()
+                Button("Insert Cell Above") { page?.run("insert-above") }
+                Button("Insert Cell Below") { page?.run("insert-below") }
+                Button("Insert Markdown Cell Below") { page?.run("insert-markdown") }
+                Divider()
+                Picker("Cell Type", selection: cellType) {
+                    Text("Code").tag("code")
+                    Text("Markdown").tag("markdown")
+                    Text("Raw").tag("raw")
+                }
+                Divider()
+                Button("Move Cell Up") { page?.run("move-up") }
+                Button("Move Cell Down") { page?.run("move-down") }
+                Button("Delete Cell") { page?.run("delete") }
+                Divider()
+                // Collapsing code (#564); the page binds ⌘⌥[ and ⌘⌥] in command mode.
+                Button("Collapse Code") { page?.run("collapse-code") }
+                Button("Expand Code") { page?.run("expand-code") }
+                Button("Collapse All Code") { page?.run("collapse-all-code") }
+                Button("Expand All Code") { page?.run("expand-all-code") }
             }
-            Divider()
-            Button("Move Cell Up") { page?.run("move-up") }
-            Button("Move Cell Down") { page?.run("move-down") }
-            Button("Delete Cell") { page?.run("delete") }
-            Divider()
-            // Collapsing code (#564); the page binds ⌘⌥[ and ⌘⌥] in command mode.
-            Button("Collapse Code") { page?.run("collapse-code") }
-            Button("Expand Code") { page?.run("expand-code") }
-            Button("Collapse All Code") { page?.run("collapse-all-code") }
-            Button("Expand All Code") { page?.run("expand-all-code") }
+            .disabled(page?.state.editsCells != true)
             Divider()
             // Through the kernel's language service (#676); the page binds F12 and F2 by default.
             Button("Go to Definition") { page?.run("go-to-definition") }
             Button("Rename Symbol…") { page?.run("rename-symbol") }
+                .disabled(page?.state.editsCells != true)
             Divider()
             Button("Find in Notebook…") { page?.run("find") }
         }
@@ -1294,7 +1298,7 @@ struct KernelMenu: View {
                     .disabled(true)
             }
         }
-        .disabled(page?.state.hasNotebook != true || !offersKernels)
+        .disabled(page?.state.hasNotebook != true || !offersKernels || page?.state.readOnly == true)
         Divider()
         Button("Trust Notebook…") {
             if let page { confirmTrust(page) }

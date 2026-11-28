@@ -168,17 +168,50 @@ describe('attachEditing', () => {
   });
 
   it('opens the cell menu from the capsule’s ⋯ (#852)', async () => {
-    await vi.waitFor(() =>
-      expect(notebook.activeCell!.node.querySelector('.jp-cell-toolbar')).not.toBeNull(),
-    );
-    const more = notebook.activeCell!.node.querySelector<HTMLButtonElement>(
-      '.jp-cell-toolbar [title="Cell actions"]',
-    )!;
+    const findMore = () =>
+      notebook.activeCell!.node.querySelector<HTMLButtonElement>(
+        '.jp-cell-toolbar [title="Cell actions"]',
+      );
+    await vi.waitFor(() => expect(findMore()).not.toBeNull());
+    const more = findMore()!;
     await vi.waitFor(() => expect(more.disabled).toBe(false));
     more.click();
     expect(onCellMenu).toHaveBeenCalledTimes(1);
     expect(onCellMenu.mock.calls[0]![0]).toBe(notebook.activeCell);
     expect(onCellMenu.mock.calls[0]![1]).toBeInstanceOf(HTMLElement);
+  });
+
+  it('ignores mutating cell toolbar buttons when canEdit is false (#839)', async () => {
+    editing.dispose();
+    const session = {
+      session: { kernel },
+      sessionChanged: new Signal({}),
+      kernelChanged: new Signal({}),
+    } as unknown as ISessionContext;
+    let editable = false;
+    editing = attachEditing(
+      notebook,
+      session,
+      notebook.rendermime,
+      createCommands(notebook, session),
+      {
+        onCellMenu,
+        canEdit: () => editable,
+      },
+    );
+    const findDup = () =>
+      notebook.activeCell!.node.querySelector<HTMLButtonElement>(
+        '.jp-cell-toolbar [title="Duplicate cell"]',
+      );
+    await vi.waitFor(() => expect(findDup()).not.toBeNull());
+    const dup = findDup()!;
+    await vi.waitFor(() => expect(dup.disabled).toBe(false));
+    const before = notebook.model!.cells.length;
+    dup.click();
+    expect(notebook.model!.cells.length).toBe(before);
+    editable = true;
+    dup.click();
+    expect(notebook.model!.cells.length).toBe(before + 1);
   });
 });
 
@@ -321,6 +354,9 @@ describe('createCommands', () => {
       await guarded.execute(id);
     }
     expect(beforeRun).not.toHaveBeenCalled();
+    notebook.mode = 'command';
+    await guarded.execute('edit-mode');
+    expect(notebook.mode).toBe('command');
     // Reading still works.
     select(0);
     await guarded.execute('select-below');

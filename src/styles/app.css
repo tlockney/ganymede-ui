@@ -3082,6 +3082,20 @@ button {
   background: var(--orange);
 }
 
+.readonly-banner {
+  position: absolute;
+  z-index: 5;
+  top: var(--toolbar-h);
+  left: 0;
+  right: 0;
+  padding: 6px 12px;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: #1d1d1f;
+  background: var(--orange);
+}
+
 .place-label {
   display: flex;
   align-items: center;

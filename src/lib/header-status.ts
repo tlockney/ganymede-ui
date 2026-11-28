@@ -58,6 +58,8 @@ export type StatusInput = {
   dirty: boolean;
   /** Saving is locked: the file changed on disk (#367). */
   locked: boolean;
+  /** Another Ganymede server on this machine owns the notebook (#839). */
+  readOnly?: boolean;
   /** The kernel's spec name, if one is chosen. */
   kernelName?: string;
   /** The kernel's display name, if known. */
@@ -70,8 +72,9 @@ export type StatusInput = {
   pageKernel?: boolean;
 };
 
-/** The save part: Saved in this browser, Saved on <host>, Edited, or Locked. */
-export function saveText({ place, dirty, locked }: StatusInput): string {
+/** The save part: Read-only, Saved in this browser, Saved on <host>, Edited, or Locked. */
+export function saveText({ place, dirty, locked, readOnly }: StatusInput): string {
+  if (readOnly) return 'Read-only';
   if (locked) return dirty ? 'Edited · Locked: changed on disk' : 'Locked: changed on disk';
   return dirty ? 'Edited' : `Saved ${place.saved}`;
 }
@@ -83,13 +86,15 @@ export function saveText({ place, dirty, locked }: StatusInput): string {
  * out of the two rows the line has.
  */
 export function shortStatusText(input: StatusInput): string {
-  const save = input.locked
-    ? input.dirty
-      ? 'Edited · Locked'
-      : 'Locked'
-    : input.dirty
-      ? 'Edited'
-      : 'Saved';
+  const save = input.readOnly
+    ? 'Read-only'
+    : input.locked
+      ? input.dirty
+        ? 'Edited · Locked'
+        : 'Locked'
+      : input.dirty
+        ? 'Edited'
+        : 'Saved';
   const runs = input.place.runs(
     input.missingKernel ? undefined : input.kernelName,
     input.pageKernel,

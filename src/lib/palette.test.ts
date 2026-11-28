@@ -138,6 +138,31 @@ describe('paletteEntries', () => {
     expect(find('Restart Kernel', journal)!.disabled).toBeFalsy();
   });
 
+  it('disables editing, running, saving, renaming and kernel changes while read-only (#839)', () => {
+    const ro = { ...CONTEXT, readOnly: true, runParams: true };
+    for (const label of [
+      'Save',
+      'Rename Notebook…',
+      'Run All Cells',
+      'Run with Parameters…',
+      'Clear All Outputs',
+      'Insert Code Cell',
+      'Insert Markdown Cell',
+      'Change Kernel to TypeScript',
+      'Run cell',
+      'Insert cell above',
+      'Delete cells',
+      'Change to Markdown',
+      'Rename Symbol…',
+    ]) {
+      expect(find(label, ro)?.disabled, `${label} while read-only`).toBe(true);
+    }
+    // Navigation, find, view toggles and download stay enabled.
+    for (const label of ['Find', 'Download Notebook', 'View as Journal', 'Go to Definition']) {
+      expect(find(label, ro)?.disabled, `${label} while read-only`).toBeFalsy();
+    }
+  });
+
   it('gives each its key and its argument', () => {
     expect(find('Save')).toMatchObject({ id: 'save', keys: expect.stringMatching(/S$/) });
     expect(find('Move cells up')).toMatchObject({ id: 'move-up', group: 'Command mode' });

@@ -66,6 +66,7 @@ function show(
     positionKey?: { server: string; path: string };
     startAt?: number;
     onActiveCellChange?(index: number | null): void;
+    readOnly?: boolean;
   } = {},
 ) {
   const onOpenAsNotebook = vi.fn();
@@ -75,6 +76,7 @@ function show(
       rendermime={(more.rendermime ?? rendermime) as never}
       trustedIds={() => new Set(more.trusted ?? [])}
       room={room as NotebookRoom}
+      readOnly={more.readOnly}
       path={more.path}
       roomSettings={more.roomSettings as never}
       positionKey={more.positionKey}
@@ -326,6 +328,16 @@ describe('JournalView', () => {
     act(() => notify(true));
     expect(screen.queryByText(/Reconnecting…/)).not.toBeInTheDocument();
     expect(field).toBeEnabled();
+  });
+
+  it('shows the read-only banner and disables the composer when another server owns the notebook (#839)', () => {
+    show(journal(), undefined, { readOnly: true });
+    expect(
+      screen.getByText(/Another Ganymede server on this machine has this notebook open/),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'Write to the journal' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Add Note' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Ask the agent' })).toBeDisabled();
   });
 
   it('offers Open as Notebook', async () => {

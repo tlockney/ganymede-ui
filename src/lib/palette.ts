@@ -44,6 +44,8 @@ export type PaletteContext = {
   consoles?: { id: string; name: string; folder: string }[];
   /** Whether the open notebook shows as a journal (#184). */
   journal?: boolean;
+  /** Whether the open notebook is read-only because another server owns it (#839). */
+  readOnly?: boolean;
   /** Whether the open notebook is trusted. */
   trusted: boolean;
   /** Whether the backend keeps host API grants (a Ganymede server). */
@@ -84,11 +86,25 @@ const nameOf = (path: string) =>
     .pop()!
     .replace(/\.ipynb$/, '');
 
+const READ_ONLY_SHORTCUTS = new Set([
+  'select-above',
+  'select-below',
+  'extend-above',
+  'extend-below',
+  'select-all',
+  'copy',
+  'find',
+  'find-next',
+  'find-previous',
+]);
+
 /** Every entry for `context`, in the palette's order. Pure but for the user's key bindings. */
 export function paletteEntries(context: PaletteContext): PaletteEntry[] {
   const open = !!context.path;
-  // The journal view hides the cells: what runs or edits them waits for the notebook.
+  const readOnly = !!context.readOnly;
+  // The journal view hides the cells; a read-only notebook edits and runs none (#839).
   const cells = open && !context.journal;
+  const editCells = cells && !readOnly;
   const app = (
     id: string,
     label: string,
@@ -119,11 +135,11 @@ export function paletteEntries(context: PaletteContext): PaletteEntry[] {
     ...(context.consoles?.length
       ? [app('clear-recent-consoles', 'Clear Recent Consoles', 'File')]
       : []),
-    app('save', 'Save', 'File', { disabled: !open }),
+    app('save', 'Save', 'File', { disabled: !open || readOnly }),
     app('rename', 'Rename Notebook…', 'File', {
       prompt: 'New name',
       initial: context.path ? nameOf(context.path) : undefined,
-      disabled: !open,
+      disabled: !open || readOnly,
     }),
     app('download', 'Download Notebook', 'File', { disabled: !open }),
     app('publish', 'Publish as Web Page…', 'File', { disabled: !open || !context.publish }),
@@ -134,24 +150,24 @@ export function paletteEntries(context: PaletteContext): PaletteEntry[] {
     app('notebook-access', 'Notebook Access…', 'File', {
       disabled: !open || !context.hostGrants,
     }),
-    app('run-all', 'Run All Cells', 'Cell', { disabled: !cells }),
+    app('run-all', 'Run All Cells', 'Cell', { disabled: !editCells }),
     app('run-with-params', 'Run with Parameters…', 'Cell', {
-      disabled: !open || !context.runParams,
+      disabled: !open || readOnly || !context.runParams,
     }),
-    app('clear-outputs', 'Clear All Outputs', 'Cell', { disabled: !cells }),
-    app('insert-code', 'Insert Code Cell', 'Cell', { disabled: !cells }),
-    app('insert-markdown', 'Insert Markdown Cell', 'Cell', { disabled: !cells }),
+    app('clear-outputs', 'Clear All Outputs', 'Cell', { disabled: !editCells }),
+    app('insert-code', 'Insert Code Cell', 'Cell', { disabled: !editCells }),
+    app('insert-markdown', 'Insert Markdown Cell', 'Cell', { disabled: !editCells }),
     app('interrupt', 'Interrupt Kernel', 'Kernel', { disabled: !open }),
     app('restart', 'Restart Kernel', 'Kernel', { disabled: !open }),
     ...context.kernels.map(k =>
       app('change-kernel', `Change Kernel to ${k.displayName}`, 'Kernel', {
         arg: k.name,
-        disabled: !open || k.name === context.kernel,
+        disabled: !open || readOnly || k.name === context.kernel,
       }),
     ),
     ...SHORTCUTS.filter(s => !LEFT_OUT.has(s.id)).map(s =>
       app(s.id, sentence(s.label), s.group === 'Notebook' ? 'Cell' : s.group, {
-        disabled: !cells,
+        disabled: READ_ONLY_SHORTCUTS.has(s.id) ? !cells : !editCells,
       }),
     ),
     ...context.recents
@@ -160,7 +176,7 @@ export function paletteEntries(context: PaletteContext): PaletteEntry[] {
       .map(p => app('open', `Open ${nameOf(p)}`, recentGroup(p), { arg: p, keys: '' })),
     // Through the kernel's language service (#676); F12 and F2 in a cell by default.
     app('go-to-definition', 'Go to Definition', 'Cell', { disabled: !cells }),
-    app('rename-symbol', 'Rename Symbol…', 'Cell', { disabled: !cells, prompt: 'New name' }),
+    app('rename-symbol', 'Rename Symbol…', 'Cell', { disabled: !editCells, prompt: 'New name' }),
     app('toggle-journal', context.journal ? 'Open as Notebook' : 'View as Journal', 'View', {
       disabled: !open,
     }),
