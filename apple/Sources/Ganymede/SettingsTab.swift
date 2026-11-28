@@ -16,6 +16,14 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     /// Settings", #698), off by default.
     static let developerKey = "showDeveloperSettings"
 
+    /// Whether the Mac app prototypes the Step 6 custom tab strip in place
+    /// of AppKit window tabs (#903), off by default.
+    static let customTabsKey = "customTabStrip"
+
+    /// Whether the custom tab strip prototype includes sample machine and
+    /// terminal tabs for visual layout checks (#903), off by default.
+    static let customTabsSamplesKey = "customTabStripSamples"
+
     /// The tab to show: Developer falls back to General while it's hidden,
     /// as when the tab kept from the last launch is Developer and the
     /// switch has since been turned off.

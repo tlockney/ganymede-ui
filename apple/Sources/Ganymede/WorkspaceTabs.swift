@@ -9,6 +9,15 @@ import AppKit
 /// keeps its own toolbar, so the toolbar follows the active tab. This
 /// holds whatever System Settings › Desktop & Dock › "Prefer tabs when
 /// opening documents" says.
+///
+/// Step 6 (#844, #903) investigated `NSWindowTab` (`NSWindowTab.h`): it
+/// exposes only `title`, `attributedTitle`, `toolTip`, and a right-aligned
+/// `accessoryView`, so it cannot render a taller page-joined active tab,
+/// a 1.5pt colored top edge, or distinct silhouettes for notebook chips,
+/// outlined machine capsules, and dark mono terminal chips. When
+/// Developer Settings' `SettingsTab.customTabsKey` prototype toggle is on
+/// (off by default), `WorkspaceTabs` opts windows out of `NSWindowTabGroup`
+/// and routes `⌘T` / `⌘W` to the front window's `WorkspaceTabHost`.
 @MainActor
 enum WorkspaceTabs {
     static let identifier = "ganymede.workspace"
@@ -16,6 +25,38 @@ enum WorkspaceTabs {
     /// can always open a new window (by value, SwiftUI brings forward one
     /// already showing that value instead).
     static let sceneID = "workspace"
+
+    /// Defaults store checked for the Step 6 custom tab strip toggle
+    /// (swappable in tests).
+    static var defaults: UserDefaults = .standard
+
+    /// Whether the experimental Step 6 custom tab strip is enabled (#903);
+    /// false by default so AppKit window tabs remain unchanged.
+    static var isCustomStripEnabled: Bool {
+        defaults.bool(forKey: SettingsTab.customTabsKey)
+    }
+
+    struct CustomTabActions {
+        var closeActiveTab: @MainActor () -> Bool
+        var openNewTab: @MainActor (WindowTarget) -> Bool
+        var selectNextTab: @MainActor () -> Void
+        var selectPreviousTab: @MainActor () -> Void
+    }
+
+    private final class CustomTabBox {
+        let actions: CustomTabActions
+        init(_ actions: CustomTabActions) { self.actions = actions }
+    }
+
+    private static let customHosts = NSMapTable<NSWindow, CustomTabBox>.weakToStrongObjects()
+
+    static func registerCustomTabHost(for window: NSWindow, actions: CustomTabActions) {
+        customHosts.setObject(CustomTabBox(actions), forKey: window)
+    }
+
+    static func unregisterCustomTabHost(for window: NSWindow) {
+        customHosts.removeObject(forKey: window)
+    }
 
     /// A new notebook window asked for by File › New Tab or New Window: what
     /// it shows (a folder here, or a machine's), and whether it opens
@@ -38,6 +79,13 @@ enum WorkspaceTabs {
     /// Opens a new notebook window on `target`, as a tab of the front
     /// window or, with `alone`, a window of its own.
     static func open(target: WindowTarget, alone: Bool, with openWindow: (String) -> Void) {
+        if isCustomStripEnabled, !alone,
+           let app = NSApp as NSApplication?,
+           let host = app.keyWindow ?? app.mainWindow,
+           let box = customHosts.object(forKey: host),
+           box.actions.openNewTab(target) {
+            return
+        }
         let request = Request(target: target, alone: alone)
         pending = request
         openWindow(sceneID)
@@ -57,6 +105,10 @@ enum WorkspaceTabs {
     /// window, it is added as one, unless `alone`.
     static func join(_ window: NSWindow, alone: Bool = false) {
         windows.add(window)
+        if isCustomStripEnabled {
+            window.tabbingMode = .disallowed
+            return
+        }
         guard window.tabbingIdentifier != identifier else { return }
         window.tabbingIdentifier = identifier
         if alone {
@@ -84,6 +136,11 @@ enum WorkspaceTabs {
     /// of its window when it has tabs, never the other tabs. Its delegate
     /// still asks to save unsaved edits first.
     static func close(_ window: NSWindow?) {
+        if isCustomStripEnabled, let window,
+           let box = customHosts.object(forKey: window),
+           box.actions.closeActiveTab() {
+            return
+        }
         window?.performClose(nil)
     }
 
