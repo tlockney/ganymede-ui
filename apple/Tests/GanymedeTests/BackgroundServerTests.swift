@@ -191,6 +191,12 @@ final class BackgroundServerTests: XCTestCase {
         func isListening(pid: Int32, port: Int, host: String) -> Bool {
             (listeners[pid] ?? []).contains { $0.port == port && $0.host == host }
         }
+
+        func isListeningOnWildcard(pid: Int32, port: Int) -> Bool {
+            (listeners[pid] ?? []).contains {
+                $0.port == port && ThisMacServer.isWildcardAddress($0.host)
+            }
+        }
     }
 
     /// Thread-safe recorder for `SIGTERM` calls from the fake world.

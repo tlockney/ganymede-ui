@@ -64,6 +64,12 @@ final class ThisMacVerifierTests: XCTestCase {
         func isListening(pid: Int32, port: Int, host: String) -> Bool {
             (listeners[pid] ?? []).contains { $0.port == port && $0.host == host }
         }
+
+        func isListeningOnWildcard(pid: Int32, port: Int) -> Bool {
+            (listeners[pid] ?? []).contains {
+                $0.port == port && ThisMacServer.isWildcardAddress($0.host)
+            }
+        }
     }
 
     private func verifier(_ probe: Fake) -> ThisMacVerifier { ThisMacVerifier(probe: probe) }
@@ -258,6 +264,12 @@ final class ThisMacVerifierTests: XCTestCase {
         func isListening(pid: Int32, port: Int, host: String) -> Bool {
             (listeners[pid] ?? []).contains { $0.port == port && $0.host == host }
         }
+
+        func isListeningOnWildcard(pid: Int32, port: Int) -> Bool {
+            (listeners[pid] ?? []).contains {
+                $0.port == port && ThisMacServer.isWildcardAddress($0.host)
+            }
+        }
     }
 
     /// The bundled tool's version is read only once an info file has passed
@@ -402,14 +414,132 @@ final class ThisMacVerifierTests: XCTestCase {
     }
 
     /// A wildcard listener answers on every interface, and the check refuses
-    /// it (#883): the app's token must go to the loopback literal alone.
+    /// it (#883), and reports it as a wildcard bind (#887): the app's token
+    /// must go to the loopback literal alone.
     func testTheSystemRefusesAWildcardListener() throws {
-        let any = try openListener("0.0.0.0")
-        defer { close(any.fd) }
+        let any4 = try openListener("0.0.0.0")
+        defer { close(any4.fd) }
+        let any6 = try openListener("::")
+        defer { close(any6.fd) }
+        let loopback4 = try openListener("127.0.0.1")
+        defer { close(loopback4.fd) }
+        let loopback6 = try openListener("::1")
+        defer { close(loopback6.fd) }
         let probe = SystemThisMacProbe(bundledTool: nil)
         for host in ["127.0.0.1", "::1", "0.0.0.0"] {
-            XCTAssertFalse(probe.isListening(pid: getpid(), port: any.port, host: host), host)
+            XCTAssertFalse(probe.isListening(pid: getpid(), port: any4.port, host: host), host)
         }
+        XCTAssertTrue(probe.isListeningOnWildcard(pid: getpid(), port: any4.port))
+        XCTAssertTrue(probe.isListeningOnWildcard(pid: getpid(), port: any6.port))
+        XCTAssertFalse(probe.isListeningOnWildcard(pid: getpid(), port: loopback4.port))
+        XCTAssertFalse(probe.isListeningOnWildcard(pid: getpid(), port: loopback6.port))
+    }
+
+    // MARK: diagnosing why a check failed (#887)
+
+    func testDiagnoseReportsEachFailureReason() throws {
+        // Passing case returns nil.
+        XCTAssertNil(verifier(Fake()).diagnose(info()))
+
+        // Unsigned app build (no team) and missing bundled helper.
+        var noTeam = Fake()
+        noTeam.teamIdentifier = nil
+        XCTAssertEqual(verifier(noTeam).diagnose(info()), .unsignedApp)
+
+        var noHelper = Fake()
+        noHelper.helperIdentifier = nil
+        XCTAssertEqual(verifier(noHelper).diagnose(info()), .missingBundledHelper)
+
+        // Process not running.
+        var gone = Fake()
+        gone.running = []
+        XCTAssertEqual(verifier(gone).diagnose(info()), .processNotRunning)
+
+        // Wrong executable path (another copy of the binary, e.g. Homebrew or Downloads).
+        var elsewhere = Fake()
+        elsewhere.paths[pid] = "/Users/me/Downloads/Ganymede.app/Contents/Helpers/ganymede"
+        XCTAssertEqual(verifier(elsewhere).diagnose(info()), .wrongExecutablePath)
+
+        // Wrong code signature (another team, another identifier, or unsigned).
+        var otherTeam = Fake()
+        otherTeam.signatures[pid] = ("ZYXWV98765", helper)
+        XCTAssertEqual(verifier(otherTeam).diagnose(info()), .wrongSignature)
+
+        // Wildcard bind via hostname (`ganymede serve --ip 0.0.0.0` writes
+        // `url: "http://localhost:8888/"` with `hostname: "0.0.0.0"`), via URL,
+        // and via the listening socket itself.
+        XCTAssertEqual(
+            verifier(Fake()).diagnose(info(url: "http://localhost:8888/"), hostname: "0.0.0.0"),
+            .wildcardBind)
+        XCTAssertEqual(
+            verifier(Fake()).diagnose(info(url: "http://localhost:8888/"), hostname: "::"),
+            .wildcardBind)
+        XCTAssertEqual(verifier(Fake()).diagnose(info(url: "http://0.0.0.0:8888/")), .wildcardBind)
+        var wildcardSocket = Fake()
+        wildcardSocket.listeners[pid] = [("0.0.0.0", 8888)]
+        XCTAssertEqual(verifier(wildcardSocket).diagnose(info()), .wildcardBind)
+        XCTAssertEqual(
+            verifier(wildcardSocket).diagnose(info(url: "http://localhost:8888/")),
+            .wildcardBind)
+
+        // Info file uses localhost without a wildcard bind.
+        XCTAssertEqual(
+            verifier(Fake()).diagnose(info(url: "http://localhost:8888/"), hostname: "localhost"),
+            .infoFileUsesLocalhost)
+
+        // Info file names a non-loopback host.
+        XCTAssertEqual(
+            verifier(Fake()).diagnose(info(url: "http://192.168.1.5:8888/")),
+            .nonLoopbackAddress)
+
+        // Process isn't listening on the expected loopback socket.
+        var notListening = Fake()
+        notListening.listeners = [:]
+        XCTAssertEqual(verifier(notListening).diagnose(info()), .notListening)
+
+        // Missing token on info file.
+        XCTAssertEqual(verifier(Fake()).diagnose(info(token: "")), .missingToken)
+
+        // Bundled version unavailable.
+        var noVersion = Fake()
+        noVersion.bundledVersion = nil
+        XCTAssertEqual(verifier(noVersion).diagnose(info()), .bundledVersionUnavailable)
+
+        // Version mismatch names both versions.
+        XCTAssertEqual(
+            verifier(Fake()).diagnose(info(version: "0.16.0")),
+            .versionMismatch(server: "0.16.0", app: "0.17.0"))
+    }
+
+    func testScanCapturesAppFailureWildcardAndIncompleteInfoFiles() throws {
+        // Unsigned app: reports appFailure without running bundledVersion.
+        let counting = CountingProbe()
+        counting.team = nil
+        _ = try write(pid: pid, fields: [:])
+        let unsignedScan = ThisMacVerifier(probe: counting).scan(in: directory)
+        XCTAssertEqual(unsignedScan.appFailure, .unsignedApp)
+        XCTAssertTrue(unsignedScan.entries.isEmpty)
+        XCTAssertEqual(counting.versionReads, 0)
+
+        // `ganymede serve --ip 0.0.0.0` writes `url: localhost` and `hostname: 0.0.0.0`.
+        counting.team = team
+        _ = try write(pid: pid, fields: ["url": "http://localhost:8888/", "hostname": "0.0.0.0"])
+        let wildcardScan = ThisMacVerifier(probe: counting).scan(in: directory)
+        XCTAssertNil(wildcardScan.appFailure)
+        XCTAssertEqual(wildcardScan.entries.map(\.failure), [.wildcardBind])
+        XCTAssertEqual(counting.versionReads, 0)
+
+        // Missing `ganymede_version` produces `.incompleteServerInfo` without running bundledVersion.
+        _ = try write(pid: pid, fields: ["ganymede_version": ""])
+        let incompleteScan = ThisMacVerifier(probe: counting).scan(in: directory)
+        XCTAssertEqual(incompleteScan.entries.map(\.failure), [.incompleteServerInfo])
+        XCTAssertEqual(counting.versionReads, 0)
+
+        // Missing `token` produces `.missingToken` without running bundledVersion.
+        _ = try write(pid: pid, fields: ["token": ""])
+        let noTokenScan = ThisMacVerifier(probe: counting).scan(in: directory)
+        XCTAssertEqual(noTokenScan.entries.map(\.failure), [.missingToken])
+        XCTAssertEqual(counting.versionReads, 0)
     }
 
     // MARK: helpers

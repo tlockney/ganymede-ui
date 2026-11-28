@@ -578,6 +578,27 @@ struct ThisMacServer: Equatable, Sendable {
         ["127.0.0.1", "::1"].contains(normalize(host))
     }
 
+    /// Whether `host` is the `localhost` name (in any case, with or without a
+    /// trailing dot), which points at this Mac but isn't a literal loopback
+    /// address the verifier accepts (#887).
+    static func isLocalhostName(_ host: String) -> Bool {
+        let normalized = normalize(host)
+        return normalized == "localhost" || normalized == "localhost."
+    }
+
+    /// Whether `host` points at this Mac (`127.0.0.1`, `::1`, or `localhost`):
+    /// a remote on another computer returns false and shows no trust notice
+    /// (#887).
+    static func isLoopbackHost(_ host: String) -> Bool {
+        isTrustedAddress(host) || isLocalhostName(host)
+    }
+
+    /// Whether `host` is a wildcard bind address (`0.0.0.0` or `::`), which
+    /// listens on every interface (#887).
+    static func isWildcardAddress(_ host: String) -> Bool {
+        ["0.0.0.0", "::"].contains(normalize(host))
+    }
+
     /// `host` as written, with the brackets an IPv6 literal may keep off
     /// and its case gone: `[::1]` and `::1` are one address, and a name is
     /// the same name in any case.
@@ -588,12 +609,198 @@ struct ThisMacServer: Equatable, Sendable {
     }
 }
 
-/// The servers a this-Mac check verified (#883), by remote id: what
-/// `AppModel` keeps, what a window's place is read from, and where a
-/// `.thisMac` window's notebooks are. Empty on iOS, where nothing verifies.
+/// Why a remote on a loopback address (`127.0.0.1`, `::1`, or `localhost`)
+/// wasn't trusted as This Mac (#887): each case names the failed check in
+/// `ThisMacVerifier` (or in matching the remote to a verified server) and
+/// produces a one-line notice naming the failed check and what to do.
+enum ThisMacTrustFailure: Equatable, Hashable, Sendable {
+    /// The running app has no team in its code signature (a debug or ad-hoc
+    /// build), so it trusts no server.
+    case unsignedApp
+    /// The running app has no signed bundled `ganymede` helper to verify
+    /// against.
+    case missingBundledHelper
+    /// The remote's URL uses `localhost` instead of the literal loopback
+    /// address (`127.0.0.1` or `[::1]`).
+    case localhostURL
+    /// No `jpserver-<pid>.json` info file in the Jupyter runtime directory
+    /// matches this loopback port.
+    case noServerInfo
+    /// The matching info file's `pid` is no longer running.
+    case processNotRunning
+    /// The server process is not running from this app's bundled `ganymede`
+    /// helper path (`Contents/Helpers/ganymede`).
+    case wrongExecutablePath
+    /// The server process isn't signed as this app's bundled `ganymede`
+    /// helper (e.g. a `cargo install` or Homebrew `ganymede`).
+    case wrongSignature
+    /// The server listens on every interface (`0.0.0.0` or `::`) rather than
+    /// `127.0.0.1` or `::1`.
+    case wildcardBind
+    /// The server's info file names `localhost` rather than a literal loopback
+    /// address.
+    case infoFileUsesLocalhost
+    /// The server's info file names a non-loopback address.
+    case nonLoopbackAddress
+    /// The server process isn't holding a listening TCP socket on the expected
+    /// loopback address and port.
+    case notListening
+    /// The server's info file has no token (e.g. started with `--no-token`).
+    case missingToken
+    /// The server's info file is missing `ganymede_version` or `root_dir`.
+    case incompleteServerInfo
+    /// The app couldn't read its bundled `ganymede` helper's version.
+    case bundledVersionUnavailable
+    /// The server's `ganymede_version` differs from the app's bundled helper.
+    case versionMismatch(server: String, app: String)
+    /// A verified server listens on the other loopback literal (`127.0.0.1`
+    /// vs `[::1]`) on this port.
+    case addressMismatch(serverHost: String)
+    /// The remote's saved token doesn't match the local server's token.
+    case tokenMismatch
+
+    /// One-line notice for a machine window, naming the failed check and what
+    /// to do (#887).
+    var notice: String {
+        switch self {
+        case .unsignedApp:
+            "Not trusted as This Mac: this app build isn’t signed — use a signed release build."
+        case .missingBundledHelper:
+            "Not trusted as This Mac: the bundled ganymede helper is missing — reinstall Ganymede."
+        case .localhostURL:
+            "Not trusted as This Mac: URL uses localhost — change it to 127.0.0.1 or [::1] in Settings › Remotes."
+        case .noServerInfo:
+            "Not trusted as This Mac: no local Ganymede server info file matches this port — start the bundled ganymede serve."
+        case .processNotRunning:
+            "Not trusted as This Mac: the local server process isn’t running — restart ganymede serve."
+        case .wrongExecutablePath:
+            "Not trusted as This Mac: server isn’t running from this app’s bundled helper — run the bundled ganymede."
+        case .wrongSignature:
+            "Not trusted as This Mac: server isn’t the app’s bundled ganymede — run the bundled helper instead."
+        case .wildcardBind:
+            "Not trusted as This Mac: server listens on every interface — restart it with --ip 127.0.0.1."
+        case .infoFileUsesLocalhost:
+            "Not trusted as This Mac: server info uses localhost instead of a literal address — restart with --ip 127.0.0.1."
+        case .nonLoopbackAddress:
+            "Not trusted as This Mac: server info names a non-loopback address — restart with --ip 127.0.0.1."
+        case .notListening:
+            "Not trusted as This Mac: server process isn’t listening on this loopback port — restart ganymede serve."
+        case .missingToken:
+            "Not trusted as This Mac: server has no token — restart ganymede serve with token auth enabled."
+        case .incompleteServerInfo:
+            "Not trusted as This Mac: server info is incomplete — update and restart ganymede serve."
+        case .bundledVersionUnavailable:
+            "Not trusted as This Mac: couldn’t read the bundled ganymede version — restart or reinstall Ganymede."
+        case .versionMismatch(let server, let app):
+            "Not trusted as This Mac: server is Ganymede \(server), app bundles \(app) — update or restart the server."
+        case .addressMismatch(let serverHost):
+            "Not trusted as This Mac: server listens on \(Self.displayHost(serverHost)) — update the URL in Settings › Remotes."
+        case .tokenMismatch:
+            "Not trusted as This Mac: remote token doesn’t match the local server — update it in Settings › Remotes."
+        }
+    }
+
+    private static func displayHost(_ host: String) -> String {
+        let normalized = ThisMacServer.normalize(host)
+        return normalized.contains(":") ? "[\(normalized)]" : normalized
+    }
+}
+
+/// One `jpserver-<pid>.json` file evaluated by `ThisMacVerifier` (#887):
+/// either a verified `ThisMacServer`, or the failure reason and enough of the
+/// file's fields to match it to a loopback remote on the same port.
+struct ThisMacScanEntry: Equatable, Sendable {
+    var verified: ThisMacServer?
+    var url: URL
+    var hostname: String?
+    var port: Int
+    var token: String
+    var isRunning: Bool
+    var failure: ThisMacTrustFailure?
+
+    /// A verified server as a scan entry.
+    init(verified server: ThisMacServer, hostname: String? = nil) {
+        self.verified = server
+        self.url = server.url
+        self.hostname = hostname
+        self.port = server.port ?? 0
+        self.token = server.token
+        self.isRunning = true
+        self.failure = nil
+    }
+
+    /// An unverified info file with why it failed.
+    init(
+        url: URL, hostname: String? = nil, port: Int, token: String, isRunning: Bool,
+        failure: ThisMacTrustFailure
+    ) {
+        self.verified = nil
+        self.url = url
+        self.hostname = hostname
+        self.port = port
+        self.token = token
+        self.isRunning = isRunning
+        self.failure = failure
+    }
+
+    /// Whether this entry could belong to a loopback remote at `remoteHost`
+    /// (already normalized to `127.0.0.1` or `::1`): same host, `localhost`,
+    /// or a wildcard bind.
+    fileprivate func matchesLoopbackHost(_ normalizedRemoteHost: String) -> Bool {
+        if let host = url.host {
+            let normalized = ThisMacServer.normalize(host)
+            if normalized == normalizedRemoteHost
+                || ThisMacServer.isLocalhostName(host)
+                || ThisMacServer.isWildcardAddress(host)
+            {
+                return true
+            }
+        }
+        if let hostname {
+            return ThisMacServer.isWildcardAddress(hostname)
+                || ThisMacServer.isLocalhostName(hostname)
+                || ThisMacServer.normalize(hostname) == normalizedRemoteHost
+        }
+        return false
+    }
+}
+
+/// What one scan of the Jupyter runtime directory found (#883, #912, #887):
+/// any app-level failure (unsigned build, missing bundled helper), every
+/// evaluated `jpserver-<pid>.json` entry (verified servers and per-file
+/// failure reasons), and verified bundled helpers whose version differs from
+/// the app's so launchd can restart them.
+struct ThisMacScanResult: Equatable, Sendable {
+    var appFailure: ThisMacTrustFailure?
+    var entries: [ThisMacScanEntry]
+    /// Verified bundled helpers whose version differs from the app's (#912).
+    var mismatched: [ThisMacServer]
+
+    init(
+        verified: [ThisMacServer] = [],
+        mismatched: [ThisMacServer] = [],
+        appFailure: ThisMacTrustFailure? = nil,
+        entries: [ThisMacScanEntry]? = nil
+    ) {
+        self.appFailure = appFailure
+        self.entries = entries ?? verified.map { ThisMacScanEntry(verified: $0) }
+        self.mismatched = mismatched
+    }
+
+    /// The servers that passed every check.
+    var verified: [ThisMacServer] { entries.compactMap(\.verified) }
+}
+
+/// The servers a this-Mac check verified (#883), and why any loopback remote
+/// failed verification (#887), by remote id: what `AppModel` keeps, what a
+/// window's place and trust notice are read from, and where a `.thisMac`
+/// window's notebooks are. Empty on iOS, where nothing verifies.
 struct ThisMacServers: Equatable {
     /// Each verified remote's server, by the remote's id (its UUID string).
     private(set) var byID: [String: ThisMacServer] = [:]
+    /// Why a loopback remote wasn't trusted as This Mac (#887), by remote id.
+    /// Absent for non-loopback remotes and for verified remotes.
+    private(set) var failuresByID: [String: ThisMacTrustFailure] = [:]
 
     init() {}
 
@@ -601,10 +808,85 @@ struct ThisMacServers: Equatable {
     /// address, its port and its token, so a remote that names another
     /// address or has another token stays an ordinary machine.
     init(_ servers: [ThisMacServer], remotes: [Remote], token: (UUID) -> String?) {
+        self.init(scan: ThisMacScanResult(verified: servers), remotes: remotes, token: token)
+    }
+
+    /// Matches a verifier scan against `remotes`: each verified loopback
+    /// remote enters `byID`, each unverified loopback remote enters
+    /// `failuresByID` with the reason it failed, and non-loopback remotes
+    /// enter neither (#883, #887).
+    init(scan: ThisMacScanResult, remotes: [Remote], token: (UUID) -> String?) {
+        let verified = scan.verified
         for remote in remotes {
-            guard let server = servers.first(where: { $0.serves(remote, token: token(remote.id)) })
+            guard remote.hasServer,
+                  let remoteURL = URL(string: remote.serverURL),
+                  let remoteHost = remoteURL.host,
+                  ThisMacServer.isLoopbackHost(remoteHost)
             else { continue }
-            byID[remote.id.uuidString] = server
+            let id = remote.id.uuidString
+            if let appFailure = scan.appFailure {
+                failuresByID[id] = appFailure
+                continue
+            }
+            if ThisMacServer.isLocalhostName(remoteHost) {
+                failuresByID[id] = .localhostURL
+                continue
+            }
+            let remoteToken = token(remote.id) ?? ""
+            if let server = verified.first(where: { $0.serves(remote, token: remoteToken) }) {
+                byID[id] = server
+                continue
+            }
+            guard let remotePort = remoteURL.port else {
+                failuresByID[id] = .noServerInfo
+                continue
+            }
+            let normalizedHost = ThisMacServer.normalize(remoteHost)
+            failuresByID[id] = Self.diagnoseUnmatched(
+                scan: scan, verified: verified, normalizedHost: normalizedHost,
+                port: remotePort, token: remoteToken)
+        }
+    }
+
+    /// Picks the most specific failure reason for a loopback literal remote
+    /// that did not match any verified server (#887).
+    private static func diagnoseUnmatched(
+        scan: ThisMacScanResult, verified: [ThisMacServer], normalizedHost: String,
+        port: Int, token: String
+    ) -> ThisMacTrustFailure {
+        // First check verified servers on the same port: the server itself is
+        // trusted, so the mismatch is in the remote's token or loopback literal.
+        let verifiedOnPort = verified.filter { $0.port == port }
+        if verifiedOnPort.contains(where: { server in
+            server.url.host.map(ThisMacServer.normalize) == normalizedHost
+        }) {
+            return .tokenMismatch
+        }
+        if !token.isEmpty, let otherHost = verifiedOnPort.first(where: { $0.token == token })?.url.host {
+            return .addressMismatch(serverHost: otherHost)
+        }
+        // Otherwise look at unverified info files on the same port, preferring
+        // a live process and a matching token over a stale or unmatched file.
+        let unverifiedOnPort = scan.entries.filter { $0.verified == nil && $0.port == port }
+        let matched = unverifiedOnPort.filter { entry in
+            (!token.isEmpty && entry.token == token) || entry.matchesLoopbackHost(normalizedHost)
+        }
+        let ranked = matched.sorted { lhs, rhs in
+            Self.candidateRank(lhs, token: token) > Self.candidateRank(rhs, token: token)
+        }
+        if let failure = ranked.first?.failure {
+            return failure
+        }
+        return .noServerInfo
+    }
+
+    private static func candidateRank(_ entry: ThisMacScanEntry, token: String) -> Int {
+        let tokenMatches = !token.isEmpty && entry.token == token
+        switch (entry.isRunning, tokenMatches) {
+        case (true, true): return 4
+        case (true, false): return 3
+        case (false, true): return 2
+        case (false, false): return 1
         }
     }
 
@@ -616,11 +898,26 @@ struct ThisMacServers: Equatable {
     /// The server verified for `id`, if one was.
     func server(_ id: String) -> ThisMacServer? { byID[id] }
 
-    /// The same with `id`'s server gone: its process ended, or it stopped
-    /// answering, so it isn't this Mac's own any more.
+    /// Why a window of `place` wasn't trusted as This Mac (#887): nil for
+    /// this device, for a window already upgraded to `.thisMac`, for a
+    /// non-loopback machine, and once the server verifies.
+    func failure(for place: Place) -> ThisMacTrustFailure? {
+        guard case .machine(let id) = place else { return nil }
+        return failuresByID[id]
+    }
+
+    /// One-line notice for a window of `place`, or nil when none should show
+    /// (#887).
+    func notice(for place: Place) -> String? {
+        failure(for: place)?.notice
+    }
+
+    /// The same with `id`'s server and failure gone: its process ended, it
+    /// stopped answering, or its remote changed.
     func removing(_ id: String) -> ThisMacServers {
         var servers = self
         servers.byID[id] = nil
+        servers.failuresByID[id] = nil
         return servers
     }
 

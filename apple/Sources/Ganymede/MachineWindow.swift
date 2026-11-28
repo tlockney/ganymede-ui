@@ -68,3 +68,37 @@ struct ThisMacBadge: View {
             .foregroundStyle(SidebarCaption())
     }
 }
+
+#if os(macOS)
+/// One-line notice at the top of a machine window when its server is on a
+/// loopback address and failed a `ThisMacVerifier` check (#887): names the
+/// failed check and what to do, and goes away once the window is upgraded
+/// to This Mac.
+struct ThisMacNoticeBar: View {
+    let message: String
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 6) {
+                Image(systemName: "exclamationmark.triangle")
+                    .foregroundStyle(.orange)
+                    .accessibilityHidden(true)
+                Text(message)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Spacer(minLength: 0)
+            }
+            .font(.caption)
+            .foregroundStyle(.primary)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(.bar)
+            .help(message)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(message)
+            Divider()
+        }
+    }
+}
+#endif

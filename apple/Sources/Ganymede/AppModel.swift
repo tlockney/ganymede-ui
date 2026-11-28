@@ -456,6 +456,11 @@ final class AppModel {
     /// for every other place.
     func thisMacRoot(for place: Place) -> URL? { thisMac.root(for: place) }
 
+    /// One-line notice explaining why a loopback machine window wasn't
+    /// trusted as This Mac (#887); nil for non-loopback machines, this
+    /// device, and windows upgraded to This Mac.
+    func thisMacNotice(for place: Place) -> String? { thisMac.notice(for: place) }
+
     /// The folder a window of `place` reads its page's paths from (#883):
     /// this Mac's own server's `root_dir`, else the app server's root.
     func pageRoot(for place: Place) -> PageRoot {
