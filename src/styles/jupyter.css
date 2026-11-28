@@ -607,13 +607,20 @@
 }
 
 /* On touch layouts (>= 720px), .gn-add-cell sits below the output area inside
- * the card, so the recessed well spans edge-to-edge above it (#960). */
+ * the card (unless read-only), so the recessed well spans edge-to-edge above it (#960). */
 .touch-ui
   .notebook-page
   .jp-CodeCell
   > .jp-Cell-outputWrapper:has(.jp-OutputArea-child, .jp-OutputPlaceholder) {
-  margin: 10px -44px 4px -30px;
+  margin: 10px -44px -8px -30px;
   padding: 10px 44px 9px 30px;
+}
+
+.touch-ui
+  .notebook-page:not(.is-readonly)
+  .jp-CodeCell
+  > .jp-Cell-outputWrapper:has(.jp-OutputArea-child, .jp-OutputPlaceholder) {
+  margin-bottom: 4px;
   border-bottom: 1px solid var(--separator);
   border-radius: 0;
 }
@@ -799,7 +806,7 @@
   }
 
   .touch-ui
-    .notebook-page
+    .notebook-page:not(.is-readonly)
     .jp-CodeCell:is(.jp-mod-active, .gn-last-cell)
     > .jp-Cell-outputWrapper:has(.jp-OutputArea-child, .jp-OutputPlaceholder) {
     margin-bottom: 4px;
@@ -1003,18 +1010,11 @@
 
 /* Error outputs get a red left rail down the whole error block inside the
  * output well (#960), replacing the bar's own left edge so failures don't draw
- * two parallel red stripes. */
+ * two parallel red stripes. Kept inset (no negative margin) because
+ * JupyterLab's .jp-OutputArea-child sets overflow: hidden. */
 .notebook-page .jp-CodeCell .jp-OutputArea-output:has(> .gn-output-bar[data-kind='error']) {
-  margin-left: -12px;
   padding-left: 10px;
   border-left: 2px solid color-mix(in srgb, var(--red) 75%, transparent);
-}
-
-.touch-ui
-  .notebook-page
-  .jp-CodeCell
-  .jp-OutputArea-output:has(> .gn-output-bar[data-kind='error']) {
-  margin-left: 0;
 }
 
 .notebook-page .jp-CodeCell .gn-output-bar[data-kind='error'] {

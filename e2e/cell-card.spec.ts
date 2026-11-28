@@ -198,15 +198,23 @@ test('code outputs sit in a recessed well, and errors add a red left rail (#960)
   });
 
   const errState = await errCell.evaluate(el => {
+    const child = el.querySelector<HTMLElement>('.jp-OutputArea-child')!;
     const out = el.querySelector<HTMLElement>('.jp-OutputArea-output')!;
     const bar = el.querySelector<HTMLElement>('.gn-output-bar[data-kind="error"]')!;
+    const childRect = child.getBoundingClientRect();
+    const outRect = out.getBoundingClientRect();
+    const railTarget = document.elementFromPoint(outRect.left + 1, outRect.top + 8);
     return {
       outRail: getComputedStyle(out).borderLeftWidth,
       barLeft: getComputedStyle(bar).borderLeftWidth,
+      railInsideChild: outRect.left >= childRect.left,
+      railVisible: railTarget?.closest('.jp-OutputArea-output') === out,
     };
   });
   expect(errState.outRail).toBe('2px');
   expect(errState.barLeft).toBe('0px');
+  expect(errState.railInsideChild).toBe(true);
+  expect(errState.railVisible).toBe(true);
 });
 
 test.describe('at 740px, a window with a mouse', () => {
