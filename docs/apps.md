@@ -636,7 +636,13 @@ the server and open or quit the app even when no window is open:
 - **Server** reports whether the background LaunchAgent or the embedded
   server is running, along with MCP mode and Tailnet sharing status.
 - **Running Kernels** lists active kernels (notebook, kernel name and
-  execution state) from the running server, refreshed automatically.
+  execution state) from the running server, refreshed automatically. Each
+  kernel's submenu offers **Interrupt**, **Restart**, and **Shut Down**,
+  refreshing immediately and showing any error inline.
+- **Recent Executions** lists recent cell runs (`GET /api/executions`:
+  notebook, status, actor when known, and duration) from Ganymede servers
+  that expose execution history; servers without `/api/executions` omit
+  this section.
 - **Quit Ganymede** quits the app.
 
 ### Agents over MCP

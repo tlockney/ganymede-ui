@@ -188,11 +188,37 @@ struct MenuBarMenu: View {
         }
         Divider()
         Section(snapshot.kernelsHeader) {
+            if let actionError = snapshot.actionError {
+                Text(actionError)
+            }
             if snapshot.kernels.isEmpty {
                 Text(snapshot.emptyKernelsLine)
             } else {
                 ForEach(snapshot.kernels) { kernel in
-                    Text(kernel.label)
+                    Menu(kernel.label) {
+                        Button("Interrupt") {
+                            Task { await menuBar.perform(.interrupt, on: kernel) }
+                        }
+                        Button("Restart") {
+                            Task { await menuBar.perform(.restart, on: kernel) }
+                        }
+                        Divider()
+                        Button("Shut Down") {
+                            Task { await menuBar.perform(.shutDown, on: kernel) }
+                        }
+                    }
+                }
+            }
+        }
+        if snapshot.showRecentExecutions {
+            Divider()
+            Section("Recent Executions") {
+                if let executions = snapshot.executions, !executions.isEmpty {
+                    ForEach(executions) { execution in
+                        Text(execution.label())
+                    }
+                } else {
+                    Text(snapshot.emptyExecutionsLine)
                 }
             }
         }
