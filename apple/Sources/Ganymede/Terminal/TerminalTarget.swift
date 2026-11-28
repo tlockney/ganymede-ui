@@ -70,8 +70,9 @@ extension TerminalTarget {
 /// target-to-transport switch without an app model.
 @MainActor
 protocol TerminalHost {
-    /// The app's own server; nil before it listens, and on iOS, which starts
-    /// no shell on it. A `.local` folder is a path under `root`.
+    /// The app's own server; nil before it listens. On iOS
+    /// `TerminalTarget.transport(on:)` doesn't read it, since that server
+    /// starts no shell. A `.local` folder is a path under `root`.
     var localServer: ServerEndpoint? { get }
     /// The folder that server serves.
     var root: URL { get }

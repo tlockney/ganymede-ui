@@ -1108,11 +1108,12 @@ Finder, Duplicate on a folder (a machine copies files only), the Recents
 tab, File > Open Recent. File > New Tab and New Window
 open on the same machine, not on this Mac. Kernel > Advanced
 and Runs On in the kernel popover set where this Mac's kernels run, so a
-machine's window hides them; File > New Terminal and the panel's New
-Terminal start a shell on the machine in the panel, and New Terminal Tab
-starts one in a tab of its own, in the folder of the notebook the window
-shows, else the folder the window shows, both paths on the machine, so it
-works on the files the window lists (New Terminal On still works). The
+machine's window hides them; File > New Terminal, New Terminal Tab and
+the panel's New Terminal start a shell on the machine, each in the folder
+of the notebook the window shows, else the folder the window shows, both
+paths on the machine, so it works on the files the window lists: New
+Terminal Tab in a tab of its own, the others in the panel (New Terminal On
+still works). The
 sidebar's place menu shows the machine as the current place, and picking
 another opens its window. Its Journals tab lists that machine's journals.
 

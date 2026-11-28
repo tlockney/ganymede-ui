@@ -1,6 +1,7 @@
 ## 2026-11-28, machine terminal follow-ups (#860)
 
-Four fixes from the review of #859, none of them a change in behaviour.
+Four fixes from the review of #859; only the third, the panel's + menu,
+changes behaviour.
 
 - **The docs.** The Machines section of [docs/apps.md](../apps.md) said File >
   New Terminal, New Terminal Tab and the panel's New Terminal all start a
@@ -29,6 +30,10 @@ Four fixes from the review of #859, none of them a change in behaviour.
   since #858 gave a machine's window its own terminal panel — `terminalTarget(notebook:fallbackFolder:remotes:)`
   decides where a new one runs — so the case and its doc comment are gone,
   and `PlaceTests` checks `kernelLocation` alone.
+
+The + menu with no target can't be unit-tested; it is a by-hand check
+on the Mac (a machine window whose remote has SSH only, or was removed:
+a click on + opens the menu).
 
 Checked with `npm run check`, `npx vitest run`, `node scripts/check-notes.mjs`,
 `npx prettier --check docs`, and `xcodebuild test` on the Mac scheme, and the
