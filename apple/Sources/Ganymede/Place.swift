@@ -549,6 +549,9 @@ struct ThisMacServer: Equatable, Sendable {
     var root: URL
     /// Its `ganymede_version`, which must be the app's own bundled one.
     var version: String
+    /// Its `kernel_providers_socket`, when `[kernel_providers] enabled = true`
+    /// is set on the background server (#941, tlockney/ganymede#983).
+    var kernelProvidersSocket: String? = nil
 
     /// The port the server listens on: its `url`'s.
     var port: Int? { url.port }

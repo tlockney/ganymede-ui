@@ -73,7 +73,8 @@ struct ThisMacVerifier {
         else { return .unsignedApp }
         let candidate = Candidate(
             pid: info.pid, url: info.url, hostname: hostname, port: info.port,
-            token: info.token, root: info.root, version: info.version)
+            token: info.token, root: info.root, version: info.version,
+            kernelProvidersSocket: info.kernelProvidersSocket)
         return evaluate(
             candidate, team: team, identifier: identifier, helperPath: helperPath
         ) { probe.bundledVersion }.entry.failure
@@ -151,6 +152,7 @@ struct ThisMacVerifier {
         var token: String
         var root: URL?
         var version: String?
+        var kernelProvidersSocket: String?
     }
 
     /// Evaluates one candidate info file, checking the cheaper conditions
@@ -219,7 +221,8 @@ struct ThisMacVerifier {
         }
         let server = ThisMacServer(
             pid: candidate.pid, url: candidate.url, token: candidate.token,
-            root: root, version: version)
+            root: root, version: version,
+            kernelProvidersSocket: candidate.kernelProvidersSocket)
         guard bundled == version else {
             let entry = ThisMacScanEntry(
                 url: candidate.url, hostname: candidate.hostname, port: port,
@@ -247,9 +250,13 @@ struct ThisMacVerifier {
             $0.isEmpty ? nil : URL(fileURLWithPath: $0, isDirectory: true)
         }
         let version = (fields["ganymede_version"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        let kernelProvidersSocket = (fields["kernel_providers_socket"] as? String).flatMap {
+            $0.isEmpty ? nil : $0
+        }
         return Candidate(
             pid: pid, url: url, hostname: hostname, port: port,
-            token: token, root: root, version: version)
+            token: token, root: root, version: version,
+            kernelProvidersSocket: kernelProvidersSocket)
     }
 
     /// One info file's fields; nil when it isn't a server info file, belongs
@@ -264,7 +271,8 @@ struct ThisMacVerifier {
         else { return nil }
         return ThisMacServer(
             pid: candidate.pid, url: candidate.url, token: candidate.token,
-            root: root, version: version)
+            root: root, version: version,
+            kernelProvidersSocket: candidate.kernelProvidersSocket)
     }
 }
 

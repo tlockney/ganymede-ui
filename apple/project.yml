@@ -619,6 +619,7 @@ targets:
       # and Mac menu bar extra (#924).
       - path: Sources/Ganymede/BackgroundServer.swift
       - path: Sources/Ganymede/MenuBar.swift
+      - path: Sources/Ganymede/KernelProviderClient.swift
       - path: Sources/Ganymede/ThisMacVerifier.swift
       - path: Sources/Ganymede/ThisMacChecks.swift
       - path: Sources/Ganymede/Journals.swift
@@ -725,6 +726,7 @@ targets:
       # and Mac menu bar extra (#924).
       - path: Sources/Ganymede/BackgroundServer.swift
       - path: Sources/Ganymede/MenuBar.swift
+      - path: Sources/Ganymede/KernelProviderClient.swift
       - path: Sources/Ganymede/ThisMacVerifier.swift
       - path: Sources/Ganymede/ThisMacChecks.swift
       - path: Sources/Ganymede/Journals.swift

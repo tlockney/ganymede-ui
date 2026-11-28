@@ -84,6 +84,9 @@ final class AppModel {
     /// Drives the Mac menu bar extra (#924): background server status and
     /// running kernels.
     let menuBar = MenuBarController()
+    /// Registers the in-app TypeScript kernel (`AppKernels`) with any verified
+    /// background server that advertises `kernel_providers_socket` (#941).
+    @ObservationIgnored private let kernelProviders = KernelProviderManager()
     /// All verified bundled servers found on this Mac (#924), whether or not
     /// added as a remote.
     var verifiedBackgroundServers: [ThisMacServer] { thisMacChecks.verifiedServers }
@@ -207,6 +210,9 @@ final class AppModel {
         // as it is now (#883).
         thisMacChecks.remotes = { [weak self] in self?.remotes ?? [] }
         thisMacChecks.token = { [weak self] id in self?.token(for: id) }
+        thisMacChecks.onVerifiedServersChanged = { [weak self] servers in
+            self?.kernelProviders.sync(servers: servers)
+        }
         #endif
     }
 
@@ -690,6 +696,7 @@ final class AppModel {
     func stopServer() async {
         #if os(macOS)
         removeServerInfo()
+        kernelProviders.disconnectAll(synchronous: false)
         // Its mounts go with it, and what they made this Mac's own (#883).
         stopThisMacTrust()
         #endif
@@ -714,6 +721,7 @@ final class AppModel {
     func stopForQuit() {
         #if os(macOS)
         removeServerInfo()
+        kernelProviders.disconnectAll(synchronous: true)
         stopThisMacTrust()
         #endif
         server?.stop()
