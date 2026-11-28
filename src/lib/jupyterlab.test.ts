@@ -362,6 +362,63 @@ describe('createCommands', () => {
     await guarded.execute('select-below');
     expect(notebook.activeCellIndex).toBe(1);
   });
+
+  it('leaves Shift+Cmd+Enter unhandled so the Mac menu bar handles Fill Window (#885)', async () => {
+    const { CommandRegistry } = await import('@lumino/commands');
+    const { Platform } = await import('@lumino/domutils');
+    const wasMac = Platform.IS_MAC;
+    Reflect.set(Platform, 'IS_MAC', true);
+
+    const session = { session: { kernel } } as unknown as ISessionContext;
+    const beforeRun = vi.fn(async () => true);
+    const run = createCommands(notebook, session, beforeRun);
+    const onKey = (e: KeyboardEvent) => run.processKeydownEvent(e);
+    document.addEventListener('keydown', onKey, true);
+
+    try {
+      const macNormalizedBindings = run.keyBindings.flatMap(b =>
+        b.keys.map(k => k.replace(/\bAccel\b/g, 'Cmd')),
+      );
+      expect(macNormalizedBindings).not.toContain('Shift Cmd Enter');
+
+      const dispatchCmdShiftEnter = (target: Element) => {
+        const event = new KeyboardEvent('keydown', {
+          key: 'Enter',
+          code: 'Enter',
+          keyCode: 13,
+          shiftKey: true,
+          metaKey: true,
+          bubbles: true,
+          cancelable: true,
+        });
+        expect(CommandRegistry.keystrokeForKeydownEvent(event)).toBe('Shift Cmd Enter');
+        target.dispatchEvent(event);
+        return event;
+      };
+
+      // Command mode (notebook focused).
+      notebook.mode = 'command';
+      const commandEvent = dispatchCmdShiftEnter(notebook.node);
+      expect(commandEvent.defaultPrevented).toBe(false);
+
+      // Edit mode (CodeMirror editor content focused).
+      notebook.activeCellIndex = 0;
+      notebook.mode = 'edit';
+      const editor = notebook.activeCell!.editor!;
+      const beforeText = editor.model.sharedModel.getSource();
+      const cmContent = editor.host.querySelector('.cm-content');
+      expect(cmContent).not.toBeNull();
+      const editEvent = dispatchCmdShiftEnter(cmContent!);
+      expect(editEvent.defaultPrevented).toBe(false);
+      expect(editor.model.sharedModel.getSource()).toBe(beforeText);
+
+      await new Promise(r => setTimeout(r, 0));
+      expect(beforeRun).not.toHaveBeenCalled();
+    } finally {
+      document.removeEventListener('keydown', onKey, true);
+      Reflect.set(Platform, 'IS_MAC', wasMac);
+    }
+  });
 });
 
 describe('UrlResolver (#704)', () => {

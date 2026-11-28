@@ -1197,8 +1197,10 @@ struct CommandPaletteCommand: View {
     }
 }
 
-/// The Cell menu. Keys the page already handles (⇧↩, A, B, M, DD, …) are
-/// not menu shortcuts: a menu key equivalent would also fire while typing.
+/// The Cell menu. Keys the page already handles (⇧↩, A, B, M, DD, …) and
+/// keys owned by other Mac menus (⇧⌘↩ for View › Fill Window, #885) are not
+/// menu shortcuts: a menu key equivalent would fire while typing or shadow the
+/// window command.
 struct CellMenu: View {
     @FocusedValue(\.pageModel) private var page
 
@@ -1206,8 +1208,7 @@ struct CellMenu: View {
         Group {
             Group {
                 Button("Run Cell") { page?.run("run") }
-                Button("Run All Cells") { page?.run("run-all") }
-                    .keyboardShortcut(.return, modifiers: [.command, .shift])
+                runAllButton
                 Button("Run with Parameters…") { page?.run("run-with-params") }
                     .disabled(page?.state.runParams != true || page?.state.readOnly == true)
                 Button("Clear All Outputs") { page?.run("clear-outputs") }
@@ -1249,6 +1250,15 @@ struct CellMenu: View {
             get: { page?.state.cellType ?? "code" },
             set: { page?.run("cell-type", arg: $0) }
         )
+    }
+
+    @ViewBuilder private var runAllButton: some View {
+        let button = Button("Run All Cells") { page?.run("run-all") }
+        if let shortcut = MacCommandShortcuts.runAllCells {
+            button.keyboardShortcut(shortcut)
+        } else {
+            button
+        }
     }
 }
 
