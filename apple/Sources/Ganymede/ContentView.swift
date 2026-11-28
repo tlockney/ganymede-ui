@@ -464,12 +464,33 @@ struct ContentView: View {
                     } detail: {
                         iPadWorkspace
                     }
-                    .onAppear { portrait = window.size.width < window.size.height }
-                    // Back in landscape, the sidebar shows again by default.
-                    .onChange(of: window.size.width < window.size.height) { _, tall in
-                        portrait = tall
-                        if !tall, !mainFills { columns = .automatic }
+                    .onAppear {
+                        portrait = IPadLayout.shouldAutoHideSidebar(
+                            width: window.size.width, height: window.size.height)
+                        if portrait, !mainFills { columns = .hidden }
                     }
+                    // Hide the sidebar in portrait or narrow Split View (< 600pt);
+                    // back in wide landscape, restore it unless Fill Screen is on.
+                    .onChange(of: window.size) { _, size in
+                        let shouldHide = IPadLayout.shouldAutoHideSidebar(
+                            width: size.width, height: size.height)
+                        guard shouldHide != portrait else { return }
+                        portrait = shouldHide
+                        if shouldHide {
+                            columns = .hidden
+                        } else if !mainFills {
+                            columns = .automatic
+                        }
+                    }
+                }
+                // Keep ⌘, opening Settings even when Settings sits in More (#914).
+                .background {
+                    Button("Settings") { settings = true }
+                        .keyboardShortcut(",")
+                        .buttonStyle(.plain)
+                        .opacity(0)
+                        .accessibilityHidden(true)
+                        .frame(width: 0, height: 0)
                 }
                 // Every scene has the panel: a machine's terminals run on
                 // the machine (#858), the rest on remotes.
@@ -1050,7 +1071,7 @@ struct ContentView: View {
         GeometryReader { area in
             VStack(spacing: 0) {
                 NavigationStack(path: $openFiles.stack) {
-                    notebook
+                    iPadNotebook(detailWidth: area.size.width)
                         .navigationDestination(for: EditorRequest.self) { request in
                             // Close asks to save; the sidebar's notebooks go
                             // back to the notebook, saving on the way.
@@ -1079,6 +1100,107 @@ struct ContentView: View {
                     .allowsHitTesting(panelShown)
                     .accessibilityHidden(!panelShown)
             }
+        }
+    }
+
+    /// The redesigned iPad notebook screen (#914): touch tab strip above the
+    /// page, display title + kernel chip, orange Run capsule, and Split View
+    /// folding below 600pt wide. Separate from `notebook` so the iPhone path
+    /// stays independent.
+    private func iPadNotebook(detailWidth: CGFloat) -> some View {
+        VStack(spacing: 0) {
+            if IPadTabStripModel.shouldShow(hasNotebook: pageModel.state.hasNotebook, place: place) {
+                IPadTabStrip(
+                    tabs: iPadTabs,
+                    availableWidth: detailWidth,
+                    onSelect: handleIPadTab
+                )
+            }
+            content
+        }
+        .ignoresSafeArea(.container, edges: .bottom)
+        .navigationTitle(iPadDisplayTitle)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(
+            pageModel.state.hasNotebook ? AnyShapeStyle(Color("WindowBackground")) : AnyShapeStyle(.bar),
+            for: .navigationBar
+        )
+        .toolbarBackgroundVisibility(
+            pageModel.state.hasNotebook ? .visible : .automatic,
+            for: .navigationBar
+        )
+        .toolbar {
+            IPadRedesignedToolbar(
+                width: detailWidth,
+                title: iPadDisplayTitle,
+                header: headerStatus,
+                machineName: machineName,
+                page: pageModel,
+                place: place,
+                model: model,
+                newTerminal: terminalTarget,
+                panelShown: panelShown,
+                mainFills: mainFills,
+                onRename: {
+                    newName = title
+                    renaming = true
+                },
+                onOpenTerminal: { request in
+                    panel.add(request.target)
+                    mainFills = false
+                },
+                onTogglePanel: togglePanel,
+                onToggleMainFill: toggleMainFill,
+                onOpenSettings: { settings = true },
+                onOpenFolder: {
+                    pickPurpose = .openFolder
+                    picking = true
+                }
+            )
+        }
+        .alert("Rename Notebook", isPresented: $renaming) {
+            TextField("Name", text: $newName)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+            Button("Rename") {
+                let name = newName.trimmingCharacters(in: .whitespaces)
+                if !name.isEmpty { pageModel.run("rename", arg: name) }
+            }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    /// Short display title for the iPad toolbar and window (#867, #914).
+    private var iPadDisplayTitle: String {
+        IPadLayout.displayTitle(
+            path: pageModel.state.path,
+            metadataTitle: pageModel.state.title,
+            isMachine: place.isMachine,
+            machineName: machineName,
+            folderName: model.root.lastPathComponent
+        )
+    }
+
+    /// Tabs for the iPad touch tab strip (#914): active notebook or machine,
+    /// recent/running notebooks, and connected machines.
+    private var iPadTabs: [IPadTabItem] {
+        IPadTabStripModel.buildTabs(
+            state: pageModel.state,
+            place: place,
+            machineName: machineName,
+            places: model.places
+        )
+    }
+
+    /// Single-WebView safe tab action on iPadOS (#914).
+    private func handleIPadTab(_ action: IPadTabAction) {
+        switch action {
+        case .notebook(let path):
+            openFiles.showNotebook()
+            panelFills = false
+            pageModel.run("open", arg: path)
+        case .place(let targetPlace):
+            switchPlace(targetPlace)
         }
     }
 

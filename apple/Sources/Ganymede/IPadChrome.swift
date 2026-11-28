@@ -76,6 +76,7 @@ struct IPadSidebar: View {
     /// has no places.
     var onPlace: ((Place) -> Void)? = nil
     @Environment(AppModel.self) private var model
+    @Environment(\.colorScheme) private var colorScheme
 
     /// The Journals poll restarts on a new server or when the list shows or
     /// hides it. Its own property: inline, it is too much for the type
@@ -148,6 +149,12 @@ struct IPadSidebar: View {
     private var list: some View {
         List(selection: selectionBinding) { listContent }
             .listStyle(.sidebar)
+            .scrollContentBackground(tabbed ? .hidden : .automatic)
+            .background {
+                if tabbed {
+                    Color("SidebarTint").ignoresSafeArea()
+                }
+            }
             .modifier(SidebarKeys(
                 selection: filesShown ? selection : nil,
                 isExpanded: { expandedFolders.contains($0.url) },
@@ -167,10 +174,30 @@ struct IPadSidebar: View {
                 selection = nil
                 tree = SidebarTree()
             }
-            .navigationTitle(tabbed ? shownTab.title : "Notebooks")
-            // The iPad's navigator tabs, as on the Mac (#251).
+            .navigationTitle(tabbed ? "" : "Notebooks")
+            .navigationBarTitleDisplayMode(tabbed ? .inline : .automatic)
+            .toolbarBackground(tabbed ? .hidden : .automatic, for: .navigationBar)
+            // The iPad's brand header + capsule navigator tabs (#251, #914).
             .safeAreaInset(edge: .top, spacing: 0) {
-                if tabbed { tabStrip }
+                if tabbed {
+                    IPadSidebarHeader(
+                        tabs: tabs,
+                        shownTab: shownTab,
+                        runningCount: runningCount,
+                        select: { tab = $0 }
+                    )
+                }
+            }
+            // Pinned "IN THIS JOURNAL" / "IN THIS NOTEBOOK" live outline card
+            // at the iPad sidebar's foot (#914).
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if IPadLayout.showsInlineOutline(
+                    tabbed: tabbed,
+                    hasNotebook: page.state.hasNotebook,
+                    headingCount: page.state.headings.count
+                ) {
+                    IPadSidebarOutlineCard(page: page, onPick: opened)
+                }
             }
     }
 
@@ -231,43 +258,6 @@ struct IPadSidebar: View {
 
     // MARK: Navigator tabs (#251)
 
-    /// The tabs over the iPad's sidebar, as the Mac's: ⌘1 to ⌘5 with a
-    /// keyboard.
-    private var tabStrip: some View {
-        HStack(spacing: 0) {
-            ForEach(tabs) { item in
-                Button {
-                    tab = item
-                } label: {
-                    Image(systemName: item.symbol)
-                        .symbolVariant(shownTab == item ? .fill : .none)
-                        .frame(maxWidth: .infinity, minHeight: 44)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(shownTab == item ? Color.accentColor : Color.secondary)
-                .accessibilityLabel(item.title)
-                .accessibilityAddTraits(shownTab == item ? .isSelected : [])
-                .keyboardShortcut(item.shortcut, modifiers: .command)
-                .hoverEffect()
-                .overlay(alignment: .top) {
-                    if item == .running, runningCount > 0 {
-                        Text("\(runningCount)")
-                            .font(.system(size: 10, weight: .semibold))
-                            .padding(.horizontal, 4)
-                            .background(Capsule().fill(Color("AccentFill")))
-                            .foregroundStyle(Color("OnAccent"))
-                            .offset(x: 12, y: 4)
-                            .accessibilityHidden(true)
-                    }
-                }
-            }
-        }
-        .padding(.horizontal, 8)
-        .background(.bar)
-        .overlay(alignment: .bottom) { Divider() }
-    }
-
     /// The tabs of the place, as the Mac's (#251, #758): Journals for every
     /// place, no Recents for a machine.
     private var tabs: [NavigatorTab] { NavigatorTab.tabs(for: place, on: .iPad) }
@@ -319,10 +309,10 @@ struct IPadSidebar: View {
         if journals == nil {
             HStack(spacing: 8) {
                 ProgressView()
-                Text("Loading…").foregroundStyle(.secondary)
+                Text("Loading…").foregroundStyle(SidebarCaption())
             }
         } else if let text = Journals.statusMessage(journals, journalCount: list.count) {
-            Text(text).foregroundStyle(.secondary)
+            Text(text).foregroundStyle(SidebarCaption())
         }
     }
 
@@ -346,7 +336,7 @@ struct IPadSidebar: View {
                     VStack(alignment: .leading, spacing: 2) {
                         Label(journal.name, systemImage: "book.pages").lineLimit(1)
                         Text([journal.agent, Journals.status(journal)].compactMap { $0 }.joined(separator: " · "))
-                            .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            .font(.caption).foregroundStyle(SidebarCaption()).lineLimit(1)
                     }
                     Spacer()
                     if journal.running {
@@ -357,7 +347,7 @@ struct IPadSidebar: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
             }
-            .listRowBackground(journal.path == page.state.path ? Color.accentColor.opacity(0.18) : nil)
+            .listRowBackground(journal.path == page.state.path ? IPadPalette.openRowBackground(for: colorScheme) : nil)
         }
     }
 
@@ -427,7 +417,7 @@ struct IPadSidebar: View {
             runningSection
             IPadPanelTerminalRows(panel: panel, show: showTerminal)
             if runningCount == 0 {
-                Text("No kernels or terminals running").foregroundStyle(.secondary)
+                Text("No kernels or terminals running").foregroundStyle(SidebarCaption())
             }
         case .outline:
             // The open notebook's headings, as on the Mac (#288).
@@ -439,7 +429,7 @@ struct IPadSidebar: View {
         case .recents:
             recentsSection
             if (page.state.recents ?? []).isEmpty {
-                Text("Notebooks you open show here").foregroundStyle(.secondary)
+                Text("Notebooks you open show here").foregroundStyle(SidebarCaption())
             }
         }
     }
@@ -449,7 +439,7 @@ struct IPadSidebar: View {
     private var filesSection: some View {
         if !reachable {
             Text(machineName.map { "“\($0)” is offline. Reconnecting…" } ?? "The machine is offline. Reconnecting…")
-                .foregroundStyle(.secondary).font(.caption)
+                .foregroundStyle(SidebarCaption()).font(.caption)
         }
         Section(folder.lastPathComponent.isEmpty ? "/" : folder.lastPathComponent) {
             IPadFolderContents(folder: folder, source: source, actions: actions, generation: generation)
@@ -471,7 +461,7 @@ struct IPadSidebar: View {
                             Label(session.title, systemImage: "bolt.fill")
                             Spacer()
                             if let kernel = session.kernel {
-                                Text(kernel).foregroundStyle(.secondary).font(.caption)
+                                Text(kernel).foregroundStyle(SidebarCaption()).font(.caption)
                             }
                         }
                         .contentShape(Rectangle())
@@ -513,7 +503,7 @@ struct IPadSidebar: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .contentShape(Rectangle())
                     }
-                    .listRowBackground(path == page.state.path ? Color.accentColor.opacity(0.18) : nil)
+                    .listRowBackground(path == page.state.path ? IPadPalette.openRowBackground(for: colorScheme) : nil)
                 }
             } header: {
                 HStack {
@@ -538,10 +528,10 @@ struct IPadSidebar: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Label(match.title, systemImage: match.isDirectory ? "folder" : match.isNotebook ? "book.pages" : "doc.text")
                             if !match.folder.isEmpty {
-                                Text(match.folder).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                Text(match.folder).font(.caption).foregroundStyle(SidebarCaption()).lineLimit(1)
                             }
                             if let snippet = match.snippet {
-                                Text(snippet).font(.caption.monospaced()).foregroundStyle(.secondary).lineLimit(2)
+                                Text(snippet).font(.caption.monospaced()).foregroundStyle(SidebarCaption()).lineLimit(2)
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -552,14 +542,14 @@ struct IPadSidebar: View {
                 if search.searching {
                     searchingRow
                 } else if let error = search.error {
-                    Text(error).foregroundStyle(.secondary).font(.caption)
+                    Text(error).foregroundStyle(SidebarCaption()).font(.caption)
                 } else if search.matches.isEmpty {
-                    Text("No matches").foregroundStyle(.secondary)
+                    Text("No matches").foregroundStyle(SidebarCaption())
                 }
                 if search.truncated {
                     Text("Stopped early: the folder has too many files to search.")
                         .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(SidebarCaption())
                 }
             } else {
                 searchingRow
@@ -572,7 +562,7 @@ struct IPadSidebar: View {
     private var searchingRow: some View {
         HStack(spacing: 8) {
             ProgressView()
-            Text("Searching…").foregroundStyle(.secondary)
+            Text("Searching…").foregroundStyle(SidebarCaption())
         }
     }
 
@@ -852,6 +842,7 @@ private struct SidebarSearch: ViewModifier {
 /// The bottom panel's terminals, in the Running tab (#251).
 private struct IPadPanelTerminalRows: View {
     @Environment(AppModel.self) private var model
+    @Environment(\.colorScheme) private var colorScheme
     var panel: PanelController
     let show: (PanelTerminal.ID) -> Void
 
@@ -867,7 +858,8 @@ private struct IPadPanelTerminalRows: View {
                             .contentShape(Rectangle())
                     }
                     .listRowBackground(
-                        terminal.id == panel.selection && panel.isShown ? Color.accentColor.opacity(0.18) : nil
+                        terminal.id == panel.selection && panel.isShown
+                            ? IPadPalette.openRowBackground(for: colorScheme) : nil
                     )
                     .swipeActions(allowsFullSwipe: false) {
                         Button("Close") { panel.close(terminal.id) }
@@ -920,6 +912,7 @@ private struct IPadFolderContents: View {
     let source: any FileSource
     let actions: IPadFolderActions
     let generation: Int
+    @Environment(\.colorScheme) private var colorScheme
     @State private var entries: [FolderEntry] = []
     @State private var error: String?
 
@@ -970,7 +963,7 @@ private struct IPadFolderContents: View {
                     .accessibilityAction { if canOpen { actions.open(entry) } }
                     .listRowBackground(
                         source.serverPath(entry.url) == actions.openPath
-                            ? Color.accentColor.opacity(0.18) : nil
+                            ? IPadPalette.openRowBackground(for: colorScheme) : nil
                     )
                     .contextMenu { menu(for: entry) }
                     .tag(entry)
@@ -979,10 +972,10 @@ private struct IPadFolderContents: View {
             if let error {
                 // The sidebar's offline line says it once for all folders.
                 if !actions.offline {
-                    Text(error).foregroundStyle(.secondary).font(.caption)
+                    Text(error).foregroundStyle(SidebarCaption()).font(.caption)
                 }
             } else if entries.isEmpty {
-                Text("No files").foregroundStyle(.secondary)
+                Text("No files").foregroundStyle(SidebarCaption())
             }
         }
         .task(id: "\(folder.absoluteString)#\(generation)") { await load() }
@@ -1036,29 +1029,38 @@ struct IPadOutlineRows: View {
     var page: PageModel
     /// After a heading is tapped: the notebook comes into view.
     var picked: () -> Void = {}
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         let headings = page.state.headings
         // Indent from the outline's top level, not from `#`.
         let top = headings.map(\.level).min() ?? 1
+        let currentIndex = page.state.currentHeadingIndex
         if headings.isEmpty {
             Text(page.state.hasNotebook ? "No headings in this notebook" : "No notebook open")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(SidebarCaption())
         } else {
-            ForEach(Array(headings.enumerated()), id: \.offset) { _, heading in
+            ForEach(Array(headings.enumerated()), id: \.offset) { index, heading in
+                let isCurrent = index == currentIndex
                 Button {
                     page.run("go-to-cell", arg: String(heading.cell))
                     picked()
                 } label: {
                     Text(heading.text)
-                        .fontWeight(heading.level == top ? .semibold : .regular)
+                        .fontWeight(isCurrent || heading.level == top ? .semibold : .regular)
                         .lineLimit(1)
                         .truncationMode(.tail)
                         .padding(.leading, CGFloat(max(0, heading.level - top)) * 16)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .contentShape(Rectangle())
                 }
-                .foregroundStyle(.primary)
+                .foregroundStyle(
+                    isCurrent
+                        ? AnyShapeStyle(IPadPalette.currentOutlineColor(for: colorScheme))
+                        : AnyShapeStyle(Color.primary)
+                )
+                .accessibilityAddTraits(isCurrent ? .isSelected : [])
+                .accessibilityValue(isCurrent ? "Current section" : "")
             }
         }
     }

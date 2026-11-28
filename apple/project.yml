@@ -636,6 +636,8 @@ targets:
       - path: Sources/Ganymede/WorkspaceTabs.swift
       - path: Sources/Ganymede/Tabs/WorkspaceTabModel.swift
       - path: Sources/Ganymede/Tabs/TabStripLayout.swift
+      # iPad Split View, toolbar, and touch tab strip rules (#914).
+      - path: Sources/Ganymede/Touch/IPadLayout.swift
       - path: Sources/Ganymede/FileSearch.swift
       - path: Sources/Ganymede/Terminal/SSHKey.swift
       - path: Sources/Ganymede/Terminal/SSHSignIn.swift
@@ -733,6 +735,8 @@ targets:
       - path: Sources/Ganymede/WorkspaceTabs.swift
       - path: Sources/Ganymede/Tabs/WorkspaceTabModel.swift
       - path: Sources/Ganymede/Tabs/TabStripLayout.swift
+      # iPad Split View, toolbar, and touch tab strip rules (#914).
+      - path: Sources/Ganymede/Touch/IPadLayout.swift
       - path: Sources/Ganymede/FileSearch.swift
       - path: Sources/Ganymede/Terminal/SSHKey.swift
       - path: Sources/Ganymede/Terminal/SSHSignIn.swift
