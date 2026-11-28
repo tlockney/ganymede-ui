@@ -54,7 +54,12 @@ import {
   SaveConflict,
   type Saver,
 } from '../lib/saver';
-import { createReadOnlyGuard, isEditKey } from '../lib/room-offline';
+import {
+  createReadOnlyGuard,
+  isEditKey,
+  isRoomLive,
+  watchRoomConnection,
+} from '../lib/room-offline';
 import {
   READONLY_BANNER,
   roomStateReadOnly,
@@ -867,9 +872,9 @@ export function NotebookPane({
         starting ??= startKernel().finally(() => (starting = undefined));
         return starting;
       };
-      // A connected machine that stopped answering (#701), or another Ganymede
-      // server on this machine owns the notebook (#839): nothing edits or runs.
-      const cantEditNow = () => (onMachine && !!room && !room.connected) || readOnlyRef.current;
+      // A room that is reconnecting (#701, #702), or another Ganymede server
+      // on this machine owns the notebook (#839): nothing edits or runs.
+      const cantEditNow = () => (!!room && !isRoomLive(room)) || readOnlyRef.current;
       const commands = createCommands(
         notebook,
         session,
@@ -1775,10 +1780,10 @@ export function NotebookPane({
     };
     // A run's failure: when the kernel died under it, say that instead.
     // Retry runs it again, on the cells selected then.
-    // A connected machine that stopped answering (#701), or another Ganymede
-    // server owns this notebook (#839): shows what it had and does nothing that
-    // edits or runs until editable again.
-    const away = () => (onMachine && !!open.room && !open.room.connected) || readOnlyRef.current;
+    // A room that is reconnecting (#701, #702), or another Ganymede server
+    // owns this notebook (#839): shows what it had and does nothing that edits
+    // or runs until editable again.
+    const away = () => (!!open.room && !isRoomLive(open.room)) || readOnlyRef.current;
     const restartKernel = async () => {
       const kernel = session.session?.kernel;
       // A dead kernel can't restart (it disposed its connection): start
@@ -2183,31 +2188,29 @@ export function NotebookPane({
     return () => cancelAnimationFrame(frame);
   }, [journal, showing]);
 
-  // A connected machine that stops answering (#701), or another Ganymede
-  // server on this machine owning the notebook (#839): the notebook turns
-  // read-only, with a banner, and is editable again without a reload when it
-  // is back or the other server lets go.
+  // A room that is reconnecting (#701, #702), or another Ganymede server on
+  // this machine owning the notebook (#839): the notebook turns read-only,
+  // with a banner, and is editable again without a reload when it is back or
+  // the other server lets go.
   const machineName =
     backend.config.kind === 'ganymede' && backend.config.machine
       ? (backend.config.machineName ?? 'The machine')
       : undefined;
   useEffect(() => {
     const room = open?.room;
-    if (!open || !room || !machineName) {
+    if (!open || !room) {
       roomOfflineRef.current = false;
       setRoomOffline(false);
       return;
     }
-    const apply = (connected: boolean) => {
-      const offline = !connected;
+    return watchRoomConnection(room, live => {
+      const offline = !live;
       const wasOffline = roomOfflineRef.current;
       roomOfflineRef.current = offline;
       setRoomOffline(offline);
       if (wasOffline && !offline) watcherRef.current?.check();
-    };
-    apply(room.connected);
-    return room.onConnection(apply);
-  }, [open, machineName]);
+    });
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -2230,7 +2233,7 @@ export function NotebookPane({
     };
   }, [open, services]);
 
-  const cantEdit = (!!machineName && roomOffline) || readOnly;
+  const cantEdit = roomOffline || readOnly;
   const guardRef = useRef<ReturnType<typeof createReadOnlyGuard>>(undefined);
   useEffect(() => {
     if (!open) return;
@@ -2363,11 +2366,13 @@ export function NotebookPane({
   }
   return (
     <>
-      {((roomOffline && machineName) || (readOnly && !journal) || saveAttention) && (
+      {((roomOffline && (machineName || !journal)) || (readOnly && !journal) || saveAttention) && (
         <div className="pane-top-banners">
-          {roomOffline && machineName ? (
+          {roomOffline && (machineName || !journal) ? (
             <div className="machine-banner" role="status">
-              {machineName} went offline · Reconnecting…
+              {machineName
+                ? `${machineName} went offline · Reconnecting…`
+                : 'Reconnecting… The notebook is read-only until the connection returns.'}
             </div>
           ) : (
             readOnly &&

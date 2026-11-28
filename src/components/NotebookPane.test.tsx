@@ -3877,3 +3877,114 @@ describe('room save attention and recovery copies (#831)', () => {
     join2.mockRestore();
   });
 });
+
+describe('NotebookPane room reconnecting read-only (#702)', () => {
+  async function joinWithLive(config?: BackendConfig) {
+    const content = structuredClone(NOTEBOOK);
+    Object.assign(content.cells[0]!, {
+      execution_count: 1,
+      outputs: [{ output_type: 'stream', name: 'stdout', text: '1\n' }],
+    });
+    const { YNotebook } = await import('@jupyter/ydoc');
+    const shared = new YNotebook();
+    shared.fromJSON(content as never);
+    let live = true;
+    const listeners = new Set<(v: boolean) => void>();
+    const room = {
+      notebook: shared,
+      get live() {
+        return live;
+      },
+      get connected() {
+        return live;
+      },
+      onConnection: () => () => {},
+      watchLive(cb: (v: boolean) => void) {
+        listeners.add(cb);
+        cb(live);
+        return () => void listeners.delete(cb);
+      },
+      dispose: vi.fn(),
+    };
+    const setLive = (next: boolean) => {
+      live = next;
+      listeners.forEach(cb => cb(next));
+    };
+    vi.spyOn(NotebookRoom, 'join').mockResolvedValue(room as unknown as NotebookRoom);
+    serverSettings = ServerConnection.makeSettings({ baseUrl: 'http://127.0.0.1:1/' });
+    const view = setup(
+      vi.fn(async () => ({ path: 'moons/Io.ipynb', content })),
+      'moons/Io.ipynb',
+      config,
+    );
+    await waitFor(() => expect(view.latest()).toBeDefined());
+    const model = (fakes.notebooks[0] as { model: NotebookModel }).model;
+    return { ...view, model, setLive };
+  }
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it('goes read-only with a banner while a non-machine room reconnects, and back when live', async () => {
+    const { latest, model, setLive } = await joinWithLive();
+    const runAllSpy = vi.spyOn(NotebookActions, 'runAll').mockResolvedValue(true);
+    const insertSpy = vi.spyOn(NotebookActions, 'insertBelow');
+    const cellTypeSpy = vi.spyOn(NotebookActions, 'changeCellType');
+
+    expect(model.readOnly).toBe(false);
+    expect(document.querySelector('.machine-banner')).not.toBeInTheDocument();
+
+    act(() => setLive(false));
+    const banner = await screen.findByRole('status');
+    expect(banner).toHaveTextContent(
+      'Reconnecting… The notebook is read-only until the connection returns.',
+    );
+    expect(model.readOnly).toBe(true);
+
+    // Mutating and run controller actions are ignored while reconnecting.
+    await act(() => latest()!.runAll());
+    act(() => latest()!.insert('code'));
+    act(() => latest()!.changeCellType('markdown'));
+    act(() => latest()!.clearOutputs());
+    expect(latest()!.command('notebook:run-cell')).toBe(false);
+    expect(runAllSpy).not.toHaveBeenCalled();
+    expect(insertSpy).not.toHaveBeenCalled();
+    expect(cellTypeSpy).not.toHaveBeenCalled();
+    expect(fakes.execute).not.toHaveBeenCalled();
+    expect((model.cells.get(0) as ICodeCellModel).outputs.length).toBe(1);
+
+    // Switching to Journal view while offline shows only the journal banner, not a duplicate machine-banner.
+    act(() => latest()!.toggleJournal());
+    expect(
+      await screen.findByText(
+        'Reconnecting… The journal is read-only until the connection returns.',
+      ),
+    ).toBeInTheDocument();
+    expect(document.querySelector('.machine-banner')).not.toBeInTheDocument();
+
+    // Back to Notebook view and back online: editable and banner clears.
+    act(() => latest()!.toggleJournal());
+    act(() => setLive(true));
+    await waitFor(() => expect(document.querySelector('.machine-banner')).not.toBeInTheDocument());
+    expect(model.readOnly).toBe(false);
+    expect(latest()!.command('notebook:run-cell')).toBe(true);
+    expect(fakes.execute).toHaveBeenCalledWith('notebook:run-cell');
+  });
+
+  it('keeps the machine-specific banner wording for a connected machine', async () => {
+    const { model, setLive } = await joinWithLive({
+      kind: 'ganymede',
+      url: '',
+      token: '',
+      machine: 'm1',
+      machineName: 'Studio',
+    });
+    act(() => setLive(false));
+    expect(await screen.findByRole('status')).toHaveTextContent(
+      'Studio went offline · Reconnecting…',
+    );
+    expect(model.readOnly).toBe(true);
+    act(() => setLive(true));
+    await waitFor(() => expect(document.querySelector('.machine-banner')).not.toBeInTheDocument());
+    expect(model.readOnly).toBe(false);
+  });
+});

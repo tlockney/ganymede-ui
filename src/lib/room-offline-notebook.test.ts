@@ -1,5 +1,5 @@
 import '../test/notebook-env';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as nbformat from '@jupyterlab/nbformat';
 import type { CodeCell } from '@jupyterlab/cells';
 import type { Notebook } from '@jupyterlab/notebook';
@@ -132,6 +132,36 @@ describe('watchOffline on a real notebook', () => {
     const stop = watchOffline(r, notebook, model, () => {});
     expect(notebook.widgets.every(c => c.readOnly)).toBe(true);
     r.set(true);
+    expect(notebook.widgets.map(c => c.readOnly)).toEqual([true, false]);
+    expect(updates).toBe(0);
+    stop();
+  });
+
+  it('tracks watchLive reconnect cycles without writing to the shared notebook', () => {
+    let live = true;
+    const listeners = new Set<(v: boolean) => void>();
+    const liveRoom = {
+      get live() {
+        return live;
+      },
+      watchLive(cb: (v: boolean) => void) {
+        listeners.add(cb);
+        cb(live);
+        return () => void listeners.delete(cb);
+      },
+    };
+    const setLive = (next: boolean) => {
+      live = next;
+      listeners.forEach(cb => cb(next));
+    };
+    const onOffline = vi.fn();
+    const stop = watchOffline(liveRoom, notebook, model, onOffline);
+    expect(onOffline).toHaveBeenLastCalledWith(false);
+    setLive(false);
+    expect(onOffline).toHaveBeenLastCalledWith(true);
+    expect(notebook.widgets.every(c => c.readOnly)).toBe(true);
+    setLive(true);
+    expect(onOffline).toHaveBeenLastCalledWith(false);
     expect(notebook.widgets.map(c => c.readOnly)).toEqual([true, false]);
     expect(updates).toBe(0);
     stop();

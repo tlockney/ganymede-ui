@@ -3,13 +3,17 @@ import {
   agentNames,
   chooseView,
   chosenView,
+  cleanRunBadge,
+  cleanRunStatus,
   displayTitle,
   displayTitleOf,
   forgetChosenViews,
   journalHeader,
   moveChosenViews,
+  murmur2,
   notebookTitle,
   notebookLanguage,
+  sourceFingerprint,
   attachmentDataUrl,
   cellTrusted,
   trustedCellIds,
@@ -228,14 +232,19 @@ describe('status line', () => {
     expect(latestAgentTime([{ metadata: {} }])).toBeUndefined();
   });
 
-  it('says who is running which cell, counting from 1', () => {
+  it('says who is running which cell, counting from 1, from executionBy and not the cell author', () => {
     const cells = [
       { metadata: {} },
-      { ...agent('executed'), running: true },
+      { ...agent('executed'), running: true, executionBy: 'alice' },
       { metadata: {}, running: true },
     ];
-    expect(runningLine(cells)).toBe('claude-code is running cell 2');
-    expect(runningLine([{ metadata: {}, running: true }])).toBe('Someone is running cell 1');
+    expect(runningLine(cells)).toBe('alice is running cell 2');
+    // A running cell without executionBy falls back to Someone, even when an agent authored it.
+    expect(runningLine([agent('executed'), { ...agent('executed'), running: true }])).toBe(
+      'Someone is running cell 2',
+    );
+    expect(runningLine([{ running: true, executionBy: '   ' }])).toBe('Someone is running cell 1');
+    expect(runningLine([{ running: false, executionBy: 'alice' }])).toBeUndefined();
     expect(runningLine([{ metadata: {} }])).toBeUndefined();
   });
 });
@@ -738,5 +747,119 @@ describe('who answered a request', () => {
     expect(requestChip('open', 'saved')).toBe('request · saved');
     expect(requestChip('open', 'not saved')).toBe('request · not saved');
     expect(requestChip('answered', 'saving')).toBe('request · answered');
+  });
+});
+
+describe('sourceFingerprint and cleanRunStatus (#702, ganymede#944)', () => {
+  const utf8 = new TextEncoder();
+
+  it('matches Ganymede’s MurmurHash2 (seed 0) vectors byte-for-byte', () => {
+    expect(murmur2(utf8.encode(''))).toBe(0);
+    expect(murmur2(utf8.encode('a'))).toBe(2456313694);
+    expect(murmur2(utf8.encode('ab'))).toBe(446775395);
+    expect(murmur2(utf8.encode('abc'))).toBe(324500635);
+    expect(murmur2(utf8.encode('abcd'))).toBe(646393889);
+    expect(murmur2(utf8.encode("print('hello')\n"))).toBe(1612567987);
+    expect(murmur2(utf8.encode('héllo wörld 🚀'))).toBe(1432791399);
+  });
+
+  it('computes the exact v1 cell fingerprint and separates layouts by byte lengths', () => {
+    const cleanRunCells = [
+      { cell_type: 'markdown', source: '# title' },
+      { cell_type: 'code', source: 'x = 1' },
+      { cell_type: 'code', source: ['x ', '+ 1'] },
+    ];
+    expect(sourceFingerprint(cleanRunCells)).toBe('v1:250ab6e8');
+
+    // No concatenation collisions across cell boundaries.
+    expect(sourceFingerprint([{ cell_type: 'code', source: 'a\ncodeb' }])).not.toBe(
+      sourceFingerprint([
+        { cell_type: 'code', source: 'a' },
+        { cell_type: 'code', source: 'b' },
+      ]),
+    );
+    // Uses UTF-8 byte lengths, not JS UTF-16 code units.
+    const emoji = [{ cell_type: 'markdown', source: '🚀' }];
+    const manuallyEncoded = utf8.encode('8:markdown4:🚀\n');
+    expect(sourceFingerprint(emoji)).toBe(
+      `v1:${murmur2(manuallyEncoded, 0).toString(16).padStart(8, '0')}`,
+    );
+    // Unknown cell types and missing sources hash cleanly.
+    expect(
+      sourceFingerprint([{ cell_type: 'custom', source: undefined as unknown as string }]),
+    ).toBe(`v1:${murmur2(utf8.encode('6:custom0:\n'), 0).toString(16).padStart(8, '0')}`);
+  });
+
+  it('verifies clean_run stamps only when matching in an open room', () => {
+    const cells = [
+      { cell_type: 'markdown', source: '# title' },
+      { cell_type: 'code', source: 'x = 1' },
+      { cell_type: 'code', source: 'x + 1' },
+    ];
+    const fp = 'v1:250ab6e8';
+    const meta = (clean_run: unknown) => ({ ganymede: { clean_run } });
+    const now = Date.parse('2026-11-28T18:05:00Z');
+
+    expect(cleanRunStatus({}, cells, { inRoom: true })).toBeUndefined();
+
+    const current = cleanRunStatus(
+      meta({
+        at: '2026-11-28T18:00:00Z',
+        by: 'Claude Code',
+        kernel: 'python3',
+        fingerprint: fp,
+      }),
+      cells,
+      { inRoom: true },
+    );
+    expect(current).toEqual({
+      state: 'current',
+      at: '2026-11-28T18:00:00Z',
+      by: 'Claude Code',
+      kernel: 'python3',
+      fingerprint: fp,
+    });
+    expect(cleanRunBadge(current, now)).toEqual({
+      label: 'Ran from a fresh kernel',
+      detail: 'Claude Code · python3 · 5 min ago',
+    });
+
+    // Non-room read (e.g. GET /api/contents with no room open): never current.
+    const noRoom = cleanRunStatus(meta({ fingerprint: fp }), cells, { inRoom: false });
+    expect(noRoom?.state).toBe('unverified');
+    expect(cleanRunBadge(noRoom, now)).toBeUndefined();
+
+    // Missing or malformed fingerprints are stale.
+    for (const bad of [
+      undefined,
+      '',
+      'abc',
+      'v:',
+      'vx:00000000',
+      '1:00000000',
+      'v2:',
+      'v1:00000000',
+    ]) {
+      const stale = cleanRunStatus(
+        meta(bad === undefined ? { by: 'Claude' } : { fingerprint: bad }),
+        cells,
+        { inRoom: true },
+      );
+      expect(stale?.state, String(bad)).toBe('stale');
+      expect(cleanRunBadge(stale, now)).toBeUndefined();
+    }
+
+    // Unknown v<digits>: versions are unverified, never current.
+    for (const future of ['v2:00000000', 'v10:abcdef01']) {
+      const unverified = cleanRunStatus(meta({ fingerprint: future }), cells, { inRoom: true });
+      expect(unverified?.state, future).toBe('unverified');
+      expect(cleanRunBadge(unverified, now)).toBeUndefined();
+    }
+
+    // Minimal current stamp without by/kernel/invalid date omits NaN details.
+    const minimal = cleanRunStatus(meta({ fingerprint: fp, at: 'not-a-date' }), cells, {
+      inRoom: true,
+    });
+    expect(cleanRunBadge(minimal, now)).toEqual({ label: 'Ran from a fresh kernel' });
   });
 });
