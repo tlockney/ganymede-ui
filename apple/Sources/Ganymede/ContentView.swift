@@ -66,6 +66,9 @@ struct ContentView: View {
     @AppStorage(StatusBarContent.shownKey) private var statusBarShown = true
     /// A newer release, once a check found it (#411).
     private let updater = AppUpdater.shared
+    /// Experimental Step 6 custom tab strip (#903), off by default.
+    @AppStorage(SettingsTab.customTabsKey) private var customTabStrip = false
+    @AppStorage(SettingsTab.customTabsSamplesKey) private var customTabSamples = false
 
     init(target: Binding<WindowTarget?>) {
         _target = target
@@ -168,7 +171,25 @@ struct ContentView: View {
             sidebar
                 .navigationSplitViewColumnWidth(min: 180, ideal: 240, max: 400)
         } detail: {
-            workspace
+            WorkspaceTabHost(
+                enabled: customTabStrip,
+                samples: customTabSamples,
+                target: target ?? loaded,
+                place: place,
+                machineName: machineName,
+                metadataTitle: shownTitle,
+                windowTitle: windowTitle,
+                page: pageModel,
+                document: document,
+                sidebarRoot: sidebarRoot,
+                windowTerminal: windowTerminal,
+                onOpenFile: { path in
+                    openWindow(value: EditorRequest(path: path, place: place))
+                },
+                onOpenTabRequest: openTab
+            ) {
+                workspace
+            }
         }
         .toolbar {
             NotebookToolbar(

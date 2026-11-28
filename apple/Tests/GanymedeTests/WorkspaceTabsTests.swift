@@ -5,6 +5,22 @@ import XCTest
 /// Notebook, file and terminal windows as tabs of one window (#247).
 @MainActor
 final class WorkspaceTabsTests: XCTestCase {
+    private var defaultsSuiteName = ""
+
+    override func setUp() {
+        super.setUp()
+        defaultsSuiteName = "WorkspaceTabsTests.\(UUID().uuidString)"
+        WorkspaceTabs.defaults = UserDefaults(suiteName: defaultsSuiteName)!
+    }
+
+    override func tearDown() {
+        WorkspaceTabs.defaults = .standard
+        if !defaultsSuiteName.isEmpty {
+            UserDefaults.standard.removePersistentDomain(forName: defaultsSuiteName)
+        }
+        super.tearDown()
+    }
+
     private func window() -> NSWindow {
         NSWindow(contentRect: NSRect(x: 0, y: 0, width: 200, height: 100), styleMask: [.titled], backing: .buffered, defer: true)
     }
@@ -154,6 +170,51 @@ final class WorkspaceTabsTests: XCTestCase {
         let settings = window()
         XCTAssertEqual(windows.closing(settings), .none)
         XCTAssertFalse(windows.any)
+    }
+
+    /// When the Step 6 custom tab strip toggle is enabled (#903), windows opt
+    /// out of AppKit window tabbing and `close` routes to the registered
+    /// in-window tab host first before closing the window.
+    func testCustomTabStripOptInDisablesAppKitTabbingAndRoutesClose() {
+        XCTAssertFalse(WorkspaceTabs.isCustomStripEnabled)
+        WorkspaceTabs.defaults.set(true, forKey: SettingsTab.customTabsKey)
+        XCTAssertTrue(WorkspaceTabs.isCustomStripEnabled)
+
+        let w = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        w.isReleasedWhenClosed = false
+        WorkspaceTabs.join(w)
+        XCTAssertEqual(w.tabbingMode, .disallowed)
+
+        var closedInPlace = 0
+        var shouldCloseInPlace = true
+        WorkspaceTabs.registerCustomTabHost(
+            for: w,
+            actions: WorkspaceTabs.CustomTabActions(
+                closeActiveTab: {
+                    guard shouldCloseInPlace else { return false }
+                    closedInPlace += 1
+                    return true
+                },
+                openNewTab: { _ in false },
+                selectNextTab: {},
+                selectPreviousTab: {}
+            )
+        )
+        defer { WorkspaceTabs.unregisterCustomTabHost(for: w) }
+
+        w.orderFront(nil)
+        WorkspaceTabs.close(w)
+        XCTAssertEqual(closedInPlace, 1)
+        XCTAssertTrue(w.isVisible, "closing an in-window tab keeps the window open")
+
+        shouldCloseInPlace = false
+        WorkspaceTabs.close(w)
+        XCTAssertFalse(w.isVisible, "closing the last tab closes the window")
     }
 }
 #endif

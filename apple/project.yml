@@ -630,6 +630,8 @@ targets:
       # The sidebar's foot in words (#873).
       - path: Sources/Ganymede/ProjectLineText.swift
       - path: Sources/Ganymede/WorkspaceTabs.swift
+      - path: Sources/Ganymede/Tabs/WorkspaceTabModel.swift
+      - path: Sources/Ganymede/Tabs/TabStripLayout.swift
       - path: Sources/Ganymede/FileSearch.swift
       - path: Sources/Ganymede/Terminal/SSHKey.swift
       - path: Sources/Ganymede/Terminal/SSHSignIn.swift
@@ -721,6 +723,8 @@ targets:
       # The sidebar's foot in words (#873).
       - path: Sources/Ganymede/ProjectLineText.swift
       - path: Sources/Ganymede/WorkspaceTabs.swift
+      - path: Sources/Ganymede/Tabs/WorkspaceTabModel.swift
+      - path: Sources/Ganymede/Tabs/TabStripLayout.swift
       - path: Sources/Ganymede/FileSearch.swift
       - path: Sources/Ganymede/Terminal/SSHKey.swift
       - path: Sources/Ganymede/Terminal/SSHSignIn.swift
