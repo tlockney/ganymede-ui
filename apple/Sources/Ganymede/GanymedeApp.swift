@@ -241,14 +241,18 @@ struct OpenCommands: View {
     var body: some View {
         Button("Open…") {
             for url in model.chooseNotebooks() {
-                WorkspaceTabs.openOrFocusTab(WindowTarget(opening: url)) { openWindow(value: $0) }
+                WorkspaceTabs.openOrFocusTab(model.routeLocalTarget(WindowTarget(opening: url))) {
+                    openWindow(value: $0)
+                }
             }
         }
         .keyboardShortcut("o")
         Menu("Open Recent") {
             ForEach(recents.urls, id: \.self) { url in
                 Button(url.lastPathComponent) {
-                    WorkspaceTabs.openOrFocusTab(WindowTarget(opening: url)) { openWindow(value: $0) }
+                    WorkspaceTabs.openOrFocusTab(model.routeLocalTarget(WindowTarget(opening: url))) {
+                        openWindow(value: $0)
+                    }
                 }
             }
             Divider()
@@ -281,7 +285,9 @@ struct OpenCommands: View {
         .disabled(page == nil || scope?.place.indexesLocally == false)
         Button("Open Folder…") {
             if let folder = model.chooseFolder() {
-                WorkspaceTabs.openOrFocusTab(WindowTarget.folder(folder.standardizedFileURL)) {
+                WorkspaceTabs.openOrFocusTab(
+                    model.routeLocalTarget(WindowTarget.folder(folder.standardizedFileURL))
+                ) {
                     openWindow(value: $0)
                 }
             }
@@ -418,6 +424,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// so Spotlight's entries are checked again (#305).
     @objc private func didBecomeActive(_ notification: Notification) {
         SpotlightSettings.shared.syncIfStale()
+        AppModel.shared.backgroundServerStatusChanged()
         AppModel.shared.menuBar.refreshNow()
     }
 

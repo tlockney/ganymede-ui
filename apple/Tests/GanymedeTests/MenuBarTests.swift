@@ -187,6 +187,21 @@ final class MenuBarTests: XCTestCase {
         )
         XCTAssertEqual(failed.tailnet, .error("tailscale not signed in"))
         XCTAssertEqual(failed.tailnetLine, "Tailnet: Error (tailscale not signed in)")
+
+        // When the background server is enabled, it owns tailnet serving via ganymede.toml (#954).
+        let backgroundManaged = MenuBarSnapshot.make(
+            backgroundStatus: .enabled,
+            backgroundRunning: true,
+            embeddedRunning: true,
+            embeddedError: nil,
+            mcpMode: .off,
+            tailnetShare: true,
+            tailnetURL: nil,
+            tailnetError: nil,
+            kernels: []
+        )
+        XCTAssertEqual(backgroundManaged.tailnet, .backgroundManaged)
+        XCTAssertEqual(backgroundManaged.tailnetLine, "Tailnet: Background server (ganymede.toml)")
     }
 
     // MARK: Running kernels formatting & parsing

@@ -236,6 +236,7 @@ struct MenuBarSnapshot: Equatable {
         case off
         case starting
         case shared(String)
+        case backgroundManaged
         case error(String)
     }
 
@@ -279,7 +280,9 @@ struct MenuBarSnapshot: Equatable {
         }
 
         let tailnet: TailnetStatus
-        if !tailnetShare {
+        if BackgroundServerRouting.backgroundOwnsTailnet(backgroundStatus) {
+            tailnet = .backgroundManaged
+        } else if !tailnetShare {
             tailnet = .off
         } else if let tailnetURL {
             tailnet = .shared(tailnetURL.host ?? tailnetURL.absoluteString)
@@ -330,6 +333,8 @@ struct MenuBarSnapshot: Equatable {
             "Tailnet: Sharing…"
         case .shared(let host):
             "Tailnet: Shared (\(host))"
+        case .backgroundManaged:
+            "Tailnet: Background server (ganymede.toml)"
         case .error(let message):
             "Tailnet: Error (\(message))"
         }

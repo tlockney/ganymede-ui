@@ -15,6 +15,9 @@ enum BackgroundServer {
     /// (`apple/project.yml` and `apple/scripts/release-app.sh`) so signature
     /// verification can match the helper across app updates.
     static let helperIdentifier = "com.ganymede-server.Ganymede.helper"
+    /// Synthetic mount id on the embedded server for the verified background
+    /// server when local notebooks route through it (#954).
+    static let mountID = ThisMacServers.backgroundMountID
 }
 
 /// The `SMAppService` calls the background server setting makes (#912),

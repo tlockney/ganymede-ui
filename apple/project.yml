@@ -618,6 +618,7 @@ targets:
       # those checks; plus the optional LaunchAgent background server (#912)
       # and Mac menu bar extra (#924).
       - path: Sources/Ganymede/BackgroundServer.swift
+      - path: Sources/Ganymede/BackgroundServerRouting.swift
       - path: Sources/Ganymede/MenuBar.swift
       - path: Sources/Ganymede/KernelProviderClient.swift
       - path: Sources/Ganymede/ThisMacVerifier.swift
@@ -725,6 +726,7 @@ targets:
       # those checks; plus the optional LaunchAgent background server (#912)
       # and Mac menu bar extra (#924).
       - path: Sources/Ganymede/BackgroundServer.swift
+      - path: Sources/Ganymede/BackgroundServerRouting.swift
       - path: Sources/Ganymede/MenuBar.swift
       - path: Sources/Ganymede/KernelProviderClient.swift
       - path: Sources/Ganymede/ThisMacVerifier.swift

@@ -88,6 +88,13 @@ enum Place: Hashable, Codable {
     /// is a machine's here: its files are reached through the mount, #883.)
     var isThisDevice: Bool { !isMachine }
 
+    /// Whether this place is this Mac's own local workspace: either
+    /// `.thisDevice` (embedded server) or the routed background server
+    /// (`.thisMac(ThisMacServers.backgroundMountID)`) (#954).
+    var isLocalPlace: Bool {
+        self == .thisDevice || self == .thisMac(ThisMacServers.backgroundMountID)
+    }
+
     /// The path the page uses as its server, on the app's own origin.
     var mountPath: String {
         switch self {
@@ -192,7 +199,9 @@ enum Place: Hashable, Codable {
     /// paths from the window's own server's root, "" for the root itself.
     /// Nil for a machine whose remote was removed, or has no server: it has
     /// nowhere to run one.
-    func terminalTarget(notebook: String?, fallbackFolder: String, remotes: [Remote]) -> TerminalTarget? {
+    func terminalTarget(
+        notebook: String?, fallbackFolder: String, remotes: [Remote], thisMacRoot: URL? = nil
+    ) -> TerminalTarget? {
         let folder = notebook.map(FolderEntry.parentPath) ?? fallbackFolder
         switch self {
         case .thisDevice:
@@ -200,6 +209,15 @@ enum Place: Hashable, Codable {
             // paths is a path from there, and "" is `/` itself: a window on
             // the root starts its shell there, as it did before this was one
             // place's rule, not in the app's own default folder.
+            return .local(folder: URL(fileURLWithPath: "/" + folder.drop { $0 == "/" }, isDirectory: true))
+        case .thisMac(let id) where id == ThisMacServers.backgroundMountID:
+            // Local notebooks routed through the background server (#954)
+            // open local shells under the background server's root on this Mac.
+            if let root = thisMacRoot {
+                let rel = String(folder.drop { $0 == "/" })
+                let target = rel.isEmpty ? root : root.appendingPathComponent(rel, isDirectory: true)
+                return .local(folder: target)
+            }
             return .local(folder: URL(fileURLWithPath: "/" + folder.drop { $0 == "/" }, isDirectory: true))
         case .machine(let id), .thisMac(let id):
             // This Mac's own server's terminals run there too, in its
@@ -523,9 +541,10 @@ enum Places {
     /// this Mac's own server (#883, `verified` holds its id) is listed as
     /// this Mac's place.
     static func entries(
-        remotes: [Remote], thisDevice: String, mounting: Bool, verified: Set<String> = []
+        remotes: [Remote], thisDevice: String, mounting: Bool, verified: Set<String> = [],
+        thisDevicePlace: Place = .thisDevice
     ) -> [PlaceEntry] {
-        var list = [PlaceEntry(place: .thisDevice, title: thisDevice)]
+        var list = [PlaceEntry(place: thisDevicePlace, title: thisDevice)]
         guard mounting else { return list }
         list += remotes.compactMap { remote in
             Place(remote: remote, verified: verified).map { PlaceEntry(place: $0, title: remote.title) }
@@ -799,7 +818,14 @@ struct ThisMacScanResult: Equatable, Sendable {
 /// window's place and trust notice are read from, and where a `.thisMac`
 /// window's notebooks are. Empty on iOS, where nothing verifies.
 struct ThisMacServers: Equatable {
-    /// Each verified remote's server, by the remote's id (its UUID string).
+    /// Synthetic mount id on the embedded server for the verified background
+    /// server when local notebooks route through it (#954). Valid per
+    /// `Place.isValidMachineID` and never collides with a `Remote`'s UUID.
+    static let backgroundMountID = "this-mac"
+
+    /// Each verified remote's server, by the remote's id (its UUID string),
+    /// plus `backgroundMountID` when local notebooks route through the
+    /// verified background server (#954).
     private(set) var byID: [String: ThisMacServer] = [:]
     /// Why a loopback remote wasn't trusted as This Mac (#887), by remote id.
     /// Absent for non-loopback remotes and for verified remotes.
@@ -817,8 +843,15 @@ struct ThisMacServers: Equatable {
     /// Matches a verifier scan against `remotes`: each verified loopback
     /// remote enters `byID`, each unverified loopback remote enters
     /// `failuresByID` with the reason it failed, and non-loopback remotes
-    /// enter neither (#883, #887).
-    init(scan: ThisMacScanResult, remotes: [Remote], token: (UUID) -> String?) {
+    /// enter neither (#883, #887). When `backgroundServer` is non-nil (#954),
+    /// it is also registered under `backgroundMountID`.
+    init(
+        scan: ThisMacScanResult, remotes: [Remote], token: (UUID) -> String?,
+        backgroundServer: ThisMacServer? = nil
+    ) {
+        if let backgroundServer {
+            byID[Self.backgroundMountID] = backgroundServer
+        }
         let verified = scan.verified
         for remote in remotes {
             guard remote.hasServer,

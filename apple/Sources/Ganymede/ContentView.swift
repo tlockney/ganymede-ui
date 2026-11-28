@@ -75,16 +75,20 @@ struct ContentView: View {
         // Read on every init, but `@State` keeps only the first: the one
         // made as this window opens.
         let request = target.wrappedValue == nil ? WorkspaceTabs.pending : nil
-        let loaded = WindowTarget.opening(target.wrappedValue, requested: request?.target, root: AppModel.shared.root)
-        // A restored window's machine is checked once, here, before its
-        // first load (#883): the page is loaded with the place the check
-        // finds, as this Mac's own server's window or a machine's, and is
-        // not made again by a check that answers after it. SwiftUI makes a
-        // window's `ContentView` more than once and keeps only the first;
+        let rawLoaded = WindowTarget.opening(target.wrappedValue, requested: request?.target, root: AppModel.shared.root)
+        // A restored window's machine — or a local window when the background
+        // server is enabled (#954) — is checked once, here, before its first
+        // load (#883): the page is loaded with the place the check finds, as
+        // this Mac's own server's window or a machine's, and is not made again
+        // by a check that answers after it. SwiftUI makes a window's
+        // `ContentView` more than once and keeps only the first;
         // `AppModel.verifyThisMacNow` sees that, and checks for the first of
         // them in a turn.
         let model = AppModel.shared
-        if loaded.place.isMachine { model.verifyThisMacNow() }
+        if rawLoaded.place.isMachine || model.backgroundServerStatus == .enabled {
+            model.verifyThisMacNow()
+        }
+        let loaded = model.routeLocalTarget(rawLoaded)
         let place = model.place(for: loaded)
         _loaded = State(initialValue: loaded)
         _loadedPlace = State(initialValue: place)
@@ -250,7 +254,7 @@ struct ContentView: View {
         // nothing at launch shows the first itself. Later, so the change
         // to `pending` is not made while views update.
         .onChange(of: model.openRequests.pending, initial: true) { _, pending in
-            guard !pending.isEmpty, place.isThisDevice else { return }
+            guard !pending.isEmpty, place.isLocalPlace else { return }
             DispatchQueue.main.async(execute: takeOpenRequests)
         }
         .onAppear {
@@ -647,10 +651,11 @@ struct ContentView: View {
     }
 
     #if os(macOS)
-    /// Only this device's windows take the Finder's open requests, and only
+    /// Only this Mac's local windows (embedded or routed through the
+    /// background server, #954) take the Finder's open requests, and only
     /// they count as blank (#740).
     private func noteOpenRequests() {
-        if place.isThisDevice {
+        if place.isLocalPlace {
             model.openRequests.register(windowID, blank: target == nil)
         } else {
             model.openRequests.unregister(windowID)
@@ -658,24 +663,25 @@ struct ContentView: View {
     }
 
     private func takeOpenRequests() {
-        guard place.isThisDevice else { return }
+        guard place.isLocalPlace else { return }
         let (shown, others) = model.openRequests.take(blank: target == nil)
         if let shown { show(shown) }
         for other in others {
-            WorkspaceTabs.openOrFocusTab(other) { openWindow(value: $0) }
+            WorkspaceTabs.openOrFocusTab(model.routeLocalTarget(other)) { openWindow(value: $0) }
         }
     }
 
     /// Shows `shown` in this window: the page loads it.
     private func show(_ shown: WindowTarget) {
-        target = shown
-        loaded = shown
+        let routed = model.routeLocalTarget(shown)
+        target = routed
+        loaded = routed
         // Another load: the page is loaded with the place the app finds
         // now (#883), so a check that verified its machine applies here.
-        let place = model.place(for: shown)
+        let place = model.place(for: routed)
         loadedPlace = place
         pagePlace = PagePlace(place: place, root: model.thisMacRoot(for: place)?.path)
-        sidebarRoot = shown.folder
+        sidebarRoot = routed.folder
     }
 
     /// The sidebar's folder as this window last had it, if it was saved.
@@ -714,7 +720,9 @@ struct ContentView: View {
     /// for a machine whose remote was removed or has no server.
     private var windowTerminal: TerminalTarget? {
         WindowScope(place: place, serverFolder: FolderEntry.serverPath(sidebarRoot))
-            .terminalTarget(notebook: pageModel.state.path, remotes: model.remotes)
+            .terminalTarget(
+                notebook: pageModel.state.path, remotes: model.remotes,
+                thisMacRoot: model.thisMacRoot(for: place))
     }
 
     /// A machine's name, for its window's title and subtitle.
@@ -840,17 +848,26 @@ struct ContentView: View {
     }
 
     /// The page asks for a tab (`openTab`): a notebook or data file, or a
-    /// new DuckDB console. The server is rooted at `/` on the Mac.
+    /// new DuckDB console. Local windows resolve paths against their active
+    /// root (embedded `/` or the background server's `root_dir`, #954).
     private func openTab(_ request: TabRequest) {
-        WorkspaceTabs.openOrFocusTab(request.target(root: model.serverRootFolder)) {
+        let next: WindowTarget
+        if place.isLocalPlace {
+            let base = request.target(root: model.pageRoot(for: place).url)
+            next = model.routeLocalTarget(base)
+        } else {
+            next = request.target(root: model.serverRootFolder)
+        }
+        WorkspaceTabs.openOrFocusTab(next) {
             openWindow(value: $0)
         }
     }
 
-    /// Why this window's loopback server wasn't trusted as This Mac (#887);
-    /// nil for non-loopback servers, this device, and windows upgraded to
-    /// This Mac.
-    private var thisMacNotice: String? { model.thisMacNotice(for: place) }
+    /// Why this window's loopback server wasn't trusted as This Mac (#887),
+    /// or why a local window fell back to the embedded server while the
+    /// background server is enabled (#954); nil for non-loopback servers and
+    /// windows running on a verified This Mac server.
+    private var thisMacNotice: String? { model.thisMacNotice(for: place, target: target ?? loaded) }
 
     /// The notebook, with the bottom panel under it (#248), and the status
     /// bar under the workspace (#882). The panel stays in the view tree
