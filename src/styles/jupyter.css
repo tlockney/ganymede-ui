@@ -136,6 +136,54 @@
   padding-right: 14px;
 }
 
+/* On desktop, keep single-line cells tall enough for the run button and
+ * execution count in .gn-cell-gutter so the output well's seam never cuts
+ * through the count (#960). */
+:root:not(.touch-ui) .notebook-page .jp-CodeCell > .jp-Cell-inputWrapper {
+  min-height: 46px;
+}
+
+/* Output well (#960): separate a cell's output from its code inside the same
+ * card using a hairline seam and a subtly recessed fill rounded into the card's
+ * bottom edge. The card keeps overflow: visible so the floating cell toolbar
+ * and wide outputs (gn-mod-wide) stay unclipped. */
+.notebook-page
+  .jp-CodeCell
+  > .jp-Cell-outputWrapper:has(.jp-OutputArea-child, .jp-OutputPlaceholder) {
+  position: relative;
+  margin: 10px 0 -8px -60px;
+  padding: 10px 0 9px 60px;
+  border-top: 1px solid var(--separator);
+  border-radius: 0 0 11px 11px;
+  background: var(--cell-output-bg);
+}
+
+.notebook-page
+  .jp-CodeCell
+  > .jp-Cell-outputWrapper:has(.jp-OutputArea-child, .jp-OutputPlaceholder)
+  .jp-OutputArea-child:first-child {
+  padding-top: 0;
+}
+
+/* Quiet output marker in the desktop gutter, aligned under the run button. */
+:root:not(.touch-ui)
+  .notebook-page
+  .jp-CodeCell
+  > .jp-Cell-outputWrapper:has(.jp-OutputArea-child, .jp-OutputPlaceholder)::before {
+  content: '↳' / '';
+  position: absolute;
+  top: 14px;
+  left: 6px;
+  width: 30px;
+  color: var(--meta-color);
+  opacity: 0.72;
+  font: 12px/1.5 var(--font-mono);
+  text-align: center;
+  pointer-events: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 /* A selected cell's edge is 1px of the accent at 45% (#852): the card says
  * it is selected, quietly. Only an editor with focus rings it, in 2px. */
 .notebook-page .jp-Cell.jp-mod-active {
@@ -567,6 +615,26 @@
  * cell menu here, so the button and the seconds have none. Below 720px the
  * meta line above the cell carries the count instead. */
 @media (min-width: 720px) {
+  /* On touch layouts (>= 720px), .gn-add-cell sits below the output area
+   * inside the card (unless read-only), so the recessed well spans
+   * edge-to-edge above it (#960). */
+  .touch-ui
+    .notebook-page
+    .jp-CodeCell
+    > .jp-Cell-outputWrapper:has(.jp-OutputArea-child, .jp-OutputPlaceholder) {
+    margin: 10px -44px -8px -30px;
+    padding: 10px 44px 9px 30px;
+  }
+
+  .touch-ui
+    .notebook-page:not(.is-readonly)
+    .jp-CodeCell
+    > .jp-Cell-outputWrapper:has(.jp-OutputArea-child, .jp-OutputPlaceholder) {
+    margin-bottom: 4px;
+    border-bottom: 1px solid var(--separator);
+    border-radius: 0;
+  }
+
   .touch-ui .notebook-page .gn-cell-gutter {
     position: absolute;
     top: 38px;
@@ -728,6 +796,25 @@
     padding-right: 0;
   }
 
+  .touch-ui
+    .notebook-page
+    .jp-CodeCell
+    > .jp-Cell-outputWrapper:has(.jp-OutputArea-child, .jp-OutputPlaceholder) {
+    margin: 10px 0 -8px;
+    padding: 10px 0 9px;
+    border-bottom: 0;
+    border-radius: 0 0 11px 11px;
+  }
+
+  .touch-ui
+    .notebook-page:not(.is-readonly)
+    .jp-CodeCell:is(.jp-mod-active, .gn-last-cell)
+    > .jp-Cell-outputWrapper:has(.jp-OutputArea-child, .jp-OutputPlaceholder) {
+    margin-bottom: 4px;
+    border-bottom: 1px solid var(--separator);
+    border-radius: 0;
+  }
+
   .touch-ui .notebook-page .jp-CodeCell > .gn-source-bar {
     margin-right: 0;
   }
@@ -847,7 +934,11 @@
   }
 
   .touch-ui .notebook-page .jp-CodeCell > .jp-Cell-inputWrapper,
-  .touch-ui .notebook-page .jp-CodeCell > .jp-Cell-outputWrapper {
+  .touch-ui .notebook-page .jp-CodeCell > .jp-Cell-outputWrapper,
+  .touch-ui
+    .notebook-page
+    .jp-CodeCell
+    > .jp-Cell-outputWrapper:has(.jp-OutputArea-child, .jp-OutputPlaceholder) {
     padding-right: 10px;
     padding-left: 10px;
   }
@@ -866,7 +957,7 @@
   }
 
   .touch-ui .notebook-page .jp-CodeCell .gn-output-meta {
-    padding: 5px 10px 0;
+    padding: 0;
   }
 
   .touch-ui .notebook-page .jp-CodeCell .gn-run-status {
@@ -916,6 +1007,21 @@
 
 .notebook-page .gn-output-bar[data-kind='error'] {
   border-left-color: var(--red);
+}
+
+/* Error outputs get a red left rail down the whole error block inside the
+ * output well (#960), replacing the bar's own left edge so failures don't draw
+ * two parallel red stripes. Kept inset (no negative margin) because
+ * JupyterLab's .jp-OutputArea-child sets overflow: hidden. */
+.notebook-page .jp-CodeCell .jp-OutputArea-output:has(> .gn-output-bar[data-kind='error']) {
+  padding-left: 10px;
+  border-left: 2px solid color-mix(in srgb, var(--red) 75%, transparent);
+}
+
+.notebook-page .jp-CodeCell .gn-output-bar[data-kind='error'] {
+  border-left: 0;
+  border-radius: 6px;
+  background: var(--jp-rendermime-error-background);
 }
 
 .notebook-page .gn-output-bar[data-kind='warning'] {
@@ -969,14 +1075,13 @@
   overflow-y: auto;
 }
 
-/* The meta line under a cell's outputs (#852): what they are and how long
- * the run took, "Text · 1.2 s", under a hairline; "saved output" for outputs
- * that came from the file and that this page hasn't run, kernel or no
- * kernel. Mono, quiet, aligned with the code. */
+/* The meta line under a cell's outputs (#852, #960): what they are and how long
+ * the run took, "Text · 1.2 s", or "saved output" for outputs that came from
+ * the file and that this page hasn't run, kernel or no kernel. The hairline now
+ * sits above the output well at the code/output seam. */
 .notebook-page .gn-output-meta {
-  margin-top: 8px;
-  padding: 5px 14px 0 0;
-  border-top: 1px solid var(--separator);
+  margin-top: 7px;
+  padding: 0 14px 0 0;
   color: var(--meta-color);
   font: 11px/1.4 var(--font-mono);
   font-variant-numeric: tabular-nums;

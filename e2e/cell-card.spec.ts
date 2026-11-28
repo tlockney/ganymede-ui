@@ -138,6 +138,85 @@ test('an output is what a press at its left edge finds, not JupyterLab’s overl
   expect(hit.x).toBeGreaterThan((await cell.evaluate(el => el.getBoundingClientRect().x)) + 30);
 });
 
+test('code outputs sit in a recessed well, and errors add a red left rail (#960)', async ({
+  page,
+}) => {
+  await newBrowserNotebook(page);
+  const cell = page.locator('.jp-Cell').first();
+  const wrapper = cell.locator('> .jp-Cell-outputWrapper');
+
+  // Before any output exists, the wrapper stays invisible with no seam or well fill.
+  const emptyStyle = await wrapper.evaluate(el => {
+    const s = getComputedStyle(el);
+    return { bg: s.backgroundColor, borderTop: s.borderTopWidth };
+  });
+  expect(emptyStyle.borderTop).toBe('0px');
+  expect(emptyStyle.bg).toMatch(/^rgba?\(0, 0, 0, 0\)$/);
+
+  // Run a normal cell: the output wrapper gets a recessed fill distinct from
+  // the card's surface and a 1px seam border, with no left rail on the output.
+  await cell.locator('.cm-content').click();
+  await page.keyboard.type("'Ganymede'");
+  await page.keyboard.press('Escape');
+  await cell.hover();
+  await cell.locator('.gn-run-button').click();
+  const textOutput = cell.locator('.jp-OutputArea-output').first();
+  await expect(textOutput).toContainText('Ganymede', { timeout: 60_000 });
+
+  const textState = await cell.evaluate(el => {
+    const cardStyle = getComputedStyle(el);
+    const outWrap = el.querySelector<HTMLElement>(':scope > .jp-Cell-outputWrapper')!;
+    const wrapStyle = getComputedStyle(outWrap);
+    const out = el.querySelector<HTMLElement>('.jp-OutputArea-output')!;
+    const outStyle = getComputedStyle(out);
+    const countRect = el.querySelector<HTMLElement>('.gn-exec-count')!.getBoundingClientRect();
+    const wrapRect = outWrap.getBoundingClientRect();
+    return {
+      cardBg: cardStyle.backgroundColor,
+      wellBg: wrapStyle.backgroundColor,
+      borderTop: wrapStyle.borderTopWidth,
+      outRail: outStyle.borderLeftWidth,
+      countClearsSeam: countRect.bottom <= wrapRect.top,
+    };
+  });
+  expect(textState.borderTop).toBe('1px');
+  expect(textState.wellBg).not.toBe(textState.cardBg);
+  expect(textState.outRail).toBe('0px');
+  expect(textState.countClearsSeam).toBe(true);
+
+  // Run an error cell: the error output adds a 2px red left rail inside the well.
+  await selectCell(page, 0);
+  await page.keyboard.press('b');
+  const errCell = page.locator('.jp-Cell').nth(1);
+  await errCell.locator('.cm-content').click();
+  await page.keyboard.type("throw new Error('orbit drift')");
+  await page.keyboard.press('Escape');
+  await errCell.hover();
+  await errCell.locator('.gn-run-button').click();
+  await expect(errCell.locator('.gn-output-bar[data-kind="error"]')).toBeVisible({
+    timeout: 60_000,
+  });
+
+  const errState = await errCell.evaluate(el => {
+    const child = el.querySelector<HTMLElement>('.jp-OutputArea-child')!;
+    const out = el.querySelector<HTMLElement>('.jp-OutputArea-output')!;
+    const bar = el.querySelector<HTMLElement>('.gn-output-bar[data-kind="error"]')!;
+    const childRect = child.getBoundingClientRect();
+    const outRect = out.getBoundingClientRect();
+    const railTarget = document.elementFromPoint(outRect.left + 1, outRect.top + 8);
+    return {
+      outRail: getComputedStyle(out).borderLeftWidth,
+      barLeft: getComputedStyle(bar).borderLeftWidth,
+      railInsideChild: outRect.left >= childRect.left,
+      railVisible: railTarget?.closest('.jp-OutputArea-output') === out,
+    };
+  });
+  expect(errState.outRail).toBe('2px');
+  expect(errState.barLeft).toBe('0px');
+  expect(errState.railInsideChild).toBe(true);
+  expect(errState.railVisible).toBe(true);
+});
+
 test.describe('at 740px, a window with a mouse', () => {
   test.use({ viewport: { width: 740, height: 820 } });
 

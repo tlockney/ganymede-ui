@@ -411,12 +411,39 @@ describe('secondary metadata text (#814)', () => {
       // multiselect fill, which a multiselect of one draws too.
       const card = over(color(resolve('var(--cell-bg)', vars)), page);
       const selected = over(color(resolve('var(--jp-notebook-multiselected-color)', vars)), card);
+      const outputWell = over(color(resolve('var(--cell-output-bg)', vars)), page);
       for (const selector of metaLines) {
         const text = color(resolve(decl(jupyter, selector, 'color', theme)!, vars));
-        for (const bg of [card, selected]) {
+        const surfaces =
+          selector === '.notebook-page .gn-output-meta'
+            ? [card, selected, outputWell]
+            : [card, selected];
+        for (const bg of surfaces) {
           const ratio = contrast(over(text, bg), bg);
           expect(ratio, `${selector} ${ratio.toFixed(2)}`).toBeGreaterThanOrEqual(AA);
         }
+      }
+    });
+
+    it(`the recessed output well is distinct from the cell card and reads at ${AA}:1 in ${theme} (#960)`, () => {
+      const vars = variables(theme);
+      const page = color(resolve('var(--window-bg)', vars));
+      const card = over(color(resolve('var(--cell-bg)', vars)), page);
+      const well = over(color(resolve('var(--cell-output-bg)', vars)), page);
+      expect(well).not.toEqual(card);
+      const errorSurface = over(
+        color(resolve('var(--jp-rendermime-error-background)', vars)),
+        well,
+      );
+      for (const [label, fgVar, bg] of [
+        ['--text on output well', 'var(--text)', well],
+        ['--meta-color on output well', 'var(--meta-color)', well],
+        ['--accent-text on output well', 'var(--accent-text)', well],
+        ['--text on error bar in output well', 'var(--text)', errorSurface],
+      ] as const) {
+        const fg = color(resolve(fgVar, vars));
+        const ratio = contrast(over(fg, bg), bg);
+        expect(ratio, `${label} ${ratio.toFixed(2)}`).toBeGreaterThanOrEqual(AA);
       }
     });
   }
