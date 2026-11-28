@@ -616,13 +616,12 @@ struct ProjectLine: View {
 /// update button sits at the end of the leading region, so an update
 /// appearing moves nothing at all (#812).
 ///
-/// The run group is one hand-drawn capsule, `HStack` over `.regularMaterial`
-/// in a `Capsule` (`RunCellMenu`): the system's `ControlGroup` styles either
-/// draw each child its own glass or drop Run's accent fill. Its toolbar item
-/// hides the system's shared background, so the capsule is drawn once. The
-/// right group is a `ControlGroup` in the navigation style, which is the
-/// system's segmented capsule. The run group is the toolbar's only orange
-/// control.
+/// The run group is one `HStack` (`RunCellMenu`) inside its `ToolbarItem`,
+/// letting the toolbar's own glass draw the capsule once (matching the right
+/// group's glass in both appearances): the system's `ControlGroup` styles
+/// either draw each child its own glass or drop Run's accent fill. The right
+/// group is a `ControlGroup` in the navigation style, which is the system's
+/// segmented capsule. The run group is the toolbar's only orange control.
 ///
 /// New Notebook is File > New Notebook (⌘N), not a toolbar button (#867).
 struct NotebookToolbar: ToolbarContent {
