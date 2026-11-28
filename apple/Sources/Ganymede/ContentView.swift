@@ -624,7 +624,7 @@ struct ContentView: View {
         let (shown, others) = model.openRequests.take(blank: target == nil)
         if let shown { show(shown) }
         for other in others {
-            openWindow(value: other)
+            WorkspaceTabs.openOrFocusTab(other) { openWindow(value: $0) }
         }
     }
 
@@ -732,13 +732,15 @@ struct ContentView: View {
     /// Its folder, and whether it shows the start screen (no notebook),
     /// for the window that opens after the last one closes (#416).
     private func noteWindow(_ window: NSWindow) {
+        let shown = target ?? loaded
         var start = true
-        switch target ?? loaded {
+        switch shown {
         case .file, .console, .machineFile: start = false
         default: break
         }
         // A machine's folder is no folder for a start window on this Mac.
-        WorkspaceTabs.note(window, folder: place.isThisDevice ? sidebarRoot : nil, start: start)
+        WorkspaceTabs.note(
+            window, target: shown, folder: place.isThisDevice ? sidebarRoot : nil, start: start)
         noteSurface(window)
     }
 
@@ -802,7 +804,9 @@ struct ContentView: View {
     /// The page asks for a tab (`openTab`): a notebook or data file, or a
     /// new DuckDB console. The server is rooted at `/` on the Mac.
     private func openTab(_ request: TabRequest) {
-        openWindow(value: request.target(root: model.serverRootFolder))
+        WorkspaceTabs.openOrFocusTab(request.target(root: model.serverRootFolder)) {
+            openWindow(value: $0)
+        }
     }
 
     /// The notebook, with the bottom panel under it (#248), and the status
