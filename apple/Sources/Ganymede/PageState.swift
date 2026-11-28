@@ -161,6 +161,24 @@ struct PageState: Decodable, Equatable {
         var text: String
         /// The index of the cell it is in: the `go-to-cell` command's argument.
         var cell: Int
+        /// Whether every code cell in this heading's section has run (#913);
+        /// nil when the section has no code cells or from a page older than #913.
+        var ran: Bool? = nil
+    }
+
+    /// A section's progress state in the Outline (#913).
+    enum SectionStatus: Equatable {
+        case ran
+        case current
+        case notRun
+
+        var accessibilityLabel: String {
+            switch self {
+            case .ran: "Section ran"
+            case .current: "Current section"
+            case .notRun: "Section not run"
+            }
+        }
     }
 
     /// The open notebook's matches for the Mac app's Find tab (#879): what
@@ -272,6 +290,13 @@ struct PageState: Decodable, Equatable {
     var accessWanted: [String]?
     /// The active cell's type: `code`, `markdown` or `raw`.
     var cellType: String?
+    /// The 0-based active cell index in Notebook view, or the current reading
+    /// cell index in Journal view (#913); absent from a page older than that.
+    var activeCell: Int?
+    /// Total number of cells in the open notebook (#913); absent from older pages.
+    var cellCount: Int?
+    /// Count of code cells with a non-null execution count (#913); absent from older pages.
+    var ranCellCount: Int?
     /// Whether the open notebook shows as a journal (#184); absent from a
     /// page older than #724.
     var journal: Bool?
@@ -360,6 +385,71 @@ struct PageState: Decodable, Equatable {
     /// Whether there is a kernel to restart: one has started, even if it
     /// has since died (when Restart is most needed).
     var hasKernel: Bool { status != nil && status != "none" }
+
+    /// The index into `headings` of the last heading at or before `activeCell`
+    /// (#913); nil when there are no headings, `activeCell` is nil, or the
+    /// active cell precedes the first heading.
+    var currentHeadingIndex: Int? {
+        guard let activeCell else { return nil }
+        return headings.lastIndex { $0.cell <= activeCell }
+    }
+
+    /// The heading enclosing `activeCell`, if any (#913).
+    var currentHeading: Heading? {
+        currentHeadingIndex.map { headings[$0] }
+    }
+
+    /// Progress state for the heading at `index` in `headings` (#913).
+    func sectionStatus(at index: Int) -> SectionStatus {
+        guard headings.indices.contains(index) else { return .notRun }
+        if index == currentHeadingIndex { return .current }
+        return headings[index].ran == true ? .ran : .notRun
+    }
+
+    /// 1-based cell position label such as `"3 / 14"` for the phone stepper (#913).
+    var cellStepperLabel: String? {
+        guard let count = cellCount, count > 0,
+              let active = activeCell, (0..<count).contains(active)
+        else { return nil }
+        return "\(active + 1) / \(count)"
+    }
+
+    /// Previous cell index for the phone stepper, or nil at the first cell (#913).
+    var previousCellIndex: Int? {
+        guard let active = activeCell, active > 0 else { return nil }
+        if let count = cellCount, active >= count { return nil }
+        return active - 1
+    }
+
+    /// Next cell index for the phone stepper, or nil at the last cell (#913).
+    var nextCellIndex: Int? {
+        guard let active = activeCell, active >= 0,
+              let count = cellCount, active + 1 < count
+        else { return nil }
+        return active + 1
+    }
+
+    private static func outlineKernelSummary(_ status: String?) -> String? {
+        switch status {
+        case nil: nil
+        case "none": "no kernel"
+        default: "kernel \(statusLabel(status).lowercased())"
+        }
+    }
+
+    /// Compact summary for the Outline sheet header, e.g.
+    /// `"14 cells · 12 ran · kernel idle"` (#913).
+    var outlineSummary: String? {
+        guard let count = cellCount, count > 0 else { return nil }
+        var parts = [count == 1 ? "1 cell" : "\(count) cells"]
+        if let ran = ranCellCount, ran >= 0 {
+            parts.append("\(ran) ran")
+        }
+        if let kernelSummary = Self.outlineKernelSummary(status) {
+            parts.append(kernelSummary)
+        }
+        return parts.joined(separator: " · ")
+    }
 
     /// The one line a kernel list shows when kernels run on a remote that
     /// isn't answering (#832), or nil while it answers, before the server's

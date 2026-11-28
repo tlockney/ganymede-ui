@@ -23,6 +23,7 @@ import {
   classifyProvenance,
   followLabel,
   followsLate,
+  firstVisibleIndex,
   foldLabel,
   initialFollow,
   journalHeader,
@@ -72,6 +73,8 @@ type Props = {
   positionKey?: { server: string; path: string };
   /** The cell (an index) the reader switched here from in the notebook: where to open. */
   startAt?: number;
+  /** Called when the current visible/reading cell index changes (#913). */
+  onActiveCellChange?(index: number | null): void;
   onOpenAsNotebook(): void;
 };
 
@@ -516,6 +519,7 @@ export function JournalView({
   roomSettings,
   positionKey,
   startAt,
+  onActiveCellChange,
   onOpenAsNotebook,
 }: Props) {
   const { cells, changedAt, othersChangedCells } = useCells(notebook);
@@ -553,6 +557,35 @@ export function JournalView({
   const touched = useRef(false);
   /** The cell the opening put at the top: put back while content settles under it. */
   const anchor = useRef<{ id?: string; index: number; offset: number } | undefined>(undefined);
+  const onActiveCellChangeRef = useRef(onActiveCellChange);
+  onActiveCellChangeRef.current = onActiveCellChange;
+  const lastReportedCell = useRef<number | null | undefined>(undefined);
+  const reportActiveCell = useCallback((fallback?: number | null) => {
+    const cb = onActiveCellChangeRef.current;
+    if (!cb) return;
+    const s = scroller.current;
+    let next: number | null = null;
+    if (cellCount.current > 0) {
+      if (s) {
+        const rect = s.getBoundingClientRect();
+        const boxes = [...s.querySelectorAll<HTMLElement>('.journal-cell')].map(a => {
+          const r = a.getBoundingClientRect();
+          return { top: r.top, bottom: r.bottom };
+        });
+        const laidOut = rect.height > 0 || boxes.some(b => b.top !== 0 || b.bottom !== 0);
+        next = laidOut
+          ? (firstVisibleIndex(rect.top, boxes) ?? 0)
+          : (fallback ??
+            Math.min(Math.max(0, lastReportedCell.current ?? 0), cellCount.current - 1));
+      } else {
+        next = fallback ?? 0;
+      }
+    }
+    if (next !== lastReportedCell.current) {
+      lastReportedCell.current = next;
+      cb(next);
+    }
+  }, []);
 
   const toEnd = useCallback(() => {
     const s = scroller.current;
@@ -588,25 +621,32 @@ export function JournalView({
   // Open where decided: the cell the reader was at, the end, or the start.
   useLayoutEffect(() => {
     const at = opening.scroll;
-    if (at.to === 'end') toEnd();
-    else if (at.to === 'start') {
+    let initial: number | null;
+    if (at.to === 'end') {
+      toEnd();
+      initial = cells.length > 0 ? cells.length - 1 : null;
+    } else if (at.to === 'start') {
       const s = scroller.current;
       if (s) s.scrollTop = 0;
+      initial = cells.length > 0 ? 0 : null;
     } else {
       const spot = { id: cells[at.index]?.id, index: at.index, offset: at.offset };
       placeCell(spot);
       hold(spot);
+      initial = at.index;
       // From the notebook, a cell at the very end follows (the end is where it is).
       const s = scroller.current;
       if (opening.reason === 'from-notebook' && s && atBottom(s)) setFollow(FOLLOWING);
     }
+    reportActiveCell(initial);
     // Once, when it shows.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   // New cells, and outputs that render later, keep the end in view while following.
   useLayoutEffect(() => {
     if (follow.following) toEnd();
-  }, [cells.length, follow.following, toEnd]);
+    reportActiveCell(follow.following && cells.length > 0 ? cells.length - 1 : undefined);
+  }, [cells.length, follow.following, toEnd, reportActiveCell]);
   useEffect(() => {
     const node = content.current;
     if (!node || typeof ResizeObserver === 'undefined') return;
@@ -661,9 +701,11 @@ export function JournalView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const scrollFrame = useRef(0);
   useEffect(
     () => () => {
       if (saveTimer.current) clearTimeout(saveTimer.current);
+      if (scrollFrame.current) cancelAnimationFrame(scrollFrame.current);
     },
     [],
   );
@@ -674,6 +716,12 @@ export function JournalView({
     setFollow(f =>
       nextFollow(f, { type: 'scroll', atBottom: atBottom(s), cells: cellCount.current }),
     );
+    if (!scrollFrame.current) {
+      scrollFrame.current = requestAnimationFrame(() => {
+        scrollFrame.current = 0;
+        reportActiveCell();
+      });
+    }
     if (!saveTimer.current) {
       saveTimer.current = setTimeout(() => {
         saveTimer.current = undefined;
@@ -684,6 +732,7 @@ export function JournalView({
   const resume = () => {
     setFollow(f => nextFollow(f, { type: 'resume' }));
     toEnd();
+    reportActiveCell(cellCount.current > 0 ? cellCount.current - 1 : null);
   };
   /** The reply to a request: its cell at the top. A scroll, so it stops following. */
   const goToReply = useCallback(
@@ -693,10 +742,11 @@ export function JournalView({
       if (!s || index < 0) return;
       touch();
       placeCell({ id, index, offset: 0 });
+      reportActiveCell(index);
       // Paused even when the reply is the last cell and the view stays at the end.
       setFollow(f => (f.following ? { following: false, pausedAt: cellCount.current } : f));
     },
-    [placeCell, touch],
+    [placeCell, reportActiveCell, touch],
   );
 
   const last = changedAt ?? latestAgentTime(cells);

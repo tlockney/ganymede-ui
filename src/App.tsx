@@ -1099,6 +1099,9 @@ export function App() {
       runParams: runAvailable(backend),
       accessWanted: JSON.parse(accessKey) as string[],
       cellType: shown?.cellType ?? null,
+      activeCell: shown?.activeCell ?? null,
+      cellCount: shown?.cellCount ?? 0,
+      ranCellCount: shown?.ranCellCount ?? 0,
       journal: shown?.journal ?? false,
       kernels: Object.values(specs?.kernelspecs ?? {}).flatMap(k =>
         k

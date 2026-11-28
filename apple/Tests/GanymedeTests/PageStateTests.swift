@@ -454,4 +454,121 @@ final class PageStateTests: XCTestCase {
         XCTAssertFalse(state.hasNotebook)
         XCTAssertFalse(state.showsData)
     }
+
+    func testReadsCellProgressAndHeadingRanStatus() throws {
+        var body: [String: Any] = [
+            "path": "Fremont.ipynb", "dirty": false, "status": "idle", "kernel": "cdp",
+            "kernelDisplayName": "TypeScript", "kernelMissing": false, "trusted": true,
+            "cellType": "code", "activeCell": 3, "cellCount": 14, "ranCellCount": 12,
+            "kernels": [Any](), "backend": NSNull(),
+            "outline": [
+                ["level": 2, "text": "What does the counter cover?", "cell": 1, "ran": true],
+                ["level": 2, "text": "Riders per day, by year", "cell": 3, "ran": true],
+                ["level": 2, "text": "Hour of day", "cell": 8, "ran": false],
+                ["level": 2, "text": "Notes", "cell": 12],
+            ],
+        ]
+        let state = try XCTUnwrap(PageState(body: body))
+        XCTAssertEqual(state.activeCell, 3)
+        XCTAssertEqual(state.cellCount, 14)
+        XCTAssertEqual(state.ranCellCount, 12)
+        XCTAssertEqual(state.headings.map(\.ran), [true, true, false, nil])
+        XCTAssertEqual(state.currentHeadingIndex, 1)
+        XCTAssertEqual(state.currentHeading?.text, "Riders per day, by year")
+        XCTAssertEqual(state.sectionStatus(at: 0), .ran)
+        XCTAssertEqual(state.sectionStatus(at: 1), .current)
+        XCTAssertEqual(state.sectionStatus(at: 2), .notRun)
+        XCTAssertEqual(state.sectionStatus(at: 3), .notRun)
+        XCTAssertEqual(state.sectionStatus(at: -1), .notRun)
+        XCTAssertEqual(state.sectionStatus(at: 99), .notRun)
+        XCTAssertEqual(PageState.SectionStatus.ran.accessibilityLabel, "Section ran")
+        XCTAssertEqual(PageState.SectionStatus.current.accessibilityLabel, "Current section")
+        XCTAssertEqual(PageState.SectionStatus.notRun.accessibilityLabel, "Section not run")
+        XCTAssertEqual(state.cellStepperLabel, "4 / 14")
+        XCTAssertEqual(state.previousCellIndex, 2)
+        XCTAssertEqual(state.nextCellIndex, 4)
+        XCTAssertEqual(state.outlineSummary, "14 cells · 12 ran · kernel idle")
+
+        // Backward-compatible with older pages that omit the new fields.
+        body["activeCell"] = nil
+        body["cellCount"] = nil
+        body["ranCellCount"] = nil
+        body["outline"] = [["level": 1, "text": "Intro", "cell": 0]]
+        let older = try XCTUnwrap(PageState(body: body))
+        XCTAssertNil(older.activeCell)
+        XCTAssertNil(older.cellCount)
+        XCTAssertNil(older.ranCellCount)
+        XCTAssertNil(older.headings.first?.ran)
+        XCTAssertNil(older.currentHeadingIndex)
+        XCTAssertNil(older.currentHeading)
+        XCTAssertNil(older.cellStepperLabel)
+        XCTAssertNil(older.previousCellIndex)
+        XCTAssertNil(older.nextCellIndex)
+        XCTAssertNil(older.outlineSummary)
+    }
+
+    func testCurrentHeadingAndStepperBounds() {
+        var state = PageState()
+        state.outline = [
+            PageState.Heading(level: 2, text: "First", cell: 2, ran: true),
+            PageState.Heading(level: 2, text: "Second", cell: 5, ran: false),
+        ]
+        state.cellCount = 8
+
+        // Active cell before the first heading.
+        state.activeCell = 0
+        XCTAssertNil(state.currentHeadingIndex)
+        XCTAssertNil(state.currentHeading)
+        XCTAssertEqual(state.sectionStatus(at: 0), .ran)
+        XCTAssertEqual(state.sectionStatus(at: 1), .notRun)
+        XCTAssertEqual(state.cellStepperLabel, "1 / 8")
+        XCTAssertNil(state.previousCellIndex)
+        XCTAssertEqual(state.nextCellIndex, 1)
+
+        // Active cell inside the first section, past its heading cell.
+        state.activeCell = 4
+        XCTAssertEqual(state.currentHeadingIndex, 0)
+        XCTAssertEqual(state.currentHeading?.text, "First")
+        XCTAssertEqual(state.sectionStatus(at: 0), .current)
+
+        // Active cell at the very last cell.
+        state.activeCell = 7
+        XCTAssertEqual(state.currentHeadingIndex, 1)
+        XCTAssertEqual(state.cellStepperLabel, "8 / 8")
+        XCTAssertEqual(state.previousCellIndex, 6)
+        XCTAssertNil(state.nextCellIndex)
+
+        // Out-of-bounds activeCell or zero cellCount returns nil.
+        state.activeCell = 8
+        XCTAssertNil(state.cellStepperLabel)
+        XCTAssertNil(state.previousCellIndex)
+        XCTAssertNil(state.nextCellIndex)
+
+        state.cellCount = 0
+        state.activeCell = 0
+        XCTAssertNil(state.cellStepperLabel)
+        XCTAssertNil(state.previousCellIndex)
+        XCTAssertNil(state.nextCellIndex)
+        XCTAssertNil(state.outlineSummary)
+    }
+
+    func testOutlineSummaryFormatsCountsAndKernelState() {
+        var state = PageState()
+        state.cellCount = 1
+        state.ranCellCount = 0
+        state.status = "busy"
+        XCTAssertEqual(state.outlineSummary, "1 cell · 0 ran · kernel running")
+
+        state.cellCount = 5
+        state.ranCellCount = 3
+        state.status = "none"
+        XCTAssertEqual(state.outlineSummary, "5 cells · 3 ran · no kernel")
+
+        state.status = nil
+        XCTAssertEqual(state.outlineSummary, "5 cells · 3 ran")
+
+        state.ranCellCount = nil
+        state.status = "dead"
+        XCTAssertEqual(state.outlineSummary, "5 cells · kernel stopped")
+    }
 }

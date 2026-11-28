@@ -1,5 +1,5 @@
 import '../test/notebook-env';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Widget } from '@lumino/widgets';
 import { ServerConnection } from '@jupyterlab/services';
@@ -65,6 +65,7 @@ function show(
     roomSettings?: unknown;
     positionKey?: { server: string; path: string };
     startAt?: number;
+    onActiveCellChange?(index: number | null): void;
   } = {},
 ) {
   const onOpenAsNotebook = vi.fn();
@@ -78,6 +79,7 @@ function show(
       roomSettings={more.roomSettings as never}
       positionKey={more.positionKey}
       startAt={more.startAt}
+      onActiveCellChange={more.onActiveCellChange}
       name="Trend.ipynb"
       onOpenAsNotebook={onOpenAsNotebook}
     />,
@@ -1227,5 +1229,18 @@ describe('opening, input and position keeping (#816, review)', () => {
       await screen.findByRole('button', { name: 'request · answered · Go to reply' }),
     );
     expect(await screen.findByRole('button', { name: 'Follow live' })).toBeInTheDocument();
+  });
+
+  it('reports the visible reading cell index on open and scroll (#913)', async () => {
+    stubLayout(() => 12);
+    const nb = cellsOf(12);
+    const onActiveCellChange = vi.fn();
+    show(nb, undefined, { startAt: 2, onActiveCellChange });
+    expect(onActiveCellChange).toHaveBeenLastCalledWith(2);
+
+    const scroller = scrollArea();
+    scroller.scrollTop = 5 * CELL;
+    fireEvent.scroll(scroller);
+    await waitFor(() => expect(onActiveCellChange).toHaveBeenLastCalledWith(5));
   });
 });

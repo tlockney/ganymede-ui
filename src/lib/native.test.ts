@@ -90,6 +90,9 @@ describe('native', () => {
       runParams: true,
       accessWanted: [],
       cellType: 'code',
+      activeCell: 2,
+      cellCount: 14,
+      ranCellCount: 12,
       journal: false,
       kernels: [{ name: 'cdp', displayName: 'TypeScript', device: false }],
       kernelsRemote: null,
@@ -108,7 +111,7 @@ describe('native', () => {
       console: null,
       consoles: [],
       search: null,
-      outline: [{ level: 1, text: 'Io', cell: 0 }],
+      outline: [{ level: 1, text: 'Io', cell: 0, ran: true }],
       notebookFind: null,
       variables: null,
     };
