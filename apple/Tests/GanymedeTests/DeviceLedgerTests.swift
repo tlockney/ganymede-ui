@@ -1,4 +1,5 @@
 import DeviceBridge
+import WebKit
 import XCTest
 
 /// Keeps answers in memory, as UserDefaults would.
@@ -21,6 +22,7 @@ final class MemoryFolderStore: FolderStore {
 @MainActor
 final class RecordingPresenter: DialogPresenter {
     var shown: [Dialog] = []
+    var hosts: [DialogHost?] = []
     var answers: [(DialogResult) -> Void] = []
     var closed = 0
     var unavailable = false
@@ -28,6 +30,7 @@ final class RecordingPresenter: DialogPresenter {
     func present(_ dialog: Dialog, asker: String?, on host: DialogHost?, done: @escaping (DialogResult) -> Void) throws -> Close {
         if unavailable { throw DialogUnavailable(description: "no window") }
         shown.append(dialog)
+        hosts.append(host)
         answers.append(done)
         return { [weak self] gone in
             self?.closed += 1
@@ -102,6 +105,21 @@ final class DeviceLedgerTests: XCTestCase {
         XCTAssertEqual(presenter.shown.count, 2)
         presenter.answer(.option(2))
         XCTAssertEqual(got, ["a", "b"])
+    }
+
+    func testEachPromptLooksUpItsOwnNotebooksHost() {
+        let presenter = RecordingPresenter()
+        let first = WKWebView()
+        let second = WKWebView()
+        let prompter = AppLedgerPrompter(presenter: presenter, host: { nil })
+        prompter.hostForNotebook = { notebook in
+            notebook == "/a.ipynb" ? first : second
+        }
+        prompter.askPermission("location", notebook: "/a.ipynb", id: 1) { _ in }
+        prompter.askPermission("contacts", notebook: "/b.ipynb", id: 2) { _ in }
+        XCTAssertTrue(presenter.hosts[0] === first)
+        presenter.answer(.option(0))
+        XCTAssertTrue(presenter.hosts[1] === second)
     }
 
     func testDismissClosesTheShowingPromptOrDropsAWaitingOne() {

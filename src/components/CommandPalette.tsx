@@ -174,6 +174,8 @@ export function CommandPalette({ entries, onRun, onClose }: Props) {
                   role="option"
                   aria-selected={i === active}
                   aria-disabled={entry.disabled || undefined}
+                  aria-label={entry.ariaLabel}
+                  title={entry.title}
                   className={`palette-item${i === active ? ' active' : ''}`}
                   // Keeps focus in the field.
                   onMouseDown={e => e.preventDefault()}

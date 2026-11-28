@@ -1510,6 +1510,104 @@ describe('NotebookPane', () => {
         await waitFor(() => expect(restart).toHaveBeenCalledOnce());
       });
 
+      it('shows a notice when the server restarted the kernel after the system ended it (#469)', async () => {
+        const s = await running();
+        const k = withMessages();
+        const order: string[] = [];
+        Object.assign(k, { restart: vi.fn(async () => void order.push('restart')) });
+        const all = vi
+          .spyOn(NotebookActions, 'runAll')
+          .mockImplementation(async () => (order.push('run all'), true));
+        await show(k, s);
+
+        // `@jupyterlab/services` emits `anyMessage` for `status: restarting`
+        // right before `statusChanged` fires `restarting` and `autorestarting`.
+        // The notice must survive that restart and stay once idle again.
+        act(() =>
+          k.anyMessage.emit({
+            msg: {
+              header: { msg_type: 'status' },
+              content: { execution_state: 'restarting', reason: 'lost' },
+            },
+            direction: 'recv',
+          }),
+        );
+        expect(await screen.findByRole('alert')).toHaveTextContent(
+          'The system ended the kernel, so the server restarted it.',
+        );
+        expect(notice()).toHaveClass('problem-kernel-lost');
+
+        act(() => {
+          k.status = 'restarting';
+          s.session.statusChanged.emit('restarting');
+          k.status = 'autorestarting';
+          s.session.statusChanged.emit('autorestarting');
+          k.connectionStatus = 'connecting';
+          s.session.connectionStatusChanged.emit('connecting');
+          k.connectionStatus = 'connected';
+          s.session.connectionStatusChanged.emit('connected');
+          k.status = 'idle';
+          s.session.statusChanged.emit('idle');
+        });
+        expect(notice()).toHaveTextContent(
+          'The system ended the kernel, so the server restarted it.',
+        );
+
+        // A user-triggered Restart & Run All clears the notice and reruns all cells.
+        await userEvent.click(screen.getByRole('button', { name: 'Restart & Run All' }));
+        await waitFor(() => expect(order).toEqual(['restart', 'run all']));
+        expect(notice()).not.toBeInTheDocument();
+        all.mockRestore();
+      });
+
+      it('hides Restart & Run All on a lost-kernel notice in the journal view (#469)', async () => {
+        const s = await running(vi.fn(async () => ({ path: 'moons/Io.ipynb', content: kept() })));
+        expect(s.latest()?.journal).toBe(true);
+        const k = withMessages();
+        await show(k, s);
+        act(() =>
+          k.anyMessage.emit({
+            msg: {
+              header: { msg_type: 'status' },
+              content: { execution_state: 'restarting', reason: 'lost' },
+            },
+            direction: 'recv',
+          }),
+        );
+        expect(await screen.findByRole('alert')).toHaveTextContent(
+          'The system ended the kernel, so the server restarted it.',
+        );
+        expect(notice()).toHaveTextContent('Choose Open as Notebook');
+        expect(screen.queryByRole('button', { name: 'Restart & Run All' })).not.toBeInTheDocument();
+        act(() => s.latest()!.toggleJournal());
+        expect(
+          await screen.findByRole('button', { name: 'Restart & Run All' }),
+        ).toBeInTheDocument();
+      });
+
+      it('explains when repeated system termination left the kernel dead (#469)', async () => {
+        const s = await running();
+        const k = withMessages();
+        await show(k, s);
+        act(() =>
+          k.anyMessage.emit({
+            msg: {
+              header: { msg_type: 'status' },
+              content: { execution_state: 'dead', reason: 'lost' },
+            },
+            direction: 'recv',
+          }),
+        );
+        act(() => {
+          k.status = 'dead';
+          s.session.statusChanged.emit('dead');
+        });
+        expect(await screen.findByRole('alert')).toHaveTextContent(
+          'The system ended the Python 3 kernel, and it wasn’t restarted.',
+        );
+        expect(notice()).toHaveClass('problem-kernel-dead');
+      });
+
       it('goes away when the kernel is shut down', async () => {
         const s = await running();
         const k = withMessages();

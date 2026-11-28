@@ -23,6 +23,9 @@ struct KernelSpecs: Equatable {
         /// Whether this kernel runs on the server's remote (#832), as its
         /// `"gateway": true` says; absent from a server older than that.
         var gateway = false
+        /// Whether `spec.metadata.capabilities.device` says this kernel offers
+        /// the `device` API (`true` or an object, #469).
+        var device = false
         var id: String { name }
 
         /// Whether there is anything to show beyond the name, language
@@ -87,6 +90,18 @@ struct KernelSpecs: Equatable {
         return object.map { Field(key: $0.key, value: text(of: $0.value)) }.sorted { $0.key < $1.key }
     }
 
+    /// Whether `metadata.capabilities.device` is `true` or an object (#648, #469).
+    static func offersDevice(_ metadata: Any?) -> Bool {
+        guard let meta = metadata as? [String: Any],
+              let capabilities = meta["capabilities"] as? [String: Any],
+              let device = capabilities["device"]
+        else { return false }
+        if let number = device as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID() {
+            return number.boolValue
+        }
+        return device is [String: Any]
+    }
+
     /// Sorted by display name.
     var specs: [Spec]
     /// The kernel a new notebook starts, by name.
@@ -114,7 +129,8 @@ struct KernelSpecs: Equatable {
                 argv: (spec?["argv"] as? [Any])?.compactMap { $0 as? String } ?? [],
                 env: Self.fields(spec?["env"]),
                 metadata: Self.fields(spec?["metadata"]),
-                gateway: entry["gateway"] as? Bool == true
+                gateway: entry["gateway"] as? Bool == true,
+                device: Self.offersDevice(spec?["metadata"])
             )
         }
         .sorted { ($0.displayName.lowercased(), $0.name) < ($1.displayName.lowercased(), $1.name) }

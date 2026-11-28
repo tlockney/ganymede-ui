@@ -454,6 +454,28 @@ final class DeviceBridgeTests: XCTestCase {
             ) === w2
         )
     }
+
+    func testSystemDialogPresenterTargetWindowSkipsZeroAlphaOffscreenWindows() {
+        let offscreen = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1, height: 1),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        offscreen.isReleasedWhenClosed = false
+        offscreen.alphaValue = 0
+        let hiddenHost = DialogHost()
+        offscreen.contentView = hiddenHost
+        offscreen.orderBack(nil)
+        defer { offscreen.close() }
+
+        XCTAssertNil(SystemDialogPresenter.targetWindow(for: hiddenHost))
+        XCTAssertNil(
+            SystemDialogPresenter.targetWindow(
+                for: nil, keyWindow: nil, mainWindow: nil, orderedWindows: [offscreen], windows: [offscreen]
+            )
+        )
+    }
     #endif
 
     func testAnActionSheetsDestructiveIsAnIndex() throws {

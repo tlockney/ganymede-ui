@@ -192,4 +192,49 @@ final class KernelSpecsTests: XCTestCase {
         XCTAssertNil(KernelSpecs(json: Data("[]".utf8)))
         XCTAssertNil(KernelSpecs(json: Data("not json".utf8)))
     }
+
+    func testMarksKernelsWithDeviceCapabilityMetadata() throws {
+        let body = Data("""
+        {
+          "default": "cdp-browser",
+          "kernelspecs": {
+            "cdp-browser": {
+              "name": "cdp-browser",
+              "spec": {
+                "display_name": "TypeScript (cdp-kernel, in app)",
+                "language": "typescript",
+                "metadata": {"capabilities": {"device": true}}
+              }
+            },
+            "granular": {
+              "name": "granular",
+              "spec": {
+                "display_name": "Granular",
+                "metadata": {"capabilities": {"device": {"location": true}}}
+              }
+            },
+            "numeric": {
+              "name": "numeric",
+              "spec": {
+                "display_name": "Numeric",
+                "metadata": {"capabilities": {"device": 1}}
+              }
+            },
+            "python3": {
+              "name": "python3",
+              "spec": {
+                "display_name": "Python 3",
+                "metadata": {"capabilities": {"device": false}}
+              }
+            }
+          }
+        }
+        """.utf8)
+        let specs = try XCTUnwrap(KernelSpecs(json: body))
+        let byName = Dictionary(uniqueKeysWithValues: specs.specs.map { ($0.name, $0) })
+        XCTAssertEqual(byName["cdp-browser"]?.device, true)
+        XCTAssertEqual(byName["granular"]?.device, true)
+        XCTAssertEqual(byName["numeric"]?.device, false)
+        XCTAssertEqual(byName["python3"]?.device, false)
+    }
 }

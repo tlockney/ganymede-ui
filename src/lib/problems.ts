@@ -14,6 +14,8 @@ export type ProblemKind =
   | 'kernel-dead'
   /** An interrupt stopped the kernel's runtime, so its variables are gone (#796). */
   | 'state-reset'
+  /** The system ended the app's kernel (`lost`) and the server restarted it (#469). */
+  | 'kernel-lost'
   /** The kernel's websocket closed and stopped trying to reconnect. */
   | 'connection-lost'
   /** A request never reached the server. */
@@ -113,15 +115,36 @@ export function isStaleBundle(e: unknown): boolean {
  * The kernel stopped. `kernel` is its display name, if known;
  * `outOfMemory` when its last memory reading was near the limit (#241).
  */
-export function kernelDead(kernel?: string, outOfMemory = false): Problem {
+export function kernelDead(kernel?: string, outOfMemory = false, lost = false): Problem {
   const name = `The ${kernel ? `${kernel} ` : ''}kernel`;
   return {
     kind: 'kernel-dead',
-    message: outOfMemory
-      ? `${name} ran out of memory and stopped.`
-      : `${name} stopped. It may have crashed or run out of memory.`,
+    message: lost
+      ? `The system ended ${kernel ? `the ${kernel} ` : 'the '}kernel, and it wasn’t restarted.`
+      : outOfMemory
+        ? `${name} ran out of memory and stopped.`
+        : `${name} stopped. It may have crashed or run out of memory.`,
     hint: 'Restart it to keep working. Variables from before are gone; run the cells again.',
     actions: ['restart'],
+  };
+}
+
+/**
+ * The platform ended the app's kernel (`lost`, for example under memory
+ * pressure or while suspended) and the server restarted it (ganymede#266,
+ * #469). Restart & Run All runs every cell again; it is only ever the
+ * person's choice. `inJournal`: the journal view runs no cells, so there
+ * is no button, only where to find it.
+ */
+export function kernelLost(inJournal = false): Problem {
+  const gone = 'Variables from earlier cells are gone.';
+  return {
+    kind: 'kernel-lost',
+    message: 'The system ended the kernel, so the server restarted it.',
+    hint: inJournal
+      ? `${gone} Choose Open as Notebook, then Restart & Run All runs every cell again.`
+      : `${gone} Restart & Run All runs every cell again.`,
+    actions: inJournal ? [] : ['restart-run-all'],
   };
 }
 

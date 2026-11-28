@@ -70,6 +70,7 @@ import {
   isStaleBundle,
   isUnreachable,
   kernelDead,
+  kernelLost,
   messageOf,
   missingKernel,
   openFailure,
@@ -78,7 +79,7 @@ import {
   stateReset,
   unreachable,
 } from '../lib/problems';
-import { interruptResetState } from '../lib/state-reset';
+import { interruptResetState, lostKernelState } from '../lib/state-reset';
 import { type RunStatus, attachRunStatus } from '../lib/run-status';
 import { ProblemNotice } from './ProblemNotice';
 import { RecoveryBanner } from './RecoveryBanner';
@@ -415,6 +416,8 @@ type Notice = { problem: Problem; retry?: () => void };
  * stale and word the notice differently (#241).
  */
 const outOfMemory = new WeakMap<Kernel.IKernelConnection, boolean>();
+/** Kernels whose `status: dead` carried `reason: "lost"` (#469). */
+const endedLost = new WeakSet<Kernel.IKernelConnection>();
 
 /** Why a run failed: the kernel died under it, or something else. */
 function runFailed(
@@ -433,7 +436,7 @@ function runFailed(
       oom = diedOutOfMemory(memory.current, kernel.id);
       outOfMemory.set(kernel, oom);
     }
-    return kernelDead(spec?.display_name ?? kernel.name, oom);
+    return kernelDead(spec?.display_name ?? kernel.name, oom, endedLost.has(kernel));
   }
   return failed(what, e, { retry });
 }
@@ -1173,9 +1176,23 @@ export function NotebookPane({
      */
     let waiting = false;
     let sawDown = false;
+    let lostRestart = false;
     const watchVersion = (kernel: Kernel.IKernelConnection) => {
       const onMessage = (_: unknown, { msg, direction }: Kernel.IAnyMessageArgs) => {
-        if (direction !== 'recv' || waiting || kernel.isDisposed) return;
+        if (direction !== 'recv' || kernel.isDisposed) return;
+        const lostState = lostKernelState(msg);
+        if (lostState === 'restarting') {
+          if (!waiting && kernel.status !== 'restarting' && kernel.status !== 'autorestarting') {
+            lostRestart = true;
+          }
+          setNotice(kernelLost(), () => void restartRunAll.current?.());
+          return;
+        }
+        if (lostState === 'dead') {
+          endedLost.add(kernel);
+          return;
+        }
+        if (waiting) return;
         // An interrupt ended the runtime, and its variables with it (#796).
         if (interruptResetState(msg)) {
           setNotice(stateReset(), () => void restartRunAll.current?.());
@@ -1232,13 +1249,15 @@ export function NotebookPane({
       if (!kernel || kernel.isDisposed || kernel.status === 'dead') {
         unwatch();
         // Shut down or gone: there is no reset state to restore.
-        clearNotice('state-reset');
+        lostRestart = false;
+        clearNotice('state-reset', 'kernel-lost');
         versionOf = null;
         setKernelVersion(undefined);
       } else if (versionOf !== kernel) {
         unwatch();
         // Another kernel: an earlier one's reset isn't this one's.
-        clearNotice('state-reset');
+        lostRestart = false;
+        clearNotice('state-reset', 'kernel-lost');
         versionOf = kernel;
         replied = false;
         waiting = restartingNow;
@@ -1254,8 +1273,14 @@ export function NotebookPane({
           () => {},
         );
       } else if (restartingNow && !waiting) {
-        // A restart clears the state anyway.
-        clearNotice('state-reset');
+        // A restart clears the state anyway, unless the server just
+        // restarted it after the system ended it (`lost`).
+        if (lostRestart) {
+          lostRestart = false;
+          clearNotice('state-reset');
+        } else {
+          clearNotice('state-reset', 'kernel-lost');
+        }
         waiting = true;
         sawDown = false;
         setKernelVersion(undefined);
@@ -2446,7 +2471,11 @@ export function NotebookPane({
         <ProblemNotice
           problem={
             // The journal runs no cells: the notice says where Restart & Run All is.
-            journal && notice.problem.kind === 'state-reset' ? stateReset(true) : notice.problem
+            journal && notice.problem.kind === 'state-reset'
+              ? stateReset(true)
+              : journal && notice.problem.kind === 'kernel-lost'
+                ? kernelLost(true)
+                : notice.problem
           }
           specs={services.kernelspecs.specs}
           places={places}

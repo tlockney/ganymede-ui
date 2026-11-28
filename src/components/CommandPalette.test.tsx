@@ -159,4 +159,29 @@ describe('CommandPalette', () => {
     window.removeEventListener('keydown', outside);
     expect(outside).not.toHaveBeenCalled();
   });
+
+  it('applies optional ariaLabel and title on entries (#469)', () => {
+    render(
+      <CommandPalette
+        entries={[
+          {
+            id: 'change-kernel',
+            arg: 'cdp-browser',
+            label: 'Change Kernel to TypeScript ◆',
+            ariaLabel: 'Change Kernel to TypeScript, offers the device API',
+            title: 'offers the device API',
+            group: 'Kernel',
+            keys: '',
+          },
+        ]}
+        onRun={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    const option = screen.getByRole('option', {
+      name: 'Change Kernel to TypeScript, offers the device API',
+    });
+    expect(option).toHaveTextContent('Change Kernel to TypeScript ◆');
+    expect(option).toHaveAttribute('title', 'offers the device API');
+  });
 });

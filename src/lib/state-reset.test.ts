@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { interruptResetState } from './state-reset';
+import { interruptResetState, lostKernelState } from './state-reset';
 
 /** A message as `@jupyterlab/services` hands it to `anyMessage`. */
 const msg = (msg_type: string, metadata?: unknown) => ({ header: { msg_type }, metadata });
@@ -36,5 +36,32 @@ describe('interruptResetState (#796)', () => {
   it('is false for the same metadata on a message that isn’t a stream', () => {
     expect(interruptResetState(msg('execute_reply', reset('interrupt')))).toBe(false);
     expect(interruptResetState(msg('error', reset('interrupt')))).toBe(false);
+  });
+});
+
+describe('lostKernelState (#469)', () => {
+  const status = (msg_type: string, content?: unknown) => ({ header: { msg_type }, content });
+
+  it('recognizes restarting and dead status messages with reason lost', () => {
+    expect(
+      lostKernelState(status('status', { execution_state: 'restarting', reason: 'lost' })),
+    ).toBe('restarting');
+    expect(lostKernelState(status('status', { execution_state: 'dead', reason: 'lost' }))).toBe(
+      'dead',
+    );
+  });
+
+  it('ignores normal status messages and non-status messages', () => {
+    expect(lostKernelState(status('status', { execution_state: 'restarting' }))).toBeUndefined();
+    expect(
+      lostKernelState(status('status', { execution_state: 'idle', reason: 'lost' })),
+    ).toBeUndefined();
+    expect(
+      lostKernelState(status('status', { execution_state: 'dead', reason: 'crash' })),
+    ).toBeUndefined();
+    expect(lostKernelState(status('status', null))).toBeUndefined();
+    expect(
+      lostKernelState(status('stream', { execution_state: 'restarting', reason: 'lost' })),
+    ).toBeUndefined();
   });
 });

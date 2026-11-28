@@ -178,6 +178,11 @@ final class KernelHostTests: XCTestCase {
         let (listed, specs) = try await request(server, "GET", "/api/kernelspecs")
         XCTAssertEqual(listed, 200)
         XCTAssertTrue(specs.contains(#""cdp-browser""#), specs)
+        let specsJSON = try JSONSerialization.jsonObject(with: Data(specs.utf8)) as? [String: Any]
+        let kernelspecs = specsJSON?["kernelspecs"] as? [String: Any]
+        let inAppSpec = (kernelspecs?[AppKernels.inAppKernelName] as? [String: Any])?["spec"] as? [String: Any]
+        let capabilities = (inAppSpec?["metadata"] as? [String: Any])?["capabilities"] as? [String: Any]
+        XCTAssertEqual(capabilities?["device"] as? Bool, true, specs)
         XCTAssertTrue(specs.contains("in app"), specs)
         let (created, session) = try await request(
             server, "POST", "/api/sessions",
@@ -841,6 +846,196 @@ final class KernelHostTests: XCTestCase {
         XCTAssertEqual(presenter.shown, 1)
         XCTAssertNil(presenter.hosts.first ?? ui1)
         presenter.answers.first?(.dismissed)
+    }
+
+    /// #469: `AppKernels` caps repeated `lost` restarts even when the
+    /// server would otherwise keep restarting, leaving the kernel dead with
+    /// `reason: "lost"` instead of restarting forever.
+    @MainActor
+    func testCapsLostRestartsWithinWindow() async throws {
+        let server = try server()
+        defer { server.stop() }
+        var current = Date(timeIntervalSince1970: 1_000)
+        var limited: [String] = []
+        // Cap at 2 in `AppKernels` (below the server's 3-loss limit) so the
+        // server asks `AppKernels` to restart on loss 3 and `AppKernels`' own
+        // cap stops it cleanly.
+        let kernels = AppKernels(
+            device: DeviceBridge(presenter: SilentPresenter(), ledger: PermissionLedger(store: MemoryLedgerStore())),
+            maxLostRestarts: 2,
+            lostRestartWindow: 300,
+            now: { current }
+        )
+        kernels.onLostRestartLimit = { limited.append($0) }
+        kernels.notebookRoot = dir
+        try kernels.serve(server)
+        let ui = uiView()
+        kernels.lend(ui)
+
+        let (created, session) = try await request(
+            server, "POST", "/api/sessions",
+            #"{"path": "Loss.ipynb", "type": "notebook", "name": "Loss.ipynb", "kernel": {"name": "cdp-browser"}}"#)
+        XCTAssertEqual(created, 201, session)
+        let object = try JSONSerialization.jsonObject(with: Data(session.utf8)) as? [String: Any]
+        let id = try XCTUnwrap((object?["kernel"] as? [String: Any])?["id"] as? String)
+        let idle = { () async throws -> Bool in
+            try await self.request(server, "GET", "/api/kernels/\(id)").1.contains(#""execution_state":"idle""#)
+        }
+        try await eventually("the kernel", idle)
+
+        for n in 1...2 {
+            _ = try await eval(kernels.webView, "window.__runMarker = \(n); true")
+            current = current.addingTimeInterval(65)
+            kernels.kernelPageEnded(reason: "lost")
+            try await waitFor(kernels.webView, """
+                document.readyState === 'complete' && window.__runMarker === undefined
+                  && !!window.log && window.log.includes('start:\(id)')
+                """)
+            try await eventually("restart \(n)", idle)
+        }
+        XCTAssertEqual(limited, [])
+
+        current = current.addingTimeInterval(65)
+        kernels.kernelPageEnded(reason: "lost")
+        try await eventually("the capped kernel to die") {
+            guard limited.contains(id), !server.kernels.isLive(id) else { return false }
+            return try await self.request(server, "GET", "/api/kernels/\(id)").0 == 404
+        }
+
+        // Losses outside `lostRestartWindow` expire cleanly: a new session starts.
+        current = current.addingTimeInterval(301)
+        let (created2, session2) = try await request(
+            server, "POST", "/api/sessions",
+            #"{"path": "Recovered.ipynb", "type": "notebook", "name": "Recovered.ipynb", "kernel": {"name": "cdp-browser"}}"#)
+        XCTAssertEqual(created2, 201, session2)
+        let object2 = try JSONSerialization.jsonObject(with: Data(session2.utf8)) as? [String: Any]
+        let id2 = try XCTUnwrap((object2?["kernel"] as? [String: Any])?["id"] as? String)
+        try await eventually("the recovered kernel") {
+            try await self.request(server, "GET", "/api/kernels/\(id2)").1.contains(#""execution_state":"idle""#)
+        }
+        _ = try await request(server, "DELETE", "/api/kernels/\(id2)")
+    }
+
+    /// #469: A `device` permission prompt goes to the window showing that
+    /// kernel's notebook via `KernelHost.showing(notebook:)`, falling back to
+    /// `frontHost()` when none shows it or after `detach()`.
+    @MainActor
+    func testRoutesPermissionPromptsToTheNotebooksWindow() {
+        let presenter = RecordingPresenter()
+        let ledger = PermissionLedger(store: MemoryLedgerStore())
+        let kernels = AppKernels(device: DeviceBridge(presenter: presenter, ledger: ledger), prompts: presenter)
+        kernels.notebookRoot = dir
+
+        let uiA = uiView()
+        let wA = tabbedWindow(title: "A", webView: uiA)
+        let hostA = KernelHost(device: DeviceBridge(presenter: SilentPresenter(), ledger: ledger), kernels: kernels)
+        hostA.notebookRoot = dir
+        wA.orderFront(nil)
+        hostA.attach(to: uiA)
+        hostA.showing(notebook: "trips/A.ipynb")
+
+        let uiB = uiView()
+        let wB = tabbedWindow(title: "B", webView: uiB)
+        let hostB = KernelHost(device: DeviceBridge(presenter: SilentPresenter(), ledger: ledger), kernels: kernels)
+        hostB.notebookRoot = dir
+        wA.addTabbedWindow(wB, ordered: .above)
+        wB.makeKeyAndOrderFront(nil)
+        defer {
+            wB.close()
+            wA.close()
+        }
+        hostB.attach(to: uiB)
+        hostB.showing(notebook: "trips/B.ipynb")
+
+        let notebookA = dir.appendingPathComponent("trips/A.ipynb").path
+        let notebookB = dir.appendingPathComponent("trips/B.ipynb").path
+        let closedNotebook = dir.appendingPathComponent("trips/Closed.ipynb").path
+
+        kernels.prompter.askPermission("location", notebook: notebookA, id: 1) { _ in }
+        XCTAssertTrue(presenter.hosts.last as AnyObject? === uiA)
+        presenter.answer(.option(0))
+
+        kernels.prompter.askPermission("location", notebook: notebookB, id: 2) { _ in }
+        XCTAssertTrue(presenter.hosts.last as AnyObject? === uiB)
+        presenter.answer(.option(0))
+
+        kernels.prompter.askPermission("location", notebook: closedNotebook, id: 3) { _ in }
+        XCTAssertTrue(presenter.hosts.last as AnyObject? === uiB, "falls back to the most recent live host")
+        presenter.answer(.option(0))
+
+        // Once uiB detaches (e.g. downgraded or closed), the fallback tracks uiA.
+        hostB.detach()
+        kernels.prompter.askPermission("location", notebook: notebookB, id: 4) { _ in }
+        XCTAssertTrue(presenter.hosts.last as AnyObject? === uiA)
+        presenter.answer(.option(0))
+    }
+
+    /// #469: Closing all Mac notebook windows keeps running in-app kernels in
+    /// an invisible offscreen `NSWindow` instead of leaving `webView.window == nil`.
+    @MainActor
+    func testKeepsMacKernelRunningWhenAllNotebookWindowsClose() async throws {
+        let server = try server()
+        defer { server.stop() }
+        let ledger = PermissionLedger(store: MemoryLedgerStore())
+        let kernels = AppKernels(device: DeviceBridge(presenter: SilentPresenter(), ledger: ledger))
+        kernels.notebookRoot = dir
+        try kernels.serve(server)
+
+        let window1 = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 240),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        window1.isReleasedWhenClosed = false
+        let ui1 = uiView()
+        window1.contentView?.addSubview(ui1)
+        window1.orderFront(nil)
+        kernels.lend(ui1)
+        XCTAssertTrue(kernels.webView.window === window1)
+
+        let (created, session) = try await request(
+            server, "POST", "/api/sessions",
+            #"{"path": "Background.ipynb", "type": "notebook", "name": "Background.ipynb", "kernel": {"name": "cdp-browser"}}"#)
+        XCTAssertEqual(created, 201, session)
+        let object = try JSONSerialization.jsonObject(with: Data(session.utf8)) as? [String: Any]
+        let id = try XCTUnwrap((object?["kernel"] as? [String: Any])?["id"] as? String)
+        let idle = { () async throws -> Bool in
+            try await self.request(server, "GET", "/api/kernels/\(id)").1.contains(#""execution_state":"idle""#)
+        }
+        try await eventually("the kernel", idle)
+        _ = try await eval(kernels.webView, "window.__keptBeforeClose = 42; true")
+
+        window1.close()
+
+        let offscreen = try XCTUnwrap(kernels.webView.window, "kernel web view stays in an offscreen host window")
+        XCTAssertFalse(offscreen === window1)
+        XCTAssertEqual(offscreen.alphaValue, 0)
+        XCTAssertTrue(offscreen.isExcludedFromWindowsMenu)
+        XCTAssertEqual(offscreen.tabbingMode, .disallowed)
+        XCTAssertTrue(server.kernels.isLive(id))
+        let kept = try await eval(kernels.webView, "window.__keptBeforeClose") as? Int
+        XCTAssertEqual(kept, 42)
+
+        // When a notebook window opens again, the kernel web view moves back
+        // into it and the offscreen host window hides.
+        let window2 = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 320, height: 240),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        window2.isReleasedWhenClosed = false
+        defer { window2.close() }
+        let ui2 = uiView()
+        window2.contentView?.addSubview(ui2)
+        window2.orderFront(nil)
+        kernels.lend(ui2)
+        XCTAssertTrue(kernels.webView.window === window2)
+        XCTAssertFalse(offscreen.isVisible)
+
+        let (deleted, _) = try await request(server, "DELETE", "/api/kernels/\(id)")
+        XCTAssertEqual(deleted, 204)
     }
 }
 
