@@ -13,6 +13,7 @@ import { startBrowserKernel, type BrowserKernel } from '@tlockney/cdp-kernel/bro
 import workerUrl from '@tlockney/cdp-kernel/browser/worker?worker&url';
 import { findMessageHandler, webkitHost } from '@tlockney/ganymede-device/webkit';
 import devicePreloadUrl from '@tlockney/ganymede-device/preload.js?url&no-inline';
+import sqlPreloadUrl from 'virtual:sql-preload';
 import {
   decodeMessage,
   encodeMessage,
@@ -82,6 +83,8 @@ function start(id: string, run: number, params?: string): void {
     // start a kernel with them (ganymede-ui#303).
     params: parseParams(params),
     ...device,
+    // Register files in the notebook's folder with DuckDB wasm (#678).
+    preload: [new URL(sqlPreloadUrl, location.href).href, ...(device.preload ?? [])],
   });
   kernels.set(id, { kernel, run });
   // Which `device` owner is this kernel, so Swift can tell the permission

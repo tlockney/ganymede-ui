@@ -2,11 +2,18 @@
 // since its server has no kernels. The app opens the token URL with
 // `kernels=page`; the TypeScript cell runs in cdp-kernel's browser kernel
 // and the notebook saves to the server's folder.
-import { readdirSync, readFileSync } from 'node:fs';
+import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { GANYMEDE_URL, ROOT_DIR, TOKEN } from './env';
-import { outputs, removeFromServer, waitForReady } from './helpers';
+import {
+  outputs,
+  removeFromServer,
+  runAll,
+  sidebarItem,
+  waitForIdle,
+  waitForReady,
+} from './helpers';
 
 const notebooks = () => new Set(readdirSync(ROOT_DIR).filter(f => f.endsWith('.ipynb')));
 let before: Set<string>;
@@ -15,7 +22,7 @@ test.beforeEach(() => {
   before = notebooks();
 });
 test.afterEach(async () => {
-  await removeFromServer(...[...notebooks()].filter(f => !before.has(f)));
+  await removeFromServer('moons.csv', ...[...notebooks()].filter(f => !before.has(f)));
 });
 
 test('keeps notebooks on the server and runs kernels in the page', async ({ page }) => {
@@ -41,4 +48,22 @@ test('keeps notebooks on the server and runs kernels in the page', async ({ page
   };
   await expect.poll(saved).toContain('GANYMEDE');
   expect(JSON.parse(saved()).metadata.kernelspec.name).toBe('cdp-browser');
+});
+
+test('runs New Notebook from File on the in-page kernel', async ({ page }) => {
+  writeFileSync(
+    join(ROOT_DIR, 'moons.csv'),
+    'name,radius_km\nIo,1821.6\nEuropa,1560.8\nGanymede,2634.1\n',
+  );
+  await page.goto(`${GANYMEDE_URL}/?token=${TOKEN}&kernels=page`);
+  await expect(page.getByText('kernels in this page')).toBeVisible({ timeout: 60_000 });
+
+  await sidebarItem(page, 'moons.csv').click();
+  await page.getByRole('button', { name: 'New Notebook from File' }).click();
+  await expect(page.locator('.jp-CodeCell').first()).toBeVisible({ timeout: 60_000 });
+  await waitForReady(page);
+
+  await runAll(page);
+  await waitForIdle(page, 60_000);
+  await expect(outputs(page).filter({ hasText: 'Ganymede' })).toBeVisible({ timeout: 60_000 });
 });

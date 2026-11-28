@@ -327,6 +327,8 @@ describe('file paths', () => {
     expect(locate('a/../b.csv', 'work')).toEqual({ local: 'work/b.csv' });
     expect(locate('../b.csv', 'work')).toEqual({ outside: true });
     expect(locate('a/../../b.csv', '')).toEqual({ outside: true });
+    expect(locate('../b.csv', 'work', true)).toEqual({ local: 'b.csv' });
+    expect(locate('../../b.csv', 'work', true)).toEqual({ outside: true });
   });
   it('leaves URLs, absolute paths and wildcards to DuckDB', () => {
     for (const p of [

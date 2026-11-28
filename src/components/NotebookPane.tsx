@@ -86,6 +86,7 @@ import type { NotebookWidgets } from '../lib/widgets';
 import { type OutlineItem, outlineOf } from '../lib/outline';
 import { type NotebookFind, findInNotebook } from '../lib/notebook-find';
 import { attachDevice, type DevicePromptState, promptClick } from '../lib/device-remote';
+import { attachSqlFiles } from '../lib/sql-files';
 import { canAnswer } from '@tlockney/ganymede-device/frontend';
 import { declareDevice } from '../lib/kernel-relay';
 import { guardReload, reloadPage } from '../lib/reload';
@@ -957,6 +958,12 @@ export function NotebookPane({
               return kernel ? `${file} (${kernel})` : file;
             }),
           }),
+          // Register local data files with DuckDB wasm for browser / in-app kernels (#678).
+          attachSqlFiles(
+            session,
+            { config: backend.config, label: '', detail: '', services },
+            () => saver.path,
+          ),
           { dispose: () => saver.dispose(), isDisposed: false },
           {
             dispose: () => document.removeEventListener('keydown', onKey, true),

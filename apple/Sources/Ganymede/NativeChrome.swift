@@ -1117,6 +1117,36 @@ func askName(for current: String) -> String? {
     return name.isEmpty ? nil : name
 }
 
+/// File > Close (⌘W, #407): the front window's active tab. Replacing the
+/// `.saveItem` group drops the system's Close, so the app adds its own.
+struct CloseCommand: View {
+    var body: some View {
+        Button("Close") {
+            WorkspaceTabs.close(NSApp.keyWindow)
+        }
+        .keyboardShortcut("w")
+    }
+}
+
+/// File > Save (⌘S), for the front notebook or text file window.
+struct SaveCommand: View {
+    @FocusedValue(\.pageDocument) private var document
+    @FocusedValue(\.pageModel) private var page
+    @FocusedValue(\.editorDocument) private var editor
+
+    var body: some View {
+        Button("Save") {
+            if let editor {
+                Task { await editor.save() }
+            } else {
+                Task { await document?.save() }
+            }
+        }
+        .keyboardShortcut("s")
+        .disabled(editor == nil && (document?.file == nil || page?.state.readOnly == true))
+    }
+}
+
 /// File > Rename…: the open notebook, through the page's rename, which
 /// saves first and keeps the kernel. The name is shown without `.ipynb`,
 /// as the page's title shows it. In a console tab it names the console

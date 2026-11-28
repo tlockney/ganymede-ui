@@ -62,6 +62,25 @@ describe('readStream', () => {
     await expect(
       readStream(stream(['x'], { 'content-length': '999999999' }), 6, true),
     ).rejects.toThrow(/over the .* the data view opens/);
+
+    let pulled = 0;
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>(
+      {
+        pull(c) {
+          pulled++;
+          c.enqueue(new TextEncoder().encode('abcd'));
+          if (pulled === 5) c.close();
+        },
+        cancel() {
+          cancelled = true;
+        },
+      },
+      { highWaterMark: 0 },
+    );
+    await expect(readStream(new Response(body), 6, true)).rejects.toBeInstanceOf(TooLarge);
+    expect(cancelled).toBe(true);
+    expect(pulled).toBe(2);
   });
 });
 

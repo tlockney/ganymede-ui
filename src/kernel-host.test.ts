@@ -122,7 +122,7 @@ describe('kernel host page', () => {
     expect(options.capabilities).toEqual({ device: true });
   });
 
-  it('starts kernels with the device options', () => {
+  it('starts kernels with the device options and sql-files preload', () => {
     vi.stubGlobal('webkit', {
       messageHandlers: {
         kernelHost: { postMessage: () => {} },
@@ -130,7 +130,18 @@ describe('kernel host page', () => {
       },
     });
     deliver({ kernel: 'dev', op: 'start', run: 2 });
-    expect(mocks.options.at(-1)).toMatchObject({ capabilities: { device: true } });
+    const withDevice = mocks.options.at(-1) as { preload?: string[]; capabilities?: unknown };
+    expect(withDevice).toMatchObject({ capabilities: { device: true } });
+    expect(withDevice.preload?.some(u => /sql-preload/.test(u))).toBe(true);
+    expect(withDevice.preload?.some(u => /preload/.test(u) && !/sql-preload/.test(u))).toBe(true);
+  });
+
+  it('starts kernels with the sql-files preload even without the device handler', () => {
+    deliver({ kernel: 'plain-sql', op: 'start', run: 5 });
+    const plain = mocks.options.at(-1) as { preload?: string[]; capabilities?: unknown };
+    expect(plain.capabilities).toBeUndefined();
+    expect(plain.preload).toHaveLength(1);
+    expect(plain.preload![0]).toMatch(/sql-preload/);
   });
 
   it("tells Swift each kernel's device owner, for the permission ledger (#383)", () => {
