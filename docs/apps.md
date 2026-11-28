@@ -577,6 +577,32 @@ link is installed, and when it comes before the link, terminals run that
 one. Claude Desktop's MCP config uses the bundled tool's full path when
 Ganymede finds no `ganymede` on its PATH.
 
+### Background server
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+Settings › General › **Keep Ganymede running in the background** registers
+a macOS LaunchAgent (`com.ganymede-server.Ganymede.server`) through
+`SMAppService` that runs the app's bundled `ganymede serve --no-browser
+--port 0` in the background (`RunAtLoad`, `KeepAlive`, `ProcessType`
+`Interactive`). It is off by default, and the section is hidden in builds
+that do not bundle the command line tool.
+
+Under the toggle, Settings shows the service status: **Enabled**, **Needs
+approval in System Settings › Login Items** (with an **Open Login Items…**
+button), or any error returned when registering or unregistering the agent.
+The server takes its settings from `ganymede.toml` and writes its random
+token only to `jpserver-<pid>.json` (mode `0600`) in your Jupyter runtime
+directory — no token is stored in the LaunchAgent plist or Keychain. When
+the app starts or checks this Mac's servers, it compares a running
+background server's version against its bundled tool and sends `SIGTERM`
+only to a process verified by its path, code signature and loopback socket
+so `launchd` restarts it on the updated binary. Local notebook windows
+still use the app's embedded server for now; the background server appears
+as a This Mac server through the existing checks.
+
 ### Agents over MCP
 
 Agents outside the app, such as Claude Code and Claude Desktop, can read,
@@ -701,7 +727,8 @@ port, use the tailnet IP (`http://100.x.y.z:8888`) or the short name
 Settings (⌘,) is one window with tabs. General makes Ganymede the
 default app for notebooks, sets how it updates ([Updates](#updates)),
 turns crash reports on or off, installs the command line tool
-([The command line tool](#the-command-line-tool)), lists the notebooks links may run
+([The command line tool](#the-command-line-tool)), keeps the bundled server
+running in the background ([Background server](#background-server)), lists the notebooks links may run
 ([Links](#links)), turns on MCP for agents
 ([Agents over MCP](#agents-over-mcp)), and shares Ganymede on your
 tailnet ([Sharing on your tailnet](#sharing-on-your-tailnet)). Appearance

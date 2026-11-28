@@ -38,8 +38,10 @@ final class ThisMacVerifierTests: XCTestCase {
     private struct Fake: ThisMacProbe {
         var teamIdentifier: String? = "ABCDE12345"
         var helperIdentifier: String? = "ganymede-UUID0123456789ABCDEF0123456789ABCDEF"
+        var helperPath: String? = "/Applications/Ganymede.app/Contents/Helpers/ganymede"
         var bundledVersion: String? = "0.17.0"
         var running: Set<Int32> = [4242]
+        var paths: [Int32: String] = [4242: "/Applications/Ganymede.app/Contents/Helpers/ganymede"]
         /// Why a pid's signature doesn't meet a requirement, if it doesn't.
         var signatures: [Int32: (team: String, identifier: String)] = [
             4242: ("ABCDE12345", "ganymede-UUID0123456789ABCDEF0123456789ABCDEF"),
@@ -51,6 +53,8 @@ final class ThisMacVerifierTests: XCTestCase {
         func infoFiles(in directory: URL) -> [URL] { AppMCP.serverInfoFiles(in: directory) }
 
         func isRunning(_ pid: Int32) -> Bool { running.contains(pid) }
+
+        func executablePath(of pid: Int32) -> String? { paths[pid] }
 
         func hasSignature(pid: Int32, team: String, identifier: String) -> Bool {
             guard let signature = signatures[pid] else { return false }
@@ -165,6 +169,15 @@ final class ThisMacVerifierTests: XCTestCase {
         XCTAssertFalse(verifier(nothing).verify(info()))
     }
 
+    func testAProcessAtAnotherPathIsNoThisMac() {
+        var elsewhere = Fake()
+        elsewhere.paths[pid] = "/Users/me/Downloads/Ganymede.app/Contents/Helpers/ganymede"
+        XCTAssertFalse(verifier(elsewhere).verify(info()))
+        var missing = Fake()
+        missing.paths = [:]
+        XCTAssertFalse(verifier(missing).verify(info()))
+    }
+
     func testAServerOfAnotherVersionIsNoThisMac() {
         // The info file's version isn't the app's own bundled one.
         XCTAssertFalse(verifier(Fake()).verify(info(version: "0.16.0")))
@@ -215,9 +228,14 @@ final class ThisMacVerifierTests: XCTestCase {
     private final class CountingProbe: ThisMacProbe, @unchecked Sendable {
         var team: String? = "ABCDE12345"
         var helper: String? = "ganymede-UUID0123456789ABCDEF0123456789ABCDEF"
+        var path: String? = "/Applications/Ganymede.app/Contents/Helpers/ganymede"
         var version: String? = "0.17.0"
         var versionReads = 0
         var running: Set<Int32> = [4242]
+        var paths: [Int32: String] = [
+            4242: "/Applications/Ganymede.app/Contents/Helpers/ganymede",
+            4343: "/Applications/Ganymede.app/Contents/Helpers/ganymede",
+        ]
         var signature = true
         var listeners: [Int32: [(host: String, port: Int)]] = [4242: [("127.0.0.1", 8888)]]
 
@@ -225,12 +243,15 @@ final class ThisMacVerifierTests: XCTestCase {
 
         var teamIdentifier: String? { team }
         var helperIdentifier: String? { helper }
+        var helperPath: String? { path }
         var bundledVersion: String? {
             versionReads += 1
             return version
         }
 
         func isRunning(_ pid: Int32) -> Bool { running.contains(pid) }
+
+        func executablePath(of pid: Int32) -> String? { paths[pid] }
 
         func hasSignature(pid: Int32, team: String, identifier: String) -> Bool { signature }
 

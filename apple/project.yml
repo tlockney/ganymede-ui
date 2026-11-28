@@ -107,6 +107,13 @@ targets:
         buildPhase: resources
       # The app icon, in macOS's grid (#281; scripts/mac-icon.py).
       - path: Resources/macOS
+      # The LaunchAgent plist registered by Settings › General (#912),
+      # copied into Contents/Library/LaunchAgents.
+      - path: LaunchAgents/com.ganymede-server.Ganymede.server.plist
+        buildPhase:
+          copyFiles:
+            destination: wrapper
+            subpath: Contents/Library/LaunchAgents
     dependencies:
       - framework: build/GanymedeFFI.xcframework
         embed: false
@@ -241,7 +248,8 @@ targets:
           mkdir -p "$(dirname "$dest")"
           cp "$src" "$dest"
           chmod 755 "$dest"
-          codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY:--}" --options runtime "$dest"
+          codesign --force --sign "${EXPANDED_CODE_SIGN_IDENTITY:--}" \
+            --identifier com.ganymede-server.Ganymede.helper --options runtime "$dest"
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.ganymede-server.Ganymede
@@ -607,7 +615,8 @@ targets:
       - path: Sources/Ganymede/Place.swift
       - path: Sources/Ganymede/PlaceReachability.swift
       # What checks a server is this Mac's own (#883), and the lifecycle of
-      # those checks.
+      # those checks; plus the optional LaunchAgent background server (#912).
+      - path: Sources/Ganymede/BackgroundServer.swift
       - path: Sources/Ganymede/ThisMacVerifier.swift
       - path: Sources/Ganymede/ThisMacChecks.swift
       - path: Sources/Ganymede/Journals.swift
@@ -704,7 +713,8 @@ targets:
       - path: Sources/Ganymede/Place.swift
       - path: Sources/Ganymede/PlaceReachability.swift
       # What checks a server is this Mac's own (#883), and the lifecycle of
-      # those checks.
+      # those checks; plus the optional LaunchAgent background server (#912).
+      - path: Sources/Ganymede/BackgroundServer.swift
       - path: Sources/Ganymede/ThisMacVerifier.swift
       - path: Sources/Ganymede/ThisMacChecks.swift
       - path: Sources/Ganymede/Journals.swift

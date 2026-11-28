@@ -296,6 +296,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Release builds look for a newer release once a day (#411).
         AppUpdater.shared.start()
+        // Check this Mac's servers at start, including restarting a
+        // background server whose version differs from the bundled tool (#912).
+        AppModel.shared.refreshThisMac()
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(windowWillClose(_:)),

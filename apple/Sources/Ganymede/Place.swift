@@ -538,7 +538,7 @@ enum Places {
 /// (#883): `ThisMacVerifier` makes one from `jpserver-<pid>.json` only when
 /// the process behind it is the app's own bundled helper. A place reads it
 /// to know a remote is this Mac's, and where its notebooks are.
-struct ThisMacServer: Equatable {
+struct ThisMacServer: Equatable, Sendable {
     /// The server's process, `pid`.
     var pid: Int32
     /// Its `url`: `127.0.0.1` or `::1`, the literal the check accepted.
