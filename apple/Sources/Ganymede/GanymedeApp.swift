@@ -40,6 +40,7 @@ struct GanymedeApp: App {
                 FillCommands()
                 CommandPaletteCommand()
                 JournalCommand()
+                LiveMarkdownCommand()
                 Divider()
                 CodeFontSizeCommands()
             }

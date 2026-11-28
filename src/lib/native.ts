@@ -246,6 +246,8 @@ export type PageState = {
   ranCellCount: number;
   /** Whether the open notebook shows as a journal (#184, #724): the app's View as Journal / Open as Notebook. */
   journal: boolean;
+  /** Whether Live Markdown preview is on in Markdown cells (#672, #673): the View menu toggle. */
+  liveMarkdown: boolean;
   /**
    * The kernels a notebook can switch to; `device` marks those that offer
    * the device API (#648), and `gateway` names the remote a kernel runs on

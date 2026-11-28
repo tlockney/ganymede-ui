@@ -305,6 +305,9 @@ struct PageState: Decodable, Equatable {
     /// Whether the open notebook shows as a journal (#184); absent from a
     /// page older than #724.
     var journal: Bool?
+    /// Whether Live Markdown preview is enabled (#672, #673); absent from
+    /// pages older than #673.
+    var liveMarkdown: Bool?
     var kernels: [Kernel] = []
     /// The remote the server runs kernels on (#832); absent from a page
     /// whose kernels run here, one older than that, or before it asks.
@@ -372,6 +375,10 @@ struct PageState: Decodable, Equatable {
     /// journal shows, otherwise the journal (#724).
     var journalToggleTitle: String { journal == true ? "Open as Notebook" : "View as Journal" }
     var journalToggleSymbol: String { journal == true ? "square.grid.2x2" : "text.page" }
+    /// What View › Live Markdown Preview offers (#673).
+    var liveMarkdownToggleTitle: String {
+        liveMarkdown == true ? "Hide Live Markdown Preview" : "Show Live Markdown Preview"
+    }
 
     static func statusLabel(_ status: String?) -> String {
         switch status {

@@ -19,6 +19,7 @@ final class PageStateTests: XCTestCase {
             "accessWanted": ["notebooks.run"],
             "cellType": "markdown",
             "journal": true,
+            "liveMarkdown": true,
             "kernels": [["name": "cdp", "displayName": "TypeScript", "device": true]],
             "backend": ["label": "Ganymede", "detail": "local server"],
         ]
@@ -37,6 +38,8 @@ final class PageStateTests: XCTestCase {
         XCTAssertEqual(state?.journal, true)
         XCTAssertEqual(state?.journalToggleTitle, "Open as Notebook")
         XCTAssertEqual(state?.journalToggleSymbol, "square.grid.2x2")
+        XCTAssertEqual(state?.liveMarkdown, true)
+        XCTAssertEqual(state?.liveMarkdownToggleTitle, "Hide Live Markdown Preview")
         XCTAssertEqual(state?.hasNotebook, true)
         XCTAssertEqual(state?.editsCells, false, "the journal hides the cells")
         XCTAssertEqual(state?.kernels, [PageState.Kernel(name: "cdp", displayName: "TypeScript", device: true)])
@@ -631,5 +634,28 @@ final class PageStateTests: XCTestCase {
 
         body["saveAttention"] = true
         XCTAssertEqual(PageState(body: body)?.saveAttention, true)
+    }
+
+    func testLiveMarkdownToggleTitle() throws {
+        var state = PageState()
+        XCTAssertNil(state.liveMarkdown)
+        XCTAssertEqual(state.liveMarkdownToggleTitle, "Show Live Markdown Preview")
+
+        state.liveMarkdown = false
+        XCTAssertEqual(state.liveMarkdownToggleTitle, "Show Live Markdown Preview")
+
+        state.liveMarkdown = true
+        XCTAssertEqual(state.liveMarkdownToggleTitle, "Hide Live Markdown Preview")
+
+        let older = try XCTUnwrap(PageState(body: [
+            "path": "Io.ipynb",
+            "dirty": false,
+            "kernelMissing": false,
+            "trusted": true,
+            "kernels": [Any](),
+            "backend": NSNull(),
+        ]))
+        XCTAssertNil(older.liveMarkdown)
+        XCTAssertEqual(older.liveMarkdownToggleTitle, "Show Live Markdown Preview")
     }
 }
