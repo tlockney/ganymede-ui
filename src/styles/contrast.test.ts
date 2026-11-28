@@ -437,7 +437,25 @@ describe('secondary metadata text (#814)', () => {
     const pick = (theme === 'dark' ? dark : light) ?? light;
     const c = pick?.color?.components;
     if (!c) throw new Error(`no ${theme} colour in ${name}.colorset`);
-    return [Number(c.red) * 255, Number(c.green) * 255, Number(c.blue) * 255, 1];
+    // Asset catalogs write a component three ways: "0.5" (0–1), "0xF9"
+    // (0–255 hexadecimal, as Xcode 15 writes them) and "128" (0–255
+    // decimal). Read all three, and refuse anything above 255 rather than
+    // quietly comparing a wrong colour.
+    const component = (key: string) => {
+      const raw = c[key];
+      if (raw === undefined) throw new Error(`no ${key} in ${name}.colorset's ${theme} colour`);
+      const value = raw.trim();
+      const hex = /^0x([0-9a-f]+)$/i.exec(value);
+      if (hex) return parseInt(hex[1], 16);
+      const n = Number(value);
+      if (!Number.isFinite(n) || n < 0) throw new Error(`${name}.colorset's ${key} isn't a number`);
+      if (n > 1) {
+        if (n > 255) throw new Error(`${name}.colorset's ${key} is above 255: ${value}`);
+        return n;
+      }
+      return n * 255;
+    };
+    return [component('red'), component('green'), component('blue'), 1];
   }
 
   for (const theme of themes) {

@@ -1184,8 +1184,9 @@ export function NotebookPane({
       const key = JSON.stringify(next);
       // The notebook's title (#867): its metadata's, else its first `#`
       // heading's (#892), as a live room changes either without
-      // reopening the file.
-      setTitle(displayTitle(model.metadata, cells));
+      // reopening the file. `next` is that heading's outline, already read
+      // for the outline tab.
+      setTitle(displayTitle(model.metadata, next));
       // Its language, as the file names it; the running kernel's own
       // kernelspec is asked first (#867).
       setLanguage(notebookLanguage(model.metadata));

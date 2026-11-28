@@ -9,7 +9,7 @@
  * start with `@agent`, docs/live-agent-edits.md.
  */
 
-import { outlineOf, type OutlineCell } from './outline';
+import { outlineOf, type OutlineCell, type OutlineItem } from './outline';
 
 /** A cell as the view reads it: nbformat's JSON, loosely typed. */
 export type JournalCellData = {
@@ -722,13 +722,28 @@ export function notebookTitle(metadata: unknown): string | undefined {
 
 /**
  * What the app calls a notebook (#892, Thomas's rule of 2026-11-27): its
- * `metadata.title`, else its first Markdown `#` heading with its markup
- * stripped, else undefined for the file's name. The tabs, the Mac
- * toolbar and the window title follow it; the sidebar and its tooltips
- * keep the file's name, which says where the notebook is.
+ * `metadata.title`, else the text of its first level-1 heading — `#`,
+ * a setext `===` heading or an `<h1>` — with its markup stripped, else
+ * undefined for the file's name. The tabs, the Mac toolbar and the window
+ * title follow it; the sidebar and its tooltips keep the file's name,
+ * which says where the notebook is.
+ *
+ * `outline` is `outlineOf(cells)`, so a caller that keeps an outline
+ * (`NotebookPane` does, for the outline tab) doesn't compute it twice.
  */
-export function displayTitle(metadata: unknown, cells: Iterable<OutlineCell>): string | undefined {
-  return notebookTitle(metadata) ?? outlineOf(cells).find(item => item.level === 1)?.text;
+export function displayTitle(
+  metadata: unknown,
+  outline: readonly OutlineItem[],
+): string | undefined {
+  return notebookTitle(metadata) ?? outline.find(item => item.level === 1)?.text;
+}
+
+/** `displayTitle` from a notebook's cells, when nothing else has the outline. */
+export function displayTitleOf(
+  metadata: unknown,
+  cells: Iterable<OutlineCell>,
+): string | undefined {
+  return displayTitle(metadata, outlineOf(cells));
 }
 
 /**
