@@ -33,7 +33,8 @@ changes behaviour.
 
 The + menu with no target can't be unit-tested; it is a by-hand check
 on the Mac (a machine window whose remote has SSH only, or was removed:
-a click on + opens the menu).
+a click on + opens the menu), listed in the Mac by-hand checks issue,
+#399, under "Machine terminal + button (#860, PR #900)".
 
 Checked with `npm run check`, `npx vitest run`, `node scripts/check-notes.mjs`,
 `npx prettier --check docs`, and `xcodebuild test` on the Mac scheme, and the
