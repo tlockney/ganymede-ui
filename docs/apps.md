@@ -134,16 +134,21 @@ Settings > Remotes.
 
 > [!NOTE]
 > **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release, where the toolbar reads "Run Cell" with Interrupt
-> apart from it, Share, ⋯ and the inspector's toggle have a capsule each,
-> the Terminal Panel has a button of its own, and a notebook's title is
-> only its `metadata.title` or its file's name.
+> the latest release, v0.17.1: there a notebook's window is titled with
+> its file's name (it knows no `metadata.title`), the title and the status
+> line sit in the system's titlebar and the kernel's button carries only
+> the kernel's name, the toolbar reads "Run Cell" with Interrupt in a
+> capsule of its own, and every other control — Trust, Access,
+> Notebook | Journal, the kernel's button, Share, More, the Terminal
+> Panel's button and the inspector's — has a capsule of its own.
 
 - A notebook's window has its title in the toolbar, with the kernel's
   button beside it. The title is the notebook's display title: its
-  `metadata.title`, else the plain text of its first `#` heading, else
-  the file's name without its date (the sidebar and the window's own
-  title keep the file's name), and the button reads "Python · This Mac · Idle ⌄":
+  `metadata.title`, else the plain text of its first level-1 heading — a
+  `#` heading, a setext heading underlined with `===`, or an `<h1>` — else
+  the file's name without its date. The sidebar and its tooltips keep the
+  file's name; the toolbar's title, the window's title and its tab are the
+  display title. The button reads "Python · This Mac · Idle ⌄":
   the notebook's language, where its kernel runs, and what the kernel is
   doing — Idle, Running, Starting, Restarting, Stopping, Stopped, or
   Connecting while it reaches a kernel that runs on a remote. Under the title, when there
@@ -175,13 +180,6 @@ Settings > Remotes.
   each other. New Notebook isn't a toolbar button: File > New Notebook
   (⌘N) makes one in the window's folder, as the sidebar's menu does.
   Everything in these menus is also in the menu bar.
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release, where the status line under the title has the whole
-> line ("Saved on This Mac · Runs on This Mac · TypeScript"), the
-> toolbar's kernel button reads only the kernel's name, New Notebook is in
-> the toolbar, and Run Cell and Interrupt stand apart.
 
 - The Cell menu runs, runs with parameters, inserts, moves and deletes
   cells, clears all outputs, collapses and expands code, goes to a definition and renames a symbol (see

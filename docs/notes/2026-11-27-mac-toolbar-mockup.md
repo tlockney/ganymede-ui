@@ -9,8 +9,8 @@ page's own surface, with a notebook's title in it.
 
 - Run is the leading segment of the run capsule and the toolbar's only
   filled control: `AccentFill` (#f9a03f) with `OnAccent` (#2a1600) on it,
-  light and dark. Its menu arrow and Interrupt sit on either side of it
-  inside the capsule, Interrupt icon-only and enabled only while the
+  light and dark. Its menu arrow and Interrupt follow it inside the
+  capsule, to its right, Interrupt icon-only and enabled only while the
   kernel runs. A notebook's cell still runs from Run, so the label is
   "Run" where the accessibility label stays "Run Cell".
 - Share, ⋯ and the inspector's toggle make the trailing capsule, in that
@@ -27,9 +27,9 @@ page's own surface, with a notebook's title in it.
 - Notebook windows take the page's surface: a `WindowBackground` colorset
   (light #fbf9f5, dark #181c2f, `--window-bg` in the stylesheet) paints
   the toolbar band, and the hosting `NSWindow`'s `backgroundColor` is set
-  to it once per window and when the notebook state changes, so the band
-  above the window's content shows no second colour. The colour is
-  assigned only when the window has it differently: the first attempt set
+  to it once per window — a weak set of the windows already coloured
+  tracks which — and again when the notebook state changes, so the band
+  above the window's content shows no second colour. The first attempt set
   it from a layout pass, and its repeated window mutation looped the main
   thread in AppKit layout until the app wouldn't finish launching.
   `titlebarAppearsTransparent` came out with it.
@@ -43,4 +43,9 @@ page's own surface, with a notebook's title in it.
 - The controls keep their order as state changes, so nothing moves under
   the pointer: Trust and Notebook Access appear and go before Notebook |
   Journal, and Interrupt's enablement and the "Edited" line change
-  without moving Run or the trailing capsule.
+  without moving Run or the trailing capsule. The trailing groups sit in
+  the toolbar's primary-action region, which lays them out at the trailing
+  edge; in `.automatic` they ran on from the kernel's chip, so at 1440
+  points the toolbar's right third stood empty and a flexible spacer
+  between the two regions did nothing. The update button stays in the
+  leading region, before them, so an update arriving moves nothing.
