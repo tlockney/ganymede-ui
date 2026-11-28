@@ -43,6 +43,15 @@ final class AppKernels: NSObject {
         "metadata": ["capabilities": ["device": true]],
     ]
 
+    /// Display-only kernelspec fields sent over the background server's
+    /// kernel provider socket (#941): omits `argv` and `env`.
+    nonisolated static let providerSpec: [String: Any] = [
+        "name": inAppKernelName,
+        "display_name": "TypeScript (cdp-kernel, in app)",
+        "language": "typescript",
+        "metadata": ["capabilities": ["device": true]],
+    ]
+
     let webView: WKWebView
     /// ganymede-device's `device` handler, for cells.
     private let device: DeviceBridge
@@ -63,7 +72,7 @@ final class AppKernels: NSObject {
     private struct Run {
         /// What the kernel page tags this run's messages with.
         let number: Int
-        let server: RegisteredKernels
+        let server: any KernelSink
         /// The server's own number for this run, given on its thread, so
         /// a late message is refused there even before `.stop` reaches
         /// the main thread.
@@ -147,6 +156,10 @@ final class AppKernels: NSObject {
             DispatchQueue.main.async {
                 MainActor.assumeIsolated { self?.handle(event, from: kernels) }
             }
+        }
+        if !pending.isEmpty && !loaded {
+            loaded = true
+            webView.load(Self.kernelPageRequest(server.url))
         }
     }
 
@@ -243,12 +256,12 @@ final class AppKernels: NSObject {
     }
     #endif
 
-    func handle(_ event: KernelEvent, from server: RegisteredKernels) {
+    func handle(_ event: KernelEvent, from server: any KernelSink, notebookRoot root: URL? = nil) {
         switch event {
         case .start(let kernel, let serverRun, let launch):
             lastRun += 1
             runs[kernel] = Run(number: lastRun, server: server, serverRun: serverRun)
-            notebooks[kernel] = Self.notebook(in: launch).map(resolve)
+            notebooks[kernel] = Self.notebook(in: launch).map { Self.resolve($0, under: root ?? notebookRoot) }
             tellBridge(kernel)
             var start: [String: Any] = ["kernel": kernel, "op": "start", "run": lastRun]
             start["params"] = Self.params(in: launch)
@@ -258,6 +271,19 @@ final class AppKernels: NSObject {
             toPage(["kernel": kernel, "op": "send", "channel": channel, "json": message])
         case .stop(let kernel):
             guard runs[kernel]?.server === server else { return }
+            runs[kernel] = nil
+            notebooks[kernel] = nil
+            owners[kernel] = nil
+            toPage(["kernel": kernel, "op": "stop"])
+        }
+    }
+
+    /// Stops every running kernel owned by `server` (such as a disconnected
+    /// background server's provider socket, #941) without affecting kernels
+    /// belonging to any other server.
+    func detach(_ server: any KernelSink) {
+        let owned = runs.compactMap { $0.value.server === server ? $0.key : nil }
+        for kernel in owned.sorted() {
             runs[kernel] = nil
             notebooks[kernel] = nil
             owners[kernel] = nil

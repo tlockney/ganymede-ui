@@ -165,6 +165,16 @@ enum KernelEvent: Sendable {
     case stop(kernel: String)
 }
 
+/// Where an in-app kernel delivers Jupyter messages and lifecycle updates back
+/// to the server that started it: either the embedded server's C ABI
+/// (`RegisteredKernels`) or a background server's Unix provider socket
+/// (`KernelProviderClient`, #941).
+protocol KernelSink: AnyObject, Sendable {
+    @discardableResult
+    func deliver(_ id: String, run: Int, channel: String, message: String) -> Bool
+    func ended(_ id: String, run: Int, reason: String)
+}
+
 /// The kernels the app registered with one server, and the way back to it.
 ///
 /// The server's handle is freed at the end of `ganymede_server_stop`, while
@@ -172,7 +182,7 @@ enum KernelEvent: Sendable {
 /// into the server takes `lock`, and goes through only for a kernel the
 /// server started and hasn't stopped: the server stops each one before it
 /// frees itself, and the stop takes the lock, so no call is under way then.
-final class RegisteredKernels: @unchecked Sendable {
+final class RegisteredKernels: KernelSink, @unchecked Sendable {
     typealias Events = @Sendable (KernelEvent, RegisteredKernels) -> Void
 
     private let lock = NSLock()

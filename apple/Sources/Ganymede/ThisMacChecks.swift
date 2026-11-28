@@ -145,10 +145,14 @@ final class ThisMacChecks {
     /// The remotes whose server the last check verified, by remote id: what
     /// a window's place, its Recents and its ledger read.
     private(set) var servers = ThisMacServers()
-    /// All verified bundled servers found by the last scan (#924), whether
-    /// or not saved as a remote: used by the menu bar to report background
-    /// server status and query running kernels.
+    /// All verified bundled servers found by the last scan (#924, #941),
+    /// whether or not saved as a remote: used by the menu bar to report
+    /// background server status / running kernels and by `KernelProviderManager`
+    /// to connect provider sockets.
     private(set) var verifiedServers: [ThisMacServer] = []
+    /// Called whenever `verifiedServers` changes, so `KernelProviderManager`
+    /// connects to or tears down provider sockets (#941).
+    @ObservationIgnored var onVerifiedServersChanged: (([ThisMacServer]) -> Void)?
 
     /// The remotes saved now, and each one's token, read when a check's
     /// answer applies, so a remote added or edited meanwhile is matched as
@@ -246,13 +250,21 @@ final class ThisMacChecks {
     private func apply(_ found: ThisMacScanResult) {
         watchRuntimeDirectory()
         restartMismatched(found.mismatched)
-        if verifiedServers != found.verified {
-            verifiedServers = found.verified
+        let verified = found.verified
+        let verifiedChanged = verified != verifiedServers
+        if verifiedChanged {
+            verifiedServers = verified
         }
         let servers = ThisMacServers(scan: found, remotes: remotes(), token: token)
-        if servers != self.servers {
+        let serversChanged = servers != self.servers
+        if serversChanged {
             self.servers = servers
+        }
+        if serversChanged || verifiedChanged {
             watchProcesses()
+        }
+        if verifiedChanged {
+            onVerifiedServersChanged?(verified)
         }
     }
 
@@ -278,7 +290,23 @@ final class ThisMacChecks {
     func processExited(id: String, pid: Int32) {
         guard servers.server(id)?.pid == pid else { return }
         servers = servers.removing(id)
+        let hadVerified = verifiedServers.contains { $0.pid == pid }
+        if hadVerified {
+            verifiedServers.removeAll { $0.pid == pid }
+            onVerifiedServersChanged?(verifiedServers)
+        }
         watchProcesses()
+        refresh()
+    }
+
+    /// A verified background server advertising `kernel_providers_socket`
+    /// exited (#941): drop it from `verifiedServers` so its provider socket
+    /// disconnects immediately, then re-scan for a restarted server.
+    func verifiedProcessExited(pid: Int32) {
+        guard verifiedServers.contains(where: { $0.pid == pid }) else { return }
+        verifiedServers.removeAll { $0.pid == pid }
+        watchProcesses()
+        onVerifiedServersChanged?(verifiedServers)
         refresh()
     }
 
@@ -300,23 +328,33 @@ final class ThisMacChecks {
     /// path.
     func stopTrust() {
         if servers != ThisMacServers() { servers = ThisMacServers() }
-        if !verifiedServers.isEmpty { verifiedServers = [] }
+        let hadVerified = !verifiedServers.isEmpty
+        if hadVerified { verifiedServers = [] }
         generation += 1
         watchProcesses()
         stopRuntimeWatch()
         signaledMismatches.removeAll()
         pending = false
+        if hadVerified { onVerifiedServersChanged?([]) }
     }
 
     // MARK: Watching
 
-    /// Watches the verified servers' processes (#883), each from scratch.
+    /// Watches the verified servers' processes (#883, #941), each from scratch.
     private func watchProcesses() {
         for watch in processes.values { watch.cancel() }
         processes.removeAll()
+        var watchedPids: Set<Int32> = []
         for (id, server) in servers.byID where server.pid > 0 {
+            watchedPids.insert(server.pid)
             processes[id] = world.watch(pid: server.pid) { [weak self] in
                 self?.processExited(id: id, pid: server.pid)
+            }
+        }
+        for server in verifiedServers where server.pid > 0 && server.kernelProvidersSocket != nil {
+            guard watchedPids.insert(server.pid).inserted else { continue }
+            processes["provider:\(server.pid)"] = world.watch(pid: server.pid) { [weak self] in
+                self?.verifiedProcessExited(pid: server.pid)
             }
         }
     }

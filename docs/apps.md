@@ -599,9 +599,21 @@ directory — no token is stored in the LaunchAgent plist or Keychain. When
 the app starts or checks this Mac's servers, it compares a running
 background server's version against its bundled tool and sends `SIGTERM`
 only to a process verified by its path, code signature and loopback socket
-so `launchd` restarts it on the updated binary. Local notebook windows
-still use the app's embedded server for now; the background server appears
-as a This Mac server through the existing checks.
+so `launchd` restarts it on the updated binary. When a verified background
+server advertises `kernel_providers_socket` in its `jpserver-<pid>.json`
+(`[kernel_providers] enabled = true` in `ganymede.toml`), the Mac app
+connects over that Unix domain socket, authenticates with the server's
+token, and registers its in-app TypeScript kernel (`cdp-browser`) with
+display-only kernelspec fields so notebooks on the background server can
+run cells in the app's WebView host. Signed builds build a macOS code
+requirement (`csreq`) matching the app's bundle identifier and team ID so
+`[kernel_providers] reserve` blocks other local processes from claiming
+the name; unsigned debug builds omit the reservation. Connections tear
+down cleanly on quit and reconnect automatically when the background
+server restarts, while the embedded server's in-process registration
+continues unchanged when the background server is off. Local notebook
+windows still use the app's embedded server for now; the background server
+appears as a This Mac server through the existing checks.
 
 ### Menu bar
 
