@@ -89,10 +89,20 @@ import { ProblemNotice } from './ProblemNotice';
 import { RecoveryBanner } from './RecoveryBanner';
 import { RecoverySheet } from './RecoverySheet';
 import {
+  LOCAL_RECOVERY_DEBOUNCE_MS,
+  LOCAL_RECOVERY_OFFLINE_DEBOUNCE_MS,
+  type LocalRecoveryReason,
+  type LocalRecoverySnapshot,
+  describeRecoveryBanner,
+  getLocalRecoveryStore,
+  hasLocalRecoveryChanges,
+} from '../lib/local-recovery';
+import {
   type RecoveryCopyMeta,
   type RoomSaveState,
   describeSaveAttention,
   fetchRecoveryCopyOrRefresh,
+  getRecoveryCopy,
   listRecoveryCopies,
   readRoomSaveState,
   watchRoomSaveState,
@@ -635,6 +645,18 @@ export function NotebookPane({
   const [goneRecoveryIds, setGoneRecoveryIds] = useState<string[]>([]);
   const verifiedStaleIds = useRef(new Set<string>());
   const lastRecoverySyncRef = useRef<{ open: Open; summaryId?: string }>(undefined);
+  /** Backend/machine scope used to key IndexedDB local recovery snapshots (#808). */
+  const recoveryScope = recentsKey(backend.config);
+  const [localCopy, setLocalCopy] = useState<LocalRecoverySnapshot>();
+  const localCopyRef = useRef<LocalRecoverySnapshot>(undefined);
+  localCopyRef.current = localCopy;
+  const [serverRecoveryChecked, setServerRecoveryChecked] = useState(false);
+  const [localDedupCheckedKey, setLocalDedupCheckedKey] = useState<string>();
+  const [localDiscarding, setLocalDiscarding] = useState(false);
+  const localSnapshotApiRef = useRef<{
+    captureNow(reason: LocalRecoveryReason, detail?: string): void;
+    clearNow(): void;
+  }>(undefined);
   /** A rename in progress: the pane's teardown waits for it to move the session. */
   const renaming = useRef<{ done: Promise<void>; to: string }>(undefined);
   /** Why the edits typed during a rename weren't saved: shown when the file reopens. */
@@ -702,10 +724,15 @@ export function NotebookPane({
                 if (why.kind === 'restarted') {
                   // The server's new room comes from the file: open it
                   // again, as Reload does, rejoining the kernel if it ran
-                  // on. Edits the server never saved are gone with the old
-                  // room, so say so when there were any (the notice stays
-                  // through the reopen).
+                  // on. Snapshot unsaved edits locally first so the reopened
+                  // notebook offers to recover them (#808).
                   if (joinedRoom?.notebook.getState('dirty') === true) {
+                    void getLocalRecoveryStore().save({
+                      scope: recoveryScope,
+                      path: current?.saver.path ?? path,
+                      content: joinedRoom.notebook.toJSON() as nbformat.INotebookContent,
+                      reason: 'unsaved_edits',
+                    });
                     setNotice(roomClosed(basename(path), why));
                   }
                   reloading.current = true;
@@ -1100,9 +1127,23 @@ export function NotebookPane({
         }
         const to = done.saver.path;
         return done.saver.save({ ifDirty: true }).then(
-          () => undefined,
+          () => {
+            if (!done.model.dirty) {
+              void getLocalRecoveryStore().remove(recoveryScope, to);
+            }
+            return undefined;
+          },
           (e: unknown) => {
             console.error(`Couldn’t save ${to}:`, e);
+            if (!done.model.isDisposed && !gone.current && !readOnlyRef.current) {
+              void getLocalRecoveryStore().save({
+                scope: recoveryScope,
+                path: to,
+                content: done.model.toJSON() as nbformat.INotebookContent,
+                reason: 'save_failed',
+                detail: messageOf(e),
+              });
+            }
             return `Couldn’t save the latest edits to ${basename(to)}: ${messageOf(e)}`;
           },
         );
@@ -1121,7 +1162,17 @@ export function NotebookPane({
         teardown();
       }
     };
-  }, [services, rooms, path, attempt, memory, setIntended, backend.config, onMachine]);
+  }, [
+    services,
+    rooms,
+    path,
+    attempt,
+    memory,
+    setIntended,
+    backend.config,
+    onMachine,
+    recoveryScope,
+  ]);
 
   // Put the Lumino widget in the page. The widget lives in a holder node
   // that moves in and out of the pane: when the pane goes, the holder is
@@ -1460,6 +1511,7 @@ export function NotebookPane({
     const autosave = () => {
       if (!model.dirty || locked.current || readOnlyRef.current || gone.current) return;
       saver.save({ ifDirty: true }).catch(e => {
+        localSnapshotApiRef.current?.captureNow('save_failed', messageOf(e));
         if (e instanceof SaveConflict) {
           lock(open, e.lastModified);
         } else {
@@ -1483,6 +1535,7 @@ export function NotebookPane({
         await saver.save({ ifDirty: true });
         return true;
       } catch (e) {
+        localSnapshotApiRef.current?.captureNow('save_failed', messageOf(e));
         // As autosave: lock on a change on disk, else say why, so a No
         // to the question leaves the reason on the pane.
         if (e instanceof SaveConflict) lock(open, e.lastModified);
@@ -1570,6 +1623,8 @@ export function NotebookPane({
     recoverySupportedRef.current = true;
     setGoneRecoveryIds([]);
     setRecoveryOpen(false);
+    setServerRecoveryChecked(!room);
+    setLocalDedupCheckedKey(undefined);
     if (!room) {
       setSaveState({});
       setRecoveryCopies(undefined);
@@ -1582,7 +1637,12 @@ export function NotebookPane({
   useEffect(() => {
     const room = open?.room;
     const settings = services.serverSettings;
-    if (!open || !room || !settings || !recoverySupportedRef.current) return;
+    if (!open || !room || !settings || !recoverySupportedRef.current) {
+      if (open && (!room || !settings || !recoverySupportedRef.current)) {
+        setServerRecoveryChecked(true);
+      }
+      return;
+    }
     const summaryId = saveState.recovery?.id ?? readRoomSaveState(room.notebook).recovery?.id;
     if (
       lastRecoverySyncRef.current?.open === open &&
@@ -1599,11 +1659,16 @@ export function NotebookPane({
         recoverySupportedRef.current = false;
         setRecoverySupported(false);
         setRecoveryCopies([]);
+        setServerRecoveryChecked(true);
         return;
       }
-      if (res.kind !== 'copies') return;
+      if (res.kind !== 'copies') {
+        setServerRecoveryChecked(true);
+        return;
+      }
       setRecoverySupported(true);
       setRecoveryCopies(res.copies);
+      setServerRecoveryChecked(true);
       if (
         summaryId &&
         !res.copies.some(c => c.id === summaryId) &&
@@ -1629,6 +1694,221 @@ export function NotebookPane({
     };
   }, [open, services.serverSettings, saveState.recovery?.id]);
 
+  // Check IndexedDB for a local unsaved recovery snapshot on notebook open (#808).
+  useEffect(() => {
+    localCopyRef.current = undefined;
+    setLocalCopy(undefined);
+    if (!open) return;
+    let cancelled = false;
+    const targetPath = open.saver.path;
+    void getLocalRecoveryStore()
+      .get(recoveryScope, targetPath)
+      .then(found => {
+        if (cancelled || !found || open.model.isDisposed) return;
+        const currentContent = open.model.toJSON() as nbformat.INotebookContent;
+        if (!hasLocalRecoveryChanges(found.content, currentContent)) {
+          void getLocalRecoveryStore().remove(recoveryScope, targetPath);
+          return;
+        }
+        localCopyRef.current = found;
+        setLocalCopy(found);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, recoveryScope]);
+
+  // When both a server recovery copy and a local recovery copy exist on open,
+  // drop the local copy if a server copy already holds identical content so the
+  // user is not asked to review/discard the same edits twice (#808, #831).
+  const serverCopyIdsKey = (recoveryCopies ?? []).map(c => c.id).join(',');
+  const localDedupKey =
+    open?.room &&
+    services.serverSettings &&
+    recoverySupported &&
+    localCopy &&
+    (recoveryCopies?.length ?? 0) > 0
+      ? `${localCopy.key}:${localCopy.updatedAtMs}:${serverCopyIdsKey}`
+      : undefined;
+
+  useEffect(() => {
+    if (!localDedupKey || !open || !services.serverSettings || !localCopy || !recoveryCopies) {
+      return;
+    }
+    let cancelled = false;
+    const settings = services.serverSettings;
+    const targetPath = open.saver.path;
+    const candidates = recoveryCopies.slice(0, 3);
+    void (async () => {
+      for (const meta of candidates) {
+        const fetched = await getRecoveryCopy(settings, meta.id);
+        if (cancelled) return;
+        if (
+          fetched.kind === 'copy' &&
+          !hasLocalRecoveryChanges(localCopy.content, fetched.copy.content)
+        ) {
+          void getLocalRecoveryStore().remove(recoveryScope, targetPath);
+          localCopyRef.current = undefined;
+          setLocalCopy(undefined);
+          setLocalDedupCheckedKey(localDedupKey);
+          return;
+        }
+      }
+      if (!cancelled) setLocalDedupCheckedKey(localDedupKey);
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [localDedupKey, open, services.serverSettings, localCopy, recoveryCopies, recoveryScope]);
+
+  // Snapshot dirty edits into IndexedDB (debounced while editing, immediate on
+  // failed save, offline edits, visibilitychange to hidden, and pagehide) and
+  // clear automatically once saves succeed (#808).
+  useEffect(() => {
+    if (!open) {
+      localSnapshotApiRef.current = undefined;
+      return;
+    }
+    const { model, room } = open;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let offlineCooldown: ReturnType<typeof setTimeout> | undefined;
+    let pendingOfflineEdit = false;
+    let wasDirty = model.dirty;
+    let isRoomOffline = room ? !room.connected : false;
+
+    const cancelTimers = () => {
+      if (timer !== undefined) {
+        clearTimeout(timer);
+        timer = undefined;
+      }
+      if (offlineCooldown !== undefined) {
+        clearTimeout(offlineCooldown);
+        offlineCooldown = undefined;
+      }
+      pendingOfflineEdit = false;
+    };
+
+    const canCapture = () =>
+      !model.isDisposed &&
+      !readOnlyRef.current &&
+      !gone.current &&
+      !reloading.current &&
+      model.dirty &&
+      !localCopyRef.current;
+
+    const captureNow = (reason: LocalRecoveryReason, detail?: string) => {
+      cancelTimers();
+      if (!canCapture()) return;
+      const content = model.toJSON() as nbformat.INotebookContent;
+      void getLocalRecoveryStore().save({
+        scope: recoveryScope,
+        path: open.saver.path,
+        content,
+        reason,
+        detail,
+      });
+    };
+
+    const clearNow = () => {
+      cancelTimers();
+      localCopyRef.current = undefined;
+      setLocalCopy(undefined);
+      void getLocalRecoveryStore().remove(recoveryScope, open.saver.path);
+    };
+
+    const scheduleCapture = () => {
+      if (!canCapture()) return;
+      const offlineNow =
+        (typeof navigator !== 'undefined' && navigator.onLine === false) || isRoomOffline;
+      if (offlineNow) {
+        if (offlineCooldown === undefined) {
+          captureNow('offline');
+          offlineCooldown = setTimeout(() => {
+            offlineCooldown = undefined;
+            if (pendingOfflineEdit) {
+              pendingOfflineEdit = false;
+              captureNow('offline');
+            }
+          }, LOCAL_RECOVERY_OFFLINE_DEBOUNCE_MS);
+        } else {
+          pendingOfflineEdit = true;
+        }
+        return;
+      }
+      if (timer !== undefined) clearTimeout(timer);
+      timer = setTimeout(() => {
+        timer = undefined;
+        captureNow('unsaved_edits');
+      }, LOCAL_RECOVERY_DEBOUNCE_MS);
+    };
+
+    localSnapshotApiRef.current = { captureNow, clearNow };
+
+    const onContentChanged = () => {
+      if (!model.dirty) return;
+      wasDirty = true;
+      scheduleCapture();
+    };
+    const onStateChanged = () => {
+      if (model.dirty) {
+        wasDirty = true;
+        if (timer === undefined) scheduleCapture();
+      } else if (wasDirty) {
+        wasDirty = false;
+        const roomFailed = room ? readRoomSaveState(room.notebook).save === 'failed' : false;
+        if (!roomFailed) clearNow();
+      }
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden' && model.dirty) {
+        captureNow('unsaved_edits');
+      }
+    };
+    const onPageHide = () => {
+      if (model.dirty) captureNow('unsaved_edits');
+    };
+    const onOffline = () => {
+      if (model.dirty) captureNow('offline');
+    };
+    const unwatchRoom = room?.onConnection(connected => {
+      isRoomOffline = !connected;
+      if (!connected && model.dirty) captureNow('offline');
+    });
+
+    model.contentChanged.connect(onContentChanged);
+    model.stateChanged.connect(onStateChanged);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    window.addEventListener('pagehide', onPageHide);
+    window.addEventListener('offline', onOffline);
+
+    return () => {
+      cancelTimers();
+      if (localSnapshotApiRef.current?.captureNow === captureNow) {
+        localSnapshotApiRef.current = undefined;
+      }
+      unwatchRoom?.();
+      model.contentChanged.disconnect(onContentChanged);
+      model.stateChanged.disconnect(onStateChanged);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      window.removeEventListener('pagehide', onPageHide);
+      window.removeEventListener('offline', onOffline);
+    };
+  }, [open, recoveryScope]);
+
+  // Snapshot immediately when a room reports save === 'failed', and clear if a
+  // previously failed room save transitions back to 'saved' (#808).
+  const prevRoomSaveRef = useRef<RoomSaveState['save']>(undefined);
+  useEffect(() => {
+    const prev = prevRoomSaveRef.current;
+    prevRoomSaveRef.current = saveState.save;
+    if (!open?.room) return;
+    if (saveState.save === 'failed' && open.model.dirty) {
+      localSnapshotApiRef.current?.captureNow('save_failed', saveState.saveError);
+    } else if (prev === 'failed' && saveState.save === 'saved' && !open.model.dirty) {
+      localSnapshotApiRef.current?.clearNow();
+    }
+  }, [open, saveState.save, saveState.saveError]);
+
   const visibleSaveState: RoomSaveState =
     saveState.recovery && goneRecoveryIds.includes(saveState.recovery.id)
       ? { ...saveState, recovery: undefined }
@@ -1645,14 +1925,23 @@ export function NotebookPane({
         copies: recoverySupported ? recoveryCopies : undefined,
       })
     : undefined;
+  const localDedupPending = Boolean(localDedupKey && localDedupCheckedKey !== localDedupKey);
+  const visibleLocalCopy =
+    localCopy && serverRecoveryChecked && !localDedupPending ? localCopy : undefined;
+  const bannerAttention = describeRecoveryBanner({
+    serverAttention: saveAttention,
+    localCopy: visibleLocalCopy,
+  });
+  const localOnlyBanner = Boolean(visibleLocalCopy && !saveAttention);
   const hasSaveAttention = Boolean(saveAttention);
   const saveAttentionDetail = saveAttention?.detail;
-  const canReviewRecovery = Boolean(
+  const hasServerRecoveryCopies = Boolean(
     open?.room &&
     services.serverSettings &&
     recoverySupported &&
     ((recoveryCopies?.length ?? 0) > 0 || Boolean(visibleSaveState.recovery)),
   );
+  const canReviewRecovery = hasServerRecoveryCopies || Boolean(visibleLocalCopy);
   const openRecovery = useCallback(() => setRecoveryOpen(true), []);
 
   // Notice a change on disk without waiting for a save (#367): every few
@@ -1842,12 +2131,14 @@ export function NotebookPane({
         unsaved.current = undefined;
         // Once the session has joined the file's kernel, if any.
         await open.joining;
+        const fromPath = saver.path;
         // Saves (⌘S, autosave, quit) wait for the move and then go to the
         // new path, so none recreates the old file.
         await saver.move(async () => {
           const model = (await rename()) as Partial<Contents.IModel> | undefined;
           return { path: to, lastModified: model?.last_modified };
         });
+        void getLocalRecoveryStore().moveUnder(recoveryScope, fromPath, to);
         // The kernel follows the file, so reopening it there rejoins it.
         // Read now, not before the move: a run during it may have started
         // one (#224).
@@ -1922,6 +2213,7 @@ export function NotebookPane({
         try {
           await saver.save();
         } catch (e) {
+          localSnapshotApiRef.current?.captureNow('save_failed', messageOf(e));
           if (e instanceof SaveConflict) {
             lock(open, e.lastModified);
             return false;
@@ -1929,6 +2221,7 @@ export function NotebookPane({
           setNotice(saveFailed(fileName, e), () => void controller.save());
           return false;
         }
+        if (!model.dirty) localSnapshotApiRef.current?.clearNow();
         clearNotice('save-conflict', 'save-failed');
         return true;
       },
@@ -1941,6 +2234,7 @@ export function NotebookPane({
         ) {
           return false;
         }
+        if (model.dirty) localSnapshotApiRef.current?.clearNow();
         // The teardown lets the edits go; the load rejoins the kernel.
         reloading.current = true;
         setOpen(undefined);
@@ -2057,8 +2351,12 @@ export function NotebookPane({
       discard: () => {
         const was = gone.current;
         gone.current = true;
+        localSnapshotApiRef.current?.clearNow();
         return () => {
           gone.current = was;
+          if (!was && model.dirty) {
+            localSnapshotApiRef.current?.captureNow('unsaved_edits');
+          }
         };
       },
       moved,
@@ -2175,6 +2473,7 @@ export function NotebookPane({
     journal,
     backend,
     onMachine,
+    recoveryScope,
     services,
     memory,
     onController,
@@ -2373,7 +2672,9 @@ export function NotebookPane({
   }
   return (
     <>
-      {((roomOffline && (machineName || !journal)) || (readOnly && !journal) || saveAttention) && (
+      {((roomOffline && (machineName || !journal)) ||
+        (readOnly && !journal) ||
+        bannerAttention) && (
         <div className="pane-top-banners">
           {roomOffline && (machineName || !journal) ? (
             <div className="machine-banner" role="status">
@@ -2389,14 +2690,20 @@ export function NotebookPane({
               </div>
             )
           )}
-          {saveAttention && (
+          {bannerAttention && (
             <RecoveryBanner
-              attention={saveAttention}
+              attention={bannerAttention}
               saving={recoverySaving}
+              discarding={localDiscarding}
+              localOnly={localOnlyBanner}
               canRetrySave={
-                !readOnly && !roomClosedState && visibleSaveState.recovery?.reason !== 'file_gone'
+                !localOnlyBanner &&
+                !readOnly &&
+                !roomClosedState &&
+                visibleSaveState.recovery?.reason !== 'file_gone'
               }
               canReview={canReviewRecovery}
+              canDiscard={localOnlyBanner}
               onReview={openRecovery}
               onRetrySave={() => {
                 const save = controllerRef.current?.save;
@@ -2404,7 +2711,31 @@ export function NotebookPane({
                 setRecoverySaving(true);
                 void save().finally(() => setRecoverySaving(false));
               }}
-              onDownload={() => controllerRef.current?.download()}
+              onDownload={() => {
+                if (localOnlyBanner && visibleLocalCopy) {
+                  const fileName = basename(open.saver.path);
+                  const base = fileName.endsWith('.ipynb') ? fileName.slice(0, -6) : fileName;
+                  const text = JSON.stringify(visibleLocalCopy.content, null, 1) + '\n';
+                  downloadFile(
+                    `${base || 'notebook'}-recovery.ipynb`,
+                    text,
+                    'application/x-ipynb+json',
+                  );
+                  return;
+                }
+                controllerRef.current?.download();
+              }}
+              onDiscard={() => {
+                if (!visibleLocalCopy || localDiscarding) return;
+                setLocalDiscarding(true);
+                void getLocalRecoveryStore()
+                  .remove(recoveryScope, open.saver.path)
+                  .finally(() => {
+                    localCopyRef.current = undefined;
+                    setLocalCopy(undefined);
+                    setLocalDiscarding(false);
+                  });
+              }}
             />
           )}
         </div>
@@ -2471,13 +2802,15 @@ export function NotebookPane({
           }}
         />
       )}
-      {recoveryOpen && services.serverSettings && (
+      {recoveryOpen && (hasServerRecoveryCopies || visibleLocalCopy) && (
         <RecoverySheet
           path={open.saver.path}
           name={basename(open.saver.path)}
           settings={services.serverSettings}
+          hasServerRecovery={hasServerRecoveryCopies}
           contents={services.contents}
           initialSummary={visibleSaveState.recovery}
+          localCopy={visibleLocalCopy}
           currentNotebook={open.model.toJSON() as nbformat.INotebookContent}
           hasUnsavedEdits={dirty}
           roomClosed={roomClosedState}
@@ -2488,7 +2821,10 @@ export function NotebookPane({
               setGoneRecoveryIds(prev => (prev.includes(id) ? prev : [...prev, id]));
             }
           }}
-          onRestored={() => {
+          onRestored={async () => {
+            await getLocalRecoveryStore().remove(recoveryScope, open.saver.path);
+            localCopyRef.current = undefined;
+            setLocalCopy(undefined);
             clearNotice('save-conflict', 'save-failed');
             locked.current = undefined;
             lockedAt.current = undefined;
@@ -2498,6 +2834,36 @@ export function NotebookPane({
               setOpen(undefined);
               setAttempt(a => a + 1);
             }
+          }}
+          onRestoreLocal={async copy => {
+            const targetPath = open.saver.path;
+            const saved = await services.contents.save(targetPath, {
+              type: 'notebook',
+              format: 'json',
+              content: copy.content,
+            });
+            if (!open.room) {
+              open.model.fromJSON(rejoinLines(copy.content));
+              open.model.dirty = false;
+              await open.saver.accept(saved?.last_modified);
+            }
+            await getLocalRecoveryStore().remove(recoveryScope, targetPath);
+            localCopyRef.current = undefined;
+            setLocalCopy(undefined);
+            clearNotice('save-conflict', 'save-failed');
+            locked.current = undefined;
+            lockedAt.current = undefined;
+            setLocked(false);
+            if (open.room && roomClosedState) {
+              reloading.current = true;
+              setOpen(undefined);
+              setAttempt(a => a + 1);
+            }
+          }}
+          onDiscardLocal={async () => {
+            await getLocalRecoveryStore().remove(recoveryScope, open.saver.path);
+            localCopyRef.current = undefined;
+            setLocalCopy(undefined);
           }}
           onClose={() => setRecoveryOpen(false)}
         />

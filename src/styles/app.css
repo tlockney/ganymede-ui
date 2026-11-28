@@ -3618,6 +3618,10 @@ button {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
 }
 
+.recovery-banner.is-local {
+  border-color: var(--accent);
+}
+
 .pane-top-banners > .machine-banner + .recovery-banner,
 .pane-top-banners > .readonly-banner + .recovery-banner {
   margin-top: 0;
@@ -3729,6 +3733,11 @@ button {
   color: #1d1d1f;
   font-size: 11px;
   font-weight: 600;
+}
+
+.recovery-reason-pill.is-local {
+  background: var(--accent-soft);
+  color: var(--accent-text);
 }
 
 .recovery-timestamp {

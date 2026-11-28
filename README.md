@@ -249,7 +249,14 @@ saving.
 Opening another notebook, creating a new notebook, opening examples, or
 opening an in-page DuckDB console uses the same save-then-choice guard
 in the browser: if saving fails or times out, Ganymede asks before
-closing the open notebook.
+closing the open notebook. Unsaved edits are also snapshotted locally in
+the page's IndexedDB (bounded to 10 MB per notebook and 50 MB total,
+evicting the oldest entries first) while dirty and on failed saves,
+offline edits, or page hide, and cleared automatically once a save
+succeeds or edits are discarded. If persistence fails or a browser tab
+or Apple app web view reloads after a content-process termination,
+reopening the notebook shows a non-blocking **Local unsaved copy**
+banner to inspect the diff, download, restore, or discard it.
 
 ### Live editing on a Ganymede server
 
@@ -444,6 +451,16 @@ notice says the kernel ran out of memory.
 - **Recents:** the paths of the notebooks you opened last, for each
   backend, are kept in local storage (`ganymede-ui:recents`) until you
   clear them from the sidebar.
+- **Local recovery copies:** while a notebook has unsaved edits, a local
+  snapshot is kept in the page's IndexedDB (`ganymede-ui:local-recovery`,
+  capped at 10 MB per notebook and 50 MB total across the origin,
+  evicting the oldest copies first) and cleared automatically once a
+  save succeeds or the edits are discarded.
+
+  > [!NOTE]
+  > **Unreleased.** Local recovery copies in IndexedDB are available
+  > only from a build of `main` (HEAD), not in the latest release.
+
 - **Your name (Mac app):** the Mac app gives its own server your
   account's full name when it opens a notebook, so an agent working in
   the notebook is told who changed a cell; other clients with that
