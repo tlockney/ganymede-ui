@@ -12,5 +12,22 @@ enum HostDefaults {
     static func serverConfig(folders: [URL]) -> [String: any Sendable] {
         ["read": folders.map { FolderEntry.serverPath($0) }]
     }
+
+    /// Converts `[host] read` API paths from `ganymede.toml` back into folder
+    /// URLs on macOS, where the app's server is rooted at `/`. Empty entries
+    /// (`""`, the whole root) are skipped so Spotlight never walks `/`.
+    static func folders(fromRead paths: [String]) -> [URL] {
+        var seen = Set<URL>()
+        var result: [URL] = []
+        for raw in paths {
+            let trimmed = raw.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            guard !trimmed.isEmpty else { continue }
+            let url = URL(fileURLWithPath: "/" + trimmed, isDirectory: true).standardizedFileURL
+            if seen.insert(url).inserted {
+                result.append(url)
+            }
+        }
+        return result
+    }
 }
 #endif

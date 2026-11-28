@@ -227,7 +227,13 @@ actor SpotlightIndex {
 @Observable
 final class SpotlightSettings {
     static let shared = SpotlightSettings()
-    private let defaults = UserDefaults.standard
+    private let defaults: UserDefaults
+    #if os(macOS)
+    @ObservationIgnored private let configStore: any GanymedeConfigStore
+    /// Error saving `[host] read` folders to `ganymede.toml`, shown in Settings
+    /// rather than dropped (#902).
+    private(set) var configError: String?
+    #endif
 
     var enabled: Bool {
         didSet {
@@ -246,7 +252,8 @@ final class SpotlightSettings {
             sync()
         }
     }
-    /// Folders whose notebooks are indexed too (the Mac's Settings).
+    /// Folders whose notebooks are indexed too (the Mac's Settings, kept in
+    /// `ganymede.toml` under `[host] read`).
     private(set) var folders: [URL]
     /// The notebooks opened lately, as the last caller of `sync(recents:)`
     /// gave them (the iPad's page keeps its own).
@@ -255,29 +262,50 @@ final class SpotlightSettings {
     @ObservationIgnored private var lastSync: ContinuousClock.Instant?
 
     private init() {
+        defaults = .standard
         enabled = defaults.object(forKey: SpotlightKeys.enabled) as? Bool ?? true
         code = defaults.bool(forKey: SpotlightKeys.code)
+        #if os(macOS)
+        let store = SystemGanymedeConfigStore()
+        configStore = store
+        folders = SharedConfig.load(defaults: defaults, store: store).settings.hostFolders
+        #else
         folders = (defaults.stringArray(forKey: SpotlightKeys.folders) ?? [])
             .map { URL(fileURLWithPath: $0, isDirectory: true) }
+        #endif
     }
 
     func add(folder: URL) {
-        guard !folders.contains(folder.standardizedFileURL) else { return }
-        folders.append(folder.standardizedFileURL)
-        saveFolders()
+        let standardized = folder.standardizedFileURL
+        guard !folders.contains(standardized) else { return }
+        var updated = folders
+        updated.append(standardized)
+        saveFolders(updated)
     }
 
     func remove(folder: URL) {
         guard folders.contains(folder) else { return }
-        folders.removeAll { $0 == folder }
-        saveFolders()
+        var updated = folders
+        updated.removeAll { $0 == folder }
+        saveFolders(updated)
     }
 
-    private func saveFolders() {
+    private func saveFolders(_ updated: [URL]) {
+        #if os(macOS)
+        do {
+            try configStore.set(SharedConfig.hostReadPatch(folders: updated))
+            configError = nil
+        } catch {
+            configError = error.localizedDescription
+            return
+        }
+        folders = updated
+        sync()
+        AppModel.shared.hostFoldersChanged()
+        #else
+        folders = updated
         defaults.set(folders.map(\.path), forKey: SpotlightKeys.folders)
         sync()
-        #if os(macOS)
-        AppModel.shared.hostFoldersChanged()
         #endif
     }
 
@@ -371,6 +399,11 @@ struct SpotlightSettingsSection: View {
             }
             LabeledContent("Folders") {
                 Button("Add Folder…", action: addFolder)
+            }
+            if let error = settings.configError {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.red)
             }
             #endif
         } header: {

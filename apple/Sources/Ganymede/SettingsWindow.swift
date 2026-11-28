@@ -105,8 +105,17 @@ private struct OpenSettingsReader: View {
 /// General: which app opens notebooks, updates (#411), crash reports
 /// (#318), and the switch for the Developer tab (#698).
 private struct GeneralSettings: View {
+    @Environment(AppModel.self) private var model
+
     var body: some View {
         Form {
+            if let error = model.configError {
+                Section("Configuration") {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+            }
             Section {
                 LabeledContent("Notebooks") {
                     DefaultAppCommand()
@@ -391,6 +400,11 @@ private struct MCPSettings: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            if let error = model.mcpConfigError {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
         } header: {
             Text("MCP")
         } footer: {
@@ -448,6 +462,11 @@ private struct TailnetSettings: View {
                         .foregroundStyle(.secondary)
                 }
             }
+            if let error = model.tailnetConfigError {
+                Text(error)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+            }
         } header: {
             Text("Tailnet")
         } footer: {
@@ -460,7 +479,9 @@ private struct TailnetSettings: View {
     private func apply() {
         let list = allow
         model.setTailnet(share: model.tailnetShare && !list.isEmpty, allow: list)
-        allowText = list.joined(separator: ", ")
+        if model.tailnetConfigError == nil {
+            allowText = list.joined(separator: ", ")
+        }
     }
 }
 

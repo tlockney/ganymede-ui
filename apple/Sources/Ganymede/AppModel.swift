@@ -111,6 +111,14 @@ final class AppModel {
     /// Host keys trusted on first use, per remote.
     let hostKeys = HostKeyStore(defaults: .standard)
     #if os(macOS)
+    /// Backing store for `ganymede.toml` (`ganymede_config_read` / `set`, #902).
+    @ObservationIgnored private let configStore: any GanymedeConfigStore = SystemGanymedeConfigStore()
+    /// Error reading or migrating `ganymede.toml`, shown in Settings rather than dropped.
+    private(set) var configError: String?
+    /// Error saving MCP settings to `ganymede.toml`, shown in Settings › MCP.
+    private(set) var mcpConfigError: String?
+    /// Error saving `[tailscale] allow` to `ganymede.toml`, shown in Settings › Tailnet.
+    private(set) var tailnetConfigError: String?
     /// What agents outside the app may do through the server's `/mcp`
     /// (#304).
     private(set) var mcpMode: MCPMode
@@ -170,9 +178,11 @@ final class AppModel {
         keychainError = saved.problem
         sshKey = sshKeys.load()
         #if os(macOS)
-        mcpMode = UserDefaults.standard.string(forKey: AppMCP.modeKey).flatMap(MCPMode.init(rawValue:)) ?? .off
-        mcpImages = UserDefaults.standard.bool(forKey: AppMCP.imagesKey)
-        tailnetAllow = UserDefaults.standard.stringArray(forKey: AppTailnet.allowKey) ?? []
+        let loadedConfig = SharedConfig.load(defaults: .standard, store: configStore)
+        mcpMode = loadedConfig.settings.mcpMode
+        mcpImages = loadedConfig.settings.mcpImages
+        tailnetAllow = loadedConfig.settings.tailnetAllow
+        configError = loadedConfig.error
         tailnetShare = UserDefaults.standard.bool(forKey: AppTailnet.shareKey)
         if let path = UserDefaults.standard.string(forKey: Keys.root),
            FileManager.default.fileExists(atPath: path) {
@@ -242,6 +252,25 @@ final class AppModel {
             error = "The app bundle has no web folder; build it with apple/scripts/bootstrap.sh."
             return
         }
+        #if os(macOS)
+        let launch = SharedConfig.launchConfig(
+            store: configStore,
+            rootDir: Self.serverRoot(root),
+            staticDir: web.path,
+            gatewayURL: kernelRemote?.serverURL,
+            gatewayToken: kernelRemote.map { token(for: $0.id) },
+            mcpMode: mcpMode,
+            mcpImages: mcpImages,
+            mcpToken: mcpToken,
+            fallbackHostFolders: SpotlightSettings.shared.folders
+        )
+        let settings = launch.config
+        if let readError = launch.error {
+            configError = readError
+        } else if defaults.bool(forKey: SharedConfig.migratedKey) {
+            configError = nil
+        }
+        #else
         var config: [String: any Sendable] = [
             "root_dir": Self.serverRoot(root),
             "static_dir": web.path,
@@ -251,20 +280,13 @@ final class AppModel {
             config["gateway_url"] = remote.serverURL
             config["gateway_token"] = token(for: remote.id)
         }
-        #if os(macOS)
-        if let mcpToken {
-            config.merge(AppMCP.serverConfig(mode: mcpMode, images: mcpImages, token: mcpToken)) { $1 }
-        }
-        config["host"] = HostDefaults.serverConfig(folders: SpotlightSettings.shared.folders)
-        #endif
-        #if os(iOS)
         if let support = try? FileManager.default.url(
             for: .applicationSupportDirectory, in: .userDomainMask, appropriateFor: nil, create: true
         ) {
             config["cookie_secret_file"] = support.appendingPathComponent("cookie_secret").path
         }
-        #endif
         let settings = config
+        #endif
         #if os(macOS)
         let path = pathReady
         #endif
@@ -310,7 +332,9 @@ final class AppModel {
             } else if !tailnetAllow.isEmpty {
                 switch await Task.detached(operation: { AppTailnet.prepare(allow: tailnetAllow) }).value {
                 case .success(let prepared):
-                    withTailnet.merge(prepared.config) { $1 }
+                    withTailnet = SharedConfig.mergeTailnet(
+                        into: withTailnet, dnsName: prepared.name, allow: tailnetAllow
+                    )
                     tailnetName = prepared.name
                 case .failure(let failure):
                     tailnetError = failure.message
@@ -799,15 +823,22 @@ final class AppModel {
         if server != nil || queued > 0 { start() }
     }
 
-    /// Sets what agents may do through `/mcp`, and restarts the server
-    /// with it: turning MCP off ends agents' sessions, and kernels restart
-    /// as when they move to a remote.
+    /// Sets what agents may do through `/mcp`, writes the change to
+    /// `ganymede.toml` via `ganymede_config_set` (never writing `mcp_token`),
+    /// and restarts the server with it: turning MCP off ends agents' sessions,
+    /// and kernels restart as when they move to a remote.
     func setMCP(_ mode: MCPMode, images: Bool) {
         guard mode != mcpMode || images != mcpImages else { return }
+        do {
+            try configStore.set(SharedConfig.mcpPatch(mode: mode, images: images))
+            mcpConfigError = nil
+            configError = nil
+        } catch {
+            mcpConfigError = error.localizedDescription
+            return
+        }
         mcpMode = mode
         mcpImages = images
-        defaults.set(mode.rawValue, forKey: AppMCP.modeKey)
-        defaults.set(images, forKey: AppMCP.imagesKey)
         if mode == .off {
             // Off revokes the token: configs given out stop working.
             mcpToken = nil
@@ -827,23 +858,33 @@ final class AppModel {
         start()
     }
 
-    /// Shares the server on the tailnet, or stops, and restarts the server
+    /// Shares the server on the tailnet, or stops, saves `[tailscale] allow`
+    /// to `ganymede.toml` via `ganymede_config_set`, and restarts the server
     /// with the logins `allow` lets in without the token. Sharing needs at
     /// least one login. Stopping removes the app's `tailscale serve`
     /// handler, if it still points at the server, in the restart.
     func setTailnet(share: Bool, allow: [String]) {
         let share = share && !allow.isEmpty
         guard share != tailnetShare || allow != tailnetAllow else { return }
+        if allow != tailnetAllow {
+            do {
+                try configStore.set(SharedConfig.tailnetPatch(allow: allow))
+                tailnetConfigError = nil
+                configError = nil
+            } catch {
+                tailnetConfigError = error.localizedDescription
+                return
+            }
+        }
         let wasSharing = tailnetShare
         tailnetShare = share
         tailnetAllow = allow
         defaults.set(share, forKey: AppTailnet.shareKey)
-        defaults.set(allow, forKey: AppTailnet.allowKey)
         if !share {
             tailnetURL = nil
             tailnetError = nil
         }
-        // The list reaches the server only while sharing; the queued start
+        // The list reaches the server when sharing is on; the queued start
         // removes the `tailscale serve` handler when sharing stops.
         if share || wasSharing { start() }
     }
