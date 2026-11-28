@@ -500,6 +500,36 @@ describe('App', () => {
     await waitFor(() => expect(entry()).not.toHaveAttribute('aria-disabled'));
   });
 
+  it('marks device kernels in the command palette (#469)', async () => {
+    const fake = fakeServices({ '': [{ name: 'Io.ipynb', type: 'notebook' }] });
+    (fake.services.kernelspecs.specs!.kernelspecs as Record<string, unknown>)['cdp-browser'] = {
+      name: 'cdp-browser',
+      display_name: 'TypeScript (in app)',
+      language: 'typescript',
+      argv: [],
+      resources: {},
+      metadata: { capabilities: { device: true } },
+    };
+    mocks.controller = {
+      dirty: false,
+      save: vi.fn(async () => true),
+    };
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    history.replaceState(null, '', '/?kernels=server&open=Io.ipynb');
+    render(<App />);
+    await waitFor(() => expect(window.ganymede).toBeDefined());
+    expect(await window.ganymede!.command('command-palette')).toBe(true);
+    const palette = await screen.findByRole('dialog', { name: 'Command palette' });
+    const deviceOption = within(palette).getByRole('option', {
+      name: 'Change Kernel to TypeScript (in app), offers the device API',
+    });
+    expect(deviceOption).toHaveTextContent('Change Kernel to TypeScript (in app) ◆');
+    expect(deviceOption).toHaveAttribute('title', 'offers the device API');
+    expect(
+      within(palette).getByRole('option', { name: /Change Kernel to Python 3/ }),
+    ).not.toHaveAttribute('title');
+  });
+
   it('tells the app the notebook’s title, for its window (#867)', async () => {
     const states: Record<string, unknown>[] = [];
     vi.stubGlobal('webkit', {

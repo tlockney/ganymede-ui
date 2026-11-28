@@ -33,7 +33,11 @@ final class KernelHost: NSObject {
     /// root folder, so the ledger keeps each notebook by its absolute path,
     /// which stays the same across launches. Paths are used as given
     /// without one.
-    var notebookRoot: URL?
+    var notebookRoot: URL? {
+        didSet { syncShownNotebook() }
+    }
+    private var attachedToDevice = false
+    private var shownNotebook: String?
     /// Open-time prompts queued or showing, so a notebook opened twice
     /// asks once.
     private struct OpenAsk: Hashable {
@@ -117,12 +121,14 @@ final class KernelHost: NSObject {
     /// a window to keep running.
     func attach(to ui: WKWebView) {
         self.ui = ui
+        attachedToDevice = true
         ui.configuration.userContentController.add(WeakHandler(self), name: Self.relayHandler)
         device.registerRemote(in: ui.configuration.userContentController) { [weak self, weak ui] message in
             guard let self, let ui, message.webView === ui else { return false }
             return self.fromPage(message)
         }
         kernels.lend(ui)
+        syncShownNotebook()
     }
 
     /// Takes `ui`'s remote `device` calls for a machine's kernels (#877),
@@ -134,6 +140,7 @@ final class KernelHost: NSObject {
     /// machine's name, because what a call reads leaves this device.
     func attachRemote(to ui: WKWebView, asker: String?) {
         self.ui = ui
+        attachedToDevice = false
         let options = RemoteOptions(asker: asker, confirmClipboardReads: true)
         device.registerRemote(in: ui.configuration.userContentController, options) { [weak self, weak ui] message in
             guard let self, let ui, message.webView === ui else { return false }
@@ -169,6 +176,10 @@ final class KernelHost: NSObject {
     func downgrade(to ui: WKWebView, place: Place, settings: PlaceSettings, asker: String?) {
         // The page's calls that were in flight are the old bridge's.
         reset()
+        if attachedToDevice {
+            attachedToDevice = false
+            kernels.unlend(ui)
+        }
         let controller = ui.configuration.userContentController
         // Both were added in the page's content world, which is what the
         // name-only removal takes (#883).
@@ -179,6 +190,26 @@ final class KernelHost: NSObject {
         if place.allows(.deviceRemote, settings) {
             attachRemote(to: ui, asker: asker)
         }
+    }
+
+    /// Updates which notebook `ui` shows (`PageState.path`), so `AppKernels`
+    /// can direct permission prompts to its window (#469).
+    func showing(notebook path: String?) {
+        shownNotebook = path
+        syncShownNotebook()
+    }
+
+    /// Detaches this host when its web view leaves its window/scene.
+    func detach() {
+        guard attachedToDevice, let ui else { return }
+        attachedToDevice = false
+        kernels.unlend(ui)
+    }
+
+    private func syncShownNotebook() {
+        guard attachedToDevice, let ui else { return }
+        let resolved = shownNotebook.flatMap { $0.isEmpty ? nil : resolve($0) }
+        kernels.showing(resolved, in: ui)
     }
 
     /// The UI page is `url`.

@@ -1548,7 +1548,7 @@ export function App() {
             path: shown?.path,
             folder,
             kernels: Object.values(specs?.kernelspecs ?? {}).flatMap(k =>
-              k ? [{ name: k.name, displayName: k.display_name }] : [],
+              k ? [{ name: k.name, displayName: k.display_name, device: offersDevice(k) }] : [],
             ),
             kernel: shown?.kernelName,
             recents: backend ? loadRecents(recentsKey(backend.config)) : [],

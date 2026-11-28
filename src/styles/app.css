@@ -1588,9 +1588,10 @@ button {
 }
 
 /* A kernel that is only missing, not broken, is a warning, as is one
-   whose state an interrupt reset (#796). */
+   whose state an interrupt reset (#796) or system termination restarted (#469). */
 .pane-notice.problem-missing-kernel,
 .pane-notice.problem-state-reset,
+.pane-notice.problem-kernel-lost,
 .pane-notice.problem-save-conflict {
   border-color: var(--orange);
 }

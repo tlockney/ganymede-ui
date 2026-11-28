@@ -223,10 +223,20 @@ Settings > Remotes.
   [device API](device.md); kernels in their own process can't reach the
   app.
 
-  The Mac's kernel popover and Kernel > Change Kernel, the iPad's kernel
-  menu and the browser's kernel pickers mark kernels that offer the
-  device API with a ◆, and the items carry an accessibility label,
-  "offers the device API".
+  The Mac's kernel popover and Kernel > Change Kernel, Settings > Kernels,
+  the iPad's kernel menu, and the browser's kernel pickers and Command
+  Palette mark kernels that offer the device API with a ◆, and the items
+  carry an accessibility label, "offers the device API".
+
+  If the system ends an in-app kernel while it is running (for instance
+  after iOS suspends the app or under memory pressure), the server
+  restarts it automatically (capped after repeated losses) and the
+  notebook shows a notice that its variables are gone, with **Restart &
+  Run All** (or where to find it in the journal view). On the Mac, if
+  every notebook window closes while an in-app kernel is running, the
+  kernel keeps running in an offscreen host window; `device` prompts and
+  permission sheets open on the tab or window showing that kernel's
+  notebook (or the frontmost window when none shows it).
 
   The running kernel's implementation and version, from its
   `kernel_info_reply`, show as a line such as "cdp-kernel 0.14.0 ·
@@ -445,8 +455,9 @@ kernels run on, never the in-app TypeScript kernel, which only a window
 reaches. Run Notebook with Parameters is the exception: it runs the
 notebook in a new kernel of its own, so a window shows nothing of it and
 nothing is saved. That kernel can be the in-app TypeScript kernel, whose
-cells read the parameters as `jupyter.params`, but only while a Ganymede
-window is open. The actions are on the Mac only for now.
+cells read the parameters as `jupyter.params`, even when no Ganymede
+notebook window is open (via the offscreen host window). The actions are
+on the Mac only for now.
 
 Run Notebook, Run Notebook with Parameters and Run Cell ask the first
 time they run a notebook, as [links](#links) do, with "Always allow"

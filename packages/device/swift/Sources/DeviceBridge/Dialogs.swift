@@ -606,12 +606,12 @@ public struct SystemDialogPresenter: DialogPresenter {
         orderedWindows: [NSWindow],
         windows: [NSWindow]
     ) -> NSWindow? {
-        if let window = host?.window { return window }
-        let candidate = keyWindow
-            ?? mainWindow
-            ?? orderedWindows.first(where: { $0.isVisible && $0.canBecomeMain })
-            ?? orderedWindows.first(where: { $0.isVisible })
-            ?? windows.first(where: { $0.isVisible })
+        if let window = host?.window, window.alphaValue > 0 { return window }
+        let canHost: (NSWindow) -> Bool = { $0.isVisible && $0.alphaValue > 0 }
+        let candidate = [keyWindow, mainWindow].compactMap { $0 }.first(where: canHost)
+            ?? orderedWindows.first(where: { canHost($0) && $0.canBecomeMain })
+            ?? orderedWindows.first(where: canHost)
+            ?? windows.first(where: canHost)
         return candidate?.tabGroup?.selectedWindow ?? candidate
     }
 

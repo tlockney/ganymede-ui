@@ -53,6 +53,10 @@ struct WebView: NSViewRepresentable {
         context.coordinator.onLoad = onLoad
         context.coordinator.load(url, in: view)
     }
+
+    static func dismantleNSView(_ view: WKWebView, coordinator: WebViewCoordinator) {
+        coordinator.detach()
+    }
 }
 #else
 struct WebView: UIViewRepresentable {
@@ -94,6 +98,7 @@ struct WebView: UIViewRepresentable {
         // parked: its coordinator keeps its model.
         if coordinator.park == nil {
             coordinator.page = nil
+            coordinator.detach()
         }
         // After SwiftUI has taken the screen's views out of the window, and
         // again once a pop's animation is surely over; the list's
@@ -324,6 +329,10 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
             to: view, place: place, settings: settings,
             asker: place.asker { AppModel.shared.machineName($0) })
         Self.installPageScripts(on: view, loaded: loaded, place: place, settings: settings)
+    }
+
+    func detach() {
+        kernels.detach()
     }
     #if os(iOS)
     /// Puts a stored page back where it waits off screen (`WebViewStore`).
@@ -992,6 +1001,7 @@ extension WebViewCoordinator {
     func received(state message: WKScriptMessage) {
         if message.frameInfo.isMainFrame, let state = PageState(body: message.body) {
             page?.update(state)
+            kernels.showing(notebook: state.path)
         }
     }
 }

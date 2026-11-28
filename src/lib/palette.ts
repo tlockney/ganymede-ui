@@ -1,5 +1,6 @@
 import { SHORTCUTS, formatKeys, keysFor } from './shortcuts';
 import { EXPORT_FORMATS, EXPORT_LABELS } from './export';
+import { DEVICE_LABEL, DEVICE_MARK } from './kernel-device';
 
 /**
  * The command palette's entries (#211): every command in the shortcuts
@@ -24,6 +25,10 @@ export type PaletteEntry = {
   prompt?: string;
   /** Typed text to start that prompt with. */
   initial?: string;
+  /** Accessible name when different from `label` (such as the ◆ device mark). */
+  ariaLabel?: string;
+  /** Tooltip text, if any. */
+  title?: string;
   /** Why it can't run now; it is listed but can't be picked. */
   disabled?: boolean;
 };
@@ -35,7 +40,7 @@ export type PaletteContext = {
   /** The folder new notebooks go in ('' for the root). */
   folder: string;
   /** The kernels a notebook can switch to. */
-  kernels: { name: string; displayName: string }[];
+  kernels: { name: string; displayName: string; device?: boolean }[];
   /** The running kernel's name, if any. */
   kernel?: string;
   /** Recent notebooks, newest first. */
@@ -161,10 +166,21 @@ export function paletteEntries(context: PaletteContext): PaletteEntry[] {
     app('interrupt', 'Interrupt Kernel', 'Kernel', { disabled: !open }),
     app('restart', 'Restart Kernel', 'Kernel', { disabled: !open }),
     ...context.kernels.map(k =>
-      app('change-kernel', `Change Kernel to ${k.displayName}`, 'Kernel', {
-        arg: k.name,
-        disabled: !open || readOnly || k.name === context.kernel,
-      }),
+      app(
+        'change-kernel',
+        `Change Kernel to ${k.device ? `${k.displayName} ${DEVICE_MARK}` : k.displayName}`,
+        'Kernel',
+        {
+          arg: k.name,
+          disabled: !open || readOnly || k.name === context.kernel,
+          ...(k.device
+            ? {
+                ariaLabel: `Change Kernel to ${k.displayName}, ${DEVICE_LABEL}`,
+                title: DEVICE_LABEL,
+              }
+            : {}),
+        },
+      ),
     ),
     ...SHORTCUTS.filter(s => !LEFT_OUT.has(s.id)).map(s =>
       app(s.id, sentence(s.label), s.group === 'Notebook' ? 'Cell' : s.group, {

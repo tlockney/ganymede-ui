@@ -13,6 +13,7 @@ import {
   roomClosed,
   saveFailed,
   stateReset,
+  kernelLost,
   ACTION_LABEL,
 } from './problems';
 
@@ -120,6 +121,21 @@ describe('problems', () => {
     // The journal runs no cells: no button, and the hint says where it is.
     expect(stateReset(true)).toMatchObject({ kind: 'state-reset', actions: [] });
     expect(stateReset(true).hint).toMatch(/Open as Notebook/);
+  });
+
+  it('offers Restart & Run All when the server restarted a lost kernel (#469)', () => {
+    expect(kernelLost()).toMatchObject({
+      kind: 'kernel-lost',
+      message: 'The system ended the kernel, so the server restarted it.',
+      actions: ['restart-run-all'],
+    });
+    expect(kernelLost(true)).toMatchObject({ kind: 'kernel-lost', actions: [] });
+    expect(kernelLost(true).hint).toMatch(/Open as Notebook/);
+    expect(kernelDead('TypeScript', false, true)).toMatchObject({
+      kind: 'kernel-dead',
+      message: 'The system ended the TypeScript kernel, and it wasn’t restarted.',
+      actions: ['restart'],
+    });
   });
 
   it('offers Retry when the connection is lost', () => {

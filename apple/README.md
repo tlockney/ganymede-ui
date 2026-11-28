@@ -30,7 +30,11 @@ it. The iPad and iPhone app is built from the same sources as the Mac's
   view, registered with the app's server as one of its kernels
   (`AppKernels.swift`, ganymede#266): the page reaches it through the
   server's API like any other kernel, and it keeps running across a
-  window's reload. Its cells get the `device` API (see
+  window's reload — and, on the Mac, in an invisible offscreen host
+  window when all notebook windows close. Repeated `lost` terminations
+  are capped so a crashing kernel stops cleanly rather than looping, and
+  `device` permission prompts route to the window showing the calling
+  kernel's notebook. Its cells get the `device` API (see
   [docs/device.md](../docs/device.md)).
 
 - Not sandboxed on the Mac: the App Sandbox does not allow launching

@@ -117,10 +117,14 @@ struct KernelSpecRow: View {
         return "\(spec.displayName) · \(remote)"
     }
 
+    private var pickerName: String { spec.device ? "\(name) ◆" : name }
+    private var pickerLabel: String { spec.device ? "\(name), offers the device API" : name }
+
     private var summary: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                Text(name)
+                Text(pickerName)
+                    .accessibilityLabel(pickerLabel)
                 Text([spec.name, spec.language].compactMap { $0 }.joined(separator: " · "))
                     .font(.caption)
                     .foregroundStyle(.secondary)

@@ -81,6 +81,21 @@ final class AppKernels: NSObject {
     /// The run each running kernel is on, by kernel id.
     private var runs: [String: Run] = [:]
     private var lastRun = 0
+    /// How many recent `lost` endings each kernel can trigger before
+    /// `AppKernels` stops restarting it (#469).
+    let maxLostRestarts: Int
+    /// Window over which `lost` endings count toward `maxLostRestarts`.
+    let lostRestartWindow: TimeInterval
+    private let now: @MainActor () -> Date
+    private var losses: [String: [Date]] = [:]
+    /// Called on the main actor when `maxLostRestarts` stops a restart.
+    var onLostRestartLimit: ((String) -> Void)?
+    #if os(macOS)
+    /// Offscreen host window keeping the kernel web view scheduled when all
+    /// Mac notebook windows close while kernels remain running (#469).
+    private var hostWindow: NSWindow?
+    nonisolated(unsafe) private var runningActivity: NSObjectProtocol?
+    #endif
 
     /// What notebook paths in `launch` are under when relative: the app
     /// server's root folder. The ledger keeps each notebook by absolute path.
@@ -97,7 +112,17 @@ final class AppKernels: NSObject {
     /// `device` is the bridge cells reach (the system's when nil); tests
     /// pass one with a fake presenter, `prompts`, a presenter for the
     /// ledger's prompts, and `folders`, the grants that bridge was given.
-    init(device: DeviceBridge? = nil, prompts: DialogPresenter? = nil, folders: FolderGrants? = nil) {
+    init(
+        device: DeviceBridge? = nil,
+        prompts: DialogPresenter? = nil,
+        folders: FolderGrants? = nil,
+        maxLostRestarts: Int = 3,
+        lostRestartWindow: TimeInterval = 300,
+        now: @escaping @MainActor () -> Date = Date.init
+    ) {
+        self.maxLostRestarts = maxLostRestarts
+        self.lostRestartWindow = lostRestartWindow
+        self.now = now
         let config = WKWebViewConfiguration()
         // Not on screen, but cells must keep running at full speed.
         config.preferences.inactiveSchedulingPolicy = .none
@@ -136,9 +161,24 @@ final class AppKernels: NSObject {
         webView.isInspectable = true
         #if os(macOS)
         webView.alphaValue = 0
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(windowWillClose(_:)),
+            name: NSWindow.willCloseNotification,
+            object: nil
+        )
         #else
         webView.alpha = 0
         webView.isUserInteractionEnabled = false
+        #endif
+    }
+
+    deinit {
+        #if os(macOS)
+        NotificationCenter.default.removeObserver(self)
+        if let activity = runningActivity {
+            ProcessInfo.processInfo.endActivity(activity)
+        }
         #endif
     }
 
@@ -165,26 +205,151 @@ final class AppKernels: NSObject {
 
     /// `ui`, a notebook page, can hold the kernel web view.
     func lend(_ ui: WKWebView) {
+        let existingNotebook = hosts.first(where: { $0.view === ui })?.notebook
         hosts.removeAll { $0.view == nil || $0.view === ui }
-        hosts.append(WeakView(view: ui))
+        hosts.append(WeakView(view: ui, notebook: existingNotebook))
+        #if os(macOS)
+        if ui.window != nil {
+            if webView.window == nil || webView.window === hostWindow {
+                ui.addSubview(webView)
+                hostWindow?.orderOut(nil)
+            }
+        } else if webView.window == nil {
+            ui.addSubview(webView)
+        }
+        #else
         if webView.window == nil { ui.addSubview(webView) }
+        #endif
+    }
+
+    /// `ui` no longer lends itself (closed, dismantled, or switched to a
+    /// remote machine).
+    func unlend(_ ui: WKWebView) {
+        hosts.removeAll { $0.view == nil || $0.view === ui }
+        if webView.superview === ui {
+            webView.removeFromSuperview()
+        }
+        keepInWindow()
+    }
+
+    /// Records the resolved notebook path `ui` currently shows, so a kernel's
+    /// `device` permission prompts target the window showing its notebook (#469).
+    func showing(_ notebook: String?, in ui: WKWebView) {
+        for i in hosts.indices where hosts[i].view === ui {
+            hosts[i].notebook = notebook
+        }
+        #if os(macOS)
+        if ui.window != nil, webView.window == nil || webView.window === hostWindow {
+            keepInWindow()
+        }
+        #endif
     }
 
     /// The notebook pages the kernel web view was lent, for the tests: a
     /// machine's window lends nothing (#877).
     var lentPages: [WKWebView] { hosts.compactMap(\.view) }
 
-    /// The last notebook page lent that is still in a window, or any left.
+    /// The last notebook page lent that is still in a live window, or any left.
     private func liveHost() -> WKWebView? {
         hosts.removeAll { $0.view == nil }
-        return hosts.last { $0.view?.window != nil }?.view ?? hosts.last?.view
+        return hosts.last { $0.view.map(isLiveHostView) ?? false }?.view
+            ?? hosts.last { $0.view?.window != nil }?.view
+            ?? hosts.last?.view
     }
 
-    /// Back in a window if the one it was in closed.
+    private func isLiveHostView(_ view: WKWebView) -> Bool {
+        guard let window = view.window else { return false }
+        #if os(macOS)
+        return window.isVisible || window.isMiniaturized
+        #else
+        return true
+        #endif
+    }
+
+    /// Back in a window if the one it was in closed. On macOS, falls back to
+    /// an invisible offscreen `NSWindow` while kernels stay running so WebKit
+    /// does not suspend the kernel web view when all notebook windows close (#469).
+    #if os(macOS)
+    private func keepInWindow(closing closingWindow: NSWindow? = nil) {
+        hosts.removeAll { $0.view == nil }
+        let openHosts = Array(hosts.compactMap(\.view).reversed().filter { view in
+            guard let window = view.window, window !== closingWindow else { return false }
+            return window.isVisible || window.isMiniaturized
+        })
+        if let host = frontmost(in: openHosts, matchTabSelection: true, windowOf: { $0.window }) {
+            if webView.superview !== host { host.addSubview(webView) }
+            hostWindow?.orderOut(nil)
+            return
+        }
+        if !runs.isEmpty {
+            let window = ensureHostWindow()
+            if let content = window.contentView, webView.superview !== content {
+                content.addSubview(webView)
+            }
+            window.orderBack(nil)
+            return
+        }
+        if webView.window === closingWindow {
+            webView.removeFromSuperview()
+        }
+        hostWindow?.orderOut(nil)
+    }
+
+    private func ensureHostWindow() -> NSWindow {
+        if let hostWindow { return hostWindow }
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 1, height: 1),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        window.isExcludedFromWindowsMenu = true
+        window.isRestorable = false
+        window.canHide = false
+        window.hidesOnDeactivate = false
+        window.ignoresMouseEvents = true
+        window.hasShadow = false
+        window.isOpaque = false
+        window.backgroundColor = .clear
+        window.alphaValue = 0
+        window.tabbingMode = .disallowed
+        window.collectionBehavior = [.stationary, .ignoresCycle, .canJoinAllSpaces]
+        hostWindow = window
+        return window
+    }
+
+    @objc private func windowWillClose(_ notification: Notification) {
+        guard let window = notification.object as? NSWindow,
+              webView.window === window || hosts.contains(where: { $0.view?.window === window })
+        else { return }
+        keepInWindow(closing: window)
+    }
+
+    private func updateActivity() {
+        if runs.isEmpty {
+            if let activity = runningActivity {
+                ProcessInfo.processInfo.endActivity(activity)
+                runningActivity = nil
+            }
+            if hostWindow?.isVisible == true {
+                keepInWindow()
+            }
+        } else if runningActivity == nil {
+            runningActivity = ProcessInfo.processInfo.beginActivity(
+                options: .userInitiatedAllowingIdleSystemSleep,
+                reason: "Running in-app TypeScript kernels"
+            )
+        }
+    }
+    #else
     private func keepInWindow() {
         guard webView.window == nil, let host = frontHost() ?? liveHost(), host !== webView.superview else { return }
         host.addSubview(webView)
     }
+
+    private func updateActivity() {}
+    #endif
 
     /// Resolves the UI web view whose window runs the kernel for `owner`, or
     /// `nil` when no matching notebook page is open (so dialogs fall back to
@@ -199,10 +364,7 @@ final class AppKernels: NSObject {
     private func host(forKernel kernel: String?, notebook: String?) -> WKWebView? {
         hosts.removeAll { $0.view == nil }
         let open = PageModel.attachedPages.allObjects.filter { page in
-            guard let view = page.webView, let window = view.window else { return false }
-            #if os(macOS)
-            guard window.isVisible || window.isMiniaturized else { return false }
-            #endif
+            guard let view = page.webView, isLiveHostView(view) else { return false }
             return hosts.isEmpty || hosts.contains { $0.view === view }
         }
         if let kernel {
@@ -213,6 +375,13 @@ final class AppKernels: NSObject {
             let resolved = resolve(notebook)
             let byPath = open.filter { $0.state.path.map(resolve) == resolved }
             if let match = preferredPage(in: byPath)?.webView { return match }
+            let byLent = hosts.compactMap { entry -> WKWebView? in
+                guard let view = entry.view, entry.notebook == resolved, isLiveHostView(view) else { return nil }
+                return view
+            }
+            if let match = frontmost(in: byLent, matchTabSelection: false, windowOf: { $0.window }) {
+                return match
+            }
         }
         return nil
     }
@@ -226,7 +395,7 @@ final class AppKernels: NSObject {
     /// The lent notebook page in the frontmost visible window, or `liveHost()`.
     private func frontHost() -> WKWebView? {
         hosts.removeAll { $0.view == nil }
-        let lent = Array(hosts.compactMap(\.view).reversed())
+        let lent = Array(hosts.compactMap(\.view).reversed().filter { isLiveHostView($0) })
         return frontmost(in: lent, matchTabSelection: true) { $0.window } ?? liveHost()
     }
 
@@ -256,11 +425,28 @@ final class AppKernels: NSObject {
     }
     #endif
 
+    private func recentLosses(for kernel: String, at date: Date) -> [Date] {
+        let cutoff = date.addingTimeInterval(-lostRestartWindow)
+        let kept = (losses[kernel] ?? []).filter { $0 >= cutoff }
+        if kept.isEmpty {
+            losses.removeValue(forKey: kernel)
+        } else {
+            losses[kernel] = kept
+        }
+        return kept
+    }
+
     func handle(_ event: KernelEvent, from server: any KernelSink, notebookRoot root: URL? = nil) {
         switch event {
         case .start(let kernel, let serverRun, let launch):
+            if maxLostRestarts >= 0, recentLosses(for: kernel, at: now()).count > maxLostRestarts {
+                server.ended(kernel, run: serverRun, reason: "lost")
+                onLostRestartLimit?(kernel)
+                return
+            }
             lastRun += 1
             runs[kernel] = Run(number: lastRun, server: server, serverRun: serverRun)
+            updateActivity()
             notebooks[kernel] = Self.notebook(in: launch).map { Self.resolve($0, under: root ?? notebookRoot) }
             tellBridge(kernel)
             var start: [String: Any] = ["kernel": kernel, "op": "start", "run": lastRun]
@@ -271,9 +457,11 @@ final class AppKernels: NSObject {
             toPage(["kernel": kernel, "op": "send", "channel": channel, "json": message])
         case .stop(let kernel):
             guard runs[kernel]?.server === server else { return }
+            losses[kernel] = nil
             runs[kernel] = nil
             notebooks[kernel] = nil
             owners[kernel] = nil
+            updateActivity()
             toPage(["kernel": kernel, "op": "stop"])
         }
     }
@@ -284,11 +472,13 @@ final class AppKernels: NSObject {
     func detach(_ server: any KernelSink) {
         let owned = runs.compactMap { $0.value.server === server ? $0.key : nil }
         for kernel in owned.sorted() {
+            losses[kernel] = nil
             runs[kernel] = nil
             notebooks[kernel] = nil
             owners[kernel] = nil
             toPage(["kernel": kernel, "op": "stop"])
         }
+        updateActivity()
     }
 
     /// `env.JPY_SESSION_NAME` in a start's launch JSON: the notebook's path.
@@ -383,6 +573,7 @@ final class AppKernels: NSObject {
             guard let kernel = body["kernel"] as? String, let run = current(kernel, body) else { return }
             runs[kernel] = nil
             owners[kernel] = nil
+            updateActivity()
             run.server.ended(kernel, run: run.serverRun, reason: "exited")
         default:
             break
@@ -398,8 +589,8 @@ final class AppKernels: NSObject {
     /// The kernel page's process died, and every kernel in it: iOS ends it
     /// under memory pressure, more so with a Pyodide heap, and a suspended
     /// app's soon after (#293). The server restarts each without counting
-    /// a crash (`reason` other than `lost` counts one); the restart loads a
-    /// new kernel page.
+    /// a crash (`reason` other than `lost` counts one); `AppKernels` also
+    /// bounds repeated `lost` restarts (#469).
     func kernelPageEnded(reason: String = "lost") {
         device.dropPage()
         let lost = runs
@@ -408,9 +599,16 @@ final class AppKernels: NSObject {
         loaded = false
         ready = false
         pending = []
+        let timestamp = now()
         for (kernel, run) in lost.sorted(by: { $0.key < $1.key }) {
+            if reason == "lost" {
+                var history = recentLosses(for: kernel, at: timestamp)
+                history.append(timestamp)
+                losses[kernel] = history
+            }
             run.server.ended(kernel, run: run.serverRun, reason: reason)
         }
+        updateActivity()
     }
 
     /// The kernel page goes, with any kernels left in it (none once their
@@ -439,6 +637,11 @@ final class AppKernels: NSObject {
             if let to = rename(path) { device.notebookMoved(from: path, to: to) }
         }
         notebooks = notebooks.mapValues { rename($0) ?? $0 }
+        for i in hosts.indices {
+            if let path = hosts[i].notebook, let to = rename(path) {
+                hosts[i].notebook = to
+            }
+        }
     }
 
     /// A notebook path from the server as the ledger keeps it.
@@ -520,6 +723,7 @@ extension AppKernels: WKNavigationDelegate {
 
 private struct WeakView {
     weak var view: WKWebView?
+    var notebook: String?
 }
 
 /// WKUserContentController keeps its handlers alive; this keeps the
