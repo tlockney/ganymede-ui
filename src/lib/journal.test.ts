@@ -3,6 +3,8 @@ import {
   agentNames,
   chooseView,
   chosenView,
+  displayTitle,
+  displayTitleOf,
   forgetChosenViews,
   journalHeader,
   moveChosenViews,
@@ -431,6 +433,51 @@ describe('journalHeader', () => {
     expect(notebookTitle({ title: '  ' })).toBeUndefined();
     expect(notebookTitle({ title: 4 })).toBeUndefined();
     expect(notebookTitle(undefined)).toBeUndefined();
+  });
+
+  it('takes a notebook’s display title from its title, else its first H1 (#892)', () => {
+    const cells = [
+      { type: 'markdown', source: '# **Fremont** Bridge\n\nA journal.' },
+      { type: 'code', source: 'bridge = 1' },
+    ];
+    // metadata.title wins, whatever the cells say.
+    expect(displayTitleOf({ title: 'Io moons' }, cells)).toBe('Io moons');
+    // No title: the first level-1 heading, its markup stripped.
+    expect(displayTitleOf({}, cells)).toBe('Fremont Bridge');
+    expect(displayTitleOf(undefined, cells)).toBe('Fremont Bridge');
+    // Only an H2: no display title, so the app falls back to the file.
+    expect(displayTitleOf({}, [{ type: 'markdown', source: '## Fremont Bridge' }])).toBeUndefined();
+    // Neither.
+    expect(displayTitleOf({}, [])).toBeUndefined();
+    expect(displayTitleOf({}, [{ type: 'markdown', source: 'Just prose.' }])).toBeUndefined();
+    // The first H1, not a later one, and not one in a code cell.
+    expect(
+      displayTitleOf({}, [
+        { type: 'markdown', source: '## First\n\n# Second\n\n# Third' },
+        { type: 'code', source: '# comment' },
+      ]),
+    ).toBe('Second');
+  });
+
+  it('reads the display title from an outline it is handed (#892)', () => {
+    // `NotebookPane` keeps an outline for the outline tab and passes it, so
+    // the view doesn't compute the headings twice.
+    const outline = [
+      { level: 2, text: 'First', cell: 0 },
+      { level: 1, text: 'Second', cell: 0 },
+    ];
+    expect(displayTitle({}, outline)).toBe('Second');
+    expect(displayTitle({ title: 'Io moons' }, outline)).toBe('Io moons');
+    expect(displayTitle({}, [{ level: 2, text: 'First', cell: 0 }])).toBeUndefined();
+  });
+
+  it('counts a setext and an HTML heading as the first level-1 heading (#892)', () => {
+    expect(displayTitleOf({}, [{ type: 'markdown', source: 'Fremont Bridge\n===' }])).toBe(
+      'Fremont Bridge',
+    );
+    expect(displayTitleOf({}, [{ type: 'markdown', source: '<h1>Fremont Bridge</h1>' }])).toBe(
+      'Fremont Bridge',
+    );
   });
 
   it('reads a notebook’s language from its kernelspec, else its language info (#867)', () => {

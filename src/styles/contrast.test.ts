@@ -409,4 +409,63 @@ describe('secondary metadata text (#814)', () => {
       }
     });
   }
+
+  /*
+   * The Mac toolbar's colours (#892) are colorsets in the app's asset
+   * catalog, not the stylesheets: the Run button's fill and the text on
+   * it, and the title on the window's surface. They read at AA in both
+   * appearances too, so a change to a colorset fails here.
+   */
+  type ColorSet = {
+    colors?: {
+      appearances?: { appearance: string; value: string }[];
+      color?: { components?: Record<string, string> };
+    }[];
+  };
+  function colorset(name: string, theme: Theme): RGBA {
+    const file = new URL(
+      `apple/Resources/macOS/Assets.xcassets/${name}.colorset/Contents.json`,
+      // Vitest runs from the repository root, and `import.meta.url` is not
+      // the file's place under its jsdom environment.
+      `file://${process.cwd()}/`,
+    );
+    const entries = (JSON.parse(readFileSync(file, 'utf8')) as ColorSet).colors ?? [];
+    const dark = entries.find(e =>
+      e.appearances?.some(a => a.appearance === 'luminosity' && a.value === 'dark'),
+    );
+    const light = entries.find(e => !e.appearances?.length);
+    const pick = (theme === 'dark' ? dark : light) ?? light;
+    const c = pick?.color?.components;
+    if (!c) throw new Error(`no ${theme} colour in ${name}.colorset`);
+    // Asset catalogs write a component three ways: "0.5" (0–1), "0xF9"
+    // (0–255 hexadecimal, as Xcode 15 writes them) and "128" (0–255
+    // decimal). Read all three, and refuse anything above 255 rather than
+    // quietly comparing a wrong colour. A decimal with a point is 0–1
+    // ("1.000" is full); one without is 0–255 ("1" is nearly black).
+    const component = (key: string) => {
+      const raw = c[key];
+      if (raw === undefined) throw new Error(`no ${key} in ${name}.colorset's ${theme} colour`);
+      const value = raw.trim();
+      const hex = /^0x([0-9a-f]+)$/i.exec(value);
+      const n = hex ? parseInt(hex[1], 16) : Number(value);
+      if (!Number.isFinite(n) || n < 0) throw new Error(`${name}.colorset's ${key} isn't a number`);
+      if (n > 255) throw new Error(`${name}.colorset's ${key} is above 255: ${value}`);
+      if (hex || !value.includes('.')) return n;
+      return n > 1 ? n : n * 255;
+    };
+    return [component('red'), component('green'), component('blue'), 1];
+  }
+
+  for (const theme of themes) {
+    it(`the Mac toolbar's coloursets read at ${AA}:1 in ${theme} (#892)`, () => {
+      const pairs: [fg: string, bg: string][] = [
+        ['OnAccent', 'AccentFill'],
+        ['TitleText', 'WindowBackground'],
+      ];
+      for (const [fg, bg] of pairs) {
+        const ratio = contrast(colorset(fg, theme), colorset(bg, theme));
+        expect(ratio, `${fg} on ${bg} ${ratio.toFixed(2)}`).toBeGreaterThanOrEqual(AA);
+      }
+    });
+  }
 });

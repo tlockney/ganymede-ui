@@ -376,6 +376,33 @@ describe('NotebookPane', () => {
     expect(latest()!.title).toBeUndefined();
   });
 
+  // #892's display title: the pane reports `displayTitle`, not just the
+  // metadata's title, so the toolbar and the tab follow a notebook's first
+  // `#` heading. A pane that went back to `notebookTitle(metadata)` would
+  // report no title for the first and the metadata title for the second.
+  it('reports a notebook’s first `#` heading when its metadata has no title (#892)', async () => {
+    const headed = structuredClone(NOTEBOOK);
+    headed.cells.push({ cell_type: 'markdown', id: 'h1', source: '# Heading', metadata: {} });
+    const { latest } = setup(vi.fn(async () => ({ path: 'moons/Io.ipynb', content: headed })));
+    await waitFor(() => expect(latest()?.title).toBe('Heading'));
+  });
+
+  it('reports the metadata title over the first `#` heading (#892)', async () => {
+    const named = structuredClone(NOTEBOOK);
+    named.metadata.title = 'Io moons';
+    named.cells.push({ cell_type: 'markdown', id: 'h1', source: '# Heading', metadata: {} });
+    const { latest } = setup(vi.fn(async () => ({ path: 'moons/Io.ipynb', content: named })));
+    await waitFor(() => expect(latest()?.title).toBe('Io moons'));
+  });
+
+  it('reports no title for neither a metadata title nor a `#` heading (#892)', async () => {
+    const plain = structuredClone(NOTEBOOK);
+    plain.cells.push({ cell_type: 'markdown', id: 'h2', source: '## Heading', metadata: {} });
+    const { latest } = setup(vi.fn(async () => ({ path: 'moons/Io.ipynb', content: plain })));
+    await waitFor(() => expect(latest()).toBeDefined());
+    expect(latest()!.title).toBeUndefined();
+  });
+
   it('opens a notebook an agent kept as a journal, and switches to the notebook and back (#184)', async () => {
     const kept = structuredClone(NOTEBOOK);
     kept.cells[0]!.metadata = {

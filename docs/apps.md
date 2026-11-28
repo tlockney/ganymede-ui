@@ -132,9 +132,25 @@ Settings > Remotes.
 
 ### Toolbar and menus
 
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, v0.17.1: there a notebook's window is titled with
+> its file's name (it knows no `metadata.title`), the title sits in the
+> system's titlebar with the whole status line as its subtitle ("Saved on
+> This Mac · Runs on This Mac · TypeScript") and the kernel's button
+> carries only the kernel's name, New Notebook is a toolbar button, the
+> toolbar reads "Run Cell" with Interrupt in a capsule of its own, and
+> every other control — Trust, Access, Notebook | Journal, the kernel's
+> button, Share, More, the Terminal Panel's button and the inspector's —
+> has a capsule of its own.
+
 - A notebook's window has its title in the toolbar, with the kernel's
-  button beside it. The title is the notebook's own (`metadata.title`) or
-  its file's name, and the button reads "Python · This Mac · Idle ⌄":
+  button beside it. The title is the notebook's display title: its
+  `metadata.title`, else the plain text of its first level-1 heading — a
+  `#` heading, a setext heading underlined with `===`, or an `<h1>` — else
+  the file's name without its date. The sidebar and its tooltips keep the
+  file's name; the toolbar's title, the window's title and its tab are the
+  display title. The button reads "Python · This Mac · Idle ⌄":
   the notebook's language, where its kernel runs, and what the kernel is
   doing — Idle, Running, Starting, Restarting, Stopping, Stopped, or
   Connecting while it reaches a kernel that runs on a remote. Under the title, when there
@@ -153,22 +169,19 @@ Settings > Remotes.
 - The toolbar's controls stay in one order, so none moves under the
   pointer: the title and the kernel's button; Trust and Notebook Access, which
   are there only while they apply; Notebook | Journal, the notebook's two
-  views, there while a notebook is open; **Run Cell**, whose menu has Run
-  All, Run with Parameters…, Clear All Outputs, Restart Kernel and Restart
-  & Run All, with **Interrupt** beside it, always there and enabled while
-  the kernel runs; Share (download, export, publish); and ⋯, which has View
-  as Journal, Insert Code Cell, Insert Markdown Cell, Cell Type and Save.
-  Run All is only in Run Cell's menu, so the two can't be mistaken for
+  views, there while a notebook is open; **Run**, which fills the leading
+  segment of one capsule with its menu's arrow and **Interrupt** — the
+  toolbar's only filled control — its menu holding Run All, Run with
+  Parameters…, Clear All Outputs, Restart Kernel and Restart & Run All,
+  with Interrupt at the capsule's end, always there and enabled while the
+  kernel runs; and Share (download, export, publish), ⋯ and the
+  inspector's toggle in one capsule, where ⋯ has View as Journal, Insert
+  Code Cell, Insert Markdown Cell, Cell Type, Save, and Show/Hide
+  Terminal Panel.
+  Run All is only in Run's menu, so the two can't be mistaken for
   each other. New Notebook isn't a toolbar button: File > New Notebook
   (⌘N) makes one in the window's folder, as the sidebar's menu does.
   Everything in these menus is also in the menu bar.
-
-> [!NOTE]
-> **Unreleased.** Available only from a build of `main` (HEAD), not in
-> the latest release, where the status line under the title has the whole
-> line ("Saved on This Mac · Runs on This Mac · TypeScript"), the
-> toolbar's kernel button reads only the kernel's name, New Notebook is in
-> the toolbar, and Run Cell and Interrupt stand apart.
 
 - The Cell menu runs, runs with parameters, inserts, moves and deletes
   cells, clears all outputs, collapses and expands code, goes to a definition and renames a symbol (see
@@ -261,8 +274,8 @@ Settings > Remotes.
 ### Terminals and the kernel log
 
 - Terminals open in the window's bottom panel, as tabs under the
-  notebook. View > Show Terminal Panel (`` ⌃` ``) or the toolbar button
-  shows it, starting a shell in the window's folder (its notebook's
+  notebook. View > Show Terminal Panel (`` ⌃` ``) or ⋯ > Show Terminal
+  Panel shows it, starting a shell in the window's folder (its notebook's
   folder, or the folder it shows) if it has none; drag its top edge to
   resize it. Hiding the panel keeps its shells running; closing a tab
   ends that one. Since `` ⌃` `` toggles the panel, programs in a panel

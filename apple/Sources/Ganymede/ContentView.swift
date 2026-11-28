@@ -176,34 +176,21 @@ struct ContentView: View {
                 panel: place.isThisDevice ? panel : nil, place: place, header: headerStatus,
                 // A notebook's title, drawn with the kernel's button beside
                 // it (#867); a console or a folder keeps the system's.
-                title: showsNotebook ? windowTitle : nil)
-            // The panel is every window's: a machine's terminals run on the
-            // machine (#858), and a machine whose remote is gone keeps its
-            // panel too, empty, for the remotes' terminals there.
-            ToolbarItem {
-                Button {
-                    panel.toggle(startingOn: windowTerminal)
-                } label: {
-                    Label(panel.isShown ? "Hide Terminal Panel" : "Show Terminal Panel", systemImage: "rectangle.bottomthird.inset.filled")
-                }
-                .help(panel.isShown ? "Hide the terminal panel (⌃`)" : "Show the terminal panel (⌃`)")
-            }
-            // Only a tab with a notebook has an inspector (#729).
-            if showsNotebook {
-                ToolbarItem {
-                    Button {
-                        inspector.toggle()
-                    } label: {
-                        Label(inspector.isShown ? "Hide Inspector" : "Show Inspector", systemImage: "sidebar.right")
-                    }
-                    .help(inspector.isShown ? "Hide the inspector (⌥⌘0)" : "Show the inspector (⌥⌘0)")
-                }
-            }
-            if let available = updater.available {
-                ToolbarItem {
-                    UpdateAvailableButton(available: available)
-                }
-            }
+                title: showsNotebook ? windowTitle : nil,
+                // The right group's inspector toggle, and More's terminal
+                // panel item (#892): the panel is every window's — a
+                // machine's terminals run on the machine (#858), and a
+                // machine whose remote is gone keeps its panel too, empty,
+                // for the remotes' terminals there. Only a tab with a
+                // notebook has an inspector (#729).
+                inspectorShown: showsNotebook ? inspector.isShown : nil,
+                toggleInspector: { inspector.toggle() },
+                panelShown: panel.isShown,
+                toggleTerminalPanel: { panel.toggle(startingOn: windowTerminal) },
+                // An update that's ready sits at the end of the toolbar's
+                // leading region, so its arrival moves nothing to its right
+                // (#812).
+                update: updater.available)
         }
         // The status line (#812). The system draws it and it isn't
         // clickable: the kernel button's popover opens the details. A
@@ -225,6 +212,11 @@ struct ContentView: View {
         // them would rebuild the window's web view when a notebook opens or
         // closes in place.
         .toolbar(removing: showsNotebook ? .title : nil)
+        // The toolbar's band takes the page's own window colour on a
+        // notebook window (#892), so the toolbar and the page read as one
+        // surface; a console's, a folder's and a machine's window keep the
+        // system's toolbar.
+        .modifier(NotebookSurface(notebook: showsNotebook))
         // Notebooks opened from the Finder (#228): the first window to see
         // them takes them. Each opens in a new tab (or brings forward
         // the one showing it), except that the window the app opened on
@@ -267,6 +259,11 @@ struct ContentView: View {
         .onChange(of: sidebarRoot) { _, new in
             savedSidebar = FolderEntry.storageKey(new)
             if let window = document.window { noteWindow(window) }
+        }
+        // A notebook that opens or closes in this window changes whether the
+        // window is one surface with its toolbar (#892).
+        .onChange(of: showsNotebook) { _, _ in
+            if let window = document.window { noteSurface(window) }
         }
         // Back from Terminal, where a kernelspec may have been installed
         // or removed: the page asks the server for its kernels again
@@ -717,6 +714,33 @@ struct ContentView: View {
         }
         // A machine's folder is no folder for a start window on this Mac.
         WorkspaceTabs.note(window, folder: place.isThisDevice ? sidebarRoot : nil, start: start)
+        noteSurface(window)
+    }
+
+    /// A notebook's window is one surface (#892): the window behind the
+    /// toolbar and the title-bar band above it take the page's own window
+    /// colour, so no strip of the system's near-black or grey sits between
+    /// the top edge and the page. A console's, a folder's and a machine's
+    /// window go back to the system's window colour.
+    ///
+    /// Set once per window and state, never on every layout pass: assigning a
+    /// window's background colour from a layout or render pass sent AppKit
+    /// round in circles, the main thread redrawing the window forever (the
+    /// toolbar read the assignment back as a preference change). The set
+    /// below is what makes "once" possible — two dynamic catalog colours
+    /// never compare equal, so the colour alone can't tell whether this
+    /// window already has it.
+    private func noteSurface(_ window: NSWindow) {
+        if showsNotebook {
+            guard let colour = NSColor(named: "WindowBackground"),
+                  !NotebookSurfaces.shared.contains(window) else { return }
+            NotebookSurfaces.shared.add(window)
+            window.backgroundColor = colour
+        } else {
+            guard NotebookSurfaces.shared.contains(window) else { return }
+            NotebookSurfaces.shared.remove(window)
+            window.backgroundColor = .windowBackgroundColor
+        }
     }
 
     private func bringForward(_ window: NSWindow) {
@@ -1428,5 +1452,28 @@ private struct InspectorAvailability: ViewModifier {
                 if !visible, fillsWindow { restore() }
             }
     }
+}
+
+/// The toolbar's band on a notebook window (#892): the page's own window
+/// colour rather than the system's material, so the toolbar and the page
+/// below it read as one surface. Other windows keep the system's toolbar,
+/// under its own band and separator.
+private struct NotebookSurface: ViewModifier {
+    var notebook: Bool
+
+    func body(content: Content) -> some View {
+        content
+            .toolbarBackground(
+                notebook ? AnyShapeStyle(Color("WindowBackground")) : AnyShapeStyle(.bar),
+                for: .windowToolbar)
+            .toolbarBackgroundVisibility(notebook ? .visible : .automatic, for: .windowToolbar)
+    }
+}
+
+/// The windows that have taken a notebook's window colour (#892). A weak set,
+/// so a closed window leaves it by itself.
+@MainActor
+private enum NotebookSurfaces {
+    static let shared = NSHashTable<NSWindow>.weakObjects()
 }
 #endif

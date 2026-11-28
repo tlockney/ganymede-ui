@@ -595,6 +595,7 @@ targets:
       - path: Sources/Ganymede/Terminal/TerminalTarget.swift
       - path: Sources/Ganymede/PanelController.swift
       - path: Sources/Ganymede/InspectorController.swift
+      - path: Sources/Ganymede/ToolbarMenu.swift
       - path: Sources/Ganymede/WindowLayout.swift
       - path: Sources/Ganymede/Terminal/OpenTerminals.swift
       - path: Sources/Ganymede/Terminal/TerminalHandoff.swift
@@ -686,6 +687,7 @@ targets:
       - path: Sources/Ganymede/Terminal/TerminalTarget.swift
       - path: Sources/Ganymede/PanelController.swift
       - path: Sources/Ganymede/InspectorController.swift
+      - path: Sources/Ganymede/ToolbarMenu.swift
       - path: Sources/Ganymede/WindowLayout.swift
       - path: Sources/Ganymede/Terminal/OpenTerminals.swift
       - path: Sources/Ganymede/Terminal/JupyterTerminalTransport.swift

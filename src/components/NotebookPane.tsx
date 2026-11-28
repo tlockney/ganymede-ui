@@ -24,10 +24,10 @@ import {
   SLIVER_PX,
   chooseView,
   chosenView,
+  displayTitle,
   firstVisibleJournalCell,
   hasAgentCells,
   journalHeader,
-  notebookTitle,
   notebookLanguage,
   trustedCellIds,
 } from '../lib/journal';
@@ -93,8 +93,9 @@ export type NotebookController = {
   path: string;
   name: string;
   /**
-   * The notebook's `metadata.title`, when it has one (#867): the app's
-   * windows call it that, where the file's name isn't the title.
+   * The notebook's display title when it has one (#867, #892): its
+   * `metadata.title`, else its first `#` heading's text, the name the
+   * app's tabs and windows call it where the file's name isn't the title.
    */
   title?: string;
   /**
@@ -1181,9 +1182,11 @@ export function NotebookPane({
       });
       const next = outlineOf(cells);
       const key = JSON.stringify(next);
-      // The notebook's title (#867), as the metadata has it: a live room
-      // changes it without reopening the file.
-      setTitle(notebookTitle(model.metadata));
+      // The notebook's title (#867): its metadata's, else its first `#`
+      // heading's (#892), as a live room changes either without
+      // reopening the file. `next` is that heading's outline, already read
+      // for the outline tab.
+      setTitle(displayTitle(model.metadata, next));
       // Its language, as the file names it; the running kernel's own
       // kernelspec is asked first (#867).
       setLanguage(notebookLanguage(model.metadata));
