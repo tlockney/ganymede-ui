@@ -128,7 +128,9 @@ struct FolderSidebar: View {
                 }
             },
             openInNewTab: { entry in
-                if let target = WindowTarget(opening: entry) { openWindow(value: target) }
+                if let target = WindowTarget(opening: entry) {
+                    WorkspaceTabs.openOrFocusTab(target) { openWindow(value: $0) }
+                }
             },
             newNotebook: { page.run("new-notebook", arg: source.serverPath($0)) },
             newFolder: newFolder(in:),
@@ -158,7 +160,8 @@ struct FolderSidebar: View {
 
     private func open(_ entry: FolderEntry) {
         if entry.opensInPage {
-            page.run("open", arg: entry.serverPath)
+            WorkspaceTabs.openOrFocus(
+                WindowTarget(opening: entry), serverPath: entry.serverPath, in: page)
         } else if entry.canOpen(in: place) {
             openFile(entry.serverPath)
         }
@@ -423,6 +426,7 @@ private struct FolderContents: View {
 /// Kernels that keep running when their notebook is closed or another is
 /// opened, to find and shut down (#225): the navigator's Running tab (#246).
 struct RunningList: View {
+    var place: Place = .thisDevice
     var page: PageModel
     /// Terminals in any window (#246).
     var terminals = OpenTerminals.shared
@@ -431,7 +435,7 @@ struct RunningList: View {
         List {
             Section("Kernels") {
                 ForEach(page.state.sessions) { session in
-                    KernelRow(session: session, page: page)
+                    KernelRow(session: session, place: place, page: page)
                 }
                 if page.state.sessions.isEmpty {
                     Text("No kernels running").foregroundStyle(SidebarCaption())
@@ -474,11 +478,12 @@ struct RunningList: View {
 /// A running kernel in the Running list: its notebook, kernel and memory.
 private struct KernelRow: View {
     let session: PageState.Session
+    var place: Place = .thisDevice
     var page: PageModel
 
     var body: some View {
         Button {
-            page.run("open", arg: session.path)
+            open()
         } label: {
             HStack {
                 Label(session.title, systemImage: "bolt.fill")
@@ -498,10 +503,17 @@ private struct KernelRow: View {
         .buttonStyle(.plain)
         .help(helpText)
         .contextMenu {
-            Button("Open") { page.run("open", arg: session.path) }
+            Button("Open") { open() }
             Divider()
             Button("Shut Down Kernel") { page.run("shutdown-kernel", arg: session.id) }
         }
+    }
+
+    private func open() {
+        WorkspaceTabs.openOrFocus(
+            WindowTarget.file(serverPath: session.path, in: place),
+            serverPath: session.path,
+            in: page)
     }
 
     /// The path, the kernel's state and its memory.

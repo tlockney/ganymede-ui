@@ -216,5 +216,109 @@ final class WorkspaceTabsTests: XCTestCase {
         WorkspaceTabs.close(w)
         XCTAssertFalse(w.isVisible, "closing the last tab closes the window")
     }
+
+    // MARK: Focus existing tab from sidebar (#884)
+
+    func testOpenOrFocusBringsExistingTabForwardWithoutReplacingFrontTab() {
+        func tab() -> NSWindow {
+            let w = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 200, height: 100),
+                styleMask: [.titled, .closable],
+                backing: .buffered,
+                defer: false
+            )
+            w.isReleasedWhenClosed = false
+            w.tabbingIdentifier = WorkspaceTabs.identifier
+            return w
+        }
+        let dir = URL(fileURLWithPath: "/tmp/work", isDirectory: true)
+        let nb399 = dir.appendingPathComponent("nb399.ipynb")
+        let other = dir.appendingPathComponent("other.ipynb")
+        let third = dir.appendingPathComponent("third.ipynb")
+
+        let first = tab()
+        let second = tab()
+        defer {
+            WorkspaceTabs.windows.closing(first)
+            WorkspaceTabs.windows.closing(second)
+            first.close()
+            second.close()
+        }
+        first.orderFront(nil)
+        first.addTabbedWindow(second, ordered: .above)
+        second.makeKeyAndOrderFront(nil)
+        XCTAssertTrue(first.tabGroup?.selectedWindow === second)
+
+        WorkspaceTabs.note(first, target: .file(nb399), folder: dir, start: false)
+        WorkspaceTabs.note(second, target: .file(other), folder: dir, start: false)
+
+        let frontPage = PageModel()
+        WorkspaceTabs.openOrFocus(.file(nb399), serverPath: "tmp/work/nb399.ipynb", in: frontPage)
+        XCTAssertTrue(first.tabGroup?.selectedWindow === first, "existing nb399 tab should come forward")
+        XCTAssertEqual(frontPage.pendingCount, 0, "front tab should not load a second copy")
+
+        WorkspaceTabs.openOrFocus(.file(third), serverPath: "tmp/work/third.ipynb", in: frontPage)
+        XCTAssertEqual(frontPage.pendingCount, 1, "unopened notebook opens in the current tab")
+        XCTAssertTrue(first.tabGroup?.selectedWindow === first)
+    }
+
+    func testOpenWindowsTracksInPlaceNavigationPreferenceAndClosing() throws {
+        let fm = FileManager.default
+        let base = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let realDir = base.appendingPathComponent("real", isDirectory: true)
+        try fm.createDirectory(at: realDir, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: base) }
+        let linkDir = base.appendingPathComponent("link", isDirectory: true)
+        try fm.createSymbolicLink(at: linkDir, withDestinationURL: realDir)
+        let nb399 = realDir.appendingPathComponent("nb399.ipynb")
+        try Data("{}".utf8).write(to: nb399)
+        let nb399Link = linkDir.appendingPathComponent("nb399.ipynb")
+        let other = realDir.appendingPathComponent("other.ipynb")
+
+        let windows = OpenWindows()
+        let w1 = window()
+        let w2 = window()
+        let machineWin = window()
+
+        // Started as a folder window, then opened nb399 in place.
+        windows.note(w1, target: .folder(realDir), folder: realDir, start: true)
+        XCTAssertNil(windows.window(showing: .file(nb399)))
+        windows.note(w1, target: .file(nb399), folder: realDir, start: false)
+        XCTAssertTrue(windows.window(showing: .file(nb399Link)) === w1)
+
+        // Machine target of the same relative path stays distinct from local file.
+        let id = "3F2B8C1E-AAAA-4BBB-8CCC-0123456789AB"
+        let machineTarget = try XCTUnwrap(WindowTarget.machine(id, path: "/nb399.ipynb", isFolder: false))
+        windows.note(machineWin, target: machineTarget, folder: nil, start: false)
+        XCTAssertTrue(windows.window(showing: machineTarget) === machineWin)
+        XCTAssertTrue(windows.window(showing: .file(URL(fileURLWithPath: "/nb399.ipynb"))) == nil)
+
+        // Preferred window wins when multiple match; otherwise ordered list decides.
+        windows.note(w2, target: .file(nb399), folder: realDir, start: false)
+        XCTAssertTrue(windows.window(showing: .file(nb399), preferring: w2, ordered: [w1, w2]) === w2)
+        XCTAssertTrue(windows.window(showing: .file(nb399), preferring: nil, ordered: [w1, w2]) === w1)
+
+        // Navigating away or closing stops matching nb399.
+        windows.note(w1, target: .file(other), folder: realDir, start: false)
+        XCTAssertTrue(windows.window(showing: .file(nb399)) === w2)
+        _ = windows.closing(w2)
+        XCTAssertNil(windows.window(showing: .file(nb399)))
+    }
+
+    func testOpenOrFocusTabSkipsOpeningNewWindowWhenAlreadyOpen() {
+        let dir = URL(fileURLWithPath: "/tmp/work", isDirectory: true)
+        let nb399 = dir.appendingPathComponent("nb399.ipynb")
+        let other = dir.appendingPathComponent("other.ipynb")
+        let existing = window()
+        defer { WorkspaceTabs.windows.closing(existing) }
+        WorkspaceTabs.note(existing, target: .file(nb399), folder: dir, start: false)
+
+        var opened: [WindowTarget] = []
+        WorkspaceTabs.openOrFocusTab(.file(nb399)) { opened.append($0) }
+        XCTAssertTrue(opened.isEmpty)
+
+        WorkspaceTabs.openOrFocusTab(.file(other)) { opened.append($0) }
+        XCTAssertEqual(opened, [.file(other)])
+    }
 }
 #endif

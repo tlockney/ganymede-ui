@@ -80,7 +80,7 @@ struct NavigatorSidebar: View {
                     folder: folder, source: source, place: place, page: page,
                     openFile: openFile, focusRequest: $findFocus)
             case .running:
-                RunningList(page: page)
+                RunningList(place: place, page: page)
             case .journals:
                 JournalsNavigator(place: place, page: page)
             case .recents:
@@ -414,7 +414,9 @@ private struct FindNavigator: View {
                 .disabled(!match.entry.isDirectory && !match.entry.canOpen(in: place))
             if match.entry.isNotebook || match.entry.isDirectory {
                 Button("Open in New Tab") {
-                    if let target = WindowTarget(opening: match.entry) { openWindow(value: target) }
+                    if let target = WindowTarget(opening: match.entry) {
+                        WorkspaceTabs.openOrFocusTab(target) { openWindow(value: $0) }
+                    }
                 }
             }
             if place.isThisDevice {
@@ -434,9 +436,12 @@ private struct FindNavigator: View {
 
     private func open(_ entry: FolderEntry) {
         if entry.opensInPage {
-            page.run("open", arg: entry.serverPath)
+            WorkspaceTabs.openOrFocus(
+                WindowTarget(opening: entry), serverPath: entry.serverPath, in: page)
         } else if entry.isDirectory {
-            if let target = WindowTarget(opening: entry) { openWindow(value: target) }
+            if let target = WindowTarget(opening: entry) {
+                WorkspaceTabs.openOrFocusTab(target) { openWindow(value: $0) }
+            }
         } else if entry.canOpen(in: place) {
             openFile(entry.serverPath)
         }
@@ -505,7 +510,7 @@ private struct JournalsNavigator: View {
         List {
             ForEach(journals) { journal in
                 Button {
-                    page.run("open", arg: journal.path)
+                    open(journal)
                 } label: {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
@@ -525,7 +530,7 @@ private struct JournalsNavigator: View {
                 .buttonStyle(.plain)
                 .help(journal.path)
                 .contextMenu {
-                    Button("Open") { page.run("open", arg: journal.path) }
+                    Button("Open") { open(journal) }
                     Button("Open in New Tab") { openInNewTab(journal) }
                 }
             }
@@ -551,14 +556,17 @@ private struct JournalsNavigator: View {
         Text(text).foregroundStyle(SidebarCaption()).multilineTextAlignment(.center).padding()
     }
 
+    private func open(_ journal: Journals.Journal) {
+        WorkspaceTabs.openOrFocus(
+            WindowTarget.file(serverPath: journal.path, in: place),
+            serverPath: journal.path,
+            in: page)
+    }
+
     private func openInNewTab(_ journal: Journals.Journal) {
-        let target: WindowTarget?
-        if let id = place.machineID {
-            target = WindowTarget.machine(id, path: journal.path, isFolder: false)
-        } else {
-            target = WindowTarget(opening: URL(fileURLWithPath: "/" + journal.path))
+        if let target = WindowTarget.file(serverPath: journal.path, in: place) {
+            WorkspaceTabs.openOrFocusTab(target) { openWindow(value: $0) }
         }
-        if let target { openWindow(value: target) }
     }
 
     /// An older server won't start answering, so it is not asked again.
@@ -639,7 +647,7 @@ private struct RecentsNavigator: View {
         List {
             ForEach(entries) { entry in
                 Button {
-                    page.run("open", arg: entry.path)
+                    open(entry)
                 } label: {
                     VStack(alignment: .leading, spacing: 2) {
                         Label(entry.url.deletingPathExtension().lastPathComponent, systemImage: "book.closed")
@@ -653,7 +661,7 @@ private struct RecentsNavigator: View {
                 }
                 .buttonStyle(.plain)
                 .contextMenu {
-                    Button("Open") { page.run("open", arg: entry.path) }
+                    Button("Open") { open(entry) }
                     Button("Open in New Tab") { openTab(entry) }
                     Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([entry.url]) }
                 }
@@ -675,10 +683,14 @@ private struct RecentsNavigator: View {
         }
     }
 
+    private func open(_ entry: Entry) {
+        WorkspaceTabs.openOrFocus(entry.tabTarget(in: place), serverPath: entry.path, in: page)
+    }
+
     /// A new window on the notebook: this Mac's own server's in a window of
     /// its place, so it opens through the mount as this one's does (#883).
     private func openTab(_ entry: Entry) {
-        openWindow(value: entry.tabTarget(in: place))
+        WorkspaceTabs.openOrFocusTab(entry.tabTarget(in: place)) { openWindow(value: $0) }
     }
 }
 #endif

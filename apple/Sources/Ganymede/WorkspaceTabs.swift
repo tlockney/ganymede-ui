@@ -161,10 +161,44 @@ enum WorkspaceTabs {
     /// The app's notebook, text file and terminal windows that are open.
     static let windows = OpenWindows()
 
-    /// Notes what `window` shows: its folder, and whether that is the
-    /// start screen (#416).
-    static func note(_ window: NSWindow, folder: URL?, start: Bool) {
-        windows.note(window, folder: folder, start: start)
+    /// Notes what `window` shows: its target, its folder, and whether that
+    /// is the start screen (#416, #884).
+    static func note(_ window: NSWindow, target: WindowTarget? = nil, folder: URL?, start: Bool) {
+        windows.note(window, target: target, folder: folder, start: start)
+    }
+
+    /// Brings forward an open window or tab already showing `target` (#884),
+    /// returning whether one was found.
+    @discardableResult
+    static func focus(_ target: WindowTarget) -> Bool {
+        let app = NSApp as NSApplication?
+        guard let window = windows.window(
+            showing: target,
+            preferring: app?.keyWindow ?? app?.mainWindow,
+            ordered: app?.orderedWindows ?? []
+        ) else { return false }
+        focus(window)
+        return true
+    }
+
+    /// Focuses an open tab showing `target` if one exists, otherwise opens
+    /// `serverPath` in `page` (#884).
+    static func openOrFocus(_ target: WindowTarget?, serverPath: String, in page: PageModel) {
+        if let target, focus(target) { return }
+        page.run("open", arg: serverPath)
+    }
+
+    /// Focuses an open tab showing `target` if one exists, otherwise opens
+    /// a new tab with `openWindow` (#884).
+    static func openOrFocusTab(_ target: WindowTarget, with openWindow: (WindowTarget) -> Void) {
+        if focus(target) { return }
+        openWindow(target)
+    }
+
+    private static func focus(_ window: NSWindow) {
+        if window.isMiniaturized { window.deminiaturize(nil) }
+        window.tabGroup?.selectedWindow = window
+        window.makeKeyAndOrderFront(nil)
     }
 
     /// Whether any of the app's windows is open.
@@ -215,6 +249,8 @@ enum WorkspaceTabs {
 final class OpenWindows {
     /// What one window shows.
     private final class Place {
+        /// What the window currently shows (#884).
+        var target: WindowTarget?
         /// The folder a start window opens on; nil for the default folder.
         var folder: URL?
         /// Whether it shows the start screen: a folder, no notebook.
@@ -227,11 +263,39 @@ final class OpenWindows {
         if places.object(forKey: window) == nil { places.setObject(Place(), forKey: window) }
     }
 
-    func note(_ window: NSWindow, folder: URL?, start: Bool) {
+    func note(_ window: NSWindow, target: WindowTarget? = nil, folder: URL?, start: Bool) {
         add(window)
         let place = places.object(forKey: window)
+        if let target { place?.target = target }
         place?.folder = folder
         place?.start = start
+    }
+
+    /// The open window showing `target` (#884), preferring `preferred`, then
+    /// the frontmost match in `ordered`.
+    func window(
+        showing target: WindowTarget,
+        preferring preferred: NSWindow? = nil,
+        ordered: [NSWindow] = []
+    ) -> NSWindow? {
+        var candidates: [NSWindow] = []
+        let enumerator = places.keyEnumerator()
+        while let window = enumerator.nextObject() as? NSWindow {
+            guard let recorded = places.object(forKey: window)?.target,
+                  recorded.matchesOpenTarget(target)
+            else { continue }
+            candidates.append(window)
+        }
+        guard !candidates.isEmpty else { return nil }
+        if let preferred, candidates.contains(where: { $0 === preferred }) {
+            return preferred
+        }
+        for window in ordered {
+            if candidates.contains(where: { $0 === window }) {
+                return window
+            }
+        }
+        return candidates.first
     }
 
     var any: Bool {

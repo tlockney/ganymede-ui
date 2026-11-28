@@ -370,4 +370,54 @@ final class WindowTargetTests: XCTestCase {
             WindowTarget.shownTitle(target: folder, pagePath: nil, metadataTitle: "Any"),
             "Any")
     }
+
+    // MARK: Focus matching (#884)
+
+    func testFileFromServerPathMatchesLocalAndMachinePlaces() throws {
+        XCTAssertEqual(
+            WindowTarget.file(serverPath: "Users/me/nb399.ipynb", in: .thisDevice),
+            .file(URL(fileURLWithPath: "/Users/me/nb399.ipynb")))
+        XCTAssertEqual(
+            WindowTarget.file(serverPath: "/Users/me/data.csv", in: .thisDevice),
+            .file(URL(fileURLWithPath: "/Users/me/data.csv")))
+        XCTAssertNil(WindowTarget.file(serverPath: "", in: .thisDevice))
+
+        let id = "3F2B8C1E-AAAA-4BBB-8CCC-0123456789AB"
+        XCTAssertEqual(
+            WindowTarget.file(serverPath: "notes/nb399.ipynb", in: .machine(id)),
+            .machineFile(machine: id, path: "/notes/nb399.ipynb"))
+        XCTAssertEqual(
+            WindowTarget.file(serverPath: "notes/nb399.ipynb", in: .thisMac(id)),
+            .machineFile(machine: id, path: "/notes/nb399.ipynb"))
+        XCTAssertNil(WindowTarget.file(serverPath: "../secret.ipynb", in: .machine(id)))
+    }
+
+    func testMatchesOpenTargetResolvesSymlinksAndDistinguishesPlaces() throws {
+        let fm = FileManager.default
+        let base = fm.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let realDir = base.appendingPathComponent("real", isDirectory: true)
+        try fm.createDirectory(at: realDir, withIntermediateDirectories: true)
+        defer { try? fm.removeItem(at: base) }
+        let linkDir = base.appendingPathComponent("link", isDirectory: true)
+        try fm.createSymbolicLink(at: linkDir, withDestinationURL: realDir)
+        let realFile = realDir.appendingPathComponent("nb399.ipynb")
+        try Data("{}".utf8).write(to: realFile)
+        let linkFile = linkDir.appendingPathComponent("nb399.ipynb")
+        let otherFile = realDir.appendingPathComponent("other.ipynb")
+
+        XCTAssertTrue(WindowTarget.file(realFile).matchesOpenTarget(.file(linkFile)))
+        XCTAssertFalse(WindowTarget.file(realFile).matchesOpenTarget(.file(otherFile)))
+        XCTAssertFalse(WindowTarget.file(realFile).matchesOpenTarget(.folder(realDir)))
+
+        let id = "3F2B8C1E-AAAA-4BBB-8CCC-0123456789AB"
+        let upper = try XCTUnwrap(WindowTarget.machine(id.uppercased(), path: "/notes/nb399.ipynb", isFolder: false))
+        let lower = try XCTUnwrap(WindowTarget.machine(id.lowercased(), path: "/notes/nb399.ipynb", isFolder: false))
+        XCTAssertTrue(upper.matchesOpenTarget(lower))
+        XCTAssertFalse(upper.matchesOpenTarget(.file(URL(fileURLWithPath: "/notes/nb399.ipynb"))))
+
+        let c1 = UUID()
+        let c2 = UUID()
+        XCTAssertTrue(WindowTarget.console(folder: realDir, id: c1).matchesOpenTarget(.console(folder: linkDir, id: c1)))
+        XCTAssertFalse(WindowTarget.console(folder: realDir, id: c1).matchesOpenTarget(.console(folder: realDir, id: c2)))
+    }
 }

@@ -160,14 +160,14 @@ struct OpenCommands: View {
     var body: some View {
         Button("Open…") {
             for url in model.chooseNotebooks() {
-                openWindow(value: WindowTarget(opening: url))
+                WorkspaceTabs.openOrFocusTab(WindowTarget(opening: url)) { openWindow(value: $0) }
             }
         }
         .keyboardShortcut("o")
         Menu("Open Recent") {
             ForEach(recents.urls, id: \.self) { url in
                 Button(url.lastPathComponent) {
-                    openWindow(value: WindowTarget(opening: url))
+                    WorkspaceTabs.openOrFocusTab(WindowTarget(opening: url)) { openWindow(value: $0) }
                 }
             }
             Divider()
@@ -187,9 +187,10 @@ struct OpenCommands: View {
         Menu("Open Recent Console") {
             ForEach(consoles) { recent in
                 Button(recent.menuTitle) {
-                    openWindow(
-                        value: TabRequest.duckdbConsole(folder: recent.folder, session: UUID(uuidString: recent.id))
-                            .target(root: root))
+                    let target = TabRequest.duckdbConsole(
+                        folder: recent.folder, session: UUID(uuidString: recent.id)
+                    ).target(root: root)
+                    WorkspaceTabs.openOrFocusTab(target) { openWindow(value: $0) }
                 }
             }
             Divider()
@@ -199,7 +200,9 @@ struct OpenCommands: View {
         .disabled(page == nil || scope?.place.indexesLocally == false)
         Button("Open Folder…") {
             if let folder = model.chooseFolder() {
-                openWindow(value: WindowTarget.folder(folder.standardizedFileURL))
+                WorkspaceTabs.openOrFocusTab(WindowTarget.folder(folder.standardizedFileURL)) {
+                    openWindow(value: $0)
+                }
             }
         }
         .keyboardShortcut("o", modifiers: [.command, .shift])

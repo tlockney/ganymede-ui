@@ -275,6 +275,45 @@ enum WindowTarget: Codable, Hashable {
         return self == page
     }
 
+    /// The notebook or data file target for `serverPath` in `place` (#884):
+    /// a machine target for `.machine` / `.thisMac`, or a root-relative
+    /// local file URL for `.thisDevice`.
+    static func file(serverPath: String, in place: Place) -> WindowTarget? {
+        if let id = place.machineID {
+            return machine(id, path: serverPath, isFolder: false)
+        }
+        let clean = String(serverPath.drop { $0 == "/" })
+        guard !clean.isEmpty else { return nil }
+        return .file(URL(fileURLWithPath: "/" + clean, isDirectory: false).standardizedFileURL)
+    }
+
+    /// Whether `self` and `other` name the same open notebook, data file,
+    /// folder, or console for focusing an existing tab (#884). Local file
+    /// URLs resolve symlinks so `/tmp/...` and `/private/tmp/...` match.
+    func matchesOpenTarget(_ other: WindowTarget) -> Bool {
+        switch (self, other) {
+        case (.file(let a), .file(let b)):
+            return Self.sameFileURL(a, b)
+        case (.folder(let a), .folder(let b)):
+            return Self.sameFileURL(a, b)
+        case (.console(let a, let idA), .console(let b, let idB)):
+            return idA == idB && Self.sameFileURL(a, b)
+        case (.machineFile(let m1, let p1), .machineFile(let m2, let p2)):
+            return m1.caseInsensitiveCompare(m2) == .orderedSame && p1 == p2
+        case (.machineFolder(let m1, let p1), .machineFolder(let m2, let p2)):
+            return m1.caseInsensitiveCompare(m2) == .orderedSame && p1 == p2
+        default:
+            return false
+        }
+    }
+
+    private static func sameFileURL(_ a: URL, _ b: URL) -> Bool {
+        let sa = a.standardizedFileURL
+        let sb = b.standardizedFileURL
+        if sa.path == sb.path { return true }
+        return sa.resolvingSymlinksInPath().path == sb.resolvingSymlinksInPath().path
+    }
+
     /// The page for this target on a server rooted at `/`, as ganymede-ui
     /// reads it (#129): `open=` a notebook's path, or `dir=` a folder's.
     /// `server` is the URL the server printed (with its token); `kernels`
