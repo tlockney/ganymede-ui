@@ -436,6 +436,29 @@ final class PageStateTests: XCTestCase {
         XCTAssertNil(PageState(body: body)?.locked)
     }
 
+    /// A notebook owned by another Ganymede server on this machine (#839)
+    /// disables cell editing, running, and renaming.
+    func testReadOnlyDisablesEditingAndRenaming() {
+        var body: [String: Any] = [
+            "path": "Io.ipynb", "dirty": false, "status": "idle", "kernel": "cdp",
+            "kernelDisplayName": "TypeScript", "kernelMissing": false, "trusted": true,
+            "cellType": "code", "kernels": [Any](), "backend": NSNull(),
+        ]
+        // Absent from an older page: editable as before.
+        XCTAssertNil(PageState(body: body)?.readOnly)
+        XCTAssertEqual(PageState(body: body)?.editsCells, true)
+        XCTAssertEqual(PageState(body: body)?.canRename, true)
+
+        body["readOnly"] = true
+        let ro = PageState(body: body)
+        XCTAssertEqual(ro?.readOnly, true)
+        XCTAssertEqual(ro?.editsCells, false)
+        XCTAssertEqual(ro?.canRename, false)
+        let header = ro.flatMap { HeaderStatus.make(state: $0, savedOn: "This Mac", runsOn: "This Mac") }
+        XCTAssertEqual(header?.save, "Read-only")
+        XCTAssertEqual(header?.short, "Read-only · Runs on This Mac")
+    }
+
     /// A data file open in the page has no kernel or cells: the notebook
     /// menus disable (#671).
     func testADataFileIsNotANotebook() {

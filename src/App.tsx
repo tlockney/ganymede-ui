@@ -859,7 +859,7 @@ export function App() {
         await c.exportAs(arg as ExportFormat);
         return true;
       case 'run-with-params':
-        if (!runAvailable(backend)) return false;
+        if (c.readOnly || !runAvailable(backend)) return false;
         setRunFor({
           path: c.path,
           name: c.name,
@@ -1093,6 +1093,7 @@ export function App() {
       kernelVersionLine: shown?.kernelVersionLine ?? null,
       kernelMissing: !!shown?.missingKernel,
       locked: shown?.locked ?? false,
+      readOnly: shown?.readOnly ?? false,
       trusted: shown?.trusted ?? true,
       hostGrants,
       publish: publishAvailable(backend),
@@ -1433,6 +1434,7 @@ export function App() {
             recents: backend ? loadRecents(recentsKey(backend.config)) : [],
             consoles: consoles.filter(c => !(consoleShown && c.id === duck?.id)),
             journal: shown?.journal ?? false,
+            readOnly: shown?.readOnly ?? false,
             trusted: shown?.trusted ?? true,
             hostGrants,
             publish: publishAvailable(backend),

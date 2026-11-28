@@ -247,7 +247,10 @@ export function createCommands(
     commands.addCommand(id, { execute: () => void execute() });
   // A command that changes the notebook or runs it.
   const mutating = (id: string, execute: () => unknown) =>
-    add(id, () => (canEdit() ? execute() : undefined));
+    commands.addCommand(id, {
+      isEnabled: canEdit,
+      execute: () => (canEdit() ? void execute() : undefined),
+    });
   const run =
     (action: () => Promise<unknown>, all = false) =>
     async () => {
@@ -258,28 +261,18 @@ export function createCommands(
         onError(e);
       }
     };
+  const addRun = (id: string, action: () => Promise<unknown>, all = false) =>
+    commands.addCommand(id, { isEnabled: canEdit, execute: run(action, all) });
 
-  add(
-    'run-cell',
-    run(() => NotebookActions.run(notebook, session)),
-  );
-  add(
-    'run-and-advance',
-    run(() => NotebookActions.runAndAdvance(notebook, session)),
-  );
-  add(
-    'run-and-insert',
-    run(() => NotebookActions.runAndInsert(notebook, session)),
-  );
-  add(
-    'run-all',
-    run(() => NotebookActions.runAll(notebook, session), true),
-  );
+  addRun('run-cell', () => NotebookActions.run(notebook, session));
+  addRun('run-and-advance', () => NotebookActions.runAndAdvance(notebook, session));
+  addRun('run-and-insert', () => NotebookActions.runAndInsert(notebook, session));
+  addRun('run-all', () => NotebookActions.runAll(notebook, session), true);
   add('command-mode', () => {
     notebook.mode = 'command';
     notebook.node.focus();
   });
-  add('edit-mode', () => (notebook.mode = 'edit'));
+  mutating('edit-mode', () => (notebook.mode = 'edit'));
   add('select-above', () => NotebookActions.selectAbove(notebook));
   add('select-below', () => NotebookActions.selectBelow(notebook));
   add('extend-above', () => NotebookActions.extendSelectionAbove(notebook));
@@ -435,6 +428,8 @@ const CELL_TOOLBAR: [name: string, icon: LabIcon, tooltip: string, action?: Cell
 export type EditingOptions = {
   /** The ⋯ toolbar button: open a cell's menu under `anchor`. */
   onCellMenu?(cell: Cell, anchor: HTMLElement): void;
+  /** False while the notebook is read-only: mutating cell toolbar buttons do nothing. */
+  canEdit?(): boolean;
 };
 
 /**
@@ -621,7 +616,9 @@ export function attachEditing(
         // cell-toolbar's stylesheet only shows buttons marked for the
         // cell's type.
         className: 'jp-cell-all',
-        onClick: act ? () => act(notebook) : undefined,
+        onClick: act
+          ? () => (options.canEdit?.() === false ? undefined : act(notebook))
+          : undefined,
       });
       if (name === 'cell-actions') {
         widget.onClick = () => {

@@ -463,6 +463,16 @@
   cursor: default;
 }
 
+:root:not(.touch-ui) .notebook-page .gn-run-button[data-state='idle']:disabled {
+  opacity: 0.4;
+}
+
+/* Read-only / offline notebook (#701, #839): hide cell add and drag affordances. */
+.notebook-page.is-readonly .gn-add-cell,
+.notebook-page.is-readonly .gn-cell-drag {
+  display: none;
+}
+
 :root:not(.touch-ui) .notebook-page .gn-run-button:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;

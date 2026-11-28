@@ -245,6 +245,7 @@ struct CloseCommand: View {
 /// File > Save (⌘S), for the front notebook or text file window.
 struct SaveCommand: View {
     @FocusedValue(\.pageDocument) private var document
+    @FocusedValue(\.pageModel) private var page
     @FocusedValue(\.editorDocument) private var editor
 
     var body: some View {
@@ -256,7 +257,7 @@ struct SaveCommand: View {
             }
         }
         .keyboardShortcut("s")
-        .disabled(editor == nil && document?.file == nil)
+        .disabled(editor == nil && (document?.file == nil || page?.state.readOnly == true))
     }
 }
 #endif

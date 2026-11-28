@@ -17,7 +17,7 @@ Range.prototype.getBoundingClientRect ??= () => new DOMRect();
 const { createNotebook, createRendermime } = await import('./jupyterlab');
 const { NotebookModel } = await import('@jupyterlab/notebook');
 const { Widget } = await import('@lumino/widgets');
-const { watchOffline } = await import('./room-offline');
+const { watchOffline, createReadOnlyGuard } = await import('./room-offline');
 
 const CONTENT: nbformat.INotebookContent = {
   nbformat: 4,
@@ -135,5 +135,35 @@ describe('watchOffline on a real notebook', () => {
     expect(notebook.widgets.map(c => c.readOnly)).toEqual([true, false]);
     expect(updates).toBe(0);
     stop();
+  });
+});
+
+describe('createReadOnlyGuard on a real notebook (#839)', () => {
+  it('exits edit mode, locks cells added while read-only, and restores editable state with no Y-doc writes', async () => {
+    const guard = createReadOnlyGuard(notebook, model);
+    notebook.activeCellIndex = 1;
+    notebook.mode = 'edit';
+    updates = 0;
+
+    guard.set(true);
+    expect(notebook.mode).toBe('command');
+    expect(model.readOnly).toBe(true);
+    expect(notebook.widgets.every(c => c.readOnly)).toBe(true);
+    expect(updates).toBe(0);
+
+    // Another server's save arrives with a new cell: locked too without metadata writes.
+    model.sharedModel.insertCell(2, { cell_type: 'code', source: 'y = 2' });
+    await new Promise(r => setTimeout(r, 0));
+    expect(notebook.widgets).toHaveLength(3);
+    expect(notebook.widgets[2]!.readOnly).toBe(true);
+    expect(notebook.widgets[2]!.model.sharedModel.getMetadata('editable')).toBeUndefined();
+
+    const beforeUnlock = updates;
+    guard.set(false);
+    expect(model.readOnly).toBe(false);
+    // Cell 0 had metadata.editable: false; cells 1 and 2 are editable again.
+    expect(notebook.widgets.map(c => c.readOnly)).toEqual([true, false, false]);
+    expect(updates).toBe(beforeUnlock);
+    guard.dispose();
   });
 });

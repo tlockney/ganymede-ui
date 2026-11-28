@@ -212,6 +212,11 @@ export type PageState = {
    * line's "Locked" (#812).
    */
   locked: boolean;
+  /**
+   * Read-only because another Ganymede server on this machine owns the
+   * notebook (#839): the native toolbar disables Run and cell edits.
+   */
+  readOnly: boolean;
   trusted: boolean;
   /** Whether Notebook Access works here: a Ganymede server that runs the kernels. */
   hostGrants: boolean;

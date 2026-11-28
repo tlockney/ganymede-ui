@@ -275,6 +275,9 @@ struct PageState: Decodable, Equatable {
     /// Saving is locked because the file changed on disk (#367), for the
     /// status line's "Locked" (#812); absent from a page older than that.
     var locked: Bool?
+    /// Read-only because another Ganymede server on this machine owns the
+    /// notebook (#839); absent from a page older than that.
+    var readOnly: Bool?
     var trusted = true
     /// Whether Notebook Access works on this backend; absent before #479.
     var hostGrants: Bool?
@@ -356,12 +359,12 @@ struct PageState: Decodable, Equatable {
     /// A notebook is open: what the notebook menus and toolbar act on.
     var hasNotebook: Bool { path != nil && !showsData }
 
-    /// File > Rename… has something to name: the notebook, or the console (#735).
-    var canRename: Bool { hasNotebook || console != nil }
+    /// File > Rename… has something to name: the notebook (when writable), or the console (#735, #839).
+    var canRename: Bool { (hasNotebook && readOnly != true) || console != nil }
 
-    /// Whether the notebook's cells show, so run, insert and cell type can
-    /// act on them: not while the journal shows (#184, #724).
-    var editsCells: Bool { hasNotebook && journal != true }
+    /// Whether the notebook's cells can be edited or run: not while the
+    /// journal shows (#184, #724) or another server owns the notebook (#839).
+    var editsCells: Bool { hasNotebook && journal != true && readOnly != true }
 
     /// What the journal toggle offers: back to the notebook while the
     /// journal shows, otherwise the journal (#724).

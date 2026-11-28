@@ -16,7 +16,7 @@ import {
   createRendermime,
 } from '../lib/jupyterlab';
 import { attachCellControls, selectOnly } from '../lib/cell-controls';
-import { attachCellGutter } from '../lib/cell-gutter';
+import { attachCellGutter, type CellGutter } from '../lib/cell-gutter';
 import { attachCodeCollapse } from '../lib/code-collapse';
 import { attachOutputLabels } from '../lib/output-labels';
 import { attachTypeErrors } from '../lib/type-errors';
@@ -48,7 +48,13 @@ import {
   SaveConflict,
   type Saver,
 } from '../lib/saver';
-import { isEditKey, watchOffline } from '../lib/room-offline';
+import { createReadOnlyGuard, isEditKey } from '../lib/room-offline';
+import {
+  READONLY_BANNER,
+  roomStateReadOnly,
+  watchWritable,
+  type WritableWatcher,
+} from '../lib/room-readonly';
 import { NotebookRoom, RoomSaver, trustFromFile, watchRemoteOutputs } from '../lib/room';
 import {
   type Problem,
@@ -129,6 +135,11 @@ export type NotebookController = {
    * no save writes until {@link reload} or {@link unlock} (#367).
    */
   locked: boolean;
+  /**
+   * The notebook is read-only because another Ganymede server on this machine
+   * owns it (#839): editing and running are off until the other server lets go.
+   */
+  readOnly: boolean;
   /**
    * Load the file again from the server, keeping the kernel. Asks first
    * when there are unsaved edits, which it drops; false when the user
@@ -330,6 +341,10 @@ type Open = {
   language: LanguageFeatures;
   /** Which cells run and wait, shown on them. */
   runStatus: RunStatus;
+  /** Each code cell's left-margin Run button, refreshed when read-only changes. */
+  cellGutter: CellGutter;
+  /** Whether the notebook opened read-only (`writable: false` or room state). */
+  initialReadOnly: boolean;
   /** Settles once the session has rejoined the file's kernel, if any. */
   joining: Promise<unknown>;
   /**
@@ -587,6 +602,13 @@ export function NotebookPane({
   const unsaved = useRef<string>(undefined);
   /** The cell menu (#200), open under a cell's "…" button. */
   const [menu, setMenu] = useState<{ cell: Cell; anchor: HTMLElement }>();
+  /** Read-only because another Ganymede server owns the notebook (#839). */
+  const [readOnly, setReadOnly] = useState(false);
+  const readOnlyRef = useRef(false);
+  /** A connected machine stopped answering (#701). */
+  const [roomOffline, setRoomOffline] = useState(false);
+  const roomOfflineRef = useRef(false);
+  const watcherRef = useRef<WritableWatcher>(undefined);
 
   // Load the file, build the notebook, and join its session.
   useEffect(() => {
@@ -601,6 +623,8 @@ export function NotebookPane({
     lockedAt.current = undefined;
     reloading.current = false;
     setLocked(false);
+    readOnlyRef.current = false;
+    setReadOnly(false);
     setNoticeState(n => (n?.problem.kind === 'save-conflict' ? undefined : n));
     (async () => {
       // The last pane here (before a rename, say) may still be saving to
@@ -677,17 +701,19 @@ export function NotebookPane({
             disableDocumentWideUndoRedo: true,
           })
         : new NotebookModel({ disableDocumentWideUndoRedo: true });
+      let initialReadOnly: boolean;
       if (!room) {
+        initialReadOnly = file!.writable === false;
         // The browser's storage keeps a file's lines split (#414).
         model.fromJSON(rejoinLines(content));
         model.dirty = false;
       } else {
-        // As `fromJSON` does for a file: a notebook has at least one cell.
-        if (model.cells.length === 0) {
-          model.sharedModel.insertCell(0, { cell_type: 'code', source: '' });
-        }
         // The room doesn't carry trust; the file, as the server marks it, does.
-        await trustFromFile(services.contents, path, model).catch((e: unknown) =>
+        // Its `writable` also says whether another Ganymede server owns it (#839).
+        let fileWritable: boolean | undefined;
+        await trustFromFile(services.contents, path, model, undefined, w => {
+          fileWritable = w;
+        }).catch((e: unknown) =>
           console.warn(`Couldn’t read which cells of ${path} are trusted:`, e),
         );
         if (cancelled) {
@@ -695,7 +721,14 @@ export function NotebookPane({
           room.dispose();
           return;
         }
+        initialReadOnly = fileWritable === false || roomStateReadOnly(room.notebook) === true;
+        // As `fromJSON` does for a file: a notebook has at least one cell (only when writable).
+        if (model.cells.length === 0 && !initialReadOnly) {
+          model.sharedModel.insertCell(0, { cell_type: 'code', source: '' });
+        }
       }
+      readOnlyRef.current = initialReadOnly;
+      setReadOnly(initialReadOnly);
       const notebook = createNotebook(rendermime);
 
       // One session per notebook, found by path. `initialize` rejoins the
@@ -788,37 +821,43 @@ export function NotebookPane({
         starting ??= startKernel().finally(() => (starting = undefined));
         return starting;
       };
-      // A connected machine that stopped answering (#701): nothing edits.
-      const down = () => onMachine && !!room && !room.connected;
+      // A connected machine that stopped answering (#701), or another Ganymede
+      // server on this machine owns the notebook (#839): nothing edits or runs.
+      const cantEditNow = () => (onMachine && !!room && !room.connected) || readOnlyRef.current;
       const commands = createCommands(
         notebook,
         session,
         ensureKernel,
-        e => setNotice(runFailed(session, services.kernelspecs, memory, e)),
-        () => !down(),
+        e => {
+          watcherRef.current?.check();
+          setNotice(runFailed(session, services.kernelspecs, memory, e));
+        },
+        () => !cantEditNow(),
       );
       const editing = attachEditing(notebook, session, rendermime, commands, {
         // The toolbar's ⋯ opens the same cell menu the touch controls do (#852).
         onCellMenu: (cell, anchor) => setMenu({ cell, anchor }),
+        canEdit: () => !cantEditNow(),
       });
       const cellControls = attachCellControls(
         notebook,
         (cell, anchor) => setMenu({ cell, anchor }),
-        down,
+        cantEditNow,
       );
       // A run button and the execution count in each code cell's left margin
-      // (#852); the journal hides the notebook, and a machine that is away runs
-      // nothing.
+      // (#852); the journal hides the notebook, and a read-only or offline
+      // notebook runs nothing.
       /**
        * Run the active cell, starting a kernel first when there is none: the
        * margin's Run button, the cell menu's Run and the menu's retry after a
        * failure all come here (#852). `retry` runs the same again.
        */
       const runActive = async (retry: () => void = () => void runActive()): Promise<void> => {
-        if (journalRef.current || down()) return;
+        if (journalRef.current || cantEditNow()) return;
         try {
           if (await ensureKernel()) await NotebookActions.run(notebook, session);
         } catch (e) {
+          watcherRef.current?.check();
           setNotice(
             runFailed(session, services.kernelspecs, memory, e, 'run the cell', true),
             retry,
@@ -838,9 +877,9 @@ export function NotebookPane({
       const cellGutter = attachCellGutter(notebook, {
         run: cell => void runCell(cell),
         runs: runStatus,
-        away: down,
+        away: cantEditNow,
       });
-      const codeCollapse = attachCodeCollapse(notebook, down);
+      const codeCollapse = attachCodeCollapse(notebook, cantEditNow);
       const typeErrors = attachTypeErrors(notebook, session);
       const language = attachLanguageFeatures(notebook, session, message =>
         setNotice({ kind: 'failed', message, actions: [] }),
@@ -860,10 +899,10 @@ export function NotebookPane({
             beforeSave,
           });
       const onKey = (e: KeyboardEvent) => {
-        // This listener runs before the notebook's own, so a machine that
-        // is away is stopped here: keys in the notebook edit nothing (#701).
+        // This listener runs before the notebook's own, so an offline or
+        // read-only notebook is stopped here: keys edit nothing (#701, #839).
         // The commands refuse too, whatever keys they are bound to.
-        if (down() && isEditKey(e) && notebook.node.contains(e.target as Node | null)) {
+        if (cantEditNow() && isEditKey(e) && notebook.node.contains(e.target as Node | null)) {
           e.preventDefault();
           e.stopPropagation();
           return;
@@ -886,6 +925,8 @@ export function NotebookPane({
         commands,
         language,
         runStatus,
+        cellGutter,
+        initialReadOnly,
         joining,
         track,
         busy,
@@ -981,7 +1022,13 @@ export function NotebookPane({
       // The pane that opens the file next waits for the save, and shows
       // why it failed (#224).
       const save = () => {
-        if (!done.model.dirty || locked.current || reloading.current || gone.current) {
+        if (
+          !done.model.dirty ||
+          locked.current ||
+          readOnlyRef.current ||
+          reloading.current ||
+          gone.current
+        ) {
           return undefined;
         }
         const to = done.saver.path;
@@ -1344,7 +1391,7 @@ export function NotebookPane({
     if (!open) return;
     const { model, saver } = open;
     const autosave = () => {
-      if (!model.dirty || locked.current || gone.current) return;
+      if (!model.dirty || locked.current || readOnlyRef.current || gone.current) return;
       saver.save({ ifDirty: true }).catch(e => {
         if (e instanceof SaveConflict) {
           lock(open, e.lastModified);
@@ -1355,7 +1402,7 @@ export function NotebookPane({
     };
     const onHidden = () => document.visibilityState === 'hidden' && autosave();
     const onUnload = (e: BeforeUnloadEvent) => {
-      if (!model.dirty) return;
+      if (!model.dirty || readOnlyRef.current) return;
       e.preventDefault();
       // Older browsers ask only when returnValue is set.
       e.returnValue = '';
@@ -1363,7 +1410,7 @@ export function NotebookPane({
     // A reload the page starts saves first: the Apple apps' web view
     // doesn't ask on beforeunload (#375).
     const unguard = guardReload(async () => {
-      if (!model.dirty) return true;
+      if (!model.dirty || readOnlyRef.current) return true;
       if (locked.current || gone.current) return false;
       try {
         await saver.save({ ifDirty: true });
@@ -1580,9 +1627,10 @@ export function NotebookPane({
     };
     // A run's failure: when the kernel died under it, say that instead.
     // Retry runs it again, on the cells selected then.
-    // A connected machine that stopped answering (#701): the notebook shows
-    // what it had and does nothing that edits or runs until it is back.
-    const away = () => onMachine && !!open.room && !open.room.connected;
+    // A connected machine that stopped answering (#701), or another Ganymede
+    // server owns this notebook (#839): shows what it had and does nothing that
+    // edits or runs until editable again.
+    const away = () => (onMachine && !!open.room && !open.room.connected) || readOnlyRef.current;
     const restartKernel = async () => {
       const kernel = session.session?.kernel;
       // A dead kernel can't restart (it disposed its connection): start
@@ -1600,6 +1648,7 @@ export function NotebookPane({
         try {
           await action();
         } catch (e) {
+          watcherRef.current?.check();
           setNotice(
             runFailed(session, services.kernelspecs, memory, e, what, true),
             () => void run(),
@@ -1697,9 +1746,10 @@ export function NotebookPane({
         notebook.activate();
       },
       locked: isLocked,
+      readOnly,
       save: async () => {
-        // Deleted: a save would put it back.
-        if (gone.current) return false;
+        // Deleted or owned by another server: nothing saves here.
+        if (gone.current || readOnlyRef.current) return false;
         // Changed on disk: say so again, with what unlocks it.
         if (locked.current) {
           locked.current = changedOnDisk(basename(saver.path), model.dirty);
@@ -1805,6 +1855,7 @@ export function NotebookPane({
         return true;
       },
       rename: async (input: string, options?: { throws?: boolean }) => {
+        if (readOnlyRef.current) return false;
         let next: string | undefined;
         const clearRenameNotice = () => clearNotice('rename-failed');
         const renameFailed = (e: unknown) => {
@@ -1848,7 +1899,7 @@ export function NotebookPane({
       goToDefinition: () =>
         journal ? Promise.resolve(false) : open.language.service.goToDefinition(),
       renameSymbol: newName =>
-        journal ? Promise.resolve(false) : open.language.service.rename(newName),
+        journal || away() ? Promise.resolve(false) : open.language.service.rename(newName),
       journal,
       toggleJournal: () => {
         const next = !journalRef.current;
@@ -1902,6 +1953,7 @@ export function NotebookPane({
       },
       // With no kernel yet, this only picks the one the first run starts.
       changeKernel: report('change the kernel', async (name: string) => {
+        if (readOnlyRef.current) return;
         if (session.session) await open.track(session.changeKernel({ name }));
         // Also with a kernel running: if it is shut down, the next run
         // starts this one, as the file's metadata now says.
@@ -1934,6 +1986,7 @@ export function NotebookPane({
     dirty,
     trusted,
     isLocked,
+    readOnly,
     lock,
     cellType,
     activeCell,
@@ -1968,18 +2021,69 @@ export function NotebookPane({
     return () => cancelAnimationFrame(frame);
   }, [journal, showing]);
 
-  // A connected machine that stops answering (#701): its notebook turns
-  // read-only, with a banner, and is editable again when its room is back.
+  // A connected machine that stops answering (#701), or another Ganymede
+  // server on this machine owning the notebook (#839): the notebook turns
+  // read-only, with a banner, and is editable again without a reload when it
+  // is back or the other server lets go.
   const machineName =
     backend.config.kind === 'ganymede' && backend.config.machine
       ? (backend.config.machineName ?? 'The machine')
       : undefined;
-  const [roomOffline, setRoomOffline] = useState(false);
   useEffect(() => {
     const room = open?.room;
-    if (!open || !room || !machineName) return setRoomOffline(false);
-    return watchOffline(room, open.notebook, open.model, setRoomOffline);
+    if (!open || !room || !machineName) {
+      roomOfflineRef.current = false;
+      setRoomOffline(false);
+      return;
+    }
+    const apply = (connected: boolean) => {
+      const offline = !connected;
+      const wasOffline = roomOfflineRef.current;
+      roomOfflineRef.current = offline;
+      setRoomOffline(offline);
+      if (wasOffline && !offline) watcherRef.current?.check();
+    };
+    apply(room.connected);
+    return room.onConnection(apply);
   }, [open, machineName]);
+
+  useEffect(() => {
+    if (!open) return;
+    const watcher = watchWritable({
+      contents: services.contents,
+      path: () => open.saver.path,
+      sharedModel: open.room ? (open.model.sharedModel as YNotebook) : undefined,
+      initial: open.initialReadOnly,
+      paused: () => gone.current || !!renaming.current || roomOfflineRef.current,
+      pollWhileWritable: !!open.room,
+      onChange: next => {
+        readOnlyRef.current = next;
+        setReadOnly(next);
+      },
+    });
+    watcherRef.current = watcher;
+    return () => {
+      watcher.dispose();
+      if (watcherRef.current === watcher) watcherRef.current = undefined;
+    };
+  }, [open, services]);
+
+  const cantEdit = (!!machineName && roomOffline) || readOnly;
+  const guardRef = useRef<ReturnType<typeof createReadOnlyGuard>>(undefined);
+  useEffect(() => {
+    if (!open) return;
+    const guard = createReadOnlyGuard(open.notebook, open.model);
+    guardRef.current = guard;
+    return () => {
+      guard.dispose();
+      if (guardRef.current === guard) guardRef.current = undefined;
+    };
+  }, [open]);
+  useEffect(() => {
+    if (!open) return;
+    guardRef.current?.set(cantEdit);
+    open.cellGutter.refresh();
+  }, [open, cantEdit]);
 
   if (error) {
     const offline = isUnreachable(error);
@@ -2013,21 +2117,33 @@ export function NotebookPane({
   }
   return (
     <>
-      {roomOffline && machineName && (
+      {roomOffline && machineName ? (
         <div className="machine-banner" role="status">
           {machineName} went offline · Reconnecting…
         </div>
+      ) : (
+        readOnly &&
+        !journal && (
+          <div className="readonly-banner" role="status">
+            {READONLY_BANNER}
+          </div>
+        )
       )}
       {/* The Apple apps draw no toolbar, so the page says what the notebook
        * is above its first cell, as the toolbar's eyebrow does (#867). */}
       {native && !journal && eyebrow && <p className="page-eyebrow">{eyebrow}</p>}
-      <div className="notebook-page" ref={host} hidden={journal} />
+      <div
+        className={`notebook-page${cantEdit ? ' is-readonly' : ''}`}
+        ref={host}
+        hidden={journal}
+      />
       {journal && (
         <JournalView
           notebook={open.model.sharedModel as YNotebook}
           rendermime={open.notebook.rendermime}
           trustedIds={() => trustedCellIds(open.model)}
           room={open.room}
+          readOnly={readOnly}
           name={basename(path)}
           path={path}
           roomSettings={rooms ? services.serverSettings : undefined}
@@ -2037,15 +2153,13 @@ export function NotebookPane({
           onOpenAsNotebook={() => controllerRef.current?.toggleJournal()}
         />
       )}
-      {!journal && !(machineName && roomOffline) && (
-        <KeyboardBar notebook={open.notebook} commands={open.commands} />
-      )}
+      {!journal && !cantEdit && <KeyboardBar notebook={open.notebook} commands={open.commands} />}
       {menu && (
         <CellMenu
           notebook={open.notebook}
           cell={menu.cell}
           anchor={menu.anchor}
-          away={!!machineName && roomOffline}
+          away={cantEdit}
           run={() => open.runActive()}
           onClose={() => setMenu(undefined)}
         />

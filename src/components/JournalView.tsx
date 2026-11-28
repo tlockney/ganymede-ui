@@ -53,6 +53,7 @@ import {
 import { outputMetaText } from '../lib/output-labels';
 import { agentsAt, composerHint, useRooms } from '../lib/journals';
 import type { NotebookRoom } from '../lib/room';
+import { READONLY_BANNER } from '../lib/room-readonly';
 import { useNarrow } from '../lib/useNarrow';
 
 type Props = {
@@ -61,6 +62,8 @@ type Props = {
   /** The ids of the cells whose outputs may render in full (the page's trust for them). */
   trustedIds(): ReadonlySet<string>;
   room?: NotebookRoom;
+  /** Read-only because another Ganymede server owns the notebook (#839). */
+  readOnly?: boolean;
   /** The file's name, for labels. */
   name: string;
   /** The notebook's path, and the server to ask which agents are in its room (#724). */
@@ -514,6 +517,7 @@ export function JournalView({
   rendermime,
   trustedIds,
   room,
+  readOnly = false,
   name,
   path,
   roomSettings,
@@ -768,9 +772,10 @@ export function JournalView({
   }, [intent]);
   /** What saving the requests added here came to, by cell id. */
   const [saves, setSaves] = useState<Record<string, RequestSave>>({});
+  const canWrite = live && !readOnly;
   const add = (make: (t: string) => NewCell | undefined) => {
     const cell = make(text);
-    if (!cell || !live) return;
+    if (!cell || !canWrite) return;
     const added = notebook.addCell(cell);
     setText('');
     setIntent(undefined);
@@ -817,10 +822,16 @@ export function JournalView({
           Open as Notebook
         </button>
       </div>
-      {!live && (
+      {!live ? (
         <div className="journal-banner" role="status">
           Reconnecting… The journal is read-only until the connection returns.
         </div>
+      ) : (
+        readOnly && (
+          <div className="journal-banner" role="status">
+            {READONLY_BANNER}
+          </div>
+        )
       )}
       <div className="journal-scroll" ref={scroller} onScroll={onScroll}>
         <div className="journal-content" ref={content}>
@@ -862,10 +873,10 @@ export function JournalView({
               </p>
             )}
             <div className="journal-actions journal-actions-collapsed">
-              <button type="button" disabled={!live} onClick={() => setIntent('note')}>
+              <button type="button" disabled={!canWrite} onClick={() => setIntent('note')}>
                 Add note
               </button>
-              <button type="button" disabled={!live} onClick={() => setIntent('request')}>
+              <button type="button" disabled={!canWrite} onClick={() => setIntent('request')}>
                 Ask the agent
               </button>
             </div>
@@ -888,7 +899,7 @@ export function JournalView({
                     ? 'A request for the agent'
                     : 'A note for the journal'
               }
-              disabled={!live}
+              disabled={!canWrite}
               onChange={e => setText(e.target.value)}
               onKeyDown={e => {
                 if (narrow && e.key === 'Escape') setIntent(undefined);
@@ -905,16 +916,20 @@ export function JournalView({
                   <button type="button" onClick={() => setIntent(undefined)}>
                     Cancel
                   </button>
-                  <button type="submit" disabled={!live || blank}>
+                  <button type="submit" disabled={!canWrite || blank}>
                     {submitRequest ? 'Ask the agent' : 'Add note'}
                   </button>
                 </>
               ) : (
                 <>
-                  <button type="submit" disabled={!live || blank}>
+                  <button type="submit" disabled={!canWrite || blank}>
                     Add Note
                   </button>
-                  <button type="button" disabled={!live || blank} onClick={() => add(requestCell)}>
+                  <button
+                    type="button"
+                    disabled={!canWrite || blank}
+                    onClick={() => add(requestCell)}
+                  >
                     Ask the agent
                   </button>
                 </>

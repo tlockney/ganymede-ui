@@ -38,7 +38,10 @@ type Options = {
   now?(): number;
 };
 
-export type CellGutter = IDisposable;
+export type CellGutter = IDisposable & {
+  /** Re-evaluate each cell's run button state (e.g. when read-only changes). */
+  refresh(): void;
+};
 
 /**
  * Give every code cell of `notebook` its run gutter, and cells added later
@@ -51,6 +54,8 @@ export function attachCellGutter(
   let disposed = false;
   /** Per-cell teardown: its listeners. */
   const teardowns = new Map<Cell, () => void>();
+  /** Per-cell render callbacks, for refreshing disabled state on lock changes. */
+  const renders = new Map<Cell, () => void>();
 
   const decorate = (cell: Cell) => {
     if (!(cell instanceof CodeCell) || teardowns.has(cell)) return;
@@ -81,8 +86,8 @@ export function attachCellGutter(
         button.setAttribute('aria-label', label);
         button.title = label;
       }
-      // A run already in the queue isn't started again.
-      button.disabled = state !== undefined;
+      // A run already in the queue isn't started again; read-only / away disables Run too.
+      button.disabled = away() || state !== undefined;
       button.dataset.state = state?.phase ?? 'idle';
       elapsed.textContent = seconds === undefined ? '' : `${seconds} s`;
       // The slot stays, so nothing shifts as the time appears.
@@ -110,10 +115,12 @@ export function attachCellGutter(
     model.stateChanged.connect(onState);
     // The queue ticks the seconds, and changes phase when a run starts or ends.
     runs.changed.connect(render);
+    renders.set(cell, render);
     render();
 
     const teardown = () => {
       if (!teardowns.delete(cell)) return;
+      renders.delete(cell);
       button.removeEventListener('click', onClick);
       gutter.removeEventListener('mousedown', stop, true);
       gutter.removeEventListener('focusin', stop, true);
@@ -139,10 +146,21 @@ export function attachCellGutter(
   const cells = notebook.model?.cells;
   cells?.changed.connect(onCells);
 
-  return new DisposableDelegate(() => {
+  const disposable = new DisposableDelegate(() => {
     disposed = true;
     cells?.changed.disconnect(onCells);
     for (const teardown of [...teardowns.values()]) teardown();
     teardowns.clear();
+    renders.clear();
   });
+
+  return {
+    get isDisposed() {
+      return disposable.isDisposed;
+    },
+    dispose: () => disposable.dispose(),
+    refresh: () => {
+      for (const render of renders.values()) render();
+    },
+  };
 }
