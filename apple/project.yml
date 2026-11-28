@@ -629,6 +629,8 @@ targets:
       - path: Sources/Ganymede/NavigatorTab.swift
       # The sidebar's foot in words (#873).
       - path: Sources/Ganymede/ProjectLineText.swift
+      # The sidebar's glass tint and caption contrast (#896, #878).
+      - path: Sources/Ganymede/SidebarStyle.swift
       - path: Sources/Ganymede/WorkspaceTabs.swift
       - path: Sources/Ganymede/Tabs/WorkspaceTabModel.swift
       - path: Sources/Ganymede/Tabs/TabStripLayout.swift
@@ -722,6 +724,8 @@ targets:
       - path: Sources/Ganymede/NavigatorTab.swift
       # The sidebar's foot in words (#873).
       - path: Sources/Ganymede/ProjectLineText.swift
+      # The sidebar's glass tint and caption contrast (#896, #878).
+      - path: Sources/Ganymede/SidebarStyle.swift
       - path: Sources/Ganymede/WorkspaceTabs.swift
       - path: Sources/Ganymede/Tabs/WorkspaceTabModel.swift
       - path: Sources/Ganymede/Tabs/TabStripLayout.swift

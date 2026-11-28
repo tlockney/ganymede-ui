@@ -72,8 +72,8 @@ On first launch the app asks once whether to send crash reports
 At the sidebar's top are the app's mark and its name, and under them the
 tabs in one capsule: the tab on show draws its symbol and its name, the
 others the symbol alone, and Running counts what is running. The column
-is a pale navy over the system's sidebar material, and the navy itself in
-the dark.
+is a warm cream over the system's sidebar glass in the light, and navy
+in the dark.
 
 The sidebar has five tabs (⌘1 to ⌘6, with ⌘4 also opening Find). Each
 window keeps its sidebar shown or hidden, its tab and its expanded

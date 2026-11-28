@@ -28,6 +28,7 @@ struct NavigatorSidebar: View {
     private let terminals = OpenTerminals.shared
     @Environment(AppModel.self) private var model
     @Environment(\.openWindow) private var openWindow
+    @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
         VStack(spacing: 0) {
@@ -56,6 +57,7 @@ struct NavigatorSidebar: View {
                     .accessibilityHidden(true)
                 Text("Ganymede")
                     .font(.title3.weight(.bold))
+                    .foregroundStyle(SidebarBrand())
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 10)
@@ -138,7 +140,7 @@ struct NavigatorSidebar: View {
                     segment(item)
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(shownTab == item ? Color.primary : Color.secondary)
+                .foregroundStyle(shownTab == item ? AnyShapeStyle(SidebarInk()) : AnyShapeStyle(SidebarCaption()))
                 .help(item.help)
                 .accessibilityLabel(item.title)
                 // How many kernels and terminals run, said here: the badge
@@ -182,7 +184,10 @@ struct NavigatorSidebar: View {
             .font(.caption.weight(.semibold))
             .padding(.horizontal, 6)
             .frame(maxWidth: .infinity, minHeight: 22)
-            .background(RoundedRectangle(cornerRadius: 5).fill(Color.primary.opacity(0.1)))
+            .background(
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(colorScheme == .dark ? Color.primary.opacity(0.1) : Color.white.opacity(0.82))
+            )
             .contentShape(Rectangle())
         } else {
             Image(systemName: item.symbol)
@@ -350,7 +355,7 @@ private struct FindNavigator: View {
                         if let heading = match.heading {
                             Text(heading)
                                 .font(.caption)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(SidebarCaption())
                                 .lineLimit(1)
                                 .truncationMode(.tail)
                         }
@@ -368,7 +373,7 @@ private struct FindNavigator: View {
             if let more = found?.more, more > 0 {
                 Text("and \(more) more")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(SidebarCaption())
             }
         }
     }
@@ -400,10 +405,10 @@ private struct FindNavigator: View {
         case .none:
             EmptyView()
         case .searching:
-            Text("Searching…").foregroundStyle(.secondary)
+            Text("Searching…").foregroundStyle(SidebarCaption())
         case .nothing(let stoppedEarly):
             Text(stoppedEarly ? "No matches in the files searched" : "No matches")
-                .foregroundStyle(.secondary)
+                .foregroundStyle(SidebarCaption())
         }
     }
 
@@ -415,7 +420,7 @@ private struct FindNavigator: View {
                 Label(match.entry.title, systemImage: symbol(match.entry))
                 Text(relativeFolder(match.entry))
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(SidebarCaption())
                     .lineLimit(1)
                 if let snippet = match.snippet {
                     Text(snippet)
@@ -531,7 +536,7 @@ private struct JournalsNavigator: View {
                             Label(journal.name, systemImage: "book.pages")
                                 .lineLimit(1)
                             Text([journal.agent, Journals.status(journal)].compactMap { $0 }.joined(separator: " · "))
-                                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                .font(.caption).foregroundStyle(SidebarCaption()).lineLimit(1)
                         }
                         Spacer()
                         if journal.running {
@@ -567,7 +572,7 @@ private struct JournalsNavigator: View {
     }
 
     private func message(_ text: String) -> some View {
-        Text(text).foregroundStyle(.secondary).multilineTextAlignment(.center).padding()
+        Text(text).foregroundStyle(SidebarCaption()).multilineTextAlignment(.center).padding()
     }
 
     private func openInNewTab(_ journal: Journals.Journal) {
@@ -626,7 +631,7 @@ struct OutlineNavigator: View {
         .overlay {
             if headings.isEmpty {
                 Text(page.state.hasNotebook ? "No headings in this notebook" : "No notebook open")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(SidebarCaption())
                     .multilineTextAlignment(.center)
                     .padding()
             }
@@ -664,7 +669,7 @@ private struct RecentsNavigator: View {
                         Label(entry.url.deletingPathExtension().lastPathComponent, systemImage: "book.closed")
                         Text(ProjectLineText.abbreviate(entry.url.deletingLastPathComponent().path, home: NSHomeDirectory()))
                             .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(SidebarCaption())
                             .lineLimit(1)
                             .truncationMode(.middle)
                     }
@@ -682,7 +687,7 @@ private struct RecentsNavigator: View {
         .scrollContentBackground(.hidden)
         .overlay {
             if entries.isEmpty {
-                Text("Notebooks you open show here").foregroundStyle(.secondary)
+                Text("Notebooks you open show here").foregroundStyle(SidebarCaption())
             }
         }
         .safeAreaInset(edge: .bottom) {

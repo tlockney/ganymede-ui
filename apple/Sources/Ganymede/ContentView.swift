@@ -714,11 +714,13 @@ struct ContentView: View {
                 ) { path in
                     openWindow(value: EditorRequest(path: path, place: place))
                 }
-                // The navy glass (#873): a pale navy, or the navy itself in
-                // the dark, over the system's sidebar material and through the
-                // whole column. The lists hide their own background so this
-                // shows behind their rows.
-                .background(Color("SidebarTint").ignoresSafeArea())
+                // Tint the system's sidebar glass directly (#896) rather than
+                // laying `.background(Color("SidebarTint").ignoresSafeArea())`
+                // inside `contentView`: an unclipped SwiftUI background paints
+                // over the rounded floating panel on macOS 26 and the top
+                // `NSScrollPocket` on macOS 27. The lists hide their own
+                // background so the tinted glass shows behind their rows.
+                .background(SidebarGlassTint())
                 // A restarted server has a new address and token.
                 .id(place.isMachine ? model.serverURL : nil)
             } else {

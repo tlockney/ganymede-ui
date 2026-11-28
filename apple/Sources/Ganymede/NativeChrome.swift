@@ -45,7 +45,7 @@ struct FolderSidebar: View {
         List(selection: $selection) {
             if !reachable {
                 Text(machineName.map { "“\($0)” is offline. Reconnecting…" } ?? "The machine is offline. Reconnecting…")
-                    .foregroundStyle(.secondary).font(.caption)
+                    .foregroundStyle(SidebarCaption()).font(.caption)
             }
             Section(folder.lastPathComponent.isEmpty ? (place.isMachine ? "/" : folder.path) : folder.lastPathComponent) {
                 FolderContents(folder: folder, source: source, actions: actions, generation: generation)
@@ -364,10 +364,10 @@ private struct FolderContents: View {
             if let error {
                 // The sidebar's offline line says it once for all folders.
                 if !actions.offline {
-                    Text(error).foregroundStyle(.secondary).font(.caption)
+                    Text(error).foregroundStyle(SidebarCaption()).font(.caption)
                 }
             } else if entries.isEmpty {
-                Text("No files").foregroundStyle(.secondary)
+                Text("No files").foregroundStyle(SidebarCaption())
             }
         }
         .task(id: "\(folder.absoluteString)#\(generation)") { await load() }
@@ -434,7 +434,7 @@ struct RunningList: View {
                     KernelRow(session: session, page: page)
                 }
                 if page.state.sessions.isEmpty {
-                    Text("No kernels running").foregroundStyle(.secondary)
+                    Text("No kernels running").foregroundStyle(SidebarCaption())
                 }
             }
             Section("Terminals") {
@@ -445,7 +445,7 @@ struct RunningList: View {
                                 .lineLimit(1)
                             Spacer()
                             Text(terminal.inPanel ? "Panel" : "Tab")
-                                .foregroundStyle(.secondary).font(.caption)
+                                .foregroundStyle(SidebarCaption()).font(.caption)
                         }
                         .contentShape(Rectangle())
                     }
@@ -458,7 +458,7 @@ struct RunningList: View {
                     }
                 }
                 if terminals.entries.isEmpty {
-                    Text("No terminals open").foregroundStyle(.secondary)
+                    Text("No terminals open").foregroundStyle(SidebarCaption())
                 }
             }
         }
@@ -484,11 +484,11 @@ private struct KernelRow: View {
                 Label(session.title, systemImage: "bolt.fill")
                 Spacer()
                 if let kernel = session.kernel {
-                    Text(kernel).foregroundStyle(.secondary).font(.caption)
+                    Text(kernel).foregroundStyle(SidebarCaption()).font(.caption)
                 }
                 if let memory = session.memoryLabel {
                     Text(memory)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(SidebarCaption())
                         .font(.caption.monospacedDigit())
                         .help("Kernel memory")
                 }
@@ -561,24 +561,25 @@ struct ProjectLine: View {
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: "folder")
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(SidebarCaption())
                     .accessibilityHidden(true)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(lines.title)
                         .font(.callout)
+                        .foregroundStyle(SidebarInk())
                         .lineLimit(1)
                     Text(lines.detail)
                         .font(.caption)
-                        // Not `.secondary`, which measured 3.6:1 on the
-                        // light tint (#873): this measured 5.25:1 there.
-                        .foregroundStyle(Color.primary.opacity(0.72))
+                        // Shared caption style (#878): >= 4.5:1 across light
+                        // and dark sidebar tints.
+                        .foregroundStyle(SidebarCaption())
                         .lineLimit(1)
                         .truncationMode(.middle)
                 }
                 Spacer(minLength: 4)
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.system(size: 8, weight: .semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(SidebarCaption())
                     .accessibilityHidden(true)
             }
             .padding(.horizontal, 10)
