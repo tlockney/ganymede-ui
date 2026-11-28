@@ -43,27 +43,38 @@ struct RunCellMenu: View {
 
     var body: some View {
         #if os(macOS)
-        ControlGroup {
+        // One capsule by hand, not a `ControlGroup`: the system's styles
+        // either draw each child its own glass (automatic) or drop Run's
+        // accent fill (navigation, palette), and #892 wants one capsule with
+        // an orange Run. The material is the toolbar's own, over its
+        // `WindowBackground` band.
+        HStack(spacing: 0) {
             Button {
                 if page.state.editsCells { page.run("run") }
             } label: {
                 Label("Run", systemImage: "play.fill")
                     .labelStyle(.titleAndIcon)
                     .foregroundStyle(Color("OnAccent"))
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4)
+                    .background(Color("AccentFill"), in: RoundedRectangle(cornerRadius: 6))
             }
-            .buttonStyle(.borderedProminent)
-            .tint(Color("AccentFill"))
+            .buttonStyle(.plain)
             // Run Cell's words stay for the reader who hears the toolbar,
             // though the toolbar shows "Run" (#892).
             .accessibilityLabel("Run Cell")
             .help("Run the selected cell and select the next (⇧↩)")
             .disabled(!page.state.hasNotebook)
 
+            Divider().frame(height: 16)
+
             Menu {
                 RunMenuItems(page: page)
             } label: {
                 Image(systemName: "chevron.down")
                     .font(.system(size: 9, weight: .semibold))
+                    .frame(width: 22, height: 18)
+                    .contentShape(Rectangle())
             }
             .menuStyle(.button)
             .menuIndicator(.hidden)
@@ -72,16 +83,23 @@ struct RunCellMenu: View {
             .help("Run All, Run with Parameters, Clear All Outputs, Restart…")
             .disabled(!page.state.hasNotebook)
 
+            Divider().frame(height: 16)
+
             Button {
                 page.run("interrupt")
             } label: {
                 Image(systemName: "stop.fill")
+                    .frame(width: 22, height: 18)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityLabel("Interrupt")
             .help("Interrupt the kernel (⌘.)")
             .disabled(!page.state.isBusy)
         }
+        .padding(.horizontal, 5)
+        .padding(.vertical, 2)
+        .background(.regularMaterial, in: Capsule())
         #else
         Menu {
             RunMenuItems(page: page)

@@ -132,9 +132,18 @@ Settings > Remotes.
 
 ### Toolbar and menus
 
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, where the toolbar reads "Run Cell" with Interrupt
+> apart from it, Share, ⋯ and the inspector's toggle have a capsule each,
+> the Terminal Panel has a button of its own, and a notebook's title is
+> only its `metadata.title` or its file's name.
+
 - A notebook's window has its title in the toolbar, with the kernel's
-  button beside it. The title is the notebook's own (`metadata.title`) or
-  its file's name, and the button reads "Python · This Mac · Idle ⌄":
+  button beside it. The title is the notebook's display title: its
+  `metadata.title`, else the plain text of its first `#` heading, else
+  the file's name without its date (the sidebar and the window's own
+  title keep the file's name), and the button reads "Python · This Mac · Idle ⌄":
   the notebook's language, where its kernel runs, and what the kernel is
   doing — Idle, Running, Starting, Restarting, Stopping, Stopped, or
   Connecting while it reaches a kernel that runs on a remote. Under the title, when there
@@ -153,12 +162,16 @@ Settings > Remotes.
 - The toolbar's controls stay in one order, so none moves under the
   pointer: the title and the kernel's button; Trust and Notebook Access, which
   are there only while they apply; Notebook | Journal, the notebook's two
-  views, there while a notebook is open; **Run Cell**, whose menu has Run
-  All, Run with Parameters…, Clear All Outputs, Restart Kernel and Restart
-  & Run All, with **Interrupt** beside it, always there and enabled while
-  the kernel runs; Share (download, export, publish); and ⋯, which has View
-  as Journal, Insert Code Cell, Insert Markdown Cell, Cell Type and Save.
-  Run All is only in Run Cell's menu, so the two can't be mistaken for
+  views, there while a notebook is open; **Run**, which fills the leading
+  segment of one capsule with its menu's arrow and **Interrupt** — the
+  toolbar's only filled control — its menu holding Run All, Run with
+  Parameters…, Clear All Outputs, Restart Kernel and Restart & Run All,
+  with Interrupt at the capsule's end, always there and enabled while the
+  kernel runs; and Share (download, export, publish), ⋯ and the
+  inspector's toggle in one capsule, where ⋯ has View as Journal, Insert
+  Code Cell, Insert Markdown Cell, Cell Type, Save, and Show/Hide
+  Terminal Panel.
+  Run All is only in Run's menu, so the two can't be mistaken for
   each other. New Notebook isn't a toolbar button: File > New Notebook
   (⌘N) makes one in the window's folder, as the sidebar's menu does.
   Everything in these menus is also in the menu bar.
@@ -261,8 +274,8 @@ Settings > Remotes.
 ### Terminals and the kernel log
 
 - Terminals open in the window's bottom panel, as tabs under the
-  notebook. View > Show Terminal Panel (`` ⌃` ``) or the toolbar button
-  shows it, starting a shell in the window's folder (its notebook's
+  notebook. View > Show Terminal Panel (`` ⌃` ``) or ⋯ > Show Terminal
+  Panel shows it, starting a shell in the window's folder (its notebook's
   folder, or the folder it shows) if it has none; drag its top edge to
   resize it. Hiding the panel keeps its shells running; closing a tab
   ends that one. Since `` ⌃` `` toggles the panel, programs in a panel

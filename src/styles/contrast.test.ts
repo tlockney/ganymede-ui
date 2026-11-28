@@ -424,8 +424,10 @@ describe('secondary metadata text (#814)', () => {
   };
   function colorset(name: string, theme: Theme): RGBA {
     const file = new URL(
-      `../../apple/Resources/macOS/Assets.xcassets/${name}.colorset/Contents.json`,
-      import.meta.url,
+      `apple/Resources/macOS/Assets.xcassets/${name}.colorset/Contents.json`,
+      // Vitest runs from the repository root, and `import.meta.url` is not
+      // the file's place under its jsdom environment.
+      `file://${process.cwd()}/`,
     );
     const entries = (JSON.parse(readFileSync(file, 'utf8')) as ColorSet).colors ?? [];
     const dark = entries.find(e =>

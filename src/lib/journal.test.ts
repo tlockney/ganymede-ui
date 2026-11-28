@@ -445,9 +445,7 @@ describe('journalHeader', () => {
     expect(displayTitle({}, cells)).toBe('Fremont Bridge');
     expect(displayTitle(undefined, cells)).toBe('Fremont Bridge');
     // Only an H2: no display title, so the app falls back to the file.
-    expect(
-      displayTitle({}, [{ type: 'markdown', source: '## Fremont Bridge' }]),
-    ).toBeUndefined();
+    expect(displayTitle({}, [{ type: 'markdown', source: '## Fremont Bridge' }])).toBeUndefined();
     // Neither.
     expect(displayTitle({}, [])).toBeUndefined();
     expect(displayTitle({}, [{ type: 'markdown', source: 'Just prose.' }])).toBeUndefined();

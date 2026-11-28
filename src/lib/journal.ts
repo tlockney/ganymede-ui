@@ -727,10 +727,7 @@ export function notebookTitle(metadata: unknown): string | undefined {
  * toolbar and the window title follow it; the sidebar and its tooltips
  * keep the file's name, which says where the notebook is.
  */
-export function displayTitle(
-  metadata: unknown,
-  cells: Iterable<OutlineCell>,
-): string | undefined {
+export function displayTitle(metadata: unknown, cells: Iterable<OutlineCell>): string | undefined {
   return notebookTitle(metadata) ?? outlineOf(cells).find(item => item.level === 1)?.text;
 }
 

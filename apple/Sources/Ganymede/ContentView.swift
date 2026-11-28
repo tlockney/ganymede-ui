@@ -722,18 +722,26 @@ struct ContentView: View {
     /// toolbar and the title-bar band above it take the page's own window
     /// colour, so no strip of the system's near-black or grey sits between
     /// the top edge and the page. A console's, a folder's and a machine's
-    /// window go back to the system's toolbar, and to its title bar with a
-    /// line under it.
+    /// window go back to the system's window colour.
+    ///
+    /// Set once per window and state, never on every layout pass: assigning a
+    /// window's background colour from a layout or render pass sent AppKit
+    /// round in circles, the main thread redrawing the window forever (the
+    /// toolbar read the assignment back as a preference change). The set
+    /// below is what makes "once" possible — two dynamic catalog colours
+    /// never compare equal, so the colour alone can't tell whether this
+    /// window already has it.
     private func noteSurface(_ window: NSWindow) {
-        guard showsNotebook, let colour = NSColor(named: "WindowBackground") else {
+        if showsNotebook {
+            guard let colour = NSColor(named: "WindowBackground"),
+                  !NotebookSurfaces.shared.contains(window) else { return }
+            NotebookSurfaces.shared.add(window)
+            window.backgroundColor = colour
+        } else {
+            guard NotebookSurfaces.shared.contains(window) else { return }
+            NotebookSurfaces.shared.remove(window)
             window.backgroundColor = .windowBackgroundColor
-            window.titlebarAppearsTransparent = false
-            return
         }
-        window.backgroundColor = colour
-        // The title bar draws the window's colour instead of its own
-        // material; the page below continues it.
-        window.titlebarAppearsTransparent = true
     }
 
     private func bringForward(_ window: NSWindow) {
@@ -1461,5 +1469,12 @@ private struct NotebookSurface: ViewModifier {
                 for: .windowToolbar)
             .toolbarBackgroundVisibility(notebook ? .visible : .automatic, for: .windowToolbar)
     }
+}
+
+/// The windows that have taken a notebook's window colour (#892). A weak set,
+/// so a closed window leaves it by itself.
+@MainActor
+private enum NotebookSurfaces {
+    static let shared = NSHashTable<NSWindow>.weakObjects()
 }
 #endif

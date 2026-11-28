@@ -655,6 +655,9 @@ struct NotebookToolbar: ToolbarContent {
                 VStack(alignment: .leading, spacing: 1) {
                     Text(title)
                         .font(.headline)
+                        // The page's own heading colour (#892): moon cream
+                        // on the navy surface, near-black on the light one.
+                        .foregroundStyle(Color("TitleText"))
                         .lineLimit(1)
                         .truncationMode(.middle)
                     if let note = header?.saveNote {
@@ -714,13 +717,16 @@ struct NotebookToolbar: ToolbarContent {
         ToolbarItem {
             RunCellMenu(page: page)
         }
-        // Share, More and the inspector's toggle, in one capsule (#892).
+        // Share, More and the inspector's toggle, in one capsule (#892):
+        // the navigation style is the segmented look that joins them, where
+        // the automatic style draws each its own circle.
         ToolbarItem {
             ControlGroup {
                 shareMenu
                 moreMenu
                 inspectorToggle
             }
+            .controlGroupStyle(.navigation)
         }
     }
 
