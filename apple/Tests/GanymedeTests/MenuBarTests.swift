@@ -295,10 +295,14 @@ final class MenuBarTests: XCTestCase {
         ]
         let endpoint = ServerEndpoint(base: URL(string: "http://127.0.0.1:8888/")!, token: "tok")
 
-        let controller = MenuBarController(service: service) { endpoints in
-            XCTAssertEqual(endpoints, [endpoint])
-            return sample
-        }
+        let controller = MenuBarController(
+            service: service,
+            fetchKernels: { endpoints in
+                XCTAssertEqual(endpoints, [endpoint])
+                return sample
+            },
+            fetchExecutions: { _ in .unsupported }
+        )
         await controller.refresh(endpoints: [endpoint])
         XCTAssertEqual(controller.kernels, sample)
         XCTAssertNil(controller.kernelsError)
@@ -331,9 +335,13 @@ final class MenuBarTests: XCTestCase {
         let service = FakeService()
         let endpoint = ServerEndpoint(base: URL(string: "http://127.0.0.1:8888/")!, token: "tok")
         let fetcher = ToggleFetcher()
-        let controller = MenuBarController(service: service) { endpoints in
-            try await fetcher.fetch(endpoints)
-        }
+        let controller = MenuBarController(
+            service: service,
+            fetchKernels: { endpoints in
+                try await fetcher.fetch(endpoints)
+            },
+            fetchExecutions: { _ in .unsupported }
+        )
 
         await controller.refresh(endpoints: [endpoint])
         XCTAssertEqual(controller.kernels, fetcher.sample)
@@ -344,6 +352,265 @@ final class MenuBarTests: XCTestCase {
         await controller.refresh(endpoints: [endpoint])
         XCTAssertEqual(controller.kernels, [])
         XCTAssertEqual(controller.kernelsError, "server unreachable")
+    }
+
+    // MARK: Kernel control actions (#953)
+
+    func testKernelActionRequestsUseExpectedMethodPathAndAuth() throws {
+        let endpoint = ServerEndpoint(base: URL(string: "http://127.0.0.1:8888/")!, token: "secret-tok")
+
+        let interrupt = try MenuBarKernelAction.request(for: .interrupt, kernelID: "k-123", on: endpoint)
+        XCTAssertEqual(interrupt.httpMethod, "POST")
+        XCTAssertEqual(interrupt.url?.absoluteString, "http://127.0.0.1:8888/api/kernels/k-123/interrupt")
+        XCTAssertEqual(interrupt.value(forHTTPHeaderField: "Authorization"), "token secret-tok")
+
+        let restart = try MenuBarKernelAction.request(for: .restart, kernelID: "k-123", on: endpoint)
+        XCTAssertEqual(restart.httpMethod, "POST")
+        XCTAssertEqual(restart.url?.absoluteString, "http://127.0.0.1:8888/api/kernels/k-123/restart")
+        XCTAssertEqual(restart.value(forHTTPHeaderField: "Authorization"), "token secret-tok")
+
+        let shutDown = try MenuBarKernelAction.request(for: .shutDown, kernelID: "k-123", on: endpoint)
+        XCTAssertEqual(shutDown.httpMethod, "DELETE")
+        XCTAssertEqual(shutDown.url?.absoluteString, "http://127.0.0.1:8888/api/kernels/k-123")
+        XCTAssertEqual(shutDown.value(forHTTPHeaderField: "Authorization"), "token secret-tok")
+
+        XCTAssertThrowsError(try MenuBarKernelAction.request(for: .interrupt, kernelID: "", on: endpoint))
+        XCTAssertThrowsError(try MenuBarKernelAction.request(for: .shutDown, kernelID: "../bad", on: endpoint))
+    }
+
+    private final class ActionRecorder: @unchecked Sendable {
+        private let lock = NSLock()
+        private var recorded: [URLRequest] = []
+        var nextError: Error?
+
+        func record(_ request: URLRequest) throws {
+            lock.lock()
+            defer { lock.unlock() }
+            recorded.append(request)
+            if let nextError { throw nextError }
+        }
+
+        var requests: [URLRequest] {
+            lock.lock()
+            defer { lock.unlock() }
+            return recorded
+        }
+    }
+
+    private final class RefreshCounter: @unchecked Sendable {
+        private let lock = NSLock()
+        private var count = 0
+        func increment() {
+            lock.lock()
+            defer { lock.unlock() }
+            count += 1
+        }
+        var value: Int {
+            lock.lock()
+            defer { lock.unlock() }
+            return count
+        }
+    }
+
+    @MainActor
+    func testControllerPerformsKernelActionsRefreshesAndSurfacesErrors() async {
+        let service = FakeService()
+        let endpoint = ServerEndpoint(base: URL(string: "http://127.0.0.1:8888/")!, token: "tok-1")
+        let kernel = MenuBarKernel(
+            id: "kern-42", name: "python3", notebook: "orbits", state: "busy", endpoint: endpoint
+        )
+        let recorder = ActionRecorder()
+        let refreshes = RefreshCounter()
+
+        let controller = MenuBarController(
+            service: service,
+            fetchKernels: { _ in
+                refreshes.increment()
+                return []
+            },
+            fetchExecutions: { _ in .unsupported },
+            performAction: { request in
+                try recorder.record(request)
+            }
+        )
+
+        // All three actions send the expected request and refresh immediately.
+        await controller.perform(.interrupt, on: kernel)
+        await controller.perform(.restart, on: kernel)
+        await controller.perform(.shutDown, on: kernel)
+
+        XCTAssertNil(controller.actionError)
+        XCTAssertEqual(refreshes.value, 3)
+        XCTAssertEqual(recorder.requests.map(\.httpMethod), ["POST", "POST", "DELETE"])
+        XCTAssertEqual(
+            recorder.requests.map { $0.url?.path },
+            ["/api/kernels/kern-42/interrupt", "/api/kernels/kern-42/restart", "/api/kernels/kern-42"]
+        )
+        XCTAssertTrue(recorder.requests.allSatisfy {
+            $0.value(forHTTPHeaderField: "Authorization") == "token tok-1"
+        })
+
+        // Errors are surfaced cleanly and never dropped.
+        recorder.nextError = MenuBarController.HTTPFailure(statusCode: 500, message: "kernel gone")
+        await controller.perform(.restart, on: kernel)
+        XCTAssertEqual(controller.actionError, "Couldn’t restart orbits: HTTP 500: kernel gone")
+        XCTAssertEqual(refreshes.value, 3)
+
+        // A later successful action clears the error.
+        recorder.nextError = nil
+        await controller.perform(.shutDown, on: kernel)
+        XCTAssertNil(controller.actionError)
+        XCTAssertEqual(refreshes.value, 4)
+
+        // Missing server endpoint surfaces an error instead of silently doing nothing.
+        let detached = MenuBarKernel(id: "kern-99", name: "python3", notebook: nil, state: "idle")
+        await controller.perform(.interrupt, on: detached)
+        XCTAssertEqual(controller.actionError, "Couldn’t interrupt python3: no active server.")
+    }
+
+    // MARK: Recent executions decoding, formatting, and 404 fallback (#953)
+
+    func testExecutionDecodingFormattingAndRequestURL() throws {
+        let endpoint = ServerEndpoint(base: URL(string: "http://127.0.0.1:8888/")!, token: "tok-exec")
+        let request = MenuBarExecution.request(on: endpoint, limit: 10)
+        XCTAssertEqual(request.httpMethod, "GET")
+        XCTAssertEqual(request.url?.absoluteString, "http://127.0.0.1:8888/api/executions?limit=10")
+        XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "token tok-exec")
+
+        let json = """
+        [
+          {
+            "execution_id": "req-4",
+            "kernel_id": "5b140482-3d46-486f-8a0c-637e047675f2",
+            "notebook": "reports/package-stats.ipynb",
+            "cell_id": "cell-2",
+            "run_by": "mcp-client",
+            "started_at": "2026-11-28T17:10:04.120411Z",
+            "finished_at": null,
+            "status": "running"
+          },
+          {
+            "execution_id": "req-3",
+            "kernel_id": "5b140482-3d46-486f-8a0c-637e047675f2",
+            "notebook": "reports/package-stats.ipynb",
+            "cell_id": "cell-1",
+            "run_by": "demo",
+            "started_at": "2026-11-28T17:10:01.005000Z",
+            "finished_at": "2026-11-28T17:10:01.215000Z",
+            "status": "ok"
+          },
+          {
+            "execution_id": "req-2",
+            "kernel_id": "abcd1234-0000-0000-0000-000000000000",
+            "notebook": null,
+            "cell_id": null,
+            "run_by": null,
+            "started_at": "2026-11-28T17:09:00Z",
+            "finished_at": "2026-11-28T17:09:01.5Z",
+            "status": "error"
+          },
+          {
+            "execution_id": "req-1",
+            "kernel_id": "abcd1234-0000-0000-0000-000000000000",
+            "notebook": "scratch.ipynb",
+            "cell_id": "c9",
+            "run_by": null,
+            "started_at": "2026-11-28T17:05:00Z",
+            "finished_at": "2026-11-28T17:07:05Z",
+            "status": "aborted"
+          }
+        ]
+        """
+        let decoded = try MenuBarExecution.parse(json: Data(json.utf8))
+        XCTAssertEqual(decoded.count, 4)
+        let now = try XCTUnwrap(MenuBarExecution.parseISO8601("2026-11-28T17:10:08.120411Z"))
+        XCTAssertEqual(decoded[0].label(now: now), "package-stats · Running · mcp-client · 4s")
+        XCTAssertEqual(decoded[1].label(now: now), "package-stats · OK · demo · 210ms")
+        XCTAssertEqual(decoded[2].label(now: now), "abcd1234 · Error · 1.5s")
+        XCTAssertEqual(decoded[3].label(now: now), "scratch · Aborted · 2m 5s")
+    }
+
+    @MainActor
+    func testLoadExecutionsHandles404AsUnsupportedAnd200AsLoaded() async throws {
+        let endpoint = ServerEndpoint(base: URL(string: "http://127.0.0.1:8888/")!, token: "tok")
+
+        // 404 from an older server -> .unsupported without throwing.
+        let older = try await MenuBarController.loadExecutions(from: [endpoint], limit: 10) { _ in
+            (Data(), 404)
+        }
+        XCTAssertEqual(older, .unsupported)
+
+        // Controller omits the Recent Executions section on 404 with no error.
+        let service = FakeService()
+        let controller = MenuBarController(
+            service: service,
+            fetchKernels: { _ in [] },
+            fetchExecutions: { _ in .unsupported }
+        )
+        await controller.refresh(endpoints: [endpoint])
+        XCTAssertNil(controller.executions)
+        XCTAssertNil(controller.executionsError)
+        let hiddenSnapshot = controller.snapshot(
+            backgroundRunning: false, embeddedRunning: true, embeddedError: nil,
+            mcpMode: .off, tailnetShare: false, tailnetURL: nil, tailnetError: nil
+        )
+        XCTAssertFalse(hiddenSnapshot.showRecentExecutions)
+
+        // 200 with records -> .loaded sorted newest-first and shown in snapshot.
+        let body = """
+        [
+          {
+            "execution_id": "e1",
+            "kernel_id": "k1",
+            "notebook": "a.ipynb",
+            "cell_id": "c1",
+            "run_by": "alice",
+            "started_at": "2026-11-28T17:10:01Z",
+            "finished_at": "2026-11-28T17:10:02Z",
+            "status": "ok"
+          },
+          {
+            "execution_id": "e2",
+            "kernel_id": "k1",
+            "notebook": "b.ipynb",
+            "cell_id": "c2",
+            "run_by": null,
+            "started_at": "2026-11-28T17:10:05Z",
+            "finished_at": null,
+            "status": "running"
+          }
+        ]
+        """
+        let loaded = try await MenuBarController.loadExecutions(from: [endpoint], limit: 10) { _ in
+            (Data(body.utf8), 200)
+        }
+        guard case .loaded(let records) = loaded else {
+            return XCTFail("expected .loaded, got \(loaded)")
+        }
+        XCTAssertEqual(records.map(\.executionID), ["e2", "e1"])
+
+        let activeController = MenuBarController(
+            service: service,
+            fetchKernels: { _ in [] },
+            fetchExecutions: { _ in loaded }
+        )
+        await activeController.refresh(endpoints: [endpoint])
+        let shownSnapshot = activeController.snapshot(
+            backgroundRunning: false, embeddedRunning: true, embeddedError: nil,
+            mcpMode: .off, tailnetShare: false, tailnetURL: nil, tailnetError: nil
+        )
+        XCTAssertTrue(shownSnapshot.showRecentExecutions)
+        XCTAssertEqual(shownSnapshot.executions?.map(\.executionID), ["e2", "e1"])
+
+        // Non-404 HTTP error throws instead of silently hiding.
+        do {
+            _ = try await MenuBarController.loadExecutions(from: [endpoint], limit: 10) { _ in
+                (Data(#"{"message":"internal error"}"#.utf8), 500)
+            }
+            XCTFail("expected HTTP 500 to throw")
+        } catch let failure as MenuBarController.HTTPFailure {
+            XCTAssertEqual(failure, .init(statusCode: 500, message: "internal error"))
+        }
     }
 }
 #endif
