@@ -10,11 +10,14 @@ private final class SilentPresenter: DialogPresenter {
     var closed = 0
     /// The machine each dialog named, when one asked (#877).
     var askers: [String?] = []
+    /// The host view handed to each dialog.
+    var hosts: [DialogHost?] = []
     /// Each dialog's answer, for a test to give.
     var answers: [(DialogResult) -> Void] = []
     func present(_ dialog: Dialog, asker: String?, on host: DialogHost?, done: @escaping (DialogResult) -> Void) throws -> Close {
         shown += 1
         askers.append(asker)
+        hosts.append(host)
         answers.append(done)
         return { [weak self] gone in
             self?.closed += 1
@@ -627,6 +630,217 @@ final class KernelHostTests: XCTestCase {
         let request = AppKernels.kernelPageRequest(URL(string: "http://127.0.0.1:8888/?token=t#x")!)
         XCTAssertEqual(request.url?.absoluteString, "http://127.0.0.1:8888/kernel.html")
         XCTAssertEqual(request.cachePolicy, .reloadIgnoringLocalCacheData)
+    }
+
+    @MainActor
+    private func tabbedWindow(title: String, webView: WKWebView) -> NSWindow {
+        let window = NSWindow(
+            contentRect: NSRect(x: -2000, y: 100, width: 400, height: 300),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        window.isReleasedWhenClosed = false
+        window.title = title
+        window.tabbingIdentifier = WorkspaceTabs.identifier
+        window.tabbingMode = .preferred
+        window.contentView = webView
+        return window
+    }
+
+    @MainActor
+    private func findButton(titled title: String, in view: NSView?) -> NSButton? {
+        guard let view else { return nil }
+        if let button = view as? NSButton, button.title == title { return button }
+        for child in view.subviews {
+            if let found = findButton(titled: title, in: child) { return found }
+        }
+        return nil
+    }
+
+    /// #886: `AppKernels` lends its shared kernel web view to the first tab
+    /// that opens, so a second tab running an in-app kernel must still
+    /// present its device prompts on its own tab's window and never switch
+    /// the window back to the first tab when a prompt is shown or cancelled.
+    @MainActor
+    func testInAppKernelDialogsStayOnTheAskingTabWhenAnotherTabHoldsTheKernelWebView() async throws {
+        let server = try server()
+        defer { server.stop() }
+
+        let ledger = PermissionLedger(store: MemoryLedgerStore())
+        let kernels = AppKernels(device: DeviceBridge(ledger: ledger))
+        kernels.notebookRoot = dir
+        try kernels.serve(server)
+
+        let ui1 = uiView()
+        let ui2 = uiView()
+        let w1 = tabbedWindow(title: "01 Start Here", webView: ui1)
+        let w2 = tabbedWindow(title: "08 Device", webView: ui2)
+        defer {
+            w2.close()
+            w1.close()
+        }
+        w1.orderFront(nil)
+        w1.addTabbedWindow(w2, ordered: .above)
+        w2.makeKeyAndOrderFront(nil)
+        XCTAssertTrue(w1.tabGroup?.selectedWindow === w2)
+
+        let page1 = PageModel()
+        page1.webView = ui1
+        var state1 = PageState()
+        state1.backend = PageState.Backend(label: "Ganymede", detail: "local")
+        state1.path = "01 Start Here.ipynb"
+        page1.update(state1)
+
+        let page2 = PageModel()
+        page2.webView = ui2
+        var state2 = PageState()
+        state2.backend = PageState.Backend(label: "Ganymede", detail: "local")
+        state2.path = "08 Device.ipynb"
+        state2.running = [
+            PageState.Session(id: "s8", path: "08 Device.ipynb", kernel: "cdp-browser", state: "idle", kernelID: "k8", memory: nil),
+        ]
+        page2.update(state2)
+
+        // 01 Start Here opens first (taking kernels.webView), then 08 Device.
+        kernels.lend(ui1)
+        kernels.lend(ui2)
+        XCTAssertTrue(kernels.webView.window === w1)
+
+        let registered = RegisteredKernels()
+        kernels.handle(
+            .start(kernel: "k8", run: 1, launch: #"{"env": {"JPY_SESSION_NAME": "08 Device.ipynb"}}"#),
+            from: registered
+        )
+        try await waitFor(kernels.webView, "document.readyState === 'complete' && !!window.ganymedeKernelHost", timeout: 45)
+        try await eventually("the kernel's notebook") { ledger.notebook(for: 7) != nil }
+
+        // First prompt (`ui.prompt`) -> press Cancel.
+        _ = try await eval(kernels.webView, """
+            window.promptDone = false;
+            webkit.messageHandlers.device.postMessage({
+                id: 1, owner: 7, method: 'ui.prompt',
+                params: { title: 'Greeting', message: 'What should the greeting say?' }
+            }).then(r => { window.promptReply = r; window.promptDone = true; });
+            true
+            """)
+        try await eventually("the prompt sheet on 08 Device") { w2.attachedSheet != nil }
+        XCTAssertNil(w1.attachedSheet)
+        XCTAssertTrue(w1.tabGroup?.selectedWindow === w2, "08 Device must stay the selected tab")
+
+        let cancelPrompt = try XCTUnwrap(findButton(titled: "Cancel", in: w2.attachedSheet?.contentView))
+        cancelPrompt.performClick(nil)
+        try await waitFor(kernels.webView, "window.promptDone === true")
+        XCTAssertTrue(w1.tabGroup?.selectedWindow === w2, "cancelling the prompt must keep 08 Device in front")
+
+        // Subsequent prompts (`ui.actionSheet`, `ui.pickDate`) must also show on 08 Device.
+        _ = try await eval(kernels.webView, """
+            window.sheetDone = false;
+            webkit.messageHandlers.device.postMessage({
+                id: 2, owner: 7, method: 'ui.actionSheet',
+                params: { title: 'Pick a moon', options: ['Io', 'Europa'], cancel: 'None' }
+            }).then(() => { window.sheetDone = true; });
+            true
+            """)
+        try await eventually("the action sheet on 08 Device") { w2.attachedSheet != nil }
+        XCTAssertNil(w1.attachedSheet)
+        XCTAssertTrue(w1.tabGroup?.selectedWindow === w2)
+        let cancelSheet = try XCTUnwrap(findButton(titled: "None", in: w2.attachedSheet?.contentView))
+        cancelSheet.performClick(nil)
+        try await waitFor(kernels.webView, "window.sheetDone === true")
+        XCTAssertTrue(w1.tabGroup?.selectedWindow === w2)
+
+        _ = try await eval(kernels.webView, """
+            window.dateDone = false;
+            webkit.messageHandlers.device.postMessage({
+                id: 3, owner: 7, method: 'ui.pickDate',
+                params: { mode: 'date', title: 'Pick a day' }
+            }).then(() => { window.dateDone = true; });
+            true
+            """)
+        try await eventually("the date picker on 08 Device") { w2.attachedSheet != nil }
+        XCTAssertNil(w1.attachedSheet)
+        XCTAssertTrue(w1.tabGroup?.selectedWindow === w2)
+        let cancelDate = try XCTUnwrap(findButton(titled: "Cancel", in: w2.attachedSheet?.contentView))
+        cancelDate.performClick(nil)
+        try await waitFor(kernels.webView, "window.dateDone === true")
+        XCTAssertTrue(w1.tabGroup?.selectedWindow === w2)
+    }
+
+    /// Ledger permission prompts from an in-app kernel also target the asking
+    /// notebook's own tab rather than whichever tab opened last.
+    @MainActor
+    func testInAppKernelLedgerPromptTargetsAskingNotebooksTab() {
+        let prompts = SilentPresenter()
+        let kernels = AppKernels(device: DeviceBridge(presenter: SilentPresenter()), prompts: prompts)
+        kernels.notebookRoot = dir
+
+        let ui1 = uiView()
+        let ui2 = uiView()
+        let w1 = tabbedWindow(title: "08 Device", webView: ui1)
+        let w2 = tabbedWindow(title: "01 Start Here", webView: ui2)
+        defer {
+            w2.close()
+            w1.close()
+        }
+        w1.orderFront(nil)
+        w1.addTabbedWindow(w2, ordered: .above)
+        w2.makeKeyAndOrderFront(nil)
+
+        let page1 = PageModel()
+        page1.webView = ui1
+        var state1 = PageState()
+        state1.path = "08 Device.ipynb"
+        page1.update(state1)
+
+        let page2 = PageModel()
+        page2.webView = ui2
+        var state2 = PageState()
+        state2.path = "01 Start Here.ipynb"
+        page2.update(state2)
+
+        // 08 Device opened first, then 01 Start Here opened last.
+        kernels.lend(ui1)
+        kernels.lend(ui2)
+
+        let path = dir.appendingPathComponent("08 Device.ipynb").standardizedFileURL.path
+        kernels.prompter.askPermission("location", notebook: path, id: 1) { _ in }
+        XCTAssertEqual(prompts.shown, 1)
+        XCTAssertTrue(prompts.hosts.first ?? nil === ui1)
+        prompts.answers.first?(.dismissed)
+    }
+
+    /// When a dialog call comes in for an owner whose notebook has no open window,
+    /// `AppKernels` passes no host rather than falling back to whichever tab
+    /// currently houses its hidden `webView`.
+    @MainActor
+    func testInAppKernelDialogWithoutMatchingPageDoesNotUseParkedHostTab() throws {
+        let presenter = SilentPresenter()
+        let ledger = PermissionLedger(store: MemoryLedgerStore())
+        let bridge = DeviceBridge(presenter: presenter, ledger: ledger)
+        let kernels = AppKernels(device: bridge)
+        kernels.notebookRoot = dir
+
+        let ui1 = uiView()
+        let w1 = tabbedWindow(title: "01 Start Here", webView: ui1)
+        defer { w1.close() }
+        w1.orderFront(nil)
+
+        let page1 = PageModel()
+        page1.webView = ui1
+        var state1 = PageState()
+        state1.path = "01 Start Here.ipynb"
+        page1.update(state1)
+
+        kernels.lend(ui1)
+        XCTAssertTrue(kernels.webView.window === w1)
+
+        let missingPath = dir.appendingPathComponent("Background.ipynb").standardizedFileURL.path
+        bridge.setNotebook(missingPath, for: 7)
+        bridge.respondPage(to: ["id": 1, "owner": 7, "method": "ui.prompt", "params": ["message": "m"]]) { _ in }
+        XCTAssertEqual(presenter.shown, 1)
+        XCTAssertNil(presenter.hosts.first ?? ui1)
+        presenter.answers.first?(.dismissed)
     }
 }
 

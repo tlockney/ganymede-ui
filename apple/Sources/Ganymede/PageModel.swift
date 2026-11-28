@@ -7,9 +7,15 @@ import WebKit
 @MainActor
 @Observable
 final class PageModel {
+    /// Every page model currently attached to a `WKWebView`.
+    static let attachedPages = NSHashTable<PageModel>.weakObjects()
+
     private(set) var state = PageState()
     @ObservationIgnored weak var webView: WKWebView? {
-        didSet { flush() }
+        didSet {
+            if webView != nil { Self.attachedPages.add(self) }
+            flush()
+        }
     }
     /// Whether the page has posted its state with a backend, so its
     /// commands and calls are ready.

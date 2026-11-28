@@ -216,7 +216,7 @@ struct ParkedPage: UIViewRepresentable {
 @MainActor
 enum NotebookWindows {
     /// Every notebook page's model.
-    static let pages = NSHashTable<PageModel>.weakObjects()
+    static var pages: NSHashTable<PageModel> { PageModel.attachedPages }
 
     /// The page of the frontmost window showing a notebook page, if any.
     static var frontPage: PageModel? {
@@ -330,12 +330,7 @@ final class WebViewCoordinator: NSObject, WKNavigationDelegate, WKUIDelegate, WK
     var park: (() -> Void)?
     #endif
     var page: PageModel? {
-        didSet {
-            page?.webView = webView
-            #if os(macOS)
-            if let page { NotebookWindows.pages.add(page) }
-            #endif
-        }
+        didSet { page?.webView = webView }
     }
     #if os(macOS)
     var document: PageDocument? {

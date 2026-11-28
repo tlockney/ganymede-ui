@@ -584,13 +584,39 @@ public struct DialogFailed: Error, CustomStringConvertible {
 
 #if os(macOS)
 
-/// `NSAlert` sheets on the app's key window.
+/// `NSAlert` sheets on the asking window (or the front window without one).
 @MainActor
 public struct SystemDialogPresenter: DialogPresenter {
     public init() {}
 
+    static func targetWindow(for host: DialogHost?) -> NSWindow? {
+        targetWindow(
+            for: host,
+            keyWindow: NSApp?.keyWindow,
+            mainWindow: NSApp?.mainWindow,
+            orderedWindows: NSApp?.orderedWindows ?? [],
+            windows: NSApp?.windows ?? []
+        )
+    }
+
+    static func targetWindow(
+        for host: DialogHost?,
+        keyWindow: NSWindow?,
+        mainWindow: NSWindow?,
+        orderedWindows: [NSWindow],
+        windows: [NSWindow]
+    ) -> NSWindow? {
+        if let window = host?.window { return window }
+        let candidate = keyWindow
+            ?? mainWindow
+            ?? orderedWindows.first(where: { $0.isVisible && $0.canBecomeMain })
+            ?? orderedWindows.first(where: { $0.isVisible })
+            ?? windows.first(where: { $0.isVisible })
+        return candidate?.tabGroup?.selectedWindow ?? candidate
+    }
+
     public func present(_ dialog: Dialog, asker: String?, on host: DialogHost?, done: @escaping (DialogResult) -> Void) throws -> Close {
-        guard let window = host?.window ?? NSApp?.keyWindow ?? NSApp?.mainWindow ?? NSApp?.windows.first(where: { $0.isVisible }) else {
+        guard let window = Self.targetWindow(for: host) else {
             throw DialogUnavailable(description: "there is no window to show a dialog on")
         }
         switch dialog {
