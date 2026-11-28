@@ -192,6 +192,9 @@ describe('text contrast (#799)', () => {
     for (const s of [
       '.pane-notice-dismiss',
       '.journal-running',
+      '.title-eyebrow',
+      '.page-eyebrow',
+      '.journal-eyebrow',
       '.notebook-page .cm-md-live .cm-md-link',
       '.touch-ui .notebook-page .gn-add-button',
     ]) {
@@ -275,6 +278,14 @@ describe('text contrast (#799)', () => {
           expect(ratio, `${v} ${ratio.toFixed(2)}`).toBeGreaterThanOrEqual(AA);
         }
       }
+      // Toolbar eyebrow sits on translucent --toolbar-bg over --window-bg (#897).
+      const bar = over(color(resolve('var(--toolbar-bg)', vars)), page);
+      const eyebrow = color(resolve(decl(app, '.title-eyebrow', 'color', theme)!, vars));
+      const eyebrowRatio = contrast(over(eyebrow, bar), bar);
+      expect(
+        eyebrowRatio,
+        `.title-eyebrow on toolbar ${eyebrowRatio.toFixed(2)}`,
+      ).toBeGreaterThanOrEqual(AA);
     });
 
     it(`execution prompts read at ${AA}:1 in ${theme}, active, inactive or selected`, () => {
@@ -465,6 +476,31 @@ describe('secondary metadata text (#814)', () => {
       for (const [fg, bg] of pairs) {
         const ratio = contrast(colorset(fg, theme), colorset(bg, theme));
         expect(ratio, `${fg} on ${bg} ${ratio.toFixed(2)}`).toBeGreaterThanOrEqual(AA);
+      }
+    });
+
+    it(`headings use moon cream in dark mode and read at ${AA}:1 in ${theme} (#897)`, () => {
+      const vars = variables(theme);
+      const page = color(resolve('var(--window-bg)', vars));
+      const cell = over(color(resolve('var(--cell-bg)', vars)), page);
+      const expectedHex = theme === 'dark' ? '#f4e9d8' : '#1d1d1f';
+      const heading = color(resolve('var(--heading)', vars));
+      expect(heading).toEqual(color(expectedHex));
+      for (const [rules, selector] of [
+        [app, '.journal-title'],
+        [app, '.journal-rendered .jp-RenderedMarkdown h1'],
+        [jupyter, '.notebook-page .jp-MarkdownOutput h1'],
+        [jupyter, '.notebook-page .jp-MarkdownOutput h2'],
+        [jupyter, '.notebook-page .jp-MarkdownOutput h3'],
+        [jupyter, '.notebook-page .cm-md-live .cm-md-h'],
+      ] as const) {
+        const value = decl(rules, selector, 'color', theme);
+        expect(value, `${selector} in ${theme}`).toBe('var(--heading)');
+        const fg = color(resolve(value!, vars));
+        for (const bg of [page, cell]) {
+          const ratio = contrast(over(fg, bg), bg);
+          expect(ratio, `${selector} ${ratio.toFixed(2)}`).toBeGreaterThanOrEqual(AA);
+        }
       }
     });
   }

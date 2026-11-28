@@ -389,7 +389,7 @@ describe('journalHeader', () => {
   const at = (iso: string) => ({ metadata: agent('note', { at: iso }).metadata });
   const fmt = (d: Date) => d.toISOString().slice(0, 10);
 
-  it('puts the language and the earliest day in an eyebrow, then the title and who started it', () => {
+  it('puts the language, earliest day and agent in the eyebrow, then the title and who started it', () => {
     const cells = [
       at('2026-11-19T12:00:00Z'),
       { metadata: {} },
@@ -403,7 +403,7 @@ describe('journalHeader', () => {
         fmt,
       ),
     ).toEqual({
-      eyebrow: 'Python 3 · 2026-11-18',
+      eyebrow: 'Python 3 · 2026-11-18 · Kept with other',
       title: 'Trend',
       details: ['Started by other', '3 cells'],
     });
@@ -416,8 +416,19 @@ describe('journalHeader', () => {
       { metadata: agent('note', { by: '', at: '2026-11-17T12:00:00Z' }).metadata },
     ];
     const header = journalHeader({}, cells, 'x.ipynb', fmt);
-    expect(header.eyebrow).toBe('2026-11-17');
+    expect(header.eyebrow).toBe('2026-11-17 · Kept with alice');
     expect(header.details).toEqual(['Started by alice', '3 cells']);
+  });
+
+  it('leaves Kept with out of the eyebrow when no cell records an agent name (#897)', () => {
+    const cells = [{ metadata: agent('note', { by: '', at: '2026-11-18T12:00:00Z' }).metadata }];
+    expect(
+      journalHeader({ kernelspec: { language: 'typescript' } }, cells, 'x.ipynb', fmt),
+    ).toEqual({
+      eyebrow: 'typescript · 2026-11-18',
+      title: 'x',
+      details: ['1 cell'],
+    });
   });
 
   it('falls back to the file name and the language, and says nothing of a start with no agent', () => {

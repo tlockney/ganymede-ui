@@ -36,6 +36,10 @@ const mocks = vi.hoisted(() => ({
   places: undefined as unknown,
   /** The last pane's `onController`. */
   onController: undefined as undefined | ((c: unknown) => void),
+  /** The last pane's `onLoadError` (#891). */
+  onLoadError: undefined as undefined | ((failed: boolean) => void),
+  /** Whether the mock pane reports an open failure (#891). */
+  loadError: false,
   /** The last Find query the pane was given (#879). */
   findQuery: undefined as string | undefined,
   /** Stands in for the examples' copy when a test sets it. */
@@ -120,18 +124,24 @@ vi.mock('./components/NotebookPane', async () => {
       places,
       findQuery,
       onController,
+      onLoadError,
       onRenamed,
     }: {
       path: string;
       places?: unknown;
       findQuery?: string;
       onController(c: unknown): void;
+      onLoadError?(failed: boolean): void;
       onRenamed?(from: string, to: string): void;
     }) => {
       mocks.places = places;
       mocks.onRenamed = onRenamed;
       mocks.onController = onController;
+      mocks.onLoadError = onLoadError;
       mocks.findQuery = findQuery;
+      useEffect(() => {
+        onLoadError?.(mocks.loadError);
+      }, [path, onLoadError]);
       useEffect(() => {
         if (mocks.controller) {
           const name = path.split('/').pop();
@@ -157,6 +167,8 @@ const { resetStorageNoticeForTests } = await import('./lib/storage-notice');
 
 beforeEach(() => {
   mocks.controller = undefined;
+  mocks.onLoadError = undefined;
+  mocks.loadError = false;
   mocks.findQuery = undefined;
   mocks.copyExamples = undefined;
   mocks.signedInHere.mockReset().mockResolvedValue(false);
@@ -511,14 +523,48 @@ describe('App', () => {
     expect(states.some(s => s.path === null && s.title === null)).toBe(true);
   });
 
-  it('answers the Find tab with nothing found when the notebook never opened (#881)', async () => {
+  it('leaves Find waiting while a notebook is still opening, then shows its matches (#891)', async () => {
     const states: Record<string, unknown>[] = [];
     vi.stubGlobal('webkit', {
       messageHandlers: {
         state: { postMessage: (m: Record<string, unknown>) => states.push(m) },
       },
     });
-    // No controller: the notebook failed to open, so no pane answers.
+    const fake = fakeServices({
+      '': [
+        { name: 'Io.ipynb', type: 'notebook' },
+        { name: 'Europa.ipynb', type: 'notebook' },
+      ],
+    });
+    mocks.connect.mockResolvedValue(fakeBackend(fake.services));
+    history.replaceState(null, '', '/?kernels=server&open=Io.ipynb');
+    render(<App />);
+    await waitFor(() => expect(states.at(-1)).toMatchObject({ path: 'Io.ipynb' }));
+    const run = window.ganymede!.command;
+    expect(await run('find-in-notebook', '  volcano ')).toBe(true);
+    // While Io is still opening (no controller and no load error), App answers null
+    // so the Find tab keeps "Searching…" instead of flashing "No matches".
+    await waitFor(() => expect(mocks.findQuery).toBe('volcano'));
+    expect(states.at(-1)!.notebookFind).toBeNull();
+
+    // Switching from a failed notebook to another opening notebook clears the empty answer.
+    act(() => mocks.onLoadError?.(true));
+    await waitFor(() =>
+      expect(states.at(-1)!.notebookFind).toEqual({ query: 'volcano', matches: [], more: 0 }),
+    );
+    expect(await run('open', 'Europa.ipynb')).toBe(true);
+    await waitFor(() => expect(states.at(-1)).toMatchObject({ path: 'Europa.ipynb' }));
+    expect(states.at(-1)!.notebookFind).toBeNull();
+  });
+
+  it('answers the Find tab with nothing found once opening has failed (#891)', async () => {
+    const states: Record<string, unknown>[] = [];
+    vi.stubGlobal('webkit', {
+      messageHandlers: {
+        state: { postMessage: (m: Record<string, unknown>) => states.push(m) },
+      },
+    });
+    mocks.loadError = true;
     const fake = fakeServices({ '': [{ name: 'Io.ipynb', type: 'notebook' }] });
     mocks.connect.mockResolvedValue(fakeBackend(fake.services));
     history.replaceState(null, '', '/?kernels=server&open=Io.ipynb');
@@ -527,6 +573,13 @@ describe('App', () => {
     expect(states.at(-1)!.notebookFind).toBeNull();
     const run = window.ganymede!.command;
     expect(await run('find-in-notebook', '  volcano ')).toBe(true);
+    await waitFor(() =>
+      expect(states.at(-1)!.notebookFind).toEqual({ query: 'volcano', matches: [], more: 0 }),
+    );
+    // Retrying clears the failure so Find waits again until the retry settles.
+    act(() => mocks.onLoadError?.(false));
+    await waitFor(() => expect(states.at(-1)!.notebookFind).toBeNull());
+    act(() => mocks.onLoadError?.(true));
     await waitFor(() =>
       expect(states.at(-1)!.notebookFind).toEqual({ query: 'volcano', matches: [], more: 0 }),
     );

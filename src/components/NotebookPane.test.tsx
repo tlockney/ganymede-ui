@@ -17,7 +17,7 @@ import { NotebookRoom } from '../lib/room';
 import { attachCellControls } from '../lib/cell-controls';
 import type { BackendConfig } from '../lib/backends';
 import type { KernelPlaces } from '../lib/kernel-place';
-import { forgetChosenViews } from '../lib/journal';
+import { forgetChosenViews, forgetPositions } from '../lib/journal';
 
 // No kernel and no real notebook widget: the pane's loading, dirty state and
 // saving are tested here with JupyterLab's real NotebookModel. Rendering,
@@ -58,6 +58,7 @@ vi.mock('../lib/jupyterlab', async () => {
         activeCellChanged: InstanceType<typeof Signal>;
         stateChanged: InstanceType<typeof Signal>;
         mode?: string;
+        setMode(mode: string, options?: { focus?: boolean }): void;
         deselectAll(): void;
         scrollToCell(cell: unknown, align?: string): Promise<void>;
         scrollToItem(index: number, align?: string, margin?: number): Promise<void>;
@@ -88,6 +89,9 @@ vi.mock('../lib/jupyterlab', async () => {
       // The keyboard bar (#209) follows the mode.
       w.stateChanged = new Signal(w);
       // The outline goes to a heading's cell (#212).
+      w.setMode = vi.fn((mode: string) => {
+        w.mode = mode;
+      });
       w.deselectAll = vi.fn();
       w.scrollToCell = vi.fn(async () => {});
       // Back from the journal, with no margin above the cell (#841).
@@ -295,6 +299,7 @@ function setup(
   const backend = fakeBackend(fake.services, config);
   const controllers: (NotebookController | undefined)[] = [];
   const onController = vi.fn((c: NotebookController | undefined) => controllers.push(c));
+  const onLoadError = vi.fn();
   const onRenamed = vi.fn();
   const pane = (query?: string) => (
     <NotebookPane
@@ -304,6 +309,7 @@ function setup(
       native={native}
       findQuery={query}
       onController={onController}
+      onLoadError={onLoadError}
       onRenamed={onRenamed}
     />
   );
@@ -311,11 +317,12 @@ function setup(
   // The Mac app's Find field changing (#879): the pane reports new matches.
   const renderWith = (query: string) => utils.rerender(pane(query));
   const latest = () => controllers[controllers.length - 1];
-  return { ...utils, fake, onController, onRenamed, latest, renderWith };
+  return { ...utils, fake, onController, onLoadError, onRenamed, latest, renderWith };
 }
 
 beforeEach(() => {
   forgetChosenViews();
+  forgetPositions();
   runStatus.busy = false;
   fakes.sessions.length = 0;
   fakes.notebooks.length = 0;
@@ -438,7 +445,9 @@ describe('NotebookPane', () => {
 
     act(() => latest()!.toggleJournal());
     await waitFor(() => expect(latest()!.journal).toBe(false));
-    expect(document.querySelector('.page-eyebrow')).toHaveTextContent('python · 20 Nov 2026');
+    expect(document.querySelector('.page-eyebrow')).toHaveTextContent(
+      'python · 20 Nov 2026 · Kept with claude-code',
+    );
     // In the page, above the notebook's cells.
     const eyebrow = document.querySelector('.page-eyebrow')!;
     const page = document.querySelector('.notebook-page')!;
@@ -727,6 +736,8 @@ describe('NotebookPane', () => {
     });
 
     it('shows the cell the journal was at when switching back to the notebook', async () => {
+      const { Widget } = await import('@lumino/widgets');
+      const activate = vi.spyOn(Widget.prototype, 'activate');
       layout();
       const { latest } = setup(
         vi.fn(async () => ({ path: 'moons/Io.ipynb', content: eightCells() })),
@@ -739,28 +750,64 @@ describe('NotebookPane', () => {
       });
       const notebook = fakes.notebooks[0] as {
         activeCellIndex: number;
+        setMode: ReturnType<typeof vi.fn>;
         scrollToItem: ReturnType<typeof vi.fn>;
         select: ReturnType<typeof vi.fn>;
         deselectAll: ReturnType<typeof vi.fn>;
         widgets: { model: unknown; activate: ReturnType<typeof vi.fn> }[];
       };
+      activate.mockClear();
       act(() => latest()!.toggleJournal());
       // Flush at the top: no margin above it (#841).
       await waitFor(() =>
         expect(notebook.scrollToItem).toHaveBeenCalledExactlyOnceWith(5, 'start', 0),
       );
+      expect(notebook.setMode).toHaveBeenCalledWith('command', { focus: false });
       expect(notebook.activeCellIndex).toBe(5);
       await waitFor(() => expect(notebook.select).toHaveBeenCalledOnce());
       expect((notebook.select.mock.calls[0]![0] as { model: unknown }).model).toBe(
         notebook.widgets[5]!.model,
       );
-      // scrollToCell's steps, once the scroll is done: the cell alone is
-      // selected, and its editor activated.
-      expect(notebook.widgets[5]!.activate).toHaveBeenCalledOnce();
+      // Selected quietly without focusing the notebook or cell editor (#897).
+      expect(notebook.widgets[5]!.activate).not.toHaveBeenCalled();
+      expect(activate.mock.contexts).not.toContain(notebook);
       const scrolled = notebook.scrollToItem.mock.invocationCallOrder[0]!;
       expect(notebook.deselectAll.mock.invocationCallOrder.at(-1)!).toBeGreaterThan(scrolled);
       expect(notebook.select.mock.invocationCallOrder[0]!).toBeGreaterThan(
         notebook.deselectAll.mock.invocationCallOrder.at(-1)!,
+      );
+    });
+
+    it('selects the first cell quietly without focusing it when switching from the journal (#897)', async () => {
+      const { Widget } = await import('@lumino/widgets');
+      const activate = vi.spyOn(Widget.prototype, 'activate');
+      layout();
+      const { latest } = setup(
+        vi.fn(async () => ({ path: 'moons/Io.ipynb', content: eightCells() })),
+      );
+      await waitFor(() => expect(latest()?.journal).toBe(true));
+      const notebook = fakes.notebooks[0] as {
+        activeCellIndex: number;
+        setMode: ReturnType<typeof vi.fn>;
+        scrollToItem: ReturnType<typeof vi.fn>;
+        select: ReturnType<typeof vi.fn>;
+        widgets: { model: unknown; activate: ReturnType<typeof vi.fn> }[];
+      };
+      activate.mockClear();
+      act(() => latest()!.toggleJournal());
+      await waitFor(() =>
+        expect(notebook.scrollToItem).toHaveBeenCalledExactlyOnceWith(0, 'start', 0),
+      );
+      await waitFor(() => expect(notebook.select).toHaveBeenCalledOnce());
+      expect(notebook.setMode).toHaveBeenCalledWith('command', { focus: false });
+      expect(notebook.activeCellIndex).toBe(0);
+      expect((notebook.select.mock.calls[0]![0] as { model: unknown }).model).toBe(
+        notebook.widgets[0]!.model,
+      );
+      expect(activate.mock.contexts).not.toContain(notebook);
+      expect(notebook.widgets[0]!.activate).not.toHaveBeenCalled();
+      expect(document.querySelector('.notebook-page')!.contains(document.activeElement)).toBe(
+        false,
       );
     });
 
@@ -1594,13 +1641,16 @@ describe('NotebookPane', () => {
         .fn()
         .mockRejectedValueOnce(new TypeError('Failed to fetch'))
         .mockResolvedValue({ path: 'moons/Io.ipynb', content: structuredClone(NOTEBOOK) });
-      const { latest } = setup(get);
+      const { latest, onLoadError } = setup(get);
+      expect(onLoadError).toHaveBeenCalledWith(false);
       expect(await screen.findByText('Couldn’t open Io.ipynb')).toBeInTheDocument();
+      expect(onLoadError).toHaveBeenLastCalledWith(true);
       expect(screen.getByRole('alert')).toHaveTextContent(
         'Couldn’t reach the server to open Io.ipynb.',
       );
       await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
       await waitFor(() => expect(latest()).toBeDefined());
+      expect(onLoadError).toHaveBeenLastCalledWith(false);
       expect(get).toHaveBeenCalledTimes(2);
       expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     });

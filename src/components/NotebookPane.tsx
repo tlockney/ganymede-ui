@@ -8,7 +8,13 @@ import type { IDisposable } from '@lumino/disposable';
 import type { CommandRegistry } from '@lumino/commands';
 import { Widget } from '@lumino/widgets';
 import { type Backend, trustNotebook } from '../lib/backends';
-import { attachEditing, createCommands, createNotebook, createRendermime } from '../lib/jupyterlab';
+import {
+  type GanymedeNotebook,
+  attachEditing,
+  createCommands,
+  createNotebook,
+  createRendermime,
+} from '../lib/jupyterlab';
 import { attachCellControls, selectOnly } from '../lib/cell-controls';
 import { attachCellGutter } from '../lib/cell-gutter';
 import { attachCodeCollapse } from '../lib/code-collapse';
@@ -254,6 +260,8 @@ type Props = {
   /** The Mac app's Find field's query (#879); empty while its field is. */
   findQuery?: string;
   onController(c: NotebookController | undefined): void;
+  /** Whether the notebook failed to open (#891), so Find stops waiting for it. */
+  onLoadError?(failed: boolean): void;
   /** The file at `from` was renamed to `to`: open it there, if it is still the one open. */
   onRenamed?(from: string, to: string): void;
 };
@@ -289,7 +297,7 @@ function parking(): HTMLElement {
 
 /** Everything one open notebook holds, built once per file. */
 type Open = {
-  notebook: Notebook;
+  notebook: GanymedeNotebook;
   model: NotebookModel;
   session: SessionContext;
   widgets: NotebookWidgets;
@@ -431,13 +439,15 @@ export function NotebookPane({
   native,
   findQuery,
   onController,
+  onLoadError,
   onRenamed,
 }: Props) {
   // A page for a connected machine (#701).
   const onMachine = backend.config.kind === 'ganymede' && !!backend.config.machine;
-  // A ref, not a dependency of the controller effect: a parent that
-  // passes a new function each render would otherwise loop (the effect
-  // sets the parent's controller state, which renders it again).
+  // Refs, not effect dependencies: a parent that passes a new function
+  // each render would otherwise re-trigger effects or loop.
+  const onLoadErrorRef = useRef(onLoadError);
+  onLoadErrorRef.current = onLoadError;
   const onRenamedRef = useRef(onRenamed);
   onRenamedRef.current = onRenamed;
   const { services } = backend;
@@ -449,6 +459,9 @@ export function NotebookPane({
   const [open, setOpen] = useState<Open>();
   /** Why the file couldn't be opened. */
   const [error, setError] = useState<unknown>();
+  useEffect(() => {
+    onLoadErrorRef.current?.(!!error);
+  }, [error]);
   /** Bumped by Retry after the file couldn't be opened, to load it again. */
   const [attempt, setAttempt] = useState(0);
   const [status, setStatus] = useState<KernelState>('connecting');
@@ -1006,7 +1019,9 @@ export function NotebookPane({
       // (`chrome-native`), whose own sidebar keeps the keyboard.
       const active = document.activeElement;
       const native = document.documentElement.classList.contains('chrome-native');
-      if (!native && (!active || active === document.body)) open.notebook.activate();
+      if (!native && !journalRef.current && (!active || active === document.body)) {
+        open.notebook.activate();
+      }
     }
     const observer = new ResizeObserver(() => open.notebook.update());
     observer.observe(node);
@@ -1793,20 +1808,28 @@ export function NotebookPane({
         }
         const cell = notebook.widgets[index];
         if (!cell) return false;
-        notebook.mode = 'command';
-        notebook.deselectAll();
-        notebook.activeCellIndex = index;
         if (flush) {
-          // scrollToCell's own steps, with no margin above the cell.
+          // Back from the journal (#841, #897): scroll flush to the top and
+          // select the cell quietly without focusing its node or editor, so it
+          // keeps the 1px selection border until keyboard navigation or
+          // editing occurs.
+          notebook.setMode('command', { focus: false });
+          notebook.deselectAll();
+          notebook.activeCellIndex = index;
           void notebook
             .scrollToItem(index, 'start', 0)
             .catch(() => undefined)
             .then(() => {
+              if (notebook.isDisposed || journalRef.current) return;
               notebook.deselectAll();
               notebook.select(cell);
-              cell.activate();
             });
-        } else void notebook.scrollToCell(cell, 'start');
+          return true;
+        }
+        notebook.mode = 'command';
+        notebook.deselectAll();
+        notebook.activeCellIndex = index;
+        void notebook.scrollToCell(cell, 'start');
         notebook.activate();
         return true;
       },

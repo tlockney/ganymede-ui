@@ -224,6 +224,15 @@
   line-height: 1.65;
 }
 
+.notebook-page .jp-MarkdownOutput h1,
+.notebook-page .jp-MarkdownOutput h2,
+.notebook-page .jp-MarkdownOutput h3,
+.notebook-page .jp-MarkdownOutput h4,
+.notebook-page .jp-MarkdownOutput h5,
+.notebook-page .jp-MarkdownOutput h6 {
+  color: var(--heading);
+}
+
 .notebook-page .jp-MarkdownOutput h1 {
   font-size: 34px;
   font-weight: 700;
@@ -1096,6 +1105,7 @@
 }
 
 .notebook-page .cm-md-live .cm-md-h {
+  color: var(--heading);
   font-weight: 600;
   line-height: 1.3;
 }
