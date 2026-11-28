@@ -783,6 +783,38 @@ shortcuts and rebinds them.
 Developer settings stay hidden until General's **Show Developer
 Settings** is on ([Developer settings](#developer-settings)).
 
+#### Shared `ganymede.toml` settings
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release, where the Mac app keeps MCP, Tailnet and Spotlight
+> folder settings in its own preferences (`UserDefaults`) instead of
+> `ganymede.toml`.
+
+On the Mac, the app keeps the settings it shares with `ganymede serve`
+in `ganymede.toml` (in Ganymede's config directory, `~/.config/ganymede`
+unless `GANYMEDE_CONFIG_DIR` or `XDG_CONFIG_HOME` is set), updating the
+file through Ganymede's C API so comments, key order and other keys stay
+intact:
+
+- **MCP** (`mcp_enabled`, `mcp_read_only`, `mcp_no_execute`, `mcp_images`)
+- **Tailnet** (`[tailscale] allow`)
+- **Host read defaults** (`[host] read`, the folders listed under
+  Settings › General › Spotlight)
+
+On the first launch after upgrading, existing values for those settings
+are migrated once from `UserDefaults` into `ganymede.toml` and removed
+from `UserDefaults`. At launch, the app reads `ganymede.toml`, merges
+its launch-only keys (`root_dir`, `static_dir`, `port`, and its
+in-memory keychain `mcp_token` when MCP is on), and passes the result to
+its embedded server, so hand-edited keys in `ganymede.toml` show in
+Settings after relaunch and reach both the embedded server and
+`ganymede serve`. Secrets (`token` and `mcp_token`) are never written to
+`ganymede.toml`. If reading or updating `ganymede.toml` fails — for
+example because a legacy `ganymede.toml` is still in `~/.jupyter` or the
+file has an invalid edit — Settings shows the error rather than dropping
+it.
+
 #### Updates
 
 Release builds check GitHub for a newer release once a day. When one is

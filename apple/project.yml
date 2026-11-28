@@ -674,6 +674,7 @@ targets:
       - path: Sources/Ganymede/UpdateFeed.swift
       - path: Sources/Ganymede/NotebookIndex.swift
       - path: Sources/Ganymede/HostDefaults.swift
+      - path: Sources/Ganymede/SharedConfig.swift
       - path: Sources/QuickLook/Preview/PreviewResources.swift
       - path: Sources/QuickLook/Thumbnail/NotebookSummary.swift
       - path: Sources/QuickLook/Thumbnail/ThumbnailProvider.swift
@@ -767,6 +768,7 @@ targets:
       - path: Sources/Ganymede/FileStack.swift
       - path: Sources/Ganymede/NotebookIndex.swift
       - path: Sources/Ganymede/HostDefaults.swift
+      - path: Sources/Ganymede/SharedConfig.swift
       - path: Sources/Ganymede/CrashScrub.swift
       - path: Sources/Ganymede/NotebookActions.swift
       - path: Sources/Ganymede/AppURL.swift
