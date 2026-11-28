@@ -4,6 +4,7 @@ import Observation
 #if os(macOS)
 import AppKit
 import Darwin
+import ServiceManagement
 import UniformTypeIdentifiers
 #endif
 
@@ -90,6 +91,18 @@ final class AppModel {
     /// All verified bundled servers found on this Mac (#924), whether or not
     /// added as a remote.
     var verifiedBackgroundServers: [ThisMacServer] { thisMacChecks.verifiedServers }
+    /// The verified background server currently mounted for local routing
+    /// (#954), when the background LaunchAgent is enabled and verified.
+    var verifiedBackgroundServer: ThisMacServer? {
+        backgroundServerStatus == .enabled ? thisMacChecks.backgroundServer : nil
+    }
+    /// The current LaunchAgent registration status (#954).
+    var backgroundServerStatus: SMAppService.Status { menuBar.backgroundStatus }
+    /// Whether the background server LaunchAgent is enabled and owns tailnet
+    /// sharing for this Mac (#954).
+    var backgroundOwnsTailnet: Bool {
+        BackgroundServerRouting.backgroundOwnsTailnet(backgroundServerStatus)
+    }
     /// The active local server endpoints (embedded server plus any verified
     /// background server) for the menu bar's running-kernels list (#924).
     var activeKernelEndpoints: [ServerEndpoint] {
@@ -213,6 +226,12 @@ final class AppModel {
         thisMacChecks.onVerifiedServersChanged = { [weak self] servers in
             self?.kernelProviders.sync(servers: servers)
         }
+        thisMacChecks.appRoot = { [weak self] in
+            self?.root ?? FileManager.default.homeDirectoryForCurrentUser
+        }
+        thisMacChecks.onServersChanged = { [weak self] in
+            self?.syncMachines(refreshTrust: false)
+        }
         #endif
     }
 
@@ -278,7 +297,10 @@ final class AppModel {
         let path = pathReady
         #endif
         #if os(macOS)
-        let tailnetAllow = tailnetShare ? tailnetAllow : []
+        let tailnetAllow = BackgroundServerRouting.embeddedTailnetAllow(
+            backgroundStatus: backgroundServerStatus,
+            tailnetShare: tailnetShare,
+            tailnetAllow: self.tailnetAllow)
         #endif
         // The folder this start serves: `root` may change before it runs.
         let launchedRoot = serverRootFolder
@@ -477,9 +499,16 @@ final class AppModel {
     /// verified is this Mac's own server (#883) is listed as this Mac's
     /// place, with its remote's name.
     var places: [PlaceEntry] {
-        Places.entries(
+        #if os(macOS)
+        let localPlace: Place = verifiedBackgroundServer != nil
+            ? .thisMac(ThisMacServers.backgroundMountID) : .thisDevice
+        #else
+        let localPlace: Place = .thisDevice
+        #endif
+        return Places.entries(
             remotes: remotes, thisDevice: Places.deviceName,
-            mounting: ServerHost.machinesSupported, verified: thisMac.ids)
+            mounting: ServerHost.machinesSupported, verified: thisMac.ids,
+            thisDevicePlace: localPlace)
     }
 
     /// What a window's target is, as a place (#883): a machine whose server
@@ -492,9 +521,58 @@ final class AppModel {
     func thisMacRoot(for place: Place) -> URL? { thisMac.root(for: place) }
 
     /// One-line notice explaining why a loopback machine window wasn't
-    /// trusted as This Mac (#887); nil for non-loopback machines, this
-    /// device, and windows upgraded to This Mac.
-    func thisMacNotice(for place: Place) -> String? { thisMac.notice(for: place) }
+    /// trusted as This Mac (#887), or why a local window fell back to the
+    /// embedded server when the background server is enabled (#954); nil for
+    /// non-loopback machines, when the background server is off, and for
+    /// windows upgraded to This Mac.
+    func thisMacNotice(for place: Place, target: WindowTarget? = nil) -> String? {
+        #if os(macOS)
+        if place == .thisDevice || place == .machine(ThisMacServers.backgroundMountID) {
+            return BackgroundServerRouting.localWindowNotice(
+                target: target ?? .folder(root),
+                place: place,
+                backgroundStatus: backgroundServerStatus,
+                backgroundServer: verifiedBackgroundServer,
+                lastScan: thisMacChecks.lastScan)
+        }
+        #endif
+        return thisMac.notice(for: place)
+    }
+
+    #if os(macOS)
+    /// Routes a local folder or notebook target through the verified
+    /// background server as `.thisMac(BackgroundServer.mountID)` when the
+    /// background server is enabled and verified (#954); otherwise returns
+    /// `target` unchanged (never routing to an unverified server).
+    func routeLocalTarget(_ target: WindowTarget) -> WindowTarget {
+        BackgroundServerRouting.route(
+            target,
+            backgroundStatus: backgroundServerStatus,
+            backgroundServer: verifiedBackgroundServer,
+            lastScan: thisMacChecks.lastScan
+        ).target
+    }
+
+    /// Re-reads the background LaunchAgent status after Settings toggles or
+    /// app activation (#954): updates the menu bar, refreshes This Mac checks
+    /// and the background mount, and restarts the embedded server if embedded
+    /// tailnet sharing needs to be torn down or restored.
+    func backgroundServerStatusChanged() {
+        let previous = backgroundServerStatus
+        menuBar.refreshBackgroundStatus()
+        let updated = backgroundServerStatus
+        refreshThisMac()
+        syncMachines(refreshTrust: false)
+        if BackgroundServerRouting.shouldRestartEmbeddedForTailnetTransition(
+            from: previous,
+            to: updated,
+            tailnetShare: tailnetShare,
+            hasServedPort: defaults.object(forKey: AppTailnet.servedPortKey) != nil
+        ), server != nil {
+            start()
+        }
+    }
+    #endif
 
     /// The folder a window of `place` reads its page's paths from (#883):
     /// this Mac's own server's `root_dir`, else the app server's root.
@@ -557,9 +635,11 @@ final class AppModel {
         #endif
     }
 
-    /// The name of the machine with this id (a Remote's UUID string).
+    /// The name of the machine with this id (a Remote's UUID string, or
+    /// `"This Mac"` for the routed background server mount #954).
     func machineName(_ id: String) -> String? {
-        remotes.first { $0.id.uuidString == id && $0.hasServer }?.title
+        if id == ThisMacServers.backgroundMountID { return Places.deviceName }
+        return remotes.first { $0.id.uuidString == id && $0.hasServer }?.title
     }
 
     /// Whether a window of `place` gets the person's name for its rooms
@@ -574,10 +654,12 @@ final class AppModel {
         Remote.usesDevice(for: place, in: remotes)
     }
 
-    /// Mounts each remote with a server on the running server, and takes
-    /// away the mounts of remotes that were removed or changed. Runs when
-    /// the server starts (a new server has none) and when remotes change.
-    func syncMachines(fromStart: Bool = false) {
+    /// Mounts each remote with a server (plus the verified background server
+    /// when enabled, #954) on the running server, and takes away the mounts
+    /// of remotes that were removed or changed. Runs when the server starts
+    /// (a new server has none) and when remotes or the background server
+    /// change.
+    func syncMachines(fromStart: Bool = false, refreshTrust: Bool = true) {
         guard ServerHost.machinesSupported, let server else {
             mounted = [:]
             #if os(macOS)
@@ -597,13 +679,20 @@ final class AppModel {
                 wanted[id] = (remote.serverURL, token(for: remote.id))
             }
         }
+        #if os(macOS)
+        if backgroundServerStatus == .enabled, let background = verifiedBackgroundServer {
+            wanted[ThisMacServers.backgroundMountID] = (background.url.absoluteString, background.token)
+        }
+        #endif
         let changes = MachineMounts.changes(mounted: mounted, wanted: wanted)
         for id in changes.removed {
             server.removeMachine(id: id)
             mounted[id] = nil
             // A remote that is gone, or lost its server, names no server
             // any more: the trust one earned is not its (#883).
-            forgetThisMacTrust(id)
+            if id != ThisMacServers.backgroundMountID {
+                forgetThisMacTrust(id)
+            }
         }
         machineFailures = machineFailures.filter { wanted[$0.key] != nil }
         var fresh: [String] = []
@@ -613,7 +702,9 @@ final class AppModel {
             // token would go to it: the trust the old one earned goes now,
             // before the mount is made again, so nothing is answered for a
             // server that isn't there any more (#883).
-            forgetThisMacTrust(id)
+            if id != ThisMacServers.backgroundMountID {
+                forgetThisMacTrust(id)
+            }
             do {
                 try server.addMachine(id: id, url: entry.url, token: entry.token.isEmpty ? nil : entry.token)
                 mounted[id] = "\(entry.url)|\(entry.token)"
@@ -634,7 +725,9 @@ final class AppModel {
         // The mounts (re)connected: check again whether any of their
         // servers is this Mac's own (#883), and whenever one answers again.
         PlaceReachability.shared.onReachable = { [weak self] _ in self?.refreshThisMac() }
-        refreshThisMac()
+        if refreshTrust {
+            refreshThisMac()
+        }
         PlaceReachability.shared.watch(places.map(\.place).filter(\.isMachine), on: serverURL)
     }
 
@@ -854,9 +947,10 @@ final class AppModel {
             tailnetURL = nil
             tailnetError = nil
         }
-        // The list reaches the server only while sharing; the queued start
-        // removes the `tailscale serve` handler when sharing stops.
-        if share || wasSharing { start() }
+        // The list reaches the embedded server only while sharing and while
+        // the background server doesn't own tailnet serving (#954); the queued
+        // start removes the `tailscale serve` handler when sharing stops.
+        if !backgroundOwnsTailnet && (share || wasSharing) { start() }
     }
 
     /// A new MCP token, for when the old one leaked: agents given the old

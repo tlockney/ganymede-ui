@@ -270,7 +270,7 @@ private struct BackgroundServerSettings: View {
                     get: { controller.isEnabled },
                     set: {
                         controller.setEnabled($0)
-                        model.menuBar.refreshBackgroundStatus()
+                        model.backgroundServerStatusChanged()
                     }
                 ))
                 if let status = controller.statusText {
@@ -297,9 +297,13 @@ private struct BackgroundServerSettings: View {
             } footer: {
                 Text("Runs Ganymede’s bundled server in the background as a Login Item so it stays running between app launches. Settings come from ganymede.toml.")
             }
-            .onAppear { controller.refresh() }
+            .onAppear {
+                controller.refresh()
+                model.backgroundServerStatusChanged()
+            }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
                 controller.refresh()
+                model.backgroundServerStatusChanged()
             }
         }
     }
@@ -411,12 +415,17 @@ private struct TailnetSettings: View {
 
     var body: some View {
         Section {
+            if model.backgroundOwnsTailnet {
+                Text("Tailnet sharing is handled by the background server using [tailscale] in ganymede.toml. The app’s embedded server does not run a separate tailnet handler while the background server is enabled.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
             Toggle("Share on my tailnet", isOn: Binding(
                 get: { model.tailnetShare },
                 set: { model.setTailnet(share: $0, allow: allow) }
             ))
-            .disabled(!model.tailnetShare && allow.isEmpty)
-            if !model.tailnetShare && allow.isEmpty {
+            .disabled(model.backgroundOwnsTailnet || (!model.tailnetShare && allow.isEmpty))
+            if !model.backgroundOwnsTailnet && !model.tailnetShare && allow.isEmpty {
                 Text("Enter at least one Tailscale login under “Let in without the token” to turn this on.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -425,16 +434,18 @@ private struct TailnetSettings: View {
                 HStack {
                     TextField("you@example.com", text: $allowText)
                         .labelsHidden()
+                        .disabled(model.backgroundOwnsTailnet)
                         .onSubmit { apply() }
                     if allow.isEmpty, let login = ownLogin {
                         Button("Use Mine") { allowText = login }
+                            .disabled(model.backgroundOwnsTailnet)
                             .help("Fill in \(login), the login this Mac is signed in to Tailscale as")
                     }
                     Button("Apply") { apply() }
-                        .disabled(allow == model.tailnetAllow)
+                        .disabled(model.backgroundOwnsTailnet || allow == model.tailnetAllow)
                 }
             }
-            if model.tailnetShare {
+            if !model.backgroundOwnsTailnet && model.tailnetShare {
                 if let url = model.tailnetURL {
                     LabeledContent("Address") {
                         Link(url.absoluteString, destination: url)

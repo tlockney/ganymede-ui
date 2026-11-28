@@ -207,7 +207,10 @@ enum WindowTarget: Codable, Hashable {
             let name = URL(fileURLWithPath: path, isDirectory: true).lastPathComponent
             base = name.isEmpty || path == "/" ? (machineName ?? "Machine") : name
         }
-        guard let machineName, place.isMachine, base != machineName else { return base }
+        guard let machineName, place.isMachine,
+              place.machineID != ThisMacServers.backgroundMountID,
+              base != machineName
+        else { return base }
         return "\(base) · \(machineName)"
     }
 

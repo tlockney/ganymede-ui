@@ -153,12 +153,27 @@ final class ThisMacChecks {
     /// Called whenever `verifiedServers` changes, so `KernelProviderManager`
     /// connects to or tears down provider sockets (#941).
     @ObservationIgnored var onVerifiedServersChanged: (([ThisMacServer]) -> Void)?
+    /// The full output of the last scan (#954), used to surface why an enabled
+    /// background server could not be verified.
+    private(set) var lastScan = ThisMacScanResult()
+
+    /// The verified background server currently registered for local routing
+    /// under `ThisMacServers.backgroundMountID` (#954), if any.
+    var backgroundServer: ThisMacServer? {
+        servers.server(ThisMacServers.backgroundMountID)
+    }
 
     /// The remotes saved now, and each one's token, read when a check's
     /// answer applies, so a remote added or edited meanwhile is matched as
     /// it is now. `AppModel` sets these; the tests answer with their own.
     @ObservationIgnored var remotes: () -> [Remote] = { [] }
     @ObservationIgnored var token: (UUID) -> String? = { _ in nil }
+    /// The app's default notebook folder, used to choose which verified
+    /// background server to mount for local routing (#954).
+    @ObservationIgnored var appRoot: () -> URL = { FileManager.default.homeDirectoryForCurrentUser }
+    /// Called on the main actor when the verified background server or remote
+    /// set changes, so `AppModel` can update its `"this-mac"` mount (#954).
+    @ObservationIgnored var onServersChanged: (() -> Void)?
 
     @ObservationIgnored private let world: any ThisMacCheckWorld
     /// The check that is out, if one is.
@@ -250,18 +265,26 @@ final class ThisMacChecks {
     private func apply(_ found: ThisMacScanResult) {
         watchRuntimeDirectory()
         restartMismatched(found.mismatched)
+        if lastScan != found {
+            lastScan = found
+        }
         let verified = found.verified
         let verifiedChanged = verified != verifiedServers
         if verifiedChanged {
             verifiedServers = verified
         }
-        let servers = ThisMacServers(scan: found, remotes: remotes(), token: token)
+        let background = world.isBackgroundServerEnabled
+            ? BackgroundServerRouting.selectPrimaryServer(from: verified, preferredRoot: appRoot())
+            : nil
+        let servers = ThisMacServers(
+            scan: found, remotes: remotes(), token: token, backgroundServer: background)
         let serversChanged = servers != self.servers
         if serversChanged {
             self.servers = servers
         }
         if serversChanged || verifiedChanged {
             watchProcesses()
+            onServersChanged?()
         }
         if verifiedChanged {
             onVerifiedServersChanged?(verified)
@@ -296,6 +319,7 @@ final class ThisMacChecks {
             onVerifiedServersChanged?(verifiedServers)
         }
         watchProcesses()
+        onServersChanged?()
         refresh()
     }
 
@@ -330,6 +354,7 @@ final class ThisMacChecks {
         if servers != ThisMacServers() { servers = ThisMacServers() }
         let hadVerified = !verifiedServers.isEmpty
         if hadVerified { verifiedServers = [] }
+        if lastScan != ThisMacScanResult() { lastScan = ThisMacScanResult() }
         generation += 1
         watchProcesses()
         stopRuntimeWatch()

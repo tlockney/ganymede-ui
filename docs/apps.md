@@ -629,9 +629,23 @@ requirement (`csreq`) matching the app's bundle identifier and team ID so
 the name; unsigned debug builds omit the reservation. Connections tear
 down cleanly on quit and reconnect automatically when the background
 server restarts, while the embedded server's in-process registration
-continues unchanged when the background server is off. Local notebook
-windows still use the app's embedded server for now; the background server
-appears as a This Mac server through the existing checks.
+continues unchanged when the background server is off.
+
+When the background server is enabled and verified as a This Mac server,
+local folders and notebooks under its root open through the background
+server as a This Mac place — keeping full local capabilities (permission
+ledger, device API, Open Recent, Spotlight, Shortcuts, and local
+terminals) while the app's embedded server stays relay-only for the UI
+bundle and machine mounts without hosting rooms or kernels for local
+files. Tailnet sharing also moves to the background server (`[tailscale]`
+in `ganymede.toml`): while the background server is enabled, the embedded
+server does not run a separate `tailscale serve` handler alongside it,
+avoiding duplicate tailnet endpoints; turning the background server off
+restores embedded tailnet sharing. If the background server is enabled
+but unavailable, awaiting Login Items approval, or fails verification,
+the app never routes to an unverified server — it falls back to the
+embedded server and displays a one-line notice at the top of the window
+naming the reason.
 
 ### Menu bar
 

@@ -1073,21 +1073,23 @@ struct NewCommands: View {
 
     /// What New Tab and New Window open: the front window's own place.
     private var newTarget: WindowTarget {
-        WindowTarget.newTab(place: scope?.place, folder: folder, root: model.root)
+        model.routeLocalTarget(WindowTarget.newTab(place: scope?.place, folder: folder, root: model.root))
     }
 
     var body: some View {
         // The menus exist before any window, so their `openWindow` lets
         // files opened at a cold launch get a window when SwiftUI made
         // none (#266).
-        let _ = model.openRequests.useFallback { [openWindow] in openWindow(value: $0) }
+        let _ = model.openRequests.useFallback { [openWindow, model] in
+            openWindow(value: model.routeLocalTarget($0))
+        }
         let _ = WorkspaceTabs.useOpener { [openWindow] in openWindow(id: $0) }
         Button("New Notebook") {
             if let page {
                 // The window's folder on its own server: a machine's too.
                 page.run("new-notebook", arg: scope?.serverFolder ?? FolderEntry.serverPath(folder ?? model.root))
             } else {
-                openWindow(value: WindowTarget.folder(model.root))
+                openWindow(value: model.routeLocalTarget(WindowTarget.folder(model.root)))
             }
         }
         .keyboardShortcut("n")

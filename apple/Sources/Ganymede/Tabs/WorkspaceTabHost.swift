@@ -339,12 +339,16 @@ struct WorkspaceTabHost<Primary: View>: View {
     }
 
     private var newMenuItems: TabNewMenuItems {
-        let machines = model.places.filter { $0.place.isMachine }
+        let machines = model.places.filter { !$0.place.isLocalPlace }
         return TabNewMenuItems(
             machines: machines,
             onNewNotebook: {
-                let nextTarget = WindowTarget.newTab(place: place, folder: sidebarRoot, root: model.root)
-                controller.addPageTab(target: nextTarget, place: model.place(for: nextTarget), machineName: machineName)
+                let nextTarget = model.routeLocalTarget(
+                    WindowTarget.newTab(place: place, folder: sidebarRoot, root: model.root)
+                )
+                let nextPlace = model.place(for: nextTarget)
+                let nextMachineName = nextPlace.machineID.flatMap { model.machineName($0) }
+                controller.addPageTab(target: nextTarget, place: nextPlace, machineName: nextMachineName)
             },
             onNewConsole: {
                 let consoleTarget = WindowTarget.console(folder: sidebarRoot, id: UUID())

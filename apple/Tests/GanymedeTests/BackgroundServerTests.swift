@@ -265,7 +265,8 @@ final class BackgroundServerTests: XCTestCase {
         await checks.waitForChecks()
 
         XCTAssertEqual(signals.pids, [])
-        XCTAssertEqual(checks.servers.ids, [remote.id.uuidString])
+        XCTAssertEqual(checks.servers.ids, [ThisMacServers.backgroundMountID, remote.id.uuidString])
+        XCTAssertEqual(checks.backgroundServer?.pid, verifiedPid)
     }
 
     @MainActor

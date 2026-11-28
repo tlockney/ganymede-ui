@@ -29,7 +29,9 @@ struct PlaceMenu: View {
         } label: {
             HStack(spacing: 6) {
                 Text(currentTitle).fontWeight(.semibold).lineLimit(1)
-                if current.isThisMac { ThisMacBadge() }
+                if current.isThisMac && current.machineID != ThisMacServers.backgroundMountID {
+                    ThisMacBadge()
+                }
                 Circle()
                     .fill(reachability.isReachable(current) ? Color("Ready") : Color.red)
                     .frame(width: 7, height: 7)
@@ -49,7 +51,8 @@ struct PlaceMenu: View {
     /// so the badge's capsule would not show there: the title says it.
     private func row(_ entry: PlaceEntry) -> some View {
         let offline = !reachability.isReachable(entry.place)
-        let own = entry.place.isThisMac ? " — This Mac" : ""
+        let own = entry.place.isThisMac && entry.place.machineID != ThisMacServers.backgroundMountID
+            ? " — This Mac" : ""
         return HStack(spacing: 6) {
             if entry.place == current { Image(systemName: "checkmark") }
             Text(entry.title + own + (offline ? " · offline" : ""))
