@@ -177,10 +177,12 @@ enum AppMCP {
     }
 
     /// `jpserver-<pid>.json` for the server at `base`, in the format
-    /// `jupyter_server` and `ganymede serve` write: `ganymede mcp` reads
-    /// `url`, `token` and `root_dir`.
-    static func serverInfo(base: URL, token: String, root: String, pid: Int32) -> [String: Any] {
-        [
+    /// `jupyter_server` and `ganymede serve` write: `ganymede mcp`, `serve`
+    /// and `ui` read `url`, `token`, `root_dir` and `ganymede_version`.
+    static func serverInfo(
+        base: URL, token: String, root: String, pid: Int32, version: String? = nil
+    ) -> [String: Any] {
+        var info: [String: Any] = [
             "url": base.absoluteString,
             "hostname": base.host ?? "127.0.0.1",
             "port": base.port ?? 0,
@@ -193,20 +195,31 @@ enum AppMCP {
             "pid": Int(pid),
             appMarker: true,
         ]
+        if let version, !version.isEmpty {
+            info["ganymede_version"] = version
+        }
+        return info
     }
 
     /// The server info file for the server at `serverURL` launched with
-    /// `settings`, or nil when MCP was off. Its token is `mcp_token`, not
-    /// the server's: `ganymede mcp` sends it only to `/mcp`, the server's
-    /// own token stays off disk, and the keychain token outlives a
-    /// restart, so an agent's running session keeps working after a mode
-    /// change or relaunch (`ganymede mcp` keeps the token it found).
-    static func serverInfo(serverURL: URL, settings: [String: any Sendable], pid: Int32) -> [String: Any]? {
-        guard settings["mcp_enabled"] as? Bool == true,
-              let token = settings["mcp_token"] as? String, !token.isEmpty,
-              let root = settings["root_dir"] as? String,
+    /// `settings` (#934): written whenever the Mac app's embedded server is
+    /// running so CLI commands (`ganymede serve`, `ui`, `mcp`) can discover
+    /// it. Its `token` is `mcp_token` only while MCP is enabled, and `""`
+    /// when MCP is off — the server's own full page/session token is never
+    /// written to disk.
+    static func serverInfo(
+        serverURL: URL, settings: [String: any Sendable], pid: Int32, version: String? = nil
+    ) -> [String: Any]? {
+        guard let root = settings["root_dir"] as? String, !root.isEmpty,
               let endpoint = ServerEndpoint(serverURL: serverURL) else { return nil }
-        return serverInfo(base: endpoint.base, token: token, root: root, pid: pid)
+        let token: String
+        if settings["mcp_enabled"] as? Bool == true,
+           let mcpToken = settings["mcp_token"] as? String, !mcpToken.isEmpty {
+            token = mcpToken
+        } else {
+            token = ""
+        }
+        return serverInfo(base: endpoint.base, token: token, root: root, pid: pid, version: version)
     }
 
     /// Writes the server info file in `dir`, readable by this user only

@@ -98,8 +98,9 @@ final class AppModel {
     /// on, kept in the keychain so the config agents were given keeps
     /// working; nil while it is off.
     private(set) var mcpToken: String?
-    /// The `jpserver-<pid>.json` written while MCP is on, so `ganymede mcp`
-    /// finds the app's server.
+    /// The `jpserver-<pid>.json` written while the embedded server runs (#934),
+    /// so `ganymede serve`, `ui` and `mcp` can discover it (carrying `mcp_token`
+    /// only while MCP is on).
     @ObservationIgnored private var serverInfoFile: URL?
     /// Whether the server is shared on the tailnet through `tailscale
     /// serve` (`AppTailnet`); off by default.
@@ -270,6 +271,9 @@ final class AppModel {
             failedRoot = nil
             #if os(macOS)
             await path?.value
+            let serverVersion = await Task.detached(priority: .utility) {
+                SystemThisMacProbe().bundledVersion
+            }.value
             // Shared on the tailnet: Tailscale names this Mac, and the
             // server lets that name and the listed logins in.
             var withTailnet = settings
@@ -329,7 +333,7 @@ final class AppModel {
                 servedKernels.listening(launchedKernels)
                 url = pageURL(host.url)
                 #if os(macOS)
-                writeServerInfo(host.url, settings: launched)
+                writeServerInfo(host.url, settings: launched, version: serverVersion)
                 #endif
                 if let port = host.url.port {
                     defaults.set(port, forKey: Keys.port)
@@ -831,19 +835,23 @@ final class AppModel {
         start()
     }
 
-    /// Writes the server info file for the server at `serverURL` when it
-    /// was launched with MCP on (`settings`, not the current mode, which a
-    /// queued start may have changed since).
-    private func writeServerInfo(_ serverURL: URL, settings: [String: any Sendable]) {
+    /// Writes the server info file for the running embedded server at
+    /// `serverURL` launched with `settings` (#934). Includes `mcp_token` only
+    /// when MCP was on in `settings` (otherwise `token` is `""`).
+    private func writeServerInfo(
+        _ serverURL: URL, settings: [String: any Sendable], version: String?
+    ) {
         removeServerInfo()
         let pid = ProcessInfo.processInfo.processIdentifier
-        guard let info = AppMCP.serverInfo(serverURL: serverURL, settings: settings, pid: pid) else { return }
+        guard let info = AppMCP.serverInfo(
+            serverURL: serverURL, settings: settings, pid: pid, version: version
+        ) else { return }
         let dir = AppMCP.runtimeDirectory()
-        // A crashed run's file, with its token, would stay otherwise.
+        // A crashed run's file would stay otherwise.
         AppMCP.removeStaleServerInfo(in: dir)
         serverInfoFile = AppMCP.writeServerInfo(info, in: dir, pid: pid)
         if serverInfoFile == nil {
-            NSLog("Ganymede: the server info file for `ganymede mcp` couldn't be written")
+            NSLog("Ganymede: the server info file couldn't be written")
         }
     }
 
