@@ -25,8 +25,9 @@ export type HostGrants = { path: string; grant: HostGrant; defaults: HostDefault
  * `api/host/grants` to a machine running Ganymede v0.15.0 or later. It
  * takes a Ganymede with ganymede#973 on this device's side, so an app
  * whose bundled server predates that answers 404; the page dims
- * Notebook Access in a machine's window only while it checks, and opens
- * the sheet after that to say so (#868).
+ * Notebook Access in a machine's window while it checks, keeps it
+ * dimmed after other failures, and only on that 404 (`NoGrantsRoute`)
+ * leaves it available so the sheet opens to say so (#868, #935).
  */
 export function hostGrantsAvailable(backend: Backend | undefined): boolean {
   return backend?.config.kind === 'ganymede' && backend.config.kernels !== 'page';

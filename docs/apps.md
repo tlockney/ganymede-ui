@@ -1089,10 +1089,11 @@ with only SSH stays in Settings for shells.
   running Ganymede v0.15.0 or later serves a notebook's grants already;
   what it needs is an app whose bundled server forwards
   `api/host/grants` to it, which ganymede#973 adds. A machine's window
-  dims Notebook Access only while the app checks the open notebook's
-  grant, and keeps it dimmed if that check fails for any other reason: an
-  app whose server has no such route answers 404, and the sheet it opens
-  says the app needs a newer version. The padlock stays quiet either way.
+  dims Notebook Access while the app checks the open notebook's grant, and
+  keeps it dimmed if the check fails. The exception is an app whose server
+  has no such route: it answers 404, Notebook Access stays available, and
+  the sheet says the app needs a newer version. The padlock stays quiet
+  either way.
 
   > [!NOTE]
   > **Unreleased.** Available only from a build of `main` (HEAD), not in
