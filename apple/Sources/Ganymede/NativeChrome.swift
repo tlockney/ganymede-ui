@@ -604,18 +604,25 @@ struct ProjectLine: View {
 /// (#226).
 ///
 /// Three groups at the window's edges, in a fixed order (#892): the title and
-/// the kernel's chip at the leading edge; Trust, Notebook Access and
-/// Notebook | Journal before the run group; and the right group — Share, More
-/// and the inspector's toggle, in one capsule — at the trailing end. A
-/// flexible space after the chip holds the rest to the trailing edge, and the
+/// the kernel's chip at the leading edge, and Trust, Notebook Access,
+/// Notebook | Journal, Run Cell and the right group in the primary-action
+/// region, which the toolbar lays out at the trailing edge. That placement is
+/// what holds them right: the same items in `.automatic` run on from the
+/// chip, and a flexible spacer between the two regions had no effect, so at
+/// 1440 points they sat in the toolbar's left half with the rest empty. The
 /// groups that come and go (Trust, Access, the journal toggle) arrive at the
-/// front of that run, so nothing after them moves when they do, and nothing
-/// moves when Interrupt enables or the title gains its "Edited" line.
+/// front of the run, so nothing after them moves when they do, and nothing
+/// moves when Interrupt enables or the title gains its "Edited" line. The
+/// update button sits at the end of the leading region, so an update
+/// appearing moves nothing at all (#812).
 ///
-/// Run Cell shares one `ControlGroup` with its menu's arrow and Interrupt
-/// (#892): the system draws one glass capsule around the three instead of
-/// the separate pieces `ToolbarItemGroup` gave. The run group is the toolbar's
-/// only orange control.
+/// The run group is one hand-drawn capsule, `HStack` over `.regularMaterial`
+/// in a `Capsule` (`RunCellMenu`): the system's `ControlGroup` styles either
+/// draw each child its own glass or drop Run's accent fill. Its toolbar item
+/// hides the system's shared background, so the capsule is drawn once. The
+/// right group is a `ControlGroup` in the navigation style, which is the
+/// system's segmented capsule. The run group is the toolbar's only orange
+/// control.
 ///
 /// New Notebook is File > New Notebook (⌘N), not a toolbar button (#867).
 struct NotebookToolbar: ToolbarContent {
@@ -641,6 +648,9 @@ struct NotebookToolbar: ToolbarContent {
     var panelShown = false
     /// Shows or hides the window's terminal panel (⌃`), from ContentView.
     var toggleTerminalPanel: () -> Void = {}
+    /// An update that is ready to install (#812): at the end of the leading
+    /// region, so it appears and goes without moving the groups to its right.
+    var update: AppUpdater.Available?
 
     var body: some ToolbarContent {
         // The title, and beside it the kernel's own button (#867): a
@@ -686,14 +696,17 @@ struct NotebookToolbar: ToolbarContent {
         ToolbarItem(placement: .navigation) {
             KernelPicker(page: page, panel: panel, place: place, header: header)
         }
-        // The empty middle of the toolbar: what follows sits at the trailing
-        // edge, where the toolbar was otherwise empty (#892). It gives up its
-        // room first when the window narrows, so the leading and trailing
-        // groups stay where they are.
-        ToolbarSpacer(.flexible)
+        // An update that's ready: still in the leading region, so the
+        // groups in the primary-action region to its right don't shift when
+        // it arrives (#812).
+        if let update {
+            ToolbarItem(placement: .navigation) {
+                UpdateAvailableButton(available: update)
+            }
+        }
         // Only while the notebook isn't trusted.
         if !page.state.trusted {
-            ToolbarItem {
+            ToolbarItem(placement: .primaryAction) {
                 Button { confirmTrust(page) } label: { Label("Trust", systemImage: "checkmark.shield") }
                     .help("Trust this notebook's HTML and JavaScript outputs")
                     .disabled(!page.state.hasNotebook)
@@ -701,26 +714,29 @@ struct NotebookToolbar: ToolbarContent {
         }
         // Only while the notebook asks for something its grant doesn't give.
         if let wanted = page.state.accessWanted, !wanted.isEmpty {
-            ToolbarItem {
+            ToolbarItem(placement: .primaryAction) {
                 Button { page.run("notebook-access") } label: { Label("Access", systemImage: "lock.shield") }
                     .help("Notebook Access: this notebook asks for \(wanted.joined(separator: ", "))")
             }
         }
         // The view the header names (#819), only while a notebook is open.
         if page.state.hasNotebook {
-            ToolbarItem {
+            ToolbarItem(placement: .primaryAction) {
                 JournalViewPicker(page: page)
             }
         }
         // Run Cell, its run menu's arrow and Interrupt, in one capsule
         // (#892).
-        ToolbarItem {
+        ToolbarItem(placement: .primaryAction) {
             RunCellMenu(page: page)
         }
+        // The capsule is RunCellMenu's own: hide the toolbar's shared glass
+        // behind this item, so the run group isn't drawn twice (#892).
+        .sharedBackgroundVisibility(.hidden)
         // Share, More and the inspector's toggle, in one capsule (#892):
         // the navigation style is the segmented look that joins them, where
         // the automatic style draws each its own circle.
-        ToolbarItem {
+        ToolbarItem(placement: .primaryAction) {
             ControlGroup {
                 shareMenu
                 moreMenu

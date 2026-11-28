@@ -187,8 +187,9 @@ enum WindowTarget: Codable, Hashable {
 
     /// The window title. A machine's window adds its name, so its tab
     /// can't be taken for a local one (`machineName`, from `Remote.title`).
-    /// A notebook is called its `metadata.title` where the page reports one
-    /// (#867), and its file's name otherwise.
+    /// A notebook is called the title the page reports (#867, #892): its
+    /// `metadata.title`, else its first level-1 heading's text, else the
+    /// file's name.
     func displayTitle(machineName: String? = nil, metadataTitle: String? = nil) -> String {
         let base: String
         switch self {
@@ -210,11 +211,12 @@ enum WindowTarget: Codable, Hashable {
         return "\(base) · \(machineName)"
     }
 
-    /// What a notebook's window is called (#867): its `metadata.title` when
-    /// the page reports one, else the file's name without the date an
-    /// agent's journal starts it with ("2026-11-09-fremont-bridge" is
-    /// "fremont-bridge"), so the title reads as a title where the sidebar
-    /// keeps the file's name. A name that is only a date keeps it.
+    /// What a notebook's window is called (#867): the title the page reports
+    /// (#892) — its `metadata.title`, else its first level-1 heading's text —
+    /// else the file's name without the date an agent's journal starts it
+    /// with ("2026-11-09-fremont-bridge" is "fremont-bridge"), so the title
+    /// reads as a title where the sidebar keeps the file's name. A name that
+    /// is only a date keeps it.
     static func displayName(fileStem: String, metadataTitle: String?) -> String {
         if let title = metadataTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
            !title.isEmpty {

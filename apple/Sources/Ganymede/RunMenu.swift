@@ -1,9 +1,9 @@
 import SwiftUI
 
-/// The notebook's run menu (#812), under Run Cell's split button on the Mac,
-/// iPad and iPhone: the same items in the same order everywhere. Each item
-/// enables on its own; the button carrying the menu is enabled while a
-/// notebook is open.
+/// The notebook's run menu (#812), in the run group's menu on the Mac,
+/// beside the split button's menu on the iPad and iPhone: the same items in
+/// the same order everywhere. Each item enables on its own; the control
+/// carrying the menu is enabled while a notebook is open.
 struct RunMenuItems: View {
     var page: PageModel
 
@@ -32,12 +32,15 @@ struct RunMenuItems: View {
 /// stays enabled with a notebook open and does nothing in the journal view,
 /// which has no cell to run.
 ///
-/// On the Mac it is the toolbar's whole run group (#892): Run, its menu's
-/// arrow and Interrupt in one `ControlGroup`, so the system draws one glass
-/// capsule around the three instead of the separate pieces
-/// `ToolbarItemGroup` gave. Run is the toolbar's only orange control, filled
-/// with the app's accent and lettered in `OnAccent`; the arrow and Interrupt
-/// stay neutral. The iPad and iPhone keep the one split button.
+/// On the Mac it is the toolbar's whole run group (#892): an `HStack` of Run,
+/// its menu's arrow and Interrupt over `.regularMaterial` in a `Capsule` — one
+/// capsule drawn by hand, because the system's `ControlGroup` styles either
+/// draw each child its own glass (automatic) or join them but drop Run's
+/// fill (navigation and palette). Its toolbar item hides the system's shared
+/// background, so the capsule isn't drawn twice. Run is the toolbar's only
+/// orange control, filled with the app's accent and lettered in `OnAccent`;
+/// the arrow and Interrupt, both to Run's right, stay neutral. The iPad and
+/// iPhone keep the one split button.
 struct RunCellMenu: View {
     var page: PageModel
 

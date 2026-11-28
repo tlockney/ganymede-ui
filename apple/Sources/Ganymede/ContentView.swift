@@ -186,12 +186,11 @@ struct ContentView: View {
                 inspectorShown: showsNotebook ? inspector.isShown : nil,
                 toggleInspector: { inspector.toggle() },
                 panelShown: panel.isShown,
-                toggleTerminalPanel: { panel.toggle(startingOn: windowTerminal) })
-            if let available = updater.available {
-                ToolbarItem {
-                    UpdateAvailableButton(available: available)
-                }
-            }
+                toggleTerminalPanel: { panel.toggle(startingOn: windowTerminal) },
+                // An update that's ready sits at the end of the toolbar's
+                // leading region, so its arrival moves nothing to its right
+                // (#812).
+                update: updater.available)
         }
         // The status line (#812). The system draws it and it isn't
         // clickable: the kernel button's popover opens the details. A
