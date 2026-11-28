@@ -728,6 +728,10 @@
     padding-right: 0;
   }
 
+  .touch-ui .notebook-page .jp-CodeCell > .gn-source-bar {
+    margin-right: 0;
+  }
+
   /* The line above the active cell only: a tap on another cell makes it active. */
   .touch-ui .notebook-page .jp-Cell > .gn-cell-meta {
     display: none;
@@ -848,6 +852,12 @@
     padding-left: 10px;
   }
 
+  .touch-ui .notebook-page .jp-CodeCell > .gn-source-bar {
+    width: auto;
+    max-width: none;
+    margin: 0 10px 6px;
+  }
+
   .touch-ui .notebook-page .jp-CodeCell .jp-OutputArea,
   .touch-ui .notebook-page .jp-CodeCell .jp-OutputArea-child,
   .touch-ui .notebook-page .jp-CodeCell .jp-OutputArea-output {
@@ -874,6 +884,20 @@
   .touch-ui .notebook-page .jp-MarkdownOutput h2 {
     font-size: 20px;
   }
+}
+
+/* Long code cells (#822, src/lib/source-expand.ts): keep compact on the left on
+ * desktop so the bar never collides with the top-right floating cell toolbar. */
+.notebook-page .jp-CodeCell > .gn-source-bar {
+  width: fit-content;
+  max-width: calc(100% - 170px);
+  gap: 10px;
+  margin: 4px 14px 6px 0;
+}
+
+.touch-ui .notebook-page .jp-CodeCell > .gn-source-bar {
+  width: auto;
+  max-width: none;
 }
 
 /* What an output is, before its text (#813, src/lib/output-labels.ts). */

@@ -40,6 +40,11 @@ export interface TableResource {
   ganymede?: { rows?: number; shown?: number; title?: string; page?: string };
 }
 
+export interface TableViewState {
+  page: number;
+  sort: { column: number; descending: boolean } | null;
+}
+
 /** The kernel a notebook's tables page through, when it has one. */
 export type KernelSource = () => Kernel.IKernelConnection | null | undefined;
 
@@ -300,6 +305,15 @@ export function footerText(options: {
   return sorted ? `${cut}. Sorted within the first ${fmt(embedded)}.` : `${cut}.`;
 }
 
+const widgetsByNode = new WeakMap<HTMLElement, RenderedTable>();
+
+/** Returns the live table widget for a `.gm-table` root element, if still active. */
+export function tableWidgetFor(node: Element | null | undefined): RenderedTable | undefined {
+  if (!(node instanceof HTMLElement)) return undefined;
+  const widget = widgetsByNode.get(node);
+  return widget && !widget.isDisposed ? widget : undefined;
+}
+
 /** The table renderer: text only, so it's safe for untrusted output. */
 export class RenderedTable extends Widget implements IRenderMime.IRenderer {
   private _fields: TableField[] = [];
@@ -309,6 +323,8 @@ export class RenderedTable extends Widget implements IRenderMime.IRenderer {
   private _page = 0;
   private _sort: { column: number; descending: boolean } | null = null;
   private _title?: string;
+  private _resource: TableResource = {};
+  private _trusted = false;
   /** The kernel's id for the whole table, while paging through the kernel. */
   private _remote: string | null = null;
   private _pages: TablePages | null = null;
@@ -336,6 +352,7 @@ export class RenderedTable extends Widget implements IRenderMime.IRenderer {
   ) {
     super();
     this.addClass('gm-table');
+    widgetsByNode.set(this.node, this);
   }
 
   /** Whether pages and sorts come from the kernel. */
@@ -343,8 +360,73 @@ export class RenderedTable extends Widget implements IRenderMime.IRenderer {
     return this._remote !== null;
   }
 
+  /** Optional table caption from `ganymede.title`. */
+  get tableTitle(): string | undefined {
+    return this._title;
+  }
+
+  /** Most recent rendered `TableResource` payload. */
+  get resource(): TableResource {
+    return this._resource;
+  }
+
+  /** Whether the rendered output was trusted. */
+  get trusted(): boolean {
+    return this._trusted;
+  }
+
+  /** Kernel lookup callback passed when constructing this widget. */
+  get kernel(): KernelSource | undefined {
+    return this._kernel;
+  }
+
+  /** Total row count reported by the resource/kernel. */
+  get total(): number {
+    return this._total;
+  }
+
+  /** Number of embedded rows in this output payload. */
+  get shownCount(): number {
+    return this._rows.length;
+  }
+
+  /** Current page index and column sort state. */
+  get viewState(): TableViewState {
+    return {
+      page: this._page,
+      sort: this._sort ? { column: this._sort.column, descending: this._sort.descending } : null,
+    };
+  }
+
+  /** Applies a previously captured sort and page state, clamped to bounds. */
+  restoreViewState(state: TableViewState): void {
+    const nextSort =
+      state.sort && state.sort.column >= 0 && state.sort.column < this._fields.length
+        ? { column: state.sort.column, descending: state.sort.descending }
+        : null;
+    const nextPage = Math.min(Math.max(0, state.page), this._pageCount() - 1);
+    const sameSort =
+      this._sort?.column === nextSort?.column && this._sort?.descending === nextSort?.descending;
+    if (sameSort && this._page === nextPage) return;
+    this._sort = nextSort;
+    this._page = nextPage;
+    this._notice = '';
+    this._resume();
+    if (this._remote !== null) {
+      this._generation++;
+      this._cache.clear();
+      this._inflight.clear();
+      this._show();
+      return;
+    }
+    this._sortLocal();
+    this._draw();
+  }
+
   renderModel(model: IRenderMime.IMimeModel): Promise<void> {
     const resource = (model.data[this.mimeType] ?? {}) as TableResource;
+    this._resource = resource;
+    this._trusted = model.trusted;
     const fields = resource.schema?.fields;
     this._fields = Array.isArray(fields)
       ? fields.map(f => ({
@@ -387,6 +469,7 @@ export class RenderedTable extends Widget implements IRenderMime.IRenderer {
   }
 
   dispose(): void {
+    widgetsByNode.delete(this.node);
     this._closePages();
     super.dispose();
   }

@@ -825,5 +825,20 @@ describe('DuckdbConsole', () => {
         set.mockRestore();
       }
     });
+
+    it('offers Expand table on results with more than 15 rows and opens ExpandedView (#822)', async () => {
+      const many = arrow([['name', 'Utf8', Array.from({ length: 18 }, (_, i) => `Moon ${i}`)]]);
+      engineFor(() => many);
+      setup();
+      await waitFor(() => expect(screen.queryByText('Starting DuckDB…')).toBeNull());
+      type('select * from moons;');
+      key('Enter');
+
+      const expand = await screen.findByRole('button', { name: 'Expand table' });
+      await userEvent.click(expand);
+      expect(await screen.findByRole('dialog', { name: 'Table, 18 rows' })).toBeInTheDocument();
+      await userEvent.keyboard('{Escape}');
+      expect(screen.queryByRole('dialog')).toBeNull();
+    });
   });
 });

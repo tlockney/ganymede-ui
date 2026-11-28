@@ -63,27 +63,34 @@ function colorScheme(): 'dark' | 'light' {
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
+export interface FrameOptions {
+  /** Horizontal overflow behavior inside the frame; defaults to `'hidden'`. */
+  overflowX?: 'hidden' | 'auto';
+}
+
 /**
  * The frame document: the policy, the page's text style, a sizer, then the
- * content. The document hides overflow, so an output that fits shows no
- * scrollbar; once the content is taller than `MAX_HEIGHT`, the sizer lets
- * it scroll vertically, since the frame stops growing there. It stays
+ * content. The document hides overflow by default, so an output that fits
+ * shows no scrollbar; once the content is taller than `MAX_HEIGHT`, the sizer
+ * lets it scroll vertically, since the frame stops growing there. It stays
  * scrollable: content whose height follows its width (an aspect-ratio box)
  * can be over the cap without a classic scrollbar and under it with one,
  * and switching back would flip the scrollbar on and off for good. Content
  * that fits again shows no scrollbar anyway.
  */
-export function frameDocument(body: string): string {
+export function frameDocument(body: string, options?: FrameOptions): string {
   const style = getComputedStyle(document.body);
   const theme = THEME_VARS.map(([prop, v]) => {
     const value = style.getPropertyValue(v).trim();
     return value ? `${prop}:${value.replace(/[<>;{}]/g, '')};` : '';
   }).join('');
   const scheme = colorScheme();
+  const overflow =
+    options?.overflowX === 'auto' ? 'overflow-x:auto;overflow-y:hidden' : 'overflow:hidden';
   return `<!doctype html><html><head><meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="${FRAME_CSP}">
 <meta name="color-scheme" content="${scheme}">
-<style>html,body{margin:0;padding:0;overflow:hidden;background:transparent}body{${theme}}#root{display:flow-root}</style>
+<style>html,body{margin:0;padding:0;${overflow};background:transparent}body{${theme}}#root{display:flow-root}</style>
 <script>
 addEventListener('DOMContentLoaded', function () {
   var root = document.getElementById('root');
@@ -126,13 +133,17 @@ function onMessage(event: MessageEvent): void {
 }
 
 /** Puts a sandboxed frame showing `body` in `host`. */
-export function renderFrame(host: HTMLElement, body: string): HTMLIFrameElement {
+export function renderFrame(
+  host: HTMLElement,
+  body: string,
+  options?: FrameOptions,
+): HTMLIFrameElement {
   if (frames.size === 0) window.addEventListener('message', onMessage);
   const frame = document.createElement('iframe');
   frame.className = 'gn-OutputFrame';
   frame.setAttribute('sandbox', FRAME_SANDBOX);
   frame.setAttribute('referrerpolicy', 'no-referrer');
-  frame.srcdoc = frameDocument(body);
+  frame.srcdoc = frameDocument(body, options);
   // The same scheme on the element as in its document, or the browser
   // paints the frame an opaque background.
   frame.style.colorScheme = colorScheme();

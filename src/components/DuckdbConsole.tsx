@@ -27,8 +27,11 @@ import {
 import { kernelModules } from '../lib/kernel-modules';
 import { messageOf } from '../lib/problems';
 import { recentsKey } from '../lib/recents';
+import { dataTableExpandInfo } from '../lib/output-labels';
 import { freePath, sampleKernel } from '../lib/sample';
-import { RenderedTable, TABLE_MIME, type TableResource } from '../lib/table-output';
+import { RenderedTable, TABLE_MIME, type TableResource, tableWidgetFor } from '../lib/table-output';
+import { type ExpandedTarget, dataTableTarget } from '../lib/expanded-view';
+import { ExpandedView } from './ExpandedView';
 
 type Props = {
   backend: Backend;
@@ -85,8 +88,19 @@ function SqlText({ sql }: { sql: string }) {
 }
 
 /** One statement's rows in the table renderer: sort, page and filter as in a notebook. */
-function ResultTable({ resource }: { resource: TableResource }) {
+function ResultTable({
+  resource,
+  onExpand,
+}: {
+  resource: TableResource;
+  onExpand?(widget: RenderedTable | undefined, resource: TableResource): void;
+}) {
   const host = useRef<HTMLDivElement>(null);
+  const [expandLabel, setExpandLabel] = useState<string | undefined>(() => {
+    const info = dataTableExpandInfo(resource);
+    return info.show ? info.label : undefined;
+  });
+
   // A layout effect, so the widget goes while React has not yet removed
   // its node: Lumino refuses to detach a widget whose node is gone.
   useLayoutEffect(() => {
@@ -100,9 +114,39 @@ function ResultTable({ resource }: { resource: TableResource }) {
       setData() {},
     } satisfies IRenderMime.IMimeModel);
     Widget.attach(widget, el);
-    return () => widget.dispose();
+    const checkOverflow = () => {
+      const info = dataTableExpandInfo(resource, el.querySelector<HTMLElement>('.gm-table-scroll'));
+      setExpandLabel(info.show ? info.label : undefined);
+    };
+    checkOverflow();
+    const ro =
+      typeof ResizeObserver !== 'undefined' ? new ResizeObserver(checkOverflow) : undefined;
+    ro?.observe(el);
+    return () => {
+      ro?.disconnect();
+      widget.dispose();
+    };
   }, [resource]);
-  return <div className="duck-table" ref={host} />;
+
+  return (
+    <div className="duck-table-wrap">
+      {expandLabel && onExpand && (
+        <div className="gn-output-bar" data-kind="table">
+          <span className="gn-output-label">{expandLabel}</span>
+          <button
+            type="button"
+            className="gn-output-toggle"
+            onClick={() =>
+              onExpand(tableWidgetFor(host.current?.querySelector('.gm-table')), resource)
+            }
+          >
+            Expand table
+          </button>
+        </div>
+      )}
+      <div className="duck-table" ref={host} />
+    </div>
+  );
 }
 
 /**
@@ -131,6 +175,7 @@ export function DuckdbConsole({
   /** What this console's record holds: the saved statements, then those that ran since. */
   const saved = useRef<string[]>(entries.map(e => e.sql));
   const [editing, setEditing] = useState<string>();
+  const [expanded, setExpanded] = useState<ExpandedTarget>();
   /** The name's edit has ended (Enter or Esc); the blur that follows ends nothing more. */
   const editDone = useRef(true);
   const endEdit = (commit: boolean) => {
@@ -569,7 +614,18 @@ export function DuckdbConsole({
                     ` · showing the first ${count(e.ran.shown.resource.data?.length ?? 0)}`}
                 </p>
                 {e.ran.shown && e.ran.shown.resource.schema?.fields?.length ? (
-                  <ResultTable resource={e.ran.shown.resource} />
+                  <ResultTable
+                    resource={e.ran.shown.resource}
+                    onExpand={(widget, resource) =>
+                      setExpanded(
+                        dataTableTarget({
+                          resource,
+                          widget,
+                          trusted: false,
+                        }),
+                      )
+                    }
+                  />
                 ) : null}
               </>
             )}
@@ -577,6 +633,7 @@ export function DuckdbConsole({
         ))}
       </div>
       <div className="duck-input" ref={input} />
+      {expanded && <ExpandedView target={expanded} onClose={() => setExpanded(undefined)} />}
     </div>
   );
 }

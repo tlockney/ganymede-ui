@@ -18,7 +18,14 @@ const { CellMenu } = await import('./CellMenu');
 const { resetWrapCodeForTests, wrapCodeEnabled } = await import('../lib/wrap-code');
 const { Signal } = await import('@lumino/signaling');
 
-function setup(index: number, type = 'code', away = false, outputs = 0, hidden = false) {
+function setup(
+  index: number,
+  type = 'code',
+  away = false,
+  outputs = 0,
+  hidden = false,
+  onExpandSource?: (cell: Cell) => void,
+) {
   const cells = [0, 1, 2].map(i => ({
     model: { type: i === index ? type : 'code', outputs: i === index ? new Array(outputs) : [] },
     outputHidden: i === index ? hidden : false,
@@ -37,6 +44,7 @@ function setup(index: number, type = 'code', away = false, outputs = 0, hidden =
       cell={cells[index] as unknown as Cell}
       anchor={document.body}
       run={run}
+      onExpandSource={onExpandSource}
       away={away}
       onClose={onClose}
     />,
@@ -179,5 +187,17 @@ describe('CellMenu', () => {
     await userEvent.click(item);
     expect(toggleOutputs).not.toHaveBeenCalled();
     expect((cell as unknown as { outputHidden: boolean }).outputHidden).toBe(false);
+  });
+
+  it('offers Expand Source for code cells when provided and calls onExpandSource (#822)', async () => {
+    const onExpandSource = vi.fn();
+    const { cell, onClose } = setup(1, 'code', false, 0, false, onExpandSource);
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Expand Source' }));
+    expect(onExpandSource).toHaveBeenCalledWith(cell);
+    expect(onClose).toHaveBeenCalled();
+
+    cleanup();
+    setup(1, 'markdown', false, 0, false, onExpandSource);
+    expect(screen.queryByRole('menuitem', { name: 'Expand Source' })).toBeNull();
   });
 });

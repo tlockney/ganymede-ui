@@ -1255,4 +1255,45 @@ describe('opening, input and position keeping (#816, review)', () => {
     fireEvent.scroll(scroller);
     await waitFor(() => expect(onActiveCellChange).toHaveBeenLastCalledWith(5));
   });
+
+  it('offers Expand source for long unfolded cells and Expand table for large tables (#822)', async () => {
+    const longSource = Array.from({ length: 24 }, (_, i) => `row_${i} = ${i}`).join('\n');
+    const nb = new YNotebook();
+    nb.addCell({
+      cell_type: 'code',
+      id: 'long-code',
+      source: longSource,
+      execution_count: 7,
+      metadata: agent('executed'),
+      outputs: [
+        {
+          output_type: 'display_data',
+          data: {
+            'application/vnd.dataresource+json': {
+              schema: { fields: [{ name: 'moon', type: 'string' }] },
+              data: Array.from({ length: 18 }, (_, i) => ({ moon: `M${i}` })),
+              ganymede: { rows: 18, shown: 18 },
+            },
+          },
+          metadata: {},
+        },
+      ],
+    });
+
+    show(nb);
+    // Collapsed by default: Expand source waits until the code disclosure opens.
+    expect(screen.queryByRole('button', { name: 'Expand source' })).toBeNull();
+    await userEvent.click(screen.getByRole('button', { name: /row_0 = 0/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Expand source' }));
+
+    const sourceDialog = await screen.findByRole('dialog', { name: 'In [7] · 24 lines' });
+    expect(sourceDialog).toHaveAttribute('data-kind', 'source');
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    await userEvent.click(screen.getByRole('button', { name: 'Expand table' }));
+    expect(await screen.findByRole('dialog', { name: 'Table, 18 rows' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
 });

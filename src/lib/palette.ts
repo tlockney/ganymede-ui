@@ -157,6 +157,7 @@ export function paletteEntries(context: PaletteContext): PaletteEntry[] {
     app('clear-outputs', 'Clear All Outputs', 'Cell', { disabled: !editCells }),
     app('insert-code', 'Insert Code Cell', 'Cell', { disabled: !editCells }),
     app('insert-markdown', 'Insert Markdown Cell', 'Cell', { disabled: !editCells }),
+    app('expand-source', 'Expand Source', 'Cell', { disabled: !cells }),
     app('interrupt', 'Interrupt Kernel', 'Kernel', { disabled: !open }),
     app('restart', 'Restart Kernel', 'Kernel', { disabled: !open }),
     ...context.kernels.map(k =>

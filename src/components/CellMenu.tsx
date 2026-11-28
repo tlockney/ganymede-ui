@@ -19,6 +19,8 @@ type Props = {
   anchor: HTMLElement;
   /** Runs the active cell, starting a kernel when there is none. */
   run(): Promise<void>;
+  /** Opens a full-window source view for a code cell (#822). */
+  onExpandSource?(cell: Cell): void;
   /** A machine that is away: nothing here edits or runs (#701). */
   away?: boolean;
   onClose(): void;
@@ -26,11 +28,19 @@ type Props = {
 
 /**
  * One cell's menu (#200): Run, Collapse Code (#564), Collapse Output (#852),
- * Cell Type, Move Up/Down, Duplicate, Delete,
+ * Expand Source (#822), Cell Type, Move Up/Down, Duplicate, Delete,
  * in the shared popup menu (#203), so it is sized for touch and a tap
  * outside it or Escape closes it.
  */
-export function CellMenu({ notebook, cell, anchor, run, away = false, onClose }: Props) {
+export function CellMenu({
+  notebook,
+  cell,
+  anchor,
+  run,
+  onExpandSource,
+  away = false,
+  onClose,
+}: Props) {
   const index = notebook.widgets.indexOf(cell);
   const count = notebook.widgets.length;
   const type = cell.model.type;
@@ -116,6 +126,18 @@ export function CellMenu({ notebook, cell, anchor, run, away = false, onClose }:
             if (!notebook.isDisposed) notebook.activate();
           },
         },
+        ...(onExpandSource && cell.model.type === 'code'
+          ? [
+              {
+                label: 'Expand Source',
+                disabled: away,
+                onSelect: () => {
+                  if (away) return;
+                  onExpandSource(cell);
+                },
+              },
+            ]
+          : []),
         'separator',
         { heading: 'Cell Type' },
         ...types.map(item),

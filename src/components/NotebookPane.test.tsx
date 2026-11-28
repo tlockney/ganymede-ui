@@ -137,15 +137,30 @@ vi.mock('../lib/cell-controls', async importOriginal => ({
 // that says what "saved output" means (#852), and a look again when a kernel
 // comes or goes (#813).
 const outputLabels = vi.hoisted(() => ({
-  options: undefined as { runs: unknown } | undefined,
+  options: undefined as { runs: unknown; onExpandTable?: (target: unknown) => void } | undefined,
   refresh: vi.fn(),
 }));
 vi.mock('../lib/output-labels', async importOriginal => ({
   ...(await importOriginal<typeof import('../lib/output-labels')>()),
-  attachOutputLabels: vi.fn((_notebook: unknown, options: { runs: unknown }) => {
-    outputLabels.options = options;
-    return { dispose: vi.fn(), isDisposed: false, refresh: outputLabels.refresh };
-  }),
+  attachOutputLabels: vi.fn(
+    (_notebook: unknown, options: { runs: unknown; onExpandTable?: (target: unknown) => void }) => {
+      outputLabels.options = options;
+      return { dispose: vi.fn(), isDisposed: false, refresh: outputLabels.refresh };
+    },
+  ),
+}));
+
+const sourceExpand = vi.hoisted(() => ({
+  onExpand: undefined as ((cell: unknown, opener?: HTMLElement) => void) | undefined,
+}));
+vi.mock('../lib/source-expand', async importOriginal => ({
+  ...(await importOriginal<typeof import('../lib/source-expand')>()),
+  attachSourceExpand: vi.fn(
+    (_notebook: unknown, onExpand: (cell: unknown, opener?: HTMLElement) => void) => {
+      sourceExpand.onExpand = onExpand;
+      return { dispose: vi.fn(), isDisposed: false };
+    },
+  ),
 }));
 
 // The same for collapsing code (#564); code-collapse.test.ts covers it.
@@ -233,7 +248,10 @@ vi.mock('../lib/widgets', () => ({
   }),
 }));
 
-vi.mock('../lib/table-output', () => ({ installTableOutput: vi.fn() }));
+vi.mock('../lib/table-output', async importOriginal => ({
+  ...(await importOriginal<typeof import('../lib/table-output')>()),
+  installTableOutput: vi.fn(),
+}));
 
 vi.mock('../lib/kernel-relay', async importOriginal => ({
   ...(await importOriginal<typeof import('../lib/kernel-relay')>()),
@@ -3389,6 +3407,71 @@ describe('NotebookPane progress reporting (#913)', () => {
       { level: 1, text: 'Setup', cell: 0, ran: false },
       { level: 2, text: 'Analysis', cell: 2, ran: false },
     ]);
+  });
+
+  it('opens and closes ExpandedView for long source, CellMenu, command palette, and tables (#822)', async () => {
+    const tableOutput = {
+      output_type: 'display_data',
+      data: {
+        'application/vnd.dataresource+json': {
+          schema: { fields: [{ name: 'moon', type: 'string' }] },
+          data: Array.from({ length: 20 }, (_, i) => ({ moon: `M${i}` })),
+          ganymede: { rows: 20, shown: 20, title: 'Moons' },
+        },
+      },
+      metadata: {},
+    };
+    const nb: nbformat.INotebookContent = {
+      nbformat: 4,
+      nbformat_minor: 5,
+      metadata: {},
+      cells: [
+        {
+          cell_type: 'code',
+          id: 'c1',
+          source: 'line 1\nline 2',
+          execution_count: 5,
+          outputs: [tableOutput],
+          metadata: {},
+        },
+      ],
+    };
+    const { latest } = setup(
+      vi.fn(async () => ({
+        path: 'moons/Io.ipynb',
+        content: nb,
+      })),
+    );
+    await waitFor(() => expect(latest()?.cellCount).toBe(1));
+
+    const fakeNb = fakes.notebooks[0] as { widgets: unknown[] };
+    act(() => {
+      sourceExpand.onExpand?.(fakeNb.widgets[0]);
+    });
+    expect(await screen.findByRole('dialog', { name: 'In [5] · 2 lines' })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    // Command palette command expands the active code cell.
+    act(() => {
+      expect(latest()!.command('expand-source')).toBe(true);
+    });
+    expect(await screen.findByRole('dialog', { name: 'In [5] · 2 lines' })).toBeInTheDocument();
+    await userEvent.keyboard('{Escape}');
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    // Table expansion opens table view and auto-closes when switching to Journal.
+    act(() => {
+      outputLabels.options?.onExpandTable?.({
+        cell: fakeNb.widgets[0],
+        outputIndex: 0,
+        output: tableOutput,
+        opener: document.body,
+      });
+    });
+    expect(await screen.findByRole('dialog', { name: 'Moons · 20 rows' })).toBeInTheDocument();
+    act(() => latest()!.toggleJournal());
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 });
 

@@ -1,7 +1,13 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
-import { resetWrapCodeForTests, setWrapCodeEnabled, wrapCode, wrapCodeEnabled } from './wrap-code';
+import {
+  resetWrapCodeForTests,
+  setWrapCodeEnabled,
+  subscribeWrapCode,
+  wrapCode,
+  wrapCodeEnabled,
+} from './wrap-code';
 
 const views: EditorView[] = [];
 function editor(): EditorView {
@@ -41,6 +47,16 @@ describe('Wrap Code (#813)', () => {
     expect(open.contentDOM.classList.contains('cm-lineWrapping')).toBe(true);
     setWrapCodeEnabled(false);
     expect(open.contentDOM.classList.contains('cm-lineWrapping')).toBe(false);
+  });
+
+  it('notifies subscribers when the setting changes until unsubscribed', () => {
+    const seen: boolean[] = [];
+    const off = subscribeWrapCode(on => seen.push(on));
+    setWrapCodeEnabled(true);
+    setWrapCodeEnabled(false);
+    off();
+    setWrapCodeEnabled(true);
+    expect(seen).toEqual([true, false]);
   });
 
   it('keeps the switch for this page when local storage throws', () => {

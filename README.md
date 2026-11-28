@@ -340,7 +340,14 @@ and the + Code and + Text bar.
 
 **Wrap Code** wraps long lines in every cell's editor instead of scrolling
 them sideways. It is in the cell's … menu and the command palette, applies
-to all cells, and is remembered in this browser's local storage.
+to all cells, and is remembered in this browser's local storage. Code cells
+longer than 20 lines also offer an **Expand source** button above the code
+to edit in a full-window editor (also available for any code cell via
+**Expand Source** in the cell's … menu and command palette).
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release. **Expand source** and **Expand Source** are not in the release.
 
 ### Reading outputs
 
@@ -354,7 +361,9 @@ summary (`ZeroDivisionError: division by zero`), above the traceback; a
 cell stopped with Interrupt says **Execution stopped**. Text on stderr is
 marked **Warning**. A stream longer than 20 lines is collapsed to its last
 lines under a bar that says **Log, N lines**; **View full log** opens all
-of it and **Show last lines** goes back. Until this page runs the cell,
+of it and **Show last lines** goes back. Tables with more than 15 rows or
+that scroll past their box offer **Expand table** to inspect, sort, and page
+through the table full-window. Until this page runs the cell,
 outputs the notebook was saved with say **Saved output**. A line under the
 outputs else says what they are and how long the run took, as in "Text ·
 Image · 1.2 s".
