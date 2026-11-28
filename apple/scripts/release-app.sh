@@ -127,8 +127,12 @@ for helper in "$sparkle"/Versions/B/XPCServices/*.xpc "$sparkle/Versions/B/Autou
 done
 sign "$sparkle"
 # The bundled command line tool (#686), when bootstrap.sh had one: signed
-# with this identity and the timestamp, before the app seals it in.
-if [[ -f "$app/Contents/Helpers/ganymede" ]]; then sign "$app/Contents/Helpers/ganymede"; fi
+# with this identity, a stable identifier (#912) and the timestamp, before
+# the app seals it in.
+if [[ -f "$app/Contents/Helpers/ganymede" ]]; then
+  codesign --force --sign "$identity" --identifier com.ganymede-server.Ganymede.helper \
+    --options runtime --timestamp --preserve-metadata=entitlements "$app/Contents/Helpers/ganymede"
+fi
 sign "$app"
 # Symbols for crash reports (#318).
 "$apple/scripts/sentry-dsyms.sh" "$archive"

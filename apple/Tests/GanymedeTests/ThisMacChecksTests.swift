@@ -37,6 +37,12 @@ final class ThisMacChecksTests: XCTestCase {
     private final class FakeWorld: ThisMacCheckWorld {
         /// What a check finds, read when it answers.
         var now: [ThisMacServer] = []
+        /// Verified bundled helpers with a version mismatch (#912).
+        var mismatched: [ThisMacServer] = []
+        /// Whether the background server LaunchAgent is enabled (#912).
+        var isBackgroundServerEnabled = false
+        /// Pids sent `SIGTERM` by the version check (#912).
+        var terminated: [Int32] = []
         /// The runtime directory's `jpserver-*.json` files and their dates.
         var dates: [String: Date] = [:]
         /// How many checks asked for the servers, how many a window asked
@@ -55,15 +61,19 @@ final class ThisMacChecksTests: XCTestCase {
         var directoryWatches = 0
         var debounce: Duration = .zero
 
-        func servers() async -> [ThisMacServer] {
+        func scan() async -> ThisMacScanResult {
             asked += 1
             if held { await withCheckedContinuation { gates.append($0) } }
-            return now
+            return ThisMacScanResult(verified: now, mismatched: mismatched)
         }
 
-        func serversNow() -> [ThisMacServer] {
+        func scanNow() -> ThisMacScanResult {
             askedNow += 1
-            return now
+            return ThisMacScanResult(verified: now, mismatched: mismatched)
+        }
+
+        func terminate(pid: Int32) {
+            terminated.append(pid)
         }
 
         func watch(pid: Int32, exit: @escaping @MainActor @Sendable () -> Void) -> any ThisMacWatch {

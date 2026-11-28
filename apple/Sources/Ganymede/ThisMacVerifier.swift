@@ -14,17 +14,31 @@ protocol ThisMacProbe: Sendable {
     /// The identifier in the signature of the app's bundled `ganymede`
     /// (`Contents/Helpers`); nil when the app bundles none.
     var helperIdentifier: String? { get }
+    /// The canonical path of the app's bundled `ganymede`
+    /// (`Contents/Helpers/ganymede`); nil when the app bundles none (#912).
+    var helperPath: String? { get }
     /// The version the bundled `ganymede` reports (`--version`); nil when it
     /// doesn't run.
     var bundledVersion: String? { get }
     /// Whether a process with this pid is running.
     func isRunning(_ pid: Int32) -> Bool
+    /// The executable path of `pid`, or nil when it can't be read (#912).
+    func executablePath(of pid: Int32) -> String?
     /// Whether this pid's code is signed for `team`'s team, with
     /// `identifier`: the app's own bundled helper and nobody else's code.
     func hasSignature(pid: Int32, team: String, identifier: String) -> Bool
     /// Whether this pid holds a TCP socket listening on `port` at `host`,
     /// the literal address the info file named (`127.0.0.1` or `::1`).
     func isListening(pid: Int32, port: Int, host: String) -> Bool
+}
+
+/// What one scan of the Jupyter runtime directory found (#883, #912):
+/// verified servers matching the bundled tool's version, and verified
+/// bundled helpers whose version differs from the app's (for example after
+/// an app update replaced the binary) so launchd can restart them.
+struct ThisMacScanResult: Equatable, Sendable {
+    var verified: [ThisMacServer] = []
+    var mismatched: [ThisMacServer] = []
 }
 
 /// Whether a `jpserver-<pid>.json` is this Mac's own Ganymede (#883).
@@ -53,22 +67,30 @@ struct ThisMacVerifier {
     func verify(_ info: ThisMacServer) -> Bool {
         guard let team = probe.teamIdentifier, !team.isEmpty,
               let identifier = probe.helperIdentifier, !identifier.isEmpty,
-              passes(info, team: team, identifier: identifier),
+              let helperPath = probe.helperPath, !helperPath.isEmpty,
+              passes(info, team: team, identifier: identifier, helperPath: helperPath),
               let version = probe.bundledVersion, version == info.version
         else { return false }
         return true
     }
 
-    /// The servers of this Mac's own Ganymede in `directory`, the info files
-    /// that verify. The app's own identity is looked at once for them all.
-    /// The bundled tool's version is read only once an info file has passed
-    /// the cheaper checks (`passes(_:team:identifier:)`), since reading it
-    /// runs the tool: an unsigned or ad-hoc-signed build, which can verify
-    /// nothing, and a file that is no server's, never run it.
-    func servers(in directory: URL = AppMCP.runtimeDirectory()) -> [ThisMacServer] {
+    /// Scans `directory` for servers of this Mac's own Ganymede (#883, #912):
+    /// `verified` holds servers matching the bundled tool's version, and
+    /// `mismatched` holds verified bundled helpers running another version
+    /// (such as before launchd restarts the background server after an app
+    /// update). The app's own identity is looked at once for them all. The
+    /// bundled tool's version is read only once an info file has passed the
+    /// cheaper checks (`passes`), since reading it runs the tool: an unsigned
+    /// or ad-hoc-signed build, which can verify nothing, and a file that is
+    /// no server's, never run it.
+    func scan(in directory: URL = AppMCP.runtimeDirectory()) -> ThisMacScanResult {
         let team = probe.teamIdentifier
         let identifier = probe.helperIdentifier
-        guard let team, !team.isEmpty, let identifier, !identifier.isEmpty else { return [] }
+        let helperPath = probe.helperPath
+        guard let team, !team.isEmpty,
+              let identifier, !identifier.isEmpty,
+              let helperPath, !helperPath.isEmpty
+        else { return ThisMacScanResult() }
         var readVersion = false
         var version: String?
         /// `probe.bundledVersion`, read once for all the files.
@@ -79,19 +101,34 @@ struct ThisMacVerifier {
             }
             return version
         }
-        return probe.infoFiles(in: directory).compactMap { file in
+        var result = ThisMacScanResult()
+        for file in probe.infoFiles(in: directory) {
             guard let info = Self.read(file),
-                  passes(info, team: team, identifier: identifier),
-                  let bundled = bundledVersion(), bundled == info.version
-            else { return nil }
-            return info
+                  passes(info, team: team, identifier: identifier, helperPath: helperPath),
+                  let bundled = bundledVersion()
+            else { continue }
+            if bundled == info.version {
+                result.verified.append(info)
+            } else {
+                result.mismatched.append(info)
+            }
         }
+        return result
     }
 
-    /// Every part that must hold: the loopback literal and its port, and
-    /// the pid that is running, signed for the app's team with the
-    /// helper's identifier, and listening at that address.
-    private func passes(_ info: ThisMacServer, team: String, identifier: String) -> Bool {
+    /// The servers of this Mac's own Ganymede in `directory`, the info files
+    /// that verify and match the bundled tool's version.
+    func servers(in directory: URL = AppMCP.runtimeDirectory()) -> [ThisMacServer] {
+        scan(in: directory).verified
+    }
+
+    /// Every part that must hold before checking the version: the loopback
+    /// literal and its port, and the pid that is running, matches the
+    /// bundled helper's path, is signed for the app's team with the
+    /// helper's identifier, and is listening at that address.
+    private func passes(
+        _ info: ThisMacServer, team: String, identifier: String, helperPath: String
+    ) -> Bool {
         // A loopback address is the only place a server it trusts may
         // listen, and the one the app sends its token to through the mount.
         // The literal, not a name: what `localhost` resolves to is the
@@ -101,6 +138,7 @@ struct ThisMacVerifier {
               let port = info.port, (1...65535).contains(port)
         else { return false }
         return probe.isRunning(info.pid)
+            && probe.executablePath(of: info.pid) == helperPath
             && probe.hasSignature(pid: info.pid, team: team, identifier: identifier)
             && probe.isListening(pid: info.pid, port: port, host: host)
     }
@@ -145,12 +183,11 @@ struct SystemThisMacProbe: ThisMacProbe {
         return signingInformation(staticCode)?[kSecCodeInfoTeamIdentifier as String] as? String
     }
 
-    /// The identifier the bundled tool's signature carries. The release
-    /// workflow signs `Contents/Helpers/ganymede` with no `--identifier`
-    /// (`apple/scripts/release-app.sh`, and the post-build phase in
-    /// `apple/project.yml`), so codesign makes one up from the tool's name
-    /// and its Mach-O UUID, and it changes with each build: ask the
-    /// signature instead of guessing it.
+    /// The identifier the bundled tool's signature carries. `project.yml`
+    /// and `release-app.sh` sign `Contents/Helpers/ganymede` with
+    /// `BackgroundServer.helperIdentifier` (#912) so the identifier stays
+    /// stable across app updates; asking the signature still reads whatever
+    /// identifier the bundled copy carries rather than assuming it.
     var helperIdentifier: String? {
         guard let bundledTool else { return nil }
         var code: SecStaticCode?
@@ -158,6 +195,11 @@ struct SystemThisMacProbe: ThisMacProbe {
               let code
         else { return nil }
         return signingInformation(code)?[kSecCodeInfoIdentifier as String] as? String
+    }
+
+    /// The canonical path of the app's bundled `ganymede` helper (#912).
+    var helperPath: String? {
+        bundledTool?.standardizedFileURL.resolvingSymlinksInPath().path
     }
 
     /// `ganymede --version` says `ganymede 0.17.0`, and the info file's
@@ -198,6 +240,44 @@ struct SystemThisMacProbe: ThisMacProbe {
         // Signal 0 asks without sending one; a process of another user
         // answers EPERM, which is still running.
         kill(pid, 0) == 0 || errno == EPERM
+    }
+
+    /// The canonical path of `pid`'s executable (#912): `proc_pidpath` gives
+    /// the live vnode path, and if an app update moved the old bundle aside
+    /// (for example to Trash) while the old helper still runs, `KERN_PROCARGS2`
+    /// preserves the path the process was launched from.
+    func executablePath(of pid: Int32) -> String? {
+        let live = Self.pidPath(pid)
+        if let live, live == helperPath { return live }
+        if let helperPath, let launched = Self.launchedPath(pid), launched == helperPath {
+            return launched
+        }
+        return live
+    }
+
+    /// The live executable path of `pid` via `proc_pidpath`, standardized and
+    /// symlink-resolved to match `helperPath`.
+    static func pidPath(_ pid: Int32) -> String? {
+        var buffer = [CChar](repeating: 0, count: Int(MAXPATHLEN) * 4)
+        let length = proc_pidpath(pid, &buffer, UInt32(buffer.count))
+        guard length > 0 else { return nil }
+        let path = String(cString: buffer)
+        return URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath().path
+    }
+
+    /// The executable path recorded by the kernel at `execve` time via
+    /// `KERN_PROCARGS2`, standardized and symlink-resolved.
+    private static func launchedPath(_ pid: Int32) -> String? {
+        var mib: [Int32] = [CTL_KERN, KERN_PROCARGS2, pid]
+        var size = 0
+        guard sysctl(&mib, 3, nil, &size, nil, 0) == 0, size > MemoryLayout<Int32>.size else {
+            return nil
+        }
+        var buffer = [UInt8](repeating: 0, count: size)
+        guard sysctl(&mib, 3, &buffer, &size, nil, 0) == 0 else { return nil }
+        let bytes = buffer.dropFirst(MemoryLayout<Int32>.size).prefix { $0 != 0 }
+        guard !bytes.isEmpty, let path = String(bytes: bytes, encoding: .utf8) else { return nil }
+        return URL(fileURLWithPath: path).standardizedFileURL.resolvingSymlinksInPath().path
     }
 
     /// Whether `pid`'s code meets a requirement naming Apple's anchor, this

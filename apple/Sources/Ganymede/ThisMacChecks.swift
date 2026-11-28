@@ -12,17 +12,20 @@ protocol ThisMacWatch: AnyObject {
     func cancel()
 }
 
-/// What a this-Mac check asks of the world (#883), behind a protocol so
+/// What a this-Mac check asks of the world (#883, #912), behind a protocol so
 /// the tests answer with no info files, processes or folders: the servers
-/// that verify, a pid's exit, and the runtime directory's writes.
+/// that verify (and any verified bundled helper with a version mismatch), a
+/// pid's exit, the runtime directory's writes, and signaling a stale
+/// background server.
 @MainActor
 protocol ThisMacCheckWorld {
-    /// The servers that verify, read off the main thread, since reading
-    /// the bundled tool's version runs it.
-    func servers() async -> [ThisMacServer]
-    /// The servers that verify, here and now: a window runs this before
-    /// its first load, and its answer must be there before the page is.
-    func serversNow() -> [ThisMacServer]
+    /// The servers that verify and any verified version-mismatched bundled
+    /// helpers, read off the main thread, since reading the bundled tool's
+    /// version runs it.
+    func scan() async -> ThisMacScanResult
+    /// The same scan, here and now: a window runs this before its first load,
+    /// and its answer must be there before the page is.
+    func scanNow() -> ThisMacScanResult
     /// Watches a verified server's process: `exit` runs when `pid` ends.
     func watch(pid: Int32, exit: @escaping @MainActor @Sendable () -> Void) -> any ThisMacWatch
     /// Watches the Jupyter runtime directory: `change` runs when a file in
@@ -35,28 +38,51 @@ protocol ThisMacCheckWorld {
     /// How long a runtime directory write waits for the writes that come
     /// with it before a check.
     var debounce: Duration { get }
+    /// Whether the background server LaunchAgent is enabled (#912): only
+    /// then does a version mismatch send `SIGTERM` so launchd restarts it.
+    var isBackgroundServerEnabled: Bool { get }
+    /// Sends `SIGTERM` to a verified bundled helper pid whose version differs
+    /// from the app's (#912). Never called for an unverified pid.
+    func terminate(pid: Int32)
 }
 
-/// The system's answers (#883): `ThisMacVerifier` for the files and the
-/// processes behind them, a dispatch process source per verified pid, and
-/// a file system source on the runtime directory.
+/// The system's answers (#883, #912): `ThisMacVerifier` for the files and the
+/// processes behind them, a dispatch process source per verified pid, a file
+/// system source on the runtime directory, and `SMAppService` + `SIGTERM` for
+/// restarting an outdated background server.
 @MainActor
 final class SystemThisMacCheckWorld: ThisMacCheckWorld {
     private let verifier: ThisMacVerifier
     private let directory: URL
+    private let service: any BackgroundServerService
+    private let signal: @Sendable (Int32) -> Void
 
-    init(verifier: ThisMacVerifier = ThisMacVerifier(), directory: URL = AppMCP.runtimeDirectory()) {
+    init(
+        verifier: ThisMacVerifier = ThisMacVerifier(),
+        directory: URL = AppMCP.runtimeDirectory(),
+        service: any BackgroundServerService = SystemBackgroundServerService(),
+        signal: @escaping @Sendable (Int32) -> Void = { pid in
+            NSLog("Ganymede: background server pid %d version mismatch; sending SIGTERM so launchd restarts it", pid)
+            _ = Darwin.kill(pid, SIGTERM)
+        }
+    ) {
         self.verifier = verifier
         self.directory = directory
+        self.service = service
+        self.signal = signal
     }
 
-    func servers() async -> [ThisMacServer] {
+    func scan() async -> ThisMacScanResult {
         let verifier = verifier
         let directory = directory
-        return await Task.detached(priority: .utility) { verifier.servers(in: directory) }.value
+        return await Task.detached(priority: .utility) { verifier.scan(in: directory) }.value
     }
 
-    func serversNow() -> [ThisMacServer] { verifier.servers(in: directory) }
+    func scanNow() -> ThisMacScanResult { verifier.scan(in: directory) }
+
+    var isBackgroundServerEnabled: Bool { service.status == .enabled }
+
+    func terminate(pid: Int32) { signal(pid) }
 
     /// A pid's exit, as `kill(pid, 0)` can't see it: a source that fires
     /// when the process ends, however it ends.
@@ -144,6 +170,9 @@ final class ThisMacChecks {
     @ObservationIgnored private var infoFiles: [String: Date] = [:]
     /// The write in the runtime directory that is waiting for its fellows.
     @ObservationIgnored private var debouncing: Task<Void, Never>?
+    /// Verified mismatched pids already sent `SIGTERM`, so back-to-back scans
+    /// while the server is shutting down do not signal the same pid repeatedly.
+    @ObservationIgnored private var signaledMismatches: Set<Int32> = []
 
     /// `world` is the app's own unless a test passes a fake.
     init(world: (any ThisMacCheckWorld)? = nil) {
@@ -154,9 +183,9 @@ final class ThisMacChecks {
 
     /// Checks this Mac's servers again (#883): the info files `ganymede
     /// serve` writes and the processes behind them, off the main thread,
-    /// since reading the bundled tool's version runs it. Runs when a mount
-    /// connects, when a machine that was offline answers again, and when a
-    /// window appears.
+    /// since reading the bundled tool's version runs it. Runs at app start,
+    /// when a mount connects, when a machine that was offline answers again,
+    /// and when a window appears.
     func refresh() {
         guard running == nil else {
             pending = true
@@ -165,7 +194,7 @@ final class ThisMacChecks {
         pending = false
         let generation = generation
         running = Task { [weak self, world] in
-            let found = await world.servers()
+            let found = await world.scan()
             guard let self else { return }
             self.finished(found, generation: generation)
         }
@@ -180,7 +209,7 @@ final class ThisMacChecks {
     /// meanwhile still runs once more.
     func checkNow() {
         generation += 1
-        apply(world.serversNow())
+        apply(world.scanNow())
     }
 
     /// Waits for the check that is out, and any it runs again: for the
@@ -191,10 +220,11 @@ final class ThisMacChecks {
         }
     }
 
-    /// What a check found (#883), on the main actor: the remotes whose
-    /// server it verified, each with the info file it was verified by, and
-    /// the processes whose exit ends a remote's trust.
-    private func finished(_ found: [ThisMacServer], generation: Int) {
+    /// What a check found (#883, #912), on the main actor: the remotes whose
+    /// server it verified, each with the info file it was verified by, the
+    /// processes whose exit ends a remote's trust, and any verified
+    /// version-mismatched background server to restart.
+    private func finished(_ found: ThisMacScanResult, generation: Int) {
         running = nil
         // A check that began before the trust was dropped names mounts that
         // are gone: it applies nothing. A check asked for meanwhile still
@@ -205,15 +235,32 @@ final class ThisMacChecks {
         refresh()
     }
 
-    /// Applies what a check found: the runtime directory is watched, and a
-    /// new set of servers is watched from scratch, so an old pid's exit
-    /// can't end a new server's trust.
-    private func apply(_ found: [ThisMacServer]) {
+    /// Applies what a check found: the runtime directory is watched, any
+    /// verified background server of another version is sent `SIGTERM` so
+    /// launchd restarts it from the updated binary (#912), and a new set of
+    /// verified servers is watched from scratch, so an old pid's exit can't
+    /// end a new server's trust.
+    private func apply(_ found: ThisMacScanResult) {
         watchRuntimeDirectory()
-        let servers = ThisMacServers(found, remotes: remotes(), token: token)
+        restartMismatched(found.mismatched)
+        let servers = ThisMacServers(found.verified, remotes: remotes(), token: token)
         if servers != self.servers {
             self.servers = servers
             watchProcesses()
+        }
+    }
+
+    /// Signals verified bundled helpers whose version differs from the app's
+    /// (#912) when the LaunchAgent is enabled, so launchd restarts them from
+    /// the updated binary. Only pids that `ThisMacVerifier` matched to the
+    /// bundled helper's path, signature and loopback listener reach this list.
+    private func restartMismatched(_ mismatched: [ThisMacServer]) {
+        let current = Set(mismatched.map(\.pid))
+        signaledMismatches.formIntersection(current)
+        guard world.isBackgroundServerEnabled else { return }
+        for server in mismatched where server.pid > 0 && !signaledMismatches.contains(server.pid) {
+            signaledMismatches.insert(server.pid)
+            world.terminate(pid: server.pid)
         }
     }
 
@@ -250,6 +297,7 @@ final class ThisMacChecks {
         generation += 1
         watchProcesses()
         stopRuntimeWatch()
+        signaledMismatches.removeAll()
         pending = false
     }
 

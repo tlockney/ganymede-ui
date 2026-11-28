@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.ganymede-server.Ganymede.server</string>
+	<key>BundleProgram</key>
+	<string>Contents/Helpers/ganymede</string>
+	<!-- The login-shell PATH flag (tlockney/ganymede#999) is omitted until
+	     GANYMEDE_REF bundles a release that supports it. -->
+	<!-- StandardOutPath and StandardErrorPath are omitted because launchd
+	     does not expand ~ or $HOME in a static signed bundle plist, and
+	     relative paths resolve against /. Routing logs to
+	     ~/Library/Logs/Ganymede/server.log belongs in ganymede serve once
+	     a newer GANYMEDE_REF adds home-relative log file support. -->
+	<key>ProgramArguments</key>
+	<array>
+		<string>ganymede</string>
+		<string>serve</string>
+		<string>--no-browser</string>
+		<string>--port</string>
+		<string>0</string>
+	</array>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>ProcessType</key>
+	<string>Interactive</string>
+</dict>
+</plist>

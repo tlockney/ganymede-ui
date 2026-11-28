@@ -118,6 +118,7 @@ private struct GeneralSettings: View {
             UpdateSettings()
             CrashReportsSettings()
             CommandLineToolSettings()
+            BackgroundServerSettings()
             LinkRunSettings()
             MCPSettings()
             TailnetSettings()
@@ -252,6 +253,51 @@ private struct CommandLineToolSettings: View {
 
     private func refresh() {
         state = CommandLineTool.state(bundled: bundled, link: link)
+    }
+}
+
+/// Keeping Ganymede's bundled server running in the background as a macOS
+/// LaunchAgent (#912). Hidden when this build has no bundled CLI.
+private struct BackgroundServerSettings: View {
+    private let bundled = CommandLineTool.bundledTool()
+    @State private var controller = BackgroundServerController()
+
+    var body: some View {
+        if bundled != nil {
+            Section {
+                Toggle("Keep Ganymede running in the background", isOn: Binding(
+                    get: { controller.isEnabled },
+                    set: { controller.setEnabled($0) }
+                ))
+                if let status = controller.statusText {
+                    HStack {
+                        Text(status)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                        if controller.needsApproval {
+                            Spacer()
+                            Button("Open Login Items…") {
+                                controller.openLoginItemsSettings()
+                            }
+                            .controlSize(.small)
+                        }
+                    }
+                }
+                if let error = controller.error {
+                    Text(error)
+                        .font(.caption)
+                        .foregroundStyle(.red)
+                }
+            } header: {
+                Text("Background Server")
+            } footer: {
+                Text("Runs Ganymede’s bundled server in the background as a Login Item so it stays running between app launches. Settings come from ganymede.toml.")
+            }
+            .onAppear { controller.refresh() }
+            .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
+                controller.refresh()
+            }
+        }
     }
 }
 
