@@ -6,6 +6,9 @@ import SwiftUI
 /// to do when there are.
 struct EditorWindow: View {
     @State private var document: EditorDocument
+    #if os(macOS)
+    private let ownWindow: Bool
+    #endif
     #if os(iOS)
     @Environment(\.scenePhase) private var phase
     /// Shown on iPhone, where the editor covers the notebook: closes it.
@@ -14,8 +17,14 @@ struct EditorWindow: View {
     #endif
 
     #if os(macOS)
-    init(request: EditorRequest) {
+    init(request: EditorRequest, ownWindow: Bool = true) {
         _document = State(initialValue: EditorDocument(request))
+        self.ownWindow = ownWindow
+    }
+
+    init(document: EditorDocument, ownWindow: Bool = true) {
+        _document = State(initialValue: document)
+        self.ownWindow = ownWindow
     }
     #else
     init(request: EditorRequest, onClose: (() -> Void)? = nil) {
@@ -71,9 +80,21 @@ struct EditorWindow: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
+        #if os(macOS)
+        .task {
+            // A document shown before keeps its edits; the poll below
+            // still notices changes on disk.
+            if !document.loaded { await document.load() }
+            // Changes on disk, from another app or a kernel.
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                await document.checkForChanges()
+            }
+        }
+        .modifier(OwnEditorWindow(enabled: ownWindow, title: title, document: document))
+        #else
         .navigationTitle(title)
         .toolbar {
-            #if os(iOS)
             if let onClose {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close") {
@@ -81,7 +102,6 @@ struct EditorWindow: View {
                     }
                 }
             }
-            #endif
             ToolbarItem(placement: .primaryAction) {
                 Button("Save") { Task { await document.save() } }
                     .disabled(!document.dirty)
@@ -97,11 +117,6 @@ struct EditorWindow: View {
                 await document.checkForChanges()
             }
         }
-        #if os(macOS)
-        .frame(minWidth: 480, minHeight: 320)
-        .background(WindowReader { document.attach(to: $0) })
-        .focusedSceneValue(\.editorDocument, document)
-        #else
         .navigationBarTitleDisplayMode(.inline)
         // iOS may end a scene in the background without asking, so the
         // edits are saved on the way there.
@@ -135,7 +150,31 @@ struct EditorWindow: View {
     }
 }
 
-#if os(iOS)
+#if os(macOS)
+private struct OwnEditorWindow: ViewModifier {
+    let enabled: Bool
+    let title: String
+    let document: EditorDocument
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content
+                .navigationTitle(title)
+                .toolbar {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button("Save") { Task { await document.save() } }
+                            .disabled(!document.dirty)
+                    }
+                }
+                .frame(minWidth: 480, minHeight: 320)
+                .background(WindowReader { document.attach(to: $0) })
+                .focusedSceneValue(\.editorDocument, document)
+        } else {
+            content
+        }
+    }
+}
+#else
 /// An editor in its own scene, beside the notebook on iPad.
 struct EditorScene: View {
     let request: EditorRequest?

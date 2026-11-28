@@ -13,13 +13,17 @@ struct NavigatorSidebar: View {
     /// and a machine's has no Recents (this Mac's notebooks), Reveal in
     /// Finder or text editor.
     var place: Place = .thisDevice
-    var page: PageModel
+    var page: PageModel?
     /// The window's bottom panel, for terminals the foot's menu opens (a
     /// machine's window has one too, #858).
     var panel: PanelController?
     /// Shows the window's sidebar column (#879): its keys bring it back
     /// when the window has it hidden, or an area fills over it.
     var showSidebar: () -> Void = {}
+    /// Opens a notebook/data server path when no `.page` tab is currently active
+    /// (for example on a `.terminal` or `.editor` tab) (#904).
+    var onOpenNotebook: (String) -> Void = { _ in }
+    var onNewNotebook: (String) -> Void = { _ in }
     let openFile: (String) -> Void
     /// The selected tab, kept per window.
     @SceneStorage("navigator.tab") private var tab: NavigatorTab = .files
@@ -40,7 +44,7 @@ struct NavigatorSidebar: View {
                 ) { picked in
                     if picked != place,
                        let target = WindowTarget.root(of: picked, device: model.root) {
-                        openWindow(value: target)
+                        WorkspaceTabs.openTarget(target) { openWindow(value: $0) }
                     }
                 }
                 .padding(.horizontal, 10)
@@ -71,22 +75,28 @@ struct NavigatorSidebar: View {
                 FolderSidebar(
                     folder: folder, source: source, place: place,
                     machineName: place.machineID.flatMap(model.machineName(_:)),
-                    page: page, openFile: openFile)
+                    page: page,
+                    onOpenNotebook: onOpenNotebook,
+                    onNewNotebook: onNewNotebook,
+                    openFile: openFile)
             case .find, .search, .outline:
                 // The Mac's one Find (#879): a stored Search or Outline
                 // shows here, and its field's outline stands in while the
                 // field is empty.
                 FindNavigator(
                     folder: folder, source: source, place: place, page: page,
+                    onOpenNotebook: onOpenNotebook,
                     openFile: openFile, focusRequest: $findFocus)
             case .running:
-                RunningList(place: place, page: page)
+                RunningList(place: place, page: page, onOpenNotebook: onOpenNotebook)
             case .journals:
-                JournalsNavigator(place: place, page: page)
+                JournalsNavigator(place: place, page: page, onOpenNotebook: onOpenNotebook)
             case .recents:
                 // This Mac's own server's notebooks are the ones under its
                 // `root_dir`, opened by their path in it (#883).
-                RecentsNavigator(page: page, place: place, root: model.thisMacRoot(for: place))
+                RecentsNavigator(
+                    page: page, place: place, root: model.thisMacRoot(for: place),
+                    onOpenNotebook: onOpenNotebook)
             }
             Divider()
             ProjectLine(
@@ -228,7 +238,7 @@ struct NavigatorSidebar: View {
     /// The selected tab, or the one that stands for it here (#879).
     private var shownTab: NavigatorTab { NavigatorTab.shown(tab, in: tabs) }
 
-    private var running: Int { page.state.sessions.count + terminals.entries.count }
+    private var running: Int { (page?.state.sessions.count ?? 0) + terminals.entries.count }
 }
 
 // MARK: - Find
@@ -242,7 +252,8 @@ private struct FindNavigator: View {
     let folder: URL
     let source: any FileSource
     var place: Place = .thisDevice
-    var page: PageModel
+    var page: PageModel?
+    var onOpenNotebook: (String) -> Void = { _ in }
     let openFile: (String) -> Void
     /// Set by ⌘⇧F: `FindField` takes the keyboard and confirms ownership.
     @Binding var focusRequest: FindFocusRequest
@@ -251,20 +262,36 @@ private struct FindNavigator: View {
     @SceneStorage("navigator.contents") private var contents = false
     @State private var results = FileSearch.Results()
     @State private var searching = false
+    @State private var trackedPage: PageModel?
+    @State private var lastQueryPageID: ObjectIdentifier?
+
+    private var pageKey: String {
+        page.map { String(UInt(bitPattern: ObjectIdentifier($0))) } ?? ""
+    }
 
     var body: some View {
         VStack(spacing: 0) {
             field
             list
         }
+        .onAppear {
+            trackedPage = page
+        }
+        // When switching tabs while Find is visible, clear old highlights on the
+        // deactivated page and re-run on the newly active page (#904).
+        .onChange(of: page.map(ObjectIdentifier.init)) { _, _ in
+            trackedPage?.run("find-in-notebook", arg: "")
+            trackedPage = page
+        }
         // The page searches the cells a moment after typing stops (#879).
-        .task(id: query) { await find() }
+        .task(id: "\(pageKey)|\(query)") { await find() }
         // A page loaded again forgets it was asked, as it forgets
         // `inspect-variables`: the field's query is asked again, so a
         // reloaded page shows its notebook's matches without the field
         // having to change.
-        .onChange(of: page.ready) { _, ready in
-            guard ready, FindLayout.shouldReask(query: query, find: page.state.notebookFind) else { return }
+        .onChange(of: page?.ready) { _, ready in
+            guard ready == true, let page,
+                  FindLayout.shouldReask(query: query, find: page.state.notebookFind) else { return }
             page.run("find-in-notebook", arg: FindLayout.normalized(query))
         }
         .task(id: "\(folder.absoluteString)|\(query)|\(contents)") { await search() }
@@ -272,7 +299,8 @@ private struct FindNavigator: View {
         // tab goes; an empty query clears its matches.
         .onDisappear {
             focusRequest.clear()
-            page.run("find-in-notebook", arg: "")
+            trackedPage?.run("find-in-notebook", arg: "")
+            trackedPage = nil
         }
     }
 
@@ -293,14 +321,14 @@ private struct FindNavigator: View {
     /// The page's answer that can show: while it is for the query the
     /// field holds, never another query's.
     private var found: PageState.NotebookFind? {
-        FindLayout.answer(for: query, in: page.state.notebookFind)
+        page.flatMap { FindLayout.answer(for: query, in: $0.state.notebookFind) }
     }
 
     /// The sections in order (#879), each drawn by its own case: the
     /// outline alone needs the whole tab, as a list of its own.
     @ViewBuilder
     private var list: some View {
-        let sections = FindLayout.sections(query: query, hasNotebook: page.state.hasNotebook)
+        let sections = FindLayout.sections(query: query, hasNotebook: page?.state.hasNotebook == true)
         if sections == [.outline] {
             OutlineNavigator(page: page)
         } else {
@@ -325,7 +353,7 @@ private struct FindNavigator: View {
         Section("In this notebook") {
             ForEach(found?.matches ?? []) { match in
                 Button {
-                    page.run("go-to-cell", arg: String(match.cell))
+                    page?.run("go-to-cell", arg: String(match.cell))
                 } label: {
                     VStack(alignment: .leading, spacing: 2) {
                         if let heading = match.heading {
@@ -375,7 +403,7 @@ private struct FindNavigator: View {
     @ViewBuilder
     private var status: some View {
         switch FindLayout.status(
-            query: query, hasNotebook: page.state.hasNotebook, find: page.state.notebookFind,
+            query: query, hasNotebook: page?.state.hasNotebook == true, find: page?.state.notebookFind,
             searchingFiles: searching, fileMatches: results.names.count + results.contents.count,
             stoppedEarly: results.stoppedEarly) {
         case .none:
@@ -437,7 +465,11 @@ private struct FindNavigator: View {
     private func open(_ entry: FolderEntry) {
         if entry.opensInPage {
             WorkspaceTabs.openOrFocus(
-                WindowTarget(opening: entry), serverPath: entry.serverPath, in: page)
+                WindowTarget(opening: entry),
+                serverPath: entry.serverPath,
+                in: page,
+                fallback: onOpenNotebook
+            )
         } else if entry.isDirectory {
             if let target = WindowTarget(opening: entry) {
                 WorkspaceTabs.openOrFocusTab(target) { openWindow(value: $0) }
@@ -484,12 +516,17 @@ private struct FindNavigator: View {
     private func find() async {
         let query = FindLayout.normalized(query)
         guard !query.isEmpty else {
-            page.run("find-in-notebook", arg: "")
+            page?.run("find-in-notebook", arg: "")
             return
         }
-        try? await Task.sleep(nanoseconds: 250_000_000)
-        guard !Task.isCancelled else { return }
-        page.run("find-in-notebook", arg: query)
+        let currentPageID = page.map(ObjectIdentifier.init)
+        let switchedPage = currentPageID != lastQueryPageID
+        lastQueryPageID = currentPageID
+        if !switchedPage {
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            guard !Task.isCancelled else { return }
+        }
+        page?.run("find-in-notebook", arg: query)
     }
 }
 
@@ -500,7 +537,8 @@ private struct FindNavigator: View {
 /// tab shows.
 private struct JournalsNavigator: View {
     let place: Place
-    var page: PageModel
+    var page: PageModel?
+    var onOpenNotebook: (String) -> Void = { _ in }
     @Environment(AppModel.self) private var model
     @Environment(\.openWindow) private var openWindow
     @State private var result: Journals.Result?
@@ -560,7 +598,9 @@ private struct JournalsNavigator: View {
         WorkspaceTabs.openOrFocus(
             WindowTarget.file(serverPath: journal.path, in: place),
             serverPath: journal.path,
-            in: page)
+            in: page,
+            fallback: onOpenNotebook
+        )
     }
 
     private func openInNewTab(_ journal: Journals.Journal) {
@@ -587,16 +627,16 @@ private struct JournalsNavigator: View {
 /// The open notebook's Markdown headings (#212), indented by level;
 /// clicking one selects its cell and scrolls it to the top.
 struct OutlineNavigator: View {
-    var page: PageModel
+    var page: PageModel?
 
     var body: some View {
-        let headings = page.state.headings
+        let headings = page?.state.headings ?? []
         // Indent from the outline's top level, not from `#`.
         let top = headings.map(\.level).min() ?? 1
         List {
             ForEach(Array(headings.enumerated()), id: \.offset) { _, heading in
                 Button {
-                    page.run("go-to-cell", arg: String(heading.cell))
+                    page?.run("go-to-cell", arg: String(heading.cell))
                 } label: {
                     Text(heading.text)
                         .fontWeight(heading.level == top ? .semibold : .regular)
@@ -614,7 +654,7 @@ struct OutlineNavigator: View {
         .scrollContentBackground(.hidden)
         .overlay {
             if headings.isEmpty {
-                Text(page.state.hasNotebook ? "No headings in this notebook" : "No notebook open")
+                Text(page?.state.hasNotebook == true ? "No headings in this notebook" : "No notebook open")
                     .foregroundStyle(SidebarCaption())
                     .multilineTextAlignment(.center)
                     .padding()
@@ -627,13 +667,14 @@ struct OutlineNavigator: View {
 
 /// File › Open Recent's notebooks: in this window, or a new one.
 private struct RecentsNavigator: View {
-    var page: PageModel
+    var page: PageModel?
     /// The window's place (#883): this Mac's own server's window opens its
     /// notebooks by their path in that server's root.
     var place: Place = .thisDevice
     /// The folder a this-Mac window's server is rooted at (`root_dir`);
     /// nil for this device's windows, whose notebook paths are their own.
     var root: URL?
+    var onOpenNotebook: (String) -> Void = { _ in }
     private let recents = Recents.shared
     @Environment(\.openWindow) private var openWindow
 
@@ -684,7 +725,12 @@ private struct RecentsNavigator: View {
     }
 
     private func open(_ entry: Entry) {
-        WorkspaceTabs.openOrFocus(entry.tabTarget(in: place), serverPath: entry.path, in: page)
+        WorkspaceTabs.openOrFocus(
+            entry.tabTarget(in: place),
+            serverPath: entry.path,
+            in: page,
+            fallback: onOpenNotebook
+        )
     }
 
     /// A new window on the notebook: this Mac's own server's in a window of

@@ -269,7 +269,8 @@ struct OpenCommands: View {
             ForEach(consoles) { recent in
                 Button(recent.menuTitle) {
                     let target = TabRequest.duckdbConsole(
-                        folder: recent.folder, session: UUID(uuidString: recent.id)
+                        folder: recent.folder,
+                        session: UUID(uuidString: recent.id)
                     ).target(root: root)
                     WorkspaceTabs.openOrFocusTab(target) { openWindow(value: $0) }
                 }

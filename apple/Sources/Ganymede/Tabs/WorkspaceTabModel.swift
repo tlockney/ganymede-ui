@@ -160,7 +160,7 @@ struct WorkspaceTabDescriptor: Identifiable, Equatable {
         place: Place,
         machineName: String?,
         metadataTitle: String?,
-        isPrimary: Bool = true,
+        isPrimary: Bool = false,
         isCloseable: Bool = true
     ) -> WorkspaceTabDescriptor {
         let title = target.tabTitle(
@@ -407,4 +407,13 @@ struct WorkspaceTabDescriptor: Identifiable, Equatable {
             return machineName.map { "\($0) · \(path)" } ?? path
         }
     }
+}
+
+/// What a tab's page is made for (#883): its place, and the folder a
+/// this-Mac server is rooted at, whose notebooks its ledger keeps. A
+/// server restarted with another `root_dir` keeps notebooks by other
+/// paths, so the page is made again for it.
+struct WorkspacePagePlace: Hashable {
+    var place: Place
+    var root: String?
 }

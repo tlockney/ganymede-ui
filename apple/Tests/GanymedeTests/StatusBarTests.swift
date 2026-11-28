@@ -157,6 +157,37 @@ final class StatusBarTests: XCTestCase {
         XCTAssertEqual(page.pendingCount, 4)
     }
 
+    @MainActor
+    func testPageMemoryWatcherSwapsPagesCleanlyWhileVisible() {
+        let first = PageModel()
+        let second = PageModel()
+        var watcher = PageMemoryWatcher()
+
+        watcher.update(page: first, visible: true)
+        XCTAssertEqual(first.memoryWatchers, 1)
+        XCTAssertEqual(second.memoryWatchers, 0)
+        XCTAssertTrue(watcher.isWatching)
+
+        // Switching the active page while visible must turn off the old page's watcher
+        // and turn on the newly active page's watcher.
+        watcher.update(page: second, visible: true)
+        XCTAssertEqual(first.memoryWatchers, 0)
+        XCTAssertEqual(second.memoryWatchers, 1)
+        XCTAssertTrue(watcher.isWatching)
+
+        // Clearing the active page (e.g. switching to a terminal or editor tab)
+        // must stop watching without mutating nil.
+        watcher.update(page: nil, visible: true)
+        XCTAssertEqual(first.memoryWatchers, 0)
+        XCTAssertEqual(second.memoryWatchers, 0)
+        XCTAssertFalse(watcher.isWatching)
+
+        // Re-attaching a page while hidden must remain off until visible.
+        watcher.update(page: first, visible: false)
+        XCTAssertEqual(first.memoryWatchers, 0)
+        XCTAssertFalse(watcher.isWatching)
+    }
+
     #if os(macOS)
     private struct ColorSet: Decodable {
         struct Entry: Decodable {

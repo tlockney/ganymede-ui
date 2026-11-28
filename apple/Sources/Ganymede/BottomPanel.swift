@@ -26,10 +26,15 @@ struct BottomPanel: View {
     /// only. A machine's kernel runs on the machine, and this Mac's server
     /// keeps no log of it, so a machine's panel has no tab to ask it with.
     let kernelLog: Bool
+    /// Whether the panel is visually shown on screen (false when hidden on a
+    /// `.terminal` tab without mutating `panel.isShown`, #904).
+    var shown = true
     /// It fills the window (#250): as tall as the area, not resizable.
     var fills = false
     /// Its fill control: fills the window, or restores the layout.
     var toggleFill: () -> Void = {}
+    /// Optional in-window move-to-tab handler when custom tabs are enabled (#904).
+    var onMoveToTab: ((TerminalRequest) -> Void)?
     /// Titles the shells set, by terminal.
     @State private var titles: [PanelTerminal.ID: String] = [:]
     /// The height when a drag of the top edge began.
@@ -60,7 +65,7 @@ struct BottomPanel: View {
                     KernelLogView(
                         kernelID: kernelID,
                         server: server,
-                        active: panel.isShown && showsLog
+                        active: shown && panel.isShown && showsLog
                     )
                         .opacity(showsLog ? 1 : 0)
                         .allowsHitTesting(showsLog)
@@ -74,13 +79,14 @@ struct BottomPanel: View {
                         onTitle: { titles[terminal.id] = $0.isEmpty ? nil : $0 },
                         // Only the terminal on show has the keyboard, so keys
                         // never go to a hidden shell; a new one gets it.
-                        focused: selected && panel.isShown,
+                        focused: selected && shown && panel.isShown,
                         handoff: terminal.id,
                         reveal: {
                             panel.select(terminal.id)
                             panel.isShown = true
                         },
-                        shutDown: { close(terminal.id) }
+                        shutDown: { close(terminal.id) },
+                        ownWindow: false
                     )
                         .opacity(selected ? 1 : 0)
                         .allowsHitTesting(selected)
@@ -150,8 +156,15 @@ struct BottomPanel: View {
     private func moveToTab(_ terminal: PanelTerminal) {
         let request = TerminalRequest(id: terminal.id, target: terminal.target)
         let openWindow = openWindow
+        let onMoveToTab = onMoveToTab
         // Not once its session has ended, or while it is already moving.
-        guard TerminalHandoff.shared.move(terminal.id, arrive: { openWindow(value: request) }) else {
+        guard TerminalHandoff.shared.move(terminal.id, arrive: {
+            if let onMoveToTab {
+                onMoveToTab(request)
+            } else {
+                WorkspaceTabs.openTerminal(request) { openWindow(value: $0) }
+            }
+        }) else {
             NSSound.beep()
             return
         }

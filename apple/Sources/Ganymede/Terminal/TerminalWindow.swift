@@ -41,6 +41,8 @@ struct TerminalWindow: View {
     /// window ends it.
     var reveal: (() -> Void)?
     var shutDown: (() -> Void)?
+    var ownWindow = true
+    var onAvailabilityChange: ((Bool, Bool) -> Void)?
     /// Its entry in `OpenTerminals`, and its place in `TerminalHandoff`.
     @State private var entry = UUID()
     @State private var window = WeakWindow()
@@ -61,6 +63,7 @@ struct TerminalWindow: View {
                     onEnd: { reason in
                         ended = reason ?? "Session ended."
                         #if os(macOS)
+                        onAvailabilityChange?(true, true)
                         // An ended session doesn't move; Reconnect makes a new one.
                         if let handoff { TerminalHandoff.shared.unregister(handoff, owner: entry) }
                         #endif
@@ -91,11 +94,20 @@ struct TerminalWindow: View {
                 .background(.bar)
             }
         }
+        #if os(macOS)
+        .modifier(OwnWindow(enabled: ownWindow && !inPanel, title: title.isEmpty ? defaultTitle : title))
+        #else
         .modifier(OwnWindow(enabled: !inPanel, title: title.isEmpty ? defaultTitle : title))
+        #endif
         .onAppear(perform: connect)
         .onChange(of: model.url) { connect() }
         #if os(macOS)
-        .background(WindowReader { window.window = $0 })
+        .background(WindowReader { newWindow in
+            if window.window !== newWindow {
+                window.window = newWindow
+                register()
+            }
+        })
         .onAppear(perform: register)
         .onChange(of: title) { register() }
         .onDisappear {
@@ -103,7 +115,7 @@ struct TerminalWindow: View {
             if let handoff { TerminalHandoff.shared.unregister(handoff, owner: entry) }
         }
         .modifier(MoveToPanelButton(
-            enabled: !inPanel && handoff != nil,
+            enabled: ownWindow && !inPanel && handoff != nil,
             disabled: transport == nil || ended != nil,
             action: moveToPanel
         ))
@@ -171,6 +183,7 @@ struct TerminalWindow: View {
         generation += 1
         transport = next
         #if os(macOS)
+        onAvailabilityChange?(true, false)
         register()
         #endif
     }
@@ -229,13 +242,20 @@ struct TerminalWindow: View {
             transport = arriving.transport
             title = arriving.title
             onTitle?(arriving.title)
+            onAvailabilityChange?(true, false)
             register()
             return
         }
         #endif
-        guard problem == nil else { return }
+        guard problem == nil else {
+            #if os(macOS)
+            onAvailabilityChange?(false, false)
+            #endif
+            return
+        }
         transport = makeTransport()
         #if os(macOS)
+        onAvailabilityChange?(transport != nil, ended != nil)
         register()
         #endif
     }
@@ -401,7 +421,9 @@ struct TerminalCommands: View {
         .keyboardShortcut("`", modifiers: [.control, .shift])
         .disabled(target == nil)
         Button("New Terminal Tab") {
-            if let target { openWindow(value: TerminalRequest(target: target)) }
+            if let target {
+                WorkspaceTabs.openTerminal(TerminalRequest(target: target)) { openWindow(value: $0) }
+            }
         }
         .disabled(target == nil)
         // One item per way in: a remote with both a server and SSH gets two.
@@ -434,7 +456,7 @@ struct TerminalCommands: View {
         if let panel {
             panel.add(target)
         } else {
-            openWindow(value: TerminalRequest(target: target))
+            WorkspaceTabs.openTerminal(TerminalRequest(target: target)) { openWindow(value: $0) }
         }
     }
 }

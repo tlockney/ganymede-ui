@@ -222,6 +222,12 @@ enum NotebookWindows {
     static var frontPage: PageModel? {
         let shown = pages.allObjects.filter { $0.webView?.window != nil }
         for window in NSApp.orderedWindows {
+            if let page = WorkspaceTabs.activePage(for: window) {
+                return page
+            }
+            if WorkspaceTabs.controller(for: window) != nil {
+                continue
+            }
             if let page = shown.first(where: { $0.webView?.window === window }) { return page }
         }
         return nil

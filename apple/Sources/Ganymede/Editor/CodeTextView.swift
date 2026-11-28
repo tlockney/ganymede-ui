@@ -80,6 +80,7 @@ final class CodeTextCoordinator: NSObject, NSTextViewDelegate {
     func attach(_ textView: NSTextView, ruler: LineNumberRuler) {
         self.textView = textView
         self.ruler = ruler
+        document.textView = textView
         highlighter = makeHighlighter(for: textView, language: document.language)
         sync()
         fontObserver = observeCodeFont { [weak self] in self?.applyFont() }
