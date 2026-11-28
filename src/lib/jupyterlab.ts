@@ -21,8 +21,6 @@ import {
   CodeMirrorEditorFactory,
   CodeMirrorMimeTypeService,
   EditorExtensionRegistry,
-  EditorLanguageRegistry,
-  EditorThemeRegistry,
   ybinding,
 } from '@jupyterlab/codemirror';
 import {
@@ -88,51 +86,45 @@ import '@jupyterlab/tooltip/style/index.js';
 import '@jupyterlab/documentsearch/style/index.js';
 import '@jupyterlab/cell-toolbar/style/index.js';
 
+import { createEditorExtensions, editorLanguages, editorThemes } from './editor-setup';
 import { liveMarkdownPreview } from './markdown-preview';
-import { withDuckdbSql } from './sql-languages';
 import { wrapCode } from './wrap-code';
 
-const languages = new EditorLanguageRegistry();
-for (const language of withDuckdbSql(EditorLanguageRegistry.getDefaultLanguages())) {
-  languages.addLanguage(language);
-}
+const languages = editorLanguages;
+const themes = editorThemes;
 
-const themes = new EditorThemeRegistry();
-for (const theme of EditorThemeRegistry.getDefaultThemes()) {
-  themes.addTheme(theme);
-}
+const extensions = createEditorExtensions(registry => {
+  // Bind each editor to its cell's shared model, as JupyterLab's
+  // codemirror-extension plugin does; without it edits never reach the model.
+  registry.addExtension({
+    name: 'shared-model-binding',
+    factory: options => {
+      const shared = options.model.sharedModel as IYText;
+      return EditorExtensionRegistry.createImmutableExtension(
+        ybinding({ ytext: shared.ysource, undoManager: shared.undoManager ?? undefined }),
+      );
+    },
+  });
 
-const extensions = new EditorExtensionRegistry();
-for (const extension of EditorExtensionRegistry.getDefaultExtensions({ themes })) {
-  extensions.addExtension(extension);
-}
-// Bind each editor to its cell's shared model, as JupyterLab's
-// codemirror-extension plugin does; without it edits never reach the model.
-extensions.addExtension({
-  name: 'shared-model-binding',
-  factory: options => {
-    const shared = options.model.sharedModel as IYText;
-    return EditorExtensionRegistry.createImmutableExtension(
-      ybinding({ ytext: shared.ysource, undoManager: shared.undoManager ?? undefined }),
-    );
-  },
+  // Live Markdown preview (#672): only Markdown cells' editors, and only while
+  // its switch is on (the extension itself follows the switch).
+  registry.addExtension({
+    name: 'live-markdown-preview',
+    factory: options =>
+      (options.model.sharedModel as { cell_type?: string }).cell_type === 'markdown'
+        ? EditorExtensionRegistry.createImmutableExtension(liveMarkdownPreview())
+        : null,
+  });
+
+  // Wrap Code (#813): every editor follows the switch.
+  registry.addExtension({
+    name: 'wrap-code',
+    factory: () => EditorExtensionRegistry.createImmutableExtension(wrapCode()),
+  });
 });
 
-// Live Markdown preview (#672): only Markdown cells' editors, and only while
-// its switch is on (the extension itself follows the switch).
-extensions.addExtension({
-  name: 'live-markdown-preview',
-  factory: options =>
-    (options.model.sharedModel as { cell_type?: string }).cell_type === 'markdown'
-      ? EditorExtensionRegistry.createImmutableExtension(liveMarkdownPreview())
-      : null,
-});
-
-// Wrap Code (#813): every editor follows the switch.
-extensions.addExtension({
-  name: 'wrap-code',
-  factory: () => EditorExtensionRegistry.createImmutableExtension(wrapCode()),
-});
+// Keep `themes` referenced in case any future setup reads it directly.
+void themes;
 
 const editorServices = {
   factory: new CodeMirrorEditorFactory({ extensions, languages }),

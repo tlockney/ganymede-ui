@@ -3337,3 +3337,222 @@ button {
     height: 48px;
   }
 }
+
+/* ---------- Inline expand bars & full-window view (#822) ---------- */
+
+.gn-output-bar,
+.gn-source-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin-bottom: 6px;
+  padding: 3px 8px;
+  border-left: 3px solid var(--text-2);
+  background: var(--window-bg);
+  color: var(--text);
+  font: 12px var(--font-ui);
+}
+
+.gn-output-label,
+.gn-source-label {
+  font-weight: 600;
+}
+
+.gn-output-toggle,
+.gn-source-toggle {
+  margin-left: auto;
+  padding: 2px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--control-bg);
+  color: var(--accent-text);
+  font: inherit;
+  cursor: pointer;
+}
+
+.gn-output-toggle:hover,
+.gn-source-toggle:hover {
+  background: var(--control-bg-hover);
+}
+
+@media (hover: none), (pointer: coarse) {
+  .gn-output-toggle,
+  .gn-source-toggle {
+    min-height: 36px;
+    padding: 0 14px;
+  }
+}
+
+.expanded-view {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+  display: flex;
+  flex-direction: column;
+  padding-left: var(--safe-left);
+  padding-right: var(--safe-right);
+  padding-bottom: var(--safe-bottom);
+  background: var(--window-bg);
+  color: var(--text);
+  --jp-ui-font-family: var(--font-ui);
+  --jp-content-font-family: var(--font-ui);
+  --jp-code-font-family: var(--code-font, var(--font-mono));
+  --jp-code-font-size: var(--code-font-size, 12.5px);
+  --jp-code-line-height: 1.55;
+  --jp-content-font-size1: 14px;
+  --jp-ui-font-size1: 13px;
+  --jp-brand-color1: var(--accent);
+  --jp-content-font-color1: var(--text);
+  --jp-content-font-color2: var(--text-2);
+  --jp-content-font-color3: var(--text-3);
+  --jp-ui-font-color1: var(--text);
+  --jp-ui-font-color2: var(--text-2);
+  --jp-content-link-color: var(--accent-text);
+  --jp-layout-color0: var(--cell-bg, var(--window-bg));
+  --jp-layout-color1: var(--window-bg);
+  --jp-layout-color2: var(--control-bg);
+  --jp-border-color1: var(--separator);
+  --jp-border-color2: var(--separator);
+  --jp-cell-editor-background: var(--cell-bg, var(--window-bg));
+  --jp-cell-editor-active-background: var(--cell-bg, var(--window-bg));
+  --jp-mirror-editor-number-color: #1c00cf;
+}
+
+@media (prefers-color-scheme: dark) {
+  .expanded-view {
+    --jp-mirror-editor-number-color: #d9c97c;
+  }
+}
+
+.expanded-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: calc(10px + var(--safe-top)) 14px 10px;
+  border-bottom: 1px solid var(--separator);
+  background: var(--toolbar-bg, var(--sheet-bg));
+}
+
+.expanded-title {
+  flex: 1 1 160px;
+  min-width: 0;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.expanded-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  margin-left: auto;
+}
+
+.expanded-wrap[aria-pressed='true'] {
+  background: var(--accent-fill);
+  color: var(--on-accent);
+}
+
+.expanded-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--cell-bg, var(--window-bg));
+}
+
+.expanded-editor {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.expanded-editor .cm-editor {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  background: var(--cell-bg, var(--window-bg));
+  font-family: var(--code-font, var(--font-mono));
+  font-size: var(--code-font-size, 12.5px);
+  font-feature-settings: var(--code-font-features, normal);
+}
+
+.expanded-editor .cm-scroller {
+  overflow: auto;
+  font-family: inherit;
+}
+
+.expanded-editor .cm-gutters {
+  background: var(--window-bg);
+  border-right: 1px solid var(--separator);
+  color: var(--text-3);
+}
+
+.expanded-table-host {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 14px 12px;
+}
+
+.expanded-table-host .gm-table {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.expanded-table-host .gm-table-scroll {
+  flex: 1;
+  min-height: 0;
+  max-height: none;
+  overflow: auto;
+}
+
+.expanded-view .gm-table th {
+  background: var(--window-bg);
+  z-index: 1;
+}
+
+.expanded-html-host {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px 14px;
+}
+
+.expanded-html-host iframe.gn-OutputFrame {
+  width: 100%;
+  border: 0;
+  display: block;
+}
+
+@media (max-width: 600px) {
+  .expanded-header {
+    padding: calc(8px + var(--safe-top)) 10px 8px;
+  }
+
+  .expanded-table-host,
+  .expanded-html-host {
+    padding: 8px 10px 10px;
+  }
+}
+
+@media (hover: none), (pointer: coarse) {
+  .expanded-editor .cm-editor {
+    font-size: max(16px, var(--code-font-size, 12.5px));
+  }
+}
+
+.touch-ui .expanded-header .push-button {
+  min-height: 44px;
+}

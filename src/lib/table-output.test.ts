@@ -13,6 +13,7 @@ const {
   compareValues,
   footerText,
   rowsOf,
+  tableWidgetFor,
 } = await import('./table-output');
 type RenderedTable = import('./table-output').RenderedTable;
 type Kernel = import('@jupyterlab/services').Kernel.IKernelConnection;
@@ -504,5 +505,55 @@ describe('paging through the kernel', () => {
         paged: true,
       }),
     ).toBe('Rows 1,001–1,050 of 2,500');
+  });
+
+  it('tracks widgets by node and restores page and sort state (#822)', async () => {
+    const rows = Array.from({ length: 120 }, (_, i) => ({
+      moon: `M${String(i).padStart(3, '0')}`,
+    }));
+    const resource = {
+      schema: { fields: [{ name: 'moon', type: 'string' }] },
+      data: rows,
+      ganymede: { rows: 120, shown: 120, title: 'Moons' },
+    };
+    const source = (await render(resource)) as unknown as RenderedTable;
+    expect(tableWidgetFor(source.node)).toBe(source);
+    expect(source.tableTitle).toBe('Moons');
+    expect(source.total).toBe(120);
+    expect(source.shownCount).toBe(120);
+    expect(source.trusted).toBe(false);
+
+    source.sortBy(0);
+    source.sortBy(0);
+    source.showPage(1);
+    const snapshot = source.viewState;
+    expect(snapshot).toEqual({ page: 1, sort: { column: 0, descending: true } });
+
+    const copy = (await render(resource)) as unknown as RenderedTable;
+    copy.restoreViewState(snapshot);
+    expect(copy.viewState).toEqual(snapshot);
+    expect(footer(copy.node)).toBe('Rows 51–100 of 120');
+    expect(column(copy.node, 0)[0]).toBe('M069');
+
+    source.dispose();
+    expect(tableWidgetFor(source.node)).toBeUndefined();
+  });
+
+  it('restores remote paged and sorted state cleanly (#822)', async () => {
+    const { kernel, log } = pagingKernel({ total: 3000 });
+    const table = await renderPaged(kernel);
+    const beforeCount = log.length;
+    table.restoreViewState({ page: 0, sort: null });
+    expect(log).toHaveLength(beforeCount);
+
+    table.restoreViewState({ page: 2, sort: { column: 0, descending: false } });
+    await settle();
+    expect(log.at(-1)).toEqual({
+      request: 1,
+      offset: 100,
+      limit: 50,
+      sort: { column: 'n', descending: false },
+    });
+    expect(footer(table.node)).toBe('Rows 101–150 of 3,000');
   });
 });

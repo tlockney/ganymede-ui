@@ -30,6 +30,7 @@ import {
   latestAgentTime,
   newCellCount,
   nextFollow,
+  notebookLanguage,
   noteCell,
   presenceNames,
   claimPosition,
@@ -50,11 +51,16 @@ import {
   type NewCell,
   type Revision,
 } from '../lib/journal';
-import { outputMetaText } from '../lib/output-labels';
+import { findEditorLanguage } from '../lib/editor-setup';
+import { outputMetaText, outputTableExpandInfo } from '../lib/output-labels';
+import { countSourceLines, isLongSource } from '../lib/source-expand';
+import { tableWidgetFor } from '../lib/table-output';
 import { agentsAt, composerHint, useRooms } from '../lib/journals';
 import type { NotebookRoom } from '../lib/room';
 import { READONLY_BANNER } from '../lib/room-readonly';
 import { useNarrow } from '../lib/useNarrow';
+import { type ExpandedTarget, tableTargetFromOutput } from '../lib/expanded-view';
+import { ExpandedView } from './ExpandedView';
 
 type Props = {
   notebook: YNotebook;
@@ -407,26 +413,86 @@ function RevisionChip({ revisions }: { revisions: Revision[] }) {
   );
 }
 
+function JournalOutputRow({
+  output,
+  rendermime,
+  trusted,
+  onExpand,
+}: {
+  output: nbformat.IOutput;
+  rendermime: IRenderMimeRegistry;
+  trusted: boolean;
+  onExpand(target: ExpandedTarget): void;
+}) {
+  const outRef = useRef<HTMLDivElement>(null);
+  const [tableInfo, setTableInfo] = useState(() => outputTableExpandInfo(output));
+
+  useLayoutEffect(() => {
+    const el = outRef.current;
+    if (!el) return;
+    const check = () => setTableInfo(outputTableExpandInfo(output, el));
+    check();
+    const mo = new MutationObserver(check);
+    mo.observe(el, { childList: true, subtree: true });
+    const ro = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(check) : undefined;
+    ro?.observe(el);
+    return () => {
+      mo.disconnect();
+      ro?.disconnect();
+    };
+  }, [output]);
+
+  return (
+    <div ref={outRef} className="journal-output">
+      {tableInfo.show && (
+        <div className="gn-output-bar" data-kind="table">
+          <span className="gn-output-label">{tableInfo.label}</span>
+          <button
+            type="button"
+            className="gn-output-toggle"
+            onClick={() => {
+              const widget = tableWidgetFor(outRef.current?.querySelector('.gm-table'));
+              const target = tableTargetFromOutput({ output, widget, trusted, rendermime });
+              if (target) onExpand(target);
+            }}
+          >
+            Expand table
+          </button>
+        </div>
+      )}
+      <Output
+        output={output as Record<string, unknown>}
+        rendermime={rendermime}
+        trusted={trusted}
+      />
+    </div>
+  );
+}
+
 const JournalCell = memo(function JournalCell({
   cell,
   index,
   rendermime,
   trusted,
+  sourceMime,
   request,
   requestSave,
   reply,
   onGoToReply,
+  onExpand,
 }: {
   cell: Cell;
   index: number;
   rendermime: IRenderMimeRegistry;
   trusted: boolean;
+  sourceMime?: string;
   request: 'open' | 'answered' | undefined;
   /** What saving the request this view just added came to. */
   requestSave: RequestSave | undefined;
   /** The id of the answering cell, when it is in the notebook. */
   reply: string | undefined;
   onGoToReply(id: string): void;
+  onExpand(target: ExpandedTarget): void;
 }) {
   const [unfolded, setUnfolded] = useState(false);
   const p = classifyProvenance(cell);
@@ -485,14 +551,40 @@ const JournalCell = memo(function JournalCell({
               )}
             </button>
             {unfolded && (
-              <pre className="journal-code">
-                <code>{source}</code>
-              </pre>
+              <>
+                {isLongSource(source) && (
+                  <div className="gn-source-bar">
+                    <span className="gn-source-label">{countSourceLines(source)} lines</span>
+                    <button
+                      type="button"
+                      className="gn-source-toggle"
+                      onClick={() =>
+                        onExpand({
+                          kind: 'source',
+                          title: p.count !== undefined ? `In [${p.count}]` : 'Source',
+                          mimeType: sourceMime,
+                          readOnly: true,
+                          source,
+                        })
+                      }
+                    >
+                      Expand source
+                    </button>
+                  </div>
+                )}
+                <pre className="journal-code">
+                  <code>{source}</code>
+                </pre>
+              </>
             )}
             {outputs.map((o, i) => (
-              <div key={i} className="journal-output">
-                <Output output={o} rendermime={rendermime} trusted={trusted} />
-              </div>
+              <JournalOutputRow
+                key={i}
+                output={o as nbformat.IOutput}
+                rendermime={rendermime}
+                trusted={trusted}
+                onExpand={onExpand}
+              />
             ))}
             {meta && <p className="journal-output-meta">{meta}</p>}
           </>
@@ -794,6 +886,11 @@ export function JournalView({
   const blank = text.trim() === '';
   const collapsed = narrow && !intent;
   const submitRequest = narrow && intent === 'request';
+  const [expanded, setExpanded] = useState<ExpandedTarget>();
+  const sourceMime = useMemo(() => {
+    const mime = findEditorLanguage(notebookLanguage(notebook.metadata))?.mime;
+    return typeof mime === 'string' ? mime : mime?.[0];
+  }, [notebook]);
 
   return (
     <section
@@ -845,10 +942,12 @@ export function JournalView({
               index={i}
               rendermime={rendermime}
               trusted={!!cell.id && trust.has(cell.id)}
+              sourceMime={sourceMime}
               request={requestState(cell, clients)}
               requestSave={cell.id ? saves[cell.id] : undefined}
               reply={replyIn(cell, cellIds.current)}
               onGoToReply={goToReply}
+              onExpand={setExpanded}
             />
           ))}
         </div>
@@ -938,6 +1037,7 @@ export function JournalView({
           </>
         )}
       </form>
+      {expanded && <ExpandedView target={expanded} onClose={() => setExpanded(undefined)} />}
     </section>
   );
 }

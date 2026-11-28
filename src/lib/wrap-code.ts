@@ -41,6 +41,15 @@ export function setWrapCodeEnabled(on: boolean): void {
   changed.emit(on);
 }
 
+/** Calls `listener` whenever wrap-code changes, returning an unsubscribe function. */
+export function subscribeWrapCode(listener: (on: boolean) => void): () => void {
+  const onChanged = (_: unknown, on: boolean) => listener(on);
+  changed.connect(onChanged);
+  return () => {
+    changed.disconnect(onChanged);
+  };
+}
+
 /** For tests: forget a switch kept only in this page. */
 export function resetWrapCodeForTests(): void {
   fallback = undefined;

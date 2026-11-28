@@ -123,6 +123,7 @@ describe('paletteEntries', () => {
       'Clear All Outputs',
       'Insert Code Cell',
       'Insert Markdown Cell',
+      'Expand Source',
       'Run cell',
       'Insert cell above',
       'Delete cells',
@@ -158,7 +159,13 @@ describe('paletteEntries', () => {
       expect(find(label, ro)?.disabled, `${label} while read-only`).toBe(true);
     }
     // Navigation, find, view toggles and download stay enabled.
-    for (const label of ['Find', 'Download Notebook', 'View as Journal', 'Go to Definition']) {
+    for (const label of [
+      'Find',
+      'Download Notebook',
+      'View as Journal',
+      'Go to Definition',
+      'Expand Source',
+    ]) {
       expect(find(label, ro)?.disabled, `${label} while read-only`).toBeFalsy();
     }
   });

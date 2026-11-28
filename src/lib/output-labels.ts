@@ -29,9 +29,13 @@ import type { Notebook } from '@jupyterlab/notebook';
 import type { PartialJSONValue } from '@lumino/coreutils';
 import type { IDisposable } from '@lumino/disposable';
 import type { RunStatus } from './run-status';
+import { type RenderedTable, TABLE_MIME, type TableResource, tableWidgetFor } from './table-output';
 
 /** A stream longer than this many lines shows only its tail until opened. */
 export const LOG_LINES = 20;
+
+/** A table with more than this many rows offers an "Expand table" button (#822). */
+export const TABLE_EXPAND_ROWS = 15;
 
 /** The class of an output wider than the prose column: jupyter.css spans
  * the pane with it, past the column on both sides (#814). */
@@ -49,12 +53,22 @@ export const WIDE_SLACK = 8;
 const BAR = 'gn-output-bar';
 const META = 'gn-output-meta';
 
+export type ExpandedTableTarget = {
+  cell: CodeCell;
+  outputIndex: number;
+  output: nbformat.IOutput;
+  widget?: RenderedTable;
+  opener: HTMLElement;
+};
+
 type Options = {
   /**
    * The run queue: the time a run took is counted from it, and whether the
    * cell has run here says if its outputs are only what the file held.
    */
   runs: RunStatus;
+  /** Opens a full-window view of a table output when "Expand table" is clicked (#822). */
+  onExpandTable?: (target: ExpandedTableTarget) => void;
 };
 
 export type OutputLabels = IDisposable & {
@@ -143,8 +157,10 @@ function kindOf(output: nbformat.IOutput): string | undefined {
   if (!data) return undefined;
   if (data['image/svg+xml'] !== undefined) return 'SVG';
   if (data['image/png'] !== undefined || data['image/jpeg'] !== undefined) return 'Image';
-  if (typeof data['text/html'] === 'string' && /<table[\s>]/i.test(data['text/html']))
-    return 'Table';
+  if (data[TABLE_MIME] !== undefined) return 'Table';
+  const html = data['text/html'];
+  const htmlText = Array.isArray(html) ? html.join('') : html;
+  if (typeof htmlText === 'string' && /<table[\s>]/i.test(htmlText)) return 'Table';
   for (const [mime, kind] of [
     ['text/html', 'HTML'],
     ['text/markdown', 'Markdown'],
@@ -193,7 +209,59 @@ export function outputMetaText(
   return parts.length > 0 ? parts.join(' · ') : undefined;
 }
 
-export function attachOutputLabels(notebook: Notebook, { runs }: Options): OutputLabels {
+/** Whether a `TableResource` payload should show an inline "Expand table" button (#822). */
+export function dataTableExpandInfo(
+  resource: TableResource | undefined,
+  scroller?: HTMLElement | null,
+  wide = false,
+): { show: boolean; label: string } {
+  const shown = Array.isArray(resource?.data) ? resource.data.length : 0;
+  const rows = resource?.ganymede?.rows;
+  const total = typeof rows === 'number' && rows > shown ? rows : shown;
+  const overflows =
+    !!scroller &&
+    ((scroller.clientHeight > 0 && scroller.scrollHeight > scroller.clientHeight + 1) ||
+      (scroller.clientWidth > 0 && scroller.scrollWidth > scroller.clientWidth + 1));
+  const show = total > shown || shown > TABLE_EXPAND_ROWS || overflows || wide;
+  const label =
+    total > 0 ? `Table, ${total.toLocaleString('en-US')} ${total === 1 ? 'row' : 'rows'}` : 'Table';
+  return { show, label };
+}
+
+/** Whether a notebook output is a table that benefits from the full-window table view (#822). */
+export function outputTableExpandInfo(
+  output: nbformat.IOutput,
+  out?: HTMLElement | null,
+): { show: boolean; label: string } {
+  const data = (output as nbformat.IDisplayData | undefined)?.data;
+  if (!data) return { show: false, label: 'Table' };
+  const wide = !!out?.classList.contains(WIDE);
+  if (data[TABLE_MIME] !== undefined) {
+    const scroller = out?.querySelector<HTMLElement>('.gm-table-scroll');
+    return dataTableExpandInfo(data[TABLE_MIME] as TableResource, scroller, wide);
+  }
+  const rawHtml = data['text/html'];
+  const html = Array.isArray(rawHtml) ? rawHtml.join('') : rawHtml;
+  if (typeof html === 'string' && /<table[\s>]/i.test(html)) {
+    const rowCount = html.match(/<tr[\s>]/gi)?.length ?? 0;
+    const firstRow = html.match(/<tr[\s>][\s\S]*?<\/tr>/i)?.[0] ?? '';
+    const colCount = firstRow.match(/<t[hd][\s>]/gi)?.length ?? 0;
+    const tableEl = out?.querySelector<HTMLElement>('table');
+    const overflows =
+      !!out &&
+      out.clientWidth > 0 &&
+      (out.scrollWidth > out.clientWidth + 1 ||
+        (!!tableEl && tableEl.scrollWidth > out.clientWidth + 1));
+    const show = rowCount > TABLE_EXPAND_ROWS || colCount > 5 || overflows || wide;
+    return { show, label: 'Table' };
+  }
+  return { show: false, label: 'Table' };
+}
+
+export function attachOutputLabels(
+  notebook: Notebook,
+  { runs, onExpandTable }: Options,
+): OutputLabels {
   let disposed = false;
   let scheduled = false;
   /** Output indexes a person opened to the full log, by cell model. */
@@ -320,11 +388,18 @@ export function attachOutputLabels(notebook: Notebook, { runs }: Options): Outpu
         json,
         json.output_type === 'stream' ? countedLines(item, json) : undefined,
       );
+      const tableInfo = !info && onExpandTable ? outputTableExpandInfo(json, out) : undefined;
       const open = opened.get(cell.model)?.has(i) ?? false;
       const long = (info?.lines ?? 0) > LOG_LINES;
-      const key = info ? [info.kind, info.label, info.summary, long, open].join('|') : '';
+      const expandTable = Boolean(tableInfo?.show);
+      const showBar = Boolean((info && (info.label || long)) || expandTable);
+      const barKind = info ? info.kind : 'table';
+      const barLabel = info?.label ?? (expandTable ? tableInfo!.label : '');
+      const key = showBar
+        ? [barKind, barLabel, info?.summary ?? '', long, open, expandTable].join('|')
+        : '';
       let bar = out.querySelector<HTMLElement>(`:scope > .${BAR}`);
-      if (!info || (!info.label && !long)) {
+      if (!showBar) {
         bar?.remove();
         out.classList.remove('gn-log-tail', 'gn-log-full');
         continue;
@@ -336,15 +411,15 @@ export function attachOutputLabels(notebook: Notebook, { runs }: Options): Outpu
         bar = document.createElement('div');
         bar.className = BAR;
         bar.dataset.key = key;
-        bar.dataset.kind = info.kind;
+        bar.dataset.kind = barKind;
         bar.dataset.index = String(i);
-        if (info.label) {
+        if (barLabel) {
           const label = document.createElement('span');
           label.className = 'gn-output-label';
-          label.textContent = info.label;
+          label.textContent = barLabel;
           bar.append(label);
         }
-        if (info.summary) {
+        if (info?.summary) {
           const summary = document.createElement('span');
           summary.className = 'gn-output-summary';
           summary.textContent = info.summary;
@@ -357,6 +432,13 @@ export function attachOutputLabels(notebook: Notebook, { runs }: Options): Outpu
           toggle.dataset.gnOutput = 'log';
           toggle.textContent = open ? 'Show last lines' : 'View full log';
           toggle.setAttribute('aria-expanded', String(open));
+          bar.append(toggle);
+        } else if (expandTable) {
+          const toggle = document.createElement('button');
+          toggle.type = 'button';
+          toggle.className = 'gn-output-toggle';
+          toggle.dataset.gnOutput = 'table';
+          toggle.textContent = 'Expand table';
           bar.append(toggle);
         }
         out.prepend(bar);
@@ -452,6 +534,22 @@ export function attachOutputLabels(notebook: Notebook, { runs }: Options): Outpu
     if (!cell || Number.isNaN(index)) return;
     e.preventDefault();
     e.stopPropagation();
+    if (target.dataset.gnOutput === 'table') {
+      if (!(cell instanceof CodeCell)) return;
+      const item = cell.model.outputs.get(index);
+      if (!item) return;
+      const out = target.closest<HTMLElement>('.jp-OutputArea-output');
+      const tableNode = out?.matches('.gm-table') ? out : out?.querySelector('.gm-table');
+      const widget = tableWidgetFor(tableNode);
+      onExpandTable?.({
+        cell,
+        outputIndex: index,
+        output: item.toJSON(),
+        widget,
+        opener: target,
+      });
+      return;
+    }
     const set = opened.get(cell.model) ?? new Set<number>();
     if (!set.delete(index)) set.add(index);
     opened.set(cell.model, set);

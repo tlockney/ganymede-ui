@@ -18,11 +18,17 @@ import {
 import { attachCellControls, selectOnly } from '../lib/cell-controls';
 import { attachCellGutter, type CellGutter } from '../lib/cell-gutter';
 import { attachCodeCollapse } from '../lib/code-collapse';
-import { attachOutputLabels } from '../lib/output-labels';
+import {
+  type ExpandedTableTarget as OutputExpandTarget,
+  attachOutputLabels,
+} from '../lib/output-labels';
+import { attachSourceExpand } from '../lib/source-expand';
 import { attachTypeErrors } from '../lib/type-errors';
 import { attachLanguageFeatures, type LanguageFeatures } from '../lib/language-editor';
 import { installTableOutput } from '../lib/table-output';
 import { CellMenu } from './CellMenu';
+import { type ExpandedTarget, tableTargetFromOutput } from '../lib/expanded-view';
+import { ExpandedView } from './ExpandedView';
 import { KeyboardBar } from './KeyboardBar';
 import { JournalView } from './JournalView';
 import { recentsKey } from '../lib/recents';
@@ -609,6 +615,18 @@ export function NotebookPane({
   const [roomOffline, setRoomOffline] = useState(false);
   const roomOfflineRef = useRef(false);
   const watcherRef = useRef<WritableWatcher>(undefined);
+  type ExpandedEntry =
+    | { cell: Cell; opener?: HTMLElement; target: ExpandedTarget & { kind: 'source' } }
+    | {
+        cell: Cell;
+        outputIndex: number;
+        opener?: HTMLElement;
+        target: ExpandedTarget & { kind: 'table' };
+      };
+  /** Full-window view of a long code cell or table output (#822). */
+  const [expanded, setExpanded] = useState<ExpandedEntry>();
+  const openExpandedSourceRef = useRef<(cell: Cell, opener?: HTMLElement) => void>(() => {});
+  const openExpandedTableRef = useRef<(target: OutputExpandTarget) => void>(() => {});
 
   // Load the file, build the notebook, and join its session.
   useEffect(() => {
@@ -880,11 +898,17 @@ export function NotebookPane({
         away: cantEditNow,
       });
       const codeCollapse = attachCodeCollapse(notebook, cantEditNow);
+      const sourceExpand = attachSourceExpand(notebook, (cell, opener) =>
+        openExpandedSourceRef.current(cell, opener),
+      );
       const typeErrors = attachTypeErrors(notebook, session);
       const language = attachLanguageFeatures(notebook, session, message =>
         setNotice({ kind: 'failed', message, actions: [] }),
       );
-      const outputLabels = attachOutputLabels(notebook, { runs: runStatus });
+      const outputLabels = attachOutputLabels(notebook, {
+        runs: runStatus,
+        onExpandTable: target => openExpandedTableRef.current(target),
+      });
       // A kernel coming or going changes what the outputs are: live, or what
       // the file held.
       session.kernelChanged.connect(outputLabels.refresh);
@@ -899,6 +923,7 @@ export function NotebookPane({
             beforeSave,
           });
       const onKey = (e: KeyboardEvent) => {
+        if ((e.target as Element | null)?.closest('.expanded-view')) return;
         // This listener runs before the notebook's own, so an offline or
         // read-only notebook is stopped here: keys edit nothing (#701, #839).
         // The commands refuse too, whatever keys they are bound to.
@@ -935,6 +960,7 @@ export function NotebookPane({
           cellControls,
           cellGutter,
           codeCollapse,
+          sourceExpand,
           typeErrors,
           language,
           runStatus,
@@ -1849,6 +1875,13 @@ export function NotebookPane({
       restartAndRunAll,
       command: id => {
         const { commands } = open;
+        if (id === 'expand-source') {
+          if (journal) return false;
+          const active = notebook.activeCell ?? notebook.widgets[notebook.activeCellIndex ?? -1];
+          if (!active || active.model.type !== 'code') return false;
+          openExpandedSourceRef.current(active);
+          return true;
+        }
         // The notebook's own commands act on cells the journal hides.
         if (journal || away() || !commands.hasCommand(id) || !commands.isEnabled(id)) return false;
         void commands.execute(id).catch(e => setNotice(failed(id, e)));
@@ -2085,6 +2118,90 @@ export function NotebookPane({
     open.cellGutter.refresh();
   }, [open, cantEdit]);
 
+  useEffect(() => {
+    setExpanded(cur => {
+      if (!cur || cur.target.kind !== 'source' || cur.target.readOnly === cantEdit) return cur;
+      return { ...cur, target: { ...cur.target, readOnly: cantEdit } };
+    });
+  }, [cantEdit]);
+
+  openExpandedSourceRef.current = (cell, opener) => {
+    if (!open || cell.isDisposed || cell.model.type !== 'code') return;
+    const count = (cell.model as ICodeCellModel).executionCount;
+    const label = count == null ? 'Source' : `In [${count}]`;
+    setExpanded({
+      cell,
+      opener,
+      target: {
+        kind: 'source',
+        title: label,
+        mimeType: cell.model.mimeType,
+        readOnly: cantEdit,
+        source: cell.model.sharedModel.getSource(),
+        sharedModel: cell.model.sharedModel,
+      },
+    });
+  };
+
+  openExpandedTableRef.current = ({ cell, outputIndex, output, widget, opener }) => {
+    if (!open || cell.isDisposed) return;
+    const target = tableTargetFromOutput({
+      output,
+      widget,
+      trusted: widget?.trusted ?? Boolean(cell.model.trusted),
+      rendermime: open.notebook.rendermime,
+      kernel: widget?.kernel ?? (() => open.session.session?.kernel),
+    });
+    if (!target) return;
+    setExpanded({
+      cell,
+      outputIndex,
+      opener,
+      target,
+    });
+  };
+
+  const prevExpandedRef = useRef<ExpandedEntry>(undefined);
+  useEffect(() => {
+    if (journal || !open) setExpanded(undefined);
+  }, [journal, open]);
+
+  useEffect(() => {
+    const prev = prevExpandedRef.current;
+    prevExpandedRef.current = expanded;
+    if (prev && !expanded) {
+      const active = document.activeElement;
+      if (!active || active === document.body) {
+        if (!prev.cell.isDisposed) prev.cell.node?.focus?.();
+        else open?.notebook.activate();
+      }
+    }
+    if (!open || !expanded) return;
+    const close = () => setExpanded(undefined);
+    const onCells = () => {
+      let stillThere = false;
+      for (let i = 0; i < open.model.cells.length; i++) {
+        if (open.model.cells.get(i) === expanded.cell.model) {
+          stillThere = true;
+          break;
+        }
+      }
+      if (!stillThere) close();
+    };
+    open.model.cells.changed.connect(onCells);
+    expanded.cell.disposed?.connect?.(close);
+    const outputs =
+      expanded.target.kind === 'table'
+        ? (expanded.cell.model as ICodeCellModel).outputs
+        : undefined;
+    outputs?.changed.connect(close);
+    return () => {
+      open.model.cells.changed.disconnect(onCells);
+      expanded.cell.disposed?.disconnect?.(close);
+      outputs?.changed.disconnect(close);
+    };
+  }, [expanded, open]);
+
   if (error) {
     const offline = isUnreachable(error);
     // A chunk of the page didn't load: Retry would fail the same way, and
@@ -2161,9 +2278,11 @@ export function NotebookPane({
           anchor={menu.anchor}
           away={cantEdit}
           run={() => open.runActive()}
+          onExpandSource={cell => openExpandedSourceRef.current(cell)}
           onClose={() => setMenu(undefined)}
         />
       )}
+      {expanded && <ExpandedView target={expanded.target} onClose={() => setExpanded(undefined)} />}
       {devicePrompt && <DevicePrompt prompt={devicePrompt} />}
       {notice && (
         <ProblemNotice

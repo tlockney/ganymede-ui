@@ -9,7 +9,15 @@ import type { IRenderMime } from '@jupyterlab/rendermime-interfaces';
 // does once loaded is left to the end-to-end suite.
 
 const { createRendermime } = await import('./jupyterlab');
-const { FRAME_CSP, MAX_HEIGHT, javascriptBody, withTextColor } = await import('./output-frames');
+const {
+  FRAME_CSP,
+  MAX_HEIGHT,
+  forgetFrame,
+  frameDocument,
+  javascriptBody,
+  renderFrame,
+  withTextColor,
+} = await import('./output-frames');
 
 const contents = {
   getDownloadUrl: async (path: string) => `/files/${path}`,
@@ -139,5 +147,16 @@ describe('output frames', () => {
     expect(frame.style.height).toBe('120px');
     post(frame.contentWindow, { ganymedeFrame: 'height', height: 1e9 });
     expect(frame.style.height).toBe(`${MAX_HEIGHT}px`);
+  });
+
+  it('allows horizontal scrolling inside frames only when overflowX is auto (#822)', () => {
+    expect(frameDocument('<p>narrow</p>')).toContain('overflow:hidden');
+    const wide = renderFrame(document.body, '<table></table>', { overflowX: 'auto' });
+    try {
+      expect(wide.srcdoc).toContain('overflow-x:auto;overflow-y:hidden');
+    } finally {
+      forgetFrame(wide);
+      wide.remove();
+    }
   });
 });

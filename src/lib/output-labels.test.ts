@@ -15,13 +15,16 @@ Range.prototype.getBoundingClientRect ??= () => new DOMRect();
 const { createNotebook, createRendermime } = await import('./jupyterlab');
 const {
   attachOutputLabels,
+  dataTableExpandInfo,
   formatOutputTime,
   labelFor,
   isInterrupt,
   LOG_LINES,
   outputKinds,
+  outputTableExpandInfo,
   PANE_GUTTER,
   pastColumn,
+  TABLE_EXPAND_ROWS,
   WIDE,
   WIDE_SLACK,
 } = await import('./output-labels');
@@ -284,6 +287,15 @@ describe('the meta line’s words (#852)', () => {
         { output_type: 'display_data', data: { 'text/html': '<table></table>' }, metadata: {} },
       ]),
     ).toEqual(['SVG', 'Table']);
+    expect(
+      outputKinds([
+        {
+          output_type: 'display_data',
+          data: { 'application/vnd.dataresource+json': { schema: { fields: [] }, data: [] } },
+          metadata: {},
+        },
+      ]),
+    ).toEqual(['Table']);
     // Nothing to name: a widget or an unknown mime type.
     expect(outputKinds([])).toEqual([]);
     expect(outputKinds([{ output_type: 'display_data', data: {}, metadata: {} }])).toEqual([]);
@@ -427,5 +439,72 @@ describe('wide outputs', () => {
     labels!.refresh();
     await settle();
     expect(outer.style.getPropertyValue('--gn-pane')).toBe(`${1000 - 2 * PANE_GUTTER}px`);
+  });
+});
+
+describe('table expansion bar (#822)', () => {
+  it('shows Expand table for long, paged, overflowing, or wide tables, and skips compact ones', async () => {
+    const shortRows = Array.from({ length: 3 }, (_, i) => [`r${i}`]);
+    const longRows = Array.from({ length: TABLE_EXPAND_ROWS + 2 }, (_, i) => [`r${i}`]);
+    const htmlLong = `<table>${Array.from({ length: TABLE_EXPAND_ROWS + 2 }, (_, i) => `<tr><td>${i}</td></tr>`).join('')}</table>`;
+    const htmlTiny = '<table><tr><td>a</td></tr></table>';
+
+    expect(dataTableExpandInfo({ data: shortRows }).show).toBe(false);
+    expect(dataTableExpandInfo({ data: longRows })).toEqual({
+      show: true,
+      label: `Table, ${TABLE_EXPAND_ROWS + 2} rows`,
+    });
+    expect(
+      dataTableExpandInfo({
+        data: shortRows,
+        ganymede: { rows: 120, shown: 3 },
+      }),
+    ).toEqual({ show: true, label: 'Table, 120 rows' });
+
+    expect(
+      outputTableExpandInfo({
+        output_type: 'display_data',
+        data: { 'text/html': htmlTiny },
+        metadata: {},
+      }).show,
+    ).toBe(false);
+    expect(
+      outputTableExpandInfo({
+        output_type: 'display_data',
+        data: { 'text/html': htmlLong },
+        metadata: {},
+      }),
+    ).toEqual({ show: true, label: 'Table' });
+  });
+
+  it('adds an Expand table button when onExpandTable is passed and fires it with output details', async () => {
+    const longRows = Array.from({ length: TABLE_EXPAND_ROWS + 1 }, (_, i) => [`m${i}`]);
+    const bigTable = table(['moon'], longRows);
+    const smallTable = table(['moon'], [['Io']]);
+
+    open([cellWith('t', [smallTable, bigTable])]);
+    labels!.dispose();
+
+    const expanded: Array<{ outputIndex: number; widget?: unknown; opener: HTMLElement }> = [];
+    labels = attachOutputLabels(notebook, {
+      runs: runs!,
+      onExpandTable: target => expanded.push(target),
+    });
+    await settle();
+
+    const tableBars = bars().filter(b => b.dataset.kind === 'table');
+    expect(tableBars).toHaveLength(1);
+    expect(tableBars[0]!.dataset.index).toBe('1');
+    expect(tableBars[0]!.querySelector('.gn-output-label')!.textContent).toBe(
+      `Table, ${TABLE_EXPAND_ROWS + 1} rows`,
+    );
+
+    const button = tableBars[0]!.querySelector<HTMLButtonElement>('[data-gn-output="table"]')!;
+    expect(button.textContent).toBe('Expand table');
+    button.click();
+    expect(expanded).toHaveLength(1);
+    expect(expanded[0]!.outputIndex).toBe(1);
+    expect(expanded[0]!.widget).toBeDefined();
+    expect(expanded[0]!.opener).toBe(button);
   });
 });
