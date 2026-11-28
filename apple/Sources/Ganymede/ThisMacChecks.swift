@@ -12,16 +12,15 @@ protocol ThisMacWatch: AnyObject {
     func cancel()
 }
 
-/// What a this-Mac check asks of the world (#883, #912), behind a protocol so
-/// the tests answer with no info files, processes or folders: the servers
-/// that verify (and any verified bundled helper with a version mismatch), a
-/// pid's exit, the runtime directory's writes, and signaling a stale
-/// background server.
+/// What a this-Mac check asks of the world (#883, #912, #887), behind a
+/// protocol so the tests answer with no info files, processes or folders: the
+/// verifier's scan (verified servers, failure reasons, and any verified
+/// bundled helper with a version mismatch), a pid's exit, the runtime
+/// directory's writes, and signaling a stale background server.
 @MainActor
 protocol ThisMacCheckWorld {
-    /// The servers that verify and any verified version-mismatched bundled
-    /// helpers, read off the main thread, since reading the bundled tool's
-    /// version runs it.
+    /// The verifier's scan of the runtime directory, read off the main
+    /// thread, since reading the bundled tool's version runs it.
     func scan() async -> ThisMacScanResult
     /// The same scan, here and now: a window runs this before its first load,
     /// and its answer must be there before the page is.
@@ -220,10 +219,10 @@ final class ThisMacChecks {
         }
     }
 
-    /// What a check found (#883, #912), on the main actor: the remotes whose
-    /// server it verified, each with the info file it was verified by, the
-    /// processes whose exit ends a remote's trust, and any verified
-    /// version-mismatched background server to restart.
+    /// What a check found (#883, #912, #887), on the main actor: the remotes
+    /// whose server it verified, the failure reason of any loopback remote
+    /// that didn't, the processes whose exit ends a remote's trust, and any
+    /// verified version-mismatched background server to restart.
     private func finished(_ found: ThisMacScanResult, generation: Int) {
         running = nil
         // A check that began before the trust was dropped names mounts that
@@ -243,7 +242,7 @@ final class ThisMacChecks {
     private func apply(_ found: ThisMacScanResult) {
         watchRuntimeDirectory()
         restartMismatched(found.mismatched)
-        let servers = ThisMacServers(found.verified, remotes: remotes(), token: token)
+        let servers = ThisMacServers(scan: found, remotes: remotes(), token: token)
         if servers != self.servers {
             self.servers = servers
             watchProcesses()
@@ -281,7 +280,7 @@ final class ThisMacChecks {
     /// the app would send its token to. Its trust goes before the mount is
     /// made again, so nothing answers for the server that is gone.
     func forget(_ id: String) {
-        guard servers.server(id) != nil else { return }
+        guard servers.server(id) != nil || servers.failure(for: .machine(id)) != nil else { return }
         servers = servers.removing(id)
         watchProcesses()
     }
@@ -293,7 +292,7 @@ final class ThisMacChecks {
     /// `stopForQuit`, a restart's `start()` and `syncMachines`' no-server
     /// path.
     func stopTrust() {
-        if !servers.isEmpty { servers = ThisMacServers() }
+        if servers != ThisMacServers() { servers = ThisMacServers() }
         generation += 1
         watchProcesses()
         stopRuntimeWatch()

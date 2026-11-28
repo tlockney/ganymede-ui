@@ -1028,6 +1028,15 @@ with only SSH stays in Settings for shells.
   is on, and its notebook is then read through the mount like any
   machine's.
 
+  When a machine window's server is on a loopback address (`127.0.0.1`,
+  `::1`, or `localhost`) and fails one of these checks, the window shows a
+  one-line notice at the top naming the failed check and what to do — for
+  example, a version mismatch, a server listening on every interface
+  (`--ip 0.0.0.0`), a remote URL using `localhost` instead of the literal
+  address, or an unsigned build. A server on another computer shows no
+  notice, and the notice goes away once the server passes and the window
+  is upgraded to This Mac.
+
   > [!NOTE]
   > **Unreleased.** Available only from a build of `main` (HEAD), not in
   > the latest release, where every machine is an ordinary one and its

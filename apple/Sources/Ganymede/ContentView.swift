@@ -805,12 +805,20 @@ struct ContentView: View {
         openWindow(value: request.target(root: model.serverRootFolder))
     }
 
+    /// Why this window's loopback server wasn't trusted as This Mac (#887);
+    /// nil for non-loopback servers, this device, and windows upgraded to
+    /// This Mac.
+    private var thisMacNotice: String? { model.thisMacNotice(for: place) }
+
     /// The notebook, with the bottom panel under it (#248), and the status
     /// bar under the workspace (#882). The panel stays in the view tree
     /// while hidden, so its terminals keep running.
     private var workspace: some View {
         GeometryReader { whole in
             VStack(spacing: 0) {
+                if let notice = thisMacNotice {
+                    ThisMacNoticeBar(message: notice)
+                }
                 HStack(spacing: 0) {
                     // Areas folded by another filling the window (#250): one
                     // click brings the layout back with that area showing.

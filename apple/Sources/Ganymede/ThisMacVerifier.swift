@@ -30,15 +30,9 @@ protocol ThisMacProbe: Sendable {
     /// Whether this pid holds a TCP socket listening on `port` at `host`,
     /// the literal address the info file named (`127.0.0.1` or `::1`).
     func isListening(pid: Int32, port: Int, host: String) -> Bool
-}
-
-/// What one scan of the Jupyter runtime directory found (#883, #912):
-/// verified servers matching the bundled tool's version, and verified
-/// bundled helpers whose version differs from the app's (for example after
-/// an app update replaced the binary) so launchd can restart them.
-struct ThisMacScanResult: Equatable, Sendable {
-    var verified: [ThisMacServer] = []
-    var mismatched: [ThisMacServer] = []
+    /// Whether this pid holds a TCP socket listening on `port` at a wildcard
+    /// address (`0.0.0.0` or `::`), answering on every interface (#887).
+    func isListeningOnWildcard(pid: Int32, port: Int) -> Bool
 }
 
 /// Whether a `jpserver-<pid>.json` is this Mac's own Ganymede (#883).
@@ -49,11 +43,12 @@ struct ThisMacScanResult: Equatable, Sendable {
 /// Jupyter runtime directory holds (this user's own, which Jupyter creates
 /// 0700, so only this user's processes write one) names `127.0.0.1` or `::1` as its literal — never
 /// a name, and never a wildcard bind, which the socket lookup refuses — a
-/// live pid that is the app's own bundled `ganymede` — signed for the
-/// app's team, with the helper's identifier — that holds the listening
-/// socket on that address, and the app's own version. Anything else is an
-/// ordinary machine: a `cargo install` or Homebrew `ganymede` stays one,
-/// and the bundled helper started from a terminal qualifies.
+/// live pid that is the app's own bundled `ganymede` — at the bundled helper's
+/// path and signed for the app's team, with the helper's identifier — that
+/// holds the listening socket on that address, and the app's own version.
+/// Anything else is an ordinary machine: a `cargo install` or Homebrew
+/// `ganymede` stays one, and the bundled helper started from a terminal
+/// qualifies.
 struct ThisMacVerifier {
     let probe: any ThisMacProbe
 
@@ -65,32 +60,49 @@ struct ThisMacVerifier {
     /// Ganymede. Every part must hold; a build that can't say who it is (a
     /// debug build, signed ad hoc) verifies nothing, which is intended.
     func verify(_ info: ThisMacServer) -> Bool {
-        guard let team = probe.teamIdentifier, !team.isEmpty,
-              let identifier = probe.helperIdentifier, !identifier.isEmpty,
-              let helperPath = probe.helperPath, !helperPath.isEmpty,
-              passes(info, team: team, identifier: identifier, helperPath: helperPath),
-              let version = probe.bundledVersion, version == info.version
-        else { return false }
-        return true
+        diagnose(info) == nil
     }
 
-    /// Scans `directory` for servers of this Mac's own Ganymede (#883, #912):
-    /// `verified` holds servers matching the bundled tool's version, and
+    /// Why `info` does not verify as this Mac's own Ganymede, or `nil` when
+    /// every check passes (#887). `verify(_:)` is `diagnose(_:) == nil`.
+    func diagnose(_ info: ThisMacServer, hostname: String? = nil) -> ThisMacTrustFailure? {
+        if let appFailure = appIdentityFailure() { return appFailure }
+        guard let team = probe.teamIdentifier,
+              let identifier = probe.helperIdentifier,
+              let helperPath = probe.helperPath
+        else { return .unsignedApp }
+        let candidate = Candidate(
+            pid: info.pid, url: info.url, hostname: hostname, port: info.port,
+            token: info.token, root: info.root, version: info.version)
+        return evaluate(
+            candidate, team: team, identifier: identifier, helperPath: helperPath
+        ) { probe.bundledVersion }.entry.failure
+    }
+
+    /// The servers of this Mac's own Ganymede in `directory`, the info files
+    /// that verify and match the bundled tool's version.
+    func servers(in directory: URL = AppMCP.runtimeDirectory()) -> [ThisMacServer] {
+        scan(in: directory).verified
+    }
+
+    /// Scans `directory` for servers of this Mac's own Ganymede (#883, #912,
+    /// #887): `verified` holds servers matching the bundled tool's version,
     /// `mismatched` holds verified bundled helpers running another version
     /// (such as before launchd restarts the background server after an app
-    /// update). The app's own identity is looked at once for them all. The
-    /// bundled tool's version is read only once an info file has passed the
-    /// cheaper checks (`passes`), since reading it runs the tool: an unsigned
-    /// or ad-hoc-signed build, which can verify nothing, and a file that is
-    /// no server's, never run it.
+    /// update), and `entries` / `appFailure` record why any candidate failed
+    /// so loopback machine windows can say why. The bundled tool's version is
+    /// read only once an info file has passed the cheaper checks, since
+    /// reading it runs the tool.
     func scan(in directory: URL = AppMCP.runtimeDirectory()) -> ThisMacScanResult {
-        let team = probe.teamIdentifier
-        let identifier = probe.helperIdentifier
-        let helperPath = probe.helperPath
-        guard let team, !team.isEmpty,
-              let identifier, !identifier.isEmpty,
-              let helperPath, !helperPath.isEmpty
-        else { return ThisMacScanResult() }
+        if let appFailure = appIdentityFailure() {
+            return ThisMacScanResult(appFailure: appFailure, entries: [])
+        }
+        guard let team = probe.teamIdentifier,
+              let identifier = probe.helperIdentifier,
+              let helperPath = probe.helperPath
+        else {
+            return ThisMacScanResult(appFailure: .unsignedApp, entries: [])
+        }
         var readVersion = false
         var version: String?
         /// `probe.bundledVersion`, read once for all the files.
@@ -101,63 +113,155 @@ struct ThisMacVerifier {
             }
             return version
         }
-        var result = ThisMacScanResult()
+        var entries: [ThisMacScanEntry] = []
+        var mismatched: [ThisMacServer] = []
         for file in probe.infoFiles(in: directory) {
-            guard let info = Self.read(file),
-                  passes(info, team: team, identifier: identifier, helperPath: helperPath),
-                  let bundled = bundledVersion()
-            else { continue }
-            if bundled == info.version {
-                result.verified.append(info)
-            } else {
-                result.mismatched.append(info)
+            guard let candidate = Self.readCandidate(file) else { continue }
+            let evaluated = evaluate(
+                candidate, team: team, identifier: identifier, helperPath: helperPath,
+                bundledVersion: bundledVersion)
+            entries.append(evaluated.entry)
+            if let server = evaluated.mismatched {
+                mismatched.append(server)
             }
         }
-        return result
+        return ThisMacScanResult(mismatched: mismatched, appFailure: nil, entries: entries)
     }
 
-    /// The servers of this Mac's own Ganymede in `directory`, the info files
-    /// that verify and match the bundled tool's version.
-    func servers(in directory: URL = AppMCP.runtimeDirectory()) -> [ThisMacServer] {
-        scan(in: directory).verified
+    /// Why this app build itself cannot verify any server, or `nil` when it
+    /// has a team ID, a signed bundled helper, and that helper's canonical
+    /// path.
+    private func appIdentityFailure() -> ThisMacTrustFailure? {
+        guard let team = probe.teamIdentifier, !team.isEmpty else { return .unsignedApp }
+        guard let identifier = probe.helperIdentifier, !identifier.isEmpty,
+              let helperPath = probe.helperPath, !helperPath.isEmpty
+        else { return .missingBundledHelper }
+        return nil
     }
 
-    /// Every part that must hold before checking the version: the loopback
-    /// literal and its port, and the pid that is running, matches the
-    /// bundled helper's path, is signed for the app's team with the
-    /// helper's identifier, and is listening at that address.
-    private func passes(
-        _ info: ThisMacServer, team: String, identifier: String, helperPath: String
-    ) -> Bool {
+    /// One `jpserver-*.json` file's fields before verification: preserves
+    /// `hostname` (where `ganymede serve --ip 0.0.0.0` writes `"0.0.0.0"`
+    /// while its `url` says `localhost`) and allows missing `token`,
+    /// `root_dir`, or `ganymede_version` so the failure reason can name them.
+    private struct Candidate {
+        var pid: Int32
+        var url: URL
+        var hostname: String?
+        var port: Int?
+        var token: String
+        var root: URL?
+        var version: String?
+    }
+
+    /// Evaluates one candidate info file, checking the cheaper conditions
+    /// before calling `bundledVersion` so failing files never spawn the
+    /// bundled helper (#883, #912, #887). `mismatched` is non-nil only when
+    /// every identity and socket check passed and only the version differed.
+    private func evaluate(
+        _ candidate: Candidate, team: String, identifier: String, helperPath: String,
+        bundledVersion: () -> String?
+    ) -> (entry: ThisMacScanEntry, mismatched: ThisMacServer?) {
+        let port = candidate.port ?? 0
+        func fail(_ reason: ThisMacTrustFailure, running: Bool) -> (ThisMacScanEntry, ThisMacServer?) {
+            let entry = ThisMacScanEntry(
+                url: candidate.url, hostname: candidate.hostname, port: port,
+                token: candidate.token, isRunning: running, failure: reason)
+            return (entry, nil)
+        }
+        guard (1...65535).contains(port) else {
+            return fail(.notListening, running: probe.isRunning(candidate.pid))
+        }
+        guard probe.isRunning(candidate.pid) else {
+            return fail(.processNotRunning, running: false)
+        }
+        guard probe.executablePath(of: candidate.pid) == helperPath else {
+            return fail(.wrongExecutablePath, running: true)
+        }
+        guard probe.hasSignature(pid: candidate.pid, team: team, identifier: identifier) else {
+            return fail(.wrongSignature, running: true)
+        }
+        if candidate.hostname.map(ThisMacServer.isWildcardAddress) == true
+            || candidate.url.host.map(ThisMacServer.isWildcardAddress) == true
+        {
+            return fail(.wildcardBind, running: true)
+        }
         // A loopback address is the only place a server it trusts may
         // listen, and the one the app sends its token to through the mount.
         // The literal, not a name: what `localhost` resolves to is the
         // system's to say, and the socket the check looks at is at the
         // address written here.
-        guard let host = info.url.host, ThisMacServer.isTrustedAddress(host),
-              let port = info.port, (1...65535).contains(port)
-        else { return false }
-        return probe.isRunning(info.pid)
-            && probe.executablePath(of: info.pid) == helperPath
-            && probe.hasSignature(pid: info.pid, team: team, identifier: identifier)
-            && probe.isListening(pid: info.pid, port: port, host: host)
+        guard let host = candidate.url.host else {
+            return fail(.nonLoopbackAddress, running: true)
+        }
+        if !ThisMacServer.isTrustedAddress(host) {
+            if ThisMacServer.isLocalhostName(host) {
+                if probe.isListeningOnWildcard(pid: candidate.pid, port: port) {
+                    return fail(.wildcardBind, running: true)
+                }
+                return fail(.infoFileUsesLocalhost, running: true)
+            }
+            return fail(.nonLoopbackAddress, running: true)
+        }
+        if !probe.isListening(pid: candidate.pid, port: port, host: host) {
+            if probe.isListeningOnWildcard(pid: candidate.pid, port: port) {
+                return fail(.wildcardBind, running: true)
+            }
+            return fail(.notListening, running: true)
+        }
+        guard !candidate.token.isEmpty else {
+            return fail(.missingToken, running: true)
+        }
+        guard let root = candidate.root, let version = candidate.version, !version.isEmpty else {
+            return fail(.incompleteServerInfo, running: true)
+        }
+        guard let bundled = bundledVersion() else {
+            return fail(.bundledVersionUnavailable, running: true)
+        }
+        let server = ThisMacServer(
+            pid: candidate.pid, url: candidate.url, token: candidate.token,
+            root: root, version: version)
+        guard bundled == version else {
+            let entry = ThisMacScanEntry(
+                url: candidate.url, hostname: candidate.hostname, port: port,
+                token: candidate.token, isRunning: true,
+                failure: .versionMismatch(server: version, app: bundled))
+            return (entry, server)
+        }
+        return (ThisMacScanEntry(verified: server, hostname: candidate.hostname), nil)
+    }
+
+    /// Reads one `jpserver-*.json` file as a candidate for `scan(in:)`; nil
+    /// only when the file isn't JSON or has no `url`/`pid` at all.
+    private static func readCandidate(_ file: URL) -> Candidate? {
+        guard let data = try? Data(contentsOf: file),
+              let fields = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let url = (fields["url"] as? String).flatMap(URL.init(string:)),
+              let pid = (fields["pid"] as? Int).flatMap({ Int32(exactly: $0) })
+        else { return nil }
+        let hostname = fields["hostname"] as? String
+        let port = url.port ?? (fields["port"] as? Int)
+        let token = fields["token"] as? String ?? ""
+        let root = (fields["root_dir"] as? String).flatMap {
+            $0.isEmpty ? nil : URL(fileURLWithPath: $0, isDirectory: true)
+        }
+        let version = (fields["ganymede_version"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+        return Candidate(
+            pid: pid, url: url, hostname: hostname, port: port,
+            token: token, root: root, version: version)
     }
 
     /// One info file's fields; nil when it isn't a server info file or
     /// lacks what the check reads. `ganymede serve` writes `pid`,
     /// `ganymede_version` and `root_dir` beside Jupyter's own keys.
     static func read(_ file: URL) -> ThisMacServer? {
-        guard let data = try? Data(contentsOf: file),
-              let fields = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let url = (fields["url"] as? String).flatMap(URL.init(string:)),
-              let token = fields["token"] as? String, !token.isEmpty,
-              let root = fields["root_dir"] as? String, !root.isEmpty,
-              let pid = (fields["pid"] as? Int).flatMap({ Int32(exactly: $0) }),
-              let version = fields["ganymede_version"] as? String, !version.isEmpty
+        guard let candidate = readCandidate(file),
+              !candidate.token.isEmpty,
+              let root = candidate.root,
+              let version = candidate.version
         else { return nil }
         return ThisMacServer(
-            pid: pid, url: url, token: token,
-            root: URL(fileURLWithPath: root, isDirectory: true), version: version)
+            pid: candidate.pid, url: candidate.url, token: candidate.token,
+            root: root, version: version)
     }
 }
 
@@ -306,6 +410,18 @@ struct SystemThisMacProbe: ThisMacProbe {
     /// must not go there. A connected socket to the same port isn't a
     /// listener, whatever its peer.
     func isListening(pid: Int32, port: Int, host: String) -> Bool {
+        hasListeningSocket(pid: pid, port: port) { Self.isAddress($0, host) }
+    }
+
+    /// Whether `pid` holds a TCP socket listening on `port` at a wildcard
+    /// address (`0.0.0.0` or `::`), answering on every interface (#887).
+    func isListeningOnWildcard(pid: Int32, port: Int) -> Bool {
+        hasListeningSocket(pid: pid, port: port) { Self.isWildcard($0) }
+    }
+
+    private func hasListeningSocket(
+        pid: Int32, port: Int, matching predicate: (in_sockinfo) -> Bool
+    ) -> Bool {
         let stride = Int32(MemoryLayout<proc_fdinfo>.stride)
         // The size the whole list needs: the kernel says so when the buffer
         // given is too small, which none is.
@@ -326,7 +442,23 @@ struct SystemThisMacProbe: ThisMacProbe {
             guard tcp.tcpsi_state == TSI_S_LISTEN else { continue }
             // The port is in network byte order.
             let local = Int(UInt16(bigEndian: UInt16(truncatingIfNeeded: tcp.tcpsi_ini.insi_lport)))
-            if local == port, Self.isAddress(tcp.tcpsi_ini, host) { return true }
+            if local == port, predicate(tcp.tcpsi_ini) { return true }
+        }
+        return false
+    }
+
+    /// Whether `info`'s local address is a wildcard (`0.0.0.0` or `::`),
+    /// answering on every interface (#887). Dual-stack IPv6 sockets may carry
+    /// both `INI_IPV4` (0x1) and `INI_IPV6` (0x2).
+    private static func isWildcard(_ info: in_sockinfo) -> Bool {
+        if (info.insi_vflag & 0x2) != 0 {  // INI_IPV6 (including dual-stack)
+            var address = info.insi_laddr.ina_6
+            return withUnsafeBytes(of: &address) { bytes in
+                bytes.count == 16 && bytes.allSatisfy { $0 == 0 }
+            }
+        }
+        if info.insi_vflag == 0x1 {  // INI_IPV4
+            return UInt32(bigEndian: info.insi_laddr.ina_46.i46a_addr4.s_addr) == 0
         }
         return false
     }

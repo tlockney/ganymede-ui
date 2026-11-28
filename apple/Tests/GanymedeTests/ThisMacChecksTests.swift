@@ -35,7 +35,9 @@ final class ThisMacChecksTests: XCTestCase {
     /// a test can ask for another.
     @MainActor
     private final class FakeWorld: ThisMacCheckWorld {
-        /// What a check finds, read when it answers.
+        /// What a check finds, read when it answers. When `scanResult` is set
+        /// it is returned directly; otherwise `now` is wrapped as verified
+        /// servers.
         var now: [ThisMacServer] = []
         /// Verified bundled helpers with a version mismatch (#912).
         var mismatched: [ThisMacServer] = []
@@ -43,6 +45,8 @@ final class ThisMacChecksTests: XCTestCase {
         var isBackgroundServerEnabled = false
         /// Pids sent `SIGTERM` by the version check (#912).
         var terminated: [Int32] = []
+        /// Explicit scan result override for failure-notice tests (#887).
+        var scanResult: ThisMacScanResult?
         /// The runtime directory's `jpserver-*.json` files and their dates.
         var dates: [String: Date] = [:]
         /// How many checks asked for the servers, how many a window asked
@@ -64,12 +68,12 @@ final class ThisMacChecksTests: XCTestCase {
         func scan() async -> ThisMacScanResult {
             asked += 1
             if held { await withCheckedContinuation { gates.append($0) } }
-            return ThisMacScanResult(verified: now, mismatched: mismatched)
+            return scanResult ?? ThisMacScanResult(verified: now, mismatched: mismatched)
         }
 
         func scanNow() -> ThisMacScanResult {
             askedNow += 1
-            return ThisMacScanResult(verified: now, mismatched: mismatched)
+            return scanResult ?? ThisMacScanResult(verified: now, mismatched: mismatched)
         }
 
         func terminate(pid: Int32) {
@@ -378,6 +382,71 @@ final class ThisMacChecksTests: XCTestCase {
     @MainActor
     func testTheRuntimeDirectorysWritesAreDebounced() {
         XCTAssertEqual(SystemThisMacCheckWorld().debounce, .milliseconds(500))
+    }
+
+    // MARK: trust failure notice lifecycle (#887)
+
+    /// A failing loopback remote carries a notice naming the failed check,
+    /// clears once the server verifies and upgrades to This Mac, reappears if
+    /// the server later downgrades, and is cleared by `forget` and `stopTrust`.
+    /// A non-loopback remote never gets a notice.
+    @MainActor
+    func testNoticeAppearsOnFailureClearsOnUpgradeAndNeverShowsForOtherComputers() async {
+        let world = FakeWorld()
+        let here = remote()
+        let mini = Remote(name: "mini", serverURL: "http://mac-mini:8888")
+        let hereID = here.id.uuidString
+        let miniID = mini.id.uuidString
+
+        world.scanResult = ThisMacScanResult(entries: [
+            ThisMacScanEntry(
+                url: URL(string: "http://127.0.0.1:8888/")!, hostname: "127.0.0.1",
+                port: 8888, token: "a-token", isRunning: true,
+                failure: .versionMismatch(server: "0.16.0", app: "0.17.0")),
+        ])
+        let checks = checks(world, remotes: [here, mini])
+        checks.refresh()
+        await checks.waitForChecks()
+
+        XCTAssertEqual(
+            checks.servers.failure(for: .machine(hereID)),
+            .versionMismatch(server: "0.16.0", app: "0.17.0"))
+        XCTAssertNotNil(checks.servers.notice(for: .machine(hereID)))
+        XCTAssertNil(checks.servers.notice(for: .machine(miniID)))
+
+        // Server is restarted at the matching version -> upgraded to This Mac, notice clears.
+        world.scanResult = nil
+        world.now = [server()]
+        checks.refresh()
+        await checks.waitForChecks()
+
+        XCTAssertEqual(checks.servers.ids, [hereID])
+        XCTAssertNil(checks.servers.notice(for: .thisMac(hereID)))
+        XCTAssertNil(checks.servers.notice(for: .machine(hereID)))
+
+        // Server exits and is replaced by one bound to 0.0.0.0 -> downgraded, notice returns.
+        world.scanResult = ThisMacScanResult(entries: [
+            ThisMacScanEntry(
+                url: URL(string: "http://localhost:8888/")!, hostname: "0.0.0.0",
+                port: 8888, token: "a-token", isRunning: true, failure: .wildcardBind),
+        ])
+        let asked = world.asked
+        world.exit(pid)
+        await eventually("re-check after exit") { world.asked > asked }
+        await checks.waitForChecks()
+        XCTAssertEqual(checks.servers.failure(for: .machine(hereID)), .wildcardBind)
+        XCTAssertNotNil(checks.servers.notice(for: .machine(hereID)))
+
+        // Editing the remote clears the stale failure immediately (`forget`).
+        checks.forget(hereID)
+        XCTAssertNil(checks.servers.notice(for: .machine(hereID)))
+
+        // Re-populate failure, then verify `stopTrust` clears it too.
+        checks.refresh()
+        await checks.waitForChecks()
+        XCTAssertNotNil(checks.servers.notice(for: .machine(hereID)))
+        checks.stopTrust()
+        XCTAssertNil(checks.servers.notice(for: .machine(hereID)))
     }
 }
 #endif
