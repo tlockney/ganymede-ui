@@ -231,10 +231,12 @@ struct ThisMacVerifier {
     }
 
     /// Reads one `jpserver-*.json` file as a candidate for `scan(in:)`; nil
-    /// only when the file isn't JSON or has no `url`/`pid` at all.
+    /// when the file isn't JSON, belongs to the Mac app's own embedded server
+    /// (`ganymede_app: true`, #934), or has no `url`/`pid` at all.
     private static func readCandidate(_ file: URL) -> Candidate? {
         guard let data = try? Data(contentsOf: file),
               let fields = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              fields[AppMCP.appMarker] as? Bool != true,
               let url = (fields["url"] as? String).flatMap(URL.init(string:)),
               let pid = (fields["pid"] as? Int).flatMap({ Int32(exactly: $0) })
         else { return nil }
@@ -250,7 +252,8 @@ struct ThisMacVerifier {
             token: token, root: root, version: version)
     }
 
-    /// One info file's fields; nil when it isn't a server info file or
+    /// One info file's fields; nil when it isn't a server info file, belongs
+    /// to the Mac app's own embedded server (`ganymede_app: true`, #934), or
     /// lacks what the check reads. `ganymede serve` writes `pid`,
     /// `ganymede_version` and `root_dir` beside Jupyter's own keys.
     static func read(_ file: URL) -> ThisMacServer? {

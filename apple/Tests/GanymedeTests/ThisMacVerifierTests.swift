@@ -226,6 +226,27 @@ final class ThisMacVerifierTests: XCTestCase {
         XCTAssertFalse(files.contains("ganymede-mcp-5.json"))
     }
 
+    /// The Mac app's own embedded `jpserver-<pid>.json` (#934) is never
+    /// treated as a separate bundled helper server — neither when MCP is off
+    /// (`token: ""`) nor when MCP is on (`ganymede_app: true` with a token
+    /// and version).
+    func testTheAppsOwnServerInfoFileIsIgnoredByVerifier() throws {
+        let offFile = try write(pid: 100, fields: ["token": "", AppMCP.appMarker: true])
+        let onFile = try write(pid: 101, fields: ["token": "mcp-token", AppMCP.appMarker: true])
+        XCTAssertNil(ThisMacVerifier.read(offFile))
+        XCTAssertNil(ThisMacVerifier.read(onFile))
+
+        let probe = CountingProbe()
+        probe.running = [100, 101]
+        probe.paths[100] = probe.path
+        probe.paths[101] = probe.path
+        probe.listeners[100] = [("127.0.0.1", 8888)]
+        probe.listeners[101] = [("127.0.0.1", 8888)]
+        let result = ThisMacVerifier(probe: probe).scan(in: directory)
+        XCTAssertEqual(result, ThisMacScanResult())
+        XCTAssertEqual(probe.versionReads, 0)
+    }
+
     // MARK: what is read, and when
 
     /// A probe that counts the reads of the bundled tool's version: reading

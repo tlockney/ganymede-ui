@@ -68,17 +68,83 @@ final class AppMCPTests: XCTestCase {
         XCTAssertEqual(mode, 0o600)
     }
 
-    /// The file holds `mcp_token`, never the server's own token (#583),
-    /// and is written only while MCP is on.
-    func testServerInfoHoldsTheMCPToken() throws {
+    /// The file is written whenever the Mac app's server runs (#934): holds
+    /// `mcp_token` only while MCP is on, empty `""` when MCP is off, and
+    /// never the server's own full page/session token (#583).
+    func testServerInfoHoldsTheMCPTokenOnlyWhenMCPIsOn() throws {
         let url = try XCTUnwrap(URL(string: "http://127.0.0.1:52011/?token=serverown"))
-        let settings = AppMCP.serverConfig(mode: .readOnly, images: false, token: "agent")
+        let onSettings = AppMCP.serverConfig(mode: .readOnly, images: false, token: "agent")
             .merging(["root_dir": "/"]) { $1 }
-        let info = try XCTUnwrap(AppMCP.serverInfo(serverURL: url, settings: settings, pid: 42))
-        XCTAssertEqual(info["token"] as? String, "agent")
-        XCTAssertEqual(info["url"] as? String, "http://127.0.0.1:52011/")
-        let off = AppMCP.serverConfig(mode: .off, images: false, token: "agent").merging(["root_dir": "/"]) { $1 }
-        XCTAssertNil(AppMCP.serverInfo(serverURL: url, settings: off, pid: 42))
+        let onInfo = try XCTUnwrap(
+            AppMCP.serverInfo(serverURL: url, settings: onSettings, pid: 42, version: "0.17.0")
+        )
+        XCTAssertEqual(onInfo["token"] as? String, "agent")
+        XCTAssertEqual(onInfo["url"] as? String, "http://127.0.0.1:52011/")
+        XCTAssertEqual(onInfo["root_dir"] as? String, "/")
+        XCTAssertEqual(onInfo["password"] as? Bool, false)
+        XCTAssertEqual(onInfo["pid"] as? Int, 42)
+        XCTAssertEqual(onInfo["ganymede_version"] as? String, "0.17.0")
+        XCTAssertEqual(onInfo[AppMCP.appMarker] as? Bool, true)
+
+        // MCP off: info file is still built, with empty token and never the
+        // server's own page/session token.
+        let offSettings = AppMCP.serverConfig(mode: .off, images: false, token: "agent")
+            .merging(["root_dir": "/"]) { $1 }
+        let offInfo = try XCTUnwrap(
+            AppMCP.serverInfo(serverURL: url, settings: offSettings, pid: 42, version: "0.17.0")
+        )
+        XCTAssertEqual(offInfo["token"] as? String, "")
+        XCTAssertNotEqual(offInfo["token"] as? String, "serverown")
+        XCTAssertEqual(offInfo["url"] as? String, "http://127.0.0.1:52011/")
+        XCTAssertEqual(offInfo["root_dir"] as? String, "/")
+        XCTAssertEqual(offInfo["password"] as? Bool, false)
+        XCTAssertEqual(offInfo["pid"] as? Int, 42)
+        XCTAssertEqual(offInfo["ganymede_version"] as? String, "0.17.0")
+        XCTAssertEqual(offInfo[AppMCP.appMarker] as? Bool, true)
+    }
+
+    /// Toggling MCP on -> off atomically updates `jpserver-<pid>.json` at
+    /// mode 0600, clearing the token back to `""` without leaking the app's
+    /// session token or leaving temporary files behind (#934).
+    func testServerInfoToggleOnToOffUpdatesAtomicallyAt0600() throws {
+        let runtime = dir.appendingPathComponent("runtime")
+        let url = try XCTUnwrap(URL(string: "http://127.0.0.1:52011/?token=full-session-secret"))
+
+        let onSettings = AppMCP.serverConfig(mode: .full, images: false, token: "mcp-only-token")
+            .merging(["root_dir": "/"]) { $1 }
+        let onInfo = try XCTUnwrap(
+            AppMCP.serverInfo(serverURL: url, settings: onSettings, pid: 42, version: "0.17.0")
+        )
+        let file = try XCTUnwrap(AppMCP.writeServerInfo(onInfo, in: runtime, pid: 42))
+        var raw = try String(contentsOf: file, encoding: .utf8)
+        XCTAssertTrue(raw.contains("mcp-only-token"))
+        XCTAssertFalse(raw.contains("full-session-secret"))
+        XCTAssertEqual(
+            try FileManager.default.attributesOfItem(atPath: file.path)[.posixPermissions] as? Int,
+            0o600
+        )
+
+        // Toggle MCP off: rewrites the same path with token cleared to "".
+        let offSettings: [String: any Sendable] = ["root_dir": "/"]
+        let offInfo = try XCTUnwrap(
+            AppMCP.serverInfo(serverURL: url, settings: offSettings, pid: 42, version: "0.17.0")
+        )
+        let updated = try XCTUnwrap(AppMCP.writeServerInfo(offInfo, in: runtime, pid: 42))
+        XCTAssertEqual(updated, file)
+        raw = try String(contentsOf: updated, encoding: .utf8)
+        XCTAssertFalse(raw.contains("mcp-only-token"))
+        XCTAssertFalse(raw.contains("full-session-secret"))
+        let parsed = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(contentsOf: updated)) as? [String: Any]
+        )
+        XCTAssertEqual(parsed["token"] as? String, "")
+        XCTAssertEqual(parsed["password"] as? Bool, false)
+        XCTAssertEqual(
+            try FileManager.default.attributesOfItem(atPath: updated.path)[.posixPermissions] as? Int,
+            0o600
+        )
+        let names = try FileManager.default.contentsOfDirectory(atPath: runtime.path)
+        XCTAssertEqual(names, ["jpserver-42.json"])
     }
 
     /// A crashed run's file goes; a live one, and other servers', stay.

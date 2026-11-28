@@ -626,10 +626,21 @@ With MCP on, Settings shows what to give the agent, with Copy:
 Claude Code's command needs the [`ganymede` command](https://ganymede-server.com)
 on its PATH, which [The command line tool](#the-command-line-tool)
 installs from the app; Claude Desktop's config uses the bundled tool's
-full path when no `ganymede` is on Ganymede's PATH. While MCP is on, the app writes a
-[server info file](https://ganymede-server.com/docs/reference#server-info-file),
-so `ganymede mcp` uses the app's server while Ganymede runs, and a server
-of its own when it doesn't. The agent keeps the server it found for the
+full path when no `ganymede` is on Ganymede's PATH. While Ganymede's server
+runs, the app writes a
+[server info file](https://ganymede-server.com/docs/reference#server-info-file)
+(`jpserver-<pid>.json`, mode `0600`) in your Jupyter runtime directory so
+`ganymede` CLI commands can discover it: `token` holds the MCP-only token
+while MCP is on and is empty (`""`) while MCP is off (the app's own page
+token is never written to disk). `ganymede mcp` uses the app's server while
+Ganymede runs with MCP on, and a server of its own otherwise.
+
+> [!NOTE]
+> **Unreleased.** Writing the server info file while MCP is off (with an
+> empty token) is available only from a build of `main` (HEAD), not in the
+> latest release, which writes the file only while MCP is on.
+
+The agent keeps the server it found for the
 whole session, so start the agent after Ganymede to work in the app's
 windows. Relative paths start in the agent's folder from `ganymede` 0.11.0
 on; earlier versions start them at `/`.
