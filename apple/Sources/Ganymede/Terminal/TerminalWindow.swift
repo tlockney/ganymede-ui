@@ -175,36 +175,11 @@ struct TerminalWindow: View {
         #endif
     }
 
-    /// The transport for the target, once what it needs is known.
+    /// The transport for the target, once what it needs is known (#860): the
+    /// model's, which `TerminalTarget.transport(on:)` switches in a file the
+    /// tests compile.
     private func makeTransport() -> TerminalTransport? {
-        switch target {
-        case .local(let folder):
-            #if os(iOS)
-            return nil
-            #else
-            guard let endpoint = model.localServer else { return nil }
-            // The server is rooted at `/`, so an absolute path is the cwd.
-            return JupyterTerminalTransport(endpoint: endpoint, cwd: (folder ?? model.root).path)
-            #endif
-        case .server(let id, _):
-            // A path on the server: the Ganymede server resolves a machine's
-            // relative folder against its root, and falls back to the root
-            // when it isn't there (#858).
-            guard let endpoint = model.server(of: id) else { return nil }
-            return target.serverTransport(on: endpoint)
-        case .ssh(let id):
-            guard let ssh = model.remote(id)?.ssh else { return nil }
-            #if os(macOS)
-            return ProcessTerminalTransport(executable: "/usr/bin/ssh", arguments: ssh.arguments)
-            #else
-            guard let key = model.sshKey, !ssh.user.isEmpty else { return nil }
-            return SSHTerminalTransport(
-                target: .init(remote: id, host: ssh.host, port: ssh.port ?? 22, user: ssh.user),
-                key: key,
-                hostKeys: model.hostKeys
-            )
-            #endif
-        }
+        model.transport(for: target)
     }
 
     private var defaultTitle: String {
@@ -323,6 +298,35 @@ extension AppModel {
         case .server(let id, _): "Terminal on \(remote(id)?.title ?? "remote")"
         case .ssh(let id): "SSH to \(remote(id)?.title ?? "remote")"
         }
+    }
+
+    /// The transport a terminal on `target` starts on (#860), once what it
+    /// needs is known: what the view asks for, so the switch from a target to
+    /// what runs it is `TerminalTarget.transport(on:)`, which the tests
+    /// compile, and not the view's own.
+    @MainActor
+    func transport(for target: TerminalTarget) -> TerminalTransport? {
+        target.transport(on: self)
+    }
+}
+
+extension AppModel: TerminalHost {
+    /// The app's model as a terminal's host (#860): `localServer`, `root`
+    /// and `server(of:)` are its own, and an SSH terminal's transport is the
+    /// one thing that differs by platform.
+    @MainActor
+    func sshTransport(for id: UUID) -> TerminalTransport? {
+        guard let ssh = remote(id)?.ssh else { return nil }
+        #if os(macOS)
+        return ProcessTerminalTransport(executable: "/usr/bin/ssh", arguments: ssh.arguments)
+        #else
+        guard let key = sshKey, !ssh.user.isEmpty else { return nil }
+        return SSHTerminalTransport(
+            target: .init(remote: id, host: ssh.host, port: ssh.port ?? 22, user: ssh.user),
+            key: key,
+            hostKeys: hostKeys
+        )
+        #endif
     }
 }
 

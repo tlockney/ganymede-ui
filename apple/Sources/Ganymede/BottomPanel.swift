@@ -383,31 +383,43 @@ private struct NewTerminalMenu: View {
     let add: (TerminalTarget) -> Void
 
     var body: some View {
+        menu
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help("New Terminal (⌃⇧`)")
+    }
+
+    /// The menu itself. With no terminal to start, it has no `primaryAction`:
+    /// a `Menu` that has one takes the click for it, and would do nothing.
+    @ViewBuilder private var menu: some View {
+        if let newTerminal {
+            Menu { items } label: { label } primaryAction: { add(newTerminal) }
+        } else {
+            Menu { items } label: { label }
+        }
+    }
+
+    private var label: some View {
+        Image(systemName: "plus")
+    }
+
+    @ViewBuilder private var items: some View {
         let remotes = model.remotes.filter { $0.hasServer || $0.ssh != nil }
-        Menu {
-            Button("New Terminal") {
-                if let newTerminal { add(newTerminal) }
-            }
-            .disabled(newTerminal == nil)
-            if !remotes.isEmpty {
-                Divider()
-                ForEach(remotes) { remote in
-                    if remote.ssh != nil {
-                        Button("\(remote.title) (SSH)") { add(.ssh(remote.id)) }
-                    }
-                    if remote.hasServer {
-                        Button("\(remote.title) (Server)") { add(.server(remote.id)) }
-                    }
-                }
-            }
-        } label: {
-            Image(systemName: "plus")
-        } primaryAction: {
+        Button("New Terminal") {
             if let newTerminal { add(newTerminal) }
         }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
-        .help("New Terminal (⌃⇧`)")
+        .disabled(newTerminal == nil)
+        if !remotes.isEmpty {
+            Divider()
+            ForEach(remotes) { remote in
+                if remote.ssh != nil {
+                    Button("\(remote.title) (SSH)") { add(.ssh(remote.id)) }
+                }
+                if remote.hasServer {
+                    Button("\(remote.title) (Server)") { add(.server(remote.id)) }
+                }
+            }
+        }
     }
 }
 

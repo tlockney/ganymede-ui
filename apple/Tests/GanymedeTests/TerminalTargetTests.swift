@@ -36,4 +36,31 @@ final class TerminalTargetTests: XCTestCase {
             String(decoding: try JSONEncoder().encode(TerminalTarget.server(id)), as: UTF8.self),
             #"{"server":{"_0":"\#(id.uuidString)"}}"#)
     }
+
+    /// A machine's terminal opens the server's transport, in its folder
+    /// (#860): the switch from a target to what runs it, in a file the tests
+    /// compile, rather than the view's alone.
+    @MainActor
+    func testAServerTargetOpensTheServersTransportInItsFolder() throws {
+        let endpoint = try XCTUnwrap(ServerEndpoint(string: "http://127.0.0.1:9", token: "t"))
+        let host = TestTerminalHost(servers: [id: endpoint])
+        let transport = try XCTUnwrap(TerminalTarget.server(id, folder: "sub").transport(on: host))
+        let server = try XCTUnwrap(transport as? JupyterTerminalTransport)
+        XCTAssertEqual(server.endpoint, endpoint)
+        XCTAssertEqual(server.cwd, "sub")
+        // A machine whose remote is gone, or one the app doesn't know, has no
+        // server to run a shell on.
+        XCTAssertNil(TerminalTarget.server(UUID()).transport(on: host))
+    }
+}
+
+/// A terminal's host for the tests: the servers they give it, and no SSH.
+@MainActor
+private struct TestTerminalHost: TerminalHost {
+    var localServer: ServerEndpoint?
+    var root = URL(fileURLWithPath: "/", isDirectory: true)
+    var servers: [UUID: ServerEndpoint] = [:]
+
+    func server(of id: UUID) -> ServerEndpoint? { servers[id] }
+    func sshTransport(for id: UUID) -> TerminalTransport? { nil }
 }

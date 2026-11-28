@@ -63,11 +63,10 @@ final class PlaceTests: XCTestCase {
         XCTAssertEqual(Set(allowed.map { "\($0)" }), ["settings", "nativeChrome", "agentKeys", "openFile"])
     }
 
-    func testKernelLocationAndLocalTerminalAreThisDevicesOnly() {
-        for capability in [Place.Capability.kernelLocation, .localTerminal] {
-            XCTAssertTrue(Place.thisDevice.allows(capability), "\(capability)")
-            XCTAssertFalse(Place.machine(id).allows(capability), "\(capability)")
-        }
+    func testKernelLocationIsThisDevicesOnly() {
+        let capability = Place.Capability.kernelLocation
+        XCTAssertTrue(Place.thisDevice.allows(capability), "\(capability)")
+        XCTAssertFalse(Place.machine(id).allows(capability), "\(capability)")
     }
 
     func testAMachineGetsThePersonsNameOnlyWhenItsRemoteSaysSo() {

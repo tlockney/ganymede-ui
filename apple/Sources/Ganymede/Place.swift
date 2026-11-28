@@ -133,9 +133,6 @@ enum Place: Hashable, Codable {
         /// Where this Mac's kernels run (Runs On, Kernel > Advanced): a
         /// setting of this device, not of a machine's window.
         case kernelLocation
-        /// A shell on this device's own server, which only this device has:
-        /// a machine's window runs its terminals on the machine (#858).
-        case localTerminal
     }
 
     func allows(_ capability: Capability) -> Bool {
