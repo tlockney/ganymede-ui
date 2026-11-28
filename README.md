@@ -255,6 +255,16 @@ changed at the same time and its version of a cell won, the save says so.
 If the server deletes the file, the notebook says its edits are no longer
 saved.
 
+> [!NOTE]
+> **Unreleased.** Room recovery copy review is in `main` (HEAD) and not yet in
+> a tagged release.
+
+When a room save fails, the file cannot be written, or a merge conflict drops
+a cell edit, Ganymede keeps a recovery copy on the server and shows **Save needs
+attention**. Choose **Review Copy…** to inspect its diff against the notebook
+(with conflicting cells named), download it, restore it over the file, or
+discard it.
+
 ### When the file changes on disk
 
 Elsewhere (the browser's own storage, or a server without rooms) the

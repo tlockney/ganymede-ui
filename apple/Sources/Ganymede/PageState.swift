@@ -278,6 +278,8 @@ struct PageState: Decodable, Equatable {
     /// Read-only because another Ganymede server on this machine owns the
     /// notebook (#839); absent from a page older than that.
     var readOnly: Bool?
+    /// Room save failed or a server recovery copy needs review (#831).
+    var saveAttention: Bool?
     var trusted = true
     /// Whether Notebook Access works on this backend; absent before #479.
     var hostGrants: Bool?

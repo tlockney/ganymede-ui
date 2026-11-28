@@ -1126,6 +1126,11 @@ struct NotebookStatusMenu: View {
         if let path = page.state.path {
             Section("File") {
                 Text(path)
+                if page.state.saveAttention == true {
+                    Button("Review Recovery Copies…") {
+                        page.run("review-recovery")
+                    }
+                }
             }
         }
     }

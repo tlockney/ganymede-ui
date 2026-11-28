@@ -683,6 +683,8 @@ describe('App', () => {
       cellType: 'code',
       journal: true,
       locked: true,
+      saveAttention: true,
+      reviewRecovery: vi.fn(),
     };
     const fake = fakeServices({
       '': [
@@ -717,6 +719,7 @@ describe('App', () => {
         journal: true,
         // Saving locked by a change on disk, for the status line (#812).
         locked: true,
+        saveAttention: true,
         kernels: [
           { name: 'python3', displayName: 'Python 3', device: false },
           { name: 'cdp-browser', displayName: 'TypeScript (in app)', device: true },
@@ -753,6 +756,8 @@ describe('App', () => {
     expect(renameSymbol).toHaveBeenLastCalledWith('sum');
     expect(await run('rename-symbol')).toBe(true);
     expect(renameSymbol).toHaveBeenLastCalledWith(undefined);
+    expect(await run('review-recovery')).toBe(true);
+    expect(mocks.controller.reviewRecovery).toHaveBeenCalledTimes(1);
     expect(await run('rename-symbol', 'refused')).toBe(false);
     expect(await run('run-all')).toBe(true);
     expect(runAll).toHaveBeenCalled();

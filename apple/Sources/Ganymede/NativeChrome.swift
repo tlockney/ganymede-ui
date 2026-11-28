@@ -981,6 +981,12 @@ private struct KernelPopover: View {
             }
         }
         if header != nil || page.state.path != nil {
+            if page.state.saveAttention == true {
+                Button("Review Recovery Copies…") {
+                    page.run("review-recovery")
+                    dismiss()
+                }
+            }
             Divider()
         }
     }

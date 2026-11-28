@@ -8,10 +8,50 @@ import { GANYMEDE_URL, ROOT_DIR, TOKEN } from './env';
  * notebook pane is built. */
 
 /**
+ * Wait until the server has finished closing rooms for `paths`, because
+ * `DELETE /api/contents` triggers `Cmd::Removed` asynchronously on the room
+ * actor, which writes any `file_gone` recovery copy right before removing
+ * the room from `/api/collaboration/rooms` (#831).
+ */
+async function waitForRoomsClosed(paths: ReadonlySet<string>) {
+  if (paths.size === 0) return;
+  const deadline = Date.now() + 2_000;
+  while (Date.now() < deadline) {
+    const res = await fetch(`${GANYMEDE_URL}/api/collaboration/rooms?token=${TOKEN}`).catch(
+      () => undefined,
+    );
+    if (!res?.ok) return;
+    const body = (await res.json()) as { rooms?: Array<{ path?: string }> };
+    const open = (body.rooms ?? []).some(r => typeof r.path === 'string' && paths.has(r.path));
+    if (!open) return;
+    await new Promise(resolve => setTimeout(resolve, 25));
+  }
+}
+
+/**
+ * Discard any server-held recovery copies for `path` (#831) so a later test
+ * creating a notebook at the same path does not inherit them.
+ */
+export async function clearRecoveryCopies(path: string) {
+  const res = await fetch(
+    `${GANYMEDE_URL}/api/collaboration/recovery?path=${encodeURIComponent(path)}&token=${TOKEN}`,
+  ).catch(() => undefined);
+  if (!res?.ok) return;
+  const body = (await res.json()) as { copies?: Array<{ id: string }> };
+  for (const copy of body.copies ?? []) {
+    await fetch(
+      `${GANYMEDE_URL}/api/collaboration/recovery/${encodeURIComponent(copy.id)}?token=${TOKEN}`,
+      { method: 'DELETE' },
+    ).catch(() => {});
+  }
+}
+
+/**
  * Delete files the test made in the server's folder through the contents
  * API, so the server closes their rooms (#183). A file deleted behind its
  * back keeps its room, and a later file at the same path joins it. Then
- * remove whatever is left (folders) from disk.
+ * remove whatever is left (folders) from disk and clear any recovery copies
+ * left behind when the room closed (#831).
  */
 export async function removeFromServer(...names: string[]) {
   const files = (path: string): string[] => {
@@ -22,14 +62,22 @@ export async function removeFromServer(...names: string[]) {
     }
     return readdirSync(path).flatMap(f => files(join(path, f)));
   };
+  const removedPaths = new Set<string>();
   for (const name of names) {
+    removedPaths.add(name.split(/[\\/]/).join('/'));
     for (const file of files(join(ROOT_DIR, name))) {
-      const parts = relative(ROOT_DIR, file).split(/[\\/]/).map(encodeURIComponent);
+      const rel = relative(ROOT_DIR, file).split(/[\\/]/);
+      removedPaths.add(rel.join('/'));
+      const parts = rel.map(encodeURIComponent);
       await fetch(`${GANYMEDE_URL}/api/contents/${parts.join('/')}?token=${TOKEN}`, {
         method: 'DELETE',
       }).catch(() => {});
     }
     rmSync(join(ROOT_DIR, name), { recursive: true, force: true });
+  }
+  await waitForRoomsClosed(removedPaths);
+  for (const relPath of removedPaths) {
+    await clearRecoveryCopies(relPath);
   }
 }
 

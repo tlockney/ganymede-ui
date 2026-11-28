@@ -673,6 +673,29 @@ describe('Toolbar', () => {
     expect(named('More')).toHaveFocus();
   });
 
+  it('shows Save needs attention and opens recovery review from the status menu (#831)', async () => {
+    const reviewRecovery = vi.fn();
+    render(
+      bar({
+        controller: controller({
+          saveAttention: true,
+          saveAttentionDetail: 'Merge conflict: cell c1',
+          reviewRecovery,
+        }),
+      }),
+    );
+    const btn = screen.getByRole('button', {
+      name: 'Save needs attention · Runs here · Python 3',
+    });
+    expect(btn).toBeVisible();
+    expect(btn).toHaveClass('locked');
+
+    await userEvent.click(btn);
+    expect(screen.getByText('Save needs attention: Merge conflict: cell c1')).toBeVisible();
+    await userEvent.click(screen.getByRole('menuitem', { name: 'Review Recovery Copies…' }));
+    expect(reviewRecovery).toHaveBeenCalledTimes(1);
+  });
+
   it('closes a menu with Escape and opens one at a time', async () => {
     render(bar());
     await userEvent.click(named('Share'));

@@ -104,11 +104,17 @@ describe('statusText (#801)', () => {
       );
       expect(shortStatusText(base(MACHINE, { status: 'busy' }))).toBe('Saved · Runs on Studio Mac');
     });
-    it('says Edited and Locked', () => {
+    it('says Edited and Locked and Save needs attention', () => {
       expect(shortStatusText(base(BROWSER, { dirty: true }))).toBe('Edited · Runs here');
       expect(shortStatusText(base(BROWSER, { locked: true }))).toBe('Locked · Runs here');
       expect(shortStatusText(base(BROWSER, { locked: true, dirty: true }))).toBe(
         'Edited · Locked · Runs here',
+      );
+      expect(shortStatusText(base(BROWSER, { saveAttention: true }))).toBe(
+        'Needs attention · Runs here',
+      );
+      expect(shortStatusText(base(BROWSER, { saveAttention: true, dirty: true }))).toBe(
+        'Edited · Attention · Runs here',
       );
     });
     it('leaves out where it runs when the page cannot tell', () => {
@@ -156,5 +162,21 @@ describe('statusText (#801)', () => {
     expect(
       statusText(base(BROWSER, { kernelName: undefined, missingKernel: 'julia', status: 'dead' })),
     ).toBe('Saved in this browser · Runs here · julia (not installed) · Choose kernel · Stopped');
+  });
+
+  it('shows Save needs attention on the full line when saveAttention is set', () => {
+    expect(statusText(base(BROWSER, { saveAttention: true }))).toBe(
+      'Save needs attention · Runs here · TypeScript',
+    );
+    expect(statusText(base(BROWSER, { saveAttention: true, dirty: true }))).toBe(
+      'Edited · Save needs attention · Runs here · TypeScript',
+    );
+    // A read-only file with a failed save or recovery copy must still flag save attention (#831).
+    expect(statusText(base(BROWSER, { saveAttention: true, readOnly: true }))).toBe(
+      'Save needs attention · Runs here · TypeScript',
+    );
+    expect(shortStatusText(base(BROWSER, { saveAttention: true, readOnly: true }))).toBe(
+      'Needs attention · Runs here',
+    );
   });
 });

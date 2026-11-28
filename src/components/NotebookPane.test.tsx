@@ -3648,3 +3648,232 @@ describe('NotebookPane read-only when another Ganymede server owns the notebook 
     expect(screen.queryByText(/Another Ganymede server/)).toBeNull();
   });
 });
+
+describe('room save attention and recovery copies (#831)', () => {
+  it('shows Save needs attention with save_error from room state, and clears once saved', async () => {
+    const { YNotebook } = await import('@jupyter/ydoc');
+    const shared = new YNotebook();
+    shared.fromJSON(structuredClone(NOTEBOOK) as never);
+    serverSettings = ServerConnection.makeSettings({
+      baseUrl: 'http://127.0.0.1:1/',
+      fetch: (async () => new Response('Not Found', { status: 404 })) as unknown as typeof fetch,
+    });
+    const room = {
+      notebook: shared,
+      connected: true,
+      live: true,
+      onConnection: () => () => {},
+      watchLive: () => () => {},
+      save: vi.fn(async () => 'success' as const),
+      dispose: vi.fn(),
+    };
+    const join = vi.spyOn(NotebookRoom, 'join').mockResolvedValue(room as unknown as NotebookRoom);
+
+    const { latest } = setup();
+    await waitFor(() => expect(latest()?.path).toBe('moons/Io.ipynb'));
+    expect(screen.queryByText('Save needs attention')).not.toBeInTheDocument();
+
+    act(() => {
+      shared.ystate.set('save', 'failed');
+      shared.ystate.set('save_error', 'Disk full');
+    });
+
+    expect(await screen.findByText('Save needs attention')).toBeVisible();
+    expect(screen.getByText('Disk full')).toBeVisible();
+    expect(latest()?.saveAttention).toBe(true);
+    expect(latest()?.saveAttentionDetail).toBe('Disk full');
+
+    act(() => {
+      shared.ystate.delete('save_error');
+      shared.ystate.set('save', 'saved');
+    });
+
+    await waitFor(() => {
+      expect(screen.queryByText('Save needs attention')).not.toBeInTheDocument();
+      expect(latest()?.saveAttention).toBe(false);
+    });
+    join.mockRestore();
+  });
+
+  it('offers merge conflict copies with cell names, opens the diff sheet, and restores via Contents API before DELETE', async () => {
+    const { YNotebook } = await import('@jupyter/ydoc');
+    const shared = new YNotebook();
+    const liveNb = structuredClone(NOTEBOOK);
+    shared.fromJSON(liveNb as never);
+    shared.ystate.set('save', 'saved');
+    shared.ystate.set('recovery', {
+      id: 'rec-mc-1',
+      at: '2026-11-28T10:00:00Z',
+      reason: 'merge_conflict',
+      cells: ['a1'],
+    });
+    const copyNb = structuredClone(NOTEBOOK);
+    copyNb.cells[0]!.source = 'print("recovered")';
+
+    let discarded = false;
+    const calls: string[] = [];
+    serverSettings = ServerConnection.makeSettings({
+      baseUrl: 'http://127.0.0.1:1/',
+      fetch: (async (input: RequestInfo | URL, init?: RequestInit) => {
+        const req = input instanceof Request ? input : new Request(input, init);
+        const u = new URL(req.url);
+        calls.push(`${req.method} ${u.pathname}`);
+        if (req.method === 'GET' && u.pathname.endsWith('/api/collaboration/recovery')) {
+          return new Response(
+            JSON.stringify({
+              copies: discarded
+                ? []
+                : [
+                    {
+                      id: 'rec-mc-1',
+                      path: 'moons/Io.ipynb',
+                      at: '2026-11-28T10:00:00Z',
+                      reason: 'merge_conflict',
+                      detail: 'cell a1',
+                      cells: ['a1'],
+                    },
+                  ],
+            }),
+            { status: 200 },
+          );
+        }
+        if (req.method === 'GET' && u.pathname.endsWith('/api/collaboration/recovery/rec-mc-1')) {
+          return new Response(
+            JSON.stringify({
+              id: 'rec-mc-1',
+              path: 'moons/Io.ipynb',
+              at: '2026-11-28T10:00:00Z',
+              reason: 'merge_conflict',
+              detail: 'cell a1',
+              cells: ['a1'],
+              content: copyNb,
+            }),
+            { status: 200 },
+          );
+        }
+        if (
+          req.method === 'DELETE' &&
+          u.pathname.endsWith('/api/collaboration/recovery/rec-mc-1')
+        ) {
+          discarded = true;
+          shared.ystate.delete('recovery');
+          return new Response(null, { status: 204 });
+        }
+        return new Response('Not Found', { status: 404 });
+      }) as unknown as typeof fetch,
+    });
+
+    const room = {
+      notebook: shared,
+      connected: true,
+      live: true,
+      onConnection: () => () => {},
+      watchLive: () => () => {},
+      save: vi.fn(async () => 'success' as const),
+      dispose: vi.fn(),
+    };
+    const join = vi.spyOn(NotebookRoom, 'join').mockResolvedValue(room as unknown as NotebookRoom);
+
+    const user = userEvent.setup();
+    const { fake, latest } = setup();
+    expect(await screen.findByText('Save needs attention')).toBeVisible();
+    expect(screen.getByText(/Merge conflict: cell a1/)).toBeVisible();
+    await waitFor(() => expect(latest()?.reviewRecovery).toBeDefined());
+
+    await user.click(screen.getByRole('button', { name: 'Review Copy…' }));
+    expect(await screen.findByRole('dialog')).toBeVisible();
+    expect(screen.getByText('Conflicting cells:')).toBeVisible();
+    expect(screen.getByText(/print\("recovered"\)/)).toBeVisible();
+
+    await user.click(screen.getByRole('button', { name: 'Restore Copy' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(fake.contents.save).toHaveBeenCalledWith('moons/Io.ipynb', {
+      type: 'notebook',
+      format: 'json',
+      content: copyNb,
+    });
+    expect(calls).toContain('DELETE /api/collaboration/recovery/rec-mc-1');
+    await waitFor(() => expect(screen.queryByText('Save needs attention')).not.toBeInTheDocument());
+    join.mockRestore();
+  });
+
+  it('re-reads the list when a summary id is 404 and degrades gracefully when recovery endpoints answer 404', async () => {
+    const { YNotebook } = await import('@jupyter/ydoc');
+
+    // Case 1: GET /{id} returns 404 after another server already removed it.
+    const shared1 = new YNotebook();
+    shared1.fromJSON(structuredClone(NOTEBOOK) as never);
+    shared1.ystate.set('recovery', {
+      id: 'rec-stale',
+      at: '2026-11-28T10:00:00Z',
+      reason: 'save_failed',
+      cells: [],
+    });
+    const seenPaths: string[] = [];
+    let listCount = 0;
+    serverSettings = ServerConnection.makeSettings({
+      baseUrl: 'http://127.0.0.1:1/',
+      fetch: (async (input: RequestInfo | URL) => {
+        const url = input instanceof Request ? input.url : String(input);
+        const u = new URL(url);
+        seenPaths.push(u.pathname);
+        if (u.pathname.endsWith('/api/collaboration/recovery')) {
+          listCount++;
+          return new Response(JSON.stringify({ copies: [] }), { status: 200 });
+        }
+        if (u.pathname.endsWith('/api/collaboration/recovery/rec-stale')) {
+          return new Response(JSON.stringify({ message: 'Not found' }), { status: 404 });
+        }
+        return new Response('Not Found', { status: 404 });
+      }) as unknown as typeof fetch,
+    });
+    const join1 = vi.spyOn(NotebookRoom, 'join').mockResolvedValue({
+      notebook: shared1,
+      connected: true,
+      live: true,
+      onConnection: () => () => {},
+      watchLive: () => () => {},
+      save: vi.fn(async () => 'success' as const),
+      dispose: vi.fn(),
+    } as unknown as NotebookRoom);
+
+    const first = setup();
+    await waitFor(() => expect(listCount).toBe(2));
+    expect(seenPaths.some(p => p.endsWith('/rec-stale'))).toBe(true);
+    await waitFor(() => expect(screen.queryByText('Save needs attention')).not.toBeInTheDocument());
+    first.unmount();
+    join1.mockRestore();
+
+    // Case 2: Older server returns 404 on /api/collaboration/recovery?path=...
+    const shared2 = new YNotebook();
+    shared2.fromJSON(structuredClone(NOTEBOOK) as never);
+    shared2.ystate.set('recovery', {
+      id: 'ignored-legacy',
+      at: '2026-11-28T10:00:00Z',
+      reason: 'save_failed',
+      cells: [],
+    });
+    serverSettings = ServerConnection.makeSettings({
+      baseUrl: 'http://127.0.0.1:1/',
+      fetch: (async () => new Response('Not Found', { status: 404 })) as unknown as typeof fetch,
+    });
+    const join2 = vi.spyOn(NotebookRoom, 'join').mockResolvedValue({
+      notebook: shared2,
+      connected: true,
+      live: true,
+      onConnection: () => () => {},
+      watchLive: () => () => {},
+      save: vi.fn(async () => 'success' as const),
+      dispose: vi.fn(),
+    } as unknown as NotebookRoom);
+
+    const second = setup();
+    await waitFor(() => expect(second.latest()?.path).toBe('moons/Io.ipynb'));
+    await waitFor(() => {
+      expect(second.latest()?.saveAttention).toBe(false);
+      expect(screen.queryByText('Save needs attention')).not.toBeInTheDocument();
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    });
+    join2.mockRestore();
+  });
+});

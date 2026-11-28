@@ -287,7 +287,11 @@ when it saves. `RoomSaver` stands in for `NotebookSaver`: a save sends
 fails it at once, since the answer can't come on the next one), a move
 just follows the rename (the server moves the room's file id), and there
 is never a change on disk, so the pane skips its disk check and its
-120-second autosave.
+120-second autosave. `room-recovery.ts` watches the room's `ystate` (`save`,
+`save_error`, `recovery`) and integrates with `/api/collaboration/recovery`
+(degrading cleanly on `404` for older servers) to surface **Save needs
+attention** in `RecoveryBanner` and diff, restore (via the contents API then
+`DELETE`), or discard copies in `RecoverySheet`.
 
 The server's closes: 4404 (file deleted) stops saves and says so. A 1003
 `unknown_session` means the server restarted and rebuilt the room from
