@@ -135,12 +135,14 @@ Settings > Remotes.
 > [!NOTE]
 > **Unreleased.** Available only from a build of `main` (HEAD), not in
 > the latest release, v0.17.1: there a notebook's window is titled with
-> its file's name (it knows no `metadata.title`), the title and the status
-> line sit in the system's titlebar and the kernel's button carries only
-> the kernel's name, the toolbar reads "Run Cell" with Interrupt in a
-> capsule of its own, and every other control — Trust, Access,
-> Notebook | Journal, the kernel's button, Share, More, the Terminal
-> Panel's button and the inspector's — has a capsule of its own.
+> its file's name (it knows no `metadata.title`), the title sits in the
+> system's titlebar with the whole status line as its subtitle ("Saved on
+> This Mac · Runs on This Mac · TypeScript") and the kernel's button
+> carries only the kernel's name, New Notebook is a toolbar button, the
+> toolbar reads "Run Cell" with Interrupt in a capsule of its own, and
+> every other control — Trust, Access, Notebook | Journal, the kernel's
+> button, Share, More, the Terminal Panel's button and the inspector's —
+> has a capsule of its own.
 
 - A notebook's window has its title in the toolbar, with the kernel's
   button beside it. The title is the notebook's display title: its

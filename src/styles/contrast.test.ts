@@ -440,20 +440,18 @@ describe('secondary metadata text (#814)', () => {
     // Asset catalogs write a component three ways: "0.5" (0–1), "0xF9"
     // (0–255 hexadecimal, as Xcode 15 writes them) and "128" (0–255
     // decimal). Read all three, and refuse anything above 255 rather than
-    // quietly comparing a wrong colour.
+    // quietly comparing a wrong colour. A decimal with a point is 0–1
+    // ("1.000" is full); one without is 0–255 ("1" is nearly black).
     const component = (key: string) => {
       const raw = c[key];
       if (raw === undefined) throw new Error(`no ${key} in ${name}.colorset's ${theme} colour`);
       const value = raw.trim();
       const hex = /^0x([0-9a-f]+)$/i.exec(value);
-      if (hex) return parseInt(hex[1], 16);
-      const n = Number(value);
+      const n = hex ? parseInt(hex[1], 16) : Number(value);
       if (!Number.isFinite(n) || n < 0) throw new Error(`${name}.colorset's ${key} isn't a number`);
-      if (n > 1) {
-        if (n > 255) throw new Error(`${name}.colorset's ${key} is above 255: ${value}`);
-        return n;
-      }
-      return n * 255;
+      if (n > 255) throw new Error(`${name}.colorset's ${key} is above 255: ${value}`);
+      if (hex || !value.includes('.')) return n;
+      return n > 1 ? n : n * 255;
     };
     return [component('red'), component('green'), component('blue'), 1];
   }
