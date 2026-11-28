@@ -803,6 +803,69 @@
   }
 }
 
+/* Narrow phone viewports (<= 600px): eliminate JupyterLab's double horizontal
+ * viewport margin so code cell cards run full-width with clean compact header
+ * strips and symmetric inner padding, without horizontal overflow (#913). */
+@media (max-width: 600px) {
+  .touch-ui .notebook-page {
+    --jp-notebook-padding: 0px;
+  }
+
+  .touch-ui .notebook-page .jp-CodeCell {
+    max-width: 100%;
+    padding: 8px 0 !important;
+  }
+
+  .touch-ui .notebook-page .jp-CodeCell.jp-mod-active {
+    padding-top: 0 !important;
+  }
+
+  .touch-ui .notebook-page .jp-CodeCell.jp-mod-active > .gn-cell-meta {
+    min-height: 38px;
+    margin-bottom: 6px;
+    padding: 0 2px 0 34px;
+    border-bottom: 1px solid var(--separator);
+  }
+
+  .touch-ui .notebook-page .jp-CodeCell.jp-mod-active > .gn-code-toggle {
+    top: 0;
+    height: 38px;
+  }
+
+  .touch-ui .notebook-page .jp-CodeCell > .jp-Cell-inputWrapper,
+  .touch-ui .notebook-page .jp-CodeCell > .jp-Cell-outputWrapper {
+    padding-right: 10px;
+    padding-left: 10px;
+  }
+
+  .touch-ui .notebook-page .jp-CodeCell .jp-OutputArea,
+  .touch-ui .notebook-page .jp-CodeCell .jp-OutputArea-child,
+  .touch-ui .notebook-page .jp-CodeCell .jp-OutputArea-output {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .touch-ui .notebook-page .jp-CodeCell .gn-output-meta {
+    padding: 5px 10px 0;
+  }
+
+  .touch-ui .notebook-page .jp-CodeCell .gn-run-status {
+    padding: 0 10px;
+  }
+
+  .touch-ui .notebook-page .jp-CodeCell .gn-add-cell {
+    margin: 4px 10px 0;
+  }
+
+  .touch-ui .notebook-page .jp-MarkdownOutput h1 {
+    font-size: 26px;
+  }
+
+  .touch-ui .notebook-page .jp-MarkdownOutput h2 {
+    font-size: 20px;
+  }
+}
+
 /* What an output is, before its text (#813, src/lib/output-labels.ts). */
 .notebook-page .gn-output-bar {
   display: flex;

@@ -433,9 +433,9 @@ describe('secondary metadata text (#814)', () => {
       color?: { components?: Record<string, string> };
     }[];
   };
-  function colorset(name: string, theme: Theme): RGBA {
+  function colorset(name: string, theme: Theme, platform: 'macOS' | 'iOS' = 'macOS'): RGBA {
     const file = new URL(
-      `apple/Resources/macOS/Assets.xcassets/${name}.colorset/Contents.json`,
+      `apple/Resources/${platform}/Assets.xcassets/${name}.colorset/Contents.json`,
       // Vitest runs from the repository root, and `import.meta.url` is not
       // the file's place under its jsdom environment.
       `file://${process.cwd()}/`,
@@ -468,14 +468,21 @@ describe('secondary metadata text (#814)', () => {
   }
 
   for (const theme of themes) {
-    it(`the Mac toolbar's coloursets read at ${AA}:1 in ${theme} (#892)`, () => {
+    it(`the Mac and iOS coloursets match and read at ${AA}:1 in ${theme} (#892, #913)`, () => {
       const pairs: [fg: string, bg: string][] = [
         ['OnAccent', 'AccentFill'],
         ['TitleText', 'WindowBackground'],
       ];
-      for (const [fg, bg] of pairs) {
-        const ratio = contrast(colorset(fg, theme), colorset(bg, theme));
-        expect(ratio, `${fg} on ${bg} ${ratio.toFixed(2)}`).toBeGreaterThanOrEqual(AA);
+      for (const platform of ['macOS', 'iOS'] as const) {
+        for (const [fg, bg] of pairs) {
+          const ratio = contrast(colorset(fg, theme, platform), colorset(bg, theme, platform));
+          expect(ratio, `${platform} ${fg} on ${bg} ${ratio.toFixed(2)}`).toBeGreaterThanOrEqual(
+            AA,
+          );
+        }
+      }
+      for (const name of ['SidebarTint', 'TitleText', 'WindowBackground']) {
+        expect(colorset(name, theme, 'iOS')).toEqual(colorset(name, theme, 'macOS'));
       }
     });
 

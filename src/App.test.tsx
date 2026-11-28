@@ -660,7 +660,10 @@ describe('App', () => {
       goToCell,
       goToDefinition,
       renameSymbol,
-      outline: [{ level: 1, text: 'Io', cell: 2 }],
+      outline: [{ level: 1, text: 'Io', cell: 2, ran: true }],
+      activeCell: 2,
+      cellCount: 14,
+      ranCellCount: 12,
       // The Mac app's Find results (#879), posted in the state.
       notebookFind: {
         query: 'volcano',
@@ -718,7 +721,10 @@ describe('App', () => {
           { name: 'python3', displayName: 'Python 3', device: false },
           { name: 'cdp-browser', displayName: 'TypeScript (in app)', device: true },
         ],
-        outline: [{ level: 1, text: 'Io', cell: 2 }],
+        outline: [{ level: 1, text: 'Io', cell: 2, ran: true }],
+        activeCell: 2,
+        cellCount: 14,
+        ranCellCount: 12,
         notebookFind: {
           query: 'volcano',
           matches: [{ cell: 2, heading: 'Io', snippet: 'volcano = 2' }],

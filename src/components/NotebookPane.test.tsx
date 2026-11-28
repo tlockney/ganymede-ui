@@ -1951,7 +1951,7 @@ describe('NotebookPane', () => {
     await waitFor(() =>
       expect(latest()?.outline).toEqual([
         { level: 1, text: 'Io', cell: 0 },
-        { level: 2, text: 'Volcanoes', cell: 0 },
+        { level: 2, text: 'Volcanoes', cell: 0, ran: false },
         { level: 2, text: 'Plumes', cell: 2 },
       ]),
     );
@@ -3315,5 +3315,79 @@ describe('NotebookPane on a connected machine that is away (#701)', () => {
     vi.mocked(attachDevice).mockClear();
     await inRoom(true, LOCAL);
     expect(vi.mocked(attachDevice).mock.lastCall![1]?.disabled).toBeFalsy();
+  });
+});
+
+describe('NotebookPane progress reporting (#913)', () => {
+  it('reports activeCell, cellCount, ranCellCount, and outline ran status', async () => {
+    const nb: nbformat.INotebookContent = {
+      nbformat: 4,
+      nbformat_minor: 5,
+      metadata: {},
+      cells: [
+        { cell_type: 'markdown', id: 'm0', source: '# Setup', metadata: {} },
+        {
+          cell_type: 'code',
+          id: 'c1',
+          source: 'const a = 1',
+          execution_count: 1,
+          outputs: [],
+          metadata: {},
+        },
+        { cell_type: 'markdown', id: 'm2', source: '## Analysis', metadata: {} },
+        {
+          cell_type: 'code',
+          id: 'c3',
+          source: 'const b = 2',
+          execution_count: null,
+          outputs: [],
+          metadata: {},
+        },
+      ],
+    };
+    const { latest } = setup(
+      vi.fn(async () => ({
+        path: 'moons/Io.ipynb',
+        content: nb,
+      })),
+    );
+    await waitFor(() => expect(latest()?.cellCount).toBe(4));
+    expect(latest()?.activeCell).toBe(0);
+    expect(latest()?.ranCellCount).toBe(1);
+    expect(latest()?.outline).toEqual([
+      { level: 1, text: 'Setup', cell: 0, ran: true },
+      { level: 2, text: 'Analysis', cell: 2, ran: false },
+    ]);
+
+    // Changing the active cell updates activeCell.
+    const fakeNb = fakes.notebooks[0] as {
+      activeCellIndex: number;
+      activeCellChanged: { emit(v: unknown): void };
+    };
+    act(() => {
+      fakeNb.activeCellIndex = 3;
+      fakeNb.activeCellChanged.emit(null);
+    });
+    await waitFor(() => expect(latest()?.activeCell).toBe(3));
+
+    // Executing the second code cell updates ranCellCount and outline[1].ran immediately.
+    act(() => {
+      (modelOf().cells.get(3) as ICodeCellModel).executionCount = 2;
+    });
+    await waitFor(() => expect(latest()?.ranCellCount).toBe(2));
+    expect(latest()?.outline).toEqual([
+      { level: 1, text: 'Setup', cell: 0, ran: true },
+      { level: 2, text: 'Analysis', cell: 2, ran: true },
+    ]);
+
+    // Clearing outputs resets ranCellCount and marks sections unrun.
+    act(() => {
+      latest()!.clearOutputs();
+    });
+    await waitFor(() => expect(latest()?.ranCellCount).toBe(0));
+    expect(latest()?.outline).toEqual([
+      { level: 1, text: 'Setup', cell: 0, ran: false },
+      { level: 2, text: 'Analysis', cell: 2, ran: false },
+    ]);
   });
 });

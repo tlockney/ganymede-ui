@@ -2855,12 +2855,37 @@ button {
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
 }
 
-/* On a phone the gutter is a narrow column at the left edge, so a panel
-   hanging from the chip would run past the right edge: anchor it to the
-   cell, across the cell's width, just below it. */
+/* On a phone or narrow Split View (<= 600px), the gutter stacks above the cell
+   so code cards and figures keep the full column, and revision panels span the
+   cell width (#798, #913). */
 @media (max-width: 600px) {
+  .journal-header,
+  .journal-status,
+  .journal-composer {
+    padding-right: calc(12px + var(--safe-right));
+    padding-left: calc(12px + var(--safe-left));
+  }
+
+  .journal-title {
+    font-size: 22px;
+  }
+
+  .journal-content {
+    padding: 8px calc(12px + var(--safe-right)) 24px calc(12px + var(--safe-left));
+  }
+
   .journal-cell {
     position: relative;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+    padding: 10px 12px;
+  }
+
+  .journal-gutter {
+    flex-direction: row;
+    flex-wrap: wrap;
+    gap: 2px 8px;
+    align-items: center;
   }
 
   .journal-rev {
@@ -3034,18 +3059,6 @@ button {
 }
 
 @media (max-width: 480px) {
-  .journal-cell {
-    grid-template-columns: minmax(0, 1fr);
-    gap: 4px;
-  }
-
-  .journal-gutter {
-    flex-direction: row;
-    flex-wrap: wrap;
-    gap: 2px 8px;
-    align-items: center;
-  }
-
   .journal-actions button {
     flex: 1;
   }

@@ -4,11 +4,21 @@
  * the Mac app's Outline tab show it; picking one scrolls to its cell.
  */
 
-/** One heading: its level (1–6), its text and its cell's index. */
-export type OutlineItem = { level: number; text: string; cell: number };
+/**
+ * One heading: its level (1–6), its text, its cell's index, and optionally
+ * whether its section's code cells have all executed (#913).
+ *
+ * `ran` is computed over the cells strictly after this heading's cell and
+ * before the next heading's cell (or the end of the notebook), considering
+ * code cells whose `executionCount` was supplied (`number | null`):
+ * - `true`: at least one such code cell, and every one has `executionCount != null`
+ * - `false`: at least one such code cell has `executionCount == null`
+ * - omitted (`undefined`): the section has no code cells with execution counts
+ */
+export type OutlineItem = { level: number; text: string; cell: number; ran?: boolean };
 
 /** What `outlineOf` reads from each cell. */
-export type OutlineCell = { type: string; source: string };
+export type OutlineCell = { type: string; source: string; executionCount?: number | null };
 
 const FENCE = /^ {0,3}(`{3,}|~{3,})/;
 const ATX = /^ {0,3}(#{1,6})(?:[ \t]+(.*?))?(?:[ \t]+#+)?[ \t]*$/;
@@ -119,15 +129,37 @@ export function headingsOf(source: string): { level: number; text: string }[] {
   return found;
 }
 
-/** The outline of a notebook's cells: Markdown cells' headings, in order. Pure. */
+/**
+ * The outline of a notebook's cells: Markdown cells' headings, in order. Pure.
+ *
+ * When code cells carry `executionCount` (`number | null`), each heading also
+ * records `ran` for its section (cells after the heading's cell up to the next
+ * heading's cell, or the end of the notebook): `true` if the section has at
+ * least one code cell and every one has executed (`executionCount != null`),
+ * `false` if any code cell is unrun (`executionCount == null`), and omitted
+ * when the section has no code cells (or no execution counts were supplied).
+ */
 export function outlineOf(cells: Iterable<OutlineCell>): OutlineItem[] {
+  const list = Array.isArray(cells) ? (cells as OutlineCell[]) : [...cells];
   const items: OutlineItem[] = [];
-  let index = 0;
-  for (const cell of cells) {
+  for (let index = 0; index < list.length; index++) {
+    const cell = list[index]!;
     if (cell.type === 'markdown') {
       for (const heading of headingsOf(cell.source)) items.push({ ...heading, cell: index });
     }
-    index++;
+  }
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i]!;
+    const end = i + 1 < items.length ? items[i + 1]!.cell : list.length;
+    let hasCode = false;
+    let allRan = true;
+    for (let c = item.cell + 1; c < end; c++) {
+      const cell = list[c]!;
+      if (cell.type !== 'code' || cell.executionCount === undefined) continue;
+      hasCode = true;
+      if (cell.executionCount === null) allRan = false;
+    }
+    if (hasCode) item.ran = allRan;
   }
   return items;
 }

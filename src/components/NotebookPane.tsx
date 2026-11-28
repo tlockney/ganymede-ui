@@ -37,7 +37,7 @@ import {
   notebookLanguage,
   trustedCellIds,
 } from '../lib/journal';
-import type { Cell, ICodeCellModel } from '@jupyterlab/cells';
+import type { Cell, ICellModel, ICodeCellModel } from '@jupyterlab/cells';
 import { downloadFile } from '../lib/download';
 import { PUBLISH_TIMEOUT_MS, type PublishOptions, fetchPublished, pageName } from '../lib/publish';
 import { type ExportFormat, fetchExport } from '../lib/export';
@@ -170,6 +170,15 @@ export type NotebookController = {
   insert(type: 'code' | 'markdown'): void;
   /** The active cell's type. */
   cellType: CellType;
+  /**
+   * The 0-based active cell index in Notebook view, or the current reading cell
+   * index in Journal view (#913); null when the notebook has no cells.
+   */
+  activeCell: number | null;
+  /** Total cell count in the notebook (#913). */
+  cellCount: number;
+  /** Count of code cells with a non-null execution count (#913). */
+  ranCellCount: number;
   /** Change the selected cells (or the active one) to `type`. */
   changeCellType(type: CellType): void;
   interrupt(): Promise<void>;
@@ -488,6 +497,10 @@ export function NotebookPane({
   const [dirty, setDirty] = useState(false);
   const [trusted, setTrusted] = useState(true);
   const [cellType, setCellType] = useState<CellType>('code');
+  const [activeCell, setActiveCell] = useState<number | null>(null);
+  const [journalCell, setJournalCell] = useState<number | null>(null);
+  const [cellCount, setCellCount] = useState(0);
+  const [ranCellCount, setRanCellCount] = useState(0);
   const [outline, setOutline] = useState<OutlineItem[]>([]);
   /** What the Mac app's Find field found in the cells (#879), or null. */
   const [notebookFind, setNotebookFind] = useState<NotebookFind | null>(null);
@@ -1163,38 +1176,51 @@ export function NotebookPane({
     };
   }, [open, joined, services, memory]);
 
-  // The active cell's type for the toolbar. Changing a cell's type replaces
-  // its widget, which makes the new one active.
+  // The active cell's type and index for the toolbar and native bridge (#913).
+  // Changing a cell's type replaces its widget, which makes the new one active.
   useEffect(() => {
     if (!open) return;
-    const { notebook } = open;
-    const update = () => setCellType(activeType(notebook) ?? 'code');
+    const { notebook, model } = open;
+    const update = () => {
+      setCellType(activeType(notebook) ?? 'code');
+      const i = notebook.activeCellIndex;
+      setActiveCell(i >= 0 && i < model.cells.length ? i : null);
+    };
     update();
     notebook.activeCellChanged.connect(update);
+    model.cells.changed.connect(update);
     return () => {
       notebook.activeCellChanged.disconnect(update);
+      model.cells.changed.disconnect(update);
     };
   }, [open]);
 
-  // The outline (#212), 300 ms after the cells stop changing: typing in
-  // a cell changes the model on every key. Cells added, removed or moved
-  // update it at once, so a heading never points at the wrong cell.
+  // The outline (#212), cell count, and ran code-cell count (#913), 300 ms
+  // after cell text stops changing: typing in a cell changes the model on
+  // every key. Cells added, removed, moved, or executed update at once, so
+  // headings and run progress never lag behind.
   useEffect(() => {
     if (!open) return;
     const { model } = open;
     let last = '';
     let timer: ReturnType<typeof setTimeout> | undefined;
+    const watched = new Set<ICellModel>();
     const update = () => {
       timer = undefined;
       const cells = Array.from({ length: model.cells.length }, (_, i) => {
         const cell = model.cells.get(i);
         // Only Markdown cells have headings: outputs streaming into a
         // code cell don't re-read every source.
+        const executionCount =
+          cell.type === 'code' ? ((cell as ICodeCellModel).executionCount ?? null) : undefined;
         return {
           type: cell.type,
           source: cell.type === 'markdown' ? cell.sharedModel.getSource() : '',
+          executionCount,
         };
       });
+      setCellCount(cells.length);
+      setRanCellCount(cells.filter(c => c.type === 'code' && c.executionCount != null).length);
       const next = outlineOf(cells);
       const key = JSON.stringify(next);
       // The notebook's title (#867): its metadata's, else its first `#`
@@ -1227,13 +1253,40 @@ export function NotebookPane({
       if (timer !== undefined) clearTimeout(timer);
       update();
     };
+    const onCellState = (_cell: ICellModel, change: { name: string }) => {
+      if (change.name === 'executionCount') now();
+    };
+    const syncWatchers = () => {
+      const current = new Set<ICellModel>();
+      for (let i = 0; i < model.cells.length; i++) {
+        const cell = model.cells.get(i);
+        current.add(cell);
+        if (!watched.has(cell)) {
+          cell.stateChanged.connect(onCellState);
+          watched.add(cell);
+        }
+      }
+      for (const cell of watched) {
+        if (!current.has(cell)) {
+          cell.stateChanged.disconnect(onCellState);
+          watched.delete(cell);
+        }
+      }
+    };
+    const onCellsChanged = () => {
+      syncWatchers();
+      now();
+    };
+    syncWatchers();
     update();
     model.contentChanged.connect(later);
-    model.cells.changed.connect(now);
+    model.cells.changed.connect(onCellsChanged);
     return () => {
       if (timer !== undefined) clearTimeout(timer);
+      for (const cell of watched) cell.stateChanged.disconnect(onCellState);
+      watched.clear();
       model.contentChanged.disconnect(later);
-      model.cells.changed.disconnect(now);
+      model.cells.changed.disconnect(onCellsChanged);
     };
   }, [open, path]);
 
@@ -1613,6 +1666,14 @@ export function NotebookPane({
         renaming.current = undefined;
       }
     };
+    const reportedActiveCell =
+      cellCount === 0
+        ? null
+        : journal
+          ? journalCell !== null && journalCell >= 0 && journalCell < cellCount
+            ? journalCell
+            : activeCell
+          : activeCell;
     const controller: NotebookController = {
       path,
       name: basename(path),
@@ -1625,6 +1686,9 @@ export function NotebookPane({
       dirty,
       trusted,
       cellType,
+      activeCell: reportedActiveCell,
+      cellCount,
+      ranCellCount,
       changeCellType: type => {
         if (journal || away()) return;
         NotebookActions.changeCellType(notebook, type);
@@ -1790,8 +1854,10 @@ export function NotebookPane({
         const next = !journalRef.current;
         // The cell in view goes along: the journal opens at it, and the
         // notebook shows the journal's cell again.
-        if (next) startAtRef.current = visibleNotebookCell(notebook);
-        else {
+        if (next) {
+          startAtRef.current = visibleNotebookCell(notebook);
+          setJournalCell(startAtRef.current ?? null);
+        } else {
           startAtRef.current = undefined;
           returnToRef.current = firstVisibleJournalCell();
         }
@@ -1804,6 +1870,7 @@ export function NotebookPane({
           const article = document.querySelector(`.journal [data-cell-index="${index}"]`);
           if (!article) return false;
           article.scrollIntoView({ block: 'start' });
+          setJournalCell(index);
           return true;
         }
         const cell = notebook.widgets[index];
@@ -1869,6 +1936,10 @@ export function NotebookPane({
     isLocked,
     lock,
     cellType,
+    activeCell,
+    journalCell,
+    cellCount,
+    ranCellCount,
     outline,
     notebookFind,
     eyebrow,
@@ -1962,6 +2033,7 @@ export function NotebookPane({
           roomSettings={rooms ? services.serverSettings : undefined}
           positionKey={{ server: recentsKey(backend.config), path }}
           startAt={startAtRef.current}
+          onActiveCellChange={setJournalCell}
           onOpenAsNotebook={() => controllerRef.current?.toggleJournal()}
         />
       )}

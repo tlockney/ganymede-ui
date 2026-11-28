@@ -122,4 +122,32 @@ describe('outlineOf', () => {
     expect(outlineOf([])).toEqual([]);
     expect(outlineOf([{ type: 'code', source: 'x = 1' }])).toEqual([]);
   });
+
+  it('computes section ran status from code cell execution counts (#913)', () => {
+    const cells = [
+      { type: 'markdown', source: '# Overview\n## Setup' },
+      { type: 'code', source: 'const a = 1', executionCount: 1 },
+      { type: 'code', source: 'const b = 2', executionCount: 2 },
+      { type: 'markdown', source: '## Partial' },
+      { type: 'code', source: 'const c = 3', executionCount: 3 },
+      { type: 'code', source: 'const d = 4', executionCount: null },
+      { type: 'markdown', source: '## Prose only' },
+      { type: 'markdown', source: 'Just text' },
+      { type: 'raw', source: 'raw note' },
+      { type: 'markdown', source: '## Unrun' },
+      { type: 'code', source: 'const e = 5', executionCount: null },
+    ];
+    expect(outlineOf(cells)).toEqual([
+      // Followed immediately by ## Setup in the same cell: no code cells of its own.
+      { level: 1, text: 'Overview', cell: 0 },
+      // Both code cells in this section ran.
+      { level: 2, text: 'Setup', cell: 0, ran: true },
+      // One code cell ran, one did not.
+      { level: 2, text: 'Partial', cell: 3, ran: false },
+      // No code cells before the next heading: omit `ran`.
+      { level: 2, text: 'Prose only', cell: 6 },
+      // Unrun code cell at end of notebook.
+      { level: 2, text: 'Unrun', cell: 9, ran: false },
+    ]);
+  });
 });

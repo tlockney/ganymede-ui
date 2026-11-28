@@ -226,6 +226,16 @@ export type PageState = {
   accessWanted: string[];
   /** The active cell's type. */
   cellType: string | null;
+  /**
+   * The 0-based index of the active cell in Notebook view, or the current
+   * visible reading cell in Journal view (#913); null when no notebook is open
+   * or it has no cells.
+   */
+  activeCell: number | null;
+  /** Total number of cells in the open notebook (#913); 0 when none is open. */
+  cellCount: number;
+  /** Number of code cells whose `execution_count != null` (#913); 0 when none is open. */
+  ranCellCount: number;
   /** Whether the open notebook shows as a journal (#184, #724): the app's View as Journal / Open as Notebook. */
   journal: boolean;
   /**
