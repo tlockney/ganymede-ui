@@ -887,7 +887,7 @@ struct WorkspaceToolbar: ToolbarContent {
         )
         case editor(document: EditorDocument)
         case terminal(canMoveToPanel: Bool, moveToPanel: () -> Void)
-        case sample
+        case empty
     }
 
     let mode: Mode
@@ -936,7 +936,7 @@ struct WorkspaceToolbar: ToolbarContent {
                 .help("Move this terminal into a notebook window’s bottom panel")
                 .disabled(!canMoveToPanel)
             }
-        case .sample:
+        case .empty:
             if let update {
                 ToolbarItem(placement: .navigation) {
                     UpdateAvailableButton(available: update)

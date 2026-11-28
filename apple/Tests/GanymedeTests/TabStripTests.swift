@@ -125,24 +125,6 @@ final class TabStripTests: XCTestCase {
         }
     }
 
-    func testSampleAddonsDoNotDuplicateExistingTabs() {
-        let primary = WorkspaceTabDescriptor(
-            id: UUID(),
-            kind: .notebook,
-            title: "Fremont Bridge",
-            toolTip: "2026-11-09-fremont-bridge.ipynb",
-            badge: TabLanguageBadge(code: "TS", palette: .typescript),
-            kernelKind: .idle,
-            kernelLabel: "Kernel idle",
-            isPrimary: true
-        )
-        let addons = WorkspaceTabDescriptor.sampleAddons(for: [primary])
-        XCTAssertEqual(addons.map(\.title), ["DuckDB console", "m4mini", "workmbp", "zsh"])
-        XCTAssertTrue(addons.allSatisfy(\.isSample))
-        // Running again with addons included produces no duplicates.
-        XCTAssertTrue(WorkspaceTabDescriptor.sampleAddons(for: [primary] + addons).isEmpty)
-    }
-
     func testLayoutAt1280And1728FitsMockupTabSetWithoutOverflow() {
         let activeID = UUID()
         let tabs: [WorkspaceTabDescriptor] = [
@@ -256,14 +238,5 @@ final class TabStripTests: XCTestCase {
         for item in layout.items {
             XCTAssertGreaterThanOrEqual(item.width, item.minWidth)
         }
-    }
-
-    func testDeveloperSettingsCustomTabKeysDefaultToOff() {
-        let suiteName = "TabStripTests.\(UUID().uuidString)"
-        let defaults = UserDefaults(suiteName: suiteName)!
-        defer { defaults.removePersistentDomain(forName: suiteName) }
-
-        XCTAssertFalse(defaults.bool(forKey: SettingsTab.customTabsKey))
-        XCTAssertFalse(defaults.bool(forKey: SettingsTab.customTabsSamplesKey))
     }
 }

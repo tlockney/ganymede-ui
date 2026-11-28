@@ -57,6 +57,9 @@ struct GanymedeApp: App {
                 Divider()
                 TerminalCommands(model: model)
             }
+            CommandGroup(after: .windowArrangement) {
+                WindowTabCommands()
+            }
             // Release builds only (#411).
             CommandGroup(after: .appInfo) {
                 CheckForUpdatesCommand()
@@ -386,6 +389,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AppModel.shared.refreshThisMac()
         // Keep the menu bar's server status and running kernels list fresh (#924).
         AppModel.shared.menuBar.start { AppModel.shared.activeKernelEndpoints }
+        // Reliable ⌃Tab / ⌃⇧Tab tab cycling even when WKWebView or TerminalView has focus (#905).
+        WorkspaceTabs.installKeyMonitor()
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(windowWillClose(_:)),

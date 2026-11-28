@@ -23,9 +23,6 @@ struct DeveloperSettings: View {
     var body: some View {
         Form {
             CrashReportTestsSection(reports: reports)
-            #if os(macOS)
-            TabStripSpikeSection()
-            #endif
         }
         .formStyle(.grouped)
         .navigationTitle("Developer")
@@ -61,26 +58,3 @@ struct CrashReportTestsSection: View {
         }
     }
 }
-
-#if os(macOS)
-/// Step 6 of #844 (#903): experimental custom tab strip prototype, off by
-/// default so AppKit's `WorkspaceTabs` stays unchanged.
-struct TabStripSpikeSection: View {
-    @AppStorage(SettingsTab.customTabsKey) private var customTabs = false
-    @AppStorage(SettingsTab.customTabsSamplesKey) private var sampleTabs = false
-
-    var body: some View {
-        Section {
-            Toggle("Custom Tab Strip (Spike)", isOn: $customTabs)
-            if customTabs {
-                Toggle("Show Sample Tab Kinds", isOn: $sampleTabs)
-            }
-        } header: {
-            Text("Tabs Prototype")
-        } footer: {
-            Text("Replaces AppKit window tabs with an experimental page-joined tab strip (#903). "
-                + "Drag-tab-out, Window › Merge All Windows, and Move Tab to New Window are inactive while on.")
-        }
-    }
-}
-#endif

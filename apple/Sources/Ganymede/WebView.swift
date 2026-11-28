@@ -33,14 +33,25 @@ struct WebView: NSViewRepresentable {
     /// again, so a check that verified its machine applies on this load and
     /// not under the page that was showing.
     var onLoad: (() -> Void)? = nil
+    /// Persistent live `WKWebView` + coordinator store owned by `PageTabState`
+    /// so detaching a tab to a new window or docking it into another window
+    /// preserves unsaved edits, scroll position, and live DOM without reloading (#905).
+    var store: PageWebViewStore? = nil
 
     func makeCoordinator() -> WebViewCoordinator {
-        WebViewCoordinator(
+        store?.coordinator ?? WebViewCoordinator(
             place: place, sharesName: sharesName, usesDevice: usesDevice, pageRoot: pageRoot)
     }
 
     func makeNSView(context: Context) -> WKWebView {
-        context.coordinator.makeWebView()
+        if let store {
+            let view = store.webView
+            if view.superview != nil {
+                view.removeFromSuperview()
+            }
+            return view
+        }
+        return context.coordinator.makeWebView()
     }
 
     func updateNSView(_ view: WKWebView, context: Context) {
@@ -52,6 +63,45 @@ struct WebView: NSViewRepresentable {
         context.coordinator.onOpenFile = onOpenFile
         context.coordinator.onLoad = onLoad
         context.coordinator.load(url, in: view)
+    }
+}
+
+/// Owns a live macOS `WKWebView` and `WebViewCoordinator` for one
+/// `PageTabState` (#905) so cross-window drag-docking, `Move Tab to New Window`,
+/// and `Merge All Windows` reparent the live view without reloading or losing
+/// unsaved edits.
+@MainActor
+final class PageWebViewStore: PageWebViewRetiring {
+    let pagePlace: WorkspacePagePlace
+    let coordinator: WebViewCoordinator
+    let webView: WKWebView
+
+    init(
+        pagePlace: WorkspacePagePlace,
+        place: Place,
+        sharesName: Bool,
+        usesDevice: Bool,
+        pageRoot: PageRoot
+    ) {
+        self.pagePlace = pagePlace
+        self.coordinator = WebViewCoordinator(
+            place: place,
+            sharesName: sharesName,
+            usesDevice: usesDevice,
+            pageRoot: pageRoot
+        )
+        self.webView = coordinator.makeWebView()
+    }
+
+    func retire() {
+        coordinator.page = nil
+        coordinator.document = nil
+        coordinator.onNavigate = nil
+        coordinator.onOpenTab = nil
+        coordinator.onOpenFile = nil
+        coordinator.onLoad = nil
+        webView.stopLoading()
+        webView.removeFromSuperview()
     }
 }
 #else

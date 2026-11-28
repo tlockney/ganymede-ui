@@ -121,7 +121,6 @@ struct WorkspaceTabDescriptor: Identifiable, Equatable {
     /// SF Symbol name when `kind == .machine`.
     var machineSymbol: String = "desktopcomputer"
     var isPrimary: Bool = false
-    var isSample: Bool = false
     var isCloseable: Bool = true
 
     var group: WorkspaceTabGroup {
@@ -230,7 +229,6 @@ struct WorkspaceTabDescriptor: Identifiable, Equatable {
             kernelLabel: kernelLabel,
             machineSymbol: Self.machineSymbol(for: machineName ?? title),
             isPrimary: isPrimary,
-            isSample: false,
             isCloseable: isCloseable
         )
     }
@@ -240,7 +238,6 @@ struct WorkspaceTabDescriptor: Identifiable, Equatable {
         id: UUID,
         title: String,
         toolTip: String? = nil,
-        isSample: Bool = false,
         isCloseable: Bool = true
     ) -> WorkspaceTabDescriptor {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -254,7 +251,6 @@ struct WorkspaceTabDescriptor: Identifiable, Equatable {
             kernelKind: nil,
             kernelLabel: nil,
             isPrimary: false,
-            isSample: isSample,
             isCloseable: isCloseable
         )
     }
@@ -265,7 +261,6 @@ struct WorkspaceTabDescriptor: Identifiable, Equatable {
         name: String,
         toolTip: String? = nil,
         isPrimary: Bool = false,
-        isSample: Bool = false,
         isCloseable: Bool = true
     ) -> WorkspaceTabDescriptor {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -280,7 +275,6 @@ struct WorkspaceTabDescriptor: Identifiable, Equatable {
             kernelLabel: nil,
             machineSymbol: machineSymbol(for: shown),
             isPrimary: isPrimary,
-            isSample: isSample,
             isCloseable: isCloseable
         )
     }
@@ -305,7 +299,6 @@ struct WorkspaceTabDescriptor: Identifiable, Equatable {
             kernelKind: nil,
             kernelLabel: nil,
             isPrimary: false,
-            isSample: false,
             isCloseable: isCloseable
         )
     }
@@ -317,58 +310,6 @@ struct WorkspaceTabDescriptor: Identifiable, Equatable {
             return "laptopcomputer"
         }
         return "desktopcomputer"
-    }
-
-    /// Sample tabs matching `docs/design/mac-visual-redesign/boards/E-Tabs.png`
-    /// and `E-Mac.png` for inspecting all silhouettes when Developer Settings'
-    /// sample toggle is enabled.
-    static func sampleAddons(for existing: [WorkspaceTabDescriptor]) -> [WorkspaceTabDescriptor] {
-        var addons: [WorkspaceTabDescriptor] = []
-        if !existing.contains(where: { $0.title == "DuckDB console" }) {
-            addons.append(
-                WorkspaceTabDescriptor(
-                    id: UUID(uuidString: "00000000-0000-0000-0000-000000000101")!,
-                    kind: .notebook,
-                    title: "DuckDB console",
-                    toolTip: "duckdb-console.ipynb",
-                    badge: TabLanguageBadge(code: "SQL", palette: .sql),
-                    kernelKind: .working,
-                    kernelLabel: "Kernel busy",
-                    isSample: true
-                )
-            )
-        }
-        if !existing.contains(where: { $0.kind == .machine && $0.title == "m4mini" }) {
-            addons.append(
-                machine(
-                    id: UUID(uuidString: "00000000-0000-0000-0000-000000000102")!,
-                    name: "m4mini",
-                    toolTip: "Machine m4mini (sample)",
-                    isSample: true
-                )
-            )
-        }
-        if !existing.contains(where: { $0.kind == .machine && $0.title == "workmbp" }) {
-            addons.append(
-                machine(
-                    id: UUID(uuidString: "00000000-0000-0000-0000-000000000103")!,
-                    name: "workmbp",
-                    toolTip: "Machine workmbp (sample)",
-                    isSample: true
-                )
-            )
-        }
-        if !existing.contains(where: { $0.kind == .terminal }) {
-            addons.append(
-                terminal(
-                    id: UUID(uuidString: "00000000-0000-0000-0000-000000000104")!,
-                    title: "zsh",
-                    toolTip: "Terminal: zsh (sample)",
-                    isSample: true
-                )
-            )
-        }
-        return addons
     }
 
     private static func pathExtension(target: WindowTarget, statePath: String?) -> String? {

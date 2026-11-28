@@ -10,6 +10,7 @@ extension FocusedValues {
     @Entry var editorDocument: EditorDocument?
     @Entry var pageDocument: PageDocument?
     @Entry var windowScope: WindowScope?
+    @Entry var workspaceTabController: WorkspaceTabController?
     #endif
     #if os(iOS)
     /// The iPad's scene's place, for the commands of this device's own (#758).
