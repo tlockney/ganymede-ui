@@ -211,6 +211,18 @@ enum WorkspaceTabs {
         open(target: .folder(folder), alone: true, with: openByID)
     }
 
+    /// Focuses an existing workspace window, or opens a new one on `folder`
+    /// when none is open (#924). Used by the menu bar's Open Window item.
+    static func focusOrOpen(folder: URL, with openWindow: (String) -> Void) {
+        NSApp.activate()
+        if let existing = windows.frontmost {
+            if existing.isMiniaturized { existing.deminiaturize(nil) }
+            existing.makeKeyAndOrderFront(nil)
+            return
+        }
+        open(target: .folder(folder), alone: true, with: openWindow)
+    }
+
     /// Marks `window`'s tab with a dot while its notebook's kernel is busy
     /// (#247), so a run in a background tab shows. Nothing while idle.
     static func markBusy(_ window: NSWindow, _ busy: Bool) {
@@ -300,6 +312,22 @@ final class OpenWindows {
 
     var any: Bool {
         places.keyEnumerator().nextObject() != nil
+    }
+
+    /// A tracked workspace window to bring to front (#924): prefers the
+    /// current key or main window, then any visible window, then any tracked
+    /// (minimized or hidden) window.
+    var frontmost: NSWindow? {
+        var tracked: [NSWindow] = []
+        let enumerator = places.keyEnumerator()
+        while let window = enumerator.nextObject() as? NSWindow {
+            tracked.append(window)
+        }
+        if let app = NSApp as NSApplication? {
+            if let key = app.keyWindow, tracked.contains(key) { return key }
+            if let main = app.mainWindow, tracked.contains(main) { return main }
+        }
+        return tracked.first(where: \.isVisible) ?? tracked.first
     }
 
     /// `window` is closing. If it was the app's last window, the folder for

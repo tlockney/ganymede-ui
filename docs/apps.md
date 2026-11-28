@@ -603,6 +603,24 @@ so `launchd` restarts it on the updated binary. Local notebook windows
 still use the app's embedded server for now; the background server appears
 as a This Mac server through the existing checks.
 
+### Menu bar
+
+> [!NOTE]
+> **Unreleased.** Available only from a build of `main` (HEAD), not in
+> the latest release.
+
+The Mac app puts a Ganymede item in the system menu bar so you can check on
+the server and open or quit the app even when no window is open:
+
+- **Open Window** brings an open Ganymede window to the front, or opens a
+  new one on your default folder when none is open.
+- **Settings…** opens the Settings window.
+- **Server** reports whether the background LaunchAgent or the embedded
+  server is running, along with MCP mode and Tailnet sharing status.
+- **Running Kernels** lists active kernels (notebook, kernel name and
+  execution state) from the running server, refreshed automatically.
+- **Quit Ganymede** quits the app.
+
 ### Agents over MCP
 
 Agents outside the app, such as Claude Code and Claude Desktop, can read,

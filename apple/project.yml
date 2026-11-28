@@ -615,8 +615,10 @@ targets:
       - path: Sources/Ganymede/Place.swift
       - path: Sources/Ganymede/PlaceReachability.swift
       # What checks a server is this Mac's own (#883), and the lifecycle of
-      # those checks; plus the optional LaunchAgent background server (#912).
+      # those checks; plus the optional LaunchAgent background server (#912)
+      # and Mac menu bar extra (#924).
       - path: Sources/Ganymede/BackgroundServer.swift
+      - path: Sources/Ganymede/MenuBar.swift
       - path: Sources/Ganymede/ThisMacVerifier.swift
       - path: Sources/Ganymede/ThisMacChecks.swift
       - path: Sources/Ganymede/Journals.swift
@@ -717,8 +719,10 @@ targets:
       - path: Sources/Ganymede/Place.swift
       - path: Sources/Ganymede/PlaceReachability.swift
       # What checks a server is this Mac's own (#883), and the lifecycle of
-      # those checks; plus the optional LaunchAgent background server (#912).
+      # those checks; plus the optional LaunchAgent background server (#912)
+      # and Mac menu bar extra (#924).
       - path: Sources/Ganymede/BackgroundServer.swift
+      - path: Sources/Ganymede/MenuBar.swift
       - path: Sources/Ganymede/ThisMacVerifier.swift
       - path: Sources/Ganymede/ThisMacChecks.swift
       - path: Sources/Ganymede/Journals.swift

@@ -118,6 +118,9 @@ struct GanymedeApp: App {
             SettingsWindow()
                 .environment(model)
         }
+        MenuBarExtra("Ganymede", systemImage: "book.closed") {
+            MenuBarMenu(model: model, menuBar: model.menuBar)
+        }
     }
     #else
     var body: some Scene {
@@ -149,6 +152,58 @@ struct GanymedeApp: App {
 }
 
 #if os(macOS)
+/// Content of the Mac `MenuBarExtra` (#924): Open Window, Settings, server
+/// status (background or embedded, MCP, Tailnet), running kernels, and Quit.
+struct MenuBarMenu: View {
+    var model: AppModel
+    var menuBar: MenuBarController
+    @Environment(\.openWindow) private var openWindow
+    @Environment(\.openSettings) private var openSettings
+
+    private var snapshot: MenuBarSnapshot {
+        menuBar.snapshot(
+            backgroundRunning: !model.verifiedBackgroundServers.isEmpty,
+            embeddedRunning: model.serverURL != nil,
+            embeddedError: model.error,
+            mcpMode: model.mcpMode,
+            tailnetShare: model.tailnetShare,
+            tailnetURL: model.tailnetURL,
+            tailnetError: model.tailnetError
+        )
+    }
+
+    var body: some View {
+        Button("Open Window") {
+            WorkspaceTabs.focusOrOpen(folder: model.root) { openWindow(id: $0) }
+        }
+        Button("Settings…") {
+            NSApp.activate()
+            openSettings()
+        }
+        Divider()
+        Section("Server") {
+            Text(snapshot.serverLine)
+            Text(snapshot.mcpLine)
+            Text(snapshot.tailnetLine)
+        }
+        Divider()
+        Section(snapshot.kernelsHeader) {
+            if snapshot.kernels.isEmpty {
+                Text(snapshot.emptyKernelsLine)
+            } else {
+                ForEach(snapshot.kernels) { kernel in
+                    Text(kernel.label)
+                }
+            }
+        }
+        Divider()
+        Button("Quit Ganymede") {
+            NSApp.terminate(nil)
+        }
+        .keyboardShortcut("q")
+    }
+}
+
 /// File > Open… and Open Folder…, each into a new tab of the front window.
 struct OpenCommands: View {
     @Environment(\.openWindow) private var openWindow
@@ -302,6 +357,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Check this Mac's servers at start, including restarting a
         // background server whose version differs from the bundled tool (#912).
         AppModel.shared.refreshThisMac()
+        // Keep the menu bar's server status and running kernels list fresh (#924).
+        AppModel.shared.menuBar.start { AppModel.shared.activeKernelEndpoints }
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(windowWillClose(_:)),
@@ -335,6 +392,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// so Spotlight's entries are checked again (#305).
     @objc private func didBecomeActive(_ notification: Notification) {
         SpotlightSettings.shared.syncIfStale()
+        AppModel.shared.menuBar.refreshNow()
     }
 
     /// A Spotlight result (#305): its notebook opens in a window.
@@ -390,6 +448,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        AppModel.shared.menuBar.stop()
         AppModel.shared.stopForQuit()
     }
 
